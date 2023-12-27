@@ -2,9 +2,6 @@ import os
 from typing import Any, Dict, Union
 
 import lightgbm
-import lightgbm_ray
-import xgboost_ray
-from lightgbm_ray.tune import TuneReportCheckpointCallback
 
 from ray.train import Checkpoint
 from ray.train.gbdt_trainer import GBDTTrainer
@@ -86,9 +83,9 @@ class LightGBMTrainer(GBDTTrainer):
 
     # Currently, the RayDMatrix in lightgbm_ray is the same as in xgboost_ray
     # but it is explicitly set here for forward compatibility
-    _dmatrix_cls: type = lightgbm_ray.RayDMatrix
-    _ray_params_cls: type = lightgbm_ray.RayParams
-    _tune_callback_checkpoint_cls: type = TuneReportCheckpointCallback
+    # _dmatrix_cls: type = lightgbm_ray.RayDMatrix
+    # _ray_params_cls: type = lightgbm_ray.RayParams
+    # _tune_callback_checkpoint_cls: type = TuneReportCheckpointCallback
     _default_ray_params: Dict[str, Any] = {
         "checkpoint_frequency": 1,
         "allow_less_than_two_cpus": True,
@@ -97,6 +94,17 @@ class LightGBMTrainer(GBDTTrainer):
         "gpus_per_actor": 0,
     }
     _init_model_arg_name: str = "init_model"
+
+    def __init__(self, *args, **kwargs):
+        import lightgbm_ray.tune
+
+        self._dmatrix_cls: type = lightgbm_ray.RayDMatrix
+        self._ray_params_cls: type = lightgbm_ray.RayParams
+        self._tune_callback_checkpoint_cls: type = (
+            lightgbm_ray.tune.TuneReportCheckpointCallback
+        )
+
+        super().__init__(*args, **kwargs)
 
     @staticmethod
     def get_model(checkpoint: Checkpoint) -> lightgbm.Booster:
@@ -109,6 +117,8 @@ class LightGBMTrainer(GBDTTrainer):
             )
 
     def _train(self, **kwargs):
+        import lightgbm_ray
+
         return lightgbm_ray.train(**kwargs)
 
     def _load_checkpoint(self, checkpoint: Checkpoint) -> lightgbm.Booster:
@@ -130,5 +140,7 @@ class LightGBMTrainer(GBDTTrainer):
         # XGBoost/LightGBM-Ray requires each dataset to have at least as many
         # blocks as there are workers.
         # This is only applicable for xgboost-ray<0.1.16
+        import xgboost_ray
+
         if Version(xgboost_ray.__version__) < Version("0.1.16"):
             self._repartition_datasets_to_match_num_actors()

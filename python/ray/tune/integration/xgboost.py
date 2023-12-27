@@ -1,18 +1,15 @@
 from collections import OrderedDict
 from contextlib import contextmanager
-import os
 import tempfile
 from typing import Callable, Dict, List, Union, Optional, Type
-import warnings
 
 from xgboost.core import Booster
 
-from ray import train, tune
+from ray import train
 from ray.train import Checkpoint
 from ray.train.xgboost import XGBoostCheckpoint
 from ray.train.constants import _DEPRECATED_VALUE
 from ray.tune.utils import flatten_dict
-from ray.util import log_once
 from ray.util.annotations import Deprecated
 
 try:
@@ -96,9 +93,10 @@ class TuneReportCheckpointCallback(TuneCallback):
         filename: str = _DEPRECATED_VALUE,
     ):
         if filename != _DEPRECATED_VALUE:
+            # TODO(justinvyu): [code_removal] Remove in 2.11.
             raise DeprecationWarning(
                 "`filename` is deprecated. Supply a custom `checkpoint_cls` "
-                "subclassing `ray.train.xgboost.XGBoostCheckpoint` instead."
+                "that subclasses `ray.train.xgboost.XGBoostCheckpoint` instead."
             )
 
         if isinstance(metrics, str):
@@ -106,6 +104,7 @@ class TuneReportCheckpointCallback(TuneCallback):
         self._metrics = metrics
         self._frequency = frequency
         self._checkpoint_at_end = checkpoint_at_end
+        self._results_postprocessing_fn = results_postprocessing_fn
 
         if not issubclass(checkpoint_cls, XGBoostCheckpoint):
             raise ValueError(
@@ -113,10 +112,9 @@ class TuneReportCheckpointCallback(TuneCallback):
             )
         self._checkpoint_cls = checkpoint_cls
 
-        self._results_postprocessing_fn = results_postprocessing_fn
-
         # Keeps track of the eval metrics from the last iteration,
-        # so that the latest metrics can be reported at the end of training.
+        # so that the latest metrics can be reported with the checkpoint
+        # at the end of training.
         self._evals_log = None
 
     def _get_report_dict(self, evals_log):

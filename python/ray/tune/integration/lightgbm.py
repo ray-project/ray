@@ -1,15 +1,15 @@
 from contextlib import contextmanager
-from typing import Callable, Dict, List, Union, Optional
+from typing import Callable, Dict, List, Union, Optional, Type
 
 import os
 import tempfile
-import warnings
 
-from ray import train, tune
+from ray import train
 
 from ray.train import Checkpoint
+from ray.train.constants import _DEPRECATED_VALUE
+from ray.train.lightgbm import LightGBMCheckpoint
 from ray.tune.utils import flatten_dict
-from ray.util import log_once
 
 from lightgbm.callback import CallbackEnv
 from lightgbm.basic import Booster
@@ -72,26 +72,41 @@ class TuneReportCheckpointCallback(TuneCallback):
 
     """
 
-    _checkpoint_callback_cls = None
-    # ATTN: Check comment in xgboost.py when changing _report_callback_cls
-    _report_callback_cls = None
     order = 20
 
     def __init__(
         self,
         metrics: Optional[Union[str, List[str], Dict[str, str]]] = None,
-        filename: str = "checkpoint",
         frequency: int = 1,
         results_postprocessing_fn: Optional[
             Callable[[Dict[str, Union[float, List[float]]]], Dict[str, float]]
         ] = None,
+        checkpoint_cls: Type[LightGBMCheckpoint] = LightGBMCheckpoint,
+        filename: str = _DEPRECATED_VALUE,
     ):
+        if filename != _DEPRECATED_VALUE:
+            # TODO(justinvyu): [code_removal] Remove in 2.11.
+            raise DeprecationWarning(
+                "`filename` is deprecated. Supply a custom `checkpoint_cls` "
+                "that subclasses `ray.train.lightgbm.LightGBMCheckpoint` instead."
+            )
+
         if isinstance(metrics, str):
             metrics = [metrics]
         self._metrics = metrics
-        self._filename = filename
         self._frequency = frequency
         self._results_postprocessing_fn = results_postprocessing_fn
+
+        if not issubclass(checkpoint_cls, LightGBMCheckpoint):
+            raise ValueError(
+                "`checkpoint_cls` must subclass `ray.train.xgboost.XGBoostCheckpoint`"
+            )
+        self._checkpoint_cls = checkpoint_cls
+
+        # Keeps track of the metrics from the latest iteration,
+        # so that the latest metrics can be reported with the checkpoint
+        # at the end of training.
+        self._latest_report_dict = None
 
     def _get_report_dict(self, evals_log: Dict[str, Dict[str, list]]) -> dict:
         result_dict = flatten_dict(evals_log, delimiter="-")
@@ -126,86 +141,39 @@ class TuneReportCheckpointCallback(TuneCallback):
                 eval_result[data_name][eval_name + "-stdv"] = stdv
         return eval_result
 
-    @staticmethod
-    def _create_checkpoint(model: Booster, epoch: int, filename: str, frequency: int):
-        # Deprecate: Raise error in Ray 2.8
-        if log_once("lightgbm_ray_legacy"):
-            warnings.warn(
-                "You are using an outdated version of LightGBM-Ray that won't be "
-                "compatible with future releases of Ray. Please update LightGBM-Ray "
-                "with `pip install -U lightgbm_ray`."
-            )
-
-        if not frequency or epoch % frequency > 0 or (not epoch and frequency > 1):
-            # Skip 0th checkpoint if frequency > 1
-            return
-        with tune.checkpoint_dir(step=epoch) as checkpoint_dir:
-            model.save_model(os.path.join(checkpoint_dir, filename))
-
     @contextmanager
-    def _get_checkpoint(
-        self, model: Booster, epoch: int, filename: str, frequency: int
-    ) -> Optional[Checkpoint]:
-        if not frequency or epoch % frequency > 0 or (not epoch and frequency > 1):
-            # Skip 0th checkpoint if frequency > 1
-            yield None
-            return
-
-        with tempfile.TemporaryDirectory() as checkpoint_dir:
-            model.save_model(os.path.join(checkpoint_dir, filename))
-            checkpoint = Checkpoint.from_directory(checkpoint_dir)
-            yield checkpoint
+    def _get_checkpoint(self, model: Booster) -> Optional[Checkpoint]:
+        # with tempfile.TemporaryDirectory() as checkpoint_dir:
+        #     model.save_model(os.path.join(checkpoint_dir, filename))
+        #     checkpoint = Checkpoint.from_directory(checkpoint_dir)
+        #     yield checkpoint
+        # TODO(justinvyu): implement this with lgbm ckpt
+        yield None
 
     def __call__(self, env: CallbackEnv) -> None:
-        if self._frequency > 0 and self._checkpoint_callback_cls:
-            self._checkpoint_callback_cls.__call__(self, env)
-        if self._report_callback_cls:
-            # Deprecate: Raise error in Ray 2.8
-            if log_once("xgboost_ray_legacy"):
-                warnings.warn(
-                    "You are using an outdated version of LightGBM-Ray that won't be "
-                    "compatible with future releases of Ray. Please update LightGBM-Ray"
-                    " with `pip install -U lightgbm_ray`."
-                )
+        eval_result = self._get_eval_result(env)
+        report_dict = self._get_report_dict(eval_result)
+        self._latest_report_dict = report_dict
 
-            self._report_callback_cls.__call__(self, env)
-            return
-
-        with self._get_checkpoint(
-            model=env.model,
-            epoch=env.iteration,
-            filename=self._filename,
-            frequency=self._frequency,
-        ) as checkpoint:
-            eval_result = self._get_eval_result(env)
-            report_dict = self._get_report_dict(eval_result)
-            train.report(report_dict, checkpoint=checkpoint)
-
-
-class _TuneCheckpointCallback(TuneCallback):
-    def __init__(self, *args, **kwargs):
-        raise DeprecationWarning(
-            "`ray.tune.integration.lightgbm._TuneCheckpointCallback` is deprecated."
+        print("DEBUG!!!", env.iteration, env.end_iteration)
+        checkpointing_disabled = self._frequency == 0
+        # Ex: if frequency=2, checkpoint at epoch 1, 3, 5, ... (counting from 0)
+        should_checkpoint = (
+            not checkpointing_disabled and (env.iteration + 1) % self._frequency == 0
         )
+
+        if should_checkpoint:
+            with self._get_checkpoint(model=env.model) as checkpoint:
+                train.report(report_dict, checkpoint=checkpoint)
+        else:
+            train.report(report_dict)
 
 
 @Deprecated
 class TuneReportCallback(TuneReportCheckpointCallback):
-    def __init__(
-        self,
-        metrics: Optional[Union[str, List[str], Dict[str, str]]] = None,
-        results_postprocessing_fn: Optional[
-            Callable[[Dict[str, Union[float, List[float]]]], Dict[str, float]]
-        ] = None,
-    ):
-        if log_once("tune_lightgbm_report_deprecated"):
-            warnings.warn(
-                "`ray.tune.integration.lightgbm.TuneReportCallback` is deprecated. "
-                "Use `ray.tune.integration.lightgbm.TuneCheckpointReportCallback` "
-                "instead."
-            )
-        super().__init__(
-            metrics=metrics,
-            results_postprocessing_fn=results_postprocessing_fn,
-            frequency=0,
+    def __new__(cls: type, *args, **kwargs):
+        # TODO(justinvyu): [code_removal] Remove in 2.11.
+        raise DeprecationWarning(
+            "`TuneReportCallback` is deprecated. "
+            "Use `ray.tune.integration.lightgbm.TuneReportCheckpointCallback` instead."
         )
