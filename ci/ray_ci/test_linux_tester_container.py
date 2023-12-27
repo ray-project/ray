@@ -154,6 +154,9 @@ def test_run_tests() -> None:
     ), mock.patch(
         "ci.ray_ci.linux_tester_container.LinuxTesterContainer.install_ray",
         return_value=None,
+    ), mock.patch(
+        "ci.ray_ci.linux_tester_container.LinuxTesterContainer._persist_test_results",
+        return_value=None,
     ):
         container = LinuxTesterContainer("team", shard_count=2, shard_ids=[0, 1])
         # test_targets are not empty
