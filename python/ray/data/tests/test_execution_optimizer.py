@@ -356,7 +356,6 @@ def test_random_shuffle_operator(ray_start_regular_shared, enable_optimizer):
     read_op = get_parquet_read_logical_op()
     op = RandomShuffle(
         read_op,
-        num_outputs=1,
         seed=0,
     )
     plan = LogicalPlan(op)

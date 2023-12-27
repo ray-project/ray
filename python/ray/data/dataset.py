@@ -1163,7 +1163,6 @@ class Dataset:
         if logical_plan is not None:
             op = RandomShuffle(
                 logical_plan.dag,
-                num_outputs=num_blocks,
                 seed=seed,
                 ray_remote_args=ray_remote_args,
             )
