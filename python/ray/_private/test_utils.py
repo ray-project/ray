@@ -1121,12 +1121,17 @@ def raw_metrics(info: RayContext) -> Dict[str, List[Any]]:
     return fetch_prometheus_metrics([metrics_page])
 
 
-def load_test_config(config_file_name):
-    """Loads a config yaml from tests/test_cli_patterns."""
+def get_test_config_path(config_file_name):
+    """Resolve the test config path from the config file dir"""
     here = os.path.realpath(__file__)
     path = pathlib.Path(here)
     grandparent = path.parent.parent
-    config_path = os.path.join(grandparent, "tests/test_cli_patterns", config_file_name)
+    return os.path.join(grandparent, "tests/test_cli_patterns", config_file_name)
+
+
+def load_test_config(config_file_name):
+    """Loads a config yaml from tests/test_cli_patterns."""
+    config_path = get_test_config_path(config_file_name)
     config = yaml.safe_load(open(config_path).read())
     return config
 

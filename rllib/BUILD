@@ -222,6 +222,48 @@ py_test(
     args = ["--dir=tuned_examples/appo"]
 )
 
+# Tests against crashing or hanging environments.
+# Single-agent: Crash only.
+py_test(
+    name = "learning_tests_cartpole_crashing_appo",
+    main = "tests/run_regression_tests.py",
+    tags = ["team:rllib", "exclusive", "learning_tests", "learning_tests_cartpole", "learning_tests_discrete", "crashing_cartpole"],
+    size = "large",
+    srcs = ["tests/run_regression_tests.py"],
+    data = ["tuned_examples/appo/cartpole-crashing-recreate-workers-appo.py"],
+    args = ["--dir=tuned_examples/appo", "--num-cpus=6"]
+)
+# Single-agent: Crash and stall.
+py_test(
+    name = "learning_tests_cartpole_crashing_and_stalling_appo",
+    main = "tests/run_regression_tests.py",
+    tags = ["team:rllib", "exclusive", "learning_tests", "learning_tests_cartpole", "learning_tests_discrete", "crashing_cartpole"],
+    size = "large",
+    srcs = ["tests/run_regression_tests.py"],
+    data = ["tuned_examples/appo/cartpole-crashing-and-stalling-recreate-workers-appo.py"],
+    args = ["--dir=tuned_examples/appo", "--num-cpus=6"]
+)
+# Multi-agent: Crash only.
+py_test(
+    name = "learning_tests_multi_agent_cartpole_crashing_appo",
+    main = "tests/run_regression_tests.py",
+    tags = ["team:rllib", "exclusive", "learning_tests", "learning_tests_cartpole", "learning_tests_discrete", "crashing_cartpole"],
+    size = "large",
+    srcs = ["tests/run_regression_tests.py"],
+    data = ["tuned_examples/appo/multi-agent-cartpole-crashing-recreate-workers-appo.py"],
+    args = ["--dir=tuned_examples/appo", "--num-cpus=6"]
+)
+# Multi-agent: Crash and stall.
+py_test(
+    name = "learning_tests_multi_agent_cartpole_crashing_and_stalling_appo",
+    main = "tests/run_regression_tests.py",
+    tags = ["team:rllib", "exclusive", "learning_tests", "learning_tests_cartpole", "learning_tests_discrete", "crashing_cartpole"],
+    size = "large",
+    srcs = ["tests/run_regression_tests.py"],
+    data = ["tuned_examples/appo/multi-agent-cartpole-crashing-and-stalling-recreate-workers-appo.py"],
+    args = ["--dir=tuned_examples/appo", "--num-cpus=6"]
+)
+
 # CQL
 py_test(
     name = "learning_tests_pendulum_cql",
@@ -705,7 +747,7 @@ py_test(
 
 
 # --------------------------------------------------------------------
-# Connector tests
+# Connector(V1) tests
 # rllib/connector/
 #
 # Tag: connector
@@ -733,18 +775,26 @@ py_test(
 )
 
 # --------------------------------------------------------------------
+# ConnectorV2 tests
+# rllib/connector/
+#
+# Tag: connector_v2
+# --------------------------------------------------------------------
+
+# TODO (sven): Add these tests in a separate PR.
+# py_test(
+#    name = "connectors/tests/test_connector_v2",
+#    tags = ["team:rllib", "connector_v2"],
+#    size = "small",
+#    srcs = ["connectors/tests/test_connector_v2.py"]
+# )
+
+# --------------------------------------------------------------------
 # Env tests
 # rllib/env/
 #
 # Tag: env
 # --------------------------------------------------------------------
-
-py_test(
-    name = "env/tests/test_env_with_subprocess",
-    tags = ["team:rllib", "env"],
-    size = "medium",
-    srcs = ["env/tests/test_env_with_subprocess.py"]
-)
 
 sh_test(
     name = "env/tests/test_local_inference_cartpole",
@@ -1100,13 +1150,6 @@ py_test(
     size = "large",
     srcs = ["core/learner/tests/test_learner_group.py"],
     args = ["TestLearnerGroupSaveLoadState"]
-)
-
-py_test(
-    name = "test_learner_group_config",
-    tags = ["team:rllib", "core"],
-    size = "medium",
-    srcs = ["core/learner/tests/test_learner_group_config.py"]
 )
 
 py_test(
@@ -1576,7 +1619,6 @@ py_test(
     args = ["TestCheckpointRestorePPO"]
 )
 
-
 py_test(
     name = "tests/test_checkpoint_restore_ppo_gpu",
     main = "tests/test_algorithm_checkpoint_restore.py",
@@ -1594,7 +1636,6 @@ py_test(
     srcs = ["tests/test_algorithm_checkpoint_restore.py"],
     args = ["TestCheckpointRestoreOffPolicy"]
 )
-
 
 py_test(
     name = "tests/test_checkpoint_restore_off_policy_gpu",
@@ -1905,24 +1946,6 @@ py_test(
     size = "small",
     srcs = ["examples/action_masking.py"],
     args = ["--stop-iter=2", "--framework=torch"]
-)
-
-py_test(
-    name = "examples/attention_net_tf",
-    main = "examples/attention_net.py",
-    tags = ["team:rllib", "exclusive", "examples"],
-    size = "medium",
-    srcs = ["examples/attention_net.py"],
-    args = ["--as-test", "--stop-reward=70", "--framework=tf"]
-)
-
-py_test(
-    name = "examples/attention_net_torch",
-    main = "examples/attention_net.py",
-    tags = ["team:rllib", "exclusive", "examples"],
-    size = "medium",
-    srcs = ["examples/attention_net.py"],
-    args = ["--as-test", "--stop-reward=70", "--framework torch"]
 )
 
 py_test(
@@ -2657,39 +2680,57 @@ py_test(
 )
 
 py_test(
-    name = "examples/self_play_with_open_spiel_connect_4_tf",
-    main = "examples/self_play_with_open_spiel.py",
-    tags = ["team:rllib", "exclusive", "examples"],
-    size = "small",
-    srcs = ["examples/self_play_with_open_spiel.py"],
-    args = ["--framework=tf", "--env=connect_four", "--win-rate-threshold=0.9", "--num-episodes-human-play=0", "--as-test", "--min-win-rate=0.6"]
-)
-
-py_test(
-    name = "examples/self_play_with_open_spiel_connect_4_torch",
+    name = "examples/self_play_with_open_spiel_connect_4_ppo_tf",
     main = "examples/self_play_with_open_spiel.py",
     tags = ["team:rllib", "exclusive", "examples"],
     size = "medium",
     srcs = ["examples/self_play_with_open_spiel.py"],
-    args = ["--framework=torch", "--env=connect_four", "--win-rate-threshold=0.9", "--num-episodes-human-play=0", "--as-test", "--min-win-rate=0.6"]
+    args = ["--framework=tf", "--env=connect_four", "--win-rate-threshold=0.9", "--num-episodes-human-play=0", "--as-test", "--min-league-size=3"]
 )
 
 py_test(
-    name = "examples/self_play_with_open_spiel_connect_4_w_rlm_torch",
+    name = "examples/self_play_with_open_spiel_connect_4_ppo_torch",
+    main = "examples/self_play_with_open_spiel.py",
+    tags = ["team:rllib", "exclusive", "examples"],
+    size = "medium",
+    srcs = ["examples/self_play_with_open_spiel.py"],
+    args = ["--framework=torch", "--env=connect_four", "--win-rate-threshold=0.9", "--num-episodes-human-play=0", "--as-test", "--min-league-size=3"]
+)
+
+py_test(
+    name = "examples/self_play_with_open_spiel_connect_4_ppo_w_rlm_torch",
     main = "examples/self_play_with_open_spiel.py",
     tags = ["team:rllib", "exclusive", "examples", "rlm"],
     size = "medium",
     srcs = ["examples/self_play_with_open_spiel.py"],
-    args = ["--framework=torch", "--env=connect_four", "--win-rate-threshold=0.9", "--num-episodes-human-play=0", "--as-test", "--min-win-rate=0.6"]
+    args = ["--framework=torch", "--env=connect_four", "--win-rate-threshold=0.9", "--num-episodes-human-play=0", "--as-test", "--min-league-size=3", "--enable-new-api-stack"]
 )
 
 py_test(
-    name = "examples/self_play_with_open_spiel_connect_4_w_rlm_tf2",
+    name = "examples/self_play_with_open_spiel_connect_4_ppo_w_rlm_tf2",
     main = "examples/self_play_with_open_spiel.py",
     tags = ["team:rllib", "exclusive", "examples", "rlm"],
     size = "medium",
     srcs = ["examples/self_play_with_open_spiel.py"],
-    args = ["--framework=tf2", "--env=connect_four", "--win-rate-threshold=0.9", "--num-episodes-human-play=0", "--as-test", "--min-win-rate=0.6"]
+    args = ["--framework=tf2", "--env=connect_four", "--win-rate-threshold=0.9", "--num-episodes-human-play=0", "--as-test", "--min-league-size=3", "--enable-new-api-stack"]
+)
+
+py_test(
+    name = "examples/self_play_with_open_spiel_connect_4_appo_w_rlm_torch",
+    main = "examples/self_play_with_open_spiel.py",
+    tags = ["team:rllib", "exclusive", "examples", "rlm"],
+    size = "medium",
+    srcs = ["examples/self_play_with_open_spiel.py"],
+    args = ["--enable-new-api-stack", "--framework=torch", "--algo=APPO", "--env=connect_four", "--win-rate-threshold=0.8", "--num-episodes-human-play=0", "--as-test", "--min-league-size=4"]
+)
+
+py_test(
+    name = "examples/self_play_with_open_spiel_connect_4_appo_w_rlm_tf2",
+    main = "examples/self_play_with_open_spiel.py",
+    tags = ["team:rllib", "exclusive", "examples", "rlm"],
+    size = "medium",
+    srcs = ["examples/self_play_with_open_spiel.py"],
+    args = ["--enable-new-api-stack", "--framework=tf2", "--algo=APPO", "--env=connect_four", "--win-rate-threshold=0.8", "--num-episodes-human-play=0", "--as-test", "--min-league-size=4"]
 )
 
 py_test(

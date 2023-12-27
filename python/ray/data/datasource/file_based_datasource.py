@@ -125,11 +125,9 @@ class FileExtensionFilter(PathPartitionFilter):
 
 @DeveloperAPI
 class FileBasedDatasource(Datasource):
-    """File-based datasource, for reading and writing files.
+    """File-based datasource for reading files.
 
-    This class should not be used directly, and should instead be subclassed
-    and tailored to particular file formats. Classes deriving from this class
-    must implement _read_file().
+    Don't use this class directly. Instead, subclass it and implement `_read_stream()`.
     """
 
     # If `_WRITE_FILE_PER_ROW` is `True`, this datasource calls `_write_row` and writes
@@ -208,7 +206,8 @@ class FileBasedDatasource(Datasource):
             file_sizes = [path_to_size[p] for p in paths]
             if len(paths) == 0:
                 raise ValueError(
-                    "No input files found to read. Please double check that "
+                    "No input files found to read with the following file extensions: "
+                    f"{file_extensions}. Please double check that "
                     "'file_extensions' field is set properly."
                 )
 

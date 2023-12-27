@@ -11,19 +11,8 @@ more information.
 
 .. dropdown:: Adding Your Integration
 
-    To add an integration, simply add an entry to the `projects` list of our
-    Gallery YAML on `GitHub <https://github.com/ray-project/ray/tree/master/doc/source/ray-overview/eco-gallery.yml>`_.
-
-    .. code-block:: yaml
-
-          - name: the integration link button text
-            section_title: The section title for this integration
-            description: A quick description of your library and its integration with Ray
-            website: The URL of your website
-            repo: The URL of your project on GitHub
-            image: The URL of a logo of your project
-
-    That's all!
+    To add an integration add an entry to this file, using the same
+    ``grid-item-card`` directive that the other examples use.
 
 .. grid:: 1 2 2 3
     :gutter: 1

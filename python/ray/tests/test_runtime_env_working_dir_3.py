@@ -16,7 +16,6 @@ from ray._private.test_utils import (
     chdir,
     check_local_files_gced,
     wait_for_condition,
-    skip_flaky_core_test_premerge,
     find_free_port,
 )
 
@@ -257,7 +256,6 @@ class TestGC:
     @pytest.mark.parametrize(
         "source", [S3_PACKAGE_URI, lazy_fixture("tmp_working_dir")]
     )
-    @skip_flaky_core_test_premerge("https://github.com/ray-project/ray/issues/40781")
     def test_detached_actor_gc(
         self,
         start_cluster,
@@ -268,6 +266,10 @@ class TestGC:
     ):
         """Tests that URIs for detached actors are GC'd only when they exit."""
         cluster, address = start_cluster
+        # Wait until agent is ready.
+        # TODO(sang): There's a bug where is runtime env creation request is
+        # sent before agent is ready, it fails. We will fix this issue soon.
+        time.sleep(2)
 
         if option == "working_dir":
             ray.init(address, namespace="test", runtime_env={"working_dir": source})
@@ -352,7 +354,6 @@ class TestGC:
         wait_for_condition(lambda: check_local_files_gced(cluster, whitelist=whitelist))
         print("check_local_files_gced passed wait_for_condition block.")
 
-    @skip_flaky_core_test_premerge("https://github.com/ray-project/ray/issues/40781")
     def test_hit_cache_size_limit(
         self, start_cluster, URI_cache_10_MB, disable_temporary_uri_pinning
     ):

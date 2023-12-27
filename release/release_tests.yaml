@@ -2189,6 +2189,7 @@
 - name: long_running_apex
   group: Long running tests
   working_dir: long_running_tests
+  stable: false
 
   frequency: weekly
   team: rllib
@@ -3334,6 +3335,7 @@
 - name: rllib_learner_e2e_module_loading
   group: RLlib tests
   working_dir: rllib_tests
+  stable: false
 
   frequency: nightly
   team: rllib
@@ -3367,6 +3369,7 @@
 - name: rllib_learning_tests_a2c_tf
   group: RLlib tests
   working_dir: rllib_tests
+  stable: false
 
   frequency: nightly
   team: rllib
@@ -3397,6 +3400,7 @@
 - name: rllib_learning_tests_a2c_torch
   group: RLlib tests
   working_dir: rllib_tests
+  stable: false
 
   frequency: nightly
   team: rllib
@@ -3427,6 +3431,7 @@
 - name: rllib_learning_tests_a3c_tf
   group: RLlib tests
   working_dir: rllib_tests
+  stable: false
 
   frequency: nightly
   team: rllib
@@ -3490,6 +3495,7 @@
 - name: rllib_learning_tests_apex_torch
   group: RLlib tests
   working_dir: rllib_tests
+  stable: false
 
   frequency: nightly
   team: rllib
@@ -3520,6 +3526,7 @@
 - name: rllib_learning_tests_appo_tf
   group: RLlib tests
   working_dir: rllib_tests
+  stable: false
 
   frequency: nightly
   team: rllib
@@ -3648,6 +3655,7 @@
 - name: rllib_learning_tests_bc_tf
   group: RLlib tests
   working_dir: rllib_tests
+  stable: false
 
   frequency: nightly
   team: rllib
@@ -3899,6 +3907,7 @@
 - name: rllib_learning_tests_es_tf
   group: RLlib tests
   working_dir: rllib_tests
+  stable: false
 
   frequency: nightly
   team: rllib
@@ -3929,6 +3938,7 @@
 - name: rllib_learning_tests_es_torch
   group: RLlib tests
   working_dir: rllib_tests
+  stable: false
 
   frequency: nightly
   team: rllib
@@ -4085,6 +4095,7 @@
 - name: rllib_learning_tests_ppo_tf
   group: RLlib tests
   working_dir: rllib_tests
+  stable: false
 
   frequency: nightly
   team: rllib
@@ -4273,6 +4284,7 @@
 - name: rllib_learning_tests_slateq_tf
   group: RLlib tests
   working_dir: rllib_tests
+  stable: false
 
   frequency: nightly
   team: rllib
@@ -4336,6 +4348,7 @@
 - name: rllib_learning_tests_td3_tf
   group: RLlib tests
   working_dir: rllib_tests
+  stable: false
 
   frequency: nightly
   team: rllib
@@ -4366,6 +4379,7 @@
 - name: rllib_learning_tests_td3_torch
   group: RLlib tests
   working_dir: rllib_tests
+  stable: false
 
   frequency: nightly
   team: rllib
@@ -4396,6 +4410,7 @@
 - name: rllib_multi_gpu_learning_tests
   group: RLlib tests
   working_dir: rllib_tests
+  stable: false
 
   frequency: nightly
   team: rllib
@@ -4426,6 +4441,7 @@
 - name: rllib_multi_gpu_with_lstm_learning_tests
   group: RLlib tests
   working_dir: rllib_tests
+  stable: false
 
   frequency: nightly
   team: rllib
