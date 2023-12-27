@@ -81,11 +81,6 @@ class LightGBMTrainer(GBDTTrainer):
         **train_kwargs: Additional kwargs passed to ``lightgbm.train()`` function.
     """
 
-    # Currently, the RayDMatrix in lightgbm_ray is the same as in xgboost_ray
-    # but it is explicitly set here for forward compatibility
-    # _dmatrix_cls: type = lightgbm_ray.RayDMatrix
-    # _ray_params_cls: type = lightgbm_ray.RayParams
-    # _tune_callback_checkpoint_cls: type = TuneReportCheckpointCallback
     _default_ray_params: Dict[str, Any] = {
         "checkpoint_frequency": 1,
         "allow_less_than_two_cpus": True,
@@ -96,8 +91,11 @@ class LightGBMTrainer(GBDTTrainer):
     _init_model_arg_name: str = "init_model"
 
     def __init__(self, *args, **kwargs):
+        # TODO(justinvyu): Fix circular import by moving lightgbm_ray into ray
         import lightgbm_ray.tune
 
+        # Currently, the RayDMatrix in lightgbm_ray is the same as in xgboost_ray
+        # but it is explicitly set here for forward compatibility
         self._dmatrix_cls: type = lightgbm_ray.RayDMatrix
         self._ray_params_cls: type = lightgbm_ray.RayParams
         self._tune_callback_checkpoint_cls: type = (
