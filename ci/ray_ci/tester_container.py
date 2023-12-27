@@ -16,6 +16,7 @@ class TesterContainer(Container):
 
     def __init__(
         self,
+        bazel_log_dir: str,
         shard_count: int = 1,
         gpus: int = 0,
         bazel_log_dir: str = "/tmp",

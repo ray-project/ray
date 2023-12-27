@@ -17,6 +17,7 @@ class WindowsTesterContainer(TesterContainer, WindowsContainer):
         WindowsContainer.__init__(self, docker_tag, test_envs)
         TesterContainer.__init__(
             self,
+            "C:\\msys64\\tmp\\bazel_event_logs",
             shard_count,
             gpus=0,  # We don't support GPU tests on Windows yet.
             bazel_log_dir="C:\\msys64\\tmp\\bazel_event_logs",

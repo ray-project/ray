@@ -28,6 +28,7 @@ class LinuxTesterContainer(TesterContainer, LinuxContainer):
         )
         TesterContainer.__init__(
             self,
+            "/tmp/bazel_event_logs",
             shard_count,
             gpus,
             bazel_log_dir="/tmp/bazel_event_logs",
