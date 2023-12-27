@@ -18,8 +18,8 @@ class Write(AbstractMap):
         **write_args,
     ):
         super().__init__(
-            name="Write",
-            input_op=input_op,
+            "Write",
+            input_op,
             ray_remote_args=ray_remote_args,
         )
         self._datasink_or_legacy_datasource = datasink_or_legacy_datasource
