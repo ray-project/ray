@@ -45,6 +45,7 @@ class TesterContainer(Container):
             self.gpus == 0 or self.gpus >= self.shard_count
         ), f"Not enough gpus ({self.gpus} provided) for {self.shard_count} shards"
 
+        self._init_bazel_log_dir()
         if not skip_ray_installation:
             self.install_ray(build_type)
 
