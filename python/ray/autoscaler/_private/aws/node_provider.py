@@ -431,22 +431,12 @@ class AWSNodeProvider(NodeProvider):
                     "Launched {} nodes", count, _tags=cli_logger_tags
                 ):
                     for instance in created:
-                        # NOTE(maximsmol): This is needed for mocking
-                        # boto3 for tests. This is likely a bug in moto
-                        # but AWS docs don't seem to say.
-                        # You can patch moto/ec2/responses/instances.py
-                        # to fix this (add <stateReason> to EC2_RUN_INSTANCES)
-
-                        # The correct value is technically
-                        # {"code": "0", "Message": "pending"}
-                        state_reason = instance.state_reason or {"Message": "pending"}
-
                         cli_logger.print(
                             "Launched instance {}",
                             instance.instance_id,
                             _tags=dict(
                                 state=instance.state["Name"],
-                                info=state_reason["Message"],
+                                info=instance.state_reason["Message"] or "pending",
                             ),
                         )
                 break

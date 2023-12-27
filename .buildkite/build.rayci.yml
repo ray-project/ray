@@ -143,13 +143,3 @@ steps:
     matrix:
       - "3.9"
       - "3.10"
-
-  - label: ":tapioca: build: pip-compile dependencies"
-    instance_type: small
-    commands:
-      - rm ./python/requirements_compiled.txt
-      - ./ci/ci.sh compile_pip_dependencies
-      - cp -f ./python/requirements_compiled.txt /artifact-mount/
-    soft_fail: true
-    depends_on:
-      - forge

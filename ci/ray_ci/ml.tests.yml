@@ -4,3 +4,6 @@ flaky_tests:
   # doc tests
   # gpu tests
   - //doc/source/ray-air/examples:gptj_serving
+  # rely on scikit-optimize that cannot be upgraded
+  - //python/ray/tune:test_sample
+  - //python/ray/tune:test_tune_restore_warm_start 
