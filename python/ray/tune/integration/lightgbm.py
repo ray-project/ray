@@ -33,16 +33,14 @@ class TuneReportCheckpointCallback(TuneCallback):
             and it will be reported under the same name to Tune. If this is a
             dict, each key will be the name reported to Tune and the respective
             value will be the metric key reported to LightGBM.
-        filename: Filename of the checkpoint within the checkpoint
-            directory. Defaults to "checkpoint". If this is None,
-            all metrics will be reported to Tune under their default names as
-            obtained from LightGBM.
         frequency: How often to save checkpoints. Defaults to 0 (no checkpoints
             are saved during training). A checkpoint is always saved at the end
             of training.
         results_postprocessing_fn: An optional Callable that takes in
             the dict that will be reported to Tune (after it has been flattened)
             and returns a modified dict that will be reported instead.
+        filename: Deprecated. Customize the saved checkpoint file type by passing
+            a `ray.train.lightgbm.LightGBMCheckpoint` subclass instead.
 
     Example:
 
@@ -66,8 +64,12 @@ class TuneReportCheckpointCallback(TuneCallback):
             valid_sets=[test_set],
             valid_names=["eval"],
             verbose_eval=False,
-            callbacks=[TuneReportCheckpointCallback(
-                {"loss": "eval-binary_logloss"}, "lightgbm.mdl)])
+            callbacks=[
+                TuneReportCheckpointCallback(
+                    metrics={"loss": "eval-binary_logloss"}, frequency=1
+                )
+            ],
+        )
 
     """
 

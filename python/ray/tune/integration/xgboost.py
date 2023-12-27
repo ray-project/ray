@@ -45,10 +45,6 @@ class TuneReportCheckpointCallback(TuneCallback):
             and it will be reported under the same name to Tune. If this is a
             dict, each key will be the name reported to Tune and the respective
             value will be the metric key reported to XGBoost.
-        filename: Filename of the checkpoint within the checkpoint
-            directory. Defaults to "checkpoint". If this is None,
-            all metrics will be reported to Tune under their default names as
-            obtained from XGBoost.
         frequency: How often to save checkpoints. Defaults to 0 (no checkpoints
             are saved during training). A checkpoint is always saved at the end
             of training.
@@ -56,6 +52,8 @@ class TuneReportCheckpointCallback(TuneCallback):
             the dict that will be reported to Tune (after it has been flattened)
             and returns a modified dict that will be reported instead. Can be used
             to eg. average results across CV fold when using ``xgboost.cv``.
+        filename: Deprecated. Customize the saved checkpoint file type by passing
+            a `ray.train.xgboost.XGBoostCheckpoint` subclass instead.
 
     Example:
 
@@ -69,15 +67,18 @@ class TuneReportCheckpointCallback(TuneCallback):
             "eval_metric": ["auc", "logloss"]
         }
 
-        # Report only log loss to Tune after each validation epoch.
-        # Save model as `xgboost.mdl`.
+        # Report log loss to Tune after each validation epoch.
         bst = xgb.train(
             config,
             train_set,
             evals=[(test_set, "eval")],
             verbose_eval=False,
-            callbacks=[TuneReportCheckpointCallback(
-                {"loss": "eval-logloss"}, "xgboost.mdl)])
+            callbacks=[
+                TuneReportCheckpointCallback(
+                    metrics={"loss": "eval-logloss"}, frequency=1
+                )
+            ],
+        )
 
     """
 
