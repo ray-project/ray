@@ -8,6 +8,7 @@ from typing import Dict, List, Optional, Tuple
 
 from ray.autoscaler._private.constants import AUTOSCALER_CONSERVE_GPU_NODES
 from ray.autoscaler._private.resource_demand_scheduler import UtilizationScore
+from ray.autoscaler.v2.instance_manager.config import NodeTypeConfig
 from ray.autoscaler.v2.schema import NodeType
 from ray.autoscaler.v2.utils import ResourceRequestUtil
 from ray.core.generated.autoscaler_pb2 import (
@@ -30,31 +31,11 @@ logger = logging.getLogger(__name__)
 
 
 @dataclass
-class NodeTypeConfig:
-    # Node type name
-    name: NodeType
-    # The minimal number of workers to be launched for this node type.
-    min_workers: int
-    # The maximal number of workers can be launched for this node type.
-    max_workers: int
-    # The total resources on the node.
-    resources: Dict[str, float] = field(default_factory=dict)
-    # The labels on the node.
-    labels: Dict[str, str] = field(default_factory=dict)
-
-
-@dataclass
-class ClusterConfig:
-    # The node type configs.
-    node_type_configs: Dict[NodeType, NodeTypeConfig] = field(default_factory=dict)
-    # The max number of worker nodes to be launched for the entire cluster.
-    max_num_worker_nodes: Optional[int] = None
-
-
-@dataclass
 class SchedulingRequest:
-    # The config for the cluster.
-    cluster_config: ClusterConfig
+    # Available node type configs
+    node_type_configs: Dict[NodeType, NodeTypeConfig] = field(default_factory=dict)
+    # Max number of worker nodes.
+    max_num_worker_nodes: Optional[int] = None
     # TODO: This prob could be refactored into the ClusterStatus data class later.
     # The current ray resource requests.
     resource_requests: List[ResourceRequestByCount] = field(default_factory=list)
@@ -374,8 +355,10 @@ class ResourceDemandScheduler(IResourceScheduler):
         accidental modification of the internal state.
         """
 
-        # The cluster config for this scheduling request.
-        _cluster_config: ClusterConfig
+        # The node type configs for this scheduling request.
+        _node_type_configs: Dict[NodeType, NodeTypeConfig]
+        # The max number of workers for the entire cluster.
+        _max_num_worker_nodes: Optional[int] = None
         # The current schedulable nodes (including pending nodes and pending requests).
         _nodes: List[SchedulingNode] = field(default_factory=list)
         # The number of nodes by node types available for launching based on the max
@@ -386,12 +369,15 @@ class ResourceDemandScheduler(IResourceScheduler):
         def __init__(
             self,
             nodes: List[SchedulingNode],
-            node_type_available: Dict[NodeType, int],
-            cluster_config: ClusterConfig,
+            node_type_configs: Dict[NodeType, NodeTypeConfig],
+            max_num_worker_nodes: Optional[int] = None,
         ):
             self._nodes = nodes
-            self._node_type_available = node_type_available
-            self._cluster_config = cluster_config
+            self._node_type_configs = node_type_configs
+            self._node_type_available = self._compute_available_node_types(
+                nodes, node_type_configs
+            )
+            self._max_num_worker_nodes = max_num_worker_nodes
 
         @classmethod
         def from_schedule_request(
@@ -408,6 +394,7 @@ class ResourceDemandScheduler(IResourceScheduler):
             """
 
             nodes = []
+            node_type_configs = req.node_type_configs
             # Populate already running nodes.
             for node in req.current_nodes:
                 nodes.append(
@@ -421,13 +408,20 @@ class ResourceDemandScheduler(IResourceScheduler):
                 )
 
             # Populate pending nodes.
-            cluster_config = req.cluster_config
             for instance in req.current_instances:
                 if not SchedulingNodeStatus.is_ray_pending(instance):
                     continue
-                # We should include any instances that's already launched or
-                # requested but haven't joint the cluster yet.
-                node_config = cluster_config.node_type_configs[instance.instance_type]
+                node_config = node_type_configs.get(instance.instance_type, None)
+
+                if node_config is None:
+                    # Configs might have been updated, and no more
+                    # node_type_configs for this node type.
+                    logger.info(
+                        "Skipping instance {} since no node config found".format(
+                            instance.instance_id
+                        )
+                    )
+                    continue
                 nodes.append(
                     SchedulingNode.from_node_config(
                         node_config,
@@ -435,27 +429,23 @@ class ResourceDemandScheduler(IResourceScheduler):
                     )
                 )
 
-            # Get the available node types.
-            node_type_available = cls._compute_available_node_types(
-                nodes, req.cluster_config
-            )
-
             return cls(
                 nodes=nodes,
-                node_type_available=node_type_available,
-                cluster_config=req.cluster_config,
+                node_type_configs=node_type_configs,
+                max_num_worker_nodes=req.max_num_worker_nodes,
             )
 
         @staticmethod
         def _compute_available_node_types(
-            nodes: List[SchedulingNode], cluster_config: ClusterConfig
+            nodes: List[SchedulingNode],
+            node_type_configs: Dict[NodeType, NodeTypeConfig],
         ) -> Dict[NodeType, int]:
             """
             Compute the number of nodes by node types available for launching based on
             the max number of workers in the config.
             Args:
                 nodes: The current existing nodes.
-                cluster_config: The cluster instances config.
+                node_type_configs: The node type configs.
             Returns:
                 A dict of node types and the number of nodes available for launching.
             """
@@ -467,10 +457,12 @@ class ResourceDemandScheduler(IResourceScheduler):
             for (
                 node_type,
                 node_type_config,
-            ) in cluster_config.node_type_configs.items():
+            ) in node_type_configs.items():
                 node_type_available[
                     node_type
-                ] = node_type_config.max_workers - node_type_existing.get(node_type, 0)
+                ] = node_type_config.max_worker_nodes - node_type_existing.get(
+                    node_type, 0
+                )
 
             return node_type_available
 
@@ -481,7 +473,7 @@ class ResourceDemandScheduler(IResourceScheduler):
             return copy.deepcopy(self._node_type_available)
 
         def get_node_config(self, node_type: NodeType) -> NodeTypeConfig:
-            return copy.deepcopy(self._cluster_config.node_type_configs[node_type])
+            return copy.deepcopy(self._node_type_configs[node_type])
 
         def get_cluster_shape(self) -> Dict[NodeType, int]:
             cluster_shape = defaultdict(int)
@@ -497,11 +489,11 @@ class ResourceDemandScheduler(IResourceScheduler):
 
             # Update the available node types.
             self._node_type_available = self._compute_available_node_types(
-                self._nodes, self._cluster_config
+                self._nodes, self._node_type_configs
             )
 
-        def get_cluster_config(self) -> ClusterConfig:
-            return self._cluster_config
+        def get_node_type_configs(self) -> Dict[NodeType, NodeTypeConfig]:
+            return self._node_type_configs
 
         def __str__(self) -> str:
             return "ScheduleContext({} nodes, node_type_available={}): {}".format(
@@ -558,9 +550,9 @@ class ResourceDemandScheduler(IResourceScheduler):
         for (
             node_type,
             node_type_config,
-        ) in self._ctx.get_cluster_config().node_type_configs.items():
+        ) in self._ctx.get_node_type_configs().items():
             cur_count = count_by_node_type.get(node_type, 0)
-            min_count = node_type_config.min_workers
+            min_count = node_type_config.min_worker_nodes
             if cur_count < min_count:
                 new_nodes.extend(
                     [
@@ -686,7 +678,7 @@ class ResourceDemandScheduler(IResourceScheduler):
         ]
         while len(requests_to_sched) > 0 and len(node_pools) > 0:
             # Max number of nodes reached.
-            max_num_worker_nodes = self._ctx.get_cluster_config().max_num_worker_nodes
+            max_num_worker_nodes = self._ctx._max_num_worker_nodes
             if (
                 max_num_worker_nodes is not None
                 and len(target_nodes) >= max_num_worker_nodes + 1

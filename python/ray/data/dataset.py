@@ -320,7 +320,7 @@ class Dataset:
         Args:
             fn: The function to apply to each row, or a class type
                 that can be instantiated to create such a callable.
-            compute: This argument is deprecated. Please use ``concurrency`` argument.
+            compute: This argument is deprecated. Use ``concurrency`` argument.
             fn_args: Positional arguments to pass to ``fn`` after the first argument.
                 These arguments are top-level arguments to the underlying Ray task.
             fn_kwargs: Keyword arguments to pass to ``fn``. These arguments are
@@ -533,9 +533,7 @@ class Dataset:
                 The actual size of the batch provided to ``fn`` may be smaller than
                 ``batch_size`` if ``batch_size`` doesn't evenly divide the block(s) sent
                 to a given map task. Default batch_size is 1024 with "default".
-            compute: Either "tasks" (default) to use Ray Tasks or an
-                :class:`~ray.data.ActorPoolStrategy` to use an autoscaling actor pool.
-                This argument is deprecated. Please use ``concurrency`` argument instead.
+            compute: This argument is deprecated. Use ``concurrency`` argument.
             batch_format: If ``"default"`` or ``"numpy"``, batches are
                 ``Dict[str, numpy.ndarray]``. If ``"pandas"``, batches are
                 ``pandas.DataFrame``.
@@ -716,7 +714,7 @@ class Dataset:
                 column is overwritten.
             fn: Map function generating the column values given a batch of
                 records in pandas format.
-            compute: This argument is deprecated. Please use ``concurrency`` argument.
+            compute: This argument is deprecated. Use ``concurrency`` argument.
             concurrency: The number of Ray workers to use concurrently. For a
                 fixed-sized worker pool of size ``n``, specify ``concurrency=n``. For
                 an autoscaling worker pool from ``m`` to ``n`` workers, specify
@@ -780,7 +778,7 @@ class Dataset:
         Args:
             cols: Names of the columns to drop. If any name does not exist,
                 an exception is raised.
-            compute: This argument is deprecated. Please use ``concurrency`` argument.
+            compute: This argument is deprecated. Use ``concurrency`` argument.
             concurrency: The number of Ray workers to use concurrently. For a fixed-sized
                 worker pool of size ``n``, specify ``concurrency=n``. For an autoscaling
                 worker pool from ``m`` to ``n`` workers, specify ``concurrency=(m, n)``.
@@ -839,7 +837,7 @@ class Dataset:
         Args:
             cols: Names of the columns to select. If a name isn't in the
                 dataset schema, an exception is raised.
-            compute: This argument is deprecated. Please use ``concurrency`` argument.
+            compute: This argument is deprecated. Use ``concurrency`` argument.
             concurrency: The number of Ray workers to use concurrently. For a fixed-sized
                 worker pool of size ``n``, specify ``concurrency=n``. For an autoscaling
                 worker pool from ``m`` to ``n`` workers, specify ``concurrency=(m, n)``.
@@ -917,7 +915,7 @@ class Dataset:
         Args:
             fn: The function or generator to apply to each record, or a class type
                 that can be instantiated to create such a callable.
-            compute: This argument is deprecated. Please use ``concurrency`` argument.
+            compute: This argument is deprecated. Use ``concurrency`` argument.
             fn_args: Positional arguments to pass to ``fn`` after the first argument.
                 These arguments are top-level arguments to the underlying Ray task.
             fn_kwargs: Keyword arguments to pass to ``fn``. These arguments are
@@ -1025,7 +1023,7 @@ class Dataset:
         Args:
             fn: The predicate to apply to each row, or a class type
                 that can be instantiated to create such a callable.
-            compute: This argument is deprecated. Please use ``concurrency`` argument.
+            compute: This argument is deprecated. Use ``concurrency`` argument.
             concurrency: The number of Ray workers to use concurrently. For a
                 fixed-sized worker pool of size ``n``, specify ``concurrency=n``.
                 For an autoscaling worker pool from ``m`` to ``n`` workers, specify
@@ -1652,7 +1650,7 @@ class Dataset:
         splits = []
 
         for bs, ms in zip(blocks, metadata):
-            stats = DatasetStats(stages={"Split": ms}, parent=parent_stats)
+            stats = DatasetStats(metadata={"Split": ms}, parent=parent_stats)
             stats.time_total_s = split_duration
 
             split_block_list = BlockList(
@@ -1917,7 +1915,7 @@ class Dataset:
                 logical_plan = LogicalPlan(op)
 
         stats = DatasetStats(
-            stages={"Union": []},
+            metadata={"Union": []},
             parent=[d._plan.stats() for d in datasets],
         )
         stats.time_total_s = time.perf_counter() - start_time

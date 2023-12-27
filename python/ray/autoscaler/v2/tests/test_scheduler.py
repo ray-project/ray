@@ -8,12 +8,12 @@ import pytest
 
 import ray.autoscaler.v2.scheduler
 from ray.autoscaler.v2.scheduler import (
-    ClusterConfig,
     NodeTypeConfig,
     ResourceDemandScheduler,
     SchedulingRequest,
     logger,
 )
+from ray.autoscaler.v2.schema import NodeType
 from ray.autoscaler.v2.utils import ResourceRequestUtil
 from ray.core.generated.autoscaler_pb2 import (
     ClusterResourceConstraint,
@@ -30,7 +30,8 @@ ResourceMap = Dict[str, float]
 
 
 def sched_request(
-    cluster_config: ClusterConfig,
+    node_type_configs: Dict[NodeType, NodeTypeConfig],
+    max_num_worker_nodes: Optional[int] = None,
     resource_requests: Optional[List[ResourceRequest]] = None,
     gang_resource_requests: Optional[List[GangResourceRequest]] = None,
     cluster_resource_constraints: Optional[List[ClusterResourceConstraint]] = None,
@@ -55,37 +56,36 @@ def sched_request(
         cluster_resource_constraints=cluster_resource_constraints,
         current_nodes=current_nodes,
         current_instances=current_instances,
-        cluster_config=cluster_config,
+        node_type_configs=node_type_configs,
+        max_num_worker_nodes=max_num_worker_nodes,
     )
 
 
-def test_min_workers():
+def test_min_worker_nodes():
     scheduler = ResourceDemandScheduler()
-    cluster_config = ClusterConfig(
-        node_type_configs={
-            "type_1": NodeTypeConfig(
-                name="type_1",
-                resources={"CPU": 1},
-                min_workers=1,
-                max_workers=10,
-            ),
-            "type_2": NodeTypeConfig(
-                name="type_2",
-                resources={"CPU": 1},
-                min_workers=0,
-                max_workers=10,
-            ),
-            "type_3": NodeTypeConfig(
-                name="type_3",
-                resources={"CPU": 1},
-                min_workers=2,
-                max_workers=10,
-            ),
-        }
-    )
+    node_type_configs = {
+        "type_1": NodeTypeConfig(
+            name="type_1",
+            resources={"CPU": 1},
+            min_worker_nodes=1,
+            max_worker_nodes=10,
+        ),
+        "type_2": NodeTypeConfig(
+            name="type_2",
+            resources={"CPU": 1},
+            min_worker_nodes=0,
+            max_worker_nodes=10,
+        ),
+        "type_3": NodeTypeConfig(
+            name="type_3",
+            resources={"CPU": 1},
+            min_worker_nodes=2,
+            max_worker_nodes=10,
+        ),
+    }
     # With empty cluster
     request = sched_request(
-        cluster_config=cluster_config,
+        node_type_configs=node_type_configs,
     )
 
     reply = scheduler.schedule(request)
@@ -95,7 +95,7 @@ def test_min_workers():
 
     # With existing ray nodes
     request = sched_request(
-        cluster_config=cluster_config,
+        node_type_configs=node_type_configs,
         current_nodes=[
             NodeState(ray_node_type_name="type_1"),
             NodeState(ray_node_type_name="type_1"),
@@ -108,7 +108,7 @@ def test_min_workers():
 
     # With existing instances pending.
     request = sched_request(
-        cluster_config=cluster_config,
+        node_type_configs=node_type_configs,
         current_instances=[
             Instance(instance_type="type_1", status=Instance.REQUESTED),
             Instance(instance_type="type_1", status=Instance.ALLOCATED),
@@ -121,28 +121,28 @@ def test_min_workers():
             Instance(
                 instance_type="type_1", status=Instance.STOPPING
             ),  # should not count
+            Instance(instance_type="type_no_longer_exists", status=Instance.REQUESTED),
         ],
     )
     target_cluster_shape = {"type_1": 2, "type_3": 2}
+    reply = scheduler.schedule(request)
     assert sorted(reply.target_cluster_shape) == sorted(target_cluster_shape)
 
 
 def test_single_resources():
     scheduler = ResourceDemandScheduler()
-    cluster_config = ClusterConfig(
-        node_type_configs={
-            "type_1": NodeTypeConfig(
-                name="type_1",
-                resources={"CPU": 1},
-                min_workers=0,
-                max_workers=10,
-            ),
-        }
-    )
+    node_type_configs = {
+        "type_1": NodeTypeConfig(
+            name="type_1",
+            resources={"CPU": 1},
+            min_worker_nodes=0,
+            max_worker_nodes=10,
+        ),
+    }
 
     # Request 1 CPU should start a node.
     request = sched_request(
-        cluster_config=cluster_config,
+        node_type_configs=node_type_configs,
         resource_requests=[ResourceRequestUtil.make({"CPU": 1})],
     )
     reply = scheduler.schedule(request)
@@ -151,7 +151,7 @@ def test_single_resources():
 
     # Request multiple CPUs should start multiple nodes
     request = sched_request(
-        cluster_config=cluster_config,
+        node_type_configs=node_type_configs,
         resource_requests=[ResourceRequestUtil.make({"CPU": 1})] * 3,
     )
     reply = scheduler.schedule(request)
@@ -160,7 +160,7 @@ def test_single_resources():
 
     # Request resources with already existing nodes should not launch new nodes.
     request = sched_request(
-        cluster_config=cluster_config,
+        node_type_configs=node_type_configs,
         resource_requests=[ResourceRequestUtil.make({"CPU": 1})],
         current_nodes=[
             NodeState(
@@ -177,7 +177,7 @@ def test_single_resources():
     # Request resources with already existing nodes not sufficient should launch
     # new nodes.
     request = sched_request(
-        cluster_config=cluster_config,
+        node_type_configs=node_type_configs,
         resource_requests=[ResourceRequestUtil.make({"CPU": 1})],
         current_nodes=[
             NodeState(
@@ -193,7 +193,7 @@ def test_single_resources():
 
     # Request resources with already pending nodes should NOT launch new nodes
     request = sched_request(
-        cluster_config=cluster_config,
+        node_type_configs=node_type_configs,
         resource_requests=[ResourceRequestUtil.make({"CPU": 1})],
         current_instances=[
             Instance(
@@ -210,21 +210,20 @@ def test_single_resources():
 
 def test_max_worker_num_enforce():
     scheduler = ResourceDemandScheduler()
-    cluster_config = ClusterConfig(
-        node_type_configs={
-            "type_1": NodeTypeConfig(
-                name="type_1",
-                resources={"CPU": 1},
-                min_workers=0,
-                max_workers=10,
-            ),
-        },
-        max_num_worker_nodes=2,
-    )
+    node_type_configs = {
+        "type_1": NodeTypeConfig(
+            name="type_1",
+            resources={"CPU": 1},
+            min_worker_nodes=0,
+            max_worker_nodes=10,
+        ),
+    }
+    max_num_worker_nodes = 2
 
     # Request 10 CPUs should start at most 2 nodes.
     request = sched_request(
-        cluster_config=cluster_config,
+        node_type_configs=node_type_configs,
+        max_num_worker_nodes=max_num_worker_nodes,
         resource_requests=[ResourceRequestUtil.make({"CPU": 1})] * 3,
         current_nodes=[
             NodeState(ray_node_type_name="type_1"),  # head node
@@ -240,25 +239,23 @@ def test_multi_requests_fittable():
     Test multiple requests can be fit into a single node.
     """
     scheduler = ResourceDemandScheduler()
-    cluster_config = ClusterConfig(
-        node_type_configs={
-            "type_1": NodeTypeConfig(
-                name="type_1",
-                resources={"CPU": 1, "GPU": 1},
-                min_workers=0,
-                max_workers=1,
-            ),
-            "type_2": NodeTypeConfig(
-                name="type_2",
-                resources={"CPU": 3},
-                min_workers=0,
-                max_workers=1,
-            ),
-        }
-    )
+    node_type_configs = {
+        "type_1": NodeTypeConfig(
+            name="type_1",
+            resources={"CPU": 1, "GPU": 1},
+            min_worker_nodes=0,
+            max_worker_nodes=1,
+        ),
+        "type_2": NodeTypeConfig(
+            name="type_2",
+            resources={"CPU": 3},
+            min_worker_nodes=0,
+            max_worker_nodes=1,
+        ),
+    }
 
     request = sched_request(
-        cluster_config=cluster_config,
+        node_type_configs=node_type_configs,
         resource_requests=[
             ResourceRequestUtil.make({"CPU": 1}),
             ResourceRequestUtil.make({"CPU": 1}),
@@ -272,7 +269,7 @@ def test_multi_requests_fittable():
 
     # Change the ordering of requests should not affect the result.
     request = sched_request(
-        cluster_config=cluster_config,
+        node_type_configs=node_type_configs,
         resource_requests=[
             ResourceRequestUtil.make({"CPU": 1, "GPU": 1}),
             ResourceRequestUtil.make({"CPU": 1}),
@@ -285,7 +282,7 @@ def test_multi_requests_fittable():
     assert reply.infeasible_resource_requests == []
 
     request = sched_request(
-        cluster_config=cluster_config,
+        node_type_configs=node_type_configs,
         resource_requests=[
             ResourceRequestUtil.make({"CPU": 2}),
             ResourceRequestUtil.make({"CPU": 1}),
@@ -300,7 +297,7 @@ def test_multi_requests_fittable():
     # However, if we already have fragmentation. We should not be able
     # to fit more requests.
     request = sched_request(
-        cluster_config=cluster_config,
+        node_type_configs=node_type_configs,
         resource_requests=[
             ResourceRequestUtil.make({"CPU": 1}),
             ResourceRequestUtil.make({"CPU": 1}),
@@ -326,33 +323,31 @@ def test_multi_node_types_score():
     2. The amount of utilization.
     """
     scheduler = ResourceDemandScheduler()
-    cluster_config = ClusterConfig(
-        node_type_configs={
-            "type_large": NodeTypeConfig(
-                name="type_large",
-                resources={"CPU": 10},  # Large machines
-                min_workers=0,
-                max_workers=1,
-            ),
-            "type_small": NodeTypeConfig(
-                name="type_small",
-                resources={"CPU": 5},
-                min_workers=0,
-                max_workers=1,
-            ),
-            "type_gpu": NodeTypeConfig(
-                name="type_gpu",
-                resources={"CPU": 2, "GPU": 2},
-                min_workers=0,
-                max_workers=1,
-            ),
-        }
-    )
+    node_type_configs = {
+        "type_large": NodeTypeConfig(
+            name="type_large",
+            resources={"CPU": 10},  # Large machines
+            min_worker_nodes=0,
+            max_worker_nodes=1,
+        ),
+        "type_small": NodeTypeConfig(
+            name="type_small",
+            resources={"CPU": 5},
+            min_worker_nodes=0,
+            max_worker_nodes=1,
+        ),
+        "type_gpu": NodeTypeConfig(
+            name="type_gpu",
+            resources={"CPU": 2, "GPU": 2},
+            min_worker_nodes=0,
+            max_worker_nodes=1,
+        ),
+    }
 
     # Request 1 CPU should just start the small machine and not the GPU machine
     # since it has more types of resources.
     request = sched_request(
-        cluster_config=cluster_config,
+        node_type_configs=node_type_configs,
         resource_requests=[ResourceRequestUtil.make({"CPU": 1})],
     )
     reply = scheduler.schedule(request)
@@ -360,7 +355,7 @@ def test_multi_node_types_score():
 
     # type_small should be preferred over type_large.
     request = sched_request(
-        cluster_config=cluster_config,
+        node_type_configs=node_type_configs,
         resource_requests=[ResourceRequestUtil.make({"CPU": 2})],
     )
     reply = scheduler.schedule(request)
@@ -373,24 +368,22 @@ def test_multi_node_types_score_with_gpu(monkeypatch):
     - The GPU scoring.
     """
     scheduler = ResourceDemandScheduler()
-    cluster_config = ClusterConfig(
-        node_type_configs={
-            "type_gpu": NodeTypeConfig(
-                name="type_gpu",
-                resources={"CPU": 1, "GPU": 2},
-                min_workers=0,
-                max_workers=1,
-            ),
-            "type_multi": NodeTypeConfig(
-                name="type_multi",
-                resources={"CPU": 2, "XXX": 2},  # Some random resource.
-                min_workers=0,
-                max_workers=1,
-            ),
-        }
-    )
+    node_type_configs = {
+        "type_gpu": NodeTypeConfig(
+            name="type_gpu",
+            resources={"CPU": 1, "GPU": 2},
+            min_worker_nodes=0,
+            max_worker_nodes=1,
+        ),
+        "type_multi": NodeTypeConfig(
+            name="type_multi",
+            resources={"CPU": 2, "XXX": 2},  # Some random resource.
+            min_worker_nodes=0,
+            max_worker_nodes=1,
+        ),
+    }
     request = sched_request(
-        cluster_config=cluster_config,
+        node_type_configs=node_type_configs,
         resource_requests=[ResourceRequestUtil.make({"CPU": 1})],
     )
     reply = scheduler.schedule(request)

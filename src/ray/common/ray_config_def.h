@@ -578,6 +578,10 @@ RAY_CONFIG(uint32_t, agent_register_timeout_ms, 100 * 1000)
 RAY_CONFIG(uint32_t, agent_register_timeout_ms, 30 * 1000)
 #endif
 
+/// If true, agent checks the health of parent by reading pipe.
+/// If false, it checks the parent pid using psutil.
+RAY_CONFIG(bool, enable_pipe_based_agent_to_parent_health_check, true)
+
 /// If the agent manager fails to communicate with the dashboard agent or the runtime env
 /// agent, we will retry after this interval.
 RAY_CONFIG(uint32_t, agent_manager_retry_interval_ms, 1000)
@@ -741,7 +745,7 @@ RAY_CONFIG(std::string, predefined_unit_instance_resources, "GPU")
 /// "neuron_cores", "TPUs" and "FPGAs".
 /// Default custom_unit_instance_resources is "neuron_cores,TPU".
 /// When set it to "neuron_cores,TPU,FPGA", we will also treat FPGA as unit_instance.
-RAY_CONFIG(std::string, custom_unit_instance_resources, "neuron_cores,TPU,NPU")
+RAY_CONFIG(std::string, custom_unit_instance_resources, "neuron_cores,TPU,NPU,HPU")
 
 /// The name of the system-created concurrency group for actors. This group is
 /// created with 1 thread, and is created lazily. The intended usage is for

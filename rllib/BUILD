@@ -747,7 +747,7 @@ py_test(
 
 
 # --------------------------------------------------------------------
-# Connector tests
+# Connector(V1) tests
 # rllib/connector/
 #
 # Tag: connector
@@ -773,6 +773,21 @@ py_test(
     size = "medium",
     srcs = ["connectors/tests/test_agent.py"]
 )
+
+# --------------------------------------------------------------------
+# ConnectorV2 tests
+# rllib/connector/
+#
+# Tag: connector_v2
+# --------------------------------------------------------------------
+
+# TODO (sven): Add these tests in a separate PR.
+# py_test(
+#    name = "connectors/tests/test_connector_v2",
+#    tags = ["team:rllib", "connector_v2"],
+#    size = "small",
+#    srcs = ["connectors/tests/test_connector_v2.py"]
+# )
 
 # --------------------------------------------------------------------
 # Env tests
@@ -1135,13 +1150,6 @@ py_test(
     size = "large",
     srcs = ["core/learner/tests/test_learner_group.py"],
     args = ["TestLearnerGroupSaveLoadState"]
-)
-
-py_test(
-    name = "test_learner_group_config",
-    tags = ["team:rllib", "core"],
-    size = "medium",
-    srcs = ["core/learner/tests/test_learner_group_config.py"]
 )
 
 py_test(

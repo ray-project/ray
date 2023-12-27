@@ -34,6 +34,7 @@ cc_test(
     copts = COPTS,
     tags = [
         "no_tsan",
+        "no_windows",
         "team:core",
     ],
     deps = [
