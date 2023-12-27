@@ -115,7 +115,7 @@ def init_torch_dist_process_group(
             possible choices are "gloo" or "nccl".
         init_method: The initialization method to use,
             possible choices are "env" or "tcp".
-        kwargs: Additional kwargs to pass to the call to
+        init_process_group_kwargs: Additional kwargs to pass to the call to
             :meth:`torch.distributed.init_process_group`.
 
     Returns:
@@ -165,7 +165,7 @@ def init_torch_dist_process_group(
                 # list(set) will sort the gpu ids, so VISIBLE_CUDA_DEVICES
                 # is always sorted.
                 gpu_ids=list(node_to_gpu_ids[node_id]),
-                **kwargs,
+                **init_process_group_kwargs,
             )
         )
         local_ranks.append(local_rank)
