@@ -29,7 +29,7 @@ from ray.rllib.core.rl_module.rl_module import SingleAgentRLModuleSpec
 from ray.rllib.models.catalog import MODEL_DEFAULTS
 from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID, SampleBatch
 from ray.rllib.utils import deep_update
-from ray.rllib.utils.annotations import override
+from ray.rllib.utils.annotations import override, PublicAPI
 from ray.rllib.utils.framework import try_import_tf
 from ray.rllib.utils.numpy import one_hot
 from ray.rllib.utils.metrics import (
@@ -698,3 +698,27 @@ class DreamerV3(Algorithm):
     @staticmethod
     def _reduce_results(results: List[Dict[str, Any]]):
         return tree.map_structure(lambda *s: np.mean(s, axis=0), *results)
+
+    @PublicAPI
+    def __setstate__(self, state) -> None:
+        """Sts the algorithm to the provided state
+
+        Args:
+            state: The state dictionary to restore this `DreamerV3` instance to.
+                `state` may have been returned by a call to an `Algorithm`'s
+                `__getstate__()` method.
+        """
+        # Call the `Algorithm`'s `__setstate__()` method.
+        super().__setstate__(state=state)
+
+        # Assign the module to the local `EnvRunner` if sharing is enabled.
+        # Note, in `Learner.load_state()` the module is first deleted
+        # and then a new one is built - therefore the worker has no
+        # longer a copy of the learner.
+        if self.config.share_module_between_env_runner_and_learner:
+            assert id(self.workers.local_worker().module) != id(
+                self.learner_group._learner.module[DEFAULT_POLICY_ID]
+            )
+            self.workers.local_worker().module = self.learner_group._learner.module[
+                DEFAULT_POLICY_ID
+            ]
