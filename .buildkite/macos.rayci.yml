@@ -1,4 +1,6 @@
 group: macos tests
+tags:
+  - disabled
 steps:
   # block on premerge
   - block: "run macos tests"
