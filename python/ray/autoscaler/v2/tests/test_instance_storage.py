@@ -261,9 +261,6 @@ def test_delete():
         InstanceUpdateEvent(
             instance_id="instance3", new_instance_status=Instance.UNKNOWN
         ),
-        InstanceUpdateEvent(
-            instance_id="instance1", new_instance_status=Instance.GARBAGE_COLLECTED
-        ),
     ]
 
     assert (
@@ -294,12 +291,6 @@ def test_delete():
         ),
         InstanceUpdateEvent(
             instance_id="instance3", new_instance_status=Instance.UNKNOWN
-        ),
-        InstanceUpdateEvent(
-            instance_id="instance1", new_instance_status=Instance.GARBAGE_COLLECTED
-        ),
-        InstanceUpdateEvent(
-            instance_id="instance2", new_instance_status=Instance.GARBAGE_COLLECTED
         ),
     ]
 

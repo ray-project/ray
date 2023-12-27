@@ -16,8 +16,8 @@ from ray.autoscaler._private.constants import (
 from ray.autoscaler._private.node_launcher import BaseNodeLauncher
 from ray.autoscaler.node_provider import NodeProvider as NodeProviderV1
 from ray.autoscaler.tags import TAG_RAY_USER_NODE_TYPE
-from ray.autoscaler.v2.instance_manager.config import NodeProviderConfig
 from ray.autoscaler.v2.schema import NodeType
+from ray.autoscaler.v2.instance_manager.config import AutoscalingConfig
 
 logger = logging.getLogger(__name__)
 
@@ -183,7 +183,7 @@ class NodeProviderAdapter(ICloudNodeProvider):
         self,
         provider: NodeProviderV1,
         node_launcher: BaseNodeLauncher,
-        instance_config_provider: NodeProviderConfig,
+        autoscaling_config: AutoscalingConfig,
         max_concurrent_launches: int = AUTOSCALER_MAX_CONCURRENT_LAUNCHES,
         max_launch_batch: int = AUTOSCALER_MAX_LAUNCH_BATCH,
         max_concurrent_terminating: int = AUTOSCALER_MAX_CONCURRENT_TERMINATING,
@@ -191,7 +191,6 @@ class NodeProviderAdapter(ICloudNodeProvider):
         super().__init__()
         self._provider = provider
         self._node_launcher = node_launcher
-        self._config = instance_config_provider
         # Executor to async launching and terminating nodes.
         self._main_executor = ThreadPoolExecutor(
             max_workers=1, thread_name_prefix="ray::NodeProviderAdapter"
@@ -208,6 +207,7 @@ class NodeProviderAdapter(ICloudNodeProvider):
             max_workers=max_concurrent_terminating,
             thread_name_prefix="ray::NodeTerminatorPool",
         )
+        self._config = autoscaling_config
 
         # Queues to retrieve new errors occur in the multi-thread executors
         # temporarily.
@@ -386,7 +386,6 @@ class NodeProviderAdapter(ICloudNodeProvider):
                 to_launch[node_type] = target_count - (
                     non_terminated_count - terminating_count
                 )
-        print(f"terminating: {terminating_nodes_by_type}, non_terminated: {non_terminated_nodes_by_type}, to_launch: {to_launch}")
         return to_launch
 
     def _launch_nodes_by_type(self, node_type: NodeType, count: int) -> None:
