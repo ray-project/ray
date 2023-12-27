@@ -47,7 +47,7 @@ def _init_torch_distributed(
     master_addr: str,
     master_port: str,
     gpu_ids: List[int],
-    **kwargs,
+    **init_process_group_kwargs,
 ):
     """Initialize torch distributed backend"""
     if init_method == "env":
@@ -72,7 +72,6 @@ def _init_torch_distributed(
         if "NCCL_SOCKET_IFNAME" not in os.environ:
             os.environ["NCCL_SOCKET_IFNAME"] = DEFAULT_NCCL_SOCKET_IFNAME
 
-    init_process_group_kwargs = kwargs
     init_process_group_kwargs.update(
         dict(
             backend=backend,
