@@ -14,13 +14,13 @@ steps:
     wanda: ci/docker/servepython311.build.wanda.yaml
 
   - name: minbuild-serve
-    label: "wanda: minbuild-{{matrix}}-py38"
+    label: "wanda: minbuild-{{matrix}}-py39"
     wanda: ci/docker/min.build.wanda.yaml
     matrix:
       - serve
       - default
     env:
-      PYTHON_VERSION: "3.8"
+      PYTHON_VERSION: "3.9"
       EXTRA_DEPENDENCY: "{{matrix}}"
 
   # tests
@@ -34,7 +34,7 @@ steps:
       - bazel run //ci/ray_ci:test_in_docker -- //python/ray/serve/... //python/ray/tests/...  serve 
         --except-tags post_wheel_build,gpu,worker-container,ha_integration
         --workers "$${BUILDKITE_PARALLEL_JOB_COUNT}" --worker-id "$${BUILDKITE_PARALLEL_JOB}" --parallelism-per-worker 3
-        --build-name servebuild --test-env=EXPECTED_PYTHON_VERSION=3.8
+        --build-name servebuild --test-env=EXPECTED_PYTHON_VERSION=3.9
     depends_on: "servebuild"
 
   - label: ":ray-serve: serve: pydantic < 2.0 tests"
@@ -48,7 +48,7 @@ steps:
       - bazel run //ci/ray_ci:test_in_docker -- //python/ray/serve/... //python/ray/tests/...  serve 
         --except-tags post_wheel_build,gpu,worker-container,ha_integration
         --workers "$${BUILDKITE_PARALLEL_JOB_COUNT}" --worker-id "$${BUILDKITE_PARALLEL_JOB}" --parallelism-per-worker 3
-        --build-name servepydantic1build --test-env=EXPECTED_PYTHON_VERSION=3.8 --test-env=EXPECTED_PYDANTIC_VERSION=1.10.12
+        --build-name servepydantic1build --test-env=EXPECTED_PYTHON_VERSION=3.9 --test-env=EXPECTED_PYDANTIC_VERSION=1.10.12
     depends_on: servepydantic1build
 
   - label: ":ray-serve: serve: Python 3.11 tests"
@@ -146,7 +146,7 @@ steps:
     commands:
       - bazel run //ci/ray_ci:test_in_docker -- //python/ray/dashboard/... serve 
         --parallelism-per-worker 2
-        --build-name minbuild-default-py3.8
+        --build-name minbuild-default-py3.9
         --test-env=RAY_DEFAULT=1
         --only-tags minimal
     depends_on: minbuild-serve
@@ -159,7 +159,7 @@ steps:
     commands:
       - bazel run //ci/ray_ci:test_in_docker -- //python/ray/serve/tests/... serve 
         --parallelism-per-worker 2
-        --build-name minbuild-serve-py3.8
+        --build-name minbuild-serve-py3.9
         --test-env=RAY_DEFAULT=1
         --only-tags minimal
     depends_on: minbuild-serve
@@ -181,7 +181,7 @@ steps:
       - python
     instance_type: medium
     commands:
-      - bazel run //ci/ray_ci:build_in_docker -- docker --python-version 3.8 --platform cpu --canonical-tag ha_integration
+      - bazel run //ci/ray_ci:build_in_docker -- docker --platform cpu --canonical-tag ha_integration
       - bazel run //ci/ray_ci:test_in_docker -- //python/ray/serve/tests/... serve
         --only-tags ha_integration
     depends_on:

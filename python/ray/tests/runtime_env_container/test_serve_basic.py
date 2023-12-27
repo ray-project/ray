@@ -7,7 +7,7 @@ parser = argparse.ArgumentParser()
 parser.add_argument("--image", type=str, help="The docker image to use for Ray worker")
 args = parser.parse_args()
 
-WORKER_PATH = "/home/ray/anaconda3/lib/python3.8/site-packages/ray/_private/workers/default_worker.py"  # noqa
+WORKER_PATH = "/home/ray/anaconda3/lib/python3.9/site-packages/ray/_private/workers/default_worker.py"  # noqa
 
 
 @serve.deployment(

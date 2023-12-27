@@ -3,6 +3,7 @@
 set -ex
 
 conda init 
+conda install -q -y python="${PYTHON}" requests=2.31.0
 
 # Install torch first, as some dependencies (e.g. torch-spline-conv) need torch to be
 # installed for their own install.

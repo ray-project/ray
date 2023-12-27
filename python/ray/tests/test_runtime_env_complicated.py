@@ -870,16 +870,16 @@ def test_e2e_complex(call_ray_start, tmp_path):
         a = TestActor.remote()
         assert ray.get(a.test.remote()) == "Hello"
 
-    # pip requirements file from Ray Summit 2021 demo.
+    # pip requirements file from Ray Summit 2021 demo; updated to be compatible with
+    # recent python versions
     requirement_path = tmp_path / "requirements.txt"
     requirement_path.write_text(
         "\n".join(
             [
                 "ray[serve, tune]",
-                "texthero",
                 "PyGithub",
                 "xgboost_ray",  # has Ray as a dependency
-                "pandas==1.1",  # pandas 1.2.4 in the demo, but not supported on py36
+                "pandas==1.5.3",  # pandas 1.2.4 in the demo, but not supported on py39
                 "typer",
                 "aiofiles",
             ]
