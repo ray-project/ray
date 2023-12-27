@@ -14,11 +14,11 @@ config = (
     .resources(
         num_learner_workers=4,
         num_gpus_per_learner_worker=0,
-        #num_gpus=4,
-        #_fake_gpus=True,
+        # num_gpus=4,
+        # _fake_gpus=True,
     )
     .training(
-        #train_batch_size=2000,
+        # train_batch_size=2000,
         train_batch_size_per_learner=500,
         grad_clip=40.0,
         grad_clip_by="global_norm",
