@@ -1,7 +1,6 @@
 from contextlib import contextmanager
 from typing import Callable, Dict, List, Union, Optional, Type
 
-import os
 import tempfile
 
 from ray import train
