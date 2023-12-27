@@ -5,6 +5,7 @@ from unittest import mock
 from typing import List, Optional
 
 from ci.ray_ci.linux_tester_container import LinuxTesterContainer
+from ci.ray_ci.tester_container import BAZEL_EVENT_LOGS
 from ci.ray_ci.utils import chunk_into_n
 from ci.ray_ci.container import _DOCKER_ECR_REPO, _RAYCI_BUILD_ID
 

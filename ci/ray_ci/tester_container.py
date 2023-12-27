@@ -8,6 +8,8 @@ from ci.ray_ci.utils import shard_tests, chunk_into_n
 from ci.ray_ci.utils import logger
 from ci.ray_ci.container import Container
 
+BAZEL_EVENT_LOGS = "/tmp/bazel_event_logs"
+
 
 class TesterContainer(Container):
     """
