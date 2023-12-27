@@ -33,7 +33,7 @@ parser.add_argument(
     "--stop-timesteps", type=int, default=500000, help="Number of timesteps to train."
 )
 parser.add_argument(
-    "--stop-reward", type=float, default=-200.0, help="Reward at which we stop training."
+    "--stop-reward", type=float, default=-300.0, help="Reward at which we stop training."
 )
 
 
@@ -54,11 +54,18 @@ if __name__ == "__main__":
         .rollouts(
             # ... new EnvRunner and our frame stacking env-to-module connector.
             env_runner_cls=SingleAgentEnvRunner,
+            num_rollout_workers=0,
+            num_envs_per_worker=20,
             # Define our custom connector pipeline.
             # Alternatively, return a list of n ConnectorV2 pieces (which will then be
             # included in an automatically generated EnvToModulePipeline or return a
             # EnvToModulePipeline directly.
-            env_to_module_connector=lambda env: MeanStdFilter(env=env),
+            env_to_module_connector=lambda env: (
+                MeanStdFilter(
+                    input_observation_space=env.single_observation_space,
+                    input_action_space=env.single_action_space,
+                )
+            ),
         )
         .resources(
             num_learner_workers=args.num_gpus,
@@ -73,6 +80,7 @@ if __name__ == "__main__":
             lr=0.0003 * (args.num_gpus or 1),
             lambda_=0.1,
             vf_clip_param=10.0,
+            #vf_loss_coeff=0.01,
             model={
                 "fcnet_activation": "relu",
             },
@@ -88,7 +96,7 @@ if __name__ == "__main__":
     tuner = tune.Tuner(
         config.algo_class,
         param_space=config,
-        run_config=air.RunConfig(stop=stop),
+        run_config=air.RunConfig(stop=stop, verbose=2),
         tune_config=tune.TuneConfig(num_samples=1),
     )
     results = tuner.fit()

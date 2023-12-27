@@ -109,7 +109,7 @@ class MeanStdFilter(ConnectorV2):
         self,
         *,
         rl_module: RLModule,
-        input_: Any,
+        data: Any,
         episodes: List[EpisodeType],
         explore: Optional[bool] = None,
         persistent_data: Optional[dict] = None,
@@ -138,7 +138,7 @@ class MeanStdFilter(ConnectorV2):
 
         # Leave the `input_` as is. RLlib's default connector will automatically
         # populate the OBS column therein from the episodes' (transformed) observations.
-        return input_
+        return data
 
     def get_state(self) -> Any:
         return self._get_state_from_filter(self._filter)
@@ -159,8 +159,8 @@ class MeanStdFilter(ConnectorV2):
     @override(ConnectorV2)
     def set_state(self, state: Dict[str, Any]) -> None:
         self._filter.shape = state["shape"]
-        self._filter.demean = state["demean"]
-        self._filter.destd = state["destd"]
+        self._filter.demean = state["de_mean_to_zero"]
+        self._filter.destd = state["de_std_to_one"]
         self._filter.clip = state["clip_by_value"]
         running_stats = [RunningStat.from_state(s) for s in state["running_stats"]]
         self._filter.running_stats = tree.unflatten_as(
