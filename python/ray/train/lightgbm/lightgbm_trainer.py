@@ -1,5 +1,5 @@
 import os
-from typing import Any, Dict, Union
+from typing import Any, Dict, Type, Union
 
 import lightgbm
 
@@ -107,14 +107,20 @@ class LightGBMTrainer(GBDTTrainer):
         super().__init__(*args, **kwargs)
 
     @staticmethod
-    def get_model(checkpoint: Checkpoint) -> lightgbm.Booster:
+    def get_model(
+        checkpoint: Checkpoint,
+        checkpoint_cls: Type[LightGBMCheckpoint] = LightGBMCheckpoint
+    ) -> lightgbm.Booster:
         """Retrieve the LightGBM model stored in this checkpoint."""
-        with checkpoint.as_directory() as checkpoint_path:
-            return lightgbm.Booster(
-                model_file=os.path.join(
-                    checkpoint_path, LightGBMCheckpoint.MODEL_FILENAME
-                )
+        if not issubclass(checkpoint_cls, LightGBMCheckpoint):
+            raise ValueError(
+                "`checkpoint_cls` must subclass `ray.train.lightgbm.LightGBMCheckpoint`"
             )
+
+        lightgbm_checkpoint = checkpoint_cls(
+            path=checkpoint.path, filesystem=checkpoint.filesystem
+        )
+        return lightgbm_checkpoint.get_model()
 
     def _train(self, **kwargs):
         import lightgbm_ray

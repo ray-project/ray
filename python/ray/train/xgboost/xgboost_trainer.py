@@ -1,5 +1,5 @@
 import os
-from typing import Any, Dict
+from typing import Any, Dict, Type
 
 import xgboost
 
@@ -96,14 +96,20 @@ class XGBoostTrainer(GBDTTrainer):
         super().__init__(*args, **kwargs)
 
     @staticmethod
-    def get_model(checkpoint: Checkpoint) -> xgboost.Booster:
+    def get_model(
+        checkpoint: Checkpoint,
+        checkpoint_cls: Type[XGBoostCheckpoint] = XGBoostCheckpoint
+    ) -> xgboost.Booster:
         """Retrieve the XGBoost model stored in this checkpoint."""
-        with checkpoint.as_directory() as checkpoint_path:
-            booster = xgboost.Booster()
-            booster.load_model(
-                os.path.join(checkpoint_path, XGBoostCheckpoint.MODEL_FILENAME)
+        if not issubclass(checkpoint_cls, XGBoostCheckpoint):
+            raise ValueError(
+                "`checkpoint_cls` must subclass `ray.train.xgboost.XGBoostCheckpoint`"
             )
-            return booster
+
+        xgboost_checkpoint = checkpoint_cls(
+            path=checkpoint.path, filesystem=checkpoint.filesystem
+        )
+        return xgboost_checkpoint.get_model()
 
     def _train(self, **kwargs):
         import xgboost_ray
