@@ -428,8 +428,6 @@ class StorageContext:
     ):
         self.custom_fs_provided = storage_filesystem is not None
 
-        self.storage_local_path = _get_defaults_results_dir()
-
         # If no remote path is set, try to get Ray Storage URI
         ray_storage_uri: Optional[str] = _get_storage_uri()
         if ray_storage_uri and storage_path is None:
@@ -438,10 +436,6 @@ class StorageContext:
                 f"{ray_storage_uri}"
             )
 
-        # If `storage_path=None`, then set it to the local path.
-        # Invariant: (`storage_filesystem`, `storage_path`) is the location where
-        # *all* results can be accessed.
-        storage_path = storage_path or ray_storage_uri or self.storage_local_path
         self.experiment_dir_name = experiment_dir_name
         self.trial_dir_name = trial_dir_name
         self.current_checkpoint_index = current_checkpoint_index
@@ -449,10 +443,11 @@ class StorageContext:
             dataclasses.replace(sync_config) if sync_config else SyncConfig()
         )
 
-        self.storage_filesystem, self.storage_fs_path = get_fs_and_path(
-            storage_path, storage_filesystem
-        )
-        self.storage_fs_path = Path(self.storage_fs_path).as_posix()
+        (
+            self.storage_filesystem,
+            self.storage_fs_path,
+            self.storage_local_path,
+        ) = self.get_storage_context(storage_path, storage_filesystem, ray_storage_uri)
 
         # Syncing is always needed if a custom `storage_filesystem` is provided.
         # Otherwise, syncing is only needed if storage_local_path
@@ -472,6 +467,41 @@ class StorageContext:
 
         self._create_validation_file()
         self._check_validation_file()
+
+    @staticmethod
+    def get_storage_context(
+        storage_path: Optional[str],
+        storage_filesystem: Optional[pyarrow.fs.FileSystem],
+        ray_storage_uri: Optional[str] = None,
+    ) -> Tuple[pyarrow.fs.FileSystem, str, str]:
+        """If `storage_path` is None, then set it to the default local path.
+        Invariant: (`storage_filesystem`, `storage_path`) is the location where
+        *all* results can be accessed.
+
+        If given storage_path is a local path, then set storage_local_path = storage_path.
+
+        Args:
+            storage_path (str): storage path or URI.
+            storage_filesystem (pyarrow.fs.FileSystem): custom filesystem to use.
+            ray_storage_uri (Optional[str], optional): Ray Storage URI. Defaults to None.
+
+        Returns:
+            Tuple[pyarrow.fs.FileSystem, str, str]: Tuple of (storage_filesystem, storage_fs_path, storage_local_path)
+
+        """
+        storage_path = storage_path or ray_storage_uri or _get_defaults_results_dir()
+        storage_filesystem, storage_fs_path = get_fs_and_path(
+            storage_path, storage_filesystem
+        )
+        storage_fs_path = Path(storage_fs_path).as_posix()
+
+        # if storage_path is a local path, then set storage_local_path = storage_path
+        if isinstance(storage_filesystem, pyarrow.fs.LocalFileSystem):
+            storage_local_path = storage_fs_path
+        else:
+            storage_local_path = _get_defaults_results_dir()
+
+        return storage_filesystem, storage_fs_path, storage_local_path
 
     def __str__(self):
         return (
