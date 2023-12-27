@@ -58,7 +58,7 @@ class XGBoostCheckpoint(FrameworkCheckpoint):
         """
         checkpoint_dir = path or tempfile.mkdtemp()
         if not Path(checkpoint_dir).is_dir():
-            raise ValueError(f"Must pass in a directory, but got: {checkpoint_dir}")
+            raise ValueError(f"`path` must be a directory, but got: {checkpoint_dir}")
 
         booster.save_model(os.path.join(checkpoint_dir, cls.MODEL_FILENAME))
 
