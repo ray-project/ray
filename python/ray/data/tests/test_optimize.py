@@ -216,35 +216,16 @@ def test_spread_hint_inherit(ray_start_regular_shared):
         assert s.ray_remote_args == {}, s.ray_remote_args
     for s in ds._plan._stages_after_snapshot:
         assert s.ray_remote_args == {}, s.ray_remote_args
-    _, _, optimized_stages = ds._plan._optimize()
-    assert len(optimized_stages) == 1, optimized_stages
-    assert optimized_stages[0].ray_remote_args == {"scheduling_strategy": "SPREAD"}
+
+    shuffle_op = ds._plan._logical_plan.dag
+    read_op = shuffle_op.input_dependencies[0].input_dependencies[0]
+    assert read_op._ray_remote_args == {"scheduling_strategy": "SPREAD"}
 
 
 def _assert_has_stages(stages, stage_names):
     assert len(stages) == len(stage_names)
     for stage, name in zip(stages, stage_names):
         assert stage.name == name
-
-
-@pytest.mark.skipif(
-    ray.data.DatasetContext.get_current().optimizer_enabled,
-    reason="Deprecated with new optimizer path.",
-)
-def test_stage_linking(ray_start_regular_shared):
-    # Test lazy dataset.
-    ds = ray.data.range(10)
-    assert len(ds._plan._stages_before_snapshot) == 0
-    assert len(ds._plan._stages_after_snapshot) == 0
-    assert ds._plan._last_optimized_stages is None
-    ds = ds.map(column_udf("id", lambda x: x + 1))
-    assert len(ds._plan._stages_before_snapshot) == 0
-    _assert_has_stages(ds._plan._stages_after_snapshot, ["Map"])
-    assert ds._plan._last_optimized_stages is None
-    ds = ds.materialize()
-    _assert_has_stages(ds._plan._stages_before_snapshot, ["Map"])
-    assert len(ds._plan._stages_after_snapshot) == 0
-    _assert_has_stages(ds._plan._last_optimized_stages, ["ReadRange->Map"])
 
 
 def test_optimize_reorder(ray_start_regular_shared):
