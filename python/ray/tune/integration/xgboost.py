@@ -188,3 +188,11 @@ class TuneReportCallback(TuneReportCheckpointCallback):
             "`TuneReportCallback` is deprecated. "
             "Use `ray.tune.integration.xgboost.TuneReportCheckpointCallback` instead."
         )
+
+
+class _TuneCheckpointCallback(TuneCallback):
+    def __new__(cls: type, *args, **kwargs):
+        # TODO(justinvyu): [code_removal] Remove ASAP after merging in xgboost_ray.
+        raise DeprecationWarning(
+            "Use `ray.tune.integration.xgboost.TuneReportCheckpointCallback` instead."
+        )
