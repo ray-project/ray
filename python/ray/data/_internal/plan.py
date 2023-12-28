@@ -796,7 +796,7 @@ class ExecutionPlan:
                     return True
             return False
 
-        return False
+        return check(self._logical_plan.dag)
 
 
 def _pack_args(
