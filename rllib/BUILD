@@ -311,15 +311,15 @@ py_test(
 )
 
 # IMPALA
-# py_test(
-#    name = "learning_tests_cartpole_impala",
-#    main = "tests/run_regression_tests.py",
-#    tags = ["team:rllib", "exclusive", "learning_tests", "learning_tests_cartpole", "learning_tests_discrete"],
-#    size = "large",
-#    srcs = ["tests/run_regression_tests.py"],
-#    data = ["tuned_examples/impala/cartpole-impala.yaml"],
-#    args = ["--dir=tuned_examples/impala"]
-# )
+py_test(
+    name = "learning_tests_cartpole_impala_w_env_runner",
+    main = "tests/run_regression_tests.py",
+    tags = ["team:rllib", "exclusive", "learning_tests", "learning_tests_cartpole", "learning_tests_discrete"],
+    size = "large",
+    srcs = ["tests/run_regression_tests.py"],
+    data = ["tuned_examples/impala/cartpole-impala-envrunner.py"],
+    args = ["--dir=tuned_examples/impala"]
+)
 
 py_test(
     name = "learning_tests_cartpole_separate_losses_impala",

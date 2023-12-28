@@ -357,6 +357,13 @@ class ImpalaConfig(AlgorithmConfig):
         # Call the super class' validation method first.
         super().validate()
 
+        # IMPALA and APPO need vtrace (A3C Policies no longer exist).
+        if not self.vtrace:
+            raise ValueError(
+                "IMPALA and APPO do NOT support vtrace=False anymore! Set "
+                "`config.training(vtrace=True)`."
+            )
+
         # New stack w/ EnvRunners does NOT support aggregation workers yet or a mixin
         # replay buffer.
         if self.uses_new_env_runners:
@@ -559,49 +566,32 @@ class Impala(Algorithm):
     def get_default_policy_class(
         cls, config: AlgorithmConfig
     ) -> Optional[Type[Policy]]:
-        if not config["vtrace"]:
-            raise ValueError("IMPALA with the learner API does not support non-VTrace ")
+        if config.framework_str == "torch":
+            from ray.rllib.algorithms.impala.impala_torch_policy import (
+                ImpalaTorchPolicy,
+            )
 
-        if config["framework"] == "torch":
-            if config["vtrace"]:
-                from ray.rllib.algorithms.impala.impala_torch_policy import (
-                    ImpalaTorchPolicy,
-                )
+            return ImpalaTorchPolicy
 
-                return ImpalaTorchPolicy
-            else:
-                from ray.rllib.algorithms.a3c.a3c_torch_policy import A3CTorchPolicy
+        elif config.framework_str == "tf":
+            from ray.rllib.algorithms.impala.impala_tf_policy import (
+                ImpalaTF1Policy,
+            )
 
-                return A3CTorchPolicy
-        elif config["framework"] == "tf":
-            if config["vtrace"]:
-                from ray.rllib.algorithms.impala.impala_tf_policy import (
-                    ImpalaTF1Policy,
-                )
-
-                return ImpalaTF1Policy
-            else:
-                from ray.rllib.algorithms.a3c.a3c_tf_policy import A3CTFPolicy
-
-                return A3CTFPolicy
+            return ImpalaTF1Policy
         else:
-            if config["vtrace"]:
-                from ray.rllib.algorithms.impala.impala_tf_policy import (
-                    ImpalaTF2Policy,
-                )
+            from ray.rllib.algorithms.impala.impala_tf_policy import (
+                ImpalaTF2Policy,
+            )
 
-                return ImpalaTF2Policy
-            else:
-                from ray.rllib.algorithms.a3c.a3c_tf_policy import A3CTFPolicy
-
-                return A3CTFPolicy
+            return ImpalaTF2Policy
 
     @override(Algorithm)
     def setup(self, config: AlgorithmConfig):
         super().setup(config)
 
-        # Queue of batches to be sent to the Learner.
-        self.batches_to_place_on_learner = []
+        # Queue of data to be sent to the Learner.
+        self.data_to_place_on_learner = []
 
         # Create extra aggregation workers and assign each rollout worker to
         # one of them.
@@ -924,10 +914,10 @@ class Impala(Algorithm):
         for ref in episode_refs:
             self.batch_being_built.append(ref)
             if (
-                len(self.batch_being_built) * self.config.get_rollout_fragment_length()
+                len(self.batch_being_built) * self.config.get_rollout_fragment_length() * self.config.num_envs_per_worker
                 >= self.config.total_train_batch_size
             ):
-                self.batches_to_place_on_learner.append(self.batch_being_built)
+                self.data_to_place_on_learner.append(self.batch_being_built)
                 self.batch_being_built = []
 
     def concatenate_batches_and_pre_queue(self, batches: List[SampleBatch]) -> None:
@@ -943,7 +933,7 @@ class Impala(Algorithm):
                 >= self.config.total_train_batch_size
             ):
                 batch_to_add = concat_samples(self.batch_being_built)
-                self.batches_to_place_on_learner.append(batch_to_add)
+                self.data_to_place_on_learner.append(batch_to_add)
                 self.batch_being_built = []
 
         for batch in batches:
@@ -1041,25 +1031,25 @@ class Impala(Algorithm):
         # Nothing on the queue -> Don't send requests to learner group
         # or no results ready (from previous `self.learner_group.update()` calls) for
         # reducing.
-        if not self.batches_to_place_on_learner:
+        if not self.data_to_place_on_learner:
             return {}
 
-        batch_or_episodes = "episodes" if self.config.uses_new_env_runners else "batch"
+        update_kwarg = "episodes" if self.config.uses_new_env_runners else "batch"
 
         # There are batches on the queue -> Send them all to the learner group.
-        batches = self.batches_to_place_on_learner[:]
-        self.batches_to_place_on_learner.clear()
+        data = self.data_to_place_on_learner[:]
+        self.data_to_place_on_learner.clear()
         # If there are no learner workers and learning is directly on the driver
         # Then we can't do async updates, so we need to block.
         blocking = self.config.num_learner_workers == 0
         results = []
-        for batch in batches:
+        for batch_or_episodes in data:
             if blocking:
                 result = self.learner_group.update(
                     reduce_fn=_reduce_impala_results,
                     num_iters=self.config.num_sgd_iter,
                     minibatch_size=self.config.minibatch_size,
-                    **{batch_or_episodes: batch},
+                    **{update_kwarg: batch_or_episodes},
                 )
                 results = [result]
             else:
@@ -1067,7 +1057,7 @@ class Impala(Algorithm):
                     reduce_fn=_reduce_impala_results,
                     num_iters=self.config.num_sgd_iter,
                     minibatch_size=self.config.minibatch_size,
-                    **{batch_or_episodes: batch},
+                    **{update_kwarg: batch_or_episodes},
                 )
 
             for r in results:
@@ -1090,8 +1080,8 @@ class Impala(Algorithm):
         NOTE: This method is called if self.config._enable_new_api_stack is False.
 
         """
-        while self.batches_to_place_on_learner:
-            batch = self.batches_to_place_on_learner[0]
+        while self.data_to_place_on_learner:
+            batch = self.data_to_place_on_learner[0]
             try:
                 # Setting block = True prevents the learner thread,
                 # the main thread, and the gpu loader threads from
@@ -1099,7 +1089,7 @@ class Impala(Algorithm):
                 # learner can reasonable process.
                 # see https://github.com/ray-project/ray/pull/26581#issuecomment-1187877674  # noqa
                 self._learner_thread.inqueue.put(batch, block=True)
-                self.batches_to_place_on_learner.pop(0)
+                self.data_to_place_on_learner.pop(0)
                 self._counters["num_samples_added_to_queue"] += (
                     batch.agent_steps()
                     if self.config.count_steps_by == "agent_steps"

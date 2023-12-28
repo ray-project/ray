@@ -384,7 +384,7 @@ class LearnerGroup:
         if len(self._in_queue) == self._in_queue.maxlen:
             self._in_queue_ts_dropped += len(self._in_queue[0])
 
-        self._in_queue.append(batch)
+        self._in_queue.append(batch if episodes is None else episodes)
 
         # Retrieve all ready results (kicked off by prior calls to this method).
         results = self._worker_manager.fetch_ready_async_reqs(
@@ -408,7 +408,7 @@ class LearnerGroup:
                     self._worker_manager.foreach_actor_async(
                         [
                             partial(_learner_update, _batch=minibatch)
-                            for minibatch in ShardBatchIterator(batch, len(self._workers))
+                            for minibatch in ShardBatchIterator(batch_or_episodes, len(self._workers))
                         ],
                         tag=update_tag,
                     )
@@ -416,7 +416,7 @@ class LearnerGroup:
                     self._worker_manager.foreach_actor_async(
                         [
                             partial(_learner_update, _episodes=_episodes)
-                            for _episodes in ShardObjectRefIterator(episodes, len(self._workers))
+                            for _episodes in ShardObjectRefIterator(batch_or_episodes, len(self._workers))
                         ],
                         tag=update_tag,
                     )
