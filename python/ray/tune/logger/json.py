@@ -115,7 +115,9 @@ class JsonLoggerCallback(LoggerCallback):
         del self._trial_files[trial]
 
     def update_config(self, trial: "Trial", config: Dict):
-        self._trial_configs[trial] = config if isinstance(config, dict) else config.to_dict()
+        self._trial_configs[trial] = (
+            config if isinstance(config, dict) else config.to_dict()
+        )
 
         config_out = os.path.join(trial.local_path, EXPR_PARAM_FILE)
         with open(config_out, "w") as f:
