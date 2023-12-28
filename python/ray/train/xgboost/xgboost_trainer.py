@@ -95,10 +95,11 @@ class XGBoostTrainer(GBDTTrainer):
         )
         super().__init__(*args, **kwargs)
 
-    @staticmethod
+    @classmethod
     def get_model(
+        cls,
         checkpoint: Checkpoint,
-        checkpoint_cls: Type[XGBoostCheckpoint] = XGBoostCheckpoint
+        checkpoint_cls: Type[XGBoostCheckpoint] = XGBoostCheckpoint,
     ) -> xgboost.Booster:
         """Retrieve the XGBoost model stored in this checkpoint."""
         if not issubclass(checkpoint_cls, XGBoostCheckpoint):
@@ -115,9 +116,6 @@ class XGBoostTrainer(GBDTTrainer):
         import xgboost_ray
 
         return xgboost_ray.train(**kwargs)
-
-    def _load_checkpoint(self, checkpoint: Checkpoint) -> xgboost.Booster:
-        return self.__class__.get_model(checkpoint)
 
     def _model_iteration(self, model: xgboost.Booster) -> int:
         if not hasattr(model, "num_boosted_rounds"):

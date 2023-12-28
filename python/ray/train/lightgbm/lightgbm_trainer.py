@@ -104,10 +104,11 @@ class LightGBMTrainer(GBDTTrainer):
 
         super().__init__(*args, **kwargs)
 
-    @staticmethod
+    @classmethod
     def get_model(
+        cls,
         checkpoint: Checkpoint,
-        checkpoint_cls: Type[LightGBMCheckpoint] = LightGBMCheckpoint
+        checkpoint_cls: Type[LightGBMCheckpoint] = LightGBMCheckpoint,
     ) -> lightgbm.Booster:
         """Retrieve the LightGBM model stored in this checkpoint."""
         if not issubclass(checkpoint_cls, LightGBMCheckpoint):
@@ -124,12 +125,6 @@ class LightGBMTrainer(GBDTTrainer):
         import lightgbm_ray
 
         return lightgbm_ray.train(**kwargs)
-
-    def _load_checkpoint(self, checkpoint: Checkpoint) -> lightgbm.Booster:
-        return self.__class__.get_model(checkpoint)
-
-    def _save_model(self, model: lightgbm.LGBMModel, path: str):
-        model.booster_.save_model(os.path.join(path, LightGBMCheckpoint.MODEL_FILENAME))
 
     def _model_iteration(
         self, model: Union[lightgbm.LGBMModel, lightgbm.Booster]

@@ -220,17 +220,28 @@ class GBDTTrainer(BaseTrainer):
             for k, v in self.datasets.items()
         }
 
+    @classmethod
+    def get_model(cls, checkpoint: Checkpoint, checkpoint_cls: Type[Any]) -> Any:
+        raise NotImplementedError
+
     def _load_checkpoint(
         self,
         checkpoint: Checkpoint,
     ) -> Any:
-        raise NotImplementedError
+        # TODO(justinvyu): [code_removal] Remove in 2.11.
+        raise DeprecationWarning(
+            "The internal method `_load_checkpoint` deprecated and will be removed. "
+            f"See `{self.__class__.__name__}.get_model` instead."
+        )
 
     def _train(self, **kwargs):
         raise NotImplementedError
 
     def _save_model(self, model: Any, path: str):
-        raise NotImplementedError
+        # TODO(justinvyu): [code_removal] Remove in 2.11.
+        raise DeprecationWarning(
+            "The internal method `_save_model` is deprecated and will be removed."
+        )
 
     def _model_iteration(self, model: Any) -> int:
         raise NotImplementedError
@@ -277,7 +288,7 @@ class GBDTTrainer(BaseTrainer):
 
         init_model = None
         if self.starting_checkpoint:
-            init_model = self._load_checkpoint(self.starting_checkpoint)
+            init_model = self.__class__.get_model(self.starting_checkpoint)
 
         config.setdefault("verbose_eval", False)
         config.setdefault("callbacks", [])
