@@ -91,13 +91,29 @@ def test_serve_basic(podman_docker_cluster):
 
 
 @pytest.mark.skipif(sys.platform != "linux", reason="Only works on Linux.")
-@pytest.mark.skip
 def test_serve_telemetry(podman_docker_cluster):
     """Test Serve deployment telemetry."""
 
     container_id = podman_docker_cluster
     cmd = ["python", "tests/test_serve_telemetry.py", "--image", NESTED_IMAGE_NAME]
     run_in_container([cmd], container_id)
+
+
+@pytest.mark.skipif(sys.platform != "linux", reason="Only works on Linux.")
+def test_job(podman_docker_cluster):
+    container_id = podman_docker_cluster
+    cmd = [
+        "ray",
+        "job",
+        "submit",
+        "--runtime-env-json",
+        '{"container": {"image": "rayproject/ray:2.9.0-py311"}}',
+        "--",
+        "python",
+        "-V",
+    ]
+    outputs = run_in_container([cmd], container_id)
+    print("outputs", outputs)
 
 
 EXPECTED_ERROR = "The 'container' field currently cannot be used " "together with"
