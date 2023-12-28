@@ -44,10 +44,19 @@ def test_log_file_exists(podman_docker_cluster):
 
 @pytest.mark.skipif(sys.platform != "linux", reason="Only works on Linux.")
 def test_ray_env_vars(podman_docker_cluster):
-    """Test ray.put and ray.get."""
+    """Test that env vars with prefix 'RAY_' are propagated to container."""
 
     container_id = podman_docker_cluster
     cmd = ["python", "tests/test_ray_env_vars.py", "--image", NESTED_IMAGE_NAME]
+    run_in_container([cmd], container_id)
+
+
+@pytest.mark.skipif(sys.platform != "linux", reason="Only works on Linux.")
+def test_container_with_env_vars(podman_docker_cluster):
+    """Test blah blah."""
+
+    container_id = podman_docker_cluster
+    cmd = ["python", "tests/test_with_env_vars.py", "--image", NESTED_IMAGE_NAME]
     run_in_container([cmd], container_id)
 
 
