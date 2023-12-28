@@ -342,12 +342,24 @@ class RuntimeEnv(dict):
             )
 
         if self.get("container"):
-            if len(runtime_env) > 1:
-                raise ValueError(
-                    "The 'container' field currently cannot be used "
-                    "together with other fields of runtime_env. "
-                    f"Specified fields: {runtime_env.keys()}"
-                )
+            invalid_fields = [
+                "py_modules",
+                "working_dir",
+                "pip",
+                "conda",
+                "_nsight",
+                "config",
+                "worker_process_setup_hook",
+                "mpi",
+                "java_jars",
+            ]
+            for field in invalid_fields:
+                if self.get(field):
+                    raise ValueError(
+                        "The 'container' field currently cannot be used "
+                        f"together with '{field}'."
+                        f"Specified '{field}' field: {self[field]}"
+                    )
 
         for option, validate_fn in OPTION_TO_VALIDATION_FN.items():
             option_val = self.get(option)
