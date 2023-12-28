@@ -171,11 +171,9 @@ class TuneReportCheckpointCallback(TuneCallback):
         if not self._checkpoint_at_end:
             return model
 
-        assert self._evals_log is not None
-
+        report_dict = self._get_report_dict(self._evals_log) if self._evals_log else {}
         with self._get_checkpoint(model=model) as checkpoint:
-            final_metrics = self._get_report_dict(self._evals_log)
-            train.report(final_metrics, checkpoint=checkpoint)
+            train.report(report_dict, checkpoint=checkpoint)
 
         return model
 
