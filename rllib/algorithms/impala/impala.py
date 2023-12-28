@@ -170,7 +170,6 @@ class ImpalaConfig(AlgorithmConfig):
 
         # Deprecated value.
         self.num_data_loader_buffers = DEPRECATED_VALUE
-        self.vtrace_drop_last_ts = DEPRECATED_VALUE
 
     @override(AlgorithmConfig)
     def training(
@@ -205,8 +204,6 @@ class ImpalaConfig(AlgorithmConfig):
         _separate_vf_optimizer: Optional[bool] = NotProvided,
         _lr_vf: Optional[float] = NotProvided,
         after_train_step: Optional[Callable[[dict], None]] = NotProvided,
-        # deprecated.
-        vtrace_drop_last_ts=None,
         **kwargs,
     ) -> "ImpalaConfig":
         """Sets the training related configuration.
@@ -289,16 +286,6 @@ class ImpalaConfig(AlgorithmConfig):
         Returns:
             This updated AlgorithmConfig object.
         """
-        if vtrace_drop_last_ts is not None:
-            deprecation_warning(
-                old="vtrace_drop_last_ts",
-                help="The v-trace operations in RLlib have been enhanced and we are "
-                "now using proper value bootstrapping at the end of each "
-                "trajectory, such that no timesteps in our loss functions have to "
-                "be dropped anymore.",
-                error=True,
-            )
-
         # Pass kwargs onto super's `training()` method.
         super().training(**kwargs)
 
