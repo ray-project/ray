@@ -46,7 +46,6 @@ from ray.serve._private.constants import (
 from ray.serve._private.http_util import (
     ASGIAppReplicaWrapper,
     ASGIMessageQueue,
-    ASGIReceiveProxy,
     Response,
 )
 from ray.serve._private.logging_utils import (
@@ -116,6 +115,7 @@ class ReplicaActor:
     ):
         self._version = version
         self._replica_tag = replica_tag
+        self._asgi_message_queues: Dict[str, ASGIMessageQueue] = dict()
         self._deployment_config = DeploymentConfig.from_proto_bytes(
             deployment_config_proto_bytes
         )
@@ -200,6 +200,13 @@ class ReplicaActor:
 
         return result
 
+    # XXX: guard against race condition?
+    async def put_asgi_message(self, request_id: str, pickled_asgi_message: bytes):
+        if request_id not in self._asgi_message_queues:
+            return
+
+        await self._asgi_message_queues[request_id](pickle.loads(pickled_asgi_message))
+
     async def _handle_http_request_generator(
         self,
         request_metadata: RequestMetadata,
@@ -210,20 +217,14 @@ class ReplicaActor:
         This is a generator that yields ASGI-compliant messages sent by user code
         via an ASGI send interface.
         """
-        receiver_task = None
+        asgi_message_queue = ASGIMessageQueue()
+        self._asgi_message_queues[request_metadata.request_id] = asgi_message_queue
         call_user_method_task = None
         wait_for_message_task = None
         try:
-            receiver = ASGIReceiveProxy(
-                request_metadata.request_id, request.http_proxy_handle
-            )
-            receiver_task = self._event_loop.create_task(
-                receiver.fetch_until_disconnect()
-            )
-
             scope = pickle.loads(request.pickled_asgi_scope)
             asgi_queue_send = ASGIMessageQueue()
-            request_args = (scope, receiver, asgi_queue_send)
+            request_args = (scope, asgi_message_queue.get_single, asgi_queue_send)
             request_kwargs = {}
 
             # Handle the request in a background asyncio.Task. It's expected that
@@ -259,9 +260,6 @@ class ReplicaActor:
             if e is not None:
                 raise e from None
         finally:
-            if receiver_task is not None:
-                receiver_task.cancel()
-
             if call_user_method_task is not None and not call_user_method_task.done():
                 call_user_method_task.cancel()
 

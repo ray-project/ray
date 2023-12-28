@@ -200,6 +200,10 @@ class ActorReplicaWrapper:
     def multiplexed_model_ids(self) -> Set[str]:
         return self._multiplexed_model_ids
 
+    @property
+    def actor_handle(self) -> ActorHandle:
+        return self._actor_handle
+
     async def get_queue_state(self, *, deadline_s: float) -> Tuple[int, bool]:
         # NOTE(edoakes): the `get_num_ongoing_requests` method name is shared by
         # the Python and Java replica implementations. If you change it, you need to
@@ -264,7 +268,7 @@ class ReplicaScheduler(ABC):
     @abstractmethod
     async def assign_replica(
         self, query: Query
-    ) -> Union[ray.ObjectRef, "ray._raylet.ObjectRefGenerator"]:
+    ) -> Tuple[ActorHandle, Union[ray.ObjectRef, "ray._raylet.ObjectRefGenerator"]]:
         pass
 
     @abstractmethod
@@ -911,14 +915,14 @@ class PowerOfTwoChoicesReplicaScheduler(ReplicaScheduler):
 
     async def assign_replica(
         self, query: Query
-    ) -> Union[ray.ObjectRef, "ray._raylet.ObjectRefGenerator"]:
+    ) -> Tuple[ActorHandle, Union[ray.ObjectRef, "ray._raylet.ObjectRefGenerator"]]:
         """Choose a replica for the request and send it.
 
         This will block indefinitely if no replicas are available to handle the
         request, so it's up to the caller to time out or cancel the request.
         """
         replica = await self.choose_replica_for_query(query)
-        return replica.send_query(query)
+        return replica.actor_handle, replica.send_query(query)
 
 
 class Router:
@@ -1027,7 +1031,7 @@ class Router:
         request_meta: RequestMetadata,
         *request_args,
         **request_kwargs,
-    ) -> Union[ray.ObjectRef, "ray._raylet.ObjectRefGenerator"]:
+    ) -> Tuple[ActorHandle, Union[ray.ObjectRef, "ray._raylet.ObjectRefGenerator"]]:
         """Assign a query to a replica and return the resulting object_ref."""
 
         self.num_router_requests.inc(tags={"route": request_meta.route})

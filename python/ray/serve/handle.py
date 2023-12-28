@@ -8,6 +8,7 @@ from typing import Any, AsyncIterator, Dict, Iterator, Optional, Tuple, Union
 import ray
 from ray import serve
 from ray._raylet import GcsClient, ObjectRefGenerator
+from ray.actor import ActorHandle
 from ray.serve._private.common import DeploymentID, RequestProtocol
 from ray.serve._private.default_impl import create_cluster_node_info_cache
 from ray.serve._private.router import RequestMetadata, Router
@@ -505,6 +506,13 @@ class _DeploymentResponseBase:
         self._object_ref_future = object_ref_future
         self._cancelled = False
 
+    async def _get_assigned_actor_handle(self) -> ActorHandle:
+        """Internal method to get the handle to the executing actor."""
+        # Use `asyncio.wrap_future` so `self._object_ref_future` can be awaited safely
+        # from any asyncio loop.
+        actor_handle, _ = await asyncio.wrap_future(self._object_ref_future)
+        return actor_handle
+
     async def _to_object_ref_or_gen(
         self,
         _record_telemetry: bool = True,
@@ -518,7 +526,8 @@ class _DeploymentResponseBase:
 
         # Use `asyncio.wrap_future` so `self._object_ref_future` can be awaited safely
         # from any asyncio loop.
-        return await asyncio.wrap_future(self._object_ref_future)
+        _, object_ref_or_gen = await asyncio.wrap_future(self._object_ref_future)
+        return object_ref_or_gen
 
     def _to_object_ref_or_gen_sync(
         self,
@@ -535,7 +544,8 @@ class _DeploymentResponseBase:
         if _record_telemetry:
             ServeUsageTag.DEPLOYMENT_HANDLE_TO_OBJECT_REF_API_USED.record("1")
 
-        return self._object_ref_future.result()
+        _, object_ref_or_gen = self._object_ref_future.result()
+        return object_ref_or_gen
 
     def cancel(self):
         """Attempt to cancel the `DeploymentHandle` call.

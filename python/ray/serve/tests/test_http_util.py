@@ -19,6 +19,7 @@ def shared_ray_instance(request):
 
 @pytest.mark.asyncio
 async def test_asgi_message_queue():
+    # XXX: ADD TEST FOR `get_single`.
     queue = ASGIMessageQueue()
 
     # Check that wait_for_message hangs until a message is sent.
@@ -106,58 +107,6 @@ def setup_receive_proxy(
         yield asgi_receive_proxy, actor
     except Exception:
         receiver_task.cancel()
-
-
-@pytest.mark.asyncio
-class TestASGIReceiveProxy:
-    async def test_basic(
-        self, setup_receive_proxy: Tuple[ASGIReceiveProxy, ActorHandle]
-    ):
-        asgi_receive_proxy, actor = setup_receive_proxy
-
-        await actor.put.remote({"type": "foo"})
-        await actor.put.remote({"type": "bar"})
-        assert await asgi_receive_proxy() == {"type": "foo"}
-        assert await asgi_receive_proxy() == {"type": "bar"}
-
-        assert asgi_receive_proxy._queue.empty()
-
-        # Once disconnect is received, it should be returned repeatedly.
-        await actor.put.remote({"type": "http.disconnect"})
-        for _ in range(100):
-            assert await asgi_receive_proxy() == {"type": "http.disconnect"}
-
-        # Subsequent messages should be ignored.
-        await actor.put.remote({"type": "baz"})
-        assert await asgi_receive_proxy() == {"type": "http.disconnect"}
-
-    async def test_actor_raises_exception(
-        self, setup_receive_proxy: Tuple[ASGIReceiveProxy, ActorHandle]
-    ):
-        asgi_receive_proxy, actor = setup_receive_proxy
-
-        await actor.put.remote({"type": "foo"})
-        await actor.put.remote({"type": "bar"})
-        await actor.put.remote(RuntimeError("oopsies"))
-        assert await asgi_receive_proxy() == {"type": "foo"}
-        assert await asgi_receive_proxy() == {"type": "bar"}
-
-        with pytest.raises(RuntimeError, match="oopsies"):
-            await asgi_receive_proxy()
-
-    async def test_actor_crashes(
-        self, setup_receive_proxy: Tuple[ASGIReceiveProxy, ActorHandle]
-    ):
-        asgi_receive_proxy, actor = setup_receive_proxy
-
-        await actor.put.remote({"type": "foo"})
-        await actor.put.remote({"type": "bar"})
-        assert await asgi_receive_proxy() == {"type": "foo"}
-        assert await asgi_receive_proxy() == {"type": "bar"}
-
-        ray.kill(actor)
-        with pytest.raises(ray.exceptions.RayActorError):
-            await asgi_receive_proxy()
 
 
 if __name__ == "__main__":

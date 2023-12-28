@@ -7,7 +7,17 @@ import socket
 import time
 import uuid
 from abc import ABC, abstractmethod
-from typing import Any, Callable, Dict, Generator, List, Optional, Tuple, Type
+from typing import (
+    Any,
+    Awaitable,
+    Callable,
+    Dict,
+    Generator,
+    List,
+    Optional,
+    Tuple,
+    Type,
+)
 
 import grpc
 import starlette.routing
@@ -34,7 +44,6 @@ from ray.serve._private.constants import (
 )
 from ray.serve._private.grpc_util import DummyServicer, create_serve_grpc_server
 from ray.serve._private.http_util import (
-    ASGIMessageQueue,
     convert_object_to_asgi_messages,
     receive_http_body,
     set_socket_reuse_port,
@@ -163,7 +172,6 @@ class GenericProxy(ABC):
         self.route_info: Dict[str, EndpointTag] = dict()
 
         self.self_actor_handle = proxy_actor or ray.get_runtime_context().current_actor
-        self.asgi_receive_queues: Dict[str, ASGIMessageQueue] = dict()
 
         self.proxy_router = proxy_router_class(
             serve.get_deployment_handle, self.protocol
@@ -839,14 +847,6 @@ class HTTPProxy(GenericProxy):
 
         yield ResponseStatus(code=status_code)
 
-    async def receive_asgi_messages(self, request_id: str) -> ResponseGenerator:
-        queue = self.asgi_receive_queues.get(request_id, None)
-        if queue is None:
-            raise KeyError(f"Request ID {request_id} not found.")
-
-        await queue.wait_for_message()
-        return queue.get_messages_nowait()
-
     async def __call__(self, scope, receive, send):
         """Implements the ASGI protocol.
 
@@ -859,31 +859,34 @@ class HTTPProxy(GenericProxy):
                 await send(message)
 
     async def proxy_asgi_receive(
-        self, receive: Receive, queue: ASGIMessageQueue
+        self,
+        request_id: str,
+        receive: Receive,
+        resolve_actor_handle: Awaitable[ActorHandle],
     ) -> Optional[int]:
-        """Proxies the `receive` interface, placing its messages into the queue.
+        """Proxies the `receive` interface, sending it to the resolved actor.
 
-        Once a disconnect message is received, the call exits and `receive` is no longer
-        called.
+        `resolve_actor_handle` should be a coroutine function that can be called to
+        get the actor handle to send the messages to over a method called
+        `put_asgi_message`.
+
+        Once a disconnect message is received, this function exits and `receive` is no
+        longer called.
 
         For HTTP messages, `None` is always returned.
         For websocket messages, the disconnect code is returned if a disconnect code is
         received.
         """
-        try:
-            while True:
-                msg = await receive()
-                await queue(msg)
+        actor_handle = await resolve_actor_handle()
+        while True:
+            msg = await receive()
+            actor_handle.put_asgi_message.remote(request_id, pickle.dumps(msg))
 
-                if msg["type"] == "http.disconnect":
-                    return None
+            if msg["type"] == "http.disconnect":
+                return None
 
-                if msg["type"] == "websocket.disconnect":
-                    return msg["code"]
-        finally:
-            # Close the queue so any subsequent calls to fetch messages return
-            # immediately: https://github.com/ray-project/ray/issues/38368.
-            queue.close()
+            if msg["type"] == "websocket.disconnect":
+                return msg["code"]
 
     def setup_request_context_and_handle(
         self,
@@ -952,17 +955,14 @@ class HTTPProxy(GenericProxy):
             # Messages are returned as pickled dictionaries.
             result_callback = pickle.loads
 
-        # Proxy the receive interface by placing the received messages on a queue.
-        # The downstream replica must call back into `receive_asgi_messages` on this
-        # actor to receive the messages.
-        receive_queue = ASGIMessageQueue()
-        self.asgi_receive_queues[request_id] = receive_queue
+        deployment_response = handle.remote(handle_arg)
         proxy_asgi_receive_task = get_or_create_event_loop().create_task(
-            self.proxy_asgi_receive(proxy_request.receive, receive_queue)
+            self.proxy_asgi_receive(
+                request_id, proxy_request.receive, deployment_response._get_assigned_actor_handle
+            )
         )
-
         response_generator = ProxyResponseGenerator(
-            handle.remote(handle_arg),
+            deployment_response,
             timeout_s=self.request_timeout_s,
             disconnected_task=proxy_asgi_receive_task,
             result_callback=result_callback,
@@ -1061,8 +1061,6 @@ class HTTPProxy(GenericProxy):
                         code=str(proxy_asgi_receive_task.result()),
                         is_error=True,
                     )
-
-            del self.asgi_receive_queues[request_id]
 
         yield status
 
@@ -1395,14 +1393,6 @@ class ProxyActor:
         """
 
         logger.info("Received health check.", extra={"log_to_stderr": False})
-
-    async def receive_asgi_messages(self, request_id: str) -> bytes:
-        """Get ASGI messages for the provided `request_id`.
-
-        After the proxy has stopped receiving messages for this `request_id`,
-        this will always return immediately.
-        """
-        return pickle.dumps(await self.http_proxy.receive_asgi_messages(request_id))
 
     def _save_cpu_profile_data(self) -> str:
         """Saves CPU profiling data, if CPU profiling is enabled.
