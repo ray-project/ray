@@ -416,7 +416,10 @@ def test_http_bad_request(job_sdk_client):
     )
 
     assert r.status_code == 400
-    assert "TypeError: __init__() got an unexpected keyword argument" in r.text
+    assert (
+        "TypeError: JobSubmitRequest.__init__() got an unexpected keyword argument"
+        in r.text
+    )
 
 
 def test_invalid_runtime_env(job_sdk_client):

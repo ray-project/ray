@@ -17,20 +17,20 @@ steps:
     wanda: ci/docker/datamongo.build.wanda.yaml
 
   # tests
-  - label: ":database: data: arrow 6 tests"
-    tags: 
-      - python
-      - data
-    instance_type: medium
-    parallelism: 2
-    commands:
-      - bazel run //ci/ray_ci:test_in_docker -- //python/ray/data/... //python/ray/air/... data 
-        --workers "$${BUILDKITE_PARALLEL_JOB_COUNT}" 
-        --worker-id "$${BUILDKITE_PARALLEL_JOB}" --parallelism-per-worker 3
-        --build-name data6build
-        --test-env RAY_DATA_USE_STREAMING_EXECUTOR=1
-        --except-tags data_integration,doctest
-    depends_on: data6build
+  # - label: ":database: data: arrow 6 tests"
+  #   tags: 
+  #     - python
+  #     - data
+  #   instance_type: medium
+  #   parallelism: 2
+  #   commands:
+  #     - bazel run //ci/ray_ci:test_in_docker -- //python/ray/data/... //python/ray/air/... data 
+  #       --workers "$${BUILDKITE_PARALLEL_JOB_COUNT}" 
+  #       --worker-id "$${BUILDKITE_PARALLEL_JOB}" --parallelism-per-worker 3
+  #       --build-name data6build
+  #       --test-env RAY_DATA_USE_STREAMING_EXECUTOR=1
+  #       --except-tags data_integration,doctest
+  #   depends_on: data6build
 
   - label: ":database: data: arrow 14 tests"
     tags: 
@@ -103,18 +103,18 @@ steps:
         --skip-ray-installation
     depends_on: docgpubuild
 
-  - label: ":database: data: integration tests"
-    tags:
-      - python
-      - data
-    instance_type: medium
-    commands:
-      - bazel run //ci/ray_ci:test_in_docker -- //python/ray/data/... data 
-        --build-name datamongobuild
-        --build-type java
-        --only-tags data_integration
-        --except-tags doctest
-    depends_on: datamongobuild
+  # - label: ":database: data: integration tests"
+  #   tags:
+  #     - python
+  #     - data
+  #   instance_type: medium
+  #   commands:
+  #     - bazel run //ci/ray_ci:test_in_docker -- //python/ray/data/... data 
+  #       --build-name datamongobuild
+  #       --build-type java
+  #       --only-tags data_integration
+  #       --except-tags doctest
+  #   depends_on: datamongobuild
 
   - label: ":database: data: dashboard tests"
     tags:

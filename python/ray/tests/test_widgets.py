@@ -1,6 +1,7 @@
 import logging
 from unittest import mock
 
+import importlib
 import pytest
 import ray
 from ray.widgets.util import repr_with_fallback, _can_display_ipywidgets
@@ -22,7 +23,7 @@ def fancy_mimebundle():
 
 
 @mock.patch.object(ray.widgets.util, "in_notebook")
-@mock.patch("importlib.util.find_spec")
+@mock.patch.object(importlib.util, "find_spec")
 @mock.patch("importlib.import_module")
 def test_repr_with_fallback_missing(
     mock_import_module,
@@ -54,7 +55,7 @@ def test_repr_with_fallback_missing(
 
 
 @mock.patch.object(ray.widgets.util, "in_notebook")
-@mock.patch("importlib.util.find_spec")
+@mock.patch.object(importlib.util, "find_spec")
 @mock.patch("importlib.import_module")
 def test_repr_with_fallback_outdated(
     mock_import_module,
@@ -86,7 +87,7 @@ def test_repr_with_fallback_outdated(
 
 
 @mock.patch.object(ray.widgets.util, "_can_display_ipywidgets")
-@mock.patch("importlib.util.find_spec")
+@mock.patch.object(importlib.util, "find_spec")
 @mock.patch("importlib.import_module")
 def test_repr_with_fallback_valid(
     mock_import_module,
@@ -118,7 +119,7 @@ def test_repr_with_fallback_valid(
 
 
 @mock.patch.object(ray.widgets.util, "_can_display_ipywidgets")
-@mock.patch("importlib.util.find_spec")
+@mock.patch.object(importlib.util, "find_spec")
 @mock.patch("importlib.import_module")
 def test_repr_with_fallback_invalid_shell(
     mock_import_module,
@@ -150,7 +151,7 @@ def test_repr_with_fallback_invalid_shell(
 
 
 @mock.patch.object(ray.widgets.util, "_get_ipython_shell_name")
-@mock.patch("importlib.util.find_spec")
+@mock.patch.object(importlib.util, "find_spec")
 @mock.patch("importlib.import_module")
 @pytest.mark.parametrize(
     "shell,can_display",

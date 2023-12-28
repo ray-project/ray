@@ -23,8 +23,8 @@ workflow.run(f.bind(), workflow_id="wid")
     # assert "run_or_resume: wid" in logs
     # assert "Workflow job [id=wid] started." in logs
     # in _workflow_task_executor_remote
-    assert "Task status [RUNNING]\t[wid@f" in logs
-    assert "Task status [SUCCESSFUL]\t[wid@f" in logs
+    assert "Task status [WorkflowStatus.RUNNING]\t[wid@f" in logs
+    assert "Task status [WorkflowStatus.SUCCESSFUL]\t[wid@f" in logs
 
 
 def test_chained_workflow_logs(workflow_start_regular):
@@ -52,10 +52,10 @@ workflow.run(f2.bind(f1.bind()), workflow_id="wid1")
     # assert "run_or_resume: wid1" in logs
     # assert "Workflow job [id=wid1] started." in logs
     # in _workflow_task_executor_remote
-    assert "Task status [RUNNING]\t[wid1@f1" in logs
-    assert "Task status [SUCCESSFUL]\t[wid1@f1" in logs
-    assert "Task status [RUNNING]\t[wid1@f2" in logs
-    assert "Task status [SUCCESSFUL]\t[wid1@f2" in logs
+    assert "Task status [WorkflowStatus.RUNNING]\t[wid1@f1" in logs
+    assert "Task status [WorkflowStatus.SUCCESSFUL]\t[wid1@f1" in logs
+    assert "Task status [WorkflowStatus.RUNNING]\t[wid1@f2" in logs
+    assert "Task status [WorkflowStatus.SUCCESSFUL]\t[wid1@f2" in logs
 
 
 def test_dynamic_workflow_logs(workflow_start_regular):
@@ -83,10 +83,10 @@ workflow.run(f4.bind(10), workflow_id="wid2")
     # assert "run_or_resume: wid2" in logs
     # assert "Workflow job [id=wid2] started." in logs
     # in _workflow_task_executor_remote
-    assert "Task status [RUNNING]\t[wid2@f3" in logs
-    assert "Task status [SUCCESSFUL]\t[wid2@f3" in logs
-    assert "Task status [RUNNING]\t[wid2@f4" in logs
-    assert "Task status [SUCCESSFUL]\t[wid2@f4" in logs
+    assert "Task status [WorkflowStatus.RUNNING]\t[wid2@f3" in logs
+    assert "Task status [WorkflowStatus.SUCCESSFUL]\t[wid2@f3" in logs
+    assert "Task status [WorkflowStatus.RUNNING]\t[wid2@f4" in logs
+    assert "Task status [WorkflowStatus.SUCCESSFUL]\t[wid2@f4" in logs
 
 
 if __name__ == "__main__":

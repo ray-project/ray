@@ -8,7 +8,7 @@ jupyterlab==3.6.1
 matplotlib!=3.4.3
 
 pytest-remotedata==0.3.2
-pytorch-lightning
+pytorch-lightning==2.1.3
 fairscale==0.4.6
 shortuuid==1.0.1
 scikit-optimize==0.9.0

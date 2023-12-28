@@ -11,8 +11,8 @@ lightgbm==3.3.5
 lightgbm_ray==0.1.9
 
 # Huggingface
-transformers==4.19.1
-accelerate==0.20.3
+transformers==4.36.2
+accelerate==0.25.0
 
 # DL libraries
 -r dl-cpu-requirements.txt
