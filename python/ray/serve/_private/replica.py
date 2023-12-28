@@ -544,16 +544,15 @@ class ReplicaActor:
                 "the RAY_SERVE_ENABLE_CPU_PROFILING env var."
             )
 
-    async def perform_graceful_shutdown(self):
-        if not self._user_callable_initialized:
-            # Replica was never initialized, therefore never served traffic, so we
-            # can exit immediately.
-            return
+    async def _drain_ongoing_requests(self):
+        """Wait for any ongoing requests to finish.
 
+        Sleep for a grace period before the first time we check the number of ongoing
+        requests to allow the notification to remove this replica to propagate to
+        callers first.
+        """
         wait_loop_period_s = self._deployment_config.graceful_shutdown_wait_loop_s
         while True:
-            # Sleep first because we want to make sure all the routers receive
-            # the notification to remove this replica first.
             await asyncio.sleep(wait_loop_period_s)
 
             num_ongoing_requests = (
@@ -571,7 +570,12 @@ class ReplicaActor:
                 )
                 break
 
-        # Graceful shutdown timeout is up or there are no requests; complete shutdown.
+    async def perform_graceful_shutdown(self):
+        # If the replica was never initialized it never served traffic, so we
+        # can skip the wait period.
+        if self._user_callable_initialized:
+            await self._drain_ongoing_requests()
+
         await self._user_callable_wrapper.call_destructor()
         self._queue_metrics_manager.shutdown()
 
