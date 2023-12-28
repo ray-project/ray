@@ -575,8 +575,8 @@ class ReplicaActor:
         # can skip the wait period.
         if self._user_callable_initialized:
             await self._drain_ongoing_requests()
+            await self._user_callable_wrapper.call_destructor()
 
-        await self._user_callable_wrapper.call_destructor()
         self._queue_metrics_manager.shutdown()
 
     @ray.method(concurrency_group=REPLICA_CONTROL_PLANE_CONCURRENCY_GROUP)
