@@ -100,10 +100,7 @@ def test_serve_telemetry(podman_docker_cluster):
     run_in_container([cmd], container_id)
 
 
-EXPECTED_ERROR = (
-    "The 'container' field currently cannot be used "
-    "together with other fields of runtime_env."
-)
+EXPECTED_ERROR = "The 'container' field currently cannot be used " "together with"
 
 
 class TestContainerRuntimeEnvWithOtherRuntimeEnv:

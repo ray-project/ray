@@ -94,7 +94,7 @@ class RuntimeEnvContext:
                 + " "
                 + command_str
             )
-        logger.debug(f"Exec'ing worker with command: {command_str}")
+        logger.info(f"Exec'ing worker with command: {command_str}")
         if sys.platform == "win32":
             cmd = [*self.command_prefix, executable, *passthrough_args]
             subprocess.Popen(cmd, shell=True).wait()
