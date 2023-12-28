@@ -1,4 +1,3 @@
-import os
 from typing import Any, Dict, Type, Union
 
 import lightgbm
