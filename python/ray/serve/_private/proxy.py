@@ -958,7 +958,9 @@ class HTTPProxy(GenericProxy):
         deployment_response = handle.remote(handle_arg)
         proxy_asgi_receive_task = get_or_create_event_loop().create_task(
             self.proxy_asgi_receive(
-                request_id, proxy_request.receive, deployment_response._get_assigned_actor_handle
+                request_id,
+                proxy_request.receive,
+                deployment_response._get_assigned_actor_handle,
             )
         )
         response_generator = ProxyResponseGenerator(

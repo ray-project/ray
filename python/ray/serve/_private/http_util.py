@@ -156,7 +156,7 @@ class ASGIMessageQueue(Send):
         self._new_message_event.set()
 
     async def get_single(self) -> List[Message]:
-        await self._wait_for_message()
+        await self.wait_for_message()
         message = self._message_queue.get_nowait()
         if self._message_queue.empty():
             self._new_message_event.clear()
