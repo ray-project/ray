@@ -603,7 +603,7 @@ py_test(
     name = "vsphere/test_vsphere_sdk_provider",
     size = "small",
     srcs = ["vsphere/test_vsphere_sdk_provider.py"],
-    tags = ["exclusive", "small_size_python_tests", "team:serverless"],
+    tags = ["exclusive", "small_size_python_tests", "no_windows", "team:serverless"],
     deps = ["//:ray_lib", ":conftest"],
 )
 
@@ -651,7 +651,7 @@ py_test(
     name = "kuberay/test_autoscaling_e2e",
     size = "large",
     srcs = ["kuberay/test_autoscaling_e2e.py"],
-    tags = ["exclusive", "kuberay_operator", "no_windows", "team:serverless"],
+    tags = ["exclusive", "no_windows", "team:kuberay"],
     deps = ["//:ray_lib", ":conftest"],
 )
 

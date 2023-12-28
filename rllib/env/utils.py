@@ -336,7 +336,8 @@ class BufferWithInfiniteLookback:
         if self._final_len is not None:
             assert self.finalized
             return self._final_len
-        return len(self.data) - self.lookback
+        # Only count the data after the lookback.
+        return max(len(self.data) - self.lookback, 0)
 
     def _get_all_data(self, one_hot_discrete=False):
         data = self[:]
