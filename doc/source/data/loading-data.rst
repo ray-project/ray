@@ -926,7 +926,7 @@ Loading other datasources
 ==========================
 
 If Ray Data can't load your data, subclass
-:class:`~ray.data.datasource.Datasource`. Then, construct an instance of your custom
+:class:`~ray.data.Datasource`. Then, construct an instance of your custom
 datasource and pass it to :func:`~ray.data.read_datasource`.
 
 .. testcode::
