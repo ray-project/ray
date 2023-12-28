@@ -156,6 +156,9 @@ class ReplicaQueueMetricsManager:
     def shutdown(self):
         self._metrics_pusher.shutdown()
 
+    def set_autoscaling_config(self, autoscaling_config: AutoscalingConfig):
+        self._autoscaling_config = autoscaling_config
+
     def get_num_pending_and_running_requests(self) -> int:
         stats = self._get_handle_request_stats() or {}
         return stats.get("pending", 0) + stats.get("running", 0)
@@ -497,6 +500,9 @@ class ReplicaActor:
                 self._version, deployment_config
             )
 
+            self._queue_metrics_manager.set_autoscaling_config(
+                deployment_config.autoscaling_config
+            )
             if logging_config_changed:
                 self._configure_logger_and_profilers(deployment_config.logging_config)
 
