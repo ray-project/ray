@@ -104,21 +104,6 @@ EXPECTED_ERROR = "The 'container' field currently cannot be used " "together wit
 
 
 class TestContainerRuntimeEnvWithOtherRuntimeEnv:
-    def test_container_with_env_vars(self):
-        with pytest.raises(ValueError, match=EXPECTED_ERROR):
-
-            @ray.remote(
-                runtime_env={
-                    "container": {
-                        "image": NESTED_IMAGE_NAME,
-                        "worker_path": "/some/path/to/default_worker.py",
-                    },
-                    "env_vars": {"HELLO": "WORLD"},
-                }
-            )
-            def f():
-                return ray.put((1, 10))
-
     def test_container_with_pip(self):
         with pytest.raises(ValueError, match=EXPECTED_ERROR):
 
@@ -179,7 +164,7 @@ class TestContainerRuntimeEnvWithOtherRuntimeEnv:
             def f():
                 return ray.put((1, 10))
 
-    def test_container_with_env_vars_and_working_dir(self):
+    def test_container_with_pip_and_working_dir(self):
         with pytest.raises(ValueError, match=EXPECTED_ERROR):
 
             @ray.remote(
@@ -188,7 +173,7 @@ class TestContainerRuntimeEnvWithOtherRuntimeEnv:
                         "image": NESTED_IMAGE_NAME,
                         "worker_path": "/some/path/to/default_worker.py",
                     },
-                    "env_vars": {"HELLO": "WORLD"},
+                    "pip": ["requests"],
                     "working_dir": ".",
                 }
             )
