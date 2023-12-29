@@ -662,10 +662,7 @@ def test_max_replicas_per_node(ray_start_stop):
             ["serve", "status", "-a", "http://localhost:52365/"]
         )
         status = yaml.safe_load(cli_output)["applications"]
-        assert (
-            status["valid"]["status"] == "RUNNING"
-            and status["invalid"]["status"] == "DEPLOY_FAILED"
-        )
+        assert status["default"]["status"] == "RUNNING"
         return True
 
     wait_for_condition(check_application_status, timeout=15)
@@ -689,7 +686,6 @@ def test_replica_placement_group_options(ray_start_stop):
         assert (
             status["valid"]["status"] == "RUNNING"
             and status["invalid_bundles"]["status"] == "DEPLOY_FAILED"
-            and status["invalid_strategy"]["status"] == "DEPLOY_FAILED"
         )
         return True
 

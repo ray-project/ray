@@ -30,7 +30,7 @@ from ray.serve._private.common import (
     StreamingHTTPRequest,
     gRPCRequest,
 )
-from ray.serve._private.config import DeploymentConfig
+from ray.serve._private.config import InternalDeploymentConfig
 from ray.serve._private.constants import (
     DEFAULT_LATENCY_BUCKET_MS,
     GRPC_CONTEXT_ARG_NAME,
@@ -116,7 +116,7 @@ class ReplicaActor:
     ):
         self._version = version
         self._replica_tag = replica_tag
-        self._deployment_config = DeploymentConfig.from_proto_bytes(
+        self._deployment_config = InternalDeploymentConfig.from_proto_bytes(
             deployment_config_proto_bytes
         )
         self._configure_logger_and_profilers(self._deployment_config.logging_config)
@@ -346,9 +346,9 @@ class ReplicaActor:
 
     async def initialize_and_get_metadata(
         self,
-        deployment_config: DeploymentConfig = None,
+        deployment_config: InternalDeploymentConfig = None,
         _after: Optional[Any] = None,
-    ) -> Tuple[DeploymentConfig, DeploymentVersion]:
+    ) -> Tuple[InternalDeploymentConfig, DeploymentVersion]:
         # Unused `_after` argument is for scheduling: passing an ObjectRef
         # allows delaying this call until after the `_after` call has returned.
         try:
@@ -373,8 +373,8 @@ class ReplicaActor:
 
     async def reconfigure(
         self,
-        deployment_config: DeploymentConfig,
-    ) -> Tuple[DeploymentConfig, DeploymentVersion]:
+        deployment_config: InternalDeploymentConfig,
+    ) -> Tuple[InternalDeploymentConfig, DeploymentVersion]:
         try:
             user_config_changed = (
                 deployment_config.user_config != self._deployment_config.user_config
@@ -402,7 +402,7 @@ class ReplicaActor:
 
     def _get_metadata(
         self,
-    ) -> Tuple[DeploymentConfig, DeploymentVersion]:
+    ) -> Tuple[InternalDeploymentConfig, DeploymentVersion]:
         return (
             self._version.deployment_config,
             self._version,

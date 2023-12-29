@@ -2,7 +2,7 @@ import logging
 from collections import Counter
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import Any, Dict, List, Optional, Set, Union
+from typing import Any, Dict, List, Optional, Union
 from zlib import crc32
 
 from ray._private.pydantic_compat import (
@@ -28,7 +28,7 @@ from ray.serve._private.constants import (
 )
 from ray.serve._private.deployment_info import DeploymentInfo
 from ray.serve._private.utils import DEFAULT
-from ray.serve.config import ProxyLocation
+from ray.serve.config import BaseDeploymentModel, ProxyLocation
 from ray.util.annotations import PublicAPI
 
 # Shared amongst multiple schemas.
@@ -181,71 +181,47 @@ class LoggingConfig(BaseModel):
 
 
 @PublicAPI(stability="stable")
-class RayActorOptionsSchema(BaseModel):
-    """Options with which to start a replica actor."""
+class ApplyDeploymentModel(BaseDeploymentModel):
+    """Specifies options for one deployment within a Serve application.
 
-    runtime_env: dict = Field(
-        default={},
-        description=(
-            "This deployment's runtime_env. working_dir and "
-            "py_modules may contain only remote URIs."
-        ),
+    For each deployment this can optionally be included in
+    `ServeApplicationSchema` to override deployment options specified in
+    code.
+    """
+
+    name: str = Field(
+        ..., description=("Globally-unique name identifying this deployment.")
     )
-    num_cpus: float = Field(
-        default=None,
+    # route_prefix of None means the deployment is not exposed over HTTP.
+    route_prefix: Union[str, None] = Field(
+        default=DEFAULT.VALUE,
         description=(
-            "The number of CPUs required by the deployment's "
-            "application per replica. This is the same as a ray "
-            "actor's num_cpus. Uses a default if null."
-        ),
-        ge=0,
-    )
-    num_gpus: float = Field(
-        default=None,
-        description=(
-            "The number of GPUs required by the deployment's "
-            "application per replica. This is the same as a ray "
-            "actor's num_gpus. Uses a default if null."
-        ),
-        ge=0,
-    )
-    memory: float = Field(
-        default=None,
-        description=(
-            "Restrict the heap memory usage of each replica. Uses a default if null."
-        ),
-        ge=0,
-    )
-    object_store_memory: float = Field(
-        default=None,
-        description=(
-            "Restrict the object store memory used per replica when "
-            "creating objects. Uses a default if null."
-        ),
-        ge=0,
-    )
-    resources: Dict = Field(
-        default={},
-        description=("The custom resources required by each replica."),
-    )
-    accelerator_type: str = Field(
-        default=None,
-        description=(
-            "Forces replicas to run on nodes with the specified accelerator type."
-            "See :ref:`accelerator types <accelerator_types>`."
+            "[DEPRECATED] Please use route_prefix under ServeApplicationSchema instead."
         ),
     )
 
-    @validator("runtime_env")
+    @root_validator(pre=True)
+    def num_replicas_and_autoscaling_config_mutually_exclusive(cls, values):
+        if values.get("autoscaling_config") is not None:
+            if values.get("num_replicas") is not None:
+                raise ValueError(
+                    "Manually setting num_replicas is not allowed "
+                    "when autoscaling_config is provided."
+                )
+
+        return values
+
+    @validator("ray_actor_options")
     def runtime_env_contains_remote_uris(cls, v):
         # Ensure that all uris in py_modules and working_dir are remote
 
-        if v is None:
+        runtime_env = v.runtime_env
+        if runtime_env is None:
             return
 
-        uris = v.get("py_modules", [])
-        if "working_dir" in v and v["working_dir"] not in uris:
-            uris.append(v["working_dir"])
+        uris = runtime_env.get("py_modules", [])
+        if "working_dir" in runtime_env:
+            uris.append(runtime_env["working_dir"])
 
         for uri in uris:
             if uri is not None:
@@ -260,172 +236,26 @@ class RayActorOptionsSchema(BaseModel):
 
         return v
 
-
-@PublicAPI(stability="stable")
-class DeploymentSchema(BaseModel, allow_population_by_field_name=True):
-    """
-    Specifies options for one deployment within a Serve application. For each deployment
-    this can optionally be included in `ServeApplicationSchema` to override deployment
-    options specified in code.
-    """
-
-    name: str = Field(
-        ..., description=("Globally-unique name identifying this deployment.")
-    )
-    num_replicas: Optional[int] = Field(
-        default=DEFAULT.VALUE,
-        description=(
-            "The number of processes that handle requests to this "
-            "deployment. Uses a default if null."
-        ),
-        gt=0,
-    )
-    # route_prefix of None means the deployment is not exposed over HTTP.
-    route_prefix: Union[str, None] = Field(
-        default=DEFAULT.VALUE,
-        description=(
-            "[DEPRECATED] Please use route_prefix under ServeApplicationSchema instead."
-        ),
-    )
-    max_concurrent_queries: int = Field(
-        default=DEFAULT.VALUE,
-        description=(
-            "The max number of pending queries in a single replica. "
-            "Uses a default if null."
-        ),
-        gt=0,
-    )
-    user_config: Optional[Dict] = Field(
-        default=DEFAULT.VALUE,
-        description=(
-            "Config to pass into this deployment's "
-            "reconfigure method. This can be updated dynamically "
-            "without restarting replicas"
-        ),
-    )
-    autoscaling_config: Optional[Dict] = Field(
-        default=DEFAULT.VALUE,
-        description=(
-            "Config specifying autoscaling "
-            "parameters for the deployment's number of replicas. "
-            "If null, the deployment won't autoscale its number of "
-            "replicas; the number of replicas will be fixed at "
-            "num_replicas."
-        ),
-    )
-    graceful_shutdown_wait_loop_s: float = Field(
-        default=DEFAULT.VALUE,
-        description=(
-            "Duration that deployment replicas will wait until there "
-            "is no more work to be done before shutting down. Uses a "
-            "default if null."
-        ),
-        ge=0,
-    )
-    graceful_shutdown_timeout_s: float = Field(
-        default=DEFAULT.VALUE,
-        description=(
-            "Serve controller waits for this duration before "
-            "forcefully killing the replica for shutdown. Uses a "
-            "default if null."
-        ),
-        ge=0,
-    )
-    health_check_period_s: float = Field(
-        default=DEFAULT.VALUE,
-        description=(
-            "Frequency at which the controller will health check "
-            "replicas. Uses a default if null."
-        ),
-        gt=0,
-    )
-    health_check_timeout_s: float = Field(
-        default=DEFAULT.VALUE,
-        description=(
-            "Timeout that the controller will wait for a response "
-            "from the replica's health check before marking it "
-            "unhealthy. Uses a default if null."
-        ),
-        gt=0,
-    )
-    ray_actor_options: RayActorOptionsSchema = Field(
-        default=DEFAULT.VALUE, description="Options set for each replica actor."
-    )
-
-    placement_group_bundles: List[Dict[str, float]] = Field(
-        default=DEFAULT.VALUE,
-        description=(
-            "Define a set of placement group bundles to be "
-            "scheduled *for each replica* of this deployment. The replica actor will "
-            "be scheduled in the first bundle provided, so the resources specified in "
-            "`ray_actor_options` must be a subset of the first bundle's resources. All "
-            "actors and tasks created by the replica actor will be scheduled in the "
-            "placement group by default (`placement_group_capture_child_tasks` is set "
-            "to True)."
-        ),
-    )
-
-    placement_group_strategy: str = Field(
-        default=DEFAULT.VALUE,
-        description=(
-            "Strategy to use for the replica placement group "
-            "specified via `placement_group_bundles`. Defaults to `PACK`."
-        ),
-    )
-
-    max_replicas_per_node: int = Field(
-        default=DEFAULT.VALUE,
-        description=(
-            "[EXPERIMENTAL] The max number of deployment replicas can "
-            "run on a single node. Valid values are None (no limitation) "
-            "or an integer in the range of [1, 100]. "
-            "Defaults to no limitation."
-        ),
-    )
-    logging_config: LoggingConfig = Field(
-        default=DEFAULT.VALUE,
-        description="Logging config for configuring serve deployment logs.",
-    )
-
-    @root_validator
-    def num_replicas_and_autoscaling_config_mutually_exclusive(cls, values):
-        if values.get("num_replicas", None) not in [DEFAULT.VALUE, None] and values.get(
-            "autoscaling_config", None
-        ) not in [DEFAULT.VALUE, None]:
-            raise ValueError(
-                "Manually setting num_replicas is not allowed "
-                "when autoscaling_config is provided."
-            )
-
-        return values
-
-    deployment_schema_route_prefix_format = validator("route_prefix", allow_reuse=True)(
+    validate_route_prefix_format = validator("route_prefix", allow_reuse=True)(
         _route_prefix_format
     )
 
-    def get_user_configured_option_names(self) -> Set[str]:
-        """Get set of names for all user-configured options.
 
-        Any field not set to DEFAULT.VALUE is considered a user-configured option.
-        """
-
-        return {
-            field for field, value in self.dict().items() if value is not DEFAULT.VALUE
-        }
+@PublicAPI(stability="stable")
+class ReadDeploymentModel(BaseDeploymentModel):
+    pass
 
 
-def _deployment_info_to_schema(name: str, info: DeploymentInfo) -> DeploymentSchema:
-    """Converts a DeploymentInfo object to DeploymentSchema.
+def _deployment_info_to_schema(info: DeploymentInfo) -> ReadDeploymentModel:
+    """Converts a DeploymentInfo object to ReadServeDeploymentModel."""
 
-    Route_prefix will not be set in the returned DeploymentSchema, since starting in 2.x
-    route_prefix is an application-level concept. (This should only be used on the 2.x
-    codepath)
-    """
-
-    schema = DeploymentSchema(
-        name=name,
+    schema = ReadDeploymentModel(
+        num_replicas=info.deployment_config.num_replicas
+        if info.deployment_config.autoscaling_config is None
+        else None,
         max_concurrent_queries=info.deployment_config.max_concurrent_queries,
         user_config=info.deployment_config.user_config,
+        autoscaling_config=info.deployment_config.autoscaling_config,
         graceful_shutdown_wait_loop_s=(
             info.deployment_config.graceful_shutdown_wait_loop_s
         ),
@@ -434,11 +264,6 @@ def _deployment_info_to_schema(name: str, info: DeploymentInfo) -> DeploymentSch
         health_check_timeout_s=info.deployment_config.health_check_timeout_s,
         ray_actor_options=info.replica_config.ray_actor_options,
     )
-
-    if info.deployment_config.autoscaling_config is not None:
-        schema.autoscaling_config = info.deployment_config.autoscaling_config
-    else:
-        schema.num_replicas = info.deployment_config.num_replicas
 
     return schema
 
@@ -501,7 +326,7 @@ class ServeApplicationSchema(BaseModel):
             "must be shut down and restarted with the new port instead."
         ),
     )
-    deployments: List[DeploymentSchema] = Field(
+    deployments: List[ApplyDeploymentModel] = Field(
         default=[],
         description="Deployment options that override options specified in the code.",
     )
@@ -876,7 +701,7 @@ class DeploymentDetails(BaseModel, extra=Extra.forbid, frozen=True):
             "more detail."
         )
     )
-    deployment_config: DeploymentSchema = Field(
+    deployment_config: ReadDeploymentModel = Field(
         description=(
             "The set of deployment config options that are currently applied to this "
             "deployment. These options may come from the user's code, config file "
@@ -886,19 +711,6 @@ class DeploymentDetails(BaseModel, extra=Extra.forbid, frozen=True):
     replicas: List[ReplicaDetails] = Field(
         description="Details about the live replicas of this deployment."
     )
-
-    @validator("deployment_config")
-    def deployment_route_prefix_not_set(cls, v: DeploymentSchema):
-        # Route prefix should not be set at the deployment level. Deployment-level route
-        # prefix is outdated, there should be one route prefix per application
-        if "route_prefix" in v.dict(exclude_unset=True):
-            raise ValueError(
-                "Unexpectedly found a deployment-level route_prefix in the "
-                f'deployment_config for deployment "{cls.name}". The route_prefix in '
-                "deployment_config within DeploymentDetails should not be set; please "
-                "set it at the application level."
-            )
-        return v
 
 
 @PublicAPI(stability="stable")

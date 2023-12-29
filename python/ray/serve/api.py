@@ -11,7 +11,7 @@ import ray
 from ray import cloudpickle
 from ray._private.serialization import pickle_dumps
 from ray.dag import DAGNode
-from ray.serve._private.config import DeploymentConfig, ReplicaConfig
+from ray.serve._private.config import InternalDeploymentConfig, ReplicaInitInfo
 from ray.serve._private.constants import (
     DEFAULT_HTTP_HOST,
     DEFAULT_HTTP_PORT,
@@ -377,7 +377,7 @@ def deployment(
     if isinstance(logging_config, LoggingConfig):
         logging_config = logging_config.dict()
 
-    deployment_config = DeploymentConfig.from_default(
+    deployment_config = InternalDeploymentConfig.from_default(
         num_replicas=num_replicas if num_replicas is not None else 1,
         user_config=user_config,
         max_concurrent_queries=max_concurrent_queries,
@@ -391,7 +391,7 @@ def deployment(
     deployment_config.user_configured_option_names = set(user_configured_option_names)
 
     def decorator(_func_or_class):
-        replica_config = ReplicaConfig.create(
+        replica_config = ReplicaInitInfo.create(
             _func_or_class,
             init_args=None,
             init_kwargs=None,

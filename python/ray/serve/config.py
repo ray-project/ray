@@ -1,10 +1,14 @@
+import json
 import logging
 import warnings
 from enum import Enum
-from typing import Any, Callable, List, Optional, Union
+from typing import Any, Callable, Dict, List, Optional, Union
+
+from typing_extensions import Annotated
 
 from ray._private.pydantic_compat import (
     BaseModel,
+    Field,
     NonNegativeFloat,
     NonNegativeInt,
     PositiveFloat,
@@ -13,13 +17,21 @@ from ray._private.pydantic_compat import (
 )
 from ray._private.utils import import_attr
 from ray.serve._private.constants import (
+    DEFAULT_GRACEFUL_SHUTDOWN_TIMEOUT_S,
+    DEFAULT_GRACEFUL_SHUTDOWN_WAIT_LOOP_S,
     DEFAULT_GRPC_PORT,
+    DEFAULT_HEALTH_CHECK_PERIOD_S,
+    DEFAULT_HEALTH_CHECK_TIMEOUT_S,
     DEFAULT_HTTP_HOST,
     DEFAULT_HTTP_PORT,
+    DEFAULT_MAX_CONCURRENT_QUERIES,
     DEFAULT_UVICORN_KEEP_ALIVE_TIMEOUT_S,
+    MAX_REPLICAS_PER_NODE_MAX_VALUE,
     SERVE_LOGGER_NAME,
 )
+from ray.serve._private.utils import DeploymentOptionUpdateType
 from ray.util.annotations import Deprecated, PublicAPI
+from ray.util.placement_group import PlacementGroupStrategy
 
 logger = logging.getLogger(SERVE_LOGGER_NAME)
 
@@ -135,6 +147,212 @@ class ProxyLocation(str, Enum):
             return DeploymentMode.EveryNode
         else:
             raise ValueError(f"Unrecognized `ProxyLocation`: {v}.")
+
+
+@PublicAPI(stability="stable")
+class RayActorOptionsConfig(BaseModel):
+    """Options with which to start a replica actor."""
+
+    runtime_env: dict = Field(
+        default={},
+        description=(
+            "This deployment's runtime_env. working_dir and "
+            "py_modules may contain only remote URIs."
+        ),
+    )
+    num_cpus: float = Field(
+        default=None,
+        description=(
+            "The number of CPUs required by the deployment's "
+            "application per replica. This is the same as a ray "
+            "actor's num_cpus. Uses a default if null."
+        ),
+        ge=0,
+    )
+    num_gpus: float = Field(
+        default=None,
+        description=(
+            "The number of GPUs required by the deployment's "
+            "application per replica. This is the same as a ray "
+            "actor's num_gpus. Uses a default if null."
+        ),
+        ge=0,
+    )
+    memory: float = Field(
+        default=None,
+        description=(
+            "Restrict the heap memory usage of each replica. Uses a default if null."
+        ),
+        ge=0,
+    )
+    object_store_memory: float = Field(
+        default=None,
+        description=(
+            "Restrict the object store memory used per replica when "
+            "creating objects. Uses a default if null."
+        ),
+        ge=0,
+    )
+    resources: Dict = Field(
+        default={},
+        description=("The custom resources required by each replica."),
+    )
+    accelerator_type: str = Field(
+        default=None,
+        description=(
+            "Forces replicas to run on nodes with the specified accelerator type."
+        ),
+    )
+
+
+@PublicAPI(stability="stable")
+class BaseDeploymentModel(BaseModel):
+    """Defines options that can be used to configure a Serve deployment."""
+
+    num_replicas: Annotated[
+        Optional[PositiveInt],
+        Field(
+            description=(
+                "The number of processes that handle requests to this "
+                "deployment. Uses a default if null."
+            ),
+            update_type=DeploymentOptionUpdateType.LightWeight,
+        ),
+    ] = 1
+    max_concurrent_queries: Annotated[
+        PositiveInt,
+        Field(
+            description=(
+                "The max number of pending queries in a single replica. "
+                "Uses a default if null."
+            ),
+            update_type=DeploymentOptionUpdateType.NeedsReconfigure,
+        ),
+    ] = DEFAULT_MAX_CONCURRENT_QUERIES
+    user_config: Annotated[
+        Optional[Union[Dict, bytes]],
+        Field(
+            description=(
+                "Config to pass into this deployment's "
+                "reconfigure method. This can be updated dynamically "
+                "without restarting replicas"
+            ),
+            update_type=DeploymentOptionUpdateType.NeedsActorReconfigure,
+        ),
+    ] = None
+    autoscaling_config: Annotated[
+        Optional[AutoscalingConfig],
+        Field(
+            description=(
+                "Config specifying autoscaling parameters for the "
+                "deployment's number of replicas. If null, the deployment "
+                "won't autoscale; the number of replicas will be fixed at "
+                "`num_replicas`."
+            ),
+            update_type=DeploymentOptionUpdateType.LightWeight,
+        ),
+    ] = None
+    graceful_shutdown_wait_loop_s: Annotated[
+        NonNegativeFloat,
+        Field(
+            description=(
+                "Duration that deployment replicas will wait until there "
+                "is no more work to be done before shutting down. Uses a "
+                "default if null."
+            ),
+            update_type=DeploymentOptionUpdateType.NeedsActorReconfigure,
+        ),
+    ] = DEFAULT_GRACEFUL_SHUTDOWN_WAIT_LOOP_S
+    graceful_shutdown_timeout_s: Annotated[
+        NonNegativeFloat,
+        Field(
+            description=(
+                "Serve controller waits for this duration before "
+                "forcefully killing the replica for shutdown. Uses a "
+                "default if null."
+            ),
+            update_type=DeploymentOptionUpdateType.NeedsReconfigure,
+        ),
+    ] = DEFAULT_GRACEFUL_SHUTDOWN_TIMEOUT_S
+    health_check_period_s: Annotated[
+        NonNegativeFloat,
+        Field(
+            description=(
+                "Frequency at which the controller will health check "
+                "replicas. Uses a default if null."
+            ),
+            update_type=DeploymentOptionUpdateType.NeedsReconfigure,
+        ),
+    ] = DEFAULT_HEALTH_CHECK_PERIOD_S
+    health_check_timeout_s: Annotated[
+        PositiveFloat,
+        Field(
+            description=(
+                "Timeout that the controller will wait for a response "
+                "from the replica's health check before marking it "
+                "unhealthy. Uses a default if null."
+            ),
+            update_type=DeploymentOptionUpdateType.NeedsReconfigure,
+        ),
+    ] = DEFAULT_HEALTH_CHECK_TIMEOUT_S
+    ray_actor_options: Annotated[
+        RayActorOptionsConfig,
+        Field(
+            description="Options set for each replica actor.",
+            update_type=DeploymentOptionUpdateType.HeavyWeight,
+        ),
+    ] = RayActorOptionsConfig()
+    placement_group_bundles: Annotated[
+        Optional[List[Dict[str, float]]],
+        Field(
+            description=(
+                "Define a set of placement group bundles to be scheduled *for each "
+                "replica* of this deployment. The replica actor will be scheduled in "
+                "the first bundle provided, so the resources specified in "
+                "`ray_actor_options` must be a subset of the first bundle's resources. "
+                "All actors and tasks created by the replica actor will be scheduled "
+                "in the placement group by default "
+                "(`placement_group_capture_child_tasks` is set to True)."
+            ),
+            update_type=DeploymentOptionUpdateType.HeavyWeight,
+        ),
+    ] = None
+    placement_group_strategy: Annotated[
+        Optional[PlacementGroupStrategy],
+        Field(
+            description=(
+                "Strategy to use for the replica placement group "
+                "specified via `placement_group_bundles`. Defaults to `PACK`."
+            ),
+            update_type=DeploymentOptionUpdateType.HeavyWeight,
+        ),
+    ] = None
+    max_replicas_per_node: Annotated[
+        Optional[int],
+        Field(
+            description=(
+                "[EXPERIMENTAL] The max number of deployment replicas can "
+                "run on a single node. Valid values are None (no limitation) "
+                "or an integer in the range of [1, 100]. "
+                "Defaults to no limitation."
+            ),
+            ge=1,
+            le=MAX_REPLICAS_PER_NODE_MAX_VALUE,
+            update_type=DeploymentOptionUpdateType.HeavyWeight,
+        ),
+    ] = None
+
+    @validator("user_config", always=True)
+    def user_config_json_serializable(cls, v):
+        if isinstance(v, bytes):
+            return v
+        if v is not None:
+            try:
+                json.dumps(v)
+            except TypeError as e:
+                raise ValueError(f"user_config is not JSON-serializable: {str(e)}.")
+
+        return v
 
 
 @PublicAPI(stability="stable")

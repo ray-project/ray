@@ -7,7 +7,7 @@ from typing import Any, Dict, Optional, Union
 import ray
 import ray.util.serialization_addons
 from ray.serve._private.common import DeploymentID
-from ray.serve._private.config import DeploymentConfig, ReplicaConfig
+from ray.serve._private.config import InternalDeploymentConfig, ReplicaInitInfo
 from ray.serve._private.constants import SERVE_LOGGER_NAME
 from ray.serve._private.deployment_info import DeploymentInfo
 from ray.serve.schema import ServeApplicationSchema
@@ -17,9 +17,9 @@ logger = logging.getLogger(SERVE_LOGGER_NAME)
 
 def get_deploy_args(
     name: str,
-    replica_config: ReplicaConfig,
+    replica_config: ReplicaInitInfo,
     ingress: bool = False,
-    deployment_config: Optional[Union[DeploymentConfig, Dict[str, Any]]] = None,
+    deployment_config: Optional[Union[InternalDeploymentConfig, Dict[str, Any]]] = None,
     version: Optional[str] = None,
     route_prefix: Optional[str] = None,
     docs_path: Optional[str] = None,
@@ -43,8 +43,8 @@ def get_deploy_args(
         replica_config.ray_actor_options["runtime_env"] = curr_job_env
 
     if isinstance(deployment_config, dict):
-        deployment_config = DeploymentConfig.parse_obj(deployment_config)
-    elif not isinstance(deployment_config, DeploymentConfig):
+        deployment_config = InternalDeploymentConfig.parse_obj(deployment_config)
+    elif not isinstance(deployment_config, InternalDeploymentConfig):
         raise TypeError("config must be a DeploymentConfig or a dictionary.")
 
     deployment_config.version = version
@@ -77,9 +77,11 @@ def deploy_args_to_deployment_info(
     constructs a DeploymentInfo object.
     """
 
-    deployment_config = DeploymentConfig.from_proto_bytes(deployment_config_proto_bytes)
+    deployment_config = InternalDeploymentConfig.from_proto_bytes(
+        deployment_config_proto_bytes
+    )
     version = deployment_config.version
-    replica_config = ReplicaConfig.from_proto_bytes(
+    replica_config = ReplicaInitInfo.from_proto_bytes(
         replica_config_proto_bytes, deployment_config.needs_pickle()
     )
 

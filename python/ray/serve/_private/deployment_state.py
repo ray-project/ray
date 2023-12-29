@@ -31,7 +31,7 @@ from ray.serve._private.common import (
     ReplicaTag,
     RunningReplicaInfo,
 )
-from ray.serve._private.config import DeploymentConfig
+from ray.serve._private.config import InternalDeploymentConfig
 from ray.serve._private.constants import (
     MAX_DEPLOYMENT_CONSTRUCTOR_RETRY_COUNT,
     RAY_SERVE_FORCE_STOP_UNHEALTHY_REPLICAS,
@@ -313,7 +313,7 @@ class ActorReplicaWrapper:
         return self._version
 
     @property
-    def deployment_config(self) -> DeploymentConfig:
+    def deployment_config(self) -> InternalDeploymentConfig:
         """Deployment config. This can return an incorrect config during state recovery.
 
         If the controller hasn't yet recovered the up-to-date version
@@ -2570,9 +2570,7 @@ class DeploymentStateManager:
                 status=status_info.status,
                 status_trigger=status_info.status_trigger,
                 message=status_info.message,
-                deployment_config=_deployment_info_to_schema(
-                    id.name, self.get_deployment(id)
-                ),
+                deployment_config=_deployment_info_to_schema(self.get_deployment(id)),
                 replicas=self._deployment_states[id].list_replica_details(),
             )
 

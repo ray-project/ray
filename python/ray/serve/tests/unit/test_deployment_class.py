@@ -6,7 +6,7 @@ from typing import Dict, List
 import pytest
 
 from ray import serve
-from ray.serve._private.config import DeploymentConfig
+from ray.serve._private.config import InternalDeploymentConfig
 from ray.serve.deployment import deployment_to_schema, schema_to_deployment
 
 
@@ -170,7 +170,9 @@ class TestDeploymentOptions:
             pass
 
         serialized_config = f._deployment_config.to_proto_bytes()
-        deserialized_config = DeploymentConfig.from_proto_bytes(serialized_config)
+        deserialized_config = InternalDeploymentConfig.from_proto_bytes(
+            serialized_config
+        )
 
         assert deserialized_config.user_configured_option_names == set(options.keys())
 

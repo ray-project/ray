@@ -7,12 +7,12 @@ import pytest
 
 from ray import serve
 from ray._private.pydantic_compat import ValidationError
-from ray.serve.config import AutoscalingConfig
+from ray.serve._private.constants import MAX_REPLICAS_PER_NODE_MAX_VALUE
+from ray.serve.config import AutoscalingConfig, RayActorOptionsConfig
 from ray.serve.deployment import deployment_to_schema, schema_to_deployment
 from ray.serve.schema import (
-    DeploymentSchema,
+    ApplyDeploymentModel,
     LoggingConfig,
-    RayActorOptionsSchema,
     ServeApplicationSchema,
     ServeDeploySchema,
 )
@@ -99,8 +99,8 @@ def get_invalid_import_paths() -> List[str]:
     ]
 
 
-class TestRayActorOptionsSchema:
-    def get_valid_ray_actor_options_schema(self):
+class TestRayActorOptionsConfig:
+    def get_valid_ray_actor_options_config(self):
         return {
             "runtime_env": {
                 "working_dir": TEST_MODULE_PINNED_URI,
@@ -114,10 +114,10 @@ class TestRayActorOptionsSchema:
         }
 
     def test_valid_ray_actor_options_schema(self):
-        # Ensure a valid RayActorOptionsSchema can be generated
+        # Ensure a valid BaseRayActorOptionsModel can be generated
 
-        ray_actor_options_schema = self.get_valid_ray_actor_options_schema()
-        RayActorOptionsSchema.parse_obj(ray_actor_options_schema)
+        ray_actor_options_schema = self.get_valid_ray_actor_options_config()
+        RayActorOptionsConfig.parse_obj(ray_actor_options_schema)
 
     def test_ge_zero_ray_actor_options_schema(self):
         # Ensure ValidationError is raised when any fields that must be greater
@@ -126,7 +126,7 @@ class TestRayActorOptionsSchema:
         ge_zero_fields = ["num_cpus", "num_gpus", "memory", "object_store_memory"]
         for field in ge_zero_fields:
             with pytest.raises(ValidationError):
-                RayActorOptionsSchema.parse_obj({field: -1})
+                RayActorOptionsConfig.parse_obj({field: -1})
 
     @pytest.mark.parametrize("env", get_valid_runtime_envs())
     def test_ray_actor_options_valid_runtime_env(self, env):
@@ -134,12 +134,12 @@ class TestRayActorOptionsSchema:
 
         ray_actor_options_schema = self.get_valid_ray_actor_options_schema()
         ray_actor_options_schema["runtime_env"] = env
-        schema = RayActorOptionsSchema.parse_obj(ray_actor_options_schema)
+        schema = RayActorOptionsConfig.parse_obj(ray_actor_options_schema)
 
         original_runtime_env = copy.deepcopy(schema.runtime_env)
         # Make sure "working_dir" is only added once.
         for _ in range(5):
-            schema = RayActorOptionsSchema.parse_obj(schema)
+            schema = RayActorOptionsConfig.parse_obj(schema)
             assert schema.runtime_env == original_runtime_env
 
     @pytest.mark.parametrize("env", get_invalid_runtime_envs())
@@ -149,7 +149,7 @@ class TestRayActorOptionsSchema:
         ray_actor_options_schema = self.get_valid_ray_actor_options_schema()
         ray_actor_options_schema["runtime_env"] = env
         with pytest.raises(ValueError):
-            RayActorOptionsSchema.parse_obj(ray_actor_options_schema)
+            RayActorOptionsConfig.parse_obj(ray_actor_options_schema)
 
     def test_extra_fields_invalid_ray_actor_options(self):
         # Undefined fields should be forbidden in the schema
@@ -165,32 +165,32 @@ class TestRayActorOptionsSchema:
         }
 
         # Schema should be createable with valid fields
-        RayActorOptionsSchema.parse_obj(ray_actor_options_schema)
+        RayActorOptionsConfig.parse_obj(ray_actor_options_schema)
 
         # Schema should NOT raise error when extra field is included
         ray_actor_options_schema["extra_field"] = None
-        RayActorOptionsSchema.parse_obj(ray_actor_options_schema)
+        RayActorOptionsConfig.parse_obj(ray_actor_options_schema)
 
     def test_dict_defaults_ray_actor_options(self):
         # Dictionary fields should have empty dictionaries as defaults, not None
 
         ray_actor_options_schema = {}
-        schema = RayActorOptionsSchema.parse_obj(ray_actor_options_schema)
+        schema = RayActorOptionsConfig.parse_obj(ray_actor_options_schema)
         d = schema.dict()
         assert d["runtime_env"] == {}
         assert d["resources"] == {}
 
 
-class TestDeploymentSchema:
+class TestApplyServeDeploymentModel:
     def get_minimal_deployment_schema(self):
-        # Generate a DeploymentSchema with the fewest possible attributes set
+        # Generate a ApplyServeDeploymentModel with the fewest possible attributes set
 
         return {"name": "deep"}
 
     def test_valid_deployment_schema(self):
-        # Ensure a valid DeploymentSchema can be generated
+        # Ensure a valid ApplyServeDeploymentModel can be generated
 
-        deployment_schema = {
+        apply_deployment_model = {
             "name": "shallow",
             "num_replicas": 2,
             "route_prefix": "/shallow",
@@ -215,7 +215,7 @@ class TestDeploymentSchema:
             },
         }
 
-        DeploymentSchema.parse_obj(deployment_schema)
+        ApplyDeploymentModel.parse_obj(apply_deployment_model)
 
     def test_gt_zero_deployment_schema(self):
         # Ensure ValidationError is raised when any fields that must be greater
@@ -232,7 +232,7 @@ class TestDeploymentSchema:
         for field in gt_zero_fields:
             deployment_schema[field] = 0
             with pytest.raises(ValidationError):
-                DeploymentSchema.parse_obj(deployment_schema)
+                ApplyDeploymentModel.parse_obj(deployment_schema)
             deployment_schema[field] = None
 
     def test_ge_zero_deployment_schema(self):
@@ -249,7 +249,7 @@ class TestDeploymentSchema:
         for field in ge_zero_fields:
             deployment_schema[field] = -1
             with pytest.raises(ValidationError):
-                DeploymentSchema.parse_obj(deployment_schema)
+                ApplyDeploymentModel.parse_obj(deployment_schema)
             deployment_schema[field] = None
 
     def test_route_prefix(self):
@@ -260,30 +260,30 @@ class TestDeploymentSchema:
         # route_prefix must start with a "/"
         deployment_schema["route_prefix"] = "hello/world"
         with pytest.raises(ValueError):
-            DeploymentSchema.parse_obj(deployment_schema)
+            ApplyDeploymentModel.parse_obj(deployment_schema)
 
         # route_prefix must end with a "/"
         deployment_schema["route_prefix"] = "/hello/world/"
         with pytest.raises(ValueError):
-            DeploymentSchema.parse_obj(deployment_schema)
+            ApplyDeploymentModel.parse_obj(deployment_schema)
 
         # route_prefix cannot contain wildcards, meaning it can't have
         # "{" or "}"
         deployment_schema["route_prefix"] = "/hello/{adjective}/world/"
         with pytest.raises(ValueError):
-            DeploymentSchema.parse_obj(deployment_schema)
+            ApplyDeploymentModel.parse_obj(deployment_schema)
 
         # Ensure a valid route_prefix works
         deployment_schema["route_prefix"] = "/hello/wonderful/world"
-        DeploymentSchema.parse_obj(deployment_schema)
+        ApplyDeploymentModel.parse_obj(deployment_schema)
 
         # Ensure route_prefix of "/" works
         deployment_schema["route_prefix"] = "/"
-        DeploymentSchema.parse_obj(deployment_schema)
+        ApplyDeploymentModel.parse_obj(deployment_schema)
 
         # Ensure route_prefix of None works
         deployment_schema["route_prefix"] = None
-        DeploymentSchema.parse_obj(deployment_schema)
+        ApplyDeploymentModel.parse_obj(deployment_schema)
 
     def test_mutually_exclusive_num_replicas_and_autoscaling_config(self):
         # num_replicas and autoscaling_config cannot be set at the same time
@@ -291,16 +291,33 @@ class TestDeploymentSchema:
 
         deployment_schema["num_replicas"] = 5
         deployment_schema["autoscaling_config"] = None
-        DeploymentSchema.parse_obj(deployment_schema)
+        ApplyDeploymentModel.parse_obj(deployment_schema)
 
         deployment_schema["num_replicas"] = None
         deployment_schema["autoscaling_config"] = AutoscalingConfig().dict()
-        DeploymentSchema.parse_obj(deployment_schema)
+        ApplyDeploymentModel.parse_obj(deployment_schema)
 
         deployment_schema["num_replicas"] = 5
         deployment_schema["autoscaling_config"] = AutoscalingConfig().dict()
         with pytest.raises(ValueError):
-            DeploymentSchema.parse_obj(deployment_schema)
+            ApplyDeploymentModel.parse_obj(deployment_schema)
+
+    @pytest.mark.parametrize("env", get_valid_runtime_envs())
+    def test_valid_runtime_env(self, env):
+        # Test valid runtime_env configurations
+
+        deployment_schema = self.get_minimal_deployment_schema()
+        deployment_schema["ray_actor_options"] = {"runtime_env": env}
+        ApplyDeploymentModel.parse_obj(deployment_schema)
+
+    @pytest.mark.parametrize("env", get_invalid_runtime_envs())
+    def test_invalid_runtime_env(self, env):
+        # Test invalid runtime_env configurations
+
+        deployment_schema = self.get_minimal_deployment_schema()
+        deployment_schema["ray_actor_options"] = {"runtime_env": env}
+        with pytest.raises(ValueError):
+            ApplyDeploymentModel.parse_obj(deployment_schema)
 
     def test_extra_fields_invalid_deployment_schema(self):
         # Undefined fields should be forbidden in the schema
@@ -308,11 +325,11 @@ class TestDeploymentSchema:
         deployment_schema = self.get_minimal_deployment_schema()
 
         # Schema should be createable with valid fields
-        DeploymentSchema.parse_obj(deployment_schema)
+        ApplyDeploymentModel.parse_obj(deployment_schema)
 
         # Schema should NOT raise error when extra field is included
         deployment_schema["extra_field"] = None
-        DeploymentSchema.parse_obj(deployment_schema)
+        ApplyDeploymentModel.parse_obj(deployment_schema)
 
     @pytest.mark.parametrize(
         "option",
@@ -339,7 +356,39 @@ class TestDeploymentSchema:
             deployment_options["num_replicas"] = 5
 
         # Schema should be created without error.
-        DeploymentSchema.parse_obj(deployment_options)
+        ApplyDeploymentModel.parse_obj(deployment_options)
+
+    def test_max_replicas_per_node(self):
+        # Max replicas per node should be a positive number less than or
+        # equal to MAX_REPLICAS_PER_NODE_MAX_VALUE
+
+        config = self.get_minimal_deployment_schema()
+        config["max_replicas_per_node"] = 10
+
+        # 10 is a valid value for max replicas per node
+        ApplyDeploymentModel.parse_obj(config)
+
+        # A non-positive number is invalid
+        config["max_replicas_per_node"] = 0
+        with pytest.raises(ValidationError):
+            ApplyDeploymentModel.parse_obj(config)
+
+        # Any value exceeding MAX_REPLICAS_PER_NODE_MAX_VALUE is invalid
+        config["max_replicas_per_node"] = MAX_REPLICAS_PER_NODE_MAX_VALUE + 1
+        with pytest.raises(ValidationError):
+            ApplyDeploymentModel.parse_obj(config)
+
+    def test_placement_group_strategy(self):
+        config = self.get_minimal_deployment_schema()
+        config["placement_group_strategy"] = "PACK"
+
+        # PACK is valid
+        ApplyDeploymentModel.parse_obj(config)
+
+        # FAKE_NEWS is invalid
+        config["placement_group_strategy"] = "FAKE_NEWS"
+        with pytest.raises(ValidationError):
+            ApplyDeploymentModel.parse_obj(config)
 
 
 class TestServeApplicationSchema:
