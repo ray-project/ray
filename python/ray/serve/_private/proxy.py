@@ -1039,17 +1039,22 @@ class HTTPProxy(GenericProxy):
         finally:
             if not proxy_asgi_receive_task.done():
                 proxy_asgi_receive_task.cancel()
-            else:
-                # If the server disconnects, status_code is set above from the
-                # disconnect message. Otherwise the disconnect code comes from
-                # a client message via the receive interface.
-                if (
-                    status is None
-                    and proxy_request.request_type == "websocket"
-                    and proxy_asgi_receive_task.exception() is None
-                ):
+
+            # If the server disconnects, status_code can be set above from the
+            # disconnect message. but it is not guaranteed.
+            # If client disconnects, the disconnect code comes from
+            # a client message via the receive interface, but is is not guaranteed.
+            if status is None and proxy_request.request_type == "websocket":
+                if not proxy_asgi_receive_task.cancelled:
+                    # The disconnect message is sent from the client.
                     status = ResponseStatus(
                         code=str(proxy_asgi_receive_task.result()),
+                        is_error=True,
+                    )
+                else:
+                    # The server disconnect without sending a disconnect message.
+                    status = ResponseStatus(
+                        code="1000",  # [Sihan] is there a better code for this?
                         is_error=True,
                     )
 
