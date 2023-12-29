@@ -107,7 +107,7 @@ def test_job(podman_docker_cluster):
         "job",
         "submit",
         "--runtime-env-json",
-        '{"container": {"image": "rayproject/ray:2.9.0-py311"}}',
+        f'{{"container": {{"image": {NESTED_IMAGE_NAME}}}}}',
         "--",
         "python",
         "-V",
