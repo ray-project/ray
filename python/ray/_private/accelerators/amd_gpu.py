@@ -111,6 +111,7 @@ class AMDGPUAcceleratorManager(AcceleratorManager):
             AMDGPUAcceleratorManager.get_visible_accelerator_ids_env_var()
         ] = ",".join([str(i) for i in visible_amd_devices])
 
+    @staticmethod
     def _get_amd_pci_ids() -> Dict[str, Any]:
         """Get the list of GPUs IDs in JSON format
         Example:
