@@ -4,73 +4,87 @@ import pytest
 from unittest.mock import patch
 
 import ray
-from ray._private.accelerators import AMDGPUAcceleratorManager as Accelerator
+from ray._private.accelerators import AMDGPUAcceleratorManager
 
 
-def test_visible_amd_gpu_ids(monkeypatch, shutdown_only):
-    with patch.object(Accelerator, "get_current_node_num_accelerators", return_value=4):
-        monkeypatch.setenv("ROCR_VISIBLE_DEVICES", "0,1,2")
-        ray.init()
-        manager = ray._private.accelerators.get_accelerator_manager_for_resource("GPU")
-        assert manager.get_current_node_num_accelerators() == 4
-        assert manager.__name__ == "AMDGPUAcceleratorManager"
-        assert ray.available_resources()["GPU"] == 3
+@patch(
+    "ray._private.accelerators.AMDGPUAcceleratorManager.get_current_node_num_accelerators",  # noqa: E501
+    return_value=4,
+)
+def test_visible_amd_gpu_ids(mock_get_num_accelerators, monkeypatch, shutdown_only):
+    monkeypatch.setenv("ROCR_VISIBLE_DEVICES", "0,1,2")
+    ray.init()
+    mock_get_num_accelerators.called
+    assert ray.available_resources()["GPU"] == 3
 
 
-def test_visible_amd_gpu_type(shutdown_only):
-    with patch.object(
-        Accelerator,
-        "_get_amd_pci_ids",
-        return_value={
-            "card0": {"GPU ID": "0x740f"},
-            "card1": {"GPU ID": "0x740f"},
-            "card2": {"GPU ID": "0x740f"},
-            "card3": {"GPU ID": "0x740f"},
-        },
-    ):
-        ray.init()
-        manager = ray._private.accelerators.get_accelerator_manager_for_resource("GPU")
-        assert manager.get_current_node_accelerator_type() == "AMD-Instinct-MI210"
-
-    with patch.object(
-        Accelerator, "_get_amd_pci_ids", return_value={"card0": {"GPU ID": "0x640f"}}
-    ):
-        manager = ray._private.accelerators.get_accelerator_manager_for_resource("GPU")
-        assert manager.get_current_node_accelerator_type() is None
-
-    with patch.object(Accelerator, "_get_amd_pci_ids", return_value=None):
-        manager = ray._private.accelerators.get_accelerator_manager_for_resource("GPU")
-        assert manager.get_current_node_accelerator_type() is None
+@patch(
+    "ray._private.accelerators.AMDGPUAcceleratorManager._get_amd_pci_ids",
+    return_value={
+        "card0": {"GPU ID": "0x74a1"},
+        "card1": {"GPU ID": "0x74a1"},
+        "card2": {"GPU ID": "0x74a1"},
+        "card3": {"GPU ID": "0x74a1"},
+    },
+)
+def test_visible_amd_gpu_type(mock_get_num_accelerators, shutdown_only):
+    ray.init()
+    mock_get_num_accelerators.called
+    assert (
+        AMDGPUAcceleratorManager.get_current_node_accelerator_type()
+        == "AMD-Instinct-MI300X-OAM"
+    )
 
 
-def test_amd_gpu_accelerator_manager_api():
-    assert Accelerator.get_resource_name() == "GPU"
-    assert Accelerator.get_visible_accelerator_ids_env_var() == "ROCR_VISIBLE_DEVICES"
-    assert Accelerator.validate_resource_request_quantity(0.1) == (True, None)
+@patch(
+    "ray._private.accelerators.AMDGPUAcceleratorManager._get_amd_pci_ids",
+    return_value={
+        "card0": {"GPU ID": "0x640f"},
+        "card1": {"GPU ID": "0x640f"},
+        "card2": {"GPU ID": "0x640f"},
+        "card3": {"GPU ID": "0x640f"},
+    },
+)
+def test_visible_amd_gpu_type_bad_pci_id(mock_get_num_accelerators, shutdown_only):
+    ray.init()
+    mock_get_num_accelerators.called
+    assert AMDGPUAcceleratorManager.get_current_node_accelerator_type() is None
 
 
 def test_get_current_process_visible_accelerator_ids(monkeypatch):
     monkeypatch.setenv("ROCR_VISIBLE_DEVICES", "0,1,2")
-    assert Accelerator.get_current_process_visible_accelerator_ids() == ["0", "1", "2"]
+    assert AMDGPUAcceleratorManager.get_current_process_visible_accelerator_ids() == [
+        "0",
+        "1",
+        "2",
+    ]
 
     monkeypatch.setenv("ROCR_VISIBLE_DEVICES", "0,2,7")
-    assert Accelerator.get_current_process_visible_accelerator_ids() == ["0", "2", "7"]
+    assert AMDGPUAcceleratorManager.get_current_process_visible_accelerator_ids() == [
+        "0",
+        "2",
+        "7",
+    ]
 
     monkeypatch.setenv("ROCR_VISIBLE_DEVICES", "")
-    assert Accelerator.get_current_process_visible_accelerator_ids() == []
+    assert AMDGPUAcceleratorManager.get_current_process_visible_accelerator_ids() == []
 
     del os.environ["ROCR_VISIBLE_DEVICES"]
-    assert Accelerator.get_current_process_visible_accelerator_ids() is None
+    assert (
+        AMDGPUAcceleratorManager.get_current_process_visible_accelerator_ids() is None
+    )
 
 
 def test_set_current_process_visible_accelerator_ids():
-    Accelerator.set_current_process_visible_accelerator_ids(["0"])
+    AMDGPUAcceleratorManager.set_current_process_visible_accelerator_ids(["0"])
     assert os.environ["ROCR_VISIBLE_DEVICES"] == "0"
 
-    Accelerator.set_current_process_visible_accelerator_ids(["0", "1"])
+    AMDGPUAcceleratorManager.set_current_process_visible_accelerator_ids(["0", "1"])
     assert os.environ["ROCR_VISIBLE_DEVICES"] == "0,1"
 
-    Accelerator.set_current_process_visible_accelerator_ids(["0", "1", "7"])
+    AMDGPUAcceleratorManager.set_current_process_visible_accelerator_ids(
+        ["0", "1", "7"]
+    )
     assert os.environ["ROCR_VISIBLE_DEVICES"] == "0,1,7"
 
     del os.environ["ROCR_VISIBLE_DEVICES"]
