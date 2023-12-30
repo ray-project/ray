@@ -29,6 +29,7 @@ from ray.data._internal.compute import (
 from ray.data._internal.dataset_logger import DatasetLogger
 from ray.data._internal.execution.interfaces import TaskContext
 from ray.data._internal.lazy_block_list import LazyBlockList
+from ray.data._internal.logical.interfaces.logical_operator import LogicalOperator
 from ray.data._internal.logical.operators.from_operators import AbstractFrom
 from ray.data._internal.logical.operators.input_data_operator import InputData
 from ray.data._internal.logical.operators.read_operator import Read
@@ -121,7 +122,7 @@ class ExecutionPlan:
         self._in_stats = stats
         # A computed snapshot of some prefix of stages.
         self._snapshot_blocks = None
-        self._snapshot_operator = None
+        self._snapshot_operator: LogicalOperator = None
         self._snapshot_stats = None
         # Cache of optimized stages.
         self._last_optimized_stages = None
@@ -373,7 +374,14 @@ class ExecutionPlan:
         if self._schema is not None:
             return self._schema
 
-        if self._snapshot_blocks is None:
+        if self._snapshot_blocks is None or (
+            self._snapshot_operator is not None
+            and self._snapshot_operator.output_dependencies
+        ):
+            # There remain some operators yet to be executed.
+            # Even if a schema is already previously known, it may change,
+            # so we try executing to get the most updated schema.
+
             # TODO(swang): There are several other stage types that could
             # inherit the schema or we can compute the schema without having to
             # execute any of the dataset: limit, filter, map_batches for
@@ -640,7 +648,6 @@ class ExecutionPlan:
             self._snapshot_operator = self._logical_plan.dag
             self._snapshot_stats = stats
             self._snapshot_stats.dataset_uuid = self._dataset_uuid
-            self.last_executed_operator = self._logical_plan.dag
 
             # In the case of a read-only dataset, we replace the
             # input LazyBlockList with a copy that includes the
