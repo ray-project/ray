@@ -10,3 +10,6 @@ class RayOnSparkStartHook:
 
     def on_cluster_created(self, ray_cluster_handler):
         pass
+
+    def on_spark_job_created(self, job_group_id):
+        pass

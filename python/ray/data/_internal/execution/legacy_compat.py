@@ -5,18 +5,11 @@ It should be deleted once we fully move to the new executor backend.
 
 from typing import Iterator, Tuple
 
-import ray
 from ray.data._internal.block_list import BlockList
 from ray.data._internal.execution.interfaces import (
     Executor,
     PhysicalOperator,
     RefBundle,
-    TaskContext,
-)
-from ray.data._internal.execution.operators.input_data_buffer import InputDataBuffer
-from ray.data._internal.execution.operators.map_operator import MapOperator
-from ray.data._internal.execution.operators.map_transformer import (
-    create_map_transformer_from_block_fn,
 )
 from ray.data._internal.lazy_block_list import LazyBlockList
 from ray.data._internal.logical.interfaces.logical_plan import LogicalPlan
@@ -26,7 +19,6 @@ from ray.data._internal.logical.rules.set_read_parallelism import (
     compute_additional_split_factor,
 )
 from ray.data._internal.logical.util import record_operators_usage
-from ray.data._internal.memory_tracing import trace_allocation
 from ray.data._internal.plan import ExecutionPlan
 from ray.data._internal.planner.plan_read_op import (
     apply_output_blocks_handling_to_read_task,
@@ -34,7 +26,6 @@ from ray.data._internal.planner.plan_read_op import (
 from ray.data._internal.stats import DatasetStats
 from ray.data.block import Block, BlockMetadata, List
 from ray.data.context import DataContext
-from ray.data.datasource import ReadTask
 from ray.types import ObjectRef
 
 # Warn about tasks larger than this.
@@ -183,11 +174,8 @@ def _get_execution_dag(
         record_operators_usage(plan._logical_plan.dag)
 
     # Get DAG of physical operators and input statistics.
-    if DataContext.get_current().optimizer_enabled:
-        dag = get_execution_plan(plan._logical_plan).dag
-        stats = _get_initial_stats_from_plan(plan)
-    else:
-        raise DeprecationWarning("Execution optimizer should be enabled.")
+    dag = get_execution_plan(plan._logical_plan).dag
+    stats = _get_initial_stats_from_plan(plan)
 
     # Enforce to preserve ordering if the plan has stages required to do so, such as
     # Zip and Sort.
@@ -213,72 +201,6 @@ def _get_initial_stats_from_plan(plan: ExecutionPlan) -> DatasetStats:
         return DatasetStats(metadata={}, parent=None)
     else:
         return plan._in_stats
-
-
-def _blocks_to_input_buffer(blocks: BlockList, owns_blocks: bool) -> PhysicalOperator:
-    """Translate a block list into an InputBuffer operator.
-
-    Args:
-        blocks: The block list to translate.
-        owns_blocks: Whether we can take ownership of the input blocks.
-
-    Returns:
-        The physical operator representing the input block list.
-    """
-
-    if hasattr(blocks, "_tasks"):
-        read_tasks = blocks._tasks
-        remote_args = blocks._remote_args
-        assert all(isinstance(t, ReadTask) for t in read_tasks), read_tasks
-
-        from ray.data._internal.planner.plan_read_op import cleaned_metadata
-
-        inputs = InputDataBuffer(
-            [
-                RefBundle(
-                    [
-                        (
-                            # This isn't a proper block, but it's what we are doing
-                            # in the legacy code.
-                            ray.put(read_task),
-                            cleaned_metadata(read_task),
-                        )
-                    ],
-                    # `owns_blocks` is False, because these refs are the root of the
-                    # DAG. We shouldn't eagerly free them. Otherwise, the DAG cannot
-                    # be reconstructed.
-                    owns_blocks=False,
-                )
-                for read_task in read_tasks
-            ]
-        )
-
-        for i in inputs._input_data:
-            for b in i.blocks:
-                trace_allocation(b[0], "legacy_compat.blocks_to_input_buf[0]")
-
-        def do_read(blocks: Iterator[Block], ctx: TaskContext) -> Iterator[Block]:
-            for read_task in blocks:
-                yield from read_task()
-
-        # If the BlockList's read stage name is available, we assign it
-        # as the operator's name, which is used as the task name.
-        task_name = "Read"
-        if isinstance(blocks, LazyBlockList):
-            task_name = getattr(blocks, "_read_operator_name", task_name)
-        return MapOperator.create(
-            create_map_transformer_from_block_fn(do_read),
-            inputs,
-            name=task_name,
-            target_max_block_size=None,
-            ray_remote_args=remote_args,
-        )
-    else:
-        output = _block_list_to_bundles(blocks, owns_blocks=owns_blocks)
-        for i in output:
-            for b in i.blocks:
-                trace_allocation(b[0], "legacy_compat.blocks_to_input_buf[1]")
-        return InputDataBuffer(output)
 
 
 def _bundles_to_block_list(bundles: Iterator[RefBundle]) -> BlockList:
