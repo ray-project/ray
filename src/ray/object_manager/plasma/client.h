@@ -94,7 +94,6 @@ class PlasmaClientInterface {
   /// \param[in] metadata_size The number of bytes to copy from the metadata
   /// pointer.
   /// \param[in] num_readers The number of readers that must read and release
-  /// the object before the caller can write again.
   /// \param[out] data The mutable object buffer in plasma that can be written to.
   virtual Status ExperimentalMutableObjectWriteAcquire(const ObjectID &object_id,
                                                        int64_t data_size,
@@ -109,6 +108,12 @@ class PlasmaClientInterface {
   ///
   /// \param[in] object_id The ID of the object.
   virtual Status ExperimentalMutableObjectWriteRelease(const ObjectID &object_id) = 0;
+
+  /// Experimental method for mutable objects. Sets the error bit, causing all
+  /// future readers and writers to raise an error on acquire.
+  ///
+  /// \param[in] object_id The ID of the object.
+  virtual Status ExperimentalMutableObjectSetError(const ObjectID &object_id) = 0;
 
   /// Experimental method for mutable objects. Releases the objects, allowing them
   /// to be written again. If the caller did not previously Get the objects,
@@ -246,6 +251,8 @@ class PlasmaClient : public PlasmaClientInterface {
                                                std::shared_ptr<Buffer> *data);
 
   Status ExperimentalMutableObjectWriteRelease(const ObjectID &object_id);
+
+  Status ExperimentalMutableObjectSetError(const ObjectID &object_id);
 
   Status ExperimentalMutableObjectReadRelease(const ObjectID &object_id);
 
