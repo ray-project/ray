@@ -1,19 +1,10 @@
 export type Event = {
-  eventId: string;
-  jobId: string;
-  nodeId: string;
-  sourceType: string;
-  sourceHostname: string;
-  hostName: string;
-  sourcePid: number;
-  pid: number;
-  label: string;
+  event_id: string;
+  source_type: SourceType;
   message: string;
   timestamp: number;
-  timeStamp: number;
-  jobName: string;
-  severity: string;
-  customFields: {
+  severity: SeverityLevel;
+  custom_fields: {
     [key: string]: any;
   };
 };
@@ -22,17 +13,15 @@ export type EventRsp = {
   result: boolean;
   msg: string;
   data: {
-    jobId: string;
-    events: Event[];
+    result: Event[];
   };
 };
 
-export type EventGlobalRsp = {
-  result: boolean;
-  msg: string;
-  data: {
-    events: {
-      global: Event[];
-    };
-  };
+export type Align = "inherit" | "left" | "center" | "right" | "justify";
+
+export type Filters = {
+  sourceType: string[]; // TODO: Chao, multi-select severity level in filters button is a P1
+  severityLevel: string[]; // TODO: Chao, multi-select severity level in filters button is a P1
+  entityName: string | undefined;
+  entityId: string | undefined;
 };
