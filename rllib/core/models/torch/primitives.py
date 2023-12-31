@@ -1,4 +1,4 @@
-from typing import Callable, List, Optional, Union, Tuple
+from typing import Callable, Dict, List, Optional, Union, Tuple
 
 from ray.rllib.core.models.torch.utils import Stride2D
 from ray.rllib.models.torch.misc import (
@@ -6,7 +6,7 @@ from ray.rllib.models.torch.misc import (
     same_padding_transpose_after_stride,
     valid_padding,
 )
-from ray.rllib.models.utils import get_activation_fn
+from ray.rllib.models.utils import get_activation_fn, get_initializer_fn
 from ray.rllib.utils.framework import try_import_torch
 
 torch, nn = try_import_torch()
@@ -32,9 +32,13 @@ class TorchMLP(nn.Module):
         hidden_layer_activation: Union[str, Callable] = "relu",
         hidden_layer_use_bias: bool = True,
         hidden_layer_use_layernorm: bool = False,
+        hidden_layer_initializer: Optional[Union[str, Callable]] = None,
+        hidden_layer_initializer_config: Optional[Union[str, Callable]] = None,
         output_dim: Optional[int] = None,
         output_use_bias: bool = True,
         output_activation: Union[str, Callable] = "linear",
+        output_initielizer: Optional[Union[str, Callable]] = None,
+        output_initializer_config: Optional[Dict] = None,
     ):
         """Initialize a TorchMLP object.
 
@@ -68,7 +72,10 @@ class TorchMLP(nn.Module):
         hidden_activation = get_activation_fn(
             hidden_layer_activation, framework="torch"
         )
-
+        hidden_initializer = get_initializer_fn(
+            hidden_layer_initializer, framework="torch"
+        )
+        output_initializer = get_initializer_fn(output_initielizer, framework="torch")
         layers = []
         dims = (
             [self.input_dim]
@@ -79,13 +86,28 @@ class TorchMLP(nn.Module):
             # Whether we are already processing the last (special) output layer.
             is_output_layer = output_dim is not None and i == len(dims) - 2
 
-            layers.append(
-                nn.Linear(
-                    dims[i],
-                    dims[i + 1],
-                    bias=output_use_bias if is_output_layer else hidden_layer_use_bias,
-                )
+            layer = nn.Linear(
+                dims[i],
+                dims[i + 1],
+                bias=output_use_bias if is_output_layer else hidden_layer_use_bias,
             )
+            # Initialize layers, if necessary.
+            if is_output_layer:
+                if output_initializer:
+                    if output_initializer_config:
+                        output_initializer(layer.weight, **output_initializer_config)
+                    else:
+                        output_initializer(layer.weight)
+            else:
+                if hidden_initializer:
+                    if hidden_layer_initializer_config:
+                        hidden_initializer(
+                            layer.weight, **hidden_layer_initializer_config
+                        )
+                    else:
+                        hidden_initializer(layer.weight)
+
+            layers.append(layer)
 
             # We are still in the hidden layer section: Possibly add layernorm and
             # hidden activation.
@@ -130,6 +152,8 @@ class TorchCNN(nn.Module):
         cnn_use_bias: bool = True,
         cnn_use_layernorm: bool = False,
         cnn_activation: str = "relu",
+        cnn_initializer: Optional[Union[str, Callable]] = None,
+        cnn_initializer_config: Optional[Dict] = None,
     ):
         """Initializes a TorchCNN instance.
 
@@ -164,7 +188,7 @@ class TorchCNN(nn.Module):
         assert len(input_dims) == 3
 
         cnn_activation = get_activation_fn(cnn_activation, framework="torch")
-
+        cnn_initializer = get_initializer_fn(cnn_initializer, framework="torch")
         layers = []
 
         # Add user-specified hidden convolutional layers first
@@ -188,9 +212,16 @@ class TorchCNN(nn.Module):
             else:
                 out_size = valid_padding(in_size, kernel_size, strides)
 
-            layers.append(
-                nn.Conv2d(in_depth, out_depth, kernel_size, strides, bias=cnn_use_bias)
+            layer = nn.Conv2d(
+                in_depth, out_depth, kernel_size, strides, bias=cnn_use_bias
             )
+            if cnn_initializer:
+                if cnn_initializer_config:
+                    cnn_initializer(layer.weight, **cnn_initializer_config)
+                else:
+                    cnn_initializer_config(layer.weight)
+
+            layers.append(layer)
 
             # Layernorm.
             if cnn_use_layernorm:
@@ -236,6 +267,8 @@ class TorchCNNTranspose(nn.Module):
         cnn_transpose_use_bias: bool = True,
         cnn_transpose_activation: str = "relu",
         cnn_transpose_use_layernorm: bool = False,
+        cnn_transpose_initializer: Optional[Union[str, Callable]] = None,
+        cnn_transpose_initializer_config: Optional[Dict] = None,
     ):
         """Initializes a TorchCNNTranspose instance.
 
@@ -266,6 +299,9 @@ class TorchCNNTranspose(nn.Module):
         cnn_transpose_activation = get_activation_fn(
             cnn_transpose_activation, framework="torch"
         )
+        cnn_transpose_initializer = get_initializer_fn(
+            cnn_transpose_initializer, framework="torch"
+        )
 
         layers = []
 
@@ -295,21 +331,31 @@ class TorchCNNTranspose(nn.Module):
             # Then do the Conv2DTranspose operation
             # (now that we have padded and strided manually, w/o any more padding using
             # stride=1).
-            layers.append(
-                nn.ConvTranspose2d(
-                    in_depth,
-                    out_depth,
-                    kernel,
-                    # Force-set stride to 1 as we already took care of it.
-                    1,
-                    # Disable torch auto-padding (torch interprets the padding setting
-                    # as: dilation (==1.0) * [`kernel` - 1] - [`padding`]).
-                    padding=(k_w - 1, k_h - 1),
-                    # Last layer always uses bias (b/c has no LayerNorm, regardless of
-                    # config).
-                    bias=cnn_transpose_use_bias or is_final_layer,
-                ),
+
+            layer = nn.ConvTranspose2d(
+                in_depth,
+                out_depth,
+                kernel,
+                # Force-set stride to 1 as we already took care of it.
+                1,
+                # Disable torch auto-padding (torch interprets the padding setting
+                # as: dilation (==1.0) * [`kernel` - 1] - [`padding`]).
+                padding=(k_w - 1, k_h - 1),
+                # Last layer always uses bias (b/c has no LayerNorm, regardless of
+                # config).
+                bias=cnn_transpose_use_bias or is_final_layer,
             )
+
+            # Initialize, if necessary.
+            if cnn_transpose_initializer:
+                if cnn_transpose_initializer_config:
+                    cnn_transpose_initializer(
+                        layer.weight, **cnn_transpose_initializer_config
+                    )
+                else:
+                    cnn_transpose_initializer(layer.weight)
+
+            layers.append(layer)
             # Layernorm (never for final layer).
             if cnn_transpose_use_layernorm and not is_final_layer:
                 layers.append(nn.LayerNorm((out_depth, out_size[0], out_size[1])))

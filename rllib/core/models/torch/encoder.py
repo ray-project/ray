@@ -22,6 +22,7 @@ from ray.rllib.core.models.specs.specs_base import TensorSpec
 from ray.rllib.core.models.specs.specs_dict import SpecDict
 from ray.rllib.core.models.torch.base import TorchModel
 from ray.rllib.core.models.torch.primitives import TorchMLP, TorchCNN
+from ray.rllib.models.utils import get_initializer_fn
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.framework import try_import_torch
@@ -61,9 +62,13 @@ class TorchMLPEncoder(TorchModel, Encoder):
             hidden_layer_activation=config.hidden_layer_activation,
             hidden_layer_use_layernorm=config.hidden_layer_use_layernorm,
             hidden_layer_use_bias=config.hidden_layer_use_bias,
+            hidden_layer_initializer=config.hidden_layer_initializer,
+            hidden_layer_initializer_config=config.hidden_layer_initializer_config,
             output_dim=config.output_layer_dim,
             output_activation=config.output_layer_activation,
             output_use_bias=config.output_layer_use_bias,
+            output_initielizer=config.output_layer_initializer,
+            output_initializer_config=config.output_layer_initializer_config,
         )
 
     @override(Model)
@@ -104,6 +109,8 @@ class TorchCNNEncoder(TorchModel, Encoder):
             cnn_activation=config.cnn_activation,
             cnn_use_layernorm=config.cnn_use_layernorm,
             cnn_use_bias=config.cnn_use_bias,
+            cnn_initializer=config.cnn_initializer,
+            cnn_initializer_config=config.cnn_initializer_config,
         )
         layers.append(cnn)
 
@@ -175,6 +182,10 @@ class TorchGRUEncoder(TorchModel, Encoder):
         assert len(gru_input_dims) == 1
         gru_input_dim = gru_input_dims[0]
 
+        gru_initializer = get_initializer_fn(
+            config.hidden_initializer, framework="torch"
+        )
+
         # Create the torch GRU layer.
         self.gru = nn.GRU(
             gru_input_dim,
@@ -183,6 +194,13 @@ class TorchGRUEncoder(TorchModel, Encoder):
             batch_first=config.batch_major,
             bias=config.use_bias,
         )
+
+        # Initialize, if necessary.
+        if gru_initializer:
+            if config.hidden_initializer_config:
+                gru_initializer(self.gru.weight, **config.hidden_initializer_config)
+            else:
+                gru_initializer(self.gru.all_weights)
 
     @override(Model)
     def get_input_specs(self) -> Optional[Spec]:
@@ -276,6 +294,10 @@ class TorchLSTMEncoder(TorchModel, Encoder):
         assert len(lstm_input_dims) == 1
         lstm_input_dim = lstm_input_dims[0]
 
+        lstm_initializer = get_initializer_fn(
+            config.hidden_initializer, framework="torch"
+        )
+
         # Create the torch LSTM layer.
         self.lstm = nn.LSTM(
             lstm_input_dim,
@@ -284,6 +306,14 @@ class TorchLSTMEncoder(TorchModel, Encoder):
             batch_first=config.batch_major,
             bias=config.use_bias,
         )
+
+        if lstm_initializer:
+            if config.hidden_initializer_config:
+                lstm_initializer(
+                    self.lstm.all_weights, **config.hidden_initializer_config
+                )
+            else:
+                lstm_initializer(self.lstm.all_weights)
 
         self._state_in_out_spec = {
             "h": TensorSpec(

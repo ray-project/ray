@@ -102,9 +102,13 @@ class TorchMLPHead(TorchModel):
             hidden_layer_activation=config.hidden_layer_activation,
             hidden_layer_use_layernorm=config.hidden_layer_use_layernorm,
             hidden_layer_use_bias=config.hidden_layer_use_bias,
+            hidden_layer_initializer=config.hidden_layer_initializer,
+            hidden_layer_initializer_config=config.hidden_layer_initializer_config,
             output_dim=config.output_layer_dim,
             output_activation=config.output_layer_activation,
             output_use_bias=config.output_layer_use_bias,
+            output_initielizer=config.output_layer_initializer,
+            output_initializer_config=config.output_layer_initializer_config,
         )
 
     @override(Model)
@@ -136,9 +140,13 @@ class TorchFreeLogStdMLPHead(TorchModel):
             hidden_layer_activation=config.hidden_layer_activation,
             hidden_layer_use_layernorm=config.hidden_layer_use_layernorm,
             hidden_layer_use_bias=config.hidden_layer_use_bias,
+            hidden_layer_initializer=config.hidden_layer_initializer,
+            hidden_layer_initializer_config=config.hidden_layer_initializer_config,
             output_dim=self._half_output_dim,
             output_activation=config.output_layer_activation,
             output_use_bias=config.output_layer_use_bias,
+            output_initielizer=config.output_layer_initializer,
+            output_initializer_config=config.output_layer_initializer_config,
         )
 
         self.log_std = torch.nn.Parameter(
@@ -184,6 +192,8 @@ class TorchCNNTransposeHead(TorchModel):
             cnn_transpose_activation=config.cnn_transpose_activation,
             cnn_transpose_use_layernorm=config.cnn_transpose_use_layernorm,
             cnn_transpose_use_bias=config.cnn_transpose_use_bias,
+            cnn_transpose_initializer=config.cnn_transpose_initializer,
+            cnn_transpose_initializer_config=config.cnn_transpose_initializer_config,
         )
 
     @override(Model)
