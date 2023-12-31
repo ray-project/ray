@@ -125,7 +125,7 @@ MODEL_DEFAULTS: ModelConfigDict = {
     # Note, if `None`, the default initializer defined by `torch` or `tf2` is used.
     "post_fcnet_initializer": None,
     # Initializer configuration.
-    # This configuration is passed to the initializer defined in 
+    # This configuration is passed to the initializer defined in
     # `post_fcnet_initializer`.
     "post_fcnet_initializer_config": None,
 
