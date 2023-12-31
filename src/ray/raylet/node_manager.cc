@@ -87,43 +87,6 @@ namespace ray {
 
 namespace raylet {
 
-// A helper function to print the leased workers.
-std::string LeasedWorkersSring(
-    const absl::flat_hash_map<WorkerID, std::shared_ptr<WorkerInterface>>
-        &leased_workers) {
-  std::stringstream buffer;
-  buffer << "  @leased_workers: (";
-  for (const auto &pair : leased_workers) {
-    auto &worker = pair.second;
-    buffer << worker->WorkerId() << ", ";
-  }
-  buffer << ")";
-  return buffer.str();
-}
-
-// A helper function to print the workers in worker_pool_.
-std::string WorkerPoolString(
-    const std::vector<std::shared_ptr<WorkerInterface>> &worker_pool) {
-  std::stringstream buffer;
-  buffer << "   @worker_pool: (";
-  for (const auto &worker : worker_pool) {
-    buffer << worker->WorkerId() << ", ";
-  }
-  buffer << ")";
-  return buffer.str();
-}
-
-// Helper function to print the worker's owner worker and and node owner.
-std::string WorkerOwnerString(std::shared_ptr<WorkerInterface> &worker) {
-  std::stringstream buffer;
-  const auto owner_worker_id =
-      WorkerID::FromBinary(worker->GetOwnerAddress().worker_id());
-  const auto owner_node_id = NodeID::FromBinary(worker->GetOwnerAddress().raylet_id());
-  buffer << "leased_worker Lease " << worker->WorkerId() << " owned by "
-         << owner_worker_id << " / " << owner_node_id;
-  return buffer.str();
-}
-
 void NodeManagerConfig::AddDefaultLabels(const std::string &self_node_id) {
   std::vector<std::string> default_keys = {kLabelKeyNodeID};
 
@@ -2342,21 +2305,6 @@ std::string NodeManager::DebugString() const {
   result << "\nEvent stats:" << io_service_.stats().StatsString();
 
   result << "\nDebugString() time ms: " << (current_time_ms() - now_ms);
-  return result.str();
-}
-
-// Summarizes a Census view and tag values into a compact string, e.g.,
-// "Tag1:Value1,Tag2:Value2,Tag3:Value3".
-std::string compact_tag_string(const opencensus::stats::ViewDescriptor &view,
-                               const std::vector<std::string> &values) {
-  std::stringstream result;
-  const auto &keys = view.columns();
-  for (size_t i = 0; i < values.size(); i++) {
-    result << keys[i].name() << ":" << values[i];
-    if (i < values.size() - 1) {
-      result << ",";
-    }
-  }
   return result.str();
 }
 
