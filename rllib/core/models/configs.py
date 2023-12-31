@@ -1,7 +1,7 @@
 import abc
 from dataclasses import dataclass, field
 import functools
-from typing import Callable, List, Optional, Tuple, TYPE_CHECKING, Union
+from typing import Callable, Dict, List, Optional, Tuple, TYPE_CHECKING, Union
 
 import numpy as np
 
@@ -135,12 +135,16 @@ class _MLPConfig(ModelConfig):
     hidden_layer_use_bias: bool = True
     hidden_layer_activation: str = "relu"
     hidden_layer_use_layernorm: bool = False
+    hidden_layer_initializer: Optional[Union[str, Callable]] = None
+    hidden_layer_initializer_config: Optional[Dict] = None
 
     # Optional last output layer with - possibly - different activation and use_bias
     # settings.
     output_layer_dim: Optional[int] = None
     output_layer_use_bias: bool = True
     output_layer_activation: str = "linear"
+    output_layer_initializer: Optional[Union[str, Callable]] = None
+    output_layer_initializer_config: Optional[Dict] = None
 
     @property
     def output_dims(self):
@@ -486,6 +490,8 @@ class CNNTransposeHeadConfig(ModelConfig):
     cnn_transpose_use_bias: bool = True
     cnn_transpose_activation: str = "relu"
     cnn_transpose_use_layernorm: bool = False
+    cnn_transpose_initializer: Optional[Union[str, Callable]] = None
+    cnn_transpose_initializer_config: Optional[Dict] = None
 
     @property
     def output_dims(self):
@@ -631,6 +637,8 @@ class CNNEncoderConfig(ModelConfig):
     cnn_use_bias: bool = True
     cnn_activation: str = "relu"
     cnn_use_layernorm: bool = False
+    cnn_initializer: Optional[Union[str, Callable]] = None
+    cnn_initializer_config: Optional[Dict] = None
     flatten_at_end: bool = True
 
     @property
@@ -866,6 +874,8 @@ class RecurrentEncoderConfig(ModelConfig):
     hidden_dim: int = None
     num_layers: int = None
     batch_major: bool = True
+    hidden_initializer: Optional[Union[str, Callable]] = None
+    hidden_initializer_config: Optional[Dict] = None
     use_bias: bool = True
     tokenizer_config: ModelConfig = None
 

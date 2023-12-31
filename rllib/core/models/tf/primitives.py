@@ -1,6 +1,6 @@
-from typing import Callable, List, Optional, Tuple, Union
+from typing import Callable, Dict, List, Optional, Tuple, Union
 
-from ray.rllib.models.utils import get_activation_fn
+from ray.rllib.models.utils import get_activation_fn, get_initializer_fn
 from ray.rllib.utils.framework import try_import_tf
 
 _, tf, _ = try_import_tf()
@@ -26,9 +26,13 @@ class TfMLP(tf.keras.Model):
         hidden_layer_use_layernorm: bool = False,
         hidden_layer_use_bias: bool = True,
         hidden_layer_activation: Optional[Union[str, Callable]] = "relu",
+        hidden_layer_initializer: Optional[Union[str, Callable]] = None,
+        hidden_layer_initializer_config: Optional[Dict] = None,
         output_dim: Optional[int] = None,
         output_use_bias: bool = True,
         output_activation: Optional[Union[str, Callable]] = "linear",
+        output_initializer: Optional[Union[str, Callable]] = None,
+        output_initializer_config: Optional[Dict] = None,
     ):
         """Initialize a TfMLP object.
 
@@ -62,6 +66,9 @@ class TfMLP(tf.keras.Model):
         layers.append(tf.keras.Input(shape=(input_dim,)))
 
         hidden_activation = get_activation_fn(hidden_layer_activation, framework="tf2")
+        hidden_initializer = get_initializer_fn(
+            hidden_layer_initializer, framework="tf2"
+        )
 
         for i in range(len(hidden_layer_dims)):
             # Dense layer with activation (or w/o in case we use LayerNorm, in which
@@ -72,6 +79,13 @@ class TfMLP(tf.keras.Model):
                     activation=(
                         hidden_activation if not hidden_layer_use_layernorm else None
                     ),
+                    kernel_initializer=(
+                        hidden_initializer(**hidden_layer_initializer_config)
+                        if hidden_layer_initializer_config
+                        else hidden_initializer
+                    ),
+                    # TODO (simon): Maybe add also initialization to bias. But
+                    # bias is usually fine as a constant.
                     use_bias=hidden_layer_use_bias,
                 )
             )
@@ -82,12 +96,19 @@ class TfMLP(tf.keras.Model):
                 layers.append(tf.keras.layers.LayerNormalization(epsilon=1e-5))
                 layers.append(tf.keras.layers.Activation(hidden_activation))
 
+        output_initializer = get_initializer_fn(output_initializer, framework="tf2")
+
         if output_dim is not None:
             output_activation = get_activation_fn(output_activation, framework="tf2")
             layers.append(
                 tf.keras.layers.Dense(
                     output_dim,
                     activation=output_activation,
+                    kernel_initializer=(
+                        output_initializer(**output_initializer_config)
+                        if output_initializer_config
+                        else output_initializer
+                    ),
                     use_bias=output_use_bias,
                 )
             )
@@ -117,6 +138,8 @@ class TfCNN(tf.keras.Model):
         cnn_use_bias: bool = True,
         cnn_use_layernorm: bool = False,
         cnn_activation: Optional[str] = "relu",
+        cnn_initializer: Optional[Union[str, Callable]] = None,
+        cnn_initializer_config: Optional[Dict] = None,
     ):
         """Initializes a TfCNN instance.
 
@@ -151,6 +174,7 @@ class TfCNN(tf.keras.Model):
         assert len(input_dims) == 3
 
         cnn_activation = get_activation_fn(cnn_activation, framework="tf2")
+        cnn_initializer = get_initializer_fn(cnn_initializer, gframework="tf2")
 
         layers = []
 
@@ -174,6 +198,11 @@ class TfCNN(tf.keras.Model):
                     padding=padding,
                     use_bias=cnn_use_bias,
                     activation=None if cnn_use_layernorm else cnn_activation,
+                    kernel_initializer=(
+                        cnn_initializer(**cnn_initializer_config)
+                        if cnn_initializer_config
+                        else cnn_initializer()
+                    ),
                 )
             )
             if cnn_use_layernorm:
@@ -213,6 +242,8 @@ class TfCNNTranspose(tf.keras.Model):
         cnn_transpose_use_bias: bool = True,
         cnn_transpose_activation: Optional[str] = "relu",
         cnn_transpose_use_layernorm: bool = False,
+        cnn_transpose_initializer: Optional[Union[str, Callable]] = None,
+        cnn_transpose_initializer_config: Optional[Dict] = None,
     ):
         """Initializes a TfCNNTranspose instance.
 
@@ -243,6 +274,10 @@ class TfCNNTranspose(tf.keras.Model):
         cnn_transpose_activation = get_activation_fn(
             cnn_transpose_activation, framework="tf2"
         )
+        cnn_transpose_initializer = get_initializer_fn(
+            cnn_transpose_initializer,
+            framework="tf2",
+        )
 
         layers = []
 
@@ -264,6 +299,11 @@ class TfCNNTranspose(tf.keras.Model):
                         None
                         if cnn_transpose_use_layernorm or is_final_layer
                         else cnn_transpose_activation
+                    ),
+                    kernel_initializer=(
+                        cnn_transpose_initializer(**cnn_transpose_initializer_config)
+                        if cnn_transpose_initializer_config
+                        else cnn_transpose_initializer()
                     ),
                     # Last layer always uses bias (b/c has no LayerNorm, regardless of
                     # config).

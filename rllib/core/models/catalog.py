@@ -272,6 +272,8 @@ class Catalog:
                 input_dims=observation_space.shape,
                 recurrent_layer_type="lstm",
                 hidden_dim=model_config_dict["lstm_cell_size"],
+                hidden_initializer=model_config_dict["lstm_initializer"],
+                hidden_initializer_config=model_config_dict["lstm_initializer_config"],
                 batch_major=not model_config_dict["_time_major"],
                 num_layers=1,
                 tokenizer_config=cls.get_tokenizer_config(
@@ -297,8 +299,18 @@ class Catalog:
                     input_dims=observation_space.shape,
                     hidden_layer_dims=hidden_layer_dims,
                     hidden_layer_activation=activation,
+                    hidden_layer_initializer=model_config_dict["fcnet_initializer"],
+                    hidden_layer_initializer_config=model_config_dict[
+                        "fcnet_initializer_config"
+                    ],
                     output_layer_dim=encoder_latent_dim,
                     output_layer_activation=output_activation,
+                    output_layer_initializer=model_config_dict[
+                        "post_fcnet_initializer"
+                    ],
+                    output_layer_initializer_config=model_config_dict[
+                        "post_fcnet_initializer_config"
+                    ],
                 )
 
             # input_space is a 3D Box
@@ -317,6 +329,8 @@ class Catalog:
                     cnn_use_layernorm=model_config_dict.get(
                         "conv_use_layernorm", False
                     ),
+                    cnn_initializer=model_config_dict["conv_initializer"],
+                    cnn_initializer_config=model_config_dict["conv_initializer_config"],
                 )
             # input_space is a 2D Box
             elif (

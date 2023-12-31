@@ -23,6 +23,7 @@ from ray.rllib.core.models.tf.primitives import TfMLP, TfCNN
 from ray.rllib.core.models.specs.specs_base import Spec
 from ray.rllib.core.models.specs.specs_dict import SpecDict
 from ray.rllib.core.models.specs.specs_base import TensorSpec
+from ray.rllib.models.utils import get_initializer_fn
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.framework import try_import_tf
@@ -71,6 +72,8 @@ class TfCNNEncoder(TfModel, Encoder):
             cnn_activation=config.cnn_activation,
             cnn_use_layernorm=config.cnn_use_layernorm,
             cnn_use_bias=config.cnn_use_bias,
+            cnn_initializer=config.cnn_initializer,
+            cnn_initializer_config=config.cnn_initializer_config,
         )
         layers.append(cnn)
 
@@ -130,9 +133,13 @@ class TfMLPEncoder(Encoder, TfModel):
             hidden_layer_activation=config.hidden_layer_activation,
             hidden_layer_use_layernorm=config.hidden_layer_use_layernorm,
             hidden_layer_use_bias=config.hidden_layer_use_bias,
+            hidden_layer_initializer=config.hidden_layer_initializer,
+            hidden_layer_initializer_config=config.hidden_layer_initializer_config,
             output_dim=config.output_layer_dim,
             output_activation=config.output_layer_activation,
             output_use_bias=config.output_layer_use_bias,
+            output_initializer=config.output_layer_initializer,
+            output_initializer_config=config.output_layer_initializer_config,
         )
 
     @override(Model)
@@ -188,12 +195,19 @@ class TfGRUEncoder(TfModel, Encoder):
                 1,
             ) + tuple(config.input_dims)
 
+        gru_initializer = get_initializer_fn(config.hidden_initializer, framework="tf2")
+
         # Create the tf GRU layers.
         self.grus = []
         for _ in range(config.num_layers):
             layer = tf.keras.layers.GRU(
                 config.hidden_dim,
                 time_major=not config.batch_major,
+                kernel_initializer=(
+                    gru_initializer(**config.hidden_initializer_config)
+                    if config.hidden_initializer_config
+                    else gru_initializer()
+                ),
                 use_bias=config.use_bias,
                 return_sequences=True,
                 return_state=True,
@@ -301,12 +315,21 @@ class TfLSTMEncoder(TfModel, Encoder):
                 1,
             ) + tuple(config.input_dims)
 
+        lstm_initializer = get_initializer_fn(
+            config.hidden_initializer, framework="tf2"
+        )
+
         # Create the tf LSTM layers.
         self.lstms = []
         for _ in range(config.num_layers):
             layer = tf.keras.layers.LSTM(
                 config.hidden_dim,
                 time_major=not config.batch_major,
+                kernel_initializer=(
+                    lstm_initializer(**config.hidden_initializer_config)
+                    if config.hidden_initializer_config
+                    else lstm_initializer()
+                ),
                 use_bias=config.use_bias,
                 return_sequences=True,
                 return_state=True,

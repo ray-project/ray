@@ -14,6 +14,7 @@ from ray.rllib.core.models.specs.specs_base import Spec
 from ray.rllib.core.models.specs.specs_base import TensorSpec
 from ray.rllib.core.models.tf.base import TfModel
 from ray.rllib.core.models.tf.primitives import TfCNNTranspose, TfMLP
+from ray.rllib.models.utils import get_initializer_fn
 from ray.rllib.utils import try_import_tf
 from ray.rllib.utils.annotations import override
 
@@ -104,9 +105,13 @@ class TfMLPHead(TfModel):
             hidden_layer_activation=config.hidden_layer_activation,
             hidden_layer_use_layernorm=config.hidden_layer_use_layernorm,
             hidden_layer_use_bias=config.hidden_layer_use_bias,
+            hidden_layer_initializer=config.hidden_layer_initializer,
+            hidden_layer_initializer_config=config.hidden_layer_initializer_config,
             output_dim=config.output_layer_dim,
             output_activation=config.output_layer_activation,
             output_use_bias=config.output_layer_use_bias,
+            output_initializer=config.output_layer_initializer,
+            output_initializer_config=config.output_layer_initializer_config,
         )
 
     @override(Model)
@@ -138,9 +143,13 @@ class TfFreeLogStdMLPHead(TfModel):
             hidden_layer_activation=config.hidden_layer_activation,
             hidden_layer_use_layernorm=config.hidden_layer_use_layernorm,
             hidden_layer_use_bias=config.hidden_layer_use_bias,
+            hidden_layer_initializer=config.hidden_layer_initializer,
+            hidden_layer_initializer_config=config.hidden_layer_initializer_config,
             output_dim=self._half_output_dim,
             output_activation=config.output_layer_activation,
             output_use_bias=config.output_layer_use_bias,
+            output_initializer=config.output_initializer,
+            output_initializer_config=config.output_initializer_config,
         )
 
         self.log_std = tf.Variable(
@@ -172,12 +181,22 @@ class TfCNNTransposeHead(TfModel):
     def __init__(self, config: CNNTransposeHeadConfig) -> None:
         super().__init__(config)
 
-        # Initial, inactivated Dense layer (always w/ bias).
+        # Initial, inactivated Dense layer (always w/ bias). Use the
+        # hidden layer initializer for this layer.
+        hidden_initializer = get_initializer_fn(
+            config.hidden_layer_initializer, framework="tf2"
+        )
+
         # This layer is responsible for getting the incoming tensor into a proper
         # initial image shape (w x h x filters) for the suceeding Conv2DTranspose stack.
         self.initial_dense = tf.keras.layers.Dense(
             units=int(np.prod(config.initial_image_dims)),
             activation=None,
+            kernel_initializer=(
+                hidden_initializer(**config.hidden_layer_initializer_config)
+                if config.hidden_layer_initializer_config
+                else hidden_initializer()
+            ),
             use_bias=True,
         )
 
@@ -188,6 +207,8 @@ class TfCNNTransposeHead(TfModel):
             cnn_transpose_activation=config.cnn_transpose_activation,
             cnn_transpose_use_layernorm=config.cnn_transpose_use_layernorm,
             cnn_transpose_use_bias=config.cnn_transpose_use_bias,
+            cnn_transpose_initializer=config.cnn_transpose_initializer,
+            cnn_transpose_initializer_config=config.cnn_transpose_initializer_config,
         )
 
     @override(Model)

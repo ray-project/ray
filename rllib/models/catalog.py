@@ -73,6 +73,16 @@ MODEL_DEFAULTS: ModelConfigDict = {
     # Supported values are: "tanh", "relu", "swish" (or "silu", which is the same),
     # "linear" (or None).
     "fcnet_activation": "tanh",
+    # Initializer function or class descriptor.
+    # Supported values are the initializer names (str), classes or functions listed
+    # by the frameworks (`tf2``, `torch`). See
+    # https://pytorch.org/docs/stable/nn.init.html for `torch` and
+    # https://www.tensorflow.org/api_docs/python/tf/keras/initializers for `tf2`.
+    # Note, if `None`, the default initializer defined by `torch` or `tf2` is used.
+    "fcnet_initializer": None,
+    # Initializer configuration.
+    # This configuration is passed to the initializer defined in `fcnet_initializer`.
+    "fcnet_initializer_config": None,
 
     # VisionNetwork (tf and torch): rllib.models.tf|torch.visionnet.py
     # These are used if no custom model is specified and the input space is 2D.
@@ -85,6 +95,16 @@ MODEL_DEFAULTS: ModelConfigDict = {
     # Supported values are: "tanh", "relu", "swish" (or "silu", which is the same),
     # "linear" (or None).
     "conv_activation": "relu",
+    # Initializer function or class descriptor.
+    # Supported values are the initializer names (str), classes or functions listed
+    # by the frameworks (`tf2``, `torch`). See
+    # https://pytorch.org/docs/stable/nn.init.html for `torch` and
+    # https://www.tensorflow.org/api_docs/python/tf/keras/initializers for `tf2`.
+    # Note, if `None`, the default initializer defined by `torch` or `tf2` is used.
+    "conv_initializer": None,
+    # Initializer configuration.
+    # This configuration is passed to the initializer defined in `conv_initializer`.
+    "conv_initializer_config": None,
 
     # Some default models support a final FC stack of n Dense layers with given
     # activation:
@@ -97,6 +117,17 @@ MODEL_DEFAULTS: ModelConfigDict = {
     # (that's why it's empty by default).
     "post_fcnet_hiddens": [],
     "post_fcnet_activation": "relu",
+    # Initializer function or class descriptor.
+    # Supported values are the initializer names (str), classes or functions listed
+    # by the frameworks (`tf2``, `torch`). See
+    # https://pytorch.org/docs/stable/nn.init.html for `torch` and
+    # https://www.tensorflow.org/api_docs/python/tf/keras/initializers for `tf2`.
+    # Note, if `None`, the default initializer defined by `torch` or `tf2` is used.
+    "post_fcnet_initializer": None,
+    # Initializer configuration.
+    # This configuration is passed to the initializer defined in 
+    # `post_fcnet_initializer`.
+    "post_fcnet_initializer_config": None,
 
     # For DiagGaussian action distributions, make the second half of the model
     # outputs floating bias variables instead of state-dependent. This only
@@ -120,6 +151,16 @@ MODEL_DEFAULTS: ModelConfigDict = {
     "lstm_use_prev_action": False,
     # Whether to feed r_{t-1} to LSTM.
     "lstm_use_prev_reward": False,
+    # Initializer function or class descriptor.
+    # Supported values are the initializer names (str), classes or functions listed
+    # by the frameworks (`tf2``, `torch`). See
+    # https://pytorch.org/docs/stable/nn.init.html for `torch` and
+    # https://www.tensorflow.org/api_docs/python/tf/keras/initializers for `tf2`.
+    # Note, if `None`, the default initializer defined by `torch` or `tf2` is used.
+    "lstm_initializer": None,
+    # Initializer configuration.
+    # This configuration is passed to the initializer defined in `lstm_initializer`.
+    "lstm_initializer_config": None,
     # Whether the LSTM is time-major (TxBx..) or batch-major (BxTx..).
     "_time_major": False,
 
