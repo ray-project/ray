@@ -10,6 +10,7 @@ import logging
 app = FastAPI()
 logger = logging.getLogger("ray.serve")
 
+
 @serve.deployment(num_replicas=1)
 @serve.ingress(app)
 class APIIngress:
@@ -31,15 +32,12 @@ class APIIngress:
 
 
 @serve.deployment(
-    ray_actor_options={
-        "num_gpus": 1,
-        "num_cpus": 1
-    },
+    ray_actor_options={"num_gpus": 1, "num_cpus": 1},
     max_concurrent_queries=2,
     autoscaling_config={
         "min_replicas": 1,
         "max_replicas": 3,
-        "target_num_ongoing_requests_per_replica": 1
+        "target_num_ongoing_requests_per_replica": 1,
     },
 )
 class StableDiffusionV2:
