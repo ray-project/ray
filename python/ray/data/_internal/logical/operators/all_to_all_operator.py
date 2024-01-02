@@ -61,6 +61,7 @@ class RandomShuffle(AbstractAllToAll):
         name: str = "RandomShuffle",
         seed: Optional[int] = None,
         ray_remote_args: Optional[Dict[str, Any]] = None,
+        _debug_limit_shuffle_execution_to_num_blocks: Optional[int] = None,
     ):
         super().__init__(
             name,
@@ -72,6 +73,9 @@ class RandomShuffle(AbstractAllToAll):
             ray_remote_args=ray_remote_args,
         )
         self._seed = seed
+        self._debug_limit_shuffle_execution_to_num_blocks = (
+            _debug_limit_shuffle_execution_to_num_blocks
+        )
 
 
 class Repartition(AbstractAllToAll):
@@ -82,6 +86,7 @@ class Repartition(AbstractAllToAll):
         input_op: LogicalOperator,
         num_outputs: int,
         shuffle: bool,
+        _debug_limit_shuffle_execution_to_num_blocks: Optional[int] = None,
     ):
         if shuffle:
             sub_progress_bar_names = [
@@ -99,6 +104,9 @@ class Repartition(AbstractAllToAll):
             sub_progress_bar_names=sub_progress_bar_names,
         )
         self._shuffle = shuffle
+        self._debug_limit_shuffle_execution_to_num_blocks = (
+            _debug_limit_shuffle_execution_to_num_blocks
+        )
 
 
 class Sort(AbstractAllToAll):
@@ -108,6 +116,7 @@ class Sort(AbstractAllToAll):
         self,
         input_op: LogicalOperator,
         sort_key: SortKey,
+        _debug_limit_shuffle_execution_to_num_blocks: Optional[int] = None,
     ):
         super().__init__(
             "Sort",
@@ -119,6 +128,9 @@ class Sort(AbstractAllToAll):
             ],
         )
         self._sort_key = sort_key
+        self._debug_limit_shuffle_execution_to_num_blocks = (
+            _debug_limit_shuffle_execution_to_num_blocks
+        )
 
 
 class Aggregate(AbstractAllToAll):
@@ -129,6 +141,7 @@ class Aggregate(AbstractAllToAll):
         input_op: LogicalOperator,
         key: Optional[str],
         aggs: List[AggregateFn],
+        _debug_limit_shuffle_execution_to_num_blocks: Optional[int] = None,
     ):
         super().__init__(
             "Aggregate",
@@ -140,3 +153,6 @@ class Aggregate(AbstractAllToAll):
         )
         self._key = key
         self._aggs = aggs
+        self._debug_limit_shuffle_execution_to_num_blocks = (
+            _debug_limit_shuffle_execution_to_num_blocks
+        )

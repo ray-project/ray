@@ -1058,7 +1058,13 @@ class Dataset:
         return Dataset(plan, logical_plan)
 
     @AllToAllAPI
-    def repartition(self, num_blocks: int, *, shuffle: bool = False) -> "Dataset":
+    def repartition(
+        self,
+        num_blocks: int,
+        *,
+        shuffle: bool = False,
+        _debug_limit_shuffle_execution_to_num_blocks: Optional[int] = None,
+    ) -> "Dataset":
         """Repartition the :class:`Dataset` into exactly this number of :ref:`blocks <dataset_concept>`.
 
         This method can be useful to tune the performance of your pipeline. To learn
@@ -1103,12 +1109,21 @@ class Dataset:
 
         plan = self._plan.with_stage(RepartitionStage(num_blocks, shuffle))
 
+        if _debug_limit_shuffle_execution_to_num_blocks is not None and not shuffle:
+            raise ValueError(
+                "`_debug_limit_shuffle_execution_to_num_blocks` "
+                "may only be set if shuffle=True"
+            )
+
         logical_plan = self._logical_plan
         if logical_plan is not None:
             op = Repartition(
                 logical_plan.dag,
                 num_outputs=num_blocks,
                 shuffle=shuffle,
+                _debug_limit_shuffle_execution_to_num_blocks=(
+                    _debug_limit_shuffle_execution_to_num_blocks
+                ),
             )
             logical_plan = LogicalPlan(op)
         return Dataset(plan, logical_plan)
@@ -1119,6 +1134,7 @@ class Dataset:
         *,
         seed: Optional[int] = None,
         num_blocks: Optional[int] = None,
+        _debug_limit_shuffle_execution_to_num_blocks: Optional[int] = None,
         **ray_remote_args,
     ) -> "Dataset":
         """Randomly shuffle the rows of this :class:`Dataset`.
@@ -1165,6 +1181,9 @@ class Dataset:
                 logical_plan.dag,
                 seed=seed,
                 ray_remote_args=ray_remote_args,
+                _debug_limit_shuffle_execution_to_num_blocks=(
+                    _debug_limit_shuffle_execution_to_num_blocks
+                ),
             )
             logical_plan = LogicalPlan(op)
         return Dataset(plan, logical_plan)
@@ -1925,7 +1944,11 @@ class Dataset:
         )
 
     @AllToAllAPI
-    def groupby(self, key: Union[str, List[str], None]) -> "GroupedData":
+    def groupby(
+        self,
+        key: Union[str, List[str], None],
+        _debug_limit_shuffle_execution_to_num_blocks: Optional[int] = None,
+    ) -> "GroupedData":
         """Group rows of a :class:`Dataset` according to a column.
 
         Use this method to transform data based on a
@@ -2286,6 +2309,7 @@ class Dataset:
         self,
         key: Union[str, List[str], None] = None,
         descending: Union[bool, List[bool]] = False,
+        _debug_limit_shuffle_execution_to_num_blocks: Optional[int] = None,
     ) -> "Dataset":
         """Sort the dataset by the specified key column or key function.
 
@@ -2319,6 +2343,9 @@ class Dataset:
             op = Sort(
                 logical_plan.dag,
                 sort_key=sort_key,
+                _debug_limit_shuffle_execution_to_num_blocks=(
+                    _debug_limit_shuffle_execution_to_num_blocks
+                ),
             )
             logical_plan = LogicalPlan(op)
         return Dataset(plan, logical_plan)

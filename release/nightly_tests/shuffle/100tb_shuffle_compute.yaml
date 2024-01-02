@@ -6,11 +6,11 @@ aws:
         - DeviceName: /dev/sda1
           Ebs:
             DeleteOnTermination: true
-            VolumeSize: 3000
+            VolumeSize: 4000
         - DeviceName: /dev/sda2
           Ebs:
             DeleteOnTermination: true
-            VolumeSize: 3000
+            VolumeSize: 4000
 
 head_node_type:
     name: head_node
@@ -23,4 +23,3 @@ worker_node_types:
       min_workers: 99
       max_workers: 99
       use_spot: false
-      resources: {"cpu": 8}

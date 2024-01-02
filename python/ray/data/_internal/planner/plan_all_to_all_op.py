@@ -33,19 +33,32 @@ def plan_all_to_all_op(
         # Randomize block order does not actually compute anything, so we
         # want to inherit the upstream op's target max block size.
     elif isinstance(op, RandomShuffle):
-        fn = generate_random_shuffle_fn(op._seed, op._num_outputs, op._ray_remote_args)
+        fn = generate_random_shuffle_fn(
+            op._seed,
+            op._num_outputs,
+            op._ray_remote_args,
+            op._debug_limit_shuffle_execution_to_num_blocks,
+        )
         target_max_block_size = DataContext.get_current().target_shuffle_max_block_size
     elif isinstance(op, Repartition):
-        fn = generate_repartition_fn(op._num_outputs, op._shuffle)
+        fn = generate_repartition_fn(
+            op._num_outputs,
+            op._shuffle,
+            op._debug_limit_shuffle_execution_to_num_blocks,
+        )
         if op._shuffle:
             target_max_block_size = (
                 DataContext.get_current().target_shuffle_max_block_size
             )
     elif isinstance(op, Sort):
-        fn = generate_sort_fn(op._sort_key)
+        fn = generate_sort_fn(
+            op._sort_key, op._debug_limit_shuffle_execution_to_num_blocks
+        )
         target_max_block_size = DataContext.get_current().target_shuffle_max_block_size
     elif isinstance(op, Aggregate):
-        fn = generate_aggregate_fn(op._key, op._aggs)
+        fn = generate_aggregate_fn(
+            op._key, op._aggs, op._debug_limit_shuffle_execution_to_num_blocks
+        )
         target_max_block_size = DataContext.get_current().target_shuffle_max_block_size
     else:
         raise ValueError(f"Found unknown logical operator during planning: {op}")

@@ -21,6 +21,7 @@ def generate_random_shuffle_fn(
     seed: Optional[int],
     num_outputs: Optional[int] = None,
     ray_remote_args: Optional[Dict[str, Any]] = None,
+    _debug_limit_shuffle_execution_to_num_blocks: Optional[int] = None,
 ) -> AllToAllTransformFn:
     """Generate function to randomly shuffle each records of blocks."""
 
@@ -75,6 +76,9 @@ def generate_random_shuffle_fn(
             ctx=ctx,
             map_ray_remote_args=ray_remote_args,
             reduce_ray_remote_args=ray_remote_args,
+            _debug_limit_execution_to_num_blocks=(
+                _debug_limit_shuffle_execution_to_num_blocks
+            ),
         )
 
     return fn
