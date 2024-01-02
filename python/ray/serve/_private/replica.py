@@ -299,13 +299,9 @@ class ReplicaActor:
         **request_kwargs,
     ) -> Tuple[bytes, Any]:
         request_metadata = pickle.loads(pickled_request_metadata)
-        result = await self._user_callable_wrapper.call_user_method(
+        return await self._user_callable_wrapper.call_user_method(
             request_metadata, request_args, request_kwargs
         )
-        if request_metadata.is_grpc_request:
-            result = (request_metadata.grpc_context, result.SerializeToString())
-
-        return result
 
     async def _handle_http_request_generator(
         self,
@@ -931,6 +927,8 @@ class UserCallableWrapper:
                 # ASGI interface, but for the vanilla deployment codepath we need to
                 # send it.
                 await self.send_user_result_over_asgi(result, scope, receive, send)
+            elif request_metadata.is_grpc_request:
+                result = (request_metadata.grpc_context, result.SerializeToString())
 
             return result
 
