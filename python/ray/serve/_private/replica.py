@@ -835,7 +835,7 @@ class UserCallableWrapper:
             runner_method = None
             try:
                 runner_method = self._get_user_callable_method(
-                    request_metadata.method_name
+                    request_metadata.call_method
                 )
                 if inspect.isgeneratorfunction(
                     runner_method
@@ -909,7 +909,7 @@ class UserCallableWrapper:
         ), "HTTP requests should go through `call_user_method`."
 
         async with self._wrap_user_method_call(request_metadata):
-            user_method = self._get_user_callable_method(request_metadata.method_name)
+            user_method = self._get_user_callable_method(request_metadata.call_method)
             if request_metadata.is_grpc_request:
                 assert len(request_args) == 1 and isinstance(
                     request_args[0], gRPCRequest
