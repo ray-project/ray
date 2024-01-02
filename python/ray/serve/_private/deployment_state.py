@@ -702,7 +702,7 @@ class ActorReplicaWrapper:
             handle = ray.get_actor(self._actor_name, namespace=SERVE_NAMESPACE)
             if self._is_cross_language:
                 handle = JavaActorHandleProxy(handle)
-            self._graceful_shutdown_ref = handle.prepare_for_shutdown.remote()
+            self._graceful_shutdown_ref = handle.perform_graceful_shutdown.remote()
         except ValueError:
             # ValueError thrown from ray.get_actor means actor has already been deleted.
             pass
