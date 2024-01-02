@@ -9,6 +9,7 @@ from typing import Dict, List, Optional, Tuple
 from ray.autoscaler._private.constants import AUTOSCALER_CONSERVE_GPU_NODES
 from ray.autoscaler._private.resource_demand_scheduler import UtilizationScore
 from ray.autoscaler.v2.instance_manager.config import NodeTypeConfig
+from ray.autoscaler.v2.instance_manager.instance_manager import InstanceUtil
 from ray.autoscaler.v2.schema import NodeType
 from ray.autoscaler.v2.utils import ResourceRequestUtil
 from ray.core.generated.autoscaler_pb2 import (
@@ -103,19 +104,6 @@ class SchedulingNodeStatus(Enum):
     RAY_PENDING = "PENDING"
     # ray is already running.
     RUNNING = "RUNNING"
-
-    @staticmethod
-    def is_ray_pending(instance: Instance) -> bool:
-        """
-        Check if the instance is pending on ray.
-        """
-        return instance.status in [
-            Instance.UNKNOWN,
-            Instance.REQUESTED,
-            Instance.QUEUED,
-            Instance.ALLOCATED,
-            Instance.RAY_INSTALLING,
-        ]
 
 
 @dataclass
@@ -409,7 +397,7 @@ class ResourceDemandScheduler(IResourceScheduler):
 
             # Populate pending nodes.
             for instance in req.current_instances:
-                if not SchedulingNodeStatus.is_ray_pending(instance):
+                if not InstanceUtil.is_ray_running_reachable(instance):
                     continue
                 node_config = node_type_configs.get(instance.instance_type, None)
 
