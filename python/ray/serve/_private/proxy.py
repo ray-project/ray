@@ -1045,7 +1045,7 @@ class HTTPProxy(GenericProxy):
             # If client disconnects, the disconnect code comes from
             # a client message via the receive interface, but is is not guaranteed.
             if status is None and proxy_request.request_type == "websocket":
-                if not proxy_asgi_receive_task.cancelled:
+                if not proxy_asgi_receive_task.cancelled():
                     # The disconnect message is sent from the client.
                     status = ResponseStatus(
                         code=str(proxy_asgi_receive_task.result()),
