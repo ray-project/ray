@@ -150,15 +150,6 @@ class GenericProxy(ABC):
 
         self._node_id = node_id
 
-        # Set the controller name so that serve connects to the
-        # controller instance this proxy is running in.
-        ray.serve.context._set_internal_replica_context(
-            app_name=None,
-            deployment=None,
-            replica_tag=None,
-            servable_object=None,
-        )
-
         # Used only for displaying the route table.
         self.route_info: Dict[str, EndpointTag] = dict()
 

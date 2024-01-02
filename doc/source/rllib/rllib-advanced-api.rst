@@ -185,9 +185,10 @@ and
 Chaining Callbacks
 ~~~~~~~~~~~~~~~~~~
 
-Use the ``MultiCallbacks`` class to chaim multiple callbacks together.
+Use the :py:func:`~ray.rllib.algorithms.callbacks.make_multi_callbacks` utility to chain
+multiple callbacks together.
 
-.. autoclass:: ray.rllib.algorithms.callbacks.MultiCallbacks
+.. autofunction:: ray.rllib.algorithms.callbacks.make_multi_callbacks
 
 
 Visualizing Custom Metrics
