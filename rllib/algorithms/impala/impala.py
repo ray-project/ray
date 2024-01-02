@@ -693,7 +693,8 @@ class Impala(Algorithm):
         # all collected batches.
         train_results = self.learn_on_processed_samples()
         module_ids_to_update = set(train_results.keys()) - {ALL_MODULES}
-        additional_results = self.learner_group.additional_update(
+        print("additional_update ...")
+        additional_results = self.learner_group.async_additional_update(
             module_ids_to_update=module_ids_to_update,
             timestep=self._counters[
                 NUM_ENV_STEPS_TRAINED
@@ -710,6 +711,7 @@ class Impala(Algorithm):
         for key, res in additional_results.items():
             if key in train_results:
                 train_results[key].update(res)
+        print("done additional_update ...")
 
         # Sync worker weights (only those policies that were actually updated).
         with self._timers[SYNCH_WORKER_WEIGHTS_TIMER]:
@@ -729,6 +731,8 @@ class Impala(Algorithm):
                 timeout_seconds=self.config.worker_health_probe_timeout_s,
                 mark_healthy=True,
             )
+
+        self._counters.update(self.learner_group.get_queue_stats())
 
         if train_results:
             # Store the most recent result and return it if no new result is
@@ -1068,7 +1072,6 @@ class Impala(Algorithm):
                     NUM_AGENT_STEPS_TRAINED
                 )
 
-        self._counters.update(self.learner_group.get_in_queue_stats())
         # If there are results, reduce-mean over each individual value and return.
         if results:
             return tree.map_structure(lambda *x: np.mean(x), *results)
@@ -1243,9 +1246,11 @@ class Impala(Algorithm):
             self._counters[NUM_TRAINING_STEP_CALLS_SINCE_LAST_SYNCH_WORKER_WEIGHTS] = 0
             self._counters[NUM_SYNCH_WORKER_WEIGHTS] += 1
             weights = self.learner_group.get_weights(policy_ids)
+            # We only have a single (local) EnvRunner.
             if self.config.num_rollout_workers == 0:
                 worker = self.workers.local_worker()
                 worker.set_weights(weights)
+            # We have remote EnvRunners and a local one.
             else:
                 weights_ref = ray.put(weights)
                 self.workers.foreach_worker(
@@ -1256,8 +1261,12 @@ class Impala(Algorithm):
                 )
                 # If we have a local worker that we sample from in addition to
                 # our remote workers, we need to update its weights as well.
-                if self.config.create_env_on_local_worker:
-                    self.workers.local_worker().set_weights(weights)
+                # TODO (sven): This could be really dangerous, if users try to extract
+                #  their saved models from the local worker (instead of the
+                #  LearnerGroup) e.g. after checkpoint restoring. So do this now
+                #  regardless of an env being there or not.
+                # if self.config.create_env_on_local_worker:
+                self.workers.local_worker().set_weights(weights)
 
     def update_workers_if_necessary(
         self,
@@ -1367,10 +1376,10 @@ def _reduce_impala_results(results: List[ResultDict]) -> ResultDict:
     steps trained (on all modules).
 
     Args:
-        results: result dicts to reduce.
+        results: List of results dicts to be reduced.
 
     Returns:
-        A reduced result dict.
+        Final reduced results dict.
     """
     result = tree.map_structure(lambda *x: np.mean(x), *results)
     agent_steps_trained = sum(r[ALL_MODULES][NUM_AGENT_STEPS_TRAINED] for r in results)

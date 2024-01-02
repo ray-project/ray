@@ -36,6 +36,7 @@ import ray.cloudpickle as pickle
 from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
 from ray.rllib.algorithms.registry import ALGORITHMS_CLASS_TO_NAME as ALL_ALGORITHMS
 from ray.rllib.connectors.agent.obs_preproc import ObsPreprocessorConnector
+from ray.rllib.core.learner.learner_group import LearnerGroup
 from ray.rllib.core.rl_module.rl_module import SingleAgentRLModuleSpec
 from ray.rllib.env.env_context import EnvContext
 from ray.rllib.env.env_runner import EnvRunner
@@ -440,6 +441,9 @@ class Algorithm(Trainable, AlgorithmBase):
         # Placeholder for a local replay buffer instance.
         self.local_replay_buffer = None
 
+        # Placeholder for our LearnerGroup responsible for updating the RLModule(s).
+        self.learner_group: Optional[LearnerGroup] = None
+
         # Create a default logger creator if no logger_creator is specified
         if logger_creator is None:
             # Default logdir prefix containing the agent's name and the
@@ -703,7 +707,6 @@ class Algorithm(Trainable, AlgorithmBase):
             # Need to add back method_type in case Algorithm is restored from checkpoint
             method_config["type"] = method_type
 
-        self.learner_group = None
         if self.config._enable_new_api_stack:
             # TODO (Kourosh): This is an interim solution where policies and modules
             #  co-exist. In this world we have both policy_map and MARLModule that need

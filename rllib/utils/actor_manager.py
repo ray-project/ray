@@ -263,7 +263,7 @@ class FaultTolerantActorManager:
         self.__restored_actors = set()
         self.add_actors(actors or [])
 
-        # Maps outstanding async requests to the ids of the actors that
+        # Maps outstanding async requests to the IDs of the actor IDs that
         # are executing them.
         self.__in_flight_req_to_actor_id: Mapping[ray.ObjectRef, int] = {}
 
@@ -694,10 +694,12 @@ class FaultTolerantActorManager:
                     num_calls_to_make[i] += 1
                     limited_remote_actor_ids.append(i)
 
+        print("Calling actors from within ActorManager")
         remote_calls = self.__call_actors(
             func=limited_func,
             remote_actor_ids=limited_remote_actor_ids,
         )
+        print("Called actors from within ActorManager")
 
         # Save these as outstanding requests.
         for id, call in zip(limited_remote_actor_ids, remote_calls):

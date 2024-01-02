@@ -8,9 +8,12 @@ config = (
     # Enable new API stack and use EnvRunner.
     .experimental(_enable_new_api_stack=True)
     .environment("CartPole-v1")
-    .rollouts(env_runner_cls=SingleAgentEnvRunner)
+    .rollouts(
+        env_runner_cls=SingleAgentEnvRunner,
+        num_rollout_workers=4,
+    )
     .resources(
-        num_learner_workers=0,
+        num_learner_workers=2,
         num_gpus_per_learner_worker=0,
         num_gpus=0,
     )
@@ -28,6 +31,16 @@ stop = {
 
 
 if __name__ == "__main__":
+    #import ray
+    #ray.init()#TODO
+
+    algo = config.build_algorithm()
+    for _ in range(1000):
+        results = algo.train()
+        #print(results)
+        print(f"sampled={algo._counters['num_env_steps_sampled']} trained={algo._counters['num_env_steps_trained']} queue_ts_dropped={algo._counters['learner_group_queue_ts_dropped']} queued_ts={algo._counters['learner_group_queue_size']} queue_ts_dropped={algo._counters['learner_group_queue_ts_dropped']} actor_manager_num_outstanding_async_reqs={algo._counters['actor_manager_num_outstanding_async_reqs']}")
+    algo.stop()
+
     tuner = tune.Tuner(
         config.algo_class,
         param_space=config,

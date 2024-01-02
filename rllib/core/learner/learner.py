@@ -1159,6 +1159,11 @@ class Learner:
             A dictionary of results, in numpy format or a list of such dictionaries in
             case `reduce_fn` is None and we have more than one minibatch pass.
         """
+        #TEST
+        import time
+        print("sleeping for 10 sec")
+        time.sleep(10)
+        #END TEST
         self._check_is_built()
 
         if batch is not None:

@@ -14,6 +14,7 @@ from typing import (
 import uuid
 
 import ray
+from ray import ObjectRef
 from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
 from ray.rllib.core.learner.learner import Learner
 from ray.rllib.core.learner.reduce_result_dict_fn import _reduce_mean_results
@@ -131,14 +132,14 @@ class LearnerGroup:
         self._should_module_be_updated_fn = _default_should_module_be_updated_fn
 
         # How many timesteps had to be dropped due to a full input queue?
-        self._in_queue_ts_dropped = 0
+        #self._in_queue_ts_dropped = 0
 
         # A single local Learner.
         if not self.is_remote:
             self._learner = learner_class(config=config, module_spec=module_spec)
             self._learner.build()
             self._worker_manager = None
-            self._in_queue = []
+            #self._in_queue = []
         # N remote Learner workers.
         else:
             backend_config = _get_backend_config(learner_class)
@@ -179,17 +180,20 @@ class LearnerGroup:
                 #  an async algo, remove this restriction entirely.
                 max_remote_requests_in_flight_per_actor=3,
             )
-            # This is a list of the tags for asynchronous update requests that are
+            # This is a set of the tags for asynchronous update requests that are
             # inflight, and is used for grouping together the results of requests
             # that were sent to the workers at the same time.
             self._inflight_request_tags: Set[str] = set()
-            self._in_queue = deque(maxlen=max_queue_len)
+            #self._in_queue = deque(maxlen=max_queue_len)
 
-    def get_in_queue_stats(self) -> Dict[str, Any]:
+    def get_queue_stats(self) -> Dict[str, Any]:
         """Returns the current stats for the input queue for this learner group."""
         return {
-            "learner_group_queue_size": len(self._in_queue),
-            "learner_group_queue_ts_dropped": self._in_queue_ts_dropped,
+            #"learner_group_queue_size": len(self._in_queue),
+            "learner_group_ts_dropped": self._ts_dropped,
+            "actor_manager_num_outstanding_async_reqs": (
+                self._worker_manager.num_outstanding_async_reqs()
+            ),
         }
 
     @property
@@ -381,10 +385,19 @@ class LearnerGroup:
         # Queue the new batches.
         # If queue is full, kick out the oldest item (and thus add its
         # length to the "dropped ts" counter).
-        if len(self._in_queue) == self._in_queue.maxlen:
-            self._in_queue_ts_dropped += len(self._in_queue[0])
+        #if len(self._in_queue) == self._in_queue.maxlen:
+        #    item = self._in_queue[0]
+        #    # Batch: Measure its length.
+        #    if episodes is None:
+        #        self._in_queue_ts_dropped += len(item)
+        #    # List of Ray ObjectRefs (each object ref is a list of episodes of total
+        #    # len=`rollout_fragment_length * num_envs_per_worker`)
+        #    elif isinstance(item, ObjectRef):
+        #        self._in_queue_ts_dropped += self.config.get_rollout_fragment_length() * self.config.num_envs_per_worker
+        #    else:
+        #        self._in_queue_ts_dropped += sum(len(e) for e in item)
 
-        self._in_queue.append(batch if episodes is None else episodes)
+        #self._in_queue.append(batch if episodes is None else episodes)
 
         # Retrieve all ready results (kicked off by prior calls to this method).
         results = self._worker_manager.fetch_ready_async_reqs(
@@ -392,40 +405,54 @@ class LearnerGroup:
         )
         # Only if there are no more requests in-flight on any of the learners,
         # we can send in one new batch for sharding and parallel learning.
-        if self._worker_manager_ready():
-            count = 0
-            # TODO (sven): This probably works even without any restriction
-            #  (allowing for any arbitrary number of requests in-flight). Test with
-            #  3 first, then with unlimited, and if both show the same behavior on
-            #  an async algo, remove this restriction entirely.
-            while len(self._in_queue) > 0 and count < 3:
-                # Pull a single batch from the queue (from the left side, meaning:
-                # use the oldest one first).
-                update_tag = str(uuid.uuid4())
-                self._inflight_request_tags.add(update_tag)
-                batch_or_episodes = self._in_queue.popleft()
-                if episodes is None:
-                    self._worker_manager.foreach_actor_async(
-                        [
-                            partial(_learner_update, _batch=minibatch)
-                            for minibatch in ShardBatchIterator(batch_or_episodes, len(self._workers))
-                        ],
-                        tag=update_tag,
-                    )
-                elif batch is None:
-                    self._worker_manager.foreach_actor_async(
-                        [
-                            partial(_learner_update, _episodes=_episodes)
-                            for _episodes in ShardObjectRefIterator(batch_or_episodes, len(self._workers))
-                        ],
-                        tag=update_tag,
-                    )
-                # TODO (sven): Implement the case in which both batch and episodes might
-                #  already be provided (or figure out whether this makes sense at all).
-                else:
-                    raise NotImplementedError
 
-                count += 1
+        #if self._worker_manager_ready():
+        #count = 0
+        # TODO (sven): This probably works even without any restriction
+        #  (allowing for any arbitrary number of requests in-flight). Test with
+        #  3 first, then with unlimited, and if both show the same behavior on
+        #  an async algo, remove this restriction entirely.
+        #while len(self._in_queue) > 0:# and count < 3:
+        # Pull a single batch from the queue (from the left side, meaning:
+        # use the oldest one first).
+        update_tag = str(uuid.uuid4())
+        self._inflight_request_tags.add(update_tag)
+        batch_or_episodes = batch if episodes is None else episodes #self._in_queue.popleft()
+        if episodes is None:
+            num_sent_requests = self._worker_manager.foreach_actor_async(
+                [
+                    partial(_learner_update, _batch=minibatch)
+                    for minibatch in ShardBatchIterator(batch_or_episodes, len(self._workers))
+                ],
+                tag=update_tag,
+            )
+        elif batch is None:
+            num_sent_requests = self._worker_manager.foreach_actor_async(
+                [
+                    partial(_learner_update, _episodes=_episodes)
+                    for _episodes in ShardObjectRefIterator(batch_or_episodes, len(self._workers))
+                ],
+                tag=update_tag,
+            )
+        # TODO (sven): Implement the case in which both batch and episodes might
+        #  already be provided (or figure out whether this makes sense at all).
+        else:
+            raise NotImplementedError
+
+        #count += 1
+
+        # Some requests were dropped, record lost ts/data.
+        if num_sent_requests != len(self._workers):
+            assert num_sent_requests == 0
+            # Batch: Measure its length.
+            if episodes is None:
+                self._ts_dropped += len(batch_or_episodes)
+            # List of Ray ObjectRefs (each object ref is a list of episodes of total
+            # len=`rollout_fragment_length * num_envs_per_worker`)
+            elif isinstance(batch_or_episodes, ObjectRef):
+                self._ts_dropped += self.config.get_rollout_fragment_length() * self.config.num_envs_per_worker
+            else:
+                self._ts_dropped += sum(len(e) for e in batch_or_episodes)
 
         # NOTE: There is a strong assumption here that the requests launched to
         # learner workers will return at the same time, since they are have a
@@ -442,6 +469,7 @@ class LearnerGroup:
             return [reduce_fn(r) for r in results]
 
     def _worker_manager_ready(self):
+        return True
         # TODO (sven): This probably works even without any restriction (allowing for
         #  any arbitrary number of requests in-flight). Test with 3 first, then with
         #  unlimited, and if both show the same behavior on an async algo, remove
@@ -469,6 +497,8 @@ class LearnerGroup:
             for same tags.
 
         """
+        print(f"doing result.get() on all {len(list(results))} results")
+
         unprocessed_results = defaultdict(list)
         for result in results:
             result_or_error = result.get()
@@ -479,6 +509,8 @@ class LearnerGroup:
                 unprocessed_results[result.tag].append(result_or_error)
             else:
                 raise result_or_error
+
+        print("done w/ result.get()")
 
         for tag in unprocessed_results.keys():
             self._inflight_request_tags.remove(tag)
@@ -516,6 +548,109 @@ class LearnerGroup:
                 return results
             # TODO(sven): Move reduce_fn to the training_step
             return reduce_fn(results)
+
+    def async_additional_update(
+        self,
+        *,
+        reduce_fn: Callable[[ResultDict], ResultDict] = _reduce_mean_results,
+        **kwargs,
+    ) -> Union[Dict[str, Any], List[Dict[str, Any]]]:
+        """TODO: sven
+        """
+
+        if self.is_local:
+            raise ValueError(
+                "Cannot call `async_update` when running in local mode with "
+                "num_workers=0."
+            )
+
+        results = self._worker_manager.foreach_actor_async(
+            [lambda w: w.additional_update(**kwargs) for _ in self._workers]
+        )
+
+
+
+
+
+
+        def _learner_update(learner, _batch=None, _episodes=None):
+            return learner.update(
+                batch=_batch,
+                episodes=_episodes,
+                minibatch_size=minibatch_size,
+                num_iters=num_iters,
+                reduce_fn=reduce_fn,
+            )
+
+        # Retrieve all ready results (kicked off by prior calls to this method).
+        results = self._worker_manager.fetch_ready_async_reqs(
+            tags=list(self._inflight_request_tags)
+        )
+        update_tag = str(uuid.uuid4())
+        self._inflight_request_tags.add(update_tag)
+        batch_or_episodes = batch if episodes is None else episodes #self._in_queue.popleft()
+        if episodes is None:
+            num_sent_requests = self._worker_manager.foreach_actor_async(
+                [
+                    partial(_learner_update, _batch=minibatch)
+                    for minibatch in ShardBatchIterator(batch_or_episodes, len(self._workers))
+                ],
+                tag=update_tag,
+            )
+        elif batch is None:
+            num_sent_requests = self._worker_manager.foreach_actor_async(
+                [
+                    partial(_learner_update, _episodes=_episodes)
+                    for _episodes in ShardObjectRefIterator(batch_or_episodes, len(self._workers))
+                ],
+                tag=update_tag,
+            )
+        # TODO (sven): Implement the case in which both batch and episodes might
+        #  already be provided (or figure out whether this makes sense at all).
+        else:
+            raise NotImplementedError
+
+        #count += 1
+
+        # Some requests were dropped, record lost ts/data.
+        if num_sent_requests != len(self._workers):
+            assert num_sent_requests == 0
+            # Batch: Measure its length.
+            if episodes is None:
+                self._ts_dropped += len(batch_or_episodes)
+            # List of Ray ObjectRefs (each object ref is a list of episodes of total
+            # len=`rollout_fragment_length * num_envs_per_worker`)
+            elif isinstance(batch_or_episodes, ObjectRef):
+                self._ts_dropped += self.config.get_rollout_fragment_length() * self.config.num_envs_per_worker
+            else:
+                self._ts_dropped += sum(len(e) for e in batch_or_episodes)
+
+        # NOTE: There is a strong assumption here that the requests launched to
+        # learner workers will return at the same time, since they are have a
+        # barrier inside of themselves for gradient aggregation. Therefore results
+        # should be a list of lists where each inner list should be the length of
+        # the number of learner workers, if results from an  non-blocking update are
+        # ready.
+        results = self._get_async_results(results)
+
+        # TODO(sven): Move reduce_fn to the training_step
+        if reduce_fn is None:
+            return results
+        else:
+            return [reduce_fn(r) for r in results]
+
+
+
+
+
+
+
+
+        results = self._get_results(results)
+        if reduce_fn is None:
+            return results
+        # TODO(sven): Move reduce_fn to the training_step
+        return reduce_fn(results)
 
     def add_module(
         self,
