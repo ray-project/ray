@@ -40,6 +40,10 @@ def setup_memory_profiler():
     reason="This test is not supposed to work for minimal installation.",
 )
 @pytest.mark.skipif(sys.platform == "win32", reason="No memray on Windows.")
+@pytest.mark.skipif(
+    sys.platform == "darwin",
+    reason="Fails on OSX, requires memray & lldb installed in osx image",
+)
 class TestMemoryProfiling:
     async def test_basic_attach_profiler(self, setup_memory_profiler, shutdown_only):
         # test basic attach profiler to running process

@@ -371,6 +371,7 @@ class Algorithm(Trainable, AlgorithmBase):
         new_algo = algorithm_class(config=config)
         # Set the new algo's state.
         new_algo.__setstate__(state)
+
         # Return the new algo.
         return new_algo
 
@@ -550,7 +551,6 @@ class Algorithm(Trainable, AlgorithmBase):
     @OverrideToImplementCustomLogic_CallToSuperRecommended
     @override(Trainable)
     def setup(self, config: AlgorithmConfig) -> None:
-
         # Setup our config: Merge the user-supplied config dict (which could
         # be a partial config dict) with the class' default.
         if not isinstance(config, AlgorithmConfig):
@@ -2351,7 +2351,6 @@ class Algorithm(Trainable, AlgorithmBase):
     def default_resource_request(
         cls, config: Union[AlgorithmConfig, PartialAlgorithmConfigDict]
     ) -> Union[Resources, PlacementGroupFactory]:
-
         # Default logic for RLlib Algorithms:
         # Create one bundle per individual worker (local or remote).
         # Use `num_cpus_for_local_worker` and `num_gpus` for the local worker and
@@ -2767,7 +2766,7 @@ class Algorithm(Trainable, AlgorithmBase):
         #  Also, what should the behavior be if e.g. some training parameter
         #  (e.g. lr) changed?
 
-        if hasattr(self, "workers") and "worker" in state:
+        if hasattr(self, "workers") and "worker" in state and state["worker"]:
             self.workers.local_worker().set_state(state["worker"])
             remote_state = ray.put(state["worker"])
             self.workers.foreach_worker(
@@ -2807,6 +2806,15 @@ class Algorithm(Trainable, AlgorithmBase):
                 logger.warning(
                     "`store_buffer_in_checkpoints` is False, but some replay "
                     "data found in state!"
+                )
+
+        if self.config._enable_new_api_stack:
+            if "learner_state_dir" in state:
+                self.learner_group.load_state(state["learner_state_dir"])
+            else:
+                logger.warning(
+                    "You configured `_enable_new_api_stack=True`, but no "
+                    "`learner_state_dir` key could be found in the state dict!"
                 )
 
         if "counters" in state:
@@ -2872,6 +2880,7 @@ class Algorithm(Trainable, AlgorithmBase):
         if (
             checkpoint_info["checkpoint_version"] > version.Version("0.1")
             and state.get("worker") is not None
+            and state.get("worker")
         ):
             worker_state = state["worker"]
 
@@ -2959,6 +2968,11 @@ class Algorithm(Trainable, AlgorithmBase):
                 or worker_state["is_policy_to_train"] == NOT_SERIALIZABLE
             ):
                 worker_state["is_policy_to_train"] = policies_to_train
+
+        if state["config"]._enable_new_api_stack:
+            state["learner_state_dir"] = os.path.join(
+                checkpoint_info["checkpoint_dir"], "learner"
+            )
 
         return state
 
@@ -3325,7 +3339,6 @@ class TrainIterCtx:
         return self.time_stop - self.time_start
 
     def should_stop(self, results):
-
         # Before first call to `step()`.
         if results is None:
             # Fail after n retries.
