@@ -453,7 +453,7 @@ class ReplicaActor:
                     await self._user_callable_wrapper.initialize_callable()
                     self._user_callable_initialized = True
                 if deployment_config:
-                    await self._user_callable_wrapper.update_user_config(
+                    await self._user_callable_wrapper.call_reconfigure(
                         deployment_config.user_config
                     )
 
@@ -489,7 +489,7 @@ class ReplicaActor:
                 self._configure_logger_and_profilers(deployment_config.logging_config)
 
             if user_config_changed:
-                await self._user_callable_wrapper.update_user_config(
+                await self._user_callable_wrapper.call_reconfigure(
                     deployment_config.user_config
                 )
 
@@ -584,29 +584,29 @@ class UserCallableWrapper:
                 f"{type(deployment_def)}."
             )
 
-        self.deployment_def = deployment_def
-        self.init_args = init_args
-        self.init_kwargs = init_kwargs
-        self.is_function = inspect.isfunction(deployment_def)
-        self.deployment_id = deployment_id
-        self.replica_tag = replica_tag
-        self.rwlock = aiorwlock.RWLock()
-        self.delete_lock = asyncio.Lock()
+        self._deployment_def = deployment_def
+        self._init_args = init_args
+        self._init_kwargs = init_kwargs
+        self._is_function = inspect.isfunction(deployment_def)
+        self._deployment_id = deployment_id
+        self._replica_tag = replica_tag
+        self._rwlock = aiorwlock.RWLock()
+        self._delete_lock = asyncio.Lock()
 
         # Will be populated in `initialize_callable`.
-        self.callable = None
-        self.user_health_check = None
+        self._callable = None
+        self._user_health_check = None
 
         # Set initial metadata for logs and metrics.
         # servable_object will be populated in `initialize_callable`.
         ray.serve.context._set_internal_replica_context(
-            app_name=self.deployment_id.app,
-            deployment=self.deployment_id.name,
-            replica_tag=self.replica_tag,
+            app_name=self._deployment_id.app,
+            deployment=self._deployment_id.name,
+            replica_tag=self._replica_tag,
             servable_object=None,
         )
 
-        self.request_counter = metrics.Counter(
+        self._request_counter = metrics.Counter(
             "serve_deployment_request_counter",
             description=(
                 "The number of queries that have been processed in this replica."
@@ -614,7 +614,7 @@ class UserCallableWrapper:
             tag_keys=("route",),
         )
 
-        self.error_counter = metrics.Counter(
+        self._error_counter = metrics.Counter(
             "serve_deployment_error_counter",
             description=(
                 "The number of exceptions that have occurred in this replica."
@@ -622,95 +622,45 @@ class UserCallableWrapper:
             tag_keys=("route",),
         )
 
-        self.restart_counter = metrics.Counter(
+        self._restart_counter = metrics.Counter(
             "serve_deployment_replica_starts",
             description=(
                 "The number of times this replica has been restarted due to failure."
             ),
         )
-        self.restart_counter.inc()
+        self._restart_counter.inc()
 
-        self.processing_latency_tracker = metrics.Histogram(
+        self._processing_latency_tracker = metrics.Histogram(
             "serve_deployment_processing_latency_ms",
             description="The latency for queries to be processed.",
             boundaries=DEFAULT_LATENCY_BUCKET_MS,
             tag_keys=("route",),
         )
 
-    async def initialize_callable(self):
-        # This closure initializes user code and finalizes replica
-        # startup. By splitting the initialization step like this,
-        # we can already access this actor before the user code
-        # has finished initializing.
-        # The supervising state manager can then wait
-        # for allocation of this replica by using the `is_allocated`
-        # method. After that, it calls `reconfigure` to trigger
-        # user code initialization.
-        logger.info(
-            "Started initializing replica.",
-            extra={"log_to_stderr": False},
-        )
+    def _get_user_callable_method(self, method_name: str) -> Callable:
+        if self._is_function:
+            return self._callable
 
-        if self.is_function:
-            self.callable = self.deployment_def
-        else:
-            # This allows deployments to define an async __init__
-            # method (mostly used for testing).
-            self.callable = self.deployment_def.__new__(self.deployment_def)
-            await sync_to_async(self.callable.__init__)(
-                *self.init_args, **self.init_kwargs
-            )
-
-            if isinstance(self.callable, ASGIAppReplicaWrapper):
-                await self.callable._run_asgi_lifespan_startup()
-
-        user_health_check = getattr(self.callable, HEALTH_CHECK_METHOD, None)
-        if not callable(user_health_check):
-
-            def user_health_check():
-                pass
-
-        self.user_health_check = sync_to_async(user_health_check)
-
-        # Setting the context again to update the servable_object.
-        ray.serve.context._set_internal_replica_context(
-            app_name=self.deployment_id.app,
-            deployment=self.deployment_id.name,
-            replica_tag=self.replica_tag,
-            servable_object=self.callable,
-        )
-        logger.info(
-            "Finished initializing replica.",
-            extra={"log_to_stderr": False},
-        )
-
-    async def check_health(self):
-        await self.user_health_check()
-
-    def get_runner_method(self, request_metadata: RequestMetadata) -> Callable:
-        method_name = request_metadata.call_method
-        if not hasattr(self.callable, method_name):
+        if not hasattr(self._callable, method_name):
             # Filter to methods that don't start with '__' prefix.
             def callable_method_filter(attr):
                 if attr.startswith("__"):
                     return False
-                elif not callable(getattr(self.callable, attr)):
+                elif not callable(getattr(self._callable, attr)):
                     return False
 
                 return True
 
-            methods = list(filter(callable_method_filter, dir(self.callable)))
+            methods = list(filter(callable_method_filter, dir(self._callable)))
             raise RayServeException(
                 f"Tried to call a method '{method_name}' "
                 "that does not exist. Available methods: "
                 f"{methods}."
             )
-        if self.is_function:
-            return self.callable
 
-        return getattr(self.callable, method_name)
+        return getattr(self._callable, method_name)
 
-    async def send_user_result_over_asgi(
+    async def _send_user_result_over_asgi(
         self, result: Any, scope: Scope, receive: Receive, send: Send
     ):
         """Handle the result from user code and send it over the ASGI interface.
@@ -724,28 +674,8 @@ class UserCallableWrapper:
         else:
             await Response(result).send(scope, receive, send)
 
-    async def update_user_config(self, user_config: Any):
-        async with self.rwlock.writer:
-            if user_config is not None:
-                if self.is_function:
-                    raise ValueError(
-                        "deployment_def must be a class to use user_config"
-                    )
-                elif not hasattr(self.callable, RECONFIGURE_METHOD):
-                    raise RayServeException(
-                        "user_config specified but deployment "
-                        + self.deployment_id
-                        + " missing "
-                        + RECONFIGURE_METHOD
-                        + " method"
-                    )
-                reconfigure_method = sync_to_async(
-                    getattr(self.callable, RECONFIGURE_METHOD)
-                )
-                await reconfigure_method(user_config)
-
     @asynccontextmanager
-    async def wrap_user_method_call(self, request_metadata: RequestMetadata):
+    async def _wrap_user_method_call(self, request_metadata: RequestMetadata):
         """Context manager that should be used to wrap user method calls.
 
         This sets up the serve request context, grabs the reader lock to avoid mutating
@@ -758,7 +688,7 @@ class UserCallableWrapper:
             ray.serve.context._RequestContext(
                 request_metadata.route,
                 request_metadata.request_id,
-                self.deployment_id.app,
+                self._deployment_id.app,
                 request_metadata.multiplexed_model_id,
                 request_metadata.grpc_context,
             )
@@ -779,7 +709,7 @@ class UserCallableWrapper:
                 ray.util.pdb._post_mortem()
 
         latency_ms = (time.time() - start_time) * 1000
-        self.processing_latency_tracker.observe(
+        self._processing_latency_tracker.observe(
             latency_ms, tags={"route": request_metadata.route}
         )
 
@@ -799,10 +729,80 @@ class UserCallableWrapper:
             extra={"serve_access_log": True},
         )
         if user_exception is None:
-            self.request_counter.inc(tags={"route": request_metadata.route})
+            self._request_counter.inc(tags={"route": request_metadata.route})
         else:
-            self.error_counter.inc(tags={"route": request_metadata.route})
+            self._error_counter.inc(tags={"route": request_metadata.route})
             raise user_exception from None
+
+    async def initialize_callable(self):
+        # This closure initializes user code and finalizes replica
+        # startup. By splitting the initialization step like this,
+        # we can already access this actor before the user code
+        # has finished initializing.
+        # The supervising state manager can then wait
+        # for allocation of this replica by using the `is_allocated`
+        # method. After that, it calls `reconfigure` to trigger
+        # user code initialization.
+        logger.info(
+            "Started initializing replica.",
+            extra={"log_to_stderr": False},
+        )
+
+        if self._is_function:
+            self._callable = self._deployment_def
+        else:
+            # This allows deployments to define an async __init__
+            # method (mostly used for testing).
+            self._callable = self._deployment_def.__new__(self._deployment_def)
+            await sync_to_async(self._callable.__init__)(
+                *self._init_args, **self._init_kwargs
+            )
+
+            if isinstance(self._callable, ASGIAppReplicaWrapper):
+                await self._callable._run_asgi_lifespan_startup()
+
+        user_health_check = getattr(self._callable, HEALTH_CHECK_METHOD, None)
+        if not callable(user_health_check):
+
+            def user_health_check():
+                pass
+
+        self._user_health_check = sync_to_async(user_health_check)
+
+        # Setting the context again to update the servable_object.
+        ray.serve.context._set_internal_replica_context(
+            app_name=self._deployment_id.app,
+            deployment=self._deployment_id.name,
+            replica_tag=self._replica_tag,
+            servable_object=self._callable,
+        )
+        logger.info(
+            "Finished initializing replica.",
+            extra={"log_to_stderr": False},
+        )
+
+    async def call_user_health_check(self):
+        await self._user_health_check()
+
+    async def call_reconfigure(self, user_config: Any):
+        async with self._rwlock.writer:
+            if user_config is not None:
+                if self._is_function:
+                    raise ValueError(
+                        "deployment_def must be a class to use user_config"
+                    )
+                elif not hasattr(self._callable, RECONFIGURE_METHOD):
+                    raise RayServeException(
+                        "user_config specified but deployment "
+                        + self._deployment_id
+                        + " missing "
+                        + RECONFIGURE_METHOD
+                        + " method"
+                    )
+                reconfigure_method = sync_to_async(
+                    getattr(self._callable, RECONFIGURE_METHOD)
+                )
+                await reconfigure_method(user_config)
 
     async def call_user_method(
         self,
@@ -815,13 +815,13 @@ class UserCallableWrapper:
         Raises any exception raised by the user code so it can be propagated as a
         `RayTaskError`.
         """
-        async with self.wrap_user_method_call(request_metadata):
+        async with self._wrap_user_method_call(request_metadata):
             if request_metadata.is_http_request:
                 # For HTTP requests we always expect (scope, receive, send) as args.
                 assert len(request_args) == 3
                 scope, receive, send = request_args
 
-                if isinstance(self.callable, ASGIAppReplicaWrapper):
+                if isinstance(self._callable, ASGIAppReplicaWrapper):
                     request_args = (scope, receive, send)
                 else:
                     request_args = (Request(scope, receive, send),)
@@ -834,7 +834,9 @@ class UserCallableWrapper:
 
             runner_method = None
             try:
-                runner_method = self.get_runner_method(request_metadata)
+                runner_method = self._get_user_callable_method(
+                    request_metadata.method_name
+                )
                 if inspect.isgeneratorfunction(
                     runner_method
                 ) or inspect.isasyncgenfunction(runner_method):
@@ -875,17 +877,17 @@ class UserCallableWrapper:
                     result = starlette.responses.Response(
                         f"Unexpected error, traceback: {e}.", status_code=500
                     )
-                    await self.send_user_result_over_asgi(result, scope, receive, send)
+                    await self._send_user_result_over_asgi(result, scope, receive, send)
 
                 raise e from None
 
             if request_metadata.is_http_request and not isinstance(
-                self.callable, ASGIAppReplicaWrapper
+                self._callable, ASGIAppReplicaWrapper
             ):
                 # For the FastAPI codepath, the response has already been sent over the
                 # ASGI interface, but for the vanilla deployment codepath we need to
                 # send it.
-                await self.send_user_result_over_asgi(result, scope, receive, send)
+                await self._send_user_result_over_asgi(result, scope, receive, send)
             elif request_metadata.is_grpc_request:
                 result = (request_metadata.grpc_context, result.SerializeToString())
 
@@ -902,12 +904,12 @@ class UserCallableWrapper:
         Raises any exception raised by the user code so it can be propagated as a
         `RayTaskError`.
         """
-        async with self.wrap_user_method_call(request_metadata):
-            assert (
-                not request_metadata.is_http_request
-            ), "HTTP requests should go through `call_user_method`."
+        assert (
+            not request_metadata.is_http_request
+        ), "HTTP requests should go through `call_user_method`."
 
-            user_method = self.get_runner_method(request_metadata)
+        async with self._wrap_user_method_call(request_metadata):
+            user_method = self._get_user_callable_method(request_metadata.method_name)
             if request_metadata.is_grpc_request:
                 assert len(request_args) == 1 and isinstance(
                     request_args[0], gRPCRequest
@@ -946,21 +948,23 @@ class UserCallableWrapper:
         We set the del method to noop after successfully calling it so the
         destructor is called only once.
         """
-        async with self.delete_lock:
+        async with self._delete_lock:
             if not hasattr(self, "callable"):
                 return
 
             try:
-                if hasattr(self.callable, "__del__"):
+                if hasattr(self._callable, "__del__"):
                     # Make sure to accept `async def __del__(self)` as well.
-                    await sync_to_async(self.callable.__del__)()
-                    setattr(self.callable, "__del__", lambda _: None)
+                    await sync_to_async(self._callable.__del__)()
+                    setattr(self._callable, "__del__", lambda _: None)
 
-                if hasattr(self.callable, "__serve_multiplex_wrapper"):
-                    await getattr(self.callable, "__serve_multiplex_wrapper").shutdown()
+                if hasattr(self._callable, "__serve_multiplex_wrapper"):
+                    await getattr(
+                        self._callable, "__serve_multiplex_wrapper"
+                    ).shutdown()
 
             except Exception as e:
                 logger.exception(f"Exception during graceful shutdown of replica: {e}")
             finally:
-                if hasattr(self.callable, "__del__"):
-                    del self.callable
+                if hasattr(self._callable, "__del__"):
+                    del self._callable
