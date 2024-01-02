@@ -94,26 +94,41 @@ def test_serve_basic(podman_docker_cluster):
 def test_serve_telemetry(podman_docker_cluster):
     """Test Serve deployment telemetry."""
 
+    import subprocess
+
     container_id = podman_docker_cluster
     cmd = ["python", "tests/test_serve_telemetry.py", "--image", NESTED_IMAGE_NAME]
-    run_in_container([cmd], container_id)
+    try:
+        run_in_container([cmd], container_id)
+    except subprocess.CalledProcessError as e:
+        print("process didn't complete successfully", e.output)
+        raise
+    ray.init()
 
 
 @pytest.mark.skipif(sys.platform != "linux", reason="Only works on Linux.")
 def test_job(podman_docker_cluster):
+    import subprocess
+
     container_id = podman_docker_cluster
+    # cmd = ["ray", "start", "--head"]
     cmd = [
         "ray",
         "job",
         "submit",
+        # "--address",
+        # "http://127.0.0.1:8265",
         "--runtime-env-json",
         f'{{"container": {{"image": {NESTED_IMAGE_NAME}}}}}',
         "--",
         "python",
         "-V",
     ]
-    outputs = run_in_container([cmd], container_id)
-    print("outputs", outputs)
+    try:
+        run_in_container([cmd], container_id)
+    except subprocess.CalledProcessError as e:
+        print("process didn't complete successfully", e.output)
+        raise
 
 
 EXPECTED_ERROR = "The 'container' field currently cannot be used " "together with"
