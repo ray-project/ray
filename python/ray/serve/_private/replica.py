@@ -67,7 +67,6 @@ from ray.serve._private.version import DeploymentVersion
 from ray.serve.config import AutoscalingConfig
 from ray.serve.deployment import Deployment
 from ray.serve.exceptions import RayServeException
-from ray.serve.grpc_util import RayServegRPCContext
 from ray.serve.schema import LoggingConfig
 
 logger = logging.getLogger(SERVE_LOGGER_NAME)
@@ -379,15 +378,7 @@ class ReplicaActor:
     ) -> AsyncGenerator[Any, None]:
         """Generator that is the entrypoint for all `stream=True` handle calls."""
         request_metadata = pickle.loads(pickled_request_metadata)
-        if request_metadata.is_grpc_request:
-            # Ensure the request args are a single gRPCRequest object.
-            assert len(request_args) == 1 and isinstance(request_args[0], gRPCRequest)
-            generator = (
-                self._user_callable_wrapper.call_user_method_with_grpc_unary_stream(
-                    request_metadata, request_args[0]
-                )
-            )
-        elif request_metadata.is_http_request:
+        if request_metadata.is_http_request:
             assert len(request_args) == 1 and isinstance(
                 request_args[0], StreamingHTTPRequest
             )
@@ -813,39 +804,6 @@ class UserCallableWrapper:
             self.error_counter.inc(tags={"route": request_metadata.route})
             raise user_exception from None
 
-    async def call_user_method_with_grpc_unary_stream(
-        self, request_metadata: RequestMetadata, request: gRPCRequest
-    ) -> AsyncGenerator[Tuple[RayServegRPCContext, bytes], None]:
-        """Call a user method that is expected to be a generator.
-
-        Deserializes gRPC request into protobuf object and pass into replica's runner
-        method. Returns a generator of serialized protobuf bytes from the replica.
-        """
-        async with self.wrap_user_method_call(request_metadata):
-            user_method = self.get_runner_method(request_metadata)
-            user_request = pickle.loads(request.grpc_user_request)
-            if GRPC_CONTEXT_ARG_NAME in inspect.signature(user_method).parameters:
-                result_generator = user_method(
-                    user_request,
-                    grpc_context=request_metadata.grpc_context,
-                )
-            else:
-                result_generator = user_method(user_request)
-            if inspect.iscoroutine(result_generator):
-                result_generator = await result_generator
-
-            if inspect.isgenerator(result_generator):
-                for result in result_generator:
-                    yield request_metadata.grpc_context, result.SerializeToString()
-            elif inspect.isasyncgen(result_generator):
-                async for result in result_generator:
-                    yield request_metadata.grpc_context, result.SerializeToString()
-            else:
-                raise TypeError(
-                    "When using `stream=True`, the called method must be a generator "
-                    f"function, but '{user_method.__name__}' is not."
-                )
-
     async def call_user_method(
         self,
         request_metadata: RequestMetadata,
@@ -948,17 +906,34 @@ class UserCallableWrapper:
             assert (
                 not request_metadata.is_http_request
             ), "HTTP requests should go through `call_user_method`."
+
             user_method = self.get_runner_method(request_metadata)
+            if request_metadata.is_grpc_request:
+                assert len(request_args) == 1 and isinstance(
+                    request_args[0], gRPCRequest
+                )
+                request_args = (pickle.loads(request_args[0].grpc_user_request),)
+                if GRPC_CONTEXT_ARG_NAME in inspect.signature(user_method).parameters:
+                    request_kwargs = {
+                        GRPC_CONTEXT_ARG_NAME: request_metadata.grpc_context
+                    }
+
             result_generator = user_method(*request_args, **request_kwargs)
             if inspect.iscoroutine(result_generator):
                 result_generator = await result_generator
 
             if inspect.isgenerator(result_generator):
                 for result in result_generator:
-                    yield result
+                    if request_metadata.is_grpc_request:
+                        yield request_metadata.grpc_context, result.SerializeToString()
+                    else:
+                        yield result
             elif inspect.isasyncgen(result_generator):
                 async for result in result_generator:
-                    yield result
+                    if request_metadata.is_grpc_request:
+                        yield request_metadata.grpc_context, result.SerializeToString()
+                    else:
+                        yield result
             else:
                 raise TypeError(
                     "When using `stream=True`, the called method must be a generator "
