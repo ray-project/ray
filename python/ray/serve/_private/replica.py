@@ -949,7 +949,7 @@ class UserCallableWrapper:
         destructor is called only once.
         """
         async with self._delete_lock:
-            if not hasattr(self, "callable"):
+            if not hasattr(self, "_callable"):
                 return
 
             try:
