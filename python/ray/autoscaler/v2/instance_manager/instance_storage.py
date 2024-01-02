@@ -191,16 +191,4 @@ class InstanceStorage:
         result = self._storage.batch_update(
             self._table_name, {}, instance_ids, expected_storage_version
         )
-
-        if result[0]:
-            for subscriber in self._status_change_subscribers:
-                subscriber.notify(
-                    [
-                        InstanceUpdateEvent(
-                            instance_id=instance_id,
-                            new_instance_status=Instance.GARBAGE_COLLECTED,
-                        )
-                        for instance_id in instance_ids
-                    ],
-                )
         return result

@@ -86,7 +86,7 @@ steps:
         --parallelism-per-worker 3
         --except-tags soft_imports,gpu_only,rllib,multinode
         --test-env=AIR_VERBOSITY=1
-    depends_on: mlbuild
+    depends_on: [ "mlbuild", "forge" ]
 
   - label: ":train: ml: tune soft import tests"
     tags: tune
@@ -95,7 +95,7 @@ steps:
       - bazel run //ci/ray_ci:test_in_docker -- //python/ray/tune/... ml
         --only-tags soft_imports 
         --build-name oss-ci-base_build
-    depends_on: oss-ci-base_build
+    depends_on: [ "oss-ci-base_build", "forge" ]
 
   - label: ":train: ml: air tests"
     tags: ml
@@ -213,6 +213,21 @@ steps:
         --only-tags ptl_v2
     depends_on: [ "mllightning2gpubuild", "forge" ]
 
+  - label: ":train: ml: :windows: tests"
+    tags:
+      - train
+    job_env: WINDOWS
+    instance_type: windows
+    commands:
+      - bash ci/ray_ci/windows/install_tools.sh
+      - bazel run //ci/ray_ci:test_in_docker -- //python/ray/train:test_windows ml
+        --build-name windowsbuild
+        --operating-system windows
+        --test-env=CI="1"
+        --test-env=RAY_CI_POST_WHEEL_TESTS="1"
+        --test-env=USERPROFILE
+    depends_on: windowsbuild
+
   - label: ":train: ml: flaky tests"
     tags: 
       - train
@@ -254,11 +269,3 @@ steps:
         --only-tags gpu,gpu_only
     depends_on: [ "mlgpubuild", "forge" ]
     soft_fail: true
-
-  - label: ":windows: train tests"
-    tags:
-      - train
-    job_env: WINDOWS
-    instance_type: windows
-    commands:
-      - bash /c/workdir/.buildkite/windows_ci.sh test_train_windows

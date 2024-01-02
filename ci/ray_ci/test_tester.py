@@ -6,7 +6,8 @@ from unittest import mock
 
 import pytest
 
-from ci.ray_ci.tester_container import TesterContainer
+from ci.ray_ci.linux_tester_container import LinuxTesterContainer
+from ci.ray_ci.windows_tester_container import WindowsTesterContainer
 from ci.ray_ci.tester import (
     _add_default_except_tags,
     _get_container,
@@ -32,13 +33,36 @@ def test_get_tag_matcher() -> None:
 
 def test_get_container() -> None:
     with mock.patch(
-        "ci.ray_ci.tester_container.TesterContainer.install_ray",
+        "ci.ray_ci.linux_tester_container.LinuxTesterContainer.install_ray",
+        return_value=None,
+    ), mock.patch(
+        "ci.ray_ci.windows_tester_container.WindowsTesterContainer.install_ray",
         return_value=None,
     ):
-        container = _get_container("core", 3, 1, 2, 0)
+        container = _get_container(
+            team="core",
+            operating_system="linux",
+            workers=3,
+            worker_id=1,
+            parallelism_per_worker=2,
+            network=None,
+            gpus=0,
+        )
+        assert isinstance(container, LinuxTesterContainer)
         assert container.docker_tag == "corebuild"
         assert container.shard_count == 6
         assert container.shard_ids == [2, 3]
+
+        container = _get_container(
+            team="serve",
+            operating_system="windows",
+            workers=3,
+            worker_id=1,
+            parallelism_per_worker=2,
+            network=None,
+            gpus=0,
+        )
+        assert isinstance(container, WindowsTesterContainer)
 
 
 def test_get_test_targets() -> None:
@@ -58,14 +82,15 @@ def test_get_test_targets() -> None:
             "subprocess.check_output",
             return_value="\n".join(test_targets).encode("utf-8"),
         ), mock.patch(
-            "ci.ray_ci.tester_container.TesterContainer.install_ray",
+            "ci.ray_ci.linux_tester_container.LinuxTesterContainer.install_ray",
             return_value=None,
         ):
             assert set(
                 _get_test_targets(
-                    TesterContainer("core"),
+                    LinuxTesterContainer("core"),
                     "targets",
                     "core",
+                    operating_system="linux",
                     yaml_dir=tmp,
                 )
             ) == {
@@ -75,9 +100,10 @@ def test_get_test_targets() -> None:
             }
 
             assert _get_test_targets(
-                TesterContainer("core"),
+                LinuxTesterContainer("core"),
                 "targets",
                 "core",
+                operating_system="linux",
                 yaml_dir=tmp,
                 get_flaky_tests=True,
             ) == [
@@ -115,12 +141,13 @@ def test_get_all_test_query() -> None:
 
 
 def test_get_flaky_test_targets() -> None:
-    _TEST_YAML = "flaky_tests: [//target]"
+    _TEST_YAML = "flaky_tests: [windows://t1, //t2]"
 
     with TemporaryDirectory() as tmp:
         with open(os.path.join(tmp, "core.tests.yml"), "w") as f:
             f.write(_TEST_YAML)
-        assert _get_flaky_test_targets("core", yaml_dir=tmp) == ["//target"]
+        assert _get_flaky_test_targets("core", "windows", yaml_dir=tmp) == ["//t1"]
+        assert _get_flaky_test_targets("core", "linux", yaml_dir=tmp) == ["//t2"]
 
 
 if __name__ == "__main__":

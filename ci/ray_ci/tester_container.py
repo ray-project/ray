@@ -1,46 +1,39 @@
 import os
+import platform
 import subprocess
 from typing import List, Optional
 
 from ci.ray_ci.utils import shard_tests, chunk_into_n
-from ci.ray_ci.linux_container import LinuxContainer
 from ci.ray_ci.utils import logger
+from ci.ray_ci.container import Container
 
 
-class TesterContainer(LinuxContainer):
+class TesterContainer(Container):
     """
     A wrapper for running tests in ray ci docker container
     """
 
     def __init__(
         self,
-        docker_tag: str,
         shard_count: int = 1,
         gpus: int = 0,
+        network: Optional[str] = None,
         test_envs: Optional[List[str]] = None,
         shard_ids: Optional[List[int]] = None,
         skip_ray_installation: bool = False,
         build_type: Optional[str] = None,
     ) -> None:
         """
-        :param docker_tag: Name of the wanda build to be used as test container.
         :param gpu: Number of gpus to use in the container. If 0, used all gpus.
         :param shard_count: The number of shards to split the tests into. This can be
         used to run tests in a distributed fashion.
         :param shard_ids: The list of shard ids to run. If none, run no shards.
         """
-        super().__init__(
-            docker_tag,
-            envs=test_envs,
-            volumes=[
-                f"{os.environ.get('RAYCI_CHECKOUT_DIR')}:/ray-mount",
-                "/var/run/docker.sock:/var/run/docker.sock",
-            ],
-        )
         self.shard_count = shard_count
         self.shard_ids = shard_ids or []
         self.test_envs = test_envs or []
         self.build_type = build_type
+        self.network = network
         self.gpus = gpus
         assert (
             self.gpus == 0 or self.gpus >= self.shard_count
@@ -96,6 +89,11 @@ class TesterContainer(LinuxContainer):
                     "trap cleanup EXIT",
                 ]
             )
+        if platform.system() == "Windows":
+            # allow window tests to access aws services
+            commands.append(
+                "powershell ci/pipeline/fix-windows-container-networking.ps1"
+            )
         if self.build_type == "ubsan":
             # clang currently runs into problems with ubsan builds, this will revert to
             # using GCC instead.
@@ -121,4 +119,10 @@ class TesterContainer(LinuxContainer):
             test_cmd += f"--test_arg {test_arg} "
         test_cmd += f"{' '.join(test_targets)}"
         commands.append(test_cmd)
-        return subprocess.Popen(self.get_run_command(commands, gpu_ids))
+        return subprocess.Popen(
+            self.get_run_command(
+                commands,
+                network=self.network,
+                gpu_ids=gpu_ids,
+            )
+        )
