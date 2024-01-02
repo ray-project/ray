@@ -872,7 +872,7 @@ class UserCallableWrapper:
                 assert len(request_args) == 1 and isinstance(
                     request_args[0], gRPCRequest
                 )
-                request_args = (pickle.loads(request.grpc_user_request),)
+                request_args = (pickle.loads(request_args[0].grpc_user_request),)
 
             runner_method = None
             try:
