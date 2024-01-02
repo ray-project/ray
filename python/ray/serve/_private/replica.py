@@ -563,7 +563,7 @@ class ReplicaActor:
 
     @ray.method(concurrency_group=REPLICA_CONTROL_PLANE_CONCURRENCY_GROUP)
     async def check_health(self):
-        await self._user_callable_wrapper.check_health()
+        await self._user_callable_wrapper.call_user_health_check()
 
 
 class UserCallableWrapper:
