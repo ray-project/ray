@@ -8,11 +8,13 @@ from ray.autoscaler._private.constants import (
     AUTOSCALER_MAX_CONCURRENT_LAUNCHES,
     AUTOSCALER_MAX_LAUNCH_BATCH,
 )
+from ray.autoscaler.v2.instance_manager.instance_manager import InstanceUtil
 from ray.autoscaler.v2.instance_manager.instance_storage import (
     InstanceStorage,
     InstanceUpdatedSubscriber,
 )
-from ray.autoscaler.v2.instance_manager.node_provider import NodeProvider
+from ray.autoscaler.v2.instance_manager.node_provider import ICloudNodeProvider
+from ray.autoscaler.v2.instance_manager.config import AutoscalingConfig
 from ray.core.generated.instance_manager_pb2 import Instance, InstanceUpdateEvent
 
 logger = logging.getLogger(__name__)
@@ -24,62 +26,71 @@ class InstanceLauncher(InstanceUpdatedSubscriber):
     def __init__(
         self,
         instance_storage: InstanceStorage,
-        node_provider: NodeProvider,
-        max_concurrent_requests: int = math.ceil(
-            AUTOSCALER_MAX_CONCURRENT_LAUNCHES / float(AUTOSCALER_MAX_LAUNCH_BATCH)
-        ),
-        max_instances_per_request: int = AUTOSCALER_MAX_LAUNCH_BATCH,
-    ) -> None:
+        node_provider: ICloudNodeProvider,
+        max_concurrent_launches: int = AUTOSCALER_MAX_CONCURRENT_LAUNCHES,
+        max_launches_per_request: int = AUTOSCALER_MAX_LAUNCH_BATCH,
+    ):
+        """
+        Args:
+            instance_storage: instance storage.
+            node_provider: node provider.
+            max_concurrent_launches: max number of concurrent launches.
+            max_launches_per_request: max number of instances to launch per request.
+        """
+
         self._instance_storage = instance_storage
         self._node_provider = node_provider
-        self._max_concurrent_requests = max_concurrent_requests
-        self._max_instances_per_request = max_instances_per_request
+        self._max_concurrent_requests = math.ceil(
+            max_concurrent_launches / float(max_launches_per_request)
+        )
+
+        self._max_launches_per_request = max_launches_per_request
         self._executor = ThreadPoolExecutor(max_workers=1)
         self._launch_instance_executor = ThreadPoolExecutor(
             max_workers=self._max_concurrent_requests
         )
 
     def notify(self, events: List[InstanceUpdateEvent]) -> None:
-        # TODO: we should do reconciliation based on events.
+        """
+        For each instance update event, if there is new instance request (signaled by
+        Instance.QUEUED status), it will try to launch new instances.
+
+        Args:
+            events: list of instance update events.
+        """
         has_new_request = any(
-            [event.new_instance_status == Instance.UNKNOWN for event in events]
+            [event.new_instance_status == Instance.QUEUED for event in events]
         )
         if has_new_request:
             self._executor.submit(self._may_launch_new_instances)
 
     def _may_launch_new_instances(self):
-        new_instances, _ = self._instance_storage.get_instances(
-            status_filter={Instance.UNKNOWN}
+        instances_to_request_launching, _ = self._instance_storage.get_instances(
+            status_filter={Instance.QUEUED}
         )
 
-        if not new_instances:
+        if not instances_to_request_launching:
             logger.debug("No instances to launch")
             return
 
-        queued_instances = []
-        for instance in new_instances.values():
-            instance.status = Instance.QUEUED
-            success, version = self._instance_storage.upsert_instance(
-                instance, expected_instance_version=instance.version
-            )
-            if success:
-                instance.version = version
-                queued_instances.append(instance)
-            else:
-                logger.error(f"Failed to update {instance} QUEUED")
-
         instances_by_type = defaultdict(list)
-        for instance in queued_instances:
+        for instance in instances_to_request_launching.values():
             instances_by_type[instance.instance_type].append(instance)
 
         for instance_type, instances in instances_by_type.items():
-            for i in range(0, len(instances), self._max_instances_per_request):
+            # Sort the instances by increasing QUEUED time (oldest first) for
+            instances = sorted(
+                instances,
+                key=lambda x: InstanceUtil.get_status_times_ns(x, Instance.QUEUED)[-1],
+            )
+
+            for i in range(0, len(instances), self._max_launches_per_request):
                 self._launch_instance_executor.submit(
                     self._launch_new_instances_by_type,
                     instance_type,
                     instances[
                         i : min(
-                            i + self._max_instances_per_request,
+                            i + self._max_launches_per_request,
                             len(instances),
                         )
                     ],
@@ -99,16 +110,16 @@ class InstanceLauncher(InstanceUpdatedSubscriber):
         """
         logger.info(f"Launching {len(instances)} instances of type {instance_type}")
         instances_selected = []
-        for instance in instances:
-            instance.status = Instance.REQUESTED
-            result, version = self._instance_storage.upsert_instance(
-                instance, expected_instance_version=instance.version
-            )
-            if not result:
-                logger.warn(f"Failed to update instance {instance}")
-                continue
-            instance.version = version
-            instances_selected.append(instance)
+        # for instance in instances:
+        #     instance.status = Instance.REQUESTED
+        #     result, version = self._instance_storage.upsert_instance(
+        #         instance, expected_instance_version=instance.version
+        #     )
+        #     if not result:
+        #         logger.warn(f"Failed to update instance {instance}")
+        #         continue
+        #     instance.version = version
+        #     instances_selected.append(instance)
 
         if not instances_selected:
             return 0
