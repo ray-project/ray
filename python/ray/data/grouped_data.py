@@ -140,7 +140,6 @@ class GroupedData:
         self,
         dataset: Dataset,
         key: Union[str, List[str]],
-        _debug_limit_shuffle_execution_to_num_blocks: Optional[int] = None,
     ):
         """Construct a dataset grouped by key (internal API).
 
@@ -149,9 +148,6 @@ class GroupedData:
         """
         self._dataset = dataset
         self._key = key
-        self._debug_limit_shuffle_execution_to_num_blocks = (
-            _debug_limit_shuffle_execution_to_num_blocks
-        )
 
     def __repr__(self) -> str:
         return (
@@ -224,9 +220,6 @@ class GroupedData:
                 logical_plan.dag,
                 key=self._key,
                 aggs=aggs,
-                _debug_limit_shuffle_execution_to_num_blocks=(
-                    self._debug_limit_shuffle_execution_to_num_blocks
-                ),
             )
             logical_plan = LogicalPlan(op)
         return Dataset(

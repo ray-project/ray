@@ -7,12 +7,14 @@ import pyarrow as pa
 import pytest
 
 import ray
+from ray.data import Dataset
 from ray.data._internal.planner.exchange.push_based_shuffle_task_scheduler import (
     PushBasedShuffleTaskScheduler,
 )
 from ray.data._internal.push_based_shuffle import PushBasedShufflePlan
 from ray.data._internal.sort import SortKey
 from ray.data.block import BlockAccessor
+from ray.data.context import DataContext
 from ray.data.tests.conftest import *  # noqa
 from ray.data.tests.util import extract_values
 from ray.tests.conftest import *  # noqa
@@ -538,6 +540,53 @@ def test_push_based_shuffle_reduce_stage_scheduling(ray_start_cluster, pipeline)
         ctx.use_push_based_shuffle = original
         ray.remote = ray_remote
         ray.get = ray_get
+
+
+SHUFFLE_ALL_TO_ALL_OPS = [
+    Dataset.random_shuffle,
+    lambda ds: ds.sort(key="id"),
+    lambda ds: ds.groupby("id").map_groups(lambda group: group),
+]
+
+
+@pytest.mark.parametrize("use_push_based_shuffle", [False, True])
+@pytest.mark.parametrize(
+    "shuffle_op",
+    SHUFFLE_ALL_TO_ALL_OPS,
+)
+def test_debug_limit_shuffle_execution_to_num_blocks(
+    ray_start_regular, restore_data_context, use_push_based_shuffle, shuffle_op
+):
+    DataContext.get_current().use_push_based_shuffle = use_push_based_shuffle
+    shuffle_fn = shuffle_op
+
+    parallelism = 100
+    ds = ray.data.range(1000, parallelism=parallelism)
+    shuffled_ds = shuffle_fn(ds).materialize()
+    shuffled_ds = shuffled_ds.materialize()
+    assert shuffled_ds.num_blocks() == parallelism
+
+    DataContext.get_current().set_config(
+        "debug_limit_shuffle_execution_to_num_blocks", 1
+    )
+    shuffled_ds = shuffle_fn(ds).materialize()
+    shuffled_ds = shuffled_ds.materialize()
+    assert shuffled_ds.num_blocks() == 1
+
+
+@pytest.mark.parametrize("use_push_based_shuffle", [False, True])
+def test_memory_usage(ray_start_regular, restore_data_context, use_push_based_shuffle):
+    DataContext.get_current().use_push_based_shuffle = use_push_based_shuffle
+
+    parallelism = 2
+    ds = ray.data.range(int(1e8), parallelism=parallelism)
+    ds = ds.random_shuffle().materialize()
+
+    stats = ds._get_stats_summary()
+    # TODO(swang): Sort on this dataset seems to produce significant skew, so
+    # one task uses much more memory than the other.
+    for stage_stats in stats.stages_stats:
+        assert stage_stats.memory["max"] < 2000
 
 
 if __name__ == "__main__":

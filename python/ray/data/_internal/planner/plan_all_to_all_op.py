@@ -33,31 +33,50 @@ def plan_all_to_all_op(
         # Randomize block order does not actually compute anything, so we
         # want to inherit the upstream op's target max block size.
     elif isinstance(op, RandomShuffle):
+        debug_limit_shuffle_execution_to_num_blocks = (
+            DataContext.get_current().get_config(
+                "debug_limit_shuffle_execution_to_num_blocks", None
+            )
+        )
         fn = generate_random_shuffle_fn(
             op._seed,
             op._num_outputs,
             op._ray_remote_args,
-            op._debug_limit_shuffle_execution_to_num_blocks,
+            debug_limit_shuffle_execution_to_num_blocks,
         )
         target_max_block_size = DataContext.get_current().target_shuffle_max_block_size
     elif isinstance(op, Repartition):
-        fn = generate_repartition_fn(
-            op._num_outputs,
-            op._shuffle,
-            op._debug_limit_shuffle_execution_to_num_blocks,
-        )
+        debug_limit_shuffle_execution_to_num_blocks = None
         if op._shuffle:
             target_max_block_size = (
                 DataContext.get_current().target_shuffle_max_block_size
             )
-    elif isinstance(op, Sort):
-        fn = generate_sort_fn(
-            op._sort_key, op._debug_limit_shuffle_execution_to_num_blocks
+            debug_limit_shuffle_execution_to_num_blocks = (
+                DataContext.get_current().get_config(
+                    "debug_limit_shuffle_execution_to_num_blocks", None
+                )
+            )
+        fn = generate_repartition_fn(
+            op._num_outputs,
+            op._shuffle,
+            debug_limit_shuffle_execution_to_num_blocks,
         )
+    elif isinstance(op, Sort):
+        debug_limit_shuffle_execution_to_num_blocks = (
+            DataContext.get_current().get_config(
+                "debug_limit_shuffle_execution_to_num_blocks", None
+            )
+        )
+        fn = generate_sort_fn(op._sort_key, debug_limit_shuffle_execution_to_num_blocks)
         target_max_block_size = DataContext.get_current().target_shuffle_max_block_size
     elif isinstance(op, Aggregate):
+        debug_limit_shuffle_execution_to_num_blocks = (
+            DataContext.get_current().get_config(
+                "debug_limit_shuffle_execution_to_num_blocks", None
+            )
+        )
         fn = generate_aggregate_fn(
-            op._key, op._aggs, op._debug_limit_shuffle_execution_to_num_blocks
+            op._key, op._aggs, debug_limit_shuffle_execution_to_num_blocks
         )
         target_max_block_size = DataContext.get_current().target_shuffle_max_block_size
     else:
