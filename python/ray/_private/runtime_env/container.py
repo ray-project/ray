@@ -47,7 +47,7 @@ class ContainerManager:
         ]
 
         # Environment variables to set in container
-        env_vars = {}
+        env_vars = dict()
 
         # Propagate all host environment variables that have the prefix "RAY_"
         # This should include RAY_RAYLET_PID
