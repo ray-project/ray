@@ -191,6 +191,7 @@ class _PipelinedStageExecutor:
                         prev_metadata_refs
                     )
                     # TODO(swang): Eagerly free the previous round's args.
+                    # See https://github.com/ray-project/ray/issues/42145.
                 else:
                     prev_metadata = ray.get(prev_metadata_refs)
 
@@ -465,6 +466,7 @@ class PushBasedShuffleTaskScheduler(ExchangeTaskScheduler):
         # TODO(swang): Use INFO level. Currently there is no easy way to set
         # the logging level to DEBUG from a driver script, so just print
         # verbosely for now.
+        # See https://github.com/ray-project/ray/issues/42002.
         logger.get_logger().info(f"Push-based shuffle schedule:\n{stage}")
 
         map_fn = self._map_partition
