@@ -143,5 +143,11 @@ function rayAssistant(event) {
     }
 }
 
+searchBar.addEventListener('input', function() {
+  this.style.setProperty('height', 'auto', 'important');
+  this.style.setProperty('height', this.scrollHeight + 'px', 'important');
+});
+
+
 searchBtn.addEventListener('click', rayAssistant);
 searchBar.addEventListener('keydown', rayAssistant);

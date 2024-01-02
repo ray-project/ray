@@ -73,6 +73,10 @@
   margin: 0em 1em 0em 0em;
   border-radius: 4px;
   color: var(--pst-color-text-base);
+  height: 40px;
+  max-height: 200px;
+  box-sizing: border-box;
+  overflow: hidden;
 }
 
 .chatHeader {
@@ -111,8 +115,7 @@
 .chatContentContainer textarea {
   flex-grow: 1;
   min-width: 50px;
-  max-height: 40px;
-  resize: none;
+  resize: vertical;
 }
 
 #searchBtn {
