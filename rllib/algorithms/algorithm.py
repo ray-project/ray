@@ -2819,8 +2819,8 @@ class Algorithm(Trainable, AlgorithmBase):
                 self.learner_group.load_state(state["learner_state_dir"])
             else:
                 logger.warning(
-                    "`_enable_new_api_stack` is `True`, but no learner state "
-                    "directory found."
+                    "You configured `_enable_new_api_stack=True`, but no `learner_state_dir` "
+                    "key could be found in the state dict!"
                 )
 
         if "counters" in state:

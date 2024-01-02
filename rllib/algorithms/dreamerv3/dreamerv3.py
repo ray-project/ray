@@ -699,6 +699,7 @@ class DreamerV3(Algorithm):
     def _reduce_results(results: List[Dict[str, Any]]):
         return tree.map_structure(lambda *s: np.mean(s, axis=0), *results)
 
+    # TODO (sven): Remove this once DreamerV3 is on the new SingleAgentEnvRunner.
     @PublicAPI
     def __setstate__(self, state) -> None:
         """Sts the algorithm to the provided state
