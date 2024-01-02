@@ -289,11 +289,6 @@ def test_push_based_shuffle_schedule(streaming):
         )
         # Merge factor between map : merge tasks is approximately correct.
         if schedule.num_map_tasks_per_round > merge_factor:
-            print(
-                schedule.num_map_tasks_per_round,
-                schedule.merge_schedule.num_merge_tasks_per_round,
-                merge_factor,
-            )
             actual_merge_factor = (
                 schedule.num_map_tasks_per_round
                 // schedule.merge_schedule.num_merge_tasks_per_round
