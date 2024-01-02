@@ -92,7 +92,7 @@ def test_reconfigure_with_exception(serve_instance):
             return self.config
 
     with pytest.raises(ValidationError):
-        serve.run(A.options(user_config="hi").bind())
+        A.options(user_config=["hey"]).bind()
 
 
 @pytest.mark.parametrize("use_handle", [True, False])
@@ -646,7 +646,7 @@ def test_deployment_properties():
         name="name",
         version="version",
         num_replicas=2,
-        user_config="hi",
+        user_config={"val": "hi"},
         max_concurrent_queries=100,
         route_prefix="/hello",
         ray_actor_options={"num_cpus": 2},
@@ -655,7 +655,7 @@ def test_deployment_properties():
     assert D.name == "name"
     assert D.version == "version"
     assert D.num_replicas == 2
-    assert D.user_config == "hi"
+    assert D.user_config == {"val": "hi"}
     assert D.max_concurrent_queries == 100
     assert D.route_prefix == "/hello"
     assert D.ray_actor_options == {"num_cpus": 2}

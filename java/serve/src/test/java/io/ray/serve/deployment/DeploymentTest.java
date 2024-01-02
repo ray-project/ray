@@ -6,6 +6,8 @@ import io.ray.serve.config.AutoscalingConfig;
 import io.ray.serve.handle.DeploymentHandle;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
+import java.util.HashMap;
+import java.util.Map;
 import org.apache.hc.client5.http.classic.HttpClient;
 import org.apache.hc.client5.http.classic.methods.HttpGet;
 import org.apache.hc.client5.http.classic.methods.HttpPost;
@@ -23,13 +25,15 @@ public class DeploymentTest extends BaseServeTest2 {
   public void deployTest() {
     // Deploy deployment.
     String deploymentName = "exampleEcho";
+    Map<String, String> userConfig = new HashMap<>();
+    userConfig.put("suffix", "_test");
 
     Application deployment =
         Serve.deployment()
             .setName(deploymentName)
             .setDeploymentDef(ExampleEchoDeployment.class.getName())
             .setNumReplicas(1)
-            .setUserConfig("_test")
+            .setUserConfig(userConfig)
             .bind("echo_");
     DeploymentHandle handle = Serve.run(deployment).get();
     Assert.assertEquals(handle.method("call").remote("6").result(), "echo_6_test");
@@ -40,13 +44,15 @@ public class DeploymentTest extends BaseServeTest2 {
   public void httpExposeDeploymentTest() throws IOException {
     // Deploy deployment.
     String deploymentName = "exampleEcho";
+    Map<String, String> userConfig = new HashMap<>();
+    userConfig.put("suffix", "_test");
 
     Application deployment =
         Serve.deployment()
             .setName(deploymentName)
             .setDeploymentDef(ExampleEchoDeployment.class.getName())
             .setNumReplicas(1)
-            .setUserConfig("_test")
+            .setUserConfig(userConfig)
             .bind("echo_");
     Serve.run(deployment);
 
@@ -70,13 +76,15 @@ public class DeploymentTest extends BaseServeTest2 {
   @Test(enabled = false)
   public void updateDeploymentTest() {
     String deploymentName = "exampleEcho";
+    Map<String, String> userConfig = new HashMap<>();
+    userConfig.put("suffix", "_test");
 
     Application deployment =
         Serve.deployment()
             .setName(deploymentName)
             .setDeploymentDef(ExampleEchoDeployment.class.getName())
             .setNumReplicas(1)
-            .setUserConfig("_test")
+            .setUserConfig(userConfig)
             .bind("echo_");
     Serve.run(deployment);
 
@@ -90,6 +98,8 @@ public class DeploymentTest extends BaseServeTest2 {
   @Test
   public void autoScaleTest() {
     String deploymentName = "exampleEcho";
+    Map<String, String> userConfig = new HashMap<>();
+    userConfig.put("suffix", "_test");
     AutoscalingConfig autoscalingConfig = new AutoscalingConfig();
     autoscalingConfig.setMinReplicas(1);
     autoscalingConfig.setMaxReplicas(3);
@@ -99,7 +109,7 @@ public class DeploymentTest extends BaseServeTest2 {
             .setName(deploymentName)
             .setDeploymentDef(ExampleEchoDeployment.class.getName())
             .setAutoscalingConfig(autoscalingConfig)
-            .setUserConfig("_test")
+            .setUserConfig(userConfig)
             .setVersion("v1")
             .bind("echo_");
 
@@ -110,16 +120,19 @@ public class DeploymentTest extends BaseServeTest2 {
   @Test(enabled = false)
   public void userConfigTest() {
     String deploymentName = "exampleEcho";
+    Map<String, String> userConfig = new HashMap<>();
+    userConfig.put("suffix", "_test");
     Application deployment =
         Serve.deployment()
             .setName(deploymentName)
             .setDeploymentDef(ExampleEchoDeployment.class.getName())
             .setNumReplicas(1)
-            .setUserConfig("_test")
+            .setUserConfig(userConfig)
             .bind("echo_");
     Serve.run(deployment);
 
-    Serve.run(Serve.getDeployment(deploymentName).options().setUserConfig("_new").bind());
+    userConfig.put("suffix", "_new");
+    Serve.run(Serve.getDeployment(deploymentName).options().setUserConfig(userConfig).bind());
     Assert.assertEquals(
         Serve.getAppHandle(deploymentName).method("call").remote("6").result(), "echo_6_new");
     // TOOD update user config

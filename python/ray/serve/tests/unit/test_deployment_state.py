@@ -15,7 +15,7 @@ from ray.serve._private.common import (
     ReplicaTag,
     TargetCapacityDirection,
 )
-from ray.serve._private.config import DeploymentConfig, ReplicaConfig
+from ray.serve._private.config import InternalDeploymentConfig, ReplicaInitInfo
 from ray.serve._private.constants import (
     DEFAULT_GRACEFUL_SHUTDOWN_TIMEOUT_S,
     DEFAULT_GRACEFUL_SHUTDOWN_WAIT_LOOP_S,
@@ -319,10 +319,10 @@ def deployment_info(
     info = DeploymentInfo(
         version=version,
         start_time_ms=0,
-        deployment_config=DeploymentConfig(
+        deployment_config=InternalDeploymentConfig(
             num_replicas=num_replicas, user_config=user_config, **config_opts
         ),
-        replica_config=ReplicaConfig.create(lambda x: x),
+        replica_config=ReplicaInitInfo.create(lambda x: x),
         deployer_job_id="",
     )
 
@@ -339,7 +339,7 @@ def deployment_info(
 
 
 def deployment_version(code_version) -> DeploymentVersion:
-    return DeploymentVersion(code_version, DeploymentConfig(), {})
+    return DeploymentVersion(code_version, InternalDeploymentConfig(), {})
 
 
 class MockClusterNodeInfoCache:
@@ -390,7 +390,7 @@ def mock_deployment_state() -> Tuple[DeploymentState, Mock, Mock]:
 
 def replica(version: Optional[DeploymentVersion] = None) -> VersionedReplica:
     if version is None:
-        version = DeploymentVersion(get_random_string(), DeploymentConfig(), {})
+        version = DeploymentVersion(get_random_string(), InternalDeploymentConfig(), {})
 
     class MockVersionedReplica(VersionedReplica):
         def __init__(self, version: DeploymentVersion):
@@ -1547,7 +1547,7 @@ def test_new_version_deploy_throttling(mock_deployment_state):
     cluster_node_info_cache.alive_node_ids = {str(i) for i in range(10)}
 
     b_info_1, b_version_1 = deployment_info(
-        num_replicas=10, version="1", user_config="1"
+        num_replicas=10, version="1", user_config={"val": "1"}
     )
     updating = deployment_state.deploy(b_info_1)
     assert updating
@@ -1577,7 +1577,7 @@ def test_new_version_deploy_throttling(mock_deployment_state):
 
     # Now deploy a new version. Two old replicas should be stopped.
     b_info_2, b_version_2 = deployment_info(
-        num_replicas=10, version="2", user_config="2"
+        num_replicas=10, version="2", user_config={"val": "2"}
     )
     updating = deployment_state.deploy(b_info_2)
     assert updating
@@ -1798,7 +1798,7 @@ def test_reconfigure_throttling(mock_deployment_state):
     cluster_node_info_cache.alive_node_ids = {str(i) for i in range(2)}
 
     b_info_1, b_version_1 = deployment_info(
-        num_replicas=2, version="1", user_config="1"
+        num_replicas=2, version="1", user_config={"val": "1"}
     )
     updating = deployment_state.deploy(b_info_1)
     assert updating
@@ -1828,7 +1828,7 @@ def test_reconfigure_throttling(mock_deployment_state):
 
     # Now deploy a new user_config. One replica should be updated.
     b_info_2, b_version_2 = deployment_info(
-        num_replicas=2, version="1", user_config="2"
+        num_replicas=2, version="1", user_config={"val": "2"}
     )
     updating = deployment_state.deploy(b_info_2)
     assert updating

@@ -3,7 +3,7 @@ from typing import Any, Dict, Optional
 import ray
 from ray.serve._private.autoscaling_policy import BasicAutoscalingPolicy
 from ray.serve._private.common import TargetCapacityDirection
-from ray.serve._private.config import DeploymentConfig, ReplicaConfig
+from ray.serve._private.config import InternalDeploymentConfig, ReplicaInitInfo
 from ray.serve._private.constants import REPLICA_CONTROL_PLANE_CONCURRENCY_GROUP
 from ray.serve.generated.serve_pb2 import DeploymentInfo as DeploymentInfoProto
 from ray.serve.generated.serve_pb2 import (
@@ -20,8 +20,8 @@ REPLICA_DEFAULT_ACTOR_OPTIONS = {
 class DeploymentInfo:
     def __init__(
         self,
-        deployment_config: DeploymentConfig,
-        replica_config: ReplicaConfig,
+        deployment_config: InternalDeploymentConfig,
+        replica_config: ReplicaInitInfo,
         start_time_ms: int,
         deployer_job_id: str,
         actor_name: Optional[str] = None,
@@ -71,8 +71,8 @@ class DeploymentInfo:
 
     def update(
         self,
-        deployment_config: DeploymentConfig = None,
-        replica_config: ReplicaConfig = None,
+        deployment_config: InternalDeploymentConfig = None,
+        replica_config: ReplicaInitInfo = None,
         version: str = None,
         route_prefix: str = None,
     ) -> "DeploymentInfo":
@@ -122,7 +122,7 @@ class DeploymentInfo:
     @classmethod
     def from_proto(cls, proto: DeploymentInfoProto):
         deployment_config = (
-            DeploymentConfig.from_proto(proto.deployment_config)
+            InternalDeploymentConfig.from_proto(proto.deployment_config)
             if proto.deployment_config
             else None
         )
@@ -141,7 +141,7 @@ class DeploymentInfo:
 
         data = {
             "deployment_config": deployment_config,
-            "replica_config": ReplicaConfig.from_proto(
+            "replica_config": ReplicaInitInfo.from_proto(
                 proto.replica_config,
                 deployment_config.needs_pickle() if deployment_config else True,
             ),

@@ -344,8 +344,8 @@ Content-Type: application/json
    schema.gRPCOptionsSchema
    schema.HTTPOptionsSchema
    schema.ServeApplicationSchema
-   schema.DeploymentSchema
-   schema.RayActorOptionsSchema
+   schema.ApplyDeploymentModel
+   config.RayActorOptionsConfig
 ```
 
 (serve-rest-api-response-schema)=
@@ -363,8 +363,14 @@ Content-Type: application/json
    schema.ReplicaDetails
 ```
 
-## Observability
 
+```{eval-rst}
+.. autoclass:: ray.serve.schema.ReadDeploymentModel
+   :members:
+   :show-inheritance:
+```
+
+## Observability
 ```{eval-rst}
 .. autosummary::
    :nosignatures:

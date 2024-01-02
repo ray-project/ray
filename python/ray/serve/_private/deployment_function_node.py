@@ -2,11 +2,11 @@ from typing import Any, Callable, Dict, List, Union
 
 from ray.dag.dag_node import DAGNode
 from ray.dag.format_utils import get_dag_node_str
-from ray.serve._private.config import DeploymentConfig, ReplicaConfig
+from ray.serve._private.config import InternalDeploymentConfig, ReplicaInitInfo
 from ray.serve._private.constants import RAY_SERVE_ENABLE_NEW_HANDLE_API
 from ray.serve.deployment import Deployment, schema_to_deployment
 from ray.serve.handle import DeploymentHandle, RayServeHandle
-from ray.serve.schema import DeploymentSchema
+from ray.serve.schema import ApplyDeploymentModel
 
 
 class DeploymentFunctionNode(DAGNode):
@@ -32,7 +32,7 @@ class DeploymentFunctionNode(DAGNode):
             other_args_to_resolve=other_args_to_resolve,
         )
         if "deployment_schema" in self._bound_other_args_to_resolve:
-            deployment_schema: DeploymentSchema = self._bound_other_args_to_resolve[
+            deployment_schema: ApplyDeploymentModel = self._bound_other_args_to_resolve[
                 "deployment_schema"
             ]
             deployment_shell = schema_to_deployment(deployment_schema)
@@ -56,7 +56,7 @@ class DeploymentFunctionNode(DAGNode):
                 _internal=True,
             )
         else:
-            replica_config = ReplicaConfig.create(
+            replica_config = ReplicaInitInfo.create(
                 deployment_def=func_body,
                 init_args=tuple(),
                 init_kwargs=dict(),
@@ -64,7 +64,7 @@ class DeploymentFunctionNode(DAGNode):
             )
             self._deployment: Deployment = Deployment(
                 deployment_name,
-                deployment_config=DeploymentConfig(),
+                deployment_config=InternalDeploymentConfig(),
                 replica_config=replica_config,
                 _internal=True,
             )

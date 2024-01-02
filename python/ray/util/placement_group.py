@@ -1,3 +1,4 @@
+from enum import Enum
 import warnings
 from typing import Dict, List, Optional, Union
 
@@ -12,12 +13,12 @@ from ray.util.scheduling_strategies import PlacementGroupSchedulingStrategy
 bundle_reservation_check = None
 BUNDLE_RESOURCE_LABEL = "bundle"
 
-VALID_PLACEMENT_GROUP_STRATEGIES = {
-    "PACK",
-    "SPREAD",
-    "STRICT_PACK",
-    "STRICT_SPREAD",
-}
+
+class PlacementGroupStrategy(str, Enum):
+    PACK = "PACK"
+    SPREAD = "SPREAD"
+    STRICT_PACK = "STRICT_PACK"
+    STRICT_SPREAD = "STRICT_SPREAD"
 
 
 # We need to import this method to use for ready API.
@@ -226,10 +227,11 @@ def placement_group(
                 stacklevel=1,
             )
 
-    if strategy not in VALID_PLACEMENT_GROUP_STRATEGIES:
+    valid_placement_group_strategies = [s.value for s in PlacementGroupStrategy]
+    if strategy not in valid_placement_group_strategies:
         raise ValueError(
             f"Invalid placement group strategy {strategy}. "
-            f"Supported strategies are: {VALID_PLACEMENT_GROUP_STRATEGIES}."
+            f"Supported strategies are: {valid_placement_group_strategies}."
         )
 
     if lifetime is None:
