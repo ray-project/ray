@@ -942,7 +942,7 @@ class UserCallableWrapper:
                 assert len(request_args) == 1 and isinstance(
                     request_args[0], gRPCRequest
                 )
-                request_args = pickle.loads(request_args[0].grpc_user_request)
+                request_args = (pickle.loads(request_args[0].grpc_user_request),)
                 if GRPC_CONTEXT_ARG_NAME in inspect.signature(user_method).parameters:
                     request_kwargs = {
                         GRPC_CONTEXT_ARG_NAME: request_metadata.grpc_context
