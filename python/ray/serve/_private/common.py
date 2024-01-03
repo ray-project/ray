@@ -207,7 +207,6 @@ class DeploymentStatusInfo:
         self,
         trigger: DeploymentStatusInternalTrigger,
         message: str = "",
-        should_autoscale: bool = False,
     ) -> "DeploymentStatusInfo":
         """Handles a transition from one state to next state.
 
@@ -215,8 +214,6 @@ class DeploymentStatusInfo:
             trigger: A (internal) trigger that determines the state
                 transition.
             message: The message to set in status info.
-            should_autoscale: Whether the state should be allowed to
-                transition to an autoscaling status or not.
 
         Returns: New instance of DeploymentStatusInfo representing the
             next state to transition to.

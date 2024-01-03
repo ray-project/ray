@@ -1412,7 +1412,7 @@ class DeploymentState:
 
         self._target_state = target_state
         self._curr_status_info = self._curr_status_info.handle_transition(
-            DeploymentStatusInternalTrigger.DELETE
+            trigger=DeploymentStatusInternalTrigger.DELETE
         )
         app_msg = f" in application '{self.app_name}'" if self.app_name else ""
         logger.info(
@@ -1529,18 +1529,18 @@ class DeploymentState:
 
             if new_num > old_num:
                 self._curr_status_info = self._curr_status_info.handle_transition(
-                    DeploymentStatusInternalTrigger.MANUALLY_INCREASE_NUM_REPLICAS,
+                    trigger=DeploymentStatusInternalTrigger.MANUALLY_INCREASE_NUM_REPLICAS,  # noqa: E501
                     message=f"Upscaling from {old_num} to {new_num} replicas.",
                 )
             elif new_num < old_num:
                 self._curr_status_info = self._curr_status_info.handle_transition(
-                    DeploymentStatusInternalTrigger.MANUALLY_DECREASE_NUM_REPLICAS,
+                    trigger=DeploymentStatusInternalTrigger.MANUALLY_DECREASE_NUM_REPLICAS,  # noqa: E501
                     message=f"Downscaling from {old_num} to {new_num} replicas.",
                 )
         else:
             # Otherwise, the deployment configuration has actually been updated.
             self._curr_status_info = self._curr_status_info.handle_transition(
-                DeploymentStatusInternalTrigger.CONFIG_UPDATE
+                trigger=DeploymentStatusInternalTrigger.CONFIG_UPDATE
             )
 
         logger.info(
@@ -1614,12 +1614,12 @@ class DeploymentState:
         new_num = self._target_state.target_num_replicas
         if new_num > old_num:
             self._curr_status_info = self._curr_status_info.handle_transition(
-                DeploymentStatusInternalTrigger.AUTOSCALE_UP,
+                trigger=DeploymentStatusInternalTrigger.AUTOSCALE_UP,
                 message=f"Upscaling from {old_num} to {new_num} replicas.",
             )
         elif new_num < old_num:
             self._curr_status_info = self._curr_status_info.handle_transition(
-                DeploymentStatusInternalTrigger.AUTOSCALE_DOWN,
+                trigger=DeploymentStatusInternalTrigger.AUTOSCALE_DOWN,
                 message=f"Downscaling from {old_num} to {new_num} replicas.",
             )
 
@@ -1914,7 +1914,7 @@ class DeploymentState:
                 self._replica_constructor_retry_counter = -1
             else:
                 self._curr_status_info = self._curr_status_info.handle_transition(
-                    DeploymentStatusInternalTrigger.REPLICA_STARTUP_FAILED,
+                    trigger=DeploymentStatusInternalTrigger.REPLICA_STARTUP_FAILED,
                     message=(
                         f"The deployment failed to start {failed_to_start_count} times "
                         "in a row. This may be due to a problem with its "
@@ -1948,7 +1948,7 @@ class DeploymentState:
                 and running_at_target_version_replica_cnt == all_running_replica_cnt
             ):
                 self._curr_status_info = self._curr_status_info.handle_transition(
-                    DeploymentStatusInternalTrigger.HEALTHY
+                    trigger=DeploymentStatusInternalTrigger.HEALTHY
                 )
                 return False, any_replicas_recovering
 
@@ -2095,7 +2095,7 @@ class DeploymentState:
                 # recovered or a new deploy happens.
                 if replica.version == self._target_state.version:
                     self._curr_status_info = self._curr_status_info.handle_transition(
-                        DeploymentStatusInternalTrigger.HEALTH_CHECK_FAILED,
+                        trigger=DeploymentStatusInternalTrigger.HEALTH_CHECK_FAILED,
                         message="A replica's health check failed. This "
                         "deployment will be UNHEALTHY until the replica "
                         "recovers or a new deploy happens.",
@@ -2222,7 +2222,7 @@ class DeploymentState:
                 + traceback.format_exc()
             )
             self._curr_status_info = self._curr_status_info.handle_transition(
-                DeploymentStatusInternalTrigger.INTERNAL_ERROR,
+                trigger=DeploymentStatusInternalTrigger.INTERNAL_ERROR,
                 message="Failed to update deployment:" f"\n{traceback.format_exc()}",
             )
 
