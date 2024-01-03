@@ -1464,6 +1464,12 @@ class ActorHandle:
             f"{self._actor_id.hex()})"
         )
 
+    def __hash__(self):
+        return hash(self._actor_id)
+
+    def __eq__(self, __value):
+        return hash(self) == hash(__value)
+
     @property
     def _actor_id(self):
         return self._ray_actor_id
