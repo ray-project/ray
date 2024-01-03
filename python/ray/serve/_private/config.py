@@ -1,9 +1,9 @@
 import inspect
 import json
-from base64 import b64decode
 from typing import Any, Callable, Dict, List, Optional, Set, Tuple, Union
 
-from google.protobuf.json_format import MessageToDict
+from google.protobuf.descriptor import FieldDescriptor
+from google.protobuf.message import Message
 
 from ray import cloudpickle
 from ray._private import ray_option_utils
@@ -47,6 +47,31 @@ def _needs_pickle(deployment_language: DeploymentLanguage, is_cross_language: bo
         return True
     else:
         return False
+
+
+def _proto_to_dict(proto: Message) -> Dict:
+    """Recursively convert proto into python dictionary.
+
+    This is needed because MessageToDict handles bytes with extra base64 encoding for
+    constructing json response and is undesirable for our use case.
+    """
+    data = {}
+    for field, value in proto.ListFields():
+        # Recursively call if the field is another protobuf.
+        if field.type == FieldDescriptor.TYPE_MESSAGE:
+            data[field.name] = _proto_to_dict(value)
+        else:
+            data[field.name] = value
+
+    for field in proto.DESCRIPTOR.fields:
+        if (
+            field.name not in data  # skip the fields that are already set
+            and field.type != FieldDescriptor.TYPE_MESSAGE  # skip nested messages
+            and not field.containing_oneof  # skip optional fields
+        ):
+            data[field.name] = field.default_value
+
+    return data
 
 
 class DeploymentConfig(BaseModel):
@@ -204,21 +229,9 @@ class DeploymentConfig(BaseModel):
 
     @classmethod
     def from_proto(cls, proto: DeploymentConfigProto):
-        # MessageToDict from google.protobuf.json_format will automatically convert
-        # bytes into base64 encoded string due to json can't handle bytes directly.
-        # We need to keep in mind for any bytes data in proto, we need to decode it
-        # according.
-        #
-        # See:
-        # https://github.com/protocolbuffers/protobuf/issues/2801#issuecomment-285812695
-        data = MessageToDict(
-            proto,
-            including_default_value_fields=True,
-            preserving_proto_field_name=True,
-            use_integers_for_enums=True,
-        )
+        data = _proto_to_dict(proto)
         if "user_config" in data:
-            if data["user_config"] != "":
+            if data["user_config"] != b"":
                 deployment_language = (
                     data["deployment_language"]
                     if "deployment_language" in data
@@ -231,7 +244,6 @@ class DeploymentConfig(BaseModel):
                 if needs_pickle:
                     data["user_config"] = cloudpickle.loads(proto.user_config)
                 else:
-                    # after MessageToDict, bytes data has been deal with base64
                     data["user_config"] = proto.user_config
             else:
                 data["user_config"] = None
@@ -240,11 +252,6 @@ class DeploymentConfig(BaseModel):
                 data["autoscaling_config"]["upscale_smoothing_factor"] = None
             if not data["autoscaling_config"].get("downscale_smoothing_factor"):
                 data["autoscaling_config"]["downscale_smoothing_factor"] = None
-            if data["autoscaling_config"].get("serialized_policy_def"):
-                # after MessageToDict, bytes data has been deal with base64
-                data["autoscaling_config"]["serialized_policy_def"] = b64decode(
-                    data["autoscaling_config"]["serialized_policy_def"]
-                )
             data["autoscaling_config"] = AutoscalingConfig(**data["autoscaling_config"])
         if "version" in data:
             if data["version"] == "":
