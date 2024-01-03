@@ -18,9 +18,11 @@ class LinuxContainer(Container):
         docker_tag: str,
         volumes: Optional[List[str]] = None,
         envs: Optional[List[str]] = None,
+        mount_tmpfs: bool = False,
     ) -> None:
         super().__init__(docker_tag, envs)
         self.volumes = volumes or []
+        self.mount_tmpfs = mount_tmpfs
 
     def install_ray(self, build_type: Optional[str] = None) -> List[str]:
         env = os.environ.copy()
@@ -60,6 +62,8 @@ class LinuxContainer(Container):
             "--add-host",
             "rayci.localhost:host-gateway",
         ]
+        if self.mount_tmpfs:
+            extra_args += ["--mount", "type=tmpfs,destination=/tmp"]
         for volume in self.volumes:
             extra_args += ["--volume", volume]
         for cap in _DOCKER_CAP_ADD:
