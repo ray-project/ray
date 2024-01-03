@@ -16,8 +16,6 @@ pip3 install -U \
     pytorch-lightning==2.0.6 \
     "protobuf<3.21.0" \
     torchmetrics==1.0.3 \
-    lm_eval==0.3.0 \
-    tiktoken==0.1.2 \
     sentencepiece==0.1.99 \
     "urllib3<1.27" \
     git+https://github.com/huggingface/transformers.git@d0c1aeb \
