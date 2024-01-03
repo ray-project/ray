@@ -105,15 +105,15 @@ class DeploymentInfo:
             assert self.actor_name is not None
 
             # Break circular import :(.
-            from ray.serve._private.replica import RayServeWrappedReplica
+            from ray.serve._private.replica import ReplicaActor
 
             # Dynamically create a new class with custom name here so Ray picks it up
             # correctly in actor metadata table and observability stack.
             self._cached_actor_def = ray.remote(**REPLICA_DEFAULT_ACTOR_OPTIONS)(
                 type(
                     self.actor_name,
-                    (RayServeWrappedReplica,),
-                    dict(RayServeWrappedReplica.__dict__),
+                    (ReplicaActor,),
+                    dict(ReplicaActor.__dict__),
                 )
             )
 

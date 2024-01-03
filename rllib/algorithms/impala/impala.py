@@ -86,18 +86,17 @@ class ImpalaConfig(AlgorithmConfig):
 
         # Update the config object.
         config = config.training(
-            lr=tune.grid_search([0.0001, ]), grad_clip=20.0
+            lr=tune.grid_search([0.0001, 0.0002]), grad_clip=20.0
         )
         config = config.resources(num_gpus=0)
         config = config.rollouts(num_rollout_workers=1)
         # Set the config object's env.
         config = config.environment(env="CartPole-v1")
-        # Use to_dict() to get the old-style python config dict
-        # when running with tune.
+        # Run with tune.
         tune.Tuner(
             "IMPALA",
+            param_space=config,
             run_config=air.RunConfig(stop={"training_iteration": 1}),
-            param_space=config.to_dict(),
         ).fit()
 
     .. testoutput::
