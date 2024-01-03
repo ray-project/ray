@@ -2,7 +2,7 @@ from typing import Any, Dict, List, Optional, Tuple
 
 import grpc
 
-from ray.util.annotations import DeveloperAPI, PublicAPI
+from ray.util.annotations import PublicAPI
 
 
 @PublicAPI(stability="beta")
@@ -129,7 +129,6 @@ class RayServegRPCContext:
         """
         self._details = details
 
-    @DeveloperAPI
     def _request_id_metadata(self) -> List[Tuple[str, str]]:
         # Request id metadata should be carried over to the trailing metadata and passed
         # back to the request client. This function helps pick it out if it exists.
@@ -155,8 +154,7 @@ class RayServegRPCContext:
         """
         self._trailing_metadata = self._request_id_metadata() + trailing_metadata
 
-    @DeveloperAPI
-    def set_on_grpc_context(self, grpc_context: grpc._cython.cygrpc._ServicerContext):
+    def _set_on_grpc_context(self, grpc_context: grpc._cython.cygrpc._ServicerContext):
         """Serve's internal method to set attributes on the gRPC context."""
         if self._code:
             grpc_context.set_code(self._code)

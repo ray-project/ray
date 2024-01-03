@@ -17,6 +17,11 @@ from ray._private.external_storage import (
 )
 
 
+# Note: Disk write speed can be as low as 6 MiB/s in AWS Mac instances, so we have to
+# increase the timeout.
+pytestmark = [pytest.mark.timeout(900 if platform.system() == "Darwin" else 180)]
+
+
 def test_delete_objects(object_spilling_config, shutdown_only):
     # Limit our object store to 75 MiB of memory.
     object_spilling_config, temp_folder = object_spilling_config

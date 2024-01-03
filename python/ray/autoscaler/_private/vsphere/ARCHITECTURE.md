@@ -67,7 +67,7 @@ Optionally, the vSphere Node Provider can also take a content library item name,
 All the nodes are instantly cloned from the frozen VM. 
 
 #### Tag nodes with [vSphere Tags](#vsphere-tags)
-The nodes are tagged while their creation is in progress in an async way with `tag_vm` function.
+The nodes are tagged while their creation is in progress in an async way with `tag_new_vm_instantly` function.
 Post creation of the nodes, the tags on the nodes are updated. 
 
 ## Autoscaling

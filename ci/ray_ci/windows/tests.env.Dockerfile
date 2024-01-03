@@ -13,3 +13,6 @@ ENV LC_ALL=en_US.UTF-8
 ENV LANG=en_US.UTF-8
 
 COPY . .
+RUN bash ci/ray_ci/windows/build_ray.sh
+
+WORKDIR /rayci
