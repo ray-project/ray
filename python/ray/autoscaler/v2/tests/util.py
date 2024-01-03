@@ -27,12 +27,19 @@ def create_instance(
     status=Instance.UNKNOWN,
     version=0,
     instance_type="worker_nodes1",
+    status_history=None,
+    cloud_instance_id="",
 ):
+    if status_history is None:
+        status_history = []
+
     return Instance(
         instance_id=instance_id,
         status=status,
         version=version,
         instance_type=instance_type,
+        status_history=status_history,
+        cloud_instance_id=cloud_instance_id,
     )
 
 

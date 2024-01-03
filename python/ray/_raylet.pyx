@@ -2868,8 +2868,6 @@ cdef class GcsClient:
             reason: int32_t,
             reason_message: c_string):
         """Send the DrainNode request to GCS.
-
-        This is only for testing.
         """
         cdef:
             int64_t timeout_ms = -1

@@ -268,6 +268,9 @@ class AutoscalingConfig:
     def get_raw_config_mutable(self) -> Dict[str, Any]:
         return self._configs
 
+    def get_idle_terminate_threshold_s(self) -> int:
+        return self.get_config("idle_timeout_minutes", 0) * 60
+
     @property
     def provider(self) -> Provider:
         provider_str = self._configs.get("provider", {}).get("type", "")

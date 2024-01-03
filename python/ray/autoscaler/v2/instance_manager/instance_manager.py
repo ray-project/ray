@@ -93,13 +93,13 @@ class InstanceUtil:
         return instance
 
     @staticmethod
-    def is_cloud_instance_allocated(instance: Instance) -> bool:
+    def is_cloud_instance_allocated(instance_status: Instance.InstanceStatus) -> bool:
         """
         Returns True if the instance is in a status where there could exist
         a cloud instance allocated by the cloud provider.
         """
-        assert instance.status != Instance.UNKNOWN
-        return instance.status in {
+        assert instance_status != Instance.UNKNOWN
+        return instance_status in {
             Instance.ALLOCATED,
             Instance.RAY_INSTALLING,
             Instance.RAY_RUNNING,
@@ -110,20 +110,41 @@ class InstanceUtil:
         }
 
     @staticmethod
-    def is_ray_running_reachable(instance: Instance) -> bool:
+    def is_ray_running_reachable(instance_status: Instance.InstanceStatus) -> bool:
         """
         Returns True if the instance is in a status where it may transition
         to RAY_RUNNING status.
         """
-        assert instance.status != Instance.UNKNOWN
-        return instance.status in [
+        assert instance_status != Instance.UNKNOWN
+        return instance_status in [
             Instance.UNKNOWN,
             Instance.QUEUED,
             Instance.REQUESTED,
             Instance.ALLOCATED,
             Instance.RAY_INSTALLING,
-            Instance.ALLOCATION_FAILED,
         ]
+
+    @staticmethod
+    def is_ray_stopping_reachable(instance_status: Instance.InstanceStatus) -> bool:
+        """
+        Returns True if the instance is in a status where it may transition
+        to RAY_STOPPING status.
+        """
+        return (
+            InstanceUtil.is_ray_running_reachable(instance_status)
+            or instance_status == Instance.RAY_RUNNING
+        )
+
+    @staticmethod
+    def is_ray_stop_reachable(instance_status: Instance.InstanceStatus) -> bool:
+        """
+        Returns True if the instance is in a status where it may transition
+        to RAY_STOPPED status.
+        """
+        return (
+            InstanceUtil.is_ray_stopping_reachable(instance_status)
+            or instance_status == Instance.RAY_STOPPING
+        )
 
     @staticmethod
     def set_status(
@@ -189,8 +210,10 @@ class InstanceUtil:
                 # This happens when the cloud node first appears in the list of running
                 # cloud nodes from the cloud node provider.
                 Instance.ALLOCATED,
-                # Cloud provider fails to allocate one. Either as a timeout or
-                # the launch request fails immediately.
+                # Cloud provider failed to allocate a cloud node for the instance, retrying
+                # again while being added back to the launch queue.
+                Instance.QUEUED,
+                # Cloud provider fails to allocate one, no retry would happen anymore.
                 Instance.ALLOCATION_FAILED,
             },
             # When in this status, the cloud node is allocated and running. This
@@ -275,10 +298,7 @@ class InstanceUtil:
             Instance.STOPPED: set(),  # Terminal state.
             # When in this status, the cloud node failed to be allocated by the
             # node provider.
-            Instance.ALLOCATION_FAILED: {
-                # Autoscaler might retry to allocate the instance.
-                Instance.QUEUED
-            },
+            Instance.ALLOCATION_FAILED: set(),  # Terminal state.
             Instance.RAY_INSTALL_FAILED: {
                 # Autoscaler requests to shutdown the instance when ray install failed.
                 Instance.STOPPING,
