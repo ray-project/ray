@@ -79,6 +79,8 @@ class TfMLP(tf.keras.Model):
                     activation=(
                         hidden_activation if not hidden_layer_use_layernorm else None
                     ),
+                    # Note, if the initializer is `None`, we want TensorFlow
+                    # to use its default one. So we pass in `None`.
                     kernel_initializer=(
                         hidden_initializer(**hidden_layer_initializer_config)
                         if hidden_layer_initializer_config
@@ -104,6 +106,8 @@ class TfMLP(tf.keras.Model):
                 tf.keras.layers.Dense(
                     output_dim,
                     activation=output_activation,
+                    # Note, if the initializer is `None`, we want TensorFlow
+                    # to use its default one. So we pass in `None`.
                     kernel_initializer=(
                         output_initializer(**output_initializer_config)
                         if output_initializer_config
@@ -174,7 +178,7 @@ class TfCNN(tf.keras.Model):
         assert len(input_dims) == 3
 
         cnn_activation = get_activation_fn(cnn_activation, framework="tf2")
-        cnn_initializer = get_initializer_fn(cnn_initializer, gframework="tf2")
+        cnn_initializer = get_initializer_fn(cnn_initializer, framework="tf2")
 
         layers = []
 
@@ -198,10 +202,12 @@ class TfCNN(tf.keras.Model):
                     padding=padding,
                     use_bias=cnn_use_bias,
                     activation=None if cnn_use_layernorm else cnn_activation,
+                    # Note, if the initializer is `None`, we want TensorFlow
+                    # to use its default one. So we pass in `None`.
                     kernel_initializer=(
                         cnn_initializer(**cnn_initializer_config)
                         if cnn_initializer_config
-                        else cnn_initializer()
+                        else cnn_initializer
                     ),
                 )
             )
@@ -300,10 +306,12 @@ class TfCNNTranspose(tf.keras.Model):
                         if cnn_transpose_use_layernorm or is_final_layer
                         else cnn_transpose_activation
                     ),
+                    # Note, if the initializer is `None`, we want TensorFlow
+                    # to use its default one. So we pass in `None`.
                     kernel_initializer=(
                         cnn_transpose_initializer(**cnn_transpose_initializer_config)
                         if cnn_transpose_initializer_config
-                        else cnn_transpose_initializer()
+                        else cnn_transpose_initializer
                     ),
                     # Last layer always uses bias (b/c has no LayerNorm, regardless of
                     # config).

@@ -203,10 +203,12 @@ class TfGRUEncoder(TfModel, Encoder):
             layer = tf.keras.layers.GRU(
                 config.hidden_dim,
                 time_major=not config.batch_major,
+                # Note, if the initializer is `None`, we want TensorFlow
+                # to use its default one. So we pass in `None`.
                 kernel_initializer=(
                     gru_initializer(**config.hidden_initializer_config)
                     if config.hidden_initializer_config
-                    else gru_initializer()
+                    else gru_initializer
                 ),
                 use_bias=config.use_bias,
                 return_sequences=True,
@@ -325,10 +327,12 @@ class TfLSTMEncoder(TfModel, Encoder):
             layer = tf.keras.layers.LSTM(
                 config.hidden_dim,
                 time_major=not config.batch_major,
+                # Note, if the initializer is `None`, we want TensorFlow
+                # to use its default one. So we pass in `None`.
                 kernel_initializer=(
                     lstm_initializer(**config.hidden_initializer_config)
                     if config.hidden_initializer_config
-                    else lstm_initializer()
+                    else lstm_initializer
                 ),
                 use_bias=config.use_bias,
                 return_sequences=True,

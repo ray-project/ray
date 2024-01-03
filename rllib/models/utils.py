@@ -167,6 +167,17 @@ def get_initializer_fn(name: Optional[Union[str, Callable]], framework: str = "t
 
         _, nn = try_import_torch()
 
+        # Check, if the name includes an underscore. We must use the
+        # in-place initialization from Torch.
+        if not name_lower.endswith("_"):
+            raise ValueError(
+                "Not an in-place initializer: Torch weight initializers "
+                "need to be provided as their in-place version, i.e. "
+                "<initializaer_name> + '_'. See "
+                "https://pytorch.org/docs/stable/nn.init.html. "
+                f"User provided {name}."
+            )
+
         # First, try to get the initialization directly from `nn.init`.
         # Note, that all initialization methods in `nn.init` are lower
         # case and that `<method>_` defines the "in-place" method.

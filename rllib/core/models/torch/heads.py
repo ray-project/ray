@@ -14,6 +14,7 @@ from ray.rllib.core.models.specs.specs_base import Spec
 from ray.rllib.core.models.specs.specs_base import TensorSpec
 from ray.rllib.core.models.torch.base import TorchModel
 from ray.rllib.core.models.torch.primitives import TorchCNNTranspose, TorchMLP
+from ray.rllib.models.utils import get_initializer_fn
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.framework import try_import_torch
 
@@ -107,7 +108,7 @@ class TorchMLPHead(TorchModel):
             output_dim=config.output_layer_dim,
             output_activation=config.output_layer_activation,
             output_use_bias=config.output_layer_use_bias,
-            output_initielizer=config.output_layer_initializer,
+            output_initializer=config.output_layer_initializer,
             output_initializer_config=config.output_layer_initializer_config,
         )
 
@@ -145,7 +146,7 @@ class TorchFreeLogStdMLPHead(TorchModel):
             output_dim=self._half_output_dim,
             output_activation=config.output_layer_activation,
             output_use_bias=config.output_layer_use_bias,
-            output_initielizer=config.output_layer_initializer,
+            output_initializer=config.output_layer_initializer,
             output_initializer_config=config.output_layer_initializer_config,
         )
 
@@ -184,6 +185,19 @@ class TorchCNNTransposeHead(TorchModel):
             out_features=int(np.prod(config.initial_image_dims)),
             bias=True,
         )
+
+        # Initial Dense layer initializer.
+        initial_dense_initializer = get_initializer_fn(
+            config.initial_dense_initializer, framework="torch"
+        )
+
+        if initial_dense_initializer:
+            if config.initial_dense_initializer_config:
+                initial_dense_initializer(
+                    self.initial_dense.weight, **config.initial_dense_initializer_config
+                )
+            else:
+                initial_dense_initializer(self.initial_dense.weight)
 
         # The main CNNTranspose stack.
         self.cnn_transpose_net = TorchCNNTranspose(

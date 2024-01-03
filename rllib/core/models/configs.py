@@ -484,6 +484,8 @@ class CNNTransposeHeadConfig(ModelConfig):
     initial_image_dims: Union[List[int], Tuple[int]] = field(
         default_factory=lambda: [4, 4, 96]
     )
+    initial_dense_initializer: Optional[Union[str, Callable]] = None
+    initial_dense_initializer_config: Optional[Dict] = None
     cnn_transpose_filter_specifiers: List[List[Union[int, List[int]]]] = field(
         default_factory=lambda: [[48, [4, 4], 2], [24, [4, 4], 2], [3, [4, 4], 2]]
     )

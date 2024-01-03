@@ -148,8 +148,8 @@ class TfFreeLogStdMLPHead(TfModel):
             output_dim=self._half_output_dim,
             output_activation=config.output_layer_activation,
             output_use_bias=config.output_layer_use_bias,
-            output_initializer=config.output_initializer,
-            output_initializer_config=config.output_initializer_config,
+            output_initializer=config.output_layer_initializer,
+            output_initializer_config=config.output_layer_initializer_config,
         )
 
         self.log_std = tf.Variable(
@@ -183,8 +183,8 @@ class TfCNNTransposeHead(TfModel):
 
         # Initial, inactivated Dense layer (always w/ bias). Use the
         # hidden layer initializer for this layer.
-        hidden_initializer = get_initializer_fn(
-            config.hidden_layer_initializer, framework="tf2"
+        initial_dense_initializer = get_initializer_fn(
+            config.initial_dense_initializer, framework="tf2"
         )
 
         # This layer is responsible for getting the incoming tensor into a proper
@@ -193,9 +193,9 @@ class TfCNNTransposeHead(TfModel):
             units=int(np.prod(config.initial_image_dims)),
             activation=None,
             kernel_initializer=(
-                hidden_initializer(**config.hidden_layer_initializer_config)
-                if config.hidden_layer_initializer_config
-                else hidden_initializer()
+                initial_dense_initializer(**config.initial_dense_initializer_config)
+                if config.initial_dense_initializer_config
+                else initial_dense_initializer
             ),
             use_bias=True,
         )

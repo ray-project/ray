@@ -37,7 +37,7 @@ class TorchMLP(nn.Module):
         output_dim: Optional[int] = None,
         output_use_bias: bool = True,
         output_activation: Union[str, Callable] = "linear",
-        output_initielizer: Optional[Union[str, Callable]] = None,
+        output_initializer: Optional[Union[str, Callable]] = None,
         output_initializer_config: Optional[Dict] = None,
     ):
         """Initialize a TorchMLP object.
@@ -75,7 +75,7 @@ class TorchMLP(nn.Module):
         hidden_initializer = get_initializer_fn(
             hidden_layer_initializer, framework="torch"
         )
-        output_initializer = get_initializer_fn(output_initielizer, framework="torch")
+        output_initializer = get_initializer_fn(output_initializer, framework="torch")
         layers = []
         dims = (
             [self.input_dim]

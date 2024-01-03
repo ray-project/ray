@@ -67,7 +67,7 @@ class TorchMLPEncoder(TorchModel, Encoder):
             output_dim=config.output_layer_dim,
             output_activation=config.output_layer_activation,
             output_use_bias=config.output_layer_use_bias,
-            output_initielizer=config.output_layer_initializer,
+            output_initializer=config.output_layer_initializer,
             output_initializer_config=config.output_layer_initializer_config,
         )
 
