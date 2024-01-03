@@ -13,11 +13,11 @@ worker_pth = "/home/ray/anaconda3/lib/python3.8/site-packages/ray/_private/worke
 @ray.remote(
     runtime_env={
         "container": {"image": args.image, "worker_path": worker_pth},
-        "env_vars": {"TEST_ABC": "1"},
+        "env_vars": {"TEST_DEF": "1"},
     }
 )
 def f():
-    return os.environ.get("TEST_ABC")
+    return os.environ.get("TEST_DEF")
 
 
 assert ray.get(f.remote()) == "1"

@@ -47,7 +47,6 @@ from ray.rllib.evaluation.metrics import (
     summarize_episodes,
 )
 from ray.rllib.evaluation.postprocessing_v2 import postprocess_episodes_to_sample_batch
-from ray.rllib.evaluation.rollout_worker import RolloutWorker
 from ray.rllib.evaluation.worker_set import WorkerSet
 from ray.rllib.execution.rollout_ops import synchronous_parallel_sample
 from ray.rllib.execution.train_ops import multi_gpu_train_one_step, train_one_step
@@ -564,11 +563,6 @@ class Algorithm(Trainable, AlgorithmBase):
             config_obj.env = self._env_id
             self.config = config_obj
 
-        self._uses_new_env_runners = (
-            self.config.env_runner_cls is not None
-            and not issubclass(self.config.env_runner_cls, RolloutWorker)
-        )
-
         # Set Algorithm's seed after we have - if necessary - enabled
         # tf eager-execution.
         update_global_seed_if_necessary(self.config.framework_str, self.config.seed)
@@ -761,7 +755,7 @@ class Algorithm(Trainable, AlgorithmBase):
             # Note that with the new EnvRunner API in combination with the new stack,
             # this information only needs to be kept in the LearnerGroup and not on the
             # EnvRunners anymore.
-            if not self._uses_new_env_runners:
+            if not self.config.uses_new_env_runners:
                 update_fn = self.learner_group.should_module_be_updated_fn
                 self.workers.foreach_worker(
                     lambda w: w.set_is_policy_to_train(update_fn),
@@ -3048,7 +3042,7 @@ class Algorithm(Trainable, AlgorithmBase):
         """
         eval_func_to_use = (
             self._evaluate_async_with_env_runner
-            if (self.config.enable_async_evaluation and self._uses_new_env_runners)
+            if self.config.enable_async_evaluation and self.config.uses_new_env_runners
             else self._evaluate_async
             if self.config.enable_async_evaluation
             else self.evaluate
