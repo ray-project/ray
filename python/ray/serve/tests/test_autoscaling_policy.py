@@ -34,6 +34,7 @@ from ray.serve.autoscaling_policy import (
     DefaultAutoscalingPolicy,
     _calculate_desired_num_replicas,
 )
+from ray.serve.config import AutoscalingConfig
 from ray.serve.generated.serve_pb2 import (
     DeploymentStatusInfo as DeploymentStatusInfoProto,
 )

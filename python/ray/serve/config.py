@@ -1,7 +1,5 @@
-import binascii
 import logging
 import warnings
-from base64 import b64decode, b64encode
 from enum import Enum
 from typing import Any, Callable, List, Optional, Union
 
@@ -12,7 +10,6 @@ from ray._private.pydantic_compat import (
     NonNegativeInt,
     PositiveFloat,
     PositiveInt,
-    PrivateAttr,
     validator,
 )
 from ray._private.utils import import_attr
@@ -65,11 +62,11 @@ class AutoscalingConfig(BaseModel):
     # How long to wait before scaling up replicas
     upscale_delay_s: NonNegativeFloat = 30.0
 
+    # Cloudpickled policy definition.
+    serialized_policy_def: bytes = b""
+
     # Custom autoscaling config. Defaulting to the request-based autoscaler.
     policy: Union[str, Callable] = DEFAULT_AUTOSCALING_POLICY
-
-    # Cloudpickle serialized policy for internal use.
-    _serialized_policy_def: bytes = PrivateAttr(default_factory=b"")
 
     @validator("max_replicas", always=True)
     def replicas_settings_valid(cls, max_replicas, values):
@@ -97,28 +94,25 @@ class AutoscalingConfig(BaseModel):
 
     @validator("policy", always=True)
     def serialize_policy(cls, policy, values):
-        """Serialize policy with cloudpickle into base64-encoded utf8 string.
+        """Serialize policy with cloudpickle.
 
-        If policy is a string, it's either (1) a serialized callable or (2) an import
-        path. In the case of (1), we just return the already-serialized callable.
-        For (2), we import the policy and serialize it before returning.
+        If policy is a callable, cloudpickle the function and set on the
+        `serialized_policy_def` if not already. Also, return the name of the function as
+        the policy. If policy is a string, import the function, cloudpickle it, and set
+        on the `serialized_policy_def` if not already.
         """
         if isinstance(policy, Callable):
-            imported_policy = policy
-        elif isinstance(policy, str):
-            try:
-                assert b64encode(b64decode(policy)).decode("utf-8") == policy
-                return policy
-            except binascii.Error:
-                imported_policy = import_attr(policy)
-            except AssertionError:
-                imported_policy = import_attr(policy)
+            if not values.get("serialized_policy_def"):
+                values["serialized_policy_def"] = cloudpickle.dumps(policy)
+            return policy.__name__
 
-        return b64encode(cloudpickle.dumps(imported_policy))
+        if not values.get("serialized_policy_def"):
+            values["serialized_policy_def"] = cloudpickle.dumps(import_attr(policy))
+        return policy
 
     def get_policy(self) -> Callable:
-        """Deserialize policy from cloudpickled, base64-encoded, utf8 string."""
-        return cloudpickle.loads(b64decode(self.policy))
+        """Deserialize policy from cloudpickled bytes."""
+        return cloudpickle.loads(self.serialized_policy_def)
 
     def get_upscale_smoothing_factor(self) -> PositiveFloat:
         return self.upscale_smoothing_factor or self.smoothing_factor
