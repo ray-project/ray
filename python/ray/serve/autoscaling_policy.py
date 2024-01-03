@@ -274,11 +274,4 @@ class ReplicaQueueLengthAutoscalingPolicy(AutoscalingPolicy):
             )
 
 
-@PublicAPI(stability="alpha")
-class DefaultAutoscalingPolicy(ReplicaQueueLengthAutoscalingPolicy):
-    """The default autoscaling policy for Ray Serve.
-
-    This is currently just an alias for ReplicaQueueLengthAutoscalingPolicy.
-    """
-
-    ...
+DefaultAutoscalingPolicy = ReplicaQueueLengthAutoscalingPolicy

@@ -61,13 +61,8 @@ message AutoscalingConfig {
   // The multiplicative "gain" factor to limit downscale.
   optional double downscale_smoothing_factor = 11;
 
-  // The policy can be passed in as a string import path or callable by the user. When
-  // the policy is passed in as a callable, the policy will be just the name of the
-  // function.
-  optional string policy = 12;
-
   // The cloudpickled policy definition.
-  bytes serialized_policy_def = 13;
+  bytes serialized_policy_def = 12;
 }
 
 //[Begin] LOGGING CONFIG
