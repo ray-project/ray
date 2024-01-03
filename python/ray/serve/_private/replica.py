@@ -293,14 +293,14 @@ class ReplicaActor:
         self._user_callable_initialized = False
         self._user_callable_initialized_lock = asyncio.Lock()
 
+        # Set metadata for logs and metrics.
+        # servable_object will be populated in `initialize_and_get_metadata`.
+        self._set_internal_replica_context(servable_object=None)
+
         self._metrics_manager = ReplicaMetricsManager(
             replica_tag, deployment_id, self._deployment_config.autoscaling_config
         )
         self._metrics_manager.start()
-
-        # Set metadata for logs and metrics.
-        # servable_object will be populated in `initialize_and_get_metadata`.
-        self._set_internal_replica_context(servable_object=None)
 
     def _set_internal_replica_context(self, *, servable_object: Callable = None):
         ray.serve.context._set_internal_replica_context(
