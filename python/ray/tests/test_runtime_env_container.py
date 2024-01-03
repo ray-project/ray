@@ -103,31 +103,6 @@ def test_serve_telemetry(podman_docker_cluster):
 def test_job(podman_docker_cluster):
 
     container_id = podman_docker_cluster
-    # cmd = ["ray", "start", "--head"]
-    # print(run_in_container([cmd], container_id))
-    # try:
-    #     print(run_in_container([["ray", "status"]], container_id))
-    # except subprocess.CalledProcessError as e:
-    #     print("process didn't complete successfully", e.output)
-    #     raise
-
-    # cmd = [
-    #     "ray",
-    #     "job",
-    #     "submit",
-    #     # "--address",
-    #     # "http://127.0.0.1:8265",
-    #     "--runtime-env-json",
-    #     f'{{"container": {{"image": "{NESTED_IMAGE_NAME}"}}}}',
-    #     "--",
-    #     "python",
-    #     "-V",
-    # ]
-    # try:
-    #     print(run_in_container([cmd], container_id))
-    # except subprocess.CalledProcessError as e:
-    #     print("process didn't complete successfully", e.output)
-    #     raise
     cmd = ["python", "tests/test_job.py", "--image", NESTED_IMAGE_NAME]
     run_in_container([cmd], container_id)
 

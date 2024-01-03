@@ -14,7 +14,7 @@ worker_pth = "/home/ray/anaconda3/lib/python3.8/site-packages/ray/_private/worke
 ray.init()
 client = JobSubmissionClient()
 job_id = client.submit_job(
-    entrypoint="python -V",
+    entrypoint="cat file.txt",
     runtime_env={"container": {"image": args.image, "worker_path": worker_pth}},
 )
 
@@ -27,3 +27,4 @@ def check_job_succeeded():
 wait_for_condition(check_job_succeeded)
 logs = client.get_job_logs(job_id)
 print("Job Logs:", logs)
+assert "helloworldalice" in logs
