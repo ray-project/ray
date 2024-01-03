@@ -9,7 +9,6 @@ from contextlib import asynccontextmanager
 from importlib import import_module
 from typing import Any, AsyncGenerator, Callable, Dict, Optional, Tuple, Union
 
-import aiorwlock
 import starlette.responses
 from starlette.requests import Request
 from starlette.types import Message, Receive, Scope, Send
@@ -590,7 +589,6 @@ class UserCallableWrapper:
         self._is_function = inspect.isfunction(deployment_def)
         self._deployment_id = deployment_id
         self._replica_tag = replica_tag
-        self._rwlock = aiorwlock.RWLock()
         self._delete_lock = asyncio.Lock()
 
         # Will be populated in `initialize_callable`.
@@ -785,24 +783,21 @@ class UserCallableWrapper:
         await self._user_health_check()
 
     async def call_reconfigure(self, user_config: Any):
-        async with self._rwlock.writer:
-            if user_config is not None:
-                if self._is_function:
-                    raise ValueError(
-                        "deployment_def must be a class to use user_config"
-                    )
-                elif not hasattr(self._callable, RECONFIGURE_METHOD):
-                    raise RayServeException(
-                        "user_config specified but deployment "
-                        + self._deployment_id
-                        + " missing "
-                        + RECONFIGURE_METHOD
-                        + " method"
-                    )
-                reconfigure_method = sync_to_async(
-                    getattr(self._callable, RECONFIGURE_METHOD)
+        if user_config is not None:
+            if self._is_function:
+                raise ValueError("deployment_def must be a class to use user_config")
+            elif not hasattr(self._callable, RECONFIGURE_METHOD):
+                raise RayServeException(
+                    "user_config specified but deployment "
+                    + self._deployment_id
+                    + " missing "
+                    + RECONFIGURE_METHOD
+                    + " method"
                 )
-                await reconfigure_method(user_config)
+            reconfigure_method = sync_to_async(
+                getattr(self._callable, RECONFIGURE_METHOD)
+            )
+            await reconfigure_method(user_config)
 
     async def call_user_method(
         self,
