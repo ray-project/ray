@@ -31,7 +31,7 @@ from ray.serve._private.constants import (
     SERVE_NAMESPACE,
 )
 from ray.serve._private.controller import ServeController
-from ray.serve._private.utils import calculate_desired_num_replicas
+from ray.serve.autoscaling_policy import _calculate_desired_num_replicas
 from ray.serve.config import AutoscalingConfig
 from ray.serve.generated.serve_pb2 import (
     DeploymentStatusInfo as DeploymentStatusInfoProto,
@@ -50,18 +50,18 @@ class TestCalculateDesiredNumReplicas:
             target_num_ongoing_requests_per_replica=100,
         )
 
-        desired_num_replicas = calculate_desired_num_replicas(
+        desired_num_replicas = _calculate_desired_num_replicas(
             autoscaling_config=config, current_num_ongoing_requests=[150] * num_replicas
         )
         assert desired_num_replicas == max_replicas
 
-        desired_num_replicas = calculate_desired_num_replicas(
+        desired_num_replicas = _calculate_desired_num_replicas(
             autoscaling_config=config, current_num_ongoing_requests=[50] * num_replicas
         )
         assert desired_num_replicas == min_replicas
 
         for i in range(50, 150):
-            desired_num_replicas = calculate_desired_num_replicas(
+            desired_num_replicas = _calculate_desired_num_replicas(
                 autoscaling_config=config,
                 current_num_ongoing_requests=[i] * num_replicas,
             )
@@ -76,7 +76,7 @@ class TestCalculateDesiredNumReplicas:
         )
         num_replicas = 10
         num_ongoing_requests = [2 * target_requests] * num_replicas
-        desired_num_replicas = calculate_desired_num_replicas(
+        desired_num_replicas = _calculate_desired_num_replicas(
             autoscaling_config=config, current_num_ongoing_requests=num_ongoing_requests
         )
         assert 19 <= desired_num_replicas <= 21  # 10 * 2 = 20
@@ -90,7 +90,7 @@ class TestCalculateDesiredNumReplicas:
         )
         num_replicas = 10
         num_ongoing_requests = [0.5 * target_requests] * num_replicas
-        desired_num_replicas = calculate_desired_num_replicas(
+        desired_num_replicas = _calculate_desired_num_replicas(
             autoscaling_config=config, current_num_ongoing_requests=num_ongoing_requests
         )
         assert 4 <= desired_num_replicas <= 6  # 10 * 0.5 = 5
@@ -105,13 +105,13 @@ class TestCalculateDesiredNumReplicas:
         num_replicas = 10
 
         num_ongoing_requests = [4.0] * num_replicas
-        desired_num_replicas = calculate_desired_num_replicas(
+        desired_num_replicas = _calculate_desired_num_replicas(
             autoscaling_config=config, current_num_ongoing_requests=num_ongoing_requests
         )
         assert 24 <= desired_num_replicas <= 26  # 10 + 0.5 * (40 - 10) = 25
 
         num_ongoing_requests = [0.25] * num_replicas
-        desired_num_replicas = calculate_desired_num_replicas(
+        desired_num_replicas = _calculate_desired_num_replicas(
             autoscaling_config=config, current_num_ongoing_requests=num_ongoing_requests
         )
         assert 5 <= desired_num_replicas <= 8  # 10 + 0.5 * (2.5 - 10) = 6.25
@@ -127,14 +127,14 @@ class TestCalculateDesiredNumReplicas:
 
         # Should use upscale smoothing factor of 0.5
         num_ongoing_requests = [4.0] * num_replicas
-        desired_num_replicas = calculate_desired_num_replicas(
+        desired_num_replicas = _calculate_desired_num_replicas(
             autoscaling_config=config, current_num_ongoing_requests=num_ongoing_requests
         )
         assert 24 <= desired_num_replicas <= 26  # 10 + 0.5 * (40 - 10) = 25
 
         # Should use downscale smoothing factor of 1 (default)
         num_ongoing_requests = [0.25] * num_replicas
-        desired_num_replicas = calculate_desired_num_replicas(
+        desired_num_replicas = _calculate_desired_num_replicas(
             autoscaling_config=config, current_num_ongoing_requests=num_ongoing_requests
         )
         assert 1 <= desired_num_replicas <= 4  # 10 + (2.5 - 10) = 2.5
@@ -150,14 +150,14 @@ class TestCalculateDesiredNumReplicas:
 
         # Should use upscale smoothing factor of 1 (default)
         num_ongoing_requests = [4.0] * num_replicas
-        desired_num_replicas = calculate_desired_num_replicas(
+        desired_num_replicas = _calculate_desired_num_replicas(
             autoscaling_config=config, current_num_ongoing_requests=num_ongoing_requests
         )
         assert 39 <= desired_num_replicas <= 41  # 10 + (40 - 10) = 40
 
         # Should use downscale smoothing factor of 0.5
         num_ongoing_requests = [0.25] * num_replicas
-        desired_num_replicas = calculate_desired_num_replicas(
+        desired_num_replicas = _calculate_desired_num_replicas(
             autoscaling_config=config, current_num_ongoing_requests=num_ongoing_requests
         )
         assert 5 <= desired_num_replicas <= 8  # 10 + 0.5 * (2.5 - 10) = 6.25
