@@ -263,7 +263,11 @@ class MemoryProfilingManager:
         return True, open(profile_visualize_path, "rb").read()
 
     async def attach_profiler(
-        self, pid: int, native: bool = False, trace_python_allocators: bool = False
+        self,
+        pid: int,
+        native: bool = False,
+        trace_python_allocators: bool = False,
+        verbose: bool = False,
     ) -> (bool, str):
         """
         Attach a Memray profiler to a specified process.
@@ -293,6 +297,8 @@ class MemoryProfilingManager:
             cmd.append("--native")
         if trace_python_allocators:
             cmd.append("--trace-python-allocators")
+        if verbose:
+            cmd.append("--verbose")
         if await _can_passwordless_sudo():
             cmd = ["sudo", "-n"] + cmd
 
