@@ -639,22 +639,23 @@ class PushBasedShuffleTaskScheduler(ExchangeTaskScheduler):
         partition = []
         merge_idx = 0
         num_reducers_for_cur_merger = schedule.get_num_reducers_per_merge_idx(merge_idx)
-        for output in mapper_outputs:
+        while merge_idx < schedule.num_merge_tasks_per_round:
+            output = mapper_outputs.pop(0)
+            partition.append(output)
+
             if len(partition) == num_reducers_for_cur_merger:
                 yield partition
 
                 partition = []
                 merge_idx += 1
-                num_reducers_for_cur_merger = schedule.get_num_reducers_per_merge_idx(
-                    merge_idx
-                )
 
-            if num_reducers_for_cur_merger is None:
-                assert not partition
-                # The last output should be the metadata.
-                yield output
-            else:
-                partition.append(output)
+        assert not partition
+        assert len(mapper_outputs) == 1, (
+            mapper_outputs,
+            "The last output should be a BlockMetadata",
+        )
+        assert isinstance(mapper_outputs[0], BlockMetadata)
+        yield mapper_outputs[0]
 
         assert merge_idx == schedule.num_merge_tasks_per_round, (
             merge_idx,
@@ -702,15 +703,13 @@ class PushBasedShuffleTaskScheduler(ExchangeTaskScheduler):
     def _compute_shuffle_schedule(
         num_cpus_per_node_map: Dict[str, int],
         num_input_blocks: int,
-        merge_factor: int,
+        merge_factor: float,
         num_output_blocks: int,
     ) -> _PushBasedShuffleStage:
         num_cpus_total = sum(v for v in num_cpus_per_node_map.values())
         logger.get_logger().info(
             f"Found {num_cpus_total} CPUs available CPUs for push-based shuffle."
         )
-        task_parallelism = min(num_cpus_total, num_input_blocks)
-
         num_tasks_per_map_merge_group = merge_factor + 1
         num_total_merge_tasks = math.ceil(num_input_blocks / merge_factor)
 
@@ -728,8 +727,8 @@ class PushBasedShuffleTaskScheduler(ExchangeTaskScheduler):
             # of input blocks that we haven't scheduled yet, in case there are
             # fewer input blocks than CPU slots on this node.
             num_cpu_slots = min(num_cpus, num_input_blocks_remaining)
-            num_merge_tasks_on_cur_node = int(
-                num_cpu_slots // num_tasks_per_map_merge_group
+            num_merge_tasks_on_cur_node = round(
+                num_cpu_slots / num_tasks_per_map_merge_group
             )
             # For small datasets, the number of tasks to run may be less than
             # the total CPU slots available.
@@ -738,18 +737,28 @@ class PushBasedShuffleTaskScheduler(ExchangeTaskScheduler):
             )
             for i in range(num_merge_tasks_on_cur_node):
                 merge_task_placement.append(node)
+                # We schedule `merge_factor` many map tasks for every merge
+                # task. Subtract from the number of input blocks remaining to
+                # account for cases where the number of map tasks is smaller
+                # than the available CPU slots.
                 num_input_blocks_remaining -= merge_factor
+                num_cpus -= num_tasks_per_map_merge_group
             num_merge_tasks_per_round += num_merge_tasks_on_cur_node
 
             # Handle the case where a single node cannot fit a group of map and
             # merge tasks, but we can spread the group across multiple distinct
             # nodes.
-            leftover_cpus += num_cpus % num_tasks_per_map_merge_group
-            if leftover_cpus >= num_tasks_per_map_merge_group:
+            leftover_cpus += num_cpus
+            if (
+                leftover_cpus >= num_tasks_per_map_merge_group
+                and num_merge_tasks_per_round < num_total_merge_tasks
+            ):
                 merge_task_placement.append(node)
                 num_merge_tasks_per_round += 1
                 leftover_cpus -= num_tasks_per_map_merge_group
                 num_input_blocks_remaining -= merge_factor
+
+            num_input_blocks_remaining = max(0, num_input_blocks_remaining)
 
         if num_merge_tasks_per_round == 0:
             # For small datasets, make sure we have at least one merge task.
@@ -762,7 +771,8 @@ class PushBasedShuffleTaskScheduler(ExchangeTaskScheduler):
         assert num_merge_tasks_per_round == len(merge_task_placement)
         assert num_merge_tasks_per_round > 0, num_merge_tasks_per_round
         # Use the remaining CPUs to execute map tasks.
-        num_map_tasks_per_round = task_parallelism - num_merge_tasks_per_round
+        num_map_tasks_per_round = num_cpus_total - num_merge_tasks_per_round
+        num_map_tasks_per_round = min(num_map_tasks_per_round, num_input_blocks)
         # Make sure there is at least one map task in each round.
         num_map_tasks_per_round = max(num_map_tasks_per_round, 1)
 

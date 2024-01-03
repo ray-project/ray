@@ -268,14 +268,10 @@ def test_sort_with_one_block(shutdown_only, use_push_based_shuffle):
     ).sum("token_counts")
 
 
-@pytest.mark.parametrize("streaming", [False, True])
-def test_push_based_shuffle_schedule(streaming):
+def test_push_based_shuffle_schedule():
     def _test(num_input_blocks, merge_factor, num_cpus_per_node_map):
         num_cpus = sum(v for v in num_cpus_per_node_map.values())
-        if streaming:
-            op_cls = PushBasedShuffleTaskScheduler
-        else:
-            op_cls = PushBasedShufflePlan
+        op_cls = PushBasedShuffleTaskScheduler
         schedule = op_cls._compute_shuffle_schedule(
             num_cpus_per_node_map, num_input_blocks, merge_factor, num_input_blocks
         )
@@ -289,16 +285,26 @@ def test_push_based_shuffle_schedule(streaming):
             + schedule.merge_schedule.num_merge_tasks_per_round
             <= max(num_cpus, 2)
         )
+        print(
+            "map",
+            schedule.num_map_tasks_per_round,
+            "merge",
+            schedule.merge_schedule.num_merge_tasks_per_round,
+            "num_cpus",
+            num_cpus,
+            "merge_factor",
+            merge_factor,
+        )
         # Merge factor between map : merge tasks is approximately correct.
         if schedule.num_map_tasks_per_round > merge_factor:
             actual_merge_factor = (
                 schedule.num_map_tasks_per_round
-                // schedule.merge_schedule.num_merge_tasks_per_round
+                / schedule.merge_schedule.num_merge_tasks_per_round
             )
-            next_highest_merge_factor = schedule.num_map_tasks_per_round // (
+            next_highest_merge_factor = schedule.num_map_tasks_per_round / (
                 schedule.merge_schedule.num_merge_tasks_per_round + 1
             )
-            assert next_highest_merge_factor <= merge_factor <= actual_merge_factor, (
+            assert actual_merge_factor - 1 <= merge_factor <= actual_merge_factor + 1, (
                 next_highest_merge_factor,
                 merge_factor,
                 actual_merge_factor,
@@ -363,6 +369,20 @@ def test_push_based_shuffle_schedule(streaming):
     # Regression test for https://github.com/ray-project/ray/issues/37754.
     _test(260, 2, {"node1": 128})
     _test(1, 2, {"node1": 128})
+
+    # Test float merge_factor.
+    for cluster_config in [
+        {"node1": 10},
+        {"node1": 10, "node2": 10},
+    ]:
+        _test(100, 1, cluster_config)
+        _test(100, 1.3, cluster_config)
+        _test(100, 1.6, cluster_config)
+        _test(100, 1.75, cluster_config)
+        _test(100, 2, cluster_config)
+
+        _test(1, 1.2, cluster_config)
+        _test(2, 1.2, cluster_config)
 
 
 def test_push_based_shuffle_stats(ray_start_cluster):
@@ -585,8 +605,8 @@ def test_memory_usage(ray_start_regular, restore_data_context, use_push_based_sh
     stats = ds._get_stats_summary()
     # TODO(swang): Sort on this dataset seems to produce significant skew, so
     # one task uses much more memory than the other.
-    for stage_stats in stats.stages_stats:
-        assert stage_stats.memory["max"] < 2000
+    for op_stats in stats.operators_stats:
+        assert op_stats.memory["max"] < 2000
 
 
 if __name__ == "__main__":
