@@ -11,21 +11,22 @@ set -ex
 
 _cleanup() {
   for dir in "$@"; do
-    if [ -d $dir ]; then
+    if [[ -d $dir ]]; then
       echo "Cleaning up old artifacts before command."
       echo "Artifact directory contents before cleanup:"
       find $dir -print || true
 
-      if [ "$(ls -A $dir)" ]; then
+      if [[ -z "$($ls -A "$dir")" ]]; then
         echo "Directory not empty, cleaning up..."
         # Need to run in docker to avoid permission issues
-        docker run --rm -v $dir:/artifact-mount alpine:latest /bin/sh -c 'rm -rf /artifact-mount/*; rm -rf /artifact-mount/.[!.]*' || true
+        rm -rf /artifact-mount/* 
+        rm -rf /artifact-mount/.[!.]*
       else
         echo "Directory already empty, no need to clean up."
       fi
 
       echo "Artifact directory contents after cleanup:"
-      find $dir -print || true
+      find "$dir" -print || true
     fi
 
 echo "Creating artifact directory..."
