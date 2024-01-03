@@ -261,3 +261,6 @@ RAY_SERVE_FORCE_STOP_UNHEALTHY_REPLICAS = (
 RAY_SERVE_QUEUE_LENGTH_RESPONSE_DEADLINE_S = float(
     os.environ.get("RAY_SERVE_QUEUE_LENGTH_RESPONSE_DEADLINE_S", 0.1)
 )
+
+# The default autoscaling policy to use if none is specified.
+DEFAULT_AUTOSCALING_POLICY = "ray.serve.autoscaling_policy:DefaultAutoscalingPolicy"

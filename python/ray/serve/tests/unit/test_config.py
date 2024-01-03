@@ -5,7 +5,7 @@ from ray._private.pydantic_compat import ValidationError
 from ray.serve._private.config import DeploymentConfig, ReplicaConfig
 from ray.serve._private.constants import DEFAULT_GRPC_PORT
 from ray.serve._private.utils import DEFAULT
-from ray.serve.autoscaling_policy import BasicAutoscalingPolicy
+from ray.serve.autoscaling_policy import DefaultAutoscalingPolicy
 from ray.serve.config import (
     AutoscalingConfig,
     DeploymentMode,
@@ -560,7 +560,7 @@ def test_autoscaling_policy_serializations(policy):
     ).autoscaling_config.get_policy()
 
     if policy is None:
-        assert deserialized_autoscaling_policy == BasicAutoscalingPolicy
+        assert deserialized_autoscaling_policy == DefaultAutoscalingPolicy
     else:
         assert deserialized_autoscaling_policy() == fake_policy_return_value
 

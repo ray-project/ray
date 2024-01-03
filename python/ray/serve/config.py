@@ -12,10 +12,12 @@ from ray._private.pydantic_compat import (
     NonNegativeInt,
     PositiveFloat,
     PositiveInt,
+    PrivateAttr,
     validator,
 )
 from ray._private.utils import import_attr
 from ray.serve._private.constants import (
+    DEFAULT_AUTOSCALING_POLICY,
     DEFAULT_GRPC_PORT,
     DEFAULT_HTTP_HOST,
     DEFAULT_HTTP_PORT,
@@ -25,7 +27,6 @@ from ray.serve._private.constants import (
 from ray.util.annotations import Deprecated, PublicAPI
 
 logger = logging.getLogger(SERVE_LOGGER_NAME)
-DEFAULT_AUTOSCALING_POLICY = "ray.serve.autoscaling_policy:BasicAutoscalingPolicy"
 
 
 @PublicAPI(stability="stable")
@@ -64,8 +65,11 @@ class AutoscalingConfig(BaseModel):
     # How long to wait before scaling up replicas
     upscale_delay_s: NonNegativeFloat = 30.0
 
-    # Custom autoscaling config. Defaulting to the request based autoscaler.
+    # Custom autoscaling config. Defaulting to the request-based autoscaler.
     policy: Union[str, Callable] = DEFAULT_AUTOSCALING_POLICY
+
+    # Cloudpickle serialized policy for internal use.
+    _serialized_policy_def: bytes = PrivateAttr(default_factory=b"")
 
     @validator("max_replicas", always=True)
     def replicas_settings_valid(cls, max_replicas, values):
@@ -93,11 +97,11 @@ class AutoscalingConfig(BaseModel):
 
     @validator("policy", always=True)
     def serialize_policy(cls, policy, values):
-        """Serialize policy to be cloudpickled and base64 encoded utf8 string.
+        """Serialize policy with cloudpickle into base64-encoded utf8 string.
 
-        If policy is a string, it is possible to be already serialized when constructed
-        from protobuf. In this case, we just return the already serialized string. Else
-        we import the policy and serialize it before return.
+        If policy is a string, it's either (1) a serialized callable or (2) an import
+        path. In the case of (1), we just return the already-serialized callable.
+        For (2), we import the policy and serialize it before returning.
         """
         if isinstance(policy, Callable):
             imported_policy = policy
@@ -109,13 +113,11 @@ class AutoscalingConfig(BaseModel):
                 imported_policy = import_attr(policy)
             except AssertionError:
                 imported_policy = import_attr(policy)
-        else:
-            return policy
 
-        return b64encode(cloudpickle.dumps(imported_policy)).decode("utf-8")
+        return b64encode(cloudpickle.dumps(imported_policy))
 
     def get_policy(self) -> Callable:
-        """Deserialize policy from cloudpicked base64 encoded utf8 string."""
+        """Deserialize policy from cloudpickled, base64-encoded, utf8 string."""
         return cloudpickle.loads(b64decode(self.policy))
 
     def get_upscale_smoothing_factor(self) -> PositiveFloat:
