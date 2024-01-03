@@ -164,6 +164,20 @@ def test_run_tests() -> None:
         # test targets contain bad_test
         assert not container.run_tests(["bad_test"], [])
 
+    def test_create_bazel_log_mount() -> None:
+        with tempfile.TemporaryDirectory() as tmpdir, mock.patch(
+            "random.choice",
+            return_value="a",
+        ), mock.patch(
+            "ci.ray_ci.linux_tester_container.LinuxTesterContainer.get_artifact_mount",
+            return_value=("/tmp/artifacts", tmpdir),
+        ):
+            container = LinuxTesterContainer("team", skip_ray_installation=True)
+            assert container._create_bazel_log_mount() == (
+                "/tmp/artifacts/aaaaa",
+                os.path.join(tmpdir, "aaaaa"),
+            )
+
 
 def test_create_bazel_log_mount() -> None:
     with tempfile.TemporaryDirectory() as tmpdir, mock.patch(
