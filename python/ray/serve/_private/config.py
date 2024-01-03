@@ -204,6 +204,13 @@ class DeploymentConfig(BaseModel):
 
     @classmethod
     def from_proto(cls, proto: DeploymentConfigProto):
+        # MessageToDict from google.protobuf.json_format will automatically convert
+        # bytes into base64 encoded string due to json can't handle bytes directly.
+        # We need to keep in mind for any bytes data in proto, we need to decode it
+        # according.
+        #
+        # See:
+        # https://github.com/protocolbuffers/protobuf/issues/2801#issuecomment-285812695
         data = MessageToDict(
             proto,
             including_default_value_fields=True,
