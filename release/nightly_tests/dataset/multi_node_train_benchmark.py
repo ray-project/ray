@@ -555,7 +555,7 @@ def benchmark_code(
                     input_paths,
                     mode="RGB",
                     partitioning=partitioning,
-                    shuffle="files"
+                    shuffle="files",
                 )
 
                 val_dataset = ray.data.Dataset.copy(ray_dataset)
