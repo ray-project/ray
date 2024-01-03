@@ -8,22 +8,25 @@
 # after uploading artifacts to make sure no stale artifacts
 # remain on the node when a Buildkite runner is re-used.
 set -ex
-if [ -d "/tmp/artifacts" ]; then
-    echo "Cleaning up old artifacts before command."
-    echo "Artifact directory contents before cleanup:"
-    find /tmp/artifacts -print || true
 
-    if [ "$(ls -A /tmp/artifacts)" ]; then
-      echo "Directory not empty, cleaning up..."
-      # Need to run in docker to avoid permission issues
-      docker run --rm -v /tmp/artifacts:/artifact-mount alpine:latest /bin/sh -c 'rm -rf /artifact-mount/*; rm -rf /artifact-mount/.[!.]*' || true
-    else
-      echo "Directory already empty, no need to clean up."
+_cleanup() {
+  for dir in "$@"; do
+    if [ -d $dir ]; then
+      echo "Cleaning up old artifacts before command."
+      echo "Artifact directory contents before cleanup:"
+      find $dir -print || true
+
+      if [ "$(ls -A $dir)" ]; then
+        echo "Directory not empty, cleaning up..."
+        # Need to run in docker to avoid permission issues
+        docker run --rm -v $dir:/artifact-mount alpine:latest /bin/sh -c 'rm -rf /artifact-mount/*; rm -rf /artifact-mount/.[!.]*' || true
+      else
+        echo "Directory already empty, no need to clean up."
+      fi
+
+      echo "Artifact directory contents after cleanup:"
+      find $dir -print || true
     fi
-
-    echo "Artifact directory contents after cleanup:"
-    find /tmp/artifacts -print || true
-fi
 
 echo "Creating artifact directory..."
 if [[ "${OSTYPE}" == linux* ]]; then
@@ -35,6 +38,8 @@ elif [[ "${OSTYPE}" == msys ]]; then
   mkdir -p /c/tmp/artifacts
 fi
 
+# Clean up the artifacts directory before any command.
+_cleanup /tmp/artifacts /tmp/bazel_event_logs
 
 RAYCI_CHECKOUT_DIR="$(pwd)"
 export RAYCI_CHECKOUT_DIR
