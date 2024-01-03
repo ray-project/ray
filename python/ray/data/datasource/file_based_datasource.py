@@ -65,7 +65,11 @@ FILE_SIZE_FETCH_PARALLELIZATION_THRESHOLD = 16
 PATHS_PER_FILE_SIZE_FETCH_TASK = 16
 
 # The errors to retry for opening file.
-OPEN_FILE_RETRY_ON_ERRORS = ["AWS Error SLOW_DOWN", "AWS Error ACCESS_DENIED"]
+OPEN_FILE_RETRY_ON_ERRORS = [
+    "AWS Error SLOW_DOWN",
+    "AWS Error NETWORK_CONNECTION",
+    "AWS Error ACCESS_DENIED",
+]
 
 # The max retry backoff in seconds for opening file.
 OPEN_FILE_RETRY_MAX_BACKOFF_SECONDS = 32
