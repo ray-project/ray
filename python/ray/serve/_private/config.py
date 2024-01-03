@@ -56,6 +56,7 @@ def _proto_to_dict(proto: Message) -> Dict:
     constructing json response and is undesirable for our use case.
     """
     data = {}
+    # Fill data with non-empty fields.
     for field, value in proto.ListFields():
         # Recursively call if the field is another protobuf.
         if field.type == FieldDescriptor.TYPE_MESSAGE:
@@ -63,6 +64,7 @@ def _proto_to_dict(proto: Message) -> Dict:
         else:
             data[field.name] = value
 
+    # Fill data default values.
     for field in proto.DESCRIPTOR.fields:
         if (
             field.name not in data  # skip the fields that are already set
