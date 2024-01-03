@@ -12,7 +12,7 @@ from typing import Any, AsyncGenerator, Callable, Dict, Optional, Tuple, Union
 import aiorwlock
 import starlette.responses
 from starlette.requests import Request
-from starlette.types import Message, Receive, Scope, Send
+from starlette.types import Receive, Scope, Send
 
 import ray
 from ray import cloudpickle
@@ -418,45 +418,37 @@ class ReplicaActor:
                 request_metadata, request_args, request_kwargs
             )
 
-    async def _handle_http_request_generator(
+    async def _call_generator(
         self,
         request_metadata: RequestMetadata,
-        request: StreamingHTTPRequest,
-    ) -> AsyncGenerator[Message, None]:
-        """Handle an HTTP request and stream ASGI messages to the caller.
+        request_args: Tuple[Any],
+        request_kwargs: Dict[str, Any],
+        result_queue: ASGIMessageQueue,
+        receiver_task: Optional[asyncio.Task],
+    ) -> AsyncGenerator[Any, None]:
+        """XXX.
 
-        This is a generator that yields ASGI-compliant messages sent by user code
-        via an ASGI send interface.
+        BLAH
         """
-        receiver_task = None
         call_user_method_task = None
         wait_for_message_task = None
         try:
-            receiver = ASGIReceiveProxy(
-                request_metadata.request_id, request.http_proxy_handle
-            )
-            receiver_task = self._event_loop.create_task(
-                receiver.fetch_until_disconnect()
-            )
-
-            scope = pickle.loads(request.pickled_asgi_scope)
-            asgi_queue_send = ASGIMessageQueue()
-            request_args = (scope, receiver, asgi_queue_send)
-            request_kwargs = {}
-
             # Handle the request in a background asyncio.Task. It's expected that
             # this task will use the provided ASGI send interface to send its HTTP
             # the response. We will poll for the sent messages and yield them back
             # to the caller.
             call_user_method_task = self._event_loop.create_task(
                 self._user_callable_wrapper.call_user_method(
-                    request_metadata, request_args, request_kwargs
+                    request_metadata,
+                    request_args,
+                    request_kwargs,
+                    result_queue=result_queue,
                 )
             )
 
             while True:
                 wait_for_message_task = self._event_loop.create_task(
-                    asgi_queue_send.wait_for_message()
+                    result_queue.wait_for_message()
                 )
                 done, _ = await asyncio.wait(
                     [call_user_method_task, wait_for_message_task],
@@ -466,7 +458,11 @@ class ReplicaActor:
                 # The messages are batched into a list to avoid unnecessary RPCs and
                 # we use vanilla pickle because it's faster than cloudpickle and we
                 # know it's safe for these messages containing primitive types.
-                yield pickle.dumps(asgi_queue_send.get_messages_nowait())
+                if request_metadata.is_http_request:
+                    yield pickle.dumps(result_queue.get_messages_nowait())
+                else:
+                    for msg in result_queue.get_messages_nowait():
+                        yield msg
 
                 # Exit once `call_user_method` has finished. In this case, all
                 # messages must have already been sent.
@@ -495,19 +491,33 @@ class ReplicaActor:
         """Generator that is the entrypoint for all `stream=True` handle calls."""
         request_metadata = pickle.loads(pickled_request_metadata)
         with self._wrap_user_method_call(request_metadata):
+            result_queue = ASGIMessageQueue(
+                write_thread_safe=True, loop=self._event_loop
+            )
+            receiver_task = None
             if request_metadata.is_http_request:
                 assert len(request_args) == 1 and isinstance(
                     request_args[0], StreamingHTTPRequest
                 )
-                generator = self._handle_http_request_generator(
-                    request_metadata, request_args[0]
+                receiver = ASGIReceiveProxy(
+                    self._event_loop,
+                    request_metadata.request_id,
+                    request_args[0].http_proxy_handle,
                 )
-            else:
-                generator = self._user_callable_wrapper.call_user_method_generator(
-                    request_metadata, request_args, request_kwargs
+                receiver_task = self._event_loop.create_task(
+                    receiver.fetch_until_disconnect()
                 )
 
-            async for result in generator:
+                scope = pickle.loads(request_args[0].pickled_asgi_scope)
+                request_args = (scope, receiver, result_queue)
+
+            async for result in self._call_generator(
+                request_metadata,
+                request_args,
+                request_kwargs,
+                result_queue,
+                receiver_task,
+            ):
                 yield result
 
     async def handle_request_from_java(
@@ -824,6 +834,8 @@ class UserCallableWrapper:
         request_metadata: RequestMetadata,
         request_args: Tuple[Any],
         request_kwargs: Dict[str, Any],
+        *,
+        result_queue: Optional[ASGIMessageQueue] = None,
     ) -> Any:
         """Call a user method that is *not* expected to be a generator.
 
@@ -849,19 +861,10 @@ class UserCallableWrapper:
             assert len(request_args) == 1 and isinstance(request_args[0], gRPCRequest)
             request_args = (pickle.loads(request_args[0].grpc_user_request),)
 
+        result = None
         runner_method = None
         try:
             runner_method = self._get_user_callable_method(request_metadata.call_method)
-            if inspect.isgeneratorfunction(runner_method) or inspect.isasyncgenfunction(
-                runner_method
-            ):
-                raise TypeError(
-                    f"Method '{runner_method.__name__}' is a generator function. "
-                    "You must use `handle.options(stream=True)` to call "
-                    "generators on a deployment."
-                )
-
-            method_to_call = sync_to_async(runner_method)
 
             # Edge case to support empty HTTP handlers: don't pass the Request
             # argument if the callable has no parameters.
@@ -871,13 +874,45 @@ class UserCallableWrapper:
             elif request_metadata.is_grpc_request and GRPC_CONTEXT_ARG_NAME in params:
                 request_kwargs = {GRPC_CONTEXT_ARG_NAME: request_metadata.grpc_context}
 
-            result = await method_to_call(*request_args, **request_kwargs)
-            if inspect.isgenerator(result) or inspect.isasyncgen(result):
-                raise TypeError(
-                    f"Method '{runner_method.__name__}' returned a generator. You "
-                    "must use `handle.options(stream=True)` to call "
-                    "generators on a deployment."
+            if inspect.isgeneratorfunction(runner_method):
+                if not request_metadata.is_streaming:
+                    raise TypeError(
+                        f"Method '{runner_method.__name__}' is a generator function. "
+                        "You must use `handle.options(stream=True)` to call "
+                        "generators on a deployment."
+                    )
+
+                assert result_queue is not None
+                for r in runner_method(*request_args, **request_kwargs):
+                    if request_metadata.is_grpc_request:
+                        r = (request_metadata.grpc_context, r.SerializeToString())
+                    await result_queue(r)
+
+            elif inspect.isasyncgenfunction(runner_method):
+                if not request_metadata.is_streaming:
+                    raise TypeError(
+                        f"Method '{runner_method.__name__}' is a generator function. "
+                        "You must use `handle.options(stream=True)` to call "
+                        "generators on a deployment."
+                    )
+
+                assert result_queue is not None
+                async for r in runner_method(*request_args, **request_kwargs):
+                    if request_metadata.is_grpc_request:
+                        r = (request_metadata.grpc_context, r.SerializeToString())
+                    await result_queue(r)
+            else:
+                result = await sync_to_async(runner_method)(
+                    *request_args, **request_kwargs
                 )
+                if inspect.isgenerator(result) or inspect.isasyncgen(result):
+                    raise TypeError(
+                        f"Method '{runner_method.__name__}' returned a generator. You "
+                        "must use `handle.options(stream=True)` to call "
+                        "generators on a deployment."
+                    )
+                if request_metadata.is_grpc_request:
+                    result = (request_metadata.grpc_context, result.SerializeToString())
 
         except Exception as e:
             function_name = "unknown"
@@ -899,59 +934,8 @@ class UserCallableWrapper:
             # ASGI interface, but for the vanilla deployment codepath we need to
             # send it.
             await self._send_user_result_over_asgi(result, scope, receive, send)
-        elif request_metadata.is_grpc_request:
-            result = (request_metadata.grpc_context, result.SerializeToString())
 
         return result
-
-    async def call_user_method_generator(
-        self,
-        request_metadata: RequestMetadata,
-        request_args: Tuple[Any],
-        request_kwargs: Dict[str, Any],
-    ) -> AsyncGenerator[Any, None]:
-        """Call a user method that is expected to be a generator.
-
-        Raises any exception raised by the user code so it can be propagated as a
-        `RayTaskError`.
-        """
-        assert (
-            not request_metadata.is_http_request
-        ), "HTTP requests should go through `call_user_method`."
-
-        logger.info(
-            f"Started executing request {request_metadata.request_id}",
-            extra={"log_to_stderr": False, "serve_access_log": True},
-        )
-
-        user_method = self._get_user_callable_method(request_metadata.call_method)
-        if request_metadata.is_grpc_request:
-            assert len(request_args) == 1 and isinstance(request_args[0], gRPCRequest)
-            request_args = (pickle.loads(request_args[0].grpc_user_request),)
-            if GRPC_CONTEXT_ARG_NAME in inspect.signature(user_method).parameters:
-                request_kwargs = {GRPC_CONTEXT_ARG_NAME: request_metadata.grpc_context}
-
-        result_generator = user_method(*request_args, **request_kwargs)
-        if inspect.iscoroutine(result_generator):
-            result_generator = await result_generator
-
-        if inspect.isgenerator(result_generator):
-            for result in result_generator:
-                if request_metadata.is_grpc_request:
-                    yield request_metadata.grpc_context, result.SerializeToString()
-                else:
-                    yield result
-        elif inspect.isasyncgen(result_generator):
-            async for result in result_generator:
-                if request_metadata.is_grpc_request:
-                    yield request_metadata.grpc_context, result.SerializeToString()
-                else:
-                    yield result
-        else:
-            raise TypeError(
-                "When using `stream=True`, the called method must be a generator "
-                f"function, but '{user_method.__name__}' is not."
-            )
 
     async def call_destructor(self):
         """Explicitly call the `__del__` method of the user callable.
