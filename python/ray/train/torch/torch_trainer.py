@@ -1,8 +1,6 @@
 from typing import TYPE_CHECKING, Any, Callable, Dict, Optional, Union
 
-from ray.air.checkpoint import Checkpoint
-from ray.air.config import RunConfig, ScalingConfig
-from ray.train import DataConfig
+from ray.train import Checkpoint, DataConfig, RunConfig, ScalingConfig
 from ray.train.data_parallel_trainer import DataParallelTrainer
 from ray.train.torch.config import TorchConfig
 from ray.train.trainer import GenDataset
@@ -12,7 +10,7 @@ if TYPE_CHECKING:
     from ray.data.preprocessor import Preprocessor
 
 
-@PublicAPI(stability="beta")
+@PublicAPI(stability="stable")
 class TorchTrainer(DataParallelTrainer):
     """A Trainer for data parallel PyTorch training.
 
@@ -25,7 +23,11 @@ class TorchTrainer(DataParallelTrainer):
     4. Runs the input ``train_loop_per_worker(train_loop_config)``
        on all workers.
 
-    For more details, see the :ref:`PyTorch User Guide <train-pytorch>`.
+    For more details, see:
+
+    * :ref:`PyTorch Guide <train-pytorch>`
+    * :ref:`PyTorch Lightning Guide <train-pytorch-lightning>`
+    * :ref:`Hugging Face Transformers Guide <train-pytorch-transformers>`
 
     Example:
 
@@ -154,9 +156,9 @@ class TorchTrainer(DataParallelTrainer):
         scaling_config: The configuration for how to scale data parallel training.
             ``num_workers`` determines how many Python processes are used for training,
             and ``use_gpu`` determines whether or not each process should use GPUs.
-            See :class:`~ray.air.ScalingConfig` for more info.
+            See :class:`~ray.train.ScalingConfig` for more info.
         run_config: The configuration for the execution of the training run.
-            See :class:`~ray.air.RunConfig` for more info.
+            See :class:`~ray.train.RunConfig` for more info.
         datasets: The Ray Datasets to ingest for training.
             Datasets are keyed by name (``{name: dataset}``).
             Each dataset can be accessed from within the ``train_loop_per_worker``

@@ -1,10 +1,8 @@
-import time
-
 import ray
 from ray import serve
-from ray._private.test_utils import wait_for_condition
+from ray._private.test_utils import SignalActor, wait_for_condition
 from ray.serve._private.autoscaling_metrics import InMemoryMetricsStore
-from ray.serve._private.common import ReplicaState, DeploymentID
+from ray.serve._private.common import DeploymentID, ReplicaState
 
 
 class TestInMemoryMetricsStore:
@@ -72,6 +70,8 @@ class TestInMemoryMetricsStore:
 
 
 def test_e2e(serve_instance):
+    signal = SignalActor.remote()
+
     @serve.deployment(
         autoscaling_config={
             "metrics_interval_s": 0.1,
@@ -90,11 +90,11 @@ def test_e2e(serve_instance):
     )
     class A:
         def __call__(self):
-            time.sleep(0.1)
+            ray.get(signal.wait.remote())
 
     handle = serve.run(A.bind())
     dep_id = DeploymentID("A", "default")
-    [handle.remote() for _ in range(50)]
+    [handle.remote()._to_object_ref_sync() for _ in range(50)]
 
     # Wait for metrics to propagate
     def get_data():
@@ -113,11 +113,13 @@ def test_e2e(serve_instance):
         metrics = list(data.values())
         assert len(metrics) == 2
         assert metrics[0] > 0 and metrics[1] > 0
-        assert sum(metrics) > 25
+        assert sum(metrics) > 40
         return True
 
     wait_for_condition(last_timestamp_value_high)
     print("Confirmed there are metrics from 2 replicas, and many queries are inflight.")
+    print("Releasing signal.")
+    signal.send.remote()
 
     def check_running_replicas(expected):
         replicas = ray.get(

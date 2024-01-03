@@ -11,4 +11,6 @@ mkdir -p /mnt/local_storage
 sudo chmod 0777 /mnt/local_storage
 sudo mount /dev/nvme1n1 /mnt/local_storage || true
 EOF
+pip3 uninstall -y pytorch-lightning
 pip3 install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu118
+pip3 install lightning==2.0.3

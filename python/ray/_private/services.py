@@ -19,12 +19,14 @@ from typing import List, Optional, IO, AnyStr
 
 # Import psutil after ray so the packaged version is used.
 import psutil
+from filelock import FileLock
 
 # Ray modules
 import ray
 import ray._private.ray_constants as ray_constants
 from ray._raylet import GcsClient, GcsClientOptions
 from ray.core.generated.common_pb2 import Language
+from ray._private.ray_constants import RAY_NODE_IP_FILENAME
 
 resource = None
 if sys.platform != "win32":
@@ -50,6 +52,10 @@ RAYLET_EXECUTABLE = os.path.join(
 GCS_SERVER_EXECUTABLE = os.path.join(
     RAY_PATH, "core", "src", "ray", "gcs", "gcs_server" + EXE_SUFFIX
 )
+
+JEMALLOC_SO = os.path.join(RAY_PATH, "core", "libjemalloc.so")
+
+JEMALLOC_SO = JEMALLOC_SO if os.path.exists(JEMALLOC_SO) else None
 
 # Location of the cpp default worker executables.
 DEFAULT_WORKER_EXECUTABLE = os.path.join(RAY_PATH, "cpp", "default_worker" + EXE_SUFFIX)
@@ -211,13 +217,11 @@ def propagate_jemalloc_env_var(
     assert isinstance(jemalloc_comps, list)
     assert process_type is not None
     process_type = process_type.lower()
-    if not jemalloc_path or process_type not in jemalloc_comps:
+    if not jemalloc_path:
         return {}
 
-    env_vars = {
-        "LD_PRELOAD": jemalloc_path,
-    }
-    if jemalloc_conf:
+    env_vars = {"LD_PRELOAD": jemalloc_path, "RAY_LD_PRELOAD": "1"}
+    if process_type in jemalloc_comps and jemalloc_conf:
         env_vars.update({"MALLOC_CONF": jemalloc_conf})
     return env_vars
 
@@ -647,6 +651,11 @@ def node_ip_address_from_perspective(address: str):
     return node_ip_address
 
 
+# NOTE: This API should not be used when you obtain the
+# IP address when ray.init is not called because
+# it cannot find the IP address if it is specified by
+# ray start --node-ip-address. You should instead use
+# get_cached_node_ip_address.
 def get_node_ip_address(address="8.8.8.8:53"):
     if ray._private.worker._global_node is not None:
         return ray._private.worker._global_node.node_ip_address
@@ -656,6 +665,103 @@ def get_node_ip_address(address="8.8.8.8:53"):
         # https://github.com/ray-project/ray/issues/18730.
         return "127.0.0.1"
     return node_ip_address_from_perspective(address)
+
+
+def get_cached_node_ip_address(session_dir: str) -> str:
+    """Get a node address cached on this session.
+
+    If a ray instance is started by `ray start --node-ip-address`,
+    the node ip address is cached to a file RAY_NODE_IP_FILENAME.
+    Otherwise, the file exists, but it is emptyl.
+
+    This API is process-safe, meaning the file access is protected by
+    a file lock.
+
+    Args:
+        session_dir: Path to the Ray session directory.
+
+    Returns:
+        node_ip_address cached on the current node. None if the node
+        the file doesn't exist, meaning ray instance hasn't been
+        started on a current node. If node_ip_address is not written
+        to a file, it means --node-ip-address is not given, and in this
+        case, we find the IP address ourselves.
+    """
+    file_path = Path(os.path.join(session_dir, RAY_NODE_IP_FILENAME))
+    cached_node_ip_address = {}
+
+    with FileLock(str(file_path.absolute()) + ".lock"):
+        if not file_path.exists():
+            return None
+
+        with file_path.open() as f:
+            cached_node_ip_address.update(json.load(f))
+
+        if "node_ip_address" in cached_node_ip_address:
+            return cached_node_ip_address["node_ip_address"]
+        else:
+            return ray.util.get_node_ip_address()
+
+
+def write_node_ip_address(session_dir: str, node_ip_address: Optional[str]) -> None:
+    """Write a node ip address of the current session to
+    RAY_NODE_IP_FILENAME.
+
+    If a ray instance is started by `ray start --node-ip-address`,
+    the node ip address is cached to a file RAY_NODE_IP_FILENAME.
+
+    This API is process-safe, meaning the file access is protected by
+    a file lock.
+
+    The file contains a single string node_ip_address. If nothing
+    is written, it means --node-ip-address was not given, and Ray
+    resolves the IP address on its own. It assumes in a single node,
+    you can have only 1 IP address (which is the assumption ray
+    has in general).
+
+    node_ip_address is the ip address of the current node.
+
+    Args:
+        session_dir: The path to Ray session directory.
+        node_ip_address: The node IP address of the current node.
+            If None, it means the node ip address is not given
+            by --node-ip-address. In this case, we don't write
+            anything to a file.
+    """
+    file_path = Path(os.path.join(session_dir, RAY_NODE_IP_FILENAME))
+    cached_node_ip_address = {}
+
+    with FileLock(str(file_path.absolute()) + ".lock"):
+        if not file_path.exists():
+            with file_path.open(mode="w") as f:
+                json.dump({}, f)
+
+        with file_path.open() as f:
+            cached_node_ip_address.update(json.load(f))
+
+        cached_node_ip = cached_node_ip_address.get("node_ip_address")
+
+        if node_ip_address is not None:
+            if cached_node_ip:
+                if cached_node_ip == node_ip_address:
+                    # Nothing to do.
+                    return
+                else:
+                    logger.warning(
+                        "The node IP address of the current host recorded "
+                        f"in {RAY_NODE_IP_FILENAME} ({cached_node_ip}) "
+                        "is different from the current IP address: "
+                        f"{node_ip_address}. Ray will use {node_ip_address} "
+                        "as the current node's IP address. "
+                        "Creating 2 instances in the same host with different "
+                        "IP address is not supported. "
+                        "Please create an enhnacement request to"
+                        "https://github.com/ray-project/ray/issues."
+                    )
+
+            cached_node_ip_address["node_ip_address"] = node_ip_address
+            with file_path.open(mode="w") as f:
+                json.dump(cached_node_ip_address, f)
 
 
 def create_redis_client(redis_address, password=None):
@@ -771,17 +877,21 @@ def start_ray_process(
         logger.info("Detected environment variable '%s'.", gdb_env_var)
         use_gdb = True
     # Jemalloc memory profiling.
-    jemalloc_lib_path = os.environ.get(RAY_JEMALLOC_LIB_PATH)
-    jemalloc_conf = os.environ.get(RAY_JEMALLOC_CONF)
-    jemalloc_comps = os.environ.get(RAY_JEMALLOC_PROFILE)
-    jemalloc_comps = [] if not jemalloc_comps else jemalloc_comps.split(",")
-    jemalloc_env_vars = propagate_jemalloc_env_var(
-        jemalloc_path=jemalloc_lib_path,
-        jemalloc_conf=jemalloc_conf,
-        jemalloc_comps=jemalloc_comps,
-        process_type=process_type,
-    )
-    use_jemalloc_mem_profiler = len(jemalloc_env_vars) > 0
+    if os.environ.get("LD_PRELOAD") is None:
+        jemalloc_lib_path = os.environ.get(RAY_JEMALLOC_LIB_PATH, JEMALLOC_SO)
+        jemalloc_conf = os.environ.get(RAY_JEMALLOC_CONF)
+        jemalloc_comps = os.environ.get(RAY_JEMALLOC_PROFILE)
+        jemalloc_comps = [] if not jemalloc_comps else jemalloc_comps.split(",")
+        jemalloc_env_vars = propagate_jemalloc_env_var(
+            jemalloc_path=jemalloc_lib_path,
+            jemalloc_conf=jemalloc_conf,
+            jemalloc_comps=jemalloc_comps,
+            process_type=process_type,
+        )
+    else:
+        jemalloc_env_vars = {}
+
+    use_jemalloc_mem_profiler = "MALLOC_CONF" in jemalloc_env_vars
 
     if (
         sum(
@@ -844,12 +954,7 @@ def start_ray_process(
         modified_env["LD_PRELOAD"] = os.environ["PERFTOOLS_PATH"]
         modified_env["CPUPROFILE"] = os.environ["PERFTOOLS_LOGFILE"]
 
-    if use_jemalloc_mem_profiler:
-        logger.info(
-            f"Jemalloc profiling will be used for {process_type}. "
-            f"env vars: {jemalloc_env_vars}"
-        )
-        modified_env.update(jemalloc_env_vars)
+    modified_env.update(jemalloc_env_vars)
 
     if use_tmux:
         # The command has to be created exactly as below to ensure that it
@@ -969,6 +1074,7 @@ def start_reaper(fate_share=None):
 
 
 def start_log_monitor(
+    session_dir: str,
     logs_dir: str,
     gcs_address: str,
     fate_share: Optional[bool] = None,
@@ -981,6 +1087,7 @@ def start_log_monitor(
     """Start a log monitor process.
 
     Args:
+        session_dir: The session directory.
         logs_dir: The directory of logging files.
         gcs_address: GCS address for pubsub.
         fate_share: Whether to share fate between log_monitor
@@ -1005,6 +1112,7 @@ def start_log_monitor(
         sys.executable,
         "-u",
         log_monitor_filepath,
+        f"--session-dir={session_dir}",
         f"--logs-dir={logs_dir}",
         f"--gcs-address={gcs_address}",
         f"--logging-rotate-bytes={max_bytes}",
@@ -1291,6 +1399,25 @@ def start_api_server(
             return None, None
 
 
+def get_address(redis_address):
+    parts = redis_address.split("://", 1)
+    enable_redis_ssl = False
+    if len(parts) == 1:
+        redis_ip_address, redis_port = parts[0].rsplit(":", 1)
+    else:
+        # rediss for SSL
+        if len(parts) != 2 or parts[0] not in ("redis", "rediss"):
+            raise ValueError(
+                f"Invalid redis address {redis_address}."
+                "Expected format is ip:port or redis://ip:port, "
+                "or rediss://ip:port for SSL."
+            )
+        redis_ip_address, redis_port = parts[1].rsplit(":", 1)
+        if parts[0] == "rediss":
+            enable_redis_ssl = True
+    return redis_ip_address, redis_port, enable_redis_ssl
+
+
 def start_gcs_server(
     redis_address: str,
     log_dir: str,
@@ -1336,21 +1463,12 @@ def start_gcs_server(
         f"--session-name={session_name}",
     ]
     if redis_address:
-        parts = redis_address.split("://", 1)
-        enable_redis_ssl = "false"
-        if len(parts) == 1:
-            redis_ip_address, redis_port = parts[0].rsplit(":", 1)
-        else:
-            if len(parts) != 2 or parts[0] not in ("redis", "rediss"):
-                raise ValueError(f"Invalid redis address {redis_address}")
-            redis_ip_address, redis_port = parts[1].rsplit(":", 1)
-            if parts[0] == "rediss":
-                enable_redis_ssl = "true"
+        redis_ip_address, redis_port, enable_redis_ssl = get_address(redis_address)
 
         command += [
             f"--redis_address={redis_ip_address}",
             f"--redis_port={redis_port}",
-            f"--redis_enable_ssl={enable_redis_ssl}",
+            f"--redis_enable_ssl={'true' if enable_redis_ssl else 'false'}",
         ]
     if redis_password:
         command += [f"--redis_password={redis_password}"]

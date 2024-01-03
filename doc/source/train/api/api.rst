@@ -1,38 +1,30 @@
 .. _train-api:
-.. _air-trainer-ref:
 
 Ray Train API
 =============
-
-This page covers framework specific integrations with Ray Train and Ray Train Developer APIs.
 
 .. _train-integration-api:
 .. _train-framework-specific-ckpts:
 
 .. currentmodule:: ray
 
-Ray Train Integrations
-----------------------
-
-.. _train-pytorch-integration:
-
 PyTorch Ecosystem
-~~~~~~~~~~~~~~~~~
-
-Scale out your PyTorch, Lightning, Hugging Face code with Ray TorchTrainer.
+-----------------
 
 .. autosummary::
+    :nosignatures:
     :toctree: doc/
 
     ~train.torch.TorchTrainer
     ~train.torch.TorchConfig
-    ~train.torch.TorchCheckpoint
 
+.. _train-pytorch-integration:
 
 PyTorch
-*******
+~~~~~~~
 
 .. autosummary::
+    :nosignatures:
     :toctree: doc/
 
     ~train.torch.get_device
@@ -43,9 +35,10 @@ PyTorch
 .. _train-lightning-integration:
 
 PyTorch Lightning
-*****************
+~~~~~~~~~~~~~~~~~
 
 .. autosummary::
+    :nosignatures:
     :toctree: doc/
 
     ~train.lightning.prepare_trainer
@@ -55,78 +48,39 @@ PyTorch Lightning
     ~train.lightning.RayDeepSpeedStrategy
     ~train.lightning.RayTrainReportCallback
 
-.. note::
-
-    We will deprecate `LightningTrainer`, `LightningConfigBuilder`,
-    `LightningCheckpoint`, and `LightningPredictor` in Ray 2.8. Please 
-    refer to the :ref:`migration guide <lightning-trainer-migration-guide>` for more info.
-
-.. autosummary::
-    :toctree: doc/
-
-    ~train.lightning.LightningTrainer
-    ~train.lightning.LightningConfigBuilder
-    ~train.lightning.LightningCheckpoint
-    ~train.lightning.LightningPredictor
-
 .. _train-transformers-integration:
 
 Hugging Face Transformers
-*************************
+~~~~~~~~~~~~~~~~~~~~~~~~~
 
 .. autosummary::
+    :nosignatures:
     :toctree: doc/
 
     ~train.huggingface.transformers.prepare_trainer
     ~train.huggingface.transformers.RayTrainReportCallback
 
-.. note::
 
-    We will deprecate `TransformersTrainer`, `TransformersCheckpoint` in Ray 2.8. Please 
-    refer to the :ref:`migration guide <transformers-trainer-migration-guide>` for more info.
-
-.. autosummary::
-    :toctree: doc/
-
-    ~train.huggingface.TransformersTrainer
-    ~train.huggingface.TransformersCheckpoint
-
-Hugging Face Accelerate
-***********************
-
-.. autosummary::
-    :toctree: doc/
-
-    ~train.huggingface.AccelerateTrainer
+More Frameworks
+---------------
 
 Tensorflow/Keras
 ~~~~~~~~~~~~~~~~
 
 .. autosummary::
+    :nosignatures:
     :toctree: doc/
 
     ~train.tensorflow.TensorflowTrainer
     ~train.tensorflow.TensorflowConfig
-    ~train.tensorflow.TensorflowCheckpoint
-
-
-Tensorflow/Keras Training Loop Utilities
-****************************************
-
-.. autosummary::
-    :toctree: doc/
-
     ~train.tensorflow.prepare_dataset_shard
-
-.. autosummary::
-
-    ~air.integrations.keras.ReportCheckpointCallback
-
+    ~train.tensorflow.keras.ReportCheckpointCallback
 
 Horovod
 ~~~~~~~
 
 .. autosummary::
+    :nosignatures:
     :toctree: doc/
 
     ~train.horovod.HorovodTrainer
@@ -137,45 +91,59 @@ XGBoost
 ~~~~~~~
 
 .. autosummary::
+    :nosignatures:
     :toctree: doc/
 
     ~train.xgboost.XGBoostTrainer
-    ~train.xgboost.XGBoostCheckpoint
 
 
 LightGBM
 ~~~~~~~~
 
 .. autosummary::
+    :nosignatures:
     :toctree: doc/
 
     ~train.lightgbm.LightGBMTrainer
-    ~train.lightgbm.LightGBMCheckpoint
 
 
 .. _ray-train-configs-api:
 
-Ray Train Config
-----------------
+Ray Train Configuration
+-----------------------
 
 .. autosummary::
+    :nosignatures:
     :toctree: doc/
 
-    ~train.ScalingConfig
-    ~train.RunConfig
     ~train.CheckpointConfig
-    ~train.FailureConfig
     ~train.DataConfig
+    ~train.FailureConfig
+    ~train.RunConfig
+    ~train.ScalingConfig
+    ~train.SyncConfig
 
 .. _train-loop-api:
 
-Ray Train Loop
---------------
+Ray Train Utilities
+-------------------
+
+**Classes**
 
 .. autosummary::
+    :nosignatures:
     :toctree: doc/
 
+    ~train.Checkpoint
     ~train.context.TrainContext
+
+**Functions**
+
+.. autosummary::
+    :nosignatures:
+    :toctree: doc/
+    
+    ~train.get_checkpoint
     ~train.get_context
     ~train.get_dataset_shard
     ~train.report
@@ -185,19 +153,15 @@ Ray Train Output
 ----------------
 
 .. autosummary::
+    :nosignatures:
     :template: autosummary/class_without_autosummary.rst
     :toctree: doc/
 
     ~train.Result
 
-.. autosummary::
-    :toctree: doc/
 
-    ~train.Checkpoint
-
-
-Ray Train Base Classes (Developer APIs)
----------------------------------------
+Ray Train Developer APIs
+------------------------
 
 .. _train-base-trainer:
 
@@ -205,6 +169,7 @@ Trainer Base Classes
 ~~~~~~~~~~~~~~~~~~~~
 
 .. autosummary::
+    :nosignatures:
     :toctree: doc/
 
     ~train.trainer.BaseTrainer
@@ -219,6 +184,7 @@ Train Backend Base Classes
 .. _train-backend-config:
 
 .. autosummary::
+    :nosignatures:
     :toctree: doc/
     :template: autosummary/class_without_autosummary.rst
 

@@ -21,6 +21,7 @@
 #include <chrono>
 
 #include "absl/synchronization/mutex.h"
+#include "ray/common/asio/asio_chaos.h"
 #include "ray/common/asio/instrumented_io_context.h"
 #include "ray/common/grpc_util.h"
 #include "ray/common/id.h"
@@ -131,7 +132,7 @@ class ClientCallImpl : public ClientCall {
   /// return_status_ = GrpcStatusToRayStatus(status_) but need
   /// a separate variable because status_ is set internally by
   /// GRPC and we cannot control it holding the lock.
-  ray::Status return_status_ GUARDED_BY(mutex_);
+  ray::Status return_status_ ABSL_GUARDED_BY(mutex_);
 
   /// Context for the client. It could be used to convey extra information to
   /// the server and/or tweak certain RPC behaviors.
@@ -305,7 +306,7 @@ class ClientCallManager {
         got_tag = nullptr;
         tag->GetCall()->SetReturnStatus();
         std::shared_ptr<StatsHandle> stats_handle = tag->GetCall()->GetStatsHandle();
-        RAY_CHECK(stats_handle != nullptr);
+        RAY_CHECK_NE(stats_handle, nullptr);
         if (ok && !main_service_.stopped() && !shutdown_) {
           // Post the callback to the main event loop.
           main_service_.post(
@@ -314,7 +315,11 @@ class ClientCallManager {
                 // The call is finished, and we can delete this tag now.
                 delete tag;
               },
-              std::move(stats_handle));
+              stats_handle->event_name + ".OnReplyReceived",
+              // Implement the delay of the rpc client call as the
+              // delay of OnReplyReceived().
+              ray::asio::testing::get_delay_us(stats_handle->event_name));
+          EventTracker::RecordEnd(std::move(stats_handle));
         } else {
           delete tag;
         }

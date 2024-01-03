@@ -305,8 +305,6 @@ class StateDataSourceClient:
                 req_filters.actor_id = ActorID(hex_to_binary(value)).binary()
             elif key == "job_id":
                 req_filters.job_id = JobID(hex_to_binary(value)).binary()
-            elif key == "name":
-                req_filters.name = value
             elif key == "task_id":
                 req_filters.task_ids.append(TaskID(hex_to_binary(value)).binary())
             else:
@@ -479,6 +477,6 @@ class StateDataSourceClient:
             timeout=timeout,
         )
         metadata = await stream.initial_metadata()
-        if metadata.get(log_consts.LOG_GRPC_ERROR) == log_consts.FILE_NOT_FOUND:
-            raise ValueError(f'File "{log_file_name}" not found on node {node_id}')
+        if metadata.get(log_consts.LOG_GRPC_ERROR) is not None:
+            raise ValueError(metadata.get(log_consts.LOG_GRPC_ERROR))
         return stream

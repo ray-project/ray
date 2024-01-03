@@ -25,7 +25,6 @@ class SyncConfig(TrainSyncConfig):
 @Deprecated
 class Syncer:
     def __new__(cls: type, *args, **kwargs):
-        # TODO(justinvyu): Link to a custom fs user guide
         raise DeprecationWarning(
             "`tune.syncer.Syncer` has been deprecated. "
             "Please implement custom syncing logic via a custom "

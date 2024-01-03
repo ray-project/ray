@@ -62,7 +62,10 @@ struct CoreWorkerOptions {
       // TODO(sang): Remove it and combine it with dynamic returns.
       bool is_streaming_generator,
       // True if task can be retried upon exception.
-      bool retry_exception)>;
+      bool retry_exception,
+      // The max number of unconsumed objects where a generator
+      // can run without a pause.
+      int64_t generator_backpressure_num_objects)>;
 
   CoreWorkerOptions()
       : store_socket(""),

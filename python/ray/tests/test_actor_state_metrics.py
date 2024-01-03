@@ -280,6 +280,41 @@ def test_tracking_by_name(shutdown_only):
     )
 
 
+def test_get_all_actors_info(shutdown_only):
+    ray.init(num_cpus=2)
+
+    @ray.remote(num_cpus=1)
+    class Actor:
+        def ping(self):
+            pass
+
+    actor_1 = Actor.remote()
+    actor_2 = Actor.remote()
+    ray.get([actor_1.ping.remote(), actor_2.ping.remote()], timeout=5)
+    actors_info = ray.state.actors()
+    assert len(actors_info) == 2
+
+    # To filter actors by job id
+    job_id = ray.get_runtime_context().job_id
+    actors_info = ray.state.actors(job_id=job_id)
+    assert len(actors_info) == 2
+    actors_info = ray.state.actors(job_id=ray.JobID.from_int(100))
+    assert len(actors_info) == 0
+
+    # To filter actors by state
+    actor_3 = Actor.remote()
+    wait_for_condition(
+        lambda: len(ray.state.actors(actor_state_name="PENDING_CREATION")) == 1
+    )
+    assert (
+        actor_3._actor_id.hex()
+        in ray.state.actors(actor_state_name="PENDING_CREATION").keys()
+    )
+
+    with pytest.raises(ValueError, match="not a valid actor state name"):
+        actors_info = ray.state.actors(actor_state_name="UNKONWN_STATE")
+
+
 if __name__ == "__main__":
     import sys
     import os

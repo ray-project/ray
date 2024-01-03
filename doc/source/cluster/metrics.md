@@ -6,7 +6,7 @@ Ray records and emits time-series metrics using the [Prometheus format](https://
 
 
 ## System and application metrics
-Ray exports metrics if you use `ray[default]`, `ray[air]`, or {ref}`other installation commands <installation>` that include Dashboard component. Dashboard agent process is responsible for aggregating and reporting metrics to the endpoints for Prometheus to scrape.
+Ray exports metrics if you use `ray[default]` or {ref}`other installation commands <installation>` that include Dashboard component. Dashboard agent process is responsible for aggregating and reporting metrics to the endpoints for Prometheus to scrape.
 
 **System metrics**: Ray exports a number of system metrics. View {ref}`system metrics <system-metrics>` for more details about the emitted metrics.
 
@@ -237,7 +237,7 @@ To fix this issue, employ an automated shell script for seamlessly transferring 
 
 :::{tab-item} Using an existing Grafana server
 
-After your Grafana server is running, find the Ray-provided default Grafana dashboard JSON at `/tmp/ray/session_latest/metrics/grafana/dashboards/default_grafana_dashboard.json`. [Import this dashboard](https://grafana.com/docs/grafana/latest/dashboards/manage-dashboards/#import-a-dashboard) to your Grafana.
+After your Grafana server is running, start a Ray Cluster and find the Ray-provided default Grafana dashboard JSONs at `/tmp/ray/session_latest/metrics/grafana/dashboards`. [Copy the JSONs over and import the Grafana dashboards](https://grafana.com/docs/grafana/latest/dashboards/manage-dashboards/#import-a-dashboard) to your Grafana.
 
 If Grafana reports that the datasource is not found, [add a datasource variable](https://grafana.com/docs/grafana/latest/dashboards/variables/add-template-variables/?pg=graf&plcmt=data-sources-prometheus-btn-1#add-a-data-source-variable). The datasource's name must be the same as value in the `RAY_PROMETHEUS_NAME` environment. By default, `RAY_PROMETHEUS_NAME` equals `Prometheus`.
 :::

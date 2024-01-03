@@ -1,10 +1,12 @@
+import argparse
+
 from sklearn import datasets
 from sklearn.model_selection import train_test_split
 
 from xgboost_ray import RayDMatrix, RayParams, train
 
 # __train_begin__
-num_cpus_per_actor = 1
+num_cpus_per_actor = 2
 num_actors = 1
 
 
@@ -46,6 +48,15 @@ def load_best_model(best_logdir):
 
 
 def main():
+    parser = argparse.ArgumentParser()
+    parser.add_argument(
+        "--smoke-test",
+        action="store_true",
+        default=False,
+        help="Finish quickly for testing.",
+    )
+    args, _ = parser.parse_known_args()
+
     # __tune_begin__
     from ray import tune
 
@@ -66,7 +77,7 @@ def main():
         config=config,
         metric="eval-error",
         mode="min",
-        num_samples=4,
+        num_samples=4 if not args.smoke_test else 1,
         resources_per_trial=RayParams(
             num_actors=num_actors, cpus_per_actor=num_cpus_per_actor
         ).get_tune_resources(),

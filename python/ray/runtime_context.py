@@ -2,7 +2,6 @@ import logging
 from typing import Any, Dict, List, Optional
 
 import ray._private.worker
-from ray._private import ray_constants
 from ray._private.client_mode_hook import client_mode_hook
 from ray._private.utils import pasre_pg_formatted_resources_to_original
 from ray._raylet import TaskID
@@ -254,11 +253,32 @@ class RuntimeContext(object):
         if self.worker.mode != ray._private.worker.WORKER_MODE:
             logger.warning(
                 "This method is only available when the process is a "
-                "worker. Current mode: {self.worker.mode}"
+                f"worker. Current mode: {self.worker.mode}"
             )
             return None
         actor_id = self.worker.actor_id
         return actor_id.hex() if not actor_id.is_nil() else None
+
+    def get_actor_name(self) -> Optional[str]:
+        """Get the current actor name of this worker.
+
+        This shouldn't be used in a driver process.
+        The name is in string format.
+
+        Returns:
+            The current actor name of this worker.
+            If a current worker is an actor, and
+            if actor name doesn't exist, it returns an empty string.
+            If a current worker is not an actor, it returns None.
+        """
+        # only worker mode has actor_id
+        if self.worker.mode != ray._private.worker.WORKER_MODE:
+            logger.warning(
+                "This method is only available when the process is a "
+                f"worker. Current mode: {self.worker.mode}"
+            )
+        actor_id = self.worker.actor_id
+        return self.worker.actor_name if not actor_id.is_nil() else None
 
     @property
     def namespace(self):
@@ -392,25 +412,30 @@ class RuntimeContext(object):
         worker.check_connected()
         return worker.core_worker.get_actor_call_stats()
 
+    @Deprecated(message="Use get_accelerator_ids() instead", warning=True)
     def get_resource_ids(self) -> Dict[str, List[str]]:
+        return self.get_accelerator_ids()
+
+    def get_accelerator_ids(self) -> Dict[str, List[str]]:
         """
-        Get the current worker's GPU and accelerator ids.
+        Get the current worker's visible accelerator ids.
 
         Returns:
-            A dictionary keyed by the resource name. The values are list
-             of ids `{'GPU': ['0', '1'], 'neuron_cores': ['0', '1']}`.
+            A dictionary keyed by the accelerator resource name. The values are a list
+            of ids `{'GPU': ['0', '1'], 'neuron_cores': ['0', '1'],
+            'TPU': ['0', '1']}`.
         """
         worker = self.worker
         worker.check_connected()
         ids_dict: Dict[str, List[str]] = {}
-        for name in [ray_constants.GPU, ray_constants.NEURON_CORES]:
-            resource_ids = worker.get_resource_ids_for_resource(
-                name, f"^{name}_group_[0-9A-Za-z]+$"
+        for (
+            accelerator_resource_name
+        ) in ray._private.accelerators.get_all_accelerator_resource_names():
+            accelerator_ids = worker.get_accelerator_ids_for_accelerator_resource(
+                accelerator_resource_name,
+                f"^{accelerator_resource_name}_group_[0-9A-Za-z]+$",
             )
-            # Convert resource_ids to strings as they can be user-configured
-            # or system-generated.
-            resource_ids = [str(i) for i in resource_ids]
-            ids_dict[name] = resource_ids
+            ids_dict[accelerator_resource_name] = accelerator_ids
         return ids_dict
 
 

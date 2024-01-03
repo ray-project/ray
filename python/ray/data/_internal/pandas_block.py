@@ -55,24 +55,40 @@ class PandasRow(TableRow):
     Row of a tabular Dataset backed by a Pandas DataFrame block.
     """
 
-    def __getitem__(self, key: str) -> Any:
+    def __getitem__(self, key: Union[str, List[str]]) -> Any:
         from ray.data.extensions import TensorArrayElement
 
-        col = self._row[key]
-        if len(col) == 0:
+        def get_item(keys: List[str]) -> Any:
+            col = self._row[keys]
+            if len(col) == 0:
+                return None
+
+            items = col.iloc[0]
+            if isinstance(items[0], TensorArrayElement):
+                # Getting an item in a Pandas tensor column may return
+                # a TensorArrayElement, which we have to convert to an ndarray.
+                return tuple([item.to_numpy() for item in items])
+
+            try:
+                # Try to interpret this as a numpy-type value.
+                # See https://stackoverflow.com/questions/9452775/converting-numpy-dtypes-to-native-python-types.  # noqa: E501
+                return tuple([item.as_py() for item in items])
+
+            except (AttributeError, ValueError):
+                # Fallback to the original form.
+                return items
+
+        is_single_item = isinstance(key, str)
+        keys = [key] if is_single_item else key
+
+        items = get_item(keys)
+
+        if items is None:
             return None
-        item = col.iloc[0]
-        if isinstance(item, TensorArrayElement):
-            # Getting an item in a Pandas tensor column may return a TensorArrayElement,
-            # which we have to convert to an ndarray.
-            item = item.to_numpy()
-        try:
-            # Try to interpret this as a numpy-type value.
-            # See https://stackoverflow.com/questions/9452775/converting-numpy-dtypes-to-native-python-types.  # noqa: E501
-            return item.item()
-        except (AttributeError, ValueError):
-            # Fallback to the original form.
-            return item
+        elif is_single_item:
+            return items[0]
+        else:
+            return items
 
     def __iter__(self) -> Iterator:
         for k in self._row.columns:
@@ -139,6 +155,19 @@ class PandasBlockAccessor(TableBlockAccessor):
 
     def column_names(self) -> List[str]:
         return self._table.columns.tolist()
+
+    def append_column(self, name: str, data: Any) -> Block:
+        assert name not in self._table.columns
+
+        if any(isinstance(item, np.ndarray) for item in data):
+            raise NotImplementedError(
+                f"`{self.__class__.__name__}.append_column()` doesn't support "
+                "array-like data."
+            )
+
+        table = self._table.copy()
+        table[name] = data
+        return table
 
     @staticmethod
     def _build_tensor_row(row: PandasRow) -> np.ndarray:
@@ -238,7 +267,7 @@ class PandasBlockAccessor(TableBlockAccessor):
         return self._table.shape[0]
 
     def size_bytes(self) -> int:
-        return self._table.memory_usage(index=True, deep=True).sum()
+        return int(self._table.memory_usage(index=True, deep=True).sum())
 
     def _zip(self, acc: BlockAccessor) -> "pandas.DataFrame":
         r = self.to_pandas().copy(deep=False)
@@ -359,13 +388,17 @@ class PandasBlockAccessor(TableBlockAccessor):
 
         return find_partitions(table, boundaries, sort_key)
 
-    def combine(self, key: str, aggs: Tuple["AggregateFn"]) -> "pandas.DataFrame":
+    def combine(
+        self, key: Union[str, List[str]], aggs: Tuple["AggregateFn"]
+    ) -> "pandas.DataFrame":
         """Combine rows with the same key into an accumulator.
 
         This assumes the block is already sorted by key in ascending order.
 
         Args:
-            key: The column name of key or None for global aggregation.
+            key: A column name or list of column names.
+            If this is ``None``, place all rows in a single group.
+
             aggs: The aggregations to do.
 
         Returns:
@@ -374,9 +407,10 @@ class PandasBlockAccessor(TableBlockAccessor):
             aggregation.
             If key is None then the k column is omitted.
         """
-        if key is not None and not isinstance(key, str):
+        if key is not None and not isinstance(key, (str, list)):
             raise ValueError(
-                "key must be a string or None when aggregating on Pandas blocks, but "
+                "key must be a string, list of strings or None when aggregating "
+                "on Pandas blocks, but "
                 f"got: {type(key)}."
             )
 
@@ -395,7 +429,7 @@ class PandasBlockAccessor(TableBlockAccessor):
                     if next_row is None:
                         next_row = next(iter)
                     next_key = next_row[key]
-                    while next_row[key] == next_key:
+                    while np.all(next_row[key] == next_key):
                         end += 1
                         try:
                             next_row = next(iter)
@@ -417,7 +451,15 @@ class PandasBlockAccessor(TableBlockAccessor):
             # Build the row.
             row = {}
             if key is not None:
-                row[key] = group_key
+                if isinstance(key, list):
+                    keys = key
+                    group_keys = group_key
+                else:
+                    keys = [key]
+                    group_keys = [group_key]
+
+                for k, gk in zip(keys, group_keys):
+                    row[k] = gk
 
             count = collections.defaultdict(int)
             for agg, accumulator in zip(aggs, accumulators):
@@ -452,7 +494,7 @@ class PandasBlockAccessor(TableBlockAccessor):
     @staticmethod
     def aggregate_combined_blocks(
         blocks: List["pandas.DataFrame"],
-        key: str,
+        key: Union[str, List[str]],
         aggs: Tuple["AggregateFn"],
         finalize: bool,
     ) -> Tuple["pandas.DataFrame", BlockMetadata]:
@@ -477,7 +519,12 @@ class PandasBlockAccessor(TableBlockAccessor):
         """
 
         stats = BlockExecStats.builder()
-        key_fn = (lambda r: r[r._row.columns[0]]) if key is not None else (lambda r: 0)
+        keys = key if isinstance(key, list) else [key]
+        key_fn = (
+            (lambda r: tuple(r[r._row.columns[: len(keys)]]))
+            if key is not None
+            else (lambda r: (0,))
+        )
 
         iter = heapq.merge(
             *[
@@ -492,13 +539,15 @@ class PandasBlockAccessor(TableBlockAccessor):
             try:
                 if next_row is None:
                     next_row = next(iter)
-                next_key = key_fn(next_row)
-                next_key_name = next_row._row.columns[0] if key is not None else None
+                next_keys = key_fn(next_row)
+                next_key_names = (
+                    next_row._row.columns[: len(keys)] if key is not None else None
+                )
 
                 def gen():
                     nonlocal iter
                     nonlocal next_row
-                    while key_fn(next_row) == next_key:
+                    while key_fn(next_row) == next_keys:
                         yield next_row
                         try:
                             next_row = next(iter)
@@ -533,7 +582,8 @@ class PandasBlockAccessor(TableBlockAccessor):
                 # Build the row.
                 row = {}
                 if key is not None:
-                    row[next_key_name] = next_key
+                    for next_key, next_key_name in zip(next_keys, next_key_names):
+                        row[next_key_name] = next_key
 
                 for agg, agg_name, accumulator in zip(
                     aggs, resolved_agg_names, accumulators

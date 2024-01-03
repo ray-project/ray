@@ -62,6 +62,7 @@ ObjectID LocalModeTaskSubmitter::Submit(InvocationSpec &invocation,
                             1,
                             /*returns_dynamic=*/false,
                             /*is_streaming_generator*/ false,
+                            /*generator_backpressure_num_objects*/ -1,
                             required_resources,
                             required_placement_resources,
                             "",
@@ -84,8 +85,13 @@ ObjectID LocalModeTaskSubmitter::Submit(InvocationSpec &invocation,
         TaskID::ForActorCreationTask(invocation.actor_id);
     const ObjectID actor_creation_dummy_object_id =
         ObjectID::FromIndex(actor_creation_task_id, 1);
-    builder.SetActorTaskSpec(
-        invocation.actor_id, actor_creation_dummy_object_id, invocation.actor_counter);
+    // NOTE: Ray CPP doesn't support retries and retry_exceptions.
+    builder.SetActorTaskSpec(invocation.actor_id,
+                             actor_creation_dummy_object_id,
+                             /*max_retries=*/0,
+                             /*retry_exceptions=*/false,
+                             /*serialized_retry_exception_allowlist=*/"",
+                             invocation.actor_counter);
   } else {
     throw RayException("unknown task type");
   }
@@ -93,6 +99,7 @@ ObjectID LocalModeTaskSubmitter::Submit(InvocationSpec &invocation,
     builder.AddArg(*invocation.args[i]);
   }
   auto task_specification = builder.Build();
+
   ObjectID return_object_id = task_specification.ReturnId(0);
 
   std::shared_ptr<msgpack::sbuffer> actor;

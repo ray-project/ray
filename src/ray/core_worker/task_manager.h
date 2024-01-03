@@ -79,24 +79,29 @@ class TaskResubmissionInterface {
 using TaskStatusCounter = CounterMap<std::tuple<std::string, rpc::TaskStatus, bool>>;
 using PutInLocalPlasmaCallback =
     std::function<void(const RayObject &object, const ObjectID &object_id)>;
-using RetryTaskCallback =
-    std::function<void(TaskSpecification &spec, bool object_recovery, uint32_t delay_ms)>;
+using RetryTaskCallback = std::function<void(
+    TaskSpecification &spec, bool object_recovery, bool update_seqno, uint32_t delay_ms)>;
 using ReconstructObjectCallback = std::function<void(const ObjectID &object_id)>;
 using PushErrorCallback = std::function<Status(const JobID &job_id,
                                                const std::string &type,
                                                const std::string &error_message,
                                                double timestamp)>;
+using ExecutionSignalCallback = std::function<void(Status, int64_t)>;
 
 /// When the streaming generator tasks are submitted,
 /// the intermediate return objects are streamed
 /// back to the task manager.
 /// This class manages the references of intermediately
 /// streamed object references.
+///
 /// The API is not thread-safe.
 class ObjectRefStream {
  public:
   ObjectRefStream(const ObjectID &generator_id)
-      : generator_id_(generator_id), generator_task_id_(generator_id.TaskId()) {}
+      : generator_id_(generator_id),
+        generator_task_id_(generator_id.TaskId()),
+        total_num_object_written_(0),
+        total_num_object_consumed_(0) {}
 
   /// Asynchronously read object reference of the next index.
   ///
@@ -105,7 +110,13 @@ class ObjectRefStream {
   /// \return KeyError if it reaches to EoF. Ok otherwise.
   Status TryReadNextItem(ObjectID *object_id_out);
 
-  ObjectID PeekNextItem();
+  /// Return True if there's no more object to read. False otherwise.
+  bool IsFinished() const;
+
+  std::pair<ObjectID, bool> PeekNextItem();
+
+  /// Return True if the item_index is already consumed.
+  bool IsObjectConsumed(int64_t item_index);
 
   /// Insert the object id to the stream of an index item_index.
   ///
@@ -145,6 +156,13 @@ class ObjectRefStream {
   /// \return A list of object IDs that are not read yet.
   absl::flat_hash_set<ObjectID> GetItemsUnconsumed() const;
 
+  /// \return Index of the last consumed item, -1 if nothing is consumed yet.
+  int64_t LastConsumedIndex() const { return next_index_ - 1; }
+
+  /// Total number of object that's written to the stream
+  int64_t TotalNumObjectWritten() const { return total_num_object_written_; }
+  int64_t TotalNumObjectConsumed() const { return total_num_object_consumed_; }
+
  private:
   ObjectID GetObjectRefAtIndex(int64_t generator_index) const;
 
@@ -154,7 +172,7 @@ class ObjectRefStream {
   /// Refs that are temporarily owned. It means a ref is
   /// written to a stream, but index is not known yet.
   absl::flat_hash_set<ObjectID> temporarily_owned_refs_;
-  // A set of refs that's already written to a stream.
+  // A set of refs that's already written to a stream -> size of the object.
   absl::flat_hash_set<ObjectID> refs_written_to_stream_;
   /// The last index of the stream.
   /// item_index < last will contain object references.
@@ -168,6 +186,10 @@ class ObjectRefStream {
   /// ends with fewer returns. Then, we mark one past this index as the end of
   /// the stream.
   int64_t max_index_seen_ = -1;
+  /// The total number of the objects that are written to stream.
+  int64_t total_num_object_written_;
+  /// The total number of the objects that are consumed from stream.
+  int64_t total_num_object_consumed_;
 };
 
 class TaskManager : public TaskFinisherInterface, public TaskResubmissionInterface {
@@ -188,7 +210,7 @@ class TaskManager : public TaskFinisherInterface, public TaskResubmissionInterfa
         task_event_buffer_(task_event_buffer) {
     task_counter_.SetOnChangeCallback(
         [this](const std::tuple<std::string, rpc::TaskStatus, bool> key)
-            EXCLUSIVE_LOCKS_REQUIRED(&mu_) {
+            ABSL_EXCLUSIVE_LOCKS_REQUIRED(&mu_) {
               ray::stats::STATS_tasks.Record(
                   task_counter_.Get(key),
                   {{"State", rpc::TaskStatus_Name(std::get<1>(key))},
@@ -253,6 +275,8 @@ class TaskManager : public TaskFinisherInterface, public TaskResubmissionInterfa
   /**
    * The below APIs support streaming generator.
    *
+   * API NOTES
+   * ---------
    * - The stream must be created when a task is submitted first time. The stream
    * must be deleted by the language frontend when the stream
    * is not used anymore. The DelObjectRefStream APIs guarantee to clean
@@ -270,8 +294,31 @@ class TaskManager : public TaskFinisherInterface, public TaskResubmissionInterfa
    * - The generator's first return value contains an exception
    * if the task fails by a system error. Otherwise, it contains nothing.
    *
+   * Backpressure Impl
+   * -----------------
+   * Streaming generator optionally supports backpressure when
+   * `generator_backpressure_num_objects` is included in a task spec.
+   *
+   * Executor Side:
+   * - When a new object is yielded, executor sends a gRPC request that
+   *   contains an object size and records total_object_generated.
+   * - If a total_object_generated - total_object_consumed > threshold,
+   *   it blocks a thread and pauses execution. The consumer communicates
+   *   `object_consumed` (via gRPC reply) when objects are consumed from it,
+   *   and the execution resumes.
+   * - If a gRPC request fails, the executor assumes all the objects are
+   *   consumed and resume execution. (alternatively, we can fail execution).
+   *
+   * Client Side:
+   * - If object_generated - object_consumed < threshold, it sends a reply that
+   *   contains `object_consumed` to an executor immediately.
+   * - If object_generated - object_consumed > threshold, it doesn't reply
+   *   until objects are consumed via TryReadObjectRefStream.
+   * - If objects are not going to be consumed (e.g., generator is deleted
+   *   or objects are already consumed), it replies immediately.
+   *
    * Reference implementation of streaming generator using the following APIs
-   * is available from `_raylet.StreamingObjectRefGenerator`.
+   * is available from `_raylet.ObjectRefGenerator`.
    */
 
   /// Handle the generator task return so that it will be accessible
@@ -281,9 +328,20 @@ class TaskManager : public TaskFinisherInterface, public TaskResubmissionInterfa
   /// It is the opposite of regular tasks which can only batch
   /// report the task returns after the task finishes.
   ///
+  /// \param[in] request The request that contains reported objects.
+  /// \param[in] execution_signal_callback Note: this callback is NOT GUARANTEED
+  /// to run in the same thread as the caller.
+  /// The callback that receives arguments "status" and
+  /// "total_num_object_consumed". status: OK if the object will be consumed/already
+  /// consumed. NotFound if the stream is already deleted or the object is from the
+  /// previous attempt. total_num_object_consumed: total objects consumed from the
+  /// generator. The executor can receive the value to decide to resume execution or keep
+  /// being backpressured. If status is not OK, this must be -1.
+  ///
   /// \return True if a task return is registered. False otherwise.
   bool HandleReportGeneratorItemReturns(
-      const rpc::ReportGeneratorItemReturnsRequest &request) LOCKS_EXCLUDED(mu_);
+      const rpc::ReportGeneratorItemReturnsRequest &request,
+      ExecutionSignalCallback execution_signal_callback) ABSL_LOCKS_EXCLUDED(mu_);
 
   /// Temporarily register a given generator return reference.
   ///
@@ -310,7 +368,7 @@ class TaskManager : public TaskFinisherInterface, public TaskResubmissionInterfa
   /// \return True if we temporarily owned the reference. False otherwise.
   bool TemporarilyOwnGeneratorReturnRefIfNeeded(const ObjectID &object_id,
                                                 const ObjectID &generator_id)
-      LOCKS_EXCLUDED(mu_);
+      ABSL_LOCKS_EXCLUDED(mu_);
 
   /// Delete the object ref stream.
   ///
@@ -325,13 +383,13 @@ class TaskManager : public TaskFinisherInterface, public TaskResubmissionInterfa
   ///
   /// \param[in] generator_id The object ref id of the streaming
   /// generator task.
-  void DelObjectRefStream(const ObjectID &generator_id) LOCKS_EXCLUDED(mu_);
+  void DelObjectRefStream(const ObjectID &generator_id) ABSL_LOCKS_EXCLUDED(mu_);
 
   /// Return true if the object ref stream exists.
   ///
   /// \param[in] generator_id The object ref id of the streaming
   /// generator task.
-  bool ObjectRefStreamExists(const ObjectID &generator_id) LOCKS_EXCLUDED(mu_);
+  bool ObjectRefStreamExists(const ObjectID &generator_id) ABSL_LOCKS_EXCLUDED(mu_);
 
   /// Read object reference of the next index from the
   /// object stream of a generator_id.
@@ -349,7 +407,10 @@ class TaskManager : public TaskFinisherInterface, public TaskResubmissionInterfa
   /// Nil ID is returned if the next index hasn't been written.
   /// \return ObjectRefEndOfStream if it reaches to EoF. Ok otherwise.
   Status TryReadObjectRefStream(const ObjectID &generator_id, ObjectID *object_id_out)
-      LOCKS_EXCLUDED(mu_);
+      ABSL_LOCKS_EXCLUDED(mu_);
+
+  /// Return True if there's no more object to read. False otherwise.
+  bool IsFinished(const ObjectID &generator_id) const ABSL_LOCKS_EXCLUDED(mu_);
 
   /// Read the next index of a ObjectRefStream of generator_id without
   /// consuming an index.
@@ -358,9 +419,11 @@ class TaskManager : public TaskFinisherInterface, public TaskResubmissionInterfa
   ///
   /// \param[in] generator_id The object ref id of the streaming
   /// generator task.
-  /// \return A object reference of the next index.
+  /// \return A object reference of the next index and if the object is already ready
+  /// (meaning if the object's value if retrievable).
   /// It should not be nil.
-  ObjectID PeekObjectRefStream(const ObjectID &generator_id) LOCKS_EXCLUDED(mu_);
+  std::pair<ObjectID, bool> PeekObjectRefStream(const ObjectID &generator_id)
+      ABSL_LOCKS_EXCLUDED(mu_);
 
   /// Returns true if task can be retried.
   ///
@@ -416,7 +479,7 @@ class TaskManager : public TaskFinisherInterface, public TaskResubmissionInterfa
       const TaskSpecification &spec,
       rpc::ErrorType error_type,
       const rpc::RayErrorInfo *ray_error_info,
-      const absl::flat_hash_set<ObjectID> &store_in_plasma_ids) LOCKS_EXCLUDED(mu_);
+      const absl::flat_hash_set<ObjectID> &store_in_plasma_ids) ABSL_LOCKS_EXCLUDED(mu_);
 
   /// A task's dependencies were inlined in the task spec. This will decrement
   /// the ref count for the dependency IDs. If the dependencies contained other
@@ -518,6 +581,19 @@ class TaskManager : public TaskFinisherInterface, public TaskResubmissionInterfa
       bool include_task_info = false,
       absl::optional<const worker::TaskStatusEvent::TaskStateUpdate> state_update =
           absl::nullopt);
+
+  /// Update task status change for the task attempt in TaskEventBuffer.
+  ///
+  /// \param task_id ID of the task to query.
+  /// \param job_id ID of the job to query.
+  /// \param attempt_number Attempt number for the task attempt.
+  /// \param status the changed status.
+  /// \param state_update task state updates.
+  void RecordTaskStatusEvent(const TaskID &task_id,
+                             const JobID &job_id,
+                             int32_t attempt_number,
+                             rpc::TaskStatus status,
+                             worker::TaskStatusEvent::TaskStateUpdate &&state_update);
 
  private:
   struct TaskEntry {
@@ -631,7 +707,7 @@ class TaskManager : public TaskFinisherInterface, public TaskResubmissionInterfa
   bool HandleTaskReturn(const ObjectID &object_id,
                         const rpc::ReturnObject &return_object,
                         const NodeID &worker_raylet_id,
-                        bool store_in_plasma) LOCKS_EXCLUDED(mu_);
+                        bool store_in_plasma) ABSL_LOCKS_EXCLUDED(mu_);
 
   /// Remove a lineage reference to this object ID. This should be called
   /// whenever a task that depended on this object ID can no longer be retried.
@@ -642,7 +718,7 @@ class TaskManager : public TaskFinisherInterface, public TaskResubmissionInterfa
   /// \param[out] The amount of lineage in bytes that was removed.
   int64_t RemoveLineageReference(const ObjectID &object_id,
                                  std::vector<ObjectID> *ids_to_release)
-      LOCKS_EXCLUDED(mu_);
+      ABSL_LOCKS_EXCLUDED(mu_);
 
   /// Helper function to call RemoveSubmittedTaskReferences on the remaining
   /// dependencies of the given task spec after the task has finished or
@@ -668,10 +744,11 @@ class TaskManager : public TaskFinisherInterface, public TaskResubmissionInterfa
   /// \param [out] Return objects that should be stored in plasma. If the
   /// task has been already terminated, it returns an empty set.
   absl::flat_hash_set<ObjectID> GetTaskReturnObjectsToStoreInPlasma(
-      const TaskID &task_id, bool *first_execution = nullptr) const LOCKS_EXCLUDED(mu_);
+      const TaskID &task_id, bool *first_execution = nullptr) const
+      ABSL_LOCKS_EXCLUDED(mu_);
 
   /// Shutdown if all tasks are finished and shutdown is scheduled.
-  void ShutdownIfNeeded() LOCKS_EXCLUDED(mu_);
+  void ShutdownIfNeeded() ABSL_LOCKS_EXCLUDED(mu_);
 
   /// Set the TaskStatus
   ///
@@ -713,12 +790,12 @@ class TaskManager : public TaskFinisherInterface, public TaskResubmissionInterfa
   /// this should be used when a task fails (which means we know the task won't
   /// report any more generator return values).
   void MarkEndOfStream(const ObjectID &generator_id, int64_t end_of_stream_index)
-      LOCKS_EXCLUDED(objet_ref_stream_ops_mu_) LOCKS_EXCLUDED(mu_);
+      ABSL_LOCKS_EXCLUDED(objet_ref_stream_ops_mu_) ABSL_LOCKS_EXCLUDED(mu_);
 
   /// See TemporarilyOwnGeneratorReturnRefIfNeeded for a docstring.
   bool TemporarilyOwnGeneratorReturnRefIfNeededInternal(const ObjectID &object_id,
                                                         const ObjectID &generator_id)
-      EXCLUSIVE_LOCKS_REQUIRED(objet_ref_stream_ops_mu_) LOCKS_EXCLUDED(mu_);
+      ABSL_EXCLUSIVE_LOCKS_REQUIRED(objet_ref_stream_ops_mu_) ABSL_LOCKS_EXCLUDED(mu_);
 
   /// Used to store task results.
   std::shared_ptr<CoreWorkerMemoryStore> in_memory_store_;
@@ -730,7 +807,13 @@ class TaskManager : public TaskFinisherInterface, public TaskResubmissionInterfa
 
   /// Mapping from a streaming generator task id -> object ref stream.
   absl::flat_hash_map<ObjectID, ObjectRefStream> object_ref_streams_
-      GUARDED_BY(objet_ref_stream_ops_mu_);
+      ABSL_GUARDED_BY(objet_ref_stream_ops_mu_);
+
+  /// The consumer side of object ref stream should signal the executor
+  /// to resume execution via signal callbacks (i.e., RPC reply).
+  /// This data structure maintains the mapping of ObjectRefStreamID -> signal_callbacks
+  absl::flat_hash_map<ObjectID, std::vector<ExecutionSignalCallback>>
+      ref_stream_execution_signal_callbacks_ ABSL_GUARDED_BY(objet_ref_stream_ops_mu_);
 
   /// Callback to store objects in plasma. This is used for objects that were
   /// originally stored in plasma. During reconstruction, we ensure that these
@@ -747,10 +830,10 @@ class TaskManager : public TaskFinisherInterface, public TaskResubmissionInterfa
   const int64_t max_lineage_bytes_;
 
   // The number of task failures we have logged total.
-  int64_t num_failure_logs_ GUARDED_BY(mu_) = 0;
+  int64_t num_failure_logs_ ABSL_GUARDED_BY(mu_) = 0;
 
   // The last time we logged a task failure.
-  int64_t last_log_time_ms_ GUARDED_BY(mu_) = 0;
+  int64_t last_log_time_ms_ ABSL_GUARDED_BY(mu_) = 0;
 
   /// Protects below fields.
   mutable absl::Mutex mu_;
@@ -760,23 +843,23 @@ class TaskManager : public TaskFinisherInterface, public TaskResubmissionInterfa
   mutable absl::Mutex objet_ref_stream_ops_mu_;
 
   /// Tracks per-task-state counters for metric purposes.
-  TaskStatusCounter task_counter_ GUARDED_BY(mu_);
+  TaskStatusCounter task_counter_ ABSL_GUARDED_BY(mu_);
 
   /// This map contains one entry per task that may be submitted for
   /// execution. This includes both tasks that are currently pending execution
   /// and tasks that finished execution but that may be retried again in the
   /// future.
-  absl::flat_hash_map<TaskID, TaskEntry> submissible_tasks_ GUARDED_BY(mu_);
+  absl::flat_hash_map<TaskID, TaskEntry> submissible_tasks_ ABSL_GUARDED_BY(mu_);
 
   /// Number of tasks that are pending. This is a count of all tasks in
   /// submissible_tasks_ that have been submitted and are currently pending
   /// execution.
   size_t num_pending_tasks_ = 0;
 
-  int64_t total_lineage_footprint_bytes_ GUARDED_BY(mu_) = 0;
+  int64_t total_lineage_footprint_bytes_ ABSL_GUARDED_BY(mu_) = 0;
 
   /// Optional shutdown hook to call when pending tasks all finish.
-  std::function<void()> shutdown_hook_ GUARDED_BY(mu_) = nullptr;
+  std::function<void()> shutdown_hook_ ABSL_GUARDED_BY(mu_) = nullptr;
 
   /// A task state events buffer initialized managed by the CoreWorker.
   /// task_event_buffer_.Enabled() will return false if disabled (due to config or set-up

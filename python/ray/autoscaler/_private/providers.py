@@ -26,12 +26,30 @@ MINIMAL_EXTERNAL_CONFIG = {
 
 
 def _import_aws(provider_config):
+    try:
+        # boto3 and botocore are imported in multiple places in the codebase,
+        # so we just import them here to ensure that they are installed.
+        import boto3  # noqa: F401
+    except ImportError as e:
+        raise ImportError(
+            "The Ray AWS VM launcher requires the AWS SDK for Python (Boto3) "
+            "to be installed. You can install it with `pip install boto3`."
+        ) from e
+
     from ray.autoscaler._private.aws.node_provider import AWSNodeProvider
 
     return AWSNodeProvider
 
 
 def _import_gcp(provider_config):
+    try:
+        import googleapiclient  # noqa: F401
+    except ImportError as e:
+        raise ImportError(
+            "The Ray GCP VM launcher requires the Google API Client to be installed. "
+            "You can install it with `pip install google-api-python-client`."
+        ) from e
+
     from ray.autoscaler._private.gcp.node_provider import GCPNodeProvider
 
     return GCPNodeProvider
@@ -91,15 +109,21 @@ def _import_kubernetes(provider_config):
 
 
 def _import_kuberay(provider_config):
-    from ray.autoscaler._private.kuberay.node_provider import KuberayNodeProvider
+    from ray.autoscaler._private.kuberay.node_provider import KubeRayNodeProvider
 
-    return KuberayNodeProvider
+    return KubeRayNodeProvider
 
 
 def _import_aliyun(provider_config):
     from ray.autoscaler._private.aliyun.node_provider import AliyunNodeProvider
 
     return AliyunNodeProvider
+
+
+def _import_spark(provider_config):
+    from ray.autoscaler._private.spark.node_provider import SparkNodeProvider
+
+    return SparkNodeProvider
 
 
 def _load_fake_multinode_docker_defaults_config():
@@ -170,6 +194,7 @@ _NODE_PROVIDERS = {
     "kuberay": _import_kuberay,
     "aliyun": _import_aliyun,
     "external": _import_external,  # Import an external module
+    "spark": _import_spark,
 }
 
 _PROVIDER_PRETTY_NAMES = {
@@ -181,7 +206,7 @@ _PROVIDER_PRETTY_NAMES = {
     "gcp": "GCP",
     "azure": "Azure",
     "kubernetes": "Kubernetes",
-    "kuberay": "Kuberay",
+    "kuberay": "KubeRay",
     "aliyun": "Aliyun",
     "external": "External",
     "vsphere": "vSphere",

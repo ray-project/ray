@@ -1,9 +1,9 @@
-from typing import Any, Dict, Optional, List
-import torch
+from typing import Any, Dict, List, Optional
 
+import torch
+from composer.core.state import State
 from composer.loggers import Logger
 from composer.loggers.logger_destination import LoggerDestination
-from composer.core.state import State
 
 import ray.train
 

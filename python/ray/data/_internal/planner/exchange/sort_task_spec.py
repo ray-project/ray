@@ -112,10 +112,11 @@ class SortTaskSpec(ExchangeTaskSpec):
         # Ignore the 1st item as it's not required for the boundary
         for k, v in sample_dict.items():
             sorted_v = v[indices]
-            sample_dict[k] = [
-                np.quantile(sorted_v, q, interpolation="nearest")
-                for q in np.linspace(0, 1, num_reducers)
-            ][1:]
+            sample_dict[k] = list(
+                np.quantile(
+                    sorted_v, np.linspace(0, 1, num_reducers), interpolation="nearest"
+                )[1:]
+            )
         # Return the list of boundaries as tuples
         # of a form (col1_value, col2_value, ...)
         return [

@@ -252,7 +252,7 @@ def test_actor_stats_async_actor_generator(ray_start_regular):
             yield ray.get_runtime_context()._get_actor_call_stats()
 
     actor = AysncActor.options(max_concurrency=3).remote()
-    gens = [actor.func.options(num_returns="streaming").remote() for _ in range(6)]
+    gens = [actor.func.remote() for _ in range(6)]
     time.sleep(1)
     signal.send.remote()
     results = []
@@ -344,6 +344,30 @@ def test_ids(ray_start_regular):
 
     actor = FooActor.remote()
     ray.get(actor.foo.remote())
+
+    # actor name
+    @ray.remote
+    class NamedActor:
+        def name(self):
+            return ray.get_runtime_context().get_actor_name()
+
+    ACTOR_NAME = "actor_name"
+    named_actor = NamedActor.options(name=ACTOR_NAME).remote()
+    assert ray.get(named_actor.name.remote()) == ACTOR_NAME
+
+    # unnamed actor name
+    unnamed_actor = NamedActor.options().remote()
+    assert ray.get(unnamed_actor.name.remote()) == ""
+
+    # task actor name
+    @ray.remote
+    def task_actor_name():
+        ray.get_runtime_context().get_actor_name()
+
+    assert ray.get(task_actor_name.remote()) is None
+
+    # driver actor name
+    assert rtc.get_actor_name() is None
 
 
 def test_auto_init(shutdown_only):

@@ -1,5 +1,6 @@
-import grpc
 from typing import Sequence
+
+import grpc
 from grpc.aio._server import Server
 
 

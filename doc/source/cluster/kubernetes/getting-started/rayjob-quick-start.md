@@ -28,10 +28,14 @@ A RayJob manages two aspects:
 * `rayClusterSpec` - The spec for the **RayCluster** to run the job on.
 * `jobId` - _(Optional)_ Job ID to specify for the job. If not provided, one will be generated.
 * `metadata` - _(Optional)_ Arbitrary user-provided metadata for the job.
-* `runtimeEnv` - _(Optional)_ base64-encoded string of the runtime env json string.
+* `runtimeEnvYAML` - _(Optional)_ The runtime environment configuration provided as a multi-line YAML string. _(New in KubeRay version 1.0.)_
 * `shutdownAfterJobFinishes` - _(Optional)_ whether to recycle the cluster after the job finishes. Defaults to false.
 * `ttlSecondsAfterFinished` - _(Optional)_ TTL to clean up the cluster. This only works if `shutdownAfterJobFinishes` is set.
 * `submitterPodTemplate` - _(Optional)_ Pod template spec for the pod that runs `ray job submit` against the Ray cluster.
+* `entrypointNumCpus` - _(Optional)_ Specifies the quantity of CPU cores to reserve for the entrypoint command. _(New in KubeRay version 1.0.)_
+* `entrypointNumGpus` - _(Optional)_ Specifies the number of GPUs to reserve for the entrypoint command. _(New in KubeRay version 1.0.)_
+* `entrypointResources` - _(Optional)_ A json formatted dictionary to specify custom resources and their quantity. _(New in KubeRay version 1.0.)_
+* `runtimeEnv` - [DEPRECATED] _(Optional)_ base64-encoded string of the runtime env json string.
 
 ## Example: Run a simple Ray job with RayJob
 
@@ -50,7 +54,7 @@ Please note that the YAML file in this example uses `serveConfigV2` to specify a
 
 ```sh
 # Step 3.1: Download `ray_v1alpha1_rayjob.yaml`
-curl -LO https://raw.githubusercontent.com/ray-project/kuberay/master/ray-operator/config/samples/ray_v1alpha1_rayjob.yaml
+curl -LO https://raw.githubusercontent.com/ray-project/kuberay/v1.0.0/ray-operator/config/samples/ray_v1alpha1_rayjob.yaml
 
 # Step 3.2: Create a RayJob
 kubectl apply -f ray_v1alpha1_rayjob.yaml
@@ -143,3 +147,9 @@ helm uninstall kuberay-operator
 # Step 6.3: Delete the Kubernetes cluster
 kind delete cluster
 ```
+
+## Advanced Usage
+
+The Pod template for the Kubernetes Job that runs `ray job submit` can be customized by setting the `submitterPodTemplate` field in the RayJob custom resource.  See <https://raw.githubusercontent.com/ray-project/kuberay/master/ray-operator/config/samples/ray_v1alpha1_rayjob.yaml> for an example (commented out in this file).
+
+If `submitterPodTemplate` is unspecified, the Pod will consist of a container named `ray-job-submitter` with image matching that of the Ray head, resource requests of 500m CPU and 200MiB memory, and limits of 1 CPU and 1GiB memory.

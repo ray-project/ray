@@ -41,7 +41,10 @@ def test_run(ray_start_4_cpus):
     def train_func():
         checkpoint = train.get_checkpoint()
         checkpoint_dict = load_dict_checkpoint(checkpoint)
-        train.report(metrics=checkpoint_dict, checkpoint=checkpoint)
+        if train.get_context().get_world_rank() == 0:
+            train.report(metrics=checkpoint_dict, checkpoint=checkpoint)
+        else:
+            train.report(metrics=checkpoint_dict)
         return checkpoint_dict[key]
 
     with create_dict_checkpoint({key: value}) as checkpoint:

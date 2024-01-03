@@ -259,11 +259,12 @@ if __name__ == "__main__":
 
     config = (
         PPOConfig()
+        # TODO (Kourosh): Lift this example to the new RLModule stack, and enable it.
+        .experimental(_enable_new_api_stack=False)
         .environment(TwoStepGame)
         .framework(args.framework)
         .rollouts(batch_mode="complete_episodes", num_rollout_workers=0)
-        # TODO (Kourosh): Lift this example to the new RLModule stack, and enable it.
-        .training(model={"custom_model": "cc_model"}, _enable_learner_api=False)
+        .training(model={"custom_model": "cc_model"})
         .multi_agent(
             policies={
                 "pol1": (
@@ -287,7 +288,6 @@ if __name__ == "__main__":
         )
         # Use GPUs iff `RLLIB_NUM_GPUS` env var set to > 0.
         .resources(num_gpus=int(os.environ.get("RLLIB_NUM_GPUS", "0")))
-        .rl_module(_enable_rl_module_api=False)
     )
 
     stop = {

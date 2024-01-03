@@ -1,6 +1,6 @@
 (kuberay-rayservice)=
 
-# RayService
+# Deploy Ray Serve Applications
 
 ## Prerequisites
 
@@ -21,7 +21,7 @@ A RayService manages two components:
 * **Kubernetes-native support for Ray clusters and Ray Serve applications:** After using a Kubernetes config to define a Ray cluster and its Ray Serve applications, you can use `kubectl` to create the cluster and its applications.
 * **In-place updates for Ray Serve applications:** Users can update the Ray Serve config in the RayService CR config and use `kubectl apply` to update the applications. See [Step 7](#step-7-in-place-update-for-ray-serve-applications) for more details.
 * **Zero downtime upgrades for Ray clusters:** Users can update the Ray cluster config in the RayService CR config and use `kubectl apply` to update the cluster. RayService temporarily creates a pending cluster and waits for it to be ready, then switches traffic to the new cluster and terminates the old one. See [Step 8](#step-8-zero-downtime-upgrade-for-ray-clusters) for more details.
-* **Services HA:** RayService monitors the Ray cluster and Serve deployments' health statuses. If RayService detects an unhealthy status for a period of time, RayService tries to create a new Ray cluster and switch traffic to the new cluster when it's ready.
+* **Services HA:** RayService monitors the Ray cluster and Serve deployments' health statuses. If RayService detects an unhealthy status for a period of time, RayService tries to create a new Ray cluster and switch traffic to the new cluster when it's ready. See [this documentation](kuberay-rayservice-ha) for more details.
 
 ## Example: Serve two simple Ray Serve applications using RayService
 
@@ -40,7 +40,7 @@ Note that the YAML file in this example uses `serveConfigV2` to specify a multi-
 
 ```sh
 # Step 3.1: Download `ray_v1alpha1_rayservice.yaml`
-curl -LO https://raw.githubusercontent.com/ray-project/kuberay/master/ray-operator/config/samples/ray_v1alpha1_rayservice.yaml
+curl -LO https://raw.githubusercontent.com/ray-project/kuberay/v1.0.0/ray-operator/config/samples/ray_v1alpha1_rayservice.yaml
 
 # Step 3.2: Create a RayService
 kubectl apply -f ray_v1alpha1_rayservice.yaml
@@ -69,7 +69,7 @@ kubectl apply -f ray_v1alpha1_rayservice.yaml
         deployments: ...
   ```
 
-## Step 4: Verify the Kubernetes cluster status 
+## Step 4: Verify the Kubernetes cluster status
 
 ```sh
 # Step 4.1: List all RayService custom resources in the `default` namespace.
@@ -113,7 +113,7 @@ If you don't use`rayservice-sample-head-svc`, you need to update the ingress con
 However, if you use `rayservice-sample-head-svc`, KubeRay automatically updates the selector to point to the new head Pod, eliminating the need to update the ingress configuration.
 
 
-> Note: Default ports and their definitions. 
+> Note: Default ports and their definitions.
 
 | Port  | Definition          |
 |-------|---------------------|
@@ -135,11 +135,11 @@ kubectl describe rayservices rayservice-sample
 #       Health Last Update Time:  2023-07-11T22:21:24Z
 #       Last Update Time:         2023-07-11T22:21:24Z
 #       Serve Deployment Statuses:
-#         fruit_app_DAGDriver:
+#         fruit_app_FruitMarket:
 #           Health Last Update Time:  2023-07-11T22:21:24Z
 #           Last Update Time:         2023-07-11T22:21:24Z
 #           Status:                   HEALTHY
-#         fruit_app_FruitMarket:
+#         fruit_app_PearStand:
 #           ...
 #       Status:                       RUNNING
 #     math_app:
@@ -150,7 +150,7 @@ kubectl describe rayservices rayservice-sample
 #           Health Last Update Time:  2023-07-11T22:21:24Z
 #           Last Update Time:         2023-07-11T22:21:24Z
 #           Status:                   HEALTHY
-#         math_app_DAGDriver:
+#         math_app_Multiplier:
 #           ...
 #       Status:                       RUNNING
 
@@ -160,7 +160,7 @@ kubectl describe rayservices rayservice-sample
 kubectl port-forward svc/rayservice-sample-head-svc --address 0.0.0.0 8265:8265
 ```
 
-* See [rayservice-troubleshooting.md](https://github.com/ray-project/kuberay/blob/master/docs/guidance/rayservice-troubleshooting.md#observability) for more details on RayService observability.
+* See [rayservice-troubleshooting.md](kuberay-raysvc-troubleshoot) for more details on RayService observability.
 Below is a screenshot example of the Serve page in the Ray dashboard.
   ![Ray Serve Dashboard](../images/dashboard_serve.png)
 
@@ -180,13 +180,14 @@ curl -X POST -H 'Content-Type: application/json' rayservice-sample-serve-svc:800
 # [Expected output]: "15 pizzas please!"
 ```
 
-* `rayservice-sample-serve-svc` is HA in general. It does traffic routing among all the workers which have Serve deployments and always tries to point to the healthy cluster, even during upgrading or failing cases. 
+* `rayservice-sample-serve-svc` is HA in general. It does traffic routing among all the workers which have Serve deployments and always tries to point to the healthy cluster, even during upgrading or failing cases.
 
+(step-7-in-place-update-for-ray-serve-applications)=
 ## Step 7: In-place update for Ray Serve applications
 
 You can update the configurations for the applications by modifying `serveConfigV2` in the RayService config file. Reapplying the modified config with `kubectl apply` reapplies the new configurations to the existing RayCluster instead of creating a new RayCluster.
 
-Update the price of mangos from `3` to `4` for the fruit stand app in [ray_v1alpha1_rayservice.yaml](https://github.com/ray-project/kuberay/blob/master/ray-operator/config/samples/ray_v1alpha1_rayservice.yaml). This change reconfigures the existing MangoStand deployment, and future requests will use the updated Mango price.
+Update the price of mangos from `3` to `4` for the fruit stand app in [ray_v1alpha1_rayservice.yaml](https://github.com/ray-project/kuberay/blob/v1.0.0/ray-operator/config/samples/ray_v1alpha1_rayservice.yaml). This change reconfigures the existing MangoStand deployment, and future requests will use the updated Mango price.
 
 ```sh
 # Step 7.1: Update the price of mangos from 3 to 4.
@@ -214,6 +215,7 @@ curl -X POST -H 'Content-Type: application/json' rayservice-sample-serve-svc:800
 # [Expected output]: 8
 ```
 
+(step-8-zero-downtime-upgrade-for-ray-clusters)=
 ## Step 8: Zero downtime upgrade for Ray clusters
 
 In Step 7, modifying `serveConfigV2` doesn't trigger a zero downtime upgrade for Ray clusters.
@@ -221,8 +223,8 @@ Instead, it reapplies the new configurations to the existing RayCluster.
 However, if you modify `spec.rayClusterConfig` in the RayService YAML file, it triggers a zero downtime upgrade for Ray clusters.
 RayService temporarily creates a new RayCluster and waits for it to be ready, then switches traffic to the new RayCluster by updating the selector of the head service managed by RayService (that is, `rayservice-sample-head-svc`) and terminates the old one.
 
-During the zero downtime upgrade process, RayService creates a new RayCluster temporarily and waits for it to become ready. 
-Once the new RayCluster is ready, RayService updates the selector of the head service managed by RayService (that is, `rayservice-sample-head-svc`) to point to the new RayCluster to switch the traffic to the new RayCluster. 
+During the zero downtime upgrade process, RayService creates a new RayCluster temporarily and waits for it to become ready.
+Once the new RayCluster is ready, RayService updates the selector of the head service managed by RayService (that is, `rayservice-sample-head-svc`) to point to the new RayCluster to switch the traffic to the new RayCluster.
 Finally, the old RayCluster is terminated.
 
 Certain exceptions don't trigger a zero downtime upgrade.
@@ -294,6 +296,7 @@ kubectl delete pod curl
 
 ## Next steps
 
+* See [RayService high availability](kuberay-rayservice-ha) for more details on RayService HA.
 * See [RayService troubleshooting guide](kuberay-raysvc-troubleshoot) if you encounter any issues.
 * See [Examples](kuberay-examples) for more RayService examples.
 The [MobileNet example](kuberay-mobilenet-rayservice-example) is a good example to start with because it doesn't require GPUs and is easy to run on a local machine.

@@ -117,7 +117,7 @@ const RayletWorkerTable = ({
 }) => {
   const { changeFilter, filterFunc } = useFilter();
   const [key, setKey] = useState("");
-  const { nodeMapByIp, ipLogMap } = useContext(GlobalContext);
+  const { nodeMapByIp } = useContext(GlobalContext);
   const open = () => setKey(`ON${Math.random()}`);
   const close = () => setKey(`OFF${Math.random()}`);
 
@@ -227,13 +227,13 @@ const RayletWorkerTable = ({
                   </TableCell>
                   <TableCell align="center">
                     <Grid container spacing={2}>
-                      {ipLogMap[coreWorkerStats[0]?.ipAddress] && (
+                      {coreWorkerStats[0] && (
                         <Grid item>
                           <Link
                             target="_blank"
-                            to={`/logs/${encodeURIComponent(
-                              ipLogMap[coreWorkerStats[0]?.ipAddress],
-                            )}?fileName=${
+                            to={`/logs/?nodeId=${encodeURIComponent(
+                              nodeMapByIp[coreWorkerStats[0].ipAddress],
+                            )}&fileName=${
                               coreWorkerStats[0].jobId || ""
                             }-${pid}`}
                           >
@@ -282,7 +282,7 @@ const RayletWorkerTable = ({
                     {nodeMapByIp[coreWorkerStats[0]?.ipAddress] ? (
                       <Link
                         target="_blank"
-                        to={`/node/${
+                        to={`/cluster/nodes/${
                           nodeMapByIp[coreWorkerStats[0]?.ipAddress]
                         }`}
                       >

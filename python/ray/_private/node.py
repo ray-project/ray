@@ -22,10 +22,10 @@ from filelock import FileLock
 import ray
 import ray._private.ray_constants as ray_constants
 import ray._private.services
-import ray._private.utils
 from ray._private import storage
-from ray._raylet import GcsClient
+from ray._raylet import GcsClient, get_session_key_from_storage
 from ray._private.resource_spec import ResourceSpec
+from ray._private.services import serialize_config, get_address
 from ray._private.utils import open_log, try_to_create_directory, try_to_symlink
 
 # Logger for this module. It should be configured at the entry point
@@ -97,26 +97,6 @@ class Node:
             ray_params.external_addresses = external_redis
             ray_params.num_redis_shards = len(external_redis) - 1
 
-        # Try to get node IP address with the parameters.
-        if ray_params.node_ip_address:
-            node_ip_address = ray_params.node_ip_address
-        elif ray_params.redis_address:
-            node_ip_address = ray.util.get_node_ip_address(ray_params.redis_address)
-        else:
-            node_ip_address = ray.util.get_node_ip_address()
-        self._node_ip_address = node_ip_address
-
-        if ray_params.raylet_ip_address:
-            raylet_ip_address = ray_params.raylet_ip_address
-        else:
-            raylet_ip_address = node_ip_address
-
-        if raylet_ip_address != node_ip_address and (not connect_only or head):
-            raise ValueError(
-                "The raylet IP address should only be different than the node "
-                "IP address when connecting to an existing raylet; i.e., when "
-                "head=False and connect_only=True."
-            )
         if (
             ray_params._system_config
             and len(ray_params._system_config) > 0
@@ -126,12 +106,9 @@ class Node:
                 "System config parameters can only be set on the head node."
             )
 
-        self._raylet_ip_address = raylet_ip_address
-
         ray_params.update_if_absent(
             include_log_monitor=True,
             resources={},
-            temp_dir=ray._private.utils.get_ray_temp_dir(),
             worker_path=os.path.join(
                 os.path.dirname(os.path.abspath(__file__)),
                 "workers",
@@ -176,12 +153,21 @@ class Node:
             self._init_gcs_client()
 
         # Register the temp dir.
-        if head:
-            # date including microsecond
-            date_str = datetime.datetime.today().strftime("%Y-%m-%d_%H-%M-%S_%f")
-            self._session_name = f"session_{date_str}_{os.getpid()}"
-        else:
-            if ray_params.session_name is None:
+        self._session_name = ray_params.session_name
+        if self._session_name is None:
+            if head:
+                # We expect this the first time we initialize a cluster, but not during
+                # subsequent restarts of the head node.
+                maybe_key = self.check_persisted_session_name()
+                if maybe_key is None:
+                    # date including microsecond
+                    date_str = datetime.datetime.today().strftime(
+                        "%Y-%m-%d_%H-%M-%S_%f"
+                    )
+                    self._session_name = f"session_{date_str}_{os.getpid()}"
+                else:
+                    self._session_name = ray._private.utils.decode(maybe_key)
+            else:
                 assert not self._default_worker
                 session_name = ray._private.utils.internal_kv_get_with_retry(
                     self.get_gcs_client(),
@@ -190,9 +176,6 @@ class Node:
                     num_retries=ray_constants.NUM_REDIS_GET_RETRIES,
                 )
                 self._session_name = ray._private.utils.decode(session_name)
-            else:
-                # worker mode
-                self._session_name = ray_params.session_name
 
         # Initialize webui url
         if head:
@@ -206,7 +189,38 @@ class Node:
                     f"{ray_params.dashboard_host}:{ray_params.dashboard_port}"
                 )
 
+        # It creates a session_dir.
         self._init_temp()
+
+        node_ip_address = ray_params.node_ip_address
+        if node_ip_address is None:
+            if connect_only:
+                node_ip_address = self._wait_and_get_for_node_address()
+            else:
+                node_ip_address = ray.util.get_node_ip_address()
+
+        assert node_ip_address is not None
+        ray_params.update_if_absent(
+            node_ip_address=node_ip_address, raylet_ip_address=node_ip_address
+        )
+        self._node_ip_address = node_ip_address
+        if not connect_only:
+            ray._private.services.write_node_ip_address(
+                self.get_session_dir_path(), node_ip_address
+            )
+
+        if ray_params.raylet_ip_address:
+            raylet_ip_address = ray_params.raylet_ip_address
+        else:
+            raylet_ip_address = node_ip_address
+
+        if raylet_ip_address != node_ip_address and (not connect_only or head):
+            raise ValueError(
+                "The raylet IP address should only be different than the node "
+                "IP address when connecting to an existing raylet; i.e., when "
+                "head=False and connect_only=True."
+            )
+        self._raylet_ip_address = raylet_ip_address
 
         # Validate and initialize the persistent storage API.
         if head:
@@ -315,7 +329,32 @@ class Node:
         # Makes sure the Node object has valid addresses after setup.
         self.validate_ip_port(self.address)
         self.validate_ip_port(self.gcs_address)
-        self._record_stats()
+
+        if not connect_only:
+            self._record_stats()
+
+    def check_persisted_session_name(self):
+        if self._ray_params.external_addresses is None:
+            return None
+        self._redis_address = self._ray_params.external_addresses[0]
+        redis_ip_address, redis_port, enable_redis_ssl = get_address(
+            self._redis_address,
+        )
+        # Address is ip:port or redis://ip:port
+        if int(redis_port) < 0:
+            raise ValueError(
+                f"Invalid Redis port provided: {redis_port}."
+                "The port must be a non-negative integer."
+            )
+
+        return get_session_key_from_storage(
+            redis_ip_address,
+            int(redis_port),
+            self._ray_params.redis_password,
+            enable_redis_ssl,
+            serialize_config(self._config),
+            b"session_name",
+        )
 
     @staticmethod
     def validate_ip_port(ip_port):
@@ -371,6 +410,9 @@ class Node:
         self._incremental_dict = collections.defaultdict(lambda: 0)
 
         if self.head:
+            self._ray_params.update_if_absent(
+                temp_dir=ray._private.utils.get_ray_temp_dir()
+            )
             self._temp_dir = self._ray_params.temp_dir
         else:
             if self._ray_params.temp_dir is None:
@@ -934,6 +976,43 @@ class Node:
 
         return port
 
+    def _wait_and_get_for_node_address(self, timeout_s: int = 60) -> str:
+        """Wait until the RAY_NODE_IP_FILENAME file is avialable.
+
+        RAY_NODE_IP_FILENAME is created when a ray instance is started.
+
+        Args:
+            timeout_s: If the ip address is not found within this
+                timeout, it will raise ValueError.
+        Returns:
+            The node_ip_address of the current session if it finds it
+            within timeout_s.
+        """
+        for i in range(timeout_s):
+            node_ip_address = ray._private.services.get_cached_node_ip_address(
+                self.get_session_dir_path()
+            )
+
+            if node_ip_address is not None:
+                return node_ip_address
+
+            time.sleep(1)
+            if i % 10 == 0:
+                logger.info(
+                    f"Can't find a `{ray_constants.RAY_NODE_IP_FILENAME}` "
+                    f"file from {self.get_session_dir_path()}. "
+                    "Have you started Ray instsance using "
+                    "`ray start` or `ray.init`?"
+                )
+
+        raise ValueError(
+            f"Can't find a `{ray_constants.RAY_NODE_IP_FILENAME}` "
+            f"file from {self.get_session_dir_path()}. "
+            f"for {timeout_s} seconds. "
+            "A ray instance hasn't started. "
+            "Did you do `ray start` or `ray.init` on this host?"
+        )
+
     def start_reaper_process(self):
         """
         Start the reaper process.
@@ -959,6 +1038,7 @@ class Node:
             "log_monitor", unique=True, create_out=False
         )
         process_info = ray._private.services.start_log_monitor(
+            self.get_session_dir_path(),
             self._logs_dir,
             self.gcs_address,
             fate_share=self.kernel_fate_share,
@@ -1173,12 +1253,22 @@ class Node:
 
         ray_usage_lib.put_cluster_metadata(self.get_gcs_client())
         # Make sure GCS is up.
-        self.get_gcs_client().internal_kv_put(
+        added = self.get_gcs_client().internal_kv_put(
             b"session_name",
             self._session_name.encode(),
-            True,
+            False,
             ray_constants.KV_NAMESPACE_SESSION,
         )
+        if not added:
+            curr_val = self.get_gcs_client().internal_kv_get(
+                b"session_name", ray_constants.KV_NAMESPACE_SESSION
+            )
+            assert curr_val == self._session_name.encode("utf-8"), (
+                f"Session name {self._session_name} does not match "
+                f"persisted value {curr_val}. Perhaps there was an "
+                f"error connecting to Redis."
+            )
+
         self.get_gcs_client().internal_kv_put(
             b"session_dir",
             self._session_dir.encode(),
@@ -1213,12 +1303,8 @@ class Node:
         logger.debug(
             f"Process STDOUT and STDERR is being " f"redirected to {self._logs_dir}."
         )
-        assert self._redis_address is None
         assert self._gcs_address is None
         assert self._gcs_client is None
-
-        if self._ray_params.external_addresses is not None:
-            self._redis_address = self._ray_params.external_addresses[0]
 
         self.start_gcs_server()
         assert self.get_gcs_client() is not None
@@ -1635,11 +1721,16 @@ class Node:
         external_storage.reset_external_storage()
 
     def _record_stats(self):
+        # This is only called when a new node is started.
         # Initialize the internal kv so that the metrics can be put
-        from ray._private.usage.usage_lib import TagKey, record_extra_usage_tag
+        from ray._private.usage.usage_lib import (
+            TagKey,
+            record_extra_usage_tag,
+            record_hardware_usage,
+        )
 
         if not ray.experimental.internal_kv._internal_kv_initialized():
-            ray.experimental.internal_kv._initialize_internal_kv(self.get_gcs_client)
+            ray.experimental.internal_kv._initialize_internal_kv(self.get_gcs_client())
         assert ray.experimental.internal_kv._internal_kv_initialized()
         if self.head:
             # record head node stats
@@ -1647,3 +1738,9 @@ class Node:
                 "redis" if os.environ.get("RAY_REDIS_ADDRESS") is not None else "memory"
             )
             record_extra_usage_tag(TagKey.GCS_STORAGE, gcs_storage_type)
+        cpu_model_name = ray._private.utils.get_current_node_cpu_model_name()
+        if cpu_model_name:
+            # CPU model name can be an arbitrary long string
+            # so we truncate it to the first 50 characters
+            # to avoid any issues.
+            record_hardware_usage(cpu_model_name[:50])

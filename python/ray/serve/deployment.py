@@ -1,45 +1,25 @@
-from copy import deepcopy
 import inspect
 import logging
-from typing import (
-    Any,
-    Callable,
-    Dict,
-    List,
-    Optional,
-    Tuple,
-    Union,
-)
+import warnings
+from copy import deepcopy
+from typing import Any, Callable, Dict, List, Optional, Tuple, Union
 
-from ray.dag.dag_node import DAGNodeBase
 from ray.dag.class_node import ClassNode
+from ray.dag.dag_node import DAGNodeBase
 from ray.dag.function_node import FunctionNode
-from ray.util.annotations import Deprecated, PublicAPI
-
-from ray.serve.config import (
-    AutoscalingConfig,
-    DeploymentConfig,
-    ReplicaConfig,
-)
-from ray.serve.context import get_global_client
+from ray.serve._private.config import DeploymentConfig, ReplicaConfig
+from ray.serve._private.constants import SERVE_LOGGER_NAME
+from ray.serve._private.utils import DEFAULT, Default
+from ray.serve.config import AutoscalingConfig
+from ray.serve.context import _get_global_client
 from ray.serve.handle import RayServeHandle, RayServeSyncHandle
-from ray.serve.schema import (
-    RayActorOptionsSchema,
-    DeploymentSchema,
-)
-from ray.serve._private.constants import SERVE_LOGGER_NAME, MIGRATION_MESSAGE
-from ray.serve._private.usage import ServeUsageTag
-from ray.serve._private.utils import (
-    DEFAULT,
-    Default,
-    guarded_deprecation_warning,
-)
-
+from ray.serve.schema import DeploymentSchema, LoggingConfig, RayActorOptionsSchema
+from ray.util.annotations import Deprecated, PublicAPI
 
 logger = logging.getLogger(SERVE_LOGGER_NAME)
 
 
-@PublicAPI(stability="beta")
+@PublicAPI(stability="stable")
 class Application(DAGNodeBase):
     """One or more deployments bound with arguments that can be deployed together.
 
@@ -100,7 +80,7 @@ class Application(DAGNodeBase):
         return getattr(self._get_internal_dag_node(), name)
 
 
-@PublicAPI
+@PublicAPI(stability="stable")
 class Deployment:
     """Class (or function) decorated with the `@serve.deployment` decorator.
 
@@ -135,7 +115,6 @@ class Deployment:
         replica_config: ReplicaConfig,
         version: Optional[str] = None,
         route_prefix: Union[str, None, DEFAULT] = DEFAULT.VALUE,
-        is_driver_deployment: Optional[bool] = False,
         _internal=False,
     ) -> None:
         if not _internal:
@@ -159,12 +138,6 @@ class Deployment:
             if "{" in route_prefix or "}" in route_prefix:
                 raise ValueError("route_prefix may not contain wildcards.")
 
-        if is_driver_deployment is True:
-            if deployment_config.num_replicas != 1:
-                raise ValueError("num_replicas should not be set for driver deployment")
-            if deployment_config.autoscaling_config:
-                raise ValueError("autoscaling should not be set for driver deployment")
-
         docs_path = None
         if (
             inspect.isclass(replica_config.deployment_def)
@@ -179,7 +152,6 @@ class Deployment:
         self._deployment_config = deployment_config
         self._replica_config = replica_config
         self._route_prefix = route_prefix
-        self._is_driver_deployment = is_driver_deployment
         self._docs_path = docs_path
 
     @property
@@ -233,11 +205,18 @@ class Deployment:
 
     @property
     def url(self) -> Optional[str]:
-        if self._route_prefix is None or self._is_driver_deployment:
+        if self._route_prefix is None:
             # this deployment is not exposed over HTTP
             return None
 
-        return get_global_client().root_url + self.route_prefix
+        return _get_global_client().root_url + self.route_prefix
+
+    @property
+    def logging_config(self) -> Dict:
+        return self._deployment_config.logging_config
+
+    def set_logging_config(self, logging_config: Dict):
+        self._deployment_config.logging_config = logging_config
 
     def __call__(self):
         raise RuntimeError(
@@ -245,7 +224,6 @@ class Deployment:
             "Use `deployment.deploy() instead.`"
         )
 
-    @PublicAPI(stability="beta")
     def bind(self, *args, **kwargs) -> Application:
         """Bind the arguments to the deployment and return an Application.
 
@@ -280,21 +258,11 @@ class Deployment:
 
         return Application._from_internal_dag_node(dag_node)
 
-    @guarded_deprecation_warning(instructions=MIGRATION_MESSAGE)
-    @Deprecated(message=MIGRATION_MESSAGE)
     def deploy(self, *init_args, _blocking=True, **init_kwargs):
-        """Deploy or update this deployment.
+        raise ValueError(
+            "This API has been fully deprecated. Please use serve.run() instead."
+        )
 
-        Args:
-            init_args: args to pass to the class __init__
-                method. Not valid if this deployment wraps a function.
-            init_kwargs: kwargs to pass to the class __init__
-                method. Not valid if this deployment wraps a function.
-        """
-        ServeUsageTag.API_VERSION.record("v1")
-        self._deploy(*init_args, _blocking=_blocking, **init_kwargs)
-
-    # TODO(Sihan) Promote the _deploy to deploy after we fully deprecate the API
     def _deploy(self, *init_args, _blocking=True, **init_kwargs):
         """Deploy or update this deployment.
 
@@ -319,7 +287,7 @@ class Deployment:
             max_replicas_per_node=self._replica_config.max_replicas_per_node,
         )
 
-        return get_global_client().deploy(
+        return _get_global_client().deploy(
             self._name,
             replica_config=replica_config,
             deployment_config=self._deployment_config,
@@ -329,38 +297,25 @@ class Deployment:
             _blocking=_blocking,
         )
 
-    @guarded_deprecation_warning(instructions=MIGRATION_MESSAGE)
-    @Deprecated(message=MIGRATION_MESSAGE)
     def delete(self):
-        """Delete this deployment."""
+        raise ValueError(
+            "This API has been fully deprecated. Please use serve.run() and "
+            "serve.delete() instead."
+        )
 
-        return self._delete()
-
-    # TODO(Sihan) Promote the _delete to delete after we fully deprecate the API
     def _delete(self):
         """Delete this deployment."""
 
-        return get_global_client().delete_deployments([self._name])
+        return _get_global_client().delete_deployments([self._name])
 
-    @guarded_deprecation_warning(instructions=MIGRATION_MESSAGE)
-    @Deprecated(message=MIGRATION_MESSAGE)
     def get_handle(
         self, sync: Optional[bool] = True
     ) -> Union[RayServeHandle, RayServeSyncHandle]:
-        """Get a ServeHandle to this deployment to invoke it from Python.
+        raise ValueError(
+            "This API has been fully deprecated. Please use serve.get_app_handle() or "
+            "serve.get_deployment_handle() instead."
+        )
 
-        Args:
-            sync: If true, then Serve will return a ServeHandle that
-                works everywhere. Otherwise, Serve will return an
-                asyncio-optimized ServeHandle that's only usable in an asyncio
-                loop.
-
-        Returns:
-            ServeHandle
-        """
-        return self._get_handle(sync)
-
-    # TODO(Sihan) Promote the _get_handle to get_handle after we fully deprecate the API
     def _get_handle(
         self,
         sync: Optional[bool] = True,
@@ -377,22 +332,20 @@ class Deployment:
             ServeHandle
         """
 
-        return get_global_client().get_handle(
+        return _get_global_client().get_handle(
             self._name,
             app_name="",
             missing_ok=True,
             sync=sync,
+            use_new_handle_api=False,
         )
 
-    @PublicAPI
     def options(
         self,
         func_or_class: Optional[Callable] = None,
         name: Default[str] = DEFAULT.VALUE,
         version: Default[str] = DEFAULT.VALUE,
         num_replicas: Default[Optional[int]] = DEFAULT.VALUE,
-        init_args: Default[Tuple[Any]] = DEFAULT.VALUE,
-        init_kwargs: Default[Dict[Any, Any]] = DEFAULT.VALUE,
         route_prefix: Default[Union[str, None]] = DEFAULT.VALUE,
         ray_actor_options: Default[Optional[Dict]] = DEFAULT.VALUE,
         placement_group_bundles: Optional[List[Dict[str, float]]] = DEFAULT.VALUE,
@@ -407,7 +360,9 @@ class Deployment:
         graceful_shutdown_timeout_s: Default[float] = DEFAULT.VALUE,
         health_check_period_s: Default[float] = DEFAULT.VALUE,
         health_check_timeout_s: Default[float] = DEFAULT.VALUE,
-        is_driver_deployment: bool = DEFAULT.VALUE,
+        logging_config: Default[Union[Dict, LoggingConfig, None]] = DEFAULT.VALUE,
+        _init_args: Default[Tuple[Any]] = DEFAULT.VALUE,
+        _init_kwargs: Default[Dict[Any, Any]] = DEFAULT.VALUE,
         _internal: bool = False,
     ) -> "Deployment":
         """Return a copy of this deployment with updated options.
@@ -477,11 +432,11 @@ class Deployment:
         if version is DEFAULT.VALUE:
             version = self._version
 
-        if init_args is DEFAULT.VALUE:
-            init_args = self._replica_config.init_args
+        if _init_args is DEFAULT.VALUE:
+            _init_args = self._replica_config.init_args
 
-        if init_kwargs is DEFAULT.VALUE:
-            init_kwargs = self._replica_config.init_kwargs
+        if _init_kwargs is DEFAULT.VALUE:
+            _init_kwargs = self._replica_config.init_kwargs
 
         if route_prefix is DEFAULT.VALUE:
             # Default is to keep the previous value
@@ -518,13 +473,15 @@ class Deployment:
         if health_check_timeout_s is not DEFAULT.VALUE:
             new_deployment_config.health_check_timeout_s = health_check_timeout_s
 
-        if is_driver_deployment is DEFAULT.VALUE:
-            is_driver_deployment = self._is_driver_deployment
+        if logging_config is not DEFAULT.VALUE:
+            if isinstance(logging_config, LoggingConfig):
+                logging_config = logging_config.dict()
+            new_deployment_config.logging_config = logging_config
 
         new_replica_config = ReplicaConfig.create(
             func_or_class,
-            init_args=init_args,
-            init_kwargs=init_kwargs,
+            init_args=_init_args,
+            init_kwargs=_init_kwargs,
             ray_actor_options=ray_actor_options,
             placement_group_bundles=placement_group_bundles,
             placement_group_strategy=placement_group_strategy,
@@ -538,18 +495,20 @@ class Deployment:
             version=version,
             route_prefix=route_prefix,
             _internal=True,
-            is_driver_deployment=is_driver_deployment,
         )
 
-    @PublicAPI(stability="alpha")
+    @Deprecated(
+        message=(
+            "This was intended for use with the `serve.build` Python API "
+            "(which has been deprecated). Use `.options()` instead."
+        )
+    )
     def set_options(
         self,
         func_or_class: Optional[Callable] = None,
         name: Default[str] = DEFAULT.VALUE,
         version: Default[str] = DEFAULT.VALUE,
         num_replicas: Default[Optional[int]] = DEFAULT.VALUE,
-        init_args: Default[Tuple[Any]] = DEFAULT.VALUE,
-        init_kwargs: Default[Dict[Any, Any]] = DEFAULT.VALUE,
         route_prefix: Default[Union[str, None]] = DEFAULT.VALUE,
         ray_actor_options: Default[Optional[Dict]] = DEFAULT.VALUE,
         user_config: Default[Optional[Any]] = DEFAULT.VALUE,
@@ -561,7 +520,6 @@ class Deployment:
         graceful_shutdown_timeout_s: Default[float] = DEFAULT.VALUE,
         health_check_period_s: Default[float] = DEFAULT.VALUE,
         health_check_timeout_s: Default[float] = DEFAULT.VALUE,
-        is_driver_deployment: bool = DEFAULT.VALUE,
         _internal: bool = False,
     ) -> None:
         """Overwrite this deployment's options in-place.
@@ -572,13 +530,16 @@ class Deployment:
         Refer to the @serve.deployment decorator docstring for all non-private
         arguments.
         """
+        if not _internal:
+            warnings.warn(
+                "`.set_options()` is deprecated. "
+                "Use `.options()` or an application builder function instead."
+            )
 
         validated = self.options(
             func_or_class=func_or_class,
             name=name,
             version=version,
-            init_args=init_args,
-            init_kwargs=init_kwargs,
             route_prefix=route_prefix,
             num_replicas=num_replicas,
             ray_actor_options=ray_actor_options,
@@ -590,7 +551,6 @@ class Deployment:
             health_check_period_s=health_check_period_s,
             health_check_timeout_s=health_check_timeout_s,
             _internal=_internal,
-            is_driver_deployment=is_driver_deployment,
         )
 
         self._name = validated._name
@@ -659,7 +619,7 @@ def deployment_to_schema(
         "placement_group_strategy": d._replica_config.placement_group_strategy,
         "placement_group_bundles": d._replica_config.placement_group_bundles,
         "max_replicas_per_node": d._replica_config.max_replicas_per_node,
-        "is_driver_deployment": d._is_driver_deployment,
+        "logging_config": d._deployment_config.logging_config,
     }
 
     if include_route_prefix:
@@ -712,11 +672,6 @@ def schema_to_deployment(s: DeploymentSchema) -> Deployment:
     else:
         max_replicas_per_node = s.max_replicas_per_node
 
-    if s.is_driver_deployment is DEFAULT.VALUE:
-        is_driver_deployment = False
-    else:
-        is_driver_deployment = s.is_driver_deployment
-
     deployment_config = DeploymentConfig.from_default(
         num_replicas=s.num_replicas,
         user_config=s.user_config,
@@ -726,6 +681,7 @@ def schema_to_deployment(s: DeploymentSchema) -> Deployment:
         graceful_shutdown_timeout_s=s.graceful_shutdown_timeout_s,
         health_check_period_s=s.health_check_period_s,
         health_check_timeout_s=s.health_check_timeout_s,
+        logging_config=s.logging_config,
     )
     deployment_config.user_configured_option_names = (
         s.get_user_configured_option_names()
@@ -747,5 +703,4 @@ def schema_to_deployment(s: DeploymentSchema) -> Deployment:
         replica_config=replica_config,
         route_prefix=s.route_prefix,
         _internal=True,
-        is_driver_deployment=is_driver_deployment,
     )

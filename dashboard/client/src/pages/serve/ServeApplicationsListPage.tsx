@@ -73,7 +73,7 @@ export const ServeApplicationsListPage = () => {
     allServeApplications,
     page,
     setPage,
-    httpProxies,
+    proxies,
     changeFilter,
   } = useServeApplications();
 
@@ -95,7 +95,7 @@ export const ServeApplicationsListPage = () => {
         <React.Fragment>
           <ServeSystemPreview
             allApplications={allServeApplications}
-            httpProxies={httpProxies}
+            proxies={proxies}
             serveDetails={serveDetails}
           />
           <CollapsibleSection

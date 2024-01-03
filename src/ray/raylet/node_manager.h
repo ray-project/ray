@@ -224,6 +224,25 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
       const std::function<void()> &on_all_replied);
 
  private:
+  void ReleaseWorker(const WorkerID &worker_id) {
+    leased_workers_.erase(worker_id);
+    SetIdleIfLeaseEmpty();
+  }
+
+  void ReleaseWorkers(const std::vector<WorkerID> &worker_ids) {
+    for (auto &it : worker_ids) {
+      leased_workers_.erase(it);
+    }
+    SetIdleIfLeaseEmpty();
+  }
+
+  inline void SetIdleIfLeaseEmpty() {
+    if (leased_workers_.empty()) {
+      cluster_resource_scheduler_->GetLocalResourceManager().SetIdleFootprint(
+          WorkFootprint::NODE_WORKERS);
+    }
+  }
+
   /// If the primary objects' usage is over the threshold
   /// specified in RayConfig, spill objects up to the max
   /// throughput.
@@ -266,9 +285,6 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
   /// \return Void.
   void TryLocalInfeasibleTaskScheduling();
 
-  /// Fill out the normal task resource report.
-  void FillNormalTaskResourceUsage(rpc::ResourcesData &resources_data);
-
   /// Write out debug state to a file.
   void DumpDebugState() const;
 
@@ -278,10 +294,12 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
 
   /// Handler for a resource usage notification from the GCS.
   ///
-  /// \param id The ID of the node manager that sent the resources data.
-  /// \param data The resources data including load information.
+  /// \param id The ID of the node manager that sent the resource usage.
+  /// \param resource_view_sync_message The resource usage data.
   /// \return Whether the node resource usage is updated.
-  bool UpdateResourceUsage(const NodeID &id, const rpc::ResourcesData &data);
+  bool UpdateResourceUsage(
+      const NodeID &id,
+      const syncer::ResourceViewSyncMessage &resource_view_sync_message);
 
   /// Handle a worker finishing its assigned task.
   ///
@@ -345,6 +363,10 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
   void HandleDirectCallTaskUnblocked(const std::shared_ptr<WorkerInterface> &worker);
 
   /// Kill a worker.
+  ///
+  /// This shouldn't be directly used to kill a worker. If you use this API
+  /// the worker's crash cause is not correctly recorded (it will be either SIGTERM
+  /// or an unexpected failure). Use `DestroyWorker` instead.
   ///
   /// \param worker The worker to kill.
   /// \param force true to kill immediately, false to give time for the worker to
@@ -422,12 +444,6 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
   /// \return Void.
   void ProcessAnnounceWorkerPortMessage(const std::shared_ptr<ClientConnection> &client,
                                         const uint8_t *message_data);
-
-  /// Handle the case that a worker is available.
-  ///
-  /// \param client The connection for the worker.
-  /// \return Void.
-  void HandleWorkerAvailable(const std::shared_ptr<ClientConnection> &client);
 
   /// Handle the case that a worker is available.
   ///
@@ -811,7 +827,8 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
 
   /// Keeps track of workers waiting for objects
   absl::flat_hash_map<ObjectID, absl::flat_hash_set<std::shared_ptr<WorkerInterface>>>
-      async_plasma_objects_notification_ GUARDED_BY(plasma_object_notification_lock_);
+      async_plasma_objects_notification_
+          ABSL_GUARDED_BY(plasma_object_notification_lock_);
 
   /// Fields that are used to report metrics.
   /// The period between debug state dumps.

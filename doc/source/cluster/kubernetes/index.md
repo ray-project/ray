@@ -1,4 +1,17 @@
 # Ray on Kubernetes
+
+```{toctree}
+:hidden:
+
+getting-started
+user-guides
+examples
+k8s-ecosystem
+benchmarks
+troubleshooting
+references
+```
+
 (kuberay-index)=
 ## Overview
 
@@ -36,14 +49,14 @@ The Ray docs present all the information you need to start running Ray workloads
 .. grid:: 1 2 2 2
     :gutter: 1
     :class-container: container pb-3
-    
+
     .. grid-item-card::
 
         **Getting Started**
         ^^^
-    
+
         Learn how to start a Ray cluster and deploy Ray applications on Kubernetes.
-    
+
         +++
         .. button-ref:: kuberay-quickstart
             :color: primary
@@ -56,9 +69,9 @@ The Ray docs present all the information you need to start running Ray workloads
 
         **User Guides**
         ^^^
-    
+
         Learn best practices for configuring Ray clusters on Kubernetes.
-    
+
         +++
         .. button-ref:: kuberay-guides
             :color: primary
@@ -71,9 +84,9 @@ The Ray docs present all the information you need to start running Ray workloads
 
         **Examples**
         ^^^
-    
+
         Try example Ray workloads on Kubernetes.
-    
+
         +++
         .. button-ref:: kuberay-examples
             :color: primary
@@ -86,9 +99,9 @@ The Ray docs present all the information you need to start running Ray workloads
 
         **Ecosystem**
         ^^^
-    
+
         Integrate KubeRay with third party Kubernetes ecosystem tools.
-    
+
         +++
         .. button-ref:: kuberay-ecosystem-integration
             :color: primary
@@ -101,9 +114,9 @@ The Ray docs present all the information you need to start running Ray workloads
 
         **Benchmarks**
         ^^^
-    
+
         Check the KubeRay benchmark results.
-    
+
         +++
         .. button-ref:: kuberay-benchmarks
             :color: primary
@@ -111,14 +124,14 @@ The Ray docs present all the information you need to start running Ray workloads
             :expand:
 
             Benchmark results
-    
+
     .. grid-item-card::
 
         **Troubleshooting**
         ^^^
-    
+
         Consult the KubeRay troubleshooting guides.
-    
+
         +++
         .. button-ref:: kuberay-troubleshooting
             :color: primary

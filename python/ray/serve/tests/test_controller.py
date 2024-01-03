@@ -1,21 +1,22 @@
 import time
+
 import pytest
 
 import ray
-from ray._private.test_utils import wait_for_condition
-
 from ray import serve
-from ray.serve._private.common import DeploymentInfo
-from ray.serve.generated.serve_pb2 import DeploymentRoute
-from ray.serve._private.constants import SERVE_DEFAULT_APP_NAME
-from ray.serve.schema import ServeDeploySchema
+from ray._private.test_utils import wait_for_condition
 from ray.serve._private.common import ApplicationStatus
+from ray.serve._private.constants import SERVE_DEFAULT_APP_NAME
+from ray.serve._private.deployment_info import DeploymentInfo
+from ray.serve.context import _get_global_client
+from ray.serve.generated.serve_pb2 import DeploymentRoute
+from ray.serve.schema import ServeDeploySchema
 
 
 def test_redeploy_start_time(serve_instance):
     """Check that redeploying a deployment doesn't reset its start time."""
 
-    controller = serve.context._global_client._controller
+    controller = _get_global_client()._controller
 
     @serve.deployment
     def test(_):
@@ -47,7 +48,7 @@ def test_redeploy_start_time(serve_instance):
 def test_deploy_app_custom_exception(serve_instance):
     """Check that controller doesn't deserialize an exception from deploy_app."""
 
-    controller = serve.context.get_global_client()._controller
+    controller = _get_global_client()._controller
 
     config = {
         "applications": [

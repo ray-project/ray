@@ -872,6 +872,8 @@ void LocalTaskManager::Dispatch(
 
   RAY_CHECK(leased_workers.find(worker->WorkerId()) == leased_workers.end());
   leased_workers[worker->WorkerId()] = worker;
+  cluster_resource_scheduler_->GetLocalResourceManager().SetBusyFootprint(
+      WorkFootprint::NODE_WORKERS);
 
   // Update our internal view of the cluster state.
   std::shared_ptr<TaskResourceInstances> allocated_resources;

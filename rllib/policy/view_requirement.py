@@ -25,11 +25,16 @@ class ViewRequirement:
     column names (in the original data buffer), timestep shifts, and other
     options to build the view.
 
-    Examples:
-        >>> from ray.rllib.models.modelv2 import ModelV2
-        >>> # The default ViewRequirement for a Model is:
-        >>> req = ModelV2(...).view_requirements # doctest: +SKIP
-        >>> print(req) # doctest: +SKIP
+    .. testcode::
+        :skipif: True
+
+        from ray.rllib.models.modelv2 import ModelV2
+        # The default ViewRequirement for a Model is:
+        req = ModelV2(...).view_requirements
+        print(req)
+
+    .. testoutput::
+
         {"obs": ViewRequirement(shift=0)}
 
     Args:

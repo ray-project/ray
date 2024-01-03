@@ -8,7 +8,12 @@ from google.protobuf.json_format import MessageToDict
 import ray
 from ray._private.client_mode_hook import client_mode_hook
 from ray._private.resource_spec import NODE_ID_PREFIX, HEAD_NODE_RESOURCE_NAME
-from ray._private.utils import binary_to_hex, decode, hex_to_binary
+from ray._private.utils import (
+    binary_to_hex,
+    decode,
+    hex_to_binary,
+    validate_actor_state_name,
+)
 from ray._raylet import GlobalStateAccessor
 from ray.core.generated import common_pb2
 from ray.core.generated import gcs_pb2
@@ -75,13 +80,22 @@ class GlobalState:
         self.global_state_accessor = GlobalStateAccessor(self.gcs_options)
         self.global_state_accessor.connect()
 
-    def actor_table(self, actor_id):
+    def actor_table(
+        self, actor_id: str, job_id: ray.JobID = None, actor_state_name: str = None
+    ):
         """Fetch and parse the actor table information for a single actor ID.
 
         Args:
             actor_id: A hex string of the actor ID to fetch information about.
                 If this is None, then the actor table is fetched.
-
+                If this is not None, `job_id` and `actor_state_name`
+                will not take effect.
+            job_id: To filter actors by job_id, which is of type `ray.JobID`.
+                You can use the `ray.get_runtime_context().job_id` function
+                to get the current job ID
+            actor_state_name: To filter actors based on actor state,
+                which can be one of the following: "DEPENDENCIES_UNREADY",
+                "PENDING_CREATION", "ALIVE", "RESTARTING", or "DEAD".
         Returns:
             Information from the actor table.
         """
@@ -96,7 +110,10 @@ class GlobalState:
                 actor_table_data = gcs_pb2.ActorTableData.FromString(actor_info)
                 return self._gen_actor_info(actor_table_data)
         else:
-            actor_table = self.global_state_accessor.get_actor_table()
+            validate_actor_state_name(actor_state_name)
+            actor_table = self.global_state_accessor.get_actor_table(
+                job_id, actor_state_name
+            )
             results = {}
             for i in range(len(actor_table)):
                 actor_table_data = gcs_pb2.ActorTableData.FromString(actor_table[i])
@@ -647,6 +664,61 @@ class GlobalState:
             worker_data.SerializeToString()
         )
 
+    def update_worker_debugger_port(self, worker_id, debugger_port):
+        """Update the debugger port of a worker.
+
+        Args:
+            worker_id: ID of this worker. Type is bytes.
+            debugger_port: Port of the debugger. Type is int.
+
+        Returns:
+             Is operation success
+        """
+        self._check_connected()
+
+        assert worker_id is not None, "worker_id is not valid"
+        assert (
+            debugger_port is not None and debugger_port > 0
+        ), "debugger_port is not valid"
+
+        return self.global_state_accessor.update_worker_debugger_port(
+            worker_id, debugger_port
+        )
+
+    def get_worker_debugger_port(self, worker_id):
+        """Get the debugger port of a worker.
+
+        Args:
+            worker_id: ID of this worker. Type is bytes.
+
+        Returns:
+             Debugger port of the worker.
+        """
+        self._check_connected()
+
+        assert worker_id is not None, "worker_id is not valid"
+
+        return self.global_state_accessor.get_worker_debugger_port(worker_id)
+
+    def update_worker_num_paused_threads(self, worker_id, num_paused_threads_delta):
+        """Updates the number of paused threads of a worker.
+
+        Args:
+            worker_id: ID of this worker. Type is bytes.
+            num_paused_threads_delta: The delta of the number of paused threads.
+
+        Returns:
+             Is operation success
+        """
+        self._check_connected()
+
+        assert worker_id is not None, "worker_id is not valid"
+        assert num_paused_threads_delta is not None, "worker_id is not valid"
+
+        return self.global_state_accessor.update_worker_num_paused_threads(
+            worker_id, num_paused_threads_delta
+        )
+
     def cluster_resources(self):
         """Get the current total cluster resources.
 
@@ -819,17 +891,28 @@ def node_ids():
     return node_ids
 
 
-def actors(actor_id=None):
+def actors(
+    actor_id: str = None, job_id: ray.JobID = None, actor_state_name: str = None
+):
     """Fetch actor info for one or more actor IDs (for debugging only).
 
     Args:
         actor_id: A hex string of the actor ID to fetch information about. If
             this is None, then all actor information is fetched.
-
+            If this is not None, `job_id` and `actor_state_name`
+            will not take effect.
+        job_id: To filter actors by job_id, which is of type `ray.JobID`.
+            You can use the `ray.get_runtime_context().job_id` function
+            to get the current job ID
+        actor_state_name: To filter actors based on actor state,
+            which can be one of the following: "DEPENDENCIES_UNREADY",
+            "PENDING_CREATION", "ALIVE", "RESTARTING", or "DEAD".
     Returns:
         Information about the actors.
     """
-    return state.actor_table(actor_id=actor_id)
+    return state.actor_table(
+        actor_id=actor_id, job_id=job_id, actor_state_name=actor_state_name
+    )
 
 
 @DeveloperAPI
@@ -905,3 +988,41 @@ def available_resources():
             resource in the cluster.
     """
     return state.available_resources()
+
+
+def update_worker_debugger_port(worker_id, debugger_port):
+    """Update the debugger port of a worker.
+
+    Args:
+        worker_id: ID of this worker. Type is bytes.
+        debugger_port: Port of the debugger. Type is int.
+
+    Returns:
+         Is operation success
+    """
+    return state.update_worker_debugger_port(worker_id, debugger_port)
+
+
+def update_worker_num_paused_threads(worker_id, num_paused_threads_delta):
+    """Update the number of paused threads of a worker.
+
+    Args:
+        worker_id: ID of this worker. Type is bytes.
+        num_paused_threads_delta: The delta of the number of paused threads.
+
+    Returns:
+         Is operation success
+    """
+    return state.update_worker_num_paused_threads(worker_id, num_paused_threads_delta)
+
+
+def get_worker_debugger_port(worker_id):
+    """Get the debugger port of a worker.
+
+    Args:
+        worker_id: ID of this worker. Type is bytes.
+
+    Returns:
+         Debugger port of the worker.
+    """
+    return state.get_worker_debugger_port(worker_id)

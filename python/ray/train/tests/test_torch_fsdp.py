@@ -3,10 +3,9 @@ import torch
 from torch.distributed.fsdp import FullyShardedDataParallel
 
 import ray
-
 from ray import train
-from ray.train.torch import TorchTrainer
 from ray.train import ScalingConfig
+from ray.train.torch import TorchTrainer
 
 
 @pytest.fixture

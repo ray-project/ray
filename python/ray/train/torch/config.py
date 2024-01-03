@@ -1,24 +1,23 @@
-from dataclasses import dataclass
 import logging
 import os
+from dataclasses import dataclass
 from datetime import timedelta
 from typing import Optional
-
-import ray
-from ray.train.backend import BackendConfig, Backend
-from ray.train.constants import DEFAULT_NCCL_SOCKET_IFNAME
-from ray.train._internal.worker_group import WorkerGroup
-from ray.train._internal.utils import get_address_and_port
-from ray.util import PublicAPI
 
 import torch
 import torch.distributed as dist
 
+import ray
+from ray.train._internal.utils import get_address_and_port
+from ray.train._internal.worker_group import WorkerGroup
+from ray.train.backend import Backend, BackendConfig
+from ray.train.constants import DEFAULT_NCCL_SOCKET_IFNAME
+from ray.util import PublicAPI
 
 logger = logging.getLogger(__name__)
 
 
-@PublicAPI(stability="beta")
+@PublicAPI(stability="stable")
 @dataclass
 class TorchConfig(BackendConfig):
     """Configuration for torch process group setup.
@@ -114,7 +113,7 @@ def _setup_torch_process_group(
 
 
 def _shutdown_torch(destroy_process_group=False):
-    from ray.train.torch.train_loop_utils import get_device
+    from ray.air._internal.torch_utils import get_device
 
     devices = get_device()
     if not isinstance(devices, list):
@@ -130,7 +129,7 @@ def _shutdown_torch(destroy_process_group=False):
 def _set_torch_distributed_env_vars():
     # Same env vars as in
     # https://pytorch.org/docs/stable/elastic/run.html#environment-variables
-    from ray.train.torch.train_loop_utils import get_device
+    from ray.air._internal.torch_utils import get_device
 
     context = ray.train.get_context()
     os.environ["LOCAL_RANK"] = str(context.get_local_rank())

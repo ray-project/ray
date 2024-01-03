@@ -7,6 +7,8 @@ appo-pongnoframeskip-v5:
         sampler_results/episode_reward_mean: 18.0
         timesteps_total: 20000000
     config:
+        # Run with Learner- and RLModule API (new stack).
+        _enable_new_api_stack: true
         # Make analogous to old v4 + NoFrameskip.
         env_config:
             frameskip: 1
@@ -37,9 +39,6 @@ appo-pongnoframeskip-v5:
             # for the policy.
             post_fcnet_hiddens: [256]
 
-        # Run with Learner- and RLModule API (new stack).
-        _enable_learner_api: true
-        _enable_rl_module_api: true
         # Use N Learner worker on the GPU
         num_learner_workers: 4
         num_gpus_per_learner_worker: 1

@@ -238,6 +238,9 @@ static inline rpc::ObjectReference GetReferenceForActorDummyObject(
   return ref;
 };
 
+/// Task attempt is a task with a specific attempt number.
+using TaskAttempt = std::pair<TaskID, int32_t>;
+
 /// Wrapper class of protobuf `TaskSpec`, see `common.proto` for details.
 /// TODO(ekl) we should consider passing around std::unique_ptr<TaskSpecification>
 /// instead `const TaskSpecification`, since this class is actually mutable.
@@ -327,6 +330,8 @@ class TaskSpecification : public MessageWrapper<rpc::TaskSpec> {
   bool ReturnsDynamic() const;
 
   bool IsStreamingGenerator() const;
+
+  int64_t GeneratorBackpressureNumObjects() const;
 
   std::vector<ObjectID> DynamicReturnIds() const;
 
@@ -501,10 +506,10 @@ class TaskSpecification : public MessageWrapper<rpc::TaskSpec> {
   static absl::Mutex mutex_;
   /// Keep global static id mappings for SchedulingClass for performance.
   static absl::flat_hash_map<SchedulingClassDescriptor, SchedulingClass> sched_cls_to_id_
-      GUARDED_BY(mutex_);
+      ABSL_GUARDED_BY(mutex_);
   static absl::flat_hash_map<SchedulingClass, SchedulingClassDescriptor> sched_id_to_cls_
-      GUARDED_BY(mutex_);
-  static int next_sched_id_ GUARDED_BY(mutex_);
+      ABSL_GUARDED_BY(mutex_);
+  static int next_sched_id_ ABSL_GUARDED_BY(mutex_);
 };
 
 /// \class WorkerCacheKey

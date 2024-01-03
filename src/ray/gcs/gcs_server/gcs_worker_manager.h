@@ -47,6 +47,16 @@ class GcsWorkerManager : public rpc::WorkerInfoHandler {
                            rpc::AddWorkerInfoReply *reply,
                            rpc::SendReplyCallback send_reply_callback) override;
 
+  void HandleUpdateWorkerDebuggerPort(
+      rpc::UpdateWorkerDebuggerPortRequest request,
+      rpc::UpdateWorkerDebuggerPortReply *reply,
+      rpc::SendReplyCallback send_reply_callback) override;
+
+  void HandleUpdateWorkerNumPausedThreads(
+      rpc::UpdateWorkerNumPausedThreadsRequest request,
+      rpc::UpdateWorkerNumPausedThreadsReply *reply,
+      rpc::SendReplyCallback send_reply_callback) override;
+
   void AddWorkerDeadListener(
       std::function<void(std::shared_ptr<WorkerTableData>)> listener);
 

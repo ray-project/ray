@@ -5,6 +5,6 @@ To learn about RayCluster configuration, we recommend taking a look at
 the {ref}`configuration guide <kuberay-config>`.
 
 For comprehensive coverage of all supported RayCluster fields,
-refer to the [Golang structs][RayClusterDef] used to generate the RayCluster CRD.
+refer to the [API reference][APIReference].
 
-[RayClusterDef]: https://github.com/ray-project/kuberay/blob/release-0.5/ray-operator/apis/ray/v1alpha1/raycluster_types.go#L12
+[APIReference]: https://ray-project.github.io/kuberay/reference/api/

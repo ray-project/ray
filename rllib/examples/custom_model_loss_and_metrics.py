@@ -31,7 +31,7 @@ tf1, tf, tfv = try_import_tf()
 
 parser = argparse.ArgumentParser()
 parser.add_argument(
-    "--run", type=str, default="PG", help="The RLlib-registered algorithm to use."
+    "--run", type=str, default="PPO", help="The RLlib-registered algorithm to use."
 )
 parser.add_argument(
     "--framework",
@@ -65,11 +65,12 @@ if __name__ == "__main__":
         TorchCustomLossModel if args.framework == "torch" else CustomLossModel,
     )
 
-    # TODO (Kourosh): This example needs to be migrated to the new RLModule / Learner
-    # API. Users should just inherit the Learner and extend the loss_fn.
     config = (
         get_trainable_cls(args.run)
         .get_default_config()
+        # TODO (Kourosh): This example needs to be migrated to the new RLModule/Learner
+        #  API. Users should just inherit the Learner and extend the loss_fn.
+        .experimental(_enable_new_api_stack=False)
         .environment("CartPole-v1")
         .framework(args.framework)
         .rollouts(num_rollout_workers=0)
@@ -80,11 +81,9 @@ if __name__ == "__main__":
                     "input_files": args.input_files,
                 },
             },
-            _enable_learner_api=False,
         )
         # Use GPUs iff `RLLIB_NUM_GPUS` env var set to > 0.
         .resources(num_gpus=int(os.environ.get("RLLIB_NUM_GPUS", "0")))
-        .rl_module(_enable_rl_module_api=False)
     )
 
     stop = {

@@ -1,5 +1,3 @@
-.. include:: /_includes/rllib/announcement.rst
-
 .. include:: /_includes/rllib/we_are_hiring.rst
 
 Working With Offline Data
@@ -53,11 +51,11 @@ Then, we can tell DQN to train using these previously generated experiences with
 Off-Policy Estimation (OPE)
 ---------------------------
 
-In practice, when training on offline data, it is usually not straightforward to evaluate the trained policies using a simulator as in online RL. For example, in recommeder systems, rolling out a policy trained on offline data in a real-world environment can jeopardize your business if the policy is suboptimal. For these situations we can use `off-policy estimation <https://arxiv.org/abs/1911.06854>`__ methods which avoid the risk of evaluating a possibly sub-optimal policy in a real-world environment.
+In practice, when training on offline data, it is usually not straightforward to evaluate the trained policies using a simulator as in online RL. For example, in recommender systems, rolling out a policy trained on offline data in a real-world environment can jeopardize your business if the policy is suboptimal. For these situations we can use `off-policy estimation <https://arxiv.org/abs/1911.06854>`__ methods which avoid the risk of evaluating a possibly sub-optimal policy in a real-world environment.
 
 With RLlib's evaluation framework you can: 
 
-- Evaluate policies on a simulated environement, if available, using ``evaluation_config["input"] = "sampler"``. You can then monitor your policy's performance on tensorboard as it is getting trained (by using ``tensorboard --logdir=~/ray_results``). 
+- Evaluate policies on a simulated environment, if available, using ``evaluation_config["input"] = "sampler"``. You can then monitor your policy's performance on tensorboard as it is getting trained (by using ``tensorboard --logdir=~/ray_results``). 
 
 - Use RLlib's off-policy estimation methods, which estimate the policy's performance on a separate offline dataset. To be able to use this feature, the evaluation dataset should contain ``action_prob`` key that represents the action probability distribution of the collected data so that we can do counterfactual evaluation. 
 
@@ -439,5 +437,3 @@ The interface for a custom output writer is as follows:
 .. autoclass:: ray.rllib.offline.OutputWriter
     :members:
     :noindex:
-
-.. include:: /_includes/rllib/announcement_bottom.rst

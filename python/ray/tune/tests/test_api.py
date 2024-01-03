@@ -16,11 +16,15 @@ import pytest
 import ray
 from ray import train, tune
 from ray.train import CheckpointConfig, ScalingConfig
-from ray.air._internal.remote_storage import _ensure_directory
 from ray.air.constants import TIME_THIS_ITER_S, TRAINING_ITERATION
 from ray.rllib import _register_all
 from ray.train._internal.session import shutdown_session
-from ray.train._internal.storage import StorageContext
+from ray.train._internal.storage import (
+    StorageContext,
+    get_fs_and_path,
+    _create_directory,
+)
+from ray.train.constants import CHECKPOINT_DIR_NAME
 from ray.train.tests.util import create_dict_checkpoint, load_dict_checkpoint
 from ray.tune import (
     register_env,
@@ -151,6 +155,7 @@ class TrainableFunctionApiTest(unittest.TestCase):
             TIME_THIS_ITER_S,
             TIME_TOTAL_S,
             DONE,  # This is ignored because FunctionAPI has different handling
+            CHECKPOINT_DIR_NAME,
             "timestamp",
             "time_since_restore",
             "experiment_id",
@@ -932,8 +937,9 @@ class TrainableFunctionApiTest(unittest.TestCase):
 
     def _testDurableTrainable(self, trainable, function=False, cleanup=True):
         remote_checkpoint_dir = "mock:///unit-test/bucket"
+        fs, fs_path = get_fs_and_path(remote_checkpoint_dir)
         tempdir = tempfile.mkdtemp()
-        _ensure_directory(remote_checkpoint_dir)
+        _create_directory(fs=fs, fs_path=fs_path)
 
         storage = StorageContext(
             storage_path=remote_checkpoint_dir,
@@ -960,7 +966,6 @@ class TrainableFunctionApiTest(unittest.TestCase):
             self.assertEqual(test_trainable.state["hi"], 1)
         else:
             # Cannot re-use function trainable, create new
-            tune.trainable.session._shutdown()
             test_trainable = trainable(storage=storage)
             test_trainable.restore(checkpoint_path)
 

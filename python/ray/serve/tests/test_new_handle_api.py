@@ -4,18 +4,14 @@ from typing import Any
 import pytest
 
 import ray
-from ray._private.test_utils import SignalActor
-
 from ray import serve
+from ray._private.test_utils import SignalActor
 from ray.serve.handle import (
     DeploymentHandle,
     DeploymentResponse,
     DeploymentResponseGenerator,
     RayServeHandle,
     RayServeSyncHandle,
-)
-from ray.serve._private.constants import (
-    RAY_SERVE_ENABLE_NEW_ROUTING,
 )
 
 
@@ -26,22 +22,31 @@ def test_basic(serve_instance):
 
     @serve.deployment
     class Deployment:
-        def __init__(self, handle: RayServeHandle):
+        def __init__(self, handle: DeploymentHandle):
             self._handle = handle
-            assert isinstance(self._handle, RayServeHandle)
-            self._new_handle = handle.options(use_new_handle_api=True)
-            assert isinstance(self._new_handle, DeploymentHandle)
+            assert isinstance(self._handle, DeploymentHandle)
+            self._old_handle = handle.options(use_new_handle_api=False)
+            assert isinstance(self._old_handle, RayServeHandle)
 
         async def __call__(self):
-            ref = self._new_handle.remote()
-            assert isinstance(ref, DeploymentResponse)
-            return await ref
+            response = self._handle.remote()
+            assert isinstance(response, DeploymentResponse)
+            val = await response
 
-    handle: RayServeSyncHandle = serve.run(Deployment.bind(downstream.bind()))
-    assert isinstance(handle, RayServeSyncHandle)
-    new_handle = handle.options(use_new_handle_api=True)
-    assert isinstance(new_handle, DeploymentHandle)
-    assert new_handle.remote().result() == "hello"
+            ref = await self._old_handle.remote()
+            assert isinstance(ref, ray.ObjectRef)
+            old_val = await ref
+
+            assert val == old_val
+
+            return val
+
+    handle: DeploymentHandle = serve.run(Deployment.bind(downstream.bind()))
+    assert isinstance(handle, DeploymentHandle)
+    assert handle.remote().result() == "hello"
+    old_handle = handle.options(use_new_handle_api=False)
+    assert isinstance(old_handle, RayServeSyncHandle)
+    assert ray.get(old_handle.remote()) == "hello"
 
 
 def test_result_timeout(serve_instance):
@@ -172,10 +177,6 @@ def test_convert_to_object_ref(serve_instance):
     assert ray.get(identity_task.remote(ref._to_object_ref_sync())) == "hello"
 
 
-@pytest.mark.skipif(
-    not RAY_SERVE_ENABLE_NEW_ROUTING,
-    reason="Streaming only supported w/ new routing.",
-)
 def test_generators(serve_instance):
     """Test generators inside and outside a deployment."""
 
@@ -204,10 +205,6 @@ def test_generators(serve_instance):
     assert list(gen) == list(range(10))
 
 
-@pytest.mark.skipif(
-    not RAY_SERVE_ENABLE_NEW_ROUTING,
-    reason="Streaming only supported w/ new routing.",
-)
 def test_convert_to_object_ref_gen(serve_instance):
     """Test converting generators to obj ref gens inside and outside a deployment."""
 
@@ -239,10 +236,6 @@ def test_convert_to_object_ref_gen(serve_instance):
     assert ray.get(list(obj_ref_gen)) == list(range(10))
 
 
-@pytest.mark.skipif(
-    not RAY_SERVE_ENABLE_NEW_ROUTING,
-    reason="Streaming only supported w/ new routing.",
-)
 @pytest.mark.parametrize("stream", [False, True])
 def test_sync_response_methods_fail_in_deployment(serve_instance, stream: bool):
     """Blocking `DeploymentResponse` (and generator) methods should fail in loop."""

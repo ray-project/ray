@@ -664,6 +664,25 @@ def test_creating_more_actors_than_resources(shutdown_only):
     ray.get(results)
 
 
+def test_actor_cuda_visible_devices(shutdown_only):
+    """Test user can overwrite CUDA_VISIBLE_DEVICES
+    after the actor is created."""
+    ray.init(num_gpus=1)
+
+    @ray.remote(num_gpus=1)
+    class Actor:
+        def set_cuda_visible_devices(self, cuda_visible_devices):
+            os.environ["CUDA_VISIBLE_DEVICES"] = cuda_visible_devices
+
+        def get_cuda_visible_devices(self):
+            return os.environ["CUDA_VISIBLE_DEVICES"]
+
+    actor = Actor.remote()
+    assert ray.get(actor.get_cuda_visible_devices.remote()) == "0"
+    ray.get(actor.set_cuda_visible_devices.remote("0,1"))
+    assert ray.get(actor.get_cuda_visible_devices.remote()) == "0,1"
+
+
 if __name__ == "__main__":
     import pytest
 

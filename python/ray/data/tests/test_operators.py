@@ -38,6 +38,7 @@ from ray.data._internal.execution.operators.task_pool_map_operator import (
 from ray.data._internal.execution.operators.union_operator import UnionOperator
 from ray.data._internal.execution.util import make_ref_bundles
 from ray.data.block import Block
+from ray.data.context import DataContext
 from ray.data.tests.util import run_one_op_task, run_op_tasks_sync
 from ray.tests.conftest import *  # noqa
 
@@ -85,6 +86,7 @@ def test_all_to_all_operator():
     op = AllToAllOperator(
         dummy_all_transform,
         input_op=input_op,
+        target_max_block_size=DataContext.get_current().target_max_block_size,
         num_outputs=2,
         sub_progress_bar_names=["Test1", "Test2"],
         name="TestAll",
@@ -121,7 +123,12 @@ def test_num_outputs_total():
     def dummy_all_transform(bundles: List[RefBundle]):
         return make_ref_bundles([[1, 2], [3, 4]]), {"FooStats": []}
 
-    op2 = AllToAllOperator(dummy_all_transform, input_op=op1, name="TestAll")
+    op2 = AllToAllOperator(
+        dummy_all_transform,
+        input_op=op1,
+        target_max_block_size=DataContext.get_current().target_max_block_size,
+        name="TestAll",
+    )
     assert op2.num_outputs_total() == 100
 
 
@@ -184,7 +191,7 @@ def test_map_operator_bulk(ray_start_regular_shared, use_actors):
     assert len(stats["TestMapper"]) == 100, stats
 
     # Check memory stats.
-    metrics = op.get_metrics()
+    metrics = op.metrics.as_dict()
     assert metrics["obj_store_mem_alloc"] == pytest.approx(832200, 0.5), metrics
     assert metrics["obj_store_mem_peak"] == pytest.approx(1688000, 0.5), metrics
     assert metrics["obj_store_mem_freed"] == pytest.approx(832200, 0.5), metrics
@@ -218,7 +225,7 @@ def test_map_operator_streamed(ray_start_regular_shared, use_actors):
 
     # Check equivalent to bulk execution in order.
     assert np.array_equal(output, [[np.ones(1024) * i * 2] for i in range(100)])
-    metrics = op.get_metrics()
+    metrics = op.metrics.as_dict()
     assert metrics["obj_store_mem_alloc"] == pytest.approx(832200, 0.5), metrics
     assert metrics["obj_store_mem_peak"] == pytest.approx(16880, 0.5), metrics
     assert metrics["obj_store_mem_freed"] == pytest.approx(832200, 0.5), metrics
@@ -379,7 +386,7 @@ def test_map_operator_actor_locality_stats(ray_start_regular_shared):
 
     # Check equivalent to bulk execution in order.
     assert np.array_equal(output, [[np.ones(100) * i * 2] for i in range(100)])
-    metrics = op.get_metrics()
+    metrics = op.metrics.as_dict()
     assert metrics["obj_store_mem_alloc"] == pytest.approx(92900, 0.5), metrics
     assert metrics["obj_store_mem_peak"] == pytest.approx(2096, 0.5), metrics
     assert metrics["obj_store_mem_freed"] == pytest.approx(92900, 0.5), metrics
@@ -612,10 +619,6 @@ def test_limit_operator(ray_start_regular_shared):
             # If the limit is 0, the operator should be completed immediately.
             assert limit_op.completed()
             assert limit_op._limit_reached()
-        else:
-            # The number of output bundles is unknown until
-            # inputs are completed.
-            assert limit_op.num_outputs_total() is None, limit
         cur_rows = 0
         loop_count = 0
         while input_op.has_next() and not limit_op._limit_reached():
@@ -811,6 +814,204 @@ def test_block_ref_bundler_uniform(
         for i in list(ray.get(block)["id"])
     ]
     assert flat_out == list(range(n))
+
+
+def test_operator_metrics():
+    NUM_INPUTS = 100
+    NUM_BLOCKS_PER_TASK = 5
+    MIN_ROWS_PER_BUNDLE = 10
+
+    inputs = make_ref_bundles([[i] for i in range(NUM_INPUTS)])
+    input_op = InputDataBuffer(inputs)
+
+    def map_fn(block_iter: Iterable[Block], ctx) -> Iterable[Block]:
+        for i in range(NUM_BLOCKS_PER_TASK):
+            yield pd.DataFrame({"id": [i]})
+
+    op = MapOperator.create(
+        create_map_transformer_from_block_fn(map_fn),
+        input_op=input_op,
+        name="TestEstimatedNumBlocks",
+        min_rows_per_bundle=MIN_ROWS_PER_BUNDLE,
+    )
+
+    op.start(ExecutionOptions())
+    num_outputs_taken = 0
+    bytes_outputs_taken = 0
+    for i in range(len(inputs)):
+        # Add an input, run all tasks, and take all outputs.
+        op.add_input(input_op.get_next(), 0)
+        run_op_tasks_sync(op)
+        while op.has_next():
+            output = op.get_next()
+            num_outputs_taken += 1
+            bytes_outputs_taken += output.size_bytes()
+
+        num_tasks_submitted = (i + 1) // MIN_ROWS_PER_BUNDLE
+
+        metrics = op.metrics
+        # Check input metrics
+        assert metrics.num_inputs_received == i + 1, i
+        assert metrics.bytes_inputs_received == sum(
+            inputs[k].size_bytes() for k in range(i + 1)
+        ), i
+        assert (
+            metrics.num_inputs_processed == num_tasks_submitted * MIN_ROWS_PER_BUNDLE
+        ), i
+        assert metrics.bytes_inputs_processed == sum(
+            inputs[k].size_bytes()
+            for k in range(num_tasks_submitted * MIN_ROWS_PER_BUNDLE)
+        ), i
+
+        # Check outputs metrics
+        assert num_outputs_taken == num_tasks_submitted * NUM_BLOCKS_PER_TASK, i
+        assert metrics.num_outputs_generated == num_outputs_taken, i
+        assert metrics.bytes_outputs_generated == bytes_outputs_taken, i
+        assert metrics.num_outputs_taken == num_outputs_taken, i
+        assert metrics.bytes_outputs_taken == bytes_outputs_taken, i
+        assert metrics.num_outputs_of_finished_tasks == num_outputs_taken, i
+        assert metrics.bytes_outputs_of_finished_tasks == bytes_outputs_taken, i
+
+        # Check task metrics
+        assert metrics.num_tasks_submitted == num_tasks_submitted, i
+        assert metrics.num_tasks_running == 0, i
+        assert metrics.num_tasks_have_outputs == num_tasks_submitted, i
+        assert metrics.num_tasks_finished == num_tasks_submitted, i
+
+        # Check object store metrics
+        assert metrics.obj_store_mem_alloc == metrics.bytes_outputs_taken, i
+        assert metrics.obj_store_mem_freed == metrics.bytes_inputs_processed, i
+        assert (
+            metrics.obj_store_mem_cur
+            == metrics.bytes_inputs_received
+            - metrics.bytes_inputs_processed
+            + metrics.bytes_outputs_generated
+            - metrics.bytes_outputs_taken
+        ), i
+
+        assert metrics.obj_store_mem_peak >= metrics.obj_store_mem_cur, i
+
+
+def test_map_estimated_output_blocks():
+    # Test map operator estimation
+    input_op = InputDataBuffer(make_ref_bundles([[i] for i in range(100)]))
+
+    def yield_five(block_iter: Iterable[Block], ctx) -> Iterable[Block]:
+        for i in range(5):
+            yield pd.DataFrame({"id": [i]})
+
+    min_rows_per_bundle = 10
+    op = MapOperator.create(
+        create_map_transformer_from_block_fn(yield_five),
+        input_op=input_op,
+        name="TestEstimatedNumBlocks",
+        min_rows_per_bundle=min_rows_per_bundle,
+    )
+
+    op.start(ExecutionOptions())
+    while input_op.has_next():
+        op.add_input(input_op.get_next(), 0)
+        if op.metrics.num_inputs_received % min_rows_per_bundle == 0:
+            # enough inputs for a task bundle
+            run_op_tasks_sync(op)
+            assert op._estimated_output_blocks == 50
+
+    op.all_inputs_done()
+
+    # 100 inputs -> 100 / 10 = 10 tasks -> 10 * 5 = 50 output blocks
+    assert op._estimated_output_blocks == 50
+
+
+def test_map_estimated_blocks_split():
+    # Test read output splitting
+    def yield_five(block_iter: Iterable[Block], ctx) -> Iterable[Block]:
+        for i in range(5):
+            yield pd.DataFrame({"id": [i]})
+
+    min_rows_per_bundle = 10
+    input_op = InputDataBuffer(make_ref_bundles([[i] for i in range(100)]))
+    op = MapOperator.create(
+        create_map_transformer_from_block_fn(yield_five),
+        input_op=input_op,
+        name="TestEstimatedNumBlocksSplit",
+        min_rows_per_bundle=min_rows_per_bundle,
+    )
+    op.set_additional_split_factor(2)
+
+    op.start(ExecutionOptions())
+    while input_op.has_next():
+        op.add_input(input_op.get_next(), 0)
+        if op.metrics.num_inputs_received % min_rows_per_bundle == 0:
+            # enough inputs for a task bundle
+            run_op_tasks_sync(op)
+            assert op._estimated_output_blocks == 100
+
+    op.all_inputs_done()
+    # Each output block is split in 2, so the number of blocks double.
+    assert op._estimated_output_blocks == 100
+
+
+def test_limit_estimated_output_blocks():
+    # Test limit operator estimation
+    input_op = InputDataBuffer(make_ref_bundles([[i, i] for i in range(100)]))
+    op = LimitOperator(100, input_op)
+
+    while input_op.has_next():
+        op.add_input(input_op.get_next(), 0)
+        run_op_tasks_sync(op)
+        assert op._estimated_output_blocks == 50
+
+    op.all_inputs_done()
+
+    # 2 rows per bundle, 100 / 2 = 50 blocks output
+    assert op._estimated_output_blocks == 50
+
+    # Test limit operator estimation where: limit > # of rows
+    input_op = InputDataBuffer(make_ref_bundles([[i, i] for i in range(100)]))
+    op = LimitOperator(300, input_op)
+
+    while input_op.has_next():
+        op.add_input(input_op.get_next(), 0)
+        run_op_tasks_sync(op)
+        assert op._estimated_output_blocks == 100
+
+    op.all_inputs_done()
+
+    # all blocks are outputted
+    assert op._estimated_output_blocks == 100
+
+
+def test_all_to_all_estimated_output_blocks():
+    # Test all to all operator
+    input_op = InputDataBuffer(make_ref_bundles([[i] for i in range(100)]))
+
+    def all_transform(bundles: List[RefBundle], ctx):
+        return bundles, {}
+
+    estimated_output_blocks = 500
+    op1 = AllToAllOperator(
+        all_transform,
+        input_op,
+        DataContext.get_current().target_max_block_size,
+        estimated_output_blocks,
+    )
+    op2 = AllToAllOperator(
+        all_transform, op1, DataContext.get_current().target_max_block_size
+    )
+
+    while input_op.has_next():
+        op1.add_input(input_op.get_next(), 0)
+    op1.all_inputs_done()
+    run_op_tasks_sync(op1)
+
+    while op1.has_next():
+        op2.add_input(op1.get_next(), 0)
+    op2.all_inputs_done()
+    run_op_tasks_sync(op2)
+
+    # estimated output blocks for op2 should fallback to op1
+    assert op2._estimated_output_blocks is None
+    assert op2.num_outputs_total() == estimated_output_blocks
 
 
 if __name__ == "__main__":

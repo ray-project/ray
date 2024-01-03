@@ -8,7 +8,7 @@ set -euo pipefail
 FLAKE8_VERSION_REQUIRED="3.9.1"
 BLACK_VERSION_REQUIRED="22.10.0"
 SHELLCHECK_VERSION_REQUIRED="0.7.1"
-MYPY_VERSION_REQUIRED="0.982"
+MYPY_VERSION_REQUIRED="1.7.0"
 ISORT_VERSION_REQUIRED="5.10.1"
 
 check_python_command_exist() {
@@ -202,7 +202,7 @@ mypy_on_each() {
 format_frontend() {
   (
     echo "$(date)" "format frontend...."
-    local folder 
+    local folder
     folder="$(pwd)/dashboard/client"
     local filenames
     # shellcheck disable=SC2207

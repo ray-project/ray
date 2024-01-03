@@ -3,6 +3,7 @@
 import logging
 import os
 import sys
+import json
 
 logger = logging.getLogger(__name__)
 
@@ -197,7 +198,8 @@ REPORTER_UPDATE_INTERVAL_MS = env_integer("REPORTER_UPDATE_INTERVAL_MS", 2500)
 DISABLE_DASHBOARD_LOG_INFO = env_integer("RAY_DISABLE_DASHBOARD_LOG_INFO", 0)
 
 LOGGER_FORMAT = "%(asctime)s\t%(levelname)s %(filename)s:%(lineno)s -- %(message)s"
-LOGGER_FORMAT_HELP = f"The logging format. default='{LOGGER_FORMAT}'"
+LOGGER_FORMAT_ESCAPE = json.dumps(LOGGER_FORMAT.replace("%", "%%"))
+LOGGER_FORMAT_HELP = f"The logging format. default={LOGGER_FORMAT_ESCAPE}"
 LOGGER_LEVEL = "info"
 LOGGER_LEVEL_CHOICES = ["debug", "info", "warning", "error", "critical"]
 LOGGER_LEVEL_HELP = (
@@ -370,6 +372,15 @@ CALL_STACK_LINE_DELIMITER = " | "
 # NOTE: This is equal to the C++ limit of (RAY_CONFIG::max_grpc_message_size)
 GRPC_CPP_MAX_MESSAGE_SIZE = 250 * 1024 * 1024
 
+# The gRPC send & receive max length for "dashboard agent" server.
+# NOTE: This is equal to the C++ limit of RayConfig::max_grpc_message_size
+#       and HAVE TO STAY IN SYNC with it (ie, meaning that both of these values
+#       have to be set at the same time)
+AGENT_GRPC_MAX_MESSAGE_LENGTH = env_integer(
+    "AGENT_GRPC_MAX_MESSAGE_LENGTH", 20 * 1024 * 1024  # 20MB
+)
+
+
 # GRPC options
 GRPC_ENABLE_HTTP_PROXY = (
     1
@@ -396,26 +407,17 @@ KV_NAMESPACE_FUNCTION_TABLE = b"fun"
 LANGUAGE_WORKER_TYPES = ["python", "java", "cpp"]
 
 # Accelerator constants
-NOSET_AWS_NEURON_RT_VISIBLE_CORES_ENV_VAR = (
-    "RAY_EXPERIMENTAL_NOSET_NEURON_RT_VISIBLE_CORES"
-)
 NOSET_CUDA_VISIBLE_DEVICES_ENV_VAR = "RAY_EXPERIMENTAL_NOSET_CUDA_VISIBLE_DEVICES"
+
 CUDA_VISIBLE_DEVICES_ENV_VAR = "CUDA_VISIBLE_DEVICES"
 NEURON_RT_VISIBLE_CORES_ENV_VAR = "NEURON_RT_VISIBLE_CORES"
+TPU_VISIBLE_CHIPS_ENV_VAR = "TPU_VISIBLE_CHIPS"
+
 NEURON_CORES = "neuron_cores"
 GPU = "GPU"
-# https://awsdocs-neuron.readthedocs-hosted.com/en/latest/general/arch/neuron-hardware/inf2-arch.html#aws-inf2-arch
-# https://awsdocs-neuron.readthedocs-hosted.com/en/latest/general/arch/neuron-hardware/trn1-arch.html#aws-trn1-arch
-# Subject to removal after the information is available via public API
-AWS_NEURON_INSTANCE_MAP = {
-    "trn1.2xlarge": 2,
-    "trn1.32xlarge": 32,
-    "trn1n.32xlarge": 32,
-    "inf2.xlarge": 2,
-    "inf2.8xlarge": 2,
-    "inf2.24xlarge": 12,
-    "inf2.48xlarge": 24,
-}
+TPU = "TPU"
+
+
 RAY_WORKER_NICENESS = "RAY_worker_niceness"
 
 # Default max_retries option in @ray.remote for non-actor
@@ -440,7 +442,7 @@ DEFAULT_RESOURCES = {"CPU", "GPU", "memory", "object_store_memory"}
 # Supported Python versions for runtime env's "conda" field. Ray downloads
 # Ray wheels into the conda environment, so the Ray wheels for these Python
 # versions must be available online.
-RUNTIME_ENV_CONDA_PY_VERSIONS = [(3, 7), (3, 8), (3, 9), (3, 10), (3, 11)]
+RUNTIME_ENV_CONDA_PY_VERSIONS = [(3, 8), (3, 9), (3, 10), (3, 11)]
 
 # Whether to enable Ray clusters (in addition to local Ray).
 # Ray clusters are not explicitly supported for Windows and OSX.
@@ -471,6 +473,7 @@ RAY_ENABLE_RECORD_ACTOR_TASK_LOGGING = env_bool(
     "RAY_ENABLE_RECORD_ACTOR_TASK_LOGGING", False
 )
 
+# RuntimeEnv env var to indicate it exports a function
 WORKER_PROCESS_SETUP_HOOK_ENV_VAR = "__RAY_WORKER_PROCESS_SETUP_HOOK_ENV_VAR"
 RAY_WORKER_PROCESS_SETUP_HOOK_LOAD_TIMEOUT_ENV_VAR = (
     "RAY_WORKER_PROCESS_SETUP_HOOK_LOAD_TIMEOUT"  # noqa
@@ -480,7 +483,5 @@ RAY_DEFAULT_LABEL_KEYS_PREFIX = "ray.io/"
 
 RAY_TPU_MAX_CONCURRENT_CONNECTIONS_ENV_VAR = "RAY_TPU_MAX_CONCURRENT_ACTIVE_CONNECTIONS"
 
-# TPU VMs come with 4 chips per host and 2 tensorcores per chip.
-# For more details: https://cloud.google.com/tpu/docs/system-architecture-tpu-vm
-RAY_TPU_NUM_CHIPS_PER_HOST = 4
-RAY_TPU_CORES_PER_CHIP = 2
+
+RAY_NODE_IP_FILENAME = "node_ip_address.json"

@@ -122,7 +122,6 @@ class TestingTrial(Trial):
 
 
 def create_execution_test_objects(
-    tmpdir,
     max_pending_trials: int = 8,
     resources: Optional[Dict[str, float]] = None,
     reuse_actors: bool = True,
@@ -133,13 +132,9 @@ def create_execution_test_objects(
 
     resources = resources or {"CPU": 4}
 
-    storage_path = str(tmpdir)
-    experiment_name = "test_exp"
-
     storage = kwargs.pop("storage", mock_storage_context())
 
     tune_controller = tune_controller_cls(
-        experiment_path=os.path.join(storage_path, experiment_name),
         reuse_actors=reuse_actors,
         storage=storage,
         **kwargs,

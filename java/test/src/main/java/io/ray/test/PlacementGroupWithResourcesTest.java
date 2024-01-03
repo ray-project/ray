@@ -21,15 +21,15 @@ public class PlacementGroupWithResourcesTest extends BaseTest {
 
   @BeforeClass
   public void setUp() {
-    System.setProperty("num-cpus", "1");
+    System.setProperty("ray.head-args.0", "--num-cpus=1");
     // 1GB
-    System.setProperty("memory", "1073741824");
+    System.setProperty("ray.head-args.1", "--memory=1073741824");
   }
 
   @AfterClass
   public void tearDown() {
-    System.clearProperty("num-cpus");
-    System.clearProperty("memory");
+    System.clearProperty("ray.head-args.0");
+    System.clearProperty("ray.head-args.1");
   }
 
   public static int simpleFunction() {

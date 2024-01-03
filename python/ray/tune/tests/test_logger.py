@@ -38,7 +38,7 @@ class Trial:
     logdir: str
     experiment_path: Optional[str] = None
     experiment_dir_name: Optional[str] = None
-    remote_checkpoint_dir: Optional[str] = None
+    path: Optional[str] = None
     checkpoint: Optional[Checkpoint] = None
 
     @property
@@ -59,10 +59,6 @@ class Trial:
     @property
     def local_experiment_path(self):
         return self.experiment_path
-
-    @property
-    def remote_path(self):
-        return self.remote_checkpoint_dir
 
     def __hash__(self):
         return hash(self.trial_id)
@@ -336,7 +332,7 @@ class AimLoggerSuite(unittest.TestCase):
                 experiment_path=self.test_dir,
                 logdir=trial_logdir,
                 experiment_dir_name="aim_test",
-                remote_checkpoint_dir="s3://bucket/aim_test/trial_0_logdir",
+                path="bucket/aim_test/trial_0_logdir",
             ),
             Trial(
                 evaluated_params=self.config,
@@ -344,7 +340,7 @@ class AimLoggerSuite(unittest.TestCase):
                 experiment_path=self.test_dir,
                 logdir=trial_logdir,
                 experiment_dir_name="aim_test",
-                remote_checkpoint_dir="s3://bucket/aim_test/trial_1_logdir",
+                path="bucket/aim_test/trial_1_logdir",
             ),
         ]
 
@@ -380,7 +376,7 @@ class AimLoggerSuite(unittest.TestCase):
 
         for i, run in enumerate(runs):
             assert set(run["hparams"]) == expected_logged_hparams
-            assert run.get("trial_remote_log_dir")
+            assert run.get("trial_log_dir")
             assert run.get("trial_ip")
 
             results = None

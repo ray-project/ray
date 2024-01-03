@@ -29,5 +29,5 @@ mkdir -p /tmp/bazel_event_logs
 ./ci/build/get_build_info.py > /tmp/bazel_event_logs/metadata.json
 
 # Keep cryptography/openssl in sync with `requirements/test-requirements.txt`
-pip install -q -c "${RAY_DIR}/python/requirements.txt" docker aws_requests_auth boto3 cryptography==38.0.1 PyOpenSSL==22.1.0
+pip install -q -c "${RAY_DIR}/python/requirements.txt" docker aws_requests_auth boto3 cryptography==38.0.1 PyOpenSSL==23.0.0
 python .buildkite/copy_files.py --destination logs --path /tmp/bazel_event_logs

@@ -3,30 +3,14 @@ import requests
 
 import ray
 from ray import serve
-from ray.dag import InputNode
-from ray.serve.handle import RayServeHandle
-from ray.serve._private.deployment_graph_build import (
-    transform_ray_dag_to_serve_dag,
-    extract_deployments_from_serve_dag,
-    transform_serve_dag_to_serve_executor_dag,
-    get_pipeline_input_node,
-)
-from ray.serve.tests.resources.test_modules import (
-    Model,
-    NESTED_HANDLE_KEY,
-    combine,
-)
-from ray.serve.tests.resources.test_dags import (
-    get_simple_class_with_class_method_dag,
-    get_func_class_with_class_method_dag,
-    get_multi_instantiation_class_deployment_in_init_args_dag,
-    get_shared_deployment_handle_dag,
-    get_multi_instantiation_class_nested_deployment_arg_dag,
-    get_simple_func_dag,
-)
 from ray.dag.utils import _DAGNodeNameGenerator
-
-pytestmark = pytest.mark.asyncio
+from ray.serve._private import api as _private_api
+from ray.serve._private.deployment_graph_build import (
+    extract_deployments_from_serve_dag,
+    transform_ray_dag_to_serve_dag,
+)
+from ray.serve.handle import DeploymentHandle
+from ray.serve.tests.common.test_modules import NESTED_HANDLE_KEY, Combine, Model
 
 
 def _validate_consistent_python_output(
@@ -37,36 +21,39 @@ def _validate_consistent_python_output(
     2) Original executable Ray DAG
     3) Deployment handle return from serve public API get_deployment()
     """
-    deployment_handle = deployment.get_handle()
+    deployment_handle = deployment._get_handle()
     assert ray.get(deployment_handle.remote(input)) == output
-    assert ray.get(dag.execute(input)) == output
-    handle_by_name = serve.get_deployment(handle_by_name).get_handle()
+    handle_by_name = _private_api.get_deployment(handle_by_name)._get_handle()
     assert ray.get(handle_by_name.remote(input)) == output
 
 
-@pytest.mark.skip(
-    "No supporting converting ray.remote task directly to Serve deployments right now."
-)
+@serve.deployment
+class Add:
+    def __call__(self, m1_output, m2_output, kwargs_output=0):
+        return m1_output + m2_output + kwargs_output
+
+
 def test_build_simple_func_dag(serve_instance):
-    ray_dag, _ = get_simple_func_dag()
+    ray_dag = Add.bind()
     with _DAGNodeNameGenerator() as node_name_generator:
         serve_root_dag = ray_dag.apply_recursive(
-            lambda node: transform_ray_dag_to_serve_dag(node, node_name_generator)
+            lambda node: transform_ray_dag_to_serve_dag(
+                node, node_name_generator, "default"
+            )
         )
 
-    serve_root_dag = ray_dag.apply_recursive(transform_ray_dag_to_serve_dag)
+    # serve_root_dag = ray_dag.apply_recursive(transform_ray_dag_to_serve_dag)
     deployments = extract_deployments_from_serve_dag(serve_root_dag)
     assert len(deployments) == 1
-    deployments[0].deploy()
+    deployments[0]._deploy()
 
-    deployment_handle = deployments[0].get_handle()
+    deployment_handle = deployments[0]._get_handle()
     # Because the bound kwarg is stored in dag, so it has to be explicitly passed in.
     assert ray.get(deployment_handle.remote(1, 2, kwargs_output=1)) == 4
-    assert ray.get(ray_dag.execute([1, 2])) == 4
 
 
 def test_simple_single_class(serve_instance):
-    ray_dag, _ = get_simple_class_with_class_method_dag()
+    ray_dag = Model.bind(2, ratio=0.3)
 
     with _DAGNodeNameGenerator() as node_name_generator:
         serve_root_dag = ray_dag.apply_recursive(
@@ -74,36 +61,10 @@ def test_simple_single_class(serve_instance):
         )
     deployments = extract_deployments_from_serve_dag(serve_root_dag)
     assert len(deployments) == 1
-    deployments[0].deploy()
+    deployments[0]._deploy()
     _validate_consistent_python_output(
         deployments[0], ray_dag, "Model", input=1, output=0.6
     )
-
-
-def test_single_class_with_invalid_deployment_options(serve_instance):
-    with pytest.raises(TypeError, match="name must be a string"):
-        with InputNode() as dag_input:
-            model = Model.options(name=123).bind(2, ratio=0.3)
-            _ = model.forward.bind(dag_input)
-
-
-async def test_func_class_with_class_method_dag(serve_instance):
-    ray_dag, _ = get_func_class_with_class_method_dag()
-
-    with _DAGNodeNameGenerator() as node_name_generator:
-        serve_root_dag = ray_dag.apply_recursive(
-            lambda node: transform_ray_dag_to_serve_dag(node, node_name_generator, "")
-        )
-    deployments = extract_deployments_from_serve_dag(serve_root_dag)
-    serve_executor_root_dag = serve_root_dag.apply_recursive(
-        transform_serve_dag_to_serve_executor_dag
-    )
-    assert len(deployments) == 3
-    for deployment in deployments:
-        deployment.deploy()
-
-    assert ray.get(ray_dag.execute(1, 2, 3)) == 8
-    assert ray.get(await serve_executor_root_dag.execute(1, 2, 3)) == 8
 
 
 def test_multi_instantiation_class_deployment_in_init_args(serve_instance):
@@ -112,7 +73,9 @@ def test_multi_instantiation_class_deployment_in_init_args(serve_instance):
     multiple times for the same class, and we can still correctly replace
     args with deployment handle and parse correct deployment instances.
     """
-    ray_dag, _ = get_multi_instantiation_class_deployment_in_init_args_dag()
+    m1 = Model.bind(2)
+    m2 = Model.bind(3)
+    ray_dag = Combine.bind(m1, m2=m2)
 
     with _DAGNodeNameGenerator() as node_name_generator:
         serve_root_dag = ray_dag.apply_recursive(
@@ -122,7 +85,7 @@ def test_multi_instantiation_class_deployment_in_init_args(serve_instance):
     deployments = extract_deployments_from_serve_dag(serve_root_dag)
     assert len(deployments) == 3
     for deployment in deployments:
-        deployment.deploy()
+        deployment._deploy()
 
     _validate_consistent_python_output(
         deployments[2], ray_dag, "Combine", input=1, output=5
@@ -134,7 +97,8 @@ def test_shared_deployment_handle(serve_instance):
     Test we can re-use the same deployment handle multiple times or in
     multiple places, without incorrectly parsing duplicated deployments.
     """
-    ray_dag, _ = get_shared_deployment_handle_dag()
+    m = Model.bind(2)
+    ray_dag = Combine.bind(m, m2=m)
 
     with _DAGNodeNameGenerator() as node_name_generator:
         serve_root_dag = ray_dag.apply_recursive(
@@ -144,7 +108,7 @@ def test_shared_deployment_handle(serve_instance):
     deployments = extract_deployments_from_serve_dag(serve_root_dag)
     assert len(deployments) == 2
     for deployment in deployments:
-        deployment.deploy()
+        deployment._deploy()
 
     _validate_consistent_python_output(
         deployments[1], ray_dag, "Combine", input=1, output=4
@@ -157,7 +121,9 @@ def test_multi_instantiation_class_nested_deployment_arg(serve_instance):
     instantiated multiple times for the same class, and we can still correctly
     replace args with deployment handle and parse correct deployment instances.
     """
-    ray_dag, _ = get_multi_instantiation_class_nested_deployment_arg_dag()
+    m1 = Model.bind(2)
+    m2 = Model.bind(3)
+    ray_dag = Combine.bind(m1, m2={NESTED_HANDLE_KEY: m2}, m2_nested=True)
 
     with _DAGNodeNameGenerator() as node_name_generator:
         serve_root_dag = ray_dag.apply_recursive(
@@ -170,52 +136,24 @@ def test_multi_instantiation_class_nested_deployment_arg(serve_instance):
     # with correct handle
     combine_deployment = deployments[2]
     init_arg_handle = combine_deployment.init_args[0]
-    assert isinstance(init_arg_handle, RayServeHandle)
+    assert isinstance(init_arg_handle, DeploymentHandle)
     assert init_arg_handle.deployment_name == "Model"
     init_kwarg_handle = combine_deployment.init_kwargs["m2"][NESTED_HANDLE_KEY]
-    assert isinstance(init_kwarg_handle, RayServeHandle)
+    assert isinstance(init_kwarg_handle, DeploymentHandle)
     assert init_kwarg_handle.deployment_name == "Model_1"
 
     for deployment in deployments:
-        deployment.deploy()
+        deployment._deploy()
 
     _validate_consistent_python_output(
         deployments[2], ray_dag, "Combine", input=1, output=5
     )
 
 
-def test_get_pipeline_input_node():
-    # 1) No InputNode found
-    ray_dag = combine.bind(1, 2)
-    with _DAGNodeNameGenerator() as node_name_generator:
-        serve_dag = ray_dag.apply_recursive(
-            lambda node: transform_ray_dag_to_serve_dag(node, node_name_generator, "")
-        )
-    with pytest.raises(
-        AssertionError, match="There should be one and only one InputNode"
-    ):
-        get_pipeline_input_node(serve_dag)
-
-    # 2) More than one InputNode found
-    with InputNode() as dag_input:
-        a = combine.bind(dag_input[0], dag_input[1])
-    with InputNode() as dag_input_2:
-        b = combine.bind(dag_input_2[0], dag_input_2[1])
-        ray_dag = combine.bind(a, b)
-    with pytest.raises(
-        AssertionError, match="Each DAG should only have one unique InputNode"
-    ):
-        with _DAGNodeNameGenerator() as node_name_generator:
-            serve_dag = ray_dag.apply_recursive(
-                lambda node: transform_ray_dag_to_serve_dag(
-                    node, node_name_generator, ""
-                )
-            )
-        get_pipeline_input_node(serve_dag)
-
-
 def test_unique_name_reset_upon_build(serve_instance):
-    ray_dag, _ = get_multi_instantiation_class_deployment_in_init_args_dag()
+    m1 = Model.bind(2)
+    m2 = Model.bind(3)
+    ray_dag = Combine.bind(m1, m2=m2)
     with _DAGNodeNameGenerator() as node_name_generator:
         serve_root_dag = ray_dag.apply_recursive(
             lambda node: transform_ray_dag_to_serve_dag(node, node_name_generator, "")
@@ -237,11 +175,11 @@ def test_unique_name_reset_upon_build(serve_instance):
 def test_deployment_function_node_build(serve_instance):
     @serve.deployment
     class Forward:
-        def __init__(self, handle: RayServeHandle):
+        def __init__(self, handle: DeploymentHandle):
             self.handle = handle
 
         async def __call__(self, *args, **kwargs):
-            return await (await self.handle.remote())
+            return await self.handle.remote()
 
     @serve.deployment
     def no_op():

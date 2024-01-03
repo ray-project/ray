@@ -2,10 +2,9 @@ import argparse
 import json
 
 # For compatibility under py2 to consider unicode as str
-from ray.air import CheckpointConfig
 from ray.tune.utils.serialization import TuneFunctionEncoder
 
-from ray.train import SyncConfig
+from ray.train import CheckpointConfig
 from ray.tune import TuneError
 from ray.tune.experiment import Trial
 from ray.tune.resources import json_to_resources
@@ -168,7 +167,7 @@ _cached_pgf = {}
 
 
 def _create_trial_from_spec(
-    spec: dict, output_path: str, parser: argparse.ArgumentParser, **trial_kwargs
+    spec: dict, parser: argparse.ArgumentParser, **trial_kwargs
 ):
     """Creates a Trial object from parsing the spec.
 
@@ -176,8 +175,6 @@ def _create_trial_from_spec(
         spec: A resolved experiment specification. Arguments should
             The args here should correspond to the command line flags
             in ray.tune.experiment.config_parser.
-        output_path: A specific output path within the local_dir.
-            Typically the name of the experiment.
         parser: An argument parser object from
             make_parser.
         trial_kwargs: Extra keyword arguments used in instantiating the Trial.
@@ -198,8 +195,6 @@ def _create_trial_from_spec(
     if resources:
         trial_kwargs["placement_group_factory"] = resources
 
-    experiment_dir_name = spec.get("experiment_dir_name") or output_path
-    sync_config = spec.get("sync_config", SyncConfig())
     checkpoint_config = spec.get("checkpoint_config", CheckpointConfig())
 
     return Trial(
@@ -210,9 +205,6 @@ def _create_trial_from_spec(
         config=spec.get("config", {}),
         # json.load leads to str -> unicode in py2.7
         stopping_criterion=spec.get("stop", {}),
-        experiment_path=spec["experiment_path"],
-        experiment_dir_name=experiment_dir_name,
-        sync_config=sync_config,
         checkpoint_config=checkpoint_config,
         export_formats=spec.get("export_formats", []),
         # str(None) doesn't create None

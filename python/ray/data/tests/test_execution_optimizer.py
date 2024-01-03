@@ -9,7 +9,6 @@ import pytest
 
 import ray
 from ray.data._internal.execution.interfaces import ExecutionOptions
-from ray.data._internal.execution.legacy_compat import _blocks_to_input_buffer
 from ray.data._internal.execution.operators.base_physical_operator import (
     AllToAllOperator,
 )
@@ -54,7 +53,8 @@ from ray.data._internal.planner.planner import Planner
 from ray.data._internal.sort import SortKey
 from ray.data._internal.stats import DatasetStats
 from ray.data.aggregate import Count
-from ray.data.datasource.parquet_datasource import ParquetDatasource
+from ray.data.context import DataContext
+from ray.data.datasource.parquet_datasink import _ParquetDatasink
 from ray.data.tests.conftest import *  # noqa
 from ray.data.tests.test_util import get_parquet_read_logical_op
 from ray.data.tests.util import column_udf, extract_values, named_values
@@ -101,6 +101,44 @@ def test_read_operator(ray_start_regular_shared, enable_optimizer):
     assert isinstance(physical_op, MapOperator)
     assert len(physical_op.input_dependencies) == 1
     assert isinstance(physical_op.input_dependencies[0], InputDataBuffer)
+    assert (
+        physical_op.actual_target_max_block_size
+        == DataContext.get_current().target_max_block_size
+    )
+
+
+def test_split_blocks_operator(ray_start_regular_shared, enable_optimizer):
+    planner = Planner()
+    op = get_parquet_read_logical_op(parallelism=10)
+    logical_plan = LogicalPlan(op)
+    physical_plan = planner.plan(logical_plan)
+    physical_plan = PhysicalOptimizer().optimize(physical_plan)
+    physical_op = physical_plan.dag
+
+    assert physical_op.name == "ReadParquet->SplitBlocks(10)"
+    assert isinstance(physical_op, MapOperator)
+    assert len(physical_op.input_dependencies) == 1
+    assert isinstance(physical_op.input_dependencies[0], InputDataBuffer)
+    assert (
+        physical_op.actual_target_max_block_size
+        == DataContext.get_current().target_max_block_size
+    )
+    assert physical_op._additional_split_factor == 10
+
+    # Test that split blocks prevents fusion.
+    op = MapBatches(
+        op,
+        lambda x: x,
+    )
+    logical_plan = LogicalPlan(op)
+    physical_plan = planner.plan(logical_plan)
+    physical_plan = PhysicalOptimizer().optimize(physical_plan)
+    physical_op = physical_plan.dag
+    assert physical_op.name == "MapBatches(<lambda>)"
+    assert len(physical_op.input_dependencies) == 1
+    up_physical_op = physical_op.input_dependencies[0]
+    assert isinstance(up_physical_op, MapOperator)
+    assert up_physical_op.name == "ReadParquet->SplitBlocks(10)"
 
 
 def test_from_operators(ray_start_regular_shared, enable_optimizer):
@@ -236,6 +274,10 @@ def test_filter_operator(ray_start_regular_shared, enable_optimizer):
     assert isinstance(physical_op, MapOperator)
     assert len(physical_op.input_dependencies) == 1
     assert isinstance(physical_op.input_dependencies[0], MapOperator)
+    assert (
+        physical_op.actual_target_max_block_size
+        == DataContext.get_current().target_max_block_size
+    )
 
 
 def test_filter_e2e(ray_start_regular_shared, enable_optimizer):
@@ -259,6 +301,10 @@ def test_flat_map(ray_start_regular_shared, enable_optimizer):
     assert isinstance(physical_op, MapOperator)
     assert len(physical_op.input_dependencies) == 1
     assert isinstance(physical_op.input_dependencies[0], MapOperator)
+    assert (
+        physical_op.actual_target_max_block_size
+        == DataContext.get_current().target_max_block_size
+    )
 
 
 def test_flat_map_e2e(ray_start_regular_shared, enable_optimizer):
@@ -318,6 +364,10 @@ def test_random_shuffle_operator(ray_start_regular_shared, enable_optimizer):
     assert isinstance(physical_op, AllToAllOperator)
     assert len(physical_op.input_dependencies) == 1
     assert isinstance(physical_op.input_dependencies[0], MapOperator)
+    assert (
+        physical_op.actual_target_max_block_size
+        == DataContext.get_current().target_shuffle_max_block_size
+    )
 
 
 def test_random_shuffle_e2e(
@@ -347,6 +397,16 @@ def test_repartition_operator(ray_start_regular_shared, enable_optimizer, shuffl
     assert isinstance(physical_op, AllToAllOperator)
     assert len(physical_op.input_dependencies) == 1
     assert isinstance(physical_op.input_dependencies[0], MapOperator)
+    if shuffle:
+        assert (
+            physical_op.actual_target_max_block_size
+            == DataContext.get_current().target_shuffle_max_block_size
+        )
+    else:
+        assert (
+            physical_op.actual_target_max_block_size
+            == DataContext.get_current().target_max_block_size
+        )
 
 
 @pytest.mark.parametrize(
@@ -361,11 +421,11 @@ def test_repartition_e2e(
         ds_stats: DatasetStats = ds._plan.stats()
         if shuffle:
             assert ds_stats.base_name == "ReadRange->Repartition"
-            assert "ReadRange->RepartitionMap" in ds_stats.stages
+            assert "ReadRange->RepartitionMap" in ds_stats.metadata
         else:
             assert ds_stats.base_name == "Repartition"
-            assert "RepartitionSplit" in ds_stats.stages
-        assert "RepartitionReduce" in ds_stats.stages
+            assert "RepartitionSplit" in ds_stats.metadata
+        assert "RepartitionReduce" in ds_stats.metadata
 
     ds = ray.data.range(10000, parallelism=10).repartition(20, shuffle=shuffle)
     assert ds.num_blocks() == 20, ds.num_blocks()
@@ -421,6 +481,11 @@ def test_union_operator(ray_start_regular_shared, enable_optimizer, preserve_ord
     for input_op in physical_op.input_dependencies:
         assert isinstance(input_op, MapOperator)
 
+    assert (
+        physical_op.actual_target_max_block_size
+        == DataContext.get_current().target_max_block_size
+    )
+
 
 @pytest.mark.parametrize("preserve_order", (True, False))
 def test_union_e2e(ray_start_regular_shared, enable_optimizer, preserve_order):
@@ -472,7 +537,7 @@ def test_union_e2e(ray_start_regular_shared, enable_optimizer, preserve_order):
 def test_read_map_batches_operator_fusion(ray_start_regular_shared, enable_optimizer):
     # Test that Read is fused with MapBatches.
     planner = Planner()
-    read_op = get_parquet_read_logical_op()
+    read_op = get_parquet_read_logical_op(parallelism=1)
     op = MapBatches(
         read_op,
         lambda x: x,
@@ -489,12 +554,16 @@ def test_read_map_batches_operator_fusion(ray_start_regular_shared, enable_optim
     input = physical_op.input_dependencies[0]
     assert isinstance(input, InputDataBuffer)
     assert physical_op in input.output_dependencies, input.output_dependencies
+    assert (
+        physical_op.actual_target_max_block_size
+        == DataContext.get_current().target_max_block_size
+    )
 
 
 def test_read_map_chain_operator_fusion(ray_start_regular_shared, enable_optimizer):
     # Test that a chain of different map operators are fused.
     planner = Planner()
-    read_op = get_parquet_read_logical_op()
+    read_op = get_parquet_read_logical_op(parallelism=1)
     op = MapRows(read_op, lambda x: x)
     op = MapBatches(op, lambda x: x)
     op = FlatMap(op, lambda x: x)
@@ -512,6 +581,10 @@ def test_read_map_chain_operator_fusion(ray_start_regular_shared, enable_optimiz
     assert isinstance(physical_op, MapOperator)
     assert len(physical_op.input_dependencies) == 1
     assert isinstance(physical_op.input_dependencies[0], InputDataBuffer)
+    assert (
+        physical_op.actual_target_max_block_size
+        == DataContext.get_current().target_max_block_size
+    )
 
 
 def test_read_map_batches_operator_fusion_compatible_remote_args(
@@ -538,7 +611,8 @@ def test_read_map_batches_operator_fusion_compatible_remote_args(
     for up_remote_args, down_remote_args in compatiple_remote_args_pairs:
         planner = Planner()
         read_op = get_parquet_read_logical_op(
-            ray_remote_args={"resources": {"non-existent": 1}}
+            ray_remote_args={"resources": {"non-existent": 1}},
+            parallelism=1,
         )
         op = MapBatches(read_op, lambda x: x, ray_remote_args=up_remote_args)
         op = MapBatches(op, lambda x: x, ray_remote_args=down_remote_args)
@@ -612,7 +686,7 @@ def test_read_map_batches_operator_fusion_compute_tasks_to_actors(
     # Test that a task-based map operator is fused into an actor-based map operator when
     # the former comes before the latter.
     planner = Planner()
-    read_op = get_parquet_read_logical_op()
+    read_op = get_parquet_read_logical_op(parallelism=1)
     op = MapBatches(read_op, lambda x: x)
     op = MapBatches(op, lambda x: x, compute=ray.data.ActorPoolStrategy())
     logical_plan = LogicalPlan(op)
@@ -632,7 +706,7 @@ def test_read_map_batches_operator_fusion_compute_read_to_actors(
 ):
     # Test that reads fuse into an actor-based map operator.
     planner = Planner()
-    read_op = get_parquet_read_logical_op()
+    read_op = get_parquet_read_logical_op(parallelism=1)
     op = MapBatches(read_op, lambda x: x, compute=ray.data.ActorPoolStrategy())
     logical_plan = LogicalPlan(op)
     physical_plan = planner.plan(logical_plan)
@@ -651,7 +725,7 @@ def test_read_map_batches_operator_fusion_incompatible_compute(
 ):
     # Test that map operators are not fused when compute strategies are incompatible.
     planner = Planner()
-    read_op = get_parquet_read_logical_op()
+    read_op = get_parquet_read_logical_op(parallelism=1)
     op = MapBatches(read_op, lambda x: x, compute=ray.data.ActorPoolStrategy())
     op = MapBatches(op, lambda x: x)
     logical_plan = LogicalPlan(op)
@@ -669,16 +743,16 @@ def test_read_map_batches_operator_fusion_incompatible_compute(
     assert upstream_physical_op.name == "ReadParquet->MapBatches(<lambda>)"
 
 
-def test_read_map_batches_operator_fusion_target_block_size(
+def test_read_map_batches_operator_fusion_min_rows_per_block(
     ray_start_regular_shared, enable_optimizer
 ):
     # Test that fusion of map operators merges their block sizes in the expected way
     # (taking the max).
     planner = Planner()
-    read_op = get_parquet_read_logical_op()
-    op = MapBatches(read_op, lambda x: x, target_block_size=2)
-    op = MapBatches(op, lambda x: x, target_block_size=5)
-    op = MapBatches(op, lambda x: x, target_block_size=3)
+    read_op = get_parquet_read_logical_op(parallelism=1)
+    op = MapBatches(read_op, lambda x: x, min_rows_per_block=2)
+    op = MapBatches(op, lambda x: x, min_rows_per_block=5)
+    op = MapBatches(op, lambda x: x, min_rows_per_block=3)
     logical_plan = LogicalPlan(op)
     physical_plan = planner.plan(logical_plan)
     physical_plan = PhysicalOptimizer().optimize(physical_plan)
@@ -695,6 +769,11 @@ def test_read_map_batches_operator_fusion_target_block_size(
     assert physical_op._block_ref_bundler._min_rows_per_bundle == 5
     assert len(physical_op.input_dependencies) == 1
     assert isinstance(physical_op.input_dependencies[0], InputDataBuffer)
+
+    assert (
+        physical_op.actual_target_max_block_size
+        == DataContext.get_current().target_max_block_size
+    )
 
 
 def test_read_map_batches_operator_fusion_with_randomize_blocks_operator(
@@ -760,8 +839,8 @@ def test_read_map_batches_operator_fusion_with_random_shuffle_operator(
     ds = ds.map_batches(fn, batch_size=None)
     ds = ds.random_shuffle()
     assert set(extract_values("id", ds.take_all())) == set(range(2, n + 2))
-    assert "Stage 1 ReadRange->MapBatches(fn)->RandomShuffle" in ds.stats()
-    assert "Stage 2 MapBatches(fn)->RandomShuffle" in ds.stats()
+    assert "Operator 1 ReadRange->MapBatches(fn)->RandomShuffle" in ds.stats()
+    assert "Operator 2 MapBatches(fn)->RandomShuffle" in ds.stats()
     _check_usage_record(["ReadRange", "RandomShuffle", "MapBatches"])
 
     # Check the case where the upstream map function returns multiple blocks.
@@ -774,9 +853,9 @@ def test_read_map_batches_operator_fusion_with_random_shuffle_operator(
 
     ds = ray.data.range(10)
     ds = ds.repartition(2).map(fn).random_shuffle().materialize()
-    assert "Stage 1 ReadRange" in ds.stats()
-    assert "Stage 2 Repartition" in ds.stats()
-    assert "Stage 3 Map(fn)->RandomShuffle" in ds.stats()
+    assert "Operator 1 ReadRange" in ds.stats()
+    assert "Operator 2 Repartition" in ds.stats()
+    assert "Operator 3 Map(fn)->RandomShuffle" in ds.stats()
     _check_usage_record(["ReadRange", "RandomShuffle", "Map"])
 
     ctx.target_max_block_size = old_target_max_block_size
@@ -891,13 +970,13 @@ def test_write_fusion(ray_start_regular_shared, enable_optimizer, tmp_path):
     _check_usage_record(["ReadRange", "WriteCSV"])
 
 
-def test_write_operator(ray_start_regular_shared, enable_optimizer):
+def test_write_operator(ray_start_regular_shared, enable_optimizer, tmp_path):
     planner = Planner()
-    datasource = ParquetDatasource()
+    datasink = _ParquetDatasink(tmp_path)
     read_op = get_parquet_read_logical_op()
     op = Write(
         read_op,
-        datasource,
+        datasink,
     )
     plan = LogicalPlan(op)
     physical_op = planner.plan(plan).dag
@@ -922,6 +1001,10 @@ def test_sort_operator(ray_start_regular_shared, enable_optimizer):
     assert isinstance(physical_op, AllToAllOperator)
     assert len(physical_op.input_dependencies) == 1
     assert isinstance(physical_op.input_dependencies[0], MapOperator)
+    assert (
+        physical_op.actual_target_max_block_size
+        == DataContext.get_current().target_shuffle_max_block_size
+    )
 
 
 def test_sort_e2e(
@@ -997,6 +1080,10 @@ def test_aggregate_operator(ray_start_regular_shared, enable_optimizer):
     assert isinstance(physical_op, AllToAllOperator)
     assert len(physical_op.input_dependencies) == 1
     assert isinstance(physical_op.input_dependencies[0], MapOperator)
+    assert (
+        physical_op.actual_target_max_block_size
+        == DataContext.get_current().target_shuffle_max_block_size
+    )
 
 
 def test_aggregate_e2e(
@@ -1066,6 +1153,11 @@ def test_zip_operator(ray_start_regular_shared, enable_optimizer):
     assert isinstance(physical_op.input_dependencies[0], MapOperator)
     assert isinstance(physical_op.input_dependencies[1], MapOperator)
 
+    assert (
+        physical_op.actual_target_max_block_size
+        == DataContext.get_current().target_max_block_size
+    )
+
 
 @pytest.mark.parametrize(
     "num_blocks1,num_blocks2",
@@ -1100,7 +1192,6 @@ def test_from_dask_e2e(ray_start_regular_shared, enable_optimizer):
     _check_usage_record(["FromPandas"])
 
 
-@pytest.mark.skipif(sys.version_info < (3, 8), reason="requires python3.8 or higher")
 def test_from_modin_e2e(ray_start_regular_shared, enable_optimizer):
     import modin.pandas as mopd
 
@@ -1296,10 +1387,11 @@ def test_from_torch_e2e(ray_start_regular_shared, enable_optimizer, tmp_path):
     assert extract_values("item", actual_data) == expected_data
 
     # Check that metadata fetch is included in stats.
-    assert "FromItems" in ray_dataset.stats()
+    assert "ReadTorch" in ray_dataset.stats()
+
     # Underlying implementation uses `FromItems` operator
-    assert ray_dataset._plan._logical_plan.dag.name == "FromItems"
-    _check_usage_record(["FromItems"])
+    assert ray_dataset._plan._logical_plan.dag.name == "ReadTorch"
+    _check_usage_record(["ReadTorch"])
 
 
 @pytest.mark.skip(
@@ -1386,17 +1478,6 @@ def test_limit_pushdown(ray_start_regular_shared, enable_optimizer):
     )
 
 
-def test_blocks_to_input_buffer_op_name(
-    ray_start_regular_shared,
-    enable_streaming_executor,
-):
-    ds: ray.data.Dataset = ray.data.range(10)
-    blocks, _, _ = ds._plan._optimize()
-    assert hasattr(blocks, "_tasks"), blocks
-    physical_op = _blocks_to_input_buffer(blocks, owns_blocks=False)
-    assert physical_op.name == "ReadRange"
-
-
 def test_execute_to_legacy_block_list(
     ray_start_regular_shared,
     enable_optimizer,
@@ -1410,7 +1491,7 @@ def test_execute_to_legacy_block_list(
         assert row["id"] == i
 
     assert ds._plan._snapshot_stats is not None
-    assert "ReadRange" in ds._plan._snapshot_stats.stages
+    assert "ReadRange" in ds._plan._snapshot_stats.metadata
     assert ds._plan._snapshot_stats.time_total_s > 0
 
 
@@ -1425,7 +1506,7 @@ def test_execute_to_legacy_block_iterator(
         assert batch is not None
 
     assert ds._plan._snapshot_stats is not None
-    assert "ReadRange" in ds._plan._snapshot_stats.stages
+    assert "ReadRange" in ds._plan._snapshot_stats.metadata
     assert ds._plan._snapshot_stats.time_total_s > 0
 
 
@@ -1464,6 +1545,7 @@ def test_schema_partial_execution(
     ds = ray.data.read_parquet(
         "example://iris.parquet",
         schema=pa.schema(fields),
+        parallelism=2,
     ).map_batches(lambda x: x)
 
     iris_schema = ds.schema()
@@ -1472,7 +1554,7 @@ def test_schema_partial_execution(
     # entire Dataset.
     assert ds._plan._in_blocks._num_blocks == 1
     assert str(ds._plan._logical_plan.dag) == (
-        "Read[ReadParquet->SplitBlocks(2)] -> MapBatches[MapBatches(<lambda>)]"
+        "Read[ReadParquet] -> MapBatches[MapBatches(<lambda>)]"
     )
 
 
@@ -1532,6 +1614,4 @@ def test_zero_copy_fusion_eliminate_build_output_blocks(
 
 
 if __name__ == "__main__":
-    import sys
-
     sys.exit(pytest.main(["-v", __file__]))

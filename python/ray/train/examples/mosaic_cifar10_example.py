@@ -1,11 +1,11 @@
 import argparse
-from filelock import FileLock
 import os
 
 import torch
 import torch.utils.data
 import torchvision
-from torchvision import transforms, datasets
+from filelock import FileLock
+from torchvision import datasets, transforms
 
 import ray
 from ray import train
@@ -13,9 +13,9 @@ from ray.train import ScalingConfig
 
 
 def trainer_init_per_worker(config):
+    import composer.optim
     from composer.core.evaluator import Evaluator
     from composer.models.tasks import ComposerClassifier
-    import composer.optim
     from torchmetrics.classification.accuracy import Accuracy
 
     BATCH_SIZE = 64
@@ -80,6 +80,7 @@ def trainer_init_per_worker(config):
 
 def train_mosaic_cifar10(num_workers=2, use_gpu=False, max_duration="5ep"):
     from composer.algorithms import LabelSmoothing
+
     from ray.train.mosaic import MosaicTrainer
 
     trainer_init_config = {

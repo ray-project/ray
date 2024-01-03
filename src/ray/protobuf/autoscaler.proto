@@ -138,6 +138,9 @@ message NodeState {
 
   // The instance type name, e.g. p3.2xlarge
   string instance_type_name = 11;
+
+  // Observability debug string describing why the node is not idle.
+  repeated string node_activity = 12;
 }
 
 // ============= Autoscaling State Service API =======================

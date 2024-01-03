@@ -38,7 +38,6 @@ DOCKER_HUB_DESCRIPTION = {
 }
 
 PY_MATRIX = {
-    "py37": "3.7",
     "py38": "3.8",
     "py39": "3.9",
     "py310": "3.10",
@@ -220,10 +219,7 @@ def _build_docker_image(
     assert py_version[:3] == "py3"
     python_minor_version = py_version[3:]
 
-    if py_version == "py37":
-        constraints_file = "requirements_compiled_py37.txt"
-    else:
-        constraints_file = "requirements_compiled.txt"
+    constraints_file = "requirements_compiled.txt"
 
     build_args["CONSTRAINTS_FILE"] = constraints_file
 
@@ -441,7 +437,6 @@ def prep_ray_base():
     root_dir = _get_root_dir()
     requirements_files = [
         "python/requirements_compiled.txt",
-        "python/requirements_compiled_py37.txt",
     ]
     for requirement_file in requirements_files:
         shutil.copy(
@@ -811,8 +806,7 @@ BUILD_TYPES = [MERGE, HUMAN, PR, RELEASE_PR, BUILDKITE, LOCAL]
     default=["py38"],
     type=click.Choice(list(PY_MATRIX.keys())),
     multiple=True,
-    help="Which python versions to build. "
-    "Must be in (py37, py38, py39, py310, py311)",
+    help="Which python versions to build. " "Must be in (py38, py39, py310, py311)",
 )
 @click.option(
     "--device-types",

@@ -1,14 +1,13 @@
 import asyncio
 import pickle
-import pytest
 from typing import Generator, Tuple, Union
 
+import pytest
 from starlette.types import Message
 
 import ray
-from ray.actor import ActorHandle
 from ray._private.utils import get_or_create_event_loop
-
+from ray.actor import ActorHandle
 from ray.serve._private.http_util import ASGIMessageQueue, ASGIReceiveProxy
 
 

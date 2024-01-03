@@ -12,6 +12,7 @@ Tune Syncing Configuration
 --------------------------
 
 .. autosummary::
-    :toctree: doc/
+    :nosignatures:
 
     ray.train.SyncConfig
+        :noindex:

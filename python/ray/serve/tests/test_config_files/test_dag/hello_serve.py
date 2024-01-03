@@ -1,5 +1,6 @@
-from ray import serve
 from starlette.requests import Request
+
+from ray import serve
 from ray.serve.tests.test_config_files.test_dag.utils.test import hello
 
 

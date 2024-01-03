@@ -47,7 +47,7 @@ def train_convnet(config):
             # Every 5 steps, checkpoint our current state.
             # First get the checkpoint directory from tune.
             # Need to create a directory under current working directory
-            # to construct an AIR Checkpoint object from.
+            # to construct checkpoint object from.
             os.makedirs("my_model", exist_ok=True)
             torch.save(
                 {

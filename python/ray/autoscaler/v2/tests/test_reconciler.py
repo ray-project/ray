@@ -11,7 +11,7 @@ from ray.autoscaler._private.node_launcher import BaseNodeLauncher
 from ray.autoscaler._private.node_provider_availability_tracker import (
     NodeProviderAvailabilityTracker,
 )
-from ray.autoscaler.v2.instance_manager.config import NodeProviderConfig
+from ray.autoscaler.v2.instance_manager.config import AutoscalingConfig
 from ray.autoscaler.v2.instance_manager.instance_storage import InstanceStorage
 from ray.autoscaler.v2.instance_manager.node_provider import NodeProviderAdapter
 from ray.autoscaler.v2.instance_manager.storage import InMemoryStorage
@@ -31,11 +31,9 @@ class InstanceReconcilerTest(unittest.TestCase):
             EventSummarizer(),
             self.availability_tracker,
         )
-        self.instance_config_provider = NodeProviderConfig(
-            load_test_config("test_ray_complex.yaml")
-        )
+        self.config = AutoscalingConfig(load_test_config("test_ray_complex.yaml"))
         self.node_provider = NodeProviderAdapter(
-            self.base_provider, self.node_launcher, self.instance_config_provider
+            self.base_provider, self.node_launcher, self.config
         )
 
         self.instance_storage = InstanceStorage(
@@ -56,8 +54,7 @@ class InstanceReconcilerTest(unittest.TestCase):
             instance_id="0",
             instance_type="worker_nodes1",
             cloud_instance_id="0",
-            status=Instance.ALLOCATED,
-            ray_status=Instance.RAY_STOPPED,
+            status=Instance.RAY_STOPPED,
         )
         assert not self.base_provider.is_terminated(instance.cloud_instance_id)
         success, verison = self.instance_storage.upsert_instance(instance)

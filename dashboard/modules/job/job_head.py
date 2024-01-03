@@ -46,7 +46,7 @@ from ray.dashboard.modules.version import (
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
 
-routes = optional_utils.ClassMethodRouteTable
+routes = optional_utils.DashboardHeadRouteTable
 
 
 class JobAgentSubmissionClient:

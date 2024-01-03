@@ -29,19 +29,11 @@ class TestRE3(unittest.TestCase):
             # We need to disable the RLModule / Learner API here, since this test is
             # overfitted to the ModelV2 API stack. The random encoder is based on
             # ModelV2 stack.
-            config = (
-                ppo.PPOConfig()
-                .rl_module(_enable_rl_module_api=False)
-                .training(_enable_learner_api=False)
-            )
+            config = ppo.PPOConfig()
             algo_cls = ppo.PPO
             beta_schedule = "constant"
         elif rl_algorithm == "SAC":
-            config = (
-                sac.SACConfig()
-                .rl_module(_enable_rl_module_api=False)
-                .training(_enable_learner_api=False)
-            )
+            config = sac.SACConfig()
             algo_cls = sac.SAC
             beta_schedule = "linear_decay"
 

@@ -10,11 +10,13 @@ import pytest
 from collections import defaultdict
 from multiprocessing import Process
 from unittest.mock import MagicMock
+from google.protobuf import text_format
 
 import psutil
 import ray
 from mock import patch
 from ray._private import ray_constants
+from ray._private.metrics_agent import fix_grpc_metric
 from ray._private.test_utils import (
     fetch_prometheus,
     format_web_url,
@@ -24,6 +26,7 @@ from ray._private.test_utils import (
 from ray.dashboard.modules.reporter.reporter_agent import ReporterAgent
 from ray.dashboard.tests.conftest import *  # noqa
 from ray.dashboard.utils import Bunch
+from ray.core.generated.metrics_pb2 import Metric
 
 try:
     import prometheus_client
@@ -47,6 +50,7 @@ STATS_TEMPLATE = {
             ),
             "memory_full_info": Bunch(uss=51428381),
             "cpu_percent": 0.0,
+            "num_fds": 10,
             "cmdline": ["ray::IDLE", "", "", "", "", "", "", "", "", "", "", ""],
             "create_time": 1614826391.338613,
             "pid": 7174,
@@ -61,6 +65,7 @@ STATS_TEMPLATE = {
     "raylet": {
         "memory_info": Bunch(rss=18354176, vms=6921486336, pfaults=6206, pageins=3),
         "cpu_percent": 0.0,
+        "num_fds": 10,
         "cmdline": ["fake raylet cmdline"],
         "create_time": 1614826390.274854,
         "pid": 7153,
@@ -74,6 +79,7 @@ STATS_TEMPLATE = {
     "agent": {
         "memory_info": Bunch(rss=18354176, vms=6921486336, pfaults=6206, pageins=3),
         "cpu_percent": 0.0,
+        "num_fds": 10,
         "cmdline": ["fake raylet cmdline"],
         "create_time": 1614826390.274854,
         "pid": 7154,
@@ -151,8 +157,65 @@ def test_node_physical_stats(enable_test_module, shutdown_only):
     wait_for_condition(_check_workers, timeout=10)
 
 
+def test_fix_grpc_metrics():
+    """
+    A real metric output from gcs_server, with name prefixed with "grpc.io/" and 1
+    distribution time series. It has 45 buckets, first of which bounds = 0.0.
+    """
+    metric_textproto = (
+        'metric_descriptor { name: "grpc.io/server/server_latency" description: "Time '
+        "between first byte of request received to last byte of response sent, or "
+        'terminal error" unit: "ms" label_keys { key: "grpc_server_method" } label_keys'
+        ' { key: "Component" } label_keys { key: "WorkerId" } label_keys { key: '
+        '"Version" } label_keys { key: "NodeAddress" } label_keys { key: "SessionName" '
+        "} } timeseries { start_timestamp { seconds: 1693693592 } label_values { value:"
+        ' "ray.rpc.NodeInfoGcsService/RegisterNode" } label_values { value: '
+        '"gcs_server" } label_values { } label_values { value: "3.0.0.dev0" } '
+        'label_values { value: "127.0.0.1" } label_values { value: '
+        '"session_2023-09-02_15-26-32_589652_23265" } points { timestamp { seconds: '
+        "1693693602 } distribution_value { count: 1 sum: 0.266 bucket_options { "
+        "explicit { bounds: 0.0 bounds: 0.01 bounds: 0.05 bounds: 0.1 bounds: 0.3 "
+        "bounds: 0.6 bounds: 0.8 bounds: 1.0 bounds: 2.0 bounds: 3.0 bounds: 4.0 "
+        "bounds: 5.0 bounds: 6.0 bounds: 8.0 bounds: 10.0 bounds: 13.0 bounds: 16.0 "
+        "bounds: 20.0 bounds: 25.0 bounds: 30.0 bounds: 40.0 bounds: 50.0 bounds: 65.0 "
+        "bounds: 80.0 bounds: 100.0 bounds: 130.0 bounds: 160.0 bounds: 200.0 bounds: "
+        "250.0 bounds: 300.0 bounds: 400.0 bounds: 500.0 bounds: 650.0 bounds: 800.0 "
+        "bounds: 1000.0 bounds: 2000.0 bounds: 5000.0 bounds: 10000.0 bounds: 20000.0 "
+        "bounds: 50000.0 bounds: 100000.0 } } buckets { } buckets { } buckets { } "
+        "buckets { } buckets { count: 1 } buckets { } buckets { } buckets { } buckets {"
+        " } buckets { } buckets { } buckets { } buckets { } buckets { } buckets { } "
+        "buckets { } buckets { } buckets { } buckets { } buckets { } buckets { } "
+        "buckets { } buckets { } buckets { } buckets { } buckets { } buckets { } "
+        "buckets { } buckets { } buckets { } buckets { } buckets { } buckets { } "
+        "buckets { } buckets { } buckets { } buckets { } buckets { } buckets { } "
+        "buckets { } buckets { } buckets { } } } }"
+    )
+
+    metric = Metric()
+    text_format.Parse(metric_textproto, metric)
+
+    expected_fixed_metric = Metric()
+    expected_fixed_metric.CopyFrom(metric)
+    expected_fixed_metric.metric_descriptor.name = "grpc_io_server_server_latency"
+    expected_fixed_metric.timeseries[0].points[
+        0
+    ].distribution_value.bucket_options.explicit.bounds[0] = 0.0000001
+
+    fix_grpc_metric(metric)
+    assert metric == expected_fixed_metric
+
+
+@pytest.fixture
+def enable_grpc_metrics_collection():
+    os.environ["RAY_enable_grpc_metrics_collection_for"] = "gcs"
+    yield
+    os.environ.pop("RAY_enable_grpc_metrics_collection_for", None)
+
+
 @pytest.mark.skipif(prometheus_client is None, reason="prometheus_client not installed")
-def test_prometheus_physical_stats_record(enable_test_module, shutdown_only):
+def test_prometheus_physical_stats_record(
+    enable_grpc_metrics_collection, enable_test_module, shutdown_only
+):
     addresses = ray.init(include_dashboard=True, num_cpus=1)
     metrics_export_port = addresses["metrics_export_port"]
     addr = addresses["raylet_ip_address"]
@@ -169,6 +232,7 @@ def test_prometheus_physical_stats_record(enable_test_module, shutdown_only):
             "ray_node_mem_total" in metric_names,
             "ray_component_rss_mb" in metric_names,
             "ray_component_uss_mb" in metric_names,
+            "ray_component_num_fds" in metric_names,
             "ray_node_disk_io_read" in metric_names,
             "ray_node_disk_io_write" in metric_names,
             "ray_node_disk_io_read_count" in metric_names,
@@ -184,6 +248,7 @@ def test_prometheus_physical_stats_record(enable_test_module, shutdown_only):
             "ray_node_network_received" in metric_names,
             "ray_node_network_send_speed" in metric_names,
             "ray_node_network_receive_speed" in metric_names,
+            "ray_grpc_io_client_sent_bytes_per_rpc_bucket" in metric_names,
         ]
         if sys.platform == "linux" or sys.platform == "linux2":
             predicates.append("ray_node_mem_shared_bytes" in metric_names)
@@ -232,6 +297,7 @@ def test_prometheus_export_worker_and_memory_stats(enable_test_module, shutdown_
             "ray_component_cpu_percentage",
             "ray_component_rss_mb",
             "ray_component_uss_mb",
+            "ray_component_num_fds",
         ]
         for metric in expected_metrics:
             if metric not in metric_names:
@@ -266,21 +332,21 @@ def test_report_stats():
             assert val == STATS_TEMPLATE["shm"]
         print(record.gauge.name)
         print(record)
-    assert len(records) == 33
+    assert len(records) == 36
     # Test stats without raylets
     STATS_TEMPLATE["raylet"] = {}
     records = agent._record_stats(STATS_TEMPLATE, cluster_stats)
-    assert len(records) == 30
+    assert len(records) == 32
     # Test stats with gpus
     STATS_TEMPLATE["gpus"] = [
         {"utilization_gpu": 1, "memory_used": 100, "memory_total": 1000, "index": 0}
     ]
     records = agent._record_stats(STATS_TEMPLATE, cluster_stats)
-    assert len(records) == 34
+    assert len(records) == 36
     # Test stats without autoscaler report
     cluster_stats = {}
     records = agent._record_stats(STATS_TEMPLATE, cluster_stats)
-    assert len(records) == 32
+    assert len(records) == 34
 
 
 def test_report_stats_gpu():
@@ -293,13 +359,7 @@ def test_report_stats_gpu():
     {'index': 0,
     'uuid': 'GPU-36e1567d-37ed-051e-f8ff-df807517b396',
     'name': 'NVIDIA A10G',
-    'temperature_gpu': 20,
-    'fan_speed': 0,
     'utilization_gpu': 1,
-    'utilization_enc': 0,
-    'utilization_dec': 0,
-    'power_draw': 51,
-    'enforced_power_limit': 300,
     'memory_used': 0,
     'memory_total': 22731,
     'processes': []}
@@ -310,13 +370,7 @@ def test_report_stats_gpu():
             "index": 0,
             "uuid": "GPU-36e1567d-37ed-051e-f8ff-df807517b396",
             "name": "NVIDIA A10G",
-            "temperature_gpu": 20,
-            "fan_speed": 0,
             "utilization_gpu": 0,
-            "utilization_enc": 0,
-            "utilization_dec": 0,
-            "power_draw": 51,
-            "enforced_power_limit": 300,
             "memory_used": 0,
             "memory_total": GPU_MEMORY,
             "processes": [],
@@ -325,13 +379,7 @@ def test_report_stats_gpu():
             "index": 1,
             "uuid": "GPU-36e1567d-37ed-051e-f8ff-df807517b397",
             "name": "NVIDIA A10G",
-            "temperature_gpu": 20,
-            "fan_speed": 0,
             "utilization_gpu": 1,
-            "utilization_enc": 0,
-            "utilization_dec": 0,
-            "power_draw": 51,
-            "enforced_power_limit": 300,
             "memory_used": 1,
             "memory_total": GPU_MEMORY,
             "processes": [],
@@ -340,13 +388,7 @@ def test_report_stats_gpu():
             "index": 2,
             "uuid": "GPU-36e1567d-37ed-051e-f8ff-df807517b398",
             "name": "NVIDIA A10G",
-            "temperature_gpu": 20,
-            "fan_speed": 0,
             "utilization_gpu": 2,
-            "utilization_enc": 0,
-            "utilization_dec": 0,
-            "power_draw": 51,
-            "enforced_power_limit": 300,
             "memory_used": 2,
             "memory_total": GPU_MEMORY,
             "processes": [],
@@ -355,13 +397,7 @@ def test_report_stats_gpu():
         {
             "index": 3,
             "uuid": "GPU-36e1567d-37ed-051e-f8ff-df807517b398",
-            "temperature_gpu": 20,
-            "fan_speed": 0,
             "utilization_gpu": 3,
-            "utilization_enc": 0,
-            "utilization_dec": 0,
-            "power_draw": 51,
-            "enforced_power_limit": 300,
             "memory_used": 3,
             "memory_total": GPU_MEMORY,
             "processes": [],
@@ -370,13 +406,7 @@ def test_report_stats_gpu():
         {
             "uuid": "GPU-36e1567d-37ed-051e-f8ff-df807517b398",
             "name": "NVIDIA A10G",
-            "temperature_gpu": 20,
-            "fan_speed": 0,
             "utilization_gpu": 3,
-            "utilization_enc": 0,
-            "utilization_dec": 0,
-            "power_draw": 51,
-            "enforced_power_limit": 300,
             "memory_used": 3,
             "memory_total": 22731,
             "processes": [],
@@ -446,6 +476,7 @@ def test_report_per_component_stats():
         ),
         "memory_full_info": Bunch(uss=51428381),
         "cpu_percent": 5.0,
+        "num_fds": 11,
         "cmdline": ["ray::IDLE", "", "", "", "", "", "", "", "", "", "", ""],
         "create_time": 1614826391.338613,
         "pid": 7174,
@@ -460,6 +491,7 @@ def test_report_per_component_stats():
         "memory_info": Bunch(rss=55934976, vms=7026937856, pfaults=15354, pageins=0),
         "memory_full_info": Bunch(uss=51428381),
         "cpu_percent": 6.0,
+        "num_fds": 12,
         "cmdline": ["ray::func", "", "", "", "", "", "", "", "", "", "", ""],
         "create_time": 1614826391.338613,
         "pid": 7175,
@@ -474,6 +506,7 @@ def test_report_per_component_stats():
         "memory_info": Bunch(rss=18354176, vms=6921486336, pfaults=6206, pageins=3),
         "memory_full_info": Bunch(uss=51428381),
         "cpu_percent": 4.0,
+        "num_fds": 13,
         "cmdline": ["fake raylet cmdline"],
         "create_time": 1614826390.274854,
         "pid": 7153,
@@ -488,6 +521,7 @@ def test_report_per_component_stats():
         "memory_info": Bunch(rss=18354176, vms=6921486336, pfaults=6206, pageins=3),
         "memory_full_info": Bunch(uss=51428381),
         "cpu_percent": 6.0,
+        "num_fds": 14,
         "cmdline": ["fake raylet cmdline"],
         "create_time": 1614826390.274854,
         "pid": 7156,
@@ -512,9 +546,10 @@ def test_report_per_component_stats():
         }
     }
 
-    def get_uss_and_cpu_records(records):
+    def get_uss_and_cpu_and_num_fds_records(records):
         component_uss_mb_records = defaultdict(list)
         component_cpu_percentage_records = defaultdict(list)
+        component_num_fds_records = defaultdict(list)
         for record in records:
             name = record.gauge.name
             if name == "component_uss_mb":
@@ -523,22 +558,36 @@ def test_report_per_component_stats():
             if name == "component_cpu_percentage":
                 comp = record.tags["Component"]
                 component_cpu_percentage_records[comp].append(record)
-        return component_uss_mb_records, component_cpu_percentage_records
+            if name == "component_num_fds":
+                comp = record.tags["Component"]
+                component_num_fds_records[comp].append(record)
+        return (
+            component_uss_mb_records,
+            component_cpu_percentage_records,
+            component_num_fds_records,
+        )
 
     """
     Test basic case.
     """
     records = agent._record_stats(test_stats, cluster_stats)
-    uss_records, cpu_records = get_uss_and_cpu_records(records)
+    uss_records, cpu_records, num_fds_records = get_uss_and_cpu_and_num_fds_records(
+        records
+    )
 
-    def verify_metrics_values(uss_records, cpu_records, comp, uss, cpu_percent):
+    def verify_metrics_values(
+        uss_records, cpu_records, num_fds_records, comp, uss, cpu_percent, num_fds
+    ):
         """Verify the component exists and match the resource usage."""
         assert comp in uss_records
         assert comp in cpu_records
+        assert comp in num_fds_records
         uss_metrics = uss_records[comp][0].value
         cpu_percnet_metrics = cpu_records[comp][0].value
+        num_fds_metrics = num_fds_records[comp][0].value
         assert uss_metrics == uss
         assert cpu_percnet_metrics == cpu_percent
+        assert num_fds_metrics == num_fds
 
     stats_map = {
         "raylet": raylet_stast,
@@ -551,9 +600,11 @@ def test_report_per_component_stats():
         verify_metrics_values(
             uss_records,
             cpu_records,
+            num_fds_records,
             comp,
             float(stats["memory_full_info"].uss) / 1.0e6,
             stats["cpu_percent"],
+            stats["num_fds"],
         )
 
     """
@@ -563,13 +614,17 @@ def test_report_per_component_stats():
     # Verify the metrics are reset after ray::func is killed.
     test_stats["workers"] = [idle_stats]
     records = agent._record_stats(test_stats, cluster_stats)
-    uss_records, cpu_records = get_uss_and_cpu_records(records)
+    uss_records, cpu_records, num_fds_records = get_uss_and_cpu_and_num_fds_records(
+        records
+    )
     verify_metrics_values(
         uss_records,
         cpu_records,
+        num_fds_records,
         "ray::IDLE",
         float(idle_stats["memory_full_info"].uss) / 1.0e6,
         idle_stats["cpu_percent"],
+        idle_stats["num_fds"],
     )
 
     comp = "ray::func"
@@ -578,7 +633,9 @@ def test_report_per_component_stats():
     verify_metrics_values(
         uss_records,
         cpu_records,
+        num_fds_records,
         "ray::func",
+        0,
         0,
         0,
     )
@@ -591,6 +648,7 @@ def test_report_per_component_stats():
         "memory_info": Bunch(rss=55934976, vms=7026937856, pfaults=15354, pageins=0),
         "memory_full_info": Bunch(uss=51428381),
         "cpu_percent": 6.0,
+        "num_fds": 8,
         "cmdline": ["python mock", "", "", "", "", "", "", "", "", "", "", ""],
         "create_time": 1614826391.338613,
         "pid": 7175,
@@ -604,9 +662,12 @@ def test_report_per_component_stats():
     test_stats["workers"] = [idle_stats, unknown_stats]
 
     records = agent._record_stats(test_stats, cluster_stats)
-    uss_records, cpu_records = get_uss_and_cpu_records(records)
+    uss_records, cpu_records, num_fds_records = get_uss_and_cpu_and_num_fds_records(
+        records
+    )
     assert "python mock" not in uss_records
     assert "python mock" not in cpu_records
+    assert "python mock" not in num_fds_records
 
 
 @pytest.mark.parametrize("enable_k8s_disk_usage", [True, False])
@@ -707,7 +768,7 @@ def test_reporter_worker_cpu_percent():
 )
 def test_get_task_traceback_running_task(shutdown_only):
     """
-    Verify that we throw an error for a non-running task.
+    Verify that Ray can get the traceback for a running task.
 
     """
     address_info = ray.init()
@@ -743,6 +804,55 @@ def test_get_task_traceback_running_task(shutdown_only):
     wait_for_condition(verify, timeout=20)
 
 
+@pytest.mark.skipif(
+    os.environ.get("RAY_MINIMAL") == "1",
+    reason="This test is not supposed to work for minimal installation.",
+)
+@pytest.mark.skipif(sys.platform == "win32", reason="No memray on Windows.")
+@pytest.mark.skipif(
+    sys.platform == "darwin",
+    reason="Fails on OSX, requires memray & lldb installed in osx image",
+)
+def test_get_memory_profile_running_task(shutdown_only):
+    """
+    Verify that we can get the memory profile for a running task.
+
+    """
+    address_info = ray.init()
+    webui_url = format_web_url(address_info["webui_url"])
+
+    @ray.remote
+    def f():
+        pass
+
+    @ray.remote
+    def long_running_task():
+        print("Long-running task began.")
+        time.sleep(1000)
+        print("Long-running task completed.")
+
+    ray.get([f.remote() for _ in range(5)])
+
+    task = long_running_task.remote()
+
+    params = {
+        "task_id": task.task_id().hex(),
+        "attempt_number": 0,
+        "node_id": ray.get_runtime_context().node_id.hex(),
+        "duration": 5,
+    }
+
+    def verify():
+        resp = requests.get(f"{webui_url}/memory_profile", params=params)
+        print(f"resp.text {type(resp.text)}: {resp.text}")
+
+        assert resp.status_code == 200
+        assert "memray" in resp.text
+        return True
+
+    wait_for_condition(verify, timeout=20)
+
+
 TASK = {
     "task_id": "32d950ec0ccf9d2affffffffffffffffffffffff01000000",
     "attempt_number": 0,
@@ -761,7 +871,7 @@ TASK = {
 )
 def test_get_task_traceback_non_running_task(shutdown_only):
     """
-    Verify that we throw an error for a non-running task.
+    Verify that Ray throws an error for a non-running task.
     """
 
     # The sleep is needed since it seems a previous shutdown could be not yet
@@ -828,6 +938,45 @@ def test_get_cpu_profile_non_running_task(shutdown_only):
             resp = requests.get(f"{webui_url}/task/cpu_profile", params=params)
             resp.raise_for_status()
         assert isinstance(exc_info.value, requests.exceptions.HTTPError)
+        return True
+
+    wait_for_condition(verify, timeout=10)
+
+
+@pytest.mark.skipif(
+    os.environ.get("RAY_MINIMAL") == "1",
+    reason="This test is not supposed to work for minimal installation.",
+)
+@pytest.mark.skipif(sys.platform == "win32", reason="No py-spy on Windows.")
+@pytest.mark.skipif(
+    sys.platform == "darwin",
+    reason="Fails on OSX, requires memray & lldb installed in osx image",
+)
+def test_task_get_memory_profile_missing_params(shutdown_only):
+    """
+    Verify that we throw an error for a non-running task.
+    """
+    address_info = ray.init()
+    webui_url = format_web_url(address_info["webui_url"])
+
+    @ray.remote
+    def f():
+        pass
+
+    ray.get([f.remote() for _ in range(5)])
+
+    missing_node_id_params = {
+        "task_id": TASK["task_id"],
+        "attempt_number": TASK["attempt_number"],
+    }
+
+    # Make sure the API works.
+    def verify():
+        resp = requests.get(
+            f"{webui_url}/memory_profile", params=missing_node_id_params
+        )
+        content = resp.content.decode("utf-8")
+        assert "task's node id is required" in content, content
         return True
 
     wait_for_condition(verify, timeout=10)

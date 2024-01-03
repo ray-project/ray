@@ -96,17 +96,22 @@ NodeLaunchData = Tuple[NodeTypeConfigDict, NodeCount, Optional[NodeType]]
 @dataclass
 class AutoscalerSummary:
     active_nodes: Dict[NodeType, int]
+    idle_nodes: Optional[Dict[NodeType, int]]
     pending_nodes: List[Tuple[NodeIP, NodeType, NodeStatus]]
     pending_launches: Dict[NodeType, int]
     failed_nodes: List[Tuple[NodeIP, NodeType]]
     node_availability_summary: NodeAvailabilitySummary = field(
         default_factory=lambda: NodeAvailabilitySummary({})
     )
+    # A dictionary of node IP to a list of reasons the node is not idle.
+    node_activities: Optional[Dict[str, Tuple[NodeIP, List[str]]]] = None
     pending_resources: Dict[str, int] = field(default_factory=lambda: {})
     # A mapping from node name (the same key as `usage_by_node`) to node type.
     # Optional for deployment modes which have the concept of node types and
     # backwards compatibility.
     node_type_mapping: Optional[Dict[str, str]] = None
+    # Whether the autoscaler summary is v1 or v2.
+    legacy: bool = False
 
 
 class NonTerminatedNodes:
@@ -1486,6 +1491,7 @@ class StandardAutoscaler:
         return AutoscalerSummary(
             # Convert active_nodes from counter to dict for later serialization
             active_nodes=dict(active_nodes),
+            idle_nodes=None,
             pending_nodes=[
                 (ip, node_type, status) for _, ip, node_type, status in pending_nodes
             ],
@@ -1494,6 +1500,7 @@ class StandardAutoscaler:
             node_availability_summary=self.node_provider_availability_tracker.summary(),
             pending_resources=pending_resources,
             node_type_mapping=node_type_mapping,
+            legacy=True,
         )
 
     def info_string(self):

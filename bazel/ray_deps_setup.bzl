@@ -86,11 +86,19 @@ def auto_http_archive(
 def ray_deps_setup():
     # Explicitly bring in protobuf dependency to work around
     # https://github.com/ray-project/ray/issues/14117
+    # This is copied from grpc's bazel/grpc_deps.bzl
     http_archive(
         name = "com_google_protobuf",
-        strip_prefix = "protobuf-3.19.4",
-        urls = ["https://github.com/protocolbuffers/protobuf/archive/v3.19.4.tar.gz"],
-        sha256 = "3bd7828aa5af4b13b99c191e8b1e884ebfa9ad371b0ce264605d347f135d2568",
+        sha256 = "76a33e2136f23971ce46c72fd697cd94dc9f73d56ab23b753c3e16854c90ddfd",
+        strip_prefix = "protobuf-2c5fa078d8e86e5f4bd34e6f4c9ea9e8d7d4d44a",
+        urls = [
+            # https://github.com/protocolbuffers/protobuf/commits/v23.4
+            "https://github.com/protocolbuffers/protobuf/archive/2c5fa078d8e86e5f4bd34e6f4c9ea9e8d7d4d44a.tar.gz",
+        ],
+        patches = [
+            "@com_github_grpc_grpc//third_party:protobuf.patch",
+        ],
+        patch_args = ["-p1"],
     )
 
     # NOTE(lingxuan.zlx): 3rd party dependencies could be accessed, so it suggests
@@ -99,8 +107,8 @@ def ray_deps_setup():
         name = "com_github_antirez_redis",
         build_file = "@com_github_ray_project_ray//bazel:BUILD.redis",
         patch_args = ["-p1"],
-        url = "https://github.com/redis/redis/archive/refs/tags/7.0.8.tar.gz",
-        sha256 = "0e439cbc19f6db5a4c63d355519ab73bf6ac2ecd47df806c14b19564b3d0c593",
+        url = "https://github.com/redis/redis/archive/refs/tags/7.2.3.tar.gz",
+        sha256 = "afd656dbc18a886f9a1cc08a550bf5eb89de0d431e713eba3ae243391fb008a6",
         patches = [
             "@com_github_ray_project_ray//thirdparty/patches:redis-quiet.patch",
         ],
@@ -120,8 +128,8 @@ def ray_deps_setup():
     auto_http_archive(
         name = "com_github_spdlog",
         build_file = "@com_github_ray_project_ray//bazel:BUILD.spdlog",
-        urls = ["https://github.com/gabime/spdlog/archive/v1.7.0.zip"],
-        sha256 = "c8f1e1103e0b148eb8832275d8e68036f2fdd3975a1199af0e844908c56f6ea5",
+        urls = ["https://github.com/gabime/spdlog/archive/v1.12.0.zip"],
+        sha256 = "6174bf8885287422a6c6a0312eb8a30e8d22bcfcee7c48a6d02d1835d7769232",
     )
 
     auto_http_archive(
@@ -205,15 +213,18 @@ def ray_deps_setup():
             "@com_github_ray_project_ray//thirdparty/patches:opencensus-cpp-harvest-interval.patch",
             "@com_github_ray_project_ray//thirdparty/patches:opencensus-cpp-shutdown-api.patch",
         ],
-        patch_args = ["-p1"],        
+        patch_args = ["-p1"],
     )
 
     # OpenCensus depends on Abseil so we have to explicitly pull it in.
     # This is how diamond dependencies are prevented.
     auto_http_archive(
         name = "com_google_absl",
-        url = "https://github.com/abseil/abseil-cpp/archive/refs/tags/20220623.1.tar.gz",
-        sha256 = "91ac87d30cc6d79f9ab974c51874a704de9c2647c40f6932597329a282217ba8",
+        sha256 = "5366d7e7fa7ba0d915014d387b66d0d002c03236448e1ba9ef98122c13b35c36",
+        strip_prefix = "abseil-cpp-20230125.3",
+        urls = [
+            "https://github.com/abseil/abseil-cpp/archive/20230125.3.tar.gz",
+        ],
     )
 
     # OpenCensus depends on jupp0r/prometheus-cpp
@@ -232,14 +243,13 @@ def ray_deps_setup():
     auto_http_archive(
         name = "com_github_grpc_grpc",
         # NOTE: If you update this, also update @boringssl's hash.
-        url = "https://github.com/grpc/grpc/archive/refs/tags/v1.46.6.tar.gz",
-        sha256 = "6514b3e6eab9e9c7017304512d4420387a47b1a9c5caa986643692977ed44e8a",
+        url = "https://github.com/grpc/grpc/archive/refs/tags/v1.57.1.tar.gz",
+        sha256 = "0762f809b9de845e6a7c809cabccad6aa4143479fd43b396611fe5a086c0aeeb",
         patches = [
             "@com_github_ray_project_ray//thirdparty/patches:grpc-cython-copts.patch",
-            "@com_github_ray_project_ray//thirdparty/patches:grpc-python.patch",
         ],
     )
-    
+
     http_archive(
         name = "openssl",
         strip_prefix = "openssl-1.1.1f",
@@ -249,7 +259,7 @@ def ray_deps_setup():
         ],
         build_file = "@rules_foreign_cc_thirdparty//openssl:BUILD.openssl.bazel",
     )
-    
+
     http_archive(
         name = "rules_foreign_cc",
         sha256 = "2a4d07cd64b0719b39a7c12218a3e507672b82a97b98c6a89d38565894cf7c51",
@@ -279,18 +289,32 @@ def ray_deps_setup():
         # https://github.com/grpc/grpc/blob/1ff1feaa83e071d87c07827b0a317ffac673794f/bazel/grpc_deps.bzl#L189
         # Ensure this rule matches the rule used by grpc's bazel/grpc_deps.bzl
         name = "boringssl",
-        sha256 = "534fa658bd845fd974b50b10f444d392dfd0d93768c4a51b61263fd37d851c40",
-        strip_prefix = "boringssl-b9232f9e27e5668bc0414879dcdedb2a59ea75f2",
+        sha256 = "0675a4f86ce5e959703425d6f9063eaadf6b61b7f3399e77a154c0e85bad46b1",
+        strip_prefix = "boringssl-342e805bc1f5dfdd650e3f031686d6c939b095d9",
         urls = [
-            "https://storage.googleapis.com/grpc-bazel-mirror/github.com/google/boringssl/archive/b9232f9e27e5668bc0414879dcdedb2a59ea75f2.tar.gz",
-            "https://github.com/google/boringssl/archive/b9232f9e27e5668bc0414879dcdedb2a59ea75f2.tar.gz",
+            "https://github.com/google/boringssl/archive/342e805bc1f5dfdd650e3f031686d6c939b095d9.tar.gz",
         ],
     )
 
+    # The protobuf version we use to auto generate python and java code.
+    # This can be different from the protobuf version that Ray core uses internally.
+    # Generally this should be a lower version since protobuf guarantees that
+    # code generated by protoc of version X can be used with protobuf library of version >= X.
+    # So the version here effectively determines the lower bound of python/java
+    # protobuf library that Ray supports.
+    http_archive(
+        name = "com_google_protobuf_rules_proto_grpc",
+        strip_prefix = "protobuf-3.19.4",
+        urls = ["https://github.com/protocolbuffers/protobuf/archive/v3.19.4.tar.gz"],
+        sha256 = "3bd7828aa5af4b13b99c191e8b1e884ebfa9ad371b0ce264605d347f135d2568",
+    )
     auto_http_archive(
         name = "rules_proto_grpc",
         url = "https://github.com/rules-proto-grpc/rules_proto_grpc/archive/a74fef39c5fe636580083545f76d1eab74f6450d.tar.gz",
         sha256 = "2f6606151ec042e23396f07de9e7dcf6ca9a5db1d2b09f0cc93a7fc7f4008d1b",
+        repo_mapping = {
+            "@com_google_protobuf": "@com_google_protobuf_rules_proto_grpc",
+        },
     )
 
     auto_http_archive(

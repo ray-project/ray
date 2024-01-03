@@ -34,6 +34,18 @@
 
 namespace ray {
 
+/// Encapsulates non-resource artifacts that evidence work when present.
+enum WorkFootprint {
+  NODE_WORKERS = 1,
+};
+
+// Represents artifacts of a node that can be busy or idle.
+// Resources are schedulable, such as gpu or cpu.
+// WorkFootprints are not, such as leased workers on a node.
+using WorkArtifact = std::variant<WorkFootprint, scheduling::ResourceID>;
+
+using rpc::autoscaler::DrainNodeReason;
+
 /// Class manages the resources of the local node.
 /// It is responsible for allocating/deallocating resources for (task) resource request;
 /// it also supports creating a new resource or delete an existing resource.
@@ -108,6 +120,11 @@ class LocalResourceManager : public syncer::ReporterInterface {
 
   void ReleaseWorkerResources(std::shared_ptr<TaskResourceInstances> task_allocation);
 
+  // Removes idle time for a WorkFootprint, thereby marking it busy.
+  void SetBusyFootprint(WorkFootprint item);
+  // Sets the idle time for a WorkFootprint to now.
+  void SetIdleFootprint(WorkFootprint item);
+
   double GetLocalAvailableCpus() const;
 
   /// Return human-readable string for this scheduler state.
@@ -115,11 +132,6 @@ class LocalResourceManager : public syncer::ReporterInterface {
 
   /// Get the number of cpus on this node.
   uint64_t GetNumCpus() const;
-
-  /// Replace the local resources by the provided value.
-  ///
-  /// \param replacement: the new value.
-  void ResetLastReportResourceUsage(const NodeResources &replacement);
 
   /// Check whether the specific resource exists or not in local node.
   ///
@@ -130,6 +142,9 @@ class LocalResourceManager : public syncer::ReporterInterface {
 
   std::optional<syncer::RaySyncMessage> CreateSyncMessage(
       int64_t after_version, syncer::MessageType message_type) const override;
+
+  void PopulateResourceViewSyncMessage(
+      syncer::ResourceViewSyncMessage &resource_view_sync_message) const;
 
   /// Record the metrics.
   void RecordMetrics() const;
@@ -193,11 +208,9 @@ class LocalResourceManager : public syncer::ReporterInterface {
   scheduling::NodeID local_node_id_;
   /// Resources of local node.
   NodeResourceInstances local_resources_;
+
   /// A map storing when the resource was last idle.
-  absl::flat_hash_map<scheduling::ResourceID, absl::optional<absl::Time>>
-      resources_last_idle_time_;
-  /// Cached resources, used to compare with newest one in light heartbeat mode.
-  std::unique_ptr<NodeResources> last_report_resources_;
+  absl::flat_hash_map<WorkArtifact, absl::optional<absl::Time>> last_idle_times_;
   /// Function to get used object store memory.
   std::function<int64_t(void)> get_used_object_store_memory_;
   /// Function to get whether the pull manager is at capacity.

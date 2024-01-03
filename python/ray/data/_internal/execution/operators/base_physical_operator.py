@@ -21,13 +21,16 @@ class OneToOneOperator(PhysicalOperator):
         self,
         name: str,
         input_op: PhysicalOperator,
+        target_max_block_size: Optional[int],
     ):
         """Create a OneToOneOperator.
         Args:
             input_op: Operator generating input data for this op.
             name: The name of this operator.
+            target_max_block_size: The target maximum number of bytes to
+                include in an output block.
         """
-        super().__init__(name, [input_op])
+        super().__init__(name, [input_op], target_max_block_size)
 
     @property
     def input_dependency(self) -> PhysicalOperator:
@@ -44,6 +47,7 @@ class AllToAllOperator(PhysicalOperator):
         self,
         bulk_fn: AllToAllTransformFn,
         input_op: PhysicalOperator,
+        target_max_block_size: Optional[int],
         num_outputs: Optional[int] = None,
         sub_progress_bar_names: Optional[List[str]] = None,
         name: str = "AllToAll",
@@ -66,16 +70,16 @@ class AllToAllOperator(PhysicalOperator):
         self._input_buffer: List[RefBundle] = []
         self._output_buffer: List[RefBundle] = []
         self._stats: StatsDict = {}
-        super().__init__(name, [input_op])
+        super().__init__(name, [input_op], target_max_block_size)
 
-    def num_outputs_total(self) -> Optional[int]:
+    def num_outputs_total(self) -> int:
         return (
             self._num_outputs
             if self._num_outputs
             else self.input_dependencies[0].num_outputs_total()
         )
 
-    def add_input(self, refs: RefBundle, input_index: int) -> None:
+    def _add_input_inner(self, refs: RefBundle, input_index: int) -> None:
         assert not self.completed()
         assert input_index == 0, input_index
         self._input_buffer.append(refs)
@@ -84,6 +88,7 @@ class AllToAllOperator(PhysicalOperator):
         ctx = TaskContext(
             task_idx=self._next_task_index,
             sub_progress_bar_dict=self._sub_progress_bar_dict,
+            target_max_block_size=self.actual_target_max_block_size,
         )
         self._output_buffer, self._stats = self._bulk_fn(self._input_buffer, ctx)
         self._next_task_index += 1
@@ -93,7 +98,7 @@ class AllToAllOperator(PhysicalOperator):
     def has_next(self) -> bool:
         return len(self._output_buffer) > 0
 
-    def get_next(self) -> RefBundle:
+    def _get_next_inner(self) -> RefBundle:
         return self._output_buffer.pop(0)
 
     def get_stats(self) -> StatsDict:
@@ -144,4 +149,4 @@ class NAryOperator(PhysicalOperator):
         """
         input_names = ", ".join([op._name for op in input_ops])
         op_name = f"{self.__class__.__name__}({input_names})"
-        super().__init__(op_name, list(input_ops))
+        super().__init__(op_name, list(input_ops), target_max_block_size=None)

@@ -113,7 +113,7 @@ You can find an example of this in the :doc:`Keras MNIST example </tune/examples
 
 **Troubleshooting**: Occasionally, you may run into GPU memory issues when running a new trial. This may be
 due to the previous trial not cleaning up its GPU state fast enough. To avoid this,
-you can use ``tune.utils.wait_for_gpu`` - see :ref:`docstring <tune-util-ref>`.
+you can use :func:`tune.utils.wait_for_gpu <ray.tune.utils.wait_for_gpu>`.
 
 How to run distributed tuning on a cluster?
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~

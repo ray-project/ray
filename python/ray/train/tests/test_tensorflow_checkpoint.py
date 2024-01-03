@@ -1,18 +1,16 @@
-from numpy import ndarray
 import os.path
-import pytest
 import tempfile
-import tensorflow as tf
-from typing import List
 import unittest
+from typing import List
 
-from ray.train.tensorflow import (
-    TensorflowCheckpoint,
-    TensorflowTrainer,
-)
+import pytest
+import tensorflow as tf
+from numpy import ndarray
+
 from ray import train
-from ray.train import ScalingConfig
 from ray.data import Preprocessor
+from ray.train import ScalingConfig
+from ray.train.tensorflow import TensorflowCheckpoint, TensorflowTrainer
 
 
 class DummyPreprocessor(Preprocessor):

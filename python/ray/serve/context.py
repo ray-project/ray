@@ -3,6 +3,7 @@ This file stores global state for a Serve application. Deployment replicas
 can use this state to access metadata or the Serve controller.
 """
 
+import contextvars
 import logging
 from dataclasses import dataclass
 from typing import Callable, Optional
@@ -13,8 +14,8 @@ from ray.serve._private.client import ServeControllerClient
 from ray.serve._private.common import ReplicaTag
 from ray.serve._private.constants import SERVE_CONTROLLER_NAME, SERVE_NAMESPACE
 from ray.serve.exceptions import RayServeException
-from ray.util.annotations import PublicAPI, DeveloperAPI
-import contextvars
+from ray.serve.grpc_util import RayServegRPCContext
+from ray.util.annotations import DeveloperAPI
 
 logger = logging.getLogger(__file__)
 
@@ -22,20 +23,25 @@ _INTERNAL_REPLICA_CONTEXT: "ReplicaContext" = None
 _global_client: ServeControllerClient = None
 
 
-@PublicAPI(stability="alpha")
+@DeveloperAPI
 @dataclass
 class ReplicaContext:
-    """Stores data for Serve API calls from within deployments."""
+    """Stores runtime context info for replicas.
 
+    Fields:
+        - app_name: name of the application the replica is a part of.
+        - deployment: name of the deployment the replica is a part of.
+        - replica_tag: unique ID for the replica.
+        - servable_object: instance of the user class/function this replica is running.
+    """
+
+    app_name: str
     deployment: str
     replica_tag: ReplicaTag
-    _internal_controller_name: str
     servable_object: Callable
-    app_name: str
 
 
-@PublicAPI(stability="alpha")
-def get_global_client(
+def _get_global_client(
     _health_check_controller: bool = False, raise_if_no_controller_running: bool = True
 ) -> Optional[ServeControllerClient]:
     """Gets the global client, which stores the controller's handle.
@@ -74,21 +80,23 @@ def _set_global_client(client):
     _global_client = client
 
 
-@PublicAPI(stability="alpha")
-def get_internal_replica_context():
+def _get_internal_replica_context():
     return _INTERNAL_REPLICA_CONTEXT
 
 
 def _set_internal_replica_context(
+    *,
+    app_name: str,
     deployment: str,
     replica_tag: ReplicaTag,
-    controller_name: str,
     servable_object: Callable,
-    app_name: str,
 ):
     global _INTERNAL_REPLICA_CONTEXT
     _INTERNAL_REPLICA_CONTEXT = ReplicaContext(
-        deployment, replica_tag, controller_name, servable_object, app_name
+        app_name=app_name,
+        deployment=deployment,
+        replica_tag=replica_tag,
+        servable_object=servable_object,
     )
 
 
@@ -113,16 +121,9 @@ def _connect(raise_if_no_controller_running: bool = True) -> ServeControllerClie
     if not ray.is_initialized():
         ray.init(namespace=SERVE_NAMESPACE)
 
-    # When running inside of a replica, _INTERNAL_REPLICA_CONTEXT is set to
-    # ensure that the correct instance is connected to.
-    if _INTERNAL_REPLICA_CONTEXT is None:
-        controller_name = SERVE_CONTROLLER_NAME
-    else:
-        controller_name = _INTERNAL_REPLICA_CONTEXT._internal_controller_name
-
     # Try to get serve controller if it exists
     try:
-        controller = ray.get_actor(controller_name, namespace=SERVE_NAMESPACE)
+        controller = ray.get_actor(SERVE_CONTROLLER_NAME, namespace=SERVE_NAMESPACE)
     except ValueError:
         if raise_if_no_controller_running:
             raise RayServeException(
@@ -132,8 +133,6 @@ def _connect(raise_if_no_controller_running: bool = True) -> ServeControllerClie
 
     client = ServeControllerClient(
         controller,
-        controller_name,
-        detached=True,
     )
     _set_global_client(client)
     return client
@@ -151,17 +150,17 @@ def _connect(raise_if_no_controller_running: bool = True) -> ServeControllerClie
 #       async task conflicts when using it concurrently.
 
 
-@DeveloperAPI
 @dataclass(frozen=True)
-class RequestContext:
+class _RequestContext:
     route: str = ""
     request_id: str = ""
     app_name: str = ""
     multiplexed_model_id: str = ""
+    grpc_context: Optional[RayServegRPCContext] = None
 
 
 _serve_request_context = contextvars.ContextVar(
-    "Serve internal request context variable", default=RequestContext()
+    "Serve internal request context variable", default=_RequestContext()
 )
 
 
@@ -176,7 +175,7 @@ def _set_request_context(
 
     current_request_context = _serve_request_context.get()
     _serve_request_context.set(
-        RequestContext(
+        _RequestContext(
             route=route or current_request_context.route,
             request_id=request_id or current_request_context.request_id,
             app_name=app_name or current_request_context.app_name,

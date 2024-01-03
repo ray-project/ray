@@ -120,6 +120,7 @@ def test_finalize_fn_uses_single_thread(ray_start_regular_shared):
     # even if prefetch_batches is set.
     output_batches = iter_batches(
         block_refs_iter,
+        dataset_tag="dataset",
         collate_fn=lambda batch: batch,
         finalize_fn=finalize_enforce_single_thread,
         prefetch_batches=4,
@@ -156,6 +157,7 @@ def test_iter_batches_e2e(
 
     output_batches = iter_batches(
         block_refs_iter,
+        dataset_tag="dataset",
         batch_size=batch_size,
         prefetch_batches=prefetch_batches,
         batch_format="pandas",
@@ -200,7 +202,11 @@ def test_iter_batches_e2e_async(ray_start_regular_shared):
     )
     start_time = time.time()
     output_batches = iter_batches(
-        block_refs_iter, batch_size=None, collate_fn=collate_fn, prefetch_batches=4
+        block_refs_iter,
+        dataset_tag="dataset",
+        batch_size=None,
+        collate_fn=collate_fn,
+        prefetch_batches=4,
     )
     batches = []
     for batch in output_batches:

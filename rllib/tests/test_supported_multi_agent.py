@@ -1,14 +1,9 @@
 import unittest
 
 import ray
-from ray.rllib.algorithms.a3c import A3CConfig
 from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
-from ray.rllib.algorithms.apex_ddpg import ApexDDPGConfig
-from ray.rllib.algorithms.apex_dqn import ApexDQNConfig
-from ray.rllib.algorithms.ddpg import DDPGConfig
 from ray.rllib.algorithms.dqn import DQNConfig
 from ray.rllib.algorithms.impala import ImpalaConfig
-from ray.rllib.algorithms.pg import PGConfig
 from ray.rllib.algorithms.ppo import PPOConfig
 from ray.rllib.algorithms.sac import SACConfig
 from ray.rllib.examples.env.multi_agent import MultiAgentCartPole, MultiAgentMountainCar
@@ -39,9 +34,9 @@ def check_support_multiagent(alg: str, config: AlgorithmConfig):
     config.multi_agent(policies=policies, policy_mapping_fn=policy_mapping_fn)
 
     for fw in framework_iterator(config):
-        if fw == "tf2" and alg in ["A3C", "APEX", "APEX_DDPG", "IMPALA"]:
+        if fw == "tf2" and alg == "IMPALA":
             continue
-        if alg in ["DDPG", "APEX_DDPG", "SAC"]:
+        if alg == "SAC":
             a = config.build(env="multi_agent_mountaincar")
         else:
             a = config.build(env="multi_agent_cartpole")
@@ -52,7 +47,7 @@ def check_support_multiagent(alg: str, config: AlgorithmConfig):
         a.stop()
 
 
-class TestSupportedMultiAgentPG(unittest.TestCase):
+class TestSupportedMultiAgentPolicyGradient(unittest.TestCase):
     @classmethod
     def setUpClass(cls) -> None:
         ray.init(num_cpus=4)
@@ -61,24 +56,8 @@ class TestSupportedMultiAgentPG(unittest.TestCase):
     def tearDownClass(cls) -> None:
         ray.shutdown()
 
-    def test_a3c_multiagent(self):
-        check_support_multiagent(
-            "A3C",
-            (
-                A3CConfig()
-                .rollouts(num_rollout_workers=1)
-                .training(optimizer={"grads_per_step": 1})
-            ),
-        )
-
     def test_impala_multiagent(self):
         check_support_multiagent("IMPALA", ImpalaConfig().resources(num_gpus=0))
-
-    def test_pg_multiagent(self):
-        check_support_multiagent(
-            "PG",
-            PGConfig().rollouts(num_rollout_workers=1).training(optimizer={}),
-        )
 
     def test_ppo_multiagent(self):
         check_support_multiagent(
@@ -99,66 +78,6 @@ class TestSupportedMultiAgentOffPolicy(unittest.TestCase):
     @classmethod
     def tearDownClass(cls) -> None:
         ray.shutdown()
-
-    def test_apex_multiagent(self):
-        check_support_multiagent(
-            "APEX",
-            (
-                ApexDQNConfig()
-                .resources(num_gpus=0)
-                .rollouts(num_rollout_workers=2)
-                .training(
-                    target_network_update_freq=100,
-                    optimizer={
-                        "num_replay_buffer_shards": 1,
-                    },
-                    replay_buffer_config={
-                        "capacity": 1000,
-                    },
-                    num_steps_sampled_before_learning_starts=10,
-                )
-                .reporting(
-                    min_sample_timesteps_per_iteration=100,
-                    min_time_s_per_iteration=1,
-                )
-            ),
-        )
-
-    def test_apex_ddpg_multiagent(self):
-        check_support_multiagent(
-            "APEX_DDPG",
-            (
-                ApexDDPGConfig()
-                .resources(num_gpus=0)
-                .rollouts(num_rollout_workers=2)
-                .training(
-                    target_network_update_freq=100,
-                    replay_buffer_config={
-                        "capacity": 1000,
-                    },
-                    num_steps_sampled_before_learning_starts=10,
-                    use_state_preprocessor=True,
-                )
-                .reporting(
-                    min_sample_timesteps_per_iteration=100,
-                    min_time_s_per_iteration=1,
-                )
-            ),
-        )
-
-    def test_ddpg_multiagent(self):
-        check_support_multiagent(
-            "DDPG",
-            (
-                DDPGConfig()
-                .reporting(min_sample_timesteps_per_iteration=1)
-                .training(
-                    replay_buffer_config={"capacity": 1000},
-                    num_steps_sampled_before_learning_starts=10,
-                    use_state_preprocessor=True,
-                )
-            ),
-        )
 
     def test_dqn_multiagent(self):
         check_support_multiagent(

@@ -164,6 +164,8 @@ Status RedisStoreClient::AsyncGet(const std::string &table_name,
     if (!reply->IsNil()) {
       result = reply->ReadAsString();
     }
+    RAY_CHECK(!reply->IsError())
+        << "Failed to get from Redis with status: " << reply->ReadAsStatus();
     callback(Status::OK(), std::move(result));
   };
 
@@ -294,7 +296,7 @@ void RedisStoreClient::SendRedisCmd(std::vector<std::string> keys,
       absl::MutexLock lock(&mu_);
       *num_ready_keys += 1;
       RAY_CHECK(*num_ready_keys <= keys.size());
-      // There are still pending requets for these keys.
+      // There are still pending requests for these keys.
       if (*num_ready_keys != keys.size()) {
         return;
       }

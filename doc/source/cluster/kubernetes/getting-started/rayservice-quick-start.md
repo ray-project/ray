@@ -21,7 +21,7 @@ A RayService manages these components:
 * **Kubernetes-native support for Ray clusters and Ray Serve applications:** After using a Kubernetes config to define a Ray cluster and its Ray Serve applications, you can use `kubectl` to create the cluster and its applications.
 * **In-place updating for Ray Serve applications:** See [RayService](kuberay-rayservice) for more details.
 * **Zero downtime upgrading for Ray clusters:** See [RayService](kuberay-rayservice) for more details.
-* **High-availabilable services:** See [RayService](kuberay-rayservice) for more details.
+* **High-availabilable services:** See [RayService high availability](kuberay-rayservice-ha) for more details.
 
 ## Example: Serve two simple Ray Serve applications using RayService
 
@@ -40,7 +40,7 @@ Please note that the YAML file in this example uses `serveConfigV2` to specify a
 
 ```sh
 # Step 3.1: Download `ray_v1alpha1_rayservice.yaml`
-curl -LO https://raw.githubusercontent.com/ray-project/kuberay/master/ray-operator/config/samples/ray_v1alpha1_rayservice.yaml
+curl -LO https://raw.githubusercontent.com/ray-project/kuberay/v1.0.0/ray-operator/config/samples/ray_v1alpha1_rayservice.yaml
 
 # Step 3.2: Create a RayService
 kubectl apply -f ray_v1alpha1_rayservice.yaml
@@ -89,7 +89,7 @@ When the Ray Serve applications are healthy and ready, KubeRay creates a head se
 kubectl port-forward svc/rayservice-sample-head-svc --address 0.0.0.0 8265:8265
 ```
 
-* Refer to [rayservice-troubleshooting.md](https://github.com/ray-project/kuberay/blob/master/docs/guidance/rayservice-troubleshooting.md#observability) for more details on RayService observability.
+* Refer to [rayservice-troubleshooting.md](kuberay-raysvc-troubleshoot) for more details on RayService observability.
 Below is a screenshot example of the Serve page in the Ray dashboard.
   ![Ray Serve Dashboard](../images/dashboard_serve.png)
 

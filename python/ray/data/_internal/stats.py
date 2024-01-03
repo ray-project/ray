@@ -1,21 +1,29 @@
 import collections
+import threading
 import time
 from contextlib import contextmanager
 from dataclasses import dataclass
 from typing import Any, Dict, List, Optional, Set, Tuple, Union
+from uuid import uuid4
 
 import numpy as np
 
 import ray
 from ray.data._internal.block_list import BlockList
+from ray.data._internal.dataset_logger import DatasetLogger
+from ray.data._internal.execution.interfaces.op_runtime_metrics import OpRuntimeMetrics
 from ray.data._internal.util import capfirst
 from ray.data.block import BlockMetadata
 from ray.data.context import DataContext
 from ray.util.annotations import DeveloperAPI
+from ray.util.metrics import Gauge
 from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
+
+logger = DatasetLogger(__name__)
 
 STATS_ACTOR_NAME = "datasets_stats_actor"
 STATS_ACTOR_NAMESPACE = "_dataset_stats_actor"
+
 
 StatsDict = Dict[str, List[BlockMetadata]]
 
@@ -85,36 +93,36 @@ class _DatasetStatsBuilder:
 
     def __init__(
         self,
-        stage_name: str,
+        operator_name: str,
         parent: "DatasetStats",
         override_start_time: Optional[float],
     ):
-        self.stage_name = stage_name
+        self.operator_name = operator_name
         self.parent = parent
         self.start_time = override_start_time or time.perf_counter()
 
-    def build_multistage(self, stages: StatsDict) -> "DatasetStats":
-        stage_infos = {}
-        for i, (k, v) in enumerate(stages.items()):
+    def build_multioperator(self, metadata: StatsDict) -> "DatasetStats":
+        op_metadata = {}
+        for i, (k, v) in enumerate(metadata.items()):
             capped_k = capfirst(k)
-            if len(stages) > 1:
+            if len(metadata) > 1:
                 if i == 0:
-                    stage_infos[self.stage_name + capped_k] = v
+                    op_metadata[self.operator_name + capped_k] = v
                 else:
-                    stage_infos[self.stage_name.split("->")[-1] + capped_k] = v
+                    op_metadata[self.operator_name.split("->")[-1] + capped_k] = v
             else:
-                stage_infos[self.stage_name] = v
+                op_metadata[self.operator_name] = v
         stats = DatasetStats(
-            stages=stage_infos,
+            metadata=op_metadata,
             parent=self.parent,
-            base_name=self.stage_name,
+            base_name=self.operator_name,
         )
         stats.time_total_s = time.perf_counter() - self.start_time
         return stats
 
     def build(self, final_blocks: BlockList) -> "DatasetStats":
         stats = DatasetStats(
-            stages={self.stage_name: final_blocks.get_metadata()},
+            metadata={self.operator_name: final_blocks.get_metadata()},
             parent=self.parent,
         )
         stats.time_total_s = time.perf_counter() - self.start_time
@@ -140,6 +148,75 @@ class _StatsActor:
         self.start_time = {}
         self.max_stats = max_stats
         self.fifo_queue = []
+
+        # Assign dataset uuids with a global counter.
+        self.next_dataset_id = 0
+        # Dataset metadata to be queried directly by DashboardHead api.
+        self.datasets: Dict[str, Any] = {}
+
+        # Ray Data dashboard metrics
+        # Everything is a gauge because we need to reset all of
+        # a dataset's metrics to 0 after each finishes execution.
+        op_tags_keys = ("dataset", "operator")
+        self.bytes_spilled = Gauge(
+            "data_spilled_bytes",
+            description="""Bytes spilled by dataset operators.
+                DataContext.enable_get_object_locations_for_metrics
+                must be set to True to report this metric""",
+            tag_keys=op_tags_keys,
+        )
+        self.bytes_allocated = Gauge(
+            "data_allocated_bytes",
+            description="Bytes allocated by dataset operators",
+            tag_keys=op_tags_keys,
+        )
+        self.bytes_freed = Gauge(
+            "data_freed_bytes",
+            description="Bytes freed by dataset operators",
+            tag_keys=op_tags_keys,
+        )
+        self.bytes_current = Gauge(
+            "data_current_bytes",
+            description="Bytes currently in memory store used by dataset operators",
+            tag_keys=op_tags_keys,
+        )
+        self.cpu_usage = Gauge(
+            "data_cpu_usage_cores",
+            description="CPUs allocated to dataset operators",
+            tag_keys=op_tags_keys,
+        )
+        self.gpu_usage = Gauge(
+            "data_gpu_usage_cores",
+            description="GPUs allocated to dataset operators",
+            tag_keys=op_tags_keys,
+        )
+        self.bytes_outputted = Gauge(
+            "data_output_bytes",
+            description="Bytes outputted by dataset operators",
+            tag_keys=op_tags_keys,
+        )
+        self.rows_outputted = Gauge(
+            "data_output_rows",
+            description="Rows outputted by dataset operators",
+            tag_keys=op_tags_keys,
+        )
+        self.block_generation_time = Gauge(
+            "data_block_generation_seconds",
+            description="Time spent generating blocks.",
+            tag_keys=op_tags_keys,
+        )
+
+        iter_tag_keys = ("dataset",)
+        self.iter_total_blocked_s = Gauge(
+            "data_iter_total_blocked_seconds",
+            description="Seconds user thread is blocked by iter_batches()",
+            tag_keys=iter_tag_keys,
+        )
+        self.iter_user_s = Gauge(
+            "data_iter_user_seconds",
+            description="Seconds spent in user code",
+            tag_keys=iter_tag_keys,
+        )
 
     def record_start(self, stats_uuid):
         self.start_time[stats_uuid] = time.perf_counter()
@@ -176,6 +253,101 @@ class _StatsActor:
     def _get_stats_dict_size(self):
         return len(self.start_time), len(self.last_time), len(self.metadata)
 
+    def get_dataset_id(self):
+        dataset_id = str(self.next_dataset_id)
+        self.next_dataset_id += 1
+        return dataset_id
+
+    def update_metrics(self, execution_metrics, iteration_metrics):
+        for metrics in execution_metrics:
+            self.update_execution_metrics(*metrics)
+        for metrics in iteration_metrics:
+            self.update_iteration_metrics(*metrics)
+
+    def update_execution_metrics(
+        self,
+        dataset_tag: str,
+        op_metrics: List[Dict[str, Union[int, float]]],
+        operator_tags: List[str],
+        state: Dict[str, Any],
+    ):
+        for stats, operator_tag in zip(op_metrics, operator_tags):
+            tags = self._create_tags(dataset_tag, operator_tag)
+            self.bytes_spilled.set(stats.get("obj_store_mem_spilled", 0), tags)
+            self.bytes_allocated.set(stats.get("obj_store_mem_alloc", 0), tags)
+            self.bytes_freed.set(stats.get("obj_store_mem_freed", 0), tags)
+            self.bytes_current.set(stats.get("obj_store_mem_cur", 0), tags)
+            self.bytes_outputted.set(stats.get("bytes_outputs_generated", 0), tags)
+            self.rows_outputted.set(stats.get("rows_outputs_generated", 0), tags)
+            self.cpu_usage.set(stats.get("cpu_usage", 0), tags)
+            self.gpu_usage.set(stats.get("gpu_usage", 0), tags)
+            self.block_generation_time.set(stats.get("block_generation_time", 0), tags)
+
+        # This update is called from a dataset's executor,
+        # so all tags should contain the same dataset
+        self.update_dataset(dataset_tag, state)
+
+    def update_iteration_metrics(
+        self,
+        stats: "DatasetStats",
+        dataset_tag,
+    ):
+        tags = self._create_tags(dataset_tag)
+        self.iter_total_blocked_s.set(stats.iter_total_blocked_s.get(), tags)
+        self.iter_user_s.set(stats.iter_user_s.get(), tags)
+
+    def clear_execution_metrics(self, dataset_tag: str, operator_tags: List[str]):
+        for operator_tag in operator_tags:
+            tags = self._create_tags(dataset_tag, operator_tag)
+            self.bytes_spilled.set(0, tags)
+            self.bytes_allocated.set(0, tags)
+            self.bytes_freed.set(0, tags)
+            self.bytes_current.set(0, tags)
+            self.bytes_outputted.set(0, tags)
+            self.rows_outputted.set(0, tags)
+            self.cpu_usage.set(0, tags)
+            self.gpu_usage.set(0, tags)
+            self.block_generation_time.set(0, tags)
+
+    def clear_iteration_metrics(self, dataset_tag: str):
+        tags = self._create_tags(dataset_tag)
+        self.iter_total_blocked_s.set(0, tags)
+        self.iter_user_s.set(0, tags)
+
+    def register_dataset(self, dataset_tag: str, operator_tags: List[str]):
+        self.datasets[dataset_tag] = {
+            "state": "RUNNING",
+            "progress": 0,
+            "total": 0,
+            "start_time": time.time(),
+            "end_time": None,
+            "operators": {
+                operator: {
+                    "state": "RUNNING",
+                    "progress": 0,
+                    "total": 0,
+                }
+                for operator in operator_tags
+            },
+        }
+
+    def update_dataset(self, dataset_tag, state):
+        self.datasets[dataset_tag].update(state)
+
+    def get_datasets(self):
+        return self.datasets
+
+    def _create_tags(self, dataset_tag: str, operator_tag: Optional[str] = None):
+        tags = {"dataset": dataset_tag}
+        if operator_tag is not None:
+            tags["operator"] = operator_tag
+        return tags
+
+
+# Creating/getting an actor from multiple threads is not safe.
+# https://github.com/ray-project/ray/issues/41324
+_stats_actor_lock: threading.RLock = threading.RLock()
+
 
 def _get_or_create_stats_actor():
     ctx = DataContext.get_current()
@@ -187,13 +359,187 @@ def _get_or_create_stats_actor():
             ray.get_runtime_context().get_node_id(),
             soft=False,
         )
-    return _StatsActor.options(
-        name=STATS_ACTOR_NAME,
-        namespace=STATS_ACTOR_NAMESPACE,
-        get_if_exists=True,
-        lifetime="detached",
-        scheduling_strategy=scheduling_strategy,
-    ).remote()
+    with _stats_actor_lock:
+        return _StatsActor.options(
+            name=STATS_ACTOR_NAME,
+            namespace=STATS_ACTOR_NAMESPACE,
+            get_if_exists=True,
+            lifetime="detached",
+            scheduling_strategy=scheduling_strategy,
+        ).remote()
+
+
+class _StatsManager:
+    """A Class containing util functions that manage remote calls to _StatsActor.
+
+    This class collects stats from execution and iteration codepaths and keeps
+    track of the latest snapshot.
+
+    An instance of this class runs a single background thread that periodically
+    forwards the latest execution/iteration stats to the _StatsActor.
+
+    This thread will terminate itself after being inactive (meaning that there are
+    no active executors or iterators) for STATS_ACTOR_UPDATE_THREAD_INACTIVITY_LIMIT
+    iterations. After terminating, a new thread will start if more calls are made
+    to this class.
+    """
+
+    # Interval for making remote calls to the _StatsActor.
+    STATS_ACTOR_UPDATE_INTERVAL_SECONDS = 5
+
+    # After this many iterations of inactivity,
+    # _StatsManager._update_thread will close itself.
+    UPDATE_THREAD_INACTIVITY_LIMIT = 5
+
+    def __init__(self):
+        # Lazily get stats actor handle to avoid circular import.
+        self._stats_actor_handle = None
+        self._stats_actor_cluster_id = None
+
+        # Last execution stats snapshots for all executing datasets
+        self._last_execution_stats = {}
+        # Last iteration stats snapshots for all running iterators
+        self._last_iteration_stats: Dict[
+            str, Tuple[Dict[str, str], "DatasetStats"]
+        ] = {}
+        # Lock for updating stats snapshots
+        self._stats_lock: threading.Lock = threading.Lock()
+
+        # Background thread to make remote calls to _StatsActor
+        self._update_thread: Optional[threading.Thread] = None
+        self._update_thread_lock: threading.Lock = threading.Lock()
+
+    def _stats_actor(self, create_if_not_exists=True) -> _StatsActor:
+        if ray._private.worker._global_node is None:
+            raise RuntimeError("Global node is not initialized.")
+        current_cluster_id = ray._private.worker._global_node.cluster_id
+        if (
+            self._stats_actor_handle is None
+            or self._stats_actor_cluster_id != current_cluster_id
+        ):
+            if create_if_not_exists:
+                self._stats_actor_handle = _get_or_create_stats_actor()
+            else:
+                self._stat_actor_handle = ray.get_actor(
+                    name=STATS_ACTOR_NAME, namespace=STATS_ACTOR_NAMESPACE
+                )
+            self._stats_actor_cluster_id = current_cluster_id
+        return self._stats_actor_handle
+
+    def _start_thread_if_not_running(self):
+        # Start background update thread if not running.
+        with self._update_thread_lock:
+            if self._update_thread is None or not self._update_thread.is_alive():
+
+                def _run_update_loop():
+                    iter_stats_inactivity = 0
+                    while True:
+                        if self._last_iteration_stats or self._last_execution_stats:
+                            try:
+                                # Do not create _StatsActor if it doesn't exist because
+                                # this thread can be running even after the cluster is
+                                # shutdown. Creating an actor will automatically start
+                                # a new cluster.
+                                self._stats_actor(
+                                    create_if_not_exists=False
+                                ).update_metrics.remote(
+                                    execution_metrics=list(
+                                        self._last_execution_stats.values()
+                                    ),
+                                    iteration_metrics=list(
+                                        self._last_iteration_stats.values()
+                                    ),
+                                )
+                                iter_stats_inactivity = 0
+                            except Exception:
+                                logger.get_logger(log_to_stdout=False).exception(
+                                    "Error occurred during remote call to _StatsActor."
+                                )
+                                return
+                        else:
+                            iter_stats_inactivity += 1
+                            if (
+                                iter_stats_inactivity
+                                >= _StatsManager.UPDATE_THREAD_INACTIVITY_LIMIT
+                            ):
+                                logger.get_logger(log_to_stdout=False).info(
+                                    "Terminating StatsManager thread due to inactivity."
+                                )
+                                return
+                        time.sleep(StatsManager.STATS_ACTOR_UPDATE_INTERVAL_SECONDS)
+
+                self._update_thread = threading.Thread(
+                    target=_run_update_loop, daemon=True
+                )
+                self._update_thread.start()
+
+    # Execution methods
+
+    def update_execution_metrics(
+        self,
+        dataset_tag: str,
+        op_metrics: List[OpRuntimeMetrics],
+        operator_tags: List[str],
+        state: Dict[str, Any],
+        force_update: bool = False,
+    ):
+        op_metrics_dicts = [metric.as_dict() for metric in op_metrics]
+        args = (dataset_tag, op_metrics_dicts, operator_tags, state)
+        if force_update:
+            self._stats_actor().update_execution_metrics.remote(*args)
+        else:
+            with self._stats_lock:
+                self._last_execution_stats[dataset_tag] = args
+            self._start_thread_if_not_running()
+
+    def clear_execution_metrics(self, dataset_tag: str, operator_tags: List[str]):
+        with self._stats_lock:
+            if dataset_tag in self._last_execution_stats:
+                del self._last_execution_stats[dataset_tag]
+
+        try:
+            self._stats_actor(
+                create_if_not_exists=False
+            ).clear_execution_metrics.remote(dataset_tag, operator_tags)
+        except Exception:
+            # Cluster may be shut down.
+            pass
+
+    # Iteration methods
+
+    def update_iteration_metrics(self, stats: "DatasetStats", dataset_tag: str):
+        with self._stats_lock:
+            self._last_iteration_stats[dataset_tag] = (stats, dataset_tag)
+        self._start_thread_if_not_running()
+
+    def clear_iteration_metrics(self, dataset_tag: str):
+        with self._stats_lock:
+            if dataset_tag in self._last_iteration_stats:
+                del self._last_iteration_stats[dataset_tag]
+
+        try:
+            self._stats_actor(
+                create_if_not_exists=False
+            ).clear_iteration_metrics.remote(dataset_tag)
+        except Exception:
+            # Cluster may be shut down.
+            pass
+
+    # Other methods
+
+    def register_dataset_to_stats_actor(self, dataset_tag, operator_tags):
+        self._stats_actor().register_dataset.remote(dataset_tag, operator_tags)
+
+    def get_dataset_id_from_stats_actor(self) -> str:
+        try:
+            return ray.get(self._stats_actor().get_dataset_id.remote())
+        except Exception:
+            # Getting dataset id from _StatsActor may fail, in this case
+            # fall back to uuid4
+            return uuid4().hex
+
+
+StatsManager = _StatsManager()
 
 
 class DatasetStats:
@@ -206,7 +552,7 @@ class DatasetStats:
     def __init__(
         self,
         *,
-        stages: StatsDict,
+        metadata: StatsDict,
         parent: Union[Optional["DatasetStats"], List["DatasetStats"]],
         needs_stats_actor: bool = False,
         stats_uuid: str = None,
@@ -215,7 +561,7 @@ class DatasetStats:
         """Create dataset stats.
 
         Args:
-            stages: Dict of stages used to create this Dataset from the
+            metadata: Dict of operators used to create this Dataset from the
                 previous one. Typically one entry, e.g., {"map": [...]}.
             parent: Reference to parent Dataset's stats, or a list of parents
                 if there are multiple.
@@ -224,10 +570,10 @@ class DatasetStats:
                 lazy datasource (i.e. a LazyBlockList).
             stats_uuid: The uuid for the stats, used to fetch the right stats
                 from the stats actor.
-            base_name: The name of the base operation for a multi-stage operation.
+            base_name: The name of the base operation for a multi-operator operation.
         """
 
-        self.stages: StatsDict = stages
+        self.metadata: StatsDict = metadata
         if parent is not None and not isinstance(parent, list):
             parent = [parent]
         self.parents: List["DatasetStats"] = parent or []
@@ -242,7 +588,6 @@ class DatasetStats:
         self.needs_stats_actor = needs_stats_actor
         self.stats_uuid = stats_uuid
 
-        self._legacy_iter_batches = False
         # Iteration stats, filled out if the user iterates over the dataset.
         self.iter_wait_s: Timer = Timer()
         self.iter_get_s: Timer = Timer()
@@ -265,6 +610,11 @@ class DatasetStats:
         self.iter_blocks_remote: int = 0
         self.iter_unknown_location: int = 0
 
+        # Memory usage stats
+        self.global_bytes_spilled: int = 0
+        self.global_bytes_restored: int = 0
+        self.dataset_bytes_spilled: int = 0
+
     @property
     def stats_actor(self):
         return _get_or_create_stats_actor()
@@ -277,12 +627,12 @@ class DatasetStats:
 
     def child_TODO(self, name: str) -> "DatasetStats":
         """Placeholder for child ops not yet instrumented."""
-        return DatasetStats(stages={name + "_TODO": []}, parent=self)
+        return DatasetStats(metadata={name + "_TODO": []}, parent=self)
 
     @staticmethod
     def TODO():
         """Placeholder for ops not yet instrumented."""
-        return DatasetStats(stages={"TODO": []}, parent=None)
+        return DatasetStats(metadata={"TODO": []}, parent=None)
 
     def to_summary(self) -> "DatasetStatsSummary":
         """Generate a `DatasetStatsSummary` object from the given `DatasetStats`
@@ -293,24 +643,23 @@ class DatasetStats:
             stats_map, self.time_total_s = ray.get(ac.get.remote(self.stats_uuid))
             # Only populate stats when stats from all read tasks are ready at
             # stats actor.
-            if len(stats_map.items()) == len(self.stages["Read"]):
-                self.stages["Read"] = []
+            if len(stats_map.items()) == len(self.metadata["Read"]):
+                self.metadata["Read"] = []
                 for _, blocks_metadata in sorted(stats_map.items()):
-                    self.stages["Read"] += blocks_metadata
+                    self.metadata["Read"] += blocks_metadata
 
-        stages_stats = []
-        is_substage = len(self.stages) > 1
-        for stage_name, metadata in self.stages.items():
-            stages_stats.append(
-                StageStatsSummary.from_block_metadata(
-                    metadata,
-                    stage_name,
-                    is_substage=is_substage,
+        operators_stats = []
+        is_sub_operator = len(self.metadata) > 1
+        for name, meta in self.metadata.items():
+            operators_stats.append(
+                OperatorStatsSummary.from_block_metadata(
+                    name,
+                    meta,
+                    is_sub_operator=is_sub_operator,
                 )
             )
 
         iter_stats = IterStatsSummary(
-            self._legacy_iter_batches,
             self.iter_wait_s,
             self.iter_get_s,
             self.iter_next_batch_s,
@@ -328,7 +677,7 @@ class DatasetStats:
         if self.parents is not None:
             stats_summary_parents = [p.to_summary() for p in self.parents]
         return DatasetStatsSummary(
-            stages_stats,
+            operators_stats,
             iter_stats,
             stats_summary_parents,
             self.number,
@@ -336,13 +685,16 @@ class DatasetStats:
             self.time_total_s,
             self.base_name,
             self.extra_metrics,
+            self.global_bytes_spilled,
+            self.global_bytes_restored,
+            self.dataset_bytes_spilled,
         )
 
 
 @DeveloperAPI
 @dataclass
 class DatasetStatsSummary:
-    stages_stats: List["StageStatsSummary"]
+    operators_stats: List["OperatorStatsSummary"]
     iter_stats: "IterStatsSummary"
     parents: List["DatasetStatsSummary"]
     number: int
@@ -350,17 +702,24 @@ class DatasetStatsSummary:
     time_total_s: float
     base_name: str
     extra_metrics: Dict[str, Any]
+    global_bytes_spilled: int
+    global_bytes_restored: int
+    dataset_bytes_spilled: int
 
     def to_string(
-        self, already_printed: Optional[Set[str]] = None, include_parent: bool = True
+        self,
+        already_printed: Optional[Set[str]] = None,
+        include_parent: bool = True,
+        add_global_stats=True,
     ) -> str:
         """Return a human-readable summary of this Dataset's stats.
 
         Args:
-            already_printed: Set of stage IDs that have already had its stats printed
+            already_printed: Set of operator IDs that have already had its stats printed
             out.
             include_parent: If true, also include parent stats summary; otherwise, only
-            log stats of the latest stage.
+            log stats of the latest operator.
+            add_global_stats: If true, includes global stats to this summary.
         Returns:
             String with summary statistics for executing the Dataset.
         """
@@ -370,48 +729,69 @@ class DatasetStatsSummary:
         out = ""
         if self.parents and include_parent:
             for p in self.parents:
-                parent_sum = p.to_string(already_printed)
+                parent_sum = p.to_string(already_printed, add_global_stats=False)
                 if parent_sum:
                     out += parent_sum
                     out += "\n"
-        if len(self.stages_stats) == 1:
-            stage_stats_summary = self.stages_stats[0]
-            stage_name = stage_stats_summary.stage_name
-            stage_uuid = self.dataset_uuid + stage_name
-            out += "Stage {} {}: ".format(self.number, stage_name)
-            if stage_uuid in already_printed:
+        operators_stats_summary = None
+        if len(self.operators_stats) == 1:
+            operators_stats_summary = self.operators_stats[0]
+            operator_name = operators_stats_summary.operator_name
+            operator_uuid = self.dataset_uuid + operator_name
+            out += "Operator {} {}: ".format(self.number, operator_name)
+            if operator_uuid in already_printed:
                 out += "[execution cached]\n"
             else:
-                already_printed.add(stage_uuid)
-                out += str(stage_stats_summary)
-        elif len(self.stages_stats) > 1:
+                already_printed.add(operator_uuid)
+                out += str(operators_stats_summary)
+        elif len(self.operators_stats) > 1:
             rounded_total = round(self.time_total_s, 2)
             if rounded_total <= 0:
                 # Handle -0.0 case.
                 rounded_total = 0
-            out += "Stage {} {}: executed in {}s\n".format(
+            out += "Operator {} {}: executed in {}s\n".format(
                 self.number, self.base_name, rounded_total
             )
-            for n, stage_stats_summary in enumerate(self.stages_stats):
-                stage_name = stage_stats_summary.stage_name
-                stage_uuid = self.dataset_uuid + stage_name
+            for n, operators_stats_summary in enumerate(self.operators_stats):
+                operator_name = operators_stats_summary.operator_name
+                operator_uuid = self.dataset_uuid + operator_name
                 out += "\n"
-                out += "\tSubstage {} {}: ".format(n, stage_name)
-                if stage_uuid in already_printed:
+                out += "\tSuboperator {} {}: ".format(n, operator_name)
+                if operator_uuid in already_printed:
                     out += "\t[execution cached]\n"
                 else:
-                    already_printed.add(stage_uuid)
-                    out += str(stage_stats_summary)
+                    already_printed.add(operator_uuid)
+                    out += str(operators_stats_summary)
         if self.extra_metrics:
-            indent = "\t" if stage_stats_summary.is_substage else ""
+            indent = (
+                "\t"
+                if operators_stats_summary and operators_stats_summary.is_sub_operator
+                else ""
+            )
             out += indent
             out += "* Extra metrics: " + str(self.extra_metrics) + "\n"
         out += str(self.iter_stats)
+
+        if len(self.operators_stats) > 0 and add_global_stats:
+            mb_spilled = round(self.global_bytes_spilled / 1e6)
+            mb_restored = round(self.global_bytes_restored / 1e6)
+            if mb_spilled or mb_restored:
+                out += "\nCluster memory:\n"
+                out += "* Spilled to disk: {}MB\n".format(mb_spilled)
+                out += "* Restored from disk: {}MB\n".format(mb_restored)
+
+            dataset_mb_spilled = round(self.dataset_bytes_spilled / 1e6)
+            if dataset_mb_spilled:
+                out += "\nDataset memory:\n"
+                out += "* Spilled to disk: {}MB\n".format(dataset_mb_spilled)
+
         return out
 
     def __repr__(self, level=0) -> str:
         indent = leveled_indent(level)
-        stage_stats = "\n".join([ss.__repr__(level + 2) for ss in self.stages_stats])
+        operators_stats = "\n".join(
+            [ss.__repr__(level + 2) for ss in self.operators_stats]
+        )
         parent_stats = "\n".join([ps.__repr__(level + 2) for ps in self.parents])
         extra_metrics = "\n".join(
             f"{leveled_indent(level + 2)}{k}: {v},"
@@ -419,7 +799,9 @@ class DatasetStatsSummary:
         )
 
         # Handle formatting case for empty outputs.
-        stage_stats = f"\n{stage_stats},\n{indent}   " if stage_stats else ""
+        operators_stats = (
+            f"\n{operators_stats},\n{indent}   " if operators_stats else ""
+        )
         parent_stats = f"\n{parent_stats},\n{indent}   " if parent_stats else ""
         extra_metrics = f"\n{extra_metrics}\n{indent}   " if extra_metrics else ""
         return (
@@ -428,8 +810,11 @@ class DatasetStatsSummary:
             f"{indent}   base_name={self.base_name},\n"
             f"{indent}   number={self.number},\n"
             f"{indent}   extra_metrics={{{extra_metrics}}},\n"
-            f"{indent}   stage_stats=[{stage_stats}],\n"
+            f"{indent}   operators_stats=[{operators_stats}],\n"
             f"{indent}   iter_stats={self.iter_stats.__repr__(level+1)},\n"
+            f"{indent}   global_bytes_spilled={self.global_bytes_spilled / 1e6}MB,\n"
+            f"{indent}   global_bytes_restored={self.global_bytes_restored / 1e6}MB,\n"
+            f"{indent}   dataset_bytes_spilled={self.dataset_bytes_spilled / 1e6}MB,\n"
             f"{indent}   parents=[{parent_stats}],\n"
             f"{indent})"
         )
@@ -438,39 +823,42 @@ class DatasetStatsSummary:
         parent_wall_times = [p.get_total_wall_time() for p in self.parents]
         parent_max_wall_time = max(parent_wall_times) if parent_wall_times else 0
         return parent_max_wall_time + sum(
-            ss.wall_time.get("max", 0) for ss in self.stages_stats
+            ss.wall_time.get("max", 0) for ss in self.operators_stats
         )
 
     def get_total_cpu_time(self) -> float:
         parent_sum = sum(p.get_total_cpu_time() for p in self.parents)
-        return parent_sum + sum(ss.cpu_time.get("sum", 0) for ss in self.stages_stats)
+        return parent_sum + sum(
+            ss.cpu_time.get("sum", 0) for ss in self.operators_stats
+        )
 
     def get_max_heap_memory(self) -> float:
         parent_memory = [p.get_max_heap_memory() for p in self.parents]
         parent_max = max(parent_memory) if parent_memory else 0
-        if not self.stages_stats:
+        if not self.operators_stats:
             return parent_max
 
         return max(
             parent_max,
-            *[ss.memory.get("max", 0) for ss in self.stages_stats],
+            *[ss.memory.get("max", 0) for ss in self.operators_stats],
         )
 
 
 @dataclass
-class StageStatsSummary:
-    stage_name: str
-    # Whether the stage associated with this StageStatsSummary object is a substage
-    is_substage: bool
-    # This is the total walltime of the entire stage, typically obtained from
+class OperatorStatsSummary:
+    operator_name: str
+    # Whether the operator associated with this OperatorStatsSummary object
+    # is a suboperator
+    is_sub_operator: bool
+    # This is the total walltime of the entire operator, typically obtained from
     # `DatasetStats.time_total_s`. An important distinction is that this is the
-    # overall runtime of the stage, pulled from the stats actor, whereas the
-    # computed walltimes in `self.wall_time` are calculated on a substage level.
+    # overall runtime of the operator, pulled from the stats actor, whereas the
+    # computed walltimes in `self.wall_time` are calculated on a operator level.
     time_total_s: float
-    # String summarizing high-level statistics from executing the stage
+    # String summarizing high-level statistics from executing the operator
     block_execution_summary_str: str
     # The fields below are dicts with stats aggregated across blocks
-    # processed in this stage. For example:
+    # processed in this operator. For example:
     # {"min": ..., "max": ..., "mean": ..., "sum": ...}
     wall_time: Optional[Dict[str, float]] = None
     cpu_time: Optional[Dict[str, float]] = None
@@ -480,37 +868,36 @@ class StageStatsSummary:
     output_size_bytes: Optional[Dict[str, float]] = None
     # node_count: "count" stat instead of "sum"
     node_count: Optional[Dict[str, float]] = None
+    task_rows: Optional[Dict[str, float]] = None
 
     @classmethod
     def from_block_metadata(
         cls,
+        operator_name: str,
         block_metas: List[BlockMetadata],
-        stage_name: str,
-        is_substage: bool,
-    ) -> "StageStatsSummary":
-        """Calculate the stats for a stage from a given list of blocks,
-        and generates a `StageStatsSummary` object with the results.
+        is_sub_operator: bool,
+    ) -> "OperatorStatsSummary":
+        """Calculate the stats for a operator from a given list of blocks,
+        and generates a `OperatorStatsSummary` object with the results.
 
         Args:
             block_metas: List of `BlockMetadata` to calculate stats of
-            stage_name: Name of stage associated with `blocks`
-            is_substage: Whether this set of blocks belongs to a substage.
+            operator_name: Name of operator associated with `blocks`
+            is_sub_operator: Whether this set of blocks belongs to a sub operator.
         Returns:
-            A `StageStatsSummary` object initialized with the calculated statistics
+            A `OperatorStatsSummary` object initialized with the calculated statistics
         """
         exec_stats = [m.exec_stats for m in block_metas if m.exec_stats is not None]
         rounded_total = 0
         time_total_s = 0
 
-        if is_substage:
-            exec_summary_str = "{}/{} blocks executed\n".format(
-                len(exec_stats), len(block_metas)
-            )
+        if is_sub_operator:
+            exec_summary_str = "{} blocks produced\n".format(len(exec_stats))
         else:
             if exec_stats:
-                # Calculate the total execution time of stage as
+                # Calculate the total execution time of operator as
                 # the difference between the latest end time and
-                # the earliest start time of all blocks in the stage.
+                # the earliest start time of all blocks in the operator.
                 earliest_start_time = min(s.start_time_s for s in exec_stats)
                 latest_end_time = max(s.end_time_s for s in exec_stats)
                 time_total_s = latest_end_time - earliest_start_time
@@ -519,21 +906,28 @@ class StageStatsSummary:
                 if rounded_total <= 0:
                     # Handle -0.0 case.
                     rounded_total = 0
-                exec_summary_str = "{}/{} blocks executed in {}s".format(
-                    len(exec_stats), len(block_metas), rounded_total
+                exec_summary_str = "{} blocks produced in {}s".format(
+                    len(exec_stats), rounded_total
                 )
             else:
                 exec_summary_str = ""
-            if len(exec_stats) < len(block_metas):
-                if exec_stats:
-                    exec_summary_str += ", "
-                num_inherited = len(block_metas) - len(exec_stats)
-                exec_summary_str += "{}/{} blocks split from parent".format(
-                    num_inherited, len(block_metas)
-                )
-                if not exec_stats:
-                    exec_summary_str += " in {}s".format(rounded_total)
             exec_summary_str += "\n"
+
+        task_rows = collections.defaultdict(int)
+        for meta in block_metas:
+            if meta.num_rows is not None and meta.exec_stats is not None:
+                task_rows[meta.exec_stats.task_idx] += meta.num_rows
+        task_rows_stats = None
+        if len(task_rows) > 0:
+            task_rows_stats = {
+                "min": min(task_rows.values()),
+                "max": max(task_rows.values()),
+                "mean": int(np.mean(list(task_rows.values()))),
+                "count": len(task_rows),
+            }
+            exec_summary_str = "{} tasks executed, {}".format(
+                len(task_rows), exec_summary_str
+            )
 
         wall_time_stats = None
         if exec_stats:
@@ -586,9 +980,11 @@ class StageStatsSummary:
 
         node_counts_stats = None
         if exec_stats:
-            node_counts = collections.defaultdict(int)
+            node_tasks = collections.defaultdict(set)
             for s in exec_stats:
-                node_counts[s.node_id] += 1
+                node_tasks[s.node_id].add(s.task_idx)
+
+            node_counts = {node: len(tasks) for node, tasks in node_tasks.items()}
             node_counts_stats = {
                 "min": min(node_counts.values()),
                 "max": max(node_counts.values()),
@@ -596,9 +992,9 @@ class StageStatsSummary:
                 "count": len(node_counts),
             }
 
-        return StageStatsSummary(
-            stage_name=stage_name,
-            is_substage=is_substage,
+        return OperatorStatsSummary(
+            operator_name=operator_name,
+            is_sub_operator=is_sub_operator,
             time_total_s=time_total_s,
             block_execution_summary_str=exec_summary_str,
             wall_time=wall_time_stats,
@@ -607,17 +1003,18 @@ class StageStatsSummary:
             output_num_rows=output_num_rows_stats,
             output_size_bytes=output_size_bytes_stats,
             node_count=node_counts_stats,
+            task_rows=task_rows_stats,
         )
 
     def __str__(self) -> str:
-        """For a given (pre-calculated) `StageStatsSummary` object (e.g. generated from
-        `StageStatsSummary.from_block_metadata()`), returns a human-friendly string
-        that summarizes stage execution statistics.
+        """For a given (pre-calculated) `OperatorStatsSummary` object (e.g. generated from
+        `OperatorStatsSummary.from_block_metadata()`), returns a human-friendly string
+        that summarizes operator execution statistics.
 
         Returns:
-            String with summary statistics for executing the given stage.
+            String with summary statistics for executing the given operator.
         """
-        indent = "\t" if self.is_substage else ""
+        indent = "\t" if self.is_sub_operator else ""
         out = self.block_execution_summary_str
 
         wall_time_stats = self.wall_time
@@ -652,7 +1049,9 @@ class StageStatsSummary:
         output_num_rows_stats = self.output_num_rows
         if output_num_rows_stats:
             out += indent
-            out += "* Output num rows: {} min, {} max, {} mean, {} total\n".format(
+            out += (
+                "* Output num rows per block: {} min, {} max, {} mean, {} total\n"
+            ).format(
                 output_num_rows_stats["min"],
                 output_num_rows_stats["max"],
                 output_num_rows_stats["mean"],
@@ -662,11 +1061,25 @@ class StageStatsSummary:
         output_size_bytes_stats = self.output_size_bytes
         if output_size_bytes_stats:
             out += indent
-            out += "* Output size bytes: {} min, {} max, {} mean, {} total\n".format(
+            out += (
+                "* Output size bytes per block: {} min, {} max, {} mean, {} total\n"
+            ).format(
                 output_size_bytes_stats["min"],
                 output_size_bytes_stats["max"],
                 output_size_bytes_stats["mean"],
                 output_size_bytes_stats["sum"],
+            )
+
+        task_rows = self.task_rows
+        if task_rows:
+            out += indent
+            out += (
+                "* Output rows per task: {} min, {} max, {} mean, {} tasks used\n"
+            ).format(
+                task_rows["min"],
+                task_rows["max"],
+                task_rows["mean"],
+                task_rows["count"],
             )
 
         node_count_stats = self.node_count
@@ -681,15 +1094,15 @@ class StageStatsSummary:
         return out
 
     def __repr__(self, level=0) -> str:
-        """For a given (pre-calculated) `StageStatsSummary` object (e.g. generated from
-        `StageStatsSummary.from_block_metadata()`), returns a human-friendly string
-        that summarizes stage execution statistics.
+        """For a given (pre-calculated) `OperatorStatsSummary` object (e.g. generated from
+        `OperatorStatsSummary.from_block_metadata()`), returns a human-friendly string
+        that summarizes operator execution statistics.
 
         Returns:
-            String with summary statistics for executing the given stage.
+            String with summary statistics for executing the given operator.
         """
         indent = leveled_indent(level)
-        indent += leveled_indent(1) if self.is_substage else ""
+        indent += leveled_indent(1) if self.is_sub_operator else ""
 
         wall_time_stats = {k: fmt(v) for k, v in (self.wall_time or {}).items()}
         cpu_stats = {k: fmt(v) for k, v in (self.cpu_time or {}).items()}
@@ -702,9 +1115,9 @@ class StageStatsSummary:
         }
         node_conut_stats = {k: fmt(v) for k, v in (self.node_count or {}).items()}
         out = (
-            f"{indent}StageStatsSummary(\n"
-            f"{indent}   stage_name='{self.stage_name}',\n"
-            f"{indent}   is_substage={self.is_substage},\n"
+            f"{indent}OperatorStatsSummary(\n"
+            f"{indent}   operator_name='{self.operator_name}',\n"
+            f"{indent}   is_suboperator={self.is_sub_operator},\n"
             f"{indent}   time_total_s={fmt(self.time_total_s)},\n"
             # block_execution_summary_str already ends with \n
             f"{indent}   block_execution_summary_str={self.block_execution_summary_str}"
@@ -721,8 +1134,6 @@ class StageStatsSummary:
 
 @dataclass
 class IterStatsSummary:
-    # Whether the legacy `iter_batches` is being used.
-    legacy_iter_batches: bool
     # Time spent in actor based prefetching, in seconds.
     wait_time: Timer
     # Time spent in `ray.get()`, in seconds
@@ -749,10 +1160,7 @@ class IterStatsSummary:
     iter_unknown_location: int
 
     def __str__(self) -> str:
-        if self.legacy_iter_batches:
-            return self.to_string_legacy()
-        else:
-            return self.to_string()
+        return self.to_string()
 
     def to_string(self) -> str:
         out = ""
@@ -831,31 +1239,6 @@ class IterStatsSummary:
 
         return out
 
-    def to_string_legacy(self) -> str:
-        """Iteration stats summary for legacy `iter_batches`."""
-
-        out = ""
-        if (
-            self.total_time.get()
-            or self.wait_time.get()
-            or self.next_time.get()
-            or self.format_time.get()
-            or self.get_time.get()
-        ):
-            out += "\nDataset iterator time breakdown:\n"
-            out += "* In ray.wait(): {}\n".format(fmt(self.wait_time.get()))
-            out += "* In ray.get(): {}\n".format(fmt(self.get_time.get()))
-            out += "* Num blocks local: {}\n".format(self.iter_blocks_local)
-            out += "* Num blocks remote: {}\n".format(self.iter_blocks_remote)
-            out += "* Num blocks unknown location: {}\n".format(
-                self.iter_unknown_location
-            )
-            out += "* In next_batch(): {}\n".format(fmt(self.next_time.get()))
-            out += "* In format_batch(): {}\n".format(fmt(self.format_time.get()))
-            out += "* In user code: {}\n".format(fmt(self.user_time.get()))
-            out += "* Total time: {}\n".format(fmt(self.total_time.get()))
-        return out
-
     def __repr__(self, level=0) -> str:
         indent = leveled_indent(level)
         return (
@@ -871,110 +1254,3 @@ class IterStatsSummary:
             f"{indent}   total_time={fmt(self.total_time.get()) or None},\n"
             f"{indent})"
         )
-
-
-class DatasetPipelineStats:
-    """Holds the execution times for a pipeline of Datasets."""
-
-    def __init__(self, *, max_history: int = 3):
-        """Create a dataset pipeline stats object.
-
-        Args:
-            max_history: The max number of dataset window stats to track.
-        """
-        self.max_history: int = max_history
-        self.history_buffer: List[Tuple[int, DatasetStats]] = []
-        self.count = 0
-        self.wait_time_s = []
-
-        # Iteration stats, filled out if the user iterates over the pipeline.
-        self._iter_stats = {
-            "iter_ds_wait_s": Timer(),
-            "iter_wait_s": Timer(),
-            "iter_get_s": Timer(),
-            "iter_next_batch_s": Timer(),
-            "iter_format_batch_s": Timer(),
-            "iter_collate_batch_s": Timer(),
-            "iter_finalize_batch_s": Timer(),
-            "iter_user_s": Timer(),
-            "iter_total_s": Timer(),
-        }
-
-    # Make iteration stats also accessible via attributes.
-    def __getattr__(self, name):
-        if name == "_iter_stats":
-            raise AttributeError
-        if name in self._iter_stats:
-            return self._iter_stats[name]
-        raise AttributeError
-
-    def add(self, stats: DatasetStats) -> None:
-        """Called to add stats for a newly computed window."""
-        self.history_buffer.append((self.count, stats))
-        if len(self.history_buffer) > self.max_history:
-            self.history_buffer.pop(0)
-        self.count += 1
-
-    def add_pipeline_stats(self, other_stats: "DatasetPipelineStats"):
-        """Add the provided pipeline stats to the current stats.
-
-        `other_stats` should cover a disjoint set of windows than
-        the current stats.
-        """
-        for _, dataset_stats in other_stats.history_buffer:
-            self.add(dataset_stats)
-
-        self.wait_time_s.extend(other_stats.wait_time_s)
-
-        for stat_name, timer in self._iter_stats.items():
-            timer.add(other_stats._iter_stats[stat_name].get())
-
-    def _summarize_iter(self) -> str:
-        out = ""
-        if (
-            self.iter_total_s.get()
-            or self.iter_wait_s.get()
-            or self.iter_next_batch_s.get()
-            or self.iter_format_batch_s.get()
-            or self.iter_get_s.get()
-        ):
-            out += "\nDatasetPipeline iterator time breakdown:\n"
-            out += "* Waiting for next dataset: {}\n".format(
-                fmt(self.iter_ds_wait_s.get())
-            )
-            out += "* In ray.wait(): {}\n".format(fmt(self.iter_wait_s.get()))
-            out += "* In ray.get(): {}\n".format(fmt(self.iter_get_s.get()))
-            out += "* In next_batch(): {}\n".format(fmt(self.iter_next_batch_s.get()))
-            out += "* In format_batch(): {}\n".format(
-                fmt(self.iter_format_batch_s.get())
-            )
-            out += "* In user code: {}\n".format(fmt(self.iter_user_s.get()))
-            out += "* Total time: {}\n".format(fmt(self.iter_total_s.get()))
-
-        return out
-
-    def summary_string(self, exclude_first_window: bool = True) -> str:
-        """Return a human-readable summary of this pipeline's stats."""
-        already_printed = set()
-        out = ""
-        if not self.history_buffer:
-            return "No stats available: This pipeline hasn't been run yet."
-        for i, stats in self.history_buffer:
-            out += "== Pipeline Window {} ==\n".format(i)
-            out += stats.to_summary().to_string(already_printed)
-            out += "\n"
-        out += "##### Overall Pipeline Time Breakdown #####\n"
-        # Drop the first sample since there's no pipelining there.
-        wait_time_s = self.wait_time_s[1 if exclude_first_window else 0 :]
-        if wait_time_s:
-            out += (
-                "* Time stalled waiting for next dataset: "
-                "{} min, {} max, {} mean, {} total\n".format(
-                    fmt(min(wait_time_s)),
-                    fmt(max(wait_time_s)),
-                    fmt(np.mean(wait_time_s)),
-                    fmt(sum(wait_time_s)),
-                )
-            )
-        out += self._summarize_iter()
-        return out
