@@ -25,6 +25,7 @@ class LinuxTesterContainer(TesterContainer, LinuxContainer):
                 f"{os.environ.get('RAYCI_CHECKOUT_DIR')}:/ray-mount",
                 "/var/run/docker.sock:/var/run/docker.sock",
             ],
+            mount_tmpfs=True,
         )
         TesterContainer.__init__(
             self,
