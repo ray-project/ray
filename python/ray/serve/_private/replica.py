@@ -291,13 +291,27 @@ class ReplicaActor:
         """
         return self._queue_metrics_manager.get_num_pending_and_running_requests()
 
+    def _set_request_context(self, request_metadata: RequestMetadata):
+        """Set request context var with metadata for a single request."""
+        ray.serve.context._serve_request_context.set(
+            ray.serve.context._RequestContext(
+                request_metadata.route,
+                request_metadata.request_id,
+                self._deployment_id.app,
+                request_metadata.multiplexed_model_id,
+                request_metadata.grpc_context,
+            )
+        )
+
     async def handle_request(
         self,
         pickled_request_metadata: bytes,
         *request_args,
         **request_kwargs,
     ) -> Tuple[bytes, Any]:
+        """Entrypoint for all `stream=False` calls."""
         request_metadata = pickle.loads(pickled_request_metadata)
+        self._set_request_context(request_metadata)
         return await self._user_callable_wrapper.call_user_method(
             request_metadata, request_args, request_kwargs
         )
@@ -378,6 +392,7 @@ class ReplicaActor:
     ) -> AsyncGenerator[Any, None]:
         """Generator that is the entrypoint for all `stream=True` handle calls."""
         request_metadata = pickle.loads(pickled_request_metadata)
+        self._set_request_context(request_metadata)
         if request_metadata.is_http_request:
             assert len(request_args) == 1 and isinstance(
                 request_args[0], StreamingHTTPRequest
@@ -682,18 +697,6 @@ class UserCallableWrapper:
         user_config during method calls, and records metrics based on the result of the
         method.
         """
-        # Set request context variables for subsequent handle so that
-        # handle can pass the correct request context to subsequent replicas.
-        ray.serve.context._serve_request_context.set(
-            ray.serve.context._RequestContext(
-                request_metadata.route,
-                request_metadata.request_id,
-                self._deployment_id.app,
-                request_metadata.multiplexed_model_id,
-                request_metadata.grpc_context,
-            )
-        )
-
         logger.info(
             f"Started executing request {request_metadata.request_id}",
             extra={"log_to_stderr": False, "serve_access_log": True},
