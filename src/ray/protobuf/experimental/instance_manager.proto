@@ -121,8 +121,6 @@ message InstanceUpdateEvent {
   Instance.InstanceStatus new_instance_status = 2;
   // The details of the status change if any.
   string details = 3;
-  // The ray node id if new status is RAY_RUNNING.
-  optional bytes ray_node_id = 4;
 }
 
 // Launch request for a node type.
