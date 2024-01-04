@@ -36,5 +36,5 @@ class LogicalOperator(Operator):
         if self._num_outputs is not None:
             return self._num_outputs
         elif len(self._input_dependencies) == 1:
-            return self._input_dependencies[0].num_outputs()
+            return self._input_dependencies[0].estimated_num_outputs()
         return None
