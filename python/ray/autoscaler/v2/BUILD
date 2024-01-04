@@ -118,3 +118,11 @@ py_test(
     tags = ["team:core", "exclusive"],
     deps = ["//:ray_lib", ":conftest"],
 )
+
+py_test(
+    name = "test_autoscaler",
+    size = "small",
+    srcs = ["tests/test_autoscaler.py"],
+    tags = ["team:core", "exclusive"],
+    deps = ["//:ray_lib", ":conftest"],
+)
