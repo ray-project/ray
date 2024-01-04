@@ -1037,6 +1037,8 @@ class HTTPProxy(GenericProxy):
             )
 
         finally:
+            # For websocket connection, queue receive task is done when receiving
+            # disconnect message from client.
             receive_client_disconnect_msg = False
             if not proxy_asgi_receive_task.done():
                 proxy_asgi_receive_task.cancel()
@@ -1061,10 +1063,11 @@ class HTTPProxy(GenericProxy):
                         code="1000",  # [Sihan] is there a better code for this?
                         is_error=True,
                     )
+                    pass
 
             del self.asgi_receive_queues[request_id]
 
-        # Final message should always be the status code.
+        # The status code should always be set.
         assert status is not None
         yield status
 
