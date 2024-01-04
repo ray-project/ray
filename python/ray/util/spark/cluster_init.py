@@ -1615,10 +1615,10 @@ def _start_ray_worker_nodes(
         )
         job_rdd = job_rdd.withResources(resource_profile)
 
-    job_rdd.mapPartitions(ray_cluster_job_mapper).collect()
-
     hook_entry = _create_hook_entry(is_global=(ray_temp_dir is None))
     hook_entry.on_spark_job_created(spark_job_group_id)
+
+    job_rdd.mapPartitions(ray_cluster_job_mapper).collect()
 
 
 @PublicAPI(stability="alpha")
