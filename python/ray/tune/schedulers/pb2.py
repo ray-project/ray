@@ -231,8 +231,9 @@ def _explore(
         for i, col in enumerate(hparams.columns):
             # Use the type from the old config. Like this types
             # should be passed on from the first config downwards.
-            new_config[col] = type(config[col])(new[i])
-            values.append(type(config[col])(new[i]))
+            type_ = type(config[col])
+            new_config[col] = type_(new[i])
+            values.append(type_(new[i]))
 
         new_T = df[df["Trial"] == str(base)].iloc[-1, :]["Time"]
         new_Reward = df[df["Trial"] == str(base)].iloc[-1, :].Reward
