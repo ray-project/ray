@@ -5,7 +5,7 @@ import os
 import pickle
 import time
 import traceback
-from contextlib import asynccontextmanager
+from contextlib import contextmanager
 from importlib import import_module
 from typing import Any, AsyncGenerator, Callable, Dict, Optional, Tuple, Union
 
@@ -93,12 +93,13 @@ def _load_deployment_def_from_import_path(import_path: str) -> Callable:
     return deployment_def
 
 
-class ReplicaQueueMetricsManager:
-    """Manages queue metrics for the replica.
+class ReplicaMetricsManager:
+    """Manages metrics for the replica.
 
-    Metrics are periodically recorded and primarily used for two purposes:
-        - Pushing statistics to the controller for autoscaling.
-        - Exporting user-facing Prometheus gauges.
+    A variety of metrics are managed:
+        - Fine-grained metrics are set for every request.
+        - Autoscaling statistics are periodically pushed to the controller.
+        - Queue length metrics are periodically recorded as user-facing gauges.
     """
 
     def __init__(
@@ -114,6 +115,39 @@ class ReplicaQueueMetricsManager:
         self._autoscaling_config = autoscaling_config
         self._controller_handle = ray.get_actor(
             SERVE_CONTROLLER_NAME, namespace=SERVE_NAMESPACE
+        )
+
+        # Request counter (only set on replica startup).
+        self._restart_counter = metrics.Counter(
+            "serve_deployment_replica_starts",
+            description=(
+                "The number of times this replica has been restarted due to failure."
+            ),
+        )
+        self._restart_counter.inc()
+
+        # Per-request metrics.
+        self._request_counter = metrics.Counter(
+            "serve_deployment_request_counter",
+            description=(
+                "The number of queries that have been processed in this replica."
+            ),
+            tag_keys=("route",),
+        )
+
+        self._error_counter = metrics.Counter(
+            "serve_deployment_error_counter",
+            description=(
+                "The number of exceptions that have occurred in this replica."
+            ),
+            tag_keys=("route",),
+        )
+
+        self._processing_latency_tracker = metrics.Histogram(
+            "serve_deployment_processing_latency_ms",
+            description="The latency for queries to be processed.",
+            boundaries=DEFAULT_LATENCY_BUCKET_MS,
+            tag_keys=("route",),
         )
 
         # User-facing Prometheus gauges.
@@ -150,17 +184,31 @@ class ReplicaQueueMetricsManager:
             )
 
     def start(self):
+        """Start periodic background tasks."""
         self._metrics_pusher.start()
 
     def shutdown(self):
+        """Stop periodic background tasks."""
         self._metrics_pusher.shutdown()
 
     def set_autoscaling_config(self, autoscaling_config: AutoscalingConfig):
+        """Dynamically update autoscaling config."""
         self._autoscaling_config = autoscaling_config
 
     def get_num_pending_and_running_requests(self) -> int:
+        """Get current total queue length of requests for this replica."""
         stats = self._get_handle_request_stats() or {}
         return stats.get("pending", 0) + stats.get("running", 0)
+
+    def record_request_metrics(
+        self, *, route: str, status_str: str, latency_ms: float, was_error: bool
+    ):
+        """Records per-request metrics."""
+        self._processing_latency_tracker.observe(latency_ms, tags={"route": route})
+        if was_error:
+            self._error_counter.inc(tags={"route": route})
+        else:
+            self._request_counter.inc(tags={"route": route})
 
     def _collect_autoscaling_metrics(self):
         look_back_period = self._autoscaling_config.look_back_period_s
@@ -223,6 +271,7 @@ class ReplicaActor:
     ):
         self._version = version
         self._replica_tag = replica_tag
+        self._deployment_id = deployment_id
         self._deployment_config = DeploymentConfig.from_proto_bytes(
             deployment_config_proto_bytes
         )
@@ -238,17 +287,28 @@ class ReplicaActor:
             cloudpickle.loads(serialized_init_args),
             cloudpickle.loads(serialized_init_kwargs),
             deployment_id=deployment_id,
-            replica_tag=replica_tag,
         )
 
         # Guards against calling the user's callable constructor multiple times.
         self._user_callable_initialized = False
         self._user_callable_initialized_lock = asyncio.Lock()
 
-        self._queue_metrics_manager = ReplicaQueueMetricsManager(
+        # Set metadata for logs and metrics.
+        # servable_object will be populated in `initialize_and_get_metadata`.
+        self._set_internal_replica_context(servable_object=None)
+
+        self._metrics_manager = ReplicaMetricsManager(
             replica_tag, deployment_id, self._deployment_config.autoscaling_config
         )
-        self._queue_metrics_manager.start()
+        self._metrics_manager.start()
+
+    def _set_internal_replica_context(self, *, servable_object: Callable = None):
+        ray.serve.context._set_internal_replica_context(
+            app_name=self._deployment_id.app,
+            deployment=self._deployment_id.name,
+            replica_tag=self._replica_tag,
+            servable_object=servable_object,
+        )
 
     def _configure_logger_and_profilers(
         self, logging_config: Union[None, Dict, LoggingConfig]
@@ -289,7 +349,61 @@ class ReplicaActor:
         This runs on a separate thread (using a Ray concurrency group) so it will
         not be blocked by user code.
         """
-        return self._queue_metrics_manager.get_num_pending_and_running_requests()
+        return self._metrics_manager.get_num_pending_and_running_requests()
+
+    @contextmanager
+    def _wrap_user_method_call(self, request_metadata: RequestMetadata):
+        """Context manager that wraps user method calls.
+
+        1) Sets the request context var with appropriate metadata.
+        2) Records the access log message (if not disabled).
+        3) Records per-request metrics via the metrics manager.
+        """
+        ray.serve.context._serve_request_context.set(
+            ray.serve.context._RequestContext(
+                request_metadata.route,
+                request_metadata.request_id,
+                self._deployment_id.app,
+                request_metadata.multiplexed_model_id,
+                request_metadata.grpc_context,
+            )
+        )
+
+        start_time = time.time()
+        user_exception = None
+        try:
+            yield
+        except Exception as e:
+            user_exception = e
+            logger.error(f"Request failed:\n{e}")
+            if ray.util.pdb._is_ray_debugger_enabled():
+                ray.util.pdb._post_mortem()
+
+        latency_ms = (time.time() - start_time) * 1000
+        if user_exception is None:
+            status_str = "OK"
+        elif isinstance(user_exception, asyncio.CancelledError):
+            status_str = "CANCELLED"
+        else:
+            status_str = "ERROR"
+
+        logger.info(
+            access_log_msg(
+                method=request_metadata.call_method,
+                status=status_str,
+                latency_ms=latency_ms,
+            ),
+            extra={"serve_access_log": True},
+        )
+        self._metrics_manager.record_request_metrics(
+            route=request_metadata.route,
+            status_str=status_str,
+            latency_ms=latency_ms,
+            was_error=user_exception is not None,
+        )
+
+        if user_exception is not None:
+            raise user_exception from None
 
     async def handle_request(
         self,
@@ -297,10 +411,12 @@ class ReplicaActor:
         *request_args,
         **request_kwargs,
     ) -> Tuple[bytes, Any]:
+        """Entrypoint for all `stream=False` calls."""
         request_metadata = pickle.loads(pickled_request_metadata)
-        return await self._user_callable_wrapper.call_user_method(
-            request_metadata, request_args, request_kwargs
-        )
+        with self._wrap_user_method_call(request_metadata):
+            return await self._user_callable_wrapper.call_user_method(
+                request_metadata, request_args, request_kwargs
+            )
 
     async def _handle_http_request_generator(
         self,
@@ -378,20 +494,21 @@ class ReplicaActor:
     ) -> AsyncGenerator[Any, None]:
         """Generator that is the entrypoint for all `stream=True` handle calls."""
         request_metadata = pickle.loads(pickled_request_metadata)
-        if request_metadata.is_http_request:
-            assert len(request_args) == 1 and isinstance(
-                request_args[0], StreamingHTTPRequest
-            )
-            generator = self._handle_http_request_generator(
-                request_metadata, request_args[0]
-            )
-        else:
-            generator = self._user_callable_wrapper.call_user_method_generator(
-                request_metadata, request_args, request_kwargs
-            )
+        with self._wrap_user_method_call(request_metadata):
+            if request_metadata.is_http_request:
+                assert len(request_args) == 1 and isinstance(
+                    request_args[0], StreamingHTTPRequest
+                )
+                generator = self._handle_http_request_generator(
+                    request_metadata, request_args[0]
+                )
+            else:
+                generator = self._user_callable_wrapper.call_user_method_generator(
+                    request_metadata, request_args, request_kwargs
+                )
 
-        async for result in generator:
-            yield result
+            async for result in generator:
+                yield result
 
     async def handle_request_from_java(
         self,
@@ -411,10 +528,10 @@ class ReplicaActor:
             multiplexed_model_id=proto.multiplexed_model_id,
             route=proto.route,
         )
-        request_args = request_args[0]
-        return await self._user_callable_wrapper.call_user_method(
-            request_metadata, request_args, request_kwargs
-        )
+        with self._wrap_user_method_call(request_metadata):
+            return await self._user_callable_wrapper.call_user_method(
+                request_metadata, request_args[0], request_kwargs
+            )
 
     async def is_allocated(self) -> str:
         """poke the replica to check whether it's alive.
@@ -452,6 +569,9 @@ class ReplicaActor:
                 if not self._user_callable_initialized:
                     await self._user_callable_wrapper.initialize_callable()
                     self._user_callable_initialized = True
+                    self._set_internal_replica_context(
+                        servable_object=self._user_callable_wrapper.user_callable
+                    )
                 if deployment_config:
                     await self._user_callable_wrapper.call_reconfigure(
                         deployment_config.user_config
@@ -482,7 +602,7 @@ class ReplicaActor:
                 self._version, deployment_config
             )
 
-            self._queue_metrics_manager.set_autoscaling_config(
+            self._metrics_manager.set_autoscaling_config(
                 deployment_config.autoscaling_config
             )
             if logging_config_changed:
@@ -538,7 +658,7 @@ class ReplicaActor:
             await asyncio.sleep(wait_loop_period_s)
 
             num_ongoing_requests = (
-                self._queue_metrics_manager.get_num_pending_and_running_requests()
+                self._metrics_manager.get_num_pending_and_running_requests()
             )
             if num_ongoing_requests > 0:
                 logger.info(
@@ -559,7 +679,7 @@ class ReplicaActor:
             await self._drain_ongoing_requests()
             await self._user_callable_wrapper.call_destructor()
 
-        self._queue_metrics_manager.shutdown()
+        self._metrics_manager.shutdown()
 
     @ray.method(concurrency_group=REPLICA_CONTROL_PLANE_CONCURRENCY_GROUP)
     async def check_health(self):
@@ -576,7 +696,6 @@ class UserCallableWrapper:
         init_kwargs: Dict,
         *,
         deployment_id: DeploymentID,
-        replica_tag: ReplicaTag,
     ):
         if not (inspect.isfunction(deployment_def) or inspect.isclass(deployment_def)):
             raise TypeError(
@@ -589,53 +708,12 @@ class UserCallableWrapper:
         self._init_kwargs = init_kwargs
         self._is_function = inspect.isfunction(deployment_def)
         self._deployment_id = deployment_id
-        self._replica_tag = replica_tag
         self._rwlock = aiorwlock.RWLock()
         self._delete_lock = asyncio.Lock()
 
         # Will be populated in `initialize_callable`.
         self._callable = None
         self._user_health_check = None
-
-        # Set initial metadata for logs and metrics.
-        # servable_object will be populated in `initialize_callable`.
-        ray.serve.context._set_internal_replica_context(
-            app_name=self._deployment_id.app,
-            deployment=self._deployment_id.name,
-            replica_tag=self._replica_tag,
-            servable_object=None,
-        )
-
-        self._request_counter = metrics.Counter(
-            "serve_deployment_request_counter",
-            description=(
-                "The number of queries that have been processed in this replica."
-            ),
-            tag_keys=("route",),
-        )
-
-        self._error_counter = metrics.Counter(
-            "serve_deployment_error_counter",
-            description=(
-                "The number of exceptions that have occurred in this replica."
-            ),
-            tag_keys=("route",),
-        )
-
-        self._restart_counter = metrics.Counter(
-            "serve_deployment_replica_starts",
-            description=(
-                "The number of times this replica has been restarted due to failure."
-            ),
-        )
-        self._restart_counter.inc()
-
-        self._processing_latency_tracker = metrics.Histogram(
-            "serve_deployment_processing_latency_ms",
-            description="The latency for queries to be processed.",
-            boundaries=DEFAULT_LATENCY_BUCKET_MS,
-            tag_keys=("route",),
-        )
 
     def _get_user_callable_method(self, method_name: str) -> Callable:
         if self._is_function:
@@ -674,65 +752,9 @@ class UserCallableWrapper:
         else:
             await Response(result).send(scope, receive, send)
 
-    @asynccontextmanager
-    async def _wrap_user_method_call(self, request_metadata: RequestMetadata):
-        """Context manager that should be used to wrap user method calls.
-
-        This sets up the serve request context, grabs the reader lock to avoid mutating
-        user_config during method calls, and records metrics based on the result of the
-        method.
-        """
-        # Set request context variables for subsequent handle so that
-        # handle can pass the correct request context to subsequent replicas.
-        ray.serve.context._serve_request_context.set(
-            ray.serve.context._RequestContext(
-                request_metadata.route,
-                request_metadata.request_id,
-                self._deployment_id.app,
-                request_metadata.multiplexed_model_id,
-                request_metadata.grpc_context,
-            )
-        )
-
-        logger.info(
-            f"Started executing request {request_metadata.request_id}",
-            extra={"log_to_stderr": False, "serve_access_log": True},
-        )
-        start_time = time.time()
-        user_exception = None
-        try:
-            yield
-        except Exception as e:
-            user_exception = e
-            logger.error(f"Request failed:\n{e}")
-            if ray.util.pdb._is_ray_debugger_enabled():
-                ray.util.pdb._post_mortem()
-
-        latency_ms = (time.time() - start_time) * 1000
-        self._processing_latency_tracker.observe(
-            latency_ms, tags={"route": request_metadata.route}
-        )
-
-        if user_exception is None:
-            status_str = "OK"
-        elif isinstance(user_exception, asyncio.CancelledError):
-            status_str = "CANCELLED"
-        else:
-            status_str = "ERROR"
-
-        logger.info(
-            access_log_msg(
-                method=request_metadata.call_method,
-                status=status_str,
-                latency_ms=latency_ms,
-            ),
-            extra={"serve_access_log": True},
-        )
-        if user_exception is None:
-            self._request_counter.inc(tags={"route": request_metadata.route})
-        else:
-            self._error_counter.inc(tags={"route": request_metadata.route})
-            raise user_exception from None
+    @property
+    def user_callable(self) -> Optional[Callable]:
+        return self._callable
 
     async def initialize_callable(self):
         # This closure initializes user code and finalizes replica
@@ -769,13 +791,6 @@ class UserCallableWrapper:
 
         self._user_health_check = sync_to_async(user_health_check)
 
-        # Setting the context again to update the servable_object.
-        ray.serve.context._set_internal_replica_context(
-            app_name=self._deployment_id.app,
-            deployment=self._deployment_id.name,
-            replica_tag=self._replica_tag,
-            servable_object=self._callable,
-        )
         logger.info(
             "Finished initializing replica.",
             extra={"log_to_stderr": False},
@@ -815,83 +830,79 @@ class UserCallableWrapper:
         Raises any exception raised by the user code so it can be propagated as a
         `RayTaskError`.
         """
-        async with self._wrap_user_method_call(request_metadata):
-            if request_metadata.is_http_request:
-                # For HTTP requests we always expect (scope, receive, send) as args.
-                assert len(request_args) == 3
-                scope, receive, send = request_args
+        logger.info(
+            f"Started executing request {request_metadata.request_id}",
+            extra={"log_to_stderr": False, "serve_access_log": True},
+        )
 
-                if isinstance(self._callable, ASGIAppReplicaWrapper):
-                    request_args = (scope, receive, send)
-                else:
-                    request_args = (Request(scope, receive, send),)
-            elif request_metadata.is_grpc_request:
-                # Ensure the request args are a single gRPCRequest object.
-                assert len(request_args) == 1 and isinstance(
-                    request_args[0], gRPCRequest
-                )
-                request_args = (pickle.loads(request_args[0].grpc_user_request),)
+        if request_metadata.is_http_request:
+            # For HTTP requests we always expect (scope, receive, send) as args.
+            assert len(request_args) == 3
+            scope, receive, send = request_args
 
-            runner_method = None
-            try:
-                runner_method = self._get_user_callable_method(
-                    request_metadata.call_method
-                )
-                if inspect.isgeneratorfunction(
-                    runner_method
-                ) or inspect.isasyncgenfunction(runner_method):
-                    raise TypeError(
-                        f"Method '{runner_method.__name__}' is a generator function. "
-                        "You must use `handle.options(stream=True)` to call "
-                        "generators on a deployment."
-                    )
+            if isinstance(self._callable, ASGIAppReplicaWrapper):
+                request_args = (scope, receive, send)
+            else:
+                request_args = (Request(scope, receive, send),)
+        elif request_metadata.is_grpc_request:
+            # Ensure the request args are a single gRPCRequest object.
+            assert len(request_args) == 1 and isinstance(request_args[0], gRPCRequest)
+            request_args = (pickle.loads(request_args[0].grpc_user_request),)
 
-                method_to_call = sync_to_async(runner_method)
-
-                # Edge case to support empty HTTP handlers: don't pass the Request
-                # argument if the callable has no parameters.
-                params = inspect.signature(runner_method).parameters
-                if request_metadata.is_http_request and len(params) == 0:
-                    request_args, request_kwargs = tuple(), {}
-                elif (
-                    request_metadata.is_grpc_request and GRPC_CONTEXT_ARG_NAME in params
-                ):
-                    request_kwargs = {
-                        GRPC_CONTEXT_ARG_NAME: request_metadata.grpc_context
-                    }
-
-                result = await method_to_call(*request_args, **request_kwargs)
-                if inspect.isgenerator(result) or inspect.isasyncgen(result):
-                    raise TypeError(
-                        f"Method '{runner_method.__name__}' returned a generator. You "
-                        "must use `handle.options(stream=True)` to call "
-                        "generators on a deployment."
-                    )
-
-            except Exception as e:
-                function_name = "unknown"
-                if runner_method is not None:
-                    function_name = runner_method.__name__
-                e = wrap_to_ray_error(function_name, e)
-                if request_metadata.is_http_request:
-                    result = starlette.responses.Response(
-                        f"Unexpected error, traceback: {e}.", status_code=500
-                    )
-                    await self._send_user_result_over_asgi(result, scope, receive, send)
-
-                raise e from None
-
-            if request_metadata.is_http_request and not isinstance(
-                self._callable, ASGIAppReplicaWrapper
+        runner_method = None
+        try:
+            runner_method = self._get_user_callable_method(request_metadata.call_method)
+            if inspect.isgeneratorfunction(runner_method) or inspect.isasyncgenfunction(
+                runner_method
             ):
-                # For the FastAPI codepath, the response has already been sent over the
-                # ASGI interface, but for the vanilla deployment codepath we need to
-                # send it.
-                await self._send_user_result_over_asgi(result, scope, receive, send)
-            elif request_metadata.is_grpc_request:
-                result = (request_metadata.grpc_context, result.SerializeToString())
+                raise TypeError(
+                    f"Method '{runner_method.__name__}' is a generator function. "
+                    "You must use `handle.options(stream=True)` to call "
+                    "generators on a deployment."
+                )
 
-            return result
+            method_to_call = sync_to_async(runner_method)
+
+            # Edge case to support empty HTTP handlers: don't pass the Request
+            # argument if the callable has no parameters.
+            params = inspect.signature(runner_method).parameters
+            if request_metadata.is_http_request and len(params) == 0:
+                request_args, request_kwargs = tuple(), {}
+            elif request_metadata.is_grpc_request and GRPC_CONTEXT_ARG_NAME in params:
+                request_kwargs = {GRPC_CONTEXT_ARG_NAME: request_metadata.grpc_context}
+
+            result = await method_to_call(*request_args, **request_kwargs)
+            if inspect.isgenerator(result) or inspect.isasyncgen(result):
+                raise TypeError(
+                    f"Method '{runner_method.__name__}' returned a generator. You "
+                    "must use `handle.options(stream=True)` to call "
+                    "generators on a deployment."
+                )
+
+        except Exception as e:
+            function_name = "unknown"
+            if runner_method is not None:
+                function_name = runner_method.__name__
+            e = wrap_to_ray_error(function_name, e)
+            if request_metadata.is_http_request:
+                result = starlette.responses.Response(
+                    f"Unexpected error, traceback: {e}.", status_code=500
+                )
+                await self._send_user_result_over_asgi(result, scope, receive, send)
+
+            raise e from None
+
+        if request_metadata.is_http_request and not isinstance(
+            self._callable, ASGIAppReplicaWrapper
+        ):
+            # For the FastAPI codepath, the response has already been sent over the
+            # ASGI interface, but for the vanilla deployment codepath we need to
+            # send it.
+            await self._send_user_result_over_asgi(result, scope, receive, send)
+        elif request_metadata.is_grpc_request:
+            result = (request_metadata.grpc_context, result.SerializeToString())
+
+        return result
 
     async def call_user_method_generator(
         self,
@@ -908,39 +919,39 @@ class UserCallableWrapper:
             not request_metadata.is_http_request
         ), "HTTP requests should go through `call_user_method`."
 
-        async with self._wrap_user_method_call(request_metadata):
-            user_method = self._get_user_callable_method(request_metadata.call_method)
-            if request_metadata.is_grpc_request:
-                assert len(request_args) == 1 and isinstance(
-                    request_args[0], gRPCRequest
-                )
-                request_args = (pickle.loads(request_args[0].grpc_user_request),)
-                if GRPC_CONTEXT_ARG_NAME in inspect.signature(user_method).parameters:
-                    request_kwargs = {
-                        GRPC_CONTEXT_ARG_NAME: request_metadata.grpc_context
-                    }
+        logger.info(
+            f"Started executing request {request_metadata.request_id}",
+            extra={"log_to_stderr": False, "serve_access_log": True},
+        )
 
-            result_generator = user_method(*request_args, **request_kwargs)
-            if inspect.iscoroutine(result_generator):
-                result_generator = await result_generator
+        user_method = self._get_user_callable_method(request_metadata.call_method)
+        if request_metadata.is_grpc_request:
+            assert len(request_args) == 1 and isinstance(request_args[0], gRPCRequest)
+            request_args = (pickle.loads(request_args[0].grpc_user_request),)
+            if GRPC_CONTEXT_ARG_NAME in inspect.signature(user_method).parameters:
+                request_kwargs = {GRPC_CONTEXT_ARG_NAME: request_metadata.grpc_context}
 
-            if inspect.isgenerator(result_generator):
-                for result in result_generator:
-                    if request_metadata.is_grpc_request:
-                        yield request_metadata.grpc_context, result.SerializeToString()
-                    else:
-                        yield result
-            elif inspect.isasyncgen(result_generator):
-                async for result in result_generator:
-                    if request_metadata.is_grpc_request:
-                        yield request_metadata.grpc_context, result.SerializeToString()
-                    else:
-                        yield result
-            else:
-                raise TypeError(
-                    "When using `stream=True`, the called method must be a generator "
-                    f"function, but '{user_method.__name__}' is not."
-                )
+        result_generator = user_method(*request_args, **request_kwargs)
+        if inspect.iscoroutine(result_generator):
+            result_generator = await result_generator
+
+        if inspect.isgenerator(result_generator):
+            for result in result_generator:
+                if request_metadata.is_grpc_request:
+                    yield request_metadata.grpc_context, result.SerializeToString()
+                else:
+                    yield result
+        elif inspect.isasyncgen(result_generator):
+            async for result in result_generator:
+                if request_metadata.is_grpc_request:
+                    yield request_metadata.grpc_context, result.SerializeToString()
+                else:
+                    yield result
+        else:
+            raise TypeError(
+                "When using `stream=True`, the called method must be a generator "
+                f"function, but '{user_method.__name__}' is not."
+            )
 
     async def call_destructor(self):
         """Explicitly call the `__del__` method of the user callable.
