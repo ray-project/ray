@@ -454,8 +454,13 @@ class ApplicationState:
         if self._target_state.deleting:
             return ApplicationStatus.DELETING, ""
 
-        choice_status = min(self.get_deployments_statuses(), key=lambda info: info.rank)
-        if choice_status.status == DeploymentStatus.UNHEALTHY:
+        # Get the lowest rank, i.e. highest priority, deployment status info object
+        # The deployment status info with highest priority determines the corresponding
+        # application status to set.
+        lowest_rank_status = min(
+            self.get_deployments_statuses(), key=lambda info: info.rank
+        )
+        if lowest_rank_status.status == DeploymentStatus.UNHEALTHY:
             unhealthy_deployment_names = [
                 s.name
                 for s in self.get_deployments_statuses()
@@ -469,12 +474,12 @@ class ApplicationState:
                 return ApplicationStatus.DEPLOY_FAILED, status_msg
             else:
                 return ApplicationStatus.UNHEALTHY, status_msg
-        elif choice_status.status == DeploymentStatus.UPDATING:
+        elif lowest_rank_status.status == DeploymentStatus.UPDATING:
             return ApplicationStatus.DEPLOYING, ""
         elif (
-            choice_status.status
+            lowest_rank_status.status
             in [DeploymentStatus.UPSCALING, DeploymentStatus.DOWNSCALING]
-            and choice_status.status_trigger
+            and lowest_rank_status.status_trigger
             == DeploymentStatusTrigger.CONFIG_UPDATE_STARTED
         ):
             return ApplicationStatus.DEPLOYING, ""

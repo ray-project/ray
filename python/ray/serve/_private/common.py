@@ -1,7 +1,7 @@
 import json
 from dataclasses import asdict, dataclass, field
 from enum import Enum
-from typing import List, NamedTuple, Optional, Tuple
+from typing import List, NamedTuple, Optional
 
 from ray.actor import ActorHandle
 from ray.serve.generated.serve_pb2 import ApplicationStatus as ApplicationStatusProto
@@ -132,42 +132,37 @@ class DeploymentStatusInternalTrigger(str, Enum):
     DELETE = "DELETE"
 
 
+# List of states in ranked order.
+#
+# Each ranked state has the format of a tuple with either 1 or 2 items.
+# If 1 item: contains a single DeploymentStatus, representing states with
+#     that DeploymentStatus and any DeploymentStatusTrigger.
+# If 2 items: tuple contains a DeploymentStatus and a DeploymentStatusTrigger,
+#     representing a state with that status and status trigger.
+DEPLOYMENT_STATUS_RANKING_ORDER = {
+    # Status ranking order is defined in a following fashion:
+    #   1. (Highest) State signalling any failures in the system
+    (DeploymentStatus.UNHEALTHY,): 0,
+    #   2. States signaling the user updated the configuration.
+    (DeploymentStatus.UPDATING,): 1,
+    (DeploymentStatus.UPSCALING, DeploymentStatusTrigger.CONFIG_UPDATE_STARTED): 1,
+    (
+        DeploymentStatus.DOWNSCALING,
+        DeploymentStatusTrigger.CONFIG_UPDATE_STARTED,
+    ): 1,
+    #   3. Steady state or autoscaling.
+    (DeploymentStatus.UPSCALING, DeploymentStatusTrigger.AUTOSCALING): 2,
+    (DeploymentStatus.DOWNSCALING, DeploymentStatusTrigger.AUTOSCALING): 2,
+    (DeploymentStatus.HEALTHY,): 2,
+}
+
+
 @dataclass(eq=True)
 class DeploymentStatusInfo:
     name: str
     status: DeploymentStatus
     status_trigger: DeploymentStatusTrigger
     message: str = ""
-
-    @staticmethod
-    def ranking_order() -> List[
-        Tuple[DeploymentStatus, Optional[DeploymentStatusTrigger]]
-    ]:
-        """List of states in ranked order.
-
-        Each ranked state has the format of a tuple with either 1 or 2 items.
-        If 1 item: contains a single DeploymentStatus, representing states with
-            that DeploymentStatus and any DeploymentStatusTrigger.
-        If 2 items: tuple contains a DeploymentStatus and a DeploymentStatusTrigger,
-            representing a state with that status and status trigger.
-        """
-
-        return [
-            # Status ranking order is defined in a following fashion:
-            #   1. (Highest) State signalling any failures in the system
-            (DeploymentStatus.UNHEALTHY,),
-            #   2. States signaling the user updated the configuration.
-            (DeploymentStatus.UPDATING,),
-            (DeploymentStatus.UPSCALING, DeploymentStatusTrigger.CONFIG_UPDATE_STARTED),
-            (
-                DeploymentStatus.DOWNSCALING,
-                DeploymentStatusTrigger.CONFIG_UPDATE_STARTED,
-            ),
-            #   3. Steady state or autoscaling.
-            (DeploymentStatus.UPSCALING, DeploymentStatusTrigger.AUTOSCALING),
-            (DeploymentStatus.DOWNSCALING, DeploymentStatusTrigger.AUTOSCALING),
-            (DeploymentStatus.HEALTHY,),
-        ]
 
     @property
     def rank(self) -> int:
@@ -178,21 +173,22 @@ class DeploymentStatusInfo:
         `DeploymentStatusInfo` sub-resources.
         """
 
-        for i, s in enumerate(DeploymentStatusInfo.ranking_order()):
-            if len(s) == 1 and s[0] == self.status:
-                return i
-            elif len(s) == 2 and s == (self.status, self.status_trigger):
-                return i
+        if (self.status,) in DEPLOYMENT_STATUS_RANKING_ORDER:
+            return DEPLOYMENT_STATUS_RANKING_ORDER[(self.status,)]
+        elif (self.status, self.status_trigger) in DEPLOYMENT_STATUS_RANKING_ORDER:
+            return DEPLOYMENT_STATUS_RANKING_ORDER[(self.status, self.status_trigger)]
 
     def debug_string(self):
         return json.dumps(asdict(self), indent=4)
 
-    def _update(
+    def _updated_copy(
         self,
         status: DeploymentStatus = None,
         status_trigger: DeploymentStatusTrigger = None,
         message: str = "",
     ):
+        """Returns a copy of the current object with the passed in kwargs updated."""
+
         return DeploymentStatusInfo(
             name=self.name,
             status=status if status else self.status,
@@ -201,7 +197,7 @@ class DeploymentStatusInfo:
         )
 
     def update_message(self, message: str):
-        return self._update(message=message)
+        return self._updated_copy(message=message)
 
     def handle_transition(
         self,
@@ -222,7 +218,7 @@ class DeploymentStatusInfo:
         # If there was an unexpected internal error during reconciliation, set
         # status to unhealthy immediately and return
         if trigger == DeploymentStatusInternalTrigger.INTERNAL_ERROR:
-            return self._update(
+            return self._updated_copy(
                 status=DeploymentStatus.UNHEALTHY,
                 status_trigger=DeploymentStatusTrigger.INTERNAL_ERROR,
                 message=message,
@@ -230,7 +226,7 @@ class DeploymentStatusInfo:
 
         # If deployment is being deleted, set status immediately and return
         elif trigger == DeploymentStatusInternalTrigger.DELETE:
-            return self._update(
+            return self._updated_copy(
                 status=DeploymentStatus.UPDATING,
                 status_trigger=DeploymentStatusTrigger.DELETING,
                 message=message,
@@ -240,7 +236,7 @@ class DeploymentStatusInfo:
         elif self.status == DeploymentStatus.UPDATING:
             # Finished updating configuration and transition to healthy
             if trigger == DeploymentStatusInternalTrigger.HEALTHY:
-                return self._update(
+                return self._updated_copy(
                     status=DeploymentStatus.HEALTHY,
                     status_trigger=DeploymentStatusTrigger.CONFIG_UPDATE_COMPLETED,
                     message=message,
@@ -249,7 +245,7 @@ class DeploymentStatusInfo:
             # A new configuration has been deployed before deployment
             # has finished updating
             elif trigger == DeploymentStatusInternalTrigger.CONFIG_UPDATE:
-                return self._update(
+                return self._updated_copy(
                     status=DeploymentStatus.UPDATING,
                     status_trigger=DeploymentStatusTrigger.CONFIG_UPDATE_STARTED,
                     message=message,
@@ -257,13 +253,13 @@ class DeploymentStatusInfo:
 
             # Autoscaling.
             elif trigger == DeploymentStatusInternalTrigger.AUTOSCALE_UP:
-                return self._update(
+                return self._updated_copy(
                     status=DeploymentStatus.UPSCALING,
                     status_trigger=DeploymentStatusTrigger.AUTOSCALING,
                     message=message,
                 )
             elif trigger == DeploymentStatusInternalTrigger.AUTOSCALE_DOWN:
-                return self._update(
+                return self._updated_copy(
                     status=DeploymentStatus.DOWNSCALING,
                     status_trigger=DeploymentStatusTrigger.AUTOSCALING,
                     message=message,
@@ -279,13 +275,13 @@ class DeploymentStatusInfo:
 
             # Failures occurred
             elif trigger == DeploymentStatusInternalTrigger.HEALTH_CHECK_FAILED:
-                return self._update(
+                return self._updated_copy(
                     status=DeploymentStatus.UNHEALTHY,
                     status_trigger=DeploymentStatusTrigger.HEALTH_CHECK_FAILED,
                     message=message,
                 )
             elif trigger == DeploymentStatusInternalTrigger.REPLICA_STARTUP_FAILED:
-                return self._update(
+                return self._updated_copy(
                     status=DeploymentStatus.UNHEALTHY,
                     status_trigger=DeploymentStatusTrigger.REPLICA_STARTUP_FAILED,
                     message=message,
@@ -294,7 +290,7 @@ class DeploymentStatusInfo:
         elif self.status in {DeploymentStatus.UPSCALING, DeploymentStatus.DOWNSCALING}:
             # Deployment transitions to healthy
             if trigger == DeploymentStatusInternalTrigger.HEALTHY:
-                return self._update(
+                return self._updated_copy(
                     status=DeploymentStatus.HEALTHY,
                     status_trigger=DeploymentStatusTrigger.UPSCALE_COMPLETED
                     if self.status == DeploymentStatus.UPSCALING
@@ -304,7 +300,7 @@ class DeploymentStatusInfo:
 
             # Configuration is updated before scaling is finished
             elif trigger == DeploymentStatusInternalTrigger.CONFIG_UPDATE:
-                return self._update(
+                return self._updated_copy(
                     status=DeploymentStatus.UPDATING,
                     status_trigger=DeploymentStatusTrigger.CONFIG_UPDATE_STARTED,
                     message=message,
@@ -319,7 +315,9 @@ class DeploymentStatusInfo:
                 and trigger
                 == DeploymentStatusInternalTrigger.MANUALLY_INCREASE_NUM_REPLICAS
             ):
-                return self._update(status=DeploymentStatus.UPSCALING, message=message)
+                return self._updated_copy(
+                    status=DeploymentStatus.UPSCALING, message=message
+                )
 
             # Downscale replicas before previous upscaling/downscaling has finished
             elif (
@@ -330,19 +328,19 @@ class DeploymentStatusInfo:
                 and trigger
                 == DeploymentStatusInternalTrigger.MANUALLY_DECREASE_NUM_REPLICAS
             ):
-                return self._update(
+                return self._updated_copy(
                     status=DeploymentStatus.DOWNSCALING, message=message
                 )
 
             # Failures occurred
             elif trigger == DeploymentStatusInternalTrigger.REPLICA_STARTUP_FAILED:
-                return self._update(
+                return self._updated_copy(
                     status=DeploymentStatus.UNHEALTHY,
                     status_trigger=DeploymentStatusTrigger.REPLICA_STARTUP_FAILED,
                     message=message,
                 )
             elif trigger == DeploymentStatusInternalTrigger.HEALTH_CHECK_FAILED:
-                return self._update(
+                return self._updated_copy(
                     status=DeploymentStatus.UNHEALTHY,
                     status_trigger=DeploymentStatusTrigger.HEALTH_CHECK_FAILED,
                     message=message,
@@ -355,7 +353,7 @@ class DeploymentStatusInfo:
 
             # New configuration is deployed
             elif trigger == DeploymentStatusInternalTrigger.CONFIG_UPDATE:
-                return self._update(
+                return self._updated_copy(
                     status=DeploymentStatus.UPDATING,
                     status_trigger=DeploymentStatusTrigger.CONFIG_UPDATE_STARTED,
                     message=message,
@@ -366,7 +364,7 @@ class DeploymentStatusInfo:
                 trigger
                 == DeploymentStatusInternalTrigger.MANUALLY_INCREASE_NUM_REPLICAS
             ):
-                return self._update(
+                return self._updated_copy(
                     status=DeploymentStatus.UPSCALING,
                     status_trigger=DeploymentStatusTrigger.CONFIG_UPDATE_STARTED,
                     message=message,
@@ -375,19 +373,19 @@ class DeploymentStatusInfo:
                 trigger
                 == DeploymentStatusInternalTrigger.MANUALLY_DECREASE_NUM_REPLICAS
             ):
-                return self._update(
+                return self._updated_copy(
                     status=DeploymentStatus.DOWNSCALING,
                     status_trigger=DeploymentStatusTrigger.CONFIG_UPDATE_STARTED,
                     message=message,
                 )
             elif trigger == DeploymentStatusInternalTrigger.AUTOSCALE_UP:
-                return self._update(
+                return self._updated_copy(
                     status=DeploymentStatus.UPSCALING,
                     status_trigger=DeploymentStatusTrigger.AUTOSCALING,
                     message=message,
                 )
             elif trigger == DeploymentStatusInternalTrigger.AUTOSCALE_DOWN:
-                return self._update(
+                return self._updated_copy(
                     status=DeploymentStatus.DOWNSCALING,
                     status_trigger=DeploymentStatusTrigger.AUTOSCALING,
                     message=message,
@@ -395,7 +393,7 @@ class DeploymentStatusInfo:
 
             # Health check for one or more replicas has failed
             elif trigger == DeploymentStatusInternalTrigger.HEALTH_CHECK_FAILED:
-                return self._update(
+                return self._updated_copy(
                     status=DeploymentStatus.UNHEALTHY,
                     status_trigger=DeploymentStatusTrigger.HEALTH_CHECK_FAILED,
                     message=message,
@@ -404,7 +402,7 @@ class DeploymentStatusInfo:
         elif self.status == DeploymentStatus.UNHEALTHY:
             # The deployment recovered
             if trigger == DeploymentStatusInternalTrigger.HEALTHY:
-                return self._update(
+                return self._updated_copy(
                     status=DeploymentStatus.HEALTHY,
                     status_trigger=DeploymentStatusTrigger.UNSPECIFIED,
                     message=message,
@@ -412,7 +410,7 @@ class DeploymentStatusInfo:
 
             # A new configuration is being deployed.
             elif trigger == DeploymentStatusInternalTrigger.CONFIG_UPDATE:
-                return self._update(
+                return self._updated_copy(
                     status=DeploymentStatus.UPDATING,
                     status_trigger=DeploymentStatusTrigger.CONFIG_UPDATE_STARTED,
                     message=message,
@@ -420,28 +418,20 @@ class DeploymentStatusInfo:
 
             # Old failures keep getting triggered, or new failures occurred.
             elif trigger == DeploymentStatusInternalTrigger.HEALTH_CHECK_FAILED:
-                return self._update(
+                return self._updated_copy(
                     status=DeploymentStatus.UNHEALTHY,
                     status_trigger=DeploymentStatusTrigger.HEALTH_CHECK_FAILED,
                     message=message,
                 )
             elif trigger == DeploymentStatusInternalTrigger.REPLICA_STARTUP_FAILED:
-                return self._update(
+                return self._updated_copy(
                     status=DeploymentStatus.UNHEALTHY,
                     status_trigger=DeploymentStatusTrigger.REPLICA_STARTUP_FAILED,
                     message=message,
                 )
 
-            # If it's any other transition, ignore it.
-            else:
-                return self
-
-        # Invalid state transition, this counts as an internal error.
-        return self._update(
-            status=DeploymentStatus.UNHEALTHY,
-            status_trigger=DeploymentStatusTrigger.INTERNAL_ERROR,
-            message="OH NO, INVALID STATE TRANSITION",
-        )
+        # If it's any other transition, ignore it.
+        return self
 
     def to_proto(self):
         return DeploymentStatusInfoProto(
