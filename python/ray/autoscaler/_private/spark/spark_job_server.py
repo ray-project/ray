@@ -5,13 +5,9 @@ from functools import partial
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
-# from pyspark.util import inheritable_thread_target
+from pyspark.util import inheritable_thread_target
 
-# from ray.util.spark.cluster_init import _start_ray_worker_nodes
-
-def _start_ray_worker_nodes(*args, **kwargs):
-    print("args:", args)
-    print("kwargs:", kwargs)
+from ray.util.spark.cluster_init import _start_ray_worker_nodes
 
 _logger = logging.getLogger(__name__)
 _logger.setLevel(logging.WARN)
