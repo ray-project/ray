@@ -1,32 +1,24 @@
-from calendar import c
-import time
-
+import logging
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
-from collections import defaultdict
-from typing import Dict, List, Optional, Set, Tuple
-from attr import dataclass
+from typing import Dict, List, Optional
+
+from ray._raylet import GcsClient
+from ray.autoscaler.v2.instance_manager.config import AutoscalingConfig, IConfigReader
 from ray.autoscaler.v2.instance_manager.instance_manager import (
     InstanceManager,
     InstanceUtil,
 )
-from ray.autoscaler.v2.instance_manager.config import AutoscalingConfig, IConfigReader
 from ray.autoscaler.v2.scheduler import (
     IResourceScheduler,
     SchedulingReply,
     SchedulingRequest,
 )
-from ray._raylet import GcsClient
-
 from ray.core.generated.autoscaler_pb2 import (
     AutoscalingState,
     ClusterResourceState,
-    DrainNodeReason,
     NodeState,
     NodeStatus,
-    PendingInstanceRequest,
-    PendingInstance,
-    FailedInstanceRequest,
 )
 from ray.core.generated.instance_manager_pb2 import (
     GetInstanceManagerStateRequest,
@@ -34,12 +26,8 @@ from ray.core.generated.instance_manager_pb2 import (
     InstanceManagerState,
     InstanceUpdateEvent,
     StatusCode,
-    UpdateInstanceManagerStateReply,
     UpdateInstanceManagerStateRequest,
-    LaunchRequest,
 )
-
-import logging
 
 logger = logging.getLogger(__name__)
 
@@ -263,8 +251,8 @@ class AutoscalerV2(IAutoscaler):
         ray node state from the cluster resource state.
 
         Args:
-            cluster_resource_state (ClusterResourceState): The cluster resource state.
-            im_state (InstanceManagerState): The instance manager state.
+            cluster_resource_state: The cluster resource state.
+            im_state: The instance manager state.
 
         Returns:
             List[AutoscalerInstance]: The merged ray node states.
@@ -314,8 +302,9 @@ class AutoscalerV2(IAutoscaler):
                     # require unique ray node for a cloud node instance as a contract
                     # with node providers.
                     logger.error(
-                        f"Duplicate ray node {cloud_instance_id} found: node {ray_node.node_id.decode('utf-8')} "
-                        f"and node {cloud_ids_to_instances[cloud_instance_id].ray_node.node_id.decode('utf-8')}."
+                        f"Duplicate ray node {cloud_instance_id} found: node "
+                        f"{ray_node.node_id.decode('utf-8')} "
+                        f"and node {cloud_ids_to_instances[cloud_instance_id].ray_node.node_id.decode('utf-8')}."  # noqa E501
                         f"Ignoring the new node {ray_node.node_id.decode('utf-8')}"
                     )
                     continue
@@ -404,8 +393,8 @@ class AutoscalerV2(IAutoscaler):
             node_type_configs=config.get_node_type_configs(),
             max_num_worker_nodes=config.get_max_num_worker_nodes(),
             resource_requests=cluster_resource_state.pending_resource_requests,
-            gang_resource_requests=cluster_resource_state.pending_gang_resource_requests,
-            cluster_resource_constraints=cluster_resource_state.cluster_resource_constraints,
+            gang_resource_requests=cluster_resource_state.pending_gang_resource_requests,  # noqa E501
+            cluster_resource_constraints=cluster_resource_state.cluster_resource_constraints,  # noqa E501
             current_nodes=cluster_resource_state.node_states,
             current_instances=im_state.instances,
         )

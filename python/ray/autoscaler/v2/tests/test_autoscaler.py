@@ -1,34 +1,28 @@
 import os
 import sys
-import unittest
-
-# coding: utf-8
-from typing import Dict, Set
-from unittest.mock import patch, call
-from mock import MagicMock
 
 import pytest
-from ray import available_resources
-from ray.autoscaler.v2.tests.util import create_instance
-from ray.autoscaler.v2.instance_manager.config import NodeTypeConfig, IConfigReader
+
+from mock import MagicMock
 
 from ray.autoscaler.v2.autoscaler import AutoscalerV2
-
+from ray.autoscaler.v2.instance_manager.config import IConfigReader, NodeTypeConfig
+from ray.autoscaler.v2.tests.util import create_instance
 from ray.core.generated.autoscaler_pb2 import (
     ClusterResourceState,
     NodeState,
     NodeStatus,
 )
-
-
 from ray.core.generated.instance_manager_pb2 import (
-    Instance,
     GetInstanceManagerStateReply,
+    Instance,
+    InstanceManagerState,
     Status,
     StatusCode,
-    InstanceManagerState,
     UpdateInstanceManagerStateReply,
 )
+
+# coding: utf-8
 
 
 class MockConfigReader(IConfigReader):
@@ -105,7 +99,7 @@ def test_ray_updates_new_nodes():
         )
     )
 
-    state = autoscaler.get_autoscaling_state(
+    autoscaler.get_autoscaling_state(
         cluster_resource_state=ClusterResourceState(
             node_states=[
                 NodeState(
@@ -134,8 +128,8 @@ def test_ray_updates_new_nodes():
     assert mock_im.update_instance_manager_state.call_count == 1
     request = mock_im.update_instance_manager_state.call_args_list[0].kwargs["request"]
     assert len(request.updates) == 2
-    instance_ids = set([update.instance_id for update in request.updates])
-    status = set([update.new_instance_status for update in request.updates])
+    instance_ids = {[update.instance_id for update in request.updates]}
+    status = {[update.new_instance_status for update in request.updates]}
     assert instance_ids == {"i-1", "i-2"}
     assert status == {Instance.RAY_RUNNING}
 
