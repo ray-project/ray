@@ -1,7 +1,7 @@
 import sys
 import pytest
-import shutil
 import os
+import tempfile
 import time
 from unittest.mock import patch
 
@@ -12,26 +12,22 @@ from ray.dashboard.modules.reporter.profile_manager import MemoryProfilingManage
 
 @pytest.fixture
 def setup_memory_profiler():
-    profiler_result_path = os.getcwd()
-    memory_profiler = MemoryProfilingManager(profiler_result_path)
+    with tempfile.TemporaryDirectory() as tmpdir:
+        memory_profiler = MemoryProfilingManager(tmpdir)
 
-    @ray.remote
-    class Actor:
-        def getpid(self):
-            return os.getpid()
+        @ray.remote
+        class Actor:
+            def getpid(self):
+                return os.getpid()
 
-        def long_run(self):
-            print("Long-running task began.")
-            time.sleep(1000)
-            print("Long-running task completed.")
+            def long_run(self):
+                print("Long-running task began.")
+                time.sleep(1000)
+                print("Long-running task completed.")
 
-    actor = Actor.remote()
+        actor = Actor.remote()
 
-    yield actor, memory_profiler
-
-    cleanup_dir = memory_profiler.profile_dir_path
-    if os.path.exists(cleanup_dir):
-        shutil.rmtree(cleanup_dir)
+        yield actor, memory_profiler
 
 
 @pytest.mark.asyncio
@@ -50,9 +46,11 @@ class TestMemoryProfiling:
         actor, memory_profiler = setup_memory_profiler
         pid = ray.get(actor.getpid.remote())
         actor.long_run.remote()
-        success, profiler_filename, message = await memory_profiler.attach_profiler(pid)
+        success, profiler_filename, message = await memory_profiler.attach_profiler(
+            pid, verbose=True
+        )
 
-        assert success
+        assert success, message
         assert f"Success attaching memray to process {pid}" in message
         assert profiler_filename in os.listdir(memory_profiler.profile_dir_path)
 
@@ -61,14 +59,16 @@ class TestMemoryProfiling:
         actor, memory_profiler = setup_memory_profiler
         pid = ray.get(actor.getpid.remote())
         actor.long_run.remote()
-        success, profiler_filename, message = await memory_profiler.attach_profiler(pid)
+        success, profiler_filename, message = await memory_profiler.attach_profiler(
+            pid, verbose=True
+        )
 
-        assert success
+        assert success, message
         assert f"Success attaching memray to process {pid}" in message
         assert profiler_filename in os.listdir(memory_profiler.profile_dir_path)
 
         success, _, message = await memory_profiler.attach_profiler(pid)
-        assert success
+        assert success, message
         assert f"Success attaching memray to process {pid}" in message
 
     async def test_detach_profiler_successful(
@@ -78,11 +78,11 @@ class TestMemoryProfiling:
         actor, memory_profiler = setup_memory_profiler
         pid = ray.get(actor.getpid.remote())
         actor.long_run.remote()
-        success, _, message = await memory_profiler.attach_profiler(pid)
-        assert success
+        success, _, message = await memory_profiler.attach_profiler(pid, verbose=True)
+        assert success, message
 
-        success, message = await memory_profiler.detach_profiler(pid)
-        assert success
+        success, message = await memory_profiler.detach_profiler(pid, verbose=True)
+        assert success, message
         assert f"Success detaching memray from process {pid}" in message
 
     async def test_detach_profiler_without_attach(
@@ -93,7 +93,7 @@ class TestMemoryProfiling:
         pid = ray.get(actor.getpid.remote())
 
         success, message = await memory_profiler.detach_profiler(pid)
-        assert not success
+        assert not success, message
         assert "Failed to execute" in message
         assert "no previous `memray attach`" in message
 
@@ -116,7 +116,7 @@ class TestMemoryProfiling:
         _, memory_profiler = setup_memory_profiler
         pid = 123456
         success, _, message = await memory_profiler.attach_profiler(pid)
-        assert not success
+        assert not success, message
         assert "Failed to execute" in message
         assert "The given process ID does not exist" in message
 
@@ -127,8 +127,10 @@ class TestMemoryProfiling:
         actor, memory_profiler = setup_memory_profiler
         pid = ray.get(actor.getpid.remote())
         actor.long_run.remote()
-        success, profiler_filename, message = await memory_profiler.attach_profiler(pid)
-        assert success
+        success, profiler_filename, message = await memory_profiler.attach_profiler(
+            pid, verbose=True
+        )
+        assert success, message
         assert f"Success attaching memray to process {pid}" in message
 
         # get profiler result in flamegraph and table format
@@ -139,10 +141,10 @@ class TestMemoryProfiling:
                 pid, profiler_filename=profiler_filename, format=format
             )
             if format in supported_formats:
-                assert success
+                assert success, message
                 assert f"{format} report" in message.decode("utf-8")
             else:
-                assert not success
+                assert not success, message
                 assert f"{format} is not supported" in message
 
     async def test_profiler_result_not_exist(
@@ -156,7 +158,7 @@ class TestMemoryProfiling:
         success, message = await memory_profiler.get_profile_result(
             pid, profiler_filename=profiler_filename, format=format
         )
-        assert not success
+        assert not success, message
         assert f"process {pid} has not been profiled" in message
 
 
