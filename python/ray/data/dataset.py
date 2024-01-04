@@ -2226,25 +2226,25 @@ class Dataset:
             >>> ds = ray.data.range(15)
             >>> ds = ds.sort("id", descending=False, boundaries=[5, 10])
             >>> for df in ray.get(ds.to_pandas_refs()):
-            >>>     print(df)
-                   id
-                0   0
-                1   1
-                2   2
-                3   3
-                4   4
-                   id
-                0   5
-                1   6
-                2   7
-                3   8
-                4   9
-                   id
-                0  10
-                1  11
-                2  12
-                3  13
-                4  14
+            ...     print(df)
+               id
+            0   0
+            1   1
+            2   2
+            3   3
+            4   4
+               id
+            0   5
+            1   6
+            2   7
+            3   8
+            4   9
+               id
+            0  10
+            1  11
+            2  12
+            3  13
+            4  14
 
         Time complexity: O(dataset size * log(dataset size / parallelism))
 

@@ -36,7 +36,7 @@ def test_sort_with_specified_boundaries(ray_start_regular, descending, boundarie
     ds = ds.sort("id", descending, boundaries).materialize()
 
     items = range(num_items)
-    boundaries = [0] + sorted(boundaries) + [num_items]
+    boundaries = [0] + sorted([round(b) for b in boundaries]) + [num_items]
     expected_blocks = [
         items[boundaries[i] : boundaries[i + 1]] for i in range(len(boundaries) - 1)
     ]
