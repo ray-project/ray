@@ -519,6 +519,7 @@ Here is an example that shows how to limit a random shuffle operation to two out
 
 .. testoutput::
     :options: +MOCK
+
     Stage 1 ReadRange->RandomShuffle: executed in 0.08s
 
         Substage 0 ReadRange->RandomShuffleMap: 2/2 blocks executed
