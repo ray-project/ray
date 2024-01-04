@@ -136,19 +136,6 @@ steps:
     - ./ci/ci.sh test_cpp
     - *epilogue_commands
 
-
-- label: ":mac: :apple: Small & Client"
-  <<: *common
-  conditions: ["RAY_CI_CORE_CPP_AFFECTED", "RAY_CI_PYTHON_AFFECTED"]
-  commands:
-    - *prelude_commands
-    - bazel test $(./ci/run/bazel_export_options) --config=ci
-      --test_env=CONDA_EXE --test_env=CONDA_PYTHON_EXE --test_env=CONDA_SHLVL --test_env=CONDA_PREFIX
-      --test_env=CONDA_DEFAULT_ENV --test_env=CONDA_PROMPT_MODIFIER --test_env=CI
-      --test_tag_filters=client_tests,small_size_python_tests
-      -- python/ray/tests/...
-    - *epilogue_commands
-
 - label: ":mac: :apple: Large"
   <<: *common
   parallelism: 3

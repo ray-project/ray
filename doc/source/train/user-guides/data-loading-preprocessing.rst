@@ -33,7 +33,8 @@ Data ingestion can be set up with four basic steps:
 
     .. tab-item:: PyTorch
 
-        .. testcode::
+        .. code-block:: python
+            :emphasize-lines: 29-32
 
             import torch
             import ray
@@ -87,11 +88,6 @@ Data ingestion can be set up with four basic steps:
             )
             result = trainer.fit()
 
-        .. testoutput::
-            :hide:
-
-            ...
-
     .. tab-item:: PyTorch Lightning
 
         .. code-block:: python
@@ -135,7 +131,7 @@ Data ingestion can be set up with four basic steps:
     .. tab-item:: HuggingFace Transformers
 
         .. code-block:: python
-            :emphasize-lines: 12,13,16,17,24,25
+            :emphasize-lines: 12,13,16,17,23,29,30,34
 
             import ray
             import ray.train

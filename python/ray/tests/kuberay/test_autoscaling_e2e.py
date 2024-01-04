@@ -1,10 +1,12 @@
+import base64
 import copy
 import logging
 import os
 import pytest
+import subprocess
+import sys
 import tempfile
 import unittest
-import subprocess
 
 from typing import Any, Dict
 
@@ -44,9 +46,9 @@ logger.info(f"Using image `{RAY_IMAGE}` for Ray containers.")
 logger.info(f"Using image `{AUTOSCALER_IMAGE}` for Autoscaler containers.")
 logger.info(f"Using pull policy `{PULL_POLICY}` for all images.")
 
-# Path to example config rel RAY_PARENT
+# Path to example config inside the rayci container.
 EXAMPLE_CLUSTER_PATH = (
-    "ray/python/ray/tests/kuberay/test_files/ray-cluster.autoscaler-template.yaml"
+    "rayci/python/ray/tests/kuberay/test_files/ray-cluster.autoscaler-template.yaml"
 )
 
 HEAD_SERVICE = "raycluster-autoscaler-head-svc"
@@ -151,32 +153,32 @@ class KubeRayAutoscalingTest(unittest.TestCase):
             (2) Set `validate_replicas` to True. We will then check that the replicas
             set on the CR coincides with `replicas`.
         """
-        with tempfile.NamedTemporaryFile("w") as config_file:
-            if validate_replicas:
-                raycluster = get_raycluster(
-                    RAY_CLUSTER_NAME, namespace=RAY_CLUSTER_NAMESPACE
-                )
-                assert (
-                    raycluster["spec"]["workerGroupSpecs"][0]["replicas"]
-                    == cpu_replicas
-                )
-                assert (
-                    raycluster["spec"]["workerGroupSpecs"][1]["replicas"]
-                    == gpu_replicas
-                )
-                logger.info(
-                    f"Validated that cpu and gpu worker replicas for "
-                    f"{RAY_CLUSTER_NAME} are currently {cpu_replicas} and"
-                    f" {gpu_replicas}, respectively."
-                )
-            cr_config = self._get_ray_cr_config(
-                min_replicas=min_replicas,
-                cpu_replicas=cpu_replicas,
-                gpu_replicas=gpu_replicas,
+        if validate_replicas:
+            raycluster = get_raycluster(
+                RAY_CLUSTER_NAME, namespace=RAY_CLUSTER_NAMESPACE
             )
+            assert raycluster["spec"]["workerGroupSpecs"][0]["replicas"] == cpu_replicas
+            assert raycluster["spec"]["workerGroupSpecs"][1]["replicas"] == gpu_replicas
+            logger.info(
+                f"Validated that cpu and gpu worker replicas for "
+                f"{RAY_CLUSTER_NAME} are currently {cpu_replicas} and"
+                f" {gpu_replicas}, respectively."
+            )
+        cr_config = self._get_ray_cr_config(
+            min_replicas=min_replicas,
+            cpu_replicas=cpu_replicas,
+            gpu_replicas=gpu_replicas,
+        )
+
+        with tempfile.NamedTemporaryFile("w") as config_file:
             yaml.dump(cr_config, config_file)
             config_file.flush()
-            subprocess.check_call(["kubectl", "apply", "-f", config_file.name])
+
+            subprocess.check_call(
+                ["kubectl", "apply", "-f", config_file.name],
+                stdout=sys.stdout,
+                stderr=sys.stderr,
+            )
 
     def _non_terminated_nodes_count(self) -> int:
         with ray_client_port_forward(head_service=HEAD_SERVICE):
@@ -366,6 +368,14 @@ class KubeRayAutoscalingTest(unittest.TestCase):
 
 if __name__ == "__main__":
     import pytest
-    import sys
+
+    kubeconfig_base64 = os.environ.get("KUBECONFIG_BASE64")
+    if kubeconfig_base64:
+        kubeconfig_file = os.environ.get("KUBECONFIG")
+        if not kubeconfig_file:
+            raise ValueError("When KUBECONFIG_BASE64 is set, KUBECONFIG must be set.")
+
+        with open(kubeconfig_file, "wb") as f:
+            f.write(base64.b64decode(kubeconfig_base64))
 
     sys.exit(pytest.main(["-vv", __file__]))
