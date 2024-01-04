@@ -38,7 +38,9 @@ class ClientSupervisor:
     def __init__(self, name: str, ttl_secs: int) -> None:
         logging.basicConfig(level=logging.INFO)
         self.logger = logging.getLogger(__name__)
-        self.logger.info(f"ClientSupervisor init, name = {name}, ttl_secs = {ttl_secs}")
+        self.logger.debug(
+            f"ClientSupervisor init, name = {name}, ttl_secs = {ttl_secs}"
+        )
 
         # if client died and restarted, it can reconnect via this name as actor name
         self.actor_name = name
@@ -58,7 +60,7 @@ class ClientSupervisor:
         self.dumps = dumps_with_pickler_cls(ServerToClientPickler, server=self)
         self.loads = loads_with_unpickler_cls(ClientToServerUnpickler, server=self)
 
-        print(f"ClientSupervisor inited! {self.actor_name}")
+        self.logger.debug(f"ClientSupervisor inited! {self.actor_name}")
 
     def reset_ttl_timer(self):
         self.last_activity_time = time.time()
@@ -80,7 +82,7 @@ class ClientSupervisor:
             current_time = time.time()
             target_time = self.last_activity_time + self.ttl_secs
             should_kill_actor = target_time < current_time
-            self.logger.info(
+            self.logger.debug(
                 f"ttl_watchdog: current time = {format_time(current_time)}, "
                 f"last activity = {format_time(self.last_activity_time)}, "
                 f"ttl = {self.ttl_secs}s, "
@@ -99,6 +101,11 @@ class ClientSupervisor:
         self.reset_ttl_timer()
         return self.actor_name
 
+    async def get_job_id(self) -> str:
+        self.reset_ttl_timer()
+        runtime_context = ray.get_runtime_context()
+        return runtime_context.get_job_id()
+
     async def ray_get(self, obj_ref_serialized):
         return await self.serialize_result_or_exc(
             self.ray_get_internal(obj_ref_serialized)
@@ -106,7 +113,7 @@ class ClientSupervisor:
 
     async def ray_get_internal(self, obj_ref_serialized):
         self.reset_ttl_timer()
-        print(f"ray_get {obj_ref_serialized}")
+        self.logger.debug(f"ray_get {obj_ref_serialized}")
         obj_refs = self.loads(obj_ref_serialized)
         # we can get ray.ObjectRef or List[ray.ObjectRef]
         if isinstance(obj_refs, ray.ObjectRef):
@@ -133,7 +140,7 @@ class ClientSupervisor:
 
     async def ray_put_internal(self, obj_serialized):
         self.reset_ttl_timer()
-        print(f"ray_put {obj_serialized}")
+        self.logger.debug(f"ray_put {obj_serialized}")
         obj = self.loads(obj_serialized)
         obj_ref = ray.put(obj)
         self.object_refs[obj_ref.binary()] = obj_ref  # keeping the ref...

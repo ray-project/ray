@@ -1,3 +1,4 @@
+import json
 import logging
 import random
 import string
@@ -8,6 +9,7 @@ from typing import Any, Callable, Optional
 import requests
 
 import ray
+from ray._private.worker_logging import print_to_stdstream
 from ray.dashboard.modules.job.common import JobStatus
 from ray.experimental.client2.pickler import (
     ClientToServerPickler,
@@ -32,7 +34,7 @@ def poll_until(func: Callable[[], bool], times: int, delay_s: int):
     return False
 
 
-def generate_client_actor_id() -> str:
+def generate_client_actor_name() -> str:
     """Returns an actor_id of the form 'rayclient2_XYZ'.
 
     Code copied from dashboard/modules/job/job_manager.py
@@ -52,7 +54,10 @@ def raise_or_return(resp: requests.Response):
     If it represents an actor-raised Exception, raises it.
     Otherwise (something wrong, not from actor), raises HTTPError.
     """
-    resp.raise_for_status()
+    try:
+        resp.raise_for_status()
+    except requests.HTTPError as e:
+        raise ray.exceptions.RaySystemError(e.response.text)
     result_or_exc = Client.loads(resp.content)
     if result_or_exc.exc is not None:
         raise result_or_exc.exc
@@ -112,12 +117,11 @@ class Client:
     - if you code involves custom type, you need to use runtime_env even if the custom type is defiend in your code.
     - client.get now limits to 200MB, needs a larger limit, maybe chunking and streaming.
     - tasks' prints are not forwarded to the client.
-    - exceptions on client.get are not properly forwarded (can only see a HTTP 500)
-    - on user interrupt in jupyter, client_head should cancel the task.
     - One still have to pip install and import a lib to easily use them, even though the usage is mostly wrapped in a remote function.
         - for example, if you define a `class NeuralNetwork(nn.Module)` you need to first `from torch import nn`, even though the invocations are in remote.
     - Not showing good exception info on driver init failure (e.g. invalid rt env)
     - connect() polls are fixed 1s * 10. Can change to a proper backoff.
+    - All other non supported Ray APIs needs to be mocked out.
     """
 
     # static variables
@@ -130,9 +134,10 @@ class Client:
     ray_remotefunction_remote = ray.remote_function.RemoteFunction._remote
     ray_actorclass_remote = ray.actor.ActorClass._remote
     ray_actormethod_remote = ray.actor.ActorMethod._remote
-    # active client (can only have 1)
+    # active client (can only have 1 in a python process)
     active_client = None
     watchdog_thread = None
+    print_logs_thread = None
 
     def __init__(
         self,
@@ -152,7 +157,7 @@ class Client:
             raise ValueError("ttl_secs must be >= 10")
 
         self.server_addr = server_addr
-        self.actor_name = generate_client_actor_id()
+        self.actor_name = generate_client_actor_name()
         self.submission_id = None  # set in create()
         self.runtime_env = runtime_env
         self.ttl_secs = ttl_secs
@@ -401,6 +406,7 @@ class Client:
 
         Client.active_client = self
         Client.watchdog_thread = self.start_watchdog_thread()
+        Client.print_logs_thread = self.start_print_logs_thread()
 
         ray.get = self.get
         ray.put = self.put
@@ -425,6 +431,8 @@ class Client:
         Client.active_client = None
         # No need to "stop" the thread; it stops itself since self is no longer Client.active_client.
         Client.watchdog_thread = None
+        # TODO: stop the thread, or check in the loop
+        Client.print_logs_thread = None
 
         ray.get = Client.ray_get
         ray.put = Client.ray_put
@@ -496,6 +504,28 @@ class Client:
 
     def start_watchdog_thread(self):
         thread = threading.Thread(target=lambda: self.ping_forever())
+        thread.daemon = True
+        thread.start()
+        return thread
+
+    def print_logs_forever(self):
+        # TODO: if self is Client.active_client, else return
+        logger.info(f"starting to print logs for {self.actor_name}")
+        try:
+            with requests.post(
+                f"{self.server_addr}/api/clients/{self.actor_name}/logs", stream=True
+            ) as resp:
+                raise_or_return(resp)
+                for chunk in resp.iter_lines():
+                    if chunk:
+                        log_json = json.loads(chunk)
+                        # dict: ip, pid, job, is_err, lines: List[str], actor_name, task_name
+                        print_to_stdstream(log_json)
+        except requests.RequestException as e:
+            logger.warning(f"Error: {e}")
+
+    def start_print_logs_thread(self):
+        thread = threading.Thread(target=lambda: self.print_logs_forever())
         thread.daemon = True
         thread.start()
         return thread
