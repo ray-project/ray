@@ -50,10 +50,11 @@ def _needs_pickle(deployment_language: DeploymentLanguage, is_cross_language: bo
 
 
 def _proto_to_dict(proto: Message) -> Dict:
-    """Recursively convert proto into python dictionary.
+    """Recursively convert a protobuf into a Python dictionary.
 
-    This is needed because MessageToDict handles bytes with extra base64 encoding for
-    constructing json response and is undesirable for our use case.
+    This is an alternative to protobuf's `MessageToDict`. Unlike
+    `MessageToDict`, this function doesn't add an extra base64
+    encoding to bytes when constructing a json response.
     """
     data = {}
     # Fill data with non-empty fields.

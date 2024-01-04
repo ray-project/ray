@@ -2,8 +2,9 @@ import pytest
 
 from ray import cloudpickle
 from ray._private.pydantic_compat import ValidationError
-from ray.serve._private.config import DeploymentConfig, ReplicaConfig
-from ray.serve._private.constants import DEFAULT_GRPC_PORT
+from ray._private.utils import import_attr
+from ray.serve._private.config import DeploymentConfig, ReplicaConfig, _proto_to_dict
+from ray.serve._private.constants import DEFAULT_AUTOSCALING_POLICY, DEFAULT_GRPC_PORT
 from ray.serve._private.utils import DEFAULT
 from ray.serve.autoscaling_policy import DefaultAutoscalingPolicy
 from ray.serve.config import (
@@ -13,6 +14,9 @@ from ray.serve.config import (
     ProxyLocation,
     gRPCOptions,
 )
+from ray.serve.generated.serve_pb2 import AutoscalingConfig as AutoscalingConfigProto
+from ray.serve.generated.serve_pb2 import DeploymentConfig as DeploymentConfigProto
+from ray.serve.generated.serve_pb2 import DeploymentLanguage
 from ray.serve.generated.serve_pb2_grpc import add_UserDefinedServiceServicer_to_server
 from ray.serve.schema import (
     DeploymentSchema,
@@ -574,6 +578,101 @@ def test_autoscaling_policy_import_fails_for_non_existing_policy():
     policy = "i.dont.exist:fake_policy"
     with pytest.raises(ModuleNotFoundError):
         AutoscalingConfig(policy=policy)
+
+
+def test_default_autoscaling_policy_import_path():
+    """Test that default autoscaling policy can be imported."""
+    policy = import_attr(DEFAULT_AUTOSCALING_POLICY)
+
+    assert policy == DefaultAutoscalingPolicy
+
+
+class TestProtoToDict:
+    def test_empty_fields(self):
+        """Test _proto_to_dict() to deserialize protobuf with empty fields"""
+        proto = DeploymentConfigProto()
+        result = _proto_to_dict(proto)
+
+        # Defaults are filled.
+        assert result["num_replicas"] == 0
+        assert result["max_concurrent_queries"] == 0
+        assert result["user_config"] == b""
+        assert result["user_configured_option_names"] == []
+
+        # Nested profobufs don't exist.
+        assert "autoscaling_config" not in result
+
+    def test_non_empty_fields(self):
+        """Test _proto_to_dict() to deserialize protobuf with non-empty fields"""
+        num_replicas = 111
+        max_concurrent_queries = 222
+        proto = DeploymentConfigProto(
+            num_replicas=num_replicas,
+            max_concurrent_queries=max_concurrent_queries,
+        )
+        result = _proto_to_dict(proto)
+
+        # Fields with non-empty values are filled correctly.
+        assert result["num_replicas"] == num_replicas
+        assert result["max_concurrent_queries"] == max_concurrent_queries
+
+        # Default values are continue to be filled.
+        assert result["user_config"] == b""
+
+    def test_nested_protobufs(self):
+        """Test _proto_to_dict() to deserialize protobuf with nested protobufs"""
+        num_replicas = 111
+        max_concurrent_queries = 222
+        min_replicas = 333
+        proto = DeploymentConfigProto(
+            num_replicas=num_replicas,
+            max_concurrent_queries=max_concurrent_queries,
+            autoscaling_config=AutoscalingConfigProto(
+                min_replicas=min_replicas,
+            ),
+        )
+        result = _proto_to_dict(proto)
+        assert result["num_replicas"] == num_replicas
+        assert result["max_concurrent_queries"] == max_concurrent_queries
+        assert result["autoscaling_config"]["min_replicas"] == min_replicas
+
+    def test_repeated_field(self):
+        """Test _proto_to_dict() to deserialize protobuf with repeated fields"""
+        user_configured_option_names = ["foo", "bar"]
+        proto = DeploymentConfigProto(
+            user_configured_option_names=user_configured_option_names,
+        )
+        result = _proto_to_dict(proto)
+
+        # Repeated fields are filled correctly as list.
+        assert result["user_configured_option_names"] == user_configured_option_names
+
+    def test_enum_field(self):
+        """Test _proto_to_dict() to deserialize protobuf with enum field"""
+        proto = DeploymentConfigProto(
+            deployment_language=DeploymentLanguage.JAVA,
+        )
+        result = _proto_to_dict(proto)
+
+        # Enum field is filled correctly.
+        assert result["deployment_language"] == DeploymentLanguage.JAVA
+
+    def test_optional_field(self):
+        """Test _proto_to_dict() to deserialize protobuf with optional field"""
+        min_replicas = 1
+        proto = AutoscalingConfigProto(
+            min_replicas=min_replicas,
+        )
+        result = _proto_to_dict(proto)
+
+        # Non-empty optional field is filled correctly.
+        assert result["min_replicas"] == 1
+
+        # Empty field is filled correctly.
+        assert result["max_replicas"] == 0
+
+        # Optional field should not be filled.
+        assert "initial_replicas" not in result
 
 
 if __name__ == "__main__":
