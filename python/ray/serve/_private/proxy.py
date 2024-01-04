@@ -1063,7 +1063,6 @@ class HTTPProxy(GenericProxy):
                         code="1000",  # [Sihan] is there a better code for this?
                         is_error=True,
                     )
-                    pass
 
             del self.asgi_receive_queues[request_id]
 
