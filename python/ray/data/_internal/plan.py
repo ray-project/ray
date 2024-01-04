@@ -354,7 +354,7 @@ class ExecutionPlan:
 
     def initial_num_blocks(self) -> int:
         """Get the estimated number of blocks after applying all plan stages."""
-        return self._logical_plan.dag.num_outputs()
+        return self._logical_plan.dag.estimated_num_outputs()
 
     def schema(
         self, fetch_if_missing: bool = False

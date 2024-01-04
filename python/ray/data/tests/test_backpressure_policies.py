@@ -343,10 +343,10 @@ class TestStreamOutputBackpressurePolicy(unittest.TestCase):
 
         def consumer(batch):
             assert len(batch["id"]) == 1
-            time.sleep(0.1)
             print("Consuming block", batch["id"][0])
-            del batch["data"]
             batch["consumer_timestamp"] = [time.time()]
+            time.sleep(0.1)
+            del batch["data"]
             return batch
 
         ds = ray.data.range(1, parallelism=1).materialize()
@@ -366,11 +366,16 @@ class TestStreamOutputBackpressurePolicy(unittest.TestCase):
         )
         # We can buffer at most 2 blocks.
         # Thus the producer should be backpressured after producing 2 blocks.
-        # Note, although block 2 is backpressured, but producer_timestamps[2] has
-        # been generated before the backpressure. Thus we assert
-        # producer_timestamps[2] < consumer_timestamps[0] < producer_timestamps[3].
+        # Note, although block 2 is backpressured, producer_timestamps[2] has
+        # been generated before the backpressure.
+        # Thus producer_timestamps[2] < consumer_timestamps[0].
+        # For block 3, it should be generated after the first consumer task
+        # is scheduled. But there is a delay between the consumer task is scheduled
+        # and the consumer task starts to run. Thus the order of
+        # producer_timestamps[3] and consumer_timestamps[0] is not deterministic.
+        # To avoid flakiness, we check consumer_timestamps[0] < producer_timestamps[4].
         assert (
-            producer_timestamps[2] < consumer_timestamps[0] < producer_timestamps[3]
+            producer_timestamps[2] < consumer_timestamps[0] < producer_timestamps[4]
         ), (producer_timestamps, consumer_timestamps)
 
     def test_no_deadlock(self):

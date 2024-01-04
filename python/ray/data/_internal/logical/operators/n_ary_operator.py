@@ -33,9 +33,9 @@ class Zip(NAry):
         """
         super().__init__(left_input_op, right_input_op)
 
-    def num_outputs(self):
-        left_num_outputs = self._input_dependencies[0].num_outputs()
-        right_num_outputs = self._input_dependencies[1].num_outputs()
+    def estimated_num_outputs(self):
+        left_num_outputs = self._input_dependencies[0].estimated_num_outputs()
+        right_num_outputs = self._input_dependencies[1].estimated_num_outputs()
         if left_num_outputs is None or right_num_outputs is None:
             return None
         return max(left_num_outputs, right_num_outputs)
@@ -50,10 +50,10 @@ class Union(NAry):
     ):
         super().__init__(*input_ops)
 
-    def num_outputs(self):
+    def estimated_num_outputs(self):
         total_num_outputs = 0
         for input in self._input_dependencies:
-            num_outputs = input.num_outputs()
+            num_outputs = input.estimated_num_outputs()
             if num_outputs is None:
                 return None
             total_num_outputs += num_outputs

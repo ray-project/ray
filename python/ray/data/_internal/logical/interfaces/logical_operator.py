@@ -24,16 +24,17 @@ class LogicalOperator(Operator):
             assert isinstance(x, LogicalOperator), x
         self._num_outputs = num_outputs
 
-    def num_outputs(self) -> Optional[int]:
-        """Returns the number of blocks that would be outputted by this logical operator.
+    def estimated_num_outputs(self) -> Optional[int]:
+        """Returns the estimated number of blocks that
+        would be outputted by this logical operator.
 
         This method does not execute the plan, so it does not take into consideration
         block splitting. This method only considers high-level block constraints like
         `Dataset.repartition(num_blocks=X)`. A more accurate estimation can be given by
-        `PhysicalOperator.num_outputs_total()`during execution.
+        `PhysicalOperator.num_outputs_total()` during execution.
         """
         if self._num_outputs is not None:
             return self._num_outputs
         elif len(self._input_dependencies) == 1:
-            return self._input_dependencies[0].num_outputs()
+            return self._input_dependencies[0].estimated_num_outputs()
         return None
