@@ -168,7 +168,7 @@ class InstanceUtilTest(unittest.TestCase):
         }
         for s in positive_status:
             instance.status = s
-            assert InstanceUtil.is_ray_running_reachable(instance)
+            assert InstanceUtil.is_ray_running_reachable(instance.status)
             assert exists_path(
                 s, Instance.RAY_RUNNING, InstanceUtil.get_valid_transitions()
             )
@@ -178,7 +178,7 @@ class InstanceUtilTest(unittest.TestCase):
         all_status.remove(Instance.UNKNOWN)
         for s in all_status:
             instance.status = s
-            assert not InstanceUtil.is_ray_running_reachable(instance)
+            assert not InstanceUtil.is_ray_running_reachable(instance.status)
             assert not exists_path(
                 s, Instance.RAY_RUNNING, InstanceUtil.get_valid_transitions()
             )

@@ -110,13 +110,13 @@ class InstanceUtil:
         }
 
     @staticmethod
-    def is_ray_running_reachable(instance: Instance) -> bool:
+    def is_ray_running_reachable(instance_status: Instance.InstanceStatus) -> bool:
         """
         Returns True if the instance is in a status where it may transition
         to RAY_RUNNING status.
         """
-        assert instance.status != Instance.UNKNOWN
-        return instance.status in [
+        assert instance_status != Instance.UNKNOWN
+        return instance_status in [
             Instance.UNKNOWN,
             Instance.QUEUED,
             Instance.REQUESTED,
