@@ -11,12 +11,12 @@ from typing import (
     Any,
     Dict,
     List,
+    Iterator,
 )
 import ray._private.ray_constants as ray_constants
 
 # Ray modules
 import ray.actor
-import ray.job_config
 from ray._private.ray_logging import (
     stdout_deduplicator,
     stderr_deduplicator,

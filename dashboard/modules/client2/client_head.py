@@ -265,7 +265,7 @@ class ClientHead(dashboard_utils.DashboardHeadModule):
 
         # It's strange we don't have an MIME type for a stream of JSONs delimited by \n.
         # There are some x- ones and unregistered ones, but I don't like them.
-        response = StreamResponse(headers={"Content-Type": "octet-stream"})
+        response = StreamResponse(headers={"Content-Type": "application/octet-stream"})
         await response.prepare(req)
 
         # Infinite loop to stream data

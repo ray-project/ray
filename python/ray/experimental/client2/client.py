@@ -47,6 +47,15 @@ def generate_client_actor_name() -> str:
     id_part = "".join(rand.choices(possible_characters, k=16))
     return f"rayclient2_{id_part}"
 
+def raise_for_status(resp: requests.Response):
+    """
+    Raise if the resp has non OK status.
+    Difference from the original method: we raise a more user friendly type and message.
+    """
+    try:
+        resp.raise_for_status()
+    except requests.HTTPError as e:
+        raise ray.exceptions.RaySystemError(e.response.text)
 
 def raise_or_return(resp: requests.Response):
     """
@@ -54,10 +63,7 @@ def raise_or_return(resp: requests.Response):
     If it represents an actor-raised Exception, raises it.
     Otherwise (something wrong, not from actor), raises HTTPError.
     """
-    try:
-        resp.raise_for_status()
-    except requests.HTTPError as e:
-        raise ray.exceptions.RaySystemError(e.response.text)
+    raise_for_status(resp)
     result_or_exc = Client.loads(resp.content)
     if result_or_exc.exc is not None:
         raise result_or_exc.exc
@@ -352,7 +358,6 @@ class Client:
         self.submission_id = job_client.submit_job(
             entrypoint=f"python -m ray.experimental.client2.driver {self.actor_name} {self.ttl_secs}",
             runtime_env=self.runtime_env,
-            # TODO: now re-creating a job w/ same ID raises error.
         )
         if poll_until(
             # TODO: if job failed, we will wait for 10s and report timeout.
@@ -429,9 +434,9 @@ class Client:
 
     def unset_active(self):
         Client.active_client = None
-        # No need to "stop" the thread; it stops itself since self is no longer Client.active_client.
+        # No need to "stop" the threads; it stops itself since self is no longer
+        # Client.active_client.
         Client.watchdog_thread = None
-        # TODO: stop the thread, or check in the loop
         Client.print_logs_thread = None
 
         ray.get = Client.ray_get
@@ -503,29 +508,35 @@ class Client:
         logger.info(f"Client {self.actor_name} is no longer active, stop pinging...")
 
     def start_watchdog_thread(self):
-        thread = threading.Thread(target=lambda: self.ping_forever())
+        thread = threading.Thread(target=self.ping_forever)
         thread.daemon = True
         thread.start()
         return thread
 
     def print_logs_forever(self):
-        # TODO: if self is Client.active_client, else return
-        logger.info(f"starting to print logs for {self.actor_name}")
-        try:
-            with requests.post(
-                f"{self.server_addr}/api/clients/{self.actor_name}/logs", stream=True
-            ) as resp:
-                raise_or_return(resp)
-                for chunk in resp.iter_lines():
-                    if chunk:
-                        log_json = json.loads(chunk)
-                        # dict: ip, pid, job, is_err, lines: List[str], actor_name, task_name
-                        print_to_stdstream(log_json)
-        except requests.RequestException as e:
-            logger.warning(f"Error: {e}")
+        logger.debug(f"starting to print logs for {self.actor_name}")
+        # The long connection may break, e.g. when the internet breaks. As long as
+        # we are still active, keep trying to reconnect for every 1s.
+        while self is Client.active_client:
+            try:
+                with requests.post(
+                    f"{self.server_addr}/api/clients/{self.actor_name}/logs", stream=True
+                ) as resp:
+                    for chunk in resp.iter_lines():
+                        if chunk:
+                            log_json = json.loads(chunk)
+                            print_to_stdstream(log_json)
+                        if self is not Client.active_client:
+                            # client is no longer active, exiting
+                            return
+            except requests.RequestException as e:
+                logger.exception(f"Error polling logs.")
+            # Reconnect after 1s sleep
+            time.sleep(1)
+        logger.info(f"Client {self.actor_name} is no longer active, stop logging...")
 
     def start_print_logs_thread(self):
-        thread = threading.Thread(target=lambda: self.print_logs_forever())
+        thread = threading.Thread(target=self.print_logs_forever)
         thread.daemon = True
         thread.start()
         return thread
