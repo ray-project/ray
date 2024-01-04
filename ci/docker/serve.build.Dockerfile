@@ -4,7 +4,7 @@ ARG DOCKER_IMAGE_BASE_BUILD=cr.ray.io/rayproject/oss-ci-base_build
 FROM $DOCKER_IMAGE_BASE_BUILD
 
 ARG PYTHON_VERSION
-ARG PYDANTIC_BUILD_COMMIT
+ARG PYDANTIC_VERSION
 
 # Unset dind settings; we are using the host's docker daemon.
 ENV DOCKER_TLS_CERTDIR=
@@ -45,8 +45,8 @@ pip install -c python/requirements_compiled.txt aioboto3
 git clone https://github.com/wg/wrk.git /tmp/wrk && pushd /tmp/wrk && make -j && sudo cp wrk /usr/local/bin && popd
 
 # Install custom Pydantic version if requested.
-if [[ -n "${PYDANTIC_BUILD_COMMIT-}" ]]; then 
-  pip install -U git+https://github.com/pydantic/pydantic@$PYDANTIC_BUILD_COMMIT
+if [[ -n "${PYDANTIC_VERSION-}" ]]; then 
+  pip install -U pydantic==$PYDANTIC_VERSION
 else 
   echo "Not installing Pydantic from source"
 fi

@@ -3,7 +3,11 @@ from typing import List, Optional, Union
 from ray.rllib.algorithms.algorithm import Algorithm
 from ray.rllib.algorithms.algorithm_config import AlgorithmConfig, NotProvided
 from ray.rllib.utils.annotations import override
-from ray.rllib.utils.deprecation import Deprecated, ALGO_DEPRECATION_WARNING
+from ray.rllib.utils.deprecation import (
+    ALGO_DEPRECATION_WARNING,
+    Deprecated,
+    deprecation_warning,
+)
 
 
 class A3CConfig(AlgorithmConfig):
@@ -29,7 +33,7 @@ class A3CConfig(AlgorithmConfig):
         self.vf_loss_coeff = 0.5
         self.entropy_coeff = 0.01
         self.entropy_coeff_schedule = None
-        self.sample_async = True
+        self.sample_async = False
 
         # Override some of AlgorithmConfig's default values with PPO-specific values.
         self.num_rollout_workers = 2
@@ -85,8 +89,14 @@ class A3CConfig(AlgorithmConfig):
             self.entropy_coeff = entropy_coeff
         if entropy_coeff_schedule is not NotProvided:
             self.entropy_coeff_schedule = entropy_coeff_schedule
-        if sample_async is not NotProvided:
-            self.sample_async = sample_async
+
+        # Deprecated settings.
+        if sample_async is not False:
+            deprecation_warning(
+                old="A3CConfig.training(sample_async=True)",
+                help="AsyncSampler is not supported anymore.",
+                error=True,
+            )
 
         return self
 

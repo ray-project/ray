@@ -38,11 +38,10 @@ scipy
 colorful
 pyyaml
 rich
-gpustat>=1.0.0
 opentelemetry-sdk
 fastapi
 gymnasium==0.28.1
-virtualenv<20.21.1,>=20.0.24
+virtualenv!=20.21.1,>=20.0.24
 opentelemetry-api
 opencensus
 aiohttp_cors
@@ -53,11 +52,11 @@ prometheus_client>=0.7.1
 requests
 pandas
 tensorboardX<=2.6.0,>=1.9  # >=2.6.1 uses protobuf>=4, and conflicts with other packages.
-aiohttp>=3.7
+aiohttp>=3.7,<3.9
 starlette
 typer
 fsspec
 pandas>=1.3
-pydantic<2
+pydantic!=2.0.*,!=2.1.*,!=2.2.*,!=2.3.*,!=2.4.*,<3  # Serve users can use pydantic<2
 py-spy>=0.2.0
 watchfiles

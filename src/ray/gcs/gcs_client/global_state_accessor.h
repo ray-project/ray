@@ -125,12 +125,26 @@ class GlobalStateAccessor {
   /// deserialized with protobuf function.
   std::vector<std::string> GetAllWorkerInfo() ABSL_LOCKS_EXCLUDED(mutex_);
 
+  /// Get the worker debugger port from the GCS Service.
+  ///
+  /// \param worker_id The ID of worker to look up in the GCS Service.
+  /// \return The worker debugger port.
+  uint32_t GetWorkerDebuggerPort(const WorkerID &worker_id);
+
   /// Update the worker debugger port in the GCS Service.
   ///
   /// \param worker_id The ID of worker to update in the GCS Service.
   /// \param debugger_port The debugger port of worker to update in the GCS Service.
   /// \return Is operation success.
   bool UpdateWorkerDebuggerPort(const WorkerID &worker_id, const uint32_t debugger_port);
+
+  /// Update the worker num of paused threads in the GCS Service.
+  ///
+  /// \param worker_id The ID of worker to update in the GCS Service.
+  /// \param num_paused_threads_delta The delta of paused threads of worker to update in
+  /// the GCS Service. \return Is operation success.
+  bool UpdateWorkerNumPausedThreads(const WorkerID &worker_id,
+                                    const int num_paused_threads_delta);
 
   /// Add information of a worker to GCS Service.
   ///
@@ -239,6 +253,12 @@ class GlobalStateAccessor {
 
   // protects is_connected_ and gcs_client_
   mutable absl::Mutex mutex_;
+
+  // protects debugger port related operations
+  mutable absl::Mutex debugger_port_mutex_;
+
+  // protects debugger tasks related operations
+  mutable absl::Mutex debugger_threads_mutex_;
 
   /// Whether this client is connected to gcs server.
   bool is_connected_ ABSL_GUARDED_BY(mutex_) = false;

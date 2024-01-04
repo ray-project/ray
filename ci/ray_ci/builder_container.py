@@ -1,7 +1,7 @@
 import os
 from typing import TypedDict
 
-from ci.ray_ci.container import Container
+from ci.ray_ci.linux_container import LinuxContainer
 
 
 class PythonVersionInfo(TypedDict):
@@ -28,7 +28,7 @@ DEFAULT_BUILD_TYPE = "optimized"
 DEFAULT_ARCHITECTURE = "x86_64"
 
 
-class BuilderContainer(Container):
+class BuilderContainer(LinuxContainer):
     def __init__(self, python_version: str, build_type: str, architecture: str) -> None:
         super().__init__(
             "manylinux" if architecture == "x86_64" else f"manylinux-{architecture}",

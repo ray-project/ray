@@ -99,7 +99,7 @@ DATA_GRAFANA_PANELS = [
         targets=[
             Target(
                 expr="sum(ray_data_output_rows{{{global_filters}}}) by (dataset, operator)",
-                legend="Rows Outputted: {{dataset}}",
+                legend="Rows Outputted: {{dataset}}, {{operator}}",
             )
         ],
     ),

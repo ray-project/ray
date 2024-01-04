@@ -1,11 +1,8 @@
 from typing import Any, Dict, List
 
 from ray.dag import DAGNode
-from ray.dag.constants import DAGNODE_TYPE_KEY, PARENT_CLASS_NODE_KEY
+from ray.dag.constants import DAGNODE_TYPE_KEY
 from ray.dag.format_utils import get_dag_node_str
-from ray.serve._private.deployment_method_executor_node import (
-    DeploymentMethodExecutorNode,
-)
 from ray.serve.handle import RayServeHandle
 
 
@@ -51,16 +48,6 @@ class DeploymentExecutorNode(DAGNode):
         ObjectRefs.
         """
         return self._deployment_handle.options(use_new_handle_api=False)
-
-    def __getattr__(self, method_name: str):
-        return DeploymentMethodExecutorNode(
-            method_name,
-            (),
-            {},
-            other_args_to_resolve={
-                PARENT_CLASS_NODE_KEY: self,
-            },
-        )
 
     def __str__(self) -> str:
         return get_dag_node_str(self, str(self._deployment_handle))

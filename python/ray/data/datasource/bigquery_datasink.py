@@ -15,18 +15,24 @@ from ray.data.datasource.datasink import Datasink
 
 logger = logging.getLogger(__name__)
 
-MAX_RETRY_CNT = 10
+DEFAULT_MAX_RETRY_CNT = 10
 RATE_LIMIT_EXCEEDED_SLEEP_TIME = 11
 
 
 class _BigQueryDatasink(Datasink):
-    def __init__(self, project_id: str, dataset: str) -> None:
+    def __init__(
+        self,
+        project_id: str,
+        dataset: str,
+        max_retry_cnt: int = DEFAULT_MAX_RETRY_CNT,
+    ) -> None:
         _check_import(self, module="google.cloud", package="bigquery")
         _check_import(self, module="google.cloud", package="bigquery_storage")
         _check_import(self, module="google.api_core", package="exceptions")
 
         self.project_id = project_id
         self.dataset = dataset
+        self.max_retry_cnt = max_retry_cnt
 
     def on_write_start(self) -> None:
         from google.api_core import exceptions
@@ -39,13 +45,14 @@ class _BigQueryDatasink(Datasink):
         client = bigquery.Client(project=self.project_id)
         dataset_id = self.dataset.split(".", 1)[0]
         try:
-            client.create_dataset(f"{self.project_id}.{dataset_id}", timeout=30)
-            logger.info("Created dataset " + dataset_id)
-        except exceptions.Conflict:
+            client.get_dataset(dataset_id)
             logger.info(
                 f"Dataset {dataset_id} already exists. "
                 "The table will be overwritten if it already exists."
             )
+        except exceptions.NotFound:
+            client.create_dataset(f"{self.project_id}.{dataset_id}", timeout=30)
+            logger.info("Created dataset " + dataset_id)
 
         # Delete table if it already exists
         client.delete_table(f"{self.project_id}.{self.dataset}", not_found_ok=True)
@@ -71,25 +78,35 @@ class _BigQueryDatasink(Datasink):
                 pq.write_table(block, fp, compression="SNAPPY")
 
                 retry_cnt = 0
-                while retry_cnt < MAX_RETRY_CNT:
+                while retry_cnt <= self.max_retry_cnt:
                     with open(fp, "rb") as source_file:
                         job = client.load_table_from_file(
                             source_file, dataset, job_config=job_config
                         )
-                    retry_cnt += 1
                     try:
                         logger.info(job.result())
                         break
                     except exceptions.Forbidden as e:
-                        logger.info("Rate limit exceeded... Sleeping to try again")
-                        logger.debug(e)
+                        retry_cnt += 1
+                        if retry_cnt > self.max_retry_cnt:
+                            break
+                        logger.info(
+                            "A block write encountered a rate limit exceeded error"
+                            + f" {retry_cnt} time(s). Sleeping to try again."
+                        )
+                        logging.debug(e)
                         time.sleep(RATE_LIMIT_EXCEEDED_SLEEP_TIME)
 
-                # Raise exception if retry_cnt hits MAX_RETRY_CNT
-                if retry_cnt >= MAX_RETRY_CNT:
+                # Raise exception if retry_cnt exceeds max_retry_cnt
+                if retry_cnt > self.max_retry_cnt:
+                    logger.info(
+                        f"Maximum ({self.max_retry_cnt}) retry count exceeded. Ray"
+                        + " will attempt to retry the block write via fault tolerance."
+                    )
                     raise RuntimeError(
-                        f"Write failed due to {MAX_RETRY_CNT} repeated"
-                        + " API rate limit exceeded responses"
+                        f"Write failed due to {retry_cnt}"
+                        + " repeated API rate limit exceeded responses. Consider"
+                        + " specifiying the max_retry_cnt kwarg with a higher value."
                     )
 
         _write_single_block = cached_remote_fn(_write_single_block)

@@ -32,8 +32,6 @@
 
 namespace ray {
 
-class GcsMonitorServerTest;
-
 using raylet::ClusterTaskManager;
 
 namespace gcs {
@@ -197,8 +195,6 @@ class GcsResourceManager : public rpc::NodeResourceInfoHandler,
   std::shared_ptr<ClusterTaskManager> cluster_task_manager_;
   /// Num of alive nodes in the cluster.
   size_t num_alive_nodes_ = 0;
-
-  friend GcsMonitorServerTest;
 };
 
 }  // namespace gcs

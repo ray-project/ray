@@ -21,6 +21,7 @@ from ray.serve.schema import ServeInstanceDetails, HTTPOptionsSchema
 from ray.serve._private.common import (
     ApplicationStatus,
     DeploymentStatus,
+    DeploymentStatusTrigger,
     ReplicaState,
     ProxyStatus,
 )
@@ -433,6 +434,10 @@ def test_get_serve_instance_details(ray_start_stop, f_deployment_options, url):
 
         for deployment in app_details[app].deployments.values():
             assert deployment.status == DeploymentStatus.HEALTHY
+            assert (
+                deployment.status_trigger
+                == DeploymentStatusTrigger.CONFIG_UPDATE_COMPLETED
+            )
             # Route prefix should be app level options eventually
             assert "route_prefix" not in deployment.deployment_config.dict(
                 exclude_unset=True
@@ -782,7 +787,8 @@ def test_put_with_logging_config(ray_start_stop):
 
     # Make sure deployment & controller both log in json format.
     resp = requests.post("http://localhost:8000/app").json()
-    expected_log_regex = [f'"replica": "{resp["replica"]}", ']
+    replica_id = resp["replica"].split("#")[-1]
+    expected_log_regex = [f'"replica": "{replica_id}", ']
     check_log_file(resp["log_file"], expected_log_regex)
     expected_log_regex = ['.*"component_name": "controller".*']
     check_log_file(resp["controller_log_file"], expected_log_regex)

@@ -42,6 +42,9 @@ namespace gcs {
 /// password.
 class GcsClientOptions {
  public:
+  GcsClientOptions(const std::string gcs_address, int port)
+      : gcs_address_(gcs_address), gcs_port_(port) {}
+
   /// Constructor of GcsClientOptions from gcs address
   ///
   /// \param gcs_address gcs address, including port
@@ -275,6 +278,8 @@ class RAY_EXPORT PythonGcsClient {
   std::unique_ptr<rpc::JobInfoGcsService::Stub> job_info_stub_;
   std::unique_ptr<rpc::autoscaler::AutoscalerStateService::Stub> autoscaler_stub_;
   std::shared_ptr<grpc::Channel> channel_;
+  // Make PythonGcsClient thread safe, so add a mutex to protect it.
+  absl::Mutex mutex_;
 };
 
 std::unordered_map<std::string, double> PythonGetResourcesTotal(

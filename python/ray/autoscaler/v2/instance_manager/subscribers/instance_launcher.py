@@ -10,16 +10,15 @@ from ray.autoscaler._private.constants import (
 )
 from ray.autoscaler.v2.instance_manager.instance_storage import (
     InstanceStorage,
-    InstanceUpdatedSuscriber,
-    InstanceUpdateEvent,
+    InstanceUpdatedSubscriber,
 )
 from ray.autoscaler.v2.instance_manager.node_provider import NodeProvider
-from ray.core.generated.instance_manager_pb2 import Instance
+from ray.core.generated.instance_manager_pb2 import Instance, InstanceUpdateEvent
 
 logger = logging.getLogger(__name__)
 
 
-class InstanceLauncher(InstanceUpdatedSuscriber):
+class InstanceLauncher(InstanceUpdatedSubscriber):
     """InstanceLauncher is responsible for provisioning new instances."""
 
     def __init__(
@@ -43,7 +42,7 @@ class InstanceLauncher(InstanceUpdatedSuscriber):
     def notify(self, events: List[InstanceUpdateEvent]) -> None:
         # TODO: we should do reconciliation based on events.
         has_new_request = any(
-            [event.new_status == Instance.UNKNOWN for event in events]
+            [event.new_instance_status == Instance.UNKNOWN for event in events]
         )
         if has_new_request:
             self._executor.submit(self._may_launch_new_instances)
@@ -129,7 +128,6 @@ class InstanceLauncher(InstanceUpdatedSuscriber):
             instance.internal_ip = cloud_instance.internal_ip
             instance.external_ip = cloud_instance.external_ip
             instance.status = Instance.ALLOCATED
-            instance.ray_status = Instance.RAY_STATUS_UNKOWN
 
             # update instance status into the storage
             result, _ = self._instance_storage.upsert_instance(

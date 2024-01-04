@@ -4,7 +4,6 @@ import time
 import uuid
 from typing import Dict, Iterator, List, Optional
 
-import ray
 from ray.data._internal.dataset_logger import DatasetLogger
 from ray.data._internal.execution.autoscaling_requester import (
     get_or_create_autoscaling_requester_actor,
@@ -34,13 +33,8 @@ from ray.data._internal.execution.streaming_executor_state import (
     update_operator_states,
 )
 from ray.data._internal.progress_bar import ProgressBar
-from ray.data._internal.stats import (
-    DatasetStats,
-    clear_stats_actor_metrics,
-    register_dataset_to_stats_actor,
-    update_stats_actor_dataset,
-    update_stats_actor_metrics,
-)
+from ray.data._internal.stats import DatasetStats, StatsManager
+from ray.data._internal.util import cluster_resources
 from ray.data.context import DataContext
 
 logger = DatasetLogger(__name__)
@@ -52,6 +46,9 @@ DEBUG_TRACE_SCHEDULING = "RAY_DATA_TRACE_SCHEDULING" in os.environ
 # Force a progress bar update after this many events processed . This avoids the
 # progress bar seeming to stall for very large scale workloads.
 PROGRESS_BAR_UPDATE_INTERVAL = 50
+
+# Interval for logging execution progress updates and operator metrics.
+DEBUG_LOG_INTERVAL_SECONDS = 5
 
 # Visible for testing.
 _num_shutdown = 0
@@ -76,6 +73,7 @@ class StreamingExecutor(Executor, threading.Thread):
 
         # The executor can be shutdown while still running.
         self._shutdown_lock = threading.RLock()
+        self._execution_started = False
         self._shutdown = False
 
         # Internal execution state shared across thread boundaries. We run the control
@@ -89,6 +87,10 @@ class StreamingExecutor(Executor, threading.Thread):
         # Stores if an operator is completed,
         # used for marking when an op has just completed.
         self._has_op_completed: Optional[Dict[PhysicalOperator, bool]] = None
+        self._max_errored_blocks = DataContext.get_current().max_errored_blocks
+        self._num_errored_blocks = 0
+
+        self._last_debug_log_time = 0
 
         Executor.__init__(self, options)
         thread_name = f"StreamingExecutor-{self._execution_id}"
@@ -127,10 +129,12 @@ class StreamingExecutor(Executor, threading.Thread):
             self._global_info = ProgressBar("Running", dag.num_outputs_total())
 
         self._output_node: OpState = self._topology[dag]
-        register_dataset_to_stats_actor(
-            self._dataset_tag, [tag["operator"] for tag in self._get_metrics_tags()]
+        StatsManager.register_dataset_to_stats_actor(
+            self._dataset_tag,
+            self._get_operator_tags(),
         )
         self.start()
+        self._execution_started = True
 
         class StreamIterator(OutputIterator):
             def __init__(self, outer: Executor):
@@ -141,22 +145,9 @@ class StreamingExecutor(Executor, threading.Thread):
                     item = self._outer._output_node.get_output_blocking(
                         output_split_idx
                     )
-                    # Translate the special sentinel values for MaybeRefBundle into
-                    # exceptions.
-                    if item is None:
-                        if self._outer._shutdown:
-                            raise StopIteration(f"{self._outer} is shutdown.")
-                        else:
-                            raise StopIteration
-                    elif isinstance(item, Exception):
-                        raise item
-                    else:
-                        # Otherwise return a concrete RefBundle.
-                        if self._outer._global_info:
-                            self._outer._global_info.update(
-                                1, dag._estimated_output_blocks
-                            )
-                        return item
+                    if self._outer._global_info:
+                        self._outer._global_info.update(1, dag._estimated_output_blocks)
+                    return item
                 # Needs to be BaseException to catch KeyboardInterrupt. Otherwise we
                 # can leave dangling progress bars by skipping shutdown.
                 except BaseException as e:
@@ -176,18 +167,21 @@ class StreamingExecutor(Executor, threading.Thread):
         global _num_shutdown
 
         with self._shutdown_lock:
-            if self._shutdown:
+            if not self._execution_started or self._shutdown:
                 return
             logger.get_logger().debug(f"Shutting down {self}.")
             _num_shutdown += 1
             self._shutdown = True
             # Give the scheduling loop some time to finish processing.
             self.join(timeout=2.0)
-            update_stats_actor_dataset(
-                self._dataset_tag,
-                self._get_state_dict(
-                    state="FINISHED" if execution_completed else "FAILED"
-                ),
+            self._update_stats_metrics(
+                state="FINISHED" if execution_completed else "FAILED",
+                force_update=True,
+            )
+            # Clears metrics for this dataset so that they do
+            # not persist in the grafana dashboard after execution
+            StatsManager.clear_execution_metrics(
+                self._dataset_tag, self._get_operator_tags()
             )
             # Freeze the stats and save it.
             self._final_stats = self._generate_stats()
@@ -219,13 +213,10 @@ class StreamingExecutor(Executor, threading.Thread):
                 pass
         except Exception as e:
             # Propagate it to the result iterator.
-            self._output_node.outqueue.append(e)
+            self._output_node.mark_finished(e)
         finally:
             # Signal end of results.
-            self._output_node.outqueue.append(None)
-            # Clears metrics for this dataset so that they do
-            # not persist in the grafana dashboard after execution
-            clear_stats_actor_metrics(self._get_metrics_tags())
+            self._output_node.mark_finished()
 
     def get_stats(self):
         """Return the stats object for the streaming execution.
@@ -239,12 +230,12 @@ class StreamingExecutor(Executor, threading.Thread):
 
     def _generate_stats(self) -> DatasetStats:
         """Create a new stats object reflecting execution status so far."""
-        stats = self._initial_stats or DatasetStats(stages={}, parent=None)
+        stats = self._initial_stats or DatasetStats(metadata={}, parent=None)
         for op in self._topology:
             if isinstance(op, InputDataBuffer):
                 continue
             builder = stats.child_builder(op.name, override_start_time=self._start_time)
-            stats = builder.build_multistage(op.get_stats())
+            stats = builder.build_multioperator(op.get_stats())
             stats.extra_metrics = op.metrics.as_dict()
         return stats
 
@@ -266,7 +257,12 @@ class StreamingExecutor(Executor, threading.Thread):
         # Note: calling process_completed_tasks() is expensive since it incurs
         # ray.wait() overhead, so make sure to allow multiple dispatch per call for
         # greater parallelism.
-        process_completed_tasks(topology, self._backpressure_policies)
+        num_errored_blocks = process_completed_tasks(
+            topology, self._backpressure_policies, self._max_errored_blocks
+        )
+        if self._max_errored_blocks > 0:
+            self._max_errored_blocks -= num_errored_blocks
+        self._num_errored_blocks += num_errored_blocks
 
         # Dispatch as many operators as we can for completed tasks.
         limits = self._get_or_refresh_resource_limits()
@@ -306,14 +302,12 @@ class StreamingExecutor(Executor, threading.Thread):
         for op_state in topology.values():
             op_state.refresh_progress_bar()
 
-        if not DEBUG_TRACE_SCHEDULING:
-            _debug_dump_topology(topology, log_to_stdout=False)
-
-        update_stats_actor_metrics(
-            [op.metrics for op in self._topology],
-            self._get_metrics_tags(),
-            self._get_state_dict(state="RUNNING"),
-        )
+        self._update_stats_metrics(state="RUNNING")
+        if time.time() - self._last_debug_log_time >= DEBUG_LOG_INTERVAL_SECONDS:
+            _log_op_metrics(topology)
+            if not DEBUG_TRACE_SCHEDULING:
+                _debug_dump_topology(topology, log_to_stdout=False)
+            self._last_debug_log_time = time.time()
 
         # Log metrics of newly completed operators.
         for op in topology:
@@ -340,16 +334,26 @@ class StreamingExecutor(Executor, threading.Thread):
         autoscaling.
         """
         base = self._options.resource_limits
-        cluster = ray.cluster_resources()
-        return ExecutionResources(
-            cpu=base.cpu if base.cpu is not None else cluster.get("CPU", 0.0),
-            gpu=base.gpu if base.gpu is not None else cluster.get("GPU", 0.0),
-            object_store_memory=base.object_store_memory
-            if base.object_store_memory is not None
-            else round(
+        exclude = self._options.exclude_resources
+        cluster = cluster_resources()
+
+        cpu = base.cpu
+        if cpu is None:
+            cpu = cluster.get("CPU", 0.0) - (exclude.cpu or 0.0)
+        gpu = base.gpu
+        if gpu is None:
+            gpu = cluster.get("GPU", 0.0) - (exclude.gpu or 0.0)
+        object_store_memory = base.object_store_memory
+        if object_store_memory is None:
+            object_store_memory = round(
                 DEFAULT_OBJECT_STORE_MEMORY_LIMIT_FRACTION
                 * cluster.get("object_store_memory", 0.0)
-            ),
+            ) - (exclude.object_store_memory or 0)
+
+        return ExecutionResources(
+            cpu=cpu,
+            gpu=gpu,
+            object_store_memory=object_store_memory,
         )
 
     def _report_current_usage(
@@ -365,12 +369,9 @@ class StreamingExecutor(Executor, threading.Thread):
         if self._global_info:
             self._global_info.set_description(resources_status)
 
-    def _get_metrics_tags(self):
-        """Returns a list of tags for operator-level metrics."""
-        return [
-            {"dataset": self._dataset_tag, "operator": f"{op.name}{i}"}
-            for i, op in enumerate(self._topology)
-        ]
+    def _get_operator_tags(self):
+        """Returns a list of operator tags."""
+        return [f"{op.name}{i}" for i, op in enumerate(self._topology)]
 
     def _get_state_dict(self, state):
         last_op, last_state = list(self._topology.items())[-1]
@@ -388,6 +389,15 @@ class StreamingExecutor(Executor, threading.Thread):
                 for i, (op, op_state) in enumerate(self._topology.items())
             },
         }
+
+    def _update_stats_metrics(self, state: str, force_update: bool = False):
+        StatsManager.update_execution_metrics(
+            self._dataset_tag,
+            [op.metrics for op in self._topology],
+            self._get_operator_tags(),
+            self._get_state_dict(state=state),
+            force_update=force_update,
+        )
 
 
 def _validate_dag(dag: PhysicalOperator, limits: ExecutionResources) -> None:
@@ -465,3 +475,15 @@ def _debug_dump_topology(topology: Topology, log_to_stdout: bool = True) -> None
             f"Blocks Outputted: {state.num_completed_tasks}/{op.num_outputs_total()}"
         )
     logger.get_logger(log_to_stdout).info("")
+
+
+def _log_op_metrics(topology: Topology) -> None:
+    """Logs the metrics of each operator.
+
+    Args:
+        topology: The topology to debug.
+    """
+    log_str = "Operator Metrics:\n"
+    for op in topology:
+        log_str += f"{op.name}: {op.metrics.as_dict()}\n"
+    logger.get_logger(log_to_stdout=False).info(log_str)

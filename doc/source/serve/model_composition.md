@@ -36,9 +36,9 @@ This example has two deployments:
 :linenos: true
 ```
 
-In line 44, the `LanguageClassifier` deployment takes in the `spanish_responder` and `french_responder` as constructor arguments. At runtime, Ray Serve converts these arguments into `DeploymentHandles`. `LanguageClassifier` can then call the `spanish_responder` and `french_responder`'s deployment methods using this handle.
+In line 42, the `LanguageClassifier` deployment takes in the `spanish_responder` and `french_responder` as constructor arguments. At runtime, Ray Serve converts these arguments into `DeploymentHandles`. `LanguageClassifier` can then call the `spanish_responder` and `french_responder`'s deployment methods using this handle.
 
-For example, the `LanguageClassifier`'s `__call__` method uses the HTTP request's values to decide whether to respond in Spanish or French. It then forwards the request's name to the `spanish_responder` or the `french_responder` on lines 20 and 23 using the `DeploymentHandle`s. The format of the calls is as follows:
+For example, the `LanguageClassifier`'s `__call__` method uses the HTTP request's values to decide whether to respond in Spanish or French. It then forwards the request's name to the `spanish_responder` or the `french_responder` on lines 19 and 21 using the `DeploymentHandle`s. The format of the calls is as follows:
 
 ```python
 response: DeploymentResponse = self.spanish_responder.say_hello.remote(name)
@@ -54,7 +54,7 @@ This call returns a `DeploymentResponse` object, which is a reference to the res
 This pattern allows the call to execute asynchronously.
 To get the actual result, `await` the response.
 `await` blocks until the asynchronous call executes and then returns the result.
-In this example, line 23 calls `await response` and returns the resulting string.
+In this example, line 25 calls `await response` and returns the resulting string.
 
 (serve-model-composition-await-warning)=
 :::{warning}
@@ -150,7 +150,7 @@ The downstream model has two methods:
 
 ## Advanced: Convert a DeploymentResponse to a Ray ObjectRef
 
-Under the hood, each `DeploymentResponse` corresponds to a Ray `ObjectRef`, or a `StreamingObjectRefGenerator` for streaming calls.
+Under the hood, each `DeploymentResponse` corresponds to a Ray `ObjectRef`, or an `ObjectRefGenerator` for streaming calls.
 To compose `DeploymentHandle` calls with Ray Actors or Tasks, you may want to resolve the response to its `ObjectRef`.
 For this purpose, you can use the {mod}`DeploymentResponse._to_object_ref <ray.serve.handle.DeploymentResponse>` and {mod}`DeploymentResponse._to_object_ref_sync <ray.serve.handle.DeploymentResponse>` developer APIs.
 

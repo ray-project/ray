@@ -97,7 +97,7 @@ kubectl get service
     - name: RAY_PROMETHEUS_HOST
       value: http://prometheus-kube-prometheus-prometheus.prometheus-system.svc:9090
   ```
-  * Note that we do not deploy Grafana in the head Pod, so we need to set both `RAY_GRAFANA_IFRAME_HOST` and `RAY_GRAFANA_HOST`. 
+  * Note that we do not deploy Grafana in the head Pod, so we need to set both `RAY_GRAFANA_IFRAME_HOST` and `RAY_GRAFANA_HOST`.
     `RAY_GRAFANA_HOST` is used by the head Pod to send health-check requests to Grafana in the backend.
     `RAY_GRAFANA_IFRAME_HOST` is used by your browser to fetch the Grafana panels from the Grafana server rather than from the head Pod.
     Because we forward the port of Grafana to `127.0.0.1:3000` in this example, we set `RAY_GRAFANA_IFRAME_HOST` to `http://127.0.0.1:3000`.
@@ -135,8 +135,7 @@ spec:
 * See [ServiceMonitor official document](https://github.com/prometheus-operator/prometheus-operator/blob/main/Documentation/api.md#servicemonitor) for more details about the configurations.
 * `release: $HELM_RELEASE`: Prometheus can only detect ServiceMonitor with this label.
 
-<div id="prometheus-can-only-detect-this-label" ></div>
-
+(prometheus-can-only-detect-this-label)=
   ```sh
   helm ls -n prometheus-system
   # ($HELM_RELEASE is "prometheus".)
@@ -241,8 +240,8 @@ spec:
       )
 ```
 
-* The PromQL expression above is: 
-$$\frac{ number\ of\ update\ resource\ usage\ RPCs\ that\ have\ RTT\ smaller\ then\ 20ms\ in\ last\ 30\ days\ }{total\ number\ of\ update\ resource\ usage\ RPCs\ in\ last\ 30\ days\ }   \times 100 $$  
+* The PromQL expression above is:
+$$\frac{ number\ of\ update\ resource\ usage\ RPCs\ that\ have\ RTT\ smaller\ then\ 20ms\ in\ last\ 30\ days\ }{total\ number\ of\ update\ resource\ usage\ RPCs\ in\ last\ 30\ days\ }   \times 100 $$
 
 
 * The recording rule above is one of rules defined in [prometheusRules.yaml](https://github.com/ray-project/kuberay/blob/master/config/prometheus/rules/prometheusRules.yaml), and it is created by **install.sh**. Hence, no need to create anything here.

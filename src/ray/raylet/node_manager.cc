@@ -1223,8 +1223,11 @@ void NodeManager::ProcessClientMessage(const std::shared_ptr<ClientConnection> &
   case protocol::MessageType::AnnounceWorkerPort: {
     ProcessAnnounceWorkerPortMessage(client, message_data);
   } break;
-  case protocol::MessageType::TaskDone: {
-    HandleWorkerAvailable(client);
+  case protocol::MessageType::ActorCreationTaskDone: {
+    if (registered_worker) {
+      // Worker may send this message after it was disconnected.
+      HandleWorkerAvailable(registered_worker);
+    }
   } break;
   case protocol::MessageType::DisconnectClient: {
     ProcessDisconnectClientMessage(client, message_data);
@@ -1400,13 +1403,8 @@ void NodeManager::ProcessAnnounceWorkerPortMessage(
   worker->Connect(port);
   if (is_worker) {
     worker_pool_.OnWorkerStarted(worker);
-    HandleWorkerAvailable(worker->Connection());
+    HandleWorkerAvailable(worker);
   }
-}
-
-void NodeManager::HandleWorkerAvailable(const std::shared_ptr<ClientConnection> &client) {
-  std::shared_ptr<WorkerInterface> worker = worker_pool_.GetRegisteredWorker(client);
-  HandleWorkerAvailable(worker);
 }
 
 void NodeManager::HandleWorkerAvailable(const std::shared_ptr<WorkerInterface> &worker) {
@@ -2533,6 +2531,10 @@ rpc::ObjectStoreStats AccumulateStoreStats(
     if (cur_store.object_pulls_queued()) {
       store_stats.set_object_pulls_queued(true);
     }
+    store_stats.set_cumulative_created_objects(store_stats.cumulative_created_objects() +
+                                               cur_store.cumulative_created_objects());
+    store_stats.set_cumulative_created_bytes(store_stats.cumulative_created_bytes() +
+                                             cur_store.cumulative_created_bytes());
   }
   return store_stats;
 }

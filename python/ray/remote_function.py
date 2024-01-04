@@ -18,8 +18,8 @@ from ray._private.serialization import pickle_dumps
 from ray._private.utils import get_runtime_env_info, parse_runtime_env
 from ray._raylet import (
     STREAMING_GENERATOR_RETURN,
+    ObjectRefGenerator,
     PythonFunctionDescriptor,
-    StreamingObjectRefGenerator,
 )
 from ray.util.annotations import DeveloperAPI, PublicAPI
 from ray.util.placement_group import _configure_placement_group_based_on_context
@@ -121,6 +121,7 @@ class RemoteFunction:
             self._default_options["runtime_env"] = self._runtime_env
 
         self._language = language
+        self._is_generator = inspect.isgeneratorfunction(function)
         self._function = function
         self._function_signature = None
         # Guards trace injection to enforce exactly once semantics
@@ -331,7 +332,14 @@ class RemoteFunction:
             "placement_group_capture_child_tasks"
         ]
         scheduling_strategy = task_options["scheduling_strategy"]
+
         num_returns = task_options["num_returns"]
+        if num_returns is None:
+            if self._is_generator:
+                num_returns = "streaming"
+            else:
+                num_returns = 1
+
         if num_returns == "dynamic":
             num_returns = -1
         elif num_returns == "streaming":
@@ -440,7 +448,7 @@ class RemoteFunction:
                 # that is for the generator task.
                 assert len(object_refs) == 1
                 generator_ref = object_refs[0]
-                return StreamingObjectRefGenerator(generator_ref, worker)
+                return ObjectRefGenerator(generator_ref, worker)
             if len(object_refs) == 1:
                 return object_refs[0]
             elif len(object_refs) > 1:

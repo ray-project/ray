@@ -44,7 +44,7 @@ class TestDatabricksHook:
 
     def test_hook(self, monkeypatch):
         monkeypatch.setattr(
-            "ray.util.spark.databricks_hook._DATABRICKS_DEFAULT_TMP_DIR", "/tmp"
+            "ray.util.spark.databricks_hook._DATABRICKS_DEFAULT_TMP_ROOT_DIR", "/tmp"
         )
         monkeypatch.setenv("DATABRICKS_RUNTIME_VERSION", "12.2")
         monkeypatch.setenv("DATABRICKS_RAY_ON_SPARK_AUTOSHUTDOWN_MINUTES", "0.5")
@@ -52,9 +52,13 @@ class TestDatabricksHook:
         monkeypatch.setattr(
             "ray.util.spark.databricks_hook.get_db_entry_point", lambda: db_api_entry
         )
+        monkeypatch.setattr(
+            "ray.util.spark.databricks_hook.get_databricks_function",
+            lambda *args, **kwargs: None,
+        )
         try:
             setup_ray_cluster(
-                num_worker_nodes=2,
+                max_worker_nodes=2,
                 head_node_options={"include_dashboard": False},
             )
             cluster = ray.util.spark.cluster_init._active_ray_cluster

@@ -1,10 +1,8 @@
 from typing import Any, Dict, List, Optional, Tuple
 
 from ray.dag import DAGNode
-from ray.dag.constants import PARENT_CLASS_NODE_KEY
 from ray.dag.format_utils import get_dag_node_str
 from ray.serve._private.constants import RAY_SERVE_ENABLE_NEW_HANDLE_API
-from ray.serve._private.deployment_method_node import DeploymentMethodNode
 from ray.serve.deployment import Deployment
 from ray.serve.handle import DeploymentHandle, RayServeHandle
 
@@ -56,23 +54,6 @@ class DeploymentNode(DAGNode):
             new_options,
             other_args_to_resolve=new_other_args_to_resolve,
         )
-
-    def __getattr__(self, method_name: str):
-        # Raise an error if the method is invalid.
-        getattr(self._deployment.func_or_class, method_name)
-        call_node = DeploymentMethodNode(
-            self._deployment,
-            method_name,
-            self._app_name,
-            (),
-            {},
-            {},
-            other_args_to_resolve={
-                **self._bound_other_args_to_resolve,
-                PARENT_CLASS_NODE_KEY: self,
-            },
-        )
-        return call_node
 
     def __str__(self) -> str:
         return get_dag_node_str(self, str(self._deployment))

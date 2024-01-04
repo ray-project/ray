@@ -34,10 +34,10 @@
 #include "src/ray/protobuf/gcs.pb.h"
 
 namespace ray {
-class GcsMonitorServerTest;
 namespace gcs {
 
 class GcsAutoscalerStateManagerTest;
+class GcsStateTest;
 /// GcsNodeManager is responsible for managing and monitoring nodes as well as handing
 /// node and resource related rpc requests.
 /// This class is not thread-safe.
@@ -111,6 +111,9 @@ class GcsNodeManager : public rpc::NodeInfoHandler {
   absl::optional<std::shared_ptr<rpc::GcsNodeInfo>> GetAliveNode(
       const NodeID &node_id) const;
 
+  /// Set the death info of the node.
+  void SetDeathInfo(const NodeID &node_id, rpc::NodeDeathInfo death_info);
+
   /// Get all alive nodes.
   ///
   /// \return all alive nodes.
@@ -153,6 +156,7 @@ class GcsNodeManager : public rpc::NodeInfoHandler {
 
   /// Drain the given node.
   /// Idempotent.
+  /// This is technically not draining a node. It should be just called "kill node".
   virtual void DrainNode(const NodeID &node_id);
 
  private:
@@ -200,8 +204,8 @@ class GcsNodeManager : public rpc::NodeInfoHandler {
                    boost::bimaps::unordered_multiset_of<std::string>>;
   NodeIDAddrBiMap node_map_;
 
-  friend GcsMonitorServerTest;
   friend GcsAutoscalerStateManagerTest;
+  friend GcsStateTest;
 };
 
 }  // namespace gcs

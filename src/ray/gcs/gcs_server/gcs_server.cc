@@ -227,9 +227,6 @@ void GcsServer::DoStart(const GcsInitData &gcs_init_data) {
   // Init GCS task manager.
   InitGcsTaskManager();
 
-  // Init Monitor service.
-  InitMonitorServer();
-
   // Install event listeners.
   InstallEventListeners();
 
@@ -678,6 +675,7 @@ void GcsServer::InitGcsAutoscalerStateManager(const GcsInitData &gcs_init_data) 
   gcs_autoscaler_state_manager_ =
       std::make_unique<GcsAutoscalerStateManager>(config_.session_name,
                                                   *gcs_node_manager_,
+                                                  *gcs_actor_manager_,
                                                   *gcs_placement_group_manager_,
                                                   raylet_client_pool_);
   gcs_autoscaler_state_manager_->Initialize(gcs_init_data);
@@ -694,17 +692,6 @@ void GcsServer::InitGcsTaskManager() {
   task_info_service_.reset(new rpc::TaskInfoGrpcService(gcs_task_manager_->GetIoContext(),
                                                         *gcs_task_manager_));
   rpc_server_.RegisterService(*task_info_service_);
-}
-
-void GcsServer::InitMonitorServer() {
-  monitor_server_ = std::make_unique<GcsMonitorServer>(
-      *gcs_node_manager_,
-      cluster_resource_scheduler_->GetClusterResourceManager(),
-      gcs_resource_manager_,
-      gcs_placement_group_manager_);
-  monitor_grpc_service_.reset(
-      new rpc::MonitorGrpcService(main_service_, *monitor_server_));
-  rpc_server_.RegisterService(*monitor_grpc_service_);
 }
 
 void GcsServer::InstallEventListeners() {
@@ -740,7 +727,7 @@ void GcsServer::InstallEventListeners() {
         // node is removed from the GCS.
         gcs_resource_manager_->OnNodeDead(node_id);
         gcs_placement_group_manager_->OnNodeDead(node_id);
-        gcs_actor_manager_->OnNodeDead(node_id, node_ip_address);
+        gcs_actor_manager_->OnNodeDead(node, node_ip_address);
         gcs_job_manager_->OnNodeDead(node_id);
         raylet_client_pool_->Disconnect(node_id);
         gcs_healthcheck_manager_->RemoveNode(node_id);

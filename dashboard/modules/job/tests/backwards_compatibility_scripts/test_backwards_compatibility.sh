@@ -37,6 +37,7 @@ do
     conda activate "${env_name}"
 
     # Pin pydantic version due to: https://github.com/ray-project/ray/issues/36990.
+    # ray<2.9 is only compatible with pydantic<2.
     pip install -U "pydantic<2" ray=="${RAY_VERSION}" ray[default]=="${RAY_VERSION}"
 
     printf "\n\n\n"
