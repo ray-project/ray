@@ -116,14 +116,17 @@ class InstanceUtil:
         to RAY_RUNNING status.
         """
         assert instance.status != Instance.UNKNOWN
-        return instance.status in [
-            Instance.UNKNOWN,
+        return instance.status in InstanceUtil.ray_running_reachable_statuses()
+
+    @staticmethod
+    def ray_running_reachable_statuses() -> Set["Instance.InstanceStatus"]:
+        return {
             Instance.QUEUED,
             Instance.REQUESTED,
             Instance.ALLOCATED,
             Instance.RAY_INSTALLING,
             Instance.ALLOCATION_FAILED,
-        ]
+        }
 
     @staticmethod
     def set_status(

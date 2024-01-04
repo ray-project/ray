@@ -14,6 +14,15 @@ class InstanceUpdatedSubscriber(metaclass=ABCMeta):
 
     @abstractmethod
     def notify(self, events: List[InstanceUpdateEvent]) -> None:
+        """
+        Notify the subscriber of instance status changes.
+
+        This method should be non-blocking, otherwise it will block the
+        instance storage update.
+
+        Args:
+            events: A list of instance update events.
+        """
         pass
 
 
