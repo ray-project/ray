@@ -657,6 +657,7 @@ def _setup_ray_cluster(
             },
             upscaling_speed=autoscale_upscaling_speed,
             idle_timeout_minutes=autoscale_idle_timeout_minutes,
+            extra_env_vars=start_hook.custom_environment_variables(),
         )
         ray_head_proc, tail_output_deque = autoscaling_cluster.start(
             ray_head_ip,
@@ -703,6 +704,7 @@ def _setup_ray_cluster(
             extra_env={
                 RAY_ON_SPARK_COLLECT_LOG_TO_PATH: collect_log_to_path or "",
                 RAY_ON_SPARK_START_RAY_PARENT_PID: str(os.getpid()),
+                **start_hook.custom_environment_variables(),
             },
         )
         spark_job_server = None
@@ -770,6 +772,7 @@ def _setup_ray_cluster(
                     collect_log_to_path=collect_log_to_path,
                     autoscale_mode=False,
                     spark_job_server_port=spark_job_server_port,
+                    extra_env_vars=start_hook.custom_environment_variables(),
                 )
             except Exception as e:
                 # NB:
@@ -1458,6 +1461,7 @@ def _start_ray_worker_nodes(
     collect_log_to_path,
     autoscale_mode,
     spark_job_server_port,
+    extra_env_vars,
 ):
     # NB:
     # In order to start ray worker nodes on spark cluster worker machines,
@@ -1515,6 +1519,7 @@ def _start_ray_worker_nodes(
             RAY_ON_SPARK_COLLECT_LOG_TO_PATH: collect_log_to_path or "",
             RAY_ON_SPARK_START_RAY_PARENT_PID: str(os.getpid()),
             "RAY_ENABLE_WINDOWS_OR_OSX_CLUSTER": "1",
+            **extra_env_vars,
         }
 
         if num_gpus_per_node > 0:
@@ -1650,6 +1655,7 @@ class AutoscalingCluster:
         extra_provider_config: dict,
         upscaling_speed: float,
         idle_timeout_minutes: float,
+        extra_env_vars: dict,
     ):
         """Create the cluster.
 
@@ -1666,6 +1672,7 @@ class AutoscalingCluster:
             upscaling_speed,
             idle_timeout_minutes,
         )
+        self.extra_env_vars = extra_env_vars
 
     def _generate_config(
         self,
@@ -1784,6 +1791,7 @@ class AutoscalingCluster:
             "AUTOSCALER_UPDATE_INTERVAL_S": "1",
             RAY_ON_SPARK_COLLECT_LOG_TO_PATH: collect_log_to_path or "",
             RAY_ON_SPARK_START_RAY_PARENT_PID: str(os.getpid()),
+            **self.extra_env_vars,
         }
 
         self.ray_head_node_cmd = ray_head_node_cmd
