@@ -61,7 +61,7 @@ repos:
     hooks:
       - id: prettier
         files: 'doc/'
-        types_or: [javascript, ts, tsx, html]
+        types_or: [javascript, ts, tsx, html, css]
 
   - repo: https://github.com/pre-commit/mirrors-mypy
     rev: v1.7.0
