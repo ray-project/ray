@@ -2255,10 +2255,11 @@ class Dataset:
             boundaries: The list of values based on which to repartition the dataset.
                 For example, if the input boundary is [10,20], rows with values less
                 than 10 will be divided into the first block, rows with values greater
-                than or equal to 10 and less than 20 will be divided into the second block,
-                and rows with values greater than or equal to 20 will be divided into
-                the third block. If not provided, the boundaries will be sampled from
-                the input blocks. This feature only supports numeric columns right now.
+                than or equal to 10 and less than 20 will be divided into the
+                second block, and rows with values greater than or equal to 20
+                will be divided into the third block. If not provided, the
+                boundaries will be sampled from the input blocks. This feature
+                only supports numeric columns right now.
 
         Returns:
             A new, sorted :class:`Dataset`.

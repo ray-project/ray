@@ -68,7 +68,9 @@ class SortKey:
         if boundaries:
             for item in boundaries:
                 if not isinstance(item, (int, float)):
-                    raise ValueError("The type of items in boundaries must be int or float.")
+                    raise ValueError(
+                        "The type of items in boundaries must be int or float."
+                    )
             boundaries = list(set(boundaries))
             boundaries.sort()
         self._boundaries = boundaries
@@ -224,9 +226,8 @@ def sort_impl(
     if not sort_key.boundaries:
         boundaries = sample_boundaries(blocks_list, sort_key, num_reducers, ctx)
     else:
-        boundaries = [(b, ) for b in sort_key.boundaries]
-        num_mappers = len(boundaries) + 1
-        num_reducers = num_mappers
+        boundaries = [(b,) for b in sort_key.boundaries]
+        num_reducers = len(boundaries) + 1
     _, ascending = sort_key.to_pandas_sort_args()
     if not ascending:
         boundaries.reverse()

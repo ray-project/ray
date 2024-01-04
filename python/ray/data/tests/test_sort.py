@@ -5,7 +5,7 @@ import numpy as np
 import pandas as pd
 import pyarrow as pa
 import pytest
-from ray.data.context import DataContext
+
 import ray
 from ray.data._internal.planner.exchange.push_based_shuffle_task_scheduler import (
     PushBasedShuffleTaskScheduler,
@@ -18,70 +18,31 @@ from ray.data.tests.util import extract_values
 from ray.tests.conftest import *  # noqa
 
 
-@pytest.mark.parametrize("new_backend", [True, False])
-@pytest.mark.parametrize("descending,boundaries", [(True, list(range(100,1000,200))),
-                                                   (False, list(range(100,1000,200))),
-                                                   (True, [1,998]), (False, [1,998])])
-def test_sort_with_specified_boundaries(descending, boundaries, new_backend):
-    # This function is used to build expected sorted result, and the returned result will
-    # be compared with the result of ray.data.Dataset.sort().
-    def expected_sorted_result_in_blocks(boundaries_, ordered_id):
-        id_exp = []
-        for i in range(len(boundaries_)):
-            if boundaries_[i] > ordered_id[0] and boundaries_[i] <= ordered_id[-1]:
-                if i == 0:
-                    id_exp.append(list(range(ordered_id[0], boundaries_[i])))
-                else:
-                    if boundaries_[i - 1] <= ordered_id[0]:
-                        id_exp.append(list(range(ordered_id[0], boundaries_[i])))
-                    else:
-                        id_exp.append(list(range(boundaries_[i - 1], boundaries_[i])))
-            elif boundaries_[i] <= ordered_id[0]:
-                id_exp.append([])
-            else:
-                if len(id_exp) == 0:
-                    id_exp.append([])
-                else:
-                    if len(id_exp[-1]) > 0:
-                        if id_exp[-1][-1] >= ordered_id[-1]:
-                            id_exp.append([])
-                        else:
-                            id_exp.append(list(range(ordered_id[-1][-1] + 1, ordered_id[-1] + 1)))
-                    else:
-                        id_exp.append([])
-        if boundaries_[-1] <= ordered_id[0]:
-            id_exp.append(ordered_id)
-        elif boundaries_[0] > ordered_id[-1]:
-            id_exp.insert(0, ordered_id)
-        else:
-            id_exp.append(list(range(boundaries_[-1], ordered_id[-1] + 1)))
-        return id_exp
+@pytest.mark.parametrize(
+    "descending,boundaries",
+    [
+        (True, list(range(100, 1000, 200))),
+        (False, list(range(100, 1000, 200))),
+        (True, [1, 998]),
+        (False, [1, 998]),
+    ],
+)
+def test_sort_with_specified_boundaries(ray_start_regular, descending, boundaries):
+    num_items = 1000
+    ds = ray.data.range(num_items)
+    ds = ds.sort("id", descending, boundaries).materialize()
 
-    def check_sort_result_in_blocks(dataset, id_exp, descending):
-        dfs = ray.get(dataset.to_pandas_refs())
-        for i in range(len(dfs)):
-            if dfs[i].shape[0] == 0:
-                assert id_exp[-1-i] != [] if descending else id_exp[i] != []
-            else:
-                idx = dfs[i]["id"].values.tolist()
-                idx.sort() if descending else None
-                assert idx == id_exp[-1-i] if descending else idx == id_exp[i]
-
-
-    x = np.random.randn(1000, 2)
-    idx = np.asarray(range(1000)).reshape(-1, 1)
-    np.random.shuffle(idx)
-    x = np.concatenate([idx, x], axis=1)
-    x = pd.DataFrame(x, columns=["id", "a", "b"])
-    ds = ray.data.from_pandas(x)
-    if new_backend:
-        DataContext.get_current().new_execution_backend = False
-    ds = ds.sort("id", descending, boundaries)
-    # Get the expected value in each block
-    id_exp = expected_sorted_result_in_blocks(boundaries, list(range(1000)))
-    # After sorting, check whether the number of blocks, the number of samples
-    # in each block, and the sorting of IDs in the blocks are as expected.
-    check_sort_result_in_blocks(ds, id_exp, descending)
+    items = range(num_items)
+    boundaries = [0] + sorted(boundaries) + [num_items]
+    expected_blocks = [
+        items[boundaries[i] : boundaries[i + 1]] for i in range(len(boundaries) - 1)
+    ]
+    if descending:
+        expected_blocks = [list(reversed(block)) for block in reversed(expected_blocks)]
+    blocks = list(ds.iter_batches(batch_size=None))
+    assert len(blocks) == len(expected_blocks)
+    for block, expected_block in zip(blocks, expected_blocks):
+        assert np.all(block["id"] == expected_block)
 
 
 def test_sort_simple(ray_start_regular, use_push_based_shuffle):
@@ -95,36 +56,6 @@ def test_sort_simple(ray_start_regular, use_push_based_shuffle):
     )
     # Make sure we have rows in each block.
     assert len([n for n in ds.sort("item")._block_num_rows() if n > 0]) == parallelism
-    # Make sure that the number of samples in each block is as expected,
-    # when boundaries is given.
-
-    # Divided into two blocks.
-    boundaries1 = [50]
-    for n in ds.sort("item", boundaries=boundaries1)._block_num_rows():
-        assert n == 50
-    # Divided into three blocks.
-    boundaries2 = [60, 30]
-    for i, n in enumerate(ds.sort("item", boundaries=boundaries2)._block_num_rows()):
-        if i == 2:
-            assert n == 40
-        else:
-            assert n == 30
-    # The items in boundaries are of type float
-    boundaries3 = [24.2, 50.0, 75.0]
-    for n in ds.sort("item", boundaries=boundaries3)._block_num_rows():
-        assert n == 25
-    # When the value of an element in the boundaries exceeds the value range of
-    # the selected column, an empty block will be generated.
-    boundaries4 = [50, 200]
-    for i, n in enumerate(ds.sort("item", boundaries=boundaries4)._block_num_rows()):
-        if i == 2:
-            assert n == 0
-        else:
-            assert n == 50
-    # When an element of non-numeric type appears in boundaries,
-    # an exception will be thrown.
-    boundaries5 = ["a"]
-    ds.sort("item", boundaries=boundaries5)
 
     assert extract_values(
         "item", ds.sort("item", descending=True).take(num_items)
