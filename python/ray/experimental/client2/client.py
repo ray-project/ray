@@ -4,7 +4,7 @@ import random
 import string
 import threading
 import time
-from typing import Any, Callable, Optional
+from typing import Any, Callable, Dict, Optional
 
 import requests
 
@@ -47,6 +47,7 @@ def generate_client_actor_name() -> str:
     id_part = "".join(rand.choices(possible_characters, k=16))
     return f"rayclient2_{id_part}"
 
+
 def raise_for_status(resp: requests.Response):
     """
     Raise if the resp has non OK status.
@@ -56,6 +57,7 @@ def raise_for_status(resp: requests.Response):
         resp.raise_for_status()
     except requests.HTTPError as e:
         raise ray.exceptions.RaySystemError(e.response.text)
+
 
 def raise_or_return(resp: requests.Response):
     """
@@ -68,6 +70,84 @@ def raise_or_return(resp: requests.Response):
     if result_or_exc.exc is not None:
         raise result_or_exc.exc
     return result_or_exc.result
+
+
+UNSUPPORTED_APIS = [
+    ("_config", "a wrapper ray task to run in remote"),
+    ("get_runtime_context", "a wrapper ray task to run in remote"),
+    ("client", "this new and shiny client2!"),
+    ("ClientBuilder", "this new and shiny client2!"),
+    ("get_gpu_ids", "a wrapper ray task to run in remote"),
+    ("init", "client = Client(addr)"),
+    ("shutdown", "Client.active_client.disconnect()"),
+]
+
+# These APIs are useful in client2. They don't need server side change;
+# On client side make a simple task to wrap them.
+TODO_APIS = [
+    "available_resources",
+    "cancel",
+    "cluster_resources",
+    "get_actor",
+    "kill",
+    "nodes",
+    # For this one; if filename is set, we need to save the file to the client
+    # local disk. This involves some code more than a wrapper.
+    "timeline",
+    # For wait we need server side support to avoid useleses large data passing.
+    "wait",
+]
+
+
+VERBATIM_APIS = [
+    "__version__",
+    "autoscaler",  # What do we do with the packages?
+    "is_initialized",
+    "java_actor_class",  # TODO: understand if this can run
+    "java_function",  # TODO: understand if this can run
+    "cpp_function",  # TODO: understand if this can run
+    "Language",
+    "method",
+    "remote",  # Note: the decorator is not changed, the methods are changed.
+    "show_in_dashboard",  # This one is actually not in `ray` package...?
+    "LOCAL_MODE",
+    "SCRIPT_MODE",
+    "WORKER_MODE",
+]
+
+SUPPORTED_APIS = [
+    "ray_get",
+    "ray_put",
+    "ray_remotefunction_remote",
+    "ray_actorclass_remote",
+    "ray_actormethod_remote",
+]
+
+# Ray functions and methods (and packages?) to be hijacked
+original_apis = {}
+
+
+def collect_original_apis():
+    assert len(original_apis) == 0
+    for name, _ in UNSUPPORTED_APIS:
+        original_apis[name] = getattr(ray, name)
+    for name in TODO_APIS:
+        original_apis[name] = getattr(ray, name)
+
+    # Nothing needs to be done for VERBATIM_APIS
+
+    # SUPPORTED_APIS needs to be treated one by one because they may have different
+    # signatures and we want less magic.
+    original_apis["ray_get"] = ray.get
+    original_apis["ray_put"] = ray.put
+    original_apis[
+        "ray_remotefunction_remote"
+    ] = ray.remote_function.RemoteFunction._remote
+    original_apis["ray_actorclass_remote"] = ray.actor.ActorClass._remote
+    original_apis["ray_actormethod_remote"] = ray.actor.ActorMethod._remote
+
+
+collect_original_apis()
 
 
 class Client:
@@ -127,19 +207,13 @@ class Client:
         - for example, if you define a `class NeuralNetwork(nn.Module)` you need to first `from torch import nn`, even though the invocations are in remote.
     - Not showing good exception info on driver init failure (e.g. invalid rt env)
     - connect() polls are fixed 1s * 10. Can change to a proper backoff.
+    - Need to support ray.cancel() and other TODO_APIS.
     - All other non supported Ray APIs needs to be mocked out.
     """
 
     # static variables
     dumps = dumps_with_pickler_cls(ClientToServerPickler)
     loads = loads_with_unpickler_cls(ServerToClientUnpickler)
-    # Ray methods to be hijacked
-    ray_get = ray.get
-    ray_put = ray.put
-    ray_init = ray.init
-    ray_remotefunction_remote = ray.remote_function.RemoteFunction._remote
-    ray_actorclass_remote = ray.actor.ActorClass._remote
-    ray_actormethod_remote = ray.actor.ActorMethod._remote
     # active client (can only have 1 in a python process)
     active_client = None
     watchdog_thread = None
@@ -391,7 +465,7 @@ class Client:
         if Client.active_client is not None:
             raise ValueError(
                 f"Already have active client {Client.active_client.actor_name}, "
-                "consider Client.active_client.disconnect()."
+                "consider `Client.active_client.disconnect()`."
             )
         if ray.is_initialized():
             raise ValueError("Already connected to Ray, consider ray.shutdown().")
@@ -413,9 +487,27 @@ class Client:
         Client.watchdog_thread = self.start_watchdog_thread()
         Client.print_logs_thread = self.start_print_logs_thread()
 
+        # Now we mock out functions and classes all as a mocked function. This may have
+        # some inconsistencies. We can mock out the __getattr__ of ray to do better.
+        for name, hint in UNSUPPORTED_APIS:
+            setattr(ray, name, self.warning_dont_use(f"ray.{name}", hint))
+
+        for name in TODO_APIS:
+            setattr(
+                ray,
+                name,
+                self.warning_dont_use(
+                    f"ray.{name}", "TODO to be implemented in client2"
+                ),
+            )
+
+        # Nothing needs to be done for VERBATIM_APIS
+
+        # SUPPORTED_APIS needs to be treated one by one because they may have different
+        # signatures and we want less magic.
+
         ray.get = self.get
         ray.put = self.put
-        ray.init = self.warning_dont_use("ray.init()", "client = Client(addr)")
 
         def task_remote(self_func, args, kwargs, **task_options):
             return self.task_remote(self_func, args, kwargs, task_options)
@@ -439,12 +531,18 @@ class Client:
         Client.watchdog_thread = None
         Client.print_logs_thread = None
 
-        ray.get = Client.ray_get
-        ray.put = Client.ray_put
-        ray.init = Client.ray_init
-        ray.remote_function.RemoteFunction._remote = Client.ray_remotefunction_remote
-        ray.actor.ActorClass._remote = Client.ray_actorclass_remote
-        ray.actor.ActorMethod._remote = Client.ray_actormethod_remote
+        for name, _ in UNSUPPORTED_APIS:
+            setattr(ray, name, original_apis[name])
+        for name in TODO_APIS:
+            setattr(ray, name, original_apis[name])
+
+        ray.get = original_apis["ray_get"]
+        ray.put = original_apis["ray_put"]
+        ray.remote_function.RemoteFunction._remote = original_apis[
+            "ray_remotefunction_remote"
+        ]
+        ray.actor.ActorClass._remote = original_apis["ray_actorclass_remote"]
+        ray.actor.ActorMethod._remote = original_apis["ray_actormethod_remote"]
 
     def kill_actor(self):
         resp = requests.delete(f"{self.server_addr}/api/clients/{self.actor_name}")
@@ -520,7 +618,8 @@ class Client:
         while self is Client.active_client:
             try:
                 with requests.post(
-                    f"{self.server_addr}/api/clients/{self.actor_name}/logs", stream=True
+                    f"{self.server_addr}/api/clients/{self.actor_name}/logs",
+                    stream=True,
                 ) as resp:
                     for chunk in resp.iter_lines():
                         if chunk:
@@ -529,8 +628,8 @@ class Client:
                         if self is not Client.active_client:
                             # client is no longer active, exiting
                             return
-            except requests.RequestException as e:
-                logger.exception(f"Error polling logs.")
+            except requests.RequestException:
+                logger.exception("Error polling logs.")
             # Reconnect after 1s sleep
             time.sleep(1)
         logger.info(f"Client {self.actor_name} is no longer active, stop logging...")

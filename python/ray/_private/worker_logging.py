@@ -16,7 +16,6 @@ from typing import (
 import ray._private.ray_constants as ray_constants
 
 # Ray modules
-import ray.actor
 from ray._private.ray_logging import (
     stdout_deduplicator,
     stderr_deduplicator,
