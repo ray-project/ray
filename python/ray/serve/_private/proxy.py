@@ -1064,6 +1064,7 @@ class HTTPProxy(GenericProxy):
 
             del self.asgi_receive_queues[request_id]
 
+        # Final message should always be the status code.
         assert status is not None
         yield status
 
