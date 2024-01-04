@@ -221,6 +221,8 @@ class MLflowLoggerCallback(LoggerCallback):
         save_artifact: If set to True, automatically save the entire
             contents of the Tune local_dir as an artifact to the
             corresponding run in MlFlow.
+        log_params_first: If set to False, the parameters of MLflow are logged
+            at the end of the trial.
 
     Example:
 
@@ -241,7 +243,8 @@ class MLflowLoggerCallback(LoggerCallback):
             callbacks=[MLflowLoggerCallback(
                 experiment_name="experiment1",
                 tags=tags,
-                save_artifact=True)])
+                save_artifact=True,
+                log_params_first=False)])
 
     """
 
@@ -254,6 +257,7 @@ class MLflowLoggerCallback(LoggerCallback):
         tags: Optional[Dict] = None,
         tracking_token: Optional[str] = None,
         save_artifact: bool = False,
+        log_params_first: bool = True,
     ):
 
         self.tracking_uri = tracking_uri
@@ -262,6 +266,7 @@ class MLflowLoggerCallback(LoggerCallback):
         self.tags = tags
         self.tracking_token = tracking_token
         self.should_save_artifact = save_artifact
+        self.log_params_first = log_params_first
 
         self.mlflow_util = _MLflowLoggerUtil()
 
@@ -305,7 +310,8 @@ class MLflowLoggerCallback(LoggerCallback):
 
         # Log the config parameters.
         config = trial.config
-        self.mlflow_util.log_params(run_id=run_id, params_to_log=config)
+        if self.log_params_first:
+            self.mlflow_util.log_params(run_id=run_id, params_to_log=config)
 
     def log_trial_result(self, iteration: int, trial: "Trial", result: Dict):
         step = result.get(TIMESTEPS_TOTAL) or result[TRAINING_ITERATION]
@@ -321,4 +327,10 @@ class MLflowLoggerCallback(LoggerCallback):
 
         # Stop the run once trial finishes.
         status = "FINISHED" if not failed else "FAILED"
+
+        # Log the config parameters.
+        config = trial.config
+        if not self.log_params_first:
+            self.mlflow_util.log_params(run_id=run_id, params_to_log=config)
+
         self.mlflow_util.end_run(run_id=run_id, status=status)
