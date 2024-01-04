@@ -25,6 +25,9 @@ from ray.tests.conftest import *  # noqa
         (False, list(range(100, 1000, 200))),
         (True, [1, 998]),
         (False, [1, 998]),
+        # Test float.
+        (True, [501.5]),
+        (False, [501.5]),
     ],
 )
 def test_sort_with_specified_boundaries(ray_start_regular, descending, boundaries):
@@ -39,6 +42,7 @@ def test_sort_with_specified_boundaries(ray_start_regular, descending, boundarie
     ]
     if descending:
         expected_blocks = [list(reversed(block)) for block in reversed(expected_blocks)]
+
     blocks = list(ds.iter_batches(batch_size=None))
     assert len(blocks) == len(expected_blocks)
     for block, expected_block in zip(blocks, expected_blocks):
