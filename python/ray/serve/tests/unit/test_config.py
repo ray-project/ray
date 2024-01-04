@@ -616,7 +616,7 @@ class TestProtoToDict:
         assert result["num_replicas"] == num_replicas
         assert result["max_concurrent_queries"] == max_concurrent_queries
 
-        # Default values are continue to be filled.
+        # Empty fields are continue to be filled with default values.
         assert result["user_config"] == b""
 
     def test_nested_protobufs(self):
@@ -632,19 +632,23 @@ class TestProtoToDict:
             ),
         )
         result = _proto_to_dict(proto)
+
+        # Non-empty field is filled correctly.
         assert result["num_replicas"] == num_replicas
         assert result["max_concurrent_queries"] == max_concurrent_queries
+
+        # Nested protobuf is filled correctly.
         assert result["autoscaling_config"]["min_replicas"] == min_replicas
 
     def test_repeated_field(self):
-        """Test _proto_to_dict() to deserialize protobuf with repeated fields"""
+        """Test _proto_to_dict() to deserialize protobuf with repeated field"""
         user_configured_option_names = ["foo", "bar"]
         proto = DeploymentConfigProto(
             user_configured_option_names=user_configured_option_names,
         )
         result = _proto_to_dict(proto)
 
-        # Repeated fields are filled correctly as list.
+        # Repeated field is filled correctly as list.
         assert result["user_configured_option_names"] == user_configured_option_names
 
     def test_enum_field(self):
@@ -665,7 +669,7 @@ class TestProtoToDict:
         )
         result = _proto_to_dict(proto)
 
-        # Non-empty optional field is filled correctly.
+        # Non-empty field is filled correctly.
         assert result["min_replicas"] == 1
 
         # Empty field is filled correctly.
