@@ -11,6 +11,7 @@ from ray.air.constants import (
     EXPR_RESULT_FILE,
 )
 import ray.cloudpickle as cloudpickle
+from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
 from ray.tune.logger.logger import _LOGGER_DEPRECATION_WARNING, Logger, LoggerCallback
 from ray.tune.utils.util import SafeFallbackEncoder
 from ray.util.annotations import Deprecated, PublicAPI
@@ -60,7 +61,9 @@ class JsonLogger(Logger):
         self.local_out.close()
 
     def update_config(self, config: Dict):
-        self.config = config if isinstance(config, dict) else config.to_dict()
+        self.config = (
+            config.to_dict() if isinstance(config, AlgorithmConfig) else config
+        )
         config_out = os.path.join(self.logdir, EXPR_PARAM_FILE)
         with open(config_out, "w") as f:
             json.dump(self.config, f, indent=2, sort_keys=True, cls=SafeFallbackEncoder)
@@ -116,7 +119,7 @@ class JsonLoggerCallback(LoggerCallback):
 
     def update_config(self, trial: "Trial", config: Dict):
         self._trial_configs[trial] = (
-            config if isinstance(config, dict) else config.to_dict()
+            config.to_dict() if isinstance(config, AlgorithmConfig) else config
         )
 
         config_out = os.path.join(trial.local_path, EXPR_PARAM_FILE)
