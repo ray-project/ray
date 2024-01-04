@@ -45,14 +45,13 @@ class _MergeTaskSchedule:
             f"{self._num_mergers_with_extra_reducer}"
         )
 
-    def get_num_reducers_per_merge_idx(self, merge_idx: int) -> Optional[int]:
+    def get_num_reducers_per_merge_idx(self, merge_idx: int) -> int:
         """
         Each intermediate merge task will produce outputs for a partition of P
         final reduce tasks. This helper function returns P based on the merge
         task index.
         """
-        if merge_idx >= self.num_merge_tasks_per_round:
-            return None
+        assert merge_idx < self.num_merge_tasks_per_round
         num_reducers_for_cur_merger = self.num_reducers_per_merger
         if merge_idx < self._num_mergers_with_extra_reducer:
             num_reducers_for_cur_merger += 1
@@ -638,12 +637,11 @@ class PushBasedShuffleTaskScheduler(ExchangeTaskScheduler):
         # to the number of reducers downstream to the merge task.
         partition = []
         merge_idx = 0
-        num_reducers_for_cur_merger = schedule.get_num_reducers_per_merge_idx(merge_idx)
-        while merge_idx < schedule.num_merge_tasks_per_round:
+        while merge_idx < schedule.num_merge_tasks_per_round and mapper_outputs:
             output = mapper_outputs.pop(0)
             partition.append(output)
 
-            if len(partition) == num_reducers_for_cur_merger:
+            if len(partition) == schedule.get_num_reducers_per_merge_idx(merge_idx):
                 yield partition
 
                 partition = []

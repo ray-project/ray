@@ -11,7 +11,6 @@ from ray.data import Dataset
 from ray.data._internal.planner.exchange.push_based_shuffle_task_scheduler import (
     PushBasedShuffleTaskScheduler,
 )
-from ray.data._internal.push_based_shuffle import PushBasedShufflePlan
 from ray.data._internal.sort import SortKey
 from ray.data.block import BlockAccessor
 from ray.data.context import DataContext

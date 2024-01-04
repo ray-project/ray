@@ -492,7 +492,7 @@ setting the ``DataContext.use_push_based_shuffle`` flag:
     )
 
 Large-scale shuffles can take a while to finish.
-For debugging purposes, shuffle operationss support executing only part of the shuffle, so that you can collect an execution profile more quickly.
+For debugging purposes, shuffle operations support executing only part of the shuffle, so that you can collect an execution profile more quickly.
 Here is an example that shows how to limit a random shuffle operation to two output blocks:
 
 .. testcode::
