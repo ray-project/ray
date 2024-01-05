@@ -254,7 +254,7 @@ You can tell if stage fusion is enabled by checking the :ref:`Dataset stats <dat
 
 .. code-block::
 
-    Stage N read->map_batches->shuffle_map: N/N blocks executed in T
+    Stage N read->map_batches->shuffle_map: N tasks executed, N blocks produced in T
     * Remote wall time: T min, T max, T mean, T total
     * Remote cpu time: T min, T max, T mean, T total
     * Output num rows: N min, N max, N mean, N total

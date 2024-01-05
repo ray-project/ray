@@ -1490,7 +1490,7 @@ class Learner:
         self._check_is_built()
         path = pathlib.Path(path)
         del self._module
-        # TODO(avnishn) from checkpoint doesn't currently support modules_to_load,
+        # TODO (avnishn): from checkpoint doesn't currently support modules_to_load,
         #  but it should, so we will add it later.
         self._module_obj = MultiAgentRLModule.from_checkpoint(path / "module_state")
         self._reset()

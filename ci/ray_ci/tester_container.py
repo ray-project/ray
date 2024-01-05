@@ -1,4 +1,3 @@
-import os
 import platform
 import subprocess
 from typing import List, Optional
@@ -81,14 +80,10 @@ class TesterContainer(Container):
         test_arg: Optional[str] = None,
     ) -> subprocess.Popen:
         logger.info("Running tests: %s", test_targets)
-        commands = []
-        if os.environ.get("BUILDKITE_BRANCH", "") == "master":
-            commands.extend(
-                [
-                    "cleanup() { ./ci/build/upload_build_info.sh; }",
-                    "trap cleanup EXIT",
-                ]
-            )
+        commands = [
+            "cleanup() { ./ci/build/upload_build_info.sh; }",
+            "trap cleanup EXIT",
+        ]
         if platform.system() == "Windows":
             # allow window tests to access aws services
             commands.append(
