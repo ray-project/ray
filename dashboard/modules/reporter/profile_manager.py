@@ -279,6 +279,8 @@ class MemoryProfilingManager:
                 Default is False.
             trace_python_allocators (bool, optional): If True, includes Python
                 stack frames. Default is False.
+            verbose (bool, optional): If True, enables verbose output.
+                Default is False.
 
         Returns:
             Tuple[bool, str]: A tuple containing a boolean indicating the success
@@ -327,6 +329,7 @@ class MemoryProfilingManager:
     async def detach_profiler(
         self,
         pid: int,
+        verbose: bool = False,
     ) -> (bool, str):
         """
         Detach a profiler from a specified process.
@@ -334,6 +337,8 @@ class MemoryProfilingManager:
         Args:
             pid: The process ID (PID) of the target process the
                 profiler detached from.
+            verbose (bool, optional): If True, enables verbose output.
+                Default is False.
 
         Returns:
             Tuple[bool, str]: A tuple containing a boolean indicating the success
@@ -343,7 +348,11 @@ class MemoryProfilingManager:
         if memray is None:
             return False, "Failed to execute: memray is not installed"
 
-        cmd = [memray, "detach", str(pid)]
+        cmd = [memray, "detach"]
+        if verbose:
+            cmd.append("--verbose")
+        cmd.append(str(pid))
+
         process = await asyncio.create_subprocess_exec(
             *cmd,
             stdout=subprocess.PIPE,
