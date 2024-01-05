@@ -30,8 +30,8 @@ def test_install_ray() -> None:
             "-t",
             image,
             "-f",
-            "c:\\workdir\\ci\\ray_ci\\windows\\tests.env.Dockerfile",
-            "c:\\workdir",
+            "C:\\workdir\\ci\\ray_ci\\windows\\tests.env.Dockerfile",
+            "C:\\workdir",
         ]
 
 
@@ -41,11 +41,14 @@ def test_get_run_command() -> None:
     for env in _DOCKER_ENV:
         envs.extend(["--env", env])
 
+    artifact_mount_host, artifact_mount_container = container.get_artifact_mount()
     assert container.get_run_command(["hi", "hello"]) == [
         "docker",
         "run",
         "-i",
         "--rm",
+        "--volume",
+        f"{artifact_mount_host}:" f"{artifact_mount_container}",
     ] + envs + [
         "029272617770.dkr.ecr.us-west-2.amazonaws.com/rayproject/citemp:unknown-test",
         "bash",
