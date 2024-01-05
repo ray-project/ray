@@ -69,8 +69,6 @@ class CloudNodeProviderState:
     The state of a cloud node provider.
     """
 
-    # The terminated cloud nodes in the cluster.
-    terminated: List[CloudInstanceId] = field(default_factory=list)
     # The cloud nodes that are currently running.
     running: Dict[CloudInstanceId, CloudInstance] = field(default_factory=dict)
     # Errors that have happened when launching nodes.
