@@ -217,6 +217,7 @@ steps:
     tags:
       - train
     job_env: WINDOWS
+    mount_windows_artifacts: true
     instance_type: windows
     commands:
       - bash ci/ray_ci/windows/install_tools.sh
