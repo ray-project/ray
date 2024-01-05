@@ -36,22 +36,22 @@ class AbstractMap(AbstractOneToOne):
         self._ray_remote_args = ray_remote_args or {}
 
 
-def _get_map_op_name(op_class_name: str, fn: UserDefinedFunction) -> str:
+def _get_udf_name(fn: UserDefinedFunction) -> str:
     try:
         if inspect.isclass(fn):
             # callable class
-            return f"{op_class_name}{fn.__name__}"
+            return fn.__name__
         elif inspect.ismethod(fn):
             if isinstance(fn.__self__, Preprocessor):
                 return fn.__self__.__class__.__name__
             # class method
-            return f"{op_class_name}{fn.__self__.__class__.__name__}.{fn.__name__}"
+            return f"{fn.__self__.__class__.__name__}.{fn.__name__}"
         elif inspect.isfunction(fn):
             # normal function or lambda function.
-            return f"{op_class_name}{fn.__name__}"
+            return fn.__name__
         else:
             # callable object.
-            return f"{op_class_name}{fn.__class__.__name__}"
+            return fn.__class__.__name__
     except AttributeError as e:
         logger.get_logger().error("Failed to get name of UDF %s: %s", fn, e)
         return "<unknown>"
@@ -93,7 +93,10 @@ class AbstractUDFMap(AbstractMap):
                 tasks, or ``"actors"`` to use an autoscaling actor pool.
             ray_remote_args: Args to provide to ray.remote.
         """
-        name = _get_map_op_name(name, fn)
+        if inspect.ismethod(fn) and isinstance(fn.__self__, Preprocessor):
+            name = fn.__self__.__class__.__name__
+        else:
+            name = f"{name}({_get_udf_name(fn)})"
         super().__init__(name, input_op, ray_remote_args=ray_remote_args)
         self._fn = fn
         self._fn_args = fn_args
