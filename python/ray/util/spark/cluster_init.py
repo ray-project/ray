@@ -657,7 +657,6 @@ def _setup_ray_cluster(
             },
             upscaling_speed=autoscale_upscaling_speed,
             idle_timeout_minutes=autoscale_idle_timeout_minutes,
-            extra_env_vars=start_hook.custom_environment_variables(),
         )
         ray_head_proc, tail_output_deque = autoscaling_cluster.start(
             ray_head_ip,
@@ -1655,7 +1654,6 @@ class AutoscalingCluster:
         extra_provider_config: dict,
         upscaling_speed: float,
         idle_timeout_minutes: float,
-        extra_env_vars: dict,
     ):
         """Create the cluster.
 
@@ -1672,7 +1670,6 @@ class AutoscalingCluster:
             upscaling_speed,
             idle_timeout_minutes,
         )
-        self.extra_env_vars = extra_env_vars
 
     def _generate_config(
         self,
@@ -1787,11 +1784,13 @@ class AutoscalingCluster:
         )
         ray_head_node_cmd.extend(_convert_ray_node_options(head_node_options))
 
+        hook_entry = _create_hook_entry(is_global=(ray_temp_dir is None))
+
         extra_env = {
             "AUTOSCALER_UPDATE_INTERVAL_S": "1",
             RAY_ON_SPARK_COLLECT_LOG_TO_PATH: collect_log_to_path or "",
             RAY_ON_SPARK_START_RAY_PARENT_PID: str(os.getpid()),
-            **self.extra_env_vars,
+            **hook_entry.custom_environment_variables(),
         }
 
         self.ray_head_node_cmd = ray_head_node_cmd
