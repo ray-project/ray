@@ -287,6 +287,7 @@ html_theme_options = {
     },
     "navbar_start": ["navbar-ray-logo"],
     "navbar_end": [
+        "search-button-field",
         "navbar-icon-links",
         "navbar-anyscale",
     ],
