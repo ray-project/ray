@@ -1,7 +1,9 @@
+from abc import ABC, abstractmethod
 from collections import Counter, defaultdict
 from copy import deepcopy
 from datetime import datetime
 from itertools import chain
+import threading
 from typing import Any, Dict, List, Tuple
 
 import ray
@@ -43,6 +45,10 @@ from ray.core.generated.autoscaler_pb2 import (
 from ray.core.generated.instance_manager_pb2 import Instance
 from ray.experimental.internal_kv import _internal_kv_get, _internal_kv_initialized
 
+
+import logging
+
+logger = logging.getLogger(__name__)
 
 def _count_by(data: Any, key: str) -> Dict[str, int]:
     """
@@ -607,10 +613,38 @@ def is_autoscaler_v2() -> bool:
     return cached_is_autoscaler_v2
 
 
-# TODO: use InstanceUtil after it's merged.
-def is_pending(instance: Instance) -> bool:
-    return instance.status in [
-        Instance.REQUESTED,
-        Instance.QUEUED,
-        Instance.UNKNOWN,
-    ]
+class PeriodicRunner(ABC):
+    """
+    A helper class to run a function periodically.
+    """
+
+    def __init__(self, interval_s: int):
+        self._interval_s = interval_s
+        self._timer = None
+        self._timer_lock = threading.Lock()
+
+    def start(self):
+        with self._timer_lock:
+            if self._timer:
+                return
+            self._timer = threading.Timer(self._interval_s, self._periodic_helper)
+            self._timer.start()
+
+    def stop(self):
+        with self._timer_lock:
+            if self._timer:
+                self._timer.cancel()
+                self._timer = None
+
+    @abstractmethod
+    def run_once(self):
+        pass
+
+    def _periodic_helper(self) -> None:
+        try:
+            self.run_once()
+        except Exception as e:
+            logger.exception(f"Failed to run periodic function: {e}")
+        with self._timer_lock:
+            self._timer = threading.Timer(self._interval_s, self._periodic_helper)
+

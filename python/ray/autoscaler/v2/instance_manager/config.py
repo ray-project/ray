@@ -65,6 +65,19 @@ class NodeTypeConfig:
         assert self.min_worker_nodes >= 0
 
 
+@dataclass
+class InstanceRequestConfig:
+    """
+    InstanceRequestConfig is the helper class to provide instance request
+    related configs.
+    """
+
+    # The timeout for the instance to be in the REQUESTED status.
+    instance_requested_timeout_s: int
+    # The max number of times to retry the instance request.
+    instance_request_max_retries: int
+
+
 class AutoscalingConfig:
     """
     AutoscalingConfig is the helper class to provide autoscaling

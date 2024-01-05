@@ -1,10 +1,20 @@
 import logging
 import time
 from abc import ABC, abstractmethod
-from typing import Dict, List, Optional, Set
+from typing import Callable, Dict, List, Optional, Set
+import threading
+from ray.autoscaler.v2.instance_manager.config import (
+    AutoscalingConfig,
+    InstanceRequestConfig,
+)
 
 from ray.autoscaler.v2.instance_manager.instance_storage import InstanceStorage
+from ray.autoscaler.v2.instance_manager.node_provider import (
+    CloudNodeProviderState,
+    ICloudNodeProvider,
+)
 from ray.autoscaler.v2.schema import InvalidInstanceStatusError
+from ray.autoscaler.v2.utils import PeriodicRunner
 from ray.core.generated.instance_manager_pb2 import (
     GetInstanceManagerStateReply,
     GetInstanceManagerStateRequest,
@@ -446,3 +456,174 @@ class DefaultInstanceManager(InstanceManager):
         if error_message:
             reply.status.message = error_message
         return reply
+
+
+class InstanceReconciler(PeriodicRunner):
+    def __init__(
+        self,
+        instance_storage: InstanceStorage,
+        node_provider: ICloudNodeProvider,
+        instance_request_config: InstanceRequestConfig,
+        reconcile_interval_s: int = 5,
+    ):
+        super().__init__(reconcile_interval_s)
+        self._instance_storage = instance_storage
+        self._node_provider = node_provider
+        self._last_run_ns = 0
+        self._instance_request_config = instance_request_config
+
+    def run_once(self):
+        self._reconcile_with_node_provider()
+        self._reconcile_stuck_instances()
+
+        self._last_run_ns = time.time_ns()
+
+    def _reconcile_stuck_instances(self) -> None:
+        """
+        Reconcile the instances that are stuck in the following states:
+
+        1. REQUESTED: when a REQUESTED instance could not be assigned to an unassigned
+            cloud instance for a long time.
+        2. RAY_INSTALLING: when a ALLOCATED instance could not be installed with ray
+            for a long time.
+        3. STOPPING: when an instance could not be terminated for a long time.
+        """
+        self._reconcile_stuck_requested()
+
+    def _reconcile_stuck_requested(self) -> None:
+        # Get all the instances that are stuck in QUEUED status.
+        requested_instances, version = self._instance_storage.get_instances(
+            status_filter={Instance.REQUESTED}
+        )
+        requested_instances = list(requested_instances.values())
+
+        s_to_ns = 1e9
+        updated_instances = []
+        for ins in requested_instances:
+            # If the requested instances has been stuck for too long.
+            requested_times_ns = sorted(
+                InstanceUtil.get_status_times_ns(ins, Instance.REQUESTED)
+            )
+
+            last_requested_time_ns = requested_times_ns[-1]
+            if (
+                time.time_ns() - last_requested_time_ns
+                > self._instance_request_config.instance_requested_timeout_s * s_to_ns
+            ):
+                # Transition the instance to ALLOCATION_FAILED if it has been requested
+                # for too many times.
+                if (
+                    len(requested_times_ns)
+                    >= self._instance_request_config.instance_request_max_retries
+                ):
+                    InstanceUtil.set_status(
+                        ins, Instance.ALLOCATION_FAILED, "too many retries"
+                    )
+                else:
+                    InstanceUtil.set_status(ins, Instance.QUEUED, "re-queued")
+                updated_instances.append(ins)
+
+        # Update the instance storage.
+        self._instance_storage.batch_upsert_instances(
+            updates=updated_instances,
+            expected_storage_version=version,
+        )
+
+    def _reconcile_with_node_provider(self) -> None:
+        """
+        Reconcile the instance storage with the node provider.
+
+        This is responsible for transitioning the instance status of:
+
+        1. to ALLOCATED: when a REQUESTED instance could be assigned to an unassigned
+            cloud instance.
+        2. to STOPPED: when an ALLOCATED instance no longer has the assigned cloud
+            instance found in node provider.
+        """
+        node_provider_state = self._node_provider.get_state(
+            errors_since_ns=self._last_run_ns
+        )
+        self._reconcile_allocated(node_provider_state)
+        self._reconcile_stopped(node_provider_state)
+        self._reconcile_request_failed(node_provider_state)
+
+    def _reconcile_request_failed(self, node_provider_state: CloudNodeProviderState):
+        """
+        For any launch failures.
+        """
+        pass
+
+    def _reconcile_stopped(self, node_provider_state: CloudNodeProviderState) -> None:
+        # Get all the running cloud instances from the node provider.
+        running_cloud_instances = node_provider_state.running
+
+        # Get all the instances that should have cloud instance ids.
+        all_instances, version = self._instance_storage.get_instances()
+        instances_with_cloud_instance_ids = [
+            instance
+            for instance in all_instances.values()
+            if InstanceUtil.is_cloud_instance_allocated(instance)
+        ]
+
+        # Find any instances that are not running on any cloud instances.
+        instances_to_stop = []
+        for instance in instances_with_cloud_instance_ids:
+            if instance.cloud_instance_id not in running_cloud_instances.keys():
+                # The cloud instance is no longer running, transition the instance
+                # to STOPPED.
+                InstanceUtil.set_status(instance, Instance.STOPPED)
+                instances_to_stop.append(instance)
+
+        # Update the instance storage.
+        self._instance_storage.batch_upsert_instances(
+            updates=instances_to_stop,
+            expected_storage_version=version,
+        )
+
+    def _reconcile_allocated(self, node_provider_state: CloudNodeProviderState) -> None:
+        # Get all the running cloud instances from the node provider.
+
+        running_cloud_instances = node_provider_state.running
+
+        # Get all the instances that should have cloud instance ids.
+        all_instances, version = self._instance_storage.get_instances()
+        instances_with_cloud_instance_ids = [
+            instance
+            for instance in all_instances.values()
+            if InstanceUtil.is_cloud_instance_allocated(instance)
+        ]
+        requested_instances = [
+            instance
+            for instance in instances_with_cloud_instance_ids
+            if instance.status == Instance.REQUESTED
+        ]
+
+        # Find any cloud instances that are not assigned to any instances.
+        unassigned_cloud_instance_ids = set(running_cloud_instances.keys()).difference(
+            {
+                instance.cloud_instance_id
+                for instance in instances_with_cloud_instance_ids
+                if instance.HasField("cloud_instance_id") and instance.cloud_instance_id
+            }
+        )
+
+        # For each unassigned cloud instance, if there's any instance with the same node type
+        # that is in REQUESTED status, assign it and transition it to ALLOCATED.
+        new_allocated_instances = []
+        for unassigned_cloud_instance_id in unassigned_cloud_instance_ids:
+            for instance in requested_instances:
+                if (
+                    instance.instance_type
+                    == running_cloud_instances[
+                        unassigned_cloud_instance_id
+                    ].instance_type
+                ):
+                    instance.cloud_instance_id = unassigned_cloud_instance_id
+                    InstanceUtil.set_status(instance, Instance.ALLOCATED)
+                    new_allocated_instances.append(instance)
+
+        # Update the instance storage.
+        self._instance_storage.batch_upsert_instances(
+            updates=new_allocated_instances,
+            expected_storage_version=version,
+        )

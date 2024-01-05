@@ -74,8 +74,8 @@ class InstanceReconciler(InstanceUpdatedSubscriber):
     def _periodic_reconcile_helper(self) -> None:
         try:
             self._reconcile_with_node_provider()
-        except Exception:
-            logger.exception("Failed to reconcile with node provider")
+        except Exception as e:
+            logger.exception(f"Failed to reconcile with node provider: {e}")
         with self._reconcile_timer_lock:
             self._reconcile_timer = threading.Timer(
                 self._reconcile_interval_s, self._periodic_reconcile_helper
