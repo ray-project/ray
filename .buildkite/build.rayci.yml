@@ -52,6 +52,7 @@ steps:
       - python
       - core_cpp
     job_env: WINDOWS
+    mount_windows_artifacts: true
     instance_type: windows
     commands:
       - export BUILD_ONE_PYTHON_ONLY={{matrix}}
