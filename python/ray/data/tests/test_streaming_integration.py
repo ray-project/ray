@@ -391,7 +391,7 @@ def test_backpressure_from_output(ray_start_10_cpus_shared, restore_data_context
     assert num_finished < 20, num_finished
     # Check intermediate stats reporting.
     stats = ds.stats()
-    assert "100/100 blocks executed" not in stats, stats
+    assert "100 tasks executed" not in stats, stats
 
     # Check we can get the rest.
     for rest in it:
@@ -399,7 +399,7 @@ def test_backpressure_from_output(ray_start_10_cpus_shared, restore_data_context
     assert ray.get(counter.get.remote()) == 100
     # Check final stats reporting.
     stats = ds.stats()
-    assert "100/100 blocks executed" in stats, stats
+    assert "100 tasks executed" in stats, stats
 
 
 def test_e2e_liveness_with_output_backpressure_edge_case(

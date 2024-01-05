@@ -43,6 +43,7 @@ class FakeReplicaWrapper(ReplicaWrapper):
         self._sleep_time_s = sleep_time_s
 
         self.get_queue_state_was_cancelled = False
+        self.queue_len_deadline_history = list()
 
     @property
     def replica_id(self) -> str:
@@ -71,7 +72,8 @@ class FakeReplicaWrapper(ReplicaWrapper):
         self._exception = exception
         self._has_queue_len_response.set()
 
-    async def get_queue_state(self) -> Tuple[int, bool]:
+    async def get_queue_state(self, *, deadline_s: float) -> Tuple[int, bool]:
+        self.queue_len_deadline_history.append(deadline_s)
         try:
             while not self._has_queue_len_response.is_set():
                 await self._has_queue_len_response.wait()
@@ -1172,6 +1174,76 @@ async def test_get_queue_state_cancelled_on_timeout(pow_2_scheduler, fake_query)
 
     # The `get_queue_state` method should be cancelled.
     assert r1.get_queue_state_was_cancelled
+
+    r1.set_queue_state_response(0, accepted=True)
+    assert (await task) == r1
+
+
+@pytest.mark.asyncio
+async def test_queue_len_response_deadline_backoff(pow_2_scheduler, fake_query):
+    """
+    Verify that the response deadline is exponentially backed off up to the max.
+    """
+    s = pow_2_scheduler
+    s.queue_len_response_deadline_s = 0.001
+    s.max_queue_len_response_deadline_s = 0.005
+    loop = get_or_create_event_loop()
+
+    r1 = FakeReplicaWrapper("r1")
+    s.update_replicas([r1])
+
+    # Attempt to schedule; the replica will be attempted and a timeout will occur
+    # due to the short timeout set above.
+    task = loop.create_task(s.choose_replica_for_query(fake_query))
+    done, _ = await asyncio.wait([task], timeout=0.2)
+    assert len(done) == 0
+
+    # Verify that the deadline never exceeds the max and deadline_n+1 is equal to
+    # the max or 2*deadline_n.
+    for i, j in zip(
+        range(0, len(r1.queue_len_deadline_history) - 1),
+        range(1, len(r1.queue_len_deadline_history)),
+    ):
+        deadline_i = r1.queue_len_deadline_history[i]
+        deadline_j = r1.queue_len_deadline_history[j]
+        print(deadline_i, deadline_j)
+        assert (
+            deadline_i <= deadline_j
+            and deadline_j <= s.max_queue_len_response_deadline_s
+        )
+        if deadline_i < s.max_queue_len_response_deadline_s:
+            assert (
+                deadline_j == s.max_queue_len_response_deadline_s
+                or deadline_j == 2 * deadline_i
+            )
+
+    r1.set_queue_state_response(0, accepted=True)
+    assert (await task) == r1
+
+
+@pytest.mark.asyncio
+async def test_max_queue_len_response_deadline(pow_2_scheduler, fake_query):
+    """
+    Verify that if the max response deadline is > the initial deadline, the initial is
+    always used.
+    """
+    s = pow_2_scheduler
+    s.queue_len_response_deadline_s = 0.01
+    s.max_queue_len_response_deadline_s = 0.001
+    loop = get_or_create_event_loop()
+
+    r1 = FakeReplicaWrapper("r1")
+    s.update_replicas([r1])
+
+    # Attempt to schedule; the replica will be attempted and a timeout will occur
+    # due to the short timeout set above.
+    task = loop.create_task(s.choose_replica_for_query(fake_query))
+    done, _ = await asyncio.wait([task], timeout=0.2)
+    assert len(done) == 0
+
+    assert all(
+        d == s.queue_len_response_deadline_s for d in r1.queue_len_deadline_history
+    )
 
     r1.set_queue_state_response(0, accepted=True)
     assert (await task) == r1

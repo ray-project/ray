@@ -446,6 +446,15 @@ def _get_default_ray_tmp_dir():
     return os.path.join(os.environ.get("RAY_TMPDIR", "/tmp"), "ray")
 
 
+def _create_hook_entry(is_global):
+    if RAY_ON_SPARK_START_HOOK in os.environ:
+        return _load_class(os.environ[RAY_ON_SPARK_START_HOOK])()
+    elif is_in_databricks_runtime():
+        return DefaultDatabricksRayOnSparkStartHook(is_global)
+    else:
+        return RayOnSparkStartHook(is_global)
+
+
 def _setup_ray_cluster(
     *,
     max_worker_nodes: int,
@@ -484,13 +493,7 @@ def _setup_ray_cluster(
     from pyspark.util import inheritable_thread_target
     import fcntl
 
-    if RAY_ON_SPARK_START_HOOK in os.environ:
-        start_hook = _load_class(os.environ[RAY_ON_SPARK_START_HOOK])()
-    elif is_in_databricks_runtime():
-        start_hook = DefaultDatabricksRayOnSparkStartHook(is_global)
-    else:
-        start_hook = RayOnSparkStartHook(is_global)
-
+    start_hook = _create_hook_entry(is_global)
     spark = get_spark_session()
 
     ray_head_ip = socket.gethostbyname(get_spark_application_driver_host(spark))
@@ -1613,6 +1616,9 @@ def _start_ray_worker_nodes(
         job_rdd = job_rdd.withResources(resource_profile)
 
     job_rdd.mapPartitions(ray_cluster_job_mapper).collect()
+
+    hook_entry = _create_hook_entry(is_global=(ray_temp_dir is None))
+    hook_entry.on_spark_job_created(spark_job_group_id)
 
 
 @PublicAPI(stability="alpha")

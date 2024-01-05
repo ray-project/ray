@@ -7,12 +7,13 @@ import pyarrow as pa
 import pytest
 
 import ray
+from ray.data import Dataset
 from ray.data._internal.planner.exchange.push_based_shuffle_task_scheduler import (
     PushBasedShuffleTaskScheduler,
 )
-from ray.data._internal.push_based_shuffle import PushBasedShufflePlan
 from ray.data._internal.sort import SortKey
 from ray.data.block import BlockAccessor
+from ray.data.context import DataContext
 from ray.data.tests.conftest import *  # noqa
 from ray.data.tests.util import extract_values
 from ray.tests.conftest import *  # noqa
@@ -266,14 +267,10 @@ def test_sort_with_one_block(shutdown_only, use_push_based_shuffle):
     ).sum("token_counts")
 
 
-@pytest.mark.parametrize("streaming", [False, True])
-def test_push_based_shuffle_schedule(streaming):
+def test_push_based_shuffle_schedule():
     def _test(num_input_blocks, merge_factor, num_cpus_per_node_map):
         num_cpus = sum(v for v in num_cpus_per_node_map.values())
-        if streaming:
-            op_cls = PushBasedShuffleTaskScheduler
-        else:
-            op_cls = PushBasedShufflePlan
+        op_cls = PushBasedShuffleTaskScheduler
         schedule = op_cls._compute_shuffle_schedule(
             num_cpus_per_node_map, num_input_blocks, merge_factor, num_input_blocks
         )
@@ -287,16 +284,26 @@ def test_push_based_shuffle_schedule(streaming):
             + schedule.merge_schedule.num_merge_tasks_per_round
             <= max(num_cpus, 2)
         )
+        print(
+            "map",
+            schedule.num_map_tasks_per_round,
+            "merge",
+            schedule.merge_schedule.num_merge_tasks_per_round,
+            "num_cpus",
+            num_cpus,
+            "merge_factor",
+            merge_factor,
+        )
         # Merge factor between map : merge tasks is approximately correct.
         if schedule.num_map_tasks_per_round > merge_factor:
             actual_merge_factor = (
                 schedule.num_map_tasks_per_round
-                // schedule.merge_schedule.num_merge_tasks_per_round
+                / schedule.merge_schedule.num_merge_tasks_per_round
             )
-            next_highest_merge_factor = schedule.num_map_tasks_per_round // (
+            next_highest_merge_factor = schedule.num_map_tasks_per_round / (
                 schedule.merge_schedule.num_merge_tasks_per_round + 1
             )
-            assert next_highest_merge_factor <= merge_factor <= actual_merge_factor, (
+            assert actual_merge_factor - 1 <= merge_factor <= actual_merge_factor + 1, (
                 next_highest_merge_factor,
                 merge_factor,
                 actual_merge_factor,
@@ -362,6 +369,20 @@ def test_push_based_shuffle_schedule(streaming):
     _test(260, 2, {"node1": 128})
     _test(1, 2, {"node1": 128})
 
+    # Test float merge_factor.
+    for cluster_config in [
+        {"node1": 10},
+        {"node1": 10, "node2": 10},
+    ]:
+        _test(100, 1, cluster_config)
+        _test(100, 1.3, cluster_config)
+        _test(100, 1.6, cluster_config)
+        _test(100, 1.75, cluster_config)
+        _test(100, 2, cluster_config)
+
+        _test(1, 1.2, cluster_config)
+        _test(2, 1.2, cluster_config)
+
 
 def test_push_based_shuffle_stats(ray_start_cluster):
     ctx = ray.data.context.DataContext.get_current()
@@ -390,7 +411,7 @@ def test_push_based_shuffle_stats(ray_start_cluster):
 
         # Check all merge tasks are included in stats.
         internal_stats = ds._plan.stats()
-        num_merge_tasks = len(internal_stats.stages["RandomShuffleMerge"])
+        num_merge_tasks = len(internal_stats.metadata["RandomShuffleMerge"])
         # Merge factor is 2 for random_shuffle ops.
         merge_factor = 2
         assert (
@@ -538,6 +559,53 @@ def test_push_based_shuffle_reduce_stage_scheduling(ray_start_cluster, pipeline)
         ctx.use_push_based_shuffle = original
         ray.remote = ray_remote
         ray.get = ray_get
+
+
+SHUFFLE_ALL_TO_ALL_OPS = [
+    Dataset.random_shuffle,
+    lambda ds: ds.sort(key="id"),
+    lambda ds: ds.groupby("id").map_groups(lambda group: group),
+]
+
+
+@pytest.mark.parametrize("use_push_based_shuffle", [False, True])
+@pytest.mark.parametrize(
+    "shuffle_op",
+    SHUFFLE_ALL_TO_ALL_OPS,
+)
+def test_debug_limit_shuffle_execution_to_num_blocks(
+    ray_start_regular, restore_data_context, use_push_based_shuffle, shuffle_op
+):
+    DataContext.get_current().use_push_based_shuffle = use_push_based_shuffle
+    shuffle_fn = shuffle_op
+
+    parallelism = 100
+    ds = ray.data.range(1000, parallelism=parallelism)
+    shuffled_ds = shuffle_fn(ds).materialize()
+    shuffled_ds = shuffled_ds.materialize()
+    assert shuffled_ds.num_blocks() == parallelism
+
+    DataContext.get_current().set_config(
+        "debug_limit_shuffle_execution_to_num_blocks", 1
+    )
+    shuffled_ds = shuffle_fn(ds).materialize()
+    shuffled_ds = shuffled_ds.materialize()
+    assert shuffled_ds.num_blocks() == 1
+
+
+@pytest.mark.parametrize("use_push_based_shuffle", [False, True])
+def test_memory_usage(ray_start_regular, restore_data_context, use_push_based_shuffle):
+    DataContext.get_current().use_push_based_shuffle = use_push_based_shuffle
+
+    parallelism = 2
+    ds = ray.data.range(int(1e8), parallelism=parallelism)
+    ds = ds.random_shuffle().materialize()
+
+    stats = ds._get_stats_summary()
+    # TODO(swang): Sort on this dataset seems to produce significant skew, so
+    # one task uses much more memory than the other.
+    for op_stats in stats.operators_stats:
+        assert op_stats.memory["max"] < 2000
 
 
 if __name__ == "__main__":
