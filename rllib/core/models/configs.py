@@ -10,7 +10,7 @@ from ray.rllib.models.torch.misc import (
     same_padding_transpose_after_stride,
     valid_padding,
 )
-from ray.rllib.models.utils import get_activation_fn
+from ray.rllib.models.utils import get_activation_fn, get_initializer_fn
 from ray.rllib.utils.annotations import ExperimentalAPI
 
 if TYPE_CHECKING:
@@ -135,16 +135,20 @@ class _MLPConfig(ModelConfig):
     hidden_layer_use_bias: bool = True
     hidden_layer_activation: str = "relu"
     hidden_layer_use_layernorm: bool = False
-    hidden_layer_initializer: Optional[Union[str, Callable]] = None
-    hidden_layer_initializer_config: Optional[Dict] = None
+    hidden_layer_weights_initializer: Optional[Union[str, Callable]] = None
+    hidden_layer_weights_initializer_config: Optional[Dict] = None
+    hidden_layer_bias_initializer: Optional[Union[str, Callable]] = None
+    hidden_layer_bias_initializer_config: Optional[Dict] = None
 
     # Optional last output layer with - possibly - different activation and use_bias
     # settings.
     output_layer_dim: Optional[int] = None
     output_layer_use_bias: bool = True
     output_layer_activation: str = "linear"
-    output_layer_initializer: Optional[Union[str, Callable]] = None
-    output_layer_initializer_config: Optional[Dict] = None
+    output_layer_weights_initializer: Optional[Union[str, Callable]] = None
+    output_layer_weights_initializer_config: Optional[Dict] = None
+    output_layer_bias_initializer: Optional[Union[str, Callable]] = None
+    output_layer_bias_initializer_config: Optional[Dict] = None
 
     @property
     def output_dims(self):
@@ -174,6 +178,10 @@ class _MLPConfig(ModelConfig):
         # Call these already here to catch errors early on.
         get_activation_fn(self.hidden_layer_activation, framework=framework)
         get_activation_fn(self.output_layer_activation, framework=framework)
+        get_initializer_fn(self.hidden_layer_weights_initializer, framework=framework)
+        get_initializer_fn(self.hidden_layer_bias_initializer, framework=framework)
+        get_initializer_fn(self.output_layer_weights_initializer, framework=framework)
+        get_initializer_fn(self.output_layer_bias_initializer, framework=framework)
 
 
 @ExperimentalAPI
@@ -484,16 +492,20 @@ class CNNTransposeHeadConfig(ModelConfig):
     initial_image_dims: Union[List[int], Tuple[int]] = field(
         default_factory=lambda: [4, 4, 96]
     )
-    initial_dense_initializer: Optional[Union[str, Callable]] = None
-    initial_dense_initializer_config: Optional[Dict] = None
+    initial_dense_weights_initializer: Optional[Union[str, Callable]] = None
+    initial_dense_weights_initializer_config: Optional[Dict] = None
+    initial_dense_bias_initializer: Optional[Union[str, Callable]] = None
+    initial_dense_bias_initializer_config: Optional[Dict] = None
     cnn_transpose_filter_specifiers: List[List[Union[int, List[int]]]] = field(
         default_factory=lambda: [[48, [4, 4], 2], [24, [4, 4], 2], [3, [4, 4], 2]]
     )
     cnn_transpose_use_bias: bool = True
     cnn_transpose_activation: str = "relu"
     cnn_transpose_use_layernorm: bool = False
-    cnn_transpose_initializer: Optional[Union[str, Callable]] = None
-    cnn_transpose_initializer_config: Optional[Dict] = None
+    cnn_transpose_kernel_initializer: Optional[Union[str, Callable]] = None
+    cnn_transpose_kernel_initializer_config: Optional[Dict] = None
+    cnn_transpose_bias_initializer: Optional[Union[str, Callable]] = None
+    cnn_transpose_bias_initializer_config: Optional[Dict] = None
 
     @property
     def output_dims(self):
@@ -639,8 +651,10 @@ class CNNEncoderConfig(ModelConfig):
     cnn_use_bias: bool = True
     cnn_activation: str = "relu"
     cnn_use_layernorm: bool = False
-    cnn_initializer: Optional[Union[str, Callable]] = None
-    cnn_initializer_config: Optional[Dict] = None
+    cnn_kernel_initializer: Optional[Union[str, Callable]] = None
+    cnn_kernel_initializer_config: Optional[Dict] = None
+    cnn_bias_initializer: Optional[Union[str, Callable]] = None
+    cnn_bias_initializer_config: Optional[Dict] = None
     flatten_at_end: bool = True
 
     @property
@@ -876,9 +890,11 @@ class RecurrentEncoderConfig(ModelConfig):
     hidden_dim: int = None
     num_layers: int = None
     batch_major: bool = True
-    hidden_initializer: Optional[Union[str, Callable]] = None
-    hidden_initializer_config: Optional[Dict] = None
+    hidden_weights_initializer: Optional[Union[str, Callable]] = None
+    hidden_weights_initializer_config: Optional[Dict] = None
     use_bias: bool = True
+    hidden_bias_initializer: Optional[Union[str, Callable]] = None
+    hidden_bias_initializer_config: Optional[Dict] = None
     tokenizer_config: ModelConfig = None
 
     @property

@@ -62,13 +62,23 @@ class TorchMLPEncoder(TorchModel, Encoder):
             hidden_layer_activation=config.hidden_layer_activation,
             hidden_layer_use_layernorm=config.hidden_layer_use_layernorm,
             hidden_layer_use_bias=config.hidden_layer_use_bias,
-            hidden_layer_initializer=config.hidden_layer_initializer,
-            hidden_layer_initializer_config=config.hidden_layer_initializer_config,
+            hidden_layer_weights_initializer=config.hidden_layer_weights_initializer,
+            hidden_layer_weights_initializer_config=(
+                config.hidden_layer_weights_initializer_config
+            ),
+            hidden_layer_bias_initializer=config.hidden_layer_bias_initializer,
+            hidden_layer_bias_initializer_config=(
+                config.hidden_layer_bias_initializer_config
+            ),
             output_dim=config.output_layer_dim,
             output_activation=config.output_layer_activation,
             output_use_bias=config.output_layer_use_bias,
-            output_initializer=config.output_layer_initializer,
-            output_initializer_config=config.output_layer_initializer_config,
+            output_weights_initializer=config.output_layer_weights_initializer,
+            output_weights_initializer_config=(
+                config.output_layer_weights_initializer_config
+            ),
+            output_bias_initializer=config.output_layer_bias_initializer,
+            output_bias_initializer_config=config.output_layer_bias_initializer_config,
         )
 
     @override(Model)
@@ -109,8 +119,10 @@ class TorchCNNEncoder(TorchModel, Encoder):
             cnn_activation=config.cnn_activation,
             cnn_use_layernorm=config.cnn_use_layernorm,
             cnn_use_bias=config.cnn_use_bias,
-            cnn_initializer=config.cnn_initializer,
-            cnn_initializer_config=config.cnn_initializer_config,
+            cnn_kernel_initializer=config.cnn_kernel_initializer,
+            cnn_kernel_initializer_config=config.cnn_kernel_initializer_config,
+            cnn_bias_initializer=config.cnn_bias_initializer,
+            cnn_bias_initializer_config=config.cnn_bias_initializer_config,
         )
         layers.append(cnn)
 
@@ -182,8 +194,11 @@ class TorchGRUEncoder(TorchModel, Encoder):
         assert len(gru_input_dims) == 1
         gru_input_dim = gru_input_dims[0]
 
-        gru_initializer = get_initializer_fn(
-            config.hidden_initializer, framework="torch"
+        gru_weights_initializer = get_initializer_fn(
+            config.hidden_weights_initializer, framework="torch"
+        )
+        gru_bias_initializer = get_initializer_fn(
+            config.hidden_bias_initializer, framework="torch"
         )
 
         # Create the torch GRU layer.
@@ -195,12 +210,16 @@ class TorchGRUEncoder(TorchModel, Encoder):
             bias=config.use_bias,
         )
 
-        # Initialize, if necessary.
-        if gru_initializer:
-            if config.hidden_initializer_config:
-                gru_initializer(self.gru.weight, **config.hidden_initializer_config)
-            else:
-                gru_initializer(self.gru.all_weights)
+        # Initialize, GRU weights, if necessary.
+        if gru_weights_initializer:
+            gru_weights_initializer(
+                self.gru.weight, **config.hidden_initializer_config or {}
+            )
+        # Initialize GRU bias, if necessary.
+        if gru_bias_initializer:
+            gru_bias_initializer(
+                self.gru.weight, **config.hidden_bias_initializer_config or {}
+            )
 
     @override(Model)
     def get_input_specs(self) -> Optional[Spec]:
@@ -294,8 +313,11 @@ class TorchLSTMEncoder(TorchModel, Encoder):
         assert len(lstm_input_dims) == 1
         lstm_input_dim = lstm_input_dims[0]
 
-        lstm_initializer = get_initializer_fn(
-            config.hidden_initializer, framework="torch"
+        lstm_weights_initializer = get_initializer_fn(
+            config.hidden_weigths_initializer, framework="torch"
+        )
+        lstm_bias_initializer = get_initializer_fn(
+            config.hidden_bias_initializer, framework="torch"
         )
 
         # Create the torch LSTM layer.
@@ -307,13 +329,16 @@ class TorchLSTMEncoder(TorchModel, Encoder):
             bias=config.use_bias,
         )
 
-        if lstm_initializer:
-            if config.hidden_initializer_config:
-                lstm_initializer(
-                    self.lstm.all_weights, **config.hidden_initializer_config
-                )
-            else:
-                lstm_initializer(self.lstm.all_weights)
+        # Initialize LSTM layer weigths, if necessary.
+        if lstm_weights_initializer:
+            lstm_weights_initializer(
+                self.lstm.all_weights, **config.hidden_weights_initializer_config or {}
+            )
+        # Initialize LSTM layer bias, if necessary.
+        if lstm_bias_initializer:
+            lstm_bias_initializer(
+                self.lstm.bias, **config.hidden_bias_initializer_config or {}
+            )
 
         self._state_in_out_spec = {
             "h": TensorSpec(

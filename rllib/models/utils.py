@@ -155,15 +155,37 @@ def get_activation_fn(
 
 @DeveloperAPI
 def get_initializer_fn(name: Optional[Union[str, Callable]], framework: str = "torch"):
-    # Already a callable return as is.
-    if callable(name):
+    """Returns the framework-specific initializer class or function.
+
+    This function relies fully on the specified initializer classes and
+    functions in the frameworks `torch` and `tf2` (see for `torch`
+    https://pytorch.org/docs/stable/nn.init.html and for `tf2` see
+    https://www.tensorflow.org/api_docs/python/tf/keras/initializers).
+
+    Note, for framework `torch` the in-place initializers are needed, i.e. names
+    should end with an underscore `_`, e.g. `glorot_uniform_`.
+
+    Args:
+        name: Name of the initializer class or function in one of the two
+            supported frameworks, i.e. `torch` or `tf2`.
+        framework: The framework string, either `torch  or `tf2`.
+
+    Returns:
+        A framework-specific function or class defining an initializer to be used
+        for network initialization,
+
+    Raises:
+        `ValueError` if the `name` is neither class or function in the specified
+        `framework`. Raises also a `ValueError`, if `name` does not define an
+        in-place initializer for framework `torch`.
+    """
+    # Already a callable or `None` return as is. If `None` we use the default
+    # initializer defined in the framework-specific layers themselves.
+    if callable(name) or name is None:
         return name
 
     if framework == "torch":
         name_lower = name.lower() if isinstance(name, str) else name
-        # If `None` we use the default initializer.
-        if name_lower is None:
-            return None
 
         _, nn = try_import_torch()
 
@@ -196,10 +218,6 @@ def get_initializer_fn(name: Optional[Union[str, Callable]], framework: str = "t
         # Note, as initializer classes in TensorFlow can be either given by their
         # name in camel toe typing or by their shortcut we use the `name` as it is.
         # See https://www.tensorflow.org/api_docs/python/tf/keras/initializers.
-
-        # If `None` we use the default initializer.
-        if name is None:
-            return None
 
         _, tf, _ = try_import_tf()
 

@@ -32,13 +32,17 @@ class TorchMLP(nn.Module):
         hidden_layer_activation: Union[str, Callable] = "relu",
         hidden_layer_use_bias: bool = True,
         hidden_layer_use_layernorm: bool = False,
-        hidden_layer_initializer: Optional[Union[str, Callable]] = None,
-        hidden_layer_initializer_config: Optional[Union[str, Callable]] = None,
+        hidden_layer_weights_initializer: Optional[Union[str, Callable]] = None,
+        hidden_layer_weights_initializer_config: Optional[Union[str, Callable]] = None,
+        hidden_layer_bias_initializer: Optional[Union[str, Callable]] = None,
+        hidden_layer_bias_initializer_config: Optional[Dict] = None,
         output_dim: Optional[int] = None,
         output_use_bias: bool = True,
         output_activation: Union[str, Callable] = "linear",
-        output_initializer: Optional[Union[str, Callable]] = None,
-        output_initializer_config: Optional[Dict] = None,
+        output_weights_initializer: Optional[Union[str, Callable]] = None,
+        output_weights_initializer_config: Optional[Dict] = None,
+        output_bias_initializer: Optional[Union[str, Callable]] = None,
+        output_bias_initializer_config: Optional[Dict] = None,
     ):
         """Initialize a TorchMLP object.
 
@@ -72,10 +76,19 @@ class TorchMLP(nn.Module):
         hidden_activation = get_activation_fn(
             hidden_layer_activation, framework="torch"
         )
-        hidden_initializer = get_initializer_fn(
-            hidden_layer_initializer, framework="torch"
+        hidden_weights_initializer = get_initializer_fn(
+            hidden_layer_weights_initializer, framework="torch"
         )
-        output_initializer = get_initializer_fn(output_initializer, framework="torch")
+        hidden_bias_initializer = get_activation_fn(
+            hidden_layer_bias_initializer, framework="torch"
+        )
+        output_weights_initializer = get_initializer_fn(
+            output_weights_initializer, framework="torch"
+        )
+        output_bias_initializer = get_initializer_fn(
+            output_bias_initializer, framework="torch"
+        )
+
         layers = []
         dims = (
             [self.input_dim]
@@ -93,19 +106,28 @@ class TorchMLP(nn.Module):
             )
             # Initialize layers, if necessary.
             if is_output_layer:
-                if output_initializer:
-                    if output_initializer_config:
-                        output_initializer(layer.weight, **output_initializer_config)
-                    else:
-                        output_initializer(layer.weight)
+                # Initialize output layer weigths if necessary.
+                if output_weights_initializer:
+                    output_weights_initializer(
+                        layer.weight, **output_weights_initializer_config or {}
+                    )
+                # Initialize output layer bias if necessary.
+                if output_bias_initializer:
+                    output_bias_initializer(
+                        layer.bias, **output_bias_initializer_config or {}
+                    )
+            # Must be hidden.
             else:
-                if hidden_initializer:
-                    if hidden_layer_initializer_config:
-                        hidden_initializer(
-                            layer.weight, **hidden_layer_initializer_config
-                        )
-                    else:
-                        hidden_initializer(layer.weight)
+                # Initialize hidden layer weights if necessary.
+                if hidden_layer_weights_initializer:
+                    hidden_weights_initializer(
+                        **hidden_layer_weights_initializer_config or {}
+                    )
+                # Initialize hidden layer bias if necessary.
+                if hidden_layer_bias_initializer:
+                    hidden_bias_initializer(
+                        **hidden_layer_bias_initializer_config or {}
+                    )
 
             layers.append(layer)
 
@@ -152,8 +174,10 @@ class TorchCNN(nn.Module):
         cnn_use_bias: bool = True,
         cnn_use_layernorm: bool = False,
         cnn_activation: str = "relu",
-        cnn_initializer: Optional[Union[str, Callable]] = None,
-        cnn_initializer_config: Optional[Dict] = None,
+        cnn_kernel_initializer: Optional[Union[str, Callable]] = None,
+        cnn_kernel_initializer_config: Optional[Dict] = None,
+        cnn_bias_initializer: Optional[Union[str, Callable]] = None,
+        cnn_bias_initializer_config: Optional[Dict] = None,
     ):
         """Initializes a TorchCNN instance.
 
@@ -188,7 +212,12 @@ class TorchCNN(nn.Module):
         assert len(input_dims) == 3
 
         cnn_activation = get_activation_fn(cnn_activation, framework="torch")
-        cnn_initializer = get_initializer_fn(cnn_initializer, framework="torch")
+        cnn_kernel_initializer = get_initializer_fn(
+            cnn_kernel_initializer, framework="torch"
+        )
+        cnn_bias_initializer = get_initializer_fn(
+            cnn_bias_initializer, framework="torch"
+        )
         layers = []
 
         # Add user-specified hidden convolutional layers first
@@ -215,11 +244,15 @@ class TorchCNN(nn.Module):
             layer = nn.Conv2d(
                 in_depth, out_depth, kernel_size, strides, bias=cnn_use_bias
             )
-            if cnn_initializer:
-                if cnn_initializer_config:
-                    cnn_initializer(layer.weight, **cnn_initializer_config)
-                else:
-                    cnn_initializer_config(layer.weight)
+
+            # Initialize CNN layer kernel if necessary.
+            if cnn_kernel_initializer:
+                cnn_kernel_initializer(
+                    layer.weight, **cnn_kernel_initializer_config or {}
+                )
+            # Initialize CNN layer bias if necessary.
+            if cnn_bias_initializer:
+                cnn_bias_initializer(layer.bias, **cnn_bias_initializer_config or {})
 
             layers.append(layer)
 
@@ -267,8 +300,10 @@ class TorchCNNTranspose(nn.Module):
         cnn_transpose_use_bias: bool = True,
         cnn_transpose_activation: str = "relu",
         cnn_transpose_use_layernorm: bool = False,
-        cnn_transpose_initializer: Optional[Union[str, Callable]] = None,
-        cnn_transpose_initializer_config: Optional[Dict] = None,
+        cnn_transpose_kernel_initializer: Optional[Union[str, Callable]] = None,
+        cnn_transpose_kernel_initializer_config: Optional[Dict] = None,
+        cnn_transpose_bias_initializer: Optional[Union[str, Callable]] = None,
+        cnn_transpose_bias_initializer_config: Optional[Dict] = None,
     ):
         """Initializes a TorchCNNTranspose instance.
 
@@ -299,8 +334,11 @@ class TorchCNNTranspose(nn.Module):
         cnn_transpose_activation = get_activation_fn(
             cnn_transpose_activation, framework="torch"
         )
-        cnn_transpose_initializer = get_initializer_fn(
-            cnn_transpose_initializer, framework="torch"
+        cnn_transpose_kernel_initializer = get_initializer_fn(
+            cnn_transpose_kernel_initializer, framework="torch"
+        )
+        cnn_transpose_bias_initializer = get_initializer_fn(
+            cnn_transpose_bias_initializer, framework="torch"
         )
 
         layers = []
@@ -346,14 +384,16 @@ class TorchCNNTranspose(nn.Module):
                 bias=cnn_transpose_use_bias or is_final_layer,
             )
 
-            # Initialize, if necessary.
-            if cnn_transpose_initializer:
-                if cnn_transpose_initializer_config:
-                    cnn_transpose_initializer(
-                        layer.weight, **cnn_transpose_initializer_config
-                    )
-                else:
-                    cnn_transpose_initializer(layer.weight)
+            # Initialize CNN Transpose layer kernel if necessary.
+            if cnn_transpose_kernel_initializer:
+                cnn_transpose_kernel_initializer(
+                    layer.weight, **cnn_transpose_kernel_initializer_config or {}
+                )
+            # Initialize CNN Transpose layer bias if necessary.
+            if cnn_transpose_bias_initializer:
+                cnn_transpose_bias_initializer(
+                    layer.bias, **cnn_transpose_bias_initializer_config or {}
+                )
 
             layers.append(layer)
             # Layernorm (never for final layer).

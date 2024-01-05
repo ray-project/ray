@@ -72,8 +72,10 @@ class TfCNNEncoder(TfModel, Encoder):
             cnn_activation=config.cnn_activation,
             cnn_use_layernorm=config.cnn_use_layernorm,
             cnn_use_bias=config.cnn_use_bias,
-            cnn_initializer=config.cnn_initializer,
-            cnn_initializer_config=config.cnn_initializer_config,
+            cnn_kernel_initializer=config.cnn_kernel_initializer,
+            cnn_kernel_initializer_config=config.cnn_kernel_initializer_config,
+            cnn_bias_initializer=config.cnn_bias_initializer,
+            cnn_bias_initializer_config=config.cnn_bias_initializer_config,
         )
         layers.append(cnn)
 
@@ -133,13 +135,23 @@ class TfMLPEncoder(Encoder, TfModel):
             hidden_layer_activation=config.hidden_layer_activation,
             hidden_layer_use_layernorm=config.hidden_layer_use_layernorm,
             hidden_layer_use_bias=config.hidden_layer_use_bias,
-            hidden_layer_initializer=config.hidden_layer_initializer,
-            hidden_layer_initializer_config=config.hidden_layer_initializer_config,
+            hidden_layer_weights_initializer=config.hidden_layer_initializer,
+            hidden_layer_weights_initializer_config=(
+                config.hidden_layer_initializer_config
+            ),
+            hidden_layer_bias_initializer=config.hidden_layer_bias_initializer,
+            hidden_layer_bias_initializer_config=(
+                config.hidden_layer_bias_initializer_config
+            ),
             output_dim=config.output_layer_dim,
             output_activation=config.output_layer_activation,
             output_use_bias=config.output_layer_use_bias,
-            output_initializer=config.output_layer_initializer,
-            output_initializer_config=config.output_layer_initializer_config,
+            output_weights_initializer=config.output_layer_weigths_initializer,
+            output_weigths_initializer_config=(
+                config.output_layer_weigths_initializer_config
+            ),
+            output_bias_initializer=config.output_layer_bias_initializer,
+            output_bias_initializer_config=config.output_layer_bias_initializer_config,
         )
 
     @override(Model)
@@ -195,7 +207,12 @@ class TfGRUEncoder(TfModel, Encoder):
                 1,
             ) + tuple(config.input_dims)
 
-        gru_initializer = get_initializer_fn(config.hidden_initializer, framework="tf2")
+        gru_weights_initializer = get_initializer_fn(
+            config.hidden_weights_initializer, framework="tf2"
+        )
+        gru_bias_initializer = get_initializer_fn(
+            config.hidden_bias_initializer, framework="tf2"
+        )
 
         # Create the tf GRU layers.
         self.grus = []
@@ -206,11 +223,16 @@ class TfGRUEncoder(TfModel, Encoder):
                 # Note, if the initializer is `None`, we want TensorFlow
                 # to use its default one. So we pass in `None`.
                 kernel_initializer=(
-                    gru_initializer(**config.hidden_initializer_config)
+                    gru_weights_initializer(**config.hidden_initializer_config)
                     if config.hidden_initializer_config
-                    else gru_initializer
+                    else gru_weights_initializer
                 ),
                 use_bias=config.use_bias,
+                bias_initializer=(
+                    gru_bias_initializer(**config.hidden_bias_initializer_config)
+                    if config.hidden_bias_initializer_config
+                    else gru_bias_initializer
+                ),
                 return_sequences=True,
                 return_state=True,
             )
@@ -317,8 +339,11 @@ class TfLSTMEncoder(TfModel, Encoder):
                 1,
             ) + tuple(config.input_dims)
 
-        lstm_initializer = get_initializer_fn(
-            config.hidden_initializer, framework="tf2"
+        lstm_weights_initializer = get_initializer_fn(
+            config.hidden_weights_initializer, framework="tf2"
+        )
+        lstm_bias_initializer = get_initializer_fn(
+            config.hidden_bias_initializer, framework="tf2"
         )
 
         # Create the tf LSTM layers.
@@ -330,11 +355,16 @@ class TfLSTMEncoder(TfModel, Encoder):
                 # Note, if the initializer is `None`, we want TensorFlow
                 # to use its default one. So we pass in `None`.
                 kernel_initializer=(
-                    lstm_initializer(**config.hidden_initializer_config)
+                    lstm_weights_initializer(**config.hidden_initializer_config)
                     if config.hidden_initializer_config
-                    else lstm_initializer
+                    else lstm_weights_initializer
                 ),
                 use_bias=config.use_bias,
+                bias_initializer=(
+                    lstm_bias_initializer(**config.hidden_bias_initializer_config)
+                    if config.hidden_bias_initializer_config
+                    else lstm_bias_initializer
+                ),
                 return_sequences=True,
                 return_state=True,
             )

@@ -26,13 +26,17 @@ class TfMLP(tf.keras.Model):
         hidden_layer_use_layernorm: bool = False,
         hidden_layer_use_bias: bool = True,
         hidden_layer_activation: Optional[Union[str, Callable]] = "relu",
-        hidden_layer_initializer: Optional[Union[str, Callable]] = None,
-        hidden_layer_initializer_config: Optional[Dict] = None,
+        hidden_layer_weights_initializer: Optional[Union[str, Callable]] = None,
+        hidden_layer_weights_initializer_config: Optional[Dict] = None,
+        hidden_layer_bias_initializer: Optional[Union[str, Callable]] = None,
+        hidden_layer_bias_initializer_config: Optional[Dict] = None,
         output_dim: Optional[int] = None,
         output_use_bias: bool = True,
         output_activation: Optional[Union[str, Callable]] = "linear",
-        output_initializer: Optional[Union[str, Callable]] = None,
-        output_initializer_config: Optional[Dict] = None,
+        output_weights_initializer: Optional[Union[str, Callable]] = None,
+        output_weights_initializer_config: Optional[Dict] = None,
+        output_bias_initializer: Optional[Union[str, Callable]] = None,
+        output_bias_initializer_config: Optional[Dict] = None,
     ):
         """Initialize a TfMLP object.
 
@@ -66,8 +70,11 @@ class TfMLP(tf.keras.Model):
         layers.append(tf.keras.Input(shape=(input_dim,)))
 
         hidden_activation = get_activation_fn(hidden_layer_activation, framework="tf2")
-        hidden_initializer = get_initializer_fn(
-            hidden_layer_initializer, framework="tf2"
+        hidden_weights_initializer = get_initializer_fn(
+            hidden_layer_weights_initializer, framework="tf2"
+        )
+        hidden_bias_initializer = get_initializer_fn(
+            hidden_layer_bias_initializer, framework="tf2"
         )
 
         for i in range(len(hidden_layer_dims)):
@@ -82,13 +89,18 @@ class TfMLP(tf.keras.Model):
                     # Note, if the initializer is `None`, we want TensorFlow
                     # to use its default one. So we pass in `None`.
                     kernel_initializer=(
-                        hidden_initializer(**hidden_layer_initializer_config)
-                        if hidden_layer_initializer_config
-                        else hidden_initializer
+                        hidden_weights_initializer(
+                            **hidden_layer_weights_initializer_config
+                        )
+                        if hidden_layer_weights_initializer_config
+                        else hidden_weights_initializer
                     ),
-                    # TODO (simon): Maybe add also initialization to bias. But
-                    # bias is usually fine as a constant.
                     use_bias=hidden_layer_use_bias,
+                    bias_initializer=(
+                        hidden_bias_initializer(**hidden_layer_bias_initializer_config)
+                        if hidden_layer_bias_initializer_config
+                        else hidden_bias_initializer
+                    ),
                 )
             )
             # Add LayerNorm and activation.
@@ -98,7 +110,12 @@ class TfMLP(tf.keras.Model):
                 layers.append(tf.keras.layers.LayerNormalization(epsilon=1e-5))
                 layers.append(tf.keras.layers.Activation(hidden_activation))
 
-        output_initializer = get_initializer_fn(output_initializer, framework="tf2")
+        output_weights_initializer = get_initializer_fn(
+            output_weights_initializer, framework="tf2"
+        )
+        output_bias_initializer = get_initializer_fn(
+            output_bias_initializer, framework="tf2"
+        )
 
         if output_dim is not None:
             output_activation = get_activation_fn(output_activation, framework="tf2")
@@ -109,11 +126,16 @@ class TfMLP(tf.keras.Model):
                     # Note, if the initializer is `None`, we want TensorFlow
                     # to use its default one. So we pass in `None`.
                     kernel_initializer=(
-                        output_initializer(**output_initializer_config)
-                        if output_initializer_config
-                        else output_initializer
+                        output_weights_initializer(**output_weights_initializer_config)
+                        if output_weights_initializer_config
+                        else output_weights_initializer
                     ),
                     use_bias=output_use_bias,
+                    bias_initializer=(
+                        output_bias_initializer(**output_bias_initializer_config)
+                        if output_bias_initializer_config
+                        else output_bias_initializer
+                    ),
                 )
             )
 
@@ -142,8 +164,10 @@ class TfCNN(tf.keras.Model):
         cnn_use_bias: bool = True,
         cnn_use_layernorm: bool = False,
         cnn_activation: Optional[str] = "relu",
-        cnn_initializer: Optional[Union[str, Callable]] = None,
-        cnn_initializer_config: Optional[Dict] = None,
+        cnn_kernel_initializer: Optional[Union[str, Callable]] = None,
+        cnn_kernel_initializer_config: Optional[Dict] = None,
+        cnn_bias_initializer: Optional[Union[str, Callable]] = None,
+        cnn_bias_initializer_config: Optional[Dict] = None,
     ):
         """Initializes a TfCNN instance.
 
@@ -178,7 +202,10 @@ class TfCNN(tf.keras.Model):
         assert len(input_dims) == 3
 
         cnn_activation = get_activation_fn(cnn_activation, framework="tf2")
-        cnn_initializer = get_initializer_fn(cnn_initializer, framework="tf2")
+        cnn_kernel_initializer = get_initializer_fn(
+            cnn_kernel_initializer, framework="tf2"
+        )
+        cnn_bias_initializer = get_initializer_fn(cnn_bias_initializer, framework="tf2")
 
         layers = []
 
@@ -205,9 +232,14 @@ class TfCNN(tf.keras.Model):
                     # Note, if the initializer is `None`, we want TensorFlow
                     # to use its default one. So we pass in `None`.
                     kernel_initializer=(
-                        cnn_initializer(**cnn_initializer_config)
-                        if cnn_initializer_config
-                        else cnn_initializer
+                        cnn_kernel_initializer(**cnn_kernel_initializer_config)
+                        if cnn_kernel_initializer_config
+                        else cnn_kernel_initializer
+                    ),
+                    bias_initializer=(
+                        cnn_bias_initializer(**cnn_bias_initializer_config)
+                        if cnn_bias_initializer_config
+                        else cnn_bias_initializer
                     ),
                 )
             )
@@ -248,8 +280,10 @@ class TfCNNTranspose(tf.keras.Model):
         cnn_transpose_use_bias: bool = True,
         cnn_transpose_activation: Optional[str] = "relu",
         cnn_transpose_use_layernorm: bool = False,
-        cnn_transpose_initializer: Optional[Union[str, Callable]] = None,
-        cnn_transpose_initializer_config: Optional[Dict] = None,
+        cnn_transpose_weights_initializer: Optional[Union[str, Callable]] = None,
+        cnn_transpose_weights_initializer_config: Optional[Dict] = None,
+        cnn_transpose_bias_initializer: Optional[Union[str, Callable]] = None,
+        cnn_transpose_bias_initializer_config: Optional[Dict] = None,
     ):
         """Initializes a TfCNNTranspose instance.
 
@@ -280,9 +314,12 @@ class TfCNNTranspose(tf.keras.Model):
         cnn_transpose_activation = get_activation_fn(
             cnn_transpose_activation, framework="tf2"
         )
-        cnn_transpose_initializer = get_initializer_fn(
-            cnn_transpose_initializer,
+        cnn_transpose_weights_initializer = get_initializer_fn(
+            cnn_transpose_weights_initializer,
             framework="tf2",
+        )
+        cnn_transpose_bias_initializer = get_initializer_fn(
+            cnn_transpose_bias_initializer, framework="tf2"
         )
 
         layers = []
@@ -309,13 +346,22 @@ class TfCNNTranspose(tf.keras.Model):
                     # Note, if the initializer is `None`, we want TensorFlow
                     # to use its default one. So we pass in `None`.
                     kernel_initializer=(
-                        cnn_transpose_initializer(**cnn_transpose_initializer_config)
-                        if cnn_transpose_initializer_config
-                        else cnn_transpose_initializer
+                        cnn_transpose_weights_initializer(
+                            **cnn_transpose_weights_initializer_config
+                        )
+                        if cnn_transpose_weights_initializer_config
+                        else cnn_transpose_weights_initializer
                     ),
                     # Last layer always uses bias (b/c has no LayerNorm, regardless of
                     # config).
                     use_bias=cnn_transpose_use_bias or is_final_layer,
+                    bias_initializer=(
+                        cnn_transpose_bias_initializer(
+                            **cnn_transpose_bias_initializer_config
+                        )
+                        if cnn_transpose_bias_initializer_config
+                        else cnn_transpose_bias_initializer
+                    ),
                 )
             )
             if cnn_transpose_use_layernorm and not is_final_layer:

@@ -105,13 +105,23 @@ class TfMLPHead(TfModel):
             hidden_layer_activation=config.hidden_layer_activation,
             hidden_layer_use_layernorm=config.hidden_layer_use_layernorm,
             hidden_layer_use_bias=config.hidden_layer_use_bias,
-            hidden_layer_initializer=config.hidden_layer_initializer,
-            hidden_layer_initializer_config=config.hidden_layer_initializer_config,
+            hidden_layer_weights_initializer=config.hidden_layer_weights_initializer,
+            hidden_layer_weights_initializer_config=(
+                config.hidden_layer_weights_initializer_config
+            ),
+            hidden_layer_bias_initializer=config.hidden_layer_bias_initializer,
+            hidden_layer_bias_initializer_config=(
+                config.hidden_layer_bias_initializer_config
+            ),
             output_dim=config.output_layer_dim,
             output_activation=config.output_layer_activation,
             output_use_bias=config.output_layer_use_bias,
-            output_initializer=config.output_layer_initializer,
-            output_initializer_config=config.output_layer_initializer_config,
+            output_weights_initializer=config.output_layer_weights_initializer,
+            output_weights_initializer_config=(
+                config.output_layer_weights_initializer_config
+            ),
+            output_bias_initializer=config.output_layer_bias_initializer,
+            output_bias_initializer_config=config.output_layer_bias_initializer_config,
         )
 
     @override(Model)
@@ -143,13 +153,23 @@ class TfFreeLogStdMLPHead(TfModel):
             hidden_layer_activation=config.hidden_layer_activation,
             hidden_layer_use_layernorm=config.hidden_layer_use_layernorm,
             hidden_layer_use_bias=config.hidden_layer_use_bias,
-            hidden_layer_initializer=config.hidden_layer_initializer,
-            hidden_layer_initializer_config=config.hidden_layer_initializer_config,
+            hidden_layer_weights_initializer=config.hidden_layer_weights_initializer,
+            hidden_layer_weights_initializer_config=(
+                config.hidden_layer_weights_initializer_config
+            ),
+            hidden_layer_bias_initializer=config.hidden_layer_bias_initializer,
+            hidden_layer_bias_initializer_config=(
+                config.hidden_layer_bias_initializer_config
+            ),
             output_dim=self._half_output_dim,
             output_activation=config.output_layer_activation,
             output_use_bias=config.output_layer_use_bias,
-            output_initializer=config.output_layer_initializer,
-            output_initializer_config=config.output_layer_initializer_config,
+            output_weights_initializer=config.output_layer_weights_initializer,
+            output_weights_initializer_config=(
+                config.output_layer_weights_initializer_config
+            ),
+            output_bias_initializer=config.output_layer_bias_initializer,
+            output_bias_initializer_config=config.output_layer_bias_initializer_config,
         )
 
         self.log_std = tf.Variable(
@@ -183,8 +203,11 @@ class TfCNNTransposeHead(TfModel):
 
         # Initial, inactivated Dense layer (always w/ bias). Use the
         # hidden layer initializer for this layer.
-        initial_dense_initializer = get_initializer_fn(
-            config.initial_dense_initializer, framework="tf2"
+        initial_dense_weights_initializer = get_initializer_fn(
+            config.initial_dense_weights_initializer, framework="tf2"
+        )
+        initial_dense_bias_initializer = get_initializer_fn(
+            config.initial_dense_bias_initializer, framework="tf2"
         )
 
         # This layer is responsible for getting the incoming tensor into a proper
@@ -193,11 +216,20 @@ class TfCNNTransposeHead(TfModel):
             units=int(np.prod(config.initial_image_dims)),
             activation=None,
             kernel_initializer=(
-                initial_dense_initializer(**config.initial_dense_initializer_config)
+                initial_dense_weights_initializer(
+                    **config.initial_dense_initializer_config
+                )
                 if config.initial_dense_initializer_config
-                else initial_dense_initializer
+                else initial_dense_weights_initializer
             ),
             use_bias=True,
+            bias_initializer=(
+                initial_dense_bias_initializer(
+                    **config.initial_dense_bias_initializer_config
+                )
+                if config.initial_dense_bias_initializer_config
+                else initial_dense_bias_initializer
+            ),
         )
 
         # The main CNNTranspose stack.
@@ -207,8 +239,14 @@ class TfCNNTransposeHead(TfModel):
             cnn_transpose_activation=config.cnn_transpose_activation,
             cnn_transpose_use_layernorm=config.cnn_transpose_use_layernorm,
             cnn_transpose_use_bias=config.cnn_transpose_use_bias,
-            cnn_transpose_initializer=config.cnn_transpose_initializer,
-            cnn_transpose_initializer_config=config.cnn_transpose_initializer_config,
+            cnn_transpose_kernel_initializer=config.cnn_transpose_kernel_initializer,
+            cnn_transpose_kernel_initializer_config=(
+                config.cnn_transpose_kernel_initializer_config
+            ),
+            cnn_transpose_bias_initializer=config.cnn_transpose_bias_initializer,
+            cnn_transpose_bias_initializer_config=(
+                config.cnn_transpose_bias_initializer_config
+            ),
         )
 
     @override(Model)
