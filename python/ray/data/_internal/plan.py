@@ -402,9 +402,9 @@ class ExecutionPlan:
                         self._logical_plan = randomize_blocks_op
                 else:
                     self.execute()
-            elif self._is_input_data_only() or (
+            elif self._is_read_in_memory() or (
                 isinstance(self._logical_plan.dag, RandomizeBlocks)
-                and self._is_input_data_only(
+                and self._is_read_in_memory(
                     self._logical_plan.dag.input_dependencies[0]
                 )
             ):
@@ -578,7 +578,7 @@ class ExecutionPlan:
                 get_legacy_lazy_block_list_read_only,
             )
 
-            if self._is_input_data_only():
+            if self._is_read_in_memory():
                 # No need to execute MaterializedDatasets with only an InputData
                 # operator, since the data is already materialized. This also avoids
                 # recording unnecessary metrics for an empty plan execution.
@@ -700,12 +700,17 @@ class ExecutionPlan:
         root_op = self._logical_plan.dag
         return isinstance(root_op, Read) and len(root_op.input_dependencies) == 0
 
-    def _is_input_data_only(self, root_op=None) -> bool:
-        """Return whether the underlying logical plan contains only an InputData op
-        (e.g. in the case of a :class:`~ray.data.MaterializedDataset`)."""
+    def _is_read_in_memory(self, root_op=None) -> bool:
+        """Return whether the underlying logical plan contains only a read
+        of already in-memory data (e.g. `InputData` operator for
+        :class:`~ray.data.MaterializedDataset`, `FromXXX` operators for
+        `from_xxx` APIs)."""
         if root_op is None:
             root_op = self._logical_plan.dag
-        return isinstance(root_op, InputData) and len(root_op.input_dependencies) == 0
+        return (
+            isinstance(root_op, (InputData, AbstractFrom))
+            and len(root_op.input_dependencies) == 0
+        )
 
     def has_computed_output(self) -> bool:
         """Whether this plan has a computed snapshot for the final stage, i.e. for the
@@ -724,21 +729,14 @@ class ExecutionPlan:
         return self._context.new_execution_backend
 
     def require_preserve_order(self) -> bool:
-        """Whether this plan requires to preserve order when running with new
-        backend.
-        """
+        """Whether this plan requires to preserve order."""
         from ray.data._internal.logical.operators.all_to_all_operator import Sort
         from ray.data._internal.logical.operators.n_ary_operator import Zip
 
-        def check(op):
+        for op in self._logical_plan.dag.post_order_iter():
             if isinstance(op, (Zip, Sort)):
                 return True
-            for input_op in op.input_dependencies:
-                if check(input_op):
-                    return True
-            return False
-
-        return check(self._logical_plan.dag)
+        return False
 
 
 def _pack_args(
