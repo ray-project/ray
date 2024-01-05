@@ -373,5 +373,9 @@ Content-Type: application/json
    metrics.Counter
    metrics.Histogram
    metrics.Gauge
-   schema.LoggingConfig
+
+```
+
+```{eval-rst}
+.. autopydantic_model:: ray.serve.schema.LoggingConfig
 ```
