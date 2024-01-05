@@ -1,7 +1,6 @@
 import json
 import logging
 import threading
-from functools import partial
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
@@ -14,13 +13,6 @@ _logger.setLevel(logging.WARN)
 
 
 class SparkJobServerRequestHandler(BaseHTTPRequestHandler):
-    def __init__(self, *args, extra_env_vars=None, **kwargs):
-        if extra_env_vars is None:
-            extra_env_vars = dict()
-
-        self.extra_env_vars = extra_env_vars
-        super().__init__(*args, **kwargs)
-
     def setup(self) -> None:
         super().setup()
         self._handler_lock = threading.RLock()
@@ -68,7 +60,6 @@ class SparkJobServerRequestHandler(BaseHTTPRequestHandler):
                         collect_log_to_path=collect_log_to_path,
                         autoscale_mode=True,
                         spark_job_server_port=self.server.server_address[1],
-                        extra_env_vars=self.extra_env_vars,
                     )
                 except Exception:
                     if spark_job_group_id in self.server.task_status_dict:
@@ -170,8 +161,8 @@ class SparkJobServer(ThreadingHTTPServer):
     handler must be running in current process.
     """
 
-    def __init__(self, server_address, spark, extra_env_vars=None):
-        super().__init__(server_address, partial(SparkJobServerRequestHandler, extra_env_vars=extra_env_vars))
+    def __init__(self, server_address, spark):
+        super().__init__(server_address, SparkJobServerRequestHandler)
         self.spark = spark
 
         # For ray on spark autoscaling mode,

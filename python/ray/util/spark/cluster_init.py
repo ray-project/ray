@@ -772,7 +772,6 @@ def _setup_ray_cluster(
                     collect_log_to_path=collect_log_to_path,
                     autoscale_mode=False,
                     spark_job_server_port=spark_job_server_port,
-                    extra_env_vars=start_hook.custom_environment_variables(),
                 )
             except Exception as e:
                 # NB:
@@ -1461,7 +1460,6 @@ def _start_ray_worker_nodes(
     collect_log_to_path,
     autoscale_mode,
     spark_job_server_port,
-    extra_env_vars,
 ):
     # NB:
     # In order to start ray worker nodes on spark cluster worker machines,
@@ -1515,11 +1513,13 @@ def _start_ray_worker_nodes(
         if ray_temp_dir is not None:
             ray_worker_node_cmd.append(f"--temp-dir={ray_temp_dir}")
 
+        hook_entry = _create_hook_entry(is_global=(ray_temp_dir is None))
+
         ray_worker_node_extra_envs = {
             RAY_ON_SPARK_COLLECT_LOG_TO_PATH: collect_log_to_path or "",
             RAY_ON_SPARK_START_RAY_PARENT_PID: str(os.getpid()),
             "RAY_ENABLE_WINDOWS_OR_OSX_CLUSTER": "1",
-            **extra_env_vars,
+            **hook_entry.custom_environment_variables(),
         }
 
         if num_gpus_per_node > 0:
