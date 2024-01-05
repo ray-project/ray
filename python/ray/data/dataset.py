@@ -4142,7 +4142,7 @@ class Dataset:
             >>> from ray.data.preprocessors import Concatenator
             >>> preprocessor = Concatenator(output_column_name="features", exclude="target")
             >>> ds = preprocessor.transform(ds)
-            >>> ds
+            >>> ds  # doctest: +ELLIPSIS
             Concatenator
             +- Dataset(
                   num_blocks=...,
