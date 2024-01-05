@@ -163,16 +163,20 @@ class ExecutionPlan:
         # Do not force execution for schema, as this method is expected to be very
         # cheap.
         plan_str = ""
+        plan_max_depth = 0
         dataset_blocks = None
         if (
             self._snapshot_blocks is None
             or self._snapshot_operator != self._logical_plan.dag
         ):
 
-            def generate_string(op, depth=0):
+            def generate_logical_plan_string(op, depth=0):
+                nonlocal plan_str
+                nonlocal plan_max_depth
+                plan_max_depth = max(plan_max_depth, depth)
                 if isinstance(op, (Read, InputData, AbstractFrom)):
                     return
-                nonlocal plan_str
+
                 op_name = op.name
                 if depth == 0:
                     plan_str += f"{op_name}\n"
@@ -181,11 +185,21 @@ class ExecutionPlan:
                     plan_str += f"{trailing_space}+- {op_name}\n"
 
                 for input in op.input_dependencies:
-                    generate_string(input, depth + 1)
+                    generate_logical_plan_string(input, depth + 1)
 
-            generate_string(self._logical_plan.dag)
+            generate_logical_plan_string(self._logical_plan.dag)
 
             # Get schema of initial blocks.
+            if self._is_read_in_memory() or self.is_read_only():
+                # In the case where the plan contains only a read operator,
+                # it is cheap to execute it, since read tasks will not be
+                # scheduled until data is consumed or materialized.
+                # In the case where the data is already in-memory (InputData,
+                # FromXXX operator), it is also cheap to execute it.
+                # This allows us to get the most accurate estimates related
+                # to the dataset, after applying execution plan optimizer rules
+                # (e.g. number of blocks may change based on parallelism).
+                self.execute()
             if self._snapshot_blocks is not None:
                 schema = self._get_unified_blocks_schema(
                     self._snapshot_blocks, fetch_if_missing=False
@@ -238,12 +252,14 @@ class ExecutionPlan:
         SCHEMA_LINE_CHAR_LIMIT = 80
         MIN_FIELD_LENGTH = 10
         INDENT_STR = " " * 3
+        trailing_space = INDENT_STR * plan_max_depth
+
         if len(dataset_str) > SCHEMA_LINE_CHAR_LIMIT:
             # If the resulting string representation exceeds the line char limit,
             # first try breaking up each `Dataset` parameter into its own line
             # and check if each line fits within the line limit. We check the
             # `schema` param's length, since this is likely the longest string.
-            schema_str_on_new_line = f"{INDENT_STR}schema={schema_str}"
+            schema_str_on_new_line = f"{trailing_space}{INDENT_STR}schema={schema_str}"
             if len(schema_str_on_new_line) > SCHEMA_LINE_CHAR_LIMIT:
                 # If the schema cannot fit on a single line, break up each field
                 # into its own line.
@@ -251,7 +267,7 @@ class ExecutionPlan:
                 for n, t in zip(schema.names, schema.types):
                     if hasattr(t, "__name__"):
                         t = t.__name__
-                    col_str = f"{INDENT_STR * 2}{n}: {t}"
+                    col_str = f"{trailing_space}{INDENT_STR * 2}{n}: {t}"
                     # If the field line exceeds the char limit, abbreviate
                     # the field name to fit while maintaining the full type
                     if len(col_str) > SCHEMA_LINE_CHAR_LIMIT:
@@ -267,22 +283,27 @@ class ExecutionPlan:
                         )
                     schema_str.append(col_str)
                 schema_str = ",\n".join(schema_str)
-                schema_str = "{\n" + schema_str + f"\n{INDENT_STR}" + "}"
+                schema_str = (
+                    "{\n" + schema_str + f"\n{trailing_space}{INDENT_STR}" + "}"
+                )
             name_str = (
-                f"\n{INDENT_STR}name={self._dataset_name},"
+                f"\n{trailing_space}{INDENT_STR}name={self._dataset_name},"
                 if self._dataset_name is not None
                 else ""
             )
             dataset_str = (
                 f"{classname}("
                 f"{name_str}"
-                f"\n{INDENT_STR}num_blocks={num_blocks},"
-                f"\n{INDENT_STR}num_rows={count},"
-                f"\n{INDENT_STR}schema={schema_str}"
-                f"\n)"
+                f"\n{trailing_space}{INDENT_STR}num_blocks={num_blocks},"
+                f"\n{trailing_space}{INDENT_STR}num_rows={count},"
+                f"\n{trailing_space}{INDENT_STR}schema={schema_str}"
+                f"\n{trailing_space})"
             )
 
-        plan_str += dataset_str
+        if plan_max_depth == 0:
+            plan_str += dataset_str
+        else:
+            plan_str += f"{INDENT_STR * (plan_max_depth - 1)}+- {dataset_str}"
         return plan_str
 
     def with_stage(self, stage: "Stage") -> "ExecutionPlan":
@@ -704,7 +725,8 @@ class ExecutionPlan:
         """Return whether the underlying logical plan contains only a read
         of already in-memory data (e.g. `InputData` operator for
         :class:`~ray.data.MaterializedDataset`, `FromXXX` operators for
-        `from_xxx` APIs)."""
+        `from_xxx` APIs). When this is true, `self.execute()` is very cheap
+        (since data is already in-memory)."""
         if root_op is None:
             root_op = self._logical_plan.dag
         return (
