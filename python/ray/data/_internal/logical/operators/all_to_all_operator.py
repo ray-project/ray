@@ -58,7 +58,6 @@ class RandomShuffle(AbstractAllToAll):
     def __init__(
         self,
         input_op: LogicalOperator,
-        num_outputs: int,
         name: str = "RandomShuffle",
         seed: Optional[int] = None,
         ray_remote_args: Optional[Dict[str, Any]] = None,
@@ -71,7 +70,6 @@ class RandomShuffle(AbstractAllToAll):
                 ExchangeTaskSpec.REDUCE_SUB_PROGRESS_BAR_NAME,
             ],
             ray_remote_args=ray_remote_args,
-            num_outputs=num_outputs,
         )
         self._seed = seed
 

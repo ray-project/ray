@@ -122,7 +122,7 @@ class ExecutionPlan:
         self._in_stats = stats
         # A computed snapshot of some prefix of stages.
         self._snapshot_blocks = None
-        self._snapshot_operator: LogicalOperator = None
+        self._snapshot_operator: Optional[LogicalOperator] = None
         self._snapshot_stats = None
         # Cache of optimized stages.
         self._last_optimized_stages = None
