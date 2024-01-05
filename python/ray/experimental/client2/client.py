@@ -201,14 +201,12 @@ class Client:
     Before we can call it "production-ready", there are a bunch of things to do:
 
     - if you code involves custom type, you need to use runtime_env even if the custom type is defiend in your code.
-    - client.get now limits to 200MB, needs a larger limit, maybe chunking and streaming.
-    - tasks' prints are not forwarded to the client.
+    - client.get now limits to 100MB, needs a larger limit, maybe chunking and streaming.
     - One still have to pip install and import a lib to easily use them, even though the usage is mostly wrapped in a remote function.
         - for example, if you define a `class NeuralNetwork(nn.Module)` you need to first `from torch import nn`, even though the invocations are in remote.
     - Not showing good exception info on driver init failure (e.g. invalid rt env)
     - connect() polls are fixed 1s * 10. Can change to a proper backoff.
     - Need to support ray.cancel() and other TODO_APIS.
-    - All other non supported Ray APIs needs to be mocked out.
     """
 
     # static variables
@@ -264,6 +262,7 @@ class Client:
     def disconnect(self):
         """
         Disconnects this client. Also kills the job.
+        TODO: atexit, run disconnect.
         """
         self.unset_active()
         self.kill_actor()
@@ -388,10 +387,13 @@ class Client:
 
         Convenience helper to invoke a method remotely on an object ref. This only works
         for a single method call. If you have chained method calls, or don't want a transmission,
-        define a `@ray.remote` function and call `client.task(f).remote(obj)`.
+        define a `@ray.remote` function and invoke it.
 
         Transforms this:
-            client.task(ray.remote(lambda o: o.f(arg1)))).remote(obj)
+            @ray.remote
+            def call_f(o, arg1):
+                return o.f(arg1)
+            call_f.remote(obj, arg1)
         To this:
             client.run(obj).f(arg1)
         """
