@@ -67,7 +67,7 @@ steps:
       - skip-on-premerge
     instance_type: medium
     commands:
-      - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/build/upload_build_info.sh; fi }; trap cleanup EXIT
+      - cleanup() { ./ci/build/upload_build_info.sh; }; trap cleanup EXIT
       - (cd dashboard/client && npm ci && npm run build)
       - pip install -e python[client]
       - bazel test --config=ci --jobs=1 $(./ci/run/bazel_export_options)

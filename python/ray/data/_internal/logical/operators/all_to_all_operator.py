@@ -31,7 +31,7 @@ class AbstractAllToAll(LogicalOperator):
                 operator.
             ray_remote_args: Args to provide to ray.remote.
         """
-        super().__init__(name, [input_op])
+        super().__init__(name, [input_op], num_outputs)
         self._num_outputs = num_outputs
         self._ray_remote_args = ray_remote_args or {}
         self._sub_progress_bar_names = sub_progress_bar_names

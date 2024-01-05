@@ -480,10 +480,22 @@ py_test(
 )
 
 py_test(
-    name = "test_callbacks",
+    name = "test_callbacks_on_algorithm",
     tags = ["team:rllib", "algorithms_dir", "algorithms_dir_generic"],
     size = "large",
-    srcs = ["algorithms/tests/test_callbacks.py"]
+    srcs = ["algorithms/tests/test_callbacks_on_algorithm.py"]
+)
+py_test(
+    name = "test_callbacks_on_env_runner",
+    tags = ["team:rllib", "algorithms_dir", "algorithms_dir_generic"],
+    size = "medium",
+    srcs = ["algorithms/tests/test_callbacks_on_env_runner.py"]
+)
+py_test(
+    name = "test_callbacks_old_stack",
+    tags = ["team:rllib", "algorithms_dir", "algorithms_dir_generic"],
+    size = "medium",
+    srcs = ["algorithms/tests/test_callbacks_old_stack.py"]
 )
 
 py_test(
