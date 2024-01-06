@@ -1058,7 +1058,12 @@ class Dataset:
         return Dataset(plan, logical_plan)
 
     @AllToAllAPI
-    def repartition(self, num_blocks: int, *, shuffle: bool = False) -> "Dataset":
+    def repartition(
+        self,
+        num_blocks: int,
+        *,
+        shuffle: bool = False,
+    ) -> "Dataset":
         """Repartition the :class:`Dataset` into exactly this number of :ref:`blocks <dataset_concept>`.
 
         This method can be useful to tune the performance of your pipeline. To learn
@@ -1925,7 +1930,10 @@ class Dataset:
         )
 
     @AllToAllAPI
-    def groupby(self, key: Union[str, List[str], None]) -> "GroupedData":
+    def groupby(
+        self,
+        key: Union[str, List[str], None],
+    ) -> "GroupedData":
         """Group rows of a :class:`Dataset` according to a column.
 
         Use this method to transform data based on a
