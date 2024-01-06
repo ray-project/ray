@@ -190,7 +190,7 @@ class ExecutionPlan:
             generate_logical_plan_string(self._logical_plan.dag)
 
             # Get schema of initial blocks.
-            if self._is_read_in_memory() or self.is_read_only():
+            if self.is_from_in_memory_only() or self.is_read_only():
                 # In the case where the plan contains only a read operator,
                 # it is cheap to execute it, since read tasks will not be
                 # scheduled until data is consumed or materialized.
@@ -423,9 +423,9 @@ class ExecutionPlan:
                         self._logical_plan = randomize_blocks_op
                 else:
                     self.execute()
-            elif self._is_read_in_memory() or (
+            elif self.is_from_in_memory_only() or (
                 isinstance(self._logical_plan.dag, RandomizeBlocks)
-                and self._is_read_in_memory(
+                and self.is_from_in_memory_only(
                     self._logical_plan.dag.input_dependencies[0]
                 )
             ):
@@ -479,20 +479,18 @@ class ExecutionPlan:
         return None
 
     def meta_count(self) -> Optional[int]:
-        """Get the number of rows after applying all plan stages if possible.
+        """Get the number of rows after applying all plan optimizations, if possible.
 
         This method will never trigger any computation.
 
         Returns:
             The number of records of the result Dataset, or None.
         """
-        if self.is_read_only():
+        if self.is_from_in_memory_only() or self.is_read_only():
             # If the plan is input/read only, we execute it, so snapshot has output.
             # This applies to newly created dataset. For example, initial dataset
             # from read, and output datasets of Dataset.split().
             self.execute()
-        elif self._snapshot_blocks is None:
-            return None
         # Snapshot is now guaranteed to be the final block or None.
         return self._get_num_rows_from_blocks_metadata(self._snapshot_blocks)
 
@@ -599,7 +597,7 @@ class ExecutionPlan:
                 get_legacy_lazy_block_list_read_only,
             )
 
-            if self._is_read_in_memory():
+            if self.is_from_in_memory_only():
                 # No need to execute MaterializedDatasets with only an InputData
                 # operator, since the data is already materialized. This also avoids
                 # recording unnecessary metrics for an empty plan execution.
@@ -721,7 +719,7 @@ class ExecutionPlan:
         root_op = self._logical_plan.dag
         return isinstance(root_op, Read) and len(root_op.input_dependencies) == 0
 
-    def _is_read_in_memory(self, root_op=None) -> bool:
+    def is_from_in_memory_only(self, root_op=None) -> bool:
         """Return whether the underlying logical plan contains only a read
         of already in-memory data (e.g. `InputData` operator for
         :class:`~ray.data.MaterializedDataset`, `FromXXX` operators for
