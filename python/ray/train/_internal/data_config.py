@@ -91,6 +91,9 @@ class DataConfig:
         else:
             datasets_to_split = set(self._datasets_to_split)
 
+        locality_hints = (
+            worker_node_ids if self._execution_options.locality_with_output else None
+        )
         for name, ds in datasets.items():
             ds = ds.copy(ds)
             ds.context.execution_options = copy.deepcopy(self._execution_options)
@@ -107,7 +110,7 @@ class DataConfig:
             if name in datasets_to_split:
                 for i, split in enumerate(
                     ds.streaming_split(
-                        world_size, equal=True, locality_hints=worker_node_ids
+                        world_size, equal=True, locality_hints=locality_hints
                     )
                 ):
                     output[i][name] = split
