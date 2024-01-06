@@ -39,7 +39,7 @@ steps:
       - oss
     instance_type: medium
     commands:
-      - bazel run //ci/ray_ci:build_in_docker -- wheel --python-version 3.8 --build-type debug
+      - bazel run //ci/ray_ci:build_in_docker -- wheel --build-type debug
     depends_on:
       - manylinux
       - forge

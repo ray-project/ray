@@ -49,6 +49,13 @@ run_core_dashboard_test() {
     //:all python/ray/dashboard/... -python/ray/serve/... -rllib/... -core_worker_test
 }
 
+run_ray_cpp_and_java() {
+  # clang-format is needed by java/test.sh
+  pip install clang-format==12.0.1
+  ./java/test.sh
+  ./ci/ci.sh test_cpp
+}
+
 _prelude() {
   rm -rf /tmp/bazel_event_logs
   cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/build/upload_build_info.sh; fi }; trap cleanup EXIT
