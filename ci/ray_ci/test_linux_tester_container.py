@@ -1,3 +1,5 @@
+import json
+import os
 import sys
 import pytest
 import tempfile
@@ -5,7 +7,6 @@ from unittest import mock
 from typing import List, Optional
 
 from ci.ray_ci.linux_tester_container import LinuxTesterContainer
-from ci.ray_ci.tester_container import BAZEL_EVENT_LOGS
 from ci.ray_ci.utils import chunk_into_n
 from ci.ray_ci.container import _DOCKER_ECR_REPO, _RAYCI_BUILD_ID
 
@@ -23,8 +24,7 @@ class MockPopen:
         return 1 if "bad_test" in self.test_targets or not self.test_targets else 0
 
 
-@mock.patch.object(tempfile, "mkdtemp")
-def test_enough_gpus(tf) -> None:
+def test_enough_gpus() -> None:
     # not enough gpus
     try:
         LinuxTesterContainer("team", shard_count=2, gpus=1, skip_ray_installation=True)
@@ -72,8 +72,7 @@ def test_run_tests_in_docker(tf) -> None:
         assert "--gpus" not in input_str
 
 
-@mock.patch.object(tempfile, "mkdtemp")
-def test_run_script_in_docker(tf) -> None:
+def test_run_script_in_docker() -> None:
     def _mock_check_output(input: List[str]) -> None:
         input_str = " ".join(input)
         assert "/bin/bash -iecuo pipefail -- run command" in input_str
@@ -88,8 +87,7 @@ def test_run_script_in_docker(tf) -> None:
         container.run_script_with_output(["run command"])
 
 
-@mock.patch.object(tempfile, "mkdtemp")
-def test_skip_ray_installation(tf) -> None:
+def test_skip_ray_installation() -> None:
     install_ray_called = []
 
     def _mock_install_ray(build_type: Optional[str]) -> None:
@@ -106,8 +104,7 @@ def test_skip_ray_installation(tf) -> None:
         assert len(install_ray_called) == 1
 
 
-@mock.patch.object(tempfile, "mkdtemp")
-def test_ray_installation(tf) -> None:
+def test_ray_installation() -> None:
     install_ray_cmds = []
 
     def _mock_subprocess(inputs: List[str], env, stdout, stderr) -> None:
@@ -115,7 +112,7 @@ def test_ray_installation(tf) -> None:
 
     with mock.patch("subprocess.check_call", side_effect=_mock_subprocess):
         LinuxTesterContainer("team", build_type="debug")
-        docker_image = f"{_DOCKER_ECR_REPO}:{_RAYCI_BUILD_ID}-team"
+        docker_image = f"{_DOCKER_ECR_REPO}:{_RAYCI_BUILD_ID}-teambuild"
         assert install_ray_cmds[-1] == [
             "docker",
             "build",
@@ -167,13 +164,6 @@ def test_run_tests(tf) -> None:
         # test targets contain bad_test
         assert not container.run_tests(["bad_test"], [])
 
-def test_init_bazel_log_dir() -> None:
-    with mock.patch("tempfile.mkdtemp", return_value="/artifact-mount/123"):
-        container = LinuxTesterContainer("team", skip_ray_installation=True)
-        assert container.bazel_log_dir == f"/artifact-mount/123"
-        assert "/tmp/artifacts:/artifact-mount" in container.volumes
-        assert "/tmp/artifacts/123:/tmp/bazel_event_logs" in container.volumes
-
 
 def test_init_bazel_log_dir() -> None:
     with mock.patch("tempfile.mkdtemp", return_value="/artifact-mount/123"):
@@ -182,6 +172,25 @@ def test_init_bazel_log_dir() -> None:
             "/tmp/artifacts/123",
             "/artifact-mount/123",
         )
+
+
+def test_get_test_results() -> None:
+    _BAZEL_LOG = json.dumps(
+        {
+            "id": {"testResult": {"label": "//ray/ci:test"}},
+            "testResult": {"status": "PASSED"},
+        }
+    )
+
+    with tempfile.TemporaryDirectory() as tmp:
+        with open(os.path.join(tmp, "bazel_log"), "w") as f:
+            f.write(_BAZEL_LOG)
+        container = LinuxTesterContainer("team", skip_ray_installation=True)
+        results = container._get_test_and_results(tmp)
+        (test, result) = results[0]
+        assert test.get_name() == "ray_ci_test.linux"
+        assert test.get_oncall() == "team"
+        assert result.is_passing()
 
 
 if __name__ == "__main__":

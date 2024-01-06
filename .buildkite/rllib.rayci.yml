@@ -1,6 +1,4 @@
 group: rllib tests
-tags:
-  - disabled
 depends_on:
   - forge
 steps:

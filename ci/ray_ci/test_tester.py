@@ -38,9 +38,6 @@ def test_get_container() -> None:
     ), mock.patch(
         "ci.ray_ci.windows_tester_container.WindowsTesterContainer.install_ray",
         return_value=None,
-    ), mock.patch(
-        "tempfile.mkdtemp",
-        return_value="",
     ):
         container = _get_container(
             team="core",
@@ -87,9 +84,6 @@ def test_get_test_targets() -> None:
         ), mock.patch(
             "ci.ray_ci.linux_tester_container.LinuxTesterContainer.install_ray",
             return_value=None,
-        ), mock.patch(
-            "tempfile.mkdtemp",
-            return_value="",
         ):
             assert set(
                 _get_test_targets(

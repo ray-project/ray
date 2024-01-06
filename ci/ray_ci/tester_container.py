@@ -4,16 +4,12 @@ import shutil
 import subprocess
 import tempfile
 from typing import List, Tuple, Optional
-import shutil
-from typing import Dict, List, Optional
 from os import path, listdir
 
 from ci.ray_ci.utils import shard_tests, chunk_into_n
 from ci.ray_ci.utils import logger
 from ci.ray_ci.container import Container
-from ci.ray_ci.data.test_result import TestResult
-
-BAZEL_EVENT_LOGS = "/tmp/bazel_event_logs"
+from ray_release.test import TestResult, Test
 
 
 class TesterContainer(Container):
@@ -23,7 +19,7 @@ class TesterContainer(Container):
 
     def __init__(
         self,
-        bazel_log_dir: str,
+        team: str,
         shard_count: int = 1,
         gpus: int = 0,
         bazel_log_dir: str = "/tmp",
@@ -39,19 +35,18 @@ class TesterContainer(Container):
         used to run tests in a distributed fashion.
         :param shard_ids: The list of shard ids to run. If none, run no shards.
         """
+        self.team = team
         self.bazel_log_dir = bazel_log_dir
         self.shard_count = shard_count
         self.shard_ids = shard_ids or []
         self.test_envs = test_envs or []
         self.build_type = build_type
         self.network = network
-        self._init_bazel_log_dir()
         self.gpus = gpus
         assert (
             self.gpus == 0 or self.gpus >= self.shard_count
         ), f"Not enough gpus ({self.gpus} provided) for {self.shard_count} shards"
 
-        self._init_bazel_log_dir()
         if not skip_ray_installation:
             self.install_ray(build_type)
 
@@ -107,6 +102,7 @@ class TesterContainer(Container):
     def persist_test_results(self, bazel_log_dir: str) -> None:
         logger.info("Uploading test results")
         self._upload_build_info(bazel_log_dir)
+        self._upload_test_results(bazel_log_dir)
 
         # clean up so we don't pollute the host machine
         shutil.rmtree(bazel_log_dir)
@@ -120,51 +116,37 @@ class TesterContainer(Container):
             ]
         )
 
-    def _upload_test_results(self) -> None:
-        for event in self._get_test_result_events():
-            TestResult.from_bazel_event(event).upload()
+    def _upload_test_results(self, bazel_log_dir: str) -> None:
+        for test, result in self._get_test_results(bazel_log_dir):
+            # TODO(can): upload test results
+            logger.info("Uploading test: %s", test)
+            logger.info("Uploading test result: %s", result)
 
-    def _get_test_result_events(self) -> List[Dict[str, any]]:
+    def _get_test_and_results(
+        self, bazel_log_dir: str
+    ) -> List[Tuple[Test, TestResult]]:
         bazel_logs = []
         # Find all bazel logs
-        for file in listdir(self.bazel_log_dir):
-            log = path.join(self.bazel_log_dir, file)
+        for file in listdir(bazel_log_dir):
+            log = path.join(bazel_log_dir, file)
             if path.isfile(log) and file.startswith("bazel_log"):
                 bazel_logs.append(log)
 
-        result_events = []
+        test_and_results = []
         # Parse bazel logs and print test results
         for file in bazel_logs:
             with open(file, "rb") as f:
                 for line in f.readlines():
-                    data = json.loads(line.decode("utf-8"))
-                    if "testResult" in data:
-                        result_events.append(data)
+                    event = json.loads(line.decode("utf-8"))
+                    if "testResult" in event:
+                        test_and_results.append(
+                            (
+                                Test.from_bazel_event(event, self.team),
+                                TestResult.from_bazel_event(event),
+                            )
+                        )
 
-        return result_events
-
-    def _upload_test_results(self) -> None:
-        for event in self._get_test_result_events():
-            TestResult.from_bazel_event(event).upload()
-
-    def _get_test_result_events(self) -> List[Dict[str, any]]:
-        bazel_logs = []
-        # Find all bazel logs
-        for file in listdir(self.bazel_log_dir):
-            log = path.join(self.bazel_log_dir, file)
-            if path.isfile(log) and file.startswith("bazel_log"):
-                bazel_logs.append(log)
-
-        result_events = []
-        # Parse bazel logs and print test results
-        for file in bazel_logs:
-            with open(file, "rb") as f:
-                for line in f.readlines():
-                    data = json.loads(line.decode("utf-8"))
-                    if "testResult" in data:
-                        result_events.append(data)
-
-        return result_events
+        return test_and_results
 
     def _run_tests_in_docker(
         self,

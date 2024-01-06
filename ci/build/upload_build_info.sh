@@ -15,10 +15,10 @@ if [[
   exit 0
 fi
 
-# if [[ "${BUILDKITE_BRANCH:-}" != "master" ]]; then
-#   echo "Skip upload build info. We only upload on master branch."
-#   exit 0
-# fi
+if [[ "${BUILDKITE_BRANCH:-}" != "master" ]]; then
+  echo "Skip upload build info. We only upload on master branch."
+  exit 0
+fi
 
 ROOT_DIR=$(cd "$(dirname "$0")/$(dirname "$(test -L "$0" && readlink "$0" || echo "/")")"; pwd)
 RAY_DIR=$(cd "${ROOT_DIR}/../../"; pwd)

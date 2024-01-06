@@ -27,6 +27,7 @@ py_library(
         ci_require("boto3"),
         ci_require("pyyaml"),
         ci_require("click"),
+        ci_require("ray_release"),
     ],
 )
 

@@ -13,6 +13,15 @@ _DOCKER_CAP_ADD = [
 
 
 class LinuxContainer(Container):
+    def __init__(
+        self,
+        docker_tag: str,
+        volumes: Optional[List[str]] = None,
+        envs: Optional[List[str]] = None,
+    ) -> None:
+        super().__init__(docker_tag, envs)
+        self.volumes = volumes or []
+
     def install_ray(self, build_type: Optional[str] = None) -> List[str]:
         env = os.environ.copy()
         env["DOCKER_BUILDKIT"] = "1"
