@@ -85,15 +85,12 @@ def plan_read_op(op: Read) -> PhysicalOperator:
     def do_read(blocks: Iterable[ReadTask], _: TaskContext) -> Iterable[Block]:
         """Yield from read tasks, with retry logic upon transient read errors."""
         for read_task in blocks:
-            if read_task._metadata.input_files is not None:
-                read_files_name = ",".join(read_task._metadata.input_files)
-            else:
-                read_files_name = read_task._read_fn.__name__
+            read_fn_name = read_task._read_fn.__name__
 
             yield from call_with_retry(
                 f=read_task,
                 match=READ_FILE_RETRY_ON_ERRORS,
-                description=f"read file {read_files_name}",
+                description=f"read file {read_fn_name}",
                 max_attempts=READ_FILE_MAX_ATTEMPTS,
                 max_backoff_s=READ_FILE_RETRY_MAX_BACKOFF_SECONDS,
             )
