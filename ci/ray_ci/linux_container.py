@@ -55,8 +55,6 @@ class LinuxContainer(Container):
         extra_args = [
             "--env",
             "NVIDIA_DISABLE_REQUIRE=1",
-            "--volume",
-            "/tmp/artifacts:/artifact-mount",
             "--add-host",
             "rayci.localhost:host-gateway",
         ]
