@@ -1,12 +1,17 @@
+import json
 import platform
 import shutil
 import subprocess
 import tempfile
 from typing import List, Tuple, Optional
+import shutil
+from typing import Dict, List, Optional
+from os import path, listdir
 
 from ci.ray_ci.utils import shard_tests, chunk_into_n
 from ci.ray_ci.utils import logger
 from ci.ray_ci.container import Container
+from ci.ray_ci.data.test_result import TestResult
 
 BAZEL_EVENT_LOGS = "/tmp/bazel_event_logs"
 
@@ -114,6 +119,52 @@ class TesterContainer(Container):
                 bazel_log_dir,
             ]
         )
+
+    def _upload_test_results(self) -> None:
+        for event in self._get_test_result_events():
+            TestResult.from_bazel_event(event).upload()
+
+    def _get_test_result_events(self) -> List[Dict[str, any]]:
+        bazel_logs = []
+        # Find all bazel logs
+        for file in listdir(self.bazel_log_dir):
+            log = path.join(self.bazel_log_dir, file)
+            if path.isfile(log) and file.startswith("bazel_log"):
+                bazel_logs.append(log)
+
+        result_events = []
+        # Parse bazel logs and print test results
+        for file in bazel_logs:
+            with open(file, "rb") as f:
+                for line in f.readlines():
+                    data = json.loads(line.decode("utf-8"))
+                    if "testResult" in data:
+                        result_events.append(data)
+
+        return result_events
+
+    def _upload_test_results(self) -> None:
+        for event in self._get_test_result_events():
+            TestResult.from_bazel_event(event).upload()
+
+    def _get_test_result_events(self) -> List[Dict[str, any]]:
+        bazel_logs = []
+        # Find all bazel logs
+        for file in listdir(self.bazel_log_dir):
+            log = path.join(self.bazel_log_dir, file)
+            if path.isfile(log) and file.startswith("bazel_log"):
+                bazel_logs.append(log)
+
+        result_events = []
+        # Parse bazel logs and print test results
+        for file in bazel_logs:
+            with open(file, "rb") as f:
+                for line in f.readlines():
+                    data = json.loads(line.decode("utf-8"))
+                    if "testResult" in data:
+                        result_events.append(data)
+
+        return result_events
 
     def _run_tests_in_docker(
         self,
