@@ -363,7 +363,7 @@ Content-Type: application/json
    schema.ReplicaDetails
 ```
 
-## Observability
+## Observability 
 
 ```{eval-rst}
 .. autosummary::
