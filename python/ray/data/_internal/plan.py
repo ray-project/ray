@@ -147,6 +147,7 @@ class ExecutionPlan:
             f"dataset_uuid={self._dataset_uuid}, "
             f"run_by_consumer={self._run_by_consumer}, "
             f"in_blocks={self._in_blocks}, "
+            f"snapshot_operator={self._snapshot_operator}"
             f"snapshot_blocks={self._snapshot_blocks})"
         )
 
@@ -170,7 +171,7 @@ class ExecutionPlan:
             or self._snapshot_operator != self._logical_plan.dag
         ):
 
-            def generate_logical_plan_string(op, depth=0):
+            def generate_logical_plan_string(op: LogicalOperator, depth: int = 0):
                 nonlocal plan_str
                 nonlocal plan_max_depth
                 plan_max_depth = max(plan_max_depth, depth)
@@ -368,7 +369,7 @@ class ExecutionPlan:
         if self._snapshot_blocks:
             # Copy over the existing snapshot.
             plan_copy._snapshot_blocks = self._snapshot_blocks.copy()
-            plan_copy._snapshot_operator = self._snapshot_operator
+            plan_copy._snapshot_operator = copy.copy(self._snapshot_operator)
             plan_copy._snapshot_stats = copy.copy(self._snapshot_stats)
         plan_copy._dataset_name = self._dataset_name
         return plan_copy
@@ -414,9 +415,7 @@ class ExecutionPlan:
                     # so we don't need to execute all blocks to get the schema.
 
                     randomize_blocks_op = self._logical_plan.dag
-                    self._logical_plan._dag = self._logical_plan.dag.input_dependencies[
-                        0
-                    ]
+                    self._logical_plan._dag = randomize_blocks_op.input_dependencies[0]
                     try:
                         self.execute()
                     finally:
@@ -433,6 +432,15 @@ class ExecutionPlan:
                 # only plan, we execute it (regardless of the fetch_if_missing),
                 # since RandomizeBlocksStage is just changing the order of references
                 # (hence super cheap).
+                self.execute()
+            elif self.is_read_only() or (
+                isinstance(self._logical_plan.dag, RandomizeBlocks)
+                and self.is_read_only(self._logical_plan.dag.input_dependencies[0])
+            ):
+                # Similarly for Read only plan, or if RandomizeBlocks is following
+                # a Read only plan, we execute it (regardless of the fetch_if_missing),
+                # since RandomizeBlocksStage is just changing the order of references
+                # (hence super cheap). Calling execute does not trigger read tasks.
                 self.execute()
             else:
                 return None
@@ -719,12 +727,12 @@ class ExecutionPlan:
         root_op = self._logical_plan.dag
         return isinstance(root_op, Read) and len(root_op.input_dependencies) == 0
 
-    def is_from_in_memory_only(self, root_op=None) -> bool:
+    def is_from_in_memory_only(self, root_op: Optional[LogicalOperator] = None) -> bool:
         """Return whether the underlying logical plan contains only a read
-        of already in-memory data (e.g. `InputData` operator for
-        :class:`~ray.data.MaterializedDataset`, `FromXXX` operators for
-        `from_xxx` APIs). When this is true, `self.execute()` is very cheap
-        (since data is already in-memory)."""
+        of already in-memory data (e.g. `FromXXX` operators for `from_xxx` APIs,
+        `InputData` operator for :class:`~ray.data.MaterializedDataset`, ).
+        When this is `True`, `self.execute()` is very cheap (since data
+        is already in-memory)."""
         if root_op is None:
             root_op = self._logical_plan.dag
         return (

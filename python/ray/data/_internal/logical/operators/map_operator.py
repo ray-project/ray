@@ -42,8 +42,6 @@ def _get_udf_name(fn: UserDefinedFunction) -> str:
             # callable class
             return fn.__name__
         elif inspect.ismethod(fn):
-            if isinstance(fn.__self__, Preprocessor):
-                return fn.__self__.__class__.__name__
             # class method
             return f"{fn.__self__.__class__.__name__}.{fn.__name__}"
         elif inspect.isfunction(fn):
