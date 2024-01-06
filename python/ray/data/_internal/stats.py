@@ -426,7 +426,7 @@ class _StatsManager:
                         name=STATS_ACTOR_NAME, namespace=STATS_ACTOR_NAMESPACE
                     )
                 except ValueError:
-                    pass
+                    return None
             self._stats_actor_cluster_id = current_cluster_id
         return self._stats_actor_handle
 
