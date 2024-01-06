@@ -27,7 +27,7 @@ except ImportError:
 
 logger = logging.getLogger(__name__)
 
-SUPPORTED_PYTHONS = [(3, 7), (3, 8), (3, 9), (3, 10), (3, 11)]
+SUPPORTED_PYTHONS = [(3, 8), (3, 9), (3, 10), (3, 11)]
 # When the bazel version is updated, make sure to update it
 # in WORKSPACE file as well.
 
@@ -63,9 +63,7 @@ pyd_suffix = ".pyd" if sys.platform == "win32" else ".so"
 def find_version(*filepath):
     # Extract version information from filepath
     with open(os.path.join(ROOT_DIR, *filepath)) as fp:
-        version_match = re.search(
-            r"^__version__ = ['\"]([^'\"]*)['\"]", fp.read(), re.M
-        )
+        version_match = re.search(r"^version = ['\"]([^'\"]*)['\"]", fp.read(), re.M)
         if version_match:
             return version_match.group(1)
         raise RuntimeError("Unable to find version string.")
@@ -89,7 +87,7 @@ class SetupSpec:
     ):
         self.type: SetupType = type
         self.name: str = name
-        version = find_version("ray", "__init__.py")
+        version = find_version("ray", "_version.py")
         # add .dbg suffix if debug mode is on.
         if build_type == BuildType.DEBUG:
             self.version: str = f"{version}+dbg"
@@ -249,14 +247,13 @@ if setup_spec.type == SetupType.RAY:
             "colorful",
             "py-spy >= 0.2.0",
             "requests",
-            "gpustat >= 1.0.0",  # for windows
             "grpcio >= 1.32.0; python_version < '3.10'",  # noqa:E501
             "grpcio >= 1.42.0; python_version >= '3.10'",  # noqa:E501
             "opencensus",
-            "pydantic < 2",  # 2.0.0 brings breaking changes
+            "pydantic!=2.0.*,!=2.1.*,!=2.2.*,!=2.3.*,!=2.4.*,<3",
             "prometheus_client >= 0.7.1",
             "smart_open",
-            "virtualenv >=20.0.24, < 20.21.1",  # For pip runtime env.
+            "virtualenv >=20.0.24, !=20.21.1",  # For pip runtime env.
         ],
         "client": [
             # The Ray client needs a specific range of gRPC to work:
@@ -272,7 +269,6 @@ if setup_spec.type == SetupType.RAY:
             "fastapi",
             "aiorwlock",
             "watchfiles",
-            numpy_dep,
         ],
         "tune": ["pandas", "tensorboardX>=1.9", "requests", pyarrow_dep, "fsspec"],
         "observability": [
@@ -771,11 +767,12 @@ setuptools.setup(
         "ray distributed parallel machine-learning hyperparameter-tuning"
         "reinforcement-learning deep-learning serving python"
     ),
+    python_requires=">=3.8",
     classifiers=[
-        "Programming Language :: Python :: 3.7",
         "Programming Language :: Python :: 3.8",
         "Programming Language :: Python :: 3.9",
         "Programming Language :: Python :: 3.10",
+        "Programming Language :: Python :: 3.11",
     ],
     packages=setup_spec.get_packages(),
     cmdclass={"build_ext": build_ext},

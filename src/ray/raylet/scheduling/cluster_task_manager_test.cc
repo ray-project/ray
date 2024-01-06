@@ -2038,25 +2038,6 @@ TEST_F(ClusterTaskManagerTest, LargeArgsNoStarvationTest) {
   AssertNoLeaks();
 }
 
-TEST_F(ClusterTaskManagerTest, TestResourceDiff) {
-  // When node_resources is null, resource is always marked as changed
-  rpc::ResourcesData resource_data;
-  task_manager_.FillResourceUsage(resource_data, nullptr);
-  ASSERT_TRUE(resource_data.resource_load_changed());
-  auto node_resources = std::make_shared<NodeResources>();
-  // Same resources(empty), not changed.
-  resource_data.set_resource_load_changed(false);
-  task_manager_.FillResourceUsage(resource_data, node_resources);
-  ASSERT_FALSE(resource_data.resource_load_changed());
-  // Resource changed.
-  resource_data.set_resource_load_changed(false);
-  ResourceSet res;
-  res.Set(ResourceID::CPU(), 100);
-  node_resources->load = std::move(res);
-  task_manager_.FillResourceUsage(resource_data, node_resources);
-  ASSERT_TRUE(resource_data.resource_load_changed());
-}
-
 TEST_F(ClusterTaskManagerTest, PopWorkerExactlyOnce) {
   // Create and queue one task.
   std::string serialized_runtime_env = "mock_env";

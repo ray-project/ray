@@ -98,6 +98,14 @@ py_test(
 )
 
 py_test(
+    name = "test_arrow_block",
+    size = "small",
+    srcs = ["tests/test_arrow_block.py"],
+    tags = ["team:data", "exclusive"],
+    deps = ["//:ray_lib", ":conftest"],
+)
+
+py_test(
     name = "test_auto_parallelism",
     size = "medium",
     srcs = ["tests/test_auto_parallelism.py"],
@@ -123,7 +131,7 @@ py_test(
 
 py_test(
     name = "test_block_sizing",
-    size = "small",
+    size = "medium",
     srcs = ["tests/test_block_sizing.py"],
     tags = ["team:data", "exclusive"],
     deps = ["//:ray_lib", ":conftest"],
@@ -186,6 +194,22 @@ py_test(
 )
 
 py_test(
+    name = "test_file_datasink",
+    size = "small",
+    srcs = ["tests/test_file_datasink.py"],
+    tags = ["team:data", "exclusive"],
+    deps = ["//:ray_lib", ":conftest"],
+)
+
+py_test(
+    name = "test_filename_provider",
+    size = "small",
+    srcs = ["tests/test_filename_provider.py"],
+    tags = ["team:data", "exclusive"],
+    deps = ["//:ray_lib", ":conftest"],
+)
+
+py_test(
     name = "test_image",
     size = "small",
     srcs = ["tests/test_image.py"],
@@ -237,6 +261,14 @@ py_test(
     name = "test_pandas",
     size = "small",
     srcs = ["tests/test_pandas.py"],
+    tags = ["team:data", "exclusive"],
+    deps = ["//:ray_lib", ":conftest"],
+)
+
+py_test(
+    name = "test_pandas_block",
+    size = "small",
+    srcs = ["tests/test_pandas_block.py"],
     tags = ["team:data", "exclusive"],
     deps = ["//:ray_lib", ":conftest"],
 )
@@ -428,7 +460,7 @@ py_test(
 
 py_test(
     name = "test_split",
-    size = "medium",
+    size = "large",
     srcs = ["tests/test_split.py"],
     tags = ["team:data", "exclusive"],
     deps = ["//:ray_lib", ":conftest"],
@@ -492,7 +524,7 @@ py_test(
 
 py_test(
     name = "test_backpressure_policies",
-    size = "small",
+    size = "medium",
     srcs = ["tests/test_backpressure_policies.py"],
     tags = ["team:data", "exclusive"],
     deps = ["//:ray_lib", ":conftest"],

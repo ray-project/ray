@@ -21,7 +21,7 @@
 /src/ray/protobuf/gcs_service.proto @ericl @pcmoritz @raulchen @ray-project/ray-core
 
 # Autoscaler
-/python/ray/autoscaler/ @ericl @ray-project/ray-core @architkulkarni
+/python/ray/autoscaler/ @ericl @ray-project/ray-core @architkulkarni @hongchaodeng
 
 # Metrics
 /src/ray/stats/metric_defs.h @ray-project/ray-core
@@ -62,7 +62,7 @@
 /cpp/include/ray @SongGuyang @raulchen @kfstorm @ray-project/ray-core
 
 # Ray Client
-/src/ray/protobuf/ray_client.proto @ameerhajali @ckw017
+/src/ray/protobuf/ray_client.proto @ameerhajali @ckw017 @ray-project/ray-core
 
 # Runtime Env
 # TODO(SongGuyang): Add new items to guarantee runtime env API compatibility in multiple languages.

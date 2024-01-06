@@ -9,7 +9,6 @@ import pytest
 
 import ray
 from ray.data._internal.execution.interfaces import ExecutionOptions
-from ray.data._internal.execution.legacy_compat import _blocks_to_input_buffer
 from ray.data._internal.execution.operators.base_physical_operator import (
     AllToAllOperator,
 )
@@ -55,7 +54,7 @@ from ray.data._internal.sort import SortKey
 from ray.data._internal.stats import DatasetStats
 from ray.data.aggregate import Count
 from ray.data.context import DataContext
-from ray.data.datasource.parquet_datasource import ParquetDatasource
+from ray.data.datasource.parquet_datasink import _ParquetDatasink
 from ray.data.tests.conftest import *  # noqa
 from ray.data.tests.test_util import get_parquet_read_logical_op
 from ray.data.tests.util import column_udf, extract_values, named_values
@@ -422,11 +421,11 @@ def test_repartition_e2e(
         ds_stats: DatasetStats = ds._plan.stats()
         if shuffle:
             assert ds_stats.base_name == "ReadRange->Repartition"
-            assert "ReadRange->RepartitionMap" in ds_stats.stages
+            assert "ReadRange->RepartitionMap" in ds_stats.metadata
         else:
             assert ds_stats.base_name == "Repartition"
-            assert "RepartitionSplit" in ds_stats.stages
-        assert "RepartitionReduce" in ds_stats.stages
+            assert "RepartitionSplit" in ds_stats.metadata
+        assert "RepartitionReduce" in ds_stats.metadata
 
     ds = ray.data.range(10000, parallelism=10).repartition(20, shuffle=shuffle)
     assert ds.num_blocks() == 20, ds.num_blocks()
@@ -840,8 +839,8 @@ def test_read_map_batches_operator_fusion_with_random_shuffle_operator(
     ds = ds.map_batches(fn, batch_size=None)
     ds = ds.random_shuffle()
     assert set(extract_values("id", ds.take_all())) == set(range(2, n + 2))
-    assert "Stage 1 ReadRange->MapBatches(fn)->RandomShuffle" in ds.stats()
-    assert "Stage 2 MapBatches(fn)->RandomShuffle" in ds.stats()
+    assert "Operator 1 ReadRange->MapBatches(fn)->RandomShuffle" in ds.stats()
+    assert "Operator 2 MapBatches(fn)->RandomShuffle" in ds.stats()
     _check_usage_record(["ReadRange", "RandomShuffle", "MapBatches"])
 
     # Check the case where the upstream map function returns multiple blocks.
@@ -854,9 +853,9 @@ def test_read_map_batches_operator_fusion_with_random_shuffle_operator(
 
     ds = ray.data.range(10)
     ds = ds.repartition(2).map(fn).random_shuffle().materialize()
-    assert "Stage 1 ReadRange" in ds.stats()
-    assert "Stage 2 Repartition" in ds.stats()
-    assert "Stage 3 Map(fn)->RandomShuffle" in ds.stats()
+    assert "Operator 1 ReadRange" in ds.stats()
+    assert "Operator 2 Repartition" in ds.stats()
+    assert "Operator 3 Map(fn)->RandomShuffle" in ds.stats()
     _check_usage_record(["ReadRange", "RandomShuffle", "Map"])
 
     ctx.target_max_block_size = old_target_max_block_size
@@ -971,13 +970,13 @@ def test_write_fusion(ray_start_regular_shared, enable_optimizer, tmp_path):
     _check_usage_record(["ReadRange", "WriteCSV"])
 
 
-def test_write_operator(ray_start_regular_shared, enable_optimizer):
+def test_write_operator(ray_start_regular_shared, enable_optimizer, tmp_path):
     planner = Planner()
-    datasource = ParquetDatasource()
+    datasink = _ParquetDatasink(tmp_path)
     read_op = get_parquet_read_logical_op()
     op = Write(
         read_op,
-        datasource,
+        datasink,
     )
     plan = LogicalPlan(op)
     physical_op = planner.plan(plan).dag
@@ -1193,7 +1192,6 @@ def test_from_dask_e2e(ray_start_regular_shared, enable_optimizer):
     _check_usage_record(["FromPandas"])
 
 
-@pytest.mark.skipif(sys.version_info < (3, 8), reason="requires python3.8 or higher")
 def test_from_modin_e2e(ray_start_regular_shared, enable_optimizer):
     import modin.pandas as mopd
 
@@ -1480,17 +1478,6 @@ def test_limit_pushdown(ray_start_regular_shared, enable_optimizer):
     )
 
 
-def test_blocks_to_input_buffer_op_name(
-    ray_start_regular_shared,
-    enable_streaming_executor,
-):
-    ds: ray.data.Dataset = ray.data.range(10)
-    blocks, _, _ = ds._plan._optimize()
-    assert hasattr(blocks, "_tasks"), blocks
-    physical_op = _blocks_to_input_buffer(blocks, owns_blocks=False)
-    assert physical_op.name == "ReadRange"
-
-
 def test_execute_to_legacy_block_list(
     ray_start_regular_shared,
     enable_optimizer,
@@ -1504,7 +1491,7 @@ def test_execute_to_legacy_block_list(
         assert row["id"] == i
 
     assert ds._plan._snapshot_stats is not None
-    assert "ReadRange" in ds._plan._snapshot_stats.stages
+    assert "ReadRange" in ds._plan._snapshot_stats.metadata
     assert ds._plan._snapshot_stats.time_total_s > 0
 
 
@@ -1519,7 +1506,7 @@ def test_execute_to_legacy_block_iterator(
         assert batch is not None
 
     assert ds._plan._snapshot_stats is not None
-    assert "ReadRange" in ds._plan._snapshot_stats.stages
+    assert "ReadRange" in ds._plan._snapshot_stats.metadata
     assert ds._plan._snapshot_stats.time_total_s > 0
 
 
@@ -1627,6 +1614,4 @@ def test_zero_copy_fusion_eliminate_build_output_blocks(
 
 
 if __name__ == "__main__":
-    import sys
-
     sys.exit(pytest.main(["-v", __file__]))

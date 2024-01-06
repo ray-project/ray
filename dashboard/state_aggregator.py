@@ -190,6 +190,18 @@ class StateAPIManager:
                     ):
                         # Case insensitive match for string filter values.
                         match = datum[filter_column].lower() == filter_value.lower()
+                    elif isinstance(filter_value, str) and isinstance(
+                        datum[filter_column], bool
+                    ):
+                        match = datum[filter_column] == convert_string_to_type(
+                            filter_value, bool
+                        )
+                    elif isinstance(filter_value, str) and isinstance(
+                        datum[filter_column], int
+                    ):
+                        match = datum[filter_column] == convert_string_to_type(
+                            filter_value, int
+                        )
                     else:
                         match = datum[filter_column] == filter_value
                 elif filter_predicate == "!=":

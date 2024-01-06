@@ -21,6 +21,7 @@ def generate_random_shuffle_fn(
     seed: Optional[int],
     num_outputs: Optional[int] = None,
     ray_remote_args: Optional[Dict[str, Any]] = None,
+    _debug_limit_shuffle_execution_to_num_blocks: Optional[int] = None,
 ) -> AllToAllTransformFn:
     """Generate function to randomly shuffle each records of blocks."""
 
@@ -37,7 +38,14 @@ def generate_random_shuffle_fn(
         upstream_map_fn = None
         nonlocal ray_remote_args
         if map_transformer:
-            map_transformer.set_target_max_block_size(ctx.target_max_block_size)
+            # NOTE(swang): We override the target block size with infinity, to
+            # prevent the upstream map from slicing its output into smaller
+            # blocks. Since the shuffle task will just fuse these back
+            # together, the extra slicing and re-fusing can add high memory
+            # overhead. This can be removed once dynamic block splitting is
+            # supported for all-to-all ops.
+            # See https://github.com/ray-project/ray/issues/40518.
+            map_transformer.set_target_max_block_size(float("inf"))
 
             def upstream_map_fn(blocks):
                 return map_transformer.apply_transform(blocks, ctx)
@@ -47,6 +55,7 @@ def generate_random_shuffle_fn(
             ray_remote_args = ctx.upstream_map_ray_remote_args
 
         shuffle_spec = ShuffleTaskSpec(
+            ctx.target_max_block_size,
             random_shuffle=True,
             random_seed=seed,
             upstream_map_fn=upstream_map_fn,
@@ -67,6 +76,9 @@ def generate_random_shuffle_fn(
             ctx=ctx,
             map_ray_remote_args=ray_remote_args,
             reduce_ray_remote_args=ray_remote_args,
+            _debug_limit_execution_to_num_blocks=(
+                _debug_limit_shuffle_execution_to_num_blocks
+            ),
         )
 
     return fn

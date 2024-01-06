@@ -20,7 +20,7 @@ from ray_release.util import dict_hash
 AWS_TEST_KEY = "ray_tests"
 AWS_TEST_RESULT_KEY = "ray_test_results"
 DEFAULT_PYTHON_VERSION = tuple(
-    int(v) for v in os.environ.get("RELEASE_PY", "3.8").split(".")
+    int(v) for v in os.environ.get("RELEASE_PY", "3.9").split(".")
 )
 DATAPLANE_ECR_REPO = "anyscale/ray"
 DATAPLANE_ECR_ML_REPO = "anyscale/ray-ml"
@@ -228,9 +228,6 @@ class Test(dict):
             os.environ["BUILDKITE_BRANCH"],
         )
         pr = os.environ.get("BUILDKITE_PULL_REQUEST", "false")
-        assert (
-            pr != "false" or branch == "master" or branch.startswith("releases/")
-        ), f"Invalid branch name {branch}"
         ray_version = commit[:6]
         if pr != "false":
             ray_version = f"pr-{pr}.{ray_version}"

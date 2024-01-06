@@ -371,7 +371,11 @@ CALL_STACK_LINE_DELIMITER = " | "
 # The default gRPC max message size is 4 MiB, we use a larger number of 250 MiB
 # NOTE: This is equal to the C++ limit of (RAY_CONFIG::max_grpc_message_size)
 GRPC_CPP_MAX_MESSAGE_SIZE = 250 * 1024 * 1024
+
 # The gRPC send & receive max length for "dashboard agent" server.
+# NOTE: This is equal to the C++ limit of RayConfig::max_grpc_message_size
+#       and HAVE TO STAY IN SYNC with it (ie, meaning that both of these values
+#       have to be set at the same time)
 AGENT_GRPC_MAX_MESSAGE_LENGTH = env_integer(
     "AGENT_GRPC_MAX_MESSAGE_LENGTH", 20 * 1024 * 1024  # 20MB
 )
@@ -438,7 +442,7 @@ DEFAULT_RESOURCES = {"CPU", "GPU", "memory", "object_store_memory"}
 # Supported Python versions for runtime env's "conda" field. Ray downloads
 # Ray wheels into the conda environment, so the Ray wheels for these Python
 # versions must be available online.
-RUNTIME_ENV_CONDA_PY_VERSIONS = [(3, 7), (3, 8), (3, 9), (3, 10), (3, 11)]
+RUNTIME_ENV_CONDA_PY_VERSIONS = [(3, 8), (3, 9), (3, 10), (3, 11)]
 
 # Whether to enable Ray clusters (in addition to local Ray).
 # Ray clusters are not explicitly supported for Windows and OSX.
@@ -469,6 +473,7 @@ RAY_ENABLE_RECORD_ACTOR_TASK_LOGGING = env_bool(
     "RAY_ENABLE_RECORD_ACTOR_TASK_LOGGING", False
 )
 
+# RuntimeEnv env var to indicate it exports a function
 WORKER_PROCESS_SETUP_HOOK_ENV_VAR = "__RAY_WORKER_PROCESS_SETUP_HOOK_ENV_VAR"
 RAY_WORKER_PROCESS_SETUP_HOOK_LOAD_TIMEOUT_ENV_VAR = (
     "RAY_WORKER_PROCESS_SETUP_HOOK_LOAD_TIMEOUT"  # noqa

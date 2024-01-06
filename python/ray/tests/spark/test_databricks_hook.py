@@ -23,9 +23,6 @@ class MockDbApiEntry:
     def getIdleTimeMillisSinceLastNotebookExecution(self):
         return (time.time() - self.created_time) * 1000
 
-    def registerBackgroundSparkJobGroup(self, job_group_id):
-        self.registered_job_groups.append(job_group_id)
-
 
 class TestDatabricksHook:
     @classmethod
@@ -47,22 +44,25 @@ class TestDatabricksHook:
 
     def test_hook(self, monkeypatch):
         monkeypatch.setattr(
-            "ray.util.spark.databricks_hook._DATABRICKS_DEFAULT_TMP_DIR", "/tmp"
+            "ray.util.spark.databricks_hook._DATABRICKS_DEFAULT_TMP_ROOT_DIR", "/tmp"
         )
         monkeypatch.setenv("DATABRICKS_RUNTIME_VERSION", "12.2")
         monkeypatch.setenv("DATABRICKS_RAY_ON_SPARK_AUTOSHUTDOWN_MINUTES", "0.5")
         db_api_entry = MockDbApiEntry()
         monkeypatch.setattr(
-            "ray.util.spark.databricks_hook._get_db_api_entry", lambda: db_api_entry
+            "ray.util.spark.databricks_hook.get_db_entry_point", lambda: db_api_entry
+        )
+        monkeypatch.setattr(
+            "ray.util.spark.databricks_hook.get_databricks_function",
+            lambda *args, **kwargs: None,
         )
         try:
             setup_ray_cluster(
-                num_worker_nodes=2,
+                max_worker_nodes=2,
                 head_node_options={"include_dashboard": False},
             )
             cluster = ray.util.spark.cluster_init._active_ray_cluster
             assert not cluster.is_shutdown
-            assert db_api_entry.registered_job_groups == [cluster.spark_job_group_id]
             time.sleep(35)
             assert cluster.is_shutdown
             assert ray.util.spark.cluster_init._active_ray_cluster is None

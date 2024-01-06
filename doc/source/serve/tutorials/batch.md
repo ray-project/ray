@@ -152,7 +152,7 @@ to the Python script `tutorial_batch.py`:
 ```python
 from ray.serve.handle import DeploymentHandle
 
-handle: DeploymentHandle = serve.run(generator).options(use_new_handle_api=True)
+handle: DeploymentHandle = serve.run(generator)
 )
 ```
 

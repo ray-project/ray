@@ -270,7 +270,7 @@ def compute_bootstrap_value(sample_batch: SampleBatch, policy: Policy) -> Sample
         input_dict = sample_batch.get_single_step_input_dict(
             policy.view_requirements, index="last"
         )
-        if policy.config.get("_enable_rl_module_api"):
+        if policy.config.get("_enable_new_api_stack"):
             # Note: During sampling you are using the parameters at the beginning of
             # the sampling process. If I'll be using this advantages during training
             # should it not be the latest parameters during training for this to be
@@ -341,13 +341,18 @@ def discount_cumsum(x: np.ndarray, gamma: float) -> np.ndarray:
         The sequence containing the discounted cumulative sums
         for each individual reward in `x` till the end of the trajectory.
 
-    Examples:
-        >>> x = np.array([0.0, 1.0, 2.0, 3.0])
-        >>> gamma = 0.9
-        >>> discount_cumsum(x, gamma)
-        ... array([0.0 + 0.9*1.0 + 0.9^2*2.0 + 0.9^3*3.0,
-        ...        1.0 + 0.9*2.0 + 0.9^2*3.0,
-        ...        2.0 + 0.9*3.0,
-        ...        3.0])
+     .. testcode::
+        :skipif: True
+
+        x = np.array([0.0, 1.0, 2.0, 3.0])
+        gamma = 0.9
+        discount_cumsum(x, gamma)
+
+    .. testoutput::
+
+        array([0.0 + 0.9*1.0 + 0.9^2*2.0 + 0.9^3*3.0,
+               1.0 + 0.9*2.0 + 0.9^2*3.0,
+               2.0 + 0.9*3.0,
+               3.0])
     """
     return scipy.signal.lfilter([1], [1, float(-gamma)], x[::-1], axis=0)[::-1]

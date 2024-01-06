@@ -331,7 +331,7 @@ assert exc_info is not None
 class LoadMetricsTest(unittest.TestCase):
     def testHeartbeat(self):
         lm = LoadMetrics()
-        lm.update("1.1.1.1", mock_raylet_id(), {"CPU": 2}, {"CPU": 1}, {})
+        lm.update("1.1.1.1", mock_raylet_id(), {"CPU": 2}, {"CPU": 1})
         lm.mark_active("2.2.2.2")
         assert "1.1.1.1" in lm.last_heartbeat_time_by_ip
         assert "2.2.2.2" in lm.last_heartbeat_time_by_ip
@@ -339,9 +339,9 @@ class LoadMetricsTest(unittest.TestCase):
 
     def testDebugString(self):
         lm = LoadMetrics()
-        lm.update("1.1.1.1", mock_raylet_id(), {"CPU": 2}, {"CPU": 0}, {})
+        lm.update("1.1.1.1", mock_raylet_id(), {"CPU": 2}, {"CPU": 0})
         lm.update(
-            "2.2.2.2", mock_raylet_id(), {"CPU": 2, "GPU": 16}, {"CPU": 2, "GPU": 2}, {}
+            "2.2.2.2", mock_raylet_id(), {"CPU": 2, "GPU": 16}, {"CPU": 2, "GPU": 2}
         )
         lm.update(
             "3.3.3.3",
@@ -354,7 +354,6 @@ class LoadMetricsTest(unittest.TestCase):
                 "memory": 0,
                 "object_store_memory": 1.05 * 1024 * 1024 * 1024,
             },
-            {},
         )
         debug = lm.info_string()
         assert (
@@ -1557,7 +1556,7 @@ class AutoscalingTest(unittest.TestCase):
                 },
                 1,
             )
-        lm.update("172.0.0.0", mock_raylet_id(), {"CPU": 1}, {"CPU": 0}, {})
+        lm.update("172.0.0.0", mock_raylet_id(), {"CPU": 1}, {"CPU": 0})
         autoscaler = MockAutoscaler(
             config_path,
             lm,
@@ -1617,7 +1616,7 @@ class AutoscalingTest(unittest.TestCase):
         worker_ip = self.provider.non_terminated_node_ips(
             tag_filters={TAG_RAY_NODE_KIND: NODE_KIND_WORKER},
         )[0]
-        lm.update(worker_ip, mock_raylet_id(), {"CPU": 1}, {"CPU": 1}, {})
+        lm.update(worker_ip, mock_raylet_id(), {"CPU": 1}, {"CPU": 1})
         autoscaler.update()
         if foreground_node_launcher:
             # If we launched in the foreground, shouldn't need to wait for nodes
@@ -1687,7 +1686,6 @@ class AutoscalingTest(unittest.TestCase):
             mock_raylet_id(),
             {"CPU": 1},
             {"CPU": 0},
-            {},
             waiting_bundles=[{"CPU": 1}] * 7,
             infeasible_bundles=[{"CPU": 1}] * 3,
         )
@@ -1712,7 +1710,6 @@ class AutoscalingTest(unittest.TestCase):
         lm.update(
             head_ip,
             mock_raylet_id(),
-            {},
             {},
             {},
             waiting_bundles=[],
@@ -1775,8 +1772,8 @@ class AutoscalingTest(unittest.TestCase):
         autoscaler.update()
         self.waitForNodes(2)
         # This node has num_cpus=0
-        lm.update(head_ip, mock_raylet_id(), {"CPU": 1}, {"CPU": 0}, {})
-        lm.update(unmanaged_ip, mock_raylet_id(), {"CPU": 0}, {"CPU": 0}, {})
+        lm.update(head_ip, mock_raylet_id(), {"CPU": 1}, {"CPU": 0})
+        lm.update(unmanaged_ip, mock_raylet_id(), {"CPU": 0}, {"CPU": 0})
         autoscaler.update()
         self.waitForNodes(2)
         # 1 CPU task cannot be scheduled.
@@ -1785,7 +1782,6 @@ class AutoscalingTest(unittest.TestCase):
             mock_raylet_id(),
             {"CPU": 0},
             {"CPU": 0},
-            {},
             waiting_bundles=[{"CPU": 1}],
         )
         autoscaler.update()
@@ -1838,8 +1834,8 @@ class AutoscalingTest(unittest.TestCase):
             update_interval_s=0,
         )
 
-        lm.update(head_ip, mock_raylet_id(), {"CPU": 1}, {"CPU": 0}, {"CPU": 1})
-        lm.update(unmanaged_ip, mock_raylet_id(), {"CPU": 0}, {"CPU": 0}, {})
+        lm.update(head_ip, mock_raylet_id(), {"CPU": 1}, {"CPU": 0})
+        lm.update(unmanaged_ip, mock_raylet_id(), {"CPU": 0}, {"CPU": 0})
 
         # Note that we shouldn't autoscale here because the resource demand
         # vector is not set and target utilization fraction = 1.
@@ -1893,7 +1889,6 @@ class AutoscalingTest(unittest.TestCase):
             mock_raylet_id(),
             {"CPU": 1},
             {"CPU": 0},
-            {},
             waiting_bundles=[{"CPU": 1}] * 2,
         )
         autoscaler.update()
@@ -2094,7 +2089,7 @@ class AutoscalingTest(unittest.TestCase):
             1,
         )
         lm = LoadMetrics()
-        lm.update("172.0.0.0", mock_raylet_id(), {"CPU": 1}, {"CPU": 0}, {})
+        lm.update("172.0.0.0", mock_raylet_id(), {"CPU": 1}, {"CPU": 0})
         mock_metrics = Mock(spec=AutoscalerPrometheusMetrics())
         autoscaler = MockAutoscaler(
             config_path,
@@ -2139,7 +2134,7 @@ class AutoscalingTest(unittest.TestCase):
         )[0]
         # Because one worker already started, the scheduler waits for its
         # resources to be updated before it launches the remaining min_workers.
-        lm.update(worker_ip, mock_raylet_id(), {"CPU": 1}, {"CPU": 1}, {})
+        lm.update(worker_ip, mock_raylet_id(), {"CPU": 1}, {"CPU": 1})
         autoscaler.update()
         self.waitForNodes(10, tag_filters={TAG_RAY_NODE_KIND: NODE_KIND_WORKER})
         assert mock_metrics.drain_node_exceptions.inc.call_count == 0
@@ -2420,7 +2415,7 @@ class AutoscalingTest(unittest.TestCase):
     def testFalseyLoadMetrics(self):
         lm = LoadMetrics()
         assert not lm
-        lm.update("172.0.0.0", mock_raylet_id(), {"CPU": 1}, {"CPU": 0}, {})
+        lm.update("172.0.0.0", mock_raylet_id(), {"CPU": 1}, {"CPU": 0})
         assert lm
 
     def testRecoverUnhealthyWorkers(self):

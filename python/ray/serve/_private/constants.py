@@ -36,6 +36,10 @@ SERVE_DEFAULT_APP_NAME = "default"
 #: Max concurrency
 ASYNC_CONCURRENCY = int(1e6)
 
+# Concurrency group used for replica operations that cannot be blocked by user code
+# (e.g., health checks and fetching queue length).
+REPLICA_CONTROL_PLANE_CONCURRENCY_GROUP = "control_plane"
+
 # How often to call the control loop on the controller.
 CONTROL_LOOP_PERIOD_S = 0.1
 
@@ -156,12 +160,6 @@ MIGRATION_MESSAGE = (
     "See https://docs.ray.io/en/latest/serve/index.html for more information."
 )
 
-# Message
-MULTI_APP_MIGRATION_MESSAGE = (
-    "Please see the documentation for ServeDeploySchema for more details on multi-app "
-    "config files."
-)
-
 DAG_DEPRECATION_MESSAGE = (
     "The DAG API is deprecated. Please use the recommended model composition pattern "
     "instead (see https://docs.ray.io/en/latest/serve/model_composition.html)."
@@ -192,12 +190,14 @@ SERVE_LOG_RECORD_FORMAT = {
     SERVE_LOG_TIME: "%(asctime)s",
 }
 
+SERVE_LOG_EXTRA_FIELDS = "ray_serve_extra_fields"
+
 # Serve HTTP request header key for routing requests.
 SERVE_MULTIPLEXED_MODEL_ID = "serve_multiplexed_model_id"
 
 # Feature flag to enable new handle API.
 RAY_SERVE_ENABLE_NEW_HANDLE_API = (
-    os.environ.get("RAY_SERVE_ENABLE_NEW_HANDLE_API", "0") == "1"
+    os.environ.get("RAY_SERVE_ENABLE_NEW_HANDLE_API", "1") == "1"
 )
 
 # Feature flag to turn on node locality routing for proxies. Off by default.
@@ -249,3 +249,21 @@ RAY_SERVE_ENABLE_CPU_PROFILING = (
 # precision up to 0.0001.
 # This limitation should be lifted in the long term.
 MAX_REPLICAS_PER_NODE_MAX_VALUE = 100
+
+# Argument name for passing in the gRPC context into a replica.
+GRPC_CONTEXT_ARG_NAME = "grpc_context"
+
+# Whether or not to forcefully kill replicas that fail health checks.
+RAY_SERVE_FORCE_STOP_UNHEALTHY_REPLICAS = (
+    os.environ.get("RAY_SERVE_FORCE_STOP_UNHEALTHY_REPLICAS", "0") == "1"
+)
+
+# Initial deadline for queue length responses in the router.
+RAY_SERVE_QUEUE_LENGTH_RESPONSE_DEADLINE_S = float(
+    os.environ.get("RAY_SERVE_QUEUE_LENGTH_RESPONSE_DEADLINE_S", 0.1)
+)
+
+# Maximum deadline for queue length responses in the router (in backoff).
+RAY_SERVE_MAX_QUEUE_LENGTH_RESPONSE_DEADLINE_S = float(
+    os.environ.get("RAY_SERVE_MAX_QUEUE_LENGTH_RESPONSE_DEADLINE_S", 1.0)
+)

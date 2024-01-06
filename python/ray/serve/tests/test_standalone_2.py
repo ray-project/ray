@@ -86,7 +86,7 @@ def test_memory_omitted_option(shutdown_ray_and_serve):
     ray.init(num_gpus=3, namespace="serve")
     handle = serve.run(hello.bind())
 
-    assert ray.get(handle.remote()) == "world"
+    assert handle.remote().result() == "world"
 
 
 @pytest.mark.parametrize("ray_namespace", ["arbitrary", SERVE_NAMESPACE, None])

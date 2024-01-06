@@ -13,16 +13,6 @@ compile_pip_requirements(
 )
 
 compile_pip_requirements(
-    name = "requirements_byod_3.8",
-    requirements_in = "ray_release/byod/requirements_byod_3.8.in",
-    requirements_txt = "ray_release/byod/requirements_byod_3.8.txt",
-    tags = [
-        "team:ci",
-    ],
-    visibility = ["//visibility:private"],
-)
-
-compile_pip_requirements(
     name = "requirements_byod_3.9",
     requirements_in = "ray_release/byod/requirements_byod_3.9.in",
     requirements_txt = "ray_release/byod/requirements_byod_3.9.txt",
@@ -36,16 +26,6 @@ compile_pip_requirements(
     name = "requirements_byod_3.11",
     requirements_in = "ray_release/byod/requirements_byod_3.11.in",
     requirements_txt = "ray_release/byod/requirements_byod_3.11.txt",
-    tags = [
-        "team:ci",
-    ],
-    visibility = ["//visibility:private"],
-)
-
-compile_pip_requirements(
-    name = "requirements_ml_byod_3.8",
-    requirements_in = "ray_release/byod/requirements_ml_byod_3.8.in",
-    requirements_txt = "ray_release/byod/requirements_ml_byod_3.8.txt",
     tags = [
         "team:ci",
     ],
@@ -258,25 +238,6 @@ py_test(
     srcs = test_srcs,
     args = ["--smoke-test"],
     main = "air_tests/air_benchmarks/workloads/xgboost_benchmark.py",
-    tags = [
-        "exclusive",
-        "team:ml",
-    ],
-    deps = [
-        "//:ray_lib",
-        "//python/ray/air:ml_lib",
-    ],
-)
-
-py_test(
-    name = "air_benchmark_data_smoke_test",
-    size = "small",
-    srcs = test_srcs,
-    args = [
-        "--dataset-size-gb=1",
-        "--num-workers=1",
-    ],
-    main = "air_tests/air_benchmarks/workloads/data_benchmark.py",
     tags = [
         "exclusive",
         "team:ml",
@@ -505,6 +466,10 @@ py_test(
     name = "test_bisect",
     size = "small",
     srcs = ["ray_release/tests/test_bisect.py"],
+    data = [
+        "cluster_tests/cpt_autoscaling_1-3_aws.yaml",
+        "ray_release/tests/test_collection_data.yaml",
+    ],
     exec_compatible_with = ["//:hermetic_python"],
     tags = [
         "release_unit",
@@ -551,21 +516,6 @@ py_test(
 )
 
 py_test(
-    name = "test_byod_build_ray",
-    size = "small",
-    srcs = ["ray_release/tests/test_byod_build_ray.py"],
-    exec_compatible_with = ["//:hermetic_python"],
-    tags = [
-        "release_unit",
-        "team:ci",
-    ],
-    deps = [
-        ":ray_release",
-        bk_require("pytest"),
-    ],
-)
-
-py_test(
     name = "test_cluster_manager",
     size = "small",
     srcs = ["ray_release/tests/test_cluster_manager.py"],
@@ -590,6 +540,7 @@ py_test(
         ["**/*.yaml"],
         exclude = ["ray_release/**/*.yaml"],
     ) + [
+        "ray_release/tests/test_collection_data.yaml",
         "//python/ray/autoscaler/aws:test_configs",
         "//python/ray/autoscaler/gcp:test_configs",
     ],
@@ -717,9 +668,12 @@ py_test(
 )
 
 py_test(
-    name = "test_template",
+    name = "test_test",
     size = "small",
-    srcs = ["ray_release/tests/test_template.py"],
+    srcs = ["ray_release/tests/test_test.py"],
+    data = [
+        "ray_release/configs/oss_config.yaml",
+    ],
     exec_compatible_with = ["//:hermetic_python"],
     tags = [
         "release_unit",
@@ -732,9 +686,9 @@ py_test(
 )
 
 py_test(
-    name = "test_test",
+    name = "test_step",
     size = "small",
-    srcs = ["ray_release/tests/test_test.py"],
+    srcs = ["ray_release/tests/test_step.py"],
     data = [
         "ray_release/configs/oss_config.yaml",
     ],

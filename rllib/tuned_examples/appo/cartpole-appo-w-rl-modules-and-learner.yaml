@@ -5,6 +5,9 @@ cartpole-appo-w-rl-modules-and-learner:
         sampler_results/episode_reward_mean: 150
         timesteps_total: 200000
     config:
+        # Run with Learner- and RLModule API (new stack).
+        _enable_new_api_stack: true
+
         # Works for both torch and tf.
         framework: torch
         num_envs_per_worker: 5
@@ -19,8 +22,6 @@ cartpole-appo-w-rl-modules-and-learner:
             fcnet_activation: linear
             vf_share_layers: true
         
-        _enable_learner_api: true
-        _enable_rl_module_api: true
         # Need to unset this b/c we are using the RLModule API, which
         # provides exploration control via the RLModule's `forward_exploration` method.
         exploration_config: {}

@@ -928,7 +928,7 @@ def list_jobs(
     raise_on_missing_output: bool = True,
     _explain: bool = False,
 ) -> List[JobState]:
-    """List jobs submitted to the cluster by :ref: `ray job submission <jobs-overview>`.
+    """List jobs submitted to the cluster by :ref:`ray job submission <jobs-overview>`.
 
     Args:
         address: Ray bootstrap address, could be `auto`, `localhost:6379`.
@@ -1355,6 +1355,7 @@ def list_logs(
     r = requests.get(
         f"{api_server_url}/api/v0/logs?{urllib.parse.urlencode(options_dict)}"
     )
+    # TODO(rickyx): we could do better at error handling here.
     r.raise_for_status()
 
     response = r.json()

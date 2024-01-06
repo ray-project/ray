@@ -1,4 +1,6 @@
 flaky_tests:
-  # tune
-  - //python/ray/tune:cifar10_pytorch
-  - //python/ray/tune:test_commands
+  # non-gpu tests
+  - //python/ray/train:horovod_cifar_pbt_example
+  # doc tests
+  # gpu tests
+  - //doc/source/ray-air/examples:gptj_serving

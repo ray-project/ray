@@ -281,7 +281,6 @@ class Monitor:
             ):
                 # A worker node has detected the cluster full of actors.
                 cluster_full = True
-            resource_load = dict(resource_message.resource_load)
             total_resources = dict(resource_message.resources_total)
             available_resources = dict(resource_message.resources_available)
 
@@ -315,7 +314,6 @@ class Monitor:
                 node_id,
                 total_resources,
                 available_resources,
-                resource_load,
                 waiting_bundles,
                 infeasible_bundles,
                 pending_placement_groups,

@@ -50,6 +50,7 @@ class NodeFailureTests(unittest.TestCase):
         # We tolerate failing workers and pause training
         config = (
             PPOConfig()
+            .environment("CartPole-v1")
             .rollouts(
                 num_rollout_workers=6,
                 recreate_failed_workers=True,
@@ -59,7 +60,7 @@ class NodeFailureTests(unittest.TestCase):
                 train_batch_size=300,
             )
         )
-        ppo = PPO(config=config, env="CartPole-v1")
+        ppo = PPO(config=config)
 
         # One step with all nodes up, enough to satisfy resource requirements
         ppo.train()

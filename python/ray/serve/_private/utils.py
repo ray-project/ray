@@ -11,11 +11,11 @@ import threading
 import time
 import traceback
 from abc import ABC, abstractmethod
+from decimal import ROUND_HALF_UP, Decimal
 from enum import Enum
 from functools import wraps
 from typing import Any, Callable, Dict, List, Optional, TypeVar, Union
 
-import numpy as np
 import requests
 
 import ray
@@ -34,6 +34,11 @@ try:
     import pandas as pd
 except ImportError:
     pd = None
+
+try:
+    import numpy as np
+except ImportError:
+    np = None
 
 MESSAGE_PACK_OFFSET = 9
 
@@ -92,11 +97,11 @@ class _ServeCustomEncoders:
         return obj.to_dict(orient="records")
 
 
-serve_encoders = {
-    np.ndarray: _ServeCustomEncoders.encode_np_array,
-    np.generic: _ServeCustomEncoders.encode_np_scaler,
-    Exception: _ServeCustomEncoders.encode_exception,
-}
+serve_encoders = {Exception: _ServeCustomEncoders.encode_exception}
+
+if np is not None:
+    serve_encoders[np.ndarray] = _ServeCustomEncoders.encode_np_array
+    serve_encoders[np.generic] = _ServeCustomEncoders.encode_np_scaler
 
 if pd is not None:
     serve_encoders[pd.DataFrame] = _ServeCustomEncoders.encode_pandas_dataframe
@@ -129,16 +134,16 @@ def block_until_http_ready(
         time.sleep(backoff_time_s)
 
 
-def get_random_letters(length=6):
-    return "".join(random.choices(string.ascii_letters, k=length))
+# Match the standard alphabet used for UUIDs.
+RANDOM_STRING_ALPHABET = string.ascii_lowercase + string.digits
 
 
-def format_actor_name(actor_name, controller_name=None, *modifiers):
-    if controller_name is None:
-        name = actor_name
-    else:
-        name = "{}:{}".format(controller_name, actor_name)
+def get_random_string(length=8):
+    return "".join(random.choices(RANDOM_STRING_ALPHABET, k=length))
 
+
+def format_actor_name(actor_name, *modifiers):
+    name = actor_name
     for modifier in modifiers:
         name += "-{}".format(modifier)
 
@@ -358,23 +363,6 @@ def snake_to_camel_case(snake_str: str) -> str:
 
     words = snake_str.strip("_").split("_")
     return words[0] + "".join(word[:1].upper() + word[1:] for word in words[1:])
-
-
-def dict_keys_snake_to_camel_case(snake_dict: dict) -> dict:
-    """Converts dictionary's keys from snake case to camel case.
-
-    Does not modify original dictionary.
-    """
-
-    camel_dict = dict()
-
-    for key, val in snake_dict.items():
-        if isinstance(key, str):
-            camel_dict[snake_to_camel_case(key)] = val
-        else:
-            camel_dict[key] = val
-
-    return camel_dict
 
 
 def check_obj_ref_ready_nowait(obj_ref: ObjectRef) -> bool:
@@ -632,3 +620,27 @@ class TimerBase(ABC):
 class Timer(TimerBase):
     def time(self) -> float:
         return time.time()
+
+
+def get_capacity_adjusted_num_replicas(
+    num_replicas: int, target_capacity: Optional[float]
+) -> int:
+    """Return the `num_replicas` adjusted by the `target_capacity`.
+
+    The output will only ever be 0 if `target_capacity` is 0 or `num_replicas` is
+    0 (to support autoscaling deployments using scale-to-zero).
+
+    Rather than using the default `round` behavior in Python, which rounds half to
+    even, uses the `decimal` module to round half up (standard rounding behavior).
+    """
+    if target_capacity is None or target_capacity == 100:
+        return num_replicas
+
+    if target_capacity == 0 or num_replicas == 0:
+        return 0
+
+    adjusted_num_replicas = Decimal(num_replicas * target_capacity) / Decimal(100.0)
+    rounded_adjusted_num_replicas = adjusted_num_replicas.to_integral_value(
+        rounding=ROUND_HALF_UP
+    )
+    return max(1, int(rounded_adjusted_num_replicas))

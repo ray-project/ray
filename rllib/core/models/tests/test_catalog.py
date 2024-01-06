@@ -391,11 +391,10 @@ class TestCatalog(unittest.TestCase):
 
         config = (
             PPOConfig()
+            .experimental(_enable_new_api_stack=True)
             .rl_module(
-                _enable_rl_module_api=True,
                 rl_module_spec=SingleAgentRLModuleSpec(catalog_class=MyCatalog),
             )
-            .training(_enable_learner_api=True)
             .framework("torch")
         )
 

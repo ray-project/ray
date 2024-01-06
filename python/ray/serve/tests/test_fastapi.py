@@ -19,12 +19,12 @@ from fastapi import (
 )
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
+from pydantic import BaseModel, Field
 from starlette.applications import Starlette
 from starlette.routing import Route
 
 import ray
 from ray import serve
-from ray._private.pydantic_compat import BaseModel, Field
 from ray._private.test_utils import SignalActor, wait_for_condition
 from ray.exceptions import GetTimeoutError
 from ray.serve._private.client import ServeControllerClient
@@ -32,6 +32,7 @@ from ray.serve._private.constants import SERVE_DEFAULT_APP_NAME
 from ray.serve._private.http_util import make_fastapi_class_based_view
 from ray.serve._private.utils import DEFAULT
 from ray.serve.exceptions import RayServeException
+from ray.serve.handle import DeploymentHandle
 
 
 def test_fastapi_function(serve_instance):
@@ -151,6 +152,22 @@ def test_make_fastapi_class_based_view(websocket: bool):
     assert "get_current_servable" in str(self_dep.call)
 
 
+class Nested(BaseModel):
+    val: int
+
+
+class BodyType(BaseModel):
+    name: str
+    price: float = Field(None, gt=1.0, description="High price!")
+    nests: Nested
+
+
+class RespModel(BaseModel):
+    ok: bool
+    vals: List[Any]
+    file_path: str
+
+
 def test_fastapi_features(serve_instance):
     app = FastAPI(openapi_url="/my_api.json")
 
@@ -165,19 +182,6 @@ def test_fastapi_features(serve_instance):
         process_time = time.time() - start_time
         response.headers["X-Process-Time"] = str(process_time)
         return response
-
-    class Nested(BaseModel):
-        val: int
-
-    class BodyType(BaseModel):
-        name: str
-        price: float = Field(None, gt=1.0, description="High price!")
-        nests: Nested
-
-    class RespModel(BaseModel):
-        ok: bool
-        vals: List[Any]
-        file_path: str
 
     async def yield_db():
         yield "db"
@@ -508,11 +512,13 @@ def test_fastapi_multiple_headers(serve_instance):
     assert resp.cookies.get_dict() == {"a": "b", "c": "d"}
 
 
-def test_fastapi_nested_field_in_response_model(serve_instance):
+class TestModel(BaseModel):
+    a: str
     # https://github.com/ray-project/ray/issues/16757
-    class TestModel(BaseModel):
-        a: str
-        b: List[str]
+    b: List[str]
+
+
+def test_fastapi_nested_field_in_response_model(serve_instance):
 
     app = FastAPI()
 
@@ -606,6 +612,29 @@ def test_fastapi_shutdown_hook(serve_instance):
     ray.get(del_signal.wait.remote(), timeout=20)
 
 
+def test_fastapi_shutdown_hook_async(serve_instance):
+    # https://github.com/ray-project/ray/issues/41261
+    shutdown_signal = SignalActor.remote()
+    del_signal = SignalActor.remote()
+
+    app = FastAPI()
+
+    @app.on_event("shutdown")
+    def call_signal():
+        shutdown_signal.send.remote()
+
+    @serve.deployment
+    @serve.ingress(app)
+    class A:
+        async def __del__(self):
+            del_signal.send.remote()
+
+    serve.run(A.bind())
+    serve.delete(SERVE_DEFAULT_APP_NAME)
+    ray.get(shutdown_signal.wait.remote(), timeout=20)
+    ray.get(del_signal.wait.remote(), timeout=20)
+
+
 def test_fastapi_method_redefinition(serve_instance):
     app = FastAPI()
 
@@ -691,12 +720,12 @@ def test_two_fastapi_in_one_application(
     @serve.deployment
     @serve.ingress(app1)
     class Model:
-        def __init__(self, submodel):
+        def __init__(self, submodel: DeploymentHandle):
             self.submodel = submodel
 
         @app1.get("/{a}")
         async def func(self, a: int):
-            return await (await self.submodel.add.remote(a))
+            return await self.submodel.add.remote(a)
 
     if two_fastapi:
         SubModel = serve.deployment(serve.ingress(app2)(SubModel))
@@ -705,7 +734,7 @@ def test_two_fastapi_in_one_application(
         assert "FastAPI" in str(e.value)
     else:
         handle = serve.run(Model.bind(serve.deployment(SubModel).bind()), name="app1")
-        assert ray.get(handle.func.remote(5)) == 6
+        assert handle.func.remote(5).result() == 6
 
 
 @pytest.mark.parametrize(

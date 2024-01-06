@@ -54,7 +54,7 @@ Please note that the YAML file in this example uses `serveConfigV2` to specify a
 
 ```sh
 # Step 3.1: Download `ray_v1alpha1_rayjob.yaml`
-curl -LO https://raw.githubusercontent.com/ray-project/kuberay/v1.0.0-rc.0/ray-operator/config/samples/ray_v1alpha1_rayjob.yaml
+curl -LO https://raw.githubusercontent.com/ray-project/kuberay/v1.0.0/ray-operator/config/samples/ray_v1alpha1_rayjob.yaml
 
 # Step 3.2: Create a RayJob
 kubectl apply -f ray_v1alpha1_rayjob.yaml

@@ -183,14 +183,18 @@ Using the Python SDK, the syntax looks something like this:
 For full details, see the :ref:`API Reference <ray-job-submission-sdk-ref>`.
 
 
+.. _ray-job-cpu-gpu-resources:
+
 Specifying CPU and GPU resources
 --------------------------------
 
-We recommend doing heavy computation within Ray tasks, actors, or Ray libraries, not directly in the top level of your entrypoint script.
+By default, the job entrypoint script always runs on the head node. We recommend doing heavy computation within Ray tasks, actors, or Ray libraries, not directly in the top level of your entrypoint script.
 No extra configuration is needed to do this.
 
 However, if you need to do computation directly in the entrypoint script and would like to reserve CPU and GPU resources for the entrypoint script, you may specify the ``entrypoint_num_cpus``, ``entrypoint_num_gpus``, ``entrypoint_memory`` and ``entrypoint_resources`` arguments to ``submit_job``.  These arguments function
 identically to the ``num_cpus``, ``num_gpus``, ``resources``, and ``_memory`` arguments to ``@ray.remote()`` decorator for tasks and actors as described in :ref:`resource-requirements`.
+
+If any of these arguments are specified, the entrypoint script will be scheduled on a node with at least the specified resources, instead of the head node, which is the default.  For example, the following code will schedule the entrypoint script on a node with at least 1 GPU:
 
 .. code-block:: python
 

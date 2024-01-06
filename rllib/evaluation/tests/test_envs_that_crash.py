@@ -1,7 +1,8 @@
 import unittest
 
 import ray
-from ray.rllib.algorithms.pg import pg
+from ray.rllib.algorithms.pg import PGConfig
+from ray.rllib.algorithms.ppo import PPOConfig
 from ray.rllib.algorithms.tests.test_worker_failures import (
     ForwardHealthCheckToEnvWorker,
 )
@@ -21,7 +22,7 @@ class TestEnvsThatCrash(unittest.TestCase):
     def test_crash_during_env_pre_checking(self):
         """Expect the env pre-checking to fail on each worker."""
         config = (
-            pg.PGConfig()
+            PPOConfig()
             .rollouts(num_rollout_workers=2, num_envs_per_worker=4)
             .environment(
                 env=CartPoleCrashing,
@@ -43,7 +44,7 @@ class TestEnvsThatCrash(unittest.TestCase):
     def test_crash_during_sampling(self):
         """Expect some sub-envs to fail (and not recover)."""
         config = (
-            pg.PGConfig()
+            PPOConfig()
             .rollouts(num_rollout_workers=2, num_envs_per_worker=3)
             .environment(
                 env=CartPoleCrashing,
@@ -67,7 +68,7 @@ class TestEnvsThatCrash(unittest.TestCase):
     def test_crash_only_one_worker_during_sampling_but_ignore(self):
         """Expect some sub-envs to fail (and not recover), but ignore."""
         config = (
-            pg.PGConfig()
+            PPOConfig()
             .rollouts(
                 env_runner_cls=ForwardHealthCheckToEnvWorker,
                 num_rollout_workers=2,
@@ -99,7 +100,7 @@ class TestEnvsThatCrash(unittest.TestCase):
     def test_crash_only_one_worker_during_sampling_but_recreate(self):
         """Expect some sub-envs to fail (and not recover), but re-create worker."""
         config = (
-            pg.PGConfig()
+            PGConfig()
             .rollouts(
                 env_runner_cls=ForwardHealthCheckToEnvWorker,
                 num_rollout_workers=2,
@@ -138,7 +139,7 @@ class TestEnvsThatCrash(unittest.TestCase):
     def test_crash_sub_envs_during_sampling_but_restart_sub_envs(self):
         """Expect sub-envs to fail (and not recover), but re-start them individually."""
         config = (
-            pg.PGConfig()
+            PPOConfig()
             .rollouts(
                 num_rollout_workers=2,
                 num_envs_per_worker=3,

@@ -17,7 +17,7 @@ from typing import (
 import numpy as np
 
 from ray.data._internal.block_batching.iter_batches import iter_batches
-from ray.data._internal.stats import DatasetStats
+from ray.data._internal.stats import DatasetStats, StatsManager
 from ray.data.block import (
     Block,
     BlockAccessor,
@@ -179,13 +179,19 @@ class DataIterator(abc.ABC):
                 )
             )
 
+            dataset_tag = self._get_dataset_tag()
             for batch in iterator:
                 yield batch
+                StatsManager.update_iteration_metrics(stats, dataset_tag)
+            StatsManager.clear_iteration_metrics(dataset_tag)
 
             if stats:
                 stats.iter_total_s.add(time.perf_counter() - time_start)
 
         return _IterableFromIterator(_create_iterator)
+
+    def _get_dataset_tag(self) -> str:
+        return "unknown_dataset"
 
     def iter_rows(self, *, prefetch_blocks: int = 0) -> Iterable[Dict[str, Any]]:
         """Return a local row iterable over the dataset.
@@ -842,6 +848,10 @@ class DataIterator(abc.ABC):
             "To iterate over one epoch of data, use iter_batches(), "
             "iter_torch_batches(), or to_tf()."
         )
+
+    def __del__(self):
+        # Clear metrics on deletion in case the iterator was not fully consumed.
+        StatsManager.clear_iteration_metrics(self._get_dataset_tag())
 
 
 # Backwards compatibility alias.

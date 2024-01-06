@@ -1,6 +1,6 @@
 import copy
 import os
-from typing import Any, Dict, Optional
+from typing import Any, Dict, Optional, List
 
 from ray_release.aws import RELEASE_AWS_BUCKET
 from ray_release.buildkite.concurrency import get_concurrency_group
@@ -59,9 +59,10 @@ DEFAULT_STEP_TEMPLATE: Dict[str, Any] = {
 
 def get_step(
     test: Test,
+    test_collection_file: List[str] = None,
+    run_id: int = 1,
     report: bool = False,
     smoke_test: bool = False,
-    ray_wheels: Optional[str] = None,
     env: Optional[Dict] = None,
     priority_val: int = 0,
     global_config: Optional[str] = None,
@@ -72,6 +73,9 @@ def get_step(
 
     cmd = ["./release/run_release_test.sh", test["name"]]
 
+    for file in test_collection_file or []:
+        cmd += ["--test-collection-file", file]
+
     if global_config:
         cmd += ["--global-config", global_config]
 
@@ -81,9 +85,6 @@ def get_step(
     if smoke_test:
         cmd += ["--smoke-test"]
 
-    if ray_wheels:
-        cmd += ["--ray-wheels", ray_wheels]
-
     step["plugins"][0][DOCKER_PLUGIN_KEY]["command"] = cmd
 
     env_to_use = test.get("env", DEFAULT_ENVIRONMENT)
@@ -91,7 +92,7 @@ def get_step(
     env_dict.update(env)
 
     step["env"].update(env_dict)
-    step["plugins"][0][DOCKER_PLUGIN_KEY]["image"] = "python:3.8"
+    step["plugins"][0][DOCKER_PLUGIN_KEY]["image"] = "python:3.9"
 
     commit = get_test_env_var("RAY_COMMIT")
     branch = get_test_env_var("RAY_BRANCH")
@@ -129,7 +130,7 @@ def get_step(
     full_label += test["name"]
     if smoke_test:
         full_label += " [smoke test] "
-    full_label += f" ({label})"
+    full_label += f" ({label}) ({run_id})"
 
     step["label"] = full_label
 

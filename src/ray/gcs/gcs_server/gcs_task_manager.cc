@@ -147,9 +147,7 @@ void GcsTaskManager::GcsTaskManagerStorage::UpdateExistingTaskAttempt(
   }
 
   // Update the task event.
-  stats_counter_.Decrement(kNumTaskEventsBytesStored, existing_task.ByteSizeLong());
   existing_task.MergeFrom(task_events);
-  stats_counter_.Increment(kNumTaskEventsBytesStored, existing_task.ByteSizeLong());
 
   // Move the task events around different gc priority list.
   auto target_list_index = gc_policy_->GetTaskListPriority(existing_task);
@@ -182,7 +180,6 @@ GcsTaskManager::GcsTaskManagerStorage::AddNewTaskEvent(rpc::TaskEvents &&task_ev
   const auto &added_task_events = loc->GetTaskEventsMutable();
 
   // Stats tracking
-  stats_counter_.Increment(kNumTaskEventsBytesStored, added_task_events.ByteSizeLong());
   stats_counter_.Increment(kNumTaskEventsStored);
   // Bump the task counters by type.
   if (added_task_events.has_task_info() && added_task_events.attempt_number() == 0) {
@@ -279,7 +276,6 @@ void GcsTaskManager::GcsTaskManagerStorage::RemoveTaskAttempt(
   // Update the tracking
   job_task_summary_[job_id].RecordProfileEventsDropped(NumProfileEvents(to_remove));
   job_task_summary_[job_id].RecordTaskAttemptDropped(GetTaskAttempt(to_remove));
-  stats_counter_.Decrement(kNumTaskEventsBytesStored, to_remove.ByteSizeLong());
   stats_counter_.Decrement(kNumTaskEventsStored);
   stats_counter_.Increment(kTotalNumTaskAttemptsDropped);
   stats_counter_.Increment(kTotalNumProfileTaskEventsDropped,
@@ -498,8 +494,6 @@ std::string GcsTaskManager::DebugString() {
      << "\n-Total num status task events dropped: "
      << counters[kTotalNumTaskAttemptsDropped] << "\n-Total num profile events dropped: "
      << counters[kTotalNumProfileTaskEventsDropped]
-     << "\n-Total num bytes of task event stored: "
-     << 1.0 * counters[kNumTaskEventsBytesStored] / 1024 / 1024 << "MiB"
      << "\n-Current num of task events stored: " << counters[kNumTaskEventsStored]
      << "\n-Total num of actor creation tasks: " << counters[kTotalNumActorCreationTask]
      << "\n-Total num of actor tasks: " << counters[kTotalNumActorTask]
@@ -521,8 +515,6 @@ void GcsTaskManager::RecordMetrics() {
 
   ray::stats::STATS_gcs_task_manager_task_events_stored.Record(
       counters[kNumTaskEventsStored]);
-  ray::stats::STATS_gcs_task_manager_task_events_stored_bytes.Record(
-      counters[kNumTaskEventsBytesStored]);
 
   {
     absl::MutexLock lock(&mutex_);
@@ -567,28 +559,65 @@ void GcsTaskManager::OnWorkerDead(
 }
 
 void GcsTaskManager::OnJobFinished(const JobID &job_id, int64_t job_finish_time_ms) {
-  RAY_LOG(DEBUG) << "Marking all running tasks of job " << job_id.Hex() << " as failed.";
-
   std::shared_ptr<boost::asio::deadline_timer> timer =
       std::make_shared<boost::asio::deadline_timer>(
           io_service_,
           boost::posix_time::milliseconds(
               RayConfig::instance().gcs_mark_task_failed_on_job_done_delay_ms()));
 
-  timer->async_wait(
-      [this, timer, job_id, job_finish_time_ms](const boost::system::error_code &error) {
-        if (error == boost::asio::error::operation_aborted) {
-          // timer canceled or aborted.
-          return;
-        }
-        // If there are any non-terminated tasks from the job, mark them failed since all
-        // workers associated with the job will be killed.
-        task_event_storage_->MarkTasksFailedOnJobEnds(job_id,
-                                                      job_finish_time_ms * 1000 * 1000);
+  timer->async_wait([this, timer, job_id, job_finish_time_ms](
+                        const boost::system::error_code &error) {
+    if (error == boost::asio::error::operation_aborted) {
+      // timer canceled or aborted.
+      return;
+    }
+    RAY_LOG(INFO) << "Marking all running tasks of job " << job_id.Hex() << " as failed.";
+    // If there are any non-terminated tasks from the job, mark them failed since all
+    // workers associated with the job will be killed.
+    task_event_storage_->MarkTasksFailedOnJobEnds(job_id,
+                                                  job_finish_time_ms * 1000 * 1000);
 
-        // Clear and summarize the job summary info (since it's now finalized).
-        task_event_storage_->UpdateJobSummaryOnJobDone(job_id);
-      });
+    // Clear and summarize the job summary info (since it's now finalized).
+    task_event_storage_->UpdateJobSummaryOnJobDone(job_id);
+  });
+}
+
+void GcsTaskManager::GcsTaskManagerStorage::JobTaskSummary::GcOldDroppedTaskAttempts(
+    const JobID &job_id) {
+  const auto max_dropped_task_attempts_tracked_in_gcs = static_cast<size_t>(
+      RayConfig::instance()
+          .task_events_max_dropped_task_attempts_tracked_per_job_in_gcs());
+  if (dropped_task_attempts_.size() <= max_dropped_task_attempts_tracked_in_gcs) {
+    return;
+  }
+  RAY_LOG(INFO) << "Evict extra dropped task attempts(" << dropped_task_attempts_.size()
+                << " > " << max_dropped_task_attempts_tracked_in_gcs
+                << ") tracked in GCS for job=" << job_id.Hex() << ". Setting the "
+                << "RAY_task_events_max_dropped_task_attempts_tracked_per_job_in_gcs"
+                << " to a higher value to store more.";
+
+  // If there's still more than
+  // task_events_max_dropped_task_attempts_tracked_per_job_in_gcs, just take and evict
+  // to prevent OOM.
+  size_t num_to_evict = 0;
+  if (dropped_task_attempts_.size() > max_dropped_task_attempts_tracked_in_gcs) {
+    num_to_evict =
+        dropped_task_attempts_.size() - max_dropped_task_attempts_tracked_in_gcs;
+
+    // Add 10% to mitigate thrashing.
+    num_to_evict = std::min(dropped_task_attempts_.size(),
+                            num_to_evict + static_cast<size_t>(0.1 * num_to_evict));
+  }
+  num_task_attempts_dropped_tracked_ = dropped_task_attempts_.size();
+  if (num_to_evict == 0) {
+    return;
+  }
+
+  // Evict ignoring timestamp.
+  num_dropped_task_attempts_evicted_ += num_to_evict;
+  dropped_task_attempts_.erase(dropped_task_attempts_.begin(),
+                               std::next(dropped_task_attempts_.begin(), num_to_evict));
+  num_task_attempts_dropped_tracked_ = dropped_task_attempts_.size();
 }
 
 }  // namespace gcs

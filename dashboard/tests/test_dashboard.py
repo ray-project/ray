@@ -19,7 +19,7 @@ import ray.dashboard.consts as dashboard_consts
 import ray.dashboard.modules
 import ray.dashboard.utils as dashboard_utils
 from click.testing import CliRunner
-from requests.exceptions import ConnectionError
+from requests.exceptions import ConnectionError, HTTPError
 from ray._private import ray_constants
 from ray._private.ray_constants import (
     DEBUG_AUTOSCALING_ERROR,
@@ -213,8 +213,16 @@ def test_raylet_and_agent_share_fate(shutdown_only):
     raylet_proc.wait(15)
 
 
-def test_agent_report_unexpected_raylet_death(shutdown_only):
+@pytest.mark.parametrize("parent_health_check_by_pipe", [True, False])
+def test_agent_report_unexpected_raylet_death(
+    monkeypatch, shutdown_only, parent_health_check_by_pipe
+):
     """Test agent reports Raylet death if it is not SIGTERM."""
+
+    monkeypatch.setenv(
+        "RAY_enable_pipe_based_agent_to_parent_health_check",
+        parent_health_check_by_pipe,
+    )
 
     ray.init()
     p = init_error_pubsub()
@@ -247,8 +255,16 @@ def test_agent_report_unexpected_raylet_death(shutdown_only):
     )
 
 
-def test_agent_report_unexpected_raylet_death_large_file(shutdown_only):
+@pytest.mark.parametrize("parent_health_check_by_pipe", [True, False])
+def test_agent_report_unexpected_raylet_death_large_file(
+    monkeypatch, shutdown_only, parent_health_check_by_pipe
+):
     """Test agent reports Raylet death if it is not SIGTERM."""
+
+    monkeypatch.setenv(
+        "RAY_enable_pipe_based_agent_to_parent_health_check",
+        parent_health_check_by_pipe,
+    )
 
     ray.init()
     p = init_error_pubsub()
@@ -362,6 +378,54 @@ def test_http_get(enable_test_module, ray_start_with_dashboard):
                 logger.info("failed response: %s", response.text)
                 raise ex
             assert dump_info["result"] is True
+            break
+        except (AssertionError, requests.exceptions.ConnectionError) as e:
+            logger.info("Retry because of %s", e)
+        finally:
+            if time.time() > start_time + timeout_seconds:
+                raise Exception("Timed out while testing.")
+
+
+@pytest.mark.skipif(
+    os.environ.get("RAY_MINIMAL") == "1",
+    reason="This test is not supposed to work for minimal installation.",
+)
+def test_browser_no_post_no_put(enable_test_module, ray_start_with_dashboard):
+    assert wait_until_server_available(ray_start_with_dashboard["webui_url"]) is True
+    webui_url = ray_start_with_dashboard["webui_url"]
+    webui_url = format_web_url(webui_url)
+
+    timeout_seconds = 30
+    start_time = time.time()
+    while True:
+        time.sleep(3)
+        try:
+            # Starting and getting jobs should be fine from API clients
+            response = requests.post(
+                webui_url + "/api/jobs/", json={"entrypoint": "ls"}
+            )
+            response.raise_for_status()
+            response = requests.get(webui_url + "/api/jobs/")
+            response.raise_for_status()
+
+            # Starting job should be blocked for browsers
+            response = requests.post(
+                webui_url + "/api/jobs/",
+                json={"entrypoint": "ls"},
+                headers={
+                    "User-Agent": (
+                        "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
+                        "AppleWebKit/537.36 (KHTML, like Gecko) "
+                        "Chrome/119.0.0.0 Safari/537.36"
+                    )
+                },
+            )
+            with pytest.raises(HTTPError):
+                response.raise_for_status()
+
+            # Getting jobs should be fine for browsers
+            response = requests.get(webui_url + "/api/jobs/")
+            response.raise_for_status()
             break
         except (AssertionError, requests.exceptions.ConnectionError) as e:
             logger.info("Retry because of %s", e)
@@ -925,7 +989,7 @@ def test_dashboard_does_not_depend_on_serve():
 
     # Check that Serve-dependent features fail
     try:
-        response = requests.get(f"http://{agent_url}/api/serve/deployments/")
+        response = requests.get(f"http://{agent_url}/api/serve/applications/")
         print(f"response status code: {response.status_code}, expected: 501")
         assert response.status_code == 501
     except requests.ConnectionError as e:
@@ -963,7 +1027,7 @@ def test_agent_does_not_depend_on_serve(shutdown_only):
 
     # Check that Serve-dependent features fail
     try:
-        response = requests.get(f"http://{agent_url}/api/serve/deployments/")
+        response = requests.get(f"http://{agent_url}/api/serve/applications/")
         print(f"response status code: {response.status_code}, expected: 501")
         assert response.status_code == 501
     except requests.ConnectionError as e:
@@ -989,7 +1053,7 @@ def test_agent_port_conflict(shutdown_only):
     node = ray._private.worker._global_node
     agent_url = node.node_ip_address + ":" + str(node.dashboard_agent_listen_port)
     wait_for_condition(
-        lambda: requests.get(f"http://{agent_url}/api/serve/deployments/").status_code
+        lambda: requests.get(f"http://{agent_url}/api/serve/applications/").status_code
         == 200
     )
     ray.shutdown()
@@ -1027,7 +1091,7 @@ def test_agent_port_conflict(shutdown_only):
     try:
         wait_for_condition(
             lambda: requests.get(
-                f"http://{agent_url}/api/serve/deployments/"
+                f"http://{agent_url}/api/serve/applications/"
             ).status_code
             == 200
         )

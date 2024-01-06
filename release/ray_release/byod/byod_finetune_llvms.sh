@@ -5,10 +5,8 @@
 set -exo pipefail
 
 pip3 install -U \
-    torch==2.0.0 \
-    torchvision==0.15.1 \
-    torchaudio==2.0.1 \
-    deepspeed==0.10.0 \
+    torch==2.1.1 \
+    deepspeed==0.12.3 \
     fairscale==0.4.13 \
     datasets==2.14.4 \
     accelerate==0.21.0 \

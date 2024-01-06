@@ -13,7 +13,6 @@ from typing import (
 import gymnasium as gym
 
 from ray.rllib.models.catalog import ModelCatalog
-from ray.rllib.models.jax.jax_modelv2 import JAXModelV2
 from ray.rllib.models.modelv2 import ModelV2
 from ray.rllib.models.torch.torch_action_dist import TorchDistributionWrapper
 from ray.rllib.models.torch.torch_modelv2 import TorchModelV2
@@ -292,7 +291,7 @@ def build_policy_class(
                 )
 
             # Make sure, we passed in a correct Model factory.
-            model_cls = TorchModelV2 if framework == "torch" else JAXModelV2
+            model_cls = TorchModelV2
             assert isinstance(
                 self.model, model_cls
             ), "ERROR: Generated Model must be a TorchModelV2 object!"

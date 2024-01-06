@@ -3,12 +3,13 @@ import inspect
 import logging
 import warnings
 from functools import wraps
-from typing import Any, Callable, Dict, List, Optional, Tuple, Union
+from typing import Any, Callable, Dict, List, Optional, Union
 
 from fastapi import APIRouter, FastAPI
 
 import ray
 from ray import cloudpickle
+from ray._private.serialization import pickle_dumps
 from ray.dag import DAGNode
 from ray.serve._private.config import DeploymentConfig, ReplicaConfig
 from ray.serve._private.constants import (
@@ -30,7 +31,7 @@ from ray.serve._private.utils import (
     Default,
     ensure_serialization_context,
     extract_self_if_method_call,
-    get_random_letters,
+    get_random_string,
 )
 from ray.serve.config import (
     AutoscalingConfig,
@@ -47,9 +48,9 @@ from ray.serve.context import (
 )
 from ray.serve.deployment import Application, Deployment
 from ray.serve.exceptions import RayServeException
-from ray.serve.handle import DeploymentHandle, RayServeSyncHandle
+from ray.serve.handle import DeploymentHandle
 from ray.serve.multiplex import _ModelMultiplexWrapper
-from ray.serve.schema import ServeInstanceDetails, ServeStatus
+from ray.serve.schema import LoggingConfig, ServeInstanceDetails, ServeStatus
 from ray.util.annotations import Deprecated, DeveloperAPI, PublicAPI
 
 from ray.serve._private import api as _private_api  # isort:skip
@@ -64,6 +65,7 @@ def start(
     http_options: Union[None, dict, HTTPOptions] = None,
     dedicated_cpu: bool = False,
     grpc_options: Union[None, dict, gRPCOptions] = None,
+    logging_config: Union[None, dict, LoggingConfig] = None,
     **kwargs,
 ):
     """Start Serve on the cluster.
@@ -87,6 +89,8 @@ def start(
         grpc_options: [EXPERIMENTAL] gRPC config options for the proxies. These can
           be passed as an unstructured dictionary or the structured `gRPCOptions`
           class See `gRPCOptions` for supported options.
+        logging_config: logging config options for the serve component (
+            controller & proxy).
     """
 
     if detached is not True:
@@ -118,6 +122,7 @@ def start(
     _private_api.serve_start(
         http_options=http_options,
         grpc_options=grpc_options,
+        global_logging_config=logging_config,
         **kwargs,
     )
 
@@ -222,7 +227,9 @@ def ingress(app: Union["FastAPI", "APIRouter", Callable]) -> Callable:
         # this ingress deployment. We don't use copy.copy here to avoid
         # recursion issue.
         ensure_serialization_context()
-        frozen_app = cloudpickle.loads(cloudpickle.dumps(app))
+        frozen_app = cloudpickle.loads(
+            pickle_dumps(app, error_msg="Failed to serialize the FastAPI app.")
+        )
 
         class ASGIIngressWrapper(cls, ASGIAppReplicaWrapper):
             def __init__(self, *args, **kwargs):
@@ -237,7 +244,10 @@ def ingress(app: Union["FastAPI", "APIRouter", Callable]) -> Callable:
 
                 # Call user-defined destructor if defined.
                 if hasattr(cls, "__del__"):
-                    cls.__del__(self)
+                    if inspect.iscoroutinefunction(cls.__del__):
+                        await cls.__del__(self)
+                    else:
+                        cls.__del__(self)
 
         ASGIIngressWrapper.__name__ = cls.__name__
         if hasattr(frozen_app, "docs_url"):
@@ -254,8 +264,6 @@ def deployment(
     name: Default[str] = DEFAULT.VALUE,
     version: Default[str] = DEFAULT.VALUE,
     num_replicas: Default[Optional[int]] = DEFAULT.VALUE,
-    init_args: Default[Tuple[Any]] = DEFAULT.VALUE,
-    init_kwargs: Default[Dict[Any, Any]] = DEFAULT.VALUE,
     route_prefix: Default[Union[str, None]] = DEFAULT.VALUE,
     ray_actor_options: Default[Dict] = DEFAULT.VALUE,
     placement_group_bundles: Optional[List[Dict[str, float]]] = DEFAULT.VALUE,
@@ -268,6 +276,7 @@ def deployment(
     graceful_shutdown_timeout_s: Default[float] = DEFAULT.VALUE,
     health_check_period_s: Default[float] = DEFAULT.VALUE,
     health_check_timeout_s: Default[float] = DEFAULT.VALUE,
+    logging_config: Default[Union[Dict, LoggingConfig, None]] = DEFAULT.VALUE,
 ) -> Callable[[Callable], Deployment]:
     """Decorator that converts a Python class to a `Deployment`.
 
@@ -290,8 +299,6 @@ def deployment(
             this deployment. Defaults to 1.
         autoscaling_config: Parameters to configure autoscaling behavior. If this
             is set, `num_replicas` cannot be set.
-        init_args: [DEPRECATED] These should be passed to `.bind()` instead.
-        init_kwargs: [DEPRECATED] These should be passed to `.bind()` instead.
         route_prefix: [DEPRECATED] Route prefix should be set per-application
             through `serve.run()`.
         ray_actor_options: Options to pass to the Ray Actor decorator, such as
@@ -367,6 +374,8 @@ def deployment(
             "deprecated. To specify a route prefix for an application, pass it into "
             "`serve.run` instead."
         )
+    if isinstance(logging_config, LoggingConfig):
+        logging_config = logging_config.dict()
 
     deployment_config = DeploymentConfig.from_default(
         num_replicas=num_replicas if num_replicas is not None else 1,
@@ -377,14 +386,15 @@ def deployment(
         graceful_shutdown_timeout_s=graceful_shutdown_timeout_s,
         health_check_period_s=health_check_period_s,
         health_check_timeout_s=health_check_timeout_s,
+        logging_config=logging_config,
     )
     deployment_config.user_configured_option_names = set(user_configured_option_names)
 
     def decorator(_func_or_class):
         replica_config = ReplicaConfig.create(
             _func_or_class,
-            init_args=(init_args if init_args is not DEFAULT.VALUE else None),
-            init_kwargs=(init_kwargs if init_kwargs is not DEFAULT.VALUE else None),
+            init_args=None,
+            init_kwargs=None,
             ray_actor_options=(
                 ray_actor_options if ray_actor_options is not DEFAULT.VALUE else None
             ),
@@ -443,7 +453,8 @@ def run(
     port: int = DEFAULT_HTTP_PORT,
     name: str = SERVE_DEFAULT_APP_NAME,
     route_prefix: str = DEFAULT.VALUE,
-) -> Optional[RayServeSyncHandle]:
+    logging_config: Optional[Union[Dict, LoggingConfig]] = None,
+) -> DeploymentHandle:
     """Run an application and return a handle to its ingress deployment.
 
     The application is returned by `Deployment.bind()`. Example:
@@ -467,9 +478,11 @@ def run(
         route_prefix: Route prefix for HTTP requests. If not provided, it will use
             route_prefix of the ingress deployment. If specified neither as an argument
             nor in the ingress deployment, the route prefix will default to '/'.
+        logging_config: Application logging config. If provided, the config will
+            be applied to all deployments which doesn't have logging config.
 
     Returns:
-        RayServeSyncHandle: A handle that can be used to call the application.
+        DeploymentHandle: A handle that can be used to call the application.
     """
 
     if len(name) == 0:
@@ -512,11 +525,15 @@ def run(
                 )
 
             deployment._route_prefix = route_prefix
+        if deployment.logging_config is None and logging_config:
+            if isinstance(logging_config, dict):
+                logging_config = LoggingConfig(**logging_config)
+            deployment.set_logging_config(logging_config.dict())
         deployment_parameters = {
             "name": deployment._name,
             "replica_config": deployment._replica_config,
             "deployment_config": deployment._deployment_config,
-            "version": deployment._version or get_random_letters(),
+            "version": deployment._version or get_random_string(),
             "route_prefix": deployment.route_prefix,
             "url": deployment.url,
             "docs_path": deployment._docs_path,
@@ -801,6 +818,62 @@ def get_deployment_handle(
         RayServeException: If no Serve controller is running, or if
             calling from outside a Serve application and no application
             name is specified.
+
+    The following example gets the handle to the ingress deployment of
+    an application, which is equivalent to using `serve.get_app_handle`.
+
+    .. testcode::
+
+            import ray
+            from ray import serve
+
+            @serve.deployment
+            def f(val: int) -> int:
+                return val * 2
+
+            serve.run(f.bind(), name="my_app")
+            handle = serve.get_deployment_handle("f", app_name="my_app")
+            assert handle.remote(3).result() == 6
+
+            serve.shutdown()
+
+    The following example demonstrates how you can use this API to get
+    the handle to a non-ingress deployment in an application.
+
+    .. testcode::
+
+            import ray
+            from ray import serve
+            from ray.serve.handle import DeploymentHandle
+
+            @serve.deployment
+            class Multiplier:
+                def __init__(self, multiple: int):
+                    self._multiple = multiple
+
+                def __call__(self, val: int) -> int:
+                    return val * self._multiple
+
+            @serve.deployment
+            class Adder:
+                def __init__(self, handle: DeploymentHandle, increment: int):
+                    self._handle = handle.options(use_new_handle_api=True)
+                    self._increment = increment
+
+                async def __call__(self, val: int) -> int:
+                    return await self._handle.remote(val) + self._increment
+
+
+            # The app calculates 2 * x + 3
+            serve.run(Adder.bind(Multiplier.bind(2), 3), name="math_app")
+            handle = serve.get_app_handle("math_app")
+            assert handle.remote(5).result() == 13
+
+            # Get handle to Multiplier only
+            handle = serve.get_deployment_handle("Multiplier", app_name="math_app")
+            assert handle.remote(5).result() == 10
+
+            serve.shutdown()
     """
 
     client = _get_global_client()

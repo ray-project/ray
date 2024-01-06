@@ -14,8 +14,8 @@ DATA_GRAFANA_PANELS = [
         unit="bytes",
         targets=[
             Target(
-                expr="sum(ray_data_spilled_bytes{{{global_filters}}}) by (dataset)",
-                legend="Bytes Spilled: {{dataset}}",
+                expr="sum(ray_data_spilled_bytes{{{global_filters}}}) by (dataset, operator)",
+                legend="Bytes Spilled: {{dataset}}, {{operator}}",
             )
         ],
     ),
@@ -26,8 +26,8 @@ DATA_GRAFANA_PANELS = [
         unit="bytes",
         targets=[
             Target(
-                expr="sum(ray_data_allocated_bytes{{{global_filters}}}) by (dataset)",
-                legend="Bytes Allocated: {{dataset}}",
+                expr="sum(ray_data_allocated_bytes{{{global_filters}}}) by (dataset, operator)",
+                legend="Bytes Allocated: {{dataset}}, {{operator}}",
             )
         ],
     ),
@@ -38,8 +38,8 @@ DATA_GRAFANA_PANELS = [
         unit="bytes",
         targets=[
             Target(
-                expr="sum(ray_data_freed_bytes{{{global_filters}}}) by (dataset)",
-                legend="Bytes Freed: {{dataset}}",
+                expr="sum(ray_data_freed_bytes{{{global_filters}}}) by (dataset, operator)",
+                legend="Bytes Freed: {{dataset}}, {{operator}}",
             )
         ],
     ),
@@ -50,8 +50,8 @@ DATA_GRAFANA_PANELS = [
         unit="bytes",
         targets=[
             Target(
-                expr="sum(ray_data_current_bytes{{{global_filters}}}) by (dataset)",
-                legend="Current Usage: {{dataset}}",
+                expr="sum(ray_data_current_bytes{{{global_filters}}}) by (dataset, operator)",
+                legend="Current Usage: {{dataset}}, {{operator}}",
             )
         ],
     ),
@@ -62,8 +62,8 @@ DATA_GRAFANA_PANELS = [
         unit="cores",
         targets=[
             Target(
-                expr="sum(ray_data_cpu_usage_cores{{{global_filters}}}) by (dataset)",
-                legend="CPU Usage: {{dataset}}",
+                expr="sum(ray_data_cpu_usage_cores{{{global_filters}}}) by (dataset, operator)",
+                legend="CPU Usage: {{dataset}}, {{operator}}",
             )
         ],
     ),
@@ -74,8 +74,8 @@ DATA_GRAFANA_PANELS = [
         unit="cores",
         targets=[
             Target(
-                expr="sum(ray_data_gpu_usage_cores{{{global_filters}}}) by (dataset)",
-                legend="GPU Usage: {{dataset}}",
+                expr="sum(ray_data_gpu_usage_cores{{{global_filters}}}) by (dataset, operator)",
+                legend="GPU Usage: {{dataset}}, {{operator}}",
             )
         ],
     ),
@@ -86,8 +86,56 @@ DATA_GRAFANA_PANELS = [
         unit="bytes",
         targets=[
             Target(
-                expr="sum(ray_data_output_bytes{{{global_filters}}}) by (dataset)",
-                legend="Bytes Outputted: {{dataset}}",
+                expr="sum(ray_data_output_bytes{{{global_filters}}}) by (dataset, operator)",
+                legend="Bytes Outputted: {{dataset}}, {{operator}}",
+            )
+        ],
+    ),
+    Panel(
+        id=11,
+        title="Rows Outputted",
+        description="Total rows outputted by dataset operators.",
+        unit="rows",
+        targets=[
+            Target(
+                expr="sum(ray_data_output_rows{{{global_filters}}}) by (dataset, operator)",
+                legend="Rows Outputted: {{dataset}}, {{operator}}",
+            )
+        ],
+    ),
+    Panel(
+        id=8,
+        title="Block Generation Time",
+        description="Time spent generating blocks.",
+        unit="seconds",
+        targets=[
+            Target(
+                expr="sum(ray_data_block_generation_seconds{{{global_filters}}}) by (dataset, operator)",
+                legend="Block Generation Time: {{dataset}}, {{operator}}",
+            )
+        ],
+    ),
+    Panel(
+        id=9,
+        title="Iteration Blocked Time",
+        description="Seconds user thread is blocked by iter_batches()",
+        unit="seconds",
+        targets=[
+            Target(
+                expr="sum(ray_data_iter_total_blocked_seconds{{{global_filters}}}) by (dataset)",
+                legend="Seconds: {{dataset}}",
+            )
+        ],
+    ),
+    Panel(
+        id=10,
+        title="Iteration User Time",
+        description="Seconds spent in user code",
+        unit="seconds",
+        targets=[
+            Target(
+                expr="sum(ray_data_iter_user_seconds{{{global_filters}}}) by (dataset)",
+                legend="Seconds: {{dataset}}",
             )
         ],
     ),

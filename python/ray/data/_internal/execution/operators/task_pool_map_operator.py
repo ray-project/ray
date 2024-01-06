@@ -52,16 +52,18 @@ class TaskPoolMapOperator(MapOperator):
         # Submit the task as a normal Ray task.
         map_task = cached_remote_fn(_map_task, num_returns="streaming")
         input_blocks = [block for block, _ in bundle.blocks]
-
         ctx = TaskContext(
             task_idx=self._next_data_task_idx,
             target_max_block_size=self.actual_target_max_block_size,
         )
-        gen = map_task.options(
-            **self._get_runtime_ray_remote_args(input_bundle=bundle), name=self.name
-        ).remote(
+        data_context = DataContext.get_current()
+        ray_remote_args = self._get_runtime_ray_remote_args(input_bundle=bundle)
+        ray_remote_args["name"] = self.name
+        ray_remote_args.update(data_context._task_pool_data_task_remote_args)
+
+        gen = map_task.options(**ray_remote_args).remote(
             self._map_transformer_ref,
-            DataContext.get_current(),
+            data_context,
             ctx,
             *input_blocks,
         )
@@ -100,4 +102,5 @@ class TaskPoolMapOperator(MapOperator):
         return ExecutionResources(
             cpu=self._ray_remote_args.get("num_cpus", 0),
             gpu=self._ray_remote_args.get("num_gpus", 0),
+            object_store_memory=self._metrics.average_bytes_outputs_per_task,
         )
