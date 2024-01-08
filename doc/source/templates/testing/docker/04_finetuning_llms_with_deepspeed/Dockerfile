@@ -10,6 +10,7 @@ RUN pip install --upgrade pip
 RUN pip install -U -r requirements.txt
 RUN pip install torch==2.1.1 --index-url https://download.pytorch.org/whl/cu121
 RUN pip uninstall bitsandbytes -y
+RUN pip install flash-attn --no-build-isolation
 
 RUN echo "Testing Ray Import..." && python -c "import ray"
 RUN ray --version
