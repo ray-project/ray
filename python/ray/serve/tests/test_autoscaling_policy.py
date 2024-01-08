@@ -171,7 +171,7 @@ class TestGetDecisionNumReplicas:
 
         config = AutoscalingConfig(
             min_replicas=0,
-            max_replicas=10,
+            max_replicas=2,
             smoothing_factor=10,
         )
         policy_manager = AutoscalingPolicyManager(config)
@@ -179,6 +179,7 @@ class TestGetDecisionNumReplicas:
             current_num_ongoing_requests=[],
             curr_target_num_replicas=0,
             current_handle_queued_queries=1,
+            _skip_bound_check=True,
         )
 
         # 1 * 10
@@ -190,6 +191,7 @@ class TestGetDecisionNumReplicas:
             current_num_ongoing_requests=[],
             curr_target_num_replicas=0,
             current_handle_queued_queries=1,
+            _skip_bound_check=True,
         )
 
         # math.ceil(1 * 0.5)

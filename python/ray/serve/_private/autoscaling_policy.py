@@ -15,7 +15,7 @@ class AutoscalingPolicyManager:
     def __init__(self, config: Optional[AutoscalingConfig]):
         self.config = config
         self.policy = None
-        self.policy_state = {}
+        self.policy_states = {}
         self._create_policy()
 
     def _create_policy(self):
@@ -34,10 +34,13 @@ class AutoscalingPolicyManager:
         current_handle_queued_queries: float,
         target_capacity: Optional[float] = None,
         target_capacity_direction: Optional[TargetCapacityDirection] = None,
+        _skip_bound_check: bool = False,
     ) -> Optional[int]:
         """Interface with the autoscaling policy to get a decision to scale replicas.
-        If the autoscaling policy is not ready or returning the same number as the
-        current replica number, return None to not execute autoscaling.
+
+        After the decision number of replicas is returned by the policy, it is then
+        bounded by the bounds min and max adjusted by the target capacity and returned.
+        If `_skip_bound_check` is True, then the bounds are not applied.
         """
         capacity_adjusted_min_replicas = self.get_current_lower_bound(
             target_capacity,
@@ -54,8 +57,11 @@ class AutoscalingPolicyManager:
             config=self.config,
             capacity_adjusted_min_replicas=capacity_adjusted_min_replicas,
             capacity_adjusted_max_replicas=capacity_adjusted_max_replicas,
-            policy_state=self.policy_state,
+            policy_states=self.policy_states,
         )
+
+        if _skip_bound_check:
+            return decision_num_replicas
 
         return self.apply_bounds(
             curr_target_num_replicas=decision_num_replicas,
@@ -100,25 +106,7 @@ class AutoscalingPolicyManager:
             target_capacity,
         )
         lower_bound = self.get_current_lower_bound(
-            target_capacity, target_capacity_direction
-        )
-        return max(lower_bound, min(upper_bound, curr_target_num_replicas))
-
-    def is_within_bounds(
-        self,
-        num_replicas_running_at_target_version: int,
-        target_capacity: float,
-        target_capacity_direction: TargetCapacityDirection,
-    ) -> bool:
-        assert self.config is not None
-
-        lower_bound = self.get_current_lower_bound(
             target_capacity,
             target_capacity_direction,
         )
-        upper_bound = get_capacity_adjusted_num_replicas(
-            self.config.max_replicas,
-            target_capacity,
-        )
-
-        return lower_bound <= num_replicas_running_at_target_version <= upper_bound
+        return max(lower_bound, min(upper_bound, curr_target_num_replicas))
