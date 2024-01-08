@@ -135,9 +135,9 @@ class TfMLPEncoder(Encoder, TfModel):
             hidden_layer_activation=config.hidden_layer_activation,
             hidden_layer_use_layernorm=config.hidden_layer_use_layernorm,
             hidden_layer_use_bias=config.hidden_layer_use_bias,
-            hidden_layer_weights_initializer=config.hidden_layer_initializer,
+            hidden_layer_weights_initializer=config.hidden_layer_weights_initializer,
             hidden_layer_weights_initializer_config=(
-                config.hidden_layer_initializer_config
+                config.hidden_layer_weights_initializer_config
             ),
             hidden_layer_bias_initializer=config.hidden_layer_bias_initializer,
             hidden_layer_bias_initializer_config=(
@@ -146,9 +146,9 @@ class TfMLPEncoder(Encoder, TfModel):
             output_dim=config.output_layer_dim,
             output_activation=config.output_layer_activation,
             output_use_bias=config.output_layer_use_bias,
-            output_weights_initializer=config.output_layer_weigths_initializer,
-            output_weigths_initializer_config=(
-                config.output_layer_weigths_initializer_config
+            output_weights_initializer=config.output_layer_weights_initializer,
+            output_weights_initializer_config=(
+                config.output_layer_weights_initializer_config
             ),
             output_bias_initializer=config.output_layer_bias_initializer,
             output_bias_initializer_config=config.output_layer_bias_initializer_config,

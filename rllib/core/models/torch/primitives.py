@@ -79,7 +79,7 @@ class TorchMLP(nn.Module):
         hidden_weights_initializer = get_initializer_fn(
             hidden_layer_weights_initializer, framework="torch"
         )
-        hidden_bias_initializer = get_activation_fn(
+        hidden_bias_initializer = get_initializer_fn(
             hidden_layer_bias_initializer, framework="torch"
         )
         output_weights_initializer = get_initializer_fn(
@@ -121,12 +121,12 @@ class TorchMLP(nn.Module):
                 # Initialize hidden layer weights if necessary.
                 if hidden_layer_weights_initializer:
                     hidden_weights_initializer(
-                        **hidden_layer_weights_initializer_config or {}
+                        layer.weight, **hidden_layer_weights_initializer_config or {}
                     )
                 # Initialize hidden layer bias if necessary.
                 if hidden_layer_bias_initializer:
                     hidden_bias_initializer(
-                        **hidden_layer_bias_initializer_config or {}
+                        layer.bias, **hidden_layer_bias_initializer_config or {}
                     )
 
             layers.append(layer)
