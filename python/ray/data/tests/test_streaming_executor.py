@@ -253,15 +253,15 @@ def test_dispatch_next_task():
     ref1 = make_ref_bundle("dummy1")
     ref2 = make_ref_bundle("dummy2")
     op_state.inqueues[0].append(ref1)
-    op_state.inqueues[0].append(ref1)
+    op_state.inqueues[0].append(ref2)
 
     o2.add_input = MagicMock()
     op_state.dispatch_next_task()
-    assert o2.add_input.called_once_with(ref1)
+    o2.add_input.assert_called_once_with(ref1, input_index=0)
 
     o2.add_input = MagicMock()
     op_state.dispatch_next_task()
-    assert o2.add_input.called_once_with(ref2)
+    o2.add_input.assert_called_once_with(ref2, input_index=0)
 
 
 def test_debug_dump_topology():

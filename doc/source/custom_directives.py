@@ -320,6 +320,12 @@ def preload_sidebar_nav(
         a["href"] = to_root_prefix + absolute_href
 
         if absolute_href == f"{pagename}.html":
+
+            # Add a current-page class to the parent li element for styling
+            parent_li = a.find_parent("li")
+            parent_li["class"] = parent_li.get("class", []) + ["current-page"]
+
+            # Open the dropdowns of every parent li for the active page
             for parent_li in a.find_parents("li", attrs={"class": "has-children"}):
                 el = parent_li.find("input")
                 if el:

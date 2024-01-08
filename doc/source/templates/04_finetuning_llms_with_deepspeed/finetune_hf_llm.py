@@ -487,7 +487,7 @@ def training_function(kwargs: dict):
             "learning_rate": lr_scheduler.get_lr()[0],
         }
 
-        with tempfile.TemporaryDirectory() as temp_checkpoint_dir:
+        with tempfile.TemporaryDirectory(dir=args.output_dir) as temp_checkpoint_dir:
             accelerator.print(f"Saving the model locally at {temp_checkpoint_dir}")
             accelerator.wait_for_everyone()
 
