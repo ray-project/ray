@@ -177,4 +177,3 @@ class DefaultDatabricksRayOnSparkStartHook(RayOnSparkStartHook):
         return {
             "GLOO_SOCKET_IFNAME": "eth0",
         }
-
