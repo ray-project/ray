@@ -52,8 +52,8 @@ def test_convert_env_list_to_dict():
 
 
 def test_get_python_version():
-    assert _stub_test({}).get_python_version() == "3.8"
-    assert _stub_test({"python": "3.9"}).get_python_version() == "3.9"
+    assert _stub_test({}).get_python_version() == "3.9"
+    assert _stub_test({"python": "3.11"}).get_python_version() == "3.11"
 
 
 def test_get_ray_image():
@@ -84,12 +84,12 @@ def test_get_ray_image():
     os.environ["BUILDKITE_BRANCH"] = "releases/1.0.0"
     assert (
         _stub_test({"cluster": {"byod": {}}}).get_ray_image()
-        == "rayproject/ray:1.0.0.123456-py38-cpu"
+        == "rayproject/ray:1.0.0.123456-py39-cpu"
     )
     with mock.patch.dict(os.environ, {"BUILDKITE_PULL_REQUEST": "123"}):
         assert (
             _stub_test({"cluster": {"byod": {}}}).get_ray_image()
-            == "rayproject/ray:pr-123.123456-py38-cpu"
+            == "rayproject/ray:pr-123.123456-py39-cpu"
         )
     with mock.patch.dict(os.environ, {"RAY_IMAGE_TAG": "my_tag"}):
         assert (
