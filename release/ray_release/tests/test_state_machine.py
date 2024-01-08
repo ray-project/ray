@@ -13,7 +13,12 @@ from ray_release.result import (
     ResultStatus,
 )
 from ray_release.test_automation.release_state_machine import ReleaseTestStateMachine
-from ray_release.test_automation.ci_state_machine import CITestStateMachine
+from ray_release.test_automation.ci_state_machine import (
+    CITestStateMachine,
+    CONTINUOUS_FAILURE_TO_FLAKY,
+    CONTINUOUS_PASSING_TO_PASSING,
+    FAILING_TO_FLAKY_MESSAGE,
+)
 from ray_release.test_automation.state_machine import TestStateMachine
 
 
@@ -89,7 +94,7 @@ TestStateMachine.ray_repo = MockRepo()
 TestStateMachine.ray_buildkite = MockBuildkite()
 
 
-def test_ci_move_from_passing_to_failing():
+def test_ci_move_from_passing_to_failing_to_flaky():
     """
     Test the entire lifecycle of a CI test when it moves from passing to failing.
     Check that the conditions are met for each state transition. Also check that
@@ -119,21 +124,19 @@ def test_ci_move_from_passing_to_failing():
     assert issue.state == "open"
     assert "ci-test" in [label.name for label in issue.labels]
 
-    # never move from consistently failing to jailed
+    # move from consistently failing to flaky
     test.test_results.extend(
-        [
-            TestResult.from_result(Result(status=ResultStatus.ERROR.value)),
-            TestResult.from_result(Result(status=ResultStatus.ERROR.value)),
-        ]
+        [TestResult.from_result(Result(status=ResultStatus.ERROR.value))]
+        * CONTINUOUS_FAILURE_TO_FLAKY
     )
     CITestStateMachine(test).move()
-    assert test.get_state() == TestState.CONSITENTLY_FAILING
+    assert test.get_state() == TestState.FLAKY
+    assert issue.comments[-1] == FAILING_TO_FLAKY_MESSAGE
 
     # go back to passing
-    test.test_results.insert(
-        0,
+    test.test_results = [
         TestResult.from_result(Result(status=ResultStatus.SUCCESS.value)),
-    )
+    ] * CONTINUOUS_PASSING_TO_PASSING
     CITestStateMachine(test).move()
     assert test.get_state() == TestState.PASSING
     assert test.get(Test.KEY_GITHUB_ISSUE_NUMBER) is None

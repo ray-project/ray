@@ -33,6 +33,7 @@ class ReleaseTestStateMachine(TestStateMachine):
             self._jail_test()
         elif change == (TestState.JAILED, TestState.PASSING):
             self._close_github_issue()
+
     def _state_hook(self, state: TestState) -> None:
         if state == TestState.JAILED:
             self._keep_github_issue_open()
@@ -45,6 +46,18 @@ class ReleaseTestStateMachine(TestStateMachine):
             result.is_failing()
             for result in self.test_results[:CONTINUOUS_FAILURE_TO_JAIL]
         )
+
+    def _passing_to_flaky(self) -> bool:
+        return False
+
+    def _consistently_failing_to_flaky(self) -> bool:
+        return False
+
+    def _flaky_to_passing(self) -> bool:
+        return False
+
+    def _flaky_to_jailed(self) -> bool:
+        return False
 
     """
     Action hooks performed during state transitions

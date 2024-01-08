@@ -71,6 +71,8 @@ class TestStateMachine(abc.ABC):
                 return TestState.CONSITENTLY_FAILING
             if self._passing_to_failing():
                 return TestState.FAILING
+            if self._passing_to_flaky():
+                return TestState.FLAKY
 
         if current_state == TestState.FAILING:
             if self._failing_to_consistently_failing():
@@ -83,6 +85,14 @@ class TestStateMachine(abc.ABC):
                 return TestState.JAILED
             if self._consistently_failing_to_passing():
                 return TestState.PASSING
+            if self._consistently_failing_to_flaky():
+                return TestState.FLAKY
+
+        if current_state == TestState.FLAKY:
+            if self._flaky_to_passing():
+                return TestState.PASSING
+            if self._flaky_to_jailed():
+                return TestState.JAILED
 
         if current_state == TestState.JAILED:
             if self._jailed_to_passing():
@@ -145,6 +155,22 @@ class TestStateMachine(abc.ABC):
         Condition to jail a test. This is an abstract method since different state
         machine implements this logic differently.
         """
+        pass
+
+    @abc.abstractmethod
+    def _passing_to_flaky(self) -> bool:
+        pass
+
+    @abc.abstractmethod
+    def _consistently_failing_to_flaky(self) -> bool:
+        pass
+
+    @abc.abstractmethod
+    def _flaky_to_passing(self) -> bool:
+        pass
+
+    @abc.abstractmethod
+    def _flaky_to_jailed(self) -> bool:
         pass
 
     """
