@@ -1,13 +1,13 @@
 import argparse
 from ray import serve
-from ray._private.test_utils import wait_for_condition
+from ray._private.test_utils import wait_for_condition, get_ray_default_worker_file_path
 from ray.serve.handle import DeploymentHandle
 
 parser = argparse.ArgumentParser()
 parser.add_argument("--image", type=str, help="The docker image to use for Ray worker")
 args = parser.parse_args()
 
-WORKER_PATH = "/home/ray/anaconda3/lib/python3.8/site-packages/ray/_private/workers/default_worker.py"  # noqa
+WORKER_PATH = get_ray_default_worker_file_path()
 
 
 @serve.deployment(
