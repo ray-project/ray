@@ -89,7 +89,58 @@ TestStateMachine.ray_repo = MockRepo()
 TestStateMachine.ray_buildkite = MockBuildkite()
 
 
-def test_move_from_passing_to_failing():
+def test_ci_move_from_passing_to_failing():
+    """
+    Test the entire lifecycle of a CI test when it moves from passing to failing.
+    Check that the conditions are met for each state transition. Also check that
+    gihub issues are created and closed correctly.
+    """
+    test = Test(name="test", team="ci")
+    # start from passing
+    assert test.get_state() == TestState.PASSING
+
+    # passing to failing
+    test.test_results = [
+        TestResult.from_result(Result(status=ResultStatus.ERROR.value)),
+    ]
+    CITestStateMachine(test).move()
+    assert test.get_state() == TestState.FAILING
+
+    # failing to consistently failing
+    test.test_results.extend(
+        [
+            TestResult.from_result(Result(status=ResultStatus.ERROR.value)),
+            TestResult.from_result(Result(status=ResultStatus.ERROR.value)),
+        ]
+    )
+    CITestStateMachine(test).move()
+    assert test.get_state() == TestState.CONSITENTLY_FAILING
+    issue = MockIssueDB.issue_db[test.get(Test.KEY_GITHUB_ISSUE_NUMBER)]
+    assert issue.state == "open"
+    assert "ci-test" in [label.name for label in issue.labels]
+
+    # never move from consistently failing to jailed
+    test.test_results.extend(
+        [
+            TestResult.from_result(Result(status=ResultStatus.ERROR.value)),
+            TestResult.from_result(Result(status=ResultStatus.ERROR.value)),
+        ]
+    )
+    CITestStateMachine(test).move()
+    assert test.get_state() == TestState.CONSITENTLY_FAILING
+
+    # go back to passing
+    test.test_results.insert(
+        0,
+        TestResult.from_result(Result(status=ResultStatus.SUCCESS.value)),
+    )
+    CITestStateMachine(test).move()
+    assert test.get_state() == TestState.PASSING
+    assert test.get(Test.KEY_GITHUB_ISSUE_NUMBER) is None
+    assert issue.state == "closed"
+
+
+def test_release_move_from_passing_to_failing():
     test = Test(name="test", team="ci")
     # Test original state
     test.test_results = [
@@ -118,7 +169,7 @@ def test_move_from_passing_to_failing():
     assert test[Test.KEY_GITHUB_ISSUE_NUMBER] == MockIssueDB.issue_id - 1
 
 
-def test_move_from_failing_to_consisently_failing():
+def test_release_move_from_failing_to_consisently_failing():
     test = Test(name="test", team="ci", stable=False)
     test[Test.KEY_BISECT_BUILD_NUMBER] = 1
     test.test_results = [
@@ -139,7 +190,7 @@ def test_move_from_failing_to_consisently_failing():
     assert "unstable-release-test" in labels
 
 
-def test_move_from_failing_to_passing():
+def test_release_move_from_failing_to_passing():
     test = Test(name="test", team="ci")
     test.test_results = [
         TestResult.from_result(Result(status=ResultStatus.ERROR.value)),
@@ -161,7 +212,7 @@ def test_move_from_failing_to_passing():
     assert test.get(Test.KEY_BISECT_BLAMED_COMMIT) is None
 
 
-def test_move_from_failing_to_jailed():
+def test_release_move_from_failing_to_jailed():
     test = Test(name="test", team="ci")
     test.test_results = [
         TestResult.from_result(Result(status=ResultStatus.ERROR.value)),

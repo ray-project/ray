@@ -12,6 +12,7 @@ from ray_release.aws import get_secret_token
 RAY_REPO = "ray-project/ray"
 AWS_SECRET_GITHUB = "ray_ci_github_token"
 AWS_SECRET_BUILDKITE = "ray_ci_buildkite_token"
+DEFAULT_ISSUE_OWNER = "can-anyscale"
 
 
 class TestStateMachine(abc.ABC):
