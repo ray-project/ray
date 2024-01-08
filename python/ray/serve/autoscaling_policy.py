@@ -1,3 +1,4 @@
+import logging
 import math
 import os
 import time
@@ -5,9 +6,11 @@ from typing import List, Optional
 
 import requests
 
-from ray.serve._private.constants import CONTROL_LOOP_PERIOD_S
+from ray.serve._private.constants import CONTROL_LOOP_PERIOD_S, SERVE_LOGGER_NAME
 from ray.serve.config import AutoscalingConfig
 from ray.util.annotations import DeveloperAPI, PublicAPI
+
+logger = logging.getLogger(SERVE_LOGGER_NAME)
 
 PROMETHEUS_HOST = os.environ.get("RAY_PROMETHEUS_HOST", "http://localhost:9090")
 
@@ -220,14 +223,6 @@ def replica_queue_length_autoscaling_policy(context: AutoscalingContext) -> int:
 
 
 @PublicAPI(stability="alpha")
-def default_autoscaling_policy():
-    """The default autoscaling policy for Ray Serve.
-    This is currently just an alias for replica_queue_length_autoscaling_policy.
-    """
-    return replica_queue_length_autoscaling_policy()
-
-
-@PublicAPI(stability="alpha")
 def cpu_utilization_autoscaling_policy(context: AutoscalingContext) -> int:
     """Example autoscaling policy based on CPU utilization.
 
@@ -310,3 +305,6 @@ def latency_based_autoscaling_policy(context: AutoscalingContext) -> int:
         return context.curr_target_num_replicas - 1
     else:
         return context.curr_target_num_replicas
+
+
+default_autoscaling_policy = replica_queue_length_autoscaling_policy

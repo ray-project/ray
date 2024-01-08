@@ -136,7 +136,11 @@ class GroupedData:
     The actual groupby is deferred until an aggregation is applied.
     """
 
-    def __init__(self, dataset: Dataset, key: Union[str, List[str]]):
+    def __init__(
+        self,
+        dataset: Dataset,
+        key: Union[str, List[str]],
+    ):
         """Construct a dataset grouped by key (internal API).
 
         The constructor is not part of the GroupedData API.
