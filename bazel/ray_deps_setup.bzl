@@ -160,15 +160,6 @@ def ray_deps_setup():
     )
 
     auto_http_archive(
-        # This rule is used by @com_github_nelhage_rules_boost and
-        # declaring it here allows us to avoid patching the latter.
-        name = "boost",
-        build_file = "@com_github_nelhage_rules_boost//:BUILD.boost",
-        sha256 = "71feeed900fbccca04a3b4f2f84a7c217186f28a940ed8b7ed4725986baf99fa",
-        url = "https://boostorg.jfrog.io/artifactory/main/release/1.81.0/source/boost_1_81_0.tar.bz2",
-    )
-
-    auto_http_archive(
         name = "com_github_nelhage_rules_boost",
         # If you update the Boost version, remember to update the 'boost' rule.
         url = "https://github.com/nelhage/rules_boost/archive/57c99395e15720e287471d79178d36a85b64d6f6.tar.gz",
