@@ -1,3 +1,4 @@
+import json
 import os
 import sys
 import pytest
@@ -39,8 +40,7 @@ def test_enough_gpus() -> None:
         assert False, "Should not raise an AssertionError"
 
 
-@mock.patch.object(tempfile, "mkdtemp")
-def test_run_tests_in_docker(tf) -> None:
+def test_run_tests_in_docker() -> None:
     inputs = []
 
     def _mock_popen(input: List[str]) -> None:
@@ -111,7 +111,7 @@ def test_ray_installation() -> None:
 
     with mock.patch("subprocess.check_call", side_effect=_mock_subprocess):
         LinuxTesterContainer("team", build_type="debug")
-        docker_image = f"{_DOCKER_ECR_REPO}:{_RAYCI_BUILD_ID}-team"
+        docker_image = f"{_DOCKER_ECR_REPO}:{_RAYCI_BUILD_ID}-teambuild"
         assert install_ray_cmds[-1] == [
             "docker",
             "build",
@@ -128,8 +128,7 @@ def test_ray_installation() -> None:
         ]
 
 
-@mock.patch.object(tempfile, "mkdtemp")
-def test_run_tests(tf) -> None:
+def test_run_tests() -> None:
     def _mock_run_tests_in_docker(
         test_targets: List[str],
         gpu_ids: List[int],
@@ -156,9 +155,6 @@ def test_run_tests(tf) -> None:
     ), mock.patch(
         "ci.ray_ci.linux_tester_container.LinuxTesterContainer.install_ray",
         return_value=None,
-    ), mock.patch(
-        "ci.ray_ci.linux_tester_container.LinuxTesterContainer._persist_test_results",
-        return_value=None,
     ):
         container = LinuxTesterContainer("team", shard_count=2, shard_ids=[0, 1])
         # test_targets are not empty
@@ -168,20 +164,6 @@ def test_run_tests(tf) -> None:
         assert container.run_tests([], [])
         # test targets contain bad_test
         assert not container.run_tests(["bad_test"], [])
-
-    def test_create_bazel_log_mount() -> None:
-        with tempfile.TemporaryDirectory() as tmpdir, mock.patch(
-            "random.choice",
-            return_value="a",
-        ), mock.patch(
-            "ci.ray_ci.linux_tester_container.LinuxTesterContainer.get_artifact_mount",
-            return_value=("/tmp/artifacts", tmpdir),
-        ):
-            container = LinuxTesterContainer("team", skip_ray_installation=True)
-            assert container._create_bazel_log_mount() == (
-                "/tmp/artifacts/aaaaa",
-                os.path.join(tmpdir, "aaaaa"),
-            )
 
 
 def test_create_bazel_log_mount() -> None:
@@ -194,6 +176,25 @@ def test_create_bazel_log_mount() -> None:
             "/tmp/artifacts/w00t",
             os.path.join(tmpdir, "w00t"),
         )
+
+
+def test_get_test_results() -> None:
+    _BAZEL_LOG = json.dumps(
+        {
+            "id": {"testResult": {"label": "//ray/ci:test"}},
+            "testResult": {"status": "PASSED"},
+        }
+    )
+
+    with tempfile.TemporaryDirectory() as tmp:
+        with open(os.path.join(tmp, "bazel_log"), "w") as f:
+            f.write(_BAZEL_LOG)
+        container = LinuxTesterContainer("team", skip_ray_installation=True)
+        results = container._get_test_and_results(tmp)
+        test, result = results[0]
+        assert test.get_name() == "ray_ci_test.linux"
+        assert test.get_oncall() == "team"
+        assert result.is_passing()
 
 
 if __name__ == "__main__":
