@@ -427,11 +427,14 @@ class ImpalaConfig(AlgorithmConfig):
                 "config.training(_tf_policy_handles_more_than_one_loss=True)."
             )
         # Learner API specific checks.
-        if self._enable_new_api_stack:
-            if not (
+        if (
+            self._enable_new_api_stack
+            and self._minibatch_size != "auto"
+            and not (
                 (self.minibatch_size % self.rollout_fragment_length == 0)
                 and self.minibatch_size <= self.total_train_batch_size
-            ):
+            )
+        ):
                 raise ValueError(
                     f"`minibatch_size` ({self._minibatch_size}) must either be 'auto' "
                     "or a multiple of `rollout_fragment_length` "
@@ -673,54 +676,57 @@ class Impala(Algorithm):
         )
         # Tag workers that actually produced ready sample batches this iteration.
         # Those workers will have to get updated at the end of the iteration.
-        workers_that_need_updates = {
-            worker_id for worker_id, _ in unprocessed_episodes
-        }
-
-        # Send episode refs directly to Learner workers.
-        episode_refs = [e[1] for e in unprocessed_episodes]
+        workers_that_need_updates = set()
+        episode_refs = []
+        for worker_id, episode_ref in unprocessed_episodes:
+            workers_that_need_updates.add(worker_id)
+            # Send episode refs directly to Learner workers.
+            episode_refs.append(episode_ref)
 
         # Increase sampling counters. We know that each reference
         # contains exactly `rollout_fragment_length` timesteps.
         # TODO (sven): This might not be accurate for multi-agent.
-        self._counters[NUM_ENV_STEPS_SAMPLED] += len(episode_refs) * self.config.get_rollout_fragment_length()
-        self._counters[NUM_AGENT_STEPS_SAMPLED] += len(episode_refs) * self.config.get_rollout_fragment_length()
+        self._counters[NUM_ENV_STEPS_SAMPLED] += len(episode_refs) * self.config.get_rollout_fragment_length() * self.config.num_envs_per_worker
+        self._counters[NUM_AGENT_STEPS_SAMPLED] += len(episode_refs) * self.config.get_rollout_fragment_length() * self.config.num_envs_per_worker
 
         # Concatenate single batches into batches of size `train_batch_size`.
         self.pre_queue_episode_refs(episode_refs)
 
         # Using the Learner API. Call `update()` on our LearnerGroup object with
         # all collected batches.
-        train_results = self.learn_on_processed_samples()
+        train_results, learner_state = self.learn_on_processed_samples()
         module_ids_to_update = set(train_results.keys()) - {ALL_MODULES}
-        print("additional_update ...")
-        additional_results = self.learner_group.async_additional_update(
-            module_ids_to_update=module_ids_to_update,
-            timestep=self._counters[
-                NUM_ENV_STEPS_TRAINED
-                if self.config.count_steps_by == "env_steps"
-                else NUM_AGENT_STEPS_TRAINED
-            ],
-            # TODO (sven): Feels hacked, but solves the problem of algos inheriting
-            #  from IMPALA (like APPO). In the old stack, we didn't have this
-            #  problem b/c IMPALA didn't need to call any additional update methods
-            #  as the entropy- and lr-schedules were handled by
-            #  `Policy.on_global_var_update()`.
-            **self._get_additional_update_kwargs(train_results),
-        )
-        for key, res in additional_results.items():
-            if key in train_results:
-                train_results[key].update(res)
-        print("done additional_update ...")
+        #print("additional_update ...")
+        if train_results:
+            additional_results = self.learner_group.async_additional_update(
+                module_ids_to_update=module_ids_to_update,
+                timestep=self._counters[
+                    NUM_ENV_STEPS_TRAINED
+                    if self.config.count_steps_by == "env_steps"
+                    else NUM_AGENT_STEPS_TRAINED
+                ],
+                # TODO (sven): Feels hacked, but solves the problem of algos inheriting
+                #  from IMPALA (like APPO). In the old stack, we didn't have this
+                #  problem b/c IMPALA didn't need to call any additional update methods
+                #  as the entropy- and lr-schedules were handled by
+                #  `Policy.on_global_var_update()`.
+                **self._get_additional_update_kwargs(train_results),
+            )
+            if additional_results:
+                for key, res in additional_results[-1].items():
+                    if key in train_results:
+                        train_results[key].update(res)
+            # Sync worker weights (only those policies that were actually updated).
+            if learner_state:
+                with self._timers[SYNCH_WORKER_WEIGHTS_TIMER]:
+                    pids = list(set(train_results.keys()) - {ALL_MODULES})
+                    self.update_workers_from_learner_group(
+                        workers_that_need_updates=workers_that_need_updates,
+                        policy_ids=pids,
+                        weights=learner_state["module_state"],
+                    )
 
-        # Sync worker weights (only those policies that were actually updated).
-        with self._timers[SYNCH_WORKER_WEIGHTS_TIMER]:
-            if train_results:
-                pids = list(set(train_results.keys()) - {ALL_MODULES})
-                self.update_workers_from_learner_group(
-                    workers_that_need_updates=workers_that_need_updates,
-                    policy_ids=pids,
-                )
+        #print("done additional_update ...")
 
         # With a training step done, try to bring any aggregators back to life
         # if necessary.
@@ -785,7 +791,7 @@ class Impala(Algorithm):
         # Using the Learner API. Call `update()` on our LearnerGroup object with
         # all collected batches.
         if self.config._enable_new_api_stack:
-            train_results = self.learn_on_processed_samples()
+            train_results, _ = self.learn_on_processed_samples()
             module_ids_to_update = set(train_results.keys()) - {ALL_MODULES}
             additional_results = self.learner_group.additional_update(
                 module_ids_to_update=module_ids_to_update,
@@ -1036,7 +1042,7 @@ class Impala(Algorithm):
         # or no results ready (from previous `self.learner_group.update()` calls) for
         # reducing.
         if not self.data_to_place_on_learner:
-            return {}
+            return {}, {}
 
         update_kwarg = "episodes" if self.config.uses_new_env_runners else "batch"
 
@@ -1074,8 +1080,14 @@ class Impala(Algorithm):
 
         # If there are results, reduce-mean over each individual value and return.
         if results:
-            return tree.map_structure(lambda *x: np.mean(x), *results)
-        return {}
+            # TODO (sven): Hacky: Clean this up. I believe we can use the same impala
+            #  reduce function here, which should take care of the state extraction.
+            state = {}
+            for r in results:
+                if "_state_after_update" in r:
+                    state = r.pop("_state_after_update")
+            return tree.map_structure(lambda *x: np.mean(x), *results), state
+        return {}, {}
 
     def place_processed_samples_on_learner_thread_queue(self) -> None:
         """Place processed samples on the learner queue for training.
@@ -1223,6 +1235,7 @@ class Impala(Algorithm):
         self,
         workers_that_need_updates: Set[int],
         policy_ids: Optional[List[PolicyID]] = None,
+        weights=None,#TODO : docstr
     ):
         """Updates all RolloutWorkers that require updating.
 
@@ -1245,7 +1258,7 @@ class Impala(Algorithm):
         ):
             self._counters[NUM_TRAINING_STEP_CALLS_SINCE_LAST_SYNCH_WORKER_WEIGHTS] = 0
             self._counters[NUM_SYNCH_WORKER_WEIGHTS] += 1
-            weights = self.learner_group.get_weights(policy_ids)
+            weights = weights or self.learner_group.get_weights(policy_ids)
             # We only have a single (local) EnvRunner.
             if self.config.num_rollout_workers == 0:
                 worker = self.workers.local_worker()

@@ -7,7 +7,7 @@ cartpole-impala:
     config:
         _enable_new_api_stack: true
         # Works for both torch and tf.
-        framework: tf2
+        framework: torch
         num_gpus: 0
         grad_clip: 40
         num_workers: 2

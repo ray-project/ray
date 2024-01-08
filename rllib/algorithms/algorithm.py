@@ -835,7 +835,7 @@ class Algorithm(Trainable, AlgorithmBase):
             results.update(self.evaluation_metrics)
 
         # Sync filters on workers.
-        if self._uses_new_env_runners:
+        if self.config.uses_new_env_runners:
             # Synchronize EnvToModule and ModuleToEnv connector states and broadcast new
             # states back to all workers.
             with self._timers[SYNCH_ENV_CONNECTOR_STATES_TIMER]:

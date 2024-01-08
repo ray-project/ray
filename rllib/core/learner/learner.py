@@ -789,6 +789,7 @@ class Learner:
         module_learner_stats = defaultdict(dict)
         # Add the num agent|env steps trained counts for all modules.
         module_learner_stats[ALL_MODULES][NUM_AGENT_STEPS_TRAINED] = batch.agent_steps()
+        #print(batch.agent_steps(), batch.env_steps())
         module_learner_stats[ALL_MODULES][NUM_ENV_STEPS_TRAINED] = batch.env_steps()
 
         loss_per_module_numpy = convert_to_numpy(loss_per_module)
@@ -1160,9 +1161,9 @@ class Learner:
             case `reduce_fn` is None and we have more than one minibatch pass.
         """
         #TEST
-        import time
-        print("sleeping for 10 sec")
-        time.sleep(10)
+        #import time
+        #print("sleeping for 10 sec")
+        #time.sleep(10)
         #END TEST
         self._check_is_built()
 
@@ -1177,13 +1178,12 @@ class Learner:
                     "Batch contains module ids that are not in the learner: "
                     f"{unknown_module_ids}"
                 )
-        if episodes is not None:
-            if (
-                isinstance(episodes, ObjectRef)
-                or (isinstance(episodes, list) and isinstance(episodes[0], ObjectRef))
-            ):
-                episodes = ray.get(episodes)
-                episodes = tree.flatten(episodes)
+        if (
+            isinstance(episodes, ObjectRef)
+            or (isinstance(episodes, list) and isinstance(episodes[0], ObjectRef))
+        ):
+            episodes = ray.get(episodes)
+            episodes = tree.flatten(episodes)
 
         if num_iters < 1:
             # We must do at least one pass on the batch for training.

@@ -631,8 +631,10 @@ class FaultTolerantActorManager:
         """Calls given functions against each actors without waiting for results.
 
         Args:
-            func: A single, or a list of Callables, that get applied on the list
-                of specified remote actors.
+            func: A single Callable applied to all specified remote actors or a list
+                of Callables, that get applied on the list of specified remote actors.
+                In the latter case, both list of Callables and list of specified actors
+                must have the same length.
             tag: A tag to identify the results from this async call.
             healthy_only: If True, applies func on known healthy actors only.
             remote_actor_ids: Apply func on a selected set of remote actors.
@@ -667,6 +669,11 @@ class FaultTolerantActorManager:
         num_calls_to_make: Dict[int, int] = defaultdict(lambda: 0)
         # Drop calls to actors that are too busy.
         if isinstance(func, list):
+            #if len(func) != len(remote_actor_ids):
+            #    raise RuntimeError(
+            #        "List of Callables must have the same length as list of actors, "
+            #        f"but their lengths are {len(func)} and {len(remote_actor_ids)}!"
+            #    )
             limited_func = []
             limited_remote_actor_ids = []
             for i, f in zip(remote_actor_ids, func):
@@ -694,31 +701,38 @@ class FaultTolerantActorManager:
                     num_calls_to_make[i] += 1
                     limited_remote_actor_ids.append(i)
 
-        print("Calling actors from within ActorManager")
+        #print("Calling actors from within ActorManager")
         remote_calls = self.__call_actors(
             func=limited_func,
             remote_actor_ids=limited_remote_actor_ids,
         )
-        print("Called actors from within ActorManager")
+        #print(f"Called {len(remote_calls)} actors from within ActorManager")
 
         # Save these as outstanding requests.
         for id, call in zip(limited_remote_actor_ids, remote_calls):
             self.__remote_actor_states[id].num_in_flight_async_requests += 1
             self.__in_flight_req_to_actor_id[call] = (tag, id)
 
+        #if tag:
+        #    print(
+        #        f"AFTER `foreach_actor_async(tag={tag})` remote_actor_in_flight_reqs: {[self.__remote_actor_states[i].num_in_flight_async_requests for i in self.__remote_actor_states.keys()]}"
+        #    )
+
         return len(remote_calls)
 
     def __filter_calls_by_tag(
-        self, tags
+        self, tags: Union[str, List[str], Tuple[str]]
     ) -> Tuple[List[ray.ObjectRef], List[ActorHandle], List[str]]:
-        """Return all the in flight requests that match the given tags.
+        """Return all the in flight requests that match the given tags, if any.
 
         Args:
-            tags: A str or a list of str. If tags is empty, return all the in flight
+            tags: A str or a list/tuple of str. If tags is empty, return all the in
+                flight requests.
 
         Returns:
-            A tuple of corresponding (remote_calls, remote_actor_ids, valid_tags)
-
+            A tuple consisting of a list of the remote calls that match the tag(s),
+            a list of the corresponding remote actor IDs for these calls (same length),
+            and a list of the tags corresponding to these calls (same length).
         """
         if isinstance(tags, str):
             tags = {tags}
@@ -726,24 +740,25 @@ class FaultTolerantActorManager:
             tags = set(tags)
         else:
             raise ValueError(
-                f"tags must be either a str or a list of str, got {type(tags)}."
+                f"tags must be either a str or a list/tuple of str, got {type(tags)}."
             )
         remote_calls = []
         remote_actor_ids = []
         valid_tags = []
         for call, (tag, actor_id) in self.__in_flight_req_to_actor_id.items():
             # the default behavior is to return all ready results.
-            if not len(tags) or tag in tags:
+            if len(tags) == 0 or tag in tags:
                 remote_calls.append(call)
                 remote_actor_ids.append(actor_id)
                 valid_tags.append(tag)
+
         return remote_calls, remote_actor_ids, valid_tags
 
     @DeveloperAPI
     def fetch_ready_async_reqs(
         self,
         *,
-        tags: Union[str, List[str]] = (),
+        tags: Union[str, List[str], Tuple[str]] = (),
         timeout_seconds: Union[None, int] = 0,
         return_obj_refs: bool = False,
         mark_healthy: bool = False,
@@ -789,6 +804,11 @@ class FaultTolerantActorManager:
             # obj_refs may have already been removed when we disable an actor.
             if obj_ref in self.__in_flight_req_to_actor_id:
                 del self.__in_flight_req_to_actor_id[obj_ref]
+
+        #if tags:
+        #    print(
+        #        f"AFTER `fetch_ready_async_reqs(tags={tags})` remote_actor_in_flight_reqs: {[self.__remote_actor_states[i].num_in_flight_async_requests for i in self.__remote_actor_states.keys()]}"
+        #    )
 
         return remote_results
 

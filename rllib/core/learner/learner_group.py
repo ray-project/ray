@@ -1,4 +1,4 @@
-from collections import defaultdict, deque
+from collections import defaultdict, Counter
 from functools import partial
 import pathlib
 from typing import (
@@ -132,7 +132,7 @@ class LearnerGroup:
         self._should_module_be_updated_fn = _default_should_module_be_updated_fn
 
         # How many timesteps had to be dropped due to a full input queue?
-        #self._in_queue_ts_dropped = 0
+        self._ts_dropped = 0
 
         # A single local Learner.
         if not self.is_remote:
@@ -183,7 +183,8 @@ class LearnerGroup:
             # This is a set of the tags for asynchronous update requests that are
             # inflight, and is used for grouping together the results of requests
             # that were sent to the workers at the same time.
-            self._inflight_request_tags: Set[str] = set()
+            self._update_request_tags = Counter()#Set[str] = set()
+            self._additional_update_request_tags = Counter() #: Set[str] = set()
             #self._in_queue = deque(maxlen=max_queue_len)
 
     def get_queue_stats(self) -> Dict[str, Any]:
@@ -192,7 +193,8 @@ class LearnerGroup:
             #"learner_group_queue_size": len(self._in_queue),
             "learner_group_ts_dropped": self._ts_dropped,
             "actor_manager_num_outstanding_async_reqs": (
-                self._worker_manager.num_outstanding_async_reqs()
+                0 if self.is_local
+                else self._worker_manager.num_outstanding_async_reqs()
             ),
         }
 
@@ -373,15 +375,6 @@ class LearnerGroup:
                 "num_workers=0."
             )
 
-        def _learner_update(learner, _batch=None, _episodes=None):
-            return learner.update(
-                batch=_batch,
-                episodes=_episodes,
-                minibatch_size=minibatch_size,
-                num_iters=num_iters,
-                reduce_fn=reduce_fn,
-            )
-
         # Queue the new batches.
         # If queue is full, kick out the oldest item (and thus add its
         # length to the "dropped ts" counter).
@@ -400,9 +393,11 @@ class LearnerGroup:
         #self._in_queue.append(batch if episodes is None else episodes)
 
         # Retrieve all ready results (kicked off by prior calls to this method).
-        results = self._worker_manager.fetch_ready_async_reqs(
-            tags=list(self._inflight_request_tags)
-        )
+        results = None
+        if self._update_request_tags:
+            results = self._worker_manager.fetch_ready_async_reqs(
+                tags=list(self._update_request_tags)
+            )
         # Only if there are no more requests in-flight on any of the learners,
         # we can send in one new batch for sharding and parallel learning.
 
@@ -416,21 +411,34 @@ class LearnerGroup:
         # Pull a single batch from the queue (from the left side, meaning:
         # use the oldest one first).
         update_tag = str(uuid.uuid4())
-        self._inflight_request_tags.add(update_tag)
         batch_or_episodes = batch if episodes is None else episodes #self._in_queue.popleft()
+
+        def _learner_update(learner, _batch=None, _episodes=None, _return_weights=False):
+            _results = learner.update(
+                batch=_batch,
+                episodes=_episodes,
+                minibatch_size=minibatch_size,
+                num_iters=num_iters,
+                reduce_fn=reduce_fn,
+            )
+            if _return_weights:
+                #print("attaching state to results ...")
+                _results["_state_after_update"] = learner.get_state()
+            return _results
+
         if episodes is None:
             num_sent_requests = self._worker_manager.foreach_actor_async(
                 [
-                    partial(_learner_update, _batch=minibatch)
-                    for minibatch in ShardBatchIterator(batch_or_episodes, len(self._workers))
+                    partial(_learner_update, _batch=minibatch, _return_weights=i==0)
+                    for i, minibatch in enumerate(ShardBatchIterator(batch_or_episodes, len(self._workers)))
                 ],
                 tag=update_tag,
             )
         elif batch is None:
             num_sent_requests = self._worker_manager.foreach_actor_async(
                 [
-                    partial(_learner_update, _episodes=_episodes)
-                    for _episodes in ShardObjectRefIterator(batch_or_episodes, len(self._workers))
+                    partial(_learner_update, _episodes=_episodes, _return_weights=i==0)
+                    for i, _episodes in enumerate(ShardObjectRefIterator(batch_or_episodes, len(self._workers)))
                 ],
                 tag=update_tag,
             )
@@ -441,18 +449,25 @@ class LearnerGroup:
 
         #count += 1
 
+        if num_sent_requests:
+            self._update_request_tags[update_tag] = num_sent_requests
+
         # Some requests were dropped, record lost ts/data.
         if num_sent_requests != len(self._workers):
-            assert num_sent_requests == 0
+            #assert num_sent_requests == 0, num_sent_requests
+            factor = 1 - (num_sent_requests / len(self._workers))
             # Batch: Measure its length.
             if episodes is None:
-                self._ts_dropped += len(batch_or_episodes)
+                dropped = len(batch_or_episodes)
             # List of Ray ObjectRefs (each object ref is a list of episodes of total
             # len=`rollout_fragment_length * num_envs_per_worker`)
-            elif isinstance(batch_or_episodes, ObjectRef):
-                self._ts_dropped += self.config.get_rollout_fragment_length() * self.config.num_envs_per_worker
+            elif isinstance(batch_or_episodes[0], ObjectRef):
+                dropped = len(batch_or_episodes) * self.config.get_rollout_fragment_length() * self.config.num_envs_per_worker
             else:
-                self._ts_dropped += sum(len(e) for e in batch_or_episodes)
+                dropped = sum(len(e) for e in batch_or_episodes)
+
+            self._ts_dropped += factor * dropped
+            #print(f"here: dropped={factor * dropped} new sum={self._ts_dropped}")
 
         # NOTE: There is a strong assumption here that the requests launched to
         # learner workers will return at the same time, since they are have a
@@ -462,14 +477,27 @@ class LearnerGroup:
         # ready.
         results = self._get_async_results(results)
 
+        #print(f"after async_update self._update_request_tags={self._update_request_tags}")
+        #print(f"Sent {num_sent_requests} update requests to {len(self._workers)} actors with tag={update_tag} received {len(results)} results {list(len(r) for r in results)}")
+
         # TODO(sven): Move reduce_fn to the training_step
         if reduce_fn is None:
             return results
         else:
-            return [reduce_fn(r) for r in results]
+            # TODO: Move this "return weights from 1st actor pinged"-logic to IMPALA;
+            ret = []
+            for r in results:
+                w = None
+                for r_ in r:
+                    if "_state_after_update" in r_:
+                        w = r_.pop("_state_after_update")
+                reduced_r = reduce_fn(r)
+                if w is not None:
+                    reduced_r.update({"_state_after_update": w})
+                ret.append(reduced_r)
+            return ret
 
     def _worker_manager_ready(self):
-        return True
         # TODO (sven): This probably works even without any restriction (allowing for
         #  any arbitrary number of requests in-flight). Test with 3 first, then with
         #  unlimited, and if both show the same behavior on an async algo, remove
@@ -497,23 +525,38 @@ class LearnerGroup:
             for same tags.
 
         """
-        print(f"doing result.get() on all {len(list(results))} results")
+        if results is None:
+            return []
+
+        #print(f"doing result.get() on all {len(list(results))} results")
 
         unprocessed_results = defaultdict(list)
         for result in results:
             result_or_error = result.get()
             if result.ok:
-                assert (
-                    result.tag
-                ), "Cannot call _get_async_results on untagged async requests."
-                unprocessed_results[result.tag].append(result_or_error)
+                tag = result.tag
+                if not tag:
+                    raise RuntimeError(
+                        "Cannot call `LearnerGroup._get_async_results()` on untagged "
+                        "async requests!"
+                    )
+                unprocessed_results[tag].append(result_or_error)
+
+                if tag in self._update_request_tags:
+                    self._update_request_tags[tag] -= 1
+                    if self._update_request_tags[tag] == 0:
+                        del self._update_request_tags[tag]
+                else:
+                    assert tag in self._additional_update_request_tags
+                    self._additional_update_request_tags[tag] -= 1
+                    if self._additional_update_request_tags[tag] == 0:
+                        del self._additional_update_request_tags[tag]
+
             else:
                 raise result_or_error
 
-        print("done w/ result.get()")
+        #print("done w/ result.get()")
 
-        for tag in unprocessed_results.keys():
-            self._inflight_request_tags.remove(tag)
         return list(unprocessed_results.values())
 
     def additional_update(
@@ -564,66 +607,21 @@ class LearnerGroup:
                 "num_workers=0."
             )
 
-        results = self._worker_manager.foreach_actor_async(
-            [lambda w: w.additional_update(**kwargs) for _ in self._workers]
-        )
-
-
-
-
-
-
-        def _learner_update(learner, _batch=None, _episodes=None):
-            return learner.update(
-                batch=_batch,
-                episodes=_episodes,
-                minibatch_size=minibatch_size,
-                num_iters=num_iters,
-                reduce_fn=reduce_fn,
-            )
-
         # Retrieve all ready results (kicked off by prior calls to this method).
-        results = self._worker_manager.fetch_ready_async_reqs(
-            tags=list(self._inflight_request_tags)
-        )
+        results = None
+        if self._additional_update_request_tags:
+            results = self._worker_manager.fetch_ready_async_reqs(
+                tags=list(self._additional_update_request_tags)
+            )
+
         update_tag = str(uuid.uuid4())
-        self._inflight_request_tags.add(update_tag)
-        batch_or_episodes = batch if episodes is None else episodes #self._in_queue.popleft()
-        if episodes is None:
-            num_sent_requests = self._worker_manager.foreach_actor_async(
-                [
-                    partial(_learner_update, _batch=minibatch)
-                    for minibatch in ShardBatchIterator(batch_or_episodes, len(self._workers))
-                ],
-                tag=update_tag,
-            )
-        elif batch is None:
-            num_sent_requests = self._worker_manager.foreach_actor_async(
-                [
-                    partial(_learner_update, _episodes=_episodes)
-                    for _episodes in ShardObjectRefIterator(batch_or_episodes, len(self._workers))
-                ],
-                tag=update_tag,
-            )
-        # TODO (sven): Implement the case in which both batch and episodes might
-        #  already be provided (or figure out whether this makes sense at all).
-        else:
-            raise NotImplementedError
+        num_sent_requests = self._worker_manager.foreach_actor_async(
+            [lambda w: w.additional_update(**kwargs) for _ in self._workers], tag=update_tag
+        )
+        if num_sent_requests:
+            self._additional_update_request_tags[update_tag] = num_sent_requests
 
         #count += 1
-
-        # Some requests were dropped, record lost ts/data.
-        if num_sent_requests != len(self._workers):
-            assert num_sent_requests == 0
-            # Batch: Measure its length.
-            if episodes is None:
-                self._ts_dropped += len(batch_or_episodes)
-            # List of Ray ObjectRefs (each object ref is a list of episodes of total
-            # len=`rollout_fragment_length * num_envs_per_worker`)
-            elif isinstance(batch_or_episodes, ObjectRef):
-                self._ts_dropped += self.config.get_rollout_fragment_length() * self.config.num_envs_per_worker
-            else:
-                self._ts_dropped += sum(len(e) for e in batch_or_episodes)
 
         # NOTE: There is a strong assumption here that the requests launched to
         # learner workers will return at the same time, since they are have a
@@ -633,24 +631,13 @@ class LearnerGroup:
         # ready.
         results = self._get_async_results(results)
 
+        #print(f"after async_additional_update() _additional_update_request_tags={self._additional_update_request_tags}")
+
         # TODO(sven): Move reduce_fn to the training_step
         if reduce_fn is None:
             return results
         else:
             return [reduce_fn(r) for r in results]
-
-
-
-
-
-
-
-
-        results = self._get_results(results)
-        if reduce_fn is None:
-            return results
-        # TODO(sven): Move reduce_fn to the training_step
-        return reduce_fn(results)
 
     def add_module(
         self,
