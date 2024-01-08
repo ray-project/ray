@@ -33,7 +33,6 @@ class ReleaseTestStateMachine(TestStateMachine):
             self._jail_test()
         elif change == (TestState.JAILED, TestState.PASSING):
             self._close_github_issue()
-
     def _state_hook(self, state: TestState) -> None:
         if state == TestState.JAILED:
             self._keep_github_issue_open()
