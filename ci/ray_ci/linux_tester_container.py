@@ -8,7 +8,8 @@ from ci.ray_ci.tester_container import TesterContainer
 class LinuxTesterContainer(TesterContainer, LinuxContainer):
     def __init__(
         self,
-        docker_tag: str,
+        team: str,
+        build_name: Optional[str] = None,
         shard_count: int = 1,
         gpus: int = 0,
         network: Optional[str] = None,
@@ -19,7 +20,7 @@ class LinuxTesterContainer(TesterContainer, LinuxContainer):
     ) -> None:
         LinuxContainer.__init__(
             self,
-            docker_tag,
+            build_name or f"{team}build",
             envs=test_envs,
             volumes=[
                 f"{os.environ.get('RAYCI_CHECKOUT_DIR')}:/ray-mount",
@@ -28,6 +29,7 @@ class LinuxTesterContainer(TesterContainer, LinuxContainer):
         )
         TesterContainer.__init__(
             self,
+            team,
             shard_count,
             gpus,
             bazel_log_dir="/tmp/bazel_event_logs",

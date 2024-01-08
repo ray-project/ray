@@ -229,7 +229,8 @@ def _get_container(
 
     if operating_system == "linux":
         return LinuxTesterContainer(
-            build_name or f"{team}build",
+            team,
+            build_name=build_name,
             test_envs=test_env,
             shard_count=shard_count,
             shard_ids=list(range(shard_start, shard_end)),
@@ -241,7 +242,8 @@ def _get_container(
 
     if operating_system == "windows":
         return WindowsTesterContainer(
-            build_name or f"{team}build",
+            team,
+            build_name=build_name,
             network=network,
             test_envs=test_env,
             shard_count=shard_count,

@@ -11,7 +11,6 @@ steps:
     label: "wanda: minbuild-core-py{{matrix}}"
     wanda: ci/docker/min.build.wanda.yaml
     matrix:
-      - "3.8"
       - "3.9"
       - "3.10"
       - "3.11"
@@ -222,7 +221,6 @@ steps:
         --only-tags minimal
         --skip-ray-installation
     matrix:
-      - "3.8"
       - "3.9"
       - "3.10"
       - "3.11"
