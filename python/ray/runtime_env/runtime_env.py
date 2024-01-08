@@ -237,9 +237,11 @@ class RuntimeEnv(dict):
         env_vars: Environment variables to set.
         worker_process_setup_hook: (Experimental) The setup hook that's
             called after workers start and before Tasks and Actors are scheduled.
-            The value has to be a callable when passed to the Job, Task, or Actor.
-            The callable is then exported and this value is converted to
-            the setup hook's function name for observability.
+            A module name (string type) or callable (function) can be passed.
+            When a module name is passed, Ray worker should be able to access the
+            module name. When a callable is passed, callable should be serializable.
+            When a runtime env is specified by job submission API,
+            only a module name (string) is allowed.
         nsight: Dictionary mapping nsight profile option name to it's value.
         config: config for runtime environment. Either
             a dict or a RuntimeEnvConfig. Field: (1) setup_timeout_seconds, the
@@ -338,6 +340,14 @@ class RuntimeEnv(dict):
                 "user-guide/tasks/manage-environments.html"
                 "#create-env-file-manually"
             )
+
+        if self.get("container"):
+            if len(runtime_env) > 1:
+                raise ValueError(
+                    "The 'container' field currently cannot be used "
+                    "together with other fields of runtime_env. "
+                    f"Specified fields: {runtime_env.keys()}"
+                )
 
         for option, validate_fn in OPTION_TO_VALIDATION_FN.items():
             option_val = self.get(option)

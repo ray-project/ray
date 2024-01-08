@@ -174,6 +174,54 @@ TEST_F(GcsWorkerManagerTest, TestUpdateWorkerDebuggerPort) {
   }
 }
 
+TEST_F(GcsWorkerManagerTest, TestUpdateWorkerNumPausedThreads) {
+  auto worker_manager = GetWorkerManager();
+  auto worker = GenWorkerTableData(0);
+  auto num_paused_threads_delta = 2;
+  {
+    // add worker
+    rpc::AddWorkerInfoRequest request;
+    request.mutable_worker_data()->CopyFrom(worker);
+    rpc::AddWorkerInfoReply reply;
+    std::promise<void> promise;
+    auto callback = [&promise](Status status,
+                               std::function<void()> success,
+                               std::function<void()> failure) { promise.set_value(); };
+    worker_manager->HandleAddWorkerInfo(request, &reply, callback);
+    promise.get_future().get();
+  }
+
+  {
+    // update the worker num paused threads
+    rpc::UpdateWorkerNumPausedThreadsRequest request;
+    request.set_worker_id(worker.worker_address().worker_id());
+    request.set_num_paused_threads_delta(num_paused_threads_delta);
+    rpc::UpdateWorkerNumPausedThreadsReply reply;
+    std::promise<void> promise;
+    auto callback = [&promise](Status status,
+                               std::function<void()> success,
+                               std::function<void()> failure) { promise.set_value(); };
+    worker_manager->HandleUpdateWorkerNumPausedThreads(request, &reply, callback);
+    promise.get_future().get();
+  }
+
+  {
+    // Get the worker and verify the num paused threads
+    rpc::GetAllWorkerInfoRequest request;
+    rpc::GetAllWorkerInfoReply reply;
+    std::promise<void> promise;
+    auto callback = [&promise](Status status,
+                               std::function<void()> success,
+                               std::function<void()> failure) { promise.set_value(); };
+    worker_manager->HandleGetAllWorkerInfo(request, &reply, callback);
+    promise.get_future().get();
+
+    ASSERT_EQ(reply.worker_table_data().size(), 1);
+    ASSERT_EQ(reply.total(), 1);
+    ASSERT_EQ(reply.worker_table_data(0).num_paused_threads(), num_paused_threads_delta);
+  }
+}
+
 int main(int argc, char **argv) {
   ::testing::InitGoogleTest(&argc, argv);
   return RUN_ALL_TESTS();

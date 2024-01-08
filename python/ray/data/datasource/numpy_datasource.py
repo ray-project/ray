@@ -1,9 +1,9 @@
 from io import BytesIO
-from typing import TYPE_CHECKING, Any, Dict, List, Optional, Union
+from typing import TYPE_CHECKING, Any, Dict, Iterator, List, Optional, Union
 
 import numpy as np
 
-from ray.data.block import BlockAccessor
+from ray.data.block import Block, BlockAccessor
 from ray.data.datasource.file_based_datasource import FileBasedDatasource
 from ray.util.annotations import PublicAPI
 
@@ -31,13 +31,13 @@ class NumpyDatasource(FileBasedDatasource):
 
         self.numpy_load_args = numpy_load_args
 
-    def _read_file(self, f: "pyarrow.NativeFile", path: str):
+    def _read_stream(self, f: "pyarrow.NativeFile", path: str) -> Iterator[Block]:
         # TODO(ekl) Ideally numpy can read directly from the file, but it
         # seems like it requires the file to be seekable.
         buf = BytesIO()
         data = f.readall()
         buf.write(data)
         buf.seek(0)
-        return BlockAccessor.batch_to_block(
+        yield BlockAccessor.batch_to_block(
             {"data": np.load(buf, allow_pickle=True, **self.numpy_load_args)}
         )

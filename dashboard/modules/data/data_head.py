@@ -12,6 +12,10 @@ from ray.dashboard.modules.metrics.metrics_head import (
 )
 from urllib.parse import quote
 import ray
+import logging
+
+logger = logging.getLogger(__name__)
+logger.setLevel(logging.INFO)
 
 
 # Window and sampling rate used for certain Prometheus queries.
@@ -23,10 +27,11 @@ SAMPLE_RATE = "1s"
 class PrometheusQuery(Enum):
     """Enum to store types of Prometheus queries for a given metric and grouping."""
 
-    VALUE = ("value", "sum({}) by ({})")
+    VALUE = ("value", "sum({}{{SessionName='{}'}}) by ({})")
     MAX = (
         "max",
-        "max_over_time(sum({}) by ({})[" + f"{MAX_TIME_WINDOW}:{SAMPLE_RATE}])",
+        "max_over_time(sum({}{{SessionName='{}'}}) by ({})["
+        + f"{MAX_TIME_WINDOW}:{SAMPLE_RATE}])",
     )
 
 
@@ -43,6 +48,7 @@ class DataHead(dashboard_utils.DashboardHeadModule):
     def __init__(self, dashboard_head):
         super().__init__(dashboard_head)
         self.http_session = aiohttp.ClientSession()
+        self._session_name = dashboard_head.session_name
         self.prometheus_host = os.environ.get(
             PROMETHEUS_HOST_ENV_VAR, DEFAULT_PROMETHEUS_HOST
         )
@@ -71,7 +77,7 @@ class DataHead(dashboard_utils.DashboardHeadModule):
                         query_name, prom_query = query.value
                         # Dataset level
                         dataset_result = await self._query_prometheus(
-                            prom_query.format(metric, "dataset")
+                            prom_query.format(metric, self._session_name, "dataset")
                         )
                         for res in dataset_result["data"]["result"]:
                             dataset, value = res["metric"]["dataset"], res["value"][1]
@@ -80,7 +86,9 @@ class DataHead(dashboard_utils.DashboardHeadModule):
 
                         # Operator level
                         operator_result = await self._query_prometheus(
-                            prom_query.format(metric, "dataset, operator")
+                            prom_query.format(
+                                metric, self._session_name, "dataset, operator"
+                            )
                         )
                         for res in operator_result["data"]["result"]:
                             dataset, operator, value = (
@@ -101,7 +109,10 @@ class DataHead(dashboard_utils.DashboardHeadModule):
             except aiohttp.client_exceptions.ClientConnectorError:
                 # Prometheus server may not be running,
                 # leave these values blank and return other data
-                pass
+                logging.exception(
+                    "Exception occurred while querying Prometheus. "
+                    "The Prometheus server may not be running."
+                )
             # Flatten response
             for dataset in datasets:
                 datasets[dataset]["operators"] = list(
@@ -120,6 +131,7 @@ class DataHead(dashboard_utils.DashboardHeadModule):
                 content_type="application/json",
             )
         except Exception as e:
+            logging.exception("Exception occured while getting datasets.")
             return Response(
                 status=503,
                 text=str(e),

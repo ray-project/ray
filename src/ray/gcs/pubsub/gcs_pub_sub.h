@@ -46,6 +46,8 @@ class GcsPublisher {
   /// TODO: remove this constructor and inject mock / fake from the other constructor.
   explicit GcsPublisher() {}
 
+  virtual ~GcsPublisher() = default;
+
   /// Returns the underlying pubsub::Publisher. Caller does not take ownership.
   /// Returns nullptr when RayConfig::instance().gcs_grpc_based_pubsub() is false.
   pubsub::Publisher *GetPublisher() const { return publisher_.get(); }
@@ -68,18 +70,18 @@ class GcsPublisher {
                     const rpc::JobTableData &message,
                     const StatusCallback &done);
 
-  Status PublishNodeInfo(const NodeID &id,
-                         const rpc::GcsNodeInfo &message,
-                         const StatusCallback &done);
+  virtual Status PublishNodeInfo(const NodeID &id,
+                                 const rpc::GcsNodeInfo &message,
+                                 const StatusCallback &done);
 
   /// Actually rpc::WorkerDeltaData is not a delta message.
   Status PublishWorkerFailure(const WorkerID &id,
                               const rpc::WorkerDeltaData &message,
                               const StatusCallback &done);
 
-  Status PublishError(const std::string &id,
-                      const rpc::ErrorTableData &message,
-                      const StatusCallback &done);
+  virtual Status PublishError(const std::string &id,
+                              const rpc::ErrorTableData &message,
+                              const StatusCallback &done);
 
   /// TODO: remove once it is converted to GRPC-based push broadcasting.
   Status PublishResourceBatch(const rpc::ResourceUsageBatchData &message,
