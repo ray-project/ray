@@ -307,10 +307,10 @@ class Catalog:
                     input_dims=observation_space.shape,
                     hidden_layer_dims=hidden_layer_dims,
                     hidden_layer_activation=activation,
-                    hidden_layer_initializer=model_config_dict[
+                    hidden_layer_weights_initializer=model_config_dict[
                         "fcnet_weights_initializer"
                     ],
-                    hidden_layer_initializer_config=model_config_dict[
+                    hidden_layer_weights_initializer_config=model_config_dict[
                         "fcnet_weights_initializer_config"
                     ],
                     hidden_layer_bias_initializer=model_config_dict[
