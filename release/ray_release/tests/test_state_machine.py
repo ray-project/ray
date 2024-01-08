@@ -13,6 +13,7 @@ from ray_release.result import (
     ResultStatus,
 )
 from ray_release.test_automation.release_state_machine import ReleaseTestStateMachine
+from ray_release.test_automation.ci_state_machine import CITestStateMachine
 from ray_release.test_automation.state_machine import TestStateMachine
 
 
