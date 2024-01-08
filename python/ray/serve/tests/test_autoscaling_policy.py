@@ -16,10 +16,6 @@ import ray
 import ray.util.state as state_api
 from ray import serve
 from ray._private.test_utils import SignalActor, wait_for_condition
-from ray.serve._private.autoscaling_policy import (
-    BasicAutoscalingPolicy,
-    calculate_desired_num_replicas,
-)
 from ray.serve._private.common import (
     ApplicationStatus,
     DeploymentID,
@@ -34,6 +30,10 @@ from ray.serve._private.constants import (
     SERVE_NAMESPACE,
 )
 from ray.serve._private.controller import ServeController
+from ray.serve.autoscaling_policy import (
+    DefaultAutoscalingPolicy,
+    _calculate_desired_num_replicas,
+)
 from ray.serve.config import AutoscalingConfig
 from ray.serve.generated.serve_pb2 import (
     DeploymentStatusInfo as DeploymentStatusInfoProto,
@@ -52,18 +52,18 @@ class TestCalculateDesiredNumReplicas:
             target_num_ongoing_requests_per_replica=100,
         )
 
-        desired_num_replicas = calculate_desired_num_replicas(
+        desired_num_replicas = _calculate_desired_num_replicas(
             autoscaling_config=config, current_num_ongoing_requests=[150] * num_replicas
         )
         assert desired_num_replicas == max_replicas
 
-        desired_num_replicas = calculate_desired_num_replicas(
+        desired_num_replicas = _calculate_desired_num_replicas(
             autoscaling_config=config, current_num_ongoing_requests=[50] * num_replicas
         )
         assert desired_num_replicas == min_replicas
 
         for i in range(50, 150):
-            desired_num_replicas = calculate_desired_num_replicas(
+            desired_num_replicas = _calculate_desired_num_replicas(
                 autoscaling_config=config,
                 current_num_ongoing_requests=[i] * num_replicas,
             )
@@ -78,7 +78,7 @@ class TestCalculateDesiredNumReplicas:
         )
         num_replicas = 10
         num_ongoing_requests = [2 * target_requests] * num_replicas
-        desired_num_replicas = calculate_desired_num_replicas(
+        desired_num_replicas = _calculate_desired_num_replicas(
             autoscaling_config=config, current_num_ongoing_requests=num_ongoing_requests
         )
         assert 19 <= desired_num_replicas <= 21  # 10 * 2 = 20
@@ -92,7 +92,7 @@ class TestCalculateDesiredNumReplicas:
         )
         num_replicas = 10
         num_ongoing_requests = [0.5 * target_requests] * num_replicas
-        desired_num_replicas = calculate_desired_num_replicas(
+        desired_num_replicas = _calculate_desired_num_replicas(
             autoscaling_config=config, current_num_ongoing_requests=num_ongoing_requests
         )
         assert 4 <= desired_num_replicas <= 6  # 10 * 0.5 = 5
@@ -107,13 +107,13 @@ class TestCalculateDesiredNumReplicas:
         num_replicas = 10
 
         num_ongoing_requests = [4.0] * num_replicas
-        desired_num_replicas = calculate_desired_num_replicas(
+        desired_num_replicas = _calculate_desired_num_replicas(
             autoscaling_config=config, current_num_ongoing_requests=num_ongoing_requests
         )
         assert 24 <= desired_num_replicas <= 26  # 10 + 0.5 * (40 - 10) = 25
 
         num_ongoing_requests = [0.25] * num_replicas
-        desired_num_replicas = calculate_desired_num_replicas(
+        desired_num_replicas = _calculate_desired_num_replicas(
             autoscaling_config=config, current_num_ongoing_requests=num_ongoing_requests
         )
         assert 5 <= desired_num_replicas <= 8  # 10 + 0.5 * (2.5 - 10) = 6.25
@@ -129,14 +129,14 @@ class TestCalculateDesiredNumReplicas:
 
         # Should use upscale smoothing factor of 0.5
         num_ongoing_requests = [4.0] * num_replicas
-        desired_num_replicas = calculate_desired_num_replicas(
+        desired_num_replicas = _calculate_desired_num_replicas(
             autoscaling_config=config, current_num_ongoing_requests=num_ongoing_requests
         )
         assert 24 <= desired_num_replicas <= 26  # 10 + 0.5 * (40 - 10) = 25
 
         # Should use downscale smoothing factor of 1 (default)
         num_ongoing_requests = [0.25] * num_replicas
-        desired_num_replicas = calculate_desired_num_replicas(
+        desired_num_replicas = _calculate_desired_num_replicas(
             autoscaling_config=config, current_num_ongoing_requests=num_ongoing_requests
         )
         assert 1 <= desired_num_replicas <= 4  # 10 + (2.5 - 10) = 2.5
@@ -152,14 +152,14 @@ class TestCalculateDesiredNumReplicas:
 
         # Should use upscale smoothing factor of 1 (default)
         num_ongoing_requests = [4.0] * num_replicas
-        desired_num_replicas = calculate_desired_num_replicas(
+        desired_num_replicas = _calculate_desired_num_replicas(
             autoscaling_config=config, current_num_ongoing_requests=num_ongoing_requests
         )
         assert 39 <= desired_num_replicas <= 41  # 10 + (40 - 10) = 40
 
         # Should use downscale smoothing factor of 0.5
         num_ongoing_requests = [0.25] * num_replicas
-        desired_num_replicas = calculate_desired_num_replicas(
+        desired_num_replicas = _calculate_desired_num_replicas(
             autoscaling_config=config, current_num_ongoing_requests=num_ongoing_requests
         )
         assert 5 <= desired_num_replicas <= 8  # 10 + 0.5 * (2.5 - 10) = 6.25
@@ -176,7 +176,7 @@ class TestGetDecisionNumReplicas:
             max_replicas=2,
             smoothing_factor=10,
         )
-        policy = BasicAutoscalingPolicy(config)
+        policy = DefaultAutoscalingPolicy(config)
         new_num_replicas = policy.get_decision_num_replicas(
             current_num_ongoing_requests=[],
             curr_target_num_replicas=0,
@@ -187,7 +187,7 @@ class TestGetDecisionNumReplicas:
         assert new_num_replicas == 10
 
         config.smoothing_factor = 0.5
-        policy = BasicAutoscalingPolicy(config)
+        policy = DefaultAutoscalingPolicy(config)
         new_num_replicas = policy.get_decision_num_replicas(
             current_num_ongoing_requests=[],
             curr_target_num_replicas=0,
@@ -209,7 +209,7 @@ class TestGetDecisionNumReplicas:
             upscale_delay_s=0,
             downscale_delay_s=0,
         )
-        policy = BasicAutoscalingPolicy(config)
+        policy = DefaultAutoscalingPolicy(config)
         new_num_replicas = policy.get_decision_num_replicas(
             current_num_ongoing_requests=[0, 0, 0, 0, 0],
             curr_target_num_replicas=5,
@@ -222,7 +222,7 @@ class TestGetDecisionNumReplicas:
         # get stuck at a positive number, and instead should eventually drop
         # to zero
         config.smoothing_factor = 0.2
-        policy = BasicAutoscalingPolicy(config)
+        policy = DefaultAutoscalingPolicy(config)
         num_replicas = 5
         for _ in range(5):
             num_replicas = policy.get_decision_num_replicas(
@@ -247,7 +247,7 @@ class TestGetDecisionNumReplicas:
             downscale_delay_s=600.0,
         )
 
-        policy = BasicAutoscalingPolicy(config)
+        policy = DefaultAutoscalingPolicy(config)
 
         upscale_wait_periods = int(upscale_delay_s / CONTROL_LOOP_PERIOD_S)
         downscale_wait_periods = int(downscale_delay_s / CONTROL_LOOP_PERIOD_S)
@@ -372,7 +372,7 @@ class TestGetDecisionNumReplicas:
             downscale_delay_s=100000,
         )
 
-        policy = BasicAutoscalingPolicy(config)
+        policy = DefaultAutoscalingPolicy(config)
 
         new_num_replicas = policy.get_decision_num_replicas(1, [100], 0)
         assert new_num_replicas == 100
@@ -406,7 +406,7 @@ class TestGetDecisionNumReplicas:
             downscale_delay_s=delay_s,
         )
 
-        policy = BasicAutoscalingPolicy(config)
+        policy = DefaultAutoscalingPolicy(config)
 
         if delay_s > 0:
             wait_periods = int(delay_s / CONTROL_LOOP_PERIOD_S)
@@ -450,7 +450,7 @@ class TestGetDecisionNumReplicas:
             downscale_delay_s=0.0,
         )
 
-        policy = BasicAutoscalingPolicy(config)
+        policy = DefaultAutoscalingPolicy(config)
 
         # Check that as long as the average number of ongoing requests equals
         # the target_num_ongoing_requests_per_replica, the number of replicas
@@ -507,7 +507,7 @@ class TestGetDecisionNumReplicas:
             downscale_delay_s=0.0,
         )
 
-        policy = BasicAutoscalingPolicy(config)
+        policy = DefaultAutoscalingPolicy(config)
 
         new_num_replicas = policy.get_decision_num_replicas(
             current_num_ongoing_requests=ongoing_requests,

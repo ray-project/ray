@@ -7,16 +7,17 @@ from ray.serve._private.common import TargetCapacityDirection
 from ray.serve._private.constants import CONTROL_LOOP_PERIOD_S, SERVE_LOGGER_NAME
 from ray.serve._private.utils import get_capacity_adjusted_num_replicas
 from ray.serve.config import AutoscalingConfig
+from ray.util.annotations import PublicAPI
 
 logger = logging.getLogger(SERVE_LOGGER_NAME)
 
 
-def calculate_desired_num_replicas(
+def _calculate_desired_num_replicas(
     autoscaling_config: AutoscalingConfig,
     current_num_ongoing_requests: List[float],
     override_min_replicas: Optional[float] = None,
     override_max_replicas: Optional[float] = None,
-) -> int:  # (desired replicas):
+) -> int:
     """Returns the number of replicas to scale to based on the given metrics.
 
     Args:
@@ -90,6 +91,7 @@ def calculate_desired_num_replicas(
     return desired_num_replicas
 
 
+@PublicAPI(stability="alpha")
 class AutoscalingPolicy:
     """Defines the interface for an autoscaling policy.
 
@@ -129,7 +131,8 @@ class AutoscalingPolicy:
         return curr_target_num_replicas
 
 
-class BasicAutoscalingPolicy(AutoscalingPolicy):
+@PublicAPI(stability="alpha")
+class ReplicaQueueLengthAutoscalingPolicy(AutoscalingPolicy):
     """The default autoscaling policy based on basic thresholds for scaling.
     There is a minimum threshold for the average queue length in the cluster
     to scale up and a maximum threshold to scale down. Each period, a 'scale
@@ -182,7 +185,7 @@ class BasicAutoscalingPolicy(AutoscalingPolicy):
 
         decision_num_replicas = curr_target_num_replicas
 
-        desired_num_replicas = calculate_desired_num_replicas(
+        desired_num_replicas = _calculate_desired_num_replicas(
             self.config,
             current_num_ongoing_requests,
             override_min_replicas=self.get_current_lower_bound(
@@ -269,3 +272,6 @@ class BasicAutoscalingPolicy(AutoscalingPolicy):
                 self.config.min_replicas,
                 target_capacity,
             )
+
+
+DefaultAutoscalingPolicy = ReplicaQueueLengthAutoscalingPolicy
