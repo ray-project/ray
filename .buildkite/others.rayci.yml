@@ -38,10 +38,11 @@ steps:
   - label: "flaky :windows: tests"
     tags: skip-on-premerge
     job_env: WINDOWS
+    mount_windows_artifacts: true
     instance_type: windows
     commands:
       - bash ci/ray_ci/windows/install_tools.sh
-      - bazel run //ci/ray_ci:test_in_docker -- ///:all //src/... /python/ray/tests/... core
+      - bazel run //ci/ray_ci:test_in_docker -- //:all //src/... //python/ray/tests/... core
         --run-flaky-tests
         --build-name windowsbuild
         --operating-system windows
@@ -56,7 +57,7 @@ steps:
         --test-env=CI="1"
         --test-env=RAY_CI_POST_WHEEL_TESTS="1"
         --test-env=USERPROFILE
-      - bazel run //ci/ray_ci:test_in_docker -- /python/ray/serve/... serve
+      - bazel run //ci/ray_ci:test_in_docker -- //python/ray/serve/... serve
         --skip-ray-installation
         --run-flaky-tests
         --build-name windowsbuild

@@ -159,3 +159,13 @@ class Channel:
         self._worker.core_worker.experimental_mutable_object_read_release(
             [self._base_ref]
         )
+
+    def close(self) -> None:
+        """
+        Close this channel by setting the error bit on the object.
+
+        Does not block. Any existing values in the channel may be lost after the
+        channel is closed.
+        """
+        logger.debug(f"Setting error bit on channel: {self._base_ref}")
+        self._worker.core_worker.experimental_mutable_object_set_error(self._base_ref)
