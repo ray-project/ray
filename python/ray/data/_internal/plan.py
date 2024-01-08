@@ -369,19 +369,7 @@ class ExecutionPlan:
 
     def initial_num_blocks(self) -> int:
         """Get the estimated number of blocks after applying all plan stages."""
-        if self.has_computed_output():
-            return self._snapshot_blocks.initial_num_blocks()
-        for stage in self._stages_after_snapshot[::-1]:
-            if stage.num_blocks is not None:
-                return stage.num_blocks
-        if self._snapshot_blocks is not None:
-            return self._snapshot_blocks.initial_num_blocks()
-        for stage in self._stages_before_snapshot[::-1]:
-            if stage.num_blocks is not None:
-                return stage.num_blocks
-        if self._in_blocks is not None:
-            return self._in_blocks.initial_num_blocks()
-        return None
+        return self._logical_plan.dag.estimated_num_outputs()
 
     def schema(
         self, fetch_if_missing: bool = False
