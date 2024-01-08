@@ -1,6 +1,5 @@
 import inspect
 import json
-from base64 import b64decode
 from typing import Any, Callable, Dict, List, Optional, Set, Tuple, Union
 
 from google.protobuf.descriptor import FieldDescriptor
@@ -256,11 +255,6 @@ class DeploymentConfig(BaseModel):
                 data["autoscaling_config"]["upscale_smoothing_factor"] = None
             if not data["autoscaling_config"].get("downscale_smoothing_factor"):
                 data["autoscaling_config"]["downscale_smoothing_factor"] = None
-            if data["autoscaling_config"].get("serialized_policy_def"):
-                # after MessageToDict, bytes data has been deal with base64
-                data["autoscaling_config"]["serialized_policy_def"] = b64decode(
-                    data["autoscaling_config"]["serialized_policy_def"]
-                )
             data["autoscaling_config"] = AutoscalingConfig(**data["autoscaling_config"])
         if "version" in data:
             if data["version"] == "":
