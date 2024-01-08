@@ -1,11 +1,9 @@
 import logging
-import time
-from typing import Callable, List, Optional
+from typing import List, Optional
 
 from ray.serve._private.common import TargetCapacityDirection
 from ray.serve._private.constants import SERVE_LOGGER_NAME
 from ray.serve._private.utils import get_capacity_adjusted_num_replicas
-from ray.serve.autoscaling_policy import AutoscalingContext
 from ray.serve.config import AutoscalingConfig
 
 logger = logging.getLogger(SERVE_LOGGER_NAME)
@@ -16,8 +14,8 @@ class AutoscalingPolicyManager:
 
     def __init__(self, config: Optional[AutoscalingConfig]):
         self.config = config
-        self.context = AutoscalingContext(config=config)
         self.policy = None
+        self.policy_state = {}
         self._create_policy()
 
     def _create_policy(self):
@@ -36,8 +34,6 @@ class AutoscalingPolicyManager:
         current_handle_queued_queries: float,
         target_capacity: Optional[float] = None,
         target_capacity_direction: Optional[TargetCapacityDirection] = None,
-        app_name: Optional[str] = None,
-        deployment_name: Optional[str] = None,
     ) -> Optional[int]:
         """Interface with the autoscaling policy to get a decision to scale replicas.
         If the autoscaling policy is not ready or returning the same number as the
@@ -51,21 +47,14 @@ class AutoscalingPolicyManager:
             self.config.max_replicas,
             target_capacity,
         )
-        self.context.update(
+        decision_num_replicas = self.policy(
             curr_target_num_replicas=curr_target_num_replicas,
             current_num_ongoing_requests=current_num_ongoing_requests,
             current_handle_queued_queries=current_handle_queued_queries,
+            config=self.config,
             capacity_adjusted_min_replicas=capacity_adjusted_min_replicas,
             capacity_adjusted_max_replicas=capacity_adjusted_max_replicas,
-            app_name=app_name,
-            deployment_name=deployment_name,
-        )
-        # Note: The thread manager will continuously return None until a decision is
-        # made. We do not currently force kill and restart the scaling call due to
-        # complexities. We will add docs to warn users not to make long-running calls
-        # here, and they can set timeout in their policies if needed.
-        decision_num_replicas = self.thread_manager.get_decision_num_replicas(
-            context=self.context,
+            policy_state=self.policy_state,
         )
 
         return self.apply_bounds(
