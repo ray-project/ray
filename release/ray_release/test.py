@@ -49,7 +49,6 @@ class TestState(enum.Enum):
     CONSITENTLY_FAILING = "consistently_failing"
     PASSING = "passing"
 
-
 @dataclass
 class TestResult:
     status: str
