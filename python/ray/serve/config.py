@@ -3,6 +3,7 @@ import warnings
 from enum import Enum
 from typing import Any, Callable, List, Optional, Union
 
+from ray import cloudpickle
 from ray._private.pydantic_compat import (
     BaseModel,
     NonNegativeFloat,
@@ -13,6 +14,7 @@ from ray._private.pydantic_compat import (
 )
 from ray._private.utils import import_attr
 from ray.serve._private.constants import (
+    DEFAULT_AUTOSCALING_POLICY,
     DEFAULT_GRPC_PORT,
     DEFAULT_HTTP_HOST,
     DEFAULT_HTTP_PORT,
@@ -60,6 +62,12 @@ class AutoscalingConfig(BaseModel):
     # How long to wait before scaling up replicas
     upscale_delay_s: NonNegativeFloat = 30.0
 
+    # Cloudpickled policy definition.
+    serialized_policy_def: bytes = b""
+
+    # Custom autoscaling config. Defaults to the request-based autoscaler.
+    policy: Union[str, Callable] = DEFAULT_AUTOSCALING_POLICY
+
     @validator("max_replicas", always=True)
     def replicas_settings_valid(cls, max_replicas, values):
         min_replicas = values.get("min_replicas")
@@ -83,6 +91,24 @@ class AutoscalingConfig(BaseModel):
                 )
 
         return max_replicas
+
+    @validator("policy", always=True)
+    def serialize_policy(cls, policy, values) -> Callable:
+        """Serialize policy with cloudpickle.
+
+        Import the policy if it's passed in as a string import path. Then cloudpickle
+        the policy and set `serialized_policy_def` if it's empty.
+        """
+        if isinstance(policy, str):
+            policy = import_attr(policy)
+
+        if not values.get("serialized_policy_def"):
+            values["serialized_policy_def"] = cloudpickle.dumps(policy)
+        return policy
+
+    def get_policy(self) -> Callable:
+        """Deserialize policy from cloudpickled bytes."""
+        return cloudpickle.loads(self.serialized_policy_def)
 
     def get_upscale_smoothing_factor(self) -> PositiveFloat:
         return self.upscale_smoothing_factor or self.smoothing_factor
