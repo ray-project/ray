@@ -172,52 +172,43 @@ class ShardEpisodesIterator:
     """
 
     def __init__(self, episodes: List[EpisodeType], num_shards: int):
-        self.episodes = episodes
-        self.num_shards = num_shards
-        self.total_length = sum(len(eps) for eps in self.episodes)
-        self.target_length_per_shard = self.total_length // num_shards
+        self._episodes = sorted(episodes, key=len, reverse=True)
+        self._num_shards = num_shards
+        self._total_length = sum(len(e) for e in episodes)
+        self._target_lengths = [0 for _ in range(self._num_shards)]
+        remaining_length = self._total_length
+        for s in range(self._num_shards):
+            len_ = remaining_length // (num_shards - s)
+            self._target_lengths[s] = len_
+            remaining_length -= len_
 
     def __iter__(self):
-        current_index = 0
-        remaining_total_length = self.total_length
-        num_shards_left = self.num_shards
+        sublists = [[] for _ in range(self._num_shards)]
+        lengths = [0 for _ in range(self._num_shards)]
+        episode_index = 0
 
-        for _ in range(self.num_shards):
-            current_shard = []
-            current_shard_length = 0
+        while episode_index < len(self._episodes):
+            episode = self._episodes[episode_index]
+            min_index = lengths.index(min(lengths))
 
-            while (
-                current_index < len(self.episodes)
-                and current_shard_length < self.target_length_per_shard
-            ):
-                current_episode = self.episodes[current_index]
-
-                if (
-                    current_shard_length + len(current_episode)
-                    > self.target_length_per_shard
-                ):
-                    # Split the episode.
-                    split_length = self.target_length_per_shard - current_shard_length
-                    remaining_episode = current_episode.split_at(split_length)
-                    self.episodes.insert(current_index + 1, remaining_episode)
-                    current_shard.append(current_episode)
-                    current_shard_length += split_length
+            if lengths[min_index] + len(episode) <= self._target_lengths[min_index]:
+                # Add the whole episode if it fits within the target length
+                sublists[min_index].append(episode)
+                lengths[min_index] += len(episode)
+                episode_index += 1
+            else:
+                # Otherwise, slice the episode
+                remaining_length = self._target_lengths[min_index] - lengths[min_index]
+                if remaining_length > 0:
+                    slice_part, remaining_part = episode[:remaining_length], episode[
+                                                                             remaining_length:]
+                    sublists[min_index].append(slice_part)
+                    lengths[min_index] += len(slice_part)
+                    self._episodes[episode_index] = remaining_part
                 else:
-                    current_shard.append(current_episode)
-                    current_shard_length += len(current_episode)
+                    assert remaining_length == 0
+                    sublists[min_index].append(episode)
+                    episode_index += 1
 
-                current_index += 1
-
-                if current_shard_length >= self.target_length_per_shard:
-                    break
-
-            yield current_shard
-            remaining_total_length -= current_shard_length
-
-            # No more episodes to process.
-            if remaining_total_length <= 0:
-                break
-
-            # Update the target length per shard.
-            num_shards_left -= 1
-            self.target_length_per_shard = remaining_total_length // num_shards_left
+        for sublist in sublists:
+            yield sublist

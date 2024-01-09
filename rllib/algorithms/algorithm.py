@@ -1607,7 +1607,7 @@ class Algorithm(Trainable, AlgorithmBase):
             # TODO: (sven) rename MultiGPUOptimizer into something more
             #  meaningful.
             if self.config._enable_new_api_stack:
-                train_results = self.learner_group.update(batch=train_batch)
+                train_results = self.learner_group.update_from_batch(batch=train_batch)
             elif self.config.get("simple_optimizer") is True:
                 train_results = train_one_step(self, train_batch)
             else:

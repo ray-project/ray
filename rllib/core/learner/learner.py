@@ -1113,16 +1113,16 @@ class Learner:
         minibatch_size: Optional[int] = None,
         num_iters: int = 1,
     ) -> Union[Dict[str, Any], List[Dict[str, Any]]]:
-        """Do `num_iters` minibatch updates given the original batch.
+        """Do `num_iters` minibatch updates given a train batch and/or episodes.
 
-        Given a batch of episodes you can use this method to take more
+        Given a batch or a list of episodes you can use this method to take more
         than one backward pass on the batch. The same minibatch_size and num_iters
         will be used for all module ids in MultiAgentRLModule.
 
         Args:
-            batch: An optional batch of training data. If None, the `episodes` arg
+            batch: An (optional) batch of training data. If None, the `episodes` arg
                 must be provided.
-            episodes: An optional list of episode objects. If None, the `batch` arg
+            episodes: An (optional) list of episode objects. If None, the `batch` arg
                 must be provided.
             reduce_fn: reduce_fn: A function to reduce the results from a list of
                 minibatch updates. This can be any arbitrary function that takes a
