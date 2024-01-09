@@ -1,9 +1,14 @@
 import logging
-from typing import Type, Dict, Any, Optional, Union
+from typing import Any, Dict, List, Optional, Type, Union
 
 from ray.rllib.algorithms.algorithm_config import AlgorithmConfig, NotProvided
-from ray.rllib.algorithms.dqn.dqn import DQN
+from ray.rllib.algorithms.dqn.dqn import calculate_rr_weights, DQN
 from ray.rllib.algorithms.sac.sac_tf_policy import SACTFPolicy
+from ray.rllib.core.learner import Learner
+from ray.rllib.core.rl_module.rl_module import SingleAgentRLModuleSpec
+from ray.rllib.env.single_agent_episode import SingleAgentEpisode
+from ray.rllib.evaluation.rollout_worker import RolloutWorker
+from ray.rllib.execution.rollout_ops import synchronous_parallel_sample
 from ray.rllib.policy.policy import Policy
 from ray.rllib.utils import deep_update
 from ray.rllib.utils.annotations import override
@@ -12,6 +17,19 @@ from ray.rllib.utils.deprecation import (
     deprecation_warning,
 )
 from ray.rllib.utils.framework import try_import_tf, try_import_tfp
+from ray.rllib.utils.metrics import (
+    ALL_MODULES,
+    LAST_TARGET_UPDATE_TS,
+    NUM_AGENT_STEPS_SAMPLED,
+    NUM_ENV_STEPS_SAMPLED,
+    SAMPLE_TIMER,
+    SYNCH_WORKER_WEIGHTS_TIMER
+)
+from ray.rllib.utils.replay_buffers.utils import (
+    sample_min_n_steps_from_buffer,
+    update_priorities_in_replay_buffer,
+)
+from ray.rllib.utils.typing import RLModuleSpec, ResultDict
 
 tf1, tf, tfv = try_import_tf()
 tfp = try_import_tfp()
@@ -339,6 +357,32 @@ class SACConfig(AlgorithmConfig):
         else:
             return self.rollout_fragment_length
 
+    @override(AlgorithmConfig)
+    def get_default_rl_module_spec(self) -> RLModuleSpec:
+        from ray.rllib.algorithms.sac.sac_catalog import SACCatalog
+
+        if self.framework_str == "tf2":
+            from ray.rllib.algorithms.sac.tf.sac_tf_rl_module import SACTfRLModule
+
+            return SingleAgentRLModuleSpec(
+                module_class=SACTfRLModule, catalog_class=SACCatalog
+            )
+        else:
+            raise ValueError(
+                f"The framework {self.framework_str} is not supported. " "Use `tf2`."
+            )
+
+    @override(AlgorithmConfig)
+    def get_default_learner_class(self) -> Union[Type["Learner"], str]:
+        if self.framework_str == "tf2":
+            from ray.rllib.algorithms.sac.tf.sac_tf_learner import SACTfLearner
+
+            return SACTfLearner
+        else:
+            raise ValueError(
+                f"The framework {self.framework_str} is not supported. " "Use `tf2`."
+            )
+
 
 class SAC(DQN):
     """Soft Actor Critic (SAC) Algorithm class.
@@ -371,3 +415,110 @@ class SAC(DQN):
             return SACTorchPolicy
         else:
             return SACTFPolicy
+
+    @classmethod
+    @override(DQN)
+    def training_step(self) -> ResultDict:
+        # Check, if we use `RolloutWorker` or `EnvRunner`.
+        use_rollout_worker = self.config.env_runner_cls is None or issubclass(
+            self.config.env_runner_cls, RolloutWorker
+        )
+
+        # If `RolloutWorker` is used and the old stack, then use as before
+        # the training step of the DQN algorithm.
+        if use_rollout_worker and not self.config._enable_new_api_stack:
+            return super().training_step(self)
+
+        # Alternate between storing and sampling and training.
+        store_weight, sample_and_train_weight = calculate_rr_weights(self.config)
+        train_results = {}
+        
+        # Run multiple sampling iterations.
+        for _ in range(store_weight):
+            # Otherwise, we use the new stack.
+            with self._timers[SAMPLE_TIMER]:
+                if self.workers.num_remote_workers() <= 0:
+                    episodes: List[SingleAgentEpisode] = [
+                        self.workers.local_worker().sample()
+                    ]
+                else:
+                    episodes: List[SingleAgentEpisode] = self.workers.foreach_worker(
+                        lambda w: w.sample(),
+                        local_worker=False,
+                    )
+                # Perform SAC postprocessing (Prio weights) on a (flattened)
+                # list of Episodes.
+                postprocessed_episodes = self.postprocess_episodes(episodes)
+
+            train_batch = train_batch.as_multi_agent()
+            self._counters[NUM_AGENT_STEPS_SAMPLED] += train_batch.agent_steps()
+            self._counters[NUM_ENV_STEPS_SAMPLED] += train_batch.env_steps()
+
+            # Add the sampled experiences to the replay buffer.
+            self.local_replay_buffer.add(train_batch)
+
+            # Update the target network each `target_network_update_freq` steps.
+            current_ts = self._counters[
+                NUM_AGENT_STEPS_SAMPLED
+                if self.config.count_steps_by == "agent_steps"
+                else NUM_ENV_STEPS_SAMPLED
+            ]
+
+            # If enough experiences have been sampled start training.
+            if current_ts > self.config.num_steps_sampled_before_training_starts:
+                # Run multiple training iterations.
+                for _ in range(sample_and_train_weight):
+                    # Sample training batch (MultiAgentBatch) from replay buffer.
+                    train_batch = sample_min_n_steps_from_buffer(
+                        self.local_replay_buffer,
+                        self.config.train_batch_size,
+                        count_by_agent_steps=self.config.count_steps_by
+                        == "agent_steps",
+                    )
+
+                    # Training on batch.
+                    train_results = self.learner_group.update(
+                        train_batch,
+                        minibatch_size=self.config.train_batch_size,
+                        num_iters=1,
+                    )
+
+                    # Update replay buffer priorities.
+                    update_priorities_in_replay_buffer(
+                        self.local_replay_buffer,
+                        self.config,
+                        train_batch,
+                        train_results,
+                    )
+
+
+                    # TODO (simon): Use here the 
+                    # `Leaner.additional_update_for_module` and load the pairs 
+                    # from 
+                    # `RLModuleWithTargetNetworks.get_target_network_pairs`
+                    last_update = self._counters[LAST_TARGET_UPDATE_TS]
+
+                # TODO (simon): CHeck, if this is better - as we are not sampling at the
+                # same time, updating weights after all training iteration should be faster.
+                # Update weights and global_vars - after learning on the local worker -
+                # on all remote workers.
+                policies_to_update = set(train_results.keys()) - {ALL_MODULES}
+                with self._timers[SYNCH_WORKER_WEIGHTS_TIMER]:
+                    if self.workers.num_remote_workers() > 0:
+                        # NOTE: the new API stack does not use global vars.
+                        self.workers.sync_weights(
+                            from_worker_or_learner_group=self.learner_group,
+                            policies_to_update=policies_to_update,
+                            global_vars=None,                            
+                        )
+                    # Then we must have a local worker.
+                    else:
+                        weights = self.learner_group.get_weights()
+                        self.workers.local_worker().set_weights(weights)
+
+            return train_results
+
+                
+
+                        
+

@@ -1,9 +1,9 @@
 import gymnasium as gym
-from ray.rllib.algorithms.ppo.ppo_catalog import _check_if_diag_gaussian
+# from ray.rllib.algorithms.ppo.ppo_catalog import _check_if_diag_gaussian
 from ray.rllib.core.models.catalog import Catalog
 from ray.rllib.core.models.configs import (
     ActorCriticEncoderConfig,
-    FreeLogStdMLPHeadConfig,
+    # FreeLogStdMLPHeadConfig,
     MLPHeadConfig,
 )
 from ray.rllib.core.models.base import Model, ActorCriticEncoder
@@ -56,35 +56,24 @@ class SACCatalog(Catalog):
         # -> Build pi config only in the `self.build_pi_head` method.
         self.pi_head_config = None
 
-        if issubclass(self.action_space, gym.spaces.Discrete):
-            self.qf_head_config = MLPHeadConfig(
-                input_dims=self.latent_dims,
-                hidden_layer_dims=self.pi_and_vf_head_hiddens,
-                hidden_layer_activation=self.pi_and_vf_head_activation,
-                output_layer_activation="linear",
-                output_layer_dim=self.action_space.n,
-            )
-        # TODO (simon): Implement the continuous case.
-
         # Define the Q target network.
         # Use the base encoder for the Q target network.
         # TODO (simon): Implement in a later step a q network with
         # different post_fcnet_hiddens than value function and pi.
-        self.qf_head_hiddens = self._model_config_dict["post_fcnet_hiddens"]
-        self.qf_head_activation = self._model_config_dict["post_fcnet_activation"]
-
         # For the q function we know the number of output nodes to be the number of
         # possible actions in the action space.
-        self.qf_head_config = MLPHeadConfig(
-            # TODO (simon): These latent_dims could be different for the
-            # q function, value function, and pi head.
-            # Here we consider the simple case of identical encoders.
-            input_dims=self.latent_dims,
-            hidden_layer_dims=self.qf_head_hiddens,
-            hidden_layer_activation=self.qf_head_activation,
-            output_layer_dim=action_space.n,
-            output_layer_activation="linear",
-        )
+        if issubclass(self.action_space, gym.spaces.Discrete):
+            self.qf_head_config = MLPHeadConfig(
+                # TODO (simon): These latent_dims could be different for the
+                # q function, value function, and pi head.
+                # Here we consider the simple case of identical encoders.
+                input_dims=self.latent_dims,
+                hidden_layer_dims=self.pi_and_qf_head_hiddens,
+                hidden_layer_activation=self.pi_and_qf_head_activation,
+                output_layer_activation="linear",
+                output_layer_dim=self.action_space.n,
+            )
+        # TODO (simon): Implement the continuous case.
 
     @OverrideToImplementCustomLogic
     def build_actor_critic_encoder(self, framework: str) -> ActorCriticEncoder:
@@ -92,9 +81,9 @@ class SACCatalog(Catalog):
 
         In contrast to PPO, SAC needs both, an ActorCriticEncoder
         and an encoder for the Q function. The latter uses the
-        # base encoder, i.e. this function does not override the
-        # default behavior that builds the encoder (here for the
-        # Q function) from the encoder_config.
+        base encoder, i.e. this function does not override the
+        default behavior that builds the encoder (here for the
+        Q function) from the encoder_config.
 
         Args:
             framework: The framework to use. Either `torch` or `tf2`.
@@ -120,20 +109,22 @@ class SACCatalog(Catalog):
         """
         # Get action_distribution_cls to find out about the output dimension for pi_head
         action_distribution_cls = self.get_action_dist_cls(framework=framework)
-        if self._model_config_dict["free_log_std"]:
-            _check_if_diag_gaussian(
-                action_distribution_cls=action_distribution_cls, framework=framework
-            )
+        # TODO (simon): Implement continuous case later, when discrete case learns.
+        # if self._model_config_dict["free_log_std"]:
+        #     _check_if_diag_gaussian(
+        #         action_distribution_cls=action_distribution_cls, framework=framework
+        #     )
         required_output_dim = action_distribution_cls.required_input_dim(
             space=self.action_space, model_config=self._model_config_dict
         )
         # Now that we have the action dist class and number of outputs, we can define
         # our pi-config and build the pi head.
-        pi_head_config_class = (
-            FreeLogStdMLPHeadConfig
-            if self._model_config_dict["free_log_std"]
-            else MLPHeadConfig
-        )
+        pi_head_config_class = MLPHeadConfig
+        # TODO (simon): Implement the continuous case later, when the discrete one learns.
+        #     FreeLogStdMLPHeadConfig
+        #     if self._model_config_dict["free_log_std"]
+        #     else MLPHeadConfig
+        # )
         self.pi_head_config = pi_head_config_class(
             input_dims=self.latent_dims,
             hidden_layer_dims=self.pi_and_vf_head_hiddens,
