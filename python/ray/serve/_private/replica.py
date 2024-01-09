@@ -878,6 +878,14 @@ class UserCallableWrapper:
         is_asgi_app: bool,
         asgi_args: Optional[ASGIArgs],
     ):
+        """Postprocess the result of a user method.
+
+        If this is for a streaming request, the result should be a generator that will
+        be consumed and its outputs placed on the `result_queue`.
+
+        This method may raise an exception if the result is not of the expected type
+        (e.g., non-generator for streaming requests or generator for unary requests).
+        """
         result_is_gen = inspect.isgenerator(result)
         result_is_async_gen = inspect.isasyncgen(result)
         if request_metadata.is_streaming:
