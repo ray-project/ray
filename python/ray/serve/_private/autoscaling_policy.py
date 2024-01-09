@@ -157,22 +157,3 @@ class AutoscalingPolicyManager:
             target_capacity, target_capacity_direction
         )
         return max(lower_bound, min(upper_bound, curr_target_num_replicas))
-
-    def is_within_bounds(
-        self,
-        num_replicas_running_at_target_version: int,
-        target_capacity: float,
-        target_capacity_direction: TargetCapacityDirection,
-    ) -> bool:
-        assert self.config is not None
-
-        lower_bound = self.get_current_lower_bound(
-            target_capacity,
-            target_capacity_direction,
-        )
-        upper_bound = get_capacity_adjusted_num_replicas(
-            self.config.max_replicas,
-            target_capacity,
-        )
-
-        return lower_bound <= num_replicas_running_at_target_version <= upper_bound

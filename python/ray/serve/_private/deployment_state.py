@@ -1647,11 +1647,15 @@ class DeploymentState:
             states=[ReplicaState.RUNNING], version=target_version
         )
 
-        return self.autoscaling_policy_manager.is_within_bounds(
-            num_replicas_running_at_target_version,
-            self._target_state.info.target_capacity,
-            self._target_state.info.target_capacity_direction,
-        )
+        assert self.autoscaling_policy_manager is not None
+
+        return (
+            self.autoscaling_policy_manager.apply_bounds(
+                num_replicas_running_at_target_version,
+                self._target_state.info.target_capacity,
+                self._target_state.info.target_capacity_direction,
+            )
+            == num_replicas_running_at_target_version
 
     def delete(self) -> None:
         if not self._target_state.deleting:

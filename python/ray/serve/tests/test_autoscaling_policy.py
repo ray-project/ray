@@ -180,6 +180,7 @@ class TestGetDecisionNumReplicas:
             current_num_ongoing_requests=[],
             curr_target_num_replicas=0,
             current_handle_queued_queries=1,
+            _skip_bound_check=True,
         )
 
         # 1 * 10
@@ -191,6 +192,7 @@ class TestGetDecisionNumReplicas:
             current_num_ongoing_requests=[],
             curr_target_num_replicas=0,
             current_handle_queued_queries=1,
+            _skip_bound_check=True,
         )
 
         # math.ceil(1 * 0.5)
