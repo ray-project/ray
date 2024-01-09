@@ -253,6 +253,8 @@ class Learner:
 
         # The actual MARLModule used by this Learner.
         self._module: Optional[MultiAgentRLModule] = None
+        # Our Learner connector pipeline.
+        self._learner_connector: Optional[LearnerConnectorPipeline] = None
         # These are set for properly applying optimizers and adding or removing modules.
         self._optimizer_parameters: Dict[Optimizer, List[ParamRef]] = {}
         self._named_optimizers: Dict[str, Optimizer] = {}
@@ -270,6 +272,37 @@ class Learner:
         # `Learner.update()`. These metrics will be "compiled" automatically into
         # the final results dict in the `self.compile_update_results()` method.
         self._metrics = defaultdict(dict)
+
+    @OverrideToImplementCustomLogic_CallToSuperRecommended
+    def build(self) -> None:
+        """Builds the Learner.
+
+        This method should be called before the learner is used. It is responsible for
+        setting up the RLModule, optimizers, and (optionally) their lr-schedulers.
+        """
+        if self._is_built:
+            logger.debug("Learner already built. Skipping build.")
+            return
+
+        # Build learner connector pipeline used on this Learner worker.
+        # TODO (sven): Support multi-agent.
+        module_spec = self._module_spec.module_specs["default_policy"]
+        self._learner_connector = self.config.build_learner_connector(
+            input_observation_space=module_spec.observation_space,
+            input_action_space=module_spec.action_space,
+        )
+        # Adjust module spec based on connector's (possibly transformed) spaces.
+        module_spec.observation_space = self._learner_connector.observation_space
+        module_spec.action_space = self._learner_connector.action_space
+
+        # Build the module to be trained by this learner.
+        self._module = self._make_module()
+
+        # Configure, construct, and register all optimizers needed to train
+        # `self.module`.
+        self.configure_optimizers()
+
+        self._is_built = True
 
     @property
     def distributed(self) -> bool:
@@ -822,25 +855,6 @@ class Learner:
 
         self.module.remove_module(module_id)
 
-    @OverrideToImplementCustomLogic_CallToSuperRecommended
-    def build(self) -> None:
-        """Builds the Learner.
-
-        This method should be called before the learner is used. It is responsible for
-        setting up the RLModule, optimizers, and (optionally) their lr-schedulers.
-        """
-        if self._is_built:
-            logger.debug("Learner already built. Skipping build.")
-            return
-        self._is_built = True
-
-        # Build the module to be trained by this learner.
-        self._module = self._make_module()
-
-        # Configure, construct, and register all optimizers needed to train
-        # `self.module`.
-        self.configure_optimizers()
-
     @OverrideToImplementCustomLogic
     def compute_loss(
         self,
@@ -1142,6 +1156,25 @@ class Learner:
             # We must do at least one pass on the batch for training.
             raise ValueError("`num_iters` must be >= 1")
 
+        # Call the train data preprocessor.
+        batch, episodes = self._preprocess_train_data(batch=batch, episodes=episodes)
+
+        # Call the learner connector.
+        batch = self._learner_connector(
+            rl_module=self.module["default_policy"],  # TODO: make multi-agent capable
+            data=batch,
+            episodes=episodes,
+            # persistent_data=None, # TODO
+        )
+
+        # TODO (sven): Thus far, processing from episodes and the learner connector are
+        #  solely single-agent.
+        if episodes is not None:
+            batch = MultiAgentBatch(
+                policy_batches={DEFAULT_POLICY_ID: SampleBatch(batch)},
+                env_steps=sum(len(e) for e in episodes),
+            )
+
         if minibatch_size:
             batch_iter = MiniBatchCyclicIterator
         elif num_iters > 1:
@@ -1180,7 +1213,7 @@ class Learner:
                 metrics_per_module=defaultdict(dict, **metrics_per_module),
             )
             self._check_result(result)
-            # TODO (sven): Figure out whether `compile_metrics` should be forced
+            # TODO (sven): Figure out whether `compile_results` should be forced
             #  to return all numpy/python data, then we can skip this conversion
             #  step here.
             results.append(convert_to_numpy(result))
@@ -1200,6 +1233,34 @@ class Learner:
         # Pass list of results dicts through `reduce_fn` and return a single results
         # dict.
         return reduce_fn(results)
+
+    @OverrideToImplementCustomLogic
+    def _preprocess_train_data(self, *, batch, episodes) -> Tuple[Any, Any]:
+        """Allows custom preprocessing of batch/episode data before the actual update.
+
+        The higher level order, in which this method is called from within
+        `Learner.update(batch, episodes)` is:
+        * _preprocess_train_data(batch, episodes)
+        * _learner_connector(batch, episodes)
+        * _update_from_batch(batch)
+
+        The default implementation does not do any processing and is a mere pass
+        through. However, specific algorithms should override this method to implement
+        their specific training data preprocessing needs. It is possible to perform
+        separate forward passes (besides the main "forward_train()" one during
+        `_update_from_batch`) in this method and custom algorithms might also want to
+        use this Learner's `self._learner_connector` to prepare the data
+        (batch/episodes) for such an extra forward call.
+
+        Args:
+            batch: A data batch to preprocess.
+            episodes: A list of episodes to preprocess.
+
+        Returns:
+            A tuple consisting of the processed `batch` and the processed list of
+            `episodes`.
+        """
+        return batch, episodes
 
     @OverrideToImplementCustomLogic
     @abc.abstractmethod

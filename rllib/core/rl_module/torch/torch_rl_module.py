@@ -2,6 +2,7 @@ import pathlib
 from typing import Any, List, Mapping, Tuple, Union, Type
 
 from packaging import version
+import tree  # pip install dm_tree
 
 from ray.rllib.core.rl_module import RLModule
 from ray.rllib.core.rl_module.rl_module_with_target_networks_interface import (
@@ -91,6 +92,11 @@ class TorchRLModule(nn.Module, RLModule):
         be implemented for backpropagation to work.
         """
         return self.forward_train(batch, **kwargs)
+
+    @override(RLModule)
+    def forward_exploration(self, batch, **kwargs) -> Mapping[str, Any]:
+        batch = tree.map_structure(lambda s: torch.from_numpy(s), batch)
+        return self._forward_exploration(batch, **kwargs)
 
     def compile(self, compile_config: TorchCompileConfig):
         """Compile the forward methods of this module.

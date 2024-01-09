@@ -40,22 +40,7 @@ class PPOTfRLModule(TfRLModule, PPORLModule):
         the policy distribution to be used for computing KL divergence between the old
         policy and the new policy during training.
         """
-        output = {}
-
-        # Shared encoder
-        encoder_outs = self.encoder(batch)
-        if STATE_OUT in encoder_outs:
-            output[STATE_OUT] = encoder_outs[STATE_OUT]
-
-        # Value head
-        vf_out = self.vf(encoder_outs[ENCODER_OUT][CRITIC])
-        output[SampleBatch.VF_PREDS] = tf.squeeze(vf_out, axis=-1)
-
-        # Policy head
-        action_logits = self.pi(encoder_outs[ENCODER_OUT][ACTOR])
-        output[SampleBatch.ACTION_DIST_INPUTS] = action_logits
-
-        return output
+        return self._forward_inference(batch=batch)
 
     @override(TfRLModule)
     def _forward_train(self, batch: NestedDict):
