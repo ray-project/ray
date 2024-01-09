@@ -96,7 +96,7 @@ def replica_queue_length_autoscaling_policy(
     config: Optional[AutoscalingConfig],
     capacity_adjusted_min_replicas: int,
     capacity_adjusted_max_replicas: int,
-    policy_states: Dict[str, Any],
+    policy_state: Dict[str, Any],
 ) -> int:
     """The default autoscaling policy based on basic thresholds for scaling.
     There is a minimum threshold for the average queue length in the cluster
@@ -107,7 +107,7 @@ def replica_queue_length_autoscaling_policy(
     `get_decision_num_replicas` is called once every CONTROL_LOOP_PERIOD_S
     seconds.
     """
-    decision_counter = policy_states.get("decision_counter", 0)
+    decision_counter = policy_state.get("decision_counter", 0)
     if len(current_num_ongoing_requests) == 0:
         # When 0 replicas and queries are queued, scale up the replicas
         if current_handle_queued_queries > 0:
@@ -158,7 +158,7 @@ def replica_queue_length_autoscaling_policy(
     else:
         decision_counter = 0
 
-    policy_states["decision_counter"] = decision_counter
+    policy_state["decision_counter"] = decision_counter
     return decision_num_replicas
 
 

@@ -15,7 +15,7 @@ class AutoscalingPolicyManager:
     def __init__(self, config: Optional[AutoscalingConfig]):
         self.config = config
         self.policy = None
-        self.policy_states = {}
+        self.policy_state = {}
         self._create_policy()
 
     def _create_policy(self):
@@ -57,7 +57,7 @@ class AutoscalingPolicyManager:
             config=self.config,
             capacity_adjusted_min_replicas=capacity_adjusted_min_replicas,
             capacity_adjusted_max_replicas=capacity_adjusted_max_replicas,
-            policy_states=self.policy_states,
+            policy_state=self.policy_state,
         )
 
         if _skip_bound_check:
