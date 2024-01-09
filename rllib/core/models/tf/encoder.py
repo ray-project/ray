@@ -363,7 +363,7 @@ class TfLSTMEncoder(TfModel, Encoder):
                 bias_initializer=(
                     lstm_bias_initializer(**config.hidden_bias_initializer_config)
                     if config.hidden_bias_initializer_config
-                    else lstm_bias_initializer
+                    else "zeros"
                 ),
                 return_sequences=True,
                 return_state=True,

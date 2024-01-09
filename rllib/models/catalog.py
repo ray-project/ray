@@ -226,9 +226,10 @@ MODEL_DEFAULTS: ModelConfigDict = {
     # https://www.tensorflow.org/api_docs/python/tf/keras/initializers for `tf2`.
     # Note, if `None`, the default initializer defined by `torch` or `tf2` is used.
     "lstm_bias_initializer": None,
-    # Initializer configuration for LSTM weights.
+    # Initializer configuration for LSTM bias.
     # This configuration is passed to the initializer defined in
     # `lstm_bias_initializer`.
+    "lstm_bias_initializer_config": None,
     # Whether the LSTM is time-major (TxBx..) or batch-major (BxTx..).
     "_time_major": False,
 
