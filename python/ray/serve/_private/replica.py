@@ -499,7 +499,6 @@ class ReplicaActor:
                     request_args[0], StreamingHTTPRequest
                 )
                 receiver = ASGIReceiveProxy(
-                    self._event_loop,
                     request_metadata.request_id,
                     request_args[0].http_proxy_handle,
                 )
@@ -849,12 +848,13 @@ class UserCallableWrapper:
             extra={"log_to_stderr": False, "serve_access_log": True},
         )
 
+        is_asgi_app = isinstance(self._callable, ASGIAppReplicaWrapper)
         if request_metadata.is_http_request:
             # For HTTP requests we always expect (scope, receive, send) as args.
             assert len(request_args) == 3
             scope, receive, send = request_args
 
-            if isinstance(self._callable, ASGIAppReplicaWrapper):
+            if is_asgi_app:
                 request_args = (scope, receive, send)
             else:
                 request_args = (Request(scope, receive, send),)
@@ -892,7 +892,7 @@ class UserCallableWrapper:
                         if request_metadata.is_grpc_request:
                             r = (request_metadata.grpc_context, r.SerializeToString())
                         await result_queue(r)
-                else:
+                elif not request_metadata.is_http_request:
                     raise TypeError(
                         f"Called method '{runner_method.__name__}' with "
                         "`handle.options(stream=True)` but it did not return a "
@@ -923,9 +923,7 @@ class UserCallableWrapper:
 
             raise e from None
 
-        if request_metadata.is_http_request and not isinstance(
-            self._callable, ASGIAppReplicaWrapper
-        ):
+        if request_metadata.is_http_request and not is_asgi_app:
             # For the FastAPI codepath, the response has already been sent over the
             # ASGI interface, but for the vanilla deployment codepath we need to
             # send it.

@@ -153,11 +153,11 @@ class ASGIMessageQueue(Send):
         self._closed = True
         self._new_message_event.set()
 
-    async def _put_message(self, message: Message):
+    def _put_message(self, message: Message):
         if self._closed:
             raise RuntimeError("New messages cannot be sent after the queue is closed.")
 
-        await self._message_queue.put(message)
+        self._message_queue.put_nowait(message)
         self._new_message_event.set()
 
     async def __call__(self, message: Message):
@@ -167,13 +167,12 @@ class ASGIMessageQueue(Send):
 
         `RuntimeError` is raised if the queue has been closed using `.close()`.
         """
-        coro = self._put_message(message)
         if self._write_thread_safe:
-            await asyncio.wrap_future(
-                asyncio.run_coroutine_threadsafe(coro, self._loop)
-            )
+            # await asyncio.wrap_future(
+            self._loop.call_soon_threadsafe(self._put_message, message)
+            # )
         else:
-            await coro
+            self._put_message(message)
 
     def get_messages_nowait(self) -> List[Message]:
         """Returns all messages that are currently available (non-blocking).
@@ -212,11 +211,9 @@ class ASGIReceiveProxy:
 
     def __init__(
         self,
-        loop: asyncio.AbstractEventLoop,
         request_id: str,
         actor_handle: ActorHandle,
     ):
-        self._loop = loop
         self._queue = asyncio.Queue()
         self._request_id = request_id
         self._actor_handle = actor_handle
@@ -247,25 +244,15 @@ class ASGIReceiveProxy:
                 self._queue.put_nowait(e)
                 return
 
-    async def _get_next_message(self) -> Message:
-        if self._queue.empty() and self._disconnect_message is not None:
-            return self._disconnect_message
-
-        return await self._queue.get()
-
     async def __call__(self) -> Message:
         """Return the next message once available.
 
         This will repeatedly return a disconnect message once it's been received.
-
-        XXX: THREAD SAFE!!!
         """
-        message = await asyncio.wrap_future(
-            asyncio.run_coroutine_threadsafe(
-                self._get_next_message(),
-                self._loop,
-            )
-        )
+        if self._queue.empty() and self._disconnect_message is not None:
+            return self._disconnect_message
+
+        message = self._queue.get()
         if isinstance(message, Exception):
             raise message
 
