@@ -204,7 +204,7 @@ class TestDeploymentHandleStreaming:
 
                 gen = h.unary.remote(0)
                 with pytest.raises(
-                    TypeError, match=match=r"'unary' .* but it did not return a generator",
+                    TypeError, match=r"'unary' .* but it did not return a generator",
                 ):
                     await gen.__anext__()
 
