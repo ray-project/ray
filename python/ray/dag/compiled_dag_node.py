@@ -19,7 +19,7 @@ logger = logging.getLogger(__name__)
 
 @DeveloperAPI
 def make_torch_channel(
-    self, buffer_size_bytes: int, reader_rank: int, writer_rank: int
+    self, buffer_size_bytes: int, reader_ranks: int, writer_rank: int
 ) -> TorchChannel:
     """Generic actor method to allocate an output channel.
 
@@ -30,7 +30,7 @@ def make_torch_channel(
     Returns:
         The allocated channel.
     """
-    self._output_channel = TorchChannel(buffer_size_bytes, reader_rank, writer_rank)
+    self._output_channel = TorchChannel(buffer_size_bytes, reader_ranks, writer_rank)
     return self._output_channel
 
 
@@ -336,29 +336,36 @@ class CompiledDAG:
             visited.add(cur_idx)
 
             task = self.idx_to_task[cur_idx]
-            # TODO: use broadcast to implement multi read
-            assert len(task.downstream_node_idxs) <= 1, task.downstream_node_idxs
             # Create an output buffer on the actor.
             if isinstance(task.dag_node, ClassMethodNode):
                 fn = task.dag_node._get_remote_method("__ray_call__")
-                output_idx = list(task.downstream_node_idxs)[0]
-                if isinstance(self.idx_to_task[output_idx].dag_node, MultiOutputNode):
-                    output_idx = self.input_task_idx
+                output_indices = []
+                for idx in task.downstream_node_idxs:
+                    if isinstance(self.idx_to_task[idx].dag_node, MultiOutputNode):
+                        output_indices.append(self.input_task_idx)
+                    else:
+                        output_indices.append(idx)
                 task.output_channel = ray.get(
                     fn.remote(
                         make_torch_channel,
                         buffer_size_bytes=self._buffer_size_bytes,
-                        reader_rank=output_idx,
+                        reader_ranks=output_indices,
                         writer_rank=task.idx,
                     )
                 )
                 self.actor_refs.add(task.dag_node._get_actor_handle())
                 self.actor_ranks[task.dag_node._get_actor_handle()] = task.idx
             elif isinstance(task.dag_node, InputNode):
+                if len(task.downstream_node_idxs) > 1:
+                    # TODO this assumes we send to all actors
+                    strategy = "broadcast"
+                else:
+                    strategy = "isend"
                 task.output_channel = TorchChannel(
                     buffer_size_bytes=self._buffer_size_bytes,
-                    reader_rank=list(task.downstream_node_idxs)[0],
+                    reader_ranks=list(task.downstream_node_idxs),
                     writer_rank=self.input_task_idx,
+                    strategy=strategy,
                 )
             else:
                 assert isinstance(task.dag_node, MultiOutputNode)
