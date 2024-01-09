@@ -1,5 +1,6 @@
 import enum
 import os
+import platform
 import json
 import time
 from typing import Optional, List, Dict
@@ -66,6 +67,20 @@ class TestResult:
         )
 
     @classmethod
+    def from_bazel_event(cls, event: dict):
+        return cls.from_result(
+            Result(
+                status=ResultStatus.SUCCESS.value
+                if event["testResult"]["status"] == "PASSED"
+                else ResultStatus.ERROR.value,
+                buildkite_url=(
+                    f"{os.environ.get('BUILDKITE_BUILD_URL')}"
+                    f"#{os.environ.get('BUILDKITE_JOB_ID')}"
+                ),
+            )
+        )
+
+    @classmethod
     def from_dict(cls, result: dict):
         return cls(
             status=result["status"],
@@ -91,6 +106,18 @@ class Test(dict):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.test_results = None
+
+    @classmethod
+    def from_bazel_event(cls, event: dict, team: str):
+        bazel_rule = event["id"]["testResult"]["label"]
+        prefix = bazel_rule.replace("//", "").replace("/", "_").replace(":", "_")
+        suffix = platform.system().lower()
+        return cls(
+            {
+                "name": f"{prefix}.{suffix}",
+                "team": team,
+            }
+        )
 
     def is_jailed_with_open_issue(self, ray_github: Repository) -> bool:
         """

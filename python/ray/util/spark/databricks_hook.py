@@ -166,7 +166,7 @@ class DefaultDatabricksRayOnSparkStartHook(RayOnSparkStartHook):
 
     def on_spark_job_created(self, job_group_id):
         db_api_entry = get_db_entry_point()
-        db_api_entry.registerBackgroundSparkJobGroup("job_group_id")
+        db_api_entry.registerBackgroundSparkJobGroup(job_group_id)
 
     def custom_environment_variables(self):
         """Hardcode `GLOO_SOCKET_IFNAME` to `eth0` for Databricks runtime.
