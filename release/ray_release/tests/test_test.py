@@ -12,6 +12,7 @@ from ray_release.configs.global_config import (
 )
 from ray_release.test import (
     Test,
+    TestResult,
     _convert_env_list_to_dict,
     DATAPLANE_ECR_REPO,
     DATAPLANE_ECR_ML_REPO,
@@ -153,6 +154,32 @@ def test_is_stable() -> None:
     assert Test().is_stable()
     assert Test(stable=True).is_stable()
     assert not Test(stable=False).is_stable()
+
+
+def test_result_from_bazel_event() -> None:
+    result = TestResult.from_bazel_event(
+        {
+            "testResult": {"status": "PASSED"},
+        }
+    )
+    assert result.is_passing()
+    result = TestResult.from_bazel_event(
+        {
+            "testResult": {"status": "FAILED"},
+        }
+    )
+    assert result.is_failing()
+
+
+def test_from_bazel_event() -> None:
+    test = Test.from_bazel_event(
+        {
+            "id": {"testResult": {"label": "//ray/ci:test"}},
+        },
+        "ci",
+    )
+    assert test.get_name() == "ray_ci_test.linux"
+    assert test.get_oncall() == "ci"
 
 
 if __name__ == "__main__":
