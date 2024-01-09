@@ -1,4 +1,4 @@
-deepspeed
+deepspeed==0.12.3
 fairscale
 transformers>=4.31.0
 dataset
@@ -10,4 +10,4 @@ protobuf<3.21.0
 torchmetrics
 sentencepiece
 peft==0.7.0
-flash-attn --global-option="--no-build-isolation"
+flash-attn==2.4.2 --global-option="--no-build-isolation"
