@@ -453,15 +453,18 @@ class ReplicaActor:
                     [call_user_method_task, wait_for_message_task],
                     return_when=asyncio.FIRST_COMPLETED,
                 )
+
                 # Consume and yield all available messages in the queue.
-                # The messages are batched into a list to avoid unnecessary RPCs and
-                # we use vanilla pickle because it's faster than cloudpickle and we
-                # know it's safe for these messages containing primitive types.
-                if request_metadata.is_http_request:
-                    yield pickle.dumps(result_queue.get_messages_nowait())
-                else:
-                    for msg in result_queue.get_messages_nowait():
-                        yield msg
+                messages = result_queue.get_messages_nowait()
+                if messages:
+                    # The messages are batched into a list to avoid unnecessary RPCs and
+                    # we use vanilla pickle because it's faster than cloudpickle and we
+                    # know it's safe for these messages containing primitive types.
+                    if request_metadata.is_http_request:
+                        yield pickle.dumps(messages)
+                    else:
+                        for msg in messages:
+                            yield msg
 
                 # Exit once `call_user_method` has finished. In this case, all
                 # messages must have already been sent.
@@ -890,14 +893,16 @@ class UserCallableWrapper:
                         if request_metadata.is_grpc_request:
                             r = (request_metadata.grpc_context, r.SerializeToString())
                         await result_queue(r)
+                elif request_metadata.is_http_request and not is_asgi_app:
+                    # For the FastAPI codepath, the response has already been sent over
+                    # ASGI, but for the vanilla deployment codepath we need to send it.
+                    await self._send_user_result_over_asgi(result, scope, receive, send)
                 elif not request_metadata.is_http_request:
                     raise TypeError(
                         f"Called method '{runner_method.__name__}' with "
                         "`handle.options(stream=True)` but it did not return a "
                         "generator."
                     )
-
-                result = None
             else:
                 if result_is_gen or result_is_async_gen:
                     raise TypeError(
@@ -920,12 +925,6 @@ class UserCallableWrapper:
                 await self._send_user_result_over_asgi(result, scope, receive, send)
 
             raise e from None
-
-        if request_metadata.is_http_request and not is_asgi_app:
-            # For the FastAPI codepath, the response has already been sent over the
-            # ASGI interface, but for the vanilla deployment codepath we need to
-            # send it.
-            await self._send_user_result_over_asgi(result, scope, receive, send)
 
         return result
 
