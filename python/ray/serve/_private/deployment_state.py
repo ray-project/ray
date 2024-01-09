@@ -1656,6 +1656,7 @@ class DeploymentState:
                 self._target_state.info.target_capacity_direction,
             )
             == num_replicas_running_at_target_version
+        )
 
     def delete(self) -> None:
         if not self._target_state.deleting:
