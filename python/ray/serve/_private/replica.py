@@ -16,7 +16,6 @@ from starlette.types import Receive, Scope, Send
 
 import ray
 from ray import cloudpickle
-from ray._private.async_compat import sync_to_async
 from ray._private.utils import get_or_create_event_loop
 from ray.actor import ActorClass
 from ray.remote_function import RemoteFunction
@@ -723,7 +722,6 @@ class UserCallableWrapper:
 
         # Will be populated in `initialize_callable`.
         self._callable = None
-        self._user_health_check = None
 
     def _get_user_callable_method(self, method_name: str) -> Callable:
         if self._is_function:
@@ -762,6 +760,14 @@ class UserCallableWrapper:
         else:
             await Response(result).send(scope, receive, send)
 
+    async def _call_func_or_gen(self, callable: Callable, *args, **kwargs) -> Any:
+        """XXX: TODO"""
+        result = callable(*args, **kwargs)
+        if inspect.iscoroutine(result):
+            result = await result
+
+        return result
+
     @property
     def user_callable(self) -> Optional[Callable]:
         return self._callable
@@ -786,20 +792,14 @@ class UserCallableWrapper:
             # This allows deployments to define an async __init__
             # method (mostly used for testing).
             self._callable = self._deployment_def.__new__(self._deployment_def)
-            await sync_to_async(self._callable.__init__)(
-                *self._init_args, **self._init_kwargs
+            await self._call_func_or_gen(
+                self._callable.__init__,
+                *self._init_args,
+                **self._init_kwargs,
             )
 
             if isinstance(self._callable, ASGIAppReplicaWrapper):
                 await self._callable._run_asgi_lifespan_startup()
-
-        user_health_check = getattr(self._callable, HEALTH_CHECK_METHOD, None)
-        if not callable(user_health_check):
-
-            def user_health_check():
-                pass
-
-        self._user_health_check = sync_to_async(user_health_check)
 
         logger.info(
             "Finished initializing replica.",
@@ -807,7 +807,9 @@ class UserCallableWrapper:
         )
 
     async def call_user_health_check(self):
-        await self._user_health_check()
+        user_health_check = getattr(self._callable, HEALTH_CHECK_METHOD, None)
+        if callable(user_health_check):
+            await self._call_func_or_gen(user_health_check)
 
     async def call_reconfigure(self, user_config: Any):
         async with self._rwlock.writer:
@@ -824,10 +826,10 @@ class UserCallableWrapper:
                         + RECONFIGURE_METHOD
                         + " method"
                     )
-                reconfigure_method = sync_to_async(
-                    getattr(self._callable, RECONFIGURE_METHOD)
+                await self._call_func_or_gen(
+                    getattr(self._callable, RECONFIGURE_METHOD),
+                    user_config,
                 )
-                await reconfigure_method(user_config)
 
     async def call_user_method(
         self,
@@ -874,41 +876,35 @@ class UserCallableWrapper:
             elif request_metadata.is_grpc_request and GRPC_CONTEXT_ARG_NAME in params:
                 request_kwargs = {GRPC_CONTEXT_ARG_NAME: request_metadata.grpc_context}
 
-            if inspect.isgeneratorfunction(runner_method):
-                if not request_metadata.is_streaming:
+            result = await self._call_func_or_gen(
+                runner_method, *request_args, **request_kwargs
+            )
+            result_is_gen = inspect.isgenerator(result)
+            result_is_async_gen = inspect.isasyncgen(result)
+            if request_metadata.is_streaming:
+                if result_is_gen:
+                    for r in result:
+                        if request_metadata.is_grpc_request:
+                            r = (request_metadata.grpc_context, r.SerializeToString())
+                        await result_queue(r)
+                elif result_is_async_gen:
+                    async for r in result:
+                        if request_metadata.is_grpc_request:
+                            r = (request_metadata.grpc_context, r.SerializeToString())
+                        await result_queue(r)
+                else:
                     raise TypeError(
-                        f"Method '{runner_method.__name__}' is a generator function. "
-                        "You must use `handle.options(stream=True)` to call "
-                        "generators on a deployment."
+                        f"Called method '{runner_method.__name__}' with "
+                        "`handle.options(stream=True)` but it did not return a "
+                        "generator."
                     )
 
-                assert result_queue is not None
-                for r in runner_method(*request_args, **request_kwargs):
-                    if request_metadata.is_grpc_request:
-                        r = (request_metadata.grpc_context, r.SerializeToString())
-                    await result_queue(r)
-
-            elif inspect.isasyncgenfunction(runner_method):
-                if not request_metadata.is_streaming:
-                    raise TypeError(
-                        f"Method '{runner_method.__name__}' is a generator function. "
-                        "You must use `handle.options(stream=True)` to call "
-                        "generators on a deployment."
-                    )
-
-                assert result_queue is not None
-                async for r in runner_method(*request_args, **request_kwargs):
-                    if request_metadata.is_grpc_request:
-                        r = (request_metadata.grpc_context, r.SerializeToString())
-                    await result_queue(r)
+                result = None
             else:
-                result = await sync_to_async(runner_method)(
-                    *request_args, **request_kwargs
-                )
-                if inspect.isgenerator(result) or inspect.isasyncgen(result):
+                if result_is_gen or result_is_async_gen:
                     raise TypeError(
-                        f"Method '{runner_method.__name__}' returned a generator. You "
-                        "must use `handle.options(stream=True)` to call "
+                        f"Method '{runner_method.__name__}' returned a generator. "
+                        "You must use `handle.options(stream=True)` to call "
                         "generators on a deployment."
                     )
                 if request_metadata.is_grpc_request:
@@ -950,7 +946,7 @@ class UserCallableWrapper:
             try:
                 if hasattr(self._callable, "__del__"):
                     # Make sure to accept `async def __del__(self)` as well.
-                    await sync_to_async(self._callable.__del__)()
+                    await self._call_func_or_gen(self._callable.__del__)
                     setattr(self._callable, "__del__", lambda _: None)
 
                 if hasattr(self._callable, "__serve_multiplex_wrapper"):
