@@ -36,7 +36,8 @@ class SACTfLearner(TfLearner):
 
         log_pis_tp1 = tf.nn.log_softmax(fwd_out["action_dist_inputs_next"], -1)
         pis_tp1 = tf.math.exp(log_pis_tp1)
-        # TODO (simon): Add comment with reference.
+        # This is actually the state function V(s_tp1). See eq. (2) in 
+        # Christodoulou (2019).
         q_tp1 = fwd_out["qf_preds_next"] - config["alpha"] * log_pis_tp1
 
         one_hot_actions = tf.one_hot(batch[SampleBatch.ACTIONS], axis=-1)
