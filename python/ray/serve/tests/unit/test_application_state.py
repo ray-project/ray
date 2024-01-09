@@ -911,9 +911,9 @@ class TestOverrideDeploymentInfo:
         updated_info = updated_infos["A"]
         assert updated_info.route_prefix == "/"
         assert updated_info.version == "123"
-        assert updated_info.autoscaling_policy.config.min_replicas == 1
-        assert updated_info.autoscaling_policy.config.initial_replicas == 12
-        assert updated_info.autoscaling_policy.config.max_replicas == 79
+        assert updated_info.autoscaling_policy_manager.config.min_replicas == 1
+        assert updated_info.autoscaling_policy_manager.config.initial_replicas == 12
+        assert updated_info.autoscaling_policy_manager.config.max_replicas == 79
 
     def test_override_route_prefix_1(self, info):
         config = ServeApplicationSchema(

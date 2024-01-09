@@ -265,4 +265,4 @@ RAY_SERVE_MAX_QUEUE_LENGTH_RESPONSE_DEADLINE_S = float(
 )
 
 # The default autoscaling policy to use if none is specified.
-DEFAULT_AUTOSCALING_POLICY = "ray.serve.autoscaling_policy:DefaultAutoscalingPolicy"
+DEFAULT_AUTOSCALING_POLICY = "ray.serve.autoscaling_policy:default_autoscaling_policy"
