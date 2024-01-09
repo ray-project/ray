@@ -41,7 +41,6 @@ export const NodeGPUEntry: React.FC<NodeGPUEntryProps> = ({ gpu, slot }) => {
   );
 };
 
-
 export const NodeGPUView = ({ node }: { node: NodeDetail }) => {
   const classes = useStyles();
   return (
