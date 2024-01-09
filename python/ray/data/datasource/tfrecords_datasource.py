@@ -1,16 +1,18 @@
 import struct
 from typing import TYPE_CHECKING, Dict, Iterable, Iterator, List, Optional, Union
 
-import numpy as np
-
+from ray.data.aggregate import AggregateFn
 from ray.data.block import Block
 from ray.data.datasource.file_based_datasource import FileBasedDatasource
 from ray.util.annotations import PublicAPI
 
 if TYPE_CHECKING:
+    import pandas as pd
     import pyarrow
     import tensorflow as tf
     from tensorflow_metadata.proto.v0 import schema_pb2
+
+    from ray.data.dataset import Dataset
 
 
 @PublicAPI(stability="alpha")
@@ -23,13 +25,23 @@ class TFRecordDatasource(FileBasedDatasource):
         self,
         paths: Union[str, List[str]],
         tf_schema: Optional["schema_pb2.Schema"] = None,
+        fast_read: bool = False,
+        batch_size: Optional[int] = None,
         **file_based_datasource_kwargs,
     ):
         super().__init__(paths, **file_based_datasource_kwargs)
 
-        self.tf_schema = tf_schema
+        self._tf_schema = tf_schema
+        self._fast_read = fast_read
+        self._batch_size = batch_size or 2048
 
     def _read_stream(self, f: "pyarrow.NativeFile", path: str) -> Iterator[Block]:
+        if self._fast_read:
+            yield from self._fast_read_stream(f, path)
+        else:
+            yield from self._slow_read_stream(f, path)
+
+    def _slow_read_stream(self, f: "pyarrow.NativeFile", path: str) -> Iterator[Block]:
         import pyarrow as pa
         import tensorflow as tf
         from google.protobuf.message import DecodeError
@@ -46,8 +58,29 @@ class TFRecordDatasource(FileBasedDatasource):
                 )
 
             yield pa.Table.from_pydict(
-                _convert_example_to_dict(example, self.tf_schema)
+                _convert_example_to_dict(example, self._tf_schema)
             )
+
+    def _fast_read_stream(self, f: "pyarrow.NativeFile", path: str) -> Iterator[Block]:
+        import pyarrow as pa
+        import tensorflow as tf
+        from tfx_bsl.cc.tfx_bsl_extension.coders import ExamplesToRecordBatchDecoder
+
+        compression = (self._open_stream_args or {}).get("compression", None)
+
+        if compression:
+            compression = compression.upper()
+
+        tf_schema_string = (
+            self._tf_schema.SerializeToString() if self._tf_schema else None
+        )
+
+        decoder = ExamplesToRecordBatchDecoder(tf_schema_string)
+
+        for record in tf.data.TFRecordDataset(path, compression_type=compression).batch(
+            self._batch_size
+        ):
+            yield pa.Table.from_batches([decoder.DecodeBatch(record.numpy())])
 
 
 def _convert_example_to_dict(
@@ -361,6 +394,54 @@ def _read_records(
             raise RuntimeError(error_message) from e
 
 
+def unwrap_single_value_columns(dataset: "Dataset"):
+    list_sizes = dataset.aggregate(_MaxListSize(dataset.schema().names))
+
+    return dataset.map_batches(
+        _unwrap_single_value_lists,
+        fn_kwargs={"col_lengths": list_sizes["max_list_size"]},
+        batch_format="pandas",
+    )
+
+
+def _unwrap_single_value_lists(batch: "pd.DataFrame", col_lengths: Dict[str, int]):
+    for col in col_lengths:
+        if col_lengths[col] == 1:
+            batch[col] = batch[col].str[0]
+
+    return batch
+
+
+class _MaxListSize(AggregateFn):
+    def __init__(self, columns: List[str]):
+        self._columns = columns
+        super().__init__(
+            init=self._init,
+            merge=self._merge,
+            accumulate_row=self._accumulate_row,
+            finalize=lambda a: a,
+            name="max_list_size",
+        )
+
+    def _init(self, k: str):
+        return {col: 0 for col in self._columns}
+
+    def _merge(self, acc1: Dict[str, int], acc2: Dict[str, int]):
+        merged = {}
+        for col in self._columns:
+            merged[col] = max(acc1[col], acc2[col])
+
+        return merged
+
+    def _accumulate_row(self, acc: Dict[str, int], row: "pd.Series"):
+        for k in row:
+            value = row[k]
+            if value:
+                acc[k] = max(len(value), acc[k])
+
+        return acc
+
+
 # Adapted from https://github.com/vahidk/tfrecord/blob/74b2d24a838081356d993ec0e147eaf59ccd4c84/tfrecord/writer.py#L57-L72  # noqa: E501
 #
 # MIT License
@@ -402,6 +483,7 @@ def _write_record(
 def _masked_crc(data: bytes) -> bytes:
     """CRC checksum."""
     import crc32c
+    import numpy as np
 
     mask = 0xA282EAD8
     crc = crc32c.crc32(data)

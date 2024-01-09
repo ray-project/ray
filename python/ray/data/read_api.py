@@ -1476,6 +1476,9 @@ def read_tfrecords(
     tf_schema: Optional["schema_pb2.Schema"] = None,
     shuffle: Union[Literal["files"], None] = None,
     file_extensions: Optional[List[str]] = None,
+    batch_size: Optional[int] = None,
+    schema_inference: bool = True,
+    force_fast_read: bool = False,
 ) -> Dataset:
     """Create a :class:`~ray.data.Dataset` from TFRecord files that contain
     `tf.train.Example <https://www.tensorflow.org/api_docs/python/tf/train/Example>`_
@@ -1550,6 +1553,12 @@ def read_tfrecords(
         shuffle: If setting to "files", randomly shuffle input files order before read.
             Defaults to not shuffle with ``None``.
         file_extensions: A list of file extensions to filter files by.
+        batch_size: An int representing the number of consecutive elements of this
+             dataset to combine in a single batch when fast_read is used.
+        schema_inference: Toggles the schema inference applied; applicable only if
+            tf_schema argument is missing. Defaults to True.
+        force_fast_read: Forces the fast read, failing if the proper dependencies
+            are not installed.
 
     Returns:
         A :class:`~ray.data.Dataset` that contains the example features.
@@ -1557,6 +1566,39 @@ def read_tfrecords(
     Raises:
         ValueError: If a file contains a message that isn't a ``tf.train.Example``.
     """
+    import platform
+
+    fast_read = False
+
+    try:
+        from tfx_bsl.cc.tfx_bsl_extension.coders import (  # noqa: F401
+            ExamplesToRecordBatchDecoder,
+        )
+
+        fast_read = force_fast_read
+    except ModuleNotFoundError:
+        if platform.processor() == "arm":
+            logger.warning(
+                "This function depends on tfx-bsl which is currently not supported"
+                " on devices with Apple silicon (e.g. M1) and requires an"
+                " environment with x86 CPU architecture."
+            )
+        else:
+            if force_fast_read:
+                raise ModuleNotFoundError(
+                    "This function was called with `force_fast_read` but tfx-bsl is not"
+                    "installed. Please install tfx-bsl package with pip install"
+                    "tfx_bsl --no-dependencies"
+                )
+            logger.warning(
+                "To use TFRecordDatasource with large datasets, please install"
+                " tfx-bsl package with pip install tfx_bsl --no-dependencies`."
+            )
+        logger.info(
+            "Falling back to slower strategy for reading tf.records. This"
+            "reading strategy should be avoided when reading large datasets."
+        )
+
     if meta_provider is None:
         meta_provider = get_generic_metadata_provider(
             TFRecordDatasource._FILE_EXTENSIONS
@@ -1573,8 +1615,17 @@ def read_tfrecords(
         shuffle=shuffle,
         include_paths=include_paths,
         file_extensions=file_extensions,
+        fast_read=fast_read,
+        batch_size=batch_size,
     )
-    return read_datasource(datasource, parallelism=parallelism)
+    ds = read_datasource(datasource, parallelism=parallelism)
+
+    if schema_inference and fast_read and not tf_schema:
+        from ray.data.datasource.tfrecords_datasource import unwrap_single_value_columns
+
+        return unwrap_single_value_columns(ds)
+
+    return ds
 
 
 @PublicAPI(stability="alpha")

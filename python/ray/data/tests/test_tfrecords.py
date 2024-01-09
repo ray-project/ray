@@ -338,9 +338,13 @@ def _ds_eq_streaming(ds_expected, ds_actual) -> bool:
     assert ds_expected.take() == ds_actual.take()
 
 
-@pytest.mark.parametrize("with_tf_schema", (True, False))
+@pytest.mark.parametrize(
+    "with_tf_schema,force_fast_read",
+    [(True, True), (True, False), (False, True), (False, False)],
+)
 def test_read_tfrecords(
     with_tf_schema,
+    force_fast_read,
     ray_start_regular_shared,
     tmp_path,
 ):
@@ -357,7 +361,9 @@ def test_read_tfrecords(
     with tf.io.TFRecordWriter(path=path) as writer:
         writer.write(example.SerializeToString())
 
-    ds = ray.data.read_tfrecords(path, tf_schema=tf_schema)
+    ds = ray.data.read_tfrecords(
+        path, tf_schema=tf_schema, force_fast_read=force_fast_read
+    )
     df = ds.to_pandas()
     # Protobuf serializes features in a non-deterministic order.
     if with_tf_schema:
