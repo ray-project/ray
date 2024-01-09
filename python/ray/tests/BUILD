@@ -467,7 +467,7 @@ py_test_module_list(
   files = [
     "test_out_of_disk_space.py",
   ],
-  size = "small",
+  size = "large",
   tags = ["exclusive", "tmpfs", "team:core"],
   deps = ["//:ray_lib", ":conftest"],
 )

@@ -249,7 +249,7 @@ def test_ood_events(shutdown_only):
 
     # Give it some time for events to appear.
     # TODO(core-team): provide some way to wait for events to be flushed.
-    time.sleep(5)
+    time.sleep(2)
 
     events = list_cluster_events()
     print(events)

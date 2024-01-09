@@ -85,6 +85,17 @@ steps:
         --only-tags=tmpfs --tmp-filesystem=tmpfs
     job_env: corebuild
 
+  - label: ":ray: core: out of disk redis tests"
+    tags:
+      - python
+      - oss
+    instance_type: small
+    commands:
+      - bazel run //ci/ray_ci:test_in_docker -- //python/ray/tests/... core
+        --test-env=TEST_EXTERNAL_REDIS=1
+        --only-tags=tmpfs --tmp-filesystem=tmpfs
+    job_env: corebuild
+
   - label: ":ray: core: workflow tests"
     tags: 
       - python
