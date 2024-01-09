@@ -52,7 +52,7 @@ py_test(
 py_test(
     name = "test_profile_manager",
     size = "large",
-    srcs = ["modules/job/tests/test_http_job_server.py"],
+    srcs = ["modules/reporter/tests/test_profile_manager.py"],
     data = [
         "modules/job/tests/backwards_compatibility_scripts/test_backwards_compatibility.sh",
         "modules/job/tests/backwards_compatibility_scripts/script.py",
