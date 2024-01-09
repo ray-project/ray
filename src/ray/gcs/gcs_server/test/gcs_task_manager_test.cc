@@ -1053,10 +1053,16 @@ TEST_F(GcsTaskManagerProfileEventsLimitTest, TestProfileEventsNoLeak) {
 
   // Assert on the profile events in the buffer.
   {
-    auto reply = SyncGetTaskEvents({task});
+    auto reply = SyncGetTaskEvents({});
     EXPECT_EQ(reply.events_by_task_size(), 1);
     EXPECT_EQ(reply.events_by_task().begin()->profile_events().events().size(),
               RayConfig::instance().task_events_max_num_profile_events_per_task());
+
+    // assert on the profile events dropped counter.
+    EXPECT_EQ(reply.num_profile_task_events_dropped(),
+              100 - RayConfig::instance().task_events_max_num_profile_events_per_task());
+    EXPECT_EQ(task_manager->GetTotalNumProfileTaskEventsDropped(),
+              100 - RayConfig::instance().task_events_max_num_profile_events_per_task());
   }
 }
 
