@@ -42,11 +42,27 @@ py_test_run_all_subdirectory(
 )
 
 py_test(
-    name="test_cli_integration",
-    size="large",
+    name = "test_cli_integration",
+    size = "large",
     srcs = ["modules/job/tests/test_cli_integration.py"],
     deps = [":conftest"],
     tags = ["exclusive", "team:serve"],
+)
+
+py_test(
+    name = "test_profile_manager",
+    size = "large",
+    srcs = ["modules/job/tests/test_http_job_server.py"],
+    data = [
+        "modules/job/tests/backwards_compatibility_scripts/test_backwards_compatibility.sh",
+        "modules/job/tests/backwards_compatibility_scripts/script.py",
+        "modules/job/tests/pip_install_test-0.5-py3-none-any.whl",
+        "modules/tests/test_config_files/basic_runtime_env.yaml",
+    ] + glob([
+        "modules/job/tests/subprocess_driver_scripts/*.py",
+    ]),
+    deps = [":conftest"],
+    tags = ["exclusive", "team:serve", "memray"],
 )
 
 py_test(

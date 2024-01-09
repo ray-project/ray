@@ -166,14 +166,26 @@ steps:
     depends_on: minbuild-serve
 
   - label: ":ray-serve: serve: dashboard tests"
-    tags: 
+    tags:
       - serve
       - python
       - dashboard
     instance_type: medium
     commands:
-      - bazel run //ci/ray_ci:test_in_docker -- python/ray/dashboard/... serve 
+      - bazel run //ci/ray_ci:test_in_docker -- python/ray/dashboard/... serve
+        --except-tags memray
         --parallelism-per-worker 3
+    depends_on: servebuild
+
+  - label: ":ray-serve: serve: memray tests"
+    tags:
+      - serve
+      - python
+      - dashboard
+    instance_type: small
+    commands:
+      - bazel run //ci/ray_ci:test_in_docker -- python/ray/dashboard/... serve
+        --only-tags memray
     depends_on: servebuild
 
   - label: ":ray-serve: serve: HA integration tests"
