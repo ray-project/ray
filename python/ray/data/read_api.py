@@ -180,7 +180,7 @@ def from_items(
     return MaterializedDataset(
         ExecutionPlan(
             BlockList(blocks, metadata, owned_by_consumer=False),
-            DatasetStats(stages={"FromItems": metadata}, parent=None),
+            DatasetStats(metadata={"FromItems": metadata}, parent=None),
             run_by_consumer=False,
         ),
         logical_plan,
@@ -381,6 +381,7 @@ def read_datasource(
         datasource_or_legacy_reader,
         parallelism,
         inmemory_size,
+        block_list._estimated_num_blocks,
         ray_remote_args,
     )
 
@@ -1986,7 +1987,7 @@ def read_databricks_tables(
         query = f"select * from {table}"
 
     if query is None:
-        raise ValueError("One of 'query' and 'table_name' arguments should be set.")
+        raise ValueError("One of 'query' and 'table' arguments should be set.")
 
     datasource = DatabricksUCDatasource(
         host=host,
@@ -2159,7 +2160,7 @@ def from_pandas_refs(
         return MaterializedDataset(
             ExecutionPlan(
                 BlockList(dfs, metadata, owned_by_consumer=False),
-                DatasetStats(stages={"FromPandas": metadata}, parent=None),
+                DatasetStats(metadata={"FromPandas": metadata}, parent=None),
                 run_by_consumer=False,
             ),
             logical_plan,
@@ -2174,7 +2175,7 @@ def from_pandas_refs(
     return MaterializedDataset(
         ExecutionPlan(
             BlockList(blocks, metadata, owned_by_consumer=False),
-            DatasetStats(stages={"FromPandas": metadata}, parent=None),
+            DatasetStats(metadata={"FromPandas": metadata}, parent=None),
             run_by_consumer=False,
         ),
         logical_plan,
@@ -2261,7 +2262,7 @@ def from_numpy_refs(
     return MaterializedDataset(
         ExecutionPlan(
             BlockList(blocks, metadata, owned_by_consumer=False),
-            DatasetStats(stages={"FromNumpy": metadata}, parent=None),
+            DatasetStats(metadata={"FromNumpy": metadata}, parent=None),
             run_by_consumer=False,
         ),
         logical_plan,
@@ -2341,7 +2342,7 @@ def from_arrow_refs(
     return MaterializedDataset(
         ExecutionPlan(
             BlockList(tables, metadata, owned_by_consumer=False),
-            DatasetStats(stages={"FromArrow": metadata}, parent=None),
+            DatasetStats(metadata={"FromArrow": metadata}, parent=None),
             run_by_consumer=False,
         ),
         logical_plan,

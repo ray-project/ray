@@ -258,6 +258,15 @@ RAY_SERVE_FORCE_STOP_UNHEALTHY_REPLICAS = (
     os.environ.get("RAY_SERVE_FORCE_STOP_UNHEALTHY_REPLICAS", "0") == "1"
 )
 
+# Initial deadline for queue length responses in the router.
 RAY_SERVE_QUEUE_LENGTH_RESPONSE_DEADLINE_S = float(
     os.environ.get("RAY_SERVE_QUEUE_LENGTH_RESPONSE_DEADLINE_S", 0.1)
 )
+
+# Maximum deadline for queue length responses in the router (in backoff).
+RAY_SERVE_MAX_QUEUE_LENGTH_RESPONSE_DEADLINE_S = float(
+    os.environ.get("RAY_SERVE_MAX_QUEUE_LENGTH_RESPONSE_DEADLINE_S", 1.0)
+)
+
+# The default autoscaling policy to use if none is specified.
+DEFAULT_AUTOSCALING_POLICY = "ray.serve.autoscaling_policy:DefaultAutoscalingPolicy"
