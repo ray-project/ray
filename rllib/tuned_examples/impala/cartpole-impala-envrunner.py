@@ -13,7 +13,7 @@ config = (
         num_rollout_workers=10,
     )
     .resources(
-        num_learner_workers=1,
+        num_learner_workers=2,
         num_gpus_per_learner_worker=0,
         num_gpus=0,
         num_cpus_for_local_worker=0,
@@ -22,7 +22,7 @@ config = (
         train_batch_size_per_learner=500,
         grad_clip=40.0,
         grad_clip_by="global_norm",
-        lr=[[0, 0.0005], [2000000, 0.000005]],
+        #lr=[[0, 0.0005], [2000000, 0.000005]],
     )
 )
 
