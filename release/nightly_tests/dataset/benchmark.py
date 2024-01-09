@@ -16,6 +16,7 @@ import pandas as pd
 
 class BenchmarkMetric(Enum):
     RUNTIME = "time"
+    NUM_ROWS = "num_rows"
     THROUGHPUT = "tput"
     ACCURACY = "accuracy"
 
@@ -73,9 +74,11 @@ class Benchmark:
         duration = time.perf_counter() - start_time
 
         # TODO(chengsu): Record more metrics based on dataset stats.
+        num_rows = output_ds.count()
         self.result[name] = {
             BenchmarkMetric.RUNTIME.value: duration,
-            BenchmarkMetric.THROUGHPUT.value: output_ds.count() / duration,
+            BenchmarkMetric.NUM_ROWS.value: num_rows,
+            BenchmarkMetric.THROUGHPUT.value: num_rows / duration,
         }
         print(f"Result of case {name}: {self.result[name]}")
 
@@ -127,6 +130,7 @@ class Benchmark:
         duration = time.perf_counter() - start_time
         self.result[name] = {
             BenchmarkMetric.RUNTIME.value: duration,
+            BenchmarkMetric.NUM_ROWS.value: record_count,
             BenchmarkMetric.THROUGHPUT.value: record_count / duration,
         }
         print(f"Result of case {name}: {self.result[name]}")
