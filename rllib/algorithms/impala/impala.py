@@ -684,7 +684,7 @@ class Impala(Algorithm):
             episode_refs.append(episode_ref)
 
         # Increase sampling counters. We know that each reference
-        # contains exactly `rollout_fragment_length` timesteps.
+        # contains exactly `rollout_fragment_length` x `num_envs_per_worker` timesteps.
         # TODO (sven): This might not be accurate for multi-agent.
         self._counters[NUM_ENV_STEPS_SAMPLED] += len(episode_refs) * self.config.get_rollout_fragment_length() * self.config.num_envs_per_worker
         self._counters[NUM_AGENT_STEPS_SAMPLED] += len(episode_refs) * self.config.get_rollout_fragment_length() * self.config.num_envs_per_worker
