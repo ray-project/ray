@@ -205,7 +205,14 @@ class TestStateMachine:
         )
 
     def _create_github_issue(self) -> None:
-        labels = ["P0", "bug", "release-test", "triage", self.test.get_oncall()]
+        labels = [
+            "P0",
+            "bug",
+            "release-test",
+            "ray-test-bot",
+            "triage",
+            self.test.get_oncall(),
+        ]
         if not self.test.is_stable():
             labels.append("unstable-release-test")
         issue_number = self.ray_repo.create_issue(
