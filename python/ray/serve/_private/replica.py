@@ -857,14 +857,13 @@ class UserCallableWrapper:
         self,
         request: gRPCRequest,
         request_metadata: RequestMetadata,
-        request_args: Tuple[Any],
         user_method_params: Dict[str, inspect.Parameter],
     ) -> Tuple[Tuple[Any], Dict[str, Any]]:
         """Prepare arguments for a user method handling a gRPC request.
 
         Returns (request_args, request_kwargs).
         """
-        request_args = (pickle.loads(request_args[0].grpc_user_request),)
+        request_args = (pickle.loads(request.grpc_user_request),)
         if GRPC_CONTEXT_ARG_NAME in user_method_params:
             request_kwargs = {GRPC_CONTEXT_ARG_NAME: request_metadata.grpc_context}
         else:
