@@ -43,8 +43,8 @@ from ray.serve._private.constants import (
 from ray.serve._private.http_util import (
     ASGIAppReplicaWrapper,
     ASGIArgs,
-    ASGIMessageQueue,
     ASGIReceiveProxy,
+    MessageQueue,
     Response,
 )
 from ray.serve._private.logging_utils import (
@@ -433,7 +433,7 @@ class ReplicaActor:
         try:
             # Handle the request in a background asyncio.Task. It's expected that
             # this task will use the result queue to send its response messages.
-            result_queue = ASGIMessageQueue()
+            result_queue = MessageQueue()
             call_user_method_task = self._event_loop.create_task(
                 self._user_callable_wrapper.call_user_method(
                     request_metadata,
@@ -819,7 +819,7 @@ class UserCallableWrapper:
         user_method_params: Dict[str, inspect.Parameter],
         *,
         is_asgi_app: bool,
-        result_queue: Optional[ASGIMessageQueue] = None,
+        result_queue: Optional[MessageQueue] = None,
     ) -> Tuple[Tuple[Any], ASGIArgs, asyncio.Task]:
         """Prepare arguments for a user method handling an HTTP request.
 
@@ -874,7 +874,7 @@ class UserCallableWrapper:
         user_method_name: str,
         request_metadata: RequestMetadata,
         *,
-        result_queue: Optional[ASGIMessageQueue],
+        result_queue: Optional[MessageQueue],
         is_asgi_app: bool,
         asgi_args: Optional[ASGIArgs],
     ) -> Any:
@@ -927,7 +927,7 @@ class UserCallableWrapper:
         request_args: Tuple[Any],
         request_kwargs: Dict[str, Any],
         *,
-        result_queue: Optional[ASGIMessageQueue] = None,
+        result_queue: Optional[MessageQueue] = None,
     ) -> Any:
         """Call a user method that is *not* expected to be a generator.
 
