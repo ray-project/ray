@@ -1265,11 +1265,11 @@ class DeploymentState:
     def autoscaling_policy_manager(self) -> AutoscalingPolicyManager:
         return self._target_state.info.autoscaling_policy_manager
 
-    def should_autoscale(self) -> bool:
+    def is_autoscaling_policy_enabled(self) -> bool:
         """
         Check if the deployment is under autoscaling
         """
-        return self.autoscaling_policy_manager.should_autoscale()
+        return self.autoscaling_policy_manager.is_autoscaling_policy_enabled()
 
     def get_autoscale_metric_lookback_period(self) -> float:
         """
@@ -1503,7 +1503,7 @@ class DeploymentState:
 
         # Decide new target num_replicas.
         autoscaling_policy_manager = deployment_info.autoscaling_policy_manager
-        if autoscaling_policy_manager.should_autoscale():
+        if autoscaling_policy_manager.is_autoscaling_policy_enabled():
             initial_replicas = autoscaling_policy_manager.config.initial_replicas
             if deployment_settings_changed and initial_replicas is not None:
                 target_num_replicas = get_capacity_adjusted_num_replicas(
@@ -1586,7 +1586,7 @@ class DeploymentState:
         current_num_ongoing_requests = self.get_replica_current_ongoing_requests()
         autoscaling_policy_manager = self.autoscaling_policy_manager
         decision_num_replicas = autoscaling_policy_manager.get_decision_num_replicas(
-            curr_target_num_replicas=self._target_state.target_num_replicas,
+            current_target_num_replicas=self._target_state.target_num_replicas,
             current_num_ongoing_requests=current_num_ongoing_requests,
             current_handle_queued_queries=current_handle_queued_queries,
             target_capacity=self._target_state.info.target_capacity,
@@ -2623,7 +2623,7 @@ class DeploymentStateManager:
         downscales = {}
 
         for deployment_id, deployment_state in self._deployment_states.items():
-            if deployment_state.should_autoscale():
+            if deployment_state.is_autoscaling_policy_enabled():
                 current_handle_queued_queries = self.get_handle_queueing_metrics(
                     deployment_id,
                     deployment_state.get_autoscale_metric_lookback_period(),

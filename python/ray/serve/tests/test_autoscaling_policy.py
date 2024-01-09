@@ -177,7 +177,7 @@ class TestGetDecisionNumReplicas:
         policy_manager = AutoscalingPolicyManager(config)
         new_num_replicas = policy_manager.get_decision_num_replicas(
             current_num_ongoing_requests=[],
-            curr_target_num_replicas=0,
+            current_target_num_replicas=0,
             current_handle_queued_queries=1,
             _skip_bound_check=True,
         )
@@ -189,7 +189,7 @@ class TestGetDecisionNumReplicas:
         policy_manager = AutoscalingPolicyManager(config)
         new_num_replicas = policy_manager.get_decision_num_replicas(
             current_num_ongoing_requests=[],
-            curr_target_num_replicas=0,
+            current_target_num_replicas=0,
             current_handle_queued_queries=1,
             _skip_bound_check=True,
         )
@@ -212,7 +212,7 @@ class TestGetDecisionNumReplicas:
         policy_manager = AutoscalingPolicyManager(config)
         new_num_replicas = policy_manager.get_decision_num_replicas(
             current_num_ongoing_requests=[0, 0, 0, 0, 0],
-            curr_target_num_replicas=5,
+            current_target_num_replicas=5,
             current_handle_queued_queries=0,
         )
 
@@ -227,7 +227,7 @@ class TestGetDecisionNumReplicas:
         for _ in range(5):
             num_replicas = policy_manager.get_decision_num_replicas(
                 current_num_ongoing_requests=[0] * num_replicas,
-                curr_target_num_replicas=num_replicas,
+                current_target_num_replicas=num_replicas,
                 current_handle_queued_queries=0,
             )
 
@@ -257,7 +257,7 @@ class TestGetDecisionNumReplicas:
         # Scale up when there are 0 replicas and current_handle_queued_queries > 0
         new_num_replicas = policy_manager.get_decision_num_replicas(
             current_num_ongoing_requests=[],
-            curr_target_num_replicas=0,
+            current_target_num_replicas=0,
             current_handle_queued_queries=1,
         )
         assert new_num_replicas == 1
@@ -266,14 +266,14 @@ class TestGetDecisionNumReplicas:
         for i in range(upscale_wait_periods):
             new_num_replicas = policy_manager.get_decision_num_replicas(
                 current_num_ongoing_requests=overload_requests,
-                curr_target_num_replicas=1,
+                current_target_num_replicas=1,
                 current_handle_queued_queries=0,
             )
             assert new_num_replicas == 1, i
 
         new_num_replicas = policy_manager.get_decision_num_replicas(
             current_num_ongoing_requests=overload_requests,
-            curr_target_num_replicas=1,
+            current_target_num_replicas=1,
             current_handle_queued_queries=0,
         )
         assert new_num_replicas == 2
@@ -284,14 +284,14 @@ class TestGetDecisionNumReplicas:
         for i in range(downscale_wait_periods):
             new_num_replicas = policy_manager.get_decision_num_replicas(
                 current_num_ongoing_requests=no_requests,
-                curr_target_num_replicas=2,
+                current_target_num_replicas=2,
                 current_handle_queued_queries=0,
             )
             assert new_num_replicas == 2, i
 
         new_num_replicas = policy_manager.get_decision_num_replicas(
             current_num_ongoing_requests=no_requests,
-            curr_target_num_replicas=2,
+            current_target_num_replicas=2,
             current_handle_queued_queries=0,
         )
         assert new_num_replicas == 0
@@ -300,7 +300,7 @@ class TestGetDecisionNumReplicas:
         for i in range(int(upscale_wait_periods / 2)):
             new_num_replicas = policy_manager.get_decision_num_replicas(
                 current_num_ongoing_requests=overload_requests,
-                curr_target_num_replicas=1,
+                current_target_num_replicas=1,
                 current_handle_queued_queries=0,
             )
             assert new_num_replicas == 1, i
@@ -308,7 +308,7 @@ class TestGetDecisionNumReplicas:
         # Interrupt with a scale-down decision.
         policy_manager.get_decision_num_replicas(
             current_num_ongoing_requests=[0],
-            curr_target_num_replicas=1,
+            current_target_num_replicas=1,
             current_handle_queued_queries=0,
         )
 
@@ -317,14 +317,14 @@ class TestGetDecisionNumReplicas:
         for i in range(upscale_wait_periods):
             new_num_replicas = policy_manager.get_decision_num_replicas(
                 current_num_ongoing_requests=overload_requests,
-                curr_target_num_replicas=1,
+                current_target_num_replicas=1,
                 current_handle_queued_queries=0,
             )
             assert new_num_replicas == 1, i
 
         new_num_replicas = policy_manager.get_decision_num_replicas(
             current_num_ongoing_requests=overload_requests,
-            curr_target_num_replicas=1,
+            current_target_num_replicas=1,
             current_handle_queued_queries=0,
         )
         assert new_num_replicas == 2
@@ -333,7 +333,7 @@ class TestGetDecisionNumReplicas:
         for i in range(int(downscale_wait_periods / 2)):
             new_num_replicas = policy_manager.get_decision_num_replicas(
                 current_num_ongoing_requests=no_requests,
-                curr_target_num_replicas=2,
+                current_target_num_replicas=2,
                 current_handle_queued_queries=0,
             )
             assert new_num_replicas == 2, i
@@ -341,7 +341,7 @@ class TestGetDecisionNumReplicas:
         # Interrupt with a scale-up decision.
         policy_manager.get_decision_num_replicas(
             current_num_ongoing_requests=[100, 100],
-            curr_target_num_replicas=2,
+            current_target_num_replicas=2,
             current_handle_queued_queries=0,
         )
 
@@ -350,14 +350,14 @@ class TestGetDecisionNumReplicas:
         for i in range(downscale_wait_periods):
             new_num_replicas = policy_manager.get_decision_num_replicas(
                 current_num_ongoing_requests=no_requests,
-                curr_target_num_replicas=2,
+                current_target_num_replicas=2,
                 current_handle_queued_queries=0,
             )
             assert new_num_replicas == 2, i
 
         new_num_replicas = policy_manager.get_decision_num_replicas(
             current_num_ongoing_requests=no_requests,
-            curr_target_num_replicas=2,
+            current_target_num_replicas=2,
             current_handle_queued_queries=0,
         )
         assert new_num_replicas == 0
@@ -424,7 +424,7 @@ class TestGetDecisionNumReplicas:
             if trial % 2 == 0:
                 new_num_replicas = policy_manager.get_decision_num_replicas(
                     current_num_ongoing_requests=overload_requests,
-                    curr_target_num_replicas=1,
+                    current_target_num_replicas=1,
                     current_handle_queued_queries=0,
                 )
                 if delay_s > 0:
@@ -434,7 +434,7 @@ class TestGetDecisionNumReplicas:
             else:
                 new_num_replicas = policy_manager.get_decision_num_replicas(
                     current_num_ongoing_requests=underload_requests,
-                    curr_target_num_replicas=2,
+                    current_target_num_replicas=2,
                     current_handle_queued_queries=0,
                 )
                 if delay_s > 0:
@@ -462,7 +462,7 @@ class TestGetDecisionNumReplicas:
         if np.mean(ongoing_requests) == config.target_num_ongoing_requests_per_replica:
             new_num_replicas = policy_manager.get_decision_num_replicas(
                 current_num_ongoing_requests=ongoing_requests,
-                curr_target_num_replicas=4,
+                current_target_num_replicas=4,
                 current_handle_queued_queries=0,
             )
             assert new_num_replicas == 4
@@ -472,7 +472,7 @@ class TestGetDecisionNumReplicas:
         elif np.mean(ongoing_requests) < config.target_num_ongoing_requests_per_replica:
             new_num_replicas = policy_manager.get_decision_num_replicas(
                 current_num_ongoing_requests=ongoing_requests,
-                curr_target_num_replicas=4,
+                current_target_num_replicas=4,
                 current_handle_queued_queries=0,
             )
 
@@ -492,7 +492,7 @@ class TestGetDecisionNumReplicas:
         else:
             new_num_replicas = policy_manager.get_decision_num_replicas(
                 current_num_ongoing_requests=ongoing_requests,
-                curr_target_num_replicas=4,
+                current_target_num_replicas=4,
                 current_handle_queued_queries=0,
             )
             assert new_num_replicas == 5
@@ -515,7 +515,7 @@ class TestGetDecisionNumReplicas:
 
         new_num_replicas = policy_manager.get_decision_num_replicas(
             current_num_ongoing_requests=ongoing_requests,
-            curr_target_num_replicas=4,
+            current_target_num_replicas=4,
             current_handle_queued_queries=0,
         )
         assert new_num_replicas == sum(ongoing_requests) / target_requests

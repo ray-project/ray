@@ -97,7 +97,7 @@ class AutoscalingContext:
     # The AutoscalingConfig the deployment started with
     config: AutoscalingConfig
     # The number of replicas that the deployment is currently trying to scale to.
-    curr_target_num_replicas: int = 0
+    current_target_num_replicas: int = 0
     # List of number of ongoing requests for each replica.
     current_num_ongoing_requests: List[int] = field(default_factory=list)
     # The number of handle queued queries, if there are multiple handles, the max
@@ -134,11 +134,11 @@ def replica_queue_length_autoscaling_policy(context: AutoscalingContext) -> int:
         if context.current_handle_queued_queries > 0:
             return max(
                 math.ceil(1 * context.config.get_upscale_smoothing_factor()),
-                context.curr_target_num_replicas,
+                context.current_target_num_replicas,
             )
-        return context.curr_target_num_replicas
+        return context.current_target_num_replicas
 
-    decision_num_replicas = context.curr_target_num_replicas
+    decision_num_replicas = context.current_target_num_replicas
 
     desired_num_replicas = _calculate_desired_num_replicas(
         autoscaling_config=context.config,
@@ -147,7 +147,7 @@ def replica_queue_length_autoscaling_policy(context: AutoscalingContext) -> int:
         override_max_replicas=context.capacity_adjusted_max_replicas,
     )
     # Scale up.
-    if desired_num_replicas > context.curr_target_num_replicas:
+    if desired_num_replicas > context.current_target_num_replicas:
         # If the previous decision was to scale down (the counter was
         # negative), we reset it and then increment it (set to 1).
         # Otherwise, just increment.
@@ -157,12 +157,14 @@ def replica_queue_length_autoscaling_policy(context: AutoscalingContext) -> int:
 
         # Only actually scale the replicas if we've made this decision for
         # 'scale_up_consecutive_periods' in a row.
-        if decision_counter > int(context.config.upscale_delay_s / CONTROL_LOOP_PERIOD_S):
+        if decision_counter > int(
+            context.config.upscale_delay_s / CONTROL_LOOP_PERIOD_S
+        ):
             decision_counter = 0
             decision_num_replicas = desired_num_replicas
 
     # Scale down.
-    elif desired_num_replicas < context.curr_target_num_replicas:
+    elif desired_num_replicas < context.current_target_num_replicas:
         # If the previous decision was to scale up (the counter was
         # positive), reset it to zero before decrementing.
         if decision_counter > 0:
@@ -171,7 +173,9 @@ def replica_queue_length_autoscaling_policy(context: AutoscalingContext) -> int:
 
         # Only actually scale the replicas if we've made this decision for
         # 'scale_down_consecutive_periods' in a row.
-        if decision_counter < -int(context.config.downscale_delay_s / CONTROL_LOOP_PERIOD_S):
+        if decision_counter < -int(
+            context.config.downscale_delay_s / CONTROL_LOOP_PERIOD_S
+        ):
             decision_counter = 0
             decision_num_replicas = desired_num_replicas
 
