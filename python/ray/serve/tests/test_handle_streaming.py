@@ -173,7 +173,7 @@ class TestDeploymentHandleStreaming:
                 with pytest.raises(
                     TypeError,
                     match=(
-                        "Method '__call__' is a generator function. You must use "
+                        "Method '__call__' returned a generator. You must use "
                         "`handle.options\(stream=True\)` to call generators on a "
                         "deployment."
                     ),
