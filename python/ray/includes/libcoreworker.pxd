@@ -280,7 +280,7 @@ cdef extern from "ray/core_worker/core_worker.h" nogil:
                 c_vector[shared_ptr[CObjectLocation]] *results)
         CRayStatus TriggerGlobalGC()
         CRayStatus ReportGeneratorItemReturns(
-            const pair[CObjectID, shared_ptr[CRayObject]] &dynamic_return_object,
+            const c_vector[pair[CObjectID, shared_ptr[CRayObject]]] &dynamic_return_object,
             const CObjectID &generator_id,
             const CAddress &caller_address,
             int64_t item_index,

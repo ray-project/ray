@@ -666,7 +666,7 @@ bool TaskManager::HandleReportGeneratorItemReturns(
     bool index_not_used_yet;
     {
       absl::WriterMutexLock lock(&object_ref_stream_ptr->mu_);
-      index_not_used_yet = object_ref_stream_ptr->InsertToStream(object_id, item_index);
+      index_not_used_yet = object_ref_stream_ptr->InsertToStream(object_id, item_index++);
     }
 
     // If the ref was written to a stream, we should also

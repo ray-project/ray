@@ -837,7 +837,7 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   /// \param[in] waiter The class to pause the thread if generator backpressure limit
   /// is reached.
   Status ReportGeneratorItemReturns(
-      const std::pair<ObjectID, std::shared_ptr<RayObject>> &dynamic_return_object,
+      const std::vector<std::pair<ObjectID, std::shared_ptr<RayObject>>> &dynamic_return_objects,
       const ObjectID &generator_id,
       const rpc::Address &caller_address,
       int64_t item_index,

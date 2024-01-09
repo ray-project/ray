@@ -2983,7 +2983,7 @@ ObjectID CoreWorker::AllocateDynamicReturnId(const rpc::Address &owner_address,
 }
 
 Status CoreWorker::ReportGeneratorItemReturns(
-    const std::pair<ObjectID, std::shared_ptr<RayObject>> &dynamic_return_object,
+    const std::vector<std::pair<ObjectID, std::shared_ptr<RayObject>>> &dynamic_return_objects,
     const ObjectID &generator_id,
     const rpc::Address &caller_address,
     int64_t item_index,
@@ -2997,24 +2997,29 @@ Status CoreWorker::ReportGeneratorItemReturns(
   request.set_attempt_number(attempt_number);
   auto client = core_worker_client_pool_->GetOrConnect(caller_address);
 
-  if (!dynamic_return_object.first.IsNil()) {
-    auto return_object_proto = request.add_dynamic_return_objects();
-    SerializeReturnObject(
-        dynamic_return_object.first, dynamic_return_object.second, return_object_proto);
-    std::vector<ObjectID> deleted;
-    // When we allocate a dynamic return ID (AllocateDynamicReturnId),
-    // we borrow the object. When the object value is allocatd, the
-    // memory store is updated. We should clear borrowers and memory store
-    // here.
-    ReferenceCounter::ReferenceTableProto borrowed_refs;
-    reference_counter_->PopAndClearLocalBorrowers(
-        {dynamic_return_object.first}, &borrowed_refs, &deleted);
-    memory_store_->Delete(deleted);
+//  std::cout << "[DBG] ReportGeneratorItemReturns: " << dynamic_return_objects.size() << ", generator index: " << item_index << std::endl;
+
+  for (const auto &dynamic_return_object : dynamic_return_objects) {
+    if (!dynamic_return_object.first.IsNil()) {
+      auto return_object_proto = request.add_dynamic_return_objects();
+      SerializeReturnObject(
+          dynamic_return_object.first, dynamic_return_object.second, return_object_proto);
+      std::vector<ObjectID> deleted;
+      // When we allocate a dynamic return ID (AllocateDynamicReturnId),
+      // we borrow the object. When the object value is allocatd, the
+      // memory store is updated. We should clear borrowers and memory store
+      // here.
+      ReferenceCounter::ReferenceTableProto borrowed_refs;
+      reference_counter_->PopAndClearLocalBorrowers(
+          {dynamic_return_object.first}, &borrowed_refs, &deleted);
+      memory_store_->Delete(deleted);
+    }
+    RAY_LOG(DEBUG) << "Write the object ref stream, index: " << item_index
+                   << ", id: " << dynamic_return_object.first;
   }
-  RAY_LOG(DEBUG) << "Write the object ref stream, index: " << item_index
-                 << ", id: " << dynamic_return_object.first;
 
   if (waiter) {
+    // TODO fix
     waiter->IncrementObjectGenerated();
   }
 
