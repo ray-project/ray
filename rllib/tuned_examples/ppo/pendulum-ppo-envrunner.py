@@ -17,18 +17,18 @@ config = (
         gamma=0.95,
         lr=0.0003,
         lambda_=0.1,
-        #vf_loss_coeff=0.01,
+        # vf_loss_coeff=0.01,
         vf_clip_param=10.0,
         sgd_minibatch_size=64,
         model={
             "fcnet_activation": "relu",
         },
     )
-    #.evaluation(
+    # .evaluation(
     #    evaluation_num_workers=1,
     #    evaluation_interval=1,
     #    enable_async_evaluation=True,
-    #)
+    # )
 )
 
 stop = {

@@ -28,6 +28,7 @@ class MeanStdFilter(ConnectorV2):
     This connector is stateful as it continues to update its internal stats on mean
     and std values as new data is pushed through it (unless `update_stats` is False).
     """
+
     def __init__(
         self,
         *,
@@ -59,8 +60,8 @@ class MeanStdFilter(ConnectorV2):
         # We simply use the old MeanStdFilter until non-connector env_runner is fully
         # deprecated to avoid duplicate code
 
-        self._input_observation_space_struct = (
-            get_base_struct_from_space(self.input_observation_space)
+        self._input_observation_space_struct = get_base_struct_from_space(
+            self.input_observation_space
         )
         self.filter_shape = tree.map_structure(
             lambda s: (
@@ -78,7 +79,8 @@ class MeanStdFilter(ConnectorV2):
         # Adjust our observation space's Boxes (only if clipping is active).
         _observation_space_struct = tree.map_structure(
             lambda s: (
-                s if not isinstance(s, gym.spaces.Box)
+                s
+                if not isinstance(s, gym.spaces.Box)
                 else gym.spaces.Box(
                     low=-self.clip_by_value,
                     high=self.clip_by_value,
@@ -130,7 +132,9 @@ class MeanStdFilter(ConnectorV2):
             #  error). However, this would NOT work if our
             #  space were to be more more restrictive than the env's original space
             #  b/c then the adding of the original env observation would fail.
-            episode.observation_space = episode.observations.space = self.observation_space
+            episode.observation_space = (
+                episode.observations.space
+            ) = self.observation_space
             episode.set_observations(
                 new_data=normalized_observations,
                 at_indices=-1,
@@ -146,14 +150,14 @@ class MeanStdFilter(ConnectorV2):
     @staticmethod
     def _get_state_from_filter(filter):
         flattened_rs = tree.flatten(filter.running_stats)
-        #flattened_buffer = tree.flatten(self._filter.buffer)
+        # flattened_buffer = tree.flatten(self._filter.buffer)
         return {
             "shape": filter.shape,
             "de_mean_to_zero": filter.demean,
             "de_std_to_one": filter.destd,
             "clip_by_value": filter.clip,
             "running_stats": [s.to_state() for s in flattened_rs],
-            #"buffer": [s.to_state() for s in flattened_buffer],
+            # "buffer": [s.to_state() for s in flattened_buffer],
         }
 
     @override(ConnectorV2)
@@ -166,8 +170,8 @@ class MeanStdFilter(ConnectorV2):
         self._filter.running_stats = tree.unflatten_as(
             self._filter.shape, running_stats
         )
-        #buffer = [RunningStat.from_state(s) for s in state["buffer"]]
-        #self._filter.buffer = tree.unflatten_as(self._filter.shape, buffer)
+        # buffer = [RunningStat.from_state(s) for s in state["buffer"]]
+        # self._filter.buffer = tree.unflatten_as(self._filter.shape, buffer)
 
     @override(ConnectorV2)
     def reset_state(self) -> None:
@@ -201,8 +205,8 @@ class MeanStdFilter(ConnectorV2):
                 clip=ref["clip"],
             )
             # Override running stats of the filter with the ones stored in `state`.
-            _other_filter.running_stats = (
-                tree.map_structure(lambda s: RunningStat.from_state(s), state["shape"])
+            _other_filter.running_stats = tree.map_structure(
+                lambda s: RunningStat.from_state(s), state["shape"]
             )
             # Initialize `filter`, if necessary.
             if filter is None:

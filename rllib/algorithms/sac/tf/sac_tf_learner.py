@@ -58,10 +58,7 @@ class SACTfLearner(TfLearner):
         )
 
         # Compute TD-error (potentially clipped).
-        base_td_error = tf.math.abs(q_t_selected - q_t_selected_target)
         # TODO (simon) add here the twin-Q error.
-
-        td_error = base_td_error
 
         # Calculate critic loss(es).
         critic_loss = tf.reduce_mean(

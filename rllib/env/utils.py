@@ -591,7 +591,7 @@ class BufferWithInfiniteLookback:
                     assert self.space.contains(new_data), new_data
                 self.data[actual_idx] = new_data
         except Exception as e:
-            print(e)#TODO
+            print(e)  # TODO
         except IndexError:
             raise IndexError(
                 f"Cannot `set()` value at index {idx} (option "

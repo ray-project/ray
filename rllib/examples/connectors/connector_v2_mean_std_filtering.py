@@ -33,7 +33,10 @@ parser.add_argument(
     "--stop-timesteps", type=int, default=500000, help="Number of timesteps to train."
 )
 parser.add_argument(
-    "--stop-reward", type=float, default=-300.0, help="Reward at which we stop training."
+    "--stop-reward",
+    type=float,
+    default=-300.0,
+    help="Reward at which we stop training.",
 )
 
 
@@ -80,7 +83,7 @@ if __name__ == "__main__":
             lr=0.0003 * (args.num_gpus or 1),
             lambda_=0.1,
             vf_clip_param=10.0,
-            #vf_loss_coeff=0.01,
+            # vf_loss_coeff=0.01,
             model={
                 "fcnet_activation": "relu",
             },

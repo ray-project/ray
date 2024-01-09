@@ -4,7 +4,7 @@ from ray.rllib.algorithms.sac.sac_learner import QF_PREDS, QF_TARGET_PREDS
 from ray.rllib.algorithms.sac.sac_rl_module import SACRLModule
 from ray.rllib.core.rl_module.rl_module import RLModule
 from ray.rllib.core.rl_module.tf.tf_rl_module import TfRLModule
-from ray.rllib.core.models.base import ACTOR, CRITIC, ENCODER_OUT, STATE_OUT, STATE_IN
+from ray.rllib.core.models.base import ACTOR, CRITIC, ENCODER_OUT
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.framework import try_import_tf
@@ -21,7 +21,7 @@ class SACTfRLModule(TfRLModule, SACRLModule):
         output = {}
 
         # Encoder forward pass.
-        pi_and_qf_encoder_outs = self.pi_and_qf_encoder(batch)        
+        pi_and_qf_encoder_outs = self.pi_and_qf_encoder(batch)
 
         # Pi head.
         output[SampleBatch.ACTION_DIST_INPUTS] = self.pi(

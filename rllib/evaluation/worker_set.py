@@ -363,7 +363,7 @@ class WorkerSet:
 
     @DeveloperAPI
     def sync_connectors(self):
-        """TODO: (sven) """
+        """TODO: (sven)"""
         connector_states = self.foreach_worker(
             lambda w: (w._env_to_module.get_state(), w._module_to_env.get_state()),
             healthy_only=True,
@@ -371,7 +371,7 @@ class WorkerSet:
         )
         env_to_module_states = [s[0] for s in connector_states]
         module_to_env_states = [s[1] for s in connector_states]
-        
+
         self.local_worker()._env_to_module.merge_states(env_to_module_states)
         ref_env_to_module_state = ray.put(
             self.local_worker()._env_to_module.get_state()
