@@ -60,11 +60,11 @@ def test_basic(ray_start_regular):
 
     compiled_dag = dag.experimental_compile()
 
-    for i in range(1):
+    for i in range(3):
         output_channel = compiled_dag.execute(b"hello world")
         # TODO(swang): Replace with fake ObjectRef.
         result = output_channel.begin_read()
-        assert result == i + 1
+        assert result == str(i + 1).encode("utf-8")
         output_channel.end_read()
 
     # Note: must teardown before starting a new Ray session, otherwise you'll get

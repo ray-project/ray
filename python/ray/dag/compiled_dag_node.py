@@ -36,6 +36,7 @@ def make_torch_channel(
 
 def torch_init(self, rank, world_size):
     import torch
+
     print("call torch init", rank, world_size)
     os.environ["MASTER_ADDR"] = "localhost"
     os.environ["MASTER_PORT"] = "26254"
@@ -179,7 +180,6 @@ class CompiledDAG:
         self.dag_node_to_idx: Dict["ray.dag.DAGNode", int] = {}
         # idx counter. rank 0 is the driver
         self.counter: int = 0
-        self.driver_rank = None
 
         # Attributes that are set during preprocessing.
         # Preprocessing identifies the input node and output node.
@@ -341,22 +341,24 @@ class CompiledDAG:
             # Create an output buffer on the actor.
             if isinstance(task.dag_node, ClassMethodNode):
                 fn = task.dag_node._get_remote_method("__ray_call__")
+                output_idx = list(task.downstream_node_idxs)[0]
+                if isinstance(self.idx_to_task[output_idx].dag_node, MultiOutputNode):
+                    output_idx = self.input_task_idx
                 task.output_channel = ray.get(
                     fn.remote(
                         make_torch_channel,
                         buffer_size_bytes=self._buffer_size_bytes,
-                        reader_rank=list(task.downstream_node_idxs)[0],
+                        reader_rank=output_idx,
                         writer_rank=task.idx,
                     )
                 )
                 self.actor_refs.add(task.dag_node._get_actor_handle())
                 self.actor_ranks[task.dag_node._get_actor_handle()] = task.idx
             elif isinstance(task.dag_node, InputNode):
-                self.driver_rank = task.idx
                 task.output_channel = TorchChannel(
                     buffer_size_bytes=self._buffer_size_bytes,
                     reader_rank=list(task.downstream_node_idxs)[0],
-                    writer_rank=0,
+                    writer_rank=self.input_task_idx,
                 )
             else:
                 assert isinstance(task.dag_node, MultiOutputNode)
@@ -430,12 +432,12 @@ class CompiledDAG:
     def _torch_init(self):
         futs = []
         print("Actor ranks", self.actor_ranks)
-        print("Driver ranks", self.driver_rank)
+        print("Driver ranks", self.input_task_idx)
         world_size = len(self.actor_ranks) + 1
         for actor, rank in self.actor_ranks.items():
             fn = actor.__ray_call__
             futs.append(fn.remote(torch_init, rank=rank, world_size=world_size))
-        torch_init(self, rank=self.driver_rank, world_size=world_size)
+        torch_init(self, rank=self.input_task_idx, world_size=world_size)
         ray.get(futs)
 
     def _monitor_failures(self):

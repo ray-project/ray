@@ -17,7 +17,11 @@ class TorchChannel(Channel):
         self._worker = ray._private.worker.global_worker
 
     def __reduce__(self):
-        return TorchChannel, (self._buffer_size_bytes, self._reader_rank, self._writer_rank)
+        return TorchChannel, (
+            self._buffer_size_bytes,
+            self._reader_rank,
+            self._writer_rank,
+        )
 
     def write(self, value: Any) -> None:
         serialized_value = self._serialize(value)
@@ -28,11 +32,9 @@ class TorchChannel(Channel):
         prefix = np.array([datalen], dtype=np.uint32).view(np.uint8)
         self._arr[:4] = torch.from_numpy(prefix)
         self._arr[4 : 4 + datalen] = torch.from_numpy(np.copy(arr))
-        print("SEND", len(self._arr))
         torch.distributed.isend(self._arr, self._reader_rank).wait()
 
     def begin_read(self) -> Any:
-        print("RECV", len(self._arr))
         torch.distributed.irecv(self._arr, self._writer_rank).wait()
         datalen = self._arr[:4].numpy().view(np.uint32)[0]
         return self._deserialize(self._arr[4 : 4 + datalen].numpy().tobytes())
