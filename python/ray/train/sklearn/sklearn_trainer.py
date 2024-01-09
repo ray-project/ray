@@ -29,5 +29,4 @@ class SklearnTrainer:
 
     @staticmethod
     def get_model(*args, **kwargs):
-        """Retrieve the sklearn estimator stored in this checkpoint."""
         raise DeprecationWarning(_DEPRECATION_MESSAGE)
