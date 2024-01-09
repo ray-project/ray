@@ -18,6 +18,15 @@ def global_gc():
     worker.core_worker.global_gc()
 
 
+def get_state_from_address(address=None):
+    address = services.canonicalize_bootstrap_address_or_die(address)
+
+    state = GlobalState()
+    options = GcsClientOptions.from_gcs_address(address)
+    state._initialize_global_state(options)
+    return state
+
+
 def memory_summary(
     address=None,
     redis_password=ray_constants.REDIS_DEFAULT_PASSWORD,
@@ -30,20 +39,18 @@ def memory_summary(
 ):
     from ray.dashboard.memory_utils import memory_summary
 
-    address = services.canonicalize_bootstrap_address_or_die(address)
+    state = get_state_from_address(address)
+    reply = get_memory_info_reply(state)
 
-    state = GlobalState()
-    options = GcsClientOptions.from_gcs_address(address)
-    state._initialize_global_state(options)
     if stats_only:
-        return get_store_stats(state)
+        return store_stats_summary(reply)
     return memory_summary(
         state, group_by, sort_by, line_wrap, units, num_entries
-    ) + get_store_stats(state)
+    ) + store_stats_summary(reply)
 
 
-def get_store_stats(state, node_manager_address=None, node_manager_port=None):
-    """Returns a formatted string describing memory usage in the cluster."""
+def get_memory_info_reply(state, node_manager_address=None, node_manager_port=None):
+    """Returns global memory info."""
 
     from ray.core.generated import node_manager_pb2, node_manager_pb2_grpc
 
@@ -76,7 +83,7 @@ def get_store_stats(state, node_manager_address=None, node_manager_port=None):
         node_manager_pb2.FormatGlobalMemoryInfoRequest(include_memory_info=False),
         timeout=60.0,
     )
-    return store_stats_summary(reply)
+    return reply
 
 
 def node_stats(

@@ -25,7 +25,7 @@
 #include "ray/common/function_descriptor.h"
 #include "ray/common/grpc_util.h"
 #include "ray/common/id.h"
-#include "ray/common/scheduling/scheduling_resources.h"
+#include "ray/common/scheduling/resource_set.h"
 #include "ray/common/task/task_common.h"
 #include "ray/util/container_util.h"
 
@@ -238,6 +238,9 @@ static inline rpc::ObjectReference GetReferenceForActorDummyObject(
   return ref;
 };
 
+/// Task attempt is a task with a specific attempt number.
+using TaskAttempt = std::pair<TaskID, int32_t>;
+
 /// Wrapper class of protobuf `TaskSpec`, see `common.proto` for details.
 /// TODO(ekl) we should consider passing around std::unique_ptr<TaskSpecification>
 /// instead `const TaskSpecification`, since this class is actually mutable.
@@ -328,6 +331,8 @@ class TaskSpecification : public MessageWrapper<rpc::TaskSpec> {
 
   bool IsStreamingGenerator() const;
 
+  int64_t GeneratorBackpressureNumObjects() const;
+
   std::vector<ObjectID> DynamicReturnIds() const;
 
   void AddDynamicReturnId(const ObjectID &dynamic_return_id);
@@ -339,6 +344,9 @@ class TaskSpecification : public MessageWrapper<rpc::TaskSpec> {
   const uint8_t *ArgMetadata(size_t arg_index) const;
 
   size_t ArgMetadataSize(size_t arg_index) const;
+
+  /// Return true if the task should be retried upon exceptions.
+  bool ShouldRetryExceptions() const;
 
   /// Return the ObjectRefs that were inlined in this task argument.
   const std::vector<rpc::ObjectReference> ArgInlinedRefs(size_t arg_index) const;
@@ -498,10 +506,10 @@ class TaskSpecification : public MessageWrapper<rpc::TaskSpec> {
   static absl::Mutex mutex_;
   /// Keep global static id mappings for SchedulingClass for performance.
   static absl::flat_hash_map<SchedulingClassDescriptor, SchedulingClass> sched_cls_to_id_
-      GUARDED_BY(mutex_);
+      ABSL_GUARDED_BY(mutex_);
   static absl::flat_hash_map<SchedulingClass, SchedulingClassDescriptor> sched_id_to_cls_
-      GUARDED_BY(mutex_);
-  static int next_sched_id_ GUARDED_BY(mutex_);
+      ABSL_GUARDED_BY(mutex_);
+  static int next_sched_id_ ABSL_GUARDED_BY(mutex_);
 };
 
 /// \class WorkerCacheKey

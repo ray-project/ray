@@ -1,10 +1,12 @@
+import argparse
+
 from sklearn import datasets
 from sklearn.model_selection import train_test_split
 
 from xgboost_ray import RayDMatrix, RayParams, train
 
 # __train_begin__
-num_cpus_per_actor = 1
+num_cpus_per_actor = 2
 num_actors = 1
 
 
@@ -46,6 +48,15 @@ def load_best_model(best_logdir):
 
 
 def main():
+    parser = argparse.ArgumentParser()
+    parser.add_argument(
+        "--smoke-test",
+        action="store_true",
+        default=False,
+        help="Finish quickly for testing.",
+    )
+    args, _ = parser.parse_known_args()
+
     # __tune_begin__
     from ray import tune
 
@@ -66,14 +77,14 @@ def main():
         config=config,
         metric="eval-error",
         mode="min",
-        num_samples=4,
+        num_samples=4 if not args.smoke_test else 1,
         resources_per_trial=RayParams(
             num_actors=num_actors, cpus_per_actor=num_cpus_per_actor
         ).get_tune_resources(),
     )
 
     # Load in the best performing model.
-    best_bst = load_best_model(analysis.best_logdir)
+    best_bst = load_best_model(analysis.best_trial.local_path)
 
     # Use the following code block instead if using Ray Client.
     # import ray
@@ -81,7 +92,7 @@ def main():
     #     # If using Ray Client best_logdir is a directory on the server.
     #     # So we want to make sure we wrap model loading in a task.
     #     remote_load_fn = ray.remote(load_best_model)
-    #     best_bst = ray.get(remote_load_fn.remote(analysis.best_logdir))
+    #     best_bst = ray.get(remote_load_fn.remote(analysis.best_trial.local_path))
 
     # Do something with the best model.
     _ = best_bst

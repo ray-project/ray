@@ -4,8 +4,8 @@ import pathlib
 from typing import (
     Any,
     Callable,
+    Dict,
     List,
-    Mapping,
     Optional,
     Set,
     Type,
@@ -15,20 +15,26 @@ from typing import (
 import uuid
 
 import ray
+from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
 from ray.rllib.core.learner.reduce_result_dict_fn import _reduce_mean_results
 from ray.rllib.core.rl_module.rl_module import (
-    ModuleID,
     SingleAgentRLModuleSpec,
     RLMODULE_STATE_DIR_NAME,
 )
-from ray.rllib.core.learner.learner import LearnerSpec
 from ray.rllib.policy.sample_batch import MultiAgentBatch
 from ray.rllib.utils.actor_manager import FaultTolerantActorManager
+from ray.rllib.utils.deprecation import Deprecated, deprecation_warning
 from ray.rllib.utils.minibatch_utils import ShardBatchIterator
-from ray.rllib.utils.typing import ResultDict
 from ray.rllib.utils.numpy import convert_to_numpy
+from ray.rllib.utils.typing import (
+    ModuleID,
+    ResultDict,
+    RLModuleSpec,
+    ShouldModuleBeUpdatedFn,
+)
 from ray.train._internal.backend_executor import BackendExecutor
 from ray.tune.utils.file_transfer import sync_dir_between_nodes
+from ray.util.annotations import PublicAPI
 
 
 if TYPE_CHECKING:
@@ -50,46 +56,71 @@ def _get_backend_config(learner_class: Type["Learner"]) -> str:
     return backend_config
 
 
-def _is_module_trainable(module_id: ModuleID, batch: MultiAgentBatch) -> bool:
-    """Default implemntation for is_module_trainable()
+def _default_should_module_be_updated_fn(
+    module_id: ModuleID,
+    batch: MultiAgentBatch,
+) -> bool:
+    """Default implemntation for `LearnerGroup.should_module_be_updated_fn()`.
 
-    It assumes that the module is trainable by default.
+    It assumes that all modules are to be updated by default.
     """
     return True
 
 
+@PublicAPI(stability="alpha")
 class LearnerGroup:
-    """Coordinator of Learners.
-    Public API:
-        .update(batch) -> updates the RLModule based on gradient descent algos.
-        .additional_update() -> any additional non-gradient based updates will get
-                                called from this entry point.
-        .get_state() -> returns the state of the RLModule and RLOptimizer from
-                        all of the Learners.
-        .set_state() -> sets the state of all the Learners.
-        .get_weights() -> returns the weights of the RLModule from the Learner(s).
-        .set_weights() -> sets the weights of the RLModule in the Learner(s).
-        .add_module() -> add a new RLModule to the MultiAgentRLModule being trained by
-                         this LearnerGroup.
-        .remove_module() -> remove an RLModule from the MultiAgentRLModule being trained
-                            by this LearnerGroup.
-    Args:
-        learner_spec: The specification for constructing Learners.
-        max_queue_len: The maximum number of batches to queue up if doing async_update
-            If the queue is full itwill evict the oldest batch first.
+    """Coordinator of n (possibly remote) Learner workers.
+
+    Each Learner worker
     """
 
     def __init__(
         self,
-        learner_spec: LearnerSpec,
+        *,
+        config: AlgorithmConfig = None,  # TODO (sven): Make this arg mandatory.
+        module_spec: Optional[RLModuleSpec] = None,
         max_queue_len: int = 20,
+        # Deprecated args.
+        learner_spec=None,
     ):
-        scaling_config = learner_spec.learner_group_scaling_config
-        learner_class = learner_spec.learner_class
+        """Initializes a LearnerGroup instance.
 
-        # TODO (Kourosh): Go with a _remote flag instead of _is_local to be more
-        #  explicit.
-        self._is_local = scaling_config.num_workers == 0
+        Args:
+            config: The AlgorithmConfig object to use to configure this LearnerGroup.
+                Call the `resources(num_learner_workers=...)` method on your config to
+                specify the number of learner workers to use.
+                Call the same method with arguments `num_cpus_per_learner_worker` and/or
+                `num_gpus_per_learner_worker` to configure the compute used by each
+                Learner worker in this LearnerGroup.
+                Call the `training(learner_class=...)` method on your config to specify,
+                which exact Learner class to use.
+                Call the `rl_module(rl_module_spec=...)` method on your config to set up
+                the specifics for your RLModule to be used in each Learner.
+            module_spec: If not already specified in `config`, a separate overriding
+                RLModuleSpec may be provided via this argument.
+            max_queue_len: The maximum number of batches to queue up if doing
+                async_update. If the queue is full it will evict the oldest batch first.
+        """
+        if learner_spec is not None:
+            deprecation_warning(
+                old="LearnerGroup(learner_spec=...)",
+                new="config = AlgorithmConfig().[resources|training|rl_module](...); "
+                "LearnerGroup(config=config)",
+                error=True,
+            )
+        if config is None:
+            raise ValueError(
+                "LearnerGroup constructor must be called with a `config` arg! "
+                "Pass in a `ray.rllib.algorithms.algorithm_config::AlgorithmConfig` "
+                "object with the proper settings configured."
+            )
+
+        # scaling_config = learner_spec.learner_group_scaling_config
+        self.config = config
+
+        learner_class = self.config.learner_class
+        module_spec = module_spec or self.config.get_marl_module_spec()
+
         self._learner = None
         self._workers = None
         # If a user calls self.shutdown() on their own then this flag is set to true.
@@ -98,28 +129,43 @@ class LearnerGroup:
         # ray train.
         self._is_shut_down = False
 
-        self._is_module_trainable = _is_module_trainable
+        # The callable to use to figure out whether a (single-agent) sub-module is
+        # trainable (via its ModuleID and the train batch) or not.
+        self._should_module_be_updated_fn = _default_should_module_be_updated_fn
 
         # How many timesteps had to be dropped due to a full input queue?
         self._in_queue_ts_dropped = 0
 
-        if self._is_local:
-            self._learner = learner_class(**learner_spec.get_params_dict())
+        # A single local Learner.
+        if not self.is_remote:
+            self._learner = learner_class(config=config, module_spec=module_spec)
             self._learner.build()
             self._worker_manager = None
             self._in_queue = []
+        # N remote Learner workers.
         else:
             backend_config = _get_backend_config(learner_class)
             backend_executor = BackendExecutor(
                 backend_config=backend_config,
-                num_workers=scaling_config.num_workers,
-                num_cpus_per_worker=scaling_config.num_cpus_per_worker,
-                num_gpus_per_worker=scaling_config.num_gpus_per_worker,
+                num_workers=self.config.num_learner_workers,
+                # TODO (sven): Cannot set both `num_cpus_per_learner_worker`>1 and
+                #  `num_gpus_per_learner_worker`>0! Users must set one or the other due
+                #  to issues with placement group fragmentation. See
+                #  https://github.com/ray-project/ray/issues/35409 for more details.
+                num_cpus_per_worker=(
+                    self.config.num_cpus_per_learner_worker
+                    if not self.config.num_gpus_per_learner_worker
+                    else 0
+                ),
+                num_gpus_per_worker=self.config.num_gpus_per_learner_worker,
                 max_retries=0,
             )
             backend_executor.start(
                 train_cls=learner_class,
-                train_cls_kwargs=learner_spec.get_params_dict(),
+                train_cls_kwargs={
+                    "config": config,
+                    "module_spec": module_spec,
+                },
             )
             self._backend_executor = backend_executor
 
@@ -142,7 +188,7 @@ class LearnerGroup:
             self._inflight_request_tags: Set[str] = set()
             self._in_queue = deque(maxlen=max_queue_len)
 
-    def get_in_queue_stats(self) -> Mapping[str, Any]:
+    def get_in_queue_stats(self) -> Dict[str, Any]:
         """Returns the current stats for the input queue for this learner group."""
         return {
             "learner_group_queue_size": len(self._in_queue),
@@ -150,8 +196,12 @@ class LearnerGroup:
         }
 
     @property
+    def is_remote(self) -> bool:
+        return self.config.num_learner_workers > 0
+
+    @property
     def is_local(self) -> bool:
-        return self._is_local
+        return not self.is_remote
 
     def update(
         self,
@@ -159,10 +209,10 @@ class LearnerGroup:
         *,
         minibatch_size: Optional[int] = None,
         num_iters: int = 1,
-        reduce_fn: Optional[Callable[[List[Mapping[str, Any]]], ResultDict]] = (
+        reduce_fn: Optional[Callable[[List[Dict[str, Any]]], ResultDict]] = (
             _reduce_mean_results
         ),
-    ) -> Union[Mapping[str, Any], List[Mapping[str, Any]]]:
+    ) -> Union[Dict[str, Any], List[Dict[str, Any]]]:
         """Do one or more gradient based updates to the Learner(s) based on given data.
 
         Args:
@@ -183,10 +233,11 @@ class LearnerGroup:
             a list of dictionaries of results from the updates from the Learner(s).
         """
 
-        # Construct a multi-agent batch with only the trainable modules.
+        # Construct a multi-agent batch with only those modules in it that should
+        # be updated.
         train_batch = {}
         for module_id in batch.policy_batches.keys():
-            if self._is_module_trainable(module_id, batch):
+            if self.should_module_be_updated_fn(module_id, batch):
                 train_batch[module_id] = batch.policy_batches[module_id]
         train_batch = MultiAgentBatch(train_batch, batch.count)
 
@@ -230,10 +281,10 @@ class LearnerGroup:
         *,
         minibatch_size: Optional[int] = None,
         num_iters: int = 1,
-        reduce_fn: Optional[Callable[[List[Mapping[str, Any]]], ResultDict]] = (
+        reduce_fn: Optional[Callable[[List[Dict[str, Any]]], ResultDict]] = (
             _reduce_mean_results
         ),
-    ) -> Union[List[Mapping[str, Any]], List[List[Mapping[str, Any]]]]:
+    ) -> Union[List[Dict[str, Any]], List[List[Dict[str, Any]]]]:
         """Asnychronously do gradient based updates to the Learner(s) with `batch`.
 
         Args:
@@ -372,7 +423,7 @@ class LearnerGroup:
         *,
         reduce_fn: Callable[[ResultDict], ResultDict] = _reduce_mean_results,
         **kwargs,
-    ) -> Union[Mapping[str, Any], List[Mapping[str, Any]]]:
+    ) -> Union[Dict[str, Any], List[Dict[str, Any]]]:
         """Apply additional non-gradient based updates to the Learners.
 
         For example, this could be used to do a polyak averaging update
@@ -442,19 +493,16 @@ class LearnerGroup:
                 refs.append(ref)
             ray.get(refs)
 
-    def set_weights(self, weights) -> None:
-        # TODO (Kourosh) Set / get weight has to be thoroughly
-        #  tested across actors and multi-gpus
-        if self.is_local:
-            self._learner.set_module_state(weights)
-        else:
-            results_or_errors = self._worker_manager.foreach_actor(
-                lambda w: w.set_module_state(weights)
-            )
-            # raise errors if any
-            self._get_results(results_or_errors)
+    def get_weights(self, module_ids: Optional[Set[str]] = None) -> Dict[str, Any]:
+        """Get the weights of the MultiAgentRLModule maintained by each Learner.
 
-    def get_weights(self, module_ids: Optional[Set[str]] = None) -> Mapping[str, Any]:
+        Args:
+            module_ids: The ids of the modules to get the weights of.
+
+        Returns:
+            A mapping of module ids to their weights.
+
+        """
         if self.is_local:
             state = self._learner.get_module_state(module_ids)
         else:
@@ -467,46 +515,103 @@ class LearnerGroup:
 
         return convert_to_numpy(state)
 
-    def get_state(self) -> Mapping[ModuleID, Mapping[str, Any]]:
-        """Get the states of the first Learners.
+    def set_weights(self, weights: Dict[str, Any]) -> None:
+        """Set the weights of the MultiAgentRLModule maintained by each Learner.
 
-        This should be the same across Learners
+        The weights don't have to include all the modules in the MARLModule.
+            This way the weights of only some of the Agents can be set.
+
+        Args:
+            weights: The weights to set each RLModule in the MARLModule to.
+
         """
         if self.is_local:
-            return self._learner.get_state()
+            self._learner.set_module_state(weights)
+        else:
+            results_or_errors = self._worker_manager.foreach_actor(
+                lambda w: w.set_module_state(weights)
+            )
+            # raise errors if any
+            self._get_results(results_or_errors)
+
+    def get_state(self) -> Dict[str, Any]:
+        """Get the states of this LearnerGroup.
+
+        Contains the Learners' state (which should be the same across Learners) and
+        some other information.
+
+        Returns:
+            The state dict mapping str keys to state information.
+        """
+        if self.is_local:
+            learner_state = self._learner.get_state()
         else:
             worker = self._worker_manager.healthy_actor_ids()[0]
             assert len(self._workers) == self._worker_manager.num_healthy_actors()
             results = self._worker_manager.foreach_actor(
                 lambda w: w.get_state(), remote_actor_ids=[worker]
             )
-            return self._get_results(results)[0]
+            learner_state = self._get_results(results)[0]
+        return {
+            "learner_state": learner_state,
+            "should_module_be_updated_fn": self.should_module_be_updated_fn,
+        }
 
-    def set_state(self, state: List[Mapping[ModuleID, Mapping[str, Any]]]) -> None:
-        """Sets the states of the Learners.
+    def set_state(self, state: Dict[str, Any]) -> None:
+        """Sets the state of this LearnerGroup.
+
+        Note that all Learners share the same state.
 
         Args:
-            state: The state of the Learners
-
+            state: The state dict mapping str keys to state information.
         """
-        if self.is_local:
-            self._learner.set_state(state)
-        else:
-            self._worker_manager.foreach_actor(lambda w: w.set_state(state))
+        learner_state = state.get("learner_state")
+        if learner_state is not None:
+            if self.is_local:
+                self._learner.set_state(learner_state)
+            else:
+                self._worker_manager.foreach_actor(lambda w: w.set_state(learner_state))
+        if state.get("should_module_be_updated_fn"):
+            self.set_should_module_be_updated_fn(state["should_module_be_updated_fn"])
 
-    def set_is_module_trainable(
-        self, is_module_trainable: Callable[[ModuleID, MultiAgentBatch], bool] = None
+    @property
+    def should_module_be_updated_fn(self):
+        return self._should_module_be_updated_fn
+
+    def set_should_module_be_updated_fn(
+        self, should_module_be_updated_fn: Optional[ShouldModuleBeUpdatedFn] = None
     ) -> None:
-        """Sets the function that determines whether a module is trainable.
+        """Sets the function that determines whether a module should be updated or not.
 
         Args:
-            is_module_trainable: A function that takes in a module id and a batch
-                and returns a boolean indicating whether the module should be trained
-                on the batch.
+            should_module_be_updated_fn: An optional callable that takes in a ModuleID
+                and a batch and returns a boolean indicating whether the module should
+                be updated on the given batch.
         """
-        if is_module_trainable is not None:
-            self._is_module_trainable = is_module_trainable
+        # If None, use default implementation (all modules should be updated).
+        if should_module_be_updated_fn is None:
+            should_module_be_updated_fn = _default_should_module_be_updated_fn
+        # If container given, construct a simple callable returning True
+        # if the ModuleID is found in the list/set of IDs.
+        elif not callable(should_module_be_updated_fn):
+            if not isinstance(should_module_be_updated_fn, (list, set, tuple)):
+                raise ValueError(
+                    "`should_module_be_updated_fn` arg must either be a [list|set|"
+                    "tuple] or a callable taking a ModuleID and a MultiAgentBatch as "
+                    "call args and returning True|False (whether module is to be "
+                    "updated or not?)."
+                )
+            module_ids = set(should_module_be_updated_fn)
 
+            def should_module_be_updated_fn(mid, batch=None):
+                return mid in module_ids
+
+        self._should_module_be_updated_fn = should_module_be_updated_fn
+
+    # TODO (sven): Why did we chose to re-invent the wheel here and provide load/save
+    #  from/to disk functionality? This should all be replaced with a simple
+    #  get/set_state logic, which returns/takes a dict and then loading and saving
+    #  should be managed by the owner class (Algorithm/Trainable).
     def save_state(self, path: str) -> None:
         """Saves the state of the LearnerGroup.
 
@@ -599,7 +704,7 @@ class LearnerGroup:
         *,
         marl_module_ckpt_dir: Optional[str] = None,
         modules_to_load: Optional[Set[str]] = None,
-        rl_module_ckpt_dirs: Optional[Mapping[ModuleID, str]] = None,
+        rl_module_ckpt_dirs: Optional[Dict[ModuleID, str]] = None,
     ) -> None:
 
         """Load the checkpoints of the modules being trained by this LearnerGroup.
@@ -686,7 +791,7 @@ class LearnerGroup:
 
         # No need to do any file transfer operations if we are running training
         # on the experiment head node.
-        if self._is_local:
+        if self.is_local:
             if marl_module_ckpt_dir:
                 # load the MARLModule checkpoint if they were specified
                 self._learner.module.load_state(
@@ -710,7 +815,7 @@ class LearnerGroup:
         *,
         marl_module_ckpt_dir: Optional[str] = None,
         modules_to_load: Optional[Set[str]] = None,
-        rl_module_ckpt_dirs: Optional[Mapping[ModuleID, str]] = None,
+        rl_module_ckpt_dirs: Optional[Dict[ModuleID, str]] = None,
     ):
         """Load the checkpoints of the modules being trained by this LearnerGroup.
 
@@ -830,10 +935,14 @@ class LearnerGroup:
 
     def shutdown(self):
         """Shuts down the LearnerGroup."""
-        if not self._is_local:
+        if self.is_remote and hasattr(self, "_backend_executor"):
             self._backend_executor.shutdown()
-            self._is_shut_down = True
+        self._is_shut_down = True
 
     def __del__(self):
         if not self._is_shut_down:
             self.shutdown()
+
+    @Deprecated(new="LearnerGroup.set_should_module_be_updated_fn()", error=True)
+    def set_is_module_trainable(self, *args, **kwargs):
+        pass

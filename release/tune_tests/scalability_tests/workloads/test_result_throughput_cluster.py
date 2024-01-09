@@ -15,7 +15,6 @@ Theoretical minimum time: 100 seconds
 import os
 
 import ray
-from ray import tune
 
 from ray.tune.utils.release_test_util import timed_tune_run
 
@@ -38,7 +37,6 @@ def main():
         results_per_second=results_per_second,
         trial_length_s=trial_length_s,
         max_runtime=max_runtime,
-        sync_config=tune.SyncConfig(syncer=None),
     )  # Tweak!
 
 

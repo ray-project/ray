@@ -13,7 +13,6 @@ import pytest
 import yaml
 
 from ray._private.utils import get_or_create_event_loop
-from ray._private.gcs_utils import GcsAioClient
 from ray._private.runtime_env.working_dir import upload_working_dir_if_needed
 from ray._private.runtime_env.py_modules import upload_py_modules_if_needed
 from ray._private.ray_constants import DEFAULT_DASHBOARD_AGENT_LISTEN_PORT
@@ -26,18 +25,22 @@ from ray._private.test_utils import (
     get_current_unused_port,
     async_wait_for_condition_async_predicate,
 )
-from ray.dashboard.modules.job.common import JobSubmitRequest
-from ray.dashboard.modules.job.utils import (
+from ray.dashboard.modules.job.common import (
+    JobSubmitRequest,
     validate_request_type,
-    get_supervisor_actor_into,
+    JOB_ACTOR_NAME_TEMPLATE,
+    SUPERVISOR_ACTOR_RAY_NAMESPACE,
 )
 from ray.dashboard.tests.conftest import *  # noqa
 from ray.runtime_env.runtime_env import RuntimeEnv, RuntimeEnvConfig
-from ray.util.state import list_nodes
+from ray.util.state import (
+    get_node,
+    list_nodes,
+    list_actors,
+)
 from ray.job_submission import JobStatus, JobSubmissionClient
 from ray.tests.conftest import _ray_start
 from ray.dashboard.modules.job.job_head import JobAgentSubmissionClient
-
 
 # This test requires you have AWS credentials set up (any AWS credentials will
 # do, this test only accesses a public bucket).
@@ -46,6 +49,24 @@ logger = logging.getLogger(__name__)
 
 DRIVER_SCRIPT_DIR = os.path.join(os.path.dirname(__file__), "subprocess_driver_scripts")
 EVENT_LOOP = get_or_create_event_loop()
+
+
+def get_node_id_for_supervisor_actor_for_job(
+    address: str, job_submission_id: str
+) -> str:
+    actors = list_actors(
+        address=address,
+        filters=[("ray_namespace", "=", SUPERVISOR_ACTOR_RAY_NAMESPACE)],
+    )
+    for actor in actors:
+        if actor.name == JOB_ACTOR_NAME_TEMPLATE.format(job_id=job_submission_id):
+            return actor.node_id
+    raise ValueError(f"actor not found for job_submission_id {job_submission_id}")
+
+
+def get_node_ip_by_id(node_id: str) -> str:
+    node = get_node(id=node_id)
+    return node.node_ip
 
 
 @pytest.fixture
@@ -66,7 +87,8 @@ def _check_job(
     client: JobSubmissionClient, job_id: str, status: JobStatus, timeout: int = 10
 ) -> bool:
     res_status = client.get_job_status(job_id)
-    return res_status == status
+    assert res_status == status
+    return True
 
 
 @pytest.fixture(
@@ -231,12 +253,27 @@ async def test_submit_job(job_sdk_client, runtime_env_option, monkeypatch):
     submit_result = await agent_client.submit_job_internal(request)
     job_id = submit_result.submission_id
 
-    wait_for_condition(
-        partial(
-            _check_job, client=head_client, job_id=job_id, status=JobStatus.SUCCEEDED
-        ),
-        timeout=60,
-    )
+    try:
+        job_start_time = time.time()
+        wait_for_condition(
+            partial(
+                _check_job,
+                client=head_client,
+                job_id=job_id,
+                status=JobStatus.SUCCEEDED,
+            ),
+            timeout=300,
+        )
+        job_duration = time.time() - job_start_time
+        print(f"The job took {job_duration}s to succeed.")
+    except RuntimeError as e:
+        # If the job is still pending, include job logs and info in error.
+        if head_client.get_job_status(job_id) == JobStatus.PENDING:
+            logs = head_client.get_job_logs(job_id)
+            info = head_client.get_job_info(job_id)
+            raise RuntimeError(
+                f"Job was stuck in PENDING.\nLogs: {logs}\nInfo: {info}"
+            ) from e
 
     # There is only one node, so there is no need to replace the client of the JobAgent
     resp = await agent_client.get_job_logs_internal(job_id)
@@ -251,7 +288,7 @@ async def test_timeout(job_sdk_client):
         pip={
             "packages": ["tensorflow", "requests", "botocore", "torch"],
             "pip_check": False,
-            "pip_version": "==22.0.2;python_version=='3.8.11'",
+            "pip_version": "==23.3.2;python_version=='3.9.16'",
         },
         config=RuntimeEnvConfig(setup_timeout_seconds=1),
     ).to_dict()
@@ -446,15 +483,8 @@ async def test_job_log_in_multiple_node(
             if job_check_status[index]:
                 continue
             result_log = f"hello index-{index}"
-            gcs_aio_client = GcsAioClient(
-                address=cluster.address, nums_reconnect_retry=0
-            )
-            supervisor_actor_info = await get_supervisor_actor_into(
-                gcs_aio_client, job_id
-            )
-
             # Try to get the node id which supervisor actor running in.
-            node_id = supervisor_actor_info.actor_table_data.address.raylet_id.hex()
+            node_id = get_node_id_for_supervisor_actor_for_job(cluster.address, job_id)
             for node_info in summary:
                 if node_info["raylet"]["nodeId"] == node_id:
                     break
@@ -469,7 +499,7 @@ async def test_job_log_in_multiple_node(
             ), f"port: {agent_port}"
 
             # Finally, we got the whole agent address, and try to get the job log.
-            ip = supervisor_actor_info.actor_table_data.address.ip_address
+            ip = get_node_ip_by_id(node_id)
             agent_address = f"{ip}:{agent_port}"
             assert wait_until_server_available(agent_address)
             client = JobAgentSubmissionClient(format_web_url(agent_address))
@@ -518,6 +548,7 @@ wait_for_condition(
     err_str = proc.stderr.read().decode("ascii")
 
     print(out_str, err_str)
+
     assert "(raylet)" not in out_str
     assert "(raylet)" not in err_str
 

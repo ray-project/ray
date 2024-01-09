@@ -1,13 +1,136 @@
-from typing import Callable, Dict, List, Optional
+from abc import ABC, abstractmethod
+from typing import Any, Callable, Dict, List, Optional, Union
 
 import ray
 from .ref_bundle import RefBundle
+from ray._raylet import ObjectRefGenerator
 from ray.data._internal.execution.interfaces.execution_options import (
     ExecutionOptions,
     ExecutionResources,
 )
+from ray.data._internal.execution.interfaces.op_runtime_metrics import OpRuntimeMetrics
 from ray.data._internal.logical.interfaces import Operator
 from ray.data._internal.stats import StatsDict
+from ray.data.context import DataContext
+
+# TODO(hchen): Ray Core should have a common interface for these two types.
+Waitable = Union[ray.ObjectRef, ObjectRefGenerator]
+
+
+class OpTask(ABC):
+    """Abstract class that represents a task that is created by an PhysicalOperator.
+
+    The task can be either a regular task or an actor task.
+    """
+
+    def __init__(self, task_index: int):
+        self._task_index = task_index
+
+    def task_index(self) -> int:
+        """Return the index of the task."""
+        return self._task_index
+
+    @abstractmethod
+    def get_waitable(self) -> Waitable:
+        """Return the ObjectRef or ObjectRefGenerator to wait on."""
+        pass
+
+
+class DataOpTask(OpTask):
+    """Represents an OpTask that handles Block data."""
+
+    def __init__(
+        self,
+        task_index: int,
+        streaming_gen: ObjectRefGenerator,
+        output_ready_callback: Callable[[RefBundle], None],
+        task_done_callback: Callable[[Optional[Exception]], None],
+    ):
+        """
+        Args:
+            streaming_gen: The streaming generator of this task. It should yield blocks.
+            output_ready_callback: The callback to call when a new RefBundle is output
+                from the generator.
+            task_done_callback: The callback to call when the task is done.
+        """
+        super().__init__(task_index)
+        # TODO(hchen): Right now, the streaming generator is required to yield a Block
+        # and a BlockMetadata each time. We should unify task submission with an unified
+        # interface. So each individual operator don't need to take care of the
+        # BlockMetadata.
+        self._streaming_gen = streaming_gen
+        self._output_ready_callback = output_ready_callback
+        self._task_done_callback = task_done_callback
+
+    def get_waitable(self) -> ObjectRefGenerator:
+        return self._streaming_gen
+
+    def on_data_ready(self, max_blocks_to_read: Optional[int]) -> int:
+        """Callback when data is ready to be read from the streaming generator.
+
+        Args:
+            max_blocks_to_read: Max number of blocks to read. If None, all available
+                will be read.
+        Returns: The number of blocks read.
+        """
+        num_blocks_read = 0
+        while max_blocks_to_read is None or num_blocks_read < max_blocks_to_read:
+            try:
+                block_ref = self._streaming_gen._next_sync(0)
+                if block_ref.is_nil():
+                    # The generator currently doesn't have new output.
+                    # And it's not stopped yet.
+                    break
+            except StopIteration:
+                self._task_done_callback(None)
+                break
+
+            try:
+                meta = ray.get(next(self._streaming_gen))
+            except StopIteration:
+                # The generator should always yield 2 values (block and metadata)
+                # each time. If we get a StopIteration here, it means an error
+                # happened in the task.
+                # And in this case, the block_ref is the exception object.
+                # TODO(hchen): Ray Core should have a better interface for
+                # detecting and obtaining the exception.
+                try:
+                    ray.get(block_ref)
+                    assert False, "Above ray.get should raise an exception."
+                except Exception as ex:
+                    self._task_done_callback(ex)
+                    raise ex from None
+            self._output_ready_callback(
+                RefBundle([(block_ref, meta)], owns_blocks=True)
+            )
+            num_blocks_read += 1
+        return num_blocks_read
+
+
+class MetadataOpTask(OpTask):
+    """Represents an OpTask that only handles metadata, instead of Block data."""
+
+    def __init__(
+        self,
+        task_index: int,
+        object_ref: ray.ObjectRef,
+        task_done_callback: Callable[[], None],
+    ):
+        """
+        Args:
+            object_ref: The ObjectRef of the task.
+            task_done_callback: The callback to call when the task is done.
+        """
+        super().__init__(task_index)
+        self._object_ref = object_ref
+        self._task_done_callback = task_done_callback
+
+    def get_waitable(self) -> ray.ObjectRef:
+        return self._object_ref
+
+    def on_task_finished(self):
+        """Callback when the task is finished."""
+        self._task_done_callback()
 
 
 class PhysicalOperator(Operator):
@@ -43,16 +166,46 @@ class PhysicalOperator(Operator):
     be interleaved.
     """
 
-    def __init__(self, name: str, input_dependencies: List["PhysicalOperator"]):
+    def __init__(
+        self,
+        name: str,
+        input_dependencies: List["PhysicalOperator"],
+        target_max_block_size: Optional[int],
+    ):
         super().__init__(name, input_dependencies)
+
         for x in input_dependencies:
             assert isinstance(x, PhysicalOperator), x
         self._inputs_complete = not input_dependencies
+        self._target_max_block_size = target_max_block_size
         self._dependents_complete = False
         self._started = False
+        self._metrics = OpRuntimeMetrics(self)
+        self._estimated_output_blocks = None
 
     def __reduce__(self):
         raise ValueError("Operator is not serializable.")
+
+    @property
+    def target_max_block_size(self) -> Optional[int]:
+        """
+        Target max block size output by this operator. If this returns None,
+        then the default from DataContext should be used.
+        """
+        return self._target_max_block_size
+
+    @property
+    def actual_target_max_block_size(self) -> int:
+        """
+        The actual target max block size output by this operator.
+        """
+        target_max_block_size = self._target_max_block_size
+        if target_max_block_size is None:
+            target_max_block_size = DataContext.get_current().target_max_block_size
+        return target_max_block_size
+
+    def set_target_max_block_size(self, target_max_block_size: Optional[int]):
+        self._target_max_block_size = target_max_block_size
 
     def completed(self) -> bool:
         """Return True when this operator is completed.
@@ -63,7 +216,7 @@ class PhysicalOperator(Operator):
         """
         return (
             self._inputs_complete
-            and len(self.get_work_refs()) == 0
+            and self.num_active_tasks() == 0
             and not self.has_next()
         ) or self._dependents_complete
 
@@ -71,20 +224,16 @@ class PhysicalOperator(Operator):
         """Return recorded execution stats for use with DatasetStats."""
         raise NotImplementedError
 
-    def get_metrics(self) -> Dict[str, int]:
-        """Returns dict of metrics reported from this operator.
+    @property
+    def metrics(self) -> OpRuntimeMetrics:
+        """Returns the runtime metrics of this operator."""
+        self._metrics._extra_metrics = self._extra_metrics()
+        return self._metrics
 
-        These should be instant values that can be queried at any time, e.g.,
-        obj_store_mem_allocated, obj_store_mem_freed.
-        """
+    def _extra_metrics(self) -> Dict[str, Any]:
+        """Subclasses should override this method to report extra metrics
+        that are specific to them."""
         return {}
-
-    def get_transformation_fn(self) -> Callable:
-        """Returns the underlying transformation function for this operator.
-
-        This is used by the physical plan optimizer for e.g. operator fusion.
-        """
-        raise NotImplementedError
 
     def progress_str(self) -> str:
         """Return any extra status to be displayed in the operator progress bar.
@@ -93,14 +242,17 @@ class PhysicalOperator(Operator):
         """
         return ""
 
-    def num_outputs_total(self) -> Optional[int]:
-        """Returns the total number of output bundles of this operator, if known.
+    def num_outputs_total(self) -> int:
+        """Returns the total number of output bundles of this operator.
 
+        The value returned may be an estimate based off the consumption so far.
         This is useful for reporting progress.
         """
+        if self._estimated_output_blocks is not None:
+            return self._estimated_output_blocks
         if len(self.input_dependencies) == 1:
             return self.input_dependencies[0].num_outputs_total()
-        return None
+        raise AttributeError
 
     def start(self, options: ExecutionOptions) -> None:
         """Called by the executor when execution starts for an operator.
@@ -131,12 +283,19 @@ class PhysicalOperator(Operator):
         Inputs may be added in any order, and calls to `add_input` may be interleaved
         with calls to `get_next` / `has_next` to implement streaming execution.
 
+        Subclasses should override `_add_input_inner` instead of this method.
+
         Args:
             refs: The ref bundle that should be added as input.
             input_index: The index identifying the input dependency producing the
                 input. For most operators, this is always `0` since there is only
                 one upstream input operator.
         """
+        self._metrics.on_input_received(refs)
+        self._add_input_inner(refs, input_index)
+
+    def _add_input_inner(self, refs: RefBundle, input_index: int) -> None:
+        """Subclasses should override this method to implement `add_input`."""
         raise NotImplementedError
 
     def input_done(self, input_index: int) -> None:
@@ -173,16 +332,27 @@ class PhysicalOperator(Operator):
         """Get the next downstream output.
 
         It is only allowed to call this if `has_next()` has returned True.
+
+        Subclasses should override `_get_next_inner` instead of this method.
         """
+        output = self._get_next_inner()
+        self._metrics.on_output_taken(output)
+        return output
+
+    def _get_next_inner(self) -> RefBundle:
+        """Subclasses should override this method to implement `get_next`."""
         raise NotImplementedError
 
-    def get_work_refs(self) -> List[ray.ObjectRef]:
-        """Get a list of object references the executor should wait on.
-
-        When a reference becomes ready, the executor must call
-        `notify_work_completed(ref)` to tell this operator of the state change.
-        """
+    def get_active_tasks(self) -> List[OpTask]:
+        """Get a list of the active tasks of this operator."""
         return []
+
+    def num_active_tasks(self) -> int:
+        """Return the number of active tasks.
+
+        Subclasses can override this as a performance optimization.
+        """
+        return len(self.get_active_tasks())
 
     def throttling_disabled(self) -> bool:
         """Whether to disable resource throttling for this operator.
@@ -193,27 +363,12 @@ class PhysicalOperator(Operator):
         """
         return False
 
-    def num_active_work_refs(self) -> int:
-        """Return the number of active work refs.
-
-        Subclasses can override this as a performance optimization.
-        """
-        return len(self.get_work_refs())
-
     def internal_queue_size(self) -> int:
         """If the operator has an internal input queue, return its size.
 
         This is used to report tasks pending submission to actor pools.
         """
         return 0
-
-    def notify_work_completed(self, work_ref: ray.ObjectRef) -> None:
-        """Executor calls this when the given work is completed and local.
-
-        This must be called as soon as the operator is aware that `work_ref` is
-        ready.
-        """
-        raise NotImplementedError
 
     def shutdown(self) -> None:
         """Abort execution and release all resources used by this operator.

@@ -3,6 +3,9 @@
 Ray Client
 ==========
 
+.. warning::
+   Ray Client requires pip package `ray[client]`. If you installed the minimal Ray (e.g. `pip install ray`), please reinstall by executing `pip install ray[client]`.
+
 **What is the Ray Client?**
 
 The Ray Client is an API that connects a Python script to a **remote** Ray cluster. Effectively, it allows you to leverage a remote Ray cluster just like you would with Ray running on your local machine.
@@ -79,12 +82,72 @@ To start a Ray cluster remotely, you can follow the directions in :ref:`vm-clust
 
 If necessary, you can modify the Ray Client server port to be other than ``10001``, by specifying ``--ray-client-server-port=...`` to the ``ray start`` :ref:`command <ray-start-doc>`.
 
-Step 2: Check ports
-~~~~~~~~~~~~~~~~~~~
+Step 2: Configure Access
+~~~~~~~~~~~~~~~~~~~~~~~~
 
-Ensure that the Ray Client port on the head node is reachable from your local machine.
-This means opening that port up by configuring security groups or other access controls (on  `EC2 <https://docs.aws.amazon.com/AWSEC2/latest/UserGuide/authorizing-access-to-an-instance.html>`_)
-or proxying from your local machine to the cluster (on `K8s <https://kubernetes.io/docs/tasks/access-application-cluster/port-forward-access-application-cluster/#forward-a-local-port-to-a-port-on-the-pod>`_).
+Ensure that your local machine can access the Ray Client port on the head node.
+
+The easiest way to accomplish this is to use SSH port forwarding or `K8s port-forwarding <https://kubernetes.io/docs/tasks/access-application-cluster/port-forward-access-application-cluster/#forward-a-local-port-to-a-port-on-the-pod>`_. 
+This allows you to connect to the Ray Client server on the head node via ``localhost``.
+
+First, open up an SSH connection with your Ray cluster and forward the
+listening port (``10001``). For Clusters launched with the Ray Cluster launcher this looks like:
+
+.. code-block:: bash
+
+  $ ray up cluster.yaml
+  $ ray attach cluster.yaml -p 10001
+
+Then connect to the Ray cluster **from another terminal** using  ``localhost`` as the
+``head_node_host``.
+
+.. code-block:: python
+
+   import ray
+
+   # This will connect to the cluster via the open SSH session.
+   ray.init("ray://localhost:10001")
+
+   # Normal Ray code follows
+   @ray.remote
+   def do_work(x):
+       return x ** x
+
+   do_work.remote(2)
+
+   #....
+
+Step 3: Run Ray code
+~~~~~~~~~~~~~~~~~~~~
+
+Now, connect to the Ray Cluster with the following and then use Ray like you normally would:
+
+..
+.. code-block:: python
+
+   import ray
+
+   # replace with the appropriate host and port
+   ray.init("ray://<head_node_host>:10001")
+
+   # Normal Ray code follows
+   @ray.remote
+   def do_work(x):
+       return x ** x
+
+   do_work.remote(2)
+
+   #....
+
+Alternative Connection Approach:
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+Instead of port-forwarding, you can directly connect to the Ray Client server on the head node if your computer
+has network access to the head node. This is an option if your computer is on the same network as the Cluster or
+if your computer can connct to the Cluster with a VPN.
+
+If your computer does not have direct access, you can modify the network configuration to grant access. On `EC2 <https://docs.aws.amazon.com/AWSEC2/latest/UserGuide/authorizing-access-to-an-instance.html>`_,
+this can be done by modifying the security group to allow inbound access from your local IP address to the Ray Client server port (``10001`` by default).
 
 .. tab-set::
 
@@ -110,65 +173,13 @@ or proxying from your local machine to the cluster (on `K8s <https://kubernetes.
                             ToPort: 10001
                             IpProtocol: TCP
                             IpRanges:
-                                # This will enable inbound access from ALL IPv4 addresses.
-                                - CidrIp: 0.0.0.0/0
+                                # Allow traffic only from your local IP address.
+                                - CidrIp: <YOUR_IP_ADDRESS>/32
 
-Step 3: Run Ray code
-~~~~~~~~~~~~~~~~~~~~
 
-Now, connect to the Ray Cluster with the following and then use Ray like you normally would:
-
-..
-.. code-block:: python
-
-   import ray
-
-   # replace with the appropriate host and port
-   ray.init("ray://<head_node_host>:10001")
-
-   # Normal Ray code follows
-   @ray.remote
-   def do_work(x):
-       return x ** x
-
-   do_work.remote(2)
-
-   #....
-
-Alternative Approach: SSH Port Forwarding
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-As an alternative to configuring inbound traffic rules, you can also set up
-Ray Client via port forwarding. While this approach does require an open SSH
-connection, it can be useful in a test environment where the
-``head_node_host`` often changes.
-
-First, open up an SSH connection with your Ray cluster and forward the
-listening port (``10001``).
-
-.. code-block:: bash
-
-  $ ray up cluster.yaml
-  $ ray attach cluster.yaml -p 10001
-
-Then, you can connect to the Ray cluster **from another terminal** using  ``localhost`` as the
-``head_node_host``.
-
-.. code-block:: python
-
-   import ray
-
-   # This will connect to the cluster via the open SSH session.
-   ray.init("ray://localhost:10001")
-
-   # Normal Ray code follows
-   @ray.remote
-   def do_work(x):
-       return x ** x
-
-   do_work.remote(2)
-
-   #....
+.. warning::
+   Anyone with Ray Client access can execute arbitrary code on the Ray Cluster.\n
+   **Do not expose this to `0.0.0.0/0`.**
 
 Connect to multiple Ray clusters (Experimental)
 -----------------------------------------------

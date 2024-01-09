@@ -250,12 +250,12 @@ class MemNNModel(tune.Trainable):
     def save_checkpoint(self, checkpoint_dir):
         file_path = checkpoint_dir + "/model"
         self.model.save(file_path)
-        return file_path
 
-    def load_checkpoint(self, path):
+    def load_checkpoint(self, checkpoint_dir):
         # See https://stackoverflow.com/a/42763323
         del self.model
-        self.model = load_model(path)
+        file_path = checkpoint_dir + "/model"
+        self.model = load_model(file_path)
 
 
 if __name__ == "__main__":

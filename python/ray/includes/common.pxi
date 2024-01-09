@@ -10,6 +10,7 @@ from ray.includes.common cimport (
     CPythonGcsSubscriber,
     kWorkerSetupHookKeyName,
     kResourceUnitScaling,
+    kImplicitResourcePrefix,
     kStreamingGeneratorReturn,
 )
 
@@ -22,8 +23,13 @@ cdef class GcsClientOptions:
     @classmethod
     def from_gcs_address(cls, gcs_address):
         self = GcsClientOptions()
-        self.inner.reset(
-            new CGcsClientOptions(gcs_address.encode("ascii")))
+        try:
+            ip, port = gcs_address.split(":", 2)
+            port = int(port)
+            self.inner.reset(
+                new CGcsClientOptions(ip, port))
+        except Exception:
+            raise ValueError(f"Invalid gcs_address: {gcs_address}")
         return self
 
     cdef CGcsClientOptions* native(self):
@@ -32,4 +38,5 @@ cdef class GcsClientOptions:
 
 WORKER_PROCESS_SETUP_HOOK_KEY_NAME_GCS = str(kWorkerSetupHookKeyName)
 RESOURCE_UNIT_SCALING = kResourceUnitScaling
+IMPLICIT_RESOURCE_PREFIX = kImplicitResourcePrefix.decode()
 STREAMING_GENERATOR_RETURN = kStreamingGeneratorReturn

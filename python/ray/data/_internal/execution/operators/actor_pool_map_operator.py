@@ -1,9 +1,8 @@
 import collections
 from dataclasses import dataclass
-from typing import Any, Callable, Dict, Iterator, List, Optional, Tuple, Union
+from typing import Any, Dict, Iterator, List, Optional, Union
 
 import ray
-from ray._raylet import ObjectRefGenerator
 from ray.data._internal.compute import ActorPoolStrategy
 from ray.data._internal.dataset_logger import DatasetLogger
 from ray.data._internal.execution.interfaces import (
@@ -14,13 +13,10 @@ from ray.data._internal.execution.interfaces import (
     RefBundle,
     TaskContext,
 )
-from ray.data._internal.execution.operators.map_operator import (
-    MapOperator,
-    _map_task,
-    _TaskState,
-)
+from ray.data._internal.execution.operators.map_operator import MapOperator, _map_task
+from ray.data._internal.execution.operators.map_transformer import MapTransformer
 from ray.data._internal.execution.util import locality_string
-from ray.data.block import Block, BlockMetadata, _CallableClassProtocol
+from ray.data.block import Block, BlockMetadata
 from ray.data.context import DataContext
 from ray.types import ObjectRef
 
@@ -51,9 +47,9 @@ class ActorPoolMapOperator(MapOperator):
 
     def __init__(
         self,
-        transform_fn: Callable[[Iterator[Block]], Iterator[Block]],
-        init_fn: Callable[[], None],
+        map_transformer: MapTransformer,
         input_op: PhysicalOperator,
+        target_max_block_size: Optional[int],
         autoscaling_policy: "AutoscalingPolicy",
         name: str = "ActorPoolMap",
         min_rows_per_bundle: Optional[int] = None,
@@ -68,6 +64,8 @@ class ActorPoolMapOperator(MapOperator):
             autoscaling_policy: A policy controlling when the actor pool should be
                 scaled up and scaled down.
             name: The name of this operator.
+            target_max_block_size: The target maximum number of bytes to
+                include in an output block.
             min_rows_per_bundle: The number of rows to gather per batch passed to the
                 transform_fn, or None to use the block size. Setting the batch size is
                 important for the performance of GPU-accelerated transform functions.
@@ -75,19 +73,18 @@ class ActorPoolMapOperator(MapOperator):
             ray_remote_args: Customize the ray remote args for this op's tasks.
         """
         super().__init__(
-            transform_fn, input_op, name, min_rows_per_bundle, ray_remote_args
+            map_transformer,
+            input_op,
+            name,
+            target_max_block_size,
+            min_rows_per_bundle,
+            ray_remote_args,
         )
-        self._init_fn = init_fn
         self._ray_remote_args = self._apply_default_remote_args(self._ray_remote_args)
         self._min_rows_per_bundle = min_rows_per_bundle
 
         # Create autoscaling policy from compute strategy.
         self._autoscaling_policy = autoscaling_policy
-        # A map from task output futures to task state and the actor on which its
-        # running.
-        self._tasks: Dict[
-            ObjectRef[ObjectRefGenerator], Tuple[_TaskState, ray.actor.ActorHandle]
-        ] = {}
         # A pool of running actors on which we can execute mapper tasks.
         self._actor_pool = _ActorPool(autoscaling_policy._config.max_tasks_in_flight)
         # A queue of bundles awaiting dispatch to actors.
@@ -96,10 +93,6 @@ class ActorPoolMapOperator(MapOperator):
         self._cls = None
         # Whether no more submittable bundles will be added.
         self._inputs_done = False
-        self._next_task_idx = 0
-
-    def get_init_fn(self) -> Callable[[], None]:
-        return self._init_fn
 
     def internal_queue_size(self) -> int:
         return len(self._bundle_queue)
@@ -121,7 +114,14 @@ class ActorPoolMapOperator(MapOperator):
         logger.get_logger().info(
             f"{self._name}: Waiting for {len(refs)} pool actors to start..."
         )
-        ray.get(refs, timeout=DEFAULT_WAIT_FOR_MIN_ACTORS_SEC)
+        try:
+            ray.get(refs, timeout=DEFAULT_WAIT_FOR_MIN_ACTORS_SEC)
+        except ray.exceptions.GetTimeoutError:
+            raise ray.exceptions.GetTimeoutError(
+                "Timed out while starting actors. "
+                "This may mean that the cluster does not have "
+                "enough resources for the requested actor pool."
+            )
 
     def should_add_input(self) -> bool:
         return self._actor_pool.num_free_slots() > 0
@@ -142,8 +142,28 @@ class ActorPoolMapOperator(MapOperator):
         """Start a new actor and add it to the actor pool as a pending actor."""
         assert self._cls is not None
         ctx = DataContext.get_current()
-        actor = self._cls.remote(ctx, src_fn_name=self.name, init_fn=self._init_fn)
-        self._actor_pool.add_pending_actor(actor, actor.get_location.remote())
+        actor = self._cls.remote(
+            ctx,
+            src_fn_name=self.name,
+            map_transformer=self._map_transformer,
+        )
+        res_ref = actor.get_location.remote()
+
+        def _task_done_callback(res_ref):
+            # res_ref is a future for a now-ready actor; move actor from pending to the
+            # active actor pool.
+            has_actor = self._actor_pool.pending_to_running(res_ref)
+            if not has_actor:
+                # Actor has already been killed.
+                return
+            # A new actor has started, we try to dispatch queued tasks.
+            self._dispatch_tasks()
+
+        self._submit_metadata_task(
+            res_ref,
+            lambda: _task_done_callback(res_ref),
+        )
+        self._actor_pool.add_pending_actor(actor, res_ref)
 
     def _add_bundled_input(self, bundle: RefBundle):
         self._bundle_queue.append(bundle)
@@ -170,14 +190,28 @@ class ActorPoolMapOperator(MapOperator):
             # Submit the map task.
             bundle = self._bundle_queue.popleft()
             input_blocks = [block for block, _ in bundle.blocks]
-            ctx = TaskContext(task_idx=self._next_task_idx)
-            ref = actor.submit.options(num_returns="dynamic", name=self.name).remote(
-                self._transform_fn_ref, ctx, *input_blocks
+            ctx = TaskContext(
+                task_idx=self._next_data_task_idx,
+                target_max_block_size=self.actual_target_max_block_size,
             )
-            self._next_task_idx += 1
-            task = _TaskState(bundle)
-            self._tasks[ref] = (task, actor)
-            self._handle_task_submitted(task)
+            gen = actor.submit.options(num_returns="streaming", name=self.name).remote(
+                DataContext.get_current(), ctx, *input_blocks
+            )
+
+            def _task_done_callback(actor_to_return):
+                # Return the actor that was running the task to the pool.
+                self._actor_pool.return_actor(actor_to_return)
+                # Dipsatch more tasks.
+                self._dispatch_tasks()
+
+            # For some reason, if we don't define a new variable `actor_to_return`,
+            # the following lambda won't capture the correct `actor` variable.
+            actor_to_return = actor
+            self._submit_data_task(
+                gen,
+                bundle,
+                lambda: _task_done_callback(actor_to_return),
+            )
 
         # Needed in the bulk execution path for triggering autoscaling. This is a
         # no-op in the streaming execution case.
@@ -212,28 +246,6 @@ class ActorPoolMapOperator(MapOperator):
                 # break out of the scale-down loop.
                 break
 
-    def notify_work_completed(
-        self, ref: Union[ObjectRef[ObjectRefGenerator], ray.ObjectRef]
-    ):
-        # This actor pool MapOperator implementation has both task output futures AND
-        # worker started futures to handle here.
-        if ref in self._tasks:
-            # Get task state and set output.
-            task, actor = self._tasks.pop(ref)
-            task.output = self._map_ref_to_ref_bundle(ref)
-            self._handle_task_done(task)
-            # Return the actor that was running the task to the pool.
-            self._actor_pool.return_actor(actor)
-        else:
-            # ref is a future for a now-ready actor; move actor from pending to the
-            # active actor pool.
-            has_actor = self._actor_pool.pending_to_running(ref)
-            if not has_actor:
-                # Actor has already been killed.
-                return
-        # For either a completed task or ready worker, we try to dispatch queued tasks.
-        self._dispatch_tasks()
-
     def all_inputs_done(self):
         # Call base implementation to handle any leftover bundles. This may or may not
         # trigger task dispatch.
@@ -260,23 +272,8 @@ class ActorPoolMapOperator(MapOperator):
         # Warn if the user specified a batch or block size that prevents full
         # parallelization across the actor pool. We only know this information after
         # execution has completed.
-        total_rows = sum([m.num_rows for m in self._output_metadata])
         min_workers = self._autoscaling_policy.min_workers
-        max_desired_batch_size = total_rows // min_workers
-        if (
-            self._min_rows_per_bundle is not None
-            and self._min_rows_per_bundle > max_desired_batch_size
-        ):
-            # The user specified a batch size, but it was probably too large.
-            logger.get_logger().warning(
-                f"Your batch size is too large. Currently, your batch size is "
-                f"{self._min_rows_per_bundle}. Your dataset contains {total_rows}, and "
-                f"Ray Data tried to parallelize it across {min_workers} actors. To "
-                f"parallelize this fully across all {min_workers} actors, set batch "
-                f"size to not exceed `{total_rows} / {min_workers} = "
-                f"{max_desired_batch_size}`."
-            )
-        elif len(self._output_metadata) < min_workers:
+        if len(self._output_metadata) < min_workers:
             # The user created a stream that has too few blocks to begin with.
             logger.get_logger().warning(
                 "To ensure full parallelization across an actor pool of size "
@@ -284,15 +281,6 @@ class ActorPoolMapOperator(MapOperator):
                 f"{min_workers} distinct blocks. Consider increasing "
                 "the parallelism when creating the Dataset."
             )
-
-    def get_work_refs(self) -> List[ray.ObjectRef]:
-        # Work references that we wish the executor to wait on includes both task
-        # futures AND worker ready futures.
-        return list(self._tasks.keys()) + self._actor_pool.get_pending_actor_refs()
-
-    def num_active_work_refs(self) -> int:
-        # Active work references only includes running tasks, not pending actor starts.
-        return len(self._tasks)
 
     def progress_str(self) -> str:
         base = f"{self._actor_pool.num_running_actors()} actors"
@@ -320,7 +308,7 @@ class ActorPoolMapOperator(MapOperator):
         return ExecutionResources(
             cpu=self._ray_remote_args.get("num_cpus", 0) * num_active_workers,
             gpu=self._ray_remote_args.get("num_gpus", 0) * num_active_workers,
-            object_store_memory=self._metrics.cur,
+            object_store_memory=self.metrics.obj_store_mem_cur,
         )
 
     def incremental_resource_usage(self) -> ExecutionResources:
@@ -339,14 +327,18 @@ class ActorPoolMapOperator(MapOperator):
             # compute resources to be 0.
             num_cpus = 0
             num_gpus = 0
-        return ExecutionResources(cpu=num_cpus, gpu=num_gpus)
+        return ExecutionResources(
+            cpu=num_cpus,
+            gpu=num_gpus,
+            object_store_memory=self._metrics.average_bytes_outputs_per_task,
+        )
 
-    def get_metrics(self) -> Dict[str, int]:
-        parent = super().get_metrics()
+    def _extra_metrics(self) -> Dict[str, Any]:
+        res = {}
         if self._actor_locality_enabled:
-            parent["locality_hits"] = self._actor_pool._locality_hits
-            parent["locality_misses"] = self._actor_pool._locality_misses
-        return parent
+            res["locality_hits"] = self._actor_pool._locality_hits
+            res["locality_misses"] = self._actor_pool._locality_misses
+        return res
 
     @staticmethod
     def _apply_default_remote_args(ray_remote_args: Dict[str, Any]) -> Dict[str, Any]:
@@ -364,7 +356,7 @@ class ActorPoolMapOperator(MapOperator):
             "max_task_retries" not in ray_remote_args
             and ray_remote_args.get("max_restarts") != 0
         ):
-            ray_remote_args["max_task_retries"] = 5
+            ray_remote_args["max_task_retries"] = -1
         return ray_remote_args
 
 
@@ -372,24 +364,32 @@ class _MapWorker:
     """An actor worker for MapOperator."""
 
     def __init__(
-        self, ctx: DataContext, src_fn_name: str, init_fn: _CallableClassProtocol
+        self,
+        ctx: DataContext,
+        src_fn_name: str,
+        map_transformer: MapTransformer,
     ):
         DataContext._set_current(ctx)
         self.src_fn_name: str = src_fn_name
-
+        self._map_transformer = map_transformer
         # Initialize state for this actor.
-        init_fn()
+        self._map_transformer.init()
 
     def get_location(self) -> NodeIdStr:
         return ray.get_runtime_context().get_node_id()
 
     def submit(
         self,
-        fn: Callable[[Iterator[Block], TaskContext], Iterator[Block]],
-        ctx,
+        data_context: DataContext,
+        ctx: TaskContext,
         *blocks: Block,
     ) -> Iterator[Union[Block, List[BlockMetadata]]]:
-        yield from _map_task(fn, ctx, *blocks)
+        yield from _map_task(
+            self._map_transformer,
+            data_context,
+            ctx,
+            *blocks,
+        )
 
     def __repr__(self):
         return f"MapWorker({self.src_fn_name})"

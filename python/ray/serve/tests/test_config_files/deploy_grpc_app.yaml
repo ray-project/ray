@@ -1,0 +1,8 @@
+grpc_options:
+  port: 9000
+  grpc_servicer_functions:
+    - ray.serve.generated.serve_pb2_grpc.add_UserDefinedServiceServicer_to_server
+
+applications:
+  - name: app1
+    import_path: ray.serve.tests.test_config_files.grpc_deployment:g

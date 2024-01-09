@@ -42,7 +42,7 @@ tf1, tf, tfv = try_import_tf()
 logger = logging.getLogger(__name__)
 
 
-@Deprecated(error=False)
+@DeveloperAPI
 class TFPolicy(Policy):
     """An agent policy and loss implemented in TensorFlow.
 
@@ -57,17 +57,24 @@ class TFPolicy(Policy):
 
     Input tensors are typically shaped like [BATCH_SIZE, ...].
 
-    Examples:
-        >>> from ray.rllib.policy import TFPolicy
-        >>> class TFPolicySubclass(TFPolicy): # doctest: +SKIP
-        ...     ... # doctest: +SKIP
-        >>> sess, obs_input, sampled_action, loss, loss_inputs = ... # doctest: +SKIP
-        >>> policy = TFPolicySubclass( # doctest: +SKIP
-        ...     sess, obs_input, sampled_action, loss, loss_inputs) # doctest: +SKIP
-        >>> print(policy.compute_actions([1, 0, 2])) # doctest: +SKIP
+    .. testcode::
+        :skipif: True
+
+        from ray.rllib.policy import TFPolicy
+        class TFPolicySubclass(TFPolicy):
+            ...
+
+        sess, obs_input, sampled_action, loss, loss_inputs = ...
+        policy = TFPolicySubclass(
+            sess, obs_input, sampled_action, loss, loss_inputs)
+        print(policy.compute_actions([1, 0, 2]))
+        print(policy.postprocess_trajectory(SampleBatch({...})))
+
+    .. testoutput::
+
         (array([0, 1, 1]), [], {})
-        >>> print(policy.postprocess_trajectory(SampleBatch({...}))) # doctest: +SKIP
         SampleBatch({"action": ..., "advantages": ..., ...})
+
     """
 
     # In order to create tf_policies from checkpoints, this class needs to separate
@@ -305,7 +312,6 @@ class TFPolicy(Policy):
         episodes: Optional[List["Episode"]] = None,
         **kwargs,
     ) -> Tuple[TensorType, List[TensorType], Dict[str, TensorType]]:
-
         explore = explore if explore is not None else self.config["explore"]
         timestep = timestep if timestep is not None else self.global_timestep
 
@@ -349,7 +355,6 @@ class TFPolicy(Policy):
         timestep: Optional[int] = None,
         **kwargs,
     ):
-
         explore = explore if explore is not None else self.config["explore"]
         timestep = timestep if timestep is not None else self.global_timestep
 
@@ -391,7 +396,6 @@ class TFPolicy(Policy):
         actions_normalized: bool = True,
         **kwargs,
     ) -> TensorType:
-
         if self._log_likelihood is None:
             raise ValueError(
                 "Cannot compute log-prob/likelihood w/o a self._log_likelihood op!"

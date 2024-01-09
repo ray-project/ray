@@ -73,13 +73,19 @@ class TaskCancelledError(RayError):
             cancelled.
     """
 
-    def __init__(self, task_id: Optional[TaskID] = None):
+    def __init__(
+        self, task_id: Optional[TaskID] = None, error_message: Optional[str] = None
+    ):
         self.task_id = task_id
+        self.error_message = error_message
 
     def __str__(self):
-        if self.task_id is None:
-            return "This task or its dependency was cancelled by"
-        return "Task: " + str(self.task_id) + " was cancelled"
+        msg = ""
+        if self.task_id:
+            msg = "Task: " + str(self.task_id) + " was cancelled. "
+        if self.error_message:
+            msg += self.error_message
+        return msg
 
 
 @PublicAPI
@@ -136,9 +142,6 @@ class RayTaskError(RayError):
         cause_cls = self.cause.__class__
         if issubclass(RayTaskError, cause_cls):
             return self  # already satisfied
-
-        if issubclass(cause_cls, RayError):
-            return self  # don't try to wrap ray internal errors
 
         error_msg = str(self)
 
@@ -272,6 +275,8 @@ class RayActorError(RayError):
         self._actor_init_failed = False
         # -- The base actor error message. --
         self.base_error_msg = "The actor died unexpectedly before finishing this task."
+        # Whether the node was preempted
+        self._preempted = False
 
         if not cause:
             self.error_msg = self.base_error_msg
@@ -303,6 +308,11 @@ class RayActorError(RayError):
                 error_msg_lines.append(
                     "The actor never ran - it was cancelled before it started running."
                 )
+            if cause.preempted:
+                self._preempted = True
+                error_msg_lines.append(
+                    "\tThe actor's node was killed by a spot preemption."
+                )
             self.error_msg = "\n".join(error_msg_lines)
             self.actor_id = ActorID(cause.actor_id).hex()
 
@@ -312,6 +322,10 @@ class RayActorError(RayError):
 
     def __str__(self) -> str:
         return self.error_msg
+
+    @property
+    def preempted(self) -> bool:
+        return self._preempted
 
     @staticmethod
     def from_task_error(task_error: RayTaskError):

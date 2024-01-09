@@ -76,23 +76,34 @@ void ClusterResourceScheduler::Init(
           local_node_id_,
           *cluster_resource_manager_,
           /*is_node_available_fn*/
-          [this](auto node_id) { return this->NodeAlive(node_id); });
+          [this](auto node_id) { return this->NodeAvailable(node_id); });
   bundle_scheduling_policy_ =
       std::make_unique<raylet_scheduling_policy::CompositeBundleSchedulingPolicy>(
           *cluster_resource_manager_,
           /*is_node_available_fn*/
-          [this](auto node_id) { return this->NodeAlive(node_id); });
+          [this](auto node_id) { return this->NodeAvailable(node_id); });
 }
 
-bool ClusterResourceScheduler::NodeAlive(scheduling::NodeID node_id) const {
+bool ClusterResourceScheduler::NodeAvailable(scheduling::NodeID node_id) const {
   if (node_id == local_node_id_) {
-    return is_local_node_with_raylet_;
+    if (!is_local_node_with_raylet_) {
+      return false;
+    } else {
+      return !local_resource_manager_->IsLocalNodeDraining();
+    }
   }
+
   if (node_id.IsNil()) {
     return false;
   }
+
   RAY_CHECK(is_node_available_fn_ != nullptr);
-  return is_node_available_fn_(node_id);
+  if (!is_node_available_fn_(node_id) ||
+      cluster_resource_manager_->IsNodeDraining(node_id)) {
+    return false;
+  }
+
+  return true;
 }
 
 bool ClusterResourceScheduler::IsSchedulable(const ResourceRequest &resource_request,
@@ -101,9 +112,10 @@ bool ClusterResourceScheduler::IsSchedulable(const ResourceRequest &resource_req
   // will eventually spill the task back from the waiting queue if its args
   // cannot be pulled.
   return cluster_resource_manager_->HasSufficientResource(
-      node_id,
-      resource_request,
-      /*ignore_object_store_memory_requirement*/ node_id == local_node_id_);
+             node_id,
+             resource_request,
+             /*ignore_object_store_memory_requirement*/ node_id == local_node_id_) &&
+         NodeAvailable(node_id);
 }
 
 namespace {
@@ -239,7 +251,7 @@ std::string ClusterResourceScheduler::DebugString(void) const {
   std::stringstream buffer;
   buffer << "\nLocal id: " << local_node_id_.ToInt();
   buffer << " Local resources: " << local_resource_manager_->DebugString();
-  cluster_resource_manager_->DebugString(buffer);
+  buffer << " Cluster resources: " << cluster_resource_manager_->DebugString();
   return buffer.str();
 }
 
@@ -271,7 +283,7 @@ scheduling::NodeID ClusterResourceScheduler::GetBestSchedulableNode(
   // going through the full hybrid policy since we don't want spillback.
   if (preferred_node_id == local_node_id_.Binary() && !exclude_local_node &&
       IsSchedulableOnNode(local_node_id_,
-                          task_spec.GetRequiredResources().GetResourceMap(),
+                          task_spec.GetRequiredPlacementResources().GetResourceMap(),
                           requires_object_store_memory)) {
     *is_infeasible = false;
     return local_node_id_;
@@ -292,7 +304,7 @@ scheduling::NodeID ClusterResourceScheduler::GetBestSchedulableNode(
   // There is no other available nodes.
   if (!best_node.IsNil() &&
       !IsSchedulableOnNode(best_node,
-                           task_spec.GetRequiredResources().GetResourceMap(),
+                           task_spec.GetRequiredPlacementResources().GetResourceMap(),
                            requires_object_store_memory)) {
     // Prefer waiting on the local node since the local node is chosen for a reason (e.g.
     // spread).

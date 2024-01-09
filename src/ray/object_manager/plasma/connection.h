@@ -23,8 +23,9 @@ class ClientInterface {
 
   virtual ray::Status SendFd(MEMFD_TYPE fd) = 0;
   virtual const std::unordered_set<ray::ObjectID> &GetObjectIDs() = 0;
-  virtual void MarkObjectAsUsed(const ray::ObjectID &object_id) = 0;
-  virtual void MarkObjectAsUnused(const ray::ObjectID &object_id) = 0;
+  virtual void MarkObjectAsUsed(const ray::ObjectID &object_id,
+                                std::optional<MEMFD_TYPE> fallback_allocated_fd) = 0;
+  virtual bool MarkObjectAsUnused(const ray::ObjectID &object_id) = 0;
 };
 
 /// Contains all information that is associated with a Plasma store client.
@@ -37,12 +38,70 @@ class Client : public ray::ClientConnection, public ClientInterface {
 
   const std::unordered_set<ray::ObjectID> &GetObjectIDs() override { return object_ids; }
 
-  virtual void MarkObjectAsUsed(const ray::ObjectID &object_id) override {
-    object_ids.insert(object_id);
+  // Holds the object ID. If the object ID has a fallback-allocated fd, adds the ref count
+  // to that fd. Note: used_fds_ is not updated. rather, it's updated in SendFd().
+  //
+  // Idempotency: only increments ref count if the object ID was not held. Note that a
+  // second call for a same `object_id` must come with the same `fallback_allocated_fd`.
+  virtual void MarkObjectAsUsed(
+      const ray::ObjectID &object_id,
+      std::optional<MEMFD_TYPE> fallback_allocated_fd) override {
+    const auto [_, inserted] = object_ids.insert(object_id);
+    if (inserted) {
+      // new insertion
+      RAY_CHECK(!object_ids_to_fallback_allocated_fds_.contains(object_id));
+
+      if (fallback_allocated_fd.has_value()) {
+        MEMFD_TYPE fd = fallback_allocated_fd.value();
+        object_ids_to_fallback_allocated_fds_[object_id] = fd;
+        fallback_allocated_fds_ref_count_[fd] += 1;
+      }
+    } else {
+      // Already inserted, idempotent call.
+      // Assert the fd parameter == the fd used in the last call, or they are both none.
+      const auto iter = object_ids_to_fallback_allocated_fds_.find(object_id);
+      if (fallback_allocated_fd.has_value()) {
+        RAY_CHECK(iter != object_ids_to_fallback_allocated_fds_.end() &&
+                  iter->second == fallback_allocated_fd.value());
+      } else {
+        RAY_CHECK(iter == object_ids_to_fallback_allocated_fds_.end());
+      }
+    }
   }
 
-  virtual void MarkObjectAsUnused(const ray::ObjectID &object_id) override {
-    object_ids.erase(object_id);
+  // Removes object ID's ref to the fd, if any. If the fd's refcnt goes to 0, also remove
+  // the fd from used_fds_ and return true, directing the client to unmap it.
+  //
+  // Invalidates the corresponding iterator from GetObjectIDs() in the middle of
+  // execution. *Don't* pass in the object_id dererfenced from an iterator from
+  // GetObjectIDs().
+  //
+  // Returns: bool, client should unmap.
+  // Idempotency: only decrements ref count if the object ID was held.
+  virtual bool MarkObjectAsUnused(const ray::ObjectID &object_id) override {
+    size_t erased = object_ids.erase(object_id);
+    if (erased == 0) {
+      return false;
+    }
+    auto fd_iter = object_ids_to_fallback_allocated_fds_.find(object_id);
+    if (fd_iter == object_ids_to_fallback_allocated_fds_.end()) {
+      return false;
+    }
+    MEMFD_TYPE fd = fd_iter->second;
+    object_ids_to_fallback_allocated_fds_.erase(fd_iter);
+
+    auto ref_cnt_iter = fallback_allocated_fds_ref_count_.find(fd);
+    // If fd existed before from object_ids_to_fds_ the ref count should have been > 0
+    RAY_CHECK(ref_cnt_iter != fallback_allocated_fds_ref_count_.end());
+    size_t &ref_cnt = ref_cnt_iter->second;
+    RAY_CHECK_GT(ref_cnt, static_cast<size_t>(0));
+    ref_cnt -= 1;
+    if (ref_cnt == 0) {
+      fallback_allocated_fds_ref_count_.erase(ref_cnt_iter);
+      used_fds_.erase(fd);  // Next SendFd call will send this fd again.
+      return true;
+    }
+    return false;
   }
 
   std::string name = "anonymous_client";
@@ -55,6 +114,13 @@ class Client : public ray::ClientConnection, public ClientInterface {
 
   /// Object ids that are used by this client.
   std::unordered_set<ray::ObjectID> object_ids;
+
+  // Records each fd sent to the client and which object IDs are in this fd.
+  // Only tracks fallback-allocated fds. This means the main memory is not tracked, and we
+  // won't tell client to unmap the main memory. Incremented by `Get`, Decremented by
+  // `Release`. If an FD is emptied out, the fd can be unmapped on the client side.
+  absl::flat_hash_map<MEMFD_TYPE, size_t> fallback_allocated_fds_ref_count_;
+  absl::flat_hash_map<ray::ObjectID, MEMFD_TYPE> object_ids_to_fallback_allocated_fds_;
 };
 
 std::ostream &operator<<(std::ostream &os, const std::shared_ptr<Client> &client);

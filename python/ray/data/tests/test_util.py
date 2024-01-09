@@ -1,13 +1,19 @@
+import time
+from typing import Any, Dict, Optional
+from unittest.mock import patch
+
 import numpy as np
 import pytest
 
 import ray
+from ray.data._internal.logical.operators.read_operator import Read
 from ray.data._internal.memory_tracing import (
     leak_report,
     trace_allocation,
     trace_deallocation,
 )
 from ray.data._internal.util import _check_pyarrow_version, _split_list
+from ray.data.datasource.parquet_datasource import ParquetDatasource
 from ray.data.tests.conftest import *  # noqa: F401, F403
 
 
@@ -85,6 +91,52 @@ def test_list_splits():
     assert _split_list(list(range(5)), 1) == [[0, 1, 2, 3, 4]]
     assert _split_list(["foo", 1, [0], None], 2) == [["foo", 1], [[0], None]]
     assert _split_list(["foo", 1, [0], None], 3) == [["foo", 1], [[0]], [None]]
+
+
+def get_parquet_read_logical_op(
+    ray_remote_args: Optional[Dict[str, Any]] = None,
+    **read_kwargs,
+) -> Read:
+    datasource = ParquetDatasource(paths="example://iris.parquet")
+    if "parallelism" not in read_kwargs:
+        read_kwargs["parallelism"] = 10
+    mem_size = None
+    if "mem_size" in read_kwargs:
+        mem_size = read_kwargs.pop("mem_size")
+    read_op = Read(
+        datasource=datasource,
+        datasource_or_legacy_reader=datasource,
+        mem_size=mem_size,
+        ray_remote_args=ray_remote_args,
+        **read_kwargs,
+    )
+    return read_op
+
+
+def test_cluster_resources():
+    """Test ray.data._internal.util.cluster_resources()."""
+    resources = {"CPU": 4, "GPU": 1}
+    cache_interval_s = 0.1
+    with patch.object(
+        ray.data._internal.util,
+        "CLUSTER_RESOURCES_FETCH_INTERVAL_SECONDS",
+        cache_interval_s,
+    ):
+        with patch(
+            "ray.cluster_resources",
+            return_value=resources,
+        ) as ray_cluster_resources:
+            # The first call should call ray.cluster_resources().
+            assert ray.data._internal.util.cluster_resources() == resources
+            assert ray_cluster_resources.call_count == 1
+            # The second call should return the cached value.
+            assert ray.data._internal.util.cluster_resources() == resources
+            assert ray_cluster_resources.call_count == 1
+            time.sleep(cache_interval_s)
+            # After the cache interval, the third call should call
+            # ray.cluster_resources() again.
+            assert ray.data._internal.util.cluster_resources() == resources
+            assert ray_cluster_resources.call_count == 2
 
 
 if __name__ == "__main__":

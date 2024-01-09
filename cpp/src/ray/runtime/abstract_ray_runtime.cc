@@ -93,7 +93,7 @@ std::string AbstractRayRuntime::Put(std::shared_ptr<msgpack::sbuffer> data) {
 }
 
 std::shared_ptr<msgpack::sbuffer> AbstractRayRuntime::Get(const std::string &object_id) {
-  return object_store_->Get(ObjectID::FromBinary(object_id), -1);
+  return Get(object_id, -1);
 }
 
 inline static std::vector<ObjectID> StringIDsToObjectIDs(
@@ -107,7 +107,17 @@ inline static std::vector<ObjectID> StringIDsToObjectIDs(
 
 std::vector<std::shared_ptr<msgpack::sbuffer>> AbstractRayRuntime::Get(
     const std::vector<std::string> &ids) {
-  return object_store_->Get(StringIDsToObjectIDs(ids), -1);
+  return Get(ids, -1);
+}
+
+std::shared_ptr<msgpack::sbuffer> AbstractRayRuntime::Get(const std::string &object_id,
+                                                          const int &timeout_ms) {
+  return object_store_->Get(ObjectID::FromBinary(object_id), timeout_ms);
+}
+
+std::vector<std::shared_ptr<msgpack::sbuffer>> AbstractRayRuntime::Get(
+    const std::vector<std::string> &ids, const int &timeout_ms) {
+  return object_store_->Get(StringIDsToObjectIDs(ids), timeout_ms);
 }
 
 std::vector<bool> AbstractRayRuntime::Wait(const std::vector<std::string> &ids,

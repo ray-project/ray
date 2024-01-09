@@ -31,8 +31,8 @@ namespace plasma {
 
 class CreateRequestQueue {
  public:
-  using CreateObjectCallback = std::function<PlasmaError(
-      bool fallback_allocator, PlasmaObject *result, bool *spilling_required)>;
+  using CreateObjectCallback =
+      std::function<PlasmaError(bool fallback_allocator, PlasmaObject *result)>;
 
   CreateRequestQueue(ray::FileSystemMonitor &fs_monitor,
                      int64_t oom_grace_period_s,
@@ -155,9 +155,7 @@ class CreateRequestQueue {
   /// Process a single request. Sets the request's error result to the error
   /// returned by the request handler inside. Returns OK if the request can be
   /// finished.
-  Status ProcessRequest(bool fallback_allocator,
-                        std::unique_ptr<CreateRequest> &request,
-                        bool *spilling_required);
+  Status ProcessRequest(bool fallback_allocator, std::unique_ptr<CreateRequest> &request);
 
   /// Finish a queued request and remove it from the queue.
   void FinishRequest(std::list<std::unique_ptr<CreateRequest>>::iterator request_it);

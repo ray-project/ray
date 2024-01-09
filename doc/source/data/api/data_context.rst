@@ -9,6 +9,7 @@ Constructor
 -----------
 
 .. autosummary::
+   :nosignatures:
    :toctree: doc/
 
    DataContext
@@ -17,6 +18,7 @@ Get DataContext
 ---------------
 
 .. autosummary::
+   :nosignatures:
    :toctree: doc/
 
    DataContext.get_current

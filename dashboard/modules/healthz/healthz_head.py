@@ -3,7 +3,7 @@ import ray.dashboard.optional_utils as optional_utils
 from ray.dashboard.modules.healthz.utils import HealthChecker
 from aiohttp.web import Request, Response, HTTPServiceUnavailable
 
-routes = optional_utils.ClassMethodRouteTable
+routes = optional_utils.DashboardHeadRouteTable
 
 
 class HealthzHead(dashboard_utils.DashboardHeadModule):

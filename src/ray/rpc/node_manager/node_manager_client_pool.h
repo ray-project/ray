@@ -78,7 +78,7 @@ class NodeManagerClientPool {
   /// A pool of open connections by host:port. Clients can reuse the connection
   /// objects in this pool by requesting them
   absl::flat_hash_map<ray::NodeID, shared_ptr<ray::RayletClientInterface>> client_map_
-      GUARDED_BY(mu_);
+      ABSL_GUARDED_BY(mu_);
 };
 
 }  // namespace rpc

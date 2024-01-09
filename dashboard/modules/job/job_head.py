@@ -46,7 +46,7 @@ from ray.dashboard.modules.version import (
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
 
-routes = optional_utils.ClassMethodRouteTable
+routes = optional_utils.DashboardHeadRouteTable
 
 
 class JobAgentSubmissionClient:
@@ -198,7 +198,7 @@ class JobHead(dashboard_utils.DashboardHeadModule):
             await client.close()
 
         if len(self._agents) >= dashboard_consts.CANDIDATE_AGENT_NUMBER:
-            node_id = sample(set(self._agents), 1)[0]
+            node_id = sample(list(set(self._agents)), 1)[0]
             return self._agents[node_id]
         else:
             # Randomly select one from among all agents, it is possible that

@@ -17,7 +17,10 @@ def train_arguments():
         type=str,
         default=None,
         required=True,
-        help="Directory where trained models are saved.",
+        help="Directory where trained models or LoRA weights are saved.",
+    )
+    parser.add_argument(
+        "--use_lora", default=False, action="store_true", help="Use LoRA."
     )
     parser.add_argument(
         "--instance_images_dir",
@@ -145,6 +148,11 @@ def run_model_flags():
         help=(
             "Enable using Ray Data to use multiple GPU workers to perform inference."
         ),
+    )
+    parser.add_argument(
+        "--lora_weights_dir",
+        default=None,
+        help=("The directory where `pytorch_lora_weights.bin` is stored."),
     )
 
     return parser

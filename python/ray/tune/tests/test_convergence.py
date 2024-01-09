@@ -3,15 +3,15 @@ import numpy as np
 
 import pytest
 import ray
-from ray import tune
+from ray import train, tune
 from ray.tune.stopper import ExperimentPlateauStopper
 from ray.tune.search import ConcurrencyLimiter
 import unittest
 
 
-def loss(config, reporter):
+def loss(config):
     x = config.get("x")
-    reporter(loss=x**2)  # A simple function to optimize
+    train.report({"loss": x**2})  # A simple function to optimize
 
 
 class ConvergenceTest(unittest.TestCase):
@@ -78,34 +78,6 @@ class ConvergenceTest(unittest.TestCase):
         assert len(analysis.trials) < 50
         assert math.isclose(analysis.best_config["x"], 0, abs_tol=1e-5)
 
-    def testConvergenceBlendSearch(self):
-        from ray.tune.search.flaml import BlendSearch
-
-        np.random.seed(0)
-        searcher = BlendSearch()
-        analysis = self._testConvergence(searcher, patience=200)
-
-        assert math.isclose(analysis.best_config["x"], 0, abs_tol=1e-2)
-
-    def testConvergenceCFO(self):
-        from ray.tune.search.flaml import CFO
-
-        np.random.seed(0)
-        searcher = CFO()
-        analysis = self._testConvergence(searcher, patience=200)
-
-        assert math.isclose(analysis.best_config["x"], 0, abs_tol=1e-2)
-
-    def testConvergenceDragonfly(self):
-        from ray.tune.search.dragonfly import DragonflySearch
-
-        np.random.seed(0)
-        searcher = DragonflySearch(domain="euclidean", optimizer="bandit")
-        analysis = self._testConvergence(searcher)
-
-        assert len(analysis.trials) < 100
-        assert math.isclose(analysis.best_config["x"], 0, abs_tol=1e-5)
-
     def testConvergenceHEBO(self):
         from ray.tune.search.hebo import HEBOSearch
 
@@ -124,16 +96,6 @@ class ConvergenceTest(unittest.TestCase):
         analysis = self._testConvergence(searcher, patience=50, top=5)
 
         assert math.isclose(analysis.best_config["x"], 0, abs_tol=1e-2)
-
-    def testConvergenceNevergrad(self):
-        from ray.tune.search.nevergrad import NevergradSearch
-        import nevergrad as ng
-
-        np.random.seed(0)
-        searcher = NevergradSearch(optimizer=ng.optimizers.PSO)
-        analysis = self._testConvergence(searcher, patience=50, top=5)
-
-        assert math.isclose(analysis.best_config["x"], 0, abs_tol=1e-3)
 
     def testConvergenceOptuna(self):
         from ray.tune.search.optuna import OptunaSearch

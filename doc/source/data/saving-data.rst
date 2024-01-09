@@ -58,7 +58,7 @@ the appropriate scheme. URI can point to buckets or folders.
 
             import ray
 
-            ds = ray.data.read_csv("local:///tmp/iris.csv")
+            ds = ray.data.read_csv("s3://anonymous@ray-example-data/iris.csv")
 
             ds.write_parquet("s3://my-bucket/my-folder")
 
@@ -78,7 +78,7 @@ the appropriate scheme. URI can point to buckets or folders.
 
             import ray
 
-            ds = ray.data.read_csv("local:///tmp/iris.csv")
+            ds = ray.data.read_csv("s3://anonymous@ray-example-data/iris.csv")
 
             filesystem = gcsfs.GCSFileSystem(project="my-google-project")
             ds.write_parquet("gcs://my-bucket/my-folder", filesystem=filesystem)
@@ -99,7 +99,7 @@ the appropriate scheme. URI can point to buckets or folders.
 
             import ray
 
-            ds = ray.data.read_csv("local:///tmp/iris.csv")
+            ds = ray.data.read_csv("s3://anonymous@ray-example-data/iris.csv")
 
             filesystem = adlfs.AzureBlobFileSystem(account_name="azureopendatastorage")
             ds.write_parquet("az://my-bucket/my-folder", filesystem=filesystem)
@@ -203,7 +203,6 @@ Ray Data interoperates with distributed data processing frameworks like
         :meth:`Dataset.to_dask() <ray.data.Dataset.to_dask>`.
 
         .. testcode::
-            :skipif: True
 
             import ray
 
@@ -218,13 +217,24 @@ Ray Data interoperates with distributed data processing frameworks like
         call :meth:`Dataset.to_spark() <ray.data.Dataset.to_spark>`.
 
         .. testcode::
-            :skipif: True
 
             import ray
+            import raydp
+
+            spark = raydp.init_spark(
+                app_name = "example",
+                num_executors = 1,
+                executor_cores = 4,
+                executor_memory = "512M"
+            )
 
             ds = ray.data.read_csv("s3://anonymous@ray-example-data/iris.csv")
+            df = ds.to_spark(spark)
 
-            df = ds.to_spark()
+        .. testcode::
+            :hide:
+
+            raydp.stop_spark()
 
     .. tab-item:: Modin
 
@@ -232,7 +242,6 @@ Ray Data interoperates with distributed data processing frameworks like
         :meth:`Dataset.to_modin() <ray.data.Dataset.to_modin>`.
 
         .. testcode::
-            :skipif: True
 
             import ray
 
@@ -246,7 +255,6 @@ Ray Data interoperates with distributed data processing frameworks like
         :meth:`Dataset.to_mars() <ray.data.Dataset.to_mars>`.
 
         .. testcode::
-            :skipif: True
 
             import ray
 

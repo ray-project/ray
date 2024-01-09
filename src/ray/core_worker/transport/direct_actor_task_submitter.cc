@@ -236,7 +236,7 @@ void CoreWorkerDirectActorTaskSubmitter::ConnectActor(const ActorID &actor_id,
 
     RAY_LOG(INFO) << "Connecting to actor " << actor_id << " at worker "
                   << WorkerID::FromBinary(address.worker_id());
-    ResendOutOfOrderTasks(actor_id);
+    ResendOutOfOrderCompletedTasks(actor_id);
     SendPendingTasks(actor_id);
   }
 
@@ -254,7 +254,8 @@ void CoreWorkerDirectActorTaskSubmitter::DisconnectActor(
 
   absl::flat_hash_map<TaskID, rpc::ClientCallback<rpc::PushTaskReply>>
       inflight_task_callbacks;
-  std::deque<std::pair<int64_t, TaskSpecification>> wait_for_death_info_tasks;
+  std::deque<std::pair<int64_t, std::pair<TaskSpecification, Status>>>
+      wait_for_death_info_tasks;
   std::vector<TaskID> task_ids_to_fail;
   {
     absl::MutexLock lock(&mu_);
@@ -291,7 +292,7 @@ void CoreWorkerDirectActorTaskSubmitter::DisconnectActor(
       wait_for_death_info_tasks = std::move(queue->second.wait_for_death_info_tasks);
       // Reset the queue
       queue->second.wait_for_death_info_tasks =
-          std::deque<std::pair<int64_t, TaskSpecification>>();
+          std::deque<std::pair<int64_t, std::pair<TaskSpecification, Status>>>();
     } else if (queue->second.state != rpc::ActorTableData::DEAD) {
       // Only update the actor's state if it is not permanently dead. The actor
       // will eventually get restarted or marked as permanently dead.
@@ -328,9 +329,12 @@ void CoreWorkerDirectActorTaskSubmitter::DisconnectActor(
     if (!wait_for_death_info_tasks.empty()) {
       RAY_LOG(DEBUG) << "Failing tasks waiting for death info, size="
                      << wait_for_death_info_tasks.size() << ", actor_id=" << actor_id;
-      for (auto &net_err_task : wait_for_death_info_tasks) {
+      for (auto &net_err_task_pair : wait_for_death_info_tasks) {
         RAY_UNUSED(GetTaskFinisherWithoutMu().FailPendingTask(
-            net_err_task.second.TaskId(), error_type, nullptr, &error_info));
+            net_err_task_pair.second.first.TaskId(),
+            error_type,
+            /* status */ &net_err_task_pair.second.second,
+            &error_info));
       }
     }
   }
@@ -338,8 +342,25 @@ void CoreWorkerDirectActorTaskSubmitter::DisconnectActor(
   FailInflightTasks(inflight_task_callbacks);
 }
 
+void CoreWorkerDirectActorTaskSubmitter::FailTaskWithError(const TaskInfo &task_info) {
+  rpc::ActorDeathCause actor_death_cause;
+  actor_death_cause.mutable_actor_died_error_context()->set_actor_id(
+      task_info.actor_id.Binary());
+  actor_death_cause.mutable_actor_died_error_context()->set_preempted(
+      task_info.preempted);
+  rpc::RayErrorInfo error_info;
+  error_info.mutable_actor_died_error()->CopyFrom(actor_death_cause);
+  error_info.set_error_type(rpc::ErrorType::ACTOR_DIED);
+  error_info.set_error_message("Actor died.");
+
+  GetTaskFinisherWithoutMu().FailPendingTask(task_info.specification.TaskId(),
+                                             rpc::ErrorType::ACTOR_DIED,
+                                             &task_info.status,
+                                             &error_info);
+}
+
 void CoreWorkerDirectActorTaskSubmitter::CheckTimeoutTasks() {
-  std::vector<TaskSpecification> task_specs;
+  auto task_info_list = std::make_shared<std::vector<TaskInfo>>();
   {
     absl::MutexLock lock(&mu_);
     for (auto &queue_pair : client_queues_) {
@@ -347,18 +368,26 @@ void CoreWorkerDirectActorTaskSubmitter::CheckTimeoutTasks() {
       auto deque_itr = queue.wait_for_death_info_tasks.begin();
       while (deque_itr != queue.wait_for_death_info_tasks.end() &&
              /*timeout timestamp*/ deque_itr->first < current_time_ms()) {
-        auto &task_spec = deque_itr->second;
-        task_specs.push_back(task_spec);
+        auto &task_spec_status_pair = deque_itr->second;
+        task_info_list->push_back(TaskInfo{
+            task_spec_status_pair.first,
+            task_spec_status_pair.second,
+            queue_pair.first,
+            queue.preempted,
+        });
         deque_itr = queue.wait_for_death_info_tasks.erase(deque_itr);
       }
     }
   }
 
+  if (task_info_list->empty()) {
+    return;
+  }
+
   // Do not hold mu_, because FailPendingTask may call python from cpp,
   // and may cause deadlock with SubmitActorTask thread when aquire GIL.
-  for (auto &task_spec : task_specs) {
-    GetTaskFinisherWithoutMu().FailPendingTask(task_spec.TaskId(),
-                                               rpc::ErrorType::ACTOR_DIED);
+  for (auto &task_info : *task_info_list) {
+    FailTaskWithError(task_info);
   }
 }
 
@@ -377,6 +406,7 @@ void CoreWorkerDirectActorTaskSubmitter::SendPendingTasks(const ActorID &actor_i
         if (!task.has_value()) {
           break;
         }
+
         io_service_.post(
             [this, task_spec = std::move(task.value().first)] {
               rpc::PushTaskReply reply;
@@ -413,7 +443,8 @@ void CoreWorkerDirectActorTaskSubmitter::SendPendingTasks(const ActorID &actor_i
   }
 }
 
-void CoreWorkerDirectActorTaskSubmitter::ResendOutOfOrderTasks(const ActorID &actor_id) {
+void CoreWorkerDirectActorTaskSubmitter::ResendOutOfOrderCompletedTasks(
+    const ActorID &actor_id) {
   auto it = client_queues_.find(actor_id);
   RAY_CHECK(it != client_queues_.end());
   if (!it->second.rpc_client) {
@@ -423,6 +454,7 @@ void CoreWorkerDirectActorTaskSubmitter::ResendOutOfOrderTasks(const ActorID &ac
   RAY_CHECK(!client_queue.worker_id.empty());
   auto out_of_order_completed_tasks =
       client_queue.actor_submit_queue->PopAllOutOfOrderCompletedTasks();
+
   for (const auto &completed_task : out_of_order_completed_tasks) {
     // Making a copy here because we are flipping a flag and the original value is
     // const.
@@ -435,6 +467,8 @@ void CoreWorkerDirectActorTaskSubmitter::ResendOutOfOrderTasks(const ActorID &ac
 void CoreWorkerDirectActorTaskSubmitter::PushActorTask(ClientQueue &queue,
                                                        const TaskSpecification &task_spec,
                                                        bool skip_queue) {
+  const auto task_id = task_spec.TaskId();
+
   auto request = std::make_unique<rpc::PushTaskRequest>();
   // NOTE(swang): CopyFrom is needed because if we use Swap here and the task
   // fails, then the task data will be gone when the TaskManager attempts to
@@ -444,7 +478,6 @@ void CoreWorkerDirectActorTaskSubmitter::PushActorTask(ClientQueue &queue,
   request->set_intended_worker_id(queue.worker_id);
   request->set_sequence_number(queue.actor_submit_queue->GetSequenceNumber(task_spec));
 
-  const auto task_id = task_spec.TaskId();
   const auto actor_id = task_spec.ActorId();
   const auto actor_counter = task_spec.ActorCounter();
   const auto num_queued = queue.inflight_task_callbacks.size();
@@ -475,7 +508,7 @@ void CoreWorkerDirectActorTaskSubmitter::PushActorTask(ClientQueue &queue,
           auto callback_it = queue.inflight_task_callbacks.find(task_id);
           if (callback_it == queue.inflight_task_callbacks.end()) {
             RAY_LOG(DEBUG) << "The task " << task_id
-                           << " has already been marked as failed. Ingore the reply.";
+                           << " has already been marked as failed. Ignore the reply.";
             return;
           }
           reply_callback = std::move(callback_it->second);
@@ -499,6 +532,7 @@ void CoreWorkerDirectActorTaskSubmitter::HandlePushTaskReply(
   const auto actor_id = task_spec.ActorId();
   const auto actor_counter = task_spec.ActorCounter();
   const auto task_skipped = task_spec.GetMessage().skip_execution();
+  const bool is_retryable_exception = status.ok() && reply.is_retryable_error();
   /// Whether or not we will retry this actor task.
   auto will_retry = false;
 
@@ -507,15 +541,35 @@ void CoreWorkerDirectActorTaskSubmitter::HandlePushTaskReply(
     // reply for a previously completed task. We are not calling CompletePendingTask
     // because the tasks are pushed directly to the actor, not placed on any queues
     // in task_finisher_.
-  } else if (status.ok()) {
+  } else if (status.ok() && !is_retryable_exception) {
+    // status.ok() means the worker completed the reply, either succeeded or with a
+    // retryable failure (e.g. user exceptions). We complete only on non-retryable case.
     task_finisher_.CompletePendingTask(
         task_id, reply, addr, reply.is_application_error());
+  } else if (status.IsSchedulingCancelled()) {
+    std::ostringstream stream;
+    stream << "The task " << task_id << " is canceled from an actor " << actor_id
+           << " before it executes.";
+    const auto &msg = stream.str();
+    RAY_LOG(DEBUG) << msg;
+    rpc::RayErrorInfo error_info;
+    error_info.set_error_message(msg);
+    error_info.set_error_type(rpc::ErrorType::TASK_CANCELLED);
+    GetTaskFinisherWithoutMu().FailPendingTask(task_spec.TaskId(),
+                                               rpc::ErrorType::TASK_CANCELLED,
+                                               /*status*/ nullptr,
+                                               &error_info);
   } else {
     bool is_actor_dead = false;
     bool fail_immediatedly = false;
     rpc::ErrorType error_type;
     rpc::RayErrorInfo error_info;
-    {
+    if (status.ok()) {
+      // retryable user exception.
+      RAY_CHECK(is_retryable_exception);
+      error_type = rpc::ErrorType::TASK_EXECUTION_EXCEPTION;
+      error_info = gcs::GetRayErrorInfo(error_type, reply.task_execution_error());
+    } else {
       // push task failed due to network error. For example, actor is dead
       // and no process response for the push task.
       absl::MutexLock lock(&mu_);
@@ -545,12 +599,18 @@ void CoreWorkerDirectActorTaskSubmitter::HandlePushTaskReply(
         &error_info,
         /*mark_task_object_failed*/ is_actor_dead,
         fail_immediatedly);
-
     if (!is_actor_dead && !will_retry) {
-      // No retry == actor is dead.
-      // If actor is not dead yet, wait for the grace period until we mark the
-      // return object as failed.
-      if (RayConfig::instance().timeout_ms_task_wait_for_death_info() != 0) {
+      // Ran out of retries, last failure = either user exception or actor death.
+      if (status.ok()) {
+        // last failure = user exception, just complete it with failure.
+        RAY_CHECK(reply.is_retryable_error());
+
+        GetTaskFinisherWithoutMu().CompletePendingTask(
+            task_id, reply, addr, reply.is_application_error());
+      }
+      // last failure = Actor death, but we still see the actor "alive" so we optionally
+      // wait for a grace period for the death info.
+      else if (RayConfig::instance().timeout_ms_task_wait_for_death_info() != 0) {
         int64_t death_info_grace_period_ms =
             current_time_ms() +
             RayConfig::instance().timeout_ms_task_wait_for_death_info();
@@ -559,16 +619,21 @@ void CoreWorkerDirectActorTaskSubmitter::HandlePushTaskReply(
         RAY_CHECK(queue_pair != client_queues_.end());
         auto &queue = queue_pair->second;
         queue.wait_for_death_info_tasks.emplace_back(death_info_grace_period_ms,
-                                                     task_spec);
+                                                     std::make_pair(task_spec, status));
         RAY_LOG(INFO)
             << "PushActorTask failed because of network error, this task "
                "will be stashed away and waiting for Death info from GCS, task_id="
             << task_spec.TaskId()
             << ", wait_queue_size=" << queue.wait_for_death_info_tasks.size();
       } else {
-        // If we don't need death info, just fail the request.
-        GetTaskFinisherWithoutMu().FailPendingTask(task_spec.TaskId(),
-                                                   rpc::ErrorType::ACTOR_DIED);
+        // TODO(vitsai): if we don't need death info, just fail the request.
+        {
+          absl::MutexLock lock(&mu_);
+          auto queue_pair = client_queues_.find(actor_id);
+          RAY_CHECK(queue_pair != client_queues_.end());
+        }
+        GetTaskFinisherWithoutMu().FailPendingTask(
+            task_spec.TaskId(), rpc::ErrorType::ACTOR_DIED, &status);
       }
     }
   }
@@ -577,8 +642,11 @@ void CoreWorkerDirectActorTaskSubmitter::HandlePushTaskReply(
     auto queue_pair = client_queues_.find(actor_id);
     RAY_CHECK(queue_pair != client_queues_.end());
     auto &queue = queue_pair->second;
-    if (!will_retry) {
-      queue.actor_submit_queue->MarkTaskCompleted(actor_counter, task_spec);
+    // Every seqno for the actor_submit_queue must be MarkSeqnoCompleted.
+    // On exception-retry we update the seqno so we need to call;
+    // On exception's or actor's last try we also need to call.
+    if ((!will_retry) || is_retryable_exception) {
+      queue.actor_submit_queue->MarkSeqnoCompleted(actor_counter, task_spec);
     }
     queue.cur_pending_calls--;
   }
@@ -621,6 +689,139 @@ std::string CoreWorkerDirectActorTaskSubmitter::DebugString(
   stream << "Submitter debug string for actor " << actor_id << " "
          << it->second.DebugString();
   return stream.str();
+}
+
+void CoreWorkerDirectActorTaskSubmitter::RetryCancelTask(TaskSpecification task_spec,
+                                                         bool recursive,
+                                                         int64_t milliseconds) {
+  RAY_LOG(DEBUG) << "Task " << task_spec.TaskId() << " cancelation will be retried in "
+                 << milliseconds << " ms";
+  execute_after(
+      io_service_,
+      [this, task_spec = std::move(task_spec), recursive] {
+        RAY_UNUSED(CancelTask(task_spec, recursive));
+      },
+      std::chrono::milliseconds(milliseconds));
+}
+
+Status CoreWorkerDirectActorTaskSubmitter::CancelTask(TaskSpecification task_spec,
+                                                      bool recursive) {
+  // We don't support force_kill = true for actor tasks.
+  bool force_kill = false;
+  RAY_LOG(INFO) << "Cancelling a task: " << task_spec.TaskId()
+                << " for an actor: " << task_spec.ActorId()
+                << " force_kill: " << force_kill << " recursive: " << recursive;
+
+  // Tasks are in one of the following states.
+  // - dependencies not resolved
+  // - queued
+  // - sent
+  // - finished.
+
+  const auto actor_id = task_spec.ActorId();
+  const auto &task_id = task_spec.TaskId();
+  auto send_pos = task_spec.ActorCounter();
+
+  // Shouldn't hold a lock while accessing task_finisher_.
+  // Task is already canceled or finished.
+  if (!GetTaskFinisherWithoutMu().MarkTaskCanceled(task_id)) {
+    RAY_LOG(DEBUG) << "a task " << task_id << " is already finished or canceled";
+    return Status::OK();
+  }
+
+  auto task_queued = false;
+  {
+    absl::MutexLock lock(&mu_);
+
+    auto queue = client_queues_.find(actor_id);
+    RAY_CHECK(queue != client_queues_.end());
+    if (queue->second.state == rpc::ActorTableData::DEAD) {
+      // No need to decrement cur_pending_calls because it doesn't matter.
+      RAY_LOG(DEBUG) << "a task " << task_id
+                     << "'s actor is already dead. Ignoring the cancel request.";
+      return Status::OK();
+    }
+
+    task_queued = queue->second.actor_submit_queue->Contains(send_pos);
+    if (task_queued) {
+      auto dep_resolved = queue->second.actor_submit_queue->Get(send_pos).second;
+      if (!dep_resolved) {
+        RAY_LOG(DEBUG)
+            << "a task " << task_id
+            << " has been resolving dependencies. Cancel to resolve dependencies";
+        resolver_.CancelDependencyResolution(task_id);
+      }
+      RAY_LOG(DEBUG) << "a task " << task_id
+                     << " was queued. Mark a task is canceled from a queue.";
+      queue->second.actor_submit_queue->MarkTaskCanceled(send_pos);
+    }
+  }
+
+  // Fail a request immediately if it is still queued.
+  // The task won't be sent to an actor in this case.
+  // We cannot hold a lock when calling `FailOrRetryPendingTask`.
+  if (task_queued) {
+    rpc::RayErrorInfo error_info;
+    std::ostringstream stream;
+    stream << "The task " << task_id << " is canceled from an actor " << actor_id
+           << " before it executes.";
+    error_info.set_error_message(stream.str());
+    error_info.set_error_type(rpc::ErrorType::TASK_CANCELLED);
+    GetTaskFinisherWithoutMu().FailOrRetryPendingTask(
+        task_id, rpc::ErrorType::TASK_CANCELLED, /*status*/ nullptr, &error_info);
+    return Status::OK();
+  }
+
+  // At this point, the task is in "sent" state and not finished yet.
+  // We cannot guarantee a cancel request is received "after" a task
+  // is submitted because gRPC is not ordered. To get around it,
+  // we keep retrying cancel RPCs until task is finished or
+  // an executor tells us to stop retrying.
+
+  // If there's no client, it means actor is not created yet.
+  // Retry in 1 second.
+  {
+    absl::MutexLock lock(&mu_);
+    RAY_LOG(DEBUG) << "a task " << task_id << " was sent to an actor. Send a cancel RPC.";
+    auto queue = client_queues_.find(actor_id);
+    RAY_CHECK(queue != client_queues_.end());
+    if (!queue->second.rpc_client) {
+      RetryCancelTask(task_spec, recursive, 1000);
+      return Status::OK();
+    }
+
+    const auto &client = queue->second.rpc_client;
+    auto request = rpc::CancelTaskRequest();
+    request.set_intended_task_id(task_spec.TaskId().Binary());
+    request.set_force_kill(force_kill);
+    request.set_recursive(recursive);
+    request.set_caller_worker_id(task_spec.CallerWorkerId().Binary());
+    client->CancelTask(request,
+                       [this, task_spec, recursive, task_id](
+                           const Status &status, const rpc::CancelTaskReply &reply) {
+                         RAY_LOG(DEBUG) << "CancelTask RPC response received for "
+                                        << task_spec.TaskId() << " with status "
+                                        << status.ToString();
+
+                         // Keep retrying every 2 seconds until a task is officially
+                         // finished.
+                         if (!GetTaskFinisherWithoutMu().GetTaskSpec(task_id)) {
+                           // Task is already finished.
+                           RAY_LOG(DEBUG) << "Task " << task_spec.TaskId()
+                                          << " is finished. Stop a cancel request.";
+                           return;
+                         }
+
+                         if (!reply.attempt_succeeded()) {
+                           RetryCancelTask(task_spec, recursive, 2000);
+                         }
+                       });
+  }
+
+  // NOTE: Currently, ray.cancel is asynchronous.
+  // If we want to have a better guarantee in the cancelation result
+  // we should make it synchronos, but that can regress the performance.
+  return Status::OK();
 }
 
 }  // namespace core

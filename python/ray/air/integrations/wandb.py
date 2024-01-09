@@ -7,6 +7,8 @@ import warnings
 import numpy as np
 from numbers import Number
 
+import pyarrow.fs
+
 from types import ModuleType
 from typing import Any, Dict, List, Optional, Sequence, Tuple, Union
 
@@ -19,7 +21,7 @@ from ray.air.util.node import _force_on_current_node
 from ray.tune.logger import LoggerCallback
 from ray.tune.utils import flatten_dict
 from ray.tune.experiment import Trial
-from ray.tune.syncer import DEFAULT_SYNC_TIMEOUT
+from ray.train._internal.syncer import DEFAULT_SYNC_TIMEOUT
 
 from ray._private.storage import _load_class
 from ray.util import PublicAPI
@@ -671,9 +673,12 @@ class WandbLoggerCallback(LoggerCallback):
 
     def log_trial_save(self, trial: "Trial"):
         if self.upload_checkpoints and trial.checkpoint:
-            self._trial_queues[trial].put(
-                (_QueueItem.CHECKPOINT, trial.checkpoint.dir_or_data)
-            )
+            checkpoint_root = None
+            if isinstance(trial.checkpoint.filesystem, pyarrow.fs.LocalFileSystem):
+                checkpoint_root = trial.checkpoint.path
+
+            if checkpoint_root:
+                self._trial_queues[trial].put((_QueueItem.CHECKPOINT, checkpoint_root))
 
     def log_trial_end(self, trial: "Trial", failed: bool = False):
         self._signal_logging_actor_stop(trial=trial)

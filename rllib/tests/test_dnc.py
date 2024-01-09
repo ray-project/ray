@@ -4,7 +4,7 @@ import unittest
 import ray
 from ray import air
 from ray import tune
-from ray.rllib.algorithms.a2c import A2CConfig
+from ray.rllib.algorithms.ppo import PPOConfig
 from ray.rllib.examples.env.stateless_cartpole import StatelessCartPole
 from ray.rllib.models.catalog import ModelCatalog
 from ray.rllib.examples.models.neural_computer import DNCMemory
@@ -48,7 +48,7 @@ class TestDNC(unittest.TestCase):
         ModelCatalog.register_custom_model("dnc", DNCMemory)
 
         config = (
-            A2CConfig()
+            PPOConfig()
             .environment(StatelessCartPole)
             .framework("torch")
             .rollouts(num_envs_per_worker=5, num_rollout_workers=1)
@@ -70,7 +70,7 @@ class TestDNC(unittest.TestCase):
         )
 
         tune.Tuner(
-            "A2C",
+            "PPO",
             param_space=config,
             run_config=air.RunConfig(stop=self.stop, verbose=1),
         ).fit()

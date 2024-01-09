@@ -1,7 +1,8 @@
 import os
-import pytest
-from pathlib import Path
 import sys
+from pathlib import Path
+
+import pytest
 
 if __name__ == "__main__":
     curr_dir = Path(__file__).parent

@@ -68,10 +68,6 @@ And I have this code:
 
   print(ray.get(futures))
 
-.. testoutput::
-    :hide:
-
-    ...
 
 then you will get a mix of True and False. If
 ``check_file()`` runs on the Head Node, or we're running
@@ -100,7 +96,7 @@ of Ray Tasks itself, e.g.
 .. testcode::
 
   import ray
-  from ray import air, tune
+  from ray import tune
 
   def create_task_that_uses_resources():
     @ray.remote(num_cpus=10)

@@ -96,7 +96,10 @@ def _format_args(worker, args, kwargs):
             "Cross language feature needs --load-code-from-local to be set."
         )
     if kwargs:
-        raise TypeError("Cross language remote functions does not support kwargs.")
+        raise TypeError(
+            f"Cross language remote functions does not support kwargs, "
+            f"kwargs:{str(kwargs)}."
+        )
     return args
 
 

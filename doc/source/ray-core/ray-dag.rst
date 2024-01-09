@@ -88,12 +88,43 @@ as args of ``dag_node.execute()``
           :start-after: __dag_input_node_begin__
           :end-before: __dag_input_node_end__
 
-More Resources
+Ray DAG with multiple MultiOutputNode
+-------------------------------------
+
+``MultiOutputNode`` is useful when you have more than 1 output from a DAG. ``dag_node.execute()``
+returns a list of Ray object references passed to ``MultiOutputNode``. The below example
+shows the multi output node of 2 outputs.
+
+.. tab-set::
+
+    .. tab-item:: Python
+
+        .. literalinclude:: ./doc_code/ray-dag.py
+          :language: python
+          :start-after: __dag_multi_output_node_begin__
+          :end-before: __dag_multi_output_node_end__
+
+Reuse Ray Actors in DAGs
+------------------------
+Actors can be a part of the DAG definition with the ``Actor.bind()`` API.
+However, when a DAG finishes execution, Ray kills Actors created with ``bind``.
+
+You can avoid killing your Actors whenever DAG finishes by creating Actors with ``Actor.remote()``.
+
+.. tab-set::
+
+    .. tab-item:: Python
+
+        .. literalinclude:: ./doc_code/ray-dag.py
+          :language: python
+          :start-after: __dag_actor_reuse_begin__
+          :end-before: __dag_actor_reuse_end__
+
+
+More resources
 --------------
 
 You can find more application patterns and examples in the following resources
 from other Ray libraries built on top of Ray DAG API with the same mechanism.
 
 | `Visualization of DAGs <https://docs.ray.io/en/master/serve/model_composition.html#visualizing-the-graph>`_
-| `DAG Cookbook and patterns <https://docs.ray.io/en/master/serve/tutorials/deployment-graph-patterns.html>`_
-| `Serve Deployment Graph's original REP <https://github.com/ray-project/enhancements/blob/main/reps/2022-03-08-serve_pipeline.md>`_

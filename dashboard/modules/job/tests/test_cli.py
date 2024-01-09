@@ -93,21 +93,27 @@ def _job_cli_group_test_address(mock_sdk_client, cmd, *args):
     # Test passing address via command line.
     result = runner.invoke(job_cli_group, [cmd, "--address=arg_addr", *args])
     mock_sdk_client.assert_called_with(
-        "arg_addr", create_cluster_if_needed, verify=True
+        "arg_addr", create_cluster_if_needed, headers=None, verify=True
     )
     with pytest.raises(AssertionError):
-        mock_sdk_client.assert_called_with("some_other_addr", True, verify=True)
+        mock_sdk_client.assert_called_with(
+            "some_other_addr", True, headers=None, verify=True
+        )
     check_exit_code(result, 0)
     # Test passing address via env var.
     with set_env_var("RAY_ADDRESS", "env_addr"):
         result = runner.invoke(job_cli_group, [cmd, *args])
         check_exit_code(result, 0)
         # RAY_ADDRESS is read inside the SDK client.
-        mock_sdk_client.assert_called_with(None, create_cluster_if_needed, verify=True)
+        mock_sdk_client.assert_called_with(
+            None, create_cluster_if_needed, headers=None, verify=True
+        )
     # Test passing no address.
     result = runner.invoke(job_cli_group, [cmd, *args])
     check_exit_code(result, 0)
-    mock_sdk_client.assert_called_with(None, create_cluster_if_needed, verify=True)
+    mock_sdk_client.assert_called_with(
+        None, create_cluster_if_needed, headers=None, verify=True
+    )
 
 
 class TestList:
@@ -151,6 +157,7 @@ class TestSubmit:
                 metadata=None,
                 entrypoint_num_cpus=None,
                 entrypoint_num_gpus=None,
+                entrypoint_memory=None,
                 entrypoint_resources=None,
             )
 
@@ -166,6 +173,7 @@ class TestSubmit:
                 metadata=None,
                 entrypoint_num_cpus=None,
                 entrypoint_num_gpus=None,
+                entrypoint_memory=None,
                 entrypoint_resources=None,
             )
 
@@ -180,6 +188,7 @@ class TestSubmit:
                 metadata=None,
                 entrypoint_num_cpus=None,
                 entrypoint_num_gpus=None,
+                entrypoint_memory=None,
                 entrypoint_resources=None,
             )
 
@@ -201,6 +210,7 @@ class TestSubmit:
                 metadata=None,
                 entrypoint_num_cpus=None,
                 entrypoint_num_gpus=None,
+                entrypoint_memory=None,
                 entrypoint_resources=None,
             )
 
@@ -217,6 +227,7 @@ class TestSubmit:
                 metadata=None,
                 entrypoint_num_cpus=None,
                 entrypoint_num_gpus=None,
+                entrypoint_memory=None,
                 entrypoint_resources=None,
             )
 
@@ -258,6 +269,7 @@ class TestSubmit:
                 metadata=None,
                 entrypoint_num_cpus=None,
                 entrypoint_num_gpus=None,
+                entrypoint_memory=None,
                 entrypoint_resources=None,
             )
 
@@ -281,6 +293,7 @@ class TestSubmit:
                 metadata=None,
                 entrypoint_num_cpus=None,
                 entrypoint_num_gpus=None,
+                entrypoint_memory=None,
                 entrypoint_resources=None,
             )
 
@@ -298,6 +311,7 @@ class TestSubmit:
                 metadata=None,
                 entrypoint_num_cpus=None,
                 entrypoint_num_gpus=None,
+                entrypoint_memory=None,
                 entrypoint_resources=None,
             )
 
@@ -313,6 +327,7 @@ class TestSubmit:
                 metadata=None,
                 entrypoint_num_cpus=None,
                 entrypoint_num_gpus=None,
+                entrypoint_memory=None,
                 entrypoint_resources=None,
             )
 
@@ -333,6 +348,7 @@ class TestSubmit:
                 metadata=None,
                 entrypoint_num_cpus=2,
                 entrypoint_num_gpus=None,
+                entrypoint_memory=None,
                 entrypoint_resources=None,
             )
 
@@ -353,6 +369,28 @@ class TestSubmit:
                 metadata=None,
                 entrypoint_num_cpus=None,
                 entrypoint_num_gpus=2,
+                entrypoint_memory=None,
+                entrypoint_resources=None,
+            )
+
+    def test_entrypoint_memory(self, mock_sdk_client):
+        runner = CliRunner()
+        mock_client_instance = mock_sdk_client.return_value
+
+        with set_env_var("RAY_ADDRESS", "env_addr"):
+            result = runner.invoke(
+                job_cli_group,
+                ["submit", "--entrypoint-memory=4", "--", "echo hello"],
+            )
+            assert result.exit_code == 0
+            mock_client_instance.submit_job.assert_called_with(
+                entrypoint='"echo hello"',
+                submission_id=None,
+                runtime_env={},
+                metadata=None,
+                entrypoint_num_cpus=None,
+                entrypoint_num_gpus=None,
+                entrypoint_memory=4,
                 entrypoint_resources=None,
             )
 
@@ -385,6 +423,7 @@ class TestSubmit:
                 "metadata": None,
                 "entrypoint_num_cpus": None,
                 "entrypoint_num_gpus": None,
+                "entrypoint_memory": None,
                 "entrypoint_resources": None,
             }
             expected_kwargs.update(resources[1])
@@ -429,6 +468,7 @@ class TestSubmit:
                 runtime_env={},
                 entrypoint_num_cpus=None,
                 entrypoint_num_gpus=None,
+                entrypoint_memory=None,
                 entrypoint_resources=None,
                 metadata={"key": "value"},
             )
@@ -472,7 +512,9 @@ class TestSubmit:
                 ["submit", f"--verify={cli_val}", "--", "echo hello"],
             )
             assert result.exit_code == 0
-            mock_sdk_client.assert_called_with(None, True, verify=verify_param)
+            mock_sdk_client.assert_called_with(
+                None, True, headers=None, verify=verify_param
+            )
 
 
 class TestDelete:

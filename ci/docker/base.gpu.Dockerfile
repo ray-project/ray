@@ -4,7 +4,7 @@ ARG REMOTE_CACHE_URL
 ARG BUILDKITE_PULL_REQUEST
 ARG BUILDKITE_COMMIT
 ARG BUILDKITE_PULL_REQUEST_BASE_BRANCH
-ARG PYTHON=3.8
+ARG PYTHON=3.9
 
 ENV DEBIAN_FRONTEND=noninteractive
 ENV TZ=America/Los_Angeles
@@ -62,5 +62,5 @@ WORKDIR /ray
 # Below should be re-run each time
 COPY . .
 
-RUN ./ci/env/install-dependencies.sh init
+RUN BUILD=1 ./ci/env/install-dependencies.sh
 RUN RLLIB_TESTING=1 TRAIN_TESTING=1 TUNE_TESTING=1 bash --login -i ./ci/env/install-dependencies.sh

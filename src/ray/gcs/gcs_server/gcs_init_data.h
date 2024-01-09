@@ -49,11 +49,6 @@ class GcsInitData {
     return node_table_data_;
   }
 
-  /// Get resource metadata.
-  const absl::flat_hash_map<NodeID, rpc::ResourceMap> &ClusterResources() const {
-    return resource_table_data_;
-  }
-
   /// Get actor metadata.
   const absl::flat_hash_map<ActorID, rpc::ActorTableData> &Actors() const {
     return actor_table_data_;
@@ -80,11 +75,6 @@ class GcsInitData {
   /// \param on_done The callback when node metadata is loaded successfully.
   void AsyncLoadNodeTableData(const EmptyCallback &on_done);
 
-  /// Load resource metadata from the store into memory asynchronously.
-  ///
-  /// \param on_done The callback when resource metadata is loaded successfully.
-  void AsyncLoadResourceTableData(const EmptyCallback &on_done);
-
   /// Load placement group metadata from the store into memory asynchronously.
   ///
   /// \param on_done The callback when placement group metadata is loaded successfully.
@@ -106,9 +96,6 @@ class GcsInitData {
 
   /// Node metadata.
   absl::flat_hash_map<NodeID, rpc::GcsNodeInfo> node_table_data_;
-
-  /// Resource metadata.
-  absl::flat_hash_map<NodeID, rpc::ResourceMap> resource_table_data_;
 
   /// Placement group metadata.
   absl::flat_hash_map<PlacementGroupID, rpc::PlacementGroupTableData>

@@ -100,6 +100,7 @@ def create_conda_env_if_needed(
     """
     if logger is None:
         logger = logging.getLogger(__name__)
+
     conda_path = get_conda_bin_executable("conda")
     try:
         exec_cmd([conda_path, "--help"], throw_on_error=False)

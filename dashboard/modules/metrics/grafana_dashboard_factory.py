@@ -15,6 +15,9 @@ from ray.dashboard.modules.metrics.dashboards.serve_dashboard_panels import (
 from ray.dashboard.modules.metrics.dashboards.serve_deployment_dashboard_panels import (
     serve_deployment_dashboard_config,
 )
+from ray.dashboard.modules.metrics.dashboards.data_dashboard_panels import (
+    data_dashboard_config,
+)
 
 
 METRICS_INPUT_ROOT = os.path.join(os.path.dirname(__file__), "export")
@@ -40,7 +43,7 @@ PANEL_TEMPLATE = {
     "bars": False,
     "dashLength": 10,
     "dashes": False,
-    "datasource": "Prometheus",
+    "datasource": r"${datasource}",
     "description": "<Description>",
     "fieldConfig": {"defaults": {}, "overrides": []},
     "fill": 10,
@@ -201,6 +204,17 @@ def generate_serve_deployment_grafana_dashboard() -> Tuple[str, str]:
     return _generate_grafana_dashboard(serve_deployment_dashboard_config)
 
 
+def generate_data_grafana_dashboard() -> Tuple[str, str]:
+    """
+    Generates the dashboard output for the data dashboard and returns
+    both the content and the uid.
+
+    Returns:
+      Tuple with format content, uid
+    """
+    return _generate_grafana_dashboard(data_dashboard_config)
+
+
 def _generate_grafana_dashboard(dashboard_config: DashboardConfig) -> str:
     """
     Returns:
@@ -218,6 +232,8 @@ def _generate_grafana_dashboard(dashboard_config: DashboardConfig) -> str:
     global_filters_str = ",".join(global_filters)
     variables = base_json.get("templating", {}).get("list", [])
     for variable in variables:
+        if "definition" not in variable:
+            continue
         variable["definition"] = variable["definition"].format(
             global_filters=global_filters_str
         )

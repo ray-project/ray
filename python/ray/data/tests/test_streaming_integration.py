@@ -20,6 +20,9 @@ from ray.data._internal.execution.operators.base_physical_operator import (
 )
 from ray.data._internal.execution.operators.input_data_buffer import InputDataBuffer
 from ray.data._internal.execution.operators.map_operator import MapOperator
+from ray.data._internal.execution.operators.map_transformer import (
+    create_map_transformer_from_block_fn,
+)
 from ray.data._internal.execution.operators.output_splitter import OutputSplitter
 from ray.data._internal.execution.streaming_executor import StreamingExecutor
 from ray.data._internal.execution.util import make_ref_bundles
@@ -28,12 +31,12 @@ from ray.data.tests.conftest import *  # noqa
 from ray.data.tests.util import extract_values
 
 
-def make_transform(block_fn):
-    def map_fn(block_iter, ctx):
+def make_map_transformer(block_fn):
+    def map_fn(block_iter, _):
         for block in block_iter:
             yield pd.DataFrame({"id": block_fn(block["id"])})
 
-    return map_fn
+    return create_map_transformer_from_block_fn(map_fn)
 
 
 def ref_bundles_to_list(bundles: List[RefBundle]) -> List[List[Any]]:
@@ -78,6 +81,10 @@ def test_autoshutdown_dangling_executors(ray_start_10_cpus_shared):
     initial = streaming_executor._num_shutdown
     for _ in range(num_runs):
         executor = StreamingExecutor(ExecutionOptions())
+        o = InputDataBuffer([])
+        # Start the executor. Because non-started executors don't
+        # need to be shut down.
+        executor.execute(o)
         del executor
     assert streaming_executor._num_shutdown - initial == num_runs
 
@@ -86,14 +93,19 @@ def test_pipelined_execution(ray_start_10_cpus_shared):
     executor = StreamingExecutor(ExecutionOptions(preserve_order=True))
     inputs = make_ref_bundles([[x] for x in range(20)])
     o1 = InputDataBuffer(inputs)
-    o2 = MapOperator.create(make_transform(lambda block: [b * -1 for b in block]), o1)
-    o3 = MapOperator.create(make_transform(lambda block: [b * 2 for b in block]), o2)
+    o2 = MapOperator.create(
+        make_map_transformer(lambda block: [b * -1 for b in block]), o1
+    )
+    o3 = MapOperator.create(
+        make_map_transformer(lambda block: [b * 2 for b in block]), o2
+    )
 
     def reverse_sort(inputs: List[RefBundle], ctx):
         reversed_list = inputs[::-1]
         return reversed_list, {}
 
-    o4 = AllToAllOperator(reverse_sort, o3)
+    ctx = DataContext.get_current()
+    o4 = AllToAllOperator(reverse_sort, o3, ctx.target_max_block_size)
     it = executor.execute(o4)
     output = ref_bundles_to_list(it)
     expected = [[x * -2] for x in range(20)][::-1]
@@ -379,7 +391,7 @@ def test_backpressure_from_output(ray_start_10_cpus_shared, restore_data_context
     assert num_finished < 20, num_finished
     # Check intermediate stats reporting.
     stats = ds.stats()
-    assert "100/100 blocks executed" not in stats, stats
+    assert "100 tasks executed" not in stats, stats
 
     # Check we can get the rest.
     for rest in it:
@@ -387,7 +399,7 @@ def test_backpressure_from_output(ray_start_10_cpus_shared, restore_data_context
     assert ray.get(counter.get.remote()) == 100
     # Check final stats reporting.
     stats = ds.stats()
-    assert "100/100 blocks executed" in stats, stats
+    assert "100 tasks executed" in stats, stats
 
 
 def test_e2e_liveness_with_output_backpressure_edge_case(
@@ -433,14 +445,19 @@ def test_e2e_autoscaling_up(ray_start_10_cpus_shared, restore_data_context):
 
     b1 = Barrier.remote(6)
 
-    def barrier1(x):
-        ray.get(b1.wait.remote(), timeout=10)
-        return x
+    class BarrierWaiter:
+        def __init__(self, barrier):
+            self._barrier = barrier
+
+        def __call__(self, x):
+            ray.get(self._barrier.wait.remote(), timeout=10)
+            return x
 
     # Tests that we autoscale up to necessary size.
     # 6 tasks + 1 tasks in flight per actor => need at least 6 actors to run.
     ray.data.range(6, parallelism=6).map_batches(
-        barrier1,
+        BarrierWaiter,
+        fn_constructor_args=(b1,),
         compute=ray.data.ActorPoolStrategy(
             min_size=1, max_size=6, max_tasks_in_flight_per_actor=1
         ),
@@ -450,14 +467,11 @@ def test_e2e_autoscaling_up(ray_start_10_cpus_shared, restore_data_context):
 
     b2 = Barrier.remote(3, delay=2)
 
-    def barrier2(x):
-        ray.get(b2.wait.remote(), timeout=10)
-        return x
-
     # Tests that we don't over-scale up.
     # 6 tasks + 2 tasks in flight per actor => only scale up to 3 actors
     ray.data.range(6, parallelism=6).map_batches(
-        barrier2,
+        BarrierWaiter,
+        fn_constructor_args=(b2,),
         compute=ray.data.ActorPoolStrategy(
             min_size=1, max_size=3, max_tasks_in_flight_per_actor=2
         ),
@@ -468,14 +482,12 @@ def test_e2e_autoscaling_up(ray_start_10_cpus_shared, restore_data_context):
     # Tests that the max pool size is respected.
     b3 = Barrier.remote(6)
 
-    def barrier3(x):
-        ray.get(b3.wait.remote(), timeout=2)
-        return x
-
     # This will hang, since the actor pool is too small.
     with pytest.raises(ray.exceptions.RayTaskError):
         ray.data.range(6, parallelism=6).map(
-            barrier3, compute=ray.data.ActorPoolStrategy(min_size=1, max_size=2)
+            BarrierWaiter,
+            fn_constructor_args=(b3,),
+            compute=ray.data.ActorPoolStrategy(min_size=1, max_size=2),
         ).take_all()
 
 
@@ -483,15 +495,16 @@ def test_e2e_autoscaling_down(ray_start_10_cpus_shared, restore_data_context):
     DataContext.get_current().new_execution_backend = True
     DataContext.get_current().use_streaming_executor = True
 
-    def f(x):
-        time.sleep(1)
-        return x
+    class UDFClass:
+        def __call__(self, x):
+            time.sleep(1)
+            return x
 
     # Tests that autoscaling works even when resource constrained via actor killing.
     # To pass this, we need to autoscale down to free up slots for task execution.
     DataContext.get_current().execution_options.resource_limits.cpu = 2
     ray.data.range(5, parallelism=5).map_batches(
-        f,
+        UDFClass,
         compute=ray.data.ActorPoolStrategy(min_size=1, max_size=2),
         batch_size=None,
     ).map_batches(lambda x: x, batch_size=None, num_cpus=2).take_all()
@@ -514,24 +527,25 @@ def test_streaming_fault_tolerance(ray_start_10_cpus_shared, restore_data_contex
     DataContext.get_current().new_execution_backend = True
     DataContext.get_current().use_streaming_executor = True
 
-    def f(x):
-        import os
+    class RandomExit:
+        def __call__(self, x):
+            import os
 
-        if random.random() > 0.9:
-            print("force exit")
-            os._exit(1)
-        return x
+            if random.random() > 0.9:
+                print("force exit")
+                os._exit(1)
+            return x
 
     # Test recover.
     base = ray.data.range(1000, parallelism=100)
     ds1 = base.map_batches(
-        f, compute=ray.data.ActorPoolStrategy(size=4), max_task_retries=999
+        RandomExit, compute=ray.data.ActorPoolStrategy(size=4), max_task_retries=999
     )
     ds1.take_all()
 
     # Test disabling fault tolerance.
     ds2 = base.map_batches(
-        f, compute=ray.data.ActorPoolStrategy(size=4), max_restarts=0
+        RandomExit, compute=ray.data.ActorPoolStrategy(size=4), max_restarts=0
     )
     with pytest.raises(ray.exceptions.RayActorError):
         ds2.take_all()

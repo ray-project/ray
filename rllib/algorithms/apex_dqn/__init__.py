@@ -3,6 +3,7 @@ from ray.rllib.algorithms.apex_dqn.apex_dqn import (
     ApexDQNConfig,
 )
 
+
 __all__ = [
     "ApexDQN",
     "ApexDQNConfig",

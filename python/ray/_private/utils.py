@@ -33,6 +33,7 @@ from typing import (
     Union,
     Coroutine,
     List,
+    Mapping,
 )
 
 # Import psutil after ray so the packaged version is used.
@@ -47,7 +48,6 @@ from ray.core.generated.runtime_env_common_pb2 import (
 
 if TYPE_CHECKING:
     from ray.runtime_env import RuntimeEnv
-
 
 pwd = None
 if sys.platform != "win32":
@@ -64,14 +64,12 @@ linux_prctl = None
 win32_job = None
 win32_AssignProcessToJobObject = None
 
-
 ENV_DISABLE_DOCKER_CPU_WARNING = "RAY_DISABLE_DOCKER_CPU_WARNING" in os.environ
 _PYARROW_VERSION = None
 
 # This global variable is used for testing only
 _CALLED_FREQ = defaultdict(lambda: 0)
 _CALLED_FREQ_LOCK = threading.Lock()
-
 
 PLACEMENT_GROUP_INDEXED_BUNDLED_RESOURCE_PATTERN = re.compile(
     r"(.+)_group_(\d+)_([0-9a-zA-Z]+)"
@@ -278,30 +276,21 @@ def compute_driver_id_from_job(job_id):
     return ray.WorkerID(driver_id_str)
 
 
-def get_cuda_visible_devices():
-    """Get the device IDs in the CUDA_VISIBLE_DEVICES environment variable.
+def get_visible_accelerator_ids() -> Mapping[str, Optional[List[str]]]:
+    """Get the mapping from accelerator resource name
+    to the visible ids."""
 
-    Returns:
-        devices (List[str]): If CUDA_VISIBLE_DEVICES is set, returns a
-            list of strings representing the IDs of the visible GPUs.
-            If it is not set or is set to NoDevFiles, returns empty list.
-    """
-    gpu_ids_str = os.environ.get("CUDA_VISIBLE_DEVICES", None)
+    from ray._private.accelerators import (
+        get_all_accelerator_resource_names,
+        get_accelerator_manager_for_resource,
+    )
 
-    if gpu_ids_str is None:
-        return None
-
-    if gpu_ids_str == "":
-        return []
-
-    if gpu_ids_str == "NoDevFiles":
-        return []
-
-    # GPU identifiers are given as strings representing integers or UUIDs.
-    return list(gpu_ids_str.split(","))
-
-
-last_set_gpu_ids = None
+    return {
+        accelerator_resource_name: get_accelerator_manager_for_resource(
+            accelerator_resource_name
+        ).get_current_process_visible_accelerator_ids()
+        for accelerator_resource_name in get_all_accelerator_resource_names()
+    }
 
 
 def set_omp_num_threads_if_unset() -> bool:
@@ -344,22 +333,17 @@ def set_omp_num_threads_if_unset() -> bool:
     return True
 
 
-def set_cuda_visible_devices(gpu_ids):
-    """Set the CUDA_VISIBLE_DEVICES environment variable.
-
-    Args:
-        gpu_ids (List[str]): List of strings representing GPU IDs.
+def set_visible_accelerator_ids() -> None:
+    """Set (CUDA_VISIBLE_DEVICES, ONEAPI_DEVICE_SELECTOR, NEURON_RT_VISIBLE_CORES,
+    TPU_VISIBLE_CHIPS , HABANA_VISIBLE_MODULES ,...) environment variables based
+    on the accelerator runtime.
     """
-
-    if os.environ.get(ray_constants.NOSET_CUDA_VISIBLE_DEVICES_ENV_VAR):
-        return
-
-    global last_set_gpu_ids
-    if last_set_gpu_ids == gpu_ids:
-        return  # optimization: already set
-
-    os.environ["CUDA_VISIBLE_DEVICES"] = ",".join([str(i) for i in gpu_ids])
-    last_set_gpu_ids = gpu_ids
+    for resource_name, accelerator_ids in (
+        ray.get_runtime_context().get_accelerator_ids().items()
+    ):
+        ray._private.accelerators.get_accelerator_manager_for_resource(
+            resource_name
+        ).set_current_process_visible_accelerator_ids(accelerator_ids)
 
 
 def resources_from_ray_options(options_dict: Dict[str, Any]) -> Dict[str, Any]:
@@ -1167,8 +1151,10 @@ def deprecated(
     return deprecated_wrapper
 
 
-def import_attr(full_path: str):
+def import_attr(full_path: str, *, reload_module: bool = False):
     """Given a full import path to a module attr, return the imported attr.
+
+    If `reload_module` is set, the module will be reloaded using `importlib.reload`.
 
     For example, the following are equivalent:
         MyClass = import_attr("module.submodule:MyClass")
@@ -1194,6 +1180,8 @@ def import_attr(full_path: str):
         attr_name = full_path[last_period_idx + 1 :]
 
     module = importlib.import_module(module_name)
+    if reload_module:
+        importlib.reload(module)
     return getattr(module, attr_name)
 
 
@@ -1222,12 +1210,13 @@ def get_wheel_filename(
     assert py_version in ray_constants.RUNTIME_ENV_CONDA_PY_VERSIONS, py_version
 
     py_version_str = "".join(map(str, py_version))
-    if py_version_str in ["37", "38", "39"]:
-        darwin_os_string = "macosx_10_15_x86_64"
-    else:
-        darwin_os_string = "macosx_10_15_universal2"
 
     architecture = architecture or platform.processor()
+
+    if py_version_str in ["311", "310", "39", "38"] and architecture == "arm64":
+        darwin_os_string = "macosx_11_0_arm64"
+    else:
+        darwin_os_string = "macosx_10_15_x86_64"
 
     if architecture == "aarch64":
         linux_os_string = "manylinux2014_aarch64"
@@ -1346,6 +1335,19 @@ def check_dashboard_dependencies_installed() -> bool:
     """
     try:
         import ray.dashboard.optional_deps  # noqa: F401
+
+        return True
+    except ImportError:
+        return False
+
+
+def check_ray_client_dependencies_installed() -> bool:
+    """Returns True if Ray Client dependencies are installed.
+
+    See documents for check_dashboard_dependencies_installed.
+    """
+    try:
+        import grpc  # noqa: F401
 
         return True
     except ImportError:
@@ -1683,19 +1685,6 @@ def get_or_create_event_loop() -> asyncio.BaseEventLoop:
     return asyncio.get_event_loop()
 
 
-def make_asyncio_event_version_compat(
-    event_loop: asyncio.AbstractEventLoop,
-) -> asyncio.Event:
-    # Python 3.8 has deprecated the 'loop' parameter, and Python 3.10 has
-    # removed it altogether. Construct an `asyncio.Event` accordingly.
-    if sys.version_info.major >= 3 and sys.version_info.minor >= 10:
-        event = asyncio.Event()
-    else:
-        event = asyncio.Event(loop=event_loop)
-
-    return event
-
-
 def get_entrypoint_name():
     """Get the entrypoint of the current script."""
     prefix = ""
@@ -1764,7 +1753,7 @@ def _add_creatable_buckets_param_if_s3_uri(uri: str) -> str:
         A URI with the added allow_bucket_creation=true query parameter, if the provided
         URI is an S3 URL; uri will be returned unchanged otherwise.
     """
-    from pkg_resources._vendor.packaging.version import parse as parse_version
+    from packaging.version import parse as parse_version
 
     pyarrow_version = _get_pyarrow_version()
     if pyarrow_version is not None:
@@ -1919,18 +1908,11 @@ def update_envs(env_vars: Dict[str, str]):
     if not env_vars:
         return
 
-    replaceable_keys = [
-        "PATH",
-        "LD_LIBRARY_PATH",
-        "DYLD_LIBRARY_PATH",
-        "LD_PRELOAD",
-    ]
-
     for key, value in env_vars.items():
-        if key in replaceable_keys:
-            os.environ[key] = value.replace("${" + key + "}", os.environ.get(key, ""))
-        else:
-            os.environ[key] = value
+        expanded = os.path.expandvars(value)
+        # Replace non-existant env vars with an empty string.
+        result = re.sub(r"\$\{[A-Z0-9_]+\}", "", expanded)
+        os.environ[key] = result
 
 
 def parse_node_labels_json(
@@ -1987,3 +1969,60 @@ def pasre_pg_formatted_resources_to_original(
         original_resources[key] = value
 
     return original_resources
+
+
+def load_class(path):
+    """Load a class at runtime given a full path.
+
+    Example of the path: mypkg.mysubpkg.myclass
+    """
+    class_data = path.split(".")
+    if len(class_data) < 2:
+        raise ValueError("You need to pass a valid path like mymodule.provider_class")
+    module_path = ".".join(class_data[:-1])
+    class_str = class_data[-1]
+    module = importlib.import_module(module_path)
+    return getattr(module, class_str)
+
+
+def validate_actor_state_name(actor_state_name):
+    if actor_state_name is None:
+        return
+    actor_state_names = [
+        "DEPENDENCIES_UNREADY",
+        "PENDING_CREATION",
+        "ALIVE",
+        "RESTARTING",
+        "DEAD",
+    ]
+    if actor_state_name not in actor_state_names:
+        raise ValueError(
+            f'"{actor_state_name}" is not a valid actor state name, '
+            'it must be one of the following: "DEPENDENCIES_UNREADY", '
+            '"PENDING_CREATION", "ALIVE", "RESTARTING", or "DEAD"'
+        )
+
+
+def get_current_node_cpu_model_name() -> Optional[str]:
+    if not sys.platform.startswith("linux"):
+        return None
+
+    try:
+        """
+        /proc/cpuinfo content example:
+
+        processor	: 0
+        vendor_id	: GenuineIntel
+        cpu family	: 6
+        model		: 85
+        model name	: Intel(R) Xeon(R) Platinum 8259CL CPU @ 2.50GHz
+        stepping	: 7
+        """
+        with open("/proc/cpuinfo", "r") as f:
+            for line in f:
+                if line.startswith("model name"):
+                    return line.split(":")[1].strip()
+        return None
+    except Exception:
+        logger.debug("Failed to get CPU model name", exc_info=True)
+        return None

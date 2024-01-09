@@ -12,11 +12,13 @@ from ray.util.state.common import (
 )
 from ray.util.state.exception import DataSourceUnavailable
 from ray.util.state.state_manager import StateDataSourceClient
+from ray._private.pydantic_compat import BaseModel
+
+if BaseModel is None:
+    raise ModuleNotFoundError("Please install pydantic via `pip install pydantic`.")
 
 # TODO(sang): Remove the usage of this class.
 from ray.dashboard.datacenter import DataSource
-
-from pydantic import BaseModel
 
 
 logger = logging.getLogger(__name__)
@@ -126,7 +128,7 @@ class LogsManager:
             yield streamed_log.data
 
     def _verify_node_registered(self, node_id: str):
-        if node_id not in self.client.get_all_registered_agent_ids():
+        if node_id not in self.client.get_all_registered_log_agent_ids():
             raise DataSourceUnavailable(
                 f"Given node id {node_id} is not available. "
                 "It's either the node is dead, or it is not registered. "

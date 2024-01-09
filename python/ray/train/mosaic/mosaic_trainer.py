@@ -1,13 +1,11 @@
 import inspect
-from typing import TYPE_CHECKING, Any, Callable, Dict, Optional, Type
 import warnings
+from typing import TYPE_CHECKING, Any, Callable, Dict, Optional, Type
 
-from composer.trainer import Trainer
 from composer.loggers.logger_destination import LoggerDestination
+from composer.trainer import Trainer
 
-from ray.air.checkpoint import Checkpoint
-from ray.air.config import RunConfig, ScalingConfig
-from ray.train import DataConfig
+from ray.train import Checkpoint, DataConfig, RunConfig, ScalingConfig
 from ray.train.mosaic._mosaic_utils import RayLogger
 from ray.train.torch import TorchConfig, TorchTrainer
 from ray.train.trainer import GenDataset
@@ -137,9 +135,7 @@ class MosaicTrainer(TorchTrainer):
         scaling_config: Configuration for how to scale data parallel training.
         dataset_config: Configuration for dataset ingest.
         run_config: Configuration for the execution of the training run.
-        preprocessor: A ray.data.Preprocessor to preprocess the
-            provided datasets.
-        resume_from_checkpoint: A MosiacCheckpoint to resume training from.
+        resume_from_checkpoint: A ``ray.train.Checkpoint`` to resume training from.
     """
 
     def __init__(
@@ -155,6 +151,12 @@ class MosaicTrainer(TorchTrainer):
         preprocessor: Optional["Preprocessor"] = None,
         resume_from_checkpoint: Optional[Checkpoint] = None,
     ):
+
+        warnings.warn(
+            "This MosaicTrainer will be deprecated in Ray 2.8. "
+            "It is recommended to use the TorchTrainer instead.",
+            DeprecationWarning,
+        )
 
         self._validate_trainer_init_per_worker(
             trainer_init_per_worker, "trainer_init_per_worker"
@@ -223,7 +225,7 @@ class MosaicTrainer(TorchTrainer):
         if config is not None and "loggers" in config:
             warnings.warn(
                 "Composer's Loggers (any subclass of LoggerDestination) are \
-                not supported for MosaicComposer. Use Ray AIR provided loggers instead"
+                not supported for MosaicComposer. Use Ray provided loggers instead"
             )
 
 

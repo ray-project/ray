@@ -198,12 +198,15 @@ int TaskSpecification::GetRuntimeEnvHash() const {
   WorkerCacheKey env = {SerializedRuntimeEnv(),
                         GetRequiredResources().GetResourceMap(),
                         IsActorCreationTask(),
-                        GetRequiredResources().GetResource("GPU") > 0};
+                        GetRequiredResources().Get(scheduling::ResourceID::GPU()) > 0};
   return env.IntHash();
 }
 
 const SchedulingClass TaskSpecification::GetSchedulingClass() const {
-  RAY_CHECK(sched_cls_id_ > 0);
+  if (!IsActorTask()) {
+    // Actor task doesn't have scheudling id, so we don't need to check this.
+    RAY_CHECK(sched_cls_id_ > 0);
+  }
   return sched_cls_id_;
 }
 
@@ -238,6 +241,14 @@ bool TaskSpecification::ReturnsDynamic() const { return message_->returns_dynami
 // streaming generator.
 bool TaskSpecification::IsStreamingGenerator() const {
   return message_->streaming_generator();
+}
+
+int64_t TaskSpecification::GeneratorBackpressureNumObjects() const {
+  auto result = message_->generator_backpressure_num_objects();
+  // generator_backpressure_num_objects == 0 makes no sense.
+  // it means it pauses the generator even before it starts.
+  RAY_CHECK_NE(result, 0);
+  return result;
 }
 
 std::vector<ObjectID> TaskSpecification::DynamicReturnIds() const {
@@ -397,6 +408,10 @@ const rpc::Address &TaskSpecification::CallerAddress() const {
   return message_->caller_address();
 }
 
+bool TaskSpecification::ShouldRetryExceptions() const {
+  return message_->retry_exceptions();
+}
+
 WorkerID TaskSpecification::CallerWorkerId() const {
   return WorkerID::FromBinary(message_->caller_address().worker_id());
 }
@@ -470,13 +485,13 @@ std::string TaskSpecification::DebugString() const {
 
   stream << ", task_id=" << TaskId() << ", task_name=" << GetName()
          << ", job_id=" << JobId() << ", num_args=" << NumArgs()
-         << ", num_returns=" << NumReturns() << ", depth=" << GetDepth()
-         << ", attempt_number=" << AttemptNumber();
+         << ", num_returns=" << NumReturns() << ", max_retries=" << MaxRetries()
+         << ", depth=" << GetDepth() << ", attempt_number=" << AttemptNumber();
 
   if (IsActorCreationTask()) {
     // Print actor creation task spec.
     stream << ", actor_creation_task_spec={actor_id=" << ActorCreationId()
-           << ", max_restarts=" << MaxActorRestarts() << ", max_retries=" << MaxRetries()
+           << ", max_restarts=" << MaxActorRestarts()
            << ", max_concurrency=" << MaxActorConcurrency()
            << ", is_asyncio_actor=" << IsAsyncioActor()
            << ", is_detached=" << IsDetachedActor() << "}";
@@ -484,9 +499,7 @@ std::string TaskSpecification::DebugString() const {
     // Print actor task spec.
     stream << ", actor_task_spec={actor_id=" << ActorId()
            << ", actor_caller_id=" << CallerId() << ", actor_counter=" << ActorCounter()
-           << "}";
-  } else if (IsNormalTask()) {
-    stream << ", max_retries=" << MaxRetries();
+           << ", retry_exceptions=" << ShouldRetryExceptions() << "}";
   }
 
   // Print non-sensitive runtime env info.

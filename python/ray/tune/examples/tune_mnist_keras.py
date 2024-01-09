@@ -7,7 +7,7 @@ from tensorflow.keras.datasets import mnist
 import ray
 from ray import train, tune
 from ray.tune.schedulers import AsyncHyperBandScheduler
-from ray.tune.integration.keras import TuneReportCallback
+from ray.air.integrations.keras import ReportCheckpointCallback
 
 
 def train_mnist(config):
@@ -43,7 +43,11 @@ def train_mnist(config):
         epochs=epochs,
         verbose=0,
         validation_data=(x_test, y_test),
-        callbacks=[TuneReportCallback({"mean_accuracy": "accuracy"})],
+        callbacks=[
+            ReportCheckpointCallback(
+                checkpoint_on=[], metrics={"mean_accuracy": "accuracy"}
+            )
+        ],
     )
 
 

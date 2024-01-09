@@ -2,6 +2,7 @@ import copy
 import json
 import logging
 import os
+import platform
 import signal
 import subprocess
 import sys
@@ -22,6 +23,7 @@ import ray
 import ray._private.ray_constants as ray_constants
 import ray._private.services as services
 from ray._private.utils import (
+    check_ray_client_dependencies_installed,
     parse_resources_json,
     parse_node_labels_json,
 )
@@ -345,8 +347,9 @@ def debug(address):
     "--ray-client-server-port",
     required=False,
     type=int,
-    default=10001,
-    help="the port number the ray client server binds on, default to 10001.",
+    default=None,
+    help="the port number the ray client server binds on, default to 10001, "
+    "or None if ray[client] is not installed.",
 )
 @click.option(
     "--memory",
@@ -384,7 +387,23 @@ def debug(address):
     required=False,
     default="{}",
     type=str,
-    help="a JSON serialized dictionary mapping resource name to resource quantity",
+    help="A JSON serialized dictionary mapping resource name to resource quantity."
+    + (
+        r"""
+
+Windows command prompt users must ensure to double quote command line arguments. Because
+JSON requires the use of double quotes you must escape these arguments as well, for
+example:
+
+    ray start --head --resources="{\"special_hardware\":1, \"custom_label\":1}"
+
+Windows powershell users need additional escaping:
+
+    ray start --head --resources="{\""special_hardware\"":1, \""custom_label\"":1}"
+"""
+        if platform.system() == "Windows"
+        else ""
+    ),
 )
 @click.option(
     "--head",
@@ -432,6 +451,12 @@ def debug(address):
     type=int,
     default=None,
     help="The port for the dashboard head to listen for grpc on.",
+)
+@click.option(
+    "--runtime-env-agent-port",
+    type=int,
+    default=None,
+    help="The port for the runtime enviroment agents to listen for http on.",
 )
 @click.option(
     "--block",
@@ -564,6 +589,7 @@ def start(
     dashboard_agent_listen_port,
     dashboard_agent_grpc_port,
     dashboard_grpc_port,
+    runtime_env_agent_port,
     block,
     plasma_directory,
     autoscaling_config,
@@ -623,6 +649,15 @@ def start(
         temp_dir = None
 
     redirect_output = None if not no_redirect_output else True
+
+    # no  client, no  port -> ok
+    # no  port, has client -> default to 10001
+    # has port, no  client -> value error
+    # has port, has client -> ok, check port validity
+    has_ray_client = check_ray_client_dependencies_installed()
+    if has_ray_client and ray_client_server_port is None:
+        ray_client_server_port = 10001
+
     ray_params = ray._private.parameter.RayParams(
         node_ip_address=node_ip_address,
         node_name=node_name if node_name else node_ip_address,
@@ -653,6 +688,7 @@ def start(
         dashboard_agent_listen_port=dashboard_agent_listen_port,
         metrics_agent_port=dashboard_agent_grpc_port,
         dashboard_grpc_port=dashboard_grpc_port,
+        runtime_env_agent_port=runtime_env_agent_port,
         _system_config=system_config,
         enable_object_reconstruction=enable_object_reconstruction,
         metrics_export_port=metrics_export_port,
@@ -909,6 +945,7 @@ def start(
         node = ray._private.node.Node(
             ray_params, head=False, shutdown_at_exit=block, spawn_reaper=block
         )
+        temp_dir = node.get_temp_dir_path()
 
         # Ray and Python versions should probably be checked before
         # initializing Node.
@@ -1113,29 +1150,30 @@ def stop(force: bool, grace_period: int):
         psutil.wait_procs(alive, timeout=2)
         return total_found, total_stopped, alive
 
+    # Process killing procedure: we put processes into 3 buckets.
+    # Bucket 1: raylet
+    # Bucket 2: all other processes, e.g. dashboard, runtime env agents
+    # Bucket 3: gcs_server.
+    #
+    # For each bucket, we send sigterm to all processes, then wait for 30s, then if
+    # they are still alive, send sigkill.
+    processes_to_kill = RAY_PROCESSES
+    # Raylet should exit before all other processes exit.
+    # Otherwise, fate-sharing agents will complain and suicide.
+    assert processes_to_kill[0][0] == "raylet"
+
     # GCS should exit after all other processes exit.
     # Otherwise, some of processes may exit with an unexpected
     # exit code which breaks ray start --block.
-    processes_to_kill = RAY_PROCESSES
-    gcs = processes_to_kill[0]
-    assert gcs[0] == "gcs_server"
+    assert processes_to_kill[-1][0] == "gcs_server"
 
-    grace_period_to_kill_gcs = int(grace_period / 2)
-    grace_period_to_kill_components = grace_period - grace_period_to_kill_gcs
+    buckets = [[processes_to_kill[0]], processes_to_kill[1:-1], [processes_to_kill[-1]]]
 
-    # Kill evertyhing except GCS.
-    found, stopped, alive = kill_procs(
-        force, grace_period_to_kill_components, processes_to_kill[1:]
-    )
-    total_procs_found += found
-    total_procs_stopped += stopped
-    procs_not_gracefully_killed.extend(alive)
-
-    # Kill GCS.
-    found, stopped, alive = kill_procs(force, grace_period_to_kill_gcs, [gcs])
-    total_procs_found += found
-    total_procs_stopped += stopped
-    procs_not_gracefully_killed.extend(alive)
+    for bucket in buckets:
+        found, stopped, alive = kill_procs(force, grace_period / len(buckets), bucket)
+        total_procs_found += found
+        total_procs_stopped += stopped
+        procs_not_gracefully_killed.extend(alive)
 
     # Print the termination result.
     if total_procs_found == 0:

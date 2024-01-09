@@ -4,6 +4,7 @@ Exceptions
 ==========
 
 .. autosummary::
+    :nosignatures:
     :toctree: doc/
 
     ray.exceptions.RayError

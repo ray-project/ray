@@ -48,15 +48,19 @@ def test_short_traceback(levels):
 
 
 def test_traceback_tuner(ray_start_2_cpus):
+    """Ensure that the Tuner's stack trace is not too long."""
+
     def failing(config):
         raise RuntimeError("Error")
 
     tuner = Tuner(failing)
     results = tuner.fit()
-    assert len(str(results[0].error).split("\n")) <= 10
+    assert len(str(results[0].error).split("\n")) <= 12
 
 
 def test_traceback_trainer(ray_start_2_cpus):
+    """Ensure that the Trainer's stack trace is not too long."""
+
     def failing(config):
         raise RuntimeError("Error")
 

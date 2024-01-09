@@ -1,5 +1,4 @@
 import os
-import importlib
 from pathlib import Path
 from packaging import version
 import sys
@@ -21,13 +20,10 @@ from ray.tune.registry import register_env
 class TestBackwardCompatibility(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
-        os.system("pip install gym==0.23.1")
-        importlib.reload(sys.modules["gym"])
-        ray.init()
+        ray.init(runtime_env={"pip_packages": ["gym==0.23.1"]})
 
     @classmethod
     def tearDownClass(cls):
-        os.system("pip install gym==0.26.2")
         ray.shutdown()
 
     def test_old_checkpoint_formats(self):
@@ -112,6 +108,7 @@ class TestBackwardCompatibility(unittest.TestCase):
         )
 
         config = {
+            "env": "test",
             "env_config": {
                 "num_agents": 1,
             },
@@ -129,7 +126,7 @@ class TestBackwardCompatibility(unittest.TestCase):
                 "policies_to_train": ["policy1"],
             },
         }
-        algo = DQN(config=config, env="test")
+        algo = DQN(config=config)
         self.assertTrue(algo.config.lr == 0.001)
         self.assertTrue(algo.config.evaluation_num_workers == 1)
         self.assertTrue(list(algo.config.policies.keys()) == ["policy1"])

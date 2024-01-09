@@ -38,11 +38,6 @@ class CoreWorkerClientPool {
   CoreWorkerClientPool(ClientFactoryFn client_factory)
       : client_factory_(client_factory){};
 
-  /// Returns an existing Interface if one exists, or an empty optional
-  /// otherwise.
-  /// Any returned pointer is borrowed, and expected to be used briefly.
-  optional<shared_ptr<CoreWorkerClientInterface>> GetByID(ray::WorkerID id);
-
   /// Returns an open CoreWorkerClientInterface if one exists, and connect to one
   /// if it does not. The returned pointer is borrowed, and expected to be used
   /// briefly.
@@ -52,6 +47,13 @@ class CoreWorkerClientPool {
   /// shared pointer will no longer be retained in the pool, the connection will
   /// be open until it's no longer used, at which time it will disconnect.
   void Disconnect(ray::WorkerID id);
+
+  /// For testing.
+  size_t Size() {
+    absl::MutexLock lock(&mu_);
+    RAY_CHECK_EQ(client_list_.size(), client_map_.size());
+    return client_list_.size();
+  }
 
  private:
   /// Provides the default client factory function. Providing this function to the
@@ -63,6 +65,14 @@ class CoreWorkerClientPool {
     };
   };
 
+  /// Try to remove some idle clients to free memory.
+  /// It doesn't go through the entire list and remove all idle clients.
+  /// Instead, it tries to remove idle clients from the end of the list
+  /// and stops when it finds the first non-idle client.
+  /// However, it's guaranteed that all idle clients will eventually be
+  /// removed as long as the method will be called repeatedly.
+  void RemoveIdleClients() ABSL_EXCLUSIVE_LOCKS_REQUIRED(mu_);
+
   /// This factory function does the connection to CoreWorkerClient, and is
   /// provided by the constructor (either the default implementation, above, or a
   /// provided one)
@@ -70,10 +80,24 @@ class CoreWorkerClientPool {
 
   absl::Mutex mu_;
 
+  struct CoreWorkerClientEntry {
+   public:
+    CoreWorkerClientEntry() {}
+    CoreWorkerClientEntry(ray::WorkerID worker_id,
+                          shared_ptr<CoreWorkerClientInterface> core_worker_client)
+        : worker_id(worker_id), core_worker_client(core_worker_client) {}
+
+    ray::WorkerID worker_id;
+    shared_ptr<CoreWorkerClientInterface> core_worker_client;
+  };
+
+  /// A list of open connections from the most recent accessed to the least recent
+  /// accessed. This is used to check and remove idle connections.
+  std::list<CoreWorkerClientEntry> client_list_ ABSL_GUARDED_BY(mu_);
   /// A pool of open connections by WorkerID. Clients can reuse the connection
   /// objects in this pool by requesting them.
-  absl::flat_hash_map<ray::WorkerID, shared_ptr<CoreWorkerClientInterface>> client_map_
-      GUARDED_BY(mu_);
+  absl::flat_hash_map<ray::WorkerID, std::list<CoreWorkerClientEntry>::iterator>
+      client_map_ ABSL_GUARDED_BY(mu_);
 };
 
 }  // namespace rpc

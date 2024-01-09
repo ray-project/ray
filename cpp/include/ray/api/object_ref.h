@@ -103,6 +103,14 @@ class ObjectRef {
   /// \return shared pointer of the result.
   std::shared_ptr<T> Get() const;
 
+  /// Get the object from the object store.
+  /// This method will be blocked until the object is ready.
+  ///
+  /// \param timeout_ms The maximum amount of time in miliseconds to wait before
+  /// returning.
+  /// \return shared pointer of the result.
+  std::shared_ptr<T> Get(const int &timeout_ms) const;
+
   /// Make ObjectRef serializable
   MSGPACK_DEFINE(id_);
 
@@ -112,8 +120,9 @@ class ObjectRef {
 
 // ---------- implementation ----------
 template <typename T>
-inline static std::shared_ptr<T> GetFromRuntime(const ObjectRef<T> &object) {
-  auto packed_object = internal::GetRayRuntime()->Get(object.ID());
+inline static std::shared_ptr<T> GetFromRuntime(const ObjectRef<T> &object,
+                                                const int &timeout_ms) {
+  auto packed_object = internal::GetRayRuntime()->Get(object.ID(), timeout_ms);
   CheckResult(packed_object);
 
   if (ray::internal::Serializer::IsXLang(packed_object->data(), packed_object->size())) {
@@ -156,7 +165,12 @@ const std::string &ObjectRef<T>::ID() const {
 
 template <typename T>
 inline std::shared_ptr<T> ObjectRef<T>::Get() const {
-  return GetFromRuntime(*this);
+  return GetFromRuntime(*this, -1);
+}
+
+template <typename T>
+inline std::shared_ptr<T> ObjectRef<T>::Get(const int &timeout_ms) const {
+  return GetFromRuntime(*this, timeout_ms);
 }
 
 template <>
@@ -187,6 +201,17 @@ class ObjectRef<void> {
   /// \return shared pointer of the result.
   void Get() const {
     auto packed_object = internal::GetRayRuntime()->Get(id_);
+    CheckResult(packed_object);
+  }
+
+  /// Get the object from the object store.
+  /// This method will be blocked until the object is ready.
+  ///
+  /// \param timeout_ms The maximum amount of time in miliseconds to wait before
+  /// returning.
+  ///  \return shared pointer of the result.
+  void Get(const int &timeout_ms) const {
+    auto packed_object = internal::GetRayRuntime()->Get(id_, timeout_ms);
     CheckResult(packed_object);
   }
 

@@ -14,9 +14,40 @@ ray_cc_test(
 )
 
 ray_cc_test(
+    name = "resource_set_test",
+    size = "small",
+    srcs = [
+        "resource_set_test.cc",
+    ],
+    tags = ["team:core"],
+    deps = [
+        "//src/ray/common:task_common",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+ray_cc_test(
+    name = "resource_instance_set_test",
+    size = "small",
+    srcs = [
+        "resource_instance_set_test.cc",
+    ],
+    tags = ["team:core"],
+    deps = [
+        "//src/ray/common:task_common",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+ray_cc_test(
     name = "ray_syncer_test",
     srcs = ["ray_syncer_test.cc"],
-    tags = ["team:core"],
+    tags = [
+        "no_tsan",
+        "no_ubsan",
+        "no_windows",
+        "team:core",
+    ],
     deps = [
         "//:grpc_common_lib",
         "//:ray_mock",
@@ -32,6 +63,17 @@ ray_cc_test(
     tags = ["team:core"],
     deps = [
         "//src/ray/common:asio",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+ray_cc_test(
+    name = "event_stats_test",
+    size = "small",
+    srcs = ["event_stats_test.cc"],
+    tags = ["team:core"],
+    deps = [
+        "//src/ray/common:event_stats",
         "@com_google_googletest//:gtest_main",
     ],
 )
@@ -125,7 +167,7 @@ ray_cc_test(
     srcs = [
         "memory_monitor_test.cc",
     ],
-    tags = ["team:core"],
+    tags = ["team:core", "no_windows"],
     target_compatible_with = [
         "@platforms//os:linux",
     ],

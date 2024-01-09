@@ -14,6 +14,7 @@
 
 #pragma once
 
+#include <ray/api/msgpack_adaptor.h>
 #include <ray/api/ray_exception.h>
 #include <ray/api/xlang_function.h>
 

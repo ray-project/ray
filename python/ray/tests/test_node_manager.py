@@ -238,12 +238,16 @@ import ray
 import numpy as np
 import tensorflow
 
+@ray.remote(max_retries=0)
 def leak_repro(obj):
     tensorflow
     return []
 
-ds = ray.data.from_numpy(np.ones((100_000)))
-ds.map(leak_repro, max_retries=0)
+refs = []
+for i in range(100_000):
+    refs.append(leak_repro.remote(i))
+
+ray.get(refs)
   """
     try:
         run_string_as_driver(driver)

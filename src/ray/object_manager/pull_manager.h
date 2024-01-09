@@ -364,7 +364,7 @@ class PullManager {
   /// request or if it is already local. This also sets a timeout for when to
   /// make the next attempt to make the object local.
   void TryToMakeObjectLocal(const ObjectID &object_id)
-      EXCLUSIVE_LOCKS_REQUIRED(active_objects_mu_);
+      ABSL_EXCLUSIVE_LOCKS_REQUIRED(active_objects_mu_);
 
   /// Returns whether the set of active pull requests exceeds the memory allowance
   /// for pulls. Note that exceeding the quota is allowed in certain situations,
@@ -494,7 +494,7 @@ class PullManager {
   /// is the number of bytes that we are currently pulling, and it must be less
   /// than the bytes available.
   absl::flat_hash_map<ObjectID, absl::flat_hash_set<uint64_t>>
-      active_object_pull_requests_ GUARDED_BY(active_objects_mu_);
+      active_object_pull_requests_ ABSL_GUARDED_BY(active_objects_mu_);
 
   /// Tracks the objects we have pinned. Keys are subset of active_object_pull_requests_.
   /// We need to pin these objects so that parts of in-progress bundles aren't evicted

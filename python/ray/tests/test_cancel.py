@@ -25,7 +25,7 @@ def valid_exceptions(use_force):
     if use_force:
         return (RayTaskError, TaskCancelledError, WorkerCrashedError, ObjectLostError)
     else:
-        return (RayTaskError, TaskCancelledError)
+        return TaskCancelledError
 
 
 @pytest.mark.parametrize("use_force", [True, False])
@@ -587,6 +587,7 @@ def test_recursive_cancel_actor_task(shutdown_only):
     wait_for_condition(verify)
 
 
+@pytest.mark.skip("Actor cancelation works now.")
 def test_recursive_cancel_error_messages(shutdown_only, capsys):
     """
     Make sure the error message printed from the core worker

@@ -8,7 +8,7 @@ from ray.util.annotations import PublicAPI, DeveloperAPI
 from ray.tune.utils.util import _atomic_save, _load_newest_checkpoint
 
 if TYPE_CHECKING:
-    from ray.air._internal.checkpoint_manager import _TrackedCheckpoint
+    from ray.train import Checkpoint
     from ray.tune.experiment import Trial
     from ray.tune.stopper import Stopper
 
@@ -282,7 +282,7 @@ class Callback(metaclass=_CallbackMeta):
         iteration: int,
         trials: List["Trial"],
         trial: "Trial",
-        checkpoint: "_TrackedCheckpoint",
+        checkpoint: "Checkpoint",
         **info,
     ):
         """Called after a trial saved a checkpoint with Tune.

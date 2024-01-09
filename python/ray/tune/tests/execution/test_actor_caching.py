@@ -2,21 +2,18 @@ import pytest
 import sys
 
 from ray.tune import PlacementGroupFactory
+
 from ray.tune.tests.execution.utils import create_execution_test_objects, TestingTrial
 
 
 def test_actor_cached(tmpdir):
     tune_controller, actor_manger, resource_manager = create_execution_test_objects(
-        tmpdir, max_pending_trials=8
+        max_pending_trials=8
     )
 
     assert not actor_manger.added_actors
 
-    tune_controller.add_trial(
-        TestingTrial(
-            "trainable1", stub=True, trial_id="trial1", experiment_path=str(tmpdir)
-        )
-    )
+    tune_controller.add_trial(TestingTrial("trainable1", stub=True, trial_id="trial1"))
     tune_controller.step()
 
     tracked_actor, cls_name, kwargs = actor_manger.added_actors[0]
@@ -36,7 +33,7 @@ def test_actor_reuse_unstaged(tmpdir):
     lead to errors in those cases.
     """
     tune_controller, actor_manger, resource_manager = create_execution_test_objects(
-        tmpdir, max_pending_trials=1
+        max_pending_trials=1
     )
     tune_controller._reuse_actors = True
 
@@ -46,7 +43,6 @@ def test_actor_reuse_unstaged(tmpdir):
         "trainable1",
         stub=True,
         trial_id="trialA1",
-        experiment_path=str(tmpdir),
         placement_group_factory=PlacementGroupFactory([{"CPU": 1}]),
     )
     tune_controller.add_trial(trialA1)
@@ -54,7 +50,6 @@ def test_actor_reuse_unstaged(tmpdir):
         "trainable1",
         stub=True,
         trial_id="trialB1",
-        experiment_path=str(tmpdir),
         placement_group_factory=PlacementGroupFactory([{"CPU": 5}]),
     )
     tune_controller.add_trial(trialB1)
@@ -62,7 +57,6 @@ def test_actor_reuse_unstaged(tmpdir):
         "trainable1",
         stub=True,
         trial_id="trialA2",
-        experiment_path=str(tmpdir),
         placement_group_factory=PlacementGroupFactory([{"CPU": 1}]),
     )
     tune_controller.add_trial(trialA2)
@@ -76,7 +70,6 @@ def test_actor_reuse_unstaged(tmpdir):
         "trainable1",
         stub=True,
         trial_id="trialA3",
-        experiment_path=str(tmpdir),
         placement_group_factory=PlacementGroupFactory([{"CPU": 1}]),
     )
     tune_controller.add_trial(trialA3)

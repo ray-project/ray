@@ -88,21 +88,18 @@ if __name__ == "__main__":
         pol_id = random.choice(policy_ids)
         return pol_id
 
-    scaling_config = {
-        "num_learner_workers": args.num_gpus,
-        "num_gpus_per_learner_worker": int(args.num_gpus > 0),
-    }
-
     config = (
         PPOConfig()
+        .experimental(_enable_new_api_stack=True)
         .rollouts(rollout_fragment_length="auto", num_rollout_workers=3)
         .environment(MultiAgentCartPole, env_config={"num_agents": args.num_agents})
         .framework(args.framework)
         .training(num_sgd_iter=10, sgd_minibatch_size=2**9, train_batch_size=2**12)
         .multi_agent(policies=policies, policy_mapping_fn=policy_mapping_fn)
-        .rl_module(_enable_rl_module_api=True)
-        .training(_enable_learner_api=True)
-        .resources(**scaling_config)
+        .resources(
+            num_learner_workers=args.num_gpus,
+            num_gpus_per_learner_worker=int(args.num_gpus > 0),
+        )
     )
 
     stop_reward = args.stop_reward_per_agent * args.num_agents

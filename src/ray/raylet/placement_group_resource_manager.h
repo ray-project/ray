@@ -18,7 +18,7 @@
 #include "ray/common/bundle_spec.h"
 #include "ray/common/id.h"
 #include "ray/common/placement_group.h"
-#include "ray/common/scheduling/scheduling_resources.h"
+#include "ray/common/scheduling/resource_set.h"
 #include "ray/raylet/scheduling/cluster_resource_scheduler.h"
 #include "ray/util/util.h"
 

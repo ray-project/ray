@@ -5,6 +5,7 @@ import random
 import threading
 import collections
 import logging
+import time
 
 
 _logger = logging.getLogger("ray.util.spark.utils")
@@ -81,12 +82,23 @@ def exec_cmd(
         )
 
 
-def check_port_open(host, port):
+def is_port_in_use(host, port):
     import socket
     from contextlib import closing
 
     with closing(socket.socket(socket.AF_INET, socket.SOCK_STREAM)) as sock:
         return sock.connect_ex((host, port)) == 0
+
+
+def _wait_service_up(host, port, timeout):
+    beg_time = time.time()
+
+    while time.time() - beg_time < timeout:
+        if is_port_in_use(host, port):
+            return True
+        time.sleep(1)
+
+    return False
 
 
 def get_random_unused_port(
@@ -103,7 +115,7 @@ def get_random_unused_port(
         port = rng.randint(min_port, max_port)
         if port in exclude_list:
             continue
-        if not check_port_open(host, port):
+        if not is_port_in_use(host, port):
             return port
     raise RuntimeError(
         f"Get available port between range {min_port} and {max_port} failed."
@@ -148,7 +160,7 @@ def get_max_num_concurrent_tasks(spark_context, resource_profile):
         )
 
 
-def _get_total_physical_memory():
+def _get_spark_worker_total_physical_memory():
     import psutil
 
     if RAY_ON_SPARK_WORKER_PHYSICAL_MEMORY_BYTES in os.environ:
@@ -156,7 +168,7 @@ def _get_total_physical_memory():
     return psutil.virtual_memory().total
 
 
-def _get_total_shared_memory():
+def _get_spark_worker_total_shared_memory():
     import shutil
 
     if RAY_ON_SPARK_WORKER_SHARED_MEMORY_BYTES in os.environ:
@@ -169,11 +181,54 @@ def _get_total_shared_memory():
 _RAY_ON_SPARK_MAX_OBJECT_STORE_MEMORY_PROPORTION = 0.8
 
 # The buffer offset for calculating Ray node memory.
-_RAY_ON_SPARK_WORKER_MEMORY_BUFFER_OFFSET = 0.8
+_RAY_ON_SPARK_NODE_MEMORY_BUFFER_OFFSET = 0.8
+
+
+def calc_mem_ray_head_node(configured_object_store_bytes):
+    import psutil
+
+    if RAY_ON_SPARK_DRIVER_PHYSICAL_MEMORY_BYTES in os.environ:
+        available_physical_mem = int(
+            os.environ[RAY_ON_SPARK_DRIVER_PHYSICAL_MEMORY_BYTES]
+        )
+    else:
+        available_physical_mem = psutil.virtual_memory().total
+
+    if RAY_ON_SPARK_DRIVER_SHARED_MEMORY_BYTES in os.environ:
+        available_shared_mem = int(os.environ[RAY_ON_SPARK_DRIVER_SHARED_MEMORY_BYTES])
+    else:
+        available_shared_mem = psutil.virtual_memory().total
+
+    heap_mem_bytes, object_store_bytes, warning_msg = _calc_mem_per_ray_node(
+        available_physical_mem, available_shared_mem, configured_object_store_bytes
+    )
+
+    if warning_msg is not None:
+        _logger.warning(warning_msg)
+
+    return heap_mem_bytes, object_store_bytes
 
 
 def _calc_mem_per_ray_worker_node(
     num_task_slots, physical_mem_bytes, shared_mem_bytes, configured_object_store_bytes
+):
+    available_physical_mem_per_node = int(
+        physical_mem_bytes / num_task_slots * _RAY_ON_SPARK_NODE_MEMORY_BUFFER_OFFSET
+    )
+    available_shared_mem_per_node = int(
+        shared_mem_bytes / num_task_slots * _RAY_ON_SPARK_NODE_MEMORY_BUFFER_OFFSET
+    )
+    return _calc_mem_per_ray_node(
+        available_physical_mem_per_node,
+        available_shared_mem_per_node,
+        configured_object_store_bytes,
+    )
+
+
+def _calc_mem_per_ray_node(
+    available_physical_mem_per_node,
+    available_shared_mem_per_node,
+    configured_object_store_bytes,
 ):
     from ray._private.ray_constants import (
         DEFAULT_OBJECT_STORE_MEMORY_PROPORTION,
@@ -181,13 +236,6 @@ def _calc_mem_per_ray_worker_node(
     )
 
     warning_msg = None
-
-    available_physical_mem_per_node = int(
-        physical_mem_bytes / num_task_slots * _RAY_ON_SPARK_WORKER_MEMORY_BUFFER_OFFSET
-    )
-    available_shared_mem_per_node = int(
-        shared_mem_bytes / num_task_slots * _RAY_ON_SPARK_WORKER_MEMORY_BUFFER_OFFSET
-    )
 
     object_store_bytes = configured_object_store_bytes or (
         available_physical_mem_per_node * DEFAULT_OBJECT_STORE_MEMORY_PROPORTION
@@ -234,6 +282,11 @@ RAY_ON_SPARK_WORKER_GPU_NUM = "RAY_ON_SPARK_WORKER_GPU_NUM"
 RAY_ON_SPARK_WORKER_PHYSICAL_MEMORY_BYTES = "RAY_ON_SPARK_WORKER_PHYSICAL_MEMORY_BYTES"
 RAY_ON_SPARK_WORKER_SHARED_MEMORY_BYTES = "RAY_ON_SPARK_WORKER_SHARED_MEMORY_BYTES"
 
+# User can manually set these environment variables on spark driver node
+# if ray on spark code accessing corresponding information failed.
+RAY_ON_SPARK_DRIVER_PHYSICAL_MEMORY_BYTES = "RAY_ON_SPARK_DRIVER_PHYSICAL_MEMORY_BYTES"
+RAY_ON_SPARK_DRIVER_SHARED_MEMORY_BYTES = "RAY_ON_SPARK_DRIVER_SHARED_MEMORY_BYTES"
+
 
 def _get_cpu_cores():
     import multiprocessing
@@ -279,15 +332,29 @@ def _get_avail_mem_per_ray_worker_node(
     object_store_memory_per_node,
 ):
     num_cpus = _get_cpu_cores()
+
+    if num_cpus_per_node > num_cpus:
+        raise ValueError(
+            "cpu number per Ray worker node should be <= spark worker node CPU cores, "
+            f"you set cpu number per Ray worker node to {num_cpus_per_node} but "
+            f"spark worker node CPU core number is {num_cpus}."
+        )
     num_task_slots = num_cpus // num_cpus_per_node
 
     if num_gpus_per_node > 0:
         num_gpus = _get_num_physical_gpus()
+        if num_gpus_per_node > num_gpus:
+            raise ValueError(
+                "gpu number per Ray worker node should be <= spark worker node "
+                "GPU number, you set cpu number per Ray worker node to "
+                f"{num_cpus_per_node} but spark worker node CPU core number "
+                f"is {num_cpus}."
+            )
         if num_task_slots > num_gpus // num_gpus_per_node:
             num_task_slots = num_gpus // num_gpus_per_node
 
-    physical_mem_bytes = _get_total_physical_memory()
-    shared_mem_bytes = _get_total_shared_memory()
+    physical_mem_bytes = _get_spark_worker_total_physical_memory()
+    shared_mem_bytes = _get_spark_worker_total_shared_memory()
 
     (
         ray_worker_node_heap_mem_bytes,
@@ -330,7 +397,10 @@ def get_avail_mem_per_ray_worker_node(
                 object_store_memory_per_node,
             )
         except Exception as e:
-            return -1, -1, repr(e), None
+            import traceback
+
+            trace_msg = "\n".join(traceback.format_tb(e.__traceback__))
+            return -1, -1, repr(e) + trace_msg, None
 
     # Running memory inference routine on spark executor side since the spark worker
     # nodes may have a different machine configuration compared to the spark driver
@@ -369,19 +439,3 @@ def get_spark_task_assigned_physical_gpus(gpu_addr_list):
         return [visible_cuda_dev_list[addr] for addr in gpu_addr_list]
     else:
         return gpu_addr_list
-
-
-def setup_sigterm_on_parent_death():
-    """
-    Uses prctl to automatically send SIGTERM to the child process when its parent is
-    dead. The child process itself should handle SIGTERM properly.
-    """
-    try:
-        import ctypes
-        import signal
-
-        libc = ctypes.CDLL("libc.so.6")
-        # Set the parent process death signal of the command process to SIGTERM.
-        libc.prctl(1, signal.SIGTERM)  # PR_SET_PDEATHSIG, see prctl.h
-    except OSError as e:
-        _logger.warning(f"Setup libc.prctl PR_SET_PDEATHSIG failed, error {repr(e)}.")

@@ -29,9 +29,7 @@ def save_test(alg_name, framework="tf", multi_agent=False):
     )
 
     if alg_name in RLMODULE_SUPPORTED_ALGOS:
-        config = config.rl_module(_enable_rl_module_api=False).training(
-            _enable_learner_api=False
-        )
+        config = config.experimental(_enable_new_api_stack=False)
 
     if "DDPG" in alg_name or "SAC" in alg_name:
         config.environment("Pendulum-v1")
@@ -57,8 +55,9 @@ def save_test(alg_name, framework="tf", multi_agent=False):
         ray._private.utils.get_user_temp_dir(), "export_dir_%s" % alg_name
     )
 
+    algo.train()
     print("Exporting algo checkpoint", alg_name, export_dir)
-    export_dir = algo.save(export_dir)
+    export_dir = algo.save(export_dir).checkpoint.path
     model_dir = os.path.join(
         export_dir,
         "policies",

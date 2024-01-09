@@ -1,4 +1,5 @@
 from fastapi import FastAPI
+
 from ray import serve
 
 app = FastAPI(docs_url="/my_docs")

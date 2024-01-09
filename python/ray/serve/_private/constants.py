@@ -24,20 +24,21 @@ DEFAULT_HTTP_HOST = "127.0.0.1"
 #: HTTP Port
 DEFAULT_HTTP_PORT = 8000
 
+#: Uvicorn timeout_keep_alive Config
+DEFAULT_UVICORN_KEEP_ALIVE_TIMEOUT_S = 5
+
 #: gRPC Port
 DEFAULT_GRPC_PORT = 9000
 
 #: Default Serve application name
 SERVE_DEFAULT_APP_NAME = "default"
 
-#: Separator between app name and deployment name when we prepend
-#: the app name to each deployment name. This prepending is currently
-#: used to manage deployments from different applications holding the
-#: same names.
-DEPLOYMENT_NAME_PREFIX_SEPARATOR = "_"
-
 #: Max concurrency
 ASYNC_CONCURRENCY = int(1e6)
+
+# Concurrency group used for replica operations that cannot be blocked by user code
+# (e.g., health checks and fetching queue length).
+REPLICA_CONTROL_PLANE_CONCURRENCY_GROUP = "control_plane"
 
 # How often to call the control loop on the controller.
 CONTROL_LOOP_PERIOD_S = 0.1
@@ -87,9 +88,6 @@ HEALTH_CHECK_METHOD = "check_health"
 RECONFIGURE_METHOD = "reconfigure"
 
 SERVE_ROOT_URL_ENV_KEY = "RAY_SERVE_ROOT_URL"
-
-#: Number of historically deleted deployments to store in the checkpoint.
-MAX_NUM_DELETED_DEPLOYMENTS = 1000
 
 #: Limit the number of cached handles because each handle has long poll
 #: overhead. See https://github.com/ray-project/ray/issues/18980
@@ -154,7 +152,7 @@ RAY_GCS_RPC_TIMEOUT_S = 3.0
 RECOVERING_LONG_POLL_BROADCAST_TIMEOUT_S = 10.0
 
 # Minimum duration to wait until broadcasting model IDs.
-PUSH_MULTIPLEXED_MODEL_IDS_INTERVAL_S = 1.0
+PUSH_MULTIPLEXED_MODEL_IDS_INTERVAL_S = 0.1
 
 
 # Deprecation message for V1 migrations.
@@ -162,14 +160,9 @@ MIGRATION_MESSAGE = (
     "See https://docs.ray.io/en/latest/serve/index.html for more information."
 )
 
-
-# [EXPERIMENTAL] Disable the http actor
-SERVE_EXPERIMENTAL_DISABLE_HTTP_PROXY = "SERVE_EXPERIMENTAL_DISABLE_HTTP_PROXY"
-
-# Message
-MULTI_APP_MIGRATION_MESSAGE = (
-    "Please see the documentation for ServeDeploySchema for more details on multi-app "
-    "config files."
+DAG_DEPRECATION_MESSAGE = (
+    "The DAG API is deprecated. Please use the recommended model composition pattern "
+    "instead (see https://docs.ray.io/en/latest/serve/model_composition.html)."
 )
 
 # Jsonify the log messages
@@ -197,25 +190,24 @@ SERVE_LOG_RECORD_FORMAT = {
     SERVE_LOG_TIME: "%(asctime)s",
 }
 
+SERVE_LOG_EXTRA_FIELDS = "ray_serve_extra_fields"
+
 # Serve HTTP request header key for routing requests.
 SERVE_MULTIPLEXED_MODEL_ID = "serve_multiplexed_model_id"
 
-# Feature flag to enable StreamingResponse support.
-# When turned on, *all* HTTP responses will use Ray streaming object refs.
-# Turning this FF on also enables RAY_SERVE_ENABLE_NEW_ROUTING.
-RAY_SERVE_ENABLE_EXPERIMENTAL_STREAMING = (
-    os.environ.get("RAY_SERVE_ENABLE_EXPERIMENTAL_STREAMING", "1") == "1"
+# Feature flag to enable new handle API.
+RAY_SERVE_ENABLE_NEW_HANDLE_API = (
+    os.environ.get("RAY_SERVE_ENABLE_NEW_HANDLE_API", "1") == "1"
 )
 
-# Request ID used for logging. Can be provided as a request
-# header and will always be returned as a response header.
-# DEPRECATED: use `X-Request-Id` instead
-RAY_SERVE_REQUEST_ID_HEADER = "RAY_SERVE_REQUEST_ID"
+# Feature flag to turn on node locality routing for proxies. Off by default.
+RAY_SERVE_PROXY_PREFER_LOCAL_NODE_ROUTING = (
+    os.environ.get("RAY_SERVE_PROXY_PREFER_LOCAL_NODE_ROUTING", "0") == "1"
+)
 
-# Feature flag to enable power of two choices routing.
-RAY_SERVE_ENABLE_NEW_ROUTING = (
-    os.environ.get("RAY_SERVE_ENABLE_NEW_ROUTING", "1") == "1"
-    or RAY_SERVE_ENABLE_EXPERIMENTAL_STREAMING
+# Feature flag to turn on AZ locality routing for proxies. On by default.
+RAY_SERVE_PROXY_PREFER_LOCAL_AZ_ROUTING = (
+    os.environ.get("RAY_SERVE_PROXY_PREFER_LOCAL_AZ_ROUTING", "1") == "1"
 )
 
 # Serve HTTP proxy callback import path.
@@ -228,3 +220,53 @@ RAY_SERVE_CONTROLLER_CALLBACK_IMPORT_PATH = os.environ.get(
 )
 # Serve gauge metric set period.
 RAY_SERVE_GAUGE_METRIC_SET_PERIOD_S = 1
+# How often autoscaling metrics are recorded on Serve replicas.
+RAY_SERVE_REPLICA_AUTOSCALING_METRIC_RECORD_PERIOD_S = 0.5
+
+# Serve multiplexed matching timeout.
+# This is the timeout for the matching process of multiplexed requests. To avoid
+# thundering herd problem, the timeout value will be randomed between this value
+# and this value * 2. The unit is second.
+# If the matching process takes longer than the timeout, the request will be
+# fallen to the default routing strategy.
+RAY_SERVE_MULTIPLEXED_MODEL_ID_MATCHING_TIMEOUT_S = float(
+    os.environ.get("RAY_SERVE_MULTIPLEXED_MODEL_ID_MATCHING_TIMEOUT_S", "1")
+)
+
+# Enable memray in all Serve actors.
+RAY_SERVE_ENABLE_MEMORY_PROFILING = (
+    os.environ.get("RAY_SERVE_ENABLE_MEMORY_PROFILING", "0") == "1"
+)
+
+# Enable cProfile in all Serve actors.
+RAY_SERVE_ENABLE_CPU_PROFILING = (
+    os.environ.get("RAY_SERVE_ENABLE_CPU_PROFILING", "0") == "1"
+)
+
+# Max value allowed for max_replicas_per_node option.
+# TODO(jjyao) the <= 100 limitation is an artificial one
+# and is due to the fact that Ray core only supports resource
+# precision up to 0.0001.
+# This limitation should be lifted in the long term.
+MAX_REPLICAS_PER_NODE_MAX_VALUE = 100
+
+# Argument name for passing in the gRPC context into a replica.
+GRPC_CONTEXT_ARG_NAME = "grpc_context"
+
+# Whether or not to forcefully kill replicas that fail health checks.
+RAY_SERVE_FORCE_STOP_UNHEALTHY_REPLICAS = (
+    os.environ.get("RAY_SERVE_FORCE_STOP_UNHEALTHY_REPLICAS", "0") == "1"
+)
+
+# Initial deadline for queue length responses in the router.
+RAY_SERVE_QUEUE_LENGTH_RESPONSE_DEADLINE_S = float(
+    os.environ.get("RAY_SERVE_QUEUE_LENGTH_RESPONSE_DEADLINE_S", 0.1)
+)
+
+# Maximum deadline for queue length responses in the router (in backoff).
+RAY_SERVE_MAX_QUEUE_LENGTH_RESPONSE_DEADLINE_S = float(
+    os.environ.get("RAY_SERVE_MAX_QUEUE_LENGTH_RESPONSE_DEADLINE_S", 1.0)
+)
+
+# The default autoscaling policy to use if none is specified.
+DEFAULT_AUTOSCALING_POLICY = "ray.serve.autoscaling_policy:default_autoscaling_policy"

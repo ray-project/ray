@@ -3,11 +3,17 @@ from dataclasses import dataclass, field
 from enum import Enum
 from typing import Dict, List, Optional
 
+from ray.core.generated.instance_manager_pb2 import Instance
+
 # TODO(rickyx): once we have graceful shutdown, we could populate
 # the failure detail with the actual termination message. As of now,
 # we will use a more generic message to include cases such as:
 # (idle termination, node death, crash, preemption, etc)
 NODE_DEATH_CAUSE_RAYLET_DIED = "NodeTerminated"
+
+
+# e.g., cpu_4_ondemand.
+NodeType = str
 
 
 @dataclass
@@ -48,6 +54,23 @@ class NodeInfo:
     failure_detail: Optional[str] = None
     # Descriptive details.
     details: Optional[str] = None
+    # Activity on the node.
+    node_activity: Optional[List[str]] = None
+
+    def total_resources(self) -> Dict[str, float]:
+        if self.resource_usage is None:
+            return {}
+        return {r.resource_name: r.total for r in self.resource_usage.usage}
+
+    def available_resources(self) -> Dict[str, float]:
+        if self.resource_usage is None:
+            return {}
+        return {r.resource_name: r.total - r.used for r in self.resource_usage.usage}
+
+    def used_resources(self) -> Dict[str, float]:
+        if self.resource_usage is None:
+            return {}
+        return {r.resource_name: r.used for r in self.resource_usage.usage}
 
 
 @dataclass
@@ -162,8 +185,10 @@ class Stats:
 
 @dataclass
 class ClusterStatus:
-    # Healthy nodes information (alive)
-    healthy_nodes: List[NodeInfo] = field(default_factory=list)
+    # Healthy nodes information (non-idle)
+    active_nodes: List[NodeInfo] = field(default_factory=list)
+    # Idle node information
+    idle_nodes: List[NodeInfo] = field(default_factory=list)
     # Pending launches.
     pending_launches: List[LaunchRequest] = field(default_factory=list)
     # Failed launches.
@@ -181,6 +206,31 @@ class ClusterStatus:
     # Query metics
     stats: Stats = field(default_factory=Stats)
 
+    def total_resources(self) -> Dict[str, float]:
+        return {r.resource_name: r.total for r in self.cluster_resource_usage}
+
+    def available_resources(self) -> Dict[str, float]:
+        return {r.resource_name: r.total - r.used for r in self.cluster_resource_usage}
+
     # TODO(rickyx): we don't show infeasible requests as of now.
     # (They will just be pending forever as part of the demands)
     # We should show them properly in the future.
+
+
+@dataclass
+class InvalidInstanceStatusError(ValueError):
+    """Raised when an instance has an invalid status."""
+
+    # The instance id.
+    instance_id: str
+    # The current status of the instance.
+    cur_status: Instance.InstanceStatus
+    # The new status to be set to.
+    new_status: Instance.InstanceStatus
+
+    def __str__(self):
+        return (
+            f"Instance {self.instance_id} with current status "
+            f"{Instance.InstanceStatus.Name(self.cur_status)} "
+            f"cannot be set to {Instance.InstanceStatus.Name(self.new_status)}"
+        )

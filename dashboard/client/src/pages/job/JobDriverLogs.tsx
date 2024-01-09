@@ -21,22 +21,22 @@ export const JobDriverLogs = ({ job }: JobDriverLogsProps) => {
     ? `job-driver-${submission_id}.log`
     : undefined;
 
-  const { ipLogMap } = useContext(GlobalContext);
+  const { nodeMapByIp } = useContext(GlobalContext);
 
   let link: string | undefined;
 
-  if (job.driver_agent_http_address) {
-    link = `/logs/${encodeURIComponent(
-      `${job.driver_agent_http_address}/logs`,
-    )}`;
-  } else if (job.driver_info && ipLogMap[job.driver_info.node_ip_address]) {
-    link = `/logs/${encodeURIComponent(
-      ipLogMap[job.driver_info.node_ip_address],
+  if (job.driver_node_id) {
+    link = `/logs/?nodeId=${encodeURIComponent(job.driver_node_id)}`;
+  } else if (job.driver_info?.node_id) {
+    link = `/logs/?nodeId=${encodeURIComponent(job.driver_info.node_id)}`;
+  } else if (job.driver_info?.node_ip_address) {
+    link = `/logs/?nodeId=${encodeURIComponent(
+      nodeMapByIp[job.driver_info.node_ip_address],
     )}`;
   }
 
   if (link && job.job_id) {
-    link += `?fileName=${job.job_id}`;
+    link += `&fileName=${job.job_id}`;
   } else {
     // Don't show "other logs" link if link is not available
     // or job_id does not exist.

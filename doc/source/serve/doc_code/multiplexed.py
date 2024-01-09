@@ -29,7 +29,7 @@ entry = ModelInferencer.bind()
 
 # __serve_deployment_example_end__
 
-serve.run(entry)
+handle = serve.run(entry)
 
 # __serve_request_send_example_begin__
 import requests  # noqa: E402
@@ -38,3 +38,31 @@ resp = requests.get(
     "http://localhost:8000", headers={"serve_multiplexed_model_id": str("1")}
 )
 # __serve_request_send_example_end__
+
+# __serve_handle_send_example_begin__
+obj_ref = handle.options(multiplexed_model_id="1").remote("<your param>")
+# __serve_handle_send_example_end__
+
+
+from ray.serve.handle import DeploymentHandle  # noqa: E402
+
+
+# __serve_model_composition_example_begin__
+@serve.deployment
+class Downstream:
+    def __call__(self):
+        return serve.get_multiplexed_model_id()
+
+
+@serve.deployment
+class Upstream:
+    def __init__(self, downstream: DeploymentHandle):
+        self._h = downstream
+
+    async def __call__(self, request: starlette.requests.Request):
+        return await self._h.options(multiplexed_model_id="bar").remote()
+
+
+serve.run(Upstream.bind(Downstream.bind()))
+resp = requests.get("http://localhost:8000")
+# __serve_model_composition_example_end__

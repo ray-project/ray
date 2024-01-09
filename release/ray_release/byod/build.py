@@ -1,4 +1,4 @@
-from typing import List
+from typing import List, Optional, Dict
 
 import boto3
 import hashlib
@@ -7,7 +7,6 @@ import subprocess
 import sys
 import time
 
-from ray_release.byod.build_ray import build_ray
 from ray_release.config import RELEASE_PACKAGE_DIR
 from ray_release.configs.global_config import get_global_config
 from ray_release.logger import logger
@@ -18,14 +17,13 @@ from ray_release.test import (
 )
 
 DATAPLANE_S3_BUCKET = "ray-release-automation-results"
-DATAPLANE_FILENAME = "dataplane_20230718.tgz"
-DATAPLANE_DIGEST = "a3ad426b05f5cf1981fe684ccbffc1dded5e1071a99184d1072b7fc7b4daf8bc"
+DATAPLANE_FILENAME = "dataplane_20231128.tar.gz"
+DATAPLANE_DIGEST = "abeba8bf3e5f44990934153fca4eca3ffcfc461f59b4aea9b0b5714246ec17b3"
 BASE_IMAGE_WAIT_TIMEOUT = 7200
 BASE_IMAGE_WAIT_DURATION = 30
 RELEASE_BYOD_DIR = os.path.join(RELEASE_PACKAGE_DIR, "ray_release/byod")
 REQUIREMENTS_BYOD = "requirements_byod"
 REQUIREMENTS_ML_BYOD = "requirements_ml_byod"
-PYTHON_VERSION = "3.8"
 
 
 def build_champagne_image(
@@ -76,7 +74,7 @@ def build_anyscale_custom_byod_image(test: Test) -> None:
         logger.info(f"Test {test.get_name()} does not require a custom byod image")
         return
     byod_image = test.get_anyscale_byod_image()
-    if _byod_image_exist(test, base_image=False):
+    if _image_exist(byod_image):
         logger.info(f"Image {byod_image} already exists")
         return
 
@@ -106,14 +104,13 @@ def build_anyscale_base_byod_images(tests: List[Test]) -> None:
     """
     Builds the Anyscale BYOD images for the given tests.
     """
-    build_ray()
     _download_dataplane_build_file()
     to_be_built = {}
     built = set()
     for test in tests:
         if not test.is_byod_cluster():
             continue
-        to_be_built[test.get_ray_image()] = test
+        to_be_built[test.get_anyscale_base_byod_image()] = test
 
     env = os.environ.copy()
     env["DOCKER_BUILDKIT"] = "1"
@@ -123,18 +120,19 @@ def build_anyscale_base_byod_images(tests: List[Test]) -> None:
         len(built) < len(to_be_built)
         and int(time.time()) - start < BASE_IMAGE_WAIT_TIMEOUT
     ):
-        for ray_image, test in to_be_built.items():
-            byod_image = test.get_anyscale_base_byod_image()
-            byod_requirements = (
-                f"{REQUIREMENTS_BYOD}_{test.get('python', PYTHON_VERSION)}.txt"
-                if test.get_byod_type() == "cpu"
-                else f"{REQUIREMENTS_ML_BYOD}_{test.get('python', PYTHON_VERSION)}.txt"
-            )
-            if _byod_image_exist(test):
+        for byod_image, test in to_be_built.items():
+            py_version = test.get_python_version()
+            if test.use_byod_ml_image():
+                byod_requirements = f"{REQUIREMENTS_ML_BYOD}_{py_version}.txt"
+            else:
+                byod_requirements = f"{REQUIREMENTS_BYOD}_{py_version}.txt"
+
+            if _image_exist(byod_image):
                 logger.info(f"Image {byod_image} already exists")
-                built.add(ray_image)
+                built.add(byod_image)
                 continue
-            if not _ray_image_exist(ray_image):
+            ray_image = test.get_ray_image()
+            if not _image_exist(ray_image):
                 # TODO(can): instead of waiting for the base image to be built, we can
                 #  build it ourselves
                 timeout = BASE_IMAGE_WAIT_TIMEOUT - (int(time.time()) - start)
@@ -180,7 +178,7 @@ def build_anyscale_base_byod_images(tests: List[Test]) -> None:
                     env=env,
                 )
                 _validate_and_push(byod_image)
-                built.add(ray_image)
+                built.add(byod_image)
 
 
 def _validate_and_push(byod_image: str) -> None:
@@ -203,21 +201,32 @@ def _validate_and_push(byod_image: str) -> None:
         .decode("utf-8")
         .strip()
     )
-    expected_ray_commit = _get_ray_commit()
-    assert (
-        docker_ray_commit == expected_ray_commit
-    ), f"Expected ray commit {expected_ray_commit}, found {docker_ray_commit}"
+    if os.environ.get("RAY_IMAGE_TAG"):
+        logger.info(f"Ray commit from image: {docker_ray_commit}")
+    else:
+        expected_ray_commit = _get_ray_commit()
+        assert (
+            docker_ray_commit == expected_ray_commit
+        ), f"Expected ray commit {expected_ray_commit}, found {docker_ray_commit}"
+    logger.info(f"Pushing image to registry: {byod_image}")
     subprocess.check_call(
         ["docker", "push", byod_image],
         stdout=sys.stderr,
     )
 
 
-def _get_ray_commit() -> str:
-    return os.environ.get(
+def _get_ray_commit(envs: Optional[Dict[str, str]] = None) -> str:
+    if envs is None:
+        envs = os.environ
+    for key in [
+        "RAY_WANT_COMMIT_IN_IMAGE",
         "COMMIT_TO_TEST",
-        os.environ["BUILDKITE_COMMIT"],
-    )
+        "BUILDKITE_COMMIT",
+    ]:
+        commit = envs.get(key, "")
+        if commit:
+            return commit
+    return ""
 
 
 def _download_dataplane_build_file() -> None:
@@ -235,33 +244,13 @@ def _download_dataplane_build_file() -> None:
         assert digest == DATAPLANE_DIGEST, "Mismatched dataplane digest found!"
 
 
-def _ray_image_exist(ray_image: str) -> bool:
+def _image_exist(image: str) -> bool:
     """
     Checks if the given image exists in Docker
     """
     p = subprocess.run(
-        ["docker", "manifest", "inspect", ray_image],
+        ["docker", "manifest", "inspect", image],
         stdout=sys.stderr,
         stderr=sys.stderr,
     )
     return p.returncode == 0
-
-
-def _byod_image_exist(test: Test, base_image: bool = True) -> bool:
-    """
-    Checks if the given Anyscale BYOD image exists.
-    """
-    if os.environ.get("BYOD_NO_CACHE", False):
-        return False
-    client = boto3.client("ecr", region_name="us-west-2")
-    image_tag = (
-        test.get_byod_base_image_tag() if base_image else test.get_byod_image_tag()
-    )
-    try:
-        client.describe_images(
-            repositoryName=test.get_byod_repo(),
-            imageIds=[{"imageTag": image_tag}],
-        )
-        return True
-    except client.exceptions.ImageNotFoundException:
-        return False

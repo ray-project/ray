@@ -14,11 +14,6 @@ Sometimes, it is desirable to have full control over training, but still run ins
 Tune supports :ref:`custom trainable functions <trainable-docs>` that can be used to
 implement `custom training workflows (example) <https://github.com/ray-project/ray/blob/master/rllib/examples/custom_train_fn.py>`__.
 
-For even finer-grained control over training, you can use RLlib's lower-level
-`building blocks <rllib-concepts.html>`__ directly to implement
-`fully customized training workflows <https://github.com/ray-project/ray/blob/master/rllib/examples/rollout_worker_custom_workflow.py>`__.
-
-
 Curriculum Learning
 ~~~~~~~~~~~~~~~~~~~
 
@@ -69,14 +64,14 @@ training loop.
 .. code-block:: python
 
     import ray
-    from ray import tune
+    from ray import train, tune
     from ray.rllib.algorithms.ppo import PPO
 
-    def train(config, reporter):
+    def train_fn(config):
         algo = PPO(config=config, env=YourEnv)
         while True:
             result = algo.train()
-            reporter(**result)
+            train.report(result)
             if result["episode_reward_mean"] > 200:
                 task = 2
             elif result["episode_reward_mean"] > 100:
@@ -92,7 +87,7 @@ training loop.
 
     ray.init()
     tune.Tuner(
-        tune.with_resources(train, resources=tune.PlacementGroupFactory(
+        tune.with_resources(train_fn, resources=tune.PlacementGroupFactory(
             [{"CPU": 1}, {"GPU": num_gpus}] + [{"CPU": 1}] * num_workers
         ),)
         param_space={
@@ -170,7 +165,7 @@ to the ``episode.custom_metrics`` dict. These custom metrics will be aggregated 
 reported as part of training results. For a full example, take a look at
 `this example script here <https://github.com/ray-project/ray/blob/master/rllib/examples/custom_metrics_and_callbacks.py>`__
 and
-`these unit test cases here <https://github.com/ray-project/ray/blob/master/rllib/algorithms/tests/test_callbacks.py>`__.
+`these unit test cases here <https://github.com/ray-project/ray/blob/master/rllib/algorithms/tests/test_callbacks_old_stack.py>`__.
 
 .. tip::
     You can create custom logic that can run on each evaluation episode by checking
@@ -190,9 +185,10 @@ and
 Chaining Callbacks
 ~~~~~~~~~~~~~~~~~~
 
-Use the ``MultiCallbacks`` class to chaim multiple callbacks together.
+Use the :py:func:`~ray.rllib.algorithms.callbacks.make_multi_callbacks` utility to chain
+multiple callbacks together.
 
-.. autoclass:: ray.rllib.algorithms.callbacks.MultiCallbacks
+.. autofunction:: ray.rllib.algorithms.callbacks.make_multi_callbacks
 
 
 Visualizing Custom Metrics

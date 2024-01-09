@@ -212,6 +212,24 @@ def test_import_in_subprocess(shutdown_only):
     assert ray.get(f.remote()) == 0
 
 
+def test_runtime_env_conda_not_exists_not_hang(shutdown_only):
+    """Verify when the conda env doesn't exist, it doesn't hang Ray."""
+    ray.init(runtime_env={"conda": "env_which_does_not_exist"})
+
+    @ray.remote
+    def f():
+        return 1
+
+    refs = [f.remote() for _ in range(5)]
+
+    for ref in refs:
+        with pytest.raises(ray.exceptions.RuntimeEnvSetupError) as exc_info:
+            ray.get(ref)
+        assert "doesn't exist from the output of `conda env list --json`" in str(
+            exc_info.value
+        )  # noqa
+
+
 def test_get_requirements_file():
     """Unit test for _PathHelper.get_requirements_file."""
     with tempfile.TemporaryDirectory() as tmpdir:

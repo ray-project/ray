@@ -181,9 +181,9 @@ if __name__ == "__main__":
         .debugging(log_level="INFO")
     )
     # Disable RLModules because they need connectors
-    # TODO(Artur): Deprecate ExternalEnv and reenable connectors and RL Modules here
-    config.rl_module(_enable_rl_module_api=False)
-    config.training(_enable_learner_api=False)
+    # TODO (Sven): Deprecate ExternalEnv (via EnvRunner path) and reenable connectors
+    #  and RL Modules here.
+    config.experimental(_enable_new_api_stack=False)
 
     # DQN.
     if args.run == "DQN" or args.run == "APEX" or args.run == "R2D2":
@@ -245,10 +245,10 @@ if __name__ == "__main__":
         for _ in range(args.stop_iters):
             results = algo.train()
             print(pretty_print(results))
-            checkpoint = algo.save()
+            checkpoint = algo.save().checkpoint
             print("Last checkpoint", checkpoint)
             with open(checkpoint_path, "w") as f:
-                f.write(checkpoint)
+                f.write(checkpoint.path)
             if (
                 results["episode_reward_mean"] >= args.stop_reward
                 or ts >= args.stop_timesteps

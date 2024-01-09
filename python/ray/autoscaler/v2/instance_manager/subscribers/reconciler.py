@@ -5,16 +5,15 @@ from typing import List
 
 from ray.autoscaler.v2.instance_manager.instance_storage import (
     InstanceStorage,
-    InstanceUpdatedSuscriber,
-    InstanceUpdateEvent,
+    InstanceUpdatedSubscriber,
 )
 from ray.autoscaler.v2.instance_manager.node_provider import NodeProvider
-from ray.core.generated.instance_manager_pb2 import Instance
+from ray.core.generated.instance_manager_pb2 import Instance, InstanceUpdateEvent
 
 logger = logging.getLogger(__name__)
 
 
-class InstanceReconciler(InstanceUpdatedSuscriber):
+class InstanceReconciler(InstanceUpdatedSubscriber):
     """InstanceReconciler is responsible for reconciling the difference between
     node provider and instance storage. It is also responsible for handling
     failures.
@@ -44,9 +43,7 @@ class InstanceReconciler(InstanceUpdatedSuscriber):
         instance_ids = [
             event.instance_id
             for event in events
-            if event.new_status in {Instance.ALLOCATED}
-            and event.new_ray_status
-            in {Instance.RAY_STOPPED, Instance.RAY_INSTALL_FAILED}
+            if event.new_instance_status in {Instance.ALLOCATED}
         ]
         if instance_ids:
             self._failure_handling_executor.submit(
@@ -56,8 +53,7 @@ class InstanceReconciler(InstanceUpdatedSuscriber):
     def _handle_ray_failure(self, instance_ids: List[str]) -> int:
         failing_instances, _ = self._instance_storage.get_instances(
             instance_ids=instance_ids,
-            status_filter={Instance.ALLOCATED},
-            ray_status_filter={Instance.RAY_STOPPED, Instance.RAY_INSTALL_FAILED},
+            status_filter={Instance.RAY_STOPPED, Instance.RAY_INSTALL_FAILED},
         )
         if not failing_instances:
             logger.debug("No ray failure")
