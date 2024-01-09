@@ -27,6 +27,15 @@ class PlasmaStoreRunner {
   bool IsPlasmaObjectSpillable(const ObjectID &object_id);
 
   int64_t GetConsumedBytes();
+
+  int64_t GetCumulativeCreatedObjects() const {
+    return store_->GetCumulativeCreatedObjects();
+  }
+
+  int64_t GetCumulativeCreatedBytes() const {
+    return store_->GetCumulativeCreatedBytes();
+  }
+
   int64_t GetFallbackAllocated() const;
 
   void GetAvailableMemoryAsync(std::function<void(size_t)> callback) const {

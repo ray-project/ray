@@ -2,6 +2,7 @@ import datetime
 from dataclasses import dataclass
 from typing import Callable, Optional, Union
 
+from ray.train.constants import _DEPRECATED_VALUE
 from ray.tune.experiment.trial import Trial
 from ray.tune.schedulers import TrialScheduler
 from ray.tune.search import SearchAlgorithm, Searcher
@@ -45,7 +46,7 @@ class TuneConfig:
             and stop actors often (e.g., PBT in time-multiplexing mode). This
             requires trials to have the same resource requirements.
             Defaults to ``True`` for function trainables (including most
-            Ray AIR trainers) and ``False`` for class and registered trainables
+            Ray Train Trainers) and ``False`` for class and registered trainables
             (e.g. RLlib).
         trial_name_creator: Optional function that takes in a Trial and returns
             its name (i.e. its string representation). Be sure to include some unique
@@ -57,7 +58,9 @@ class TuneConfig:
             directory name. Otherwise, trials could overwrite artifacts and checkpoints
             of other trials. The return value cannot be a path.
             NOTE: This API is in alpha and subject to change.
-        chdir_to_trial_dir: Whether to change the working directory of each worker
+        chdir_to_trial_dir: Deprecated. Use the `RAY_CHDIR_TO_TRIAL_DIR=0`
+            environment variable instead.
+            Whether to change the working directory of each worker
             to its corresponding trial directory. Defaults to `True` to prevent
             contention between workers saving trial-level outputs.
             If set to `False`, files are accessible with paths relative to the
@@ -79,4 +82,4 @@ class TuneConfig:
     reuse_actors: Optional[bool] = None
     trial_name_creator: Optional[Callable[[Trial], str]] = None
     trial_dirname_creator: Optional[Callable[[Trial], str]] = None
-    chdir_to_trial_dir: bool = True
+    chdir_to_trial_dir: bool = _DEPRECATED_VALUE

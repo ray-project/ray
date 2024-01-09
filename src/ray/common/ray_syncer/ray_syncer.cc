@@ -120,8 +120,8 @@ void RayServerBidiReactor::OnCancel() {
 
 void RayServerBidiReactor::OnDone() {
   io_context_.dispatch(
-      [this]() {
-        cleanup_cb_(GetRemoteNodeID(), false);
+      [this, cleanup_cb = cleanup_cb_, remote_node_id = GetRemoteNodeID()]() {
+        cleanup_cb(remote_node_id, false);
         delete this;
       },
       "");
@@ -300,7 +300,8 @@ void RaySyncer::Register(MessageType message_type,
                 }
                 OnDemandBroadcasting(message_type);
               },
-              pull_from_reporter_interval_ms);
+              pull_from_reporter_interval_ms,
+              "RaySyncer.OnDemandBroadcasting");
         }
 
         RAY_LOG(DEBUG) << "Registered components: "

@@ -77,7 +77,7 @@ std::string EndpointToUrl(
     result = ss.str();
     break;
   }
-#if defined(BOOST_ASIO_HAS_LOCAL_SOCKETS) and !defined(_WIN64)
+#if defined(BOOST_ASIO_HAS_LOCAL_SOCKETS) && !defined(_WIN32)
   case AF_UNIX:
     scheme = "unix://";
     result.append(reinterpret_cast<const struct sockaddr_un *>(ep.data())->sun_path,
@@ -112,7 +112,7 @@ ParseUrlEndpoint(const std::string &endpoint, int default_port) {
     scheme = "tcp://";
   }
   if (scheme == "unix://") {
-#if defined(BOOST_ASIO_HAS_LOCAL_SOCKETS) and !defined(_WIN64)
+#if defined(BOOST_ASIO_HAS_LOCAL_SOCKETS) && !defined(_WIN32)
     size_t maxlen = sizeof(sockaddr_un().sun_path) / sizeof(*sockaddr_un().sun_path) - 1;
     RAY_CHECK(address.size() <= maxlen)
         << "AF_UNIX path length cannot exceed " << maxlen << " bytes: " << address;

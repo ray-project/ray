@@ -102,8 +102,6 @@ def _test_equal_split_balanced(block_sizes, num_splits):
     logical_plan = LogicalPlan(InputData(input_data=ref_bundles))
     ds = Dataset(
         ExecutionPlan(block_list, DatasetStats.TODO(), run_by_consumer=True),
-        0,
-        False,
         logical_plan,
     )
 
@@ -773,7 +771,7 @@ def test_train_test_split(ray_start_regular_shared):
 
 def test_split_is_not_disruptive(ray_start_cluster):
     ray.shutdown()
-    ds = ray.data.range(100, parallelism=10).map_batches(lambda x: x).lazy()
+    ds = ray.data.range(100, parallelism=10).map_batches(lambda x: x)
 
     def verify_integrity(splits):
         for dss in splits:

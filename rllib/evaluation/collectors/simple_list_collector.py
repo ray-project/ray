@@ -426,9 +426,6 @@ class SimpleListCollector(SampleCollector):
         episode_id = episode.episode_id
         policy_collector_group = episode.batch_builder
 
-        # TODO: (sven) Once we implement multi-agent communication channels,
-        #  we have to resolve the restriction of only sending other agent
-        #  batches from the same policy to the postprocess methods.
         # Build SampleBatches for the given episode.
         pre_batches = {}
         for (eps_id, agent_id), collector in self.agent_collectors.items():

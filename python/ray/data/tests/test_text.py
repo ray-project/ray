@@ -87,7 +87,7 @@ def test_read_text_ignore_missing_paths(
     else:
         with pytest.raises(FileNotFoundError):
             ds = ray.data.read_text(paths, ignore_missing_paths=ignore_missing_paths)
-            ds.fully_executed()
+            ds.materialize()
 
 
 def test_read_text_meta_provider(

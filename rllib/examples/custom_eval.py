@@ -71,7 +71,7 @@ import os
 
 import ray
 from ray import air, tune
-from ray.rllib.algorithms.pg import PGConfig
+from ray.rllib.algorithms.ppo import PPOConfig
 from ray.rllib.evaluation.metrics import collect_episodes, summarize_episodes
 from ray.rllib.examples.env.simple_corridor import SimpleCorridor
 from ray.rllib.utils.test_utils import check_learning_achieved
@@ -155,7 +155,7 @@ if __name__ == "__main__":
     ray.init(num_cpus=args.num_cpus or None, local_mode=args.local_mode)
 
     config = (
-        PGConfig()
+        PPOConfig()
         .environment(SimpleCorridor, env_config={"corridor_length": 10})
         # Training rollouts will be collected using just the learner
         # process, but evaluation will be done in parallel with two
@@ -171,7 +171,7 @@ if __name__ == "__main__":
             evaluation_duration="auto" if args.evaluation_parallel_to_training else 10,
             # Evaluate parallelly to training.
             evaluation_parallel_to_training=args.evaluation_parallel_to_training,
-            evaluation_config=PGConfig.overrides(
+            evaluation_config=PPOConfig.overrides(
                 env_config={
                     # Evaluate using LONGER corridor than trained on.
                     "corridor_length": 5,
@@ -191,7 +191,7 @@ if __name__ == "__main__":
     }
 
     tuner = tune.Tuner(
-        "PG",
+        "PPO",
         param_space=config.to_dict(),
         run_config=air.RunConfig(stop=stop, verbose=1),
     )

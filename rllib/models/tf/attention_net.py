@@ -178,7 +178,6 @@ class GTrXLNet(RecurrentNetwork):
 
     This is still in an experimental phase.
     Can be used as a drop-in replacement for LSTMs in PPO and IMPALA.
-    For an example script, see: `ray/rllib/examples/attention_net.py`.
 
     To use this network as a replacement for an RNN, configure your Algorithm
     as follows:
@@ -242,8 +241,6 @@ class GTrXLNet(RecurrentNetwork):
                 (two GRUs per Transformer unit, one after the MHA, one after
                 the position-wise MLP).
         """
-        if log_once("gtrxl_net_tf"):
-            deprecation_warning(old="ray.rllib.models.tf.attention_net.GTrXLNet")
         super().__init__(
             observation_space, action_space, num_outputs, model_config, name
         )

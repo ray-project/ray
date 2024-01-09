@@ -1,5 +1,5 @@
 from functools import partial
-from typing import List, Tuple
+from typing import List, Optional, Tuple
 
 from ray.data._internal.execution.interfaces import (
     AllToAllTransformFn,
@@ -21,6 +21,7 @@ from ray.data.context import DataContext
 
 def generate_sort_fn(
     sort_key: SortKey,
+    _debug_limit_shuffle_execution_to_num_blocks: Optional[int] = None,
 ) -> AllToAllTransformFn:
     """Generate function to sort blocks by the specified key column or key function."""
 
@@ -44,7 +45,11 @@ def generate_sort_fn(
         num_outputs = num_mappers
 
         # Sample boundaries for sort key.
-        boundaries = SortTaskSpec.sample_boundaries(blocks, sort_key, num_outputs)
+        if not sort_key.boundaries:
+            boundaries = SortTaskSpec.sample_boundaries(blocks, sort_key, num_outputs)
+        else:
+            boundaries = [(b,) for b in sort_key.boundaries]
+            num_outputs = len(boundaries) + 1
         _, ascending = sort_key.to_pandas_sort_args()
         if not ascending:
             boundaries.reverse()
@@ -55,7 +60,14 @@ def generate_sort_fn(
         else:
             scheduler = PullBasedShuffleTaskScheduler(sort_spec)
 
-        return scheduler.execute(refs, num_outputs, ctx)
+        return scheduler.execute(
+            refs,
+            num_outputs,
+            ctx,
+            _debug_limit_execution_to_num_blocks=(
+                _debug_limit_shuffle_execution_to_num_blocks
+            ),
+        )
 
     # NOTE: use partial function to pass parameters to avoid error like
     # "UnboundLocalError: local variable ... referenced before assignment",

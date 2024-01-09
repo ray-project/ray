@@ -92,6 +92,12 @@ class MNISTTrainable(tune.Trainable):
         self.tf_train_step = train_step
         self.tf_test_step = test_step
 
+    def save_checkpoint(self, checkpoint_dir: str):
+        return None
+
+    def load_checkpoint(self, checkpoint):
+        return None
+
     def step(self):
         self.train_loss.reset_states()
         self.train_accuracy.reset_states()

@@ -21,6 +21,7 @@ from ray.util.scheduling_strategies import (
     NodeAffinitySchedulingStrategy,
     PlacementGroupSchedulingStrategy,
 )
+from ray._private.test_utils import SignalActor
 
 
 @pytest.mark.skipif(
@@ -803,6 +804,45 @@ def test_workload_placement_metrics(ray_start_regular):
         ],
     )
     wait_for_condition(placement_metric_condition, timeout=60)
+
+
+def test_negative_resource_availability(shutdown_only):
+    """Test pg scheduling when resource availability is negative."""
+    ray.init(num_cpus=1)
+
+    signal1 = SignalActor.remote()
+    signal2 = SignalActor.remote()
+
+    @ray.remote(num_cpus=0)
+    def child(signal1):
+        ray.get(signal1.wait.remote())
+
+    @ray.remote(num_cpus=1)
+    def parent(signal1, signal2):
+        # Release the CPU resource,
+        # the resource will be acquired by Actor.
+        ray.get(child.remote(signal1))
+        # Re-acquire the CPU resource
+        # the availability should be -1 afterwards.
+        signal2.send.remote()
+        while True:
+            time.sleep(1)
+
+    @ray.remote(num_cpus=1)
+    class Actor:
+        def ping(self):
+            return "hello"
+
+    parent.remote(signal1, signal2)
+    actor = Actor.remote()
+    ray.get(actor.ping.remote())
+    signal1.send.remote()
+    ray.get(signal2.wait.remote())
+    # CPU resource availability should be negative now
+    # and the pg should be pending.
+    pg = placement_group([{"CPU": 1}])
+    with pytest.raises(ray.exceptions.GetTimeoutError):
+        ray.get(pg.ready(), timeout=2)
 
 
 if __name__ == "__main__":

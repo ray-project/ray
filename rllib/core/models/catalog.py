@@ -55,7 +55,6 @@ class Catalog:
         from ray.rllib.core.models.configs import MLPHeadConfig
         from ray.rllib.core.models.catalog import Catalog
 
-
         class MyCatalog(Catalog):
             def __init__(
                 self,
@@ -64,17 +63,19 @@ class Catalog:
                 model_config_dict: dict,
             ):
                 super().__init__(observation_space, action_space, model_config_dict)
-                self.my_model_config_dict = MLPHeadConfig(
+                self.my_model_config = MLPHeadConfig(
                     hidden_layer_dims=[64, 32],
                     input_dims=[self.observation_space.shape[0]],
                 )
 
             def build_my_head(self, framework: str):
-                return self.my_model_config_dict.build(framework=framework)
+                return self.my_model_config.build(framework=framework)
 
         # With that, RLlib can build and use models from this catalog like this:
         catalog = MyCatalog(gym.spaces.Box(0, 1), gym.spaces.Box(0, 1), {})
-        my_head = catalog.build_my_head("torch")
+        my_head = catalog.build_my_head(framework="torch")
+
+        # Make a call to the built model.
         out = my_head(torch.Tensor([[1]]))
     """
 
@@ -348,7 +349,7 @@ class Catalog:
     ) -> ModelConfig:
         """Returns a tokenizer config for the given space.
 
-        This is useful for recurrent / tranformer models that need to tokenize their
+        This is useful for recurrent / transformer models that need to tokenize their
         inputs. By default, RLlib uses the models supported by Catalog out of the box to
         tokenize.
 

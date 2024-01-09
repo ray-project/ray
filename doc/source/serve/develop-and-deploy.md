@@ -1,6 +1,6 @@
 (serve-develop-and-deploy)=
 
-# Develop and deploy an ML application
+# Develop and Deploy an ML Application
 
 The flow for developing a Ray Serve application locally and deploying it in production covers the following steps:
 
@@ -44,7 +44,7 @@ Converting this model into a Ray Serve application with FastAPI requires three c
 
 For other HTTP options, see [Set Up FastAPI and HTTP](serve-set-up-fastapi-http). 
 
-```{literalinclude} ../serve/doc_code/develop_and_deploy/model_deployment_with_fastapi.py
+```{literalinclude} ../serve/doc_code/develop_and_deploy.py
 :start-after: __deployment_start__
 :end-before: __deployment_end__
 :language: python
@@ -70,7 +70,7 @@ http://127.0.0.1:8000/
 
 Send a POST request with JSON data containing the English text. This client script requests a translation for "Hello world!":
 
-```{literalinclude} ../serve/doc_code/develop_and_deploy/model_deployment_with_fastapi.py
+```{literalinclude} ../serve/doc_code/develop_and_deploy.py
 :start-after: __client_function_start__
 :end-before: __client_function_end__
 :language: python
@@ -80,15 +80,19 @@ While a Ray Serve application is deployed, use the `serve status` CLI command to
 
 ```console
 $ serve status
-name: default
-app_status:
-  status: RUNNING
-  message: ''
-  deployment_timestamp: 1687415211.531879
-deployment_statuses:
-- name: default_Translator
-  status: HEALTHY
-  message: ''
+proxies:
+  a85af35da5fcea04e13375bdc7d2c83c7d3915e290f1b25643c55f3a: HEALTHY
+applications:
+  default:
+    status: RUNNING
+    message: ''
+    last_deployed_time_s: 1693428451.894696
+    deployments:
+      Translator:
+        status: HEALTHY
+        replica_states:
+          RUNNING: 2
+        message: ''
 ```
 
 ## Build Serve config files for production deployment
@@ -99,31 +103,26 @@ To deploy Serve applications in production, you need to generate a Serve config 
 $ serve build model:translator_app -o config.yaml
 ```
 
-The serve build command adds a default application name that can be modified. The resulting Serve config file is:
+The `serve build` command adds a default application name that can be modified. The resulting Serve config file is:
 
 ```
-# This file was generated using the `serve build` command on Ray v2.5.1.
-  
 proxy_location: EveryNode
 
 http_options:
-
   host: 0.0.0.0
-
   port: 8000
+
+grpc_options:
+  port: 9000
+  grpc_servicer_functions: []
 
 applications:
 
 - name: app1
-
   route_prefix: /
-
   import_path: model:translator_app
-
   runtime_env: {}
-
   deployments:
-
   - name: Translator
     num_replicas: 2
     ray_actor_options:
@@ -139,15 +138,19 @@ $ serve run config.yaml
 
 ```console
 $ serve status
-name: app1
-app_status:
-  status: RUNNING
-  message: ''
-  deployment_timestamp: 1687630567.0700073
-deployment_statuses:
-- name: app1_Translator
-  status: HEALTHY
-  message: ''
+proxies:
+  1894261b372d34854163ac5ec88405328302eb4e46ac3a2bdcaf8d18: HEALTHY
+applications:
+  app1:
+    status: RUNNING
+    message: ''
+    last_deployed_time_s: 1693430474.873806
+    deployments:
+      Translator:
+        status: HEALTHY
+        replica_states:
+          RUNNING: 2
+        message: ''
 ```
 
 For more details, see [Serve Config Files](serve-in-production-config-file).
@@ -160,4 +163,4 @@ Deploy the Ray Serve application in production on Kubernetes using the [KubeRay]
 
 Use the Ray Dashboard to get a high-level overview of your Ray Cluster and Ray Serve application's states. The Ray Dashboard is available both during local testing and on a remote cluster in production. Ray Serve provides some in-built metrics and logging as well as utilities for adding custom metrics and logs in your application. For production deployments, exporting logs and metrics to your observability platforms is recommended. See [Monitoring](serve-monitoring) for more details. 
 
-[KubeRay]: https://ray-project.github.io/kuberay/
+[KubeRay]: kuberay-index

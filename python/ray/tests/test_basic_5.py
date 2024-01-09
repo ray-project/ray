@@ -355,6 +355,7 @@ def test_head_node_resource_ray_init(shutdown_only):
     assert ray.cluster_resources()[HEAD_NODE_RESOURCE_NAME] == 1
 
 
+@pytest.mark.skipif(client_test_enabled(), reason="grpc deadlock with ray client")
 def test_head_node_resource_ray_start(call_ray_start):
     ray.init(address=call_ray_start)
 

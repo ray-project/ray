@@ -2,7 +2,7 @@ import time
 import json
 import pytest
 import ray
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, AsyncMock
 import random
 import sys
 from dataclasses import asdict
@@ -14,11 +14,6 @@ from ray.util.state import (
 )
 from ray._private.test_utils import wait_for_condition
 from ray._raylet import ActorID, TaskID, ObjectID
-
-if sys.version_info >= (3, 8, 0):
-    from unittest.mock import AsyncMock
-else:
-    from asyncmock import AsyncMock
 
 from ray.core.generated.common_pb2 import TaskStatus, TaskType, WorkerType
 from ray.core.generated.node_manager_pb2 import GetObjectsInfoReply
@@ -57,10 +52,6 @@ def create_summary_options(
     return SummaryApiOptions(timeout=timeout)
 
 
-@pytest.mark.skipif(
-    sys.version_info <= (3, 7, 0),
-    reason=("Not passing in CI although it works locally. Will handle it later."),
-)
 @pytest.mark.asyncio
 async def test_api_manager_summary_tasks(state_api_manager):
     data_source_client = state_api_manager.data_source_client
@@ -137,10 +128,6 @@ async def test_api_manager_summary_tasks(state_api_manager):
     assert json.loads(json.dumps(result_in_dict)) == result_in_dict
 
 
-@pytest.mark.skipif(
-    sys.version_info <= (3, 7, 0),
-    reason=("Not passing in CI although it works locally. Will handle it later."),
-)
 @pytest.mark.asyncio
 async def test_api_manager_summary_actors(state_api_manager):
     data_source_client = state_api_manager.data_source_client
@@ -204,10 +191,6 @@ async def test_api_manager_summary_actors(state_api_manager):
     assert json.loads(json.dumps(result_in_dict)) == result_in_dict
 
 
-@pytest.mark.skipif(
-    sys.version_info <= (3, 7, 0),
-    reason=("Not passing in CI although it works locally. Will handle it later."),
-)
 @pytest.mark.asyncio
 async def test_api_manager_summary_objects(state_api_manager):
     data_source_client = state_api_manager.data_source_client
@@ -677,6 +660,4 @@ def test_summarize_by_lineage():
 
 
 if __name__ == "__main__":
-    import sys
-
     sys.exit(pytest.main(["-v", __file__]))

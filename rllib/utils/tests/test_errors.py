@@ -2,7 +2,7 @@ import unittest
 
 import ray
 import ray.rllib.algorithms.impala as impala
-import ray.rllib.algorithms.pg as pg
+import ray.rllib.algorithms.ppo as ppo
 from ray.rllib.utils.error import EnvError
 from ray.rllib.utils.test_utils import framework_iterator
 
@@ -37,7 +37,7 @@ class TestErrors(unittest.TestCase):
     def test_bad_envs(self):
         """Tests different "bad env" errors."""
         config = (
-            pg.PGConfig().rollouts(num_rollout_workers=0)
+            ppo.PPOConfig().rollouts(num_rollout_workers=0)
             # Non existing/non-registered gym env string.
             .environment("Alien-Attack-v42")
         )

@@ -1,7 +1,7 @@
-import time
-import os
-import json
 import argparse
+import os
+
+from benchmark import Benchmark
 
 parser = argparse.ArgumentParser(description="Parquet Metadata Read")
 parser.add_argument("--num-files", type=int, default=30)
@@ -27,10 +27,10 @@ if __name__ == "__main__":
         prefix = "gs://shuffling-data-loader-benchmarks/data/r10_000_000_000-f1000/r10_000_000_000-f1000"  # noqa: E501
     files = [f"{prefix}/input_data_{i}.parquet.snappy" for i in range(args.num_files)]
 
-    start = time.time()
-    ray.data.read_parquet(files).count()  # This should only read Parquet metadata.
-    delta = time.time() - start
+    def _trigger_parquet_metadata_load():
+        # This should only read Parquet metadata.
+        ray.data.read_parquet(files).count()
 
-    print(f"success! total time {delta}")
-    with open(os.environ["TEST_OUTPUT_JSON"], "w") as f:
-        f.write(json.dumps({"metadata_load_time": delta, "success": 1}))
+    benchmark = Benchmark("parquet_metadata_resolution")
+    benchmark.run_fn("read_metadata", _trigger_parquet_metadata_load)
+    benchmark.write_result(os.environ["TEST_OUTPUT_JSON"])

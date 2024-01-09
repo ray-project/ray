@@ -1,35 +1,34 @@
+import collections
 import logging
 import os
 import random
 import types
-import collections
-from packaging.version import Version
-
-from typing import Any, Dict, List, Optional, Callable, Union
-
-from ray.train._internal import session
-from ray.train._internal.accelerator import Accelerator
-from torch.optim import Optimizer
-from ray.train._internal.session import get_accelerator, set_accelerator
-from ray.util.annotations import PublicAPI, Deprecated
+from typing import Any, Callable, Dict, List, Optional, Union
 
 import numpy as np
-
 import torch
-from torch.cuda.amp import autocast, GradScaler
+from packaging.version import Version
+from torch.cuda.amp import GradScaler, autocast
 from torch.nn.parallel import DistributedDataParallel
+from torch.optim import Optimizer
+from torch.utils.data import (
+    DataLoader,
+    DistributedSampler,
+    IterableDataset,
+    RandomSampler,
+    SequentialSampler,
+)
+
+from ray._private.usage.usage_lib import TagKey, record_extra_usage_tag
+from ray.train._internal import session
+from ray.train._internal.accelerator import Accelerator
+from ray.train._internal.session import get_accelerator, set_accelerator
+from ray.util.annotations import Deprecated, PublicAPI
 
 if Version(torch.__version__) < Version("1.11.0"):
     FullyShardedDataParallel = None
 else:
     from torch.distributed.fsdp import FullyShardedDataParallel
-from torch.utils.data import (
-    DistributedSampler,
-    DataLoader,
-    IterableDataset,
-    SequentialSampler,
-    RandomSampler,
-)
 
 try:
     from torch.profiler import profile
@@ -39,7 +38,7 @@ except ImportError:
 logger = logging.getLogger(__name__)
 
 
-@PublicAPI(stability="beta")
+@PublicAPI(stability="stable")
 def get_device() -> Union[torch.device, List[torch.device]]:
     """Gets the correct torch device configured for this process.
 
@@ -67,11 +66,11 @@ def get_device() -> Union[torch.device, List[torch.device]]:
     """
     from ray.air._internal import torch_utils
 
+    record_extra_usage_tag(TagKey.TRAIN_TORCH_GET_DEVICE, "1")
     return torch_utils.get_device()
 
 
-# TODO: Deprecation: Hard-deprecate args in Ray 2.2.
-@PublicAPI(stability="beta")
+@PublicAPI(stability="stable")
 def prepare_model(
     model: torch.nn.Module,
     move_to_device: Union[bool, torch.device] = True,
@@ -104,6 +103,7 @@ def prepare_model(
             "Run `pip install 'torch>=1.11.0'` to use FullyShardedDataParallel."
         )
 
+    record_extra_usage_tag(TagKey.TRAIN_TORCH_PREPARE_MODEL, "1")
     return get_accelerator(_TorchAccelerator).prepare_model(
         model,
         move_to_device=move_to_device,
@@ -112,17 +112,56 @@ def prepare_model(
     )
 
 
-@PublicAPI(stability="beta")
+@PublicAPI(stability="stable")
 def prepare_data_loader(
     data_loader: torch.utils.data.DataLoader,
     add_dist_sampler: bool = True,
     move_to_device: bool = True,
     auto_transfer: bool = True,
 ) -> torch.utils.data.DataLoader:
-    """Prepares DataLoader for distributed execution.
+    """Prepares :class:`~torch.utils.data.DataLoader` for distributed execution.
 
     This allows you to use the same exact code regardless of number of
     workers or the device type being used (CPU, GPU).
+
+    .. note::
+
+        This method adds a `DistributedSampler` to the `DataLoader` if the
+        number of training workers is greater than 1. If shuffling is
+        enabled on the original `DataLoader`, then `shuffle=True` will also
+        be passed into the `DistributedSampler` constructor. `shuffle=False`
+        on the original `DataLoader` also means that shuffling is disabled
+        on the sampler.
+
+        With more than 1 worker, calling the `DistributedSampler.set_epoch` method
+        at the beginning of each epoch before creating the DataLoader iterator
+        is necessary to make shuffling work properly across multiple epochs.
+        Otherwise, the same ordering will be always used.
+        See: https://pytorch.org/docs/stable/data.html#torch.utils.data.distributed.DistributedSampler  # noqa: E501
+
+    Example:
+
+    .. testcode:
+        :skipif: True
+
+        import torch
+
+        import ray.train.torch
+
+        train_dataloader = torch.utils.data.DataLoader(
+            ..., batch_size=..., shuffle=True
+        )
+        train_dataloader = ray.train.torch.prepare_data_loader(train_loader)
+
+        for epoch in range(10):
+            if ray.train.get_context().get_world_size() > 1:
+                # Required for the distributed sampler to shuffle properly across epochs
+                train_dataloader.sampler.set_epoch(epoch)
+
+            for X, y in train_loader:
+                # No need to move data to GPU, this is done by `prepare_data_loader`!
+                # X, y = X.to("cuda"), y.to("cuda")
+                ...
 
     Args:
         data_loader (torch.utils.data.DataLoader): The DataLoader to
@@ -138,6 +177,7 @@ def prepare_data_loader(
             regardless of the setting. This configuration will be ignored
             if ``move_to_device`` is False.
     """
+    record_extra_usage_tag(TagKey.TRAIN_TORCH_PREPARE_DATALOADER, "1")
     return get_accelerator(_TorchAccelerator).prepare_data_loader(
         data_loader,
         add_dist_sampler=add_dist_sampler,
@@ -190,7 +230,7 @@ def backward(tensor: torch.Tensor) -> None:
     get_accelerator(_TorchAccelerator).backward(tensor)
 
 
-@PublicAPI(stability="beta")
+@PublicAPI(stability="stable")
 def enable_reproducibility(seed: int = 0) -> None:
     """Limits sources of nondeterministic behavior.
 
@@ -504,7 +544,6 @@ class _WrappedDataLoader(DataLoader):
     def __init__(
         self, base_dataloader: DataLoader, device: torch.device, auto_transfer: bool
     ):
-
         self.__dict__.update(getattr(base_dataloader, "__dict__", {}))
         self._dataloader = base_dataloader
         self.dataloader_iter = None

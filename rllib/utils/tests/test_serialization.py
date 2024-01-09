@@ -1,4 +1,5 @@
 import unittest
+from collections import OrderedDict
 
 import gymnasium as gym
 import numpy as np
@@ -110,6 +111,34 @@ class TestGymCheckEnv(unittest.TestCase):
         self.assertEqual(sp.dtype, space.dtype)
 
         self.assertEqual(sp.spaces["action"].n, space.spaces["action"].n)
+
+    def test_dict_space_with_ordered_dict(self):
+        """Tests whether correct dict order is restored based on the original order."""
+        # User provides an OrderedDict -> gymnasium should take it and not further
+        # sort the keys. The same (user-provided) order must be restored.
+        input_space = gym.spaces.Dict(
+            OrderedDict(
+                {
+                    "b_key": gym.spaces.Box(low=np.array([-1.0]), high=np.array([1.0])),
+                    "a_key": gym.spaces.Discrete(n=3),
+                }
+            )
+        )
+        serialized_dict = space_to_dict(input_space)
+        deserialized_space = space_from_dict(serialized_dict)
+        self.assertTrue(input_space == deserialized_space)
+
+        # User provides a simple dict -> gymnasium automatically sorts all keys
+        # alphabetically. The same (alphabetical) order must be restored.
+        input_space = gym.spaces.Dict(
+            {
+                "b_key": gym.spaces.Box(low=np.array([-1.0]), high=np.array([1.0])),
+                "a_key": gym.spaces.Discrete(n=3),
+            }
+        )
+        serialized_dict = space_to_dict(input_space)
+        deserialized_space = space_from_dict(serialized_dict)
+        self.assertTrue(input_space == deserialized_space)
 
     def test_simplex_space(self):
         space = Simplex(shape=(3, 4), concentration=np.array((1, 2, 1)))

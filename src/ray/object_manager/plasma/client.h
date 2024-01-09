@@ -82,6 +82,47 @@ class PlasmaClientInterface {
                      std::vector<ObjectBuffer> *object_buffers,
                      bool is_from_worker) = 0;
 
+  /// Experimental method for mutable objects. Acquires a write lock on the
+  /// object that prevents readers from reading until we are done writing. Does
+  /// not protect against concurrent writers.
+  ///
+  /// \param[in] object_id The ID of the object.
+  /// \param[in] data_size The size of the object to write. This overwrites the
+  /// current data size.
+  /// \param[in] metadata A pointer to the object metadata buffer to copy. This
+  /// will overwrite the current metadata.
+  /// \param[in] metadata_size The number of bytes to copy from the metadata
+  /// pointer.
+  /// \param[in] num_readers The number of readers that must read and release
+  /// \param[out] data The mutable object buffer in plasma that can be written to.
+  virtual Status ExperimentalMutableObjectWriteAcquire(const ObjectID &object_id,
+                                                       int64_t data_size,
+                                                       const uint8_t *metadata,
+                                                       int64_t metadata_size,
+                                                       int64_t num_readers,
+                                                       std::shared_ptr<Buffer> *data) = 0;
+
+  /// Experimental method for mutable objects. Releases a write lock on the
+  /// object, allowing readers to read. This is the equivalent of "Seal" for
+  /// normal objects.
+  ///
+  /// \param[in] object_id The ID of the object.
+  virtual Status ExperimentalMutableObjectWriteRelease(const ObjectID &object_id) = 0;
+
+  /// Experimental method for mutable objects. Sets the error bit, causing all
+  /// future readers and writers to raise an error on acquire.
+  ///
+  /// \param[in] object_id The ID of the object.
+  virtual Status ExperimentalMutableObjectSetError(const ObjectID &object_id) = 0;
+
+  /// Experimental method for mutable objects. Releases the objects, allowing them
+  /// to be written again. If the caller did not previously Get the objects,
+  /// then this first blocks until the latest value is available to read, then
+  /// releases the value.
+  ///
+  /// \param[in] object_id The ID of the object.
+  virtual Status ExperimentalMutableObjectReadRelease(const ObjectID &object_id) = 0;
+
   /// Seal an object in the object store. The object will be immutable after
   /// this
   /// call.
@@ -127,6 +168,7 @@ class PlasmaClientInterface {
   /// be either sealed or aborted.
   virtual Status CreateAndSpillIfNeeded(const ObjectID &object_id,
                                         const ray::rpc::Address &owner_address,
+                                        bool is_mutable,
                                         int64_t data_size,
                                         const uint8_t *metadata,
                                         int64_t metadata_size,
@@ -193,12 +235,26 @@ class PlasmaClient : public PlasmaClientInterface {
   /// be either sealed or aborted.
   Status CreateAndSpillIfNeeded(const ObjectID &object_id,
                                 const ray::rpc::Address &owner_address,
+                                bool is_mutable,
                                 int64_t data_size,
                                 const uint8_t *metadata,
                                 int64_t metadata_size,
                                 std::shared_ptr<Buffer> *data,
                                 plasma::flatbuf::ObjectSource source,
                                 int device_num = 0);
+
+  Status ExperimentalMutableObjectWriteAcquire(const ObjectID &object_id,
+                                               int64_t data_size,
+                                               const uint8_t *metadata,
+                                               int64_t metadata_size,
+                                               int64_t num_readers,
+                                               std::shared_ptr<Buffer> *data);
+
+  Status ExperimentalMutableObjectWriteRelease(const ObjectID &object_id);
+
+  Status ExperimentalMutableObjectSetError(const ObjectID &object_id);
+
+  Status ExperimentalMutableObjectReadRelease(const ObjectID &object_id);
 
   /// Create an object in the Plasma Store. Any metadata for this object must be
   /// be passed in when the object is created.

@@ -61,17 +61,18 @@ class CoreWorkerDirectTaskReceiver {
       bool *is_retryable_error,
       std::string *application_error)>;
 
-  using OnTaskDone = std::function<Status()>;
+  using OnActorCreationTaskDone = std::function<Status()>;
 
   CoreWorkerDirectTaskReceiver(WorkerContext &worker_context,
                                instrumented_io_context &main_io_service,
                                const TaskHandler &task_handler,
-                               const OnTaskDone &task_done)
+                               const OnActorCreationTaskDone &actor_creation_task_done_)
       : worker_context_(worker_context),
         task_handler_(task_handler),
         task_main_io_service_(main_io_service),
-        task_done_(task_done),
-        pool_manager_(std::make_shared<ConcurrencyGroupManager<BoundedExecutor>>()) {}
+        actor_creation_task_done_(actor_creation_task_done_),
+        pool_manager_(std::make_shared<ConcurrencyGroupManager<BoundedExecutor>>()),
+        fiber_state_manager_(nullptr) {}
 
   /// Initialize this receiver. This must be called prior to use.
   void Init(std::shared_ptr<rpc::CoreWorkerClientPool>,
@@ -94,6 +95,12 @@ class CoreWorkerDirectTaskReceiver {
 
   bool CancelQueuedNormalTask(TaskID task_id);
 
+  /// Cancel an actor task queued in the actor scheduling queue for caller_worker_id.
+  /// Return true if a task is queued or executing. False otherwise.
+  /// If task is not executed yet, this will guarantee the task won't be executed.
+  /// This API is idempotent.
+  bool CancelQueuedActorTask(const WorkerID &caller_worker_id, const TaskID &task_id);
+
   void Stop();
 
   /// Set the actor repr name for an actor.
@@ -109,6 +116,7 @@ class CoreWorkerDirectTaskReceiver {
 
  protected:
   /// Cache the concurrency groups of actors.
+  // TODO(ryw): remove the ActorID key since we only ever handle 1 actor.
   absl::flat_hash_map<ActorID, std::vector<ConcurrencyGroup>> concurrency_groups_cache_;
 
  private:
@@ -119,7 +127,7 @@ class CoreWorkerDirectTaskReceiver {
   /// The IO event loop for running tasks on.
   instrumented_io_context &task_main_io_service_;
   /// The callback function to be invoked when finishing a task.
-  OnTaskDone task_done_;
+  OnActorCreationTaskDone actor_creation_task_done_;
   /// Shared pool for producing new core worker clients.
   std::shared_ptr<rpc::CoreWorkerClientPool> client_pool_;
   /// Address of our RPC server.
@@ -138,6 +146,9 @@ class CoreWorkerDirectTaskReceiver {
   int fiber_max_concurrency_ = 0;
   /// If concurrent calls are allowed, holds the pools for executing these tasks.
   std::shared_ptr<ConcurrencyGroupManager<BoundedExecutor>> pool_manager_;
+  /// If async calls are allowed, holds the fibers for executing async tasks.
+  /// Only populated if this actor is async.
+  std::shared_ptr<ConcurrencyGroupManager<FiberState>> fiber_state_manager_;
   /// Whether this actor use asyncio for concurrency.
   bool is_asyncio_ = false;
   /// Whether this actor executes tasks out of order with respect to client submission

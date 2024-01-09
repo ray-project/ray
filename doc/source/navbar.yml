@@ -1,0 +1,53 @@
+- file: ray-overview/getting-started
+  title: "Getting Started"
+- file: ray-overview/use-cases
+  title: "Use Cases"
+- file: ray-overview/examples
+  title: "Example Gallery"
+- file: ray-overview/installation
+  title: "Libraries"
+  sections:
+    - file: ray-core/walkthrough
+      title: Ray Core
+      caption: Scale general Python applications
+    - file: data/data
+      title: Ray Data
+      caption: Scale data ingest and preprocessing
+    - file: train/train
+      title: Ray Train
+      caption: Scale machine learning training
+    - file: tune/index
+      title: Ray Tune
+      caption: Scale hyperparameter tuning
+    - file: serve/index
+      title: Ray Serve
+      caption: Scale model serving
+    - file: rllib/index
+      title: Ray RLlib
+      caption: Scale reinforcement learning
+- file: index
+  title: "Docs"
+- link: https://discuss.ray.io
+  title: "Resources"
+  sections:
+    - link: https://discuss.ray.io
+      title: "Discussion Forum"
+      caption: Get your Ray questions answered
+    - link: https://github.com/ray-project/ray-educational-materials
+      title: "Training"
+      caption: Hands-on learning
+    - link: https://www.anyscale.com/blog
+      title: "Blog"
+      caption: Updates, best practices, user-stories
+    - link: https://www.anyscale.com/events
+      title: "Events"
+      caption: Webinars, meetups, office hours
+    - link: https://www.anyscale.com/blog/how-ray-and-anyscale-make-it-easy-to-do-massive-scale-machine-learning-on
+      title: "Success Stories"
+      caption: Real-world workload examples
+    - file: ray-overview/ray-libraries
+      title: "Ecosystem"
+      caption: Libraries integrated with Ray
+    - link: https://www.ray.io/community
+      title: "Community"
+      caption: Connect with us

@@ -1,0 +1,120 @@
+{
+    "annotations": {
+      "list": [
+        {
+          "builtIn": 1,
+          "datasource": "-- Grafana --",
+          "enable": true,
+          "hide": true,
+          "iconColor": "rgba(0, 211, 255, 1)",
+          "name": "Annotations & Alerts",
+          "type": "dashboard"
+        }
+      ]
+    },
+    "editable": true,
+    "gnetId": null,
+    "graphTooltip": 0,
+    "iteration": 1667344411089,
+    "links": [],
+    "panels": [],
+    "refresh": false,
+    "schemaVersion": 27,
+    "style": "dark",
+    "tags": [],
+    "templating": {
+      "list": [
+        {
+          "current": {
+            "selected": false
+          },
+          "description": "Filter queries of a specific Prometheus type.",
+          "hide": 2,
+          "includeAll": false,
+          "multi": false,
+          "name": "datasource",
+          "options": [],
+          "query": "prometheus",
+          "refresh": 1,
+          "regex": "",
+          "skipUrlSync": false,
+          "type": "datasource"
+        },
+        {
+          "allValue": ".+",
+          "current": {
+            "selected": false
+          },
+          "datasource": "${datasource}",
+          "definition": "label_values(ray_data_allocated_bytes{{{global_filters}}}, SessionName)",
+          "description": "Filter queries to specific ray sessions.",
+          "error": null,
+          "hide": 0,
+          "includeAll": true,
+          "label": null,
+          "multi": false,
+          "name": "SessionName",
+          "options": [],
+          "query": {
+            "query": "label_values(ray_data_allocated_bytes{{{global_filters}}}, SessionName)",
+            "refId": "StandardVariableQuery"
+          },
+          "refresh": 2,
+          "regex": "",
+          "skipUrlSync": false,
+          "sort": 2,
+          "tagValuesQuery": "",
+          "tags": [],
+          "tagsQuery": "",
+          "type": "query",
+          "useTags": false
+        },
+        {
+            "allValue": ".+",
+            "current": {
+              "selected": true,
+              "text": [
+                "All"
+              ],
+              "value": [
+                "$__all"
+              ]
+            },
+            "datasource": "${datasource}",
+            "definition": "label_values(ray_data_allocated_bytes{{{global_filters}}}, dataset)",
+            "description": null,
+            "error": null,
+            "hide": 0,
+            "includeAll": true,
+            "label": null,
+            "multi": true,
+            "name": "DatasetID",
+            "options": [],
+            "query": {
+              "query": "label_values(ray_data_allocated_bytes{{{global_filters}}}, dataset)",
+              "refId": "Prometheus-Dataset-Variable-Query"
+            },
+            "refresh": 2,
+            "regex": "",
+            "skipUrlSync": false,
+            "sort": 0,
+            "tagValuesQuery": "",
+            "tags": [],
+            "tagsQuery": "",
+            "type": "query",
+            "useTags": false
+          }
+      ]
+    },
+    "rayMeta": ["excludesSystemRoutes"],
+    "time": {
+      "from": "now-30m",
+      "to": "now"
+    },
+    "timepicker": {},
+    "timezone": "",
+    "title": "Data Dashboard",
+    "uid": "rayDataDashboard",
+    "version": 1
+  }
+  

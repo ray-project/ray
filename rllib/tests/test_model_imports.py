@@ -206,9 +206,7 @@ class TestModelImport(unittest.TestCase):
                 # overfitted to the ModelV2 API stack.
                 .training(
                     model={"vf_share_layers": True},
-                    _enable_learner_api=False,
                 )
-                .rl_module(_enable_rl_module_api=False)
             )
         )
 

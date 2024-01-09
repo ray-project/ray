@@ -16,11 +16,11 @@ def test_serve_forceful_shutdown(serve_instance):
             time.sleep(1000)
 
     handle = serve.run(sleeper.bind())
-    ref = handle.remote()
+    response = handle.remote()
     serve.delete(SERVE_DEFAULT_APP_NAME)
 
     with pytest.raises(ray.exceptions.RayActorError):
-        ray.get(ref)
+        response.result()
 
 
 def test_serve_graceful_shutdown(serve_instance):
@@ -37,28 +37,28 @@ def test_serve_graceful_shutdown(serve_instance):
             await signal_actor.wait.remote()
 
     handle = serve.run(Wait.bind())
-    refs = [handle.remote(signal) for _ in range(10)]
+    responses = [handle.remote(signal) for _ in range(10)]
 
     # Wait for all the queries to be enqueued
-    with pytest.raises(ray.exceptions.GetTimeoutError):
-        ray.get(refs, timeout=1)
+    with pytest.raises(TimeoutError):
+        responses[0].result(timeout_s=1)
 
     @ray.remote(num_cpus=0)
     def do_blocking_delete():
-        Wait.delete()
+        serve.delete(SERVE_DEFAULT_APP_NAME)
 
     # Now delete the deployment. This should trigger the shutdown sequence.
     delete_ref = do_blocking_delete.remote()
 
     # The queries should be enqueued but not executed becuase they are blocked
     # by signal actor.
-    with pytest.raises(ray.exceptions.GetTimeoutError):
-        ray.get(refs, timeout=1)
+    with pytest.raises(TimeoutError):
+        responses[0].result(timeout_s=1)
 
     signal.send.remote()
 
     # All the queries should be drained and executed without error.
-    ray.get(refs)
+    [r.result() for r in responses]
     # Blocking delete should complete.
     ray.get(delete_ref)
 
@@ -94,7 +94,7 @@ def test_parallel_start(serve_instance):
             return "Ready"
 
     handle = serve.run(LongStartingServable.bind())
-    ray.get(handle.remote(), timeout=10)
+    handle.remote().result(timeout_s=10)
 
 
 if __name__ == "__main__":

@@ -9,7 +9,7 @@ import argparse
 import os
 
 import ray
-from ray import tune
+from ray import train, tune
 from ray.rllib.algorithms.ppo import PPO, PPOConfig
 
 parser = argparse.ArgumentParser()
@@ -21,7 +21,7 @@ parser.add_argument(
 )
 
 
-def my_train_fn(config, reporter):
+def my_train_fn(config):
     iterations = config.pop("train-iterations", 10)
 
     config = PPOConfig().update_from_dict(config).environment("CartPole-v1")
@@ -32,7 +32,7 @@ def my_train_fn(config, reporter):
     for _ in range(iterations):
         result = agent1.train()
         result["phase"] = 1
-        reporter(**result)
+        train.report(result)
         phase1_time = result["timesteps_total"]
     state = agent1.save()
     agent1.stop()
@@ -45,7 +45,7 @@ def my_train_fn(config, reporter):
         result = agent2.train()
         result["phase"] = 2
         result["timesteps_total"] += phase1_time  # keep time moving forward
-        reporter(**result)
+        train.report(result)
     agent2.stop()
 
 

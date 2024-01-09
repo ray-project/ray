@@ -12,11 +12,11 @@ from ray.data._internal.block_batching.util import (
     extract_data_from_batch,
     finalize_batches,
     format_batches,
-    make_async_gen,
     resolve_block_refs,
 )
 from ray.data._internal.memory_tracing import trace_deallocation
 from ray.data._internal.stats import DatasetStats
+from ray.data._internal.util import make_async_gen
 from ray.data.block import Block, BlockMetadata, DataBatch
 from ray.data.context import DataContext
 from ray.types import ObjectRef

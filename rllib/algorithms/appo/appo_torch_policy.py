@@ -74,7 +74,7 @@ class APPOTorchPolicy(
         # However, we also would like to avoid creating special Policy-subclasses
         # for this as the entire Policy concept will soon not be used anymore with
         # the new Learner- and RLModule APIs.
-        if not config.get("_enable_learner_api", False):
+        if not config.get("_enable_new_api_stack", False):
             # Although this is a no-op, we call __init__ here to make it clear
             # that base.__init__ will use the make_model() call.
             VTraceOptimizer.__init__(self)
@@ -288,16 +288,17 @@ class APPOTorchPolicy(
             # The entropy loss.
             mean_entropy = reduce_mean_valid(_make_time_major(action_dist.entropy()))
 
-        # The summed weighted loss
-        total_loss = (
-            mean_policy_loss
-            + mean_vf_loss * self.config["vf_loss_coeff"]
-            - mean_entropy * self.entropy_coeff
-        )
-
+        # The summed weighted loss.
+        total_loss = mean_policy_loss - mean_entropy * self.entropy_coeff
         # Optional additional KL Loss
         if self.config["use_kl_loss"]:
             total_loss += self.kl_coeff * mean_kl_loss
+
+        # Optional vf loss (or in a separate term due to separate
+        # optimizers/networks).
+        loss_wo_vf = total_loss
+        if not self.config["_separate_vf_optimizer"]:
+            total_loss += mean_vf_loss * self.config["vf_loss_coeff"]
 
         # Store values for stats function in model (tower), such that for
         # multi-GPU, we do not override them during the parallel loss phase.
@@ -312,7 +313,11 @@ class APPOTorchPolicy(
             torch.reshape(values_time_major, [-1]),
         )
 
-        return total_loss
+        # Return one total loss or two losses: vf vs rest (policy + kl).
+        if self.config["_separate_vf_optimizer"]:
+            return loss_wo_vf, mean_vf_loss
+        else:
+            return total_loss
 
     @override(TorchPolicyV2)
     def stats_fn(self, train_batch: SampleBatch) -> Dict[str, TensorType]:

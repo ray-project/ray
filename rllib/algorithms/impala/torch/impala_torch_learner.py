@@ -1,14 +1,11 @@
-from typing import Mapping
+from typing import Dict
 
-from ray.rllib.algorithms.impala.impala_learner import (
-    ImpalaLearner,
-    ImpalaLearnerHyperparameters,
-)
+from ray.rllib.algorithms.impala.impala import ImpalaConfig
+from ray.rllib.algorithms.impala.impala_learner import ImpalaLearner
 from ray.rllib.algorithms.impala.torch.vtrace_torch_v2 import (
     vtrace_torch,
     make_time_major,
 )
-from ray.rllib.core.rl_module.rl_module import ModuleID
 from ray.rllib.core.learner.learner import ENTROPY_KEY
 from ray.rllib.core.learner.torch.torch_learner import TorchLearner
 from ray.rllib.policy.sample_batch import SampleBatch
@@ -16,7 +13,7 @@ from ray.rllib.utils.annotations import override
 from ray.rllib.utils.nested_dict import NestedDict
 from ray.rllib.utils.framework import try_import_torch
 from ray.rllib.utils.torch_utils import convert_to_torch_tensor
-from ray.rllib.utils.typing import TensorType
+from ray.rllib.utils.typing import ModuleID, TensorType
 
 torch, nn = try_import_torch()
 
@@ -29,9 +26,9 @@ class ImpalaTorchLearner(ImpalaLearner, TorchLearner):
         self,
         *,
         module_id: ModuleID,
-        hps: ImpalaLearnerHyperparameters,
+        config: ImpalaConfig,
         batch: NestedDict,
-        fwd_out: Mapping[str, TensorType],
+        fwd_out: Dict[str, TensorType],
     ) -> TensorType:
         action_dist_class_train = (
             self.module[module_id].unwrapped().get_train_action_dist_cls()
@@ -43,35 +40,36 @@ class ImpalaTorchLearner(ImpalaLearner, TorchLearner):
 
         behaviour_actions_logp = batch[SampleBatch.ACTION_LOGP]
         target_actions_logp = target_policy_dist.logp(batch[SampleBatch.ACTIONS])
+        rollout_frag_or_episode_len = config.get_rollout_fragment_length()
+        recurrent_seq_len = None
 
         # TODO(Artur): In the old impala code, actions were unsqueezed if they were
         #  multi_discrete. Find out why and if we need to do the same here.
         #  actions = actions if is_multidiscrete else torch.unsqueeze(actions, dim=1)
-
         target_actions_logp_time_major = make_time_major(
             target_actions_logp,
-            trajectory_len=hps.rollout_frag_or_episode_len,
-            recurrent_seq_len=hps.recurrent_seq_len,
+            trajectory_len=rollout_frag_or_episode_len,
+            recurrent_seq_len=recurrent_seq_len,
         )
         behaviour_actions_logp_time_major = make_time_major(
             behaviour_actions_logp,
-            trajectory_len=hps.rollout_frag_or_episode_len,
-            recurrent_seq_len=hps.recurrent_seq_len,
+            trajectory_len=rollout_frag_or_episode_len,
+            recurrent_seq_len=recurrent_seq_len,
         )
         rewards_time_major = make_time_major(
             batch[SampleBatch.REWARDS],
-            trajectory_len=hps.rollout_frag_or_episode_len,
-            recurrent_seq_len=hps.recurrent_seq_len,
+            trajectory_len=rollout_frag_or_episode_len,
+            recurrent_seq_len=recurrent_seq_len,
         )
         values_time_major = make_time_major(
             values,
-            trajectory_len=hps.rollout_frag_or_episode_len,
-            recurrent_seq_len=hps.recurrent_seq_len,
+            trajectory_len=rollout_frag_or_episode_len,
+            recurrent_seq_len=recurrent_seq_len,
         )
         bootstrap_values_time_major = make_time_major(
             batch[SampleBatch.VALUES_BOOTSTRAPPED],
-            trajectory_len=hps.rollout_frag_or_episode_len,
-            recurrent_seq_len=hps.recurrent_seq_len,
+            trajectory_len=rollout_frag_or_episode_len,
+            recurrent_seq_len=recurrent_seq_len,
         )
         bootstrap_value = bootstrap_values_time_major[-1]
 
@@ -81,10 +79,10 @@ class ImpalaTorchLearner(ImpalaLearner, TorchLearner):
             1.0
             - make_time_major(
                 batch[SampleBatch.TERMINATEDS],
-                trajectory_len=hps.rollout_frag_or_episode_len,
-                recurrent_seq_len=hps.recurrent_seq_len,
+                trajectory_len=rollout_frag_or_episode_len,
+                recurrent_seq_len=recurrent_seq_len,
             ).type(dtype=torch.float32)
-        ) * hps.discount_factor
+        ) * config.gamma
 
         # TODO(Artur) Why was there `TorchCategorical if is_multidiscrete else
         #  dist_class` in the old code torch impala policy?
@@ -98,8 +96,8 @@ class ImpalaTorchLearner(ImpalaLearner, TorchLearner):
             rewards=rewards_time_major,
             values=values_time_major,
             bootstrap_value=bootstrap_value,
-            clip_rho_threshold=hps.vtrace_clip_rho_threshold,
-            clip_pg_rho_threshold=hps.vtrace_clip_pg_rho_threshold,
+            clip_rho_threshold=config.vtrace_clip_rho_threshold,
+            clip_pg_rho_threshold=config.vtrace_clip_pg_rho_threshold,
         )
 
         # Sample size is T x B, where T is the trajectory length and B is the batch size
@@ -127,7 +125,7 @@ class ImpalaTorchLearner(ImpalaLearner, TorchLearner):
         # The summed weighted loss.
         total_loss = (
             pi_loss
-            + vf_loss * hps.vf_loss_coeff
+            + vf_loss * config.vf_loss_coeff
             + (
                 mean_entropy_loss
                 * self.entropy_coeff_schedulers_per_module[

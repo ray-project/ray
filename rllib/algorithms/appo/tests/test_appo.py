@@ -64,22 +64,27 @@ class TestAPPO(unittest.TestCase):
             check_compute_single_action(algo)
             algo.stop()
 
-    def test_appo_two_tf_optimizers(self):
+    def test_appo_two_optimizers_two_lrs(self):
         # Not explicitly setting this should cause a warning, but not fail.
         # config["_tf_policy_handles_more_than_one_loss"] = True
         config = (
             appo.APPOConfig()
             .rollouts(num_rollout_workers=1)
-            .training(_separate_vf_optimizer=True, _lr_vf=0.002)
+            .training(
+                _separate_vf_optimizer=True,
+                _lr_vf=0.002,
+                # Make sure we have two completely separate models for policy and
+                # value function.
+                model={
+                    "vf_share_layers": False,
+                },
+            )
         )
-        # Make sure we have two completely separate models for policy and
-        # value function.
-        config.model["vf_share_layers"] = False
 
         num_iterations = 2
 
         # Only supported for tf so far.
-        for _ in framework_iterator(config, frameworks=("tf2", "tf")):
+        for _ in framework_iterator(config, frameworks=("torch", "tf2", "tf")):
             algo = config.build(env="CartPole-v1")
             for i in range(num_iterations):
                 results = algo.train()

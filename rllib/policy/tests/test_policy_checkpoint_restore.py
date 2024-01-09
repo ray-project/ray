@@ -63,10 +63,11 @@ class TestPolicyFromCheckpoint(unittest.TestCase):
                 APPOConfig().environment("CartPole-v1").rollouts(enable_connectors=True)
             )
             algo = config.build()
-            algo.save(checkpoint_dir=tmpdir)
+            algo.train()
+            result = algo.save(checkpoint_dir=tmpdir)
 
             path_to_checkpoint = os.path.join(
-                tmpdir, "checkpoint_000000", "policies", "default_policy"
+                result.checkpoint.path, "policies", "default_policy"
             )
 
             policy = Policy.from_checkpoint(path_to_checkpoint)

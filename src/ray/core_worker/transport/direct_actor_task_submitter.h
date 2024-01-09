@@ -17,6 +17,7 @@
 #include <boost/asio/thread_pool.hpp>
 #include <boost/thread.hpp>
 #include <list>
+#include <optional>
 #include <queue>
 #include <set>
 #include <utility>
@@ -25,6 +26,7 @@
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/synchronization/mutex.h"
+#include "ray/common/asio/asio_util.h"
 #include "ray/common/id.h"
 #include "ray/common/ray_object.h"
 #include "ray/core_worker/actor_creator.h"
@@ -34,6 +36,7 @@
 #include "ray/core_worker/transport/dependency_resolver.h"
 #include "ray/core_worker/transport/out_of_order_actor_submit_queue.h"
 #include "ray/core_worker/transport/sequential_actor_submit_queue.h"
+#include "ray/gcs/gcs_client/gcs_client.h"
 #include "ray/rpc/worker/core_worker_client.h"
 
 namespace ray {
@@ -60,6 +63,10 @@ class CoreWorkerDirectActorTaskSubmitterInterface {
 
   virtual void CheckTimeoutTasks() = 0;
 
+  /// Mark that the corresponding actor is preempted (e.g., spot preemption).
+  /// If called, preempted = true will be set in the death cause upon actor death.
+  virtual void SetPreempted(const ActorID &actor_id) = 0;
+
   virtual ~CoreWorkerDirectActorTaskSubmitterInterface() {}
 };
 
@@ -81,6 +88,13 @@ class CoreWorkerDirectActorTaskSubmitter
         io_service_(io_service) {
     next_queueing_warn_threshold_ =
         ::RayConfig::instance().actor_excess_queueing_warn_threshold();
+  }
+
+  void SetPreempted(const ActorID &actor_id) {
+    absl::MutexLock lock(&mu_);
+    if (auto iter = client_queues_.find(actor_id); iter != client_queues_.end()) {
+      iter->second.preempted = true;
+    }
   }
 
   /// Add an actor queue. This should be called whenever a reference to an
@@ -177,7 +191,64 @@ class CoreWorkerDirectActorTaskSubmitter
   /// \return Whether this actor is alive.
   bool IsActorAlive(const ActorID &actor_id) const;
 
+  /// Cancel an actor task of a given task spec.
+  ///
+  /// Asynchronous API.
+  /// The API is thread-safe.
+  ///
+  /// The cancelation protocol requires the coordination between
+  /// the caller and executor side.
+  ///
+  /// Once the task is canceled, tasks retry count becomes 0.
+  ///
+  /// The client side protocol is as follow;
+  ///
+  /// - Dependencies not resolved
+  ///   - Cancel dep resolution and fail the object immediately.
+  /// - Dependencies are resolved and tasks are queued.
+  ///   - Unqueue the entry from the queue and fail the object immediately.
+  /// - Tasks are sent to executor.
+  ///   - We keep retrying cancel RPCs until the executor said it
+  ///     succeeds (tasks were queued or executing) or the task is finished.
+  /// - Tasks are finished
+  ///   - Do nothing if cancel is requested here.
+  ///
+  /// The executor side protocol is as follow;
+  ///
+  /// - Tasks not received
+  ///   - Fail the cancel RPC. The client will retry.
+  /// - Tasks are queued
+  ///   - Register the canceled tasks and fail when the task is
+  ///     executed.
+  /// - Tasks are executing
+  ///   - if async task, trigger future.cancel. Otherwise, do nothing.
+  ///     TODO(sang): We should ideally update runtime context so that
+  ///     users can do cooperative cancelation.
+  /// - Tasks are finished.
+  ///   - We just fail the cancel RPC. We cannot distinguish this from
+  ///     "Tasks not received" state because we don't track all finished
+  ///     tasks. We rely on the client side stop retrying RPCs
+  ///     when the task finishes.
+  ///
+  /// \param task_spec The task spec of a task that will be canceled.
+  /// \param recursive If true, it will cancel all child tasks.
+  /// \return True if cancel request is not needed or it will be
+  /// requested. False otherwise. Note that tasks could be "not"
+  /// canceled although the status is true because it is an
+  /// asynchronous API.
+  Status CancelTask(TaskSpecification task_spec, bool recursive);
+
+  /// Retry the CancelTask in milliseconds.
+  void RetryCancelTask(TaskSpecification task_spec, bool recursive, int64_t milliseconds);
+
  private:
+  struct TaskInfo {
+    TaskSpecification specification;
+    Status status;
+    ActorID actor_id;
+    bool preempted;
+  };
+
   /// A helper function to get task finisher without holding mu_
   /// We should use this function when access
   /// - FailOrRetryPendingTask
@@ -212,6 +283,8 @@ class CoreWorkerDirectActorTaskSubmitter
     /// indicate that the actor is not yet created. This is used to drop stale
     /// messages from the GCS.
     int64_t num_restarts = -1;
+    /// Whether this actor exits by spot preemption.
+    bool preempted = false;
     /// The RPC client. We use shared_ptr to enable shared_from_this for
     /// pending client callbacks.
     std::shared_ptr<rpc::CoreWorkerClientInterface> rpc_client = nullptr;
@@ -227,8 +300,9 @@ class CoreWorkerDirectActorTaskSubmitter
     /// notification, in this case we'll wait for a fixed timeout value and then mark it
     /// as failed.
     /// pair key: timestamp in ms when this task should be considered as timeout.
-    /// pair value: task specification
-    std::deque<std::pair<int64_t, TaskSpecification>> wait_for_death_info_tasks;
+    /// pair value: task specification, and associated task execution status.
+    std::deque<std::pair<int64_t, std::pair<TaskSpecification, Status>>>
+        wait_for_death_info_tasks;
 
     /// A force-kill request that should be sent to the actor once an RPC
     /// client to the actor is available.
@@ -261,6 +335,9 @@ class CoreWorkerDirectActorTaskSubmitter
     }
   };
 
+  /// Fail the task with a constructed ActorDiedError, with preemption info.
+  void FailTaskWithError(const TaskInfo &task_info);
+
   /// Push a task to a remote actor via the given client.
   /// Note, this function doesn't return any error status code. If an error occurs while
   /// sending the request, this task will be treated as failed.
@@ -272,33 +349,38 @@ class CoreWorkerDirectActorTaskSubmitter
   /// \return Void.
   void PushActorTask(ClientQueue &queue,
                      const TaskSpecification &task_spec,
-                     bool skip_queue) EXCLUSIVE_LOCKS_REQUIRED(mu_);
+                     bool skip_queue) ABSL_EXCLUSIVE_LOCKS_REQUIRED(mu_);
 
   void HandlePushTaskReply(const Status &status,
                            const rpc::PushTaskReply &reply,
                            const rpc::Address &addr,
-                           const TaskSpecification &task_spec) LOCKS_EXCLUDED(mu_);
+                           const TaskSpecification &task_spec) ABSL_LOCKS_EXCLUDED(mu_);
 
   /// Send all pending tasks for an actor.
   ///
   /// \param[in] actor_id Actor ID.
   /// \return Void.
-  void SendPendingTasks(const ActorID &actor_id) EXCLUSIVE_LOCKS_REQUIRED(mu_);
+  void SendPendingTasks(const ActorID &actor_id) ABSL_EXCLUSIVE_LOCKS_REQUIRED(mu_);
 
   /// Resend all previously-received, out-of-order, received tasks for an actor.
   /// When sending these tasks, the tasks will have the flag skip_execution=true.
   ///
+  /// This is useful because we want the replies to be in-order. For the out of order
+  /// completed tasks we resend them to the new restarted actor with skip_execution=True
+  /// and expect those tasks replies to fill the seqno.
+  ///
   /// \param[in] actor_id Actor ID.
   /// \return Void.
-  void ResendOutOfOrderTasks(const ActorID &actor_id) EXCLUSIVE_LOCKS_REQUIRED(mu_);
+  void ResendOutOfOrderCompletedTasks(const ActorID &actor_id)
+      ABSL_EXCLUSIVE_LOCKS_REQUIRED(mu_);
 
   /// Disconnect the RPC client for an actor.
-  void DisconnectRpcClient(ClientQueue &queue) EXCLUSIVE_LOCKS_REQUIRED(mu_);
+  void DisconnectRpcClient(ClientQueue &queue) ABSL_EXCLUSIVE_LOCKS_REQUIRED(mu_);
 
   /// Fail all in-flight tasks.
   void FailInflightTasks(
       const absl::flat_hash_map<TaskID, rpc::ClientCallback<rpc::PushTaskReply>>
-          &inflight_task_callbacks) LOCKS_EXCLUDED(mu_);
+          &inflight_task_callbacks) ABSL_LOCKS_EXCLUDED(mu_);
 
   /// Pool for producing new core worker clients.
   rpc::CoreWorkerClientPool &core_worker_client_pool_;
@@ -306,7 +388,7 @@ class CoreWorkerDirectActorTaskSubmitter
   /// Mutex to protect the various maps below.
   mutable absl::Mutex mu_;
 
-  absl::flat_hash_map<ActorID, ClientQueue> client_queues_ GUARDED_BY(mu_);
+  absl::flat_hash_map<ActorID, ClientQueue> client_queues_ ABSL_GUARDED_BY(mu_);
 
   /// Resolve direct call object dependencies.
   LocalDependencyResolver resolver_;

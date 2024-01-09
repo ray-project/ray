@@ -7,19 +7,16 @@ import unittest
 import ray
 from ray.util.state import list_actors
 from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
-from ray.rllib.algorithms.a3c import A3CConfig
-from ray.rllib.algorithms.apex_dqn import ApexDQNConfig
 from ray.rllib.algorithms.callbacks import DefaultCallbacks
 from ray.rllib.algorithms.dqn.dqn import DQNConfig
 from ray.rllib.algorithms.impala import ImpalaConfig
 from ray.rllib.algorithms.pg import PGConfig
 from ray.rllib.algorithms.pg.pg_tf_policy import PGTF2Policy
 from ray.rllib.algorithms.pg.pg_torch_policy import PGTorchPolicy
-from ray.rllib.algorithms.ppo.ppo import PPOConfig
+from ray.rllib.algorithms.ppo import PPOConfig
 from ray.rllib.env.multi_agent_env import make_multi_agent
 from ray.rllib.evaluation.rollout_worker import RolloutWorker
 from ray.rllib.examples.env.random_env import RandomEnv
-from ray.rllib.policy.policy import PolicySpec
 from ray.rllib.utils.test_utils import framework_iterator
 from ray.tune.registry import register_env
 
@@ -51,28 +48,30 @@ class FaultInjectEnv(gym.Env):
     provided by a list (of ints) under the "bad_indices" key in the env's
     config.
 
-    Examples:
-        >>> from ray.rllib.env.env_context import EnvContext
-        >>> # This env will fail for workers 1 and 2 (not for the local worker
-        >>> # or any others with an index != [1|2]).
-        >>> bad_env = FaultInjectEnv(
-        ...     EnvContext(
-        ...         {"bad_indices": [1, 2]},
-        ...         worker_index=1,
-        ...         num_workers=3,
-        ...      )
-        ... )
+    .. testcode::
+        :skipif: True
 
-        >>> from ray.rllib.env.env_context import EnvContext
-        >>> # This env will fail only on the first evaluation worker, not on the first
-        >>> # regular rollout worker.
-        >>> bad_env = FaultInjectEnv(
-        ...     EnvContext(
-        ...         {"bad_indices": [1], "eval_only": True},
-        ...         worker_index=2,
-        ...         num_workers=5,
-        ...     )
-        ... )
+        from ray.rllib.env.env_context import EnvContext
+        # This env will fail for workers 1 and 2 (not for the local worker
+        # or any others with an index != [1|2]).
+        bad_env = FaultInjectEnv(
+            EnvContext(
+                {"bad_indices": [1, 2]},
+                worker_index=1,
+                num_workers=3,
+             )
+        )
+
+        from ray.rllib.env.env_context import EnvContext
+        # This env will fail only on the first evaluation worker, not on the first
+        # regular rollout worker.
+        bad_env = FaultInjectEnv(
+            EnvContext(
+                {"bad_indices": [1], "eval_only": True},
+                worker_index=2,
+                num_workers=5,
+            )
+        )
     """
 
     def __init__(self, config):
@@ -375,35 +374,6 @@ class TestWorkerFailures(unittest.TestCase):
         # Test the case where all workers fail (w/o recovery).
         self._do_test_fault_fatal(PGConfig().training(optimizer={}))
 
-    def test_async_grads(self):
-        self._do_test_fault_ignore(
-            A3CConfig()
-            .training(optimizer={"grads_per_step": 1})
-            .rollouts(env_runner_cls=ForwardHealthCheckToEnvWorker)
-        )
-
-    def test_async_replay(self):
-        config = (
-            ApexDQNConfig()
-            .training(
-                optimizer={
-                    "num_replay_buffer_shards": 1,
-                },
-            )
-            .rollouts(
-                env_runner_cls=ForwardHealthCheckToEnvWorker,
-                num_rollout_workers=2,
-            )
-            .reporting(
-                min_sample_timesteps_per_iteration=1000,
-                min_time_s_per_iteration=1,
-            )
-            .resources(num_gpus=0)
-            .exploration(explore=False)
-        )
-        config.target_network_update_freq = 100
-        self._do_test_fault_ignore(config=config)
-
     def test_async_samples(self):
         self._do_test_fault_ignore(
             ImpalaConfig()
@@ -418,12 +388,11 @@ class TestWorkerFailures(unittest.TestCase):
             .reporting(min_sample_timesteps_per_iteration=1)
         )
 
-    def test_multi_g_p_u(self):
+    def test_multi_gpu(self):
         self._do_test_fault_ignore(
             PPOConfig()
             .rollouts(
                 env_runner_cls=ForwardHealthCheckToEnvWorker,
-                rollout_fragment_length=5,
             )
             .training(
                 train_batch_size=10,
@@ -434,25 +403,15 @@ class TestWorkerFailures(unittest.TestCase):
 
     def test_sync_samples(self):
         self._do_test_fault_ignore(
-            PGConfig()
+            PPOConfig()
             .rollouts(env_runner_cls=ForwardHealthCheckToEnvWorker)
-            .training(optimizer={})
-        )
-
-    def test_async_sampling_option(self):
-        self._do_test_fault_ignore(
-            PGConfig()
-            .rollouts(
-                env_runner_cls=ForwardHealthCheckToEnvWorker,
-                sample_async=True,
-            )
             .training(optimizer={})
         )
 
     def test_eval_workers_failing_ignore(self):
         # Test the case where one eval worker fails, but we chose to ignore.
         self._do_test_fault_ignore(
-            PGConfig()
+            PPOConfig()
             .rollouts(env_runner_cls=ForwardHealthCheckToEnvWorker)
             .training(model={"fcnet_hiddens": [4]}),
             fail_eval=True,
@@ -507,7 +466,7 @@ class TestWorkerFailures(unittest.TestCase):
     def test_eval_workers_failing_fatal(self):
         # Test the case where all eval workers fail (w/o recovery).
         self._do_test_fault_fatal(
-            PGConfig().training(model={"fcnet_hiddens": [4]}),
+            PPOConfig().training(model={"fcnet_hiddens": [4]}),
             fail_eval=True,
         )
 
@@ -795,303 +754,14 @@ class TestWorkerFailures(unittest.TestCase):
             # and can not be properly restored.
             self.assertEqual(a.workers.num_remote_worker_restarts(), 1)
 
-    def test_eval_workers_fault_but_restore_env(self):
-        # Counter that will survive restarts.
-        COUNTER_NAME = "test_eval_workers_fault_but_restore_env"
-        counter = Counter.options(name=COUNTER_NAME).remote()
-
-        config = (
-            PGConfig()
-            .environment("fault_env")
-            .rollouts(
-                env_runner_cls=ForwardHealthCheckToEnvWorker,
-                num_rollout_workers=2,
-                rollout_fragment_length=16,
-            )
-            .training(
-                train_batch_size=32,
-                model={"fcnet_hiddens": [4]},
-            )
-            .environment(
-                env="fault_env",
-                env_config={
-                    # Make both worker idx=1 and 2 fail.
-                    "bad_indices": [1, 2],
-                    "failure_start_count": 3,
-                    "failure_stop_count": 4,
-                    "counter": COUNTER_NAME,
-                },
-            )
-            .evaluation(
-                evaluation_num_workers=2,
-                evaluation_interval=1,
-                evaluation_config=PGConfig.overrides(
-                    recreate_failed_workers=True,
-                    # Now instead of recreating failed workers,
-                    # we want to recreate the failed sub env instead.
-                    restart_failed_sub_environments=True,
-                    env_config={
-                        "evaluation": True,
-                        # Make eval worker (index 1) fail.
-                        "bad_indices": [1],
-                    },
-                ),
-            )
-            .fault_tolerance(
-                recreate_failed_workers=True,  # And recover
-                # 0 delay for testing purposes.
-                delay_between_worker_restarts_s=0,
-            )
-        )
-
-        for _ in framework_iterator(config, frameworks=("tf2", "torch")):
-            # Reset interaciton counter.
-            ray.wait([counter.reset.remote()])
-
-            a = config.build()
-
-            # Before train loop, workers are fresh and not recreated.
-            self.assertEqual(a.workers.num_healthy_remote_workers(), 2)
-            self.assertEqual(a.workers.num_remote_worker_restarts(), 0)
-            self.assertEqual(a.evaluation_workers.num_healthy_remote_workers(), 2)
-            self.assertEqual(a.evaluation_workers.num_remote_worker_restarts(), 0)
-
-            a.train()
-            wait_for_restore()
-            a.train()
-
-            self.assertEqual(a.workers.num_healthy_remote_workers(), 2)
-            # Rollout workers were restarted.
-            self.assertEqual(a.workers.num_remote_worker_restarts(), 2)
-            self.assertEqual(a.evaluation_workers.num_healthy_remote_workers(), 2)
-            # But eval workers were not restarted.
-            self.assertEqual(a.evaluation_workers.num_remote_worker_restarts(), 0)
-
-            # This should also work several times.
-            a.train()
-            wait_for_restore()
-            a.train()
-
-            self.assertEqual(a.workers.num_healthy_remote_workers(), 2)
-            self.assertEqual(a.evaluation_workers.num_healthy_remote_workers(), 2)
-
-            a.stop()
-
-    def test_multi_agent_env_eval_workers_fault_but_restore_env(self):
-        # Counter that will survive restarts.
-        COUNTER_NAME = "test_multi_agent_env_eval_workers_fault_but_restore_env"
-        counter = Counter.options(name=COUNTER_NAME).remote()
-
-        config = (
-            PGConfig()
-            .rollouts(
-                env_runner_cls=ForwardHealthCheckToEnvWorker,
-                num_rollout_workers=2,
-                rollout_fragment_length=16,
-            )
-            .training(
-                train_batch_size=32,
-                model={"fcnet_hiddens": [4]},
-            )
-            .environment(
-                env="multi_agent_fault_env",
-                # Workers do not fault and no fault tolerance.
-                env_config={},
-                disable_env_checking=True,
-            )
-            .multi_agent(
-                policies={
-                    "main_agent": PolicySpec(),
-                },
-                policies_to_train=["main_agent"],
-                policy_mapping_fn=lambda *args, **kwargs: "main_agent",
-            )
-            .evaluation(
-                evaluation_num_workers=2,
-                evaluation_interval=1,
-                evaluation_config=PGConfig.overrides(
-                    # Now instead of recreating failed workers,
-                    # we want to recreate the failed sub env instead.
-                    restart_failed_sub_environments=True,
-                    env_config={
-                        "evaluation": True,
-                        "p_terminated": 0.0,
-                        "max_episode_len": 20,
-                        # Make eval worker (index 1) fail.
-                        "bad_indices": [1],
-                        "counter": COUNTER_NAME,
-                        "failure_start_count": 3,
-                        "failure_stop_count": 5,
-                    },
-                ),
-            )
-        )
-
-        for _ in framework_iterator(config, frameworks=("tf2", "torch")):
-            # Reset interaciton counter.
-            ray.wait([counter.reset.remote()])
-
-            a = config.build()
-
-            result = a.train()
-
-            self.assertEqual(a.workers.num_healthy_remote_workers(), 2)
-            self.assertEqual(result["num_faulty_episodes"], 0)
-            self.assertEqual(a.evaluation_workers.num_healthy_remote_workers(), 2)
-            # There should be a faulty episode.
-            self.assertEqual(result["evaluation"]["num_faulty_episodes"], 2)
-
-            # This should also work several times.
-            result = a.train()
-
-            self.assertEqual(a.workers.num_healthy_remote_workers(), 2)
-            self.assertEqual(result["num_faulty_episodes"], 0)
-            self.assertEqual(a.evaluation_workers.num_healthy_remote_workers(), 2)
-            # There shouldn't be any faulty episode anymore.
-            self.assertEqual(result["evaluation"]["num_faulty_episodes"], 0)
-
-            a.stop()
-
-    def test_long_failure_period_restore_env(self):
-        # Counter that will survive restarts.
-        COUNTER_NAME = "test_long_failure_period_restore_env"
-        counter = Counter.options(name=COUNTER_NAME).remote()
-
-        config = (
-            PGConfig()
-            .rollouts(
-                env_runner_cls=ForwardHealthCheckToEnvWorker,
-                num_rollout_workers=1,
-                create_env_on_local_worker=False,
-            )
-            .training(
-                model={"fcnet_hiddens": [4]},
-            )
-            .environment(
-                env="fault_env",
-                env_config={
-                    "restart_failed_sub_environments": True,
-                    "p_terminated": 0.0,
-                    "max_episode_len": 100,
-                    "bad_indices": [1],
-                    # Env throws error between steps 30 and 80.
-                    "failure_start_count": 30,
-                    "failure_stop_count": 80,
-                    "counter": COUNTER_NAME,
-                },
-            )
-            .evaluation(
-                evaluation_num_workers=1,
-                evaluation_interval=1,
-                evaluation_config=PGConfig.overrides(
-                    env_config={
-                        "evaluation": True,
-                    }
-                ),
-            )
-            .fault_tolerance(
-                # Worker fault tolerance.
-                recreate_failed_workers=True,  # Restore failed workers.
-                restart_failed_sub_environments=True,  # And create failed envs.
-                # 0 delay for testing purposes.
-                delay_between_worker_restarts_s=0,
-            )
-        )
-
-        for _ in framework_iterator(config, frameworks=("tf2", "torch")):
-            # Reset interaciton counter.
-            ray.wait([counter.reset.remote()])
-
-            a = config.build()
-
-            result = a.train()
-
-            # Should see a lot of faulty episodes.
-            self.assertGreaterEqual(result["num_faulty_episodes"], 50)
-            self.assertGreaterEqual(result["evaluation"]["num_faulty_episodes"], 50)
-
-            # Rollout and evaluation workers are fine since envs are restored.
-            self.assertTrue(a.workers.num_healthy_remote_workers(), 1)
-            self.assertTrue(a.evaluation_workers.num_healthy_remote_workers(), 1)
-
-    def test_env_wait_time_workers_restore_env(self):
-        # Counter that will survive restarts.
-        COUNTER_NAME = "test_env_wait_time_workers_restore_env"
-        counter = Counter.options(name=COUNTER_NAME).remote()
-
-        config = (
-            PGConfig()
-            .rollouts(
-                env_runner_cls=ForwardHealthCheckToEnvWorker,
-                num_rollout_workers=1,
-                rollout_fragment_length=5,
-                # Use EMA PerfStat.
-                # Really large coeff to show the difference in env_wait_time_ms.
-                # Pretty much consider the last 2 data points.
-                sampler_perf_stats_ema_coef=0.5,
-            )
-            .training(
-                model={"fcnet_hiddens": [4]},
-                train_batch_size=10,
-            )
-            .environment(
-                env="fault_env",
-                # Workers do not fault and no fault tolerance.
-                env_config={
-                    "restart_failed_sub_environments": True,
-                    "p_terminated": 0.0,
-                    "max_episode_len": 10,
-                    "init_delay": 10,  # 10 sec init delay.
-                    # Make both worker idx=1 and 2 fail.
-                    "bad_indices": [1],
-                    "failure_start_count": 7,
-                    "failure_stop_count": 8,
-                    "counter": COUNTER_NAME,
-                },
-            )
-            .reporting(
-                # Important, don't smooth over all the episodes,
-                # otherwise we don't see latency spike.
-                metrics_num_episodes_for_smoothing=1
-            )
-            .fault_tolerance(
-                # Worker fault tolerance.
-                recreate_failed_workers=False,  # Do not ignore.
-                restart_failed_sub_environments=True,  # But recover.
-                # 0 delay for testing purposes.
-                delay_between_worker_restarts_s=0,
-            )
-        )
-
-        for _ in framework_iterator(config, frameworks=("tf2", "torch")):
-            # Reset interaciton counter.
-            ray.wait([counter.reset.remote()])
-
-            a = config.build()
-
-            # Had to restore env during this iteration.
-            result = a.train()
-            self.assertEqual(result["num_faulty_episodes"], 1)
-            time_with_restore = result["sampler_perf"]["mean_env_wait_ms"]
-
-            # Doesn't have to restore env during this iteration.
-            result = a.train()
-            # Still only 1 faulty episode.
-            self.assertEqual(result["num_faulty_episodes"], 0)
-            time_without_restore = result["sampler_perf"]["mean_env_wait_ms"]
-
-            # wait time with restore is at least 2 times wait time without restore.
-            self.assertGreater(time_with_restore, 2 * time_without_restore)
-
     def test_eval_workers_on_infinite_episodes(self):
         """Tests whether eval workers warn appropriately after some episode timeout."""
         # Create infinitely running episodes, but with horizon setting (RLlib will
         # auto-terminate the episode). However, in the eval workers, don't set a
         # horizon -> Expect warning and no proper evaluation results.
         config = (
-            PGConfig()
+            PPOConfig()
             .environment(env=RandomEnv, env_config={"p_terminated": 0.0})
-            .rollouts(num_rollout_workers=2)
             .reporting(metrics_episode_collection_timeout_s=5.0)
             .evaluation(
                 evaluation_num_workers=2,

@@ -256,8 +256,7 @@ std::tuple<int64_t, int64_t> MemoryMonitor::GetLinuxMemoryBytes() {
   while (std::getline(meminfo_ifs, line)) {
     std::istringstream iss(line);
     iss >> title >> value >> unit;
-    /// Linux reports them as kiB
-    RAY_CHECK(unit == "kB");
+
     value = value * 1024;
     if (title == "MemAvailable:") {
       mem_available_bytes = value;
@@ -269,7 +268,12 @@ std::tuple<int64_t, int64_t> MemoryMonitor::GetLinuxMemoryBytes() {
       buffer_bytes = value;
     } else if (title == "MemTotal:") {
       mem_total_bytes = value;
+    } else {
+      /// Skip other lines
+      continue;
     }
+    /// Linux reports them as kiB
+    RAY_CHECK(unit == "kB");
   }
   if (mem_total_bytes == kNull) {
     RAY_LOG_EVERY_MS(WARNING, kLogIntervalMs)

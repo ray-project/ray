@@ -21,7 +21,7 @@ from ray_release.config import (
     RELEASE_PACKAGE_DIR,
     DEFAULT_AUTOSUSPEND_MINS,
 )
-from ray_release.template import load_test_cluster_env, load_test_cluster_compute
+from ray_release.template import load_test_cluster_compute
 from ray_release.exception import (
     ReleaseTestConfigError,
     ReleaseTestSetupError,
@@ -72,14 +72,12 @@ def _load_test_configuration(
     test: Test,
     anyscale_project: str,
     result: Result,
-    ray_wheels_url: str,
     smoke_test: bool = False,
     no_terminate: bool = False,
 ) -> Tuple[ClusterManager, CommandRunner, str]:
     logger.info(f"Test config: {test}")
 
     # Populate result paramaters
-    result.wheels_url = ray_wheels_url
     result.stable = test.get("stable", True)
     result.smoke_test = smoke_test
     buildkite_url = os.getenv("BUILDKITE_BUILD_URL", "")
@@ -147,7 +145,6 @@ def _setup_cluster_environment(
     test: Test,
     result: Result,
     cluster_manager: ClusterManager,
-    ray_wheels_url: str,
     cluster_env_id: Optional[str],
 ) -> Tuple[str, int, int, int, int]:
     setup_signal_handling()
@@ -170,12 +167,7 @@ def _setup_cluster_environment(
                 f"{cluster_env_id}: {e}"
             ) from e
     else:
-        cluster_env = (
-            None
-            if test.is_byod_cluster()
-            else load_test_cluster_env(test, ray_wheels_url=ray_wheels_url)
-        )
-        cluster_manager.set_cluster_env(cluster_env)
+        cluster_manager.set_cluster_env()
 
     # Load some timeouts
     build_timeout = int(test["run"].get("build_timeout", DEFAULT_BUILD_TIMEOUT))
@@ -390,7 +382,6 @@ def run_release_test(
     test: Test,
     anyscale_project: str,
     result: Result,
-    ray_wheels_url: str,
     reporters: Optional[List[Reporter]] = None,
     smoke_test: bool = False,
     cluster_id: Optional[str] = None,
@@ -410,7 +401,6 @@ def run_release_test(
             test,
             anyscale_project,
             result,
-            ray_wheels_url,
             smoke_test,
             no_terminate,
         )
@@ -425,7 +415,6 @@ def run_release_test(
             test,
             result,
             cluster_manager,
-            ray_wheels_url,
             cluster_env_id,
         )
 

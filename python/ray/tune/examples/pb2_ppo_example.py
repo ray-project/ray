@@ -80,7 +80,7 @@ if __name__ == "__main__":
         hyperparam_bounds={
             "lambda": [0.9, 1.0],
             "clip_param": [0.1, 0.5],
-            "lr": [1e-3, 1e-5],
+            "lr": [1e-5, 1e-3],
             "train_batch_size": [1000, 60000],
         },
     )
@@ -133,12 +133,11 @@ if __name__ == "__main__":
         },
     )
 
-    all_dfs = analysis.trial_dataframes
-    names = list(all_dfs.keys())
+    all_dfs = list(analysis.trial_dataframes.values())
 
     results = pd.DataFrame()
     for i in range(args.num_samples):
-        df = all_dfs[names[i]]
+        df = all_dfs[i]
         df = df[
             [
                 "timesteps_total",

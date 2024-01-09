@@ -30,13 +30,31 @@ class BaseEnv:
     rllib.MultiAgentEnv (is-a gym.Env) => rllib.VectorEnv => rllib.BaseEnv
     rllib.ExternalEnv => rllib.BaseEnv
 
-    Examples:
-        >>> MyBaseEnv = ... # doctest: +SKIP
-        >>> env = MyBaseEnv() # doctest: +SKIP
-        >>> obs, rewards, terminateds, truncateds, infos, off_policy_actions = (
-        ...     env.poll()
-        ... ) # doctest: +SKIP
-        >>> print(obs) # doctest: +SKIP
+    .. testcode::
+        :skipif: True
+
+        MyBaseEnv = ...
+        env = MyBaseEnv()
+        obs, rewards, terminateds, truncateds, infos, off_policy_actions = (
+            env.poll()
+        )
+        print(obs)
+
+        env.send_actions({
+          "env_0": {
+            "car_0": 0,
+            "car_1": 1,
+          }, ...
+        })
+        obs, rewards, terminateds, truncateds, infos, off_policy_actions = (
+            env.poll()
+        )
+        print(obs)
+
+        print(terminateds)
+
+    .. testoutput::
+
         {
             "env_0": {
                 "car_0": [2.4, 1.6],
@@ -51,23 +69,12 @@ class BaseEnv:
                 "car_3": [1.2, 0.1],
             },
         }
-        >>> env.send_actions({ # doctest: +SKIP
-        ...   "env_0": { # doctest: +SKIP
-        ...     "car_0": 0, # doctest: +SKIP
-        ...     "car_1": 1, # doctest: +SKIP
-        ...   }, ... # doctest: +SKIP
-        ... }) # doctest: +SKIP
-        >>> obs, rewards, terminateds, truncateds, infos, off_policy_actions = (
-        ...     env.poll()
-        ... ) # doctest: +SKIP
-        >>> print(obs) # doctest: +SKIP
         {
             "env_0": {
                 "car_0": [4.1, 1.7],
                 "car_1": [3.2, -4.2],
             }, ...
         }
-        >>> print(terminateds) # doctest: +SKIP
         {
             "env_0": {
                 "__all__": False,
@@ -75,6 +82,7 @@ class BaseEnv:
                 "car_1": True,
             }, ...
         }
+
     """
 
     def to_base_env(

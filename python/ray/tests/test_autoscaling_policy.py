@@ -13,7 +13,7 @@ import ray
 from ray.tests.test_autoscaler import (
     MockProvider,
     MockProcessRunner,
-    MockNodeInfoStub,
+    MockGcsClient,
     mock_raylet_id,
     MockAutoscaler,
 )
@@ -190,7 +190,7 @@ class Simulator:
         self.autoscaler = MockAutoscaler(
             self.config_path,
             self.load_metrics,
-            MockNodeInfoStub(),
+            MockGcsClient(),
             # Don't let the autoscaler start any node launchers. Instead, we
             # will launch nodes ourself after every update call.
             max_concurrent_launches=0,
@@ -372,7 +372,6 @@ class Simulator:
                 raylet_id=node.raylet_id,
                 static_resources=node.total_resources,
                 dynamic_resources=node.available_resources,
-                resource_load={},
                 waiting_bundles=waiting_bundles,
                 infeasible_bundles=infeasible_bundles,
                 pending_placement_groups=placement_groups,

@@ -200,15 +200,14 @@ Status raylet::RayletClient::AnnounceWorkerPort(int port) {
   return conn_->WriteMessage(MessageType::AnnounceWorkerPort, &fbb);
 }
 
-Status raylet::RayletClient::TaskDone() {
-  return conn_->WriteMessage(MessageType::TaskDone);
+Status raylet::RayletClient::ActorCreationTaskDone() {
+  return conn_->WriteMessage(MessageType::ActorCreationTaskDone);
 }
 
 Status raylet::RayletClient::FetchOrReconstruct(
     const std::vector<ObjectID> &object_ids,
     const std::vector<rpc::Address> &owner_addresses,
     bool fetch_only,
-    bool mark_worker_blocked,
     const TaskID &current_task_id) {
   RAY_CHECK(object_ids.size() == owner_addresses.size());
   flatbuffers::FlatBufferBuilder fbb;
@@ -218,7 +217,6 @@ Status raylet::RayletClient::FetchOrReconstruct(
                                          object_ids_message,
                                          AddressesToFlatbuffer(fbb, owner_addresses),
                                          fetch_only,
-                                         mark_worker_blocked,
                                          to_flatbuf(fbb, current_task_id));
   fbb.Finish(message);
   return conn_->WriteMessage(MessageType::FetchOrReconstruct, &fbb);
@@ -249,7 +247,6 @@ Status raylet::RayletClient::Wait(const std::vector<ObjectID> &object_ids,
                                   const std::vector<rpc::Address> &owner_addresses,
                                   int num_returns,
                                   int64_t timeout_milliseconds,
-                                  bool mark_worker_blocked,
                                   const TaskID &current_task_id,
                                   WaitResultPair *result) {
   // Write request.
@@ -259,7 +256,6 @@ Status raylet::RayletClient::Wait(const std::vector<ObjectID> &object_ids,
                                              AddressesToFlatbuffer(fbb, owner_addresses),
                                              num_returns,
                                              timeout_milliseconds,
-                                             mark_worker_blocked,
                                              to_flatbuf(fbb, current_task_id));
   fbb.Finish(message);
   std::vector<uint8_t> reply;
@@ -366,14 +362,17 @@ void raylet::RayletClient::ReportWorkerBacklog(
       });
 }
 
-Status raylet::RayletClient::ReturnWorker(int worker_port,
-                                          const WorkerID &worker_id,
-                                          bool disconnect_worker,
-                                          bool worker_exiting) {
+Status raylet::RayletClient::ReturnWorker(
+    int worker_port,
+    const WorkerID &worker_id,
+    bool disconnect_worker,
+    const std::string &disconnect_worker_error_detail,
+    bool worker_exiting) {
   rpc::ReturnWorkerRequest request;
   request.set_worker_port(worker_port);
   request.set_worker_id(worker_id.Binary());
   request.set_disconnect_worker(disconnect_worker);
+  request.set_disconnect_worker_error_detail(disconnect_worker_error_detail);
   request.set_worker_exiting(worker_exiting);
   grpc_client_->ReturnWorker(
       request, [](const Status &status, const rpc::ReturnWorkerReply &reply) {
@@ -512,24 +511,20 @@ void raylet::RayletClient::ShutdownRaylet(
   grpc_client_->ShutdownRaylet(request, callback);
 }
 
+void raylet::RayletClient::DrainRaylet(
+    const rpc::autoscaler::DrainNodeReason &reason,
+    const std::string &reason_message,
+    const rpc::ClientCallback<rpc::DrainRayletReply> &callback) {
+  rpc::DrainRayletRequest request;
+  request.set_reason(reason);
+  request.set_reason_message(reason_message);
+  grpc_client_->DrainRaylet(request, callback);
+}
+
 void raylet::RayletClient::GlobalGC(
     const rpc::ClientCallback<rpc::GlobalGCReply> &callback) {
   rpc::GlobalGCRequest request;
   grpc_client_->GlobalGC(request, callback);
-}
-
-void raylet::RayletClient::UpdateResourceUsage(
-    std::string &serialized_resource_usage_batch,
-    const rpc::ClientCallback<rpc::UpdateResourceUsageReply> &callback) {
-  rpc::UpdateResourceUsageRequest request;
-  request.set_serialized_resource_usage_batch(serialized_resource_usage_batch);
-  grpc_client_->UpdateResourceUsage(request, callback);
-}
-
-void raylet::RayletClient::RequestResourceReport(
-    const rpc::ClientCallback<rpc::RequestResourceReportReply> &callback) {
-  rpc::RequestResourceReportRequest request;
-  grpc_client_->RequestResourceReport(request, callback);
 }
 
 void raylet::RayletClient::GetResourceLoad(

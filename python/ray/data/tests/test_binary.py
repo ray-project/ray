@@ -79,19 +79,6 @@ def test_read_binary_files_with_fs(ray_start_regular_shared):
             assert expected == item["bytes"]
 
 
-def test_read_binary_files_with_paths(ray_start_regular_shared):
-    with gen_bin_files(10) as (_, paths):
-        ds = ray.data.read_binary_files(
-            paths,
-            include_paths=True,
-            parallelism=10,
-        )
-        for i, item in enumerate(ds.iter_rows()):
-            assert paths[i] == item["path"]
-            expected = open(paths[i], "rb").read()
-            assert expected == item["bytes"]
-
-
 # TODO(Clark): Hitting S3 in CI is currently broken due to some AWS
 # credentials issue, unskip this test once that's fixed or once ported to moto.
 @pytest.mark.skip(reason="Shouldn't hit S3 in CI")

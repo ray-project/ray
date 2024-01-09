@@ -56,9 +56,9 @@ sudo rm ./*requirements*.txt
 
 # MuJoCo Installation.
 export MUJOCO_GL=osmesa
-wget https://mujoco.org/download/mujoco210-linux-x86_64.tar.gz
+wget https://github.com/google-deepmind/mujoco/releases/download/2.1.1/mujoco-2.1.1-linux-x86_64.tar.gz
 mkdir -p ~/.mujoco
-mv mujoco210-linux-x86_64.tar.gz ~/.mujoco/.
+mv mujoco-2.1.1-linux-x86_64.tar.gz ~/.mujoco/.
 cd ~/.mujoco || exit
-tar -xf ~/.mujoco/mujoco210-linux-x86_64.tar.gz
-export LD_LIBRARY_PATH=${LD_LIBRARY_PATH:-}:/root/.mujoco/mujoco210/bin
+tar -xf ~/.mujoco/mujoco-2.1.1-linux-x86_64.tar.gz
+export LD_LIBRARY_PATH=${LD_LIBRARY_PATH:-}:/root/.mujoco/mujoco-2.1.1/bin

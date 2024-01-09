@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/build/upload_build_info.sh; fi }; trap cleanup EXIT
+cleanup() { ./ci/build/upload_build_info.sh; }; trap cleanup EXIT
 
 set -exo pipefail
 

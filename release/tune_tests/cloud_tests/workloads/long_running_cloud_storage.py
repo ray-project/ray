@@ -48,30 +48,32 @@ def function_trainable(config):
     checkpoint_num_items = checkpoint_size_b // 8  # np.float64
 
     for i in range(int(10e12)):
-        metric = i + score
-        checkpoint = None
-
+        metrics = {"score": i + score}
         if (
             checkpoint_iters >= 0
             and checkpoint_size_b > 0
             and i % checkpoint_iters == 0
         ):
-            directory = tempfile.mkdtemp()
-            for i in range(checkpoint_num_files):
-                checkpoint_file = os.path.join(directory, f"bogus_{i:02d}.ckpt")
-                checkpoint_data = np.random.uniform(0, 1, size=checkpoint_num_items)
-                with open(checkpoint_file, "wb") as fp:
-                    pickle.dump(checkpoint_data, fp)
+            with tempfile.TemporaryDirectory() as directory:
+                for i in range(checkpoint_num_files):
+                    checkpoint_file = os.path.join(directory, f"bogus_{i:02d}.ckpt")
+                    checkpoint_data = np.random.uniform(0, 1, size=checkpoint_num_items)
+                    with open(checkpoint_file, "wb") as fp:
+                        pickle.dump(checkpoint_data, fp)
 
-            checkpoint = Checkpoint.from_directory(directory)
-
-        train.report({"score": metric}, checkpoint=checkpoint)
+                checkpoint = Checkpoint.from_directory(directory)
+                train.report(metrics, checkpoint=checkpoint)
+        else:
+            train.report(metrics)
         time.sleep(sleep_time)
 
 
 @click.command()
 @click.argument("bucket", type=str)
-def main(bucket):
+@click.option("--smoke-test", is_flag=True, default=False)
+def main(bucket, smoke_test):
+    # Note: smoke_test is ignored as we just adjust the timeout.
+    # The parameter is passed by the release test pipeline.
     tuner = tune.Tuner(
         function_trainable,
         param_space={
@@ -82,8 +84,8 @@ def main(bucket):
             "checkpoint_iters": 10,
         },
         run_config=RunConfig(
+            storage_path=bucket,
             callbacks=[ProgressCallback()],
-            sync_config=tune.SyncConfig(upload_dir=bucket),
             checkpoint_config=CheckpointConfig(num_to_keep=2),
         ),
     )

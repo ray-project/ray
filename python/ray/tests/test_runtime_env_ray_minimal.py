@@ -43,23 +43,6 @@ def _test_task_and_actor():
     os.environ.get("RAY_MINIMAL") != "1",
     reason="This test is only run in CI with a minimal Ray installation.",
 )
-@pytest.mark.parametrize(
-    "call_ray_start",
-    ["ray start --head --ray-client-server-port 25553 --port 0"],
-    indirect=True,
-)
-def test_ray_client_task_actor(call_ray_start):
-    ray.init("ray://localhost:25553")
-    _test_task_and_actor()
-
-
-@pytest.mark.skipif(
-    sys.platform == "win32", reason="runtime_env unsupported on Windows."
-)
-@pytest.mark.skipif(
-    os.environ.get("RAY_MINIMAL") != "1",
-    reason="This test is only run in CI with a minimal Ray installation.",
-)
 def test_task_actor(shutdown_only):
     ray.init()
     _test_task_and_actor()
@@ -81,24 +64,6 @@ def test_ray_init(shutdown_only):
 
     with pytest.raises(RuntimeEnvSetupError, match="install virtualenv"):
         ray.get(f.remote())
-
-
-@pytest.mark.skipif(
-    sys.platform == "win32", reason="runtime_env unsupported on Windows."
-)
-@pytest.mark.skipif(
-    os.environ.get("RAY_MINIMAL") != "1",
-    reason="This test is only run in CI with a minimal Ray installation.",
-)
-@pytest.mark.parametrize(
-    "call_ray_start",
-    ["ray start --head --ray-client-server-port 25552 --port 0"],
-    indirect=True,
-)
-def test_ray_client_init(call_ray_start):
-    with pytest.raises(ConnectionAbortedError) as excinfo:
-        ray.init("ray://localhost:25552", runtime_env={"pip": ["requests"]})
-    assert "install virtualenv" in str(excinfo.value)
 
 
 if __name__ == "__main__":

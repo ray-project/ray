@@ -57,14 +57,14 @@ class RandomAgent(Algorithm):
 
     @classmethod
     @override(Algorithm)
-    def get_default_config(cls) -> AlgorithmConfig:
-        config = AlgorithmConfig()
+    def get_default_config(cls) -> RandomAgentConfig:
+        config = RandomAgentConfig()
         config.rollouts_per_iteration = 10
         return config
 
     @override(Algorithm)
-    def _init(self, config, env_creator):
-        self.env = env_creator(config["env_config"])
+    def setup(self, config):
+        self.env = self.env_creator(config["env_config"])
 
     @override(Algorithm)
     def step(self):

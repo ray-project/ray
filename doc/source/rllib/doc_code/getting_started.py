@@ -18,7 +18,7 @@ for i in range(10):
     print(pretty_print(result))
 
     if i % 5 == 0:
-        checkpoint_dir = algo.save()
+        checkpoint_dir = algo.save().checkpoint.path
         print(f"Checkpoint saved in directory {checkpoint_dir}")
 # __rllib-first-config-end__
 

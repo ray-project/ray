@@ -32,9 +32,7 @@ class ClusterTaskManagerInterface {
   ///
   /// \param Output parameter. `resource_load` and `resource_load_by_shape` are the only
   /// fields used.
-  virtual void FillResourceUsage(
-      rpc::ResourcesData &data,
-      const std::shared_ptr<NodeResources> &last_reported_resources = nullptr) = 0;
+  virtual void FillResourceUsage(rpc::ResourcesData &data) = 0;
 
   /// Attempt to cancel an already queued task.
   ///

@@ -38,6 +38,7 @@ Constructor
 ~~~~~~~~~~~
 
 .. autosummary::
+    :nosignatures:
     :toctree: doc/
 
     ~AlgorithmConfig
@@ -46,17 +47,28 @@ Constructor
 Public methods
 ~~~~~~~~~~~~~~
 .. autosummary::
+    :nosignatures:
+    :toctree: doc/
+
+    ~AlgorithmConfig.copy
+    ~AlgorithmConfig.validate
+    ~AlgorithmConfig.freeze
+
+Builder methods
+~~~~~~~~~~~~~~~
+.. autosummary::
+    :nosignatures:
     :toctree: doc/
 
     ~AlgorithmConfig.build
-    ~AlgorithmConfig.freeze
-    ~AlgorithmConfig.copy
-    ~AlgorithmConfig.validate
+    ~AlgorithmConfig.build_learner_group
+    ~AlgorithmConfig.build_learner
 
 Configuration methods
 ~~~~~~~~~~~~~~~~~~~~~
 
 .. autosummary::
+    :nosignatures:
     :toctree: doc/
 
     ~AlgorithmConfig.callbacks
@@ -78,6 +90,7 @@ Configuration methods
 Getter methods
 ~~~~~~~~~~~~~~
 .. autosummary::
+    :nosignatures:
     :toctree: doc/
 
     ~AlgorithmConfig.get_default_learner_class
@@ -90,6 +103,7 @@ Getter methods
 Miscellaneous methods
 ~~~~~~~~~~~~~~~~~~~~~
 .. autosummary::
+    :nosignatures:
     :toctree: doc/
 
     ~AlgorithmConfig.validate_train_batch_size_vs_rollout_fragment_length
@@ -128,6 +142,7 @@ Constructor
 ~~~~~~~~~~~
 
 .. autosummary::
+    :nosignatures:
     :toctree: doc/
 
     ~Algorithm
@@ -135,6 +150,7 @@ Constructor
 Inference and Evaluation
 ~~~~~~~~~~~~~~~~~~~~~~~~
 .. autosummary::
+    :nosignatures:
     :toctree: doc/
 
     ~Algorithm.compute_actions
@@ -144,6 +160,7 @@ Inference and Evaluation
 Saving and Restoring
 ~~~~~~~~~~~~~~~~~~~~
 .. autosummary::
+    :nosignatures:
     :toctree: doc/
 
     ~Algorithm.from_checkpoint
@@ -155,16 +172,15 @@ Saving and Restoring
     ~Algorithm.export_policy_model
     ~Algorithm.import_policy_model_from_h5
     ~Algorithm.restore
-    ~Algorithm.restore_from_object
     ~Algorithm.restore_workers
     ~Algorithm.save
     ~Algorithm.save_checkpoint
-    ~Algorithm.save_to_object
 
 
 Training
 ~~~~~~~~
 .. autosummary::
+    :nosignatures:
     :toctree: doc/
 
     ~Algorithm.train
@@ -173,6 +189,7 @@ Training
 Multi Agent
 ~~~~~~~~~~~
 .. autosummary::
+    :nosignatures:
     :toctree: doc/
 
     ~Algorithm.add_policy

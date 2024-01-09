@@ -451,7 +451,7 @@ def test_read_tfrecords_ignore_missing_paths(
             ds = ray.data.read_tfrecords(
                 paths, ignore_missing_paths=ignore_missing_paths
             )
-            ds.fully_executed()
+            ds.materialize()
 
 
 @pytest.mark.parametrize("with_tf_schema", (True, False))

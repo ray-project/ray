@@ -9,7 +9,6 @@ from ray.tune.registry import register_env
 from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
 from ray.rllib.algorithms.dqn.dqn import DQNConfig
 from ray.rllib.algorithms.dqn.dqn_tf_policy import DQNTFPolicy
-from ray.rllib.algorithms.pg import PGConfig
 from ray.rllib.algorithms.ppo import PPOConfig
 from ray.rllib.env.multi_agent_env import make_multi_agent, MultiAgentEnvWrapper
 from ray.rllib.evaluation.episode import Episode
@@ -259,10 +258,11 @@ class TestMultiAgentEnv(unittest.TestCase):
     def test_multi_agent_with_flex_agents(self):
         register_env("flex_agents_multi_agent", lambda _: FlexAgentsMultiAgent())
         config = (
-            PGConfig()
+            PPOConfig()
             .environment("flex_agents_multi_agent")
             .rollouts(num_rollout_workers=0)
             .framework("tf")
+            .training(train_batch_size=50, sgd_minibatch_size=50, num_sgd_iter=1)
         )
         algo = config.build()
         for i in range(10):
@@ -475,21 +475,22 @@ class TestMultiAgentEnv(unittest.TestCase):
             "multi_agent_cartpole", lambda _: MultiAgentCartPole({"num_agents": n})
         )
         config = (
-            PGConfig()
+            PPOConfig()
             .environment("multi_agent_cartpole")
             .rollouts(num_rollout_workers=0)
             .framework("tf")
         )
 
-        pg = config.build()
+        algo = config.build()
         for i in range(50):
-            result = pg.train()
+            result = algo.train()
             print(
                 "Iteration {}, reward {}, timesteps {}".format(
                     i, result["episode_reward_mean"], result["timesteps_total"]
                 )
             )
             if result["episode_reward_mean"] >= 50 * n:
+                algo.stop()
                 return
         raise Exception("failed to improve reward")
 
@@ -500,14 +501,14 @@ class TestMultiAgentEnv(unittest.TestCase):
         )
 
         def gen_policy():
-            config = PGConfig.overrides(
+            config = PPOConfig.overrides(
                 gamma=random.choice([0.5, 0.8, 0.9, 0.95, 0.99]),
                 lr=random.choice([0.001, 0.002, 0.003]),
             )
             return PolicySpec(config=config)
 
         config = (
-            PGConfig()
+            PPOConfig()
             .environment("multi_agent_cartpole")
             .rollouts(num_rollout_workers=0)
             .multi_agent(
@@ -520,27 +521,28 @@ class TestMultiAgentEnv(unittest.TestCase):
                 ),
             )
             .framework("tf")
+            .training(train_batch_size=50, sgd_minibatch_size=50, num_sgd_iter=1)
         )
 
-        pg = config.build()
+        algo = config.build()
         # Just check that it runs without crashing
         for i in range(10):
-            result = pg.train()
+            result = algo.train()
             print(
                 "Iteration {}, reward {}, timesteps {}".format(
                     i, result["episode_reward_mean"], result["timesteps_total"]
                 )
             )
         self.assertTrue(
-            pg.compute_single_action([0, 0, 0, 0], policy_id="policy_1") in [0, 1]
+            algo.compute_single_action([0, 0, 0, 0], policy_id="policy_1") in [0, 1]
         )
         self.assertTrue(
-            pg.compute_single_action([0, 0, 0, 0], policy_id="policy_2") in [0, 1]
+            algo.compute_single_action([0, 0, 0, 0], policy_id="policy_2") in [0, 1]
         )
         self.assertRaisesRegex(
             KeyError,
             "not found in PolicyMap",
-            lambda: pg.compute_single_action([0, 0, 0, 0], policy_id="policy_3"),
+            lambda: algo.compute_single_action([0, 0, 0, 0], policy_id="policy_3"),
         )
 
     def test_space_in_preferred_format(self):

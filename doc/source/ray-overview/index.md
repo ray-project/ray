@@ -1,12 +1,8 @@
 (overview-overview)=
-
-```{include} /_includes/overview/announcement.md
-```
-
 # Overview
 
 Ray is an open-source unified framework for scaling AI and Python applications like machine learning. It provides the compute layer for parallel processing so that you don’t need to be a distributed systems expert. Ray minimizes the complexity of running your distributed individual and end-to-end machine learning workflows with these components:
-* Scalable libraries for common machine learning tasks such as data preprocessing, distributed training, hyperparameter tuning, reinforcement learning, and model serving. 
+* Scalable libraries for common machine learning tasks such as data preprocessing, distributed training, hyperparameter tuning, reinforcement learning, and model serving.
 * Pythonic distributed computing primitives for parallelizing and scaling Python applications.
 * Integrations and utilities for integrating and deploying a Ray cluster with existing tools and infrastructure such as Kubernetes, AWS, GCP, and Azure.
 
@@ -28,25 +24,24 @@ For distributed systems engineers, Ray automatically handles key processes:
 ## What you can do with Ray
 
 These are some common ML workloads that individuals, organizations, and companies leverage Ray to build their AI applications:
-* [Batch inference on CPUs and GPUs](use-cases.html#batch-inference)
-* [Parallel training](use-cases.html#many-model-training)
-* [Model serving](use-cases.html#model-serving)
-* [Distributed training of large models](use-cases.html#distributed-training)
-* [Parallel hyperparameter tuning experiments](use-cases.html#hyperparameter-tuning)
-* [Reinforcement learning](use-cases.html#reinforcement-learning)
-* [ML platform](use-cases.html#ml-platform)
+* [Batch inference on CPUs and GPUs](project:#ref-use-cases-batch-infer)
+* [Model serving](project:#ref-use-cases-model-serving)
+* [Distributed training of large models](project:#ref-use-cases-distributed-training)
+* [Parallel hyperparameter tuning experiments](project:#ref-use-cases-hyperparameter-tuning)
+* [Reinforcement learning](project:#ref-use-cases-reinforcement-learning)
+* [ML platform](project:#ref-use-cases-ml-platform)
 
 ## Ray framework
 
-|<img src="../images/map-of-ray.png" width="70%" loading="lazy">|
+|<img src="../images/map-of-ray.svg" width="70%" loading="lazy">|
 |:--:|
 |Stack of Ray libraries - unified toolkit for ML workloads.|
 
 Ray's unified compute framework consists of three layers:
 
-1. **Ray AI Runtime (AIR) Libraries**--An open-source, Python, domain-specific set of libraries that equip ML engineers, data scientists, and researchers with a scalable and unified toolkit for ML applications.
+1. **Ray AI Libraries**--An open-source, Python, domain-specific set of libraries that equip ML engineers, data scientists, and researchers with a scalable and unified toolkit for ML applications.
 2. **Ray Core**--An open-source, Python, general purpose, distributed computing library that enables ML engineers and Python developers to scale Python applications and accelerate machine learning workloads.
-3. **Ray cluster**--A set of worker nodes connected to a common Ray head node. Ray clusters can be fixed-size, or they can autoscale up and down according to the resources requested by applications running on the cluster.
+3. **Ray Clusters**--A set of worker nodes connected to a common Ray head node. Ray clusters can be fixed-size, or they can autoscale up and down according to the resources requested by applications running on the cluster.
 
 ```{eval-rst}
 .. grid:: 1 2 3 3
@@ -57,43 +52,43 @@ Ray's unified compute framework consists of three layers:
 
         **Scale machine learning workloads**
         ^^^
-        Build ML applications with a toolkit of libraries for distributed 
-        :doc:`data processing <../data/data>`, 
-        :doc:`model training <../train/train>`, 
-        :doc:`tuning <../tune/index>`, 
-        :doc:`reinforcement learning <../rllib/index>`, 
-        :doc:`model serving <../serve/index>`, 
+        Build ML applications with a toolkit of libraries for distributed
+        :doc:`data processing <../data/data>`,
+        :doc:`model training <../train/train>`,
+        :doc:`tuning <../tune/index>`,
+        :doc:`reinforcement learning <../rllib/index>`,
+        :doc:`model serving <../serve/index>`,
         and :doc:`more <../ray-more-libs/index>`.
         +++
         .. button-ref:: libraries-quickstart
             :color: primary
             :outline:
             :expand:
-        
-            Ray AIR Libraries
+
+            Ray AI Libraries
 
     .. grid-item-card::
-        
+
         **Build distributed applications**
         ^^^
-        Build and run distributed applications with a 
+        Build and run distributed applications with a
         :doc:`simple and flexible API <../ray-core/walkthrough>`.
-        :doc:`Parallelize <../ray-core/walkthrough>` single machine code with 
+        :doc:`Parallelize <../ray-core/walkthrough>` single machine code with
         little to zero code changes.
-        
+
         +++
         .. button-ref:: ../ray-core/walkthrough
             :color: primary
             :outline:
             :expand:
-        
+
             Ray Core
 
     .. grid-item-card::
-        
+
         **Deploy large-scale workloads**
         ^^^
-        Deploy workloads on :doc:`AWS, GCP, Azure <../cluster/getting-started>` or 
+        Deploy workloads on :doc:`AWS, GCP, Azure <../cluster/getting-started>` or
         :doc:`on premise <../cluster/vms/user-guides/launching-clusters/on-premises>`.
         Use Ray cluster managers to run Ray on existing
         :doc:`Kubernetes <../cluster/kubernetes/index>`,
@@ -104,8 +99,8 @@ Ray's unified compute framework consists of three layers:
             :color: primary
             :outline:
             :expand:
-        
-            Ray Clusters 
+
+            Ray Clusters
 ```
 
 Each of [Ray's](../ray-air/getting-started) five native libraries distributes a specific ML task:
@@ -113,11 +108,11 @@ Each of [Ray's](../ray-air/getting-started) five native libraries distributes a 
 - [Train](../train/train): Distributed multi-node and multi-core model training with fault tolerance that integrates with popular training libraries.
 - [Tune](../tune/index): Scalable hyperparameter tuning to optimize model performance.
 - [Serve](../serve/index): Scalable and programmable serving to deploy models for online inference, with optional microbatching to improve performance.
-- [RLlib](../rllib/index): Scalable distributed reinforcement learning workloads that integrate with the other Ray AIR libraries.
+- [RLlib](../rllib/index): Scalable distributed reinforcement learning workloads.
 
-Ray's libraries are for both data scientists and ML engineers alike. For data scientists, AIR can be used to scale individual workloads, and also end-to-end ML applications. For ML Engineers, AIR provides scalable platform abstractions that can be used to easily onboard and integrate tooling from the broader ML ecosystem.
+Ray's libraries are for both data scientists and ML engineers alike. For data scientists, these libraries can be used to scale individual workloads, and also end-to-end ML applications. For ML Engineers, these libraries provides scalable platform abstractions that can be used to easily onboard and integrate tooling from the broader ML ecosystem.
 
-For custom applications, the [Ray Core](../ray-core/walkthrough) library enables Python developers to easily build scalable, distributed systems that can run on a laptop, cluster, cloud, or Kubernetes. It's the foundation that Ray AI Runtime libraries and third-party integrations (Ray ecosystem) are built on.
+For custom applications, the [Ray Core](../ray-core/walkthrough) library enables Python developers to easily build scalable, distributed systems that can run on a laptop, cluster, cloud, or Kubernetes. It's the foundation that Ray AI libraries and third-party integrations (Ray ecosystem) are built on.
 
 Ray runs on any machine, cluster, cloud provider, and Kubernetes, and features a growing
 [ecosystem of community integrations](ray-libraries).

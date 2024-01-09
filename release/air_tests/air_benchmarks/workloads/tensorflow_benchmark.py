@@ -73,7 +73,8 @@ def train_func(use_ray: bool, config: dict):
                 logs["local_time_taken"] = time.monotonic() - local_start_time
                 super()._handle(logs, when)
 
-        callbacks = [CustomReportCallback(checkpoint_on="test_end")]
+        # NOTE: We shouldn't checkpoint to be identical to the vanilla TF run.
+        callbacks = [CustomReportCallback(checkpoint_on=[])]
     else:
         callbacks = []
 

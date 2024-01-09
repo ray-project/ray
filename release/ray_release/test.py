@@ -1,5 +1,6 @@
 import enum
 import os
+import platform
 import json
 import time
 from typing import Optional, List, Dict
@@ -20,7 +21,7 @@ from ray_release.util import dict_hash
 AWS_TEST_KEY = "ray_tests"
 AWS_TEST_RESULT_KEY = "ray_test_results"
 DEFAULT_PYTHON_VERSION = tuple(
-    int(v) for v in os.environ.get("RELEASE_PY", "3.8").split(".")
+    int(v) for v in os.environ.get("RELEASE_PY", "3.9").split(".")
 )
 DATAPLANE_ECR_REPO = "anyscale/ray"
 DATAPLANE_ECR_ML_REPO = "anyscale/ray-ml"
@@ -66,6 +67,20 @@ class TestResult:
         )
 
     @classmethod
+    def from_bazel_event(cls, event: dict):
+        return cls.from_result(
+            Result(
+                status=ResultStatus.SUCCESS.value
+                if event["testResult"]["status"] == "PASSED"
+                else ResultStatus.ERROR.value,
+                buildkite_url=(
+                    f"{os.environ.get('BUILDKITE_BUILD_URL')}"
+                    f"#{os.environ.get('BUILDKITE_JOB_ID')}"
+                ),
+            )
+        )
+
+    @classmethod
     def from_dict(cls, result: dict):
         return cls(
             status=result["status"],
@@ -92,6 +107,18 @@ class Test(dict):
         super().__init__(*args, **kwargs)
         self.test_results = None
 
+    @classmethod
+    def from_bazel_event(cls, event: dict, team: str):
+        bazel_rule = event["id"]["testResult"]["label"]
+        prefix = bazel_rule.replace("//", "").replace("/", "_").replace(":", "_")
+        suffix = platform.system().lower()
+        return cls(
+            {
+                "name": f"{prefix}.{suffix}",
+                "team": team,
+            }
+        )
+
     def is_jailed_with_open_issue(self, ray_github: Repository) -> bool:
         """
         Returns whether this test is jailed with open issue.
@@ -113,6 +140,12 @@ class Test(dict):
         Returns whether this test is stable.
         """
         return self.get("stable", True)
+
+    def is_gce(self) -> bool:
+        """
+        Returns whether this test is running on GCE.
+        """
+        return self.get("env") == "gce"
 
     def is_byod_cluster(self) -> bool:
         """
@@ -207,6 +240,12 @@ class Test(dict):
         """
         Returns the byod image tag to use for this test.
         """
+        byod_image_tag = os.environ.get("RAY_IMAGE_TAG")
+        if byod_image_tag:
+            # Use the image tag specified in the environment variable.
+            # TODO(can): this is a temporary backdoor that should be removed
+            # once civ2 is fully rolled out.
+            return byod_image_tag
         commit = os.environ.get(
             "COMMIT_TO_TEST",
             os.environ["BUILDKITE_COMMIT"],
@@ -216,9 +255,6 @@ class Test(dict):
             os.environ["BUILDKITE_BRANCH"],
         )
         pr = os.environ.get("BUILDKITE_PULL_REQUEST", "false")
-        assert (
-            pr != "false" or branch == "master" or branch.startswith("releases/")
-        ), f"Invalid branch name {branch}"
         ray_version = commit[:6]
         if pr != "false":
             ray_version = f"pr-{pr}.{ray_version}"
@@ -239,37 +275,52 @@ class Test(dict):
         }
         return f"{self.get_byod_base_image_tag()}-{dict_hash(custom_info)}"
 
+    def use_byod_ml_image(self) -> bool:
+        """Returns whether to use the ML image for this test."""
+        return self.get_byod_type() == "gpu"
+
     def get_byod_repo(self) -> str:
         """
         Returns the byod repo to use for this test.
         """
-        return (
-            DATAPLANE_ECR_REPO
-            if self.get_byod_type() == "cpu"
-            else DATAPLANE_ECR_ML_REPO
-        )
+        if self.use_byod_ml_image():
+            return DATAPLANE_ECR_ML_REPO
+        return DATAPLANE_ECR_REPO
+
+    def get_byod_ecr(self) -> str:
+        """
+        Returns the anyscale byod ecr to use for this test.
+        """
+        if self.is_gce():
+            return get_global_config()["byod_gcp_cr"]
+        byod_ecr = get_global_config()["byod_aws_cr"]
+        if byod_ecr:
+            return byod_ecr
+        return get_global_config()["byod_ecr"]
 
     def get_ray_image(self) -> str:
         """
         Returns the ray docker image to use for this test.
         """
         config = get_global_config()
-        ray_project = (
-            config["byod_ray_cr_repo"]
-            if self.get_byod_type() == "cpu"
-            else config["byod_ray_ml_cr_repo"]
-        )
-        return (
-            f"{config['byod_ray_ecr']}/"
-            f"{ray_project}:{self.get_byod_base_image_tag()}"
-        )
+        repo = self.get_byod_repo()
+        if repo == DATAPLANE_ECR_REPO:
+            repo_name = config["byod_ray_cr_repo"]
+        elif repo == DATAPLANE_ECR_ML_REPO:
+            repo_name = config["byod_ray_ml_cr_repo"]
+        else:
+            raise ValueError(f"Unknown repo {repo}")
+
+        ecr = config["byod_ray_ecr"]
+        tag = self.get_byod_base_image_tag()
+        return f"{ecr}/{repo_name}:{tag}"
 
     def get_anyscale_base_byod_image(self) -> str:
         """
         Returns the anyscale byod image to use for this test.
         """
         return (
-            f"{get_global_config()['byod_ecr']}/"
+            f"{self.get_byod_ecr()}/"
             f"{self.get_byod_repo()}:{self.get_byod_base_image_tag()}"
         )
 
@@ -284,7 +335,7 @@ class Test(dict):
         Returns the anyscale byod image to use for this test.
         """
         return (
-            f"{get_global_config()['byod_ecr']}/"
+            f"{self.get_byod_ecr()}/"
             f"{self.get_byod_repo()}:{self.get_byod_image_tag()}"
         )
 

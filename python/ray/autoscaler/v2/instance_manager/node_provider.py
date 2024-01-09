@@ -5,7 +5,7 @@ from typing import Dict, List, Set
 from ray.autoscaler._private.node_launcher import BaseNodeLauncher
 from ray.autoscaler.node_provider import NodeProvider as NodeProviderV1
 from ray.autoscaler.tags import TAG_RAY_USER_NODE_TYPE
-from ray.autoscaler.v2.instance_manager.config import NodeProviderConfig
+from ray.autoscaler.v2.instance_manager.config import AutoscalingConfig
 from ray.core.generated.instance_manager_pb2 import Instance
 
 logger = logging.getLogger(__name__)
@@ -58,12 +58,12 @@ class NodeProviderAdapter(NodeProvider):
         self,
         provider: NodeProviderV1,
         node_launcher: BaseNodeLauncher,
-        instance_config_provider: NodeProviderConfig,
+        autoscaling_config: AutoscalingConfig,
     ) -> None:
         super().__init__()
         self._provider = provider
         self._node_launcher = node_launcher
-        self._config = instance_config_provider
+        self._config = autoscaling_config
 
     def _filter_instances(
         self,

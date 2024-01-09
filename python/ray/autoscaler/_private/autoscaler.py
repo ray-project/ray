@@ -12,9 +12,9 @@ from dataclasses import dataclass, field
 from enum import Enum
 from typing import Any, Callable, Dict, FrozenSet, List, Optional, Set, Tuple, Union
 
-import grpc
 import yaml
 
+import ray
 from ray.autoscaler._private.constants import (
     AUTOSCALER_HEARTBEAT_TIMEOUT_S,
     AUTOSCALER_MAX_CONCURRENT_LAUNCHES,
@@ -76,7 +76,7 @@ from ray.autoscaler.tags import (
     TAG_RAY_RUNTIME_CONFIG,
     TAG_RAY_USER_NODE_TYPE,
 )
-from ray.core.generated import gcs_service_pb2, gcs_service_pb2_grpc
+from ray.exceptions import RpcError
 
 logger = logging.getLogger(__name__)
 
@@ -96,17 +96,22 @@ NodeLaunchData = Tuple[NodeTypeConfigDict, NodeCount, Optional[NodeType]]
 @dataclass
 class AutoscalerSummary:
     active_nodes: Dict[NodeType, int]
+    idle_nodes: Optional[Dict[NodeType, int]]
     pending_nodes: List[Tuple[NodeIP, NodeType, NodeStatus]]
     pending_launches: Dict[NodeType, int]
     failed_nodes: List[Tuple[NodeIP, NodeType]]
     node_availability_summary: NodeAvailabilitySummary = field(
         default_factory=lambda: NodeAvailabilitySummary({})
     )
+    # A dictionary of node IP to a list of reasons the node is not idle.
+    node_activities: Optional[Dict[str, Tuple[NodeIP, List[str]]]] = None
     pending_resources: Dict[str, int] = field(default_factory=lambda: {})
     # A mapping from node name (the same key as `usage_by_node`) to node type.
     # Optional for deployment modes which have the concept of node types and
     # backwards compatibility.
     node_type_mapping: Optional[Dict[str, str]] = None
+    # Whether the autoscaler summary is v1 or v2.
+    legacy: bool = False
 
 
 class NonTerminatedNodes:
@@ -184,7 +189,7 @@ class StandardAutoscaler:
         # TODO(ekl): require config reader to be a callable always.
         config_reader: Union[str, Callable[[], dict]],
         load_metrics: LoadMetrics,
-        gcs_node_info_stub: gcs_service_pb2_grpc.NodeInfoGcsServiceStub,
+        gcs_client: "ray._raylet.GcsClient",
         session_name: Optional[str] = None,
         max_launch_batch: int = AUTOSCALER_MAX_LAUNCH_BATCH,
         max_concurrent_launches: int = AUTOSCALER_MAX_CONCURRENT_LAUNCHES,
@@ -214,8 +219,8 @@ class StandardAutoscaler:
             prefix_cluster_info: Whether to add the cluster name to info strs.
             event_summarizer: Utility to consolidate duplicated messages.
             prom_metrics: Prometheus metrics for autoscaler-related operations.
-            gcs_node_info_stub: Stub for interactions with Ray nodes via gRPC
-                request to the GCS. Used to drain nodes before termination.
+            gcs_client: client for interactions with the GCS. Used to drain nodes
+                before termination.
         """
 
         if isinstance(config_reader, str):
@@ -355,7 +360,7 @@ class StandardAutoscaler:
             for remote, local in self.config["file_mounts"].items()
         }
 
-        self.gcs_node_info_stub = gcs_node_info_stub
+        self.gcs_client = gcs_client
 
         for local_path in self.config["file_mounts"].values():
             assert os.path.exists(local_path)
@@ -675,36 +680,26 @@ class StandardAutoscaler:
 
         logger.info(f"Draining {len(raylet_ids_to_drain)} raylet(s).")
         try:
-            request = gcs_service_pb2.DrainNodeRequest(
-                drain_node_data=[
-                    gcs_service_pb2.DrainNodeData(node_id=raylet_id)
-                    for raylet_id in raylet_ids_to_drain
-                ]
-            )
-
             # A successful response indicates that the GCS has marked the
             # desired nodes as "drained." The cloud provider can then terminate
             # the nodes without the GCS printing an error.
-            response = self.gcs_node_info_stub.DrainNode(request, timeout=5)
-
             # Check if we succeeded in draining all of the intended nodes by
             # looking at the RPC response.
-            drained_raylet_ids = {
-                status_item.node_id for status_item in response.drain_node_status
-            }
+            drained_raylet_ids = set(
+                self.gcs_client.drain_nodes(raylet_ids_to_drain, timeout=5)
+            )
             failed_to_drain = raylet_ids_to_drain - drained_raylet_ids
             if failed_to_drain:
                 self.prom_metrics.drain_node_exceptions.inc()
                 logger.error(f"Failed to drain {len(failed_to_drain)} raylet(s).")
-
         # If we get a gRPC error with an UNIMPLEMENTED code, fail silently.
         # This error indicates that the GCS is using Ray version < 1.8.0,
         # for which DrainNode is not implemented.
-        except grpc.RpcError as e:
+        except RpcError as e:
             # If the code is UNIMPLEMENTED, pass.
-            if e.code() == grpc.StatusCode.UNIMPLEMENTED:
+            if e.rpc_code == ray._raylet.GRPC_STATUS_CODE_UNIMPLEMENTED:
                 pass
-            # Otherwise, it's a plane old gRPC error and we should log it.
+            # Otherwise, it's a plain old gRPC error and we should log it.
             else:
                 self.prom_metrics.drain_node_exceptions.inc()
                 logger.exception("Failed to drain Ray nodes. Traceback follows.")
@@ -1046,6 +1041,10 @@ class StandardAutoscaler:
                         "available until you upgrade ray on your cluster.",
                         exc_info=e,
                     )
+            logger.debug(
+                f"New config after validation: {new_config},"
+                f" of type: {type(new_config)}"
+            )
             (new_runtime_hash, new_file_mounts_contents_hash) = hash_runtime_conf(
                 new_config["file_mounts"],
                 new_config["cluster_synced_files"],
@@ -1492,6 +1491,7 @@ class StandardAutoscaler:
         return AutoscalerSummary(
             # Convert active_nodes from counter to dict for later serialization
             active_nodes=dict(active_nodes),
+            idle_nodes=None,
             pending_nodes=[
                 (ip, node_type, status) for _, ip, node_type, status in pending_nodes
             ],
@@ -1500,6 +1500,7 @@ class StandardAutoscaler:
             node_availability_summary=self.node_provider_availability_tracker.summary(),
             pending_resources=pending_resources,
             node_type_mapping=node_type_mapping,
+            legacy=True,
         )
 
     def info_string(self):

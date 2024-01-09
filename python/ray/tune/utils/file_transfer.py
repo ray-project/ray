@@ -197,35 +197,6 @@ def _sync_dir_between_different_nodes(
     return ray.get(unpack_future)
 
 
-@DeveloperAPI
-def delete_on_node(
-    node_ip: str, path: str, return_future: bool = False
-) -> Union[bool, ray.ObjectRef]:
-    """Delete path on node.
-
-    Args:
-        node_ip: IP of node to delete path on.
-        path: Path to delete on remote node.
-        return_future: If True, returns the delete future. Otherwise, blocks until
-            the task finished and returns True if the path was deleted or False if not
-            (e.g. if the path does not exist on the remote node).
-
-    Returns:
-        Boolean indicating if deletion succeeded, or Ray future
-        for scheduled delete task.
-    """
-
-    node_id = _get_node_id_from_node_ip(node_ip)
-
-    delete_task = _remote_delete_path.options(num_cpus=0, **_force_on_node(node_id))
-    future = delete_task.remote(path)
-
-    if return_future:
-        return future
-
-    return ray.get(future)
-
-
 def _get_recursive_files_and_stats(path: str) -> Dict[str, Tuple[float, int]]:
     """Return dict of files mapping to stats in ``path``.
 
@@ -499,13 +470,6 @@ def _copy_dir(
 _remote_copy_dir = ray.remote(_copy_dir)
 
 
-def _delete_path(target_path: str) -> bool:
-    """Delete path (files and directories)"""
-    target_path = os.path.normpath(target_path)
-    with TempFileLock(f"{target_path}.lock"):
-        return _delete_path_unsafe(target_path)
-
-
 def _delete_path_unsafe(target_path: str):
     """Delete path (files and directories). No filelock."""
     if os.path.exists(target_path):
@@ -515,7 +479,3 @@ def _delete_path_unsafe(target_path: str):
             os.remove(target_path)
         return True
     return False
-
-
-# Only export once
-_remote_delete_path = ray.remote(_delete_path)

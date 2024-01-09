@@ -1,7 +1,6 @@
 import functools
 import logging
 from typing import Dict, Set, List, Tuple, Union, Optional, Any
-import os
 import time
 import uuid
 
@@ -101,8 +100,9 @@ def client_mode_wrap(func):
     @functools.wraps(func)
     def wrapper(*args, **kwargs):
         from ray._private.client_mode_hook import client_mode_should_convert
+        from ray._private.auto_init_hook import enable_auto_connect
 
-        if os.environ.get("RAY_ENABLE_AUTO_CONNECT", "") != "0":
+        if enable_auto_connect:
             _ensure_workflow_initialized()
 
         # `is_client_mode_enabled_by_default` is used for testing with

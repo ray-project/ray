@@ -4,6 +4,7 @@ env_vars:
   # anyscale_default_cloud.
   # See https://github.com/pytorch/pytorch/issues/68893 for more details.
   NCCL_SOCKET_IFNAME: ens
+
 debian_packages:
   - curl
 

@@ -9,23 +9,23 @@ public class ReplicaContext {
 
   private String replicaTag;
 
-  private String internalControllerName;
-
   private Object servableObject;
 
   private Map<String, String> config;
 
+  private String appName;
+
   public ReplicaContext(
       String deploymentName,
       String replicaTag,
-      String controllerName,
       Object servableObject,
-      Map<String, String> config) {
+      Map<String, String> config,
+      String appName) {
     this.deploymentName = deploymentName;
     this.replicaTag = replicaTag;
-    this.internalControllerName = controllerName;
     this.servableObject = servableObject;
     this.config = config;
+    this.appName = appName;
   }
 
   public String getDeploymentName() {
@@ -44,14 +44,6 @@ public class ReplicaContext {
     this.replicaTag = replicaTag;
   }
 
-  public String getInternalControllerName() {
-    return internalControllerName;
-  }
-
-  public void setInternalControllerName(String internalControllerName) {
-    this.internalControllerName = internalControllerName;
-  }
-
   public Object getServableObject() {
     return servableObject;
   }
@@ -66,5 +58,13 @@ public class ReplicaContext {
 
   public void setConfig(Map<String, String> config) {
     this.config = config;
+  }
+
+  public String getAppName() {
+    return appName;
+  }
+
+  public void setAppName(String appName) {
+    this.appName = appName;
   }
 }

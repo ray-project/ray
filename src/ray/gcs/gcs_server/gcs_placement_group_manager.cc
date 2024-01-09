@@ -873,15 +873,25 @@ void GcsPlacementGroupManager::Tick() {
       std::chrono::milliseconds(1000) /* milliseconds */);
 }
 
-void GcsPlacementGroupManager::UpdatePlacementGroupLoad() {
+std::shared_ptr<rpc::PlacementGroupLoad> GcsPlacementGroupManager::GetPlacementGroupLoad()
+    const {
   std::shared_ptr<rpc::PlacementGroupLoad> placement_group_load =
       std::make_shared<rpc::PlacementGroupLoad>();
   int total_cnt = 0;
   for (const auto &elem : pending_placement_groups_) {
     const auto pending_pg_spec = elem.second.second;
-    auto placement_group_data = placement_group_load->add_placement_group_data();
     auto placement_group_table_data = pending_pg_spec->GetPlacementGroupTableData();
+
+    auto pg_state = placement_group_table_data.state();
+    if (pg_state != rpc::PlacementGroupTableData::PENDING &&
+        pg_state != rpc::PlacementGroupTableData::RESCHEDULING) {
+      // REMOVED or CREATED pgs are not considered as load.
+      continue;
+    }
+
+    auto placement_group_data = placement_group_load->add_placement_group_data();
     placement_group_data->Swap(&placement_group_table_data);
+
     total_cnt += 1;
     if (total_cnt >= RayConfig::instance().max_placement_group_load_report_size()) {
       break;
@@ -890,15 +900,31 @@ void GcsPlacementGroupManager::UpdatePlacementGroupLoad() {
   // NOTE: Infeasible placement groups also belong to the pending queue when report
   // metrics.
   for (const auto &pending_pg_spec : infeasible_placement_groups_) {
-    auto placement_group_data = placement_group_load->add_placement_group_data();
     auto placement_group_table_data = pending_pg_spec->GetPlacementGroupTableData();
+
+    auto pg_state = placement_group_table_data.state();
+    if (pg_state != rpc::PlacementGroupTableData::PENDING &&
+        pg_state != rpc::PlacementGroupTableData::RESCHEDULING) {
+      // REMOVED or CREATED pgs are not considered as load.
+      continue;
+    }
+
+    auto placement_group_data = placement_group_load->add_placement_group_data();
     placement_group_data->Swap(&placement_group_table_data);
+
     total_cnt += 1;
     if (total_cnt >= RayConfig::instance().max_placement_group_load_report_size()) {
       break;
     }
   }
-  gcs_resource_manager_.UpdatePlacementGroupLoad(std::move(placement_group_load));
+
+  return placement_group_load;
+}
+
+void GcsPlacementGroupManager::UpdatePlacementGroupLoad() {
+  // TODO(rickyx): We should remove this, no other callers other than autoscaler
+  // use this info.
+  gcs_resource_manager_.UpdatePlacementGroupLoad(GetPlacementGroupLoad());
 }
 
 void GcsPlacementGroupManager::Initialize(const GcsInitData &gcs_init_data) {
@@ -1044,18 +1070,6 @@ bool GcsPlacementGroupManager::RescheduleIfStillHasUnplacedBundles(
     }
   }
   return false;
-}
-
-const absl::btree_multimap<
-    int64_t,
-    std::pair<ExponentialBackOff, std::shared_ptr<GcsPlacementGroup>>>
-    &GcsPlacementGroupManager::GetPendingPlacementGroups() const {
-  return pending_placement_groups_;
-}
-
-const std::deque<std::shared_ptr<GcsPlacementGroup>>
-    &GcsPlacementGroupManager::GetInfeasiblePlacementGroups() const {
-  return infeasible_placement_groups_;
 }
 
 }  // namespace gcs

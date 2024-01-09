@@ -58,9 +58,9 @@ if __name__ == "__main__":
     # train a PPO algorithm with the loaded module
     config = (
         PPOConfig()
+        .experimental(_enable_new_api_stack=True)
         .framework(args.framework)
-        .training(_enable_learner_api=True)
-        .rl_module(_enable_rl_module_api=True, rl_module_spec=module_to_load_spec)
+        .rl_module(rl_module_spec=module_to_load_spec)
         .environment("CartPole-v1")
     )
 

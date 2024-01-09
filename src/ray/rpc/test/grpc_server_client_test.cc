@@ -86,8 +86,10 @@ class TestGrpcService : public GrpcService {
       const std::unique_ptr<grpc::ServerCompletionQueue> &cq,
       std::vector<std::unique_ptr<ServerCallFactory>> *server_call_factories,
       const ClusterID &cluster_id) override {
-    RPC_SERVICE_HANDLER(TestService, Ping, /*max_active_rpcs=*/1);
-    RPC_SERVICE_HANDLER(TestService, PingTimeout, /*max_active_rpcs=*/1);
+    RPC_SERVICE_HANDLER_CUSTOM_AUTH(
+        TestService, Ping, /*max_active_rpcs=*/1, AuthType::NO_AUTH);
+    RPC_SERVICE_HANDLER_CUSTOM_AUTH(
+        TestService, PingTimeout, /*max_active_rpcs=*/1, AuthType::NO_AUTH);
   }
 
  private:

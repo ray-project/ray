@@ -6,7 +6,7 @@ from ray import serve
 app = FastAPI()
 
 
-@serve.deployment(route_prefix="/")
+@serve.deployment
 @serve.ingress(app)
 class FastAPIDeployment:
     # FastAPI will automatically parse the HTTP request for us.
@@ -16,7 +16,7 @@ class FastAPIDeployment:
 
 
 # 2: Deploy the deployment.
-serve.run(FastAPIDeployment.bind())
+serve.run(FastAPIDeployment.bind(), route_prefix="/")
 
 # 3: Query the deployment and print the result.
 print(requests.get("http://localhost:8000/hello", params={"name": "Theodore"}).json())

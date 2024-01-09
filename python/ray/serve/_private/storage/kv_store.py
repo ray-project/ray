@@ -7,7 +7,6 @@ from ray._raylet import GcsClient
 from ray.serve._private.constants import RAY_SERVE_KV_TIMEOUT_S, SERVE_LOGGER_NAME
 from ray.serve._private.storage.kv_store_base import KVStoreBase
 
-
 logger = logging.getLogger(SERVE_LOGGER_NAME)
 
 

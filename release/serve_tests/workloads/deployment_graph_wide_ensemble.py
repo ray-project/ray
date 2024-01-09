@@ -17,10 +17,7 @@ import click
 
 from typing import Optional
 
-import ray
 from ray import serve
-from ray.dag import InputNode
-from ray.serve.drivers import DAGDriver
 from serve_test_cluster_utils import (
     setup_local_single_node_cluster,
     setup_anyscale_cluster,
@@ -49,8 +46,13 @@ class Node:
 
 
 @serve.deployment
-def combine(value_refs):
-    return sum(ray.get(value_refs))
+class Combine:
+    def __init__(self, handles):
+        self.handles = handles
+
+    async def __call__(self, val):
+        refs = [handle.compute.remote(val) for handle in self.handles]
+        return sum([await ref for ref in refs])
 
 
 def test_wide_fanout_deployment_graph(
@@ -71,18 +73,8 @@ def test_wide_fanout_deployment_graph(
     nodes = [
         Node.bind(i, init_delay_secs=init_delay_secs) for i in range(0, fanout_degree)
     ]
-    outputs = []
-    with InputNode() as user_input:
-        for i in range(0, fanout_degree):
-            outputs.append(
-                nodes[i].compute.bind(user_input, compute_delay_secs=compute_delay_secs)
-            )
 
-        dag = combine.bind(outputs)
-
-        serve_dag = DAGDriver.bind(dag)
-
-    return serve_dag
+    return Combine.bind(nodes)
 
 
 @click.command()
@@ -124,11 +116,11 @@ def main(
 
     # 0 + 1 + 2 + 3 + 4 + ... + (fanout_degree - 1)
     expected = ((0 + fanout_degree - 1) * fanout_degree) / 2
-    assert ray.get(dag_handle.predict.remote(0)) == expected
+    assert dag_handle.remote(0).result() == expected
 
     throughput_mean_tps, throughput_std_tps = asyncio.run(
         benchmark_throughput_tps(
-            dag_handle,
+            dag_handle.remote,
             expected,
             duration_secs=throughput_trial_duration_secs,
             num_clients=num_clients,
@@ -136,7 +128,7 @@ def main(
     )
     latency_mean_ms, latency_std_ms = asyncio.run(
         benchmark_latency_ms(
-            dag_handle,
+            dag_handle.remote,
             expected,
             num_requests=num_requests_per_client,
             num_clients=num_clients,

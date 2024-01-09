@@ -20,4 +20,4 @@ cartpole-bc:
         input: dataset
         input_config:
             format: json
-            path: /tmp/out
+            paths: /tmp/out

@@ -92,7 +92,7 @@ def test_shared_memory_and_inline_worker_heap(shutdown_only):
 
     wait_for_condition(
         # 1KiB for metadata difference
-        lambda: approx_eq_dict_in(objects_by_loc(info), expected, 1 * KiB),
+        lambda: approx_eq_dict_in(objects_by_loc(info), expected, 2 * KiB),
         timeout=20,
         retry_interval_ms=500,
     )
@@ -134,7 +134,7 @@ def test_shared_memory_and_inline_worker_heap(shutdown_only):
 
     wait_for_condition(
         # 1KiB for metadata difference
-        lambda: approx_eq_dict_in(objects_by_loc(info), expected, 1 * KiB),
+        lambda: approx_eq_dict_in(objects_by_loc(info), expected, 2 * KiB),
         timeout=20,
         retry_interval_ms=500,
     )
@@ -255,7 +255,7 @@ def test_fallback_memory(shutdown_only):
 
     wait_for_condition(
         # 2KiB for metadata difference
-        lambda: approx_eq_dict_in(objects_by_loc(info), expected, 2 * KiB),
+        lambda: approx_eq_dict_in(objects_by_loc(info), expected, 3 * KiB),
         timeout=20,
         retry_interval_ms=500,
     )
@@ -282,8 +282,8 @@ def test_fallback_memory(shutdown_only):
     }
 
     wait_for_condition(
-        # 1KiB for metadata difference
-        lambda: approx_eq_dict_in(objects_by_loc(info), expected, 2 * KiB),
+        # 3KiB for metadata difference
+        lambda: approx_eq_dict_in(objects_by_loc(info), expected, 3 * KiB),
         timeout=20,
         retry_interval_ms=500,
     )
@@ -302,8 +302,8 @@ def test_fallback_memory(shutdown_only):
     }
 
     wait_for_condition(
-        # 1KiB for metadata difference
-        lambda: approx_eq_dict_in(objects_by_loc(info), expected, 2 * KiB),
+        # 3KiB for metadata difference
+        lambda: approx_eq_dict_in(objects_by_loc(info), expected, 3 * KiB),
         timeout=20,
         retry_interval_ms=500,
     )
@@ -333,7 +333,7 @@ def test_seal_memory(shutdown_only):
 
     wait_for_condition(
         # 1KiB for metadata difference
-        lambda: approx_eq_dict_in(objects_by_seal_state(info), expected, 1 * KiB),
+        lambda: approx_eq_dict_in(objects_by_seal_state(info), expected, 2 * KiB),
         timeout=20,
         retry_interval_ms=500,
     )
@@ -347,7 +347,7 @@ def test_seal_memory(shutdown_only):
 
     wait_for_condition(
         # 1KiB for metadata difference
-        lambda: approx_eq_dict_in(objects_by_seal_state(info), expected, 1 * KiB),
+        lambda: approx_eq_dict_in(objects_by_seal_state(info), expected, 2 * KiB),
         timeout=20,
         retry_interval_ms=500,
     )

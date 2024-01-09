@@ -35,24 +35,28 @@ export type NodeDetail = {
   actors: { [id: string]: Actor };
   cmdline: string[];
   state: string;
-  logUrl: string;
+  logicalResources?: str;
+};
+
+// Example:
+// "27fcdbcd36f9227b88bf07d48769efb4471cb204adbfb4b077cd2bc7": "0.0/8.0 CPU\n  0B/25.75GiB memory\n  0B/12.88GiB object_store_memory"
+type NodeLogicalResourcesMap = {
+  [nodeId: string]: str;
 };
 
 export type NodeListRsp = {
   data: {
     summary: NodeDetail[];
+    nodeLogicalResources: NodeLogicalResourcesMap;
   };
   result: boolean;
   msg: string;
 };
 
-export type GPUProcessStats = {
-  // Sub stat of GPU stats, this type represents the GPU
-  // utilization of a single process of a single GPU.
-  username: string;
-  command: string;
-  gpuMemoryUsage: number;
+export type ProcessGPUUsage = {
+  // This gpu usage stats from a process
   pid: number;
+  gpuMemoryUsage: number;
 };
 
 export type GPUStats = {
@@ -60,14 +64,10 @@ export type GPUStats = {
   uuid: string;
   index: number;
   name: string;
-  temperatureGpu: number;
-  fanSpeed: number;
   utilizationGpu?: number;
-  powerDraw: number;
-  enforcedPowerLimit: number;
   memoryUsed: number;
   memoryTotal: number;
-  processes?: GPUProcessStats[];
+  processes?: ProcessGPUUsage[];
 };
 
 export type NodeDetailExtend = {

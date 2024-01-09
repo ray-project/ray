@@ -31,8 +31,10 @@ KUBERAY_LABEL_KEY_KIND = "ray.io/node-type"
 KUBERAY_LABEL_KEY_TYPE = "ray.io/group"
 # Kind label value indicating the pod is the head.
 KUBERAY_KIND_HEAD = "head"
-# Group name (node type) to use for the  head.
+# Group name (node type) to use for the head.
 KUBERAY_TYPE_HEAD = "head-group"
+# KubeRay CRD version
+KUBERAY_CRD_VER = os.getenv("KUBERAY_CRD_VER", "v1alpha1")
 
 RAY_HEAD_POD_NAME = os.getenv("RAY_HEAD_POD_NAME")
 
@@ -44,16 +46,16 @@ RAY_HEAD_POD_NAME = os.getenv("RAY_HEAD_POD_NAME")
 # it decreases the number of replicas and adds the exact pods that should be
 # terminated to the scaleStrategy).
 
-# KuberayNodeProvider inherits from BatchingNodeProvider.
+# KubeRayNodeProvider inherits from BatchingNodeProvider.
 # Thus, the autoscaler's create and terminate requests are batched into a single
 # Scale Request object which is submitted at the end of autoscaler update.
 # KubeRay node provider converts the ScaleRequest into a RayCluster CR patch
 # and applies the patch in the submit_scale_request method.
 
-# To reduce potential for race conditions, KuberayNodeProvider
+# To reduce potential for race conditions, KubeRayNodeProvider
 # aborts the autoscaler update if the operator has not yet processed workersToDelete -
-# see KuberayNodeProvider.safe_to_scale().
-# Once it is confirmed that workersToDelete have been cleaned up, KuberayNodeProvider
+# see KubeRayNodeProvider.safe_to_scale().
+# Once it is confirmed that workersToDelete have been cleaned up, KubeRayNodeProvider
 # clears the workersToDelete list.
 
 
@@ -162,7 +164,7 @@ def url_from_resource(namespace: str, path: str) -> str:
     if path.startswith("pods"):
         api_group = "/api/v1"
     elif path.startswith("rayclusters"):
-        api_group = "/apis/ray.io/v1alpha1"
+        api_group = "/apis/ray.io/" + KUBERAY_CRD_VER
     else:
         raise NotImplementedError("Tried to access unknown entity at {}".format(path))
     return (
@@ -200,14 +202,14 @@ def _worker_group_replicas(raycluster: Dict[str, Any], group_index: int):
     return raycluster["spec"]["workerGroupSpecs"][group_index].get("replicas", 1)
 
 
-class KuberayNodeProvider(BatchingNodeProvider):  # type: ignore
+class KubeRayNodeProvider(BatchingNodeProvider):  # type: ignore
     def __init__(
         self,
         provider_config: Dict[str, Any],
         cluster_name: str,
         _allow_multiple: bool = False,
     ):
-        logger.info("Creating KuberayNodeProvider.")
+        logger.info("Creating KubeRayNodeProvider.")
         self.namespace = provider_config["namespace"]
         self.cluster_name = cluster_name
 
@@ -215,10 +217,10 @@ class KuberayNodeProvider(BatchingNodeProvider):  # type: ignore
 
         assert (
             provider_config.get(WORKER_LIVENESS_CHECK_KEY, True) is False
-        ), f"To use KuberayNodeProvider, must set `{WORKER_LIVENESS_CHECK_KEY}:False`."
+        ), f"To use KubeRayNodeProvider, must set `{WORKER_LIVENESS_CHECK_KEY}:False`."
         assert (
             provider_config.get(WORKER_RPC_DRAIN_KEY, False) is True
-        ), f"To use KuberayNodeProvider, must set `{WORKER_RPC_DRAIN_KEY}:True`."
+        ), f"To use KubeRayNodeProvider, must set `{WORKER_RPC_DRAIN_KEY}:True`."
         BatchingNodeProvider.__init__(
             self, provider_config, cluster_name, _allow_multiple
         )
@@ -398,7 +400,7 @@ class KuberayNodeProvider(BatchingNodeProvider):  # type: ignore
         if path.startswith("pods"):
             api_group = "/api/v1"
         elif path.startswith("rayclusters"):
-            api_group = "/apis/ray.io/v1alpha1"
+            api_group = "/apis/ray.io/" + KUBERAY_CRD_VER
         else:
             raise NotImplementedError(
                 "Tried to access unknown entity at {}".format(path)

@@ -15,47 +15,6 @@
 namespace ray {
 namespace pubsub {
 
-class MockSubscriberInterface : public SubscriberInterface {
- public:
-  MOCK_METHOD(bool,
-              Subscribe,
-              (std::unique_ptr<rpc::SubMessage> sub_message,
-               const rpc::ChannelType channel_type,
-               const rpc::Address &publisher_address,
-               const std::string &key_id,
-               SubscribeDoneCallback subscribe_done_callback,
-               SubscriptionItemCallback subscription_callback,
-               SubscriptionFailureCallback subscription_failure_callback),
-              (override));
-  MOCK_METHOD(bool,
-              SubscribeChannel,
-              (std::unique_ptr<rpc::SubMessage> sub_message,
-               const rpc::ChannelType channel_type,
-               const rpc::Address &publisher_address,
-               SubscribeDoneCallback subscribe_done_callback,
-               SubscriptionItemCallback subscription_callback,
-               SubscriptionFailureCallback subscription_failure_callback),
-              (override));
-  MOCK_METHOD(bool,
-              Unsubscribe,
-              (const rpc::ChannelType channel_type,
-               const rpc::Address &publisher_address,
-               const std::string &key_id),
-              (override));
-  MOCK_METHOD(bool,
-              UnsubscribeChannel,
-              (const rpc::ChannelType channel_type,
-               const rpc::Address &publisher_address),
-              (override));
-  MOCK_METHOD(std::string, DebugString, (), (const, override));
-};
-
-}  // namespace pubsub
-}  // namespace ray
-
-namespace ray {
-namespace pubsub {
-
 class MockSubscriberClientInterface : public SubscriberClientInterface {
  public:
   MOCK_METHOD(void,
@@ -68,6 +27,52 @@ class MockSubscriberClientInterface : public SubscriberClientInterface {
               (const rpc::PubsubCommandBatchRequest &request,
                const rpc::ClientCallback<rpc::PubsubCommandBatchReply> &callback),
               (override));
+};
+
+class MockSubscriber : public SubscriberInterface {
+ public:
+  MOCK_METHOD(bool,
+              Subscribe,
+              (std::unique_ptr<rpc::SubMessage> sub_message,
+               const rpc::ChannelType channel_type,
+               const rpc::Address &owner_address,
+               const std::string &key_id,
+               pubsub::SubscribeDoneCallback subscribe_done_callback,
+               pubsub::SubscriptionItemCallback subscription_callback,
+               pubsub::SubscriptionFailureCallback subscription_failure_callback),
+              (override));
+
+  MOCK_METHOD(bool,
+              SubscribeChannel,
+              (std::unique_ptr<rpc::SubMessage> sub_message,
+               const rpc::ChannelType channel_type,
+               const rpc::Address &owner_address,
+               pubsub::SubscribeDoneCallback subscribe_done_callback,
+               pubsub::SubscriptionItemCallback subscription_callback,
+               pubsub::SubscriptionFailureCallback subscription_failure_callback),
+              (override));
+
+  MOCK_METHOD(bool,
+              Unsubscribe,
+              (const rpc::ChannelType channel_type,
+               const rpc::Address &publisher_address,
+               const std::string &key_id),
+              (override));
+
+  MOCK_METHOD(bool,
+              UnsubscribeChannel,
+              (const rpc::ChannelType channel_type,
+               const rpc::Address &publisher_address),
+              (override));
+
+  MOCK_METHOD(bool,
+              IsSubscribed,
+              (const rpc::ChannelType channel_type,
+               const rpc::Address &publisher_address,
+               const std::string &key_id),
+              (const, override));
+
+  MOCK_METHOD(std::string, DebugString, (), (const, override));
 };
 
 }  // namespace pubsub

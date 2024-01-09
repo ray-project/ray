@@ -2,6 +2,16 @@
 
 # User Guides
 
+```{toctree}
+:hidden:
+
+launching-clusters/index
+large-cluster-best-practices
+configuring-autoscaling
+logging
+Community-supported Cluster Managers <community/index>
+```
+
 :::{note}
 To learn the basics of Ray on Cloud VMs, we recommend taking a look
 at the {ref}`introductory guide <vm-cluster-quick-start>` first.

@@ -14,4 +14,5 @@ Ray Data API
     data_context.rst
     random_access_dataset.rst
     utility.rst
+    preprocessor.rst
     from_other_data_libs.rst

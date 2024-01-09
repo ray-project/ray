@@ -128,15 +128,20 @@ def generalized_discount_cumsum(
             cumulative sums for each individual element in `x` till the end of
             the trajectory.
 
-    Examples:
-        >>> x = np.array([0.0, 1.0, 2.0, 3.0])
-        >>> deltas = np.array([1.0, 4.0, 15.0])
-        >>> gamma = 0.9
-        >>> generalized_discount_cumsum(x, deltas, gamma)
-        ... array([0.0 + 0.9^1.0*1.0 + 0.9^4.0*2.0 + 0.9^15.0*3.0,
-        ...        1.0 + 0.9^4.0*2.0 + 0.9^15.0*3.0,
-        ...        2.0 + 0.9^15.0*3.0,
-        ...        3.0])
+    .. testcode::
+        :skipif: True
+
+        x = np.array([0.0, 1.0, 2.0, 3.0])
+        deltas = np.array([1.0, 4.0, 15.0])
+        gamma = 0.9
+        generalized_discount_cumsum(x, deltas, gamma)
+
+    .. testoutput::
+
+        array([0.0 + 0.9^1.0*1.0 + 0.9^4.0*2.0 + 0.9^15.0*3.0,
+               1.0 + 0.9^4.0*2.0 + 0.9^15.0*3.0,
+               2.0 + 0.9^15.0*3.0,
+               3.0])
     """
     reversed_x = x[::-1]
     reversed_deltas = deltas[::-1]

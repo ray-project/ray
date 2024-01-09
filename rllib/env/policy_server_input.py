@@ -39,34 +39,36 @@ class PolicyServerInput(ThreadingMixIn, HTTPServer, InputReader):
     communicate with this server can execute arbitary code on the machine. Use
     this with caution, in isolated environments, and at your own risk.
 
-    Examples:
-        >>> import gymnasium as gym
-        >>> from ray.rllib.algorithms.pg import PGConfig
-        >>> from ray.rllib.env.policy_client import PolicyClient
-        >>> from ray.rllib.env.policy_server_input import PolicyServerInput
-        >>> addr, port = ... # doctest: +SKIP
-        >>> config = ( # doctest: +SKIP
-        ...     PGConfig()
-        ...     .environment("CartPole-v1")
-        ...     .offline_data(
-        ...         input_=lambda ioctx: PolicyServerInput(ioctx, addr, port)
-        ...     )
-        ...     # Run just 1 server (in the Algorithm's WorkerSet).
-        ...     .rollouts(num_rollout_workers=0)
-        ... )
-        >>> pg = config.build() # doctest: +SKIP
-        >>> while True: # doctest: +SKIP
-        >>>     pg.train() # doctest: +SKIP
+    .. testcode::
+        :skipif: True
 
-        >>> client = PolicyClient( # doctest: +SKIP
-        ...     "localhost:9900", inference_mode="local")
-        >>> eps_id = client.start_episode()  # doctest: +SKIP
-        >>> env = gym.make("CartPole-v1")
-        >>> obs, info = env.reset()
-        >>> action = client.get_action(eps_id, obs) # doctest: +SKIP
-        >>> _, reward, _, _, _ = env.step(action) # doctest: +SKIP
-        >>> client.log_returns(eps_id, reward) # doctest: +SKIP
-        >>> client.log_returns(eps_id, reward) # doctest: +SKIP
+        import gymnasium as gym
+        from ray.rllib.algorithms.ppo import PPOConfig
+        from ray.rllib.env.policy_client import PolicyClient
+        from ray.rllib.env.policy_server_input import PolicyServerInput
+        addr, port = ...
+        config = (
+            PPOConfig()
+            .environment("CartPole-v1")
+            .offline_data(
+                input_=lambda ioctx: PolicyServerInput(ioctx, addr, port)
+            )
+            # Run just 1 server (in the Algorithm's WorkerSet).
+            .rollouts(num_rollout_workers=0)
+        )
+        algo = config.build()
+        while True:
+            algo.train()
+        client = PolicyClient(
+            "localhost:9900", inference_mode="local")
+        eps_id = client.start_episode()
+        env = gym.make("CartPole-v1")
+        obs, info = env.reset()
+        action = client.get_action(eps_id, obs)
+        _, reward, _, _, _ = env.step(action)
+        client.log_returns(eps_id, reward)
+        client.log_returns(eps_id, reward)
+        algo.stop()
     """
 
     @PublicAPI
@@ -133,7 +135,7 @@ class PolicyServerInput(ThreadingMixIn, HTTPServer, InputReader):
                 """This sampler only maintains a queue to get metrics from."""
 
                 def __init__(self, metrics_queue):
-                    """Initializes an AsyncSampler instance.
+                    """Initializes a MetricsDummySampler instance.
 
                     Args:
                         metrics_queue: A queue of metrics

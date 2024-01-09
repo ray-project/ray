@@ -1,8 +1,11 @@
 # If want to use checkpointing with a custom training function (not a Ray
 # integration like PyTorch or Tensorflow), your function can read/write
-# checkpoint through ``ray.train.TrainContext`` APIs.
-import time
+# checkpoint through the ``ray.train.report(metrics, checkpoint=...)`` API.
 import argparse
+import json
+import os
+import tempfile
+import time
 
 from ray import train, tune
 from ray.train import Checkpoint
@@ -17,16 +20,23 @@ def train_func(config):
     step = 0
     width, height = config["width"], config["height"]
 
-    if train.get_checkpoint():
-        loaded_checkpoint = train.get_checkpoint()
-        step = loaded_checkpoint.to_dict()["step"] + 1
+    checkpoint = train.get_checkpoint()
+    if checkpoint:
+        with checkpoint.as_directory() as checkpoint_dir:
+            with open(os.path.join(checkpoint_dir, "checkpoint.json")) as f:
+                state = json.load(f)
+            step = state["step"] + 1
 
     for step in range(step, 100):
         intermediate_score = evaluation_fn(step, width, height)
-        checkpoint = Checkpoint.from_dict({"step": step})
-        train.report(
-            {"iterations": step, "mean_loss": intermediate_score}, checkpoint=checkpoint
-        )
+
+        with tempfile.TemporaryDirectory() as temp_checkpoint_dir:
+            with open(os.path.join(temp_checkpoint_dir, "checkpoint.json"), "w") as f:
+                json.dump({"step": step}, f)
+            train.report(
+                {"iterations": step, "mean_loss": intermediate_score},
+                checkpoint=Checkpoint.from_directory(temp_checkpoint_dir),
+            )
 
 
 if __name__ == "__main__":
@@ -57,5 +67,4 @@ if __name__ == "__main__":
     best_result = results.get_best_result()
     print("Best hyperparameters: ", best_result.config)
     best_checkpoint = best_result.checkpoint
-    checkpoint_data = best_checkpoint.to_dict()
-    print("Best checkpoint: ", checkpoint_data)
+    print("Best checkpoint: ", best_checkpoint)

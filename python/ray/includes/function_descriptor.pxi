@@ -55,6 +55,10 @@ cdef class FunctionDescriptor:
                 d[k] = v.__get__(self)
         return d
 
+    @property
+    def repr(self):
+        return self.__repr__()
+
 
 FunctionDescriptor_constructor_map[<int>EmptyFunctionDescriptorType] = \
     EmptyFunctionDescriptor.from_cpp
@@ -71,6 +75,10 @@ cdef class EmptyFunctionDescriptor(FunctionDescriptor):
     @staticmethod
     cdef from_cpp(const CFunctionDescriptor &c_function_descriptor):
         return EmptyFunctionDescriptor()
+
+    @property
+    def repr(self):
+        return "FunctionDescriptor(empty)"
 
 
 FunctionDescriptor_constructor_map[<int>JavaFunctionDescriptorType] = \
@@ -131,6 +139,10 @@ cdef class JavaFunctionDescriptor(FunctionDescriptor):
             The signature of the function descriptor.
         """
         return <str>self.typed_descriptor.Signature()
+
+    @property
+    def repr(self):
+        return f"{self.class_name}.{self.function_name}"
 
 
 FunctionDescriptor_constructor_map[<int>PythonFunctionDescriptorType] = \
@@ -378,3 +390,7 @@ cdef class CppFunctionDescriptor(FunctionDescriptor):
             The class name of the function descriptor.
         """
         return <str>self.typed_descriptor.ClassName()
+
+    @property
+    def repr(self):
+        return f"{self.class_name}::{self.function_name}"

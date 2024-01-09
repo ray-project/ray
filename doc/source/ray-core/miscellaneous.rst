@@ -256,15 +256,6 @@ Tuning Ray Settings
 
 To run a large cluster, several parameters need to be tuned in Ray.
 
-Resource broadcasting
-*********************
-
-In Ray 2.3+, lightweight resource broadcasting is supported as an experimental feature.
-Turning it on can significantly reduce GCS load and thus
-improve its overall stability and scalability. To turn it on, this OS environment
-should be set: ``RAY_use_ray_syncer=true``. This feature will be turned on by
-default in 2.4+.
-
 Benchmark
 ~~~~~~~~~
 
@@ -284,7 +275,6 @@ The OS setup:
 
 The Ray setup:
 
-- ``RAY_use_ray_syncer=true``
 - ``RAY_event_stats=false``
 
 Test workload:

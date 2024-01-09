@@ -5,6 +5,7 @@ Scheduling Strategy
 -------------------
 
 .. autosummary::
+    :nosignatures:
     :toctree: doc/
 
     ray.util.scheduling_strategies.PlacementGroupSchedulingStrategy
@@ -16,6 +17,7 @@ Placement Group
 ---------------
 
 .. autosummary::
+    :nosignatures:
     :toctree: doc/
 
     ray.util.placement_group

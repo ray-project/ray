@@ -37,6 +37,37 @@ ray.get([verbose.remote() for _ in range(10)])
     assert out_str.count("[repeated 9x across cluster]") == 1
 
 
+def test_dedup_error_warning_logs(ray_start_cluster, monkeypatch):
+    with monkeypatch.context() as m:
+        m.setenv("RAY_DEDUP_LOGS_AGG_WINDOW_S", 5)
+        cluster = ray_start_cluster
+        cluster.add_node(num_cpus=1)
+        cluster.add_node(num_cpus=1)
+        cluster.add_node(num_cpus=1)
+
+        script = """
+import ray
+import time
+from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
+
+ray.init()
+
+@ray.remote(num_cpus=0)
+class Foo:
+    def __init__(self):
+        time.sleep(1)
+
+# NOTE: We should save actor, otherwise it will be out of scope.
+actors = [Foo.remote() for _ in range(30)]
+ray.get([a.__ray_ready__.remote() for a in actors])
+"""
+        out_str = run_string_as_driver(script)
+        print(out_str)
+    assert "PYTHON worker processes have been started" in out_str
+    assert out_str.count("RAY_DEDUP_LOGS") == 1
+    assert "[repeated" in out_str
+
+
 def test_logger_config_with_ray_init():
     """Test that the logger is correctly configured when ray.init is called."""
 
@@ -55,14 +86,13 @@ ray.init(num_cpus=1)
 def test_spill_logs():
     script = """
 import ray
-import numpy as np
 
 ray.init(object_store_memory=200e6)
 
 x = []
 
 for _ in range(10):
-    x.append(ray.put(np.ones(100 * 1024 * 1024, dtype=np.uint8)))
+    x.append(ray.put(bytes(100 * 1024 * 1024)))
 """
 
     proc = run_string_as_driver_nonblocking(script, env={"RAY_verbose_spill_logs": "1"})
@@ -185,9 +215,7 @@ time.sleep(15)
     ],
     indirect=True,
 )
-def test_autoscaler_warn_deadlock(
-    enable_syncer_test, ray_start_cluster_head_with_env_vars
-):
+def test_autoscaler_warn_deadlock(ray_start_cluster_head_with_env_vars):
     script = """
 import ray
 import time
@@ -323,6 +351,72 @@ time.sleep(3)
         out_str = proc.stdout.read().decode("ascii")
         print(out_str)
         assert out_str and "Test autoscaler event" in out_str
+        return True
+
+    wait_for_condition(verify)
+
+
+@pytest.mark.parametrize(
+    "event_level,expected_msg,unexpected_msg",
+    [
+        ("TRACE", "TRACE,DEBUG,INFO,WARNING,ERROR,FATAL", ""),
+        ("DEBUG", "DEBUG,INFO,WARNING,ERROR,FATAL", "TRACE"),
+        ("INFO", "INFO,WARNING,ERROR,FATAL", "TRACE,DEBUG"),
+        ("WARNING", "WARNING,ERROR,FATAL", "TRACE,DEBUG,INFO"),
+        ("ERROR", "ERROR,FATAL", "TRACE,DEBUG,INFO,WARNING"),
+        ("FATAL", "FATAL", "TRACE,DEBUG,INFO,WARNING,ERROR"),
+    ],
+)
+def test_autoscaler_v2_stream_events_filter_level(
+    shutdown_only, event_level, expected_msg, unexpected_msg, monkeypatch
+):
+    """
+    Test in autoscaler v2, autoscaler events are streamed directly from
+    events file
+    """
+
+    script = """
+import ray
+import time
+from ray.core.generated.event_pb2 import Event as RayEvent
+from ray._private.event.event_logger import get_event_logger
+
+ray.init("auto")
+
+# Get event logger to write autoscaler events.
+log_dir = ray._private.worker.global_worker.node.get_logs_dir_path()
+event_logger = get_event_logger(RayEvent.SourceType.AUTOSCALER, log_dir)
+event_logger.trace("TRACE")
+event_logger.debug("DEBUG")
+event_logger.info("INFO")
+event_logger.warning("WARNING")
+event_logger.error("ERROR")
+event_logger.fatal("FATAL")
+
+# Block and sleep
+time.sleep(3)
+    """
+
+    ray.init(_system_config={"enable_autoscaler_v2": True})
+
+    env = os.environ.copy()
+    env["RAY_LOG_TO_DRIVER_EVENT_LEVEL"] = event_level
+    proc = run_string_as_driver_nonblocking(script, env=env)
+
+    def verify():
+        out_str = proc.stdout.read().decode("ascii")
+        print(out_str)
+        # Filter only autoscaler prints.
+        assert out_str
+
+        out_str = "".join(
+            [line for line in out_str.splitlines() if "autoscaler" in line]
+        )
+        for expected in expected_msg.split(","):
+            assert expected in out_str
+        if unexpected_msg:
+            for unexpected in unexpected_msg.split(","):
+                assert unexpected not in out_str
         return True
 
     wait_for_condition(verify)

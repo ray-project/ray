@@ -6,6 +6,7 @@ from ray.dashboard.modules.metrics.dashboards.common import (
     Target,
 )
 
+
 """
 Queries for autoscaler resources.
 """
@@ -381,6 +382,7 @@ DEFAULT_GRAFANA_PANELS = [
         stack=False,
     ),
 ]
+
 
 ids = []
 for panel in DEFAULT_GRAFANA_PANELS:

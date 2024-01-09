@@ -18,6 +18,7 @@ for example, for building ``heads``.
 .. currentmodule:: ray.rllib.core.models.catalog
 
 .. autosummary::
+    :nosignatures:
     :toctree: doc/
 
     Catalog
@@ -32,6 +33,7 @@ Advanced usage
 The following methods and attributes are used internally by the Catalog to build the default models. Only override them when you need more granular control.
 
 .. autosummary::
+    :nosignatures:
     :toctree: doc/
 
     Catalog.latent_dims

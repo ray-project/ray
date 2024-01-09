@@ -16,11 +16,11 @@
 
 #include "gmock/gmock.h"
 #include "gtest/gtest.h"
+#include "mock/ray/pubsub/subscriber.h"
 #include "ray/common/asio/instrumented_io_context.h"
 #include "ray/common/status.h"
 #include "ray/gcs/gcs_client/accessor.h"
 #include "ray/gcs/gcs_client/gcs_client.h"
-#include "ray/pubsub/mock_pubsub.h"
 
 // clang-format off
 #include "mock/ray/gcs/gcs_client/accessor.h"
@@ -101,7 +101,8 @@ class MockGcsClient : public gcs::GcsClient {
     return *node_accessor_;
   }
 
-  MOCK_METHOD1(Connect, Status(instrumented_io_context &io_service));
+  MOCK_METHOD2(Connect,
+               Status(instrumented_io_context &io_service, const ClusterID &cluster_id));
 
   MOCK_METHOD0(Disconnect, void());
 };
@@ -112,7 +113,7 @@ class OwnershipBasedObjectDirectoryTest : public ::testing::Test {
       : options_("localhost:6973"),
         node_info_accessor_(new gcs::MockNodeInfoAccessor()),
         gcs_client_mock_(new MockGcsClient(options_, node_info_accessor_)),
-        subscriber_(std::make_shared<mock_pubsub::MockSubscriber>()),
+        subscriber_(std::make_shared<pubsub::MockSubscriber>()),
         owner_client(std::make_shared<MockWorkerClient>()),
         client_pool([&](const rpc::Address &addr) { return owner_client; }),
         obod_(io_service_,
@@ -184,7 +185,7 @@ class OwnershipBasedObjectDirectoryTest : public ::testing::Test {
   gcs::GcsClientOptions options_;
   gcs::MockNodeInfoAccessor *node_info_accessor_;
   std::shared_ptr<gcs::GcsClient> gcs_client_mock_;
-  std::shared_ptr<mock_pubsub::MockSubscriber> subscriber_;
+  std::shared_ptr<pubsub::MockSubscriber> subscriber_;
   std::shared_ptr<MockWorkerClient> owner_client;
   rpc::CoreWorkerClientPool client_pool;
   OwnershipBasedObjectDirectory obod_;

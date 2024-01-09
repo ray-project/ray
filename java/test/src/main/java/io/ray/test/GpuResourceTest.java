@@ -16,7 +16,7 @@ public class GpuResourceTest {
   @Test(groups = "cluster")
   public void testGetResourceId() {
     try {
-      System.setProperty("num-gpus", "3");
+      System.setProperty("ray.head-args.0", "--num-gpus=3");
       Ray.init();
       ActorHandle<GpuActor> gpuActorActorHandle =
           Ray.actor(GpuActor::new).setResource("GPU", 1D).remote();

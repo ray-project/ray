@@ -54,6 +54,7 @@ namespace ray {
 #define STATUS_CODE_NOT_FOUND "NotFound"
 #define STATUS_CODE_DISCONNECTED "Disconnected"
 #define STATUS_CODE_SCHEDULING_CANCELLED "SchedulingCancelled"
+#define STATUS_CODE_AUTH_ERROR "AuthError"
 // object store status
 #define STATUS_CODE_OBJECT_EXISTS "ObjectExists"
 #define STATUS_CODE_OBJECT_NOT_FOUND "ObjectNotFound"
@@ -114,6 +115,7 @@ std::string Status::CodeAsString() const {
       {StatusCode::TransientObjectStoreFull, STATUS_CODE_TRANSIENT_OBJECT_STORE_FULL},
       {StatusCode::GrpcUnavailable, STATUS_CODE_GRPC_UNAVAILABLE},
       {StatusCode::GrpcUnknown, STATUS_CODE_GRPC_UNKNOWN},
+      {StatusCode::AuthError, STATUS_CODE_AUTH_ERROR},
   };
 
   auto it = code_to_str.find(code());
@@ -149,6 +151,7 @@ StatusCode Status::StringToCode(const std::string &str) {
       {STATUS_CODE_OBJECT_UNKNOWN_OWNER, StatusCode::ObjectUnknownOwner},
       {STATUS_CODE_OBJECT_STORE_FULL, StatusCode::ObjectStoreFull},
       {STATUS_CODE_TRANSIENT_OBJECT_STORE_FULL, StatusCode::TransientObjectStoreFull},
+      {STATUS_CODE_AUTH_ERROR, StatusCode::AuthError},
   };
 
   auto it = str_to_code.find(str);

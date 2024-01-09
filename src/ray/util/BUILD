@@ -42,4 +42,3 @@ cc_library(
         "@nlohmann_json",
     ],
 )
-

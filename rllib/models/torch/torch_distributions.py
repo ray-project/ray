@@ -79,9 +79,14 @@ class TorchCategorical(TorchDistribution):
     If `probs` is N-dimensional, the first N-1 dimensions are treated as a batch of
     relative probability vectors.
 
-    Example::
-        >>> m = TorchCategorical(torch.tensor([ 0.25, 0.25, 0.25, 0.25 ]))
-        >>> m.sample(sample_shape=(2,))  # equal probability of 0, 1, 2, 3
+    .. testcode::
+        :skipif: True
+
+        m = TorchCategorical(torch.tensor([ 0.25, 0.25, 0.25, 0.25 ]))
+        m.sample(sample_shape=(2,))  # equal probability of 0, 1, 2, 3
+
+    .. testoutput::
+
         tensor([3, 4])
 
     Args:
@@ -99,32 +104,26 @@ class TorchCategorical(TorchDistribution):
         self,
         logits: torch.Tensor = None,
         probs: torch.Tensor = None,
-        temperature: float = 1.0,
     ) -> None:
         # We assert this here because to_deterministic makes this assumption.
         assert (probs is None) != (
             logits is None
         ), "Exactly one out of `probs` and `logits` must be set!"
 
-        if logits is not None:
-            assert temperature > 0.0, "Categorical `temperature` must be > 0.0!"
-            _logits = logits / temperature
-            probs = torch.nn.functional.softmax(_logits, dim=-1)
-
         self.probs = probs
         self.logits = logits
-        self.temperature = temperature
         self.one_hot = torch.distributions.one_hot_categorical.OneHotCategorical(
-            probs=probs
+            logits=logits, probs=probs
         )
-        super().__init__(probs=probs)
+        super().__init__(logits=logits, probs=probs)
 
     @override(TorchDistribution)
     def _get_torch_distribution(
         self,
+        logits: torch.Tensor = None,
         probs: torch.Tensor = None,
     ) -> "torch.distributions.Distribution":
-        return torch.distributions.categorical.Categorical(probs)
+        return torch.distributions.categorical.Categorical(logits=logits, probs=probs)
 
     @staticmethod
     @override(Distribution)
@@ -139,10 +138,8 @@ class TorchCategorical(TorchDistribution):
 
     @classmethod
     @override(Distribution)
-    def from_logits(
-        cls, logits: TensorType, temperature: float = 1.0, **kwargs
-    ) -> "TorchCategorical":
-        return TorchCategorical(logits=logits, temperature=temperature, **kwargs)
+    def from_logits(cls, logits: TensorType, **kwargs) -> "TorchCategorical":
+        return TorchCategorical(logits=logits, **kwargs)
 
     def to_deterministic(self) -> "TorchDeterministic":
         if self.probs is not None:
@@ -160,15 +157,26 @@ class TorchDiagGaussian(TorchDistribution):
     Creates a normal distribution parameterized by :attr:`loc` and :attr:`scale`. In
     case of multi-dimensional distribution, the variance is assumed to be diagonal.
 
-    Example::
-        >>> loc, scale = torch.tensor([0.0, 0.0]), torch.tensor([1.0, 1.0])
-        >>> m = TorchDiagGaussian(loc=loc, scale=scale)
-        >>> m.sample(sample_shape=(2,))  # 2d normal dist with loc=0 and scale=1
+    .. testcode::
+        :skipif: True
+
+        loc, scale = torch.tensor([0.0, 0.0]), torch.tensor([1.0, 1.0])
+        m = TorchDiagGaussian(loc=loc, scale=scale)
+        m.sample(sample_shape=(2,))  # 2d normal dist with loc=0 and scale=1
+
+    .. testoutput::
+
         tensor([[ 0.1046, -0.6120], [ 0.234, 0.556]])
 
-        >>> # scale is None
-        >>> m = TorchDiagGaussian(loc=torch.tensor([0.0, 1.0]))
-        >>> m.sample(sample_shape=(2,))  # normally distributed with loc=0 and scale=1
+    .. testcode::
+        :skipif: True
+
+        # scale is None
+        m = TorchDiagGaussian(loc=torch.tensor([0.0, 1.0]))
+        m.sample(sample_shape=(2,))  # normally distributed with loc=0 and scale=1
+
+    .. testoutput::
+
         tensor([0.1046, 0.6120])
 
 
@@ -229,10 +237,14 @@ class TorchDeterministic(Distribution):
 
     Note: entropy is always zero, ang logp and kl are not implemented.
 
-    Example::
+    .. testcode::
+        :skipif: True
 
-        >>> m = TorchDeterministic(loc=torch.tensor([0.0, 0.0]))
-        >>> m.sample(sample_shape=(2,))
+        m = TorchDeterministic(loc=torch.tensor([0.0, 0.0]))
+        m.sample(sample_shape=(2,))
+
+    .. testoutput::
+
         tensor([[ 0.0, 0.0], [ 0.0, 0.0]])
 
     Args:
@@ -306,37 +318,34 @@ class TorchMultiCategorical(Distribution):
     @override(Distribution)
     def sample(self) -> TensorType:
         arr = [cat.sample() for cat in self._cats]
-        sample_ = torch.stack(arr, dim=1)
+        sample_ = torch.stack(arr, dim=-1)
         return sample_
 
     @override(Distribution)
     def rsample(self, sample_shape=()):
         arr = [cat.rsample() for cat in self._cats]
-        sample_ = torch.stack(arr, dim=1)
+        sample_ = torch.stack(arr, dim=-1)
         return sample_
 
     @override(Distribution)
     def logp(self, value: torch.Tensor) -> TensorType:
-        value = torch.unbind(value, dim=1)
+        value = torch.unbind(value, dim=-1)
         logps = torch.stack([cat.logp(act) for cat, act in zip(self._cats, value)])
         return torch.sum(logps, dim=0)
 
     @override(Distribution)
     def entropy(self) -> TensorType:
         return torch.sum(
-            torch.stack([cat.entropy() for cat in self._cats], dim=1), dim=1
+            torch.stack([cat.entropy() for cat in self._cats], dim=-1), dim=-1
         )
 
     @override(Distribution)
     def kl(self, other: Distribution) -> TensorType:
         kls = torch.stack(
-            [
-                torch.distributions.kl.kl_divergence(cat, oth_cat)
-                for cat, oth_cat in zip(self._cats, other.cats)
-            ],
-            dim=1,
+            [cat.kl(oth_cat) for cat, oth_cat in zip(self._cats, other._cats)],
+            dim=-1,
         )
-        return torch.sum(kls, dim=1)
+        return torch.sum(kls, dim=-1)
 
     @staticmethod
     @override(Distribution)
@@ -373,17 +382,15 @@ class TorchMultiCategorical(Distribution):
             temperatures = [1.0] * len(input_lens)
 
         assert (
-            sum(input_lens) == logits.shape[1]
-        ), "input_lens must sum to logits.shape[1]"
+            sum(input_lens) == logits.shape[-1]
+        ), "input_lens must sum to logits.shape[-1]"
         assert len(input_lens) == len(
             temperatures
         ), "input_lens and temperatures must be same length"
 
         categoricals = [
-            TorchCategorical(logits=logits, temperature=temperature)
-            for logits, temperature in zip(
-                torch.split(logits, input_lens, dim=1), temperatures
-            )
+            TorchCategorical(logits=logits)
+            for logits in torch.split(logits, input_lens, dim=-1)
         ]
 
         return TorchMultiCategorical(categoricals=categoricals)
@@ -438,11 +445,8 @@ class TorchMultiDistribution(Distribution):
             for dist in self._flat_child_distributions:
                 if isinstance(dist, TorchCategorical):
                     split_indices.append(1)
-                elif (
-                    isinstance(dist, TorchMultiCategorical)
-                    and dist.action_space is not None
-                ):
-                    split_indices.append(int(np.prod(dist.action_space.shape)))
+                elif isinstance(dist, TorchMultiCategorical):
+                    split_indices.append(len(dist._cats))
                 else:
                     sample = dist.sample()
                     # Cover Box(shape=()) case.
@@ -547,7 +551,7 @@ class TorchMultiDistribution(Distribution):
 
     def to_deterministic(self) -> "TorchMultiDistribution":
         flat_deterministic_dists = [
-            dist.to_deterministic for dist in self._flat_child_distributions
+            dist.to_deterministic() for dist in self._flat_child_distributions
         ]
         deterministic_dists = tree.unflatten_as(
             self._original_struct, flat_deterministic_dists

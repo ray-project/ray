@@ -1,9 +1,9 @@
 package io.ray.serve.docdemo;
 
-import io.ray.api.Ray;
 import io.ray.serve.api.Serve;
-import io.ray.serve.deployment.Deployment;
+import io.ray.serve.deployment.Application;
 import io.ray.serve.generated.DeploymentLanguage;
+import io.ray.serve.handle.DeploymentHandle;
 import java.io.File;
 
 public class ManagePythonDeployment {
@@ -14,18 +14,17 @@ public class ManagePythonDeployment {
         "ray.job.code-search-path",
         System.getProperty("java.class.path") + File.pathSeparator + "/path/to/code/");
 
-    Serve.start(true, false, null);
+    Serve.start(null);
 
-    Deployment deployment =
+    Application deployment =
         Serve.deployment()
             .setLanguage(DeploymentLanguage.PYTHON)
             .setName("counter")
             .setDeploymentDef("counter.Counter")
             .setNumReplicas(1)
-            .setInitArgs(new Object[] {"1"})
-            .create();
-    deployment.deploy(true);
+            .bind("1");
+    DeploymentHandle handle = Serve.run(deployment).get();
 
-    System.out.println(Ray.get(deployment.getHandle().method("increase").remote("2")));
+    System.out.println(handle.method("increase").remote("2").result());
   }
 }

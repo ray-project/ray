@@ -7,6 +7,7 @@ from ray.dag import (
     FunctionNode,
     ClassNode,
     ClassMethodNode,
+    MultiOutputNode,
 )
 
 
@@ -23,6 +24,8 @@ class _DAGNodeNameGenerator(object):
         # InputNode should be unique.
         if isinstance(node, InputNode):
             return "INPUT_NODE"
+        if isinstance(node, MultiOutputNode):
+            return "MultiOutputNode"
         # InputAttributeNode suffixes should match the user-defined key.
         elif isinstance(node, InputAttributeNode):
             return f"INPUT_ATTRIBUTE_NODE_{node._key}"
@@ -37,12 +40,6 @@ class _DAGNodeNameGenerator(object):
         # serve components are not included in Ray Core.
         elif type(node).__name__ in ("DeploymentNode", "DeploymentFunctionNode"):
             node_name = node.get_deployment_name()
-        elif type(node).__name__ == "DeploymentMethodNode":
-            node_name = node.get_deployment_method_name()
-        elif type(node).__name__ == "DeploymentExecutorNode":
-            node_name = node._deployment_handle.deployment_name
-        elif type(node).__name__ == "DeploymentMethodExecutorNode":
-            node_name = node._deployment_method_name
         elif type(node).__name__ == "DeploymentFunctionExecutorNode":
             node_name = node._deployment_function_handle.deployment_name
         else:

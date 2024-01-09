@@ -1,29 +1,35 @@
-# Finetuning Llama-2 series models with Deepspeed, Accelerate, and Ray Train TorchTrainer
+# Fine-tuning Llama-2 series models with Deepspeed, Accelerate, and Ray Train TorchTrainer
 | Template Specification | Description |
 | ---------------------- | ----------- |
-| Summary | This template, demonstrates how to perform full parameter fine-tuning for Llama-2 series models (7B, 13B, and 70B) using TorchTrainer with the DeepSpeed ZeRO-3 strategy. |
+| Summary | This template, demonstrates how to perform fine-tuning (full parameter or LoRA) for Llama-2 series models (7B, 13B, and 70B) using TorchTrainer with the DeepSpeed ZeRO-3 strategy. |
 | Time to Run | ~14 min. for 7B for 1 epoch on 3.5M tokens. ~26 min for 13B for 1 epoch.  |
-| Minimum Compute Requirements | At least 1xg5.16xlarge for head-node and 15xg5.4xlarge for worker nodes for both 7B and 13B|
-| Cluster Environment | This template uses a docker image built on top of the latest Anyscale-provided Ray image using Python 3.9: [`anyscale/ray:latest-py39-cu116`](https://docs.anyscale.com/reference/base-images/overview). |
+| Minimum Compute Requirements | 16xg5.4xlarge for worker nodes for 7B model, 4xg5.12xlarge nodes for 13B model, and 4xg5.48xlarge (or 2xp4de.24xlarge) nodes for 70B|
+| Cluster Environment | This template uses a docker image built on top of the latest Anyscale-provided Ray image using Python 3.9: [`anyscale/ray:latest-py39-cu118`](https://docs.anyscale.com/reference/base-images/overview). |
 
 ## Getting Started
 
-For 7B, set up a cluster on AWS with the following settings:
+For a full-parameter fine-tuning of 7B models, set up a cluster on AWS with the following settings:
 
 |            | num | instance type | GPU per node | GPU Memory | CPU Memory |
 |------------|-----|---------------|--------------|------------|------------|
-| Head node  | 1   | g5.16xlarge   | 1 x A10G     | 24 GB      | 256 GB     |
-| Worker node| 15  | g5.4xlarge    | 1 x A10G     | 24 GB      | 64 GB      |
+| Head node  | 1   | m5.xlarge   | -     | -     | -     |
+| Worker node| 16  | g5.4xlarge    | 1 x A10G     | 24 GB      | 64 GB      |
 
-And launch the following script:
+And launch the following script to fine-tune LLaMA 2 7B:
 
 ```
-./run_llama_ft.sh --size=7b [--as-test]
+./run_llama_ft.sh --size=7b --as-test
 ```
 
 The flag `--as-test` is for demo / testing purposes as it runs through only one forward and backward pass of the model. The model loading, and remote checkpointing would still run. 
 
-Similarly for 13B you can do
+Similarly for 13B you need a different compute config. 
+
+|            | num | instance type | GPU per node | GPU Memory | CPU Memory |
+|------------|-----|---------------|--------------|------------|------------|
+| Head node  | 1   | m5.xlarge   | -     | -     | -     |
+| Worker node| 4  | g5.12xlarge    | 4 x A10G     | 24 GB      | 64 GB      |
+
 ```
 ./run_llama_ft.sh --size=13b [--as-test]
 ```
@@ -32,11 +38,11 @@ Similarly for 13B you can do
 
 ### Downloading the pre-trained checkpoint on to all GPU nodes. 
 
-The pre-trained models for these models is quite large (12.8G for 7B model and 128G for 70B model). In order to make loading these models faster, we have mirrored the weights on to an AWS S3 bucket which can result in up 10GB/s download speed if the aws configs are setup correctly. We have a default setup that can provide 1.5GB/s download speed. Therefore we do not have to wait long for the model weights to get downloaded. 
+The pre-trained models for these models is quite large (12.8G for 7B model and 128G for 70B model). In order to make loading these models faster, we have mirrored the weights on to an AWS S3 bucket which can result in up 10GB/s download speed if the aws configs are setup correctly. 
 
 ### Cloud storage
 
-Similarly the checkpoints during training can be quite large and we would like to be able to save those checkpoints to the familiar huggingface format so that we can serve it conveniently. The fine-tuning script in this template uses Ray Air Checkpointing to sync the checkpoints created by each node back to a centralized cloud storage on AWS S3. The final file structure for each checkpoint will have a look similar to the following structure:
+Similarly the checkpoints during training can be quite large and we would like to be able to save those checkpoints to the familiar huggingface format so that we can serve it conveniently. The fine-tuning script in this template uses Ray Train Checkpointing to sync the checkpoints created by each node back to a centralized cloud storage on AWS S3. The final file structure for each checkpoint will have a look similar to the following structure:
 
 ```
 aws s3 ls s3://<bucket_path>/checkpoint_00000
@@ -78,7 +84,7 @@ And the special tokens can be:
 {"tokens": ["<ASSISTANT>", "</ASSISTANT>", "<USER>", "</USER>"]}
 ```
 
-Depending on the dataset you want to finetune on, the tokenization and dataset pre-processing will likely need to be adjusted. The current code is configured to train on the Grade School Math 8k (GSM8K) dataset. By running the code below we create three files that are needed to launch the training script with. 
+Depending on the dataset you want to fine-tune on, the tokenization and dataset pre-processing will likely need to be adjusted. The current code is configured to train on the Grade School Math 8k (GSM8K) dataset. By running the code below we create three files that are needed to launch the training script with. 
 
 ```
 python create_dataset.py
@@ -94,7 +100,7 @@ This dataset is trained with a context length of 512 which includes excessive pa
 
 The script is written using Ray Train + Deepspeed integration via accelerate API. The script is general enough that it can be used to fine-tune all released sizes of Llama-2 models. 
 
-The CLI for seeing all the options is:
+The command for seeing all the options is:
 
 ```
 python finetune_hf_llm.py --help
@@ -110,48 +116,82 @@ This script was tested across three model sizes on the following cluster configu
 | 70B        | `meta-llama/Llama-2-70b-hf`  | 8                     | 32x A10G (24G) | ~190 min.             |
 
 
+To launch a full fine-tuning you can use the following command:
+
+```
+./run_llama_ft.sh --size=7b
+```
+
+### Launching LoRA fine-tuning
+
+You can utilize [LoRA](https://arxiv.org/abs/2106.09685) to achieve more resource efficient fine-tuning results than full-parameter fine-tuning, but unlocking smaller instance types and more effecient model serving.
+To launch a LoRA fine-tuning, you can use the following command or similar commands for other model sizes:
+
+```
+./run_llama_ft.sh --size=7b --lora
+```
+
+Fine-tuning a model with LoRA results in a checkpoint containing only the fine-tuned weights.
+As an example, the default Llama 2 LoRA configuration should yield a 42/64/202MB checkpoint for 7B/13B/70B models.
+If we want to evaluate the model after training, we can merge the model weights with the original (non-fine-tuned) model.
+We provide a script to merge the fine-tuned weights with the original weights to produce a full-parameter checkpoint.
+The script has high CPU memory requirements because it requires us to load all parameters into memory at the same time, 
+13GB/24GB/152GB for 7B/13B/70B models. Downloading and loading the original weights should take ~1min/~2min/~10min each 
+on a p4de.24xlarge instance. You can run the script as follows:
+
+```
+python merge_lora_weights.py --model-name=7b --checkpoint=<path to your checkpoint> --output-path=<desired output path>
+```
+
+This leaves a self-contained LoRA fine-tuned model, config and tokenizer at the desired output path.
 
 ### Guideline on how to pick node instances when A100s are not available.
 
 Here is the suggested cluster config for each workload:
 
-7B or 13B:
+7B:
+
 ```
 head_node_type:
   name: head_node_type
-  instance_type: g5.16xlarge
-  resources:
-    custom_resources: 
-      large_cpu_mem: 1
+  instance_type: m5.xlarge
 
 worker_node_types:
 - name: gpu_worker
   instance_type: g5.4xlarge
-  min_workers: 15
-  max_workers: 15
+  min_workers: 0
+  max_workers: 16
   use_spot: false
-  resources:
-    custom_resources: 
-      medium_cpu_mem: 1
-
 ```
 
+
+13B:
+
+```
+head_node_type:
+  name: head_node_type
+  instance_type: m5.xlarge
+
+worker_node_types:
+- name: gpu_worker
+  instance_type: g5.12xlarge
+  min_workers: 0
+  max_workers: 4
+  use_spot: false
+```
 
 70B:
 
 ```
 head_node_type:
   name: head_node_type
-  instance_type: g5.48xlarge
-  resources:
-    custom_resources: 
-      large_cpu_mem: 1
+  instance_type: m5.xlarge
 
 worker_node_types:
 - name: gpu_worker
   instance_type: g5.48xlarge
-  min_workers: 3
-  max_workers: 3
+  min_workers: 0
+  max_workers: 4
   use_spot: false
 ```
 
@@ -167,7 +207,7 @@ For example, for 70B model, on an 8xA100 machine with 8-way sharding you would n
 
 Another example: For 70B model, on an 4xA10G machine with 32-way sharding you would need `18 * (70 / 32) * 4 = 158 GB` of CPU RAM on each machine. If you use 8xA10G machines instead you would need `18 * (70 / 32) * 8 = 316 GB` of CPU RAM on each machine. 
 
-So availabiluty of enough CPU RAM is very important when using optimizer state offloading.
+So availability of enough CPU RAM is very important when using optimizer state offloading.
 
 2. CPU RAM requirement during checkpointing
 
@@ -190,5 +230,15 @@ scaling_config=air.ScalingConfig(
 )
 ```
 
+### Submiting a production job
+You can easily submit a production job using the following command:
 
+```
+python create_job_yaml.py --size=7b --output-path=./job.yaml
+```
 
+This will create a job yaml file that you can use to submit a production job on Anyscale platform. 
+
+```
+anyscale job submit job.yaml
+```

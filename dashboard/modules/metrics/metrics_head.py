@@ -13,6 +13,7 @@ from ray.dashboard.modules.metrics.grafana_dashboard_factory import (
     generate_default_grafana_dashboard,
     generate_serve_grafana_dashboard,
     generate_serve_deployment_grafana_dashboard,
+    generate_data_grafana_dashboard,
 )
 from ray.dashboard.modules.metrics.grafana_datasource_template import (
     GRAFANA_DATASOURCE_TEMPLATE,
@@ -27,9 +28,9 @@ from ray.dashboard.consts import AVAILABLE_COMPONENT_NAMES_FOR_METRICS
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
 
-routes = dashboard_optional_utils.ClassMethodRouteTable
+routes = dashboard_optional_utils.DashboardHeadRouteTable
 
-routes = dashboard_optional_utils.ClassMethodRouteTable
+routes = dashboard_optional_utils.DashboardHeadRouteTable
 
 METRICS_OUTPUT_ROOT_ENV_VAR = "RAY_METRICS_OUTPUT_ROOT"
 METRICS_INPUT_ROOT = os.path.join(os.path.dirname(__file__), "export")
@@ -37,6 +38,8 @@ METRICS_RECORD_INTERVAL_S = 5
 
 DEFAULT_PROMETHEUS_HOST = "http://localhost:9090"
 PROMETHEUS_HOST_ENV_VAR = "RAY_PROMETHEUS_HOST"
+DEFAULT_PROMETHEUS_NAME = "Prometheus"
+PROMETHEUS_NAME_ENV_VAR = "RAY_PROMETHEUS_NAME"
 PROMETHEUS_CONFIG_INPUT_PATH = os.path.join(
     METRICS_INPUT_ROOT, "prometheus", "prometheus.yml"
 )
@@ -78,6 +81,10 @@ class MetricsHead(dashboard_utils.DashboardHeadModule):
         self._grafana_dashboard_output_dir = os.environ.get(
             GRAFANA_DASHBOARD_OUTPUT_DIR_ENV_VAR,
             os.path.join(grafana_config_output_path, "dashboards"),
+        )
+
+        self._prometheus_name = os.environ.get(
+            PROMETHEUS_NAME_ENV_VAR, DEFAULT_PROMETHEUS_NAME
         )
 
         # To be set later when dashboards gets generated
@@ -131,6 +138,7 @@ class MetricsHead(dashboard_utils.DashboardHeadModule):
                     grafana_host=grafana_iframe_host,
                     session_name=self._session_name,
                     dashboard_uids=self._dashboard_uids,
+                    dashboard_datasource=self._prometheus_name,
                 )
 
         except Exception as e:
@@ -157,6 +165,7 @@ class MetricsHead(dashboard_utils.DashboardHeadModule):
 
                 text = await resp.text()
                 # Basic sanity check of prometheus health check schema
+                # Different flavors of Prometheus may use different health check strings
                 if "Prometheus" not in text:
                     return dashboard_optional_utils.rest_response(
                         success=False,
@@ -236,7 +245,12 @@ class MetricsHead(dashboard_utils.DashboardHeadModule):
             ),
             "w",
         ) as f:
-            f.write(GRAFANA_DATASOURCE_TEMPLATE.format(prometheus_host=prometheus_host))
+            f.write(
+                GRAFANA_DATASOURCE_TEMPLATE.format(
+                    prometheus_host=prometheus_host,
+                    prometheus_name=self._prometheus_name,
+                )
+            )
         with open(
             os.path.join(
                 self._grafana_dashboard_output_dir,
@@ -269,6 +283,18 @@ class MetricsHead(dashboard_utils.DashboardHeadModule):
                 content,
                 self._dashboard_uids["serve_deployment"],
             ) = generate_serve_deployment_grafana_dashboard()
+            f.write(content)
+        with open(
+            os.path.join(
+                self._grafana_dashboard_output_dir,
+                "data_grafana_dashboard.json",
+            ),
+            "w",
+        ) as f:
+            (
+                content,
+                self._dashboard_uids["data"],
+            ) = generate_data_grafana_dashboard()
             f.write(content)
 
     def _create_default_prometheus_configs(self):

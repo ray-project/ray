@@ -41,6 +41,9 @@ const useStyles = makeStyles((theme) => ({
   },
 }));
 
+const codeTextStyle = {
+  fontFamily: "Roboto Mono, monospace",
+};
 const columns = [
   { label: "" }, // Expand button
   { label: "Host / Worker Process name" },
@@ -82,13 +85,14 @@ const columns = [
     helpInfo: (
       <Typography>
         Usage of each GPU device. If no GPU usage is detected, here are the
-        potential root causes: <br />
-        1. library gpustsat is not installed. Install gpustat and try again.
-        <br /> 2. non-GPU Ray image is used on this node. Switch to a GPU Ray
-        image and try again. <br />
-        3. AMD GPUs are being used. AMD GPUs are not currently supported by
-        gpustat module. <br />
-        4. gpustat module raises an exception.
+        potential root causes:
+        <br />
+        1. non-GPU Ray image is used on this node. Switch to a GPU Ray image and
+        try again. <br />
+        2. Non Nvidia GPUs are being used. Non Nvidia GPUs' utilizations are not
+        currently supported.
+        <br />
+        3. pynvml module raises an exception.
       </Typography>
     ),
   },
@@ -101,6 +105,20 @@ const columns = [
   },
   { label: "Sent" },
   { label: "Received" },
+  {
+    label: "Logical Resources",
+    helpInfo: (
+      <Typography>
+        <a href="https://docs.ray.io/en/latest/ray-core/scheduling/resources.html#physical-resources-and-logical-resources">
+          Logical resources usage
+        </a>{" "}
+        (e.g., CPU, memory) for a node. Alternatively, you can run the CLI
+        command <p style={codeTextStyle}>ray status -v </p>
+        to obtain a similar result.
+      </Typography>
+    ),
+  },
+  { label: "Labels" },
 ];
 
 export const brpcLinkChanger = (href: string) => {
@@ -124,7 +142,7 @@ export const NodeCard = (props: { node: NodeDetail }) => {
     return null;
   }
 
-  const { raylet, hostname, ip, cpu, mem, networkSpeed, disk, logUrl } = node;
+  const { raylet, hostname, ip, cpu, mem, networkSpeed, disk } = node;
   const { nodeId, state, objectStoreUsedMemory, objectStoreAvailableMemory } =
     raylet;
 
@@ -197,7 +215,9 @@ export const NodeCard = (props: { node: NodeDetail }) => {
       <Grid container justify="flex-end" spacing={1} style={{ margin: 8 }}>
         <Grid>
           <Button>
-            <Link to={`/logs/${encodeURIComponent(logUrl)}`}>log</Link>
+            <Link to={`/logs/?nodeId${encodeURIComponent(raylet.nodeId)}`}>
+              log
+            </Link>
           </Button>
         </Grid>
       </Grid>

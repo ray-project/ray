@@ -1,7 +1,18 @@
 from dataclasses import dataclass, field
 import pathlib
 import pprint
-from typing import Any, Dict, KeysView, Mapping, Optional, Set, Type, Union
+from typing import (
+    Any,
+    Callable,
+    Dict,
+    KeysView,
+    List,
+    Mapping,
+    Optional,
+    Set,
+    Type,
+    Union,
+)
 
 from ray.util.annotations import PublicAPI
 from ray.rllib.utils.annotations import override, ExperimentalAPI
@@ -20,6 +31,7 @@ from ray.rllib.core.rl_module.rl_module import (
 from ray.rllib.utils.annotations import OverrideToImplementCustomLogic
 from ray.rllib.utils.policy import validate_policy_id
 from ray.rllib.utils.serialization import serialize_type, deserialize_type
+from ray.rllib.utils.typing import T
 
 ModuleID = str
 
@@ -143,6 +155,23 @@ class MultiAgentRLModule(RLModule):
         if raise_err_if_not_found:
             self._check_module_exists(module_id)
         del self._rl_modules[module_id]
+
+    def foreach_module(
+        self, func: Callable[[ModuleID, RLModule, Optional[Any]], T], **kwargs
+    ) -> List[T]:
+        """Calls the given function with each (module_id, module).
+
+        Args:
+            func: The function to call with each (module_id, module) tuple.
+
+        Returns:
+            The lsit of return values of all calls to
+            `func([module_id, module, **kwargs])`.
+        """
+        return [
+            func(module_id, module, **kwargs)
+            for module_id, module in self._rl_modules.items()
+        ]
 
     def __getitem__(self, module_id: ModuleID) -> RLModule:
         """Returns the module with the given module ID.
@@ -560,11 +589,9 @@ class MultiAgentRLModuleSpec:
 @ExperimentalAPI
 @dataclass
 class MultiAgentRLModuleConfig:
-
     modules: Mapping[ModuleID, SingleAgentRLModuleSpec] = field(default_factory=dict)
 
     def to_dict(self):
-
         return {
             "modules": {
                 module_id: module_spec.to_dict()

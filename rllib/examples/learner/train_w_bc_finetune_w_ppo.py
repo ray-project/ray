@@ -11,7 +11,7 @@ from typing import Mapping
 
 import ray
 from ray import tune
-from ray.air import RunConfig, FailureConfig
+from ray.train import RunConfig, FailureConfig
 from ray.rllib.algorithms.ppo import PPOConfig
 from ray.rllib.algorithms.ppo.torch.ppo_torch_rl_module import PPOTorchRLModule
 from ray.rllib.algorithms.ppo.ppo_catalog import PPOCatalog
@@ -117,7 +117,7 @@ def train_ppo_agent_from_checkpointed_module(
 
     config = (
         PPOConfig()
-        .training()
+        .experimental(_enable_new_api_stack=True)
         .rl_module(rl_module_spec=module_spec_from_ckpt)
         .environment(GYM_ENV_NAME)
         .debugging(seed=0)

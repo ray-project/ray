@@ -20,15 +20,15 @@ const grey = "#5F6469";
 const colorMap = {
   node: {
     ALIVE: green,
-    DEAD: red,
+    DEAD: grey,
   },
   worker: {
     ALIVE: green,
-    DEAD: red,
+    DEAD: grey,
   },
   actor: {
     [ActorEnum.ALIVE]: green,
-    [ActorEnum.DEAD]: red,
+    [ActorEnum.DEAD]: grey,
     [ActorEnum.DEPENDENCIES_UNREADY]: orange,
     [ActorEnum.PENDING_CREATION]: orange,
     [ActorEnum.RESTARTING]: orange,
@@ -75,7 +75,7 @@ const colorMap = {
     [ServeReplicaState.RUNNING]: green,
     [ServeReplicaState.STOPPING]: red,
   },
-  serveHttpProxy: {
+  serveProxy: {
     [ServeSystemActorStatus.HEALTHY]: green,
     [ServeSystemActorStatus.UNHEALTHY]: red,
     [ServeSystemActorStatus.STARTING]: orange,

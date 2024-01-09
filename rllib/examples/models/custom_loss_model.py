@@ -47,13 +47,6 @@ class CustomLossModel(TFModelV2):
         )
         logits, _ = self.forward({"obs": obs}, [], None)
 
-        # You can also add self-supervised losses easily by referencing tensors
-        # created during _build_layers_v2(). For example, an autoencoder-style
-        # loss can be added as follows:
-        # ae_loss = squared_diff(
-        #     loss_inputs["obs"], Decoder(self.fcnet.last_layer))
-        print("FYI: You can also use these tensors: {}, ".format(loss_inputs))
-
         # Compute the IL loss.
         action_dist = Categorical(logits, self.model_config)
         self.policy_loss = policy_loss
@@ -121,13 +114,6 @@ class TorchCustomLossModel(TorchModelV2, nn.Module):
             tensorlib="torch",
         )
         logits, _ = self.forward({"obs": obs}, [], None)
-
-        # You can also add self-supervised losses easily by referencing tensors
-        # created during _build_layers_v2(). For example, an autoencoder-style
-        # loss can be added as follows:
-        # ae_loss = squared_diff(
-        #     loss_inputs["obs"], Decoder(self.fcnet.last_layer))
-        print("FYI: You can also use these tensors: {}, ".format(loss_inputs))
 
         # Compute the IL loss.
         action_dist = TorchCategorical(logits, self.model_config)

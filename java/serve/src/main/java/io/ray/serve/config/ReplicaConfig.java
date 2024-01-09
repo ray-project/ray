@@ -5,7 +5,7 @@ import com.google.common.collect.Sets;
 import com.google.gson.Gson;
 import com.google.protobuf.ByteString;
 import io.ray.runtime.serializer.MessagePackSerializer;
-import io.ray.serve.util.LogUtil;
+import io.ray.serve.util.MessageFormatter;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.Set;
@@ -44,7 +44,7 @@ public class ReplicaConfig {
     for (String option : this.rayActorOptions.keySet()) {
       Preconditions.checkArgument(
           allowedRayActorOptions.contains(option),
-          LogUtil.format(
+          MessageFormatter.format(
               "Specifying '{}' in ray_actor_options is not allowed. Allowed options: {}",
               option,
               allowedRayActorOptions));
@@ -53,7 +53,7 @@ public class ReplicaConfig {
     if (!this.rayActorOptions.containsKey("num_cpus")) {
       this.rayActorOptions.put("num_cpus", 1.0);
     }
-    this.resources = resourcesFromRayOptions(rayActorOptions);
+    this.resources = resourcesFromRayOptions(this.rayActorOptions);
   }
 
   /**

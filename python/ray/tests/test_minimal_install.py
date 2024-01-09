@@ -29,6 +29,34 @@ def test_correct_python_version():
     )
 
 
+@pytest.mark.skipif(
+    os.environ.get("RAY_MINIMAL", "0") != "1",
+    reason="Skip unless running in a minimal install.",
+)
+def test_module_import_with_various_non_minimal_deps():
+    import unittest.mock as mock
+    import itertools
+
+    optional_modules = [
+        "opencensus",
+        "prometheus_client",
+        "aiohttp",
+        "aiohttp_cors",
+        "pydantic",
+        "grpc",
+    ]
+    for i in range(len(optional_modules)):
+        for install_modules in itertools.combinations(optional_modules, i):
+            print(install_modules)
+            with mock.patch.dict(
+                "sys.modules", {mod: mock.Mock() for mod in install_modules}
+            ):
+                from ray.dashboard.utils import get_all_modules
+                from ray.dashboard.utils import DashboardHeadModule
+
+                get_all_modules(DashboardHeadModule)
+
+
 if __name__ == "__main__":
     if os.environ.get("PARALLEL_CI"):
         sys.exit(pytest.main(["-n", "auto", "--boxed", "-vs", __file__]))

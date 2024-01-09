@@ -33,7 +33,7 @@ class StateBufferConnector(AgentConnector):
         self._action_space_struct = get_base_struct_from_space(ctx.action_space)
 
         self._states = defaultdict(lambda: defaultdict(lambda: (None, None, None)))
-        self._enable_rl_module_api = ctx.config.get("_enable_rl_module_api", False)
+        self._enable_new_api_stack = ctx.config.get("_enable_new_api_stack", False)
         # TODO(jungong) : we would not need this if policies are never stashed
         # during the rollout of a single episode.
         if states:
@@ -89,7 +89,7 @@ class StateBufferConnector(AgentConnector):
 
         if states is None:
             states = self._initial_states
-        if self._enable_rl_module_api:
+        if self._enable_new_api_stack:
             if states:
                 d[STATE_OUT] = states
         else:

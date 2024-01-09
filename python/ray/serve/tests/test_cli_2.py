@@ -1,40 +1,59 @@
+import json
 import os
 import re
-import sys
-import yaml
-import time
-import json
 import signal
+import subprocess
+import sys
+import time
+from tempfile import NamedTemporaryFile
+from typing import Pattern
+
+import grpc
 import pytest
 import requests
-import subprocess
-from typing import Pattern
-from pydantic import BaseModel
-from tempfile import NamedTemporaryFile
-
+import yaml
 
 import ray
-from ray.util.state import list_actors
-from ray.tests.conftest import tmp_working_dir  # noqa: F401, E501
-from ray._private.test_utils import wait_for_condition
-
 from ray import serve
-from ray.serve.tests.conftest import check_ray_stop
-from ray.serve.deployment_graph import RayServeDAGHandle
-from ray.serve._private.constants import (
-    SERVE_NAMESPACE,
-    RAY_SERVE_ENABLE_EXPERIMENTAL_STREAMING,
+from ray._private.pydantic_compat import BaseModel
+from ray._private.test_utils import wait_for_condition
+from ray.serve._private.constants import SERVE_DEFAULT_APP_NAME, SERVE_NAMESPACE
+from ray.serve._private.test_utils import (
+    ping_fruit_stand,
+    ping_grpc_another_method,
+    ping_grpc_call_method,
+    ping_grpc_healthz,
+    ping_grpc_list_applications,
+    ping_grpc_model_multiplexing,
+    ping_grpc_streaming,
 )
-
+from ray.serve.generated import serve_pb2, serve_pb2_grpc
+from ray.serve.handle import DeploymentHandle
+from ray.serve.tests.common.remote_uris import (
+    TEST_DAG_PINNED_URI,
+    TEST_DEPLOY_GROUP_PINNED_URI,
+)
+from ray.serve.tests.conftest import check_ray_stop
+from ray.tests.conftest import tmp_working_dir  # noqa: F401, E501
+from ray.util.state import list_actors
 
 CONNECTION_ERROR_MSG = "connection error"
 
 
 def ping_endpoint(endpoint: str, params: str = ""):
+    endpoint = endpoint.lstrip("/")
+
     try:
         return requests.get(f"http://localhost:8000/{endpoint}{params}").text
     except requests.exceptions.ConnectionError:
         return CONNECTION_ERROR_MSG
+
+
+def check_app_running(app_name: str):
+    status_response = subprocess.check_output(["serve", "status"])
+    status = yaml.safe_load(status_response)["applications"]
+    assert status[app_name]["status"] == "RUNNING"
+    return True
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="File path incorrect on Windows.")
@@ -53,39 +72,38 @@ def test_status_multi_app(ray_start_stop):
 
     def num_live_deployments():
         status_response = subprocess.check_output(["serve", "status"])
-        serve_status = list(yaml.safe_load_all(status_response))
-        return len(serve_status[0]["deployment_statuses"]) and len(
-            serve_status[1]["deployment_statuses"]
-        )
+        status = yaml.safe_load(status_response)["applications"]
+        return len(status["app1"]["deployments"]) and len(status["app2"]["deployments"])
 
-    wait_for_condition(lambda: num_live_deployments() == 5, timeout=15)
+    wait_for_condition(lambda: num_live_deployments() == 3, timeout=15)
     print("All deployments are live.")
 
     status_response = subprocess.check_output(
         ["serve", "status", "-a", "http://localhost:52365/"]
     )
-    serve_statuses = yaml.safe_load_all(status_response)
+    statuses = yaml.safe_load(status_response)["applications"]
 
-    expected_deployments = {
-        "app1_f",
-        "app1_BasicDriver",
-        "app2_DAGDriver",
-        "app2_Multiplier",
-        "app2_Adder",
-        "app2_Router",
-        "app2_create_order",
+    expected_deployments_1 = {"f", "BasicDriver"}
+    expected_deployments_2 = {
+        "Multiplier",
+        "Adder",
+        "Router",
     }
-    for status in serve_statuses:
-        for deployment in status["deployment_statuses"]:
-            expected_deployments.remove(deployment["name"])
-            assert deployment["status"] in {"HEALTHY", "UPDATING"}
-            assert "message" in deployment
-    assert len(expected_deployments) == 0
+    for deployment_name, deployment in statuses["app1"]["deployments"].items():
+        expected_deployments_1.remove(deployment_name)
+        assert deployment["status"] in {"HEALTHY", "UPDATING"}
+        assert "message" in deployment
+    for deployment_name, deployment in statuses["app2"]["deployments"].items():
+        expected_deployments_2.remove(deployment_name)
+        assert deployment["status"] in {"HEALTHY", "UPDATING"}
+        assert "message" in deployment
+    assert len(expected_deployments_1) == 0
+    assert len(expected_deployments_2) == 0
     print("All expected deployments are present in the status output.")
 
-    for status in serve_statuses:
-        assert status["app_status"]["status"] in {"DEPLOYING", "RUNNING"}
-        assert time.time() > status["app_status"]["deployment_timestamp"]
+    for status in statuses.values():
+        assert status["status"] in {"DEPLOYING", "RUNNING"}
+        assert time.time() > status["last_deployed_time_s"]
     print("Verified status and deployment timestamp of both apps.")
 
 
@@ -98,8 +116,10 @@ def test_shutdown(ray_start_stop):
 
     def num_live_deployments():
         status_response = subprocess.check_output(["serve", "status"])
-        serve_status = yaml.safe_load(status_response)
-        return len(serve_status["deployment_statuses"])
+        serve_status = yaml.safe_load(status_response)["applications"][
+            SERVE_DEFAULT_APP_NAME
+        ]
+        return len(serve_status["deployments"])
 
     config_file_name = os.path.join(
         os.path.dirname(__file__), "test_config_files", "basic_graph.yaml"
@@ -121,7 +141,7 @@ def test_shutdown(ray_start_stop):
 
         status_response = subprocess.check_output(["serve", "status"])
         status = yaml.safe_load(status_response)
-        assert "There are no applications running on this cluster." != status
+        assert len(status["applications"])
         print("`serve config` and `serve status` print non-empty responses.\n")
 
         print("Deleting Serve app.")
@@ -131,14 +151,12 @@ def test_shutdown(ray_start_stop):
         # nothing is deployed
         def serve_config_empty():
             config_response = subprocess.check_output(["serve", "config"])
-            return "No config has been deployed" in config_response.decode("utf-8")
+            return len(config_response) == 0
 
         def serve_status_empty():
             status_response = subprocess.check_output(["serve", "status"])
-            return (
-                "There are no applications running on this cluster"
-                in status_response.decode("utf-8")
-            )
+            status = yaml.safe_load(status_response)
+            return len(status["applications"]) == 0
 
         wait_for_condition(serve_config_empty)
         wait_for_condition(serve_status_empty)
@@ -187,14 +205,12 @@ def test_run_application(ray_start_stop, number_of_kill_signals):
     p = subprocess.Popen(
         ["serve", "run", "--address=auto", "ray.serve.tests.test_cli_2.parrot_node"]
     )
-    wait_for_condition(
-        lambda: ping_endpoint("parrot", params="?sound=squawk") == "squawk"
-    )
+    wait_for_condition(lambda: ping_endpoint("/", params="?sound=squawk") == "squawk")
     print("Run successful! Deployment is live and reachable over HTTP. Killing run.")
 
     p.send_signal(signal.SIGINT)  # Equivalent to ctrl-C
     p.wait()
-    assert ping_endpoint("parrot", params="?sound=squawk") == CONNECTION_ERROR_MSG
+    assert ping_endpoint("/", params="?sound=squawk") == CONNECTION_ERROR_MSG
     print("Kill successful! Deployment is not reachable over HTTP.")
 
 
@@ -215,12 +231,12 @@ def test_run_multi_app(ray_start_stop):
     )
     print('Application "app1" is reachable over HTTP.')
     wait_for_condition(
-        lambda: requests.post("http://localhost:8000/app2", json=["ADD", 2]).json()
+        lambda: requests.post("http://localhost:8000/app2", json=["ADD", 2]).text
         == "12 pizzas please!",
         timeout=15,
     )
     wait_for_condition(
-        lambda: requests.post("http://localhost:8000/app2", json=["MUL", 2]).json()
+        lambda: requests.post("http://localhost:8000/app2", json=["MUL", 2]).text
         == "20 pizzas please!",
         timeout=15,
     )
@@ -265,10 +281,10 @@ def test_run_deployment_node(ray_start_stop):
             "ray.serve.tests.test_cli_2.molly_macaw",
         ]
     )
-    wait_for_condition(lambda: ping_endpoint("Macaw") == "Molly is green!", timeout=10)
+    wait_for_condition(lambda: ping_endpoint("/") == "Molly is green!", timeout=10)
     p.send_signal(signal.SIGINT)
     p.wait()
-    assert ping_endpoint("Macaw") == CONNECTION_ERROR_MSG
+    assert ping_endpoint("/") == CONNECTION_ERROR_MSG
 
 
 @serve.deployment
@@ -279,6 +295,9 @@ class Echo:
 
     def __call__(self, *args):
         return self._message
+
+
+echo_app = Echo.bind("hello")
 
 
 def build_echo_app(args):
@@ -318,7 +337,7 @@ def test_run_builder_with_args(ray_start_stop, import_path: str):
     wait_for_condition(lambda: ping_endpoint("") == "DEFAULT", timeout=10)
     p.send_signal(signal.SIGINT)
     p.wait()
-    assert ping_endpoint("") == CONNECTION_ERROR_MSG
+    assert ping_endpoint("/") == CONNECTION_ERROR_MSG
 
     # Now deploy passing a message as an argument, should get passed message.
     p = subprocess.Popen(
@@ -334,7 +353,7 @@ def test_run_builder_with_args(ray_start_stop, import_path: str):
 
     p.send_signal(signal.SIGINT)
     p.wait()
-    assert ping_endpoint("") == CONNECTION_ERROR_MSG
+    assert ping_endpoint("/") == CONNECTION_ERROR_MSG
 
 
 @serve.deployment
@@ -379,16 +398,14 @@ def test_run_runtime_env(ray_start_stop):
                 "missing_runtime_env.yaml",
             ),
             "--runtime-env-json",
-            (
-                '{"py_modules": ["https://github.com/ray-project/test_deploy_group'
-                '/archive/67971777e225600720f91f618cdfe71fc47f60ee.zip"],'
-                '"working_dir": "http://nonexistentlink-q490123950ni34t"}'
+            json.dumps(
+                {
+                    "py_modules": [TEST_DEPLOY_GROUP_PINNED_URI],
+                    "working_dir": "http://nonexistentlink-q490123950ni34t",
+                }
             ),
             "--working-dir",
-            (
-                "https://github.com/ray-project/test_dag/archive/"
-                "40d61c141b9c37853a7014b8659fc7f23c1d04f6.zip"
-            ),
+            TEST_DAG_PINNED_URI,
         ]
     )
     wait_for_condition(lambda: ping_endpoint("") == "wonderful world", timeout=15)
@@ -475,6 +492,39 @@ def test_run_teardown(ray_start_stop):
     assert "Intentionally failing." in logs
 
 
+@pytest.mark.skipif(sys.platform == "win32", reason="File path incorrect on Windows.")
+def test_run_route_prefix_and_name_default(ray_start_stop):
+    """Test `serve run` without route_prefix and name options."""
+
+    p = subprocess.Popen(["serve", "run", "ray.serve.tests.test_cli_2.echo_app"])
+
+    wait_for_condition(check_app_running, app_name=SERVE_DEFAULT_APP_NAME)
+    assert ping_endpoint("/") == "hello"
+    p.send_signal(signal.SIGINT)
+    p.wait()
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="File path incorrect on Windows.")
+def test_run_route_prefix_and_name_override(ray_start_stop):
+    """Test `serve run` with route prefix option."""
+
+    p = subprocess.Popen(
+        [
+            "serve",
+            "run",
+            "--route-prefix=/hello",
+            "--name=hello_app",
+            "ray.serve.tests.test_cli_2.echo_app",
+        ],
+    )
+
+    wait_for_condition(check_app_running, app_name="hello_app")
+    assert "Path '/' not found" in ping_endpoint("/")
+    assert ping_endpoint("/hello") == "hello"
+    p.send_signal(signal.SIGINT)
+    p.wait()
+
+
 @serve.deployment
 def global_f(*args):
     return "wonderful world"
@@ -482,44 +532,15 @@ def global_f(*args):
 
 @serve.deployment
 class NoArgDriver:
-    def __init__(self, dag: RayServeDAGHandle):
-        self.dag = dag
+    def __init__(self, h: DeploymentHandle):
+        self._h = h
 
     async def __call__(self):
-        return await (await self.dag.remote())
+        return await self._h.remote()
 
 
 TestBuildFNode = global_f.bind()
 TestBuildDagNode = NoArgDriver.bind(TestBuildFNode)
-
-
-@pytest.mark.skipif(sys.platform == "win32", reason="File path incorrect on Windows.")
-@pytest.mark.parametrize("node", ["TestBuildFNode", "TestBuildDagNode"])
-def test_build_single_app(ray_start_stop, node):
-    with NamedTemporaryFile(mode="w+", suffix=".yaml") as tmp:
-        print(f'Building node "{node}".')
-        # Build an app
-        subprocess.check_output(
-            [
-                "serve",
-                "build",
-                "--single-app",
-                f"ray.serve.tests.test_cli_2.{node}",
-                "-o",
-                tmp.name,
-            ]
-        )
-        print("Build succeeded! Deploying node.")
-
-        subprocess.check_output(["serve", "deploy", tmp.name])
-        wait_for_condition(lambda: ping_endpoint("") == "wonderful world", timeout=15)
-        print("Deploy succeeded! Node is live and reachable over HTTP. Deleting node.")
-
-        subprocess.check_output(["serve", "shutdown", "-y"])
-        wait_for_condition(
-            lambda: ping_endpoint("") == CONNECTION_ERROR_MSG, timeout=15
-        )
-        print("Delete succeeded! Node is not reachable over HTTP.")
 
 
 TestApp1Node = global_f.options(route_prefix="/app1").bind()
@@ -531,12 +552,16 @@ def test_build_multi_app(ray_start_stop):
     with NamedTemporaryFile(mode="w+", suffix=".yaml") as tmp:
         print('Building nodes "TestApp1Node" and "TestApp2Node".')
         # Build an app
+        grpc_servicer_func_root = "ray.serve.generated.serve_pb2_grpc"
         subprocess.check_output(
             [
                 "serve",
                 "build",
                 "ray.serve.tests.test_cli_2.TestApp1Node",
                 "ray.serve.tests.test_cli_2.TestApp2Node",
+                "ray.serve.tests.test_config_files.grpc_deployment.g",
+                "--grpc-servicer-functions",
+                f"{grpc_servicer_func_root}.add_UserDefinedServiceServicer_to_server",
                 "-o",
                 tmp.name,
             ]
@@ -554,6 +579,15 @@ def test_build_multi_app(ray_start_stop):
         )
         print("App 2 is live and reachable over HTTP.")
 
+        app_name = "app3"
+        channel = grpc.insecure_channel("localhost:9000")
+        stub = serve_pb2_grpc.UserDefinedServiceStub(channel)
+        request = serve_pb2.UserDefinedMessage(name="foo", num=30, foo="bar")
+        metadata = (("application", app_name),)
+        response = stub.__call__(request=request, metadata=metadata)
+        assert response.greeting == "Hello foo from bar"
+        print("App 3 is live and reachable over gRPC.")
+
         print("Deleting applications.")
         subprocess.check_output(["serve", "shutdown", "-y"])
         wait_for_condition(
@@ -570,43 +604,6 @@ k8sFNode = global_f.options(
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="File path incorrect on Windows.")
-def test_build_kubernetes_flag():
-    with NamedTemporaryFile(mode="w+", suffix=".yaml") as tmp:
-        print("Building k8sFNode.")
-        subprocess.check_output(
-            [
-                "serve",
-                "build",
-                "--single-app",
-                "ray.serve.tests.test_cli_2.k8sFNode",
-                "-o",
-                tmp.name,
-                "-k",
-            ]
-        )
-        print("Build succeeded!")
-
-        tmp.seek(0)
-        config = yaml.safe_load(tmp.read())
-        assert config == {
-            "importPath": "ray.serve.tests.test_cli_2.k8sFNode",
-            "runtimeEnv": json.dumps({}),
-            "host": "0.0.0.0",
-            "port": 8000,
-            "deployments": [
-                {
-                    "name": "global_f",
-                    "numReplicas": 2,
-                    "rayActorOptions": {
-                        "numCpus": 2.0,
-                        "numGpus": 1.0,
-                    },
-                },
-            ],
-        }
-
-
-@pytest.mark.skipif(sys.platform == "win32", reason="File path incorrect on Windows.")
 @pytest.mark.parametrize("use_command", [True, False])
 def test_idempotence_after_controller_death(ray_start_stop, use_command: bool):
     """Check that CLI is idempotent even if controller dies."""
@@ -618,7 +615,7 @@ def test_idempotence_after_controller_death(ray_start_stop, use_command: bool):
     assert success_message_fragment in deploy_response
 
     ray.init(address="auto", namespace=SERVE_NAMESPACE)
-    serve.start(detached=True)
+    serve.start()
     wait_for_condition(
         lambda: len(list_actors(filters=[("state", "=", "ALIVE")])) == 4,
         timeout=15,
@@ -633,13 +630,13 @@ def test_idempotence_after_controller_death(ray_start_stop, use_command: bool):
     status_response = subprocess.check_output(["serve", "status"])
     status_info = yaml.safe_load(status_response)
 
-    assert status_info == "There are no applications running on this cluster."
+    assert len(status_info["applications"]) == 0
 
     deploy_response = subprocess.check_output(["serve", "deploy", config_file_name])
     assert success_message_fragment in deploy_response
 
     # Restore testing controller
-    serve.start(detached=True)
+    serve.start()
     wait_for_condition(
         lambda: len(list_actors(filters=[("state", "=", "ALIVE")])) == 4,
         timeout=15,
@@ -783,9 +780,7 @@ def test_run_config_request_timeout():
     # the 0.1 request_timeout_s set in in the config yaml
     wait_for_condition(
         lambda: requests.get("http://localhost:8000/app1?sleep_s=0.11").status_code
-        == 408
-        if RAY_SERVE_ENABLE_EXPERIMENTAL_STREAMING
-        else 500,
+        == 408,
     )
 
     # Ensure the http request returned the correct response when the deployment runs
@@ -824,6 +819,134 @@ def test_deployment_contains_utils(ray_start_stop):
     wait_for_condition(
         lambda: requests.post("http://localhost:8000/").text == "hello_from_utils"
     )
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="File path incorrect on Windows.")
+def test_run_reload_basic(ray_start_stop, tmp_path):
+    """Test `serve run` with reload."""
+
+    code_template = """
+from ray import serve
+
+@serve.deployment
+class MessageDeployment:
+    def __init__(self, msg):
+        self.msg = msg
+
+    def __call__(self):
+        return self.msg
+
+
+msg_app = MessageDeployment.bind("Hello {message}!")
+    """
+
+    def write_file(message: str):
+        with open(os.path.join(tmp_path, "reload_serve.py"), "w") as f:
+            code = code_template.format(message=message)
+            print(f"Writing updated code:\n{code}")
+            f.write(code)
+            f.flush()
+
+    write_file("World")
+
+    p = subprocess.Popen(
+        [
+            "serve",
+            "run",
+            "--app-dir",
+            tmp_path,
+            "--reload",
+            "reload_serve:msg_app",
+        ]
+    )
+    wait_for_condition(lambda: ping_endpoint("") == "Hello World!", timeout=10)
+
+    # Sleep to ensure the `serve run` command is in the file watching loop when we
+    # write the change, else it won't be picked up.
+    time.sleep(5)
+
+    # Write the file: an update should be auto-triggered.
+    write_file("Updated")
+    wait_for_condition(lambda: ping_endpoint("") == "Hello Updated!", timeout=10)
+
+    p.send_signal(signal.SIGINT)
+    p.wait()
+    assert ping_endpoint("") == CONNECTION_ERROR_MSG
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="File path incorrect on Windows.")
+def test_serving_request_through_grpc_proxy(ray_start_stop):
+    """Test serving request through gRPC proxy
+
+    When Serve runs with a gRPC deployment, the app should be deployed successfully,
+    both ListApplications and Healthz methods returning success response, and registered
+    gRPC methods are routing to the correct replica and return the correct response.
+    """
+    config_file = os.path.join(
+        os.path.dirname(__file__),
+        "test_config_files",
+        "deploy_grpc_app.yaml",
+    )
+
+    subprocess.check_output(["serve", "deploy", config_file], stderr=subprocess.STDOUT)
+
+    app1 = "app1"
+    app_names = [app1]
+
+    channel = grpc.insecure_channel("localhost:9000")
+
+    # Ensures ListApplications method succeeding.
+    wait_for_condition(
+        ping_grpc_list_applications, channel=channel, app_names=app_names
+    )
+
+    # Ensures Healthz method succeeding.
+    ping_grpc_healthz(channel)
+
+    # Ensures a custom defined method is responding correctly.
+    ping_grpc_call_method(channel, app1)
+
+    # Ensures another custom defined method is responding correctly.
+    ping_grpc_another_method(channel, app1)
+
+    # Ensures model multiplexing is responding correctly.
+    ping_grpc_model_multiplexing(channel, app1)
+
+    # Ensure Streaming method is responding correctly.
+    ping_grpc_streaming(channel, app1)
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="File path incorrect on Windows.")
+def test_grpc_proxy_model_composition(ray_start_stop):
+    """Test serving request through gRPC proxy
+
+    When Serve runs with a gRPC deployment, the app should be deployed successfully,
+    both ListApplications and Healthz methods returning success response, and model
+    composition should work correctly.
+    """
+    config_file = os.path.join(
+        os.path.dirname(__file__),
+        "test_config_files",
+        "deploy_grpc_model_composition.yaml",
+    )
+
+    subprocess.check_output(["serve", "deploy", config_file], stderr=subprocess.STDOUT)
+
+    app = "app1"
+    app_names = [app]
+
+    channel = grpc.insecure_channel("localhost:9000")
+
+    # Ensures ListApplications method succeeding.
+    wait_for_condition(
+        ping_grpc_list_applications, channel=channel, app_names=app_names
+    )
+
+    # Ensures Healthz method succeeding.
+    ping_grpc_healthz(channel)
+
+    # Ensure model composition is responding correctly.
+    ping_fruit_stand(channel, app)
 
 
 if __name__ == "__main__":

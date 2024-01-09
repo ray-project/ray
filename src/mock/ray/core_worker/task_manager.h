@@ -65,17 +65,3 @@ class MockTaskFinisherInterface : public TaskFinisherInterface {
 
 }  // namespace core
 }  // namespace ray
-
-namespace ray {
-namespace core {
-
-class MockTaskResubmissionInterface : public TaskResubmissionInterface {
- public:
-  MOCK_METHOD(bool,
-              ResubmitTask,
-              (const TaskID &task_id, std::vector<ObjectID> *task_deps),
-              (override));
-};
-
-}  // namespace core
-}  // namespace ray

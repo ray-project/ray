@@ -59,23 +59,26 @@ def train_func():
 # __torch_single_end__
 
 # __torch_distributed_begin__
-from ray import train
+import ray.train.torch
 
 def train_func_distributed():
     num_epochs = 3
     batch_size = 64
 
     dataset = get_dataset()
-    dataloader = DataLoader(dataset, batch_size=batch_size)
-    dataloader = train.torch.prepare_data_loader(dataloader)
+    dataloader = DataLoader(dataset, batch_size=batch_size, shuffle=True)
+    dataloader = ray.train.torch.prepare_data_loader(dataloader)
 
     model = NeuralNetwork()
-    model = train.torch.prepare_model(model)
+    model = ray.train.torch.prepare_model(model)
 
     criterion = nn.CrossEntropyLoss()
     optimizer = torch.optim.SGD(model.parameters(), lr=0.01)
 
     for epoch in range(num_epochs):
+        if ray.train.get_context().get_world_size() > 1:
+            dataloader.sampler.set_epoch(epoch)
+
         for inputs, labels in dataloader:
             optimizer.zero_grad()
             pred = model(inputs)

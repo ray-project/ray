@@ -31,6 +31,7 @@
 #include "ray/common/status.h"
 #include "ray/gcs/pb_util.h"
 #include "ray/raylet/format/node_manager_generated.h"
+#include "ray/raylet/raylet_util.h"
 #include "ray/raylet/worker_killing_policy.h"
 #include "ray/stats/metric_defs.h"
 #include "ray/stats/stats.h"
@@ -85,43 +86,6 @@ std::vector<ray::rpc::ObjectReference> FlatbufferToObjectReference(
 namespace ray {
 
 namespace raylet {
-
-// A helper function to print the leased workers.
-std::string LeasedWorkersSring(
-    const absl::flat_hash_map<WorkerID, std::shared_ptr<WorkerInterface>>
-        &leased_workers) {
-  std::stringstream buffer;
-  buffer << "  @leased_workers: (";
-  for (const auto &pair : leased_workers) {
-    auto &worker = pair.second;
-    buffer << worker->WorkerId() << ", ";
-  }
-  buffer << ")";
-  return buffer.str();
-}
-
-// A helper function to print the workers in worker_pool_.
-std::string WorkerPoolString(
-    const std::vector<std::shared_ptr<WorkerInterface>> &worker_pool) {
-  std::stringstream buffer;
-  buffer << "   @worker_pool: (";
-  for (const auto &worker : worker_pool) {
-    buffer << worker->WorkerId() << ", ";
-  }
-  buffer << ")";
-  return buffer.str();
-}
-
-// Helper function to print the worker's owner worker and and node owner.
-std::string WorkerOwnerString(std::shared_ptr<WorkerInterface> &worker) {
-  std::stringstream buffer;
-  const auto owner_worker_id =
-      WorkerID::FromBinary(worker->GetOwnerAddress().worker_id());
-  const auto owner_node_id = NodeID::FromBinary(worker->GetOwnerAddress().raylet_id());
-  buffer << "leased_worker Lease " << worker->WorkerId() << " owned by "
-         << owner_worker_id << " / " << owner_node_id;
-  return buffer.str();
-}
 
 void NodeManagerConfig::AddDefaultLabels(const std::string &self_node_id) {
   std::vector<std::string> default_keys = {kLabelKeyNodeID};
@@ -273,9 +237,6 @@ NodeManager::NodeManager(instrumented_io_context &io_service,
                            config.node_manager_port,
                            config.node_manager_address == "127.0.0.1"),
       node_manager_service_(io_service, *this),
-      agent_manager_service_handler_(
-          new DefaultAgentManagerServiceHandler(agent_manager_)),
-      agent_manager_service_(io_service, *agent_manager_service_handler_),
       local_object_manager_(
           self_node_id_,
           config.node_manager_address,
@@ -322,7 +283,7 @@ NodeManager::NodeManager(instrumented_io_context &io_service,
   cluster_resource_scheduler_ = std::make_shared<ClusterResourceScheduler>(
       io_service,
       scheduling::NodeID(self_node_id_.Binary()),
-      config.resource_config.ToResourceMap(),
+      config.resource_config.GetResourceMap(),
       /*is_node_available_fn*/
       [this](scheduling::NodeID node_id) {
         return gcs_client_->Nodes().Get(NodeID::FromBinary(node_id.Binary())) != nullptr;
@@ -396,15 +357,13 @@ NodeManager::NodeManager(instrumented_io_context &io_service,
 
   periodical_runner_.RunFnPeriodically(
       [this]() { cluster_task_manager_->ScheduleAndDispatchTasks(); },
-      RayConfig::instance().worker_cap_initial_backoff_delay_ms());
+      RayConfig::instance().worker_cap_initial_backoff_delay_ms(),
+      "NodeManager.ScheduleAndDispatchTasks");
 
   RAY_CHECK_OK(store_client_.Connect(config.store_socket_name.c_str()));
   // Run the node manger rpc server.
   node_manager_server_.RegisterService(node_manager_service_, false /* token_auth */);
-  node_manager_server_.RegisterService(agent_manager_service_, false /* token_auth */);
-  if (RayConfig::instance().use_ray_syncer()) {
-    node_manager_server_.RegisterService(ray_syncer_service_);
-  }
+  node_manager_server_.RegisterService(ray_syncer_service_);
   node_manager_server_.Run();
   // GCS will check the health of the service named with the node id.
   // Fail to setup this will lead to the health check failure.
@@ -412,34 +371,22 @@ NodeManager::NodeManager(instrumented_io_context &io_service,
       self_node_id_.Hex(), true);
   worker_pool_.SetNodeManagerPort(GetServerPort());
 
-  auto agent_command_line = ParseCommandLine(config.agent_command);
-  for (auto &arg : agent_command_line) {
-    auto node_manager_port_position = arg.find(kNodeManagerPortPlaceholder);
-    if (node_manager_port_position != std::string::npos) {
-      arg.replace(node_manager_port_position,
-                  strlen(kNodeManagerPortPlaceholder),
-                  std::to_string(GetServerPort()));
-    }
-  }
+  dashboard_agent_manager_ = CreateDashboardAgentManager(self_node_id, config);
+  runtime_env_agent_manager_ = CreateRuntimeEnvAgentManager(self_node_id, config);
 
-  auto options = AgentManager::Options({self_node_id, agent_command_line});
-  agent_manager_ = std::make_shared<AgentManager>(
-      std::move(options),
-      /*delay_executor=*/
+  runtime_env_agent_client_ = RuntimeEnvAgentClient::Create(
+      io_service_,
+      config.node_manager_address,
+      config.runtime_env_agent_port, /*delay_executor=*/
       [this](std::function<void()> task, uint32_t delay_ms) {
         return execute_after(io_service_, task, std::chrono::milliseconds(delay_ms));
-      },
-      /*runtime_env_agent_factory=*/
-      [this](const std::string &ip_address, int port) {
-        RAY_CHECK(!ip_address.empty())
-            << "ip_address: " << ip_address << " port: " << port;
-        return std::shared_ptr<rpc::RuntimeEnvAgentClientInterface>(
-            new rpc::RuntimeEnvAgentClient(ip_address, port, client_call_manager_));
       });
-  worker_pool_.SetAgentManager(agent_manager_);
+
+  worker_pool_.SetRuntimeEnvAgentClient(runtime_env_agent_client_);
   worker_pool_.Start();
   periodical_runner_.RunFnPeriodically([this]() { GCTaskFailureReason(); },
-                                       RayConfig::instance().task_failure_entry_ttl_ms());
+                                       RayConfig::instance().task_failure_entry_ttl_ms(),
+                                       "NodeManager.GCTaskFailureReason");
 }
 
 ray::Status NodeManager::RegisterGcs() {
@@ -457,37 +404,35 @@ ray::Status NodeManager::RegisterGcs() {
   auto on_node_change_subscribe_done = [this](Status status) {
     RAY_CHECK_OK(status);
 
-    if (RayConfig::instance().use_ray_syncer()) {
-      // Register resource manager and scheduler
-      ray_syncer_.Register(
-          /* message_type */ syncer::MessageType::RESOURCE_VIEW,
-          /* reporter */ &cluster_resource_scheduler_->GetLocalResourceManager(),
-          /* receiver */ this,
-          /* pull_from_reporter_interval_ms */
-          RayConfig::instance().raylet_report_resources_period_milliseconds());
+    // Register resource manager and scheduler
+    ray_syncer_.Register(
+        /* message_type */ syncer::MessageType::RESOURCE_VIEW,
+        /* reporter */ &cluster_resource_scheduler_->GetLocalResourceManager(),
+        /* receiver */ this,
+        /* pull_from_reporter_interval_ms */
+        RayConfig::instance().raylet_report_resources_period_milliseconds());
 
-      // Register a commands channel.
-      // It's only used for GC right now.
-      ray_syncer_.Register(
-          /* message_type */ syncer::MessageType::COMMANDS,
-          /* reporter */ this,
-          /* receiver */ this,
-          /* pull_from_reporter_interval_ms */ 0);
+    // Register a commands channel.
+    // It's only used for GC right now.
+    ray_syncer_.Register(
+        /* message_type */ syncer::MessageType::COMMANDS,
+        /* reporter */ this,
+        /* receiver */ this,
+        /* pull_from_reporter_interval_ms */ 0);
 
-      auto gcs_channel = gcs_client_->GetGcsRpcClient().GetChannel();
-      ray_syncer_.Connect(kGCSNodeID.Binary(), gcs_channel);
-      periodical_runner_.RunFnPeriodically(
-          [this] {
-            auto triggered_by_global_gc = TryLocalGC();
-            // If plasma store is under high pressure, we should try to schedule a global
-            // gc.
-            if (triggered_by_global_gc) {
-              ray_syncer_.OnDemandBroadcasting(syncer::MessageType::COMMANDS);
-            }
-          },
-          RayConfig::instance().raylet_check_gc_period_milliseconds(),
-          "NodeManager.CheckGC");
-    }
+    auto gcs_channel = gcs_client_->GetGcsRpcClient().GetChannel();
+    ray_syncer_.Connect(kGCSNodeID.Binary(), gcs_channel);
+    periodical_runner_.RunFnPeriodically(
+        [this] {
+          auto triggered_by_global_gc = TryLocalGC();
+          // If plasma store is under high pressure, we should try to schedule a global
+          // gc.
+          if (triggered_by_global_gc) {
+            ray_syncer_.OnDemandBroadcasting(syncer::MessageType::COMMANDS);
+          }
+        },
+        RayConfig::instance().raylet_check_gc_period_milliseconds(),
+        "NodeManager.CheckGC");
   };
   // Register a callback to monitor new nodes and a callback to monitor removed nodes.
   RAY_RETURN_NOT_OK(gcs_client_->Nodes().AsyncSubscribeToNodeChange(
@@ -539,6 +484,10 @@ ray::Status NodeManager::RegisterGcs() {
         [this] { local_object_manager_.FlushFreeObjects(); },
         RayConfig::instance().free_objects_period_milliseconds(),
         "NodeManager.deadline_timer.flush_free_objects");
+    periodical_runner_.RunFnPeriodically(
+        [this] { SpillIfOverPrimaryObjectsThreshold(); },
+        RayConfig::instance().free_objects_period_milliseconds(),
+        "NodeManager.deadline_timer.spill_objects_when_over_threshold");
   }
   /// If periodic asio stats print is enabled, it will print it.
   const auto event_stats_print_interval_ms =
@@ -547,9 +496,7 @@ ray::Status NodeManager::RegisterGcs() {
     periodical_runner_.RunFnPeriodically(
         [this] {
           std::stringstream debug_msg;
-          debug_msg << "Event stats:\n\n"
-                    << io_service_.stats().StatsString() << "\n\n"
-                    << DebugString() << "\n\n";
+          debug_msg << DebugString() << "\n\n";
           RAY_LOG(INFO) << AppendToEachLine(debug_msg.str(), "[state-dump] ");
           ReportWorkerOOMKillStats();
         },
@@ -570,15 +517,18 @@ ray::Status NodeManager::RegisterGcs() {
         checking = true;
         RAY_CHECK_OK(gcs_client_->Nodes().AsyncCheckSelfAlive(
             // capture checking ptr here because vs17 fail to compile
-            [checking_ptr = &checking](auto status, auto alive) mutable {
-              if (status.ok()) {
-                if (!alive) {
-                  // GCS think this raylet is dead. Fail the node
-                  RAY_LOG(FATAL)
-                      << "GCS consider this node to be dead. This may happen when "
-                      << "GCS is not backed by a DB and restarted or there is data loss "
-                      << "in the DB.";
-                }
+            [this, checking_ptr = &checking](auto status, auto alive) mutable {
+              if ((status.ok() && !alive)) {
+                // GCS think this raylet is dead. Fail the node
+                RAY_LOG(FATAL)
+                    << "GCS consider this node to be dead. This may happen when "
+                    << "GCS is not backed by a DB and restarted or there is data loss "
+                    << "in the DB.";
+              } else if (status.IsAuthError()) {
+                RAY_LOG(FATAL)
+                    << "GCS returned an authentication error. This may happen when "
+                    << "GCS is not backed by a DB and restarted or there is data loss "
+                    << "in the DB. Local cluster ID: " << gcs_client_->GetClusterId();
               }
               *checking_ptr = false;
             },
@@ -646,36 +596,6 @@ void NodeManager::HandleJobFinished(const JobID &job_id, const JobTableData &job
   RAY_LOG(DEBUG) << "HandleJobFinished " << job_id;
   RAY_CHECK(job_data.is_dead());
   worker_pool_.HandleJobFinished(job_id);
-}
-
-void NodeManager::FillNormalTaskResourceUsage(rpc::ResourcesData &resources_data) {
-  auto last_heartbeat_resources = gcs_client_->NodeResources().GetLastResourceUsage();
-  auto normal_task_resources = local_task_manager_->CalcNormalTaskResources();
-  if (last_heartbeat_resources->normal_task_resources != normal_task_resources) {
-    RAY_LOG(DEBUG) << "normal_task_resources = " << normal_task_resources.DebugString();
-    resources_data.set_resources_normal_task_changed(true);
-    auto resource_map = normal_task_resources.ToResourceMap();
-    resources_data.mutable_resources_normal_task()->insert(resource_map.begin(),
-                                                           resource_map.end());
-    resources_data.set_resources_normal_task_timestamp(absl::GetCurrentTimeNanos());
-    last_heartbeat_resources->normal_task_resources = normal_task_resources;
-  }
-}
-
-void NodeManager::FillResourceReport(rpc::ResourcesData &resources_data) {
-  resources_data.set_node_id(self_node_id_.Binary());
-  resources_data.set_node_manager_address(initial_config_.node_manager_address);
-  // Update local cache from gcs remote cache, this is needed when gcs restart.
-  // We should always keep the cache view consistent.
-  cluster_resource_scheduler_->GetLocalResourceManager().ResetLastReportResourceUsage(
-      *(gcs_client_->NodeResources().GetLastResourceUsage()));
-  cluster_resource_scheduler_->GetLocalResourceManager().FillResourceUsage(
-      resources_data);
-  if (RayConfig::instance().gcs_actor_scheduling_enabled()) {
-    FillNormalTaskResourceUsage(resources_data);
-  }
-
-  resources_data.set_should_global_gc(TryLocalGC());
 }
 
 void NodeManager::DoLocalGC(bool triggered_by_global_gc) {
@@ -985,7 +905,7 @@ void NodeManager::WarnResourceDeadlock() {
         << "by actors. To resolve the issue, consider creating fewer actors or "
         << "increasing the resources available to this Ray cluster.\n"
         << "Required resources for this actor or task: "
-        << exemplar.GetTaskSpecification().GetRequiredPlacementResources().ToString()
+        << exemplar.GetTaskSpecification().GetRequiredPlacementResources().DebugString()
         << "\n"
         << "Available resources on this node: "
         << cluster_resource_scheduler_->GetClusterResourceManager()
@@ -1038,12 +958,10 @@ void NodeManager::NodeAdded(const GcsNodeInfo &node_info) {
     cluster_task_manager_->ScheduleAndDispatchTasks();
   }
   // Update the resource view if a new message has been sent.
-  if (RayConfig::instance().use_ray_syncer()) {
-    if (auto sync_msg = ray_syncer_.GetSyncMessage(node_id.Binary(),
-                                                   syncer::MessageType::RESOURCE_VIEW)) {
-      if (sync_msg) {
-        ConsumeSyncMessage(sync_msg);
-      }
+  if (auto sync_msg = ray_syncer_.GetSyncMessage(node_id.Binary(),
+                                                 syncer::MessageType::RESOURCE_VIEW)) {
+    if (sync_msg) {
+      ConsumeSyncMessage(sync_msg);
     }
   }
 }
@@ -1054,7 +972,7 @@ void NodeManager::NodeRemoved(const NodeID &node_id) {
   RAY_LOG(DEBUG) << "[NodeRemoved] Received callback from node id " << node_id;
 
   if (node_id == self_node_id_) {
-    if (!is_node_drained_) {
+    if (!is_shutdown_request_received_) {
       std::ostringstream error_message;
       error_message
           << "[Timeout] Exiting because this node manager has mistakenly been marked as "
@@ -1127,15 +1045,22 @@ void NodeManager::HandleUnexpectedWorkerFailure(const rpc::WorkerDeltaData &data
       if (!worker_id.IsNil()) {
         // If the failed worker was a leased worker's owner, then kill the leased worker.
         if (owner_worker_id == worker_id) {
-          RAY_LOG(INFO) << "Owner process " << owner_worker_id
-                        << " died, killing leased worker " << worker->WorkerId();
+          std::ostringstream stream;
+          stream << "The leased worker " << worker->WorkerId()
+                 << " is killed because the owner process " << owner_worker_id
+                 << " died.";
+          const auto &err_msg = stream.str();
+          RAY_LOG(INFO) << err_msg;
           KillWorker(worker);
         }
       } else if (owner_node_id == node_id) {
         // If the leased worker's owner was on the failed node, then kill the leased
         // worker.
-        RAY_LOG(INFO) << "Owner node " << owner_node_id << " died, killing leased worker "
-                      << worker->WorkerId();
+        std::ostringstream stream;
+        stream << "The leased worker " << worker->WorkerId()
+               << " is killed because the owner node " << owner_node_id << " died.";
+        const auto &err_msg = stream.str();
+        RAY_LOG(INFO) << err_msg;
         KillWorker(worker);
       }
     }
@@ -1213,15 +1138,11 @@ void NodeManager::HandleNotifyGCSRestart(rpc::NotifyGCSRestartRequest request,
   send_reply_callback(Status::OK(), nullptr, nullptr);
 }
 
-bool NodeManager::UpdateResourceUsage(const NodeID &node_id,
-                                      const rpc::ResourcesData &resource_data) {
-  // Trigger local GC at the next heartbeat interval.
-  if (resource_data.should_global_gc()) {
-    should_local_gc_ = true;
-  }
-
+bool NodeManager::UpdateResourceUsage(
+    const NodeID &node_id,
+    const syncer::ResourceViewSyncMessage &resource_view_sync_message) {
   if (!cluster_resource_scheduler_->GetClusterResourceManager().UpdateNode(
-          scheduling::NodeID(node_id.Binary()), resource_data)) {
+          scheduling::NodeID(node_id.Binary()), resource_view_sync_message)) {
     RAY_LOG(INFO)
         << "[UpdateResourceUsage]: received resource usage from unknown node id "
         << node_id;
@@ -1265,8 +1186,11 @@ void NodeManager::ProcessClientMessage(const std::shared_ptr<ClientConnection> &
   case protocol::MessageType::AnnounceWorkerPort: {
     ProcessAnnounceWorkerPortMessage(client, message_data);
   } break;
-  case protocol::MessageType::TaskDone: {
-    HandleWorkerAvailable(client);
+  case protocol::MessageType::ActorCreationTaskDone: {
+    if (registered_worker) {
+      // Worker may send this message after it was disconnected.
+      HandleWorkerAvailable(registered_worker);
+    }
   } break;
   case protocol::MessageType::DisconnectClient: {
     ProcessDisconnectClientMessage(client, message_data);
@@ -1288,9 +1212,7 @@ void NodeManager::ProcessClientMessage(const std::shared_ptr<ClientConnection> &
     // TODO(ekl) this is still used from core worker even in direct call mode to
     // finish up get requests.
     auto message = flatbuffers::GetRoot<protocol::NotifyUnblocked>(message_data);
-    AsyncResolveObjectsFinish(client,
-                              from_flatbuf<TaskID>(*message->task_id()),
-                              /*was_blocked*/ true);
+    AsyncResolveObjectsFinish(client, from_flatbuf<TaskID>(*message->task_id()));
   } break;
   case protocol::MessageType::WaitRequest: {
     ProcessWaitRequestMessage(client, message_data);
@@ -1339,7 +1261,7 @@ void NodeManager::ProcessRegisterClientRequestMessage(
              worker_type == rpc::WorkerType::RESTORE_WORKER) {
     RAY_CHECK(job_id.IsNil());
   }
-  auto worker = std::dynamic_pointer_cast<WorkerInterface>(
+  auto worker = std::static_pointer_cast<WorkerInterface>(
       std::make_shared<Worker>(job_id,
                                runtime_env_hash,
                                worker_id,
@@ -1442,13 +1364,8 @@ void NodeManager::ProcessAnnounceWorkerPortMessage(
   worker->Connect(port);
   if (is_worker) {
     worker_pool_.OnWorkerStarted(worker);
-    HandleWorkerAvailable(worker->Connection());
+    HandleWorkerAvailable(worker);
   }
-}
-
-void NodeManager::HandleWorkerAvailable(const std::shared_ptr<ClientConnection> &client) {
-  std::shared_ptr<WorkerInterface> worker = worker_pool_.GetRegisteredWorker(client);
-  HandleWorkerAvailable(worker);
 }
 
 void NodeManager::HandleWorkerAvailable(const std::shared_ptr<WorkerInterface> &worker) {
@@ -1487,7 +1404,7 @@ void NodeManager::DisconnectClient(const std::shared_ptr<ClientConnection> &clie
                                    const rpc::RayException *creation_task_exception) {
   RAY_LOG(INFO) << "NodeManager::DisconnectClient, disconnect_type=" << disconnect_type
                 << ", has creation task exception = " << std::boolalpha
-                << bool(creation_task_exception == nullptr);
+                << bool(creation_task_exception != nullptr);
   std::shared_ptr<WorkerInterface> worker = worker_pool_.GetRegisteredWorker(client);
   bool is_worker = false, is_driver = false;
   if (worker) {
@@ -1511,7 +1428,7 @@ void NodeManager::DisconnectClient(const std::shared_ptr<ClientConnection> &clie
   dependency_manager_.CancelWaitRequest(worker->WorkerId());
 
   // Erase any lease metadata.
-  leased_workers_.erase(worker->WorkerId());
+  ReleaseWorker(worker->WorkerId());
 
   if (creation_task_exception != nullptr) {
     RAY_LOG(INFO) << "Formatted creation task exception: "
@@ -1521,6 +1438,8 @@ void NodeManager::DisconnectClient(const std::shared_ptr<ClientConnection> &clie
   // Publish the worker failure.
   auto worker_failure_data_ptr =
       gcs::CreateWorkerFailureData(worker->WorkerId(),
+                                   self_node_id_,
+                                   initial_config_.node_manager_address,
                                    time(nullptr),
                                    disconnect_type,
                                    disconnect_detail,
@@ -1657,8 +1576,7 @@ void NodeManager::ProcessFetchOrReconstructMessage(
     AsyncResolveObjects(client,
                         refs,
                         task_id,
-                        /*ray_get=*/true,
-                        /*mark_worker_blocked*/ message->mark_worker_blocked());
+                        /*ray_get=*/true);
   }
 }
 
@@ -1666,9 +1584,9 @@ void NodeManager::ProcessDirectCallTaskBlocked(
     const std::shared_ptr<ClientConnection> &client, const uint8_t *message_data) {
   auto message =
       flatbuffers::GetRoot<protocol::NotifyDirectCallTaskBlocked>(message_data);
-  bool release_resources = message->release_resources();
+  RAY_CHECK(message->release_resources());
   std::shared_ptr<WorkerInterface> worker = worker_pool_.GetRegisteredWorker(client);
-  HandleDirectCallTaskBlocked(worker, release_resources);
+  HandleDirectCallTaskBlocked(worker, true);
 }
 
 void NodeManager::ProcessWaitRequestMessage(
@@ -1688,7 +1606,6 @@ void NodeManager::ProcessWaitRequestMessage(
   }
 
   const TaskID &current_task_id = from_flatbuf<TaskID>(*message->task_id());
-  bool was_blocked = message->mark_worker_blocked();
   if (resolve_objects) {
     // Resolve any missing objects. This is a no-op for any objects that are
     // already local. Missing objects will be pulled from remote node managers.
@@ -1697,16 +1614,15 @@ void NodeManager::ProcessWaitRequestMessage(
     AsyncResolveObjects(client,
                         refs,
                         current_task_id,
-                        /*ray_get=*/false,
-                        /*mark_worker_blocked*/ was_blocked);
+                        /*ray_get=*/false);
   }
   uint64_t num_required_objects = static_cast<uint64_t>(message->num_ready_objects());
   wait_manager_.Wait(
       object_ids,
       message->timeout(),
       num_required_objects,
-      [this, resolve_objects, was_blocked, client, current_task_id](
-          std::vector<ObjectID> ready, std::vector<ObjectID> remaining) {
+      [this, resolve_objects, client, current_task_id](std::vector<ObjectID> ready,
+                                                       std::vector<ObjectID> remaining) {
         // Write the data.
         flatbuffers::FlatBufferBuilder fbb;
         flatbuffers::Offset<protocol::WaitReply> wait_reply = protocol::CreateWaitReply(
@@ -1720,7 +1636,7 @@ void NodeManager::ProcessWaitRequestMessage(
         if (status.ok()) {
           // The client is unblocked now because the wait call has returned.
           if (resolve_objects) {
-            AsyncResolveObjectsFinish(client, current_task_id, was_blocked);
+            AsyncResolveObjectsFinish(client, current_task_id);
           }
         } else {
           // We failed to write to the client, so disconnect the client.
@@ -1746,8 +1662,7 @@ void NodeManager::ProcessWaitForDirectActorCallArgsRequestMessage(
   AsyncResolveObjects(client,
                       refs,
                       TaskID::Nil(),
-                      /*ray_get=*/false,
-                      /*mark_worker_blocked*/ false);
+                      /*ray_get=*/false);
   // De-duplicate the object IDs.
   absl::flat_hash_set<ObjectID> object_id_set(object_ids.begin(), object_ids.end());
   object_ids.assign(object_id_set.begin(), object_id_set.end());
@@ -1778,93 +1693,13 @@ void NodeManager::ProcessPushErrorRequestMessage(const uint8_t *message_data) {
   RAY_CHECK_OK(gcs_client_->Errors().AsyncReportJobError(error_data_ptr, nullptr));
 }
 
-void NodeManager::HandleUpdateResourceUsage(rpc::UpdateResourceUsageRequest request,
-                                            rpc::UpdateResourceUsageReply *reply,
-                                            rpc::SendReplyCallback send_reply_callback) {
-  if (RayConfig::instance().use_ray_syncer()) {
-    RAY_LOG(WARNING)
-        << "There is a GCS outside of this cluster sending message to this raylet.";
-    send_reply_callback(Status::OK(), nullptr, nullptr);
-    return;
-  }
-
-  rpc::ResourceUsageBroadcastData resource_usage_batch;
-  resource_usage_batch.ParseFromString(request.serialized_resource_usage_batch());
-  // When next_resource_seq_no_ == 0 it means it just started.
-  // TODO: Fetch a snapshot from gcs for lightweight resource broadcasting
-  if (next_resource_seq_no_ != 0 &&
-      resource_usage_batch.seq_no() != next_resource_seq_no_) {
-    // TODO (Alex): Ideally we would be really robust, and potentially eagerly
-    // pull a full resource "snapshot" from gcs to make sure our state doesn't
-    // diverge from GCS.
-    RAY_LOG(WARNING)
-        << "Raylet may have missed a resource broadcast. This either means that GCS has "
-           "restarted, the network is heavily congested and is dropping, reordering, or "
-           "duplicating packets. Expected seq#: "
-        << next_resource_seq_no_ << ", but got: " << resource_usage_batch.seq_no() << ".";
-    if (resource_usage_batch.seq_no() < next_resource_seq_no_) {
-      RAY_LOG(WARNING) << "Discard the the resource update since local version is newer";
-      send_reply_callback(Status::OK(), nullptr, nullptr);
-      return;
-    }
-  }
-  next_resource_seq_no_ = resource_usage_batch.seq_no() + 1;
-
-  bool updated = false;
-  for (const auto &resource_change_or_data : resource_usage_batch.batch()) {
-    if (resource_change_or_data.has_data()) {
-      const auto &resource_usage = resource_change_or_data.data();
-      auto node_id = NodeID::FromBinary(resource_usage.node_id());
-      // Skip messages from self.
-      if (node_id != self_node_id_) {
-        if (UpdateResourceUsage(node_id, resource_usage)) {
-          updated = true;
-        }
-      }
-    } else if (resource_change_or_data.has_change()) {
-      const auto &resource_notification = resource_change_or_data.change();
-      auto node_id = NodeID::FromBinary(resource_notification.node_id());
-      if (resource_notification.updated_resources_size() != 0) {
-        auto resources = ResourceMapToResourceRequest(
-            MapFromProtobuf(resource_notification.updated_resources()), false);
-        if (ResourceCreateUpdated(node_id, resources)) {
-          updated = true;
-        }
-      }
-
-      if (resource_notification.deleted_resources_size() != 0) {
-        if (ResourceDeleted(
-                node_id, VectorFromProtobuf(resource_notification.deleted_resources()))) {
-          updated = true;
-        }
-      }
-    }
-  }
-
-  if (updated) {
-    cluster_task_manager_->ScheduleAndDispatchTasks();
-  }
-  send_reply_callback(Status::OK(), nullptr, nullptr);
-}
-
-void NodeManager::HandleRequestResourceReport(
-    rpc::RequestResourceReportRequest request,
-    rpc::RequestResourceReportReply *reply,
-    rpc::SendReplyCallback send_reply_callback) {
-  auto resources_data = reply->mutable_resources();
-  FillResourceReport(*resources_data);
-  resources_data->set_cluster_full_of_actors_detected(resource_deadlock_warned_ >= 1);
-
-  send_reply_callback(Status::OK(), nullptr, nullptr);
-}
-
 void NodeManager::HandleGetResourceLoad(rpc::GetResourceLoadRequest request,
                                         rpc::GetResourceLoadReply *reply,
                                         rpc::SendReplyCallback send_reply_callback) {
   auto resources_data = reply->mutable_resources();
   resources_data->set_node_id(self_node_id_.Binary());
   resources_data->set_node_manager_address(initial_config_.node_manager_address);
-  cluster_task_manager_->FillResourceUsage(*resources_data, nullptr);
+  cluster_task_manager_->FillResourceUsage(*resources_data);
   send_reply_callback(Status::OK(), nullptr, nullptr);
 }
 
@@ -1921,7 +1756,7 @@ void NodeManager::HandleRequestWorkerLease(rpc::RequestWorkerLeaseRequest reques
                                   .GetNodeResourceViewString(
                                       scheduling::NodeID(self_node_id_.Binary()));
             resources_data->set_resources_normal_task_changed(true);
-            auto resource_map = normal_task_resources.ToResourceMap();
+            auto resource_map = normal_task_resources.GetResourceMap();
             resources_data->mutable_resources_normal_task()->insert(resource_map.begin(),
                                                                     resource_map.end());
             resources_data->set_resources_normal_task_timestamp(
@@ -2018,15 +1853,17 @@ void NodeManager::HandleReturnWorker(rpc::ReturnWorkerRequest request,
   std::shared_ptr<WorkerInterface> worker = leased_workers_[worker_id];
 
   Status status;
-  leased_workers_.erase(worker_id);
+  ReleaseWorker(worker_id);
 
   if (worker) {
     if (request.disconnect_worker()) {
       // The worker should be destroyed.
-      DisconnectClient(worker->Connection(),
-                       rpc::WorkerExitType::SYSTEM_ERROR,
-                       "The leased worker has unrecoverable failure. Worker is requested "
-                       "to be destroyed when it is returned.");
+      DisconnectClient(
+          worker->Connection(),
+          rpc::WorkerExitType::SYSTEM_ERROR,
+          absl::StrCat("The leased worker has unrecoverable failure. Worker is requested "
+                       "to be destroyed when it is returned. ",
+                       request.disconnect_worker_error_detail()));
     } else {
       if (worker->IsBlocked()) {
         // Handle the edge case where the worker was returned before we got the
@@ -2046,6 +1883,33 @@ void NodeManager::HandleReturnWorker(rpc::ReturnWorkerRequest request,
   send_reply_callback(status, nullptr, nullptr);
 }
 
+void NodeManager::HandleDrainRaylet(rpc::DrainRayletRequest request,
+                                    rpc::DrainRayletReply *reply,
+                                    rpc::SendReplyCallback send_reply_callback) {
+  RAY_LOG(INFO) << "Drain raylet RPC has received. Drain reason: "
+                << request.reason_message();
+
+  if (request.reason() ==
+      rpc::autoscaler::DrainNodeReason::DRAIN_NODE_REASON_IDLE_TERMINATION) {
+    const bool is_idle =
+        cluster_resource_scheduler_->GetLocalResourceManager().IsLocalNodeIdle();
+    if (is_idle) {
+      cluster_resource_scheduler_->GetLocalResourceManager().SetLocalNodeDraining();
+      reply->set_is_accepted(true);
+    } else {
+      reply->set_is_accepted(false);
+    }
+  } else {
+    // Non-rejectable draining request.
+    RAY_CHECK_EQ(request.reason(),
+                 rpc::autoscaler::DrainNodeReason::DRAIN_NODE_REASON_PREEMPTION);
+    cluster_resource_scheduler_->GetLocalResourceManager().SetLocalNodeDraining();
+    reply->set_is_accepted(true);
+  }
+
+  send_reply_callback(Status::OK(), nullptr, nullptr);
+}
+
 void NodeManager::HandleShutdownRaylet(rpc::ShutdownRayletRequest request,
                                        rpc::ShutdownRayletReply *reply,
                                        rpc::SendReplyCallback send_reply_callback) {
@@ -2055,7 +1919,7 @@ void NodeManager::HandleShutdownRaylet(rpc::ShutdownRayletRequest request,
   if (!request.graceful()) {
     std::_Exit(EXIT_SUCCESS);
   }
-  if (is_node_drained_) {
+  if (is_shutdown_request_received_) {
     RAY_LOG(INFO) << "Node already has received the shutdown request. The shutdown "
                      "request RPC is ignored.";
     return;
@@ -2064,20 +1928,10 @@ void NodeManager::HandleShutdownRaylet(rpc::ShutdownRayletRequest request,
     rpc::DrainServerCallExecutor();
     // Note that the callback is posted to the io service after the shutdown GRPC request
     // is replied. Otherwise, the RPC might not be replied to GCS before it shutsdown
-    // itself. Implementation note: When raylet is shutdown by ray stop, the CLI sends a
-    // sigterm. Raylet knows how to gracefully shutdown when it receives a sigterm. Here,
-    // we raise a sigterm to itself so that it can re-use the same graceful shutdown code
-    // path. The sigterm is handled in the entry point (raylet/main.cc)'s signal handler.
-    auto signo = SIGTERM;
-    RAY_LOG(INFO) << "Sending a signal to itself. shutting down. "
-                  << ". Signo: " << signo;
-    // raise return 0 if succeeds. If it fails to gracefully shutdown, it kills itself
-    // forcefully.
-    RAY_CHECK(std::raise(signo) == 0)
-        << "There was a failure while sending a sigterm to itself. The process will not "
-           "gracefully shutdown.";
+    // itself.
+    ShutdownRayletGracefully();
   };
-  is_node_drained_ = true;
+  is_shutdown_request_received_ = true;
   send_reply_callback(Status::OK(), shutdown_after_reply, shutdown_after_reply);
 }
 
@@ -2099,9 +1953,7 @@ void NodeManager::HandleReleaseUnusedWorkers(rpc::ReleaseUnusedWorkersRequest re
     }
   }
 
-  for (auto &iter : unused_worker_ids) {
-    leased_workers_.erase(iter);
-  }
+  ReleaseWorkers(unused_worker_ids);
 
   send_reply_callback(Status::OK(), nullptr, nullptr);
 }
@@ -2168,7 +2020,7 @@ void NodeManager::HandleDirectCallTaskBlocked(
       !release_resources) {
     return;  // The worker may have died or is no longer processing the task.
   }
-  local_task_manager_->ReleaseCpuResourcesFromUnblockedWorker(worker);
+  local_task_manager_->ReleaseCpuResourcesFromBlockedWorker(worker);
   cluster_task_manager_->ScheduleAndDispatchTasks();
 }
 
@@ -2183,7 +2035,7 @@ void NodeManager::HandleDirectCallTaskUnblocked(
   dependency_manager_.CancelGetRequest(worker->WorkerId());
 
   if (worker->IsBlocked()) {
-    local_task_manager_->ReturnCpuResourcesToBlockedWorker(worker);
+    local_task_manager_->ReturnCpuResourcesToUnblockedWorker(worker);
     cluster_task_manager_->ScheduleAndDispatchTasks();
   }
 }
@@ -2192,8 +2044,7 @@ void NodeManager::AsyncResolveObjects(
     const std::shared_ptr<ClientConnection> &client,
     const std::vector<rpc::ObjectReference> &required_object_refs,
     const TaskID &current_task_id,
-    bool ray_get,
-    bool mark_worker_blocked) {
+    bool ray_get) {
   std::shared_ptr<WorkerInterface> worker = worker_pool_.GetRegisteredWorker(client);
   if (!worker) {
     // The client is a driver. Drivers do not hold resources, so we simply mark
@@ -2214,9 +2065,7 @@ void NodeManager::AsyncResolveObjects(
 }
 
 void NodeManager::AsyncResolveObjectsFinish(
-    const std::shared_ptr<ClientConnection> &client,
-    const TaskID &current_task_id,
-    bool was_blocked) {
+    const std::shared_ptr<ClientConnection> &client, const TaskID &current_task_id) {
   std::shared_ptr<WorkerInterface> worker = worker_pool_.GetRegisteredWorker(client);
   if (!worker) {
     // The client is a driver. Drivers do not hold resources, so we simply
@@ -2230,10 +2079,6 @@ void NodeManager::AsyncResolveObjectsFinish(
   // `ray.wait` calls will stay active until the objects become local, or the
   // task/actor that called `ray.wait` exits.
   dependency_manager_.CancelGetRequest(worker->WorkerId());
-  // Mark the task as unblocked.
-  if (was_blocked) {
-    worker->RemoveBlockedTaskId(current_task_id);
-  }
 }
 
 bool NodeManager::FinishAssignedTask(const std::shared_ptr<WorkerInterface> &worker_ptr) {
@@ -2289,6 +2134,19 @@ void NodeManager::FinishAssignedActorCreationTask(WorkerInterface &worker,
   }
 }
 
+void NodeManager::SpillIfOverPrimaryObjectsThreshold() {
+  // Trigger object spilling if current usage is above the specified threshold.
+  const float allocated_percentage =
+      static_cast<float>(local_object_manager_.GetPrimaryBytes()) /
+      object_manager_.GetMemoryCapacity();
+  if (allocated_percentage >= RayConfig::instance().object_spilling_threshold()) {
+    RAY_LOG(INFO) << "Triggering object spilling because current usage "
+                  << allocated_percentage * 100 << "% is above threshold "
+                  << RayConfig::instance().object_spilling_threshold() * 100 << "%.";
+    local_object_manager_.SpillObjectUptoMaxThroughput();
+  }
+}
+
 void NodeManager::HandleObjectLocal(const ObjectInfo &object_info) {
   const ObjectID &object_id = object_info.object_id;
   // Notify the task dependency manager that this object is local.
@@ -2321,6 +2179,10 @@ void NodeManager::HandleObjectLocal(const ObjectInfo &object_info) {
           }
         });
   }
+
+  // An object was created so we may be over the spill
+  // threshold now.
+  SpillIfOverPrimaryObjectsThreshold();
 }
 
 bool NodeManager::IsActorCreationTask(const TaskID &task_id) {
@@ -2443,21 +2305,6 @@ std::string NodeManager::DebugString() const {
   result << "\nEvent stats:" << io_service_.stats().StatsString();
 
   result << "\nDebugString() time ms: " << (current_time_ms() - now_ms);
-  return result.str();
-}
-
-// Summarizes a Census view and tag values into a compact string, e.g.,
-// "Tag1:Value1,Tag2:Value2,Tag3:Value3".
-std::string compact_tag_string(const opencensus::stats::ViewDescriptor &view,
-                               const std::vector<std::string> &values) {
-  std::stringstream result;
-  const auto &keys = view.columns();
-  for (size_t i = 0; i < values.size(); i++) {
-    result << keys[i].name() << ":" << values[i];
-    if (i < values.size() - 1) {
-      result << ",";
-    }
-  }
   return result.str();
 }
 
@@ -2619,6 +2466,10 @@ rpc::ObjectStoreStats AccumulateStoreStats(
     if (cur_store.object_pulls_queued()) {
       store_stats.set_object_pulls_queued(true);
     }
+    store_stats.set_cumulative_created_objects(store_stats.cumulative_created_objects() +
+                                               cur_store.cumulative_created_objects());
+    store_stats.set_cumulative_created_bytes(store_stats.cumulative_created_bytes() +
+                                             cur_store.cumulative_created_bytes());
   }
   return store_stats;
 }
@@ -2793,7 +2644,13 @@ void NodeManager::TriggerGlobalGC() {
   should_local_gc_ = true;
 }
 
-void NodeManager::Stop() { object_manager_.Stop(); }
+void NodeManager::Stop() {
+  // This never fails.
+  RAY_CHECK_OK(store_client_.Disconnect());
+  object_manager_.Stop();
+  dashboard_agent_manager_.reset();
+  runtime_env_agent_manager_.reset();
+}
 
 void NodeManager::RecordMetrics() {
   recorded_metrics_ = true;
@@ -2815,18 +2672,16 @@ void NodeManager::RecordMetrics() {
 void NodeManager::ConsumeSyncMessage(
     std::shared_ptr<const syncer::RaySyncMessage> message) {
   if (message->message_type() == syncer::MessageType::RESOURCE_VIEW) {
-    rpc::ResourcesData data;
-    data.ParseFromString(message->sync_message());
-    NodeID node_id = NodeID::FromBinary(data.node_id());
-    if (UpdateResourceUsage(node_id, data)) {
+    syncer::ResourceViewSyncMessage resource_view_sync_message;
+    resource_view_sync_message.ParseFromString(message->sync_message());
+    NodeID node_id = NodeID::FromBinary(message->node_id());
+    if (UpdateResourceUsage(node_id, resource_view_sync_message)) {
       cluster_task_manager_->ScheduleAndDispatchTasks();
     }
-    // Message view shouldn't carry this field.
-    RAY_CHECK(!data.should_global_gc());
   } else if (message->message_type() == syncer::MessageType::COMMANDS) {
-    rpc::ResourcesData data;
-    data.ParseFromString(message->sync_message());
-    if (data.should_global_gc()) {
+    syncer::CommandsSyncMessage commands_sync_message;
+    commands_sync_message.ParseFromString(message->sync_message());
+    if (commands_sync_message.should_global_gc()) {
       should_local_gc_ = true;
     }
   }
@@ -2834,17 +2689,18 @@ void NodeManager::ConsumeSyncMessage(
 
 std::optional<syncer::RaySyncMessage> NodeManager::CreateSyncMessage(
     int64_t after_version, syncer::MessageType message_type) const {
-  RAY_CHECK(message_type == syncer::MessageType::COMMANDS);
+  RAY_CHECK_EQ(message_type, syncer::MessageType::COMMANDS);
 
-  rpc::ResourcesData resources_data;
-  resources_data.set_should_global_gc(true);
-  resources_data.set_cluster_full_of_actors_detected(resource_deadlock_warned_ >= 1);
+  syncer::CommandsSyncMessage commands_sync_message;
+  commands_sync_message.set_should_global_gc(true);
+  commands_sync_message.set_cluster_full_of_actors_detected(resource_deadlock_warned_ >=
+                                                            1);
   syncer::RaySyncMessage msg;
   msg.set_version(absl::GetCurrentTimeNanos());
   msg.set_node_id(self_node_id_.Binary());
   msg.set_message_type(syncer::MessageType::COMMANDS);
   std::string serialized_msg;
-  RAY_CHECK(resources_data.SerializeToString(&serialized_msg));
+  RAY_CHECK(commands_sync_message.SerializeToString(&serialized_msg));
   msg.set_sync_message(std::move(serialized_msg));
   return std::make_optional(std::move(msg));
 }
@@ -2866,7 +2722,7 @@ void NodeManager::PublishInfeasibleTaskError(const RayTask &task) const {
     error_message
         << "The actor or task with ID " << task.GetTaskSpecification().TaskId()
         << " cannot be scheduled right now. It requires "
-        << task.GetTaskSpecification().GetRequiredPlacementResources().ToString()
+        << task.GetTaskSpecification().GetRequiredPlacementResources().DebugString()
         << " for placement, however the cluster currently cannot provide the requested "
            "resources. The required resources may be added as autoscaling takes place "
            "or placement groups are scheduled. Otherwise, consider reducing the "
@@ -3111,6 +2967,86 @@ void NodeManager::ReportWorkerOOMKillStats() {
   }
   number_workers_killed_by_oom_ = 0;
   number_workers_killed_ = 0;
+}
+
+std::unique_ptr<AgentManager> NodeManager::CreateDashboardAgentManager(
+    const NodeID &self_node_id, const NodeManagerConfig &config) {
+  auto agent_command_line = ParseCommandLine(config.dashboard_agent_command);
+
+  if (agent_command_line.empty()) {
+    return nullptr;
+  }
+
+  for (auto &arg : agent_command_line) {
+    auto node_manager_port_position = arg.find(kNodeManagerPortPlaceholder);
+    if (node_manager_port_position != std::string::npos) {
+      arg.replace(node_manager_port_position,
+                  strlen(kNodeManagerPortPlaceholder),
+                  std::to_string(GetServerPort()));
+    }
+  }
+  // Disable metrics report if needed.
+  if (!RayConfig::instance().enable_metrics_collection()) {
+    agent_command_line.push_back("--disable-metrics-collection");
+  }
+
+  // Create a non-zero random agent_id to pass to the child process.
+  // We cannot use pid an id because os.getpid() from the python process is not
+  // reliable when using a launcher.
+  // See https://github.com/ray-project/ray/issues/24361 and Python issue
+  // https://github.com/python/cpython/issues/83086
+  int agent_id = 0;
+  while (agent_id == 0) {
+    agent_id = rand();
+  };
+  std::string agent_id_str = std::to_string(agent_id);
+  agent_command_line.push_back("--agent-id");
+  agent_command_line.push_back(agent_id_str);
+
+  std::string agent_name = "dashboard_agent/" + agent_id_str;
+  // TODO(ryw): after thorough testing, we can disable the fate_shares flag and let a
+  // dashboard agent crash no longer lead to a raylet crash.
+  auto options = AgentManager::Options({self_node_id,
+                                        agent_name,
+                                        agent_command_line,
+                                        /*fate_shares=*/true});
+  return std::make_unique<AgentManager>(
+      std::move(options),
+      /*delay_executor=*/
+      [this](std::function<void()> task, uint32_t delay_ms) {
+        return execute_after(io_service_, task, std::chrono::milliseconds(delay_ms));
+      });
+}
+
+std::unique_ptr<AgentManager> NodeManager::CreateRuntimeEnvAgentManager(
+    const NodeID &self_node_id, const NodeManagerConfig &config) {
+  auto agent_command_line = ParseCommandLine(config.runtime_env_agent_command);
+
+  if (agent_command_line.empty()) {
+    return nullptr;
+  }
+
+  for (auto &arg : agent_command_line) {
+    auto node_manager_port_position = arg.find(kNodeManagerPortPlaceholder);
+    if (node_manager_port_position != std::string::npos) {
+      arg.replace(node_manager_port_position,
+                  strlen(kNodeManagerPortPlaceholder),
+                  std::to_string(GetServerPort()));
+    }
+  }
+
+  std::string agent_name = "runtime_env_agent";
+
+  auto options = AgentManager::Options({self_node_id,
+                                        agent_name,
+                                        agent_command_line,
+                                        /*fate_shares=*/true});
+  return std::make_unique<AgentManager>(
+      std::move(options),
+      /*delay_executor=*/
+      [this](std::function<void()> task, uint32_t delay_ms) {
+        return execute_after(io_service_, task, std::chrono::milliseconds(delay_ms));
+      });
 }
 
 }  // namespace raylet

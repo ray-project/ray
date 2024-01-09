@@ -23,13 +23,19 @@ class MultiAgentChess(MultiAgentEnv):
        to maximize reward). This isn't a hard restriction, it just that
        standard algorithms aren't expected to work well in highly competitive
        games.
-    Examples:
-        >>> from pettingzoo.butterfly import prison_v3
-        >>> from ray.rllib.env.wrappers.pettingzoo_env import PettingZooEnv
-        >>> env = PettingZooEnv(prison_v3.env())
-        >>> obs = env.reset()
-        >>> print(obs)
+
+    .. testcode::
+        :skipif: True
+
+        from pettingzoo.butterfly import prison_v3
+        from ray.rllib.env.wrappers.pettingzoo_env import PettingZooEnv
+        env = PettingZooEnv(prison_v3.env())
+        obs = env.reset()
+        print(obs)
         # only returns the observation for the agent which should be stepping
+
+    .. testoutput::
+
         {
             'prisoner_0': array([[[0, 0, 0],
                 [0, 0, 0],
@@ -39,12 +45,19 @@ class MultiAgentChess(MultiAgentEnv):
                 [0, 0, 0],
                 [0, 0, 0]]], dtype=uint8)
         }
-        >>> obs, rewards, dones, infos = env.step({
-        ...                 "prisoner_0": 1
-        ...             })
+
+    .. testcode::
+        :skipif: True
+
+        obs, rewards, dones, infos = env.step({
+                        "prisoner_0": 1
+                    })
         # only returns the observation, reward, info, etc, for
         # the agent who's turn is next.
-        >>> print(obs)
+        print(obs)
+
+    .. testoutput::
+
         {
             'prisoner_1': array([[[0, 0, 0],
                 [0, 0, 0],
@@ -54,15 +67,36 @@ class MultiAgentChess(MultiAgentEnv):
                 [0, 0, 0],
                 [0, 0, 0]]], dtype=uint8)
         }
-        >>> print(rewards)
+
+    .. testcode::
+        :skipif: True
+
+        print(rewards)
+
+    .. testoutput::
+
         {
             'prisoner_1': 0
         }
-        >>> print(dones)
+
+    .. testcode::
+        :skipif: True
+
+        print(dones)
+
+    .. testoutput::
+
         {
             'prisoner_1': False, '__all__': False
         }
-        >>> print(infos)
+
+    .. testcode::
+        :skipif: True
+
+        print(infos)
+
+    .. testoutput::
+
         {
             'prisoner_1': {'map_tuple': (1, 0)}
         }

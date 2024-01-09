@@ -39,6 +39,7 @@ class TestPreprocessors(unittest.TestCase):
     def test_rlms_and_preprocessing(self):
         config = (
             ppo.PPOConfig()
+            .experimental(_enable_new_api_stack=True)
             .framework("tf2")
             .environment(
                 env="ray.rllib.examples.env.random_env.RandomEnv",
@@ -49,14 +50,12 @@ class TestPreprocessors(unittest.TestCase):
                 },
             )
             # Run this very quickly locally.
-            .rollouts(num_rollout_workers=0, rollout_fragment_length=10)
+            .rollouts(num_rollout_workers=0)
             .training(
                 train_batch_size=10,
                 sgd_minibatch_size=1,
                 num_sgd_iter=1,
-                _enable_learner_api=True,
             )
-            .rl_module(_enable_rl_module_api=True)
             # Set this to True to enforce no preprocessors being used.
             .experimental(_disable_preprocessor_api=True)
         )
@@ -106,10 +105,6 @@ class TestPreprocessors(unittest.TestCase):
         # don't offer arbitrarily complex Models under the RLModules API without
         # preprocessors. Such input spaces require custom implementations of the
         # input space.
-        # TODO (Artur): Delete this test once we remove ModelV2 API.
-        config.rl_module(_enable_rl_module_api=False).training(
-            _enable_learner_api=False
-        )
 
         num_iterations = 1
         # Only supported for tf so far.

@@ -18,11 +18,13 @@ Callback Initialization and Setup
 
 .. currentmodule:: ray.tune
 .. autosummary::
+    :nosignatures:
     :toctree: doc/
 
     Callback
 
 .. autosummary::
+    :nosignatures:
     :toctree: doc/
 
     Callback.setup
@@ -32,6 +34,7 @@ Callback Hooks
 ~~~~~~~~~~~~~~
 
 .. autosummary::
+    :nosignatures:
     :toctree: doc/
 
     Callback.on_checkpoint
@@ -53,6 +56,7 @@ The following methods must be overriden for stateful callbacks to be saved/resto
 properly by Tune.
 
 .. autosummary::
+    :nosignatures:
     :toctree: doc/
 
     Callback.get_state

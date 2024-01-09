@@ -7,6 +7,8 @@ NUM_ENV_STEPS_TRAINED = "num_env_steps_trained"
 NUM_AGENT_STEPS_TRAINED = "num_agent_steps_trained"
 NUM_ENV_STEPS_TRAINED_THIS_ITER = "num_env_steps_trained_this_iter"
 NUM_AGENT_STEPS_TRAINED_THIS_ITER = "num_agent_steps_trained_this_iter"
+# Backward compatibility: Replace with num_env_steps_... or num_agent_steps_...
+STEPS_TRAINED_THIS_ITER_COUNTER = "num_steps_trained_this_iter"
 
 # Counters for keeping track of worker weight updates (synchronization
 # between local worker and remote workers).

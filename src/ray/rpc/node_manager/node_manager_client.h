@@ -79,18 +79,6 @@ class NodeManagerWorkerClient
 
   std::shared_ptr<grpc::Channel> Channel() const { return grpc_client_->Channel(); }
 
-  /// Update cluster resource usage.
-  VOID_RPC_CLIENT_METHOD(NodeManagerService,
-                         UpdateResourceUsage,
-                         grpc_client_,
-                         /*method_timeout_ms*/ -1, )
-
-  /// Request a resource report.
-  VOID_RPC_CLIENT_METHOD(NodeManagerService,
-                         RequestResourceReport,
-                         grpc_client_,
-                         /*method_timeout_ms*/ -1, )
-
   /// Get a resource load
   VOID_RPC_CLIENT_METHOD(NodeManagerService,
                          GetResourceLoad,
@@ -130,6 +118,11 @@ class NodeManagerWorkerClient
   /// Shutdown the raylet gracefully.
   VOID_RPC_CLIENT_METHOD(NodeManagerService,
                          ShutdownRaylet,
+                         grpc_client_,
+                         /*method_timeout_ms*/ -1, )
+
+  VOID_RPC_CLIENT_METHOD(NodeManagerService,
+                         DrainRaylet,
                          grpc_client_,
                          /*method_timeout_ms*/ -1, )
 

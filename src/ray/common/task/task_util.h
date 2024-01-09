@@ -127,6 +127,7 @@ class TaskSpecBuilder {
       uint64_t num_returns,
       bool returns_dynamic,
       bool is_streaming_generator,
+      int64_t generator_backpressure_num_objects,
       const std::unordered_map<std::string, double> &required_resources,
       const std::unordered_map<std::string, double> &required_placement_resources,
       const std::string &debugger_breakpoint,
@@ -151,6 +152,7 @@ class TaskSpecBuilder {
     message_->set_num_returns(num_returns);
     message_->set_returns_dynamic(returns_dynamic);
     message_->set_streaming_generator(is_streaming_generator);
+    message_->set_generator_backpressure_num_objects(generator_backpressure_num_objects);
     message_->mutable_required_resources()->insert(required_resources.begin(),
                                                    required_resources.end());
     message_->mutable_required_placement_resources()->insert(
@@ -261,10 +263,18 @@ class TaskSpecBuilder {
   /// See `common.proto` for meaning of the arguments.
   ///
   /// \return Reference to the builder object itself.
-  TaskSpecBuilder &SetActorTaskSpec(const ActorID &actor_id,
-                                    const ObjectID &actor_creation_dummy_object_id,
-                                    uint64_t actor_counter) {
+  TaskSpecBuilder &SetActorTaskSpec(
+      const ActorID &actor_id,
+      const ObjectID &actor_creation_dummy_object_id,
+      int max_retries,
+      bool retry_exceptions,
+      const std::string &serialized_retry_exception_allowlist,
+      uint64_t actor_counter) {
     message_->set_type(TaskType::ACTOR_TASK);
+    message_->set_max_retries(max_retries);
+    message_->set_retry_exceptions(retry_exceptions);
+    message_->set_serialized_retry_exception_allowlist(
+        serialized_retry_exception_allowlist);
     auto actor_spec = message_->mutable_actor_task_spec();
     actor_spec->set_actor_id(actor_id.Binary());
     actor_spec->set_actor_creation_dummy_object_id(

@@ -1,0 +1,58 @@
+# This example demonstrates how to schedule TPU pods using `acceleratorConfig`, i.e.
+# a combination of the chip and underlying topology.
+# See https://cloud.google.com/tpu/docs/supported-tpu-configurations for more details.
+# A unique identifier for the head node and workers of this cluster.
+cluster_name: tputopology 
+
+max_workers: 2
+
+available_node_types:
+    ray_head_default:
+        min_workers: 0
+        max_workers: 0
+        resources: {"CPU": 0}
+        # Provider-specific config for this node type, e.g. instance type. By default
+        # Ray will auto-configure unspecified fields such as subnets and ssh-keys.
+        # For more documentation on available fields, see:
+        # https://cloud.google.com/compute/docs/reference/rest/v1/instances/insert
+        node_config:
+            machineType: n1-standard-4
+            disks:
+              - boot: true
+                autoDelete: true
+                type: PERSISTENT
+                initializeParams:
+                  diskSizeGb: 50
+                  # See https://cloud.google.com/compute/docs/images for more images
+                  sourceImage: projects/ubuntu-os-cloud/global/images/family/ubuntu-2004-lts
+    ray_tpu:
+        min_workers: 1
+        max_workers: 1
+        resources: {"TPU": 1}  # use TPU custom resource in your code
+        node_config:
+            # Defining the accelerator configuration, including the:
+            # - type (in this case a V4) and
+            # - topology 2x2x1 will create a v4-8.
+            acceleratorConfig:
+              type: V4
+              topology: 2x2x1
+            runtimeVersion: tpu-vm-v4-base
+
+provider:
+    type: gcp
+    region: us-central2
+    availability_zone: us-central2-b
+    project_id: null # Replace this with your GCP project ID.
+
+initialization_commands:
+  - sudo apt-get update
+  - sudo apt-get install -y python3-pip python-is-python3
+
+setup_commands:
+  - pip install 'ray[default]'
+
+head_setup_commands:
+  - pip install google-api-python-client
+
+# Specify the node type of the head node (as configured above).
+head_node_type: ray_head_default

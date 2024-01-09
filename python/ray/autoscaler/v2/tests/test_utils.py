@@ -6,7 +6,6 @@ from typing import Dict
 import pytest  # noqa
 from google.protobuf.json_format import ParseDict
 
-import ray
 from ray.autoscaler.v2.schema import (
     ClusterConstraintDemand,
     ClusterStatus,
@@ -26,28 +25,6 @@ from ray.core.generated.autoscaler_pb2 import GetClusterStatusReply
 
 def _gen_cluster_status_reply(data: Dict):
     return ParseDict(data, GetClusterStatusReply())
-
-
-@pytest.mark.parametrize(
-    "env_val,enabled",
-    [
-        ("1", True),
-        ("0", False),
-        ("", False),
-    ],
-)
-def test_is_autoscaler_v2_enabled(shutdown_only, monkeypatch, env_val, enabled):
-    def reset_autoscaler_v2_enabled_cache():
-        import ray.autoscaler.v2.utils as u
-
-        u.cached_is_autoscaler_v2 = None
-
-    reset_autoscaler_v2_enabled_cache()
-    with monkeypatch.context() as m:
-        m.setenv("RAY_enable_autoscaler_v2", env_val)
-        ray.init()
-
-        assert ray.autoscaler.v2.utils.is_autoscaler_v2() == enabled
 
 
 def test_cluster_status_parser_cluster_resource_state():
@@ -166,13 +143,13 @@ def test_cluster_status_parser_cluster_resource_state():
     cluster_status = ClusterStatusParser.from_get_cluster_status_reply(reply, stats)
 
     # Assert on health nodes
-    assert len(cluster_status.healthy_nodes) == 2
-    assert cluster_status.healthy_nodes[0].instance_id == "instance1"
-    assert cluster_status.healthy_nodes[0].ray_node_type_name == "head_node"
-    cluster_status.healthy_nodes[0].resource_usage.usage.sort(
+    assert len(cluster_status.idle_nodes) + len(cluster_status.active_nodes) == 2
+    assert cluster_status.active_nodes[0].instance_id == "instance1"
+    assert cluster_status.active_nodes[0].ray_node_type_name == "head_node"
+    cluster_status.active_nodes[0].resource_usage.usage.sort(
         key=lambda x: x.resource_name
     )
-    assert cluster_status.healthy_nodes[0].resource_usage == NodeUsage(
+    assert cluster_status.active_nodes[0].resource_usage == NodeUsage(
         usage=[
             ResourceUsage(resource_name="CPU", total=1.0, used=0.5),
             ResourceUsage(resource_name="GPU", total=2.0, used=0.0),
@@ -180,12 +157,12 @@ def test_cluster_status_parser_cluster_resource_state():
         idle_time_ms=0,
     )
 
-    assert cluster_status.healthy_nodes[1].instance_id == "instance3"
-    assert cluster_status.healthy_nodes[1].ray_node_type_name == "worker_node"
-    cluster_status.healthy_nodes[1].resource_usage.usage.sort(
+    assert cluster_status.idle_nodes[0].instance_id == "instance3"
+    assert cluster_status.idle_nodes[0].ray_node_type_name == "worker_node"
+    cluster_status.idle_nodes[0].resource_usage.usage.sort(
         key=lambda x: x.resource_name
     )
-    assert cluster_status.healthy_nodes[1].resource_usage == NodeUsage(
+    assert cluster_status.idle_nodes[0].resource_usage == NodeUsage(
         usage=[
             ResourceUsage(resource_name="CPU", total=1.0, used=0.0),
             ResourceUsage(resource_name="GPU", total=2.0, used=0.0),
@@ -333,7 +310,7 @@ def test_cluster_status_parser_autoscaler_state():
 
 def test_cluster_status_formatter():
     state = ClusterStatus(
-        healthy_nodes=[
+        idle_nodes=[
             NodeInfo(
                 instance_id="instance1",
                 instance_type_name="m5.large",
@@ -504,7 +481,9 @@ Autoscaler iteration time: 0.300000s
 
 Node status
 --------------------------------------------------------
-Healthy:
+Active:
+ (no active nodes)
+Idle:
  1 head_node
  2 worker_node
 Pending:
@@ -542,7 +521,6 @@ Node: fffffffffffffffffffffffffffffffffffffffffffffffffff00002
 Node: fffffffffffffffffffffffffffffffffffffffffffffffffff00003
  Usage:
   0.0/1.0 CPU"""
-
     assert actual == expected
 
 

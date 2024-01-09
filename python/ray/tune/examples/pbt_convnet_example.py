@@ -44,9 +44,9 @@ class PytorchTrainable(tune.Trainable):
     def save_checkpoint(self, checkpoint_dir):
         checkpoint_path = os.path.join(checkpoint_dir, "model.pth")
         torch.save(self.model.state_dict(), checkpoint_path)
-        return checkpoint_path
 
-    def load_checkpoint(self, checkpoint_path):
+    def load_checkpoint(self, checkpoint_dir):
+        checkpoint_path = os.path.join(checkpoint_dir, "model.pth")
         self.model.load_state_dict(torch.load(checkpoint_path))
 
     def reset_config(self, new_config):
@@ -72,7 +72,6 @@ if __name__ == "__main__":
 
     # check if PytorchTrainble will save/restore correctly before execution
     validate_save_restore(PytorchTrainable)
-    validate_save_restore(PytorchTrainable, use_object_store=True)
 
     # __pbt_begin__
     scheduler = PopulationBasedTraining(
@@ -131,11 +130,3 @@ if __name__ == "__main__":
 
     best_result = results.get_best_result()
     best_checkpoint = best_result.checkpoint
-
-    restored_trainable = PytorchTrainable()
-    restored_trainable.restore(best_checkpoint)
-    best_model = restored_trainable.model
-    # Note that test only runs on a small random set of the test data, thus the
-    # accuracy may be different from metrics shown in tuning process.
-    test_acc = test_func(best_model, get_data_loaders()[1])
-    print("best model accuracy: ", test_acc)

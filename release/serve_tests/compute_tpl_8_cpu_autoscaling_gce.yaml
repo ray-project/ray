@@ -1,6 +1,6 @@
 cloud_id: {{env["ANYSCALE_CLOUD_ID"]}}
 region: us-west1
-allowed_azs: 
+allowed_azs:
     - us-west1-c
 
 max_workers: 130
@@ -8,6 +8,9 @@ max_workers: 130
 head_node_type:
     name: head_node
     instance_type: c2-standard-8 # m5.2xlarge
+    resources:
+      custom_resources:
+        proxy: 1
 
 worker_node_types:
     - name: worker_node
@@ -15,3 +18,6 @@ worker_node_types:
       min_workers: 5
       max_workers: 130
       use_spot: false
+      resources:
+        custom_resources:
+          proxy: 1

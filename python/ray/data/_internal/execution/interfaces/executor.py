@@ -41,12 +41,12 @@ class Executor:
     """Abstract class for executors, which implement physical operator execution.
 
     Subclasses:
-        BulkExecutor
         StreamingExecutor
     """
 
     def __init__(self, options: ExecutionOptions):
         """Create the executor."""
+        options.validate()
         self._options = options
 
     def execute(

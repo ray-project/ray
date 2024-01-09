@@ -29,7 +29,7 @@ class FilterManager:
 
         Args:
             local_filters: Filters to be synchronized.
-            remotes: Remote evaluators with filters.
+            worker_set: WorkerSet with remote EnvRunners with filters.
             update_remote: Whether to push updates from the local filters to the remote
                 workers' filters.
             timeout_seconds: How long to wait for filter to get or set filters

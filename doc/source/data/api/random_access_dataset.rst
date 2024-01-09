@@ -5,7 +5,8 @@ RandomAccessDataset (experimental)
 
 .. currentmodule:: ray.data
 
-RandomAccessDataset objects are returned by call: Dataset.to_random_access_dataset().
+RandomAccessDataset objects are returned by call: 
+:meth:`<Dataset.to_random_access_dataset() <ray.data.Dataset.to_random_access_dataset>`.
 
 Constructor
 -----------

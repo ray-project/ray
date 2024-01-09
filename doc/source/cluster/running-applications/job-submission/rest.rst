@@ -16,7 +16,7 @@ Continue on for examples, or jump to the :ref:`OpenAPI specification <ray-job-re
     import time
 
     resp = requests.post(
-        "http://127.0.0.1:8265/api/jobs/",
+        "http://127.0.0.1:8265/api/jobs/", # Don't forget the trailing slash!
         json={
             "entrypoint": "echo hello",
             "runtime_env": {},

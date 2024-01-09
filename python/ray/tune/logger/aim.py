@@ -54,7 +54,7 @@ class AimLoggerCallback(LoggerCallback):
     """
 
     VALID_HPARAMS = (str, bool, int, float, list, type(None))
-    VALID_NP_HPARAMS = (np.bool8, np.float32, np.float64, np.int32, np.int64)
+    VALID_NP_HPARAMS = (np.bool_, np.float32, np.float64, np.int32, np.int64)
 
     def __init__(
         self,
@@ -98,10 +98,8 @@ class AimLoggerCallback(LoggerCallback):
         )
         # Attach a few useful trial properties
         run["trial_id"] = trial.trial_id
-        run["trial_log_dir"] = trial.local_path
-        if trial.remote_path:
-            run["trial_remote_log_dir"] = trial.remote_path
-        trial_ip = trial.get_runner_ip()
+        run["trial_log_dir"] = trial.path
+        trial_ip = trial.get_ray_actor_ip()
         if trial_ip:
             run["trial_ip"] = trial_ip
         return run

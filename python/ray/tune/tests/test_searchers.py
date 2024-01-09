@@ -2,37 +2,39 @@ import contextlib
 from copy import deepcopy
 import numpy as np
 import os
+from packaging.version import Version
+import pandas
+import pytest
 import shutil
 import tempfile
 import unittest
 from unittest.mock import patch
 
 import ray
-from ray import tune
+from ray import train, tune
 from ray.air.constants import TRAINING_ITERATION
 from ray.tune.search import ConcurrencyLimiter
 
 
 def _invalid_objective(config):
-    # DragonFly uses `point`
-    metric = "point" if "point" in config else "report"
+    metric = "report"
 
     if config[metric] > 4:
-        tune.report(float("inf"))
+        train.report({"_metric": float("inf")})
     elif config[metric] > 3:
-        tune.report(float("-inf"))
+        train.report({"_metric": float("-inf")})
     elif config[metric] > 2:
-        tune.report(np.nan)
+        train.report({"_metric": np.nan})
     else:
-        tune.report(float(config[metric]) or 0.1)
+        train.report({"_metric": float(config[metric]) or 0.1})
 
 
 def _multi_objective(config):
-    tune.report(a=config["a"] * 100, b=config["b"] * -100, c=config["c"])
+    train.report(dict(a=config["a"] * 100, b=config["b"] * -100, c=config["c"]))
 
 
 def _dummy_objective(config):
-    tune.report(metric=config["report"])
+    train.report(dict(metric=config["report"]))
 
 
 class InvalidValuesTest(unittest.TestCase):
@@ -69,7 +71,7 @@ class InvalidValuesTest(unittest.TestCase):
     @contextlib.contextmanager
     def check_searcher_checkpoint_errors_scope(self):
         buffer = []
-        from ray.tune.execution.trial_runner import logger
+        from ray.tune.execution.tune_controller import logger
 
         with patch.object(logger, "warning", lambda x: buffer.append(x)):
             yield
@@ -143,28 +145,6 @@ class InvalidValuesTest(unittest.TestCase):
             )
         self.assertCorrectExperimentOutput(out)
 
-    def testBlendSearch(self):
-        from ray.tune.search.flaml import BlendSearch
-
-        with self.check_searcher_checkpoint_errors_scope():
-            out = tune.run(
-                _invalid_objective,
-                search_alg=BlendSearch(
-                    points_to_evaluate=[
-                        {"report": 1.0},
-                        {"report": 2.1},
-                        {"report": 3.1},
-                        {"report": 4.1},
-                    ]
-                ),
-                config=self.config,
-                metric="_metric",
-                mode="max",
-                num_samples=16,
-                reuse_actors=False,
-            )
-        self.assertCorrectExperimentOutput(out)
-
     def testBOHB(self):
         from ray.tune.search.bohb import TuneBOHB
 
@@ -180,50 +160,10 @@ class InvalidValuesTest(unittest.TestCase):
             )
         self.assertCorrectExperimentOutput(out)
 
-    def testCFO(self):
-        self.skipTest(
-            "Broken in FLAML, reenable once "
-            "https://github.com/microsoft/FLAML/pull/263 is merged"
-        )
-        from ray.tune.search.flaml import CFO
-
-        with self.check_searcher_checkpoint_errors_scope():
-            out = tune.run(
-                _invalid_objective,
-                search_alg=CFO(
-                    points_to_evaluate=[
-                        {"report": 1.0},
-                        {"report": 2.1},
-                        {"report": 3.1},
-                        {"report": 4.1},
-                    ]
-                ),
-                config=self.config,
-                metric="_metric",
-                mode="max",
-                num_samples=16,
-                reuse_actors=False,
-            )
-        self.assertCorrectExperimentOutput(out)
-
-    def testDragonfly(self):
-        from ray.tune.search.dragonfly import DragonflySearch
-
-        np.random.seed(1000)  # At least one nan, inf, -inf and float
-
-        with self.check_searcher_checkpoint_errors_scope():
-            out = tune.run(
-                _invalid_objective,
-                search_alg=DragonflySearch(domain="euclidean", optimizer="random"),
-                config=self.config,
-                metric="_metric",
-                mode="max",
-                num_samples=8,
-                reuse_actors=False,
-            )
-        self.assertCorrectExperimentOutput(out)
-
     def testHEBO(self):
+        if Version(pandas.__version__) >= Version("2.0.0"):
+            pytest.skip("HEBO does not support pandas>=2.0.0")
+
         from ray.tune.search.hebo import HEBOSearch
 
         with self.check_searcher_checkpoint_errors_scope():
@@ -254,29 +194,6 @@ class InvalidValuesTest(unittest.TestCase):
                 reuse_actors=False,
             )
         self.assertCorrectExperimentOutput(out)
-
-    def testNevergrad(self):
-        from ray.tune.search.nevergrad import NevergradSearch
-        import nevergrad as ng
-
-        np.random.seed(2020)  # At least one nan, inf, -inf and float
-
-        with self.check_searcher_checkpoint_errors_scope():
-            out = tune.run(
-                _invalid_objective,
-                search_alg=NevergradSearch(optimizer=ng.optimizers.RandomSearch),
-                config=self.config,
-                mode="max",
-                num_samples=16,
-                reuse_actors=False,
-            )
-        self.assertCorrectExperimentOutput(out)
-
-    def testNevergradWithRequiredOptimizerKwargs(self):
-        from ray.tune.search.nevergrad import NevergradSearch
-        import nevergrad as ng
-
-        NevergradSearch(optimizer=ng.optimizers.CM, optimizer_kwargs=dict(budget=16))
 
     def testOptuna(self):
         from ray.tune.search.optuna import OptunaSearch
@@ -420,27 +337,6 @@ class AddEvaluatedPointTest(unittest.TestCase):
         self.assertEqual(get_len_y(searcher_copy), 1)
         searcher_copy.suggest("1")
 
-    def testDragonfly(self):
-        from ray.tune.search.dragonfly import DragonflySearch
-
-        searcher = DragonflySearch(
-            space=self.space,
-            metric="metric",
-            mode="max",
-            domain="euclidean",
-            optimizer="bandit",
-        )
-
-        point = {
-            self.param_name: self.valid_value,
-        }
-
-        get_len_X = lambda s: len(s._opt.history.curr_opt_points)  # noqa E731
-        get_len_y = lambda s: len(s._opt.history.curr_opt_vals)  # noqa E731
-
-        self.run_add_evaluated_point(point, searcher, get_len_X, get_len_y)
-        self.run_add_evaluated_trials(searcher, get_len_X, get_len_y)
-
     def testOptuna(self):
         from ray.tune.search.optuna import OptunaSearch
         from optuna.trial import TrialState
@@ -507,6 +403,9 @@ class AddEvaluatedPointTest(unittest.TestCase):
             dbr_searcher.add_evaluated_point(point, 1.0)
 
     def testHEBO(self):
+        if Version(pandas.__version__) >= Version("2.0.0"):
+            pytest.skip("HEBO does not support pandas>=2.0.0")
+
         from ray.tune.search.hebo import HEBOSearch
 
         searcher = HEBOSearch(
@@ -635,16 +534,6 @@ class SaveRestoreCheckpointTest(unittest.TestCase):
         searcher = BayesOptSearch()
         self._restore(searcher)
 
-    def testBlendSearch(self):
-        from ray.tune.search.flaml import BlendSearch
-
-        searcher = BlendSearch(space=self.config, metric=self.metric_name, mode="max")
-
-        self._save(searcher)
-
-        searcher = BlendSearch()
-        self._restore(searcher)
-
     def testBOHB(self):
         from ray.tune.search.bohb import TuneBOHB
 
@@ -657,33 +546,10 @@ class SaveRestoreCheckpointTest(unittest.TestCase):
 
         assert "not_completed" in searcher.trial_to_params
 
-    def testCFO(self):
-        from ray.tune.search.flaml import CFO
-
-        searcher = CFO(space=self.config, metric=self.metric_name, mode="max")
-
-        self._save(searcher)
-
-        searcher = CFO()
-        self._restore(searcher)
-
-    def testDragonfly(self):
-        from ray.tune.search.dragonfly import DragonflySearch
-
-        searcher = DragonflySearch(
-            space=self.config,
-            metric=self.metric_name,
-            mode="max",
-            domain="euclidean",
-            optimizer="random",
-        )
-
-        self._save(searcher)
-
-        searcher = DragonflySearch()
-        self._restore(searcher)
-
     def testHEBO(self):
+        if Version(pandas.__version__) >= Version("2.0.0"):
+            pytest.skip("HEBO does not support pandas>=2.0.0")
+
         from ray.tune.search.hebo import HEBOSearch
 
         searcher = HEBOSearch(
@@ -709,22 +575,6 @@ class SaveRestoreCheckpointTest(unittest.TestCase):
         self._save(searcher)
 
         searcher = HyperOptSearch()
-        self._restore(searcher)
-
-    def testNevergrad(self):
-        from ray.tune.search.nevergrad import NevergradSearch
-        import nevergrad as ng
-
-        searcher = NevergradSearch(
-            space=self.config,
-            metric=self.metric_name,
-            mode="max",
-            optimizer=ng.optimizers.RandomSearch,
-        )
-        self._save(searcher)
-
-        # `optimizer` is the only required argument
-        searcher = NevergradSearch(optimizer=ng.optimizers.RandomSearch)
         self._restore(searcher)
 
     def testOptuna(self):
@@ -816,7 +666,6 @@ class MultiObjectiveTest(unittest.TestCase):
 
 
 if __name__ == "__main__":
-    import pytest
     import sys
 
     sys.exit(pytest.main(["-v", __file__]))

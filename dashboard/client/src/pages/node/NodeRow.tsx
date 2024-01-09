@@ -1,6 +1,8 @@
 import {
   Box,
+  createStyles,
   IconButton,
+  makeStyles,
   TableCell,
   TableRow,
   Tooltip,
@@ -10,8 +12,14 @@ import React, { useState } from "react";
 import { RiArrowDownSLine, RiArrowRightSLine } from "react-icons/ri";
 import { Link } from "react-router-dom";
 import useSWR from "swr";
+import { CodeDialogButtonWithPreview } from "../../common/CodeDialogButton";
 import { API_REFRESH_INTERVAL_MS } from "../../common/constants";
 import { NodeLink } from "../../common/links";
+import {
+  CpuProfilingLink,
+  CpuStackTraceLink,
+  MemoryProfilingButton,
+} from "../../common/ProfilingLink";
 import rowStyles from "../../common/RowStyles";
 import PercentageBar from "../../components/PercentageBar";
 import { StatusChip } from "../../components/StatusChip";
@@ -35,6 +43,42 @@ type NodeRowProps = Pick<NodeRowsProps, "node"> & {
   onExpandButtonClick: () => void;
 };
 
+const useStyles = makeStyles((theme) =>
+  createStyles({
+    tableContainer: {
+      overflowX: "scroll",
+    },
+    expandCollapseIcon: {
+      color: theme.palette.text.secondary,
+      fontSize: "1.5em",
+      verticalAlign: "middle",
+    },
+    idCol: {
+      display: "block",
+      width: "50px",
+      overflow: "hidden",
+      textOverflow: "ellipsis",
+      whiteSpace: "nowrap",
+    },
+    OverflowCol: {
+      display: "block",
+      width: "100px",
+      overflow: "hidden",
+      textOverflow: "ellipsis",
+      whiteSpace: "nowrap",
+    },
+    helpInfo: {
+      marginLeft: theme.spacing(1),
+    },
+    logicalResources: {
+      maxWidth: 200,
+    },
+    labels: {
+      maxWidth: 200,
+    },
+  }),
+);
+
 /**
  * A single row that represents the node information only.
  * Does not show any data about the node's workers.
@@ -52,10 +96,10 @@ export const NodeRow = ({
     disk,
     networkSpeed = [0, 0],
     raylet,
-    logUrl,
+    logicalResources,
   } = node;
 
-  const classes = rowStyles();
+  const classes = useStyles();
 
   const objectStoreTotalMemory =
     raylet.objectStoreAvailableMemory + raylet.objectStoreUsedMemory;
@@ -100,7 +144,12 @@ export const NodeRow = ({
       </TableCell>
       <TableCell>
         {raylet.state !== "DEAD" && (
-          <Link to={`/logs/${encodeURIComponent(logUrl)}`}>Log</Link>
+          <Link
+            to={`/logs/?nodeId=${encodeURIComponent(raylet.nodeId)}`}
+            style={{ textDecoration: "none" }}
+          >
+            Log
+          </Link>
         )}
       </TableCell>
       <TableCell>
@@ -149,6 +198,24 @@ export const NodeRow = ({
       </TableCell>
       <TableCell align="center">{memoryConverter(networkSpeed[0])}/s</TableCell>
       <TableCell align="center">{memoryConverter(networkSpeed[1])}/s</TableCell>
+      <TableCell align="center">
+        {logicalResources ? (
+          <CodeDialogButtonWithPreview
+            className={classes.logicalResources}
+            title="Logical Resources"
+            code={logicalResources}
+          />
+        ) : (
+          "-"
+        )}
+      </TableCell>
+      <TableCell align="center">
+        <CodeDialogButtonWithPreview
+          className={classes.labels}
+          title="Labels"
+          code={raylet.labels}
+        />
+      </TableCell>
     </TableRow>
   );
 };
@@ -170,7 +237,11 @@ type WorkerRowProps = {
 export const WorkerRow = ({ node, worker }: WorkerRowProps) => {
   const classes = rowStyles();
 
-  const { ip, mem, logUrl } = node;
+  const {
+    ip,
+    mem,
+    raylet: { nodeId },
+  } = node;
   const {
     pid,
     cpuPercent: cpu = 0,
@@ -181,8 +252,8 @@ export const WorkerRow = ({ node, worker }: WorkerRowProps) => {
 
   const coreWorker = coreWorkerStats.length ? coreWorkerStats[0] : undefined;
   const workerLogUrl =
-    `/logs/${encodeURIComponent(logUrl)}` +
-    (coreWorker ? `?fileName=${coreWorker.workerId}` : "");
+    `/logs/?nodeId=${encodeURIComponent(nodeId)}` +
+    (coreWorker ? `&fileName=${coreWorker.workerId}` : "");
 
   return (
     <TableRow>
@@ -202,28 +273,19 @@ export const WorkerRow = ({ node, worker }: WorkerRowProps) => {
       </TableCell>
       <TableCell align="center">{pid}</TableCell>
       <TableCell>
-        <Link to={workerLogUrl} target="_blank">
-          Logs
+        <Link
+          to={workerLogUrl}
+          target="_blank"
+          style={{ textDecoration: "none" }}
+        >
+          Log
         </Link>
         <br />
-        <a
-          href={`/worker/traceback?pid=${pid}&ip=${ip}&native=0`}
-          target="_blank"
-          title="Sample the current Python stack trace for this worker."
-          rel="noreferrer"
-        >
-          Stack&nbsp;Trace
-        </a>
+        <CpuProfilingLink pid={pid} ip={ip} type="" />
         <br />
-        <a
-          href={`/worker/cpu_profile?pid=${pid}&ip=${ip}&duration=5&native=0`}
-          target="_blank"
-          title="Profile the Python worker for 5 seconds (default) and display a CPU flame graph."
-          rel="noreferrer"
-        >
-          CPU&nbsp;Flame&nbsp;Graph
-        </a>
+        <CpuStackTraceLink pid={pid} ip={ip} type="" />
         <br />
+        <MemoryProfilingButton pid={pid} ip={ip} />
       </TableCell>
       <TableCell>
         <PercentageBar num={Number(cpu)} total={100}>
@@ -247,6 +309,8 @@ export const WorkerRow = ({ node, worker }: WorkerRowProps) => {
       </TableCell>
       <TableCell>N/A</TableCell>
       <TableCell>N/A</TableCell>
+      <TableCell align="center">N/A</TableCell>
+      <TableCell align="center">N/A</TableCell>
       <TableCell align="center">N/A</TableCell>
       <TableCell align="center">N/A</TableCell>
     </TableRow>

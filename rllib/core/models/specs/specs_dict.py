@@ -33,54 +33,63 @@ class SpecDict(NestedDict[Spec], Spec):
 
         Basic validation:
         -----------------
-        >>> spec_dict = SpecDict({
-        ...     "obs": {
-        ...         "arm":      TensorSpec("b, dim_arm", dim_arm=64),
-        ...         "gripper":  TensorSpec("b, dim_grip", dim_grip=12)
-        ...     },
-        ...     "action": TensorSpec("b, dim_action", dim_action=12),
-        ...     "action_dist": torch.distributions.Categorical
-        ... })
 
-        >>> spec_dict.validate({
-        ...     "obs": {
-        ...         "arm":      torch.randn(32, 64),
-        ...         "gripper":  torch.randn(32, 12)
-        ...     },
-        ...     "action": torch.randn(32, 12),
-        ...     "action_dist": torch.distributions.Categorical(torch.randn(32, 12))
-        ... }) # No error
+        .. testcode::
+            :skipif: True
 
-        >>> spec_dict.validate({
-        ...     "obs": {
-        ...         "arm":      torch.randn(32, 32), # Wrong shape
-        ...         "gripper":  torch.randn(32, 12)
-        ...     },
-        ...     "action": torch.randn(32, 12),
-        ...     "action_dist": torch.distributions.Categorical(torch.randn(32, 12))
-        ... }) # raises ValueError
+            spec_dict = SpecDict({
+                "obs": {
+                    "arm":      TensorSpec("b, dim_arm", dim_arm=64),
+                    "gripper":  TensorSpec("b, dim_grip", dim_grip=12)
+                },
+                "action": TensorSpec("b, dim_action", dim_action=12),
+                "action_dist": torch.distributions.Categorical
+
+            spec_dict.validate({
+                "obs": {
+                    "arm":      torch.randn(32, 64),
+                    "gripper":  torch.randn(32, 12)
+                },
+                "action": torch.randn(32, 12),
+                "action_dist": torch.distributions.Categorical(torch.randn(32, 12))
+            }) # No er
+            spec_dict.validate({
+                "obs": {
+                    "arm":      torch.randn(32, 32), # Wrong shape
+                    "gripper":  torch.randn(32, 12)
+                },
+                "action": torch.randn(32, 12),
+                "action_dist": torch.distributions.Categorical(torch.randn(32, 12))
+            }) # raises ValueError
 
         Filtering input data:
         ---------------------
-        >>> input_data = {
-        ...     "obs": {
-        ...         "arm":      torch.randn(32, 64),
-        ...         "gripper":  torch.randn(32, 12),
-        ...         "unused":   torch.randn(32, 12)
-        ...     },
-        ...     "action": torch.randn(32, 12),
-        ...     "action_dist": torch.distributions.Categorical(torch.randn(32, 12)),
-        ...     "unused": torch.randn(32, 12)
-        ... }
-        >>> input_data.filter(spec_dict) # returns a dict with only the keys in the spec
-        {
-            "obs": {
-                "arm":      input_data["obs"]["arm"],
-                "gripper":  input_data["obs"]["gripper"]
-            },
-            "action": input_data["action"],
-            "action_dist": input_data["action_dist"]
-        }
+
+        .. testcode::
+            :skipif: True
+
+            input_data = {
+                "obs": {
+                    "arm":      torch.randn(32, 64),
+                    "gripper":  torch.randn(32, 12),
+                    "unused":   torch.randn(32, 12)
+                },
+                "action": torch.randn(32, 12),
+                "action_dist": torch.distributions.Categorical(torch.randn(32, 12)),
+                "unused": torch.randn(32, 12)
+            }
+            input_data.filter(spec_dict) # returns a dict with only the keys in the spec
+
+        .. testoutput::
+
+            {
+                "obs": {
+                    "arm":      input_data["obs"]["arm"],
+                    "gripper":  input_data["obs"]["gripper"]
+                },
+                "action": input_data["action"],
+                "action_dist": input_data["action_dist"]
+            }
 
     Raises:
         ValueError: If the data doesn't match the spec.

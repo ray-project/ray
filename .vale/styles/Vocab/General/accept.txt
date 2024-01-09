@@ -1,0 +1,14 @@
+# Use 'API' judiciously: https://developers.google.com/style/word-list#api.
+API[s]
+CPU[s]
+GPU[s]
+NumPy
+URI[s]
+[Aa]pplication
+[Cc]odec
+[Dd]ict(s)?
+[Ii]nteroperates
+[Ii]nterpretability
+[Pp]arallelization
+[Pp]erformant
+[Ss]ubclassing

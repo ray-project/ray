@@ -20,6 +20,7 @@ class AbstractMap(AbstractOneToOne):
         self,
         name: str,
         input_op: Optional[LogicalOperator] = None,
+        num_outputs: Optional[int] = None,
         ray_remote_args: Optional[Dict[str, Any]] = None,
     ):
         """
@@ -30,7 +31,7 @@ class AbstractMap(AbstractOneToOne):
                 of `input_op` will be the inputs to this operator.
             ray_remote_args: Args to provide to ray.remote.
         """
-        super().__init__(name, input_op)
+        super().__init__(name, input_op, num_outputs)
         self._ray_remote_args = ray_remote_args or {}
 
 
@@ -67,7 +68,7 @@ class AbstractUDFMap(AbstractMap):
         fn_kwargs: Optional[Dict[str, Any]] = None,
         fn_constructor_args: Optional[Iterable[Any]] = None,
         fn_constructor_kwargs: Optional[Dict[str, Any]] = None,
-        target_block_size: Optional[int] = None,
+        min_rows_per_block: Optional[int] = None,
         compute: Optional[Union[str, ComputeStrategy]] = None,
         ray_remote_args: Optional[Dict[str, Any]] = None,
     ):
@@ -84,19 +85,19 @@ class AbstractUDFMap(AbstractMap):
                 `fn` is a callable class.
             fn_constructor_kwargs: Keyword Arguments to provide to the initializor of
                 `fn` if `fn` is a callable class.
-            target_block_size: The target size for blocks outputted by this operator.
+            min_rows_per_block: The target size for blocks outputted by this operator.
             compute: The compute strategy, either ``"tasks"`` (default) to use Ray
                 tasks, or ``"actors"`` to use an autoscaling actor pool.
             ray_remote_args: Args to provide to ray.remote.
         """
         name = f"{name}({_get_udf_name(fn)})"
-        super().__init__(name, input_op, ray_remote_args)
+        super().__init__(name, input_op, ray_remote_args=ray_remote_args)
         self._fn = fn
         self._fn_args = fn_args
         self._fn_kwargs = fn_kwargs
         self._fn_constructor_args = fn_constructor_args
         self._fn_constructor_kwargs = fn_constructor_kwargs
-        self._target_block_size = target_block_size
+        self._min_rows_per_block = min_rows_per_block
         self._compute = compute or TaskPoolStrategy()
 
 
@@ -108,13 +109,13 @@ class MapBatches(AbstractUDFMap):
         input_op: LogicalOperator,
         fn: UserDefinedFunction,
         batch_size: Optional[int] = DEFAULT_BATCH_SIZE,
-        batch_format: Optional[str] = "default",
+        batch_format: str = "default",
         zero_copy_batch: bool = False,
         fn_args: Optional[Iterable[Any]] = None,
         fn_kwargs: Optional[Dict[str, Any]] = None,
         fn_constructor_args: Optional[Iterable[Any]] = None,
         fn_constructor_kwargs: Optional[Dict[str, Any]] = None,
-        target_block_size: Optional[int] = None,
+        min_rows_per_block: Optional[int] = None,
         compute: Optional[Union[str, ComputeStrategy]] = None,
         ray_remote_args: Optional[Dict[str, Any]] = None,
     ):
@@ -126,7 +127,7 @@ class MapBatches(AbstractUDFMap):
             fn_kwargs=fn_kwargs,
             fn_constructor_args=fn_constructor_args,
             fn_constructor_kwargs=fn_constructor_kwargs,
-            target_block_size=target_block_size,
+            min_rows_per_block=min_rows_per_block,
             compute=compute,
             ray_remote_args=ray_remote_args,
         )
@@ -146,6 +147,10 @@ class MapRows(AbstractUDFMap):
         self,
         input_op: LogicalOperator,
         fn: UserDefinedFunction,
+        fn_args: Optional[Iterable[Any]] = None,
+        fn_kwargs: Optional[Dict[str, Any]] = None,
+        fn_constructor_args: Optional[Iterable[Any]] = None,
+        fn_constructor_kwargs: Optional[Dict[str, Any]] = None,
         compute: Optional[Union[str, ComputeStrategy]] = None,
         ray_remote_args: Optional[Dict[str, Any]] = None,
     ):
@@ -153,6 +158,10 @@ class MapRows(AbstractUDFMap):
             "Map",
             input_op,
             fn,
+            fn_args=fn_args,
+            fn_kwargs=fn_kwargs,
+            fn_constructor_args=fn_constructor_args,
+            fn_constructor_kwargs=fn_constructor_kwargs,
             compute=compute,
             ray_remote_args=ray_remote_args,
         )
@@ -192,6 +201,10 @@ class FlatMap(AbstractUDFMap):
         self,
         input_op: LogicalOperator,
         fn: UserDefinedFunction,
+        fn_args: Optional[Iterable[Any]] = None,
+        fn_kwargs: Optional[Dict[str, Any]] = None,
+        fn_constructor_args: Optional[Iterable[Any]] = None,
+        fn_constructor_kwargs: Optional[Dict[str, Any]] = None,
         compute: Optional[Union[str, ComputeStrategy]] = None,
         ray_remote_args: Optional[Dict[str, Any]] = None,
     ):
@@ -199,6 +212,10 @@ class FlatMap(AbstractUDFMap):
             "FlatMap",
             input_op,
             fn,
+            fn_args=fn_args,
+            fn_kwargs=fn_kwargs,
+            fn_constructor_args=fn_constructor_args,
+            fn_constructor_kwargs=fn_constructor_kwargs,
             compute=compute,
             ray_remote_args=ray_remote_args,
         )
