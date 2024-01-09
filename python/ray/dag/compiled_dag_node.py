@@ -6,7 +6,7 @@ import traceback
 
 import ray
 from ray.exceptions import RayTaskError
-from ray.experimental.channel import Channel
+from ray.experimental.channel import Channel, TorchChannel
 from ray.util.annotations import DeveloperAPI
 
 
@@ -16,7 +16,9 @@ logger = logging.getLogger(__name__)
 
 
 @DeveloperAPI
-def make_torch_channel(self, buffer_size_bytes: int, reader_rank: int, writer_rank: int) -> TorchChannel:
+def make_torch_channel(
+    self, buffer_size_bytes: int, reader_rank: int, writer_rank: int
+) -> TorchChannel:
     """Generic actor method to allocate an output channel.
 
     Args:
@@ -30,7 +32,11 @@ def make_torch_channel(self, buffer_size_bytes: int, reader_rank: int, writer_ra
 
 
 def torch_init(self, rank, world_size):
-    torch.distributed.init_process_group(backend="gloo", world_size=world_size, rank=rank)
+    import torch
+
+    torch.distributed.init_process_group(
+        backend="gloo", world_size=world_size, rank=rank
+    )
 
 
 @DeveloperAPI
@@ -416,7 +422,7 @@ class CompiledDAG:
         futs = []
         world_size = len(self.actor_ranks) + 1
         for actor, rank in self.actor_ranks.items():
-            fn = task.dag_node._get_remote_method("__ray_call__")
+            fn = actor.__ray_call__
             futs.append(fn.remote(torch_init, rank=rank, world_size=world_size))
         ray.get(futs)
 
