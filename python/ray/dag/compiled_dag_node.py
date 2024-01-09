@@ -29,6 +29,10 @@ def make_torch_channel(self, buffer_size_bytes: int, reader_rank: int, writer_ra
     self._output_channel = TorchChannel(buffer_size_bytes, reader_rank, writer_rank)
 
 
+def torch_init(self, rank, world_size):
+    torch.distributed.init_process_group(backend="gloo", world_size=world_size, rank=rank)
+
+
 @DeveloperAPI
 def do_exec_compiled_task(
     self,
@@ -178,6 +182,7 @@ class CompiledDAG:
         self.worker_task_refs: List["ray.ObjectRef"] = []
         # Set of actors present in the DAG.
         self.actor_refs = set()
+        self.actor_ranks = {}
 
     def _add_node(self, node: "ray.dag.DAGNode") -> None:
         idx = self.counter
@@ -317,7 +322,7 @@ class CompiledDAG:
             visited.add(cur_idx)
 
             task = self.idx_to_task[cur_idx]
-            # TODO: only support single send->recv rn
+            # TODO: use broadcast to implement multi read
             assert len(task.downstream_node_idxs) == 0, task.downstream_node_idxs
             # Create an output buffer on the actor.
             if isinstance(task.dag_node, ClassMethodNode):
@@ -331,6 +336,7 @@ class CompiledDAG:
                     )
                 )
                 self.actor_refs.add(task.dag_node._get_actor_handle())
+                self.actor_ranks[task.dag_node._get_actor_handle()] = task.dag_node.idx
             elif isinstance(task.dag_node, InputNode):
                 task.output_channel = TorchChannel(
                     buffer_size_bytes=self._buffer_size_bytes,
@@ -403,7 +409,16 @@ class CompiledDAG:
 
         # Driver should ray.put on input, ray.get/release on output
         self._monitor = self._monitor_failures()
+        self._torch_init()
         return (self.dag_input_channel, self.dag_output_channels, self._monitor)
+
+    def _torch_init(self):
+        futs = []
+        world_size = len(self.actor_ranks) + 1
+        for actor, rank in self.actor_ranks.items():
+            fn = task.dag_node._get_remote_method("__ray_call__")
+            futs.append(fn.remote(torch_init, rank=rank, world_size=world_size))
+        ray.get(futs)
 
     def _monitor_failures(self):
         outer = self
