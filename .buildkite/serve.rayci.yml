@@ -185,7 +185,7 @@ steps:
     instance_type: small
     commands:
       - bazel run //ci/ray_ci:test_in_docker -- python/ray/dashboard/... serve
-        --only-tags memray
+        --only-tags memray --tmp-filesystem tmpfs
     depends_on: servebuild
 
   - label: ":ray-serve: serve: HA integration tests"
