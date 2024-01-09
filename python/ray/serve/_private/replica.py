@@ -422,19 +422,18 @@ class ReplicaActor:
         request_metadata: RequestMetadata,
         request_args: Tuple[Any],
         request_kwargs: Dict[str, Any],
-        result_queue: ASGIMessageQueue,
     ) -> AsyncGenerator[Any, None]:
-        """XXX.
+        """Calls a user method for a streaming call and yields its results.
 
-        BLAH
+        The user method is called in a `Task` and places its results on a
+        `result_queue`. This method pulls and yields from the `result_queue`.
         """
         call_user_method_task = None
         wait_for_message_task = None
         try:
             # Handle the request in a background asyncio.Task. It's expected that
-            # this task will use the provided ASGI send interface to send its HTTP
-            # the response. We will poll for the sent messages and yield them back
-            # to the caller.
+            # this task will use the result queue to send its response messages.
+            result_queue = ASGIMessageQueue()
             call_user_method_task = self._event_loop.create_task(
                 self._user_callable_wrapper.call_user_method(
                     request_metadata,
@@ -456,9 +455,9 @@ class ReplicaActor:
                 # Consume and yield all available messages in the queue.
                 messages = result_queue.get_messages_nowait()
                 if messages:
-                    # The messages are batched into a list to avoid unnecessary RPCs and
-                    # we use vanilla pickle because it's faster than cloudpickle and we
-                    # know it's safe for these messages containing primitive types.
+                    # HTTP (ASGI) messages are only consumed by the proxy so batch them
+                    # and use vanilla pickle (we know it's safe because these messages
+                    # only contain primitive Python types).
                     if request_metadata.is_http_request:
                         yield pickle.dumps(messages)
                     else:
@@ -489,13 +488,10 @@ class ReplicaActor:
         """Generator that is the entrypoint for all `stream=True` handle calls."""
         request_metadata = pickle.loads(pickled_request_metadata)
         with self._wrap_user_method_call(request_metadata):
-            result_queue = ASGIMessageQueue()
-
             async for result in self._call_user_generator(
                 request_metadata,
                 request_args,
                 request_kwargs,
-                result_queue,
             ):
                 yield result
 
@@ -927,6 +923,8 @@ class UserCallableWrapper:
 
         Raises any exception raised by the user code so it can be propagated as a
         `RayTaskError`.
+
+        The `result_queue` is used to communicate the results of generator methods.
         """
         logger.info(
             f"Started executing request {request_metadata.request_id}",
