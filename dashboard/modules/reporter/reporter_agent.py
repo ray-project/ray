@@ -19,7 +19,10 @@ from ray.dashboard.consts import (
     GCS_RPC_TIMEOUT_SECONDS,
     COMPONENT_METRICS_TAG_KEYS,
 )
-from ray.dashboard.modules.reporter.profile_manager import CpuProfilingManager
+from ray.dashboard.modules.reporter.profile_manager import (
+    CpuProfilingManager,
+    MemoryProfilingManager,
+)
 import ray.dashboard.modules.reporter.reporter_consts as reporter_consts
 import ray.dashboard.utils as dashboard_utils
 from opencensus.stats import stats as stats_module
@@ -370,6 +373,31 @@ class ReporterAgent(
             pid, format=format, duration=duration, native=native
         )
         return reporter_pb2.CpuProfilingReply(output=output, success=success)
+
+    async def MemoryProfiling(self, request, context):
+        pid = request.pid
+        format = request.format
+        leaks = request.leaks
+        duration = request.duration
+        native = request.native
+        trace_python_allocators = request.trace_python_allocators
+        p = MemoryProfilingManager(self._log_dir)
+        success, profiler_filename, output = await p.attach_profiler(
+            pid, native=native, trace_python_allocators=trace_python_allocators
+        )
+        if not success:
+            return reporter_pb2.MemoryProfilingReply(output=output, success=success)
+
+        # add 1 second sleep for memray overhead
+        await asyncio.sleep(duration + 1)
+        success, output = await p.detach_profiler(pid)
+        warning = None if success else output
+        success, output = await p.get_profile_result(
+            pid, profiler_filename=profiler_filename, format=format, leaks=leaks
+        )
+        return reporter_pb2.MemoryProfilingReply(
+            output=output, success=success, warning=warning
+        )
 
     async def ReportOCMetrics(self, request, context):
         # Do nothing if metrics collection is disabled.

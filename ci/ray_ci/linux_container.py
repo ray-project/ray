@@ -1,7 +1,7 @@
 import os
 import subprocess
 import sys
-from typing import List, Optional
+from typing import List, Tuple, Optional
 
 from ci.ray_ci.container import Container
 
@@ -55,8 +55,6 @@ class LinuxContainer(Container):
         extra_args = [
             "--env",
             "NVIDIA_DISABLE_REQUIRE=1",
-            "--volume",
-            "/tmp/artifacts:/artifact-mount",
             "--add-host",
             "rayci.localhost:host-gateway",
         ]
@@ -73,3 +71,6 @@ class LinuxContainer(Container):
         ]
 
         return extra_args
+
+    def get_artifact_mount(self) -> Tuple[str, str]:
+        return ("/tmp/artifacts", "/artifact-mount")

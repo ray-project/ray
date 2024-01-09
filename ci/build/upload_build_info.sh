@@ -6,10 +6,15 @@ set -ex
 readonly PIPELINE_POSTMERGE="0189e759-8c96-4302-b6b5-b4274406bf89"
 readonly PIPELINE_CIV1_BRANCH="0183465b-c6fb-479b-8577-4cfd743b545d"
 if [[
-  "${BUILDKITE_PIPELINE_ID:-}" != "${PIPELINE_POSTMERGE}" && 
-  "${BUILDKITE_PIPELINE_ID:-}" != "${PIPELINE_CIV1_BRANCH}"
+    "${BUILDKITE_PIPELINE_ID:-}" != "${PIPELINE_POSTMERGE}" && 
+    "${BUILDKITE_PIPELINE_ID:-}" != "${PIPELINE_CIV1_BRANCH}" 
 ]]; then
-  echo "Skip build info uploading on non-postmerge pipeline."
+  echo "Skip upload build info. We only upload on postmerge pipelines."
+  exit 0
+fi
+
+if [[ "${BUILDKITE_BRANCH:-}" != "master" ]]; then
+  echo "Skip upload build info. We only upload on master branch."
   exit 0
 fi
 
@@ -17,12 +22,6 @@ ROOT_DIR=$(cd "$(dirname "$0")/$(dirname "$(test -L "$0" && readlink "$0" || ech
 RAY_DIR=$(cd "${ROOT_DIR}/../../"; pwd)
 
 cd "${RAY_DIR}"
-
-cleanup() {
-  # Cleanup the directory because macOS file system is shared between builds.
-  rm -rf /tmp/bazel_event_logs
-}
-trap cleanup EXIT
 
 mkdir -p /tmp/bazel_event_logs
 

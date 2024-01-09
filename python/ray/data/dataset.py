@@ -1058,7 +1058,12 @@ class Dataset:
         return Dataset(plan, logical_plan)
 
     @AllToAllAPI
-    def repartition(self, num_blocks: int, *, shuffle: bool = False) -> "Dataset":
+    def repartition(
+        self,
+        num_blocks: int,
+        *,
+        shuffle: bool = False,
+    ) -> "Dataset":
         """Repartition the :class:`Dataset` into exactly this number of :ref:`blocks <dataset_concept>`.
 
         This method can be useful to tune the performance of your pipeline. To learn
@@ -1650,7 +1655,7 @@ class Dataset:
         splits = []
 
         for bs, ms in zip(blocks, metadata):
-            stats = DatasetStats(stages={"Split": ms}, parent=parent_stats)
+            stats = DatasetStats(metadata={"Split": ms}, parent=parent_stats)
             stats.time_total_s = split_duration
 
             split_block_list = BlockList(
@@ -1915,7 +1920,7 @@ class Dataset:
                 logical_plan = LogicalPlan(op)
 
         stats = DatasetStats(
-            stages={"Union": []},
+            metadata={"Union": []},
             parent=[d._plan.stats() for d in datasets],
         )
         stats.time_total_s = time.perf_counter() - start_time
@@ -1925,7 +1930,10 @@ class Dataset:
         )
 
     @AllToAllAPI
-    def groupby(self, key: Union[str, List[str], None]) -> "GroupedData":
+    def groupby(
+        self,
+        key: Union[str, List[str], None],
+    ) -> "GroupedData":
         """Group rows of a :class:`Dataset` according to a column.
 
         Use this method to transform data based on a
@@ -4729,7 +4737,7 @@ class Dataset:
         .. testoutput::
             :options: +MOCK
 
-            Stage 0 Read: 20/20 blocks executed in 0.3s
+            Operator 0 Read: 1 tasks executed, 5 blocks produced in 0s
             * Remote wall time: 16.29us min, 7.29ms max, 1.21ms mean, 24.17ms total
             * Remote cpu time: 16.0us min, 2.54ms max, 810.45us mean, 16.21ms total
             * Peak heap memory usage (MiB): 137968.75 min, 142734.38 max, 139846 mean
