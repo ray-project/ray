@@ -209,8 +209,8 @@ class LearnerGroup:
 
     def update_from_batch(
         self,
-        *,
         batch: MultiAgentBatch,
+        *,
         async_update: bool = False,
         reduce_fn: Optional[Callable[[List[Dict[str, Any]]], ResultDict]] = (
             _reduce_mean_results
@@ -274,8 +274,8 @@ class LearnerGroup:
 
     def update_from_episodes(
         self,
-        *,
         episodes: List[EpisodeType],
+        *,
         async_update: bool = False,
         reduce_fn: Optional[Callable[[List[Dict[str, Any]]], ResultDict]] = (
             _reduce_mean_results

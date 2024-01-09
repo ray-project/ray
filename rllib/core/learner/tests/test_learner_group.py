@@ -84,7 +84,7 @@ class RemoteTrainingHelper:
         reader = get_cartpole_dataset_reader(batch_size=500)
         batch = reader.next()
         batch = batch.as_multi_agent()
-        learner_update = local_learner.update(batch)
+        learner_update = local_learner.update_from_batch(batch=batch)
         learner_group_update = learner_group.update_from_batch(batch=batch)
         check(learner_update, learner_group_update)
 
@@ -109,11 +109,11 @@ class RemoteTrainingHelper:
         # the optimizer state is not initialized fully until the first time that
         # training is completed. A call to get state before that won't contain the
         # optimizer state. So we do a dummy update here to initialize the optimizer
-        local_learner.update(ma_batch)
+        local_learner.update_from_batch(batch=ma_batch)
         learner_group.update_from_batch(batch=ma_batch)
 
         check(local_learner.get_state(), learner_group.get_state()["learner_state"])
-        local_learner_results = local_learner.update(ma_batch)
+        local_learner_results = local_learner.update_from_batch(batch=ma_batch)
         learner_group_results = learner_group.update_from_batch(batch=ma_batch)
 
         check(local_learner_results, learner_group_results)
@@ -495,7 +495,7 @@ class TestLearnerGroupSaveLoadState(unittest.TestCase):
             learner_group = config.build_learner_group(env=env)
             learner_group.load_state(initial_learner_checkpoint_dir)
             check(learner_group.get_weights(), initial_learner_group_weights)
-            learner_group.update(batch.as_multi_agent(), reduce_fn=None)
+            learner_group.update_from_batch(batch.as_multi_agent(), reduce_fn=None)
             results_without_break = learner_group.update_from_batch(
                 batch=batch.as_multi_agent(), reduce_fn=None
             )
@@ -555,8 +555,8 @@ class TestLearnerGroupAsyncUpdate(unittest.TestCase):
             iter_i = 0
             while True:
                 batch = reader.next()
-                async_results = learner_group.async_update(
-                    batch.as_multi_agent(), reduce_fn=None
+                async_results = learner_group.update_from_batch(
+                    batch.as_multi_agent(), async_update=True, reduce_fn=None
                 )
                 if not async_results:
                     continue
