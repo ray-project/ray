@@ -247,6 +247,10 @@ def test_ood_events(shutdown_only):
         except ray.exceptions.RayTaskError as e:
             assert isinstance(e.cause, ray.exceptions.OutOfDiskError)
 
+    # Give it some time for events to appear.
+    # TODO(core-team): provide some way to wait for events to be flushed.
+    time.sleep(5)
+
     events = list_cluster_events()
     print(events)
     # There could be more than 1 event depending on the test timing.

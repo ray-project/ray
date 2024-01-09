@@ -465,8 +465,16 @@ py_test(
 
 py_test_module_list(
   files = [
-    "test_tqdm.py",
     "test_out_of_disk_space.py",
+  ],
+  size = "small",
+  tags = ["exclusive", "tmpfs", "team:core"],
+  deps = ["//:ray_lib", ":conftest"],
+)
+
+py_test_module_list(
+  files = [
+    "test_tqdm.py",
     "test_failure_4.py",
     "test_iter.py",
     "test_object_spilling.py",
