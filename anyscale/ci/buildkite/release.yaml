@@ -8,7 +8,7 @@ steps:
       BUILDKITE_ARTIFACT_DESTINATION: "s3://bk-premerge-first-jawfish-artifacts/runtime"
     plugins:
       - docker#v5.9.0:
-          image: "830883877497.dkr.ecr.us-west-2.amazonaws.com/anyscale/forge:0.4.0"
+          image: "ubuntu:22.04"
           mount-buildkite-agent: True
           propagate-environment: True
           volumes:

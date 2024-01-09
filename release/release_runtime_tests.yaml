@@ -38,7 +38,6 @@
 
   frequency: nightly
   team: data
-  python: "3.9"
   cluster:
     byod:
       type: gpu
@@ -57,7 +56,6 @@
 
   frequency: nightly
   team: data
-  python: "3.9"
   cluster:
     byod:
       type: gpu
@@ -80,7 +78,6 @@
 
   frequency: nightly
   team: rllib
-  python: "3.8"
   cluster:
     byod:
       type: gpu

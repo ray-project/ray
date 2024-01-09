@@ -4,12 +4,33 @@
 
 set -euo pipefail
 
+install_tools() {
+    apt-get update
+    apt-get upgrade -y
+    DEBIAN_FRONTEND=noninteractive apt-get install -y ca-certificates curl zip unzip sudo gnupg git tzdata
+
+    # Add docker client APT repository
+    mkdir -p /etc/apt/keyrings
+    curl -fsSL https://download.docker.com/linux/ubuntu/gpg | gpg --dearmor -o /etc/apt/keyrings/docker.gpg
+
+    echo \
+        "deb [arch="$(dpkg --print-architecture)" signed-by=/etc/apt/keyrings/docker.gpg] https://download.docker.com/linux/ubuntu \
+        "$(. /etc/os-release && echo "$VERSION_CODENAME")" stable" | \
+        sudo tee /etc/apt/sources.list.d/docker.list > /dev/null
+
+    # Install packages
+    apt-get update
+    apt-get install -y \
+        awscli docker-ce-cli build-essential python-is-python3 python3-pip 
+}
+
 
 if [[ "${BUILDKITE_COMMIT}" == "HEAD" ]]; then
     BUILDKITE_COMMIT="$(git rev-parse HEAD)"
     export BUILDKITE_COMMIT
 fi
 
+install_tools
 aws ecr get-login-password --region us-west-2 | docker login --username AWS --password-stdin 830883877497.dkr.ecr.us-west-2.amazonaws.com
 
 curl -O https://dl.google.com/dl/cloudsdk/channels/rapid/downloads/google-cloud-cli-441.0.0-linux-arm.tar.gz
