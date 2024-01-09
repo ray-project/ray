@@ -100,7 +100,7 @@ def setup_receive_proxy(
     actor = ASGIReceive.remote()
     ray.get(actor.ready.remote())
     loop = get_or_create_event_loop()
-    asgi_receive_proxy = ASGIReceiveProxy(loop, "", actor)
+    asgi_receive_proxy = ASGIReceiveProxy("", actor)
     receiver_task = loop.create_task(asgi_receive_proxy.fetch_until_disconnect())
     try:
         yield asgi_receive_proxy, actor
