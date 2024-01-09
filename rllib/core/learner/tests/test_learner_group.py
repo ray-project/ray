@@ -421,7 +421,7 @@ class TestLearnerGroupCheckpointRestore(unittest.TestCase):
                     module_1.save_to_checkpoint(tmpdir2)
                     with self.assertRaisesRegex(
                         (ValueError,),
-                        ".*modules_to_load and rl_module_ckpt_dirs. Please only.*",
+                        ".*`modules_to_load` AND `rl_module_ckpt_dirs`!.*",
                     ):
                         # check that loading marl modules and specifing a module id to
                         # be loaded using modules_to_load and rl_module_ckpt_dirs raises
