@@ -341,13 +341,20 @@ class LearnerGroup:
 
         # Define function to be called on all Learner actors (or the local learner).
         def _learner_update(learner: Learner, batch_shard=None, episodes_shard=None):
-            return learner.update(
-                batch=batch_shard,
-                episodes=episodes_shard,
-                reduce_fn=reduce_fn,
-                minibatch_size=minibatch_size,
-                num_iters=num_iters,
-            )
+            if batch_shard is not None:
+                return learner.update_from_batch(
+                    batch=batch_shard,
+                    reduce_fn=reduce_fn,
+                    minibatch_size=minibatch_size,
+                    num_iters=num_iters,
+                )
+            else:
+                return learner.update_from_episodes(
+                    episodes=episodes_shard,
+                    reduce_fn=reduce_fn,
+                    minibatch_size=minibatch_size,
+                    num_iters=num_iters,
+                )
 
         if self.is_local:
             if async_update:

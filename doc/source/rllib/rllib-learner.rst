@@ -260,8 +260,8 @@ Updates
 
         .. testcode::
 
-            # This is a blocking update.
-            result = learner.update(batch=DUMMY_BATCH)
+            # This is a blocking update (given a training batch).
+            result = learner.update_from_batch(batch=DUMMY_BATCH)
 
             # This is an additional non-gradient based update.
             learner_group.additional_update(**ADDITIONAL_UPDATE_KWARGS)
