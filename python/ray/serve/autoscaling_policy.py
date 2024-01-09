@@ -1,10 +1,11 @@
 import logging
 import math
+from dataclasses import dataclass, field
 from typing import Any, Dict, List, Optional
 
 from ray.serve._private.constants import CONTROL_LOOP_PERIOD_S, SERVE_LOGGER_NAME
 from ray.serve.config import AutoscalingConfig
-from ray.util.annotations import PublicAPI
+from ray.util.annotations import DeveloperAPI, PublicAPI
 
 logger = logging.getLogger(SERVE_LOGGER_NAME)
 
@@ -88,16 +89,36 @@ def _calculate_desired_num_replicas(
     return desired_num_replicas
 
 
+@dataclass
 @PublicAPI(stability="alpha")
-def replica_queue_length_autoscaling_policy(
-    curr_target_num_replicas: int,
-    current_num_ongoing_requests: List[float],
-    current_handle_queued_queries: float,
-    config: Optional[AutoscalingConfig],
-    capacity_adjusted_min_replicas: int,
-    capacity_adjusted_max_replicas: int,
-    policy_state: Dict[str, Any],
-) -> int:
+class AutoscalingContext:
+    """Contains the context for an autoscaling policy call."""
+
+    # The AutoscalingConfig the deployment started with
+    config: AutoscalingConfig
+    # The number of replicas that the deployment is currently trying to scale to.
+    curr_target_num_replicas: int = 0
+    # List of number of ongoing requests for each replica.
+    current_num_ongoing_requests: List[int] = field(default_factory=list)
+    # The number of handle queued queries, if there are multiple handles, the max
+    # number of queries at a single handle should be passed in
+    current_handle_queued_queries: float = 0.0
+    # The min_replica of the deployment adjusted by the target capacity.
+    capacity_adjusted_min_replicas: Optional[int] = None
+    # The max_replica of the deployment adjusted by the target capacity.
+    capacity_adjusted_max_replicas: Optional[int] = None
+    # State of the policy to be used during the call
+    policy_state: Dict[str, Any] = None
+    # The timestamp of last scaled time. Will be None If not scaled yet.
+    last_scale_time: Optional[float] = None
+    # The name of the application.
+    app_name: Optional[str] = None
+    # The name of the deployment.
+    deployment_name: Optional[str] = None
+
+
+@PublicAPI(stability="alpha")
+def replica_queue_length_autoscaling_policy(context: AutoscalingContext) -> int:
     """The default autoscaling policy based on basic thresholds for scaling.
     There is a minimum threshold for the average queue length in the cluster
     to scale up and a maximum threshold to scale down. Each period, a 'scale
@@ -107,26 +128,26 @@ def replica_queue_length_autoscaling_policy(
     `get_decision_num_replicas` is called once every CONTROL_LOOP_PERIOD_S
     seconds.
     """
-    decision_counter = policy_state.get("decision_counter", 0)
-    if len(current_num_ongoing_requests) == 0:
+    decision_counter = context.policy_state.get("decision_counter", 0)
+    if len(context.current_num_ongoing_requests) == 0:
         # When 0 replicas and queries are queued, scale up the replicas
-        if current_handle_queued_queries > 0:
+        if context.current_handle_queued_queries > 0:
             return max(
-                math.ceil(1 * config.get_upscale_smoothing_factor()),
-                curr_target_num_replicas,
+                math.ceil(1 * context.config.get_upscale_smoothing_factor()),
+                context.curr_target_num_replicas,
             )
-        return curr_target_num_replicas
+        return context.curr_target_num_replicas
 
-    decision_num_replicas = curr_target_num_replicas
+    decision_num_replicas = context.curr_target_num_replicas
 
     desired_num_replicas = _calculate_desired_num_replicas(
-        config,
-        current_num_ongoing_requests,
-        override_min_replicas=capacity_adjusted_min_replicas,
-        override_max_replicas=capacity_adjusted_max_replicas,
+        autoscaling_config=context.config,
+        current_num_ongoing_requests=context.current_num_ongoing_requests,
+        override_min_replicas=context.capacity_adjusted_min_replicas,
+        override_max_replicas=context.capacity_adjusted_max_replicas,
     )
     # Scale up.
-    if desired_num_replicas > curr_target_num_replicas:
+    if desired_num_replicas > context.curr_target_num_replicas:
         # If the previous decision was to scale down (the counter was
         # negative), we reset it and then increment it (set to 1).
         # Otherwise, just increment.
@@ -136,12 +157,12 @@ def replica_queue_length_autoscaling_policy(
 
         # Only actually scale the replicas if we've made this decision for
         # 'scale_up_consecutive_periods' in a row.
-        if decision_counter > int(config.upscale_delay_s / CONTROL_LOOP_PERIOD_S):
+        if decision_counter > int(context.config.upscale_delay_s / CONTROL_LOOP_PERIOD_S):
             decision_counter = 0
             decision_num_replicas = desired_num_replicas
 
     # Scale down.
-    elif desired_num_replicas < curr_target_num_replicas:
+    elif desired_num_replicas < context.curr_target_num_replicas:
         # If the previous decision was to scale up (the counter was
         # positive), reset it to zero before decrementing.
         if decision_counter > 0:
@@ -150,7 +171,7 @@ def replica_queue_length_autoscaling_policy(
 
         # Only actually scale the replicas if we've made this decision for
         # 'scale_down_consecutive_periods' in a row.
-        if decision_counter < -int(config.downscale_delay_s / CONTROL_LOOP_PERIOD_S):
+        if decision_counter < -int(context.config.downscale_delay_s / CONTROL_LOOP_PERIOD_S):
             decision_counter = 0
             decision_num_replicas = desired_num_replicas
 
@@ -158,7 +179,7 @@ def replica_queue_length_autoscaling_policy(
     else:
         decision_counter = 0
 
-    policy_state["decision_counter"] = decision_counter
+    context.policy_state["decision_counter"] = decision_counter
     return decision_num_replicas
 
 

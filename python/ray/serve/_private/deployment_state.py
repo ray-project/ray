@@ -1591,6 +1591,8 @@ class DeploymentState:
             current_handle_queued_queries=current_handle_queued_queries,
             target_capacity=self._target_state.info.target_capacity,
             target_capacity_direction=self._target_state.info.target_capacity_direction,
+            app_name=self.app_name,
+            deployment_name=self.deployment_name,
         )
 
         if (

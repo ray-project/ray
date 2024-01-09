@@ -1,9 +1,11 @@
 import logging
 from typing import List, Optional
+from dataclasses import replace
 
 from ray.serve._private.common import TargetCapacityDirection
 from ray.serve._private.constants import SERVE_LOGGER_NAME
 from ray.serve._private.utils import get_capacity_adjusted_num_replicas
+from ray.serve.autoscaling_policy import AutoscalingContext
 from ray.serve.config import AutoscalingConfig
 
 logger = logging.getLogger(SERVE_LOGGER_NAME)
@@ -15,6 +17,7 @@ class AutoscalingPolicyManager:
     def __init__(self, config: Optional[AutoscalingConfig]):
         self.config = config
         self.policy = None
+        self.context = AutoscalingContext(config=config)
         self.policy_state = {}
         self._create_policy()
 
@@ -34,6 +37,8 @@ class AutoscalingPolicyManager:
         current_handle_queued_queries: float,
         target_capacity: Optional[float] = None,
         target_capacity_direction: Optional[TargetCapacityDirection] = None,
+        app_name: Optional[str] = None,
+        deployment_name: Optional[str] = None,
         _skip_bound_check: bool = False,
     ) -> Optional[int]:
         """Interface with the autoscaling policy to get a decision to scale replicas.
@@ -50,15 +55,17 @@ class AutoscalingPolicyManager:
             self.config.max_replicas,
             target_capacity,
         )
-        decision_num_replicas = self.policy(
+        self.context = replace(
+            self.context,
             curr_target_num_replicas=curr_target_num_replicas,
             current_num_ongoing_requests=current_num_ongoing_requests,
             current_handle_queued_queries=current_handle_queued_queries,
-            config=self.config,
             capacity_adjusted_min_replicas=capacity_adjusted_min_replicas,
             capacity_adjusted_max_replicas=capacity_adjusted_max_replicas,
-            policy_state=self.policy_state,
+            app_name=app_name,
+            deployment_name=deployment_name,
         )
+        decision_num_replicas = self.policy(self.context)
 
         if _skip_bound_check:
             return decision_num_replicas
