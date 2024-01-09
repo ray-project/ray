@@ -5,7 +5,7 @@ import ray
 from ray.tests.conftest import *  # noqa
 
 
-def test_huggingface(ray_start_regular_shared):
+def test_from_huggingface(ray_start_regular_shared):
     data = datasets.load_dataset("tweet_eval", "emotion")
 
     # Check that DatasetDict is not directly supported.
