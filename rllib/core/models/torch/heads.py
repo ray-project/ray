@@ -212,13 +212,9 @@ class TorchCNNTransposeHead(TorchModel):
         )
 
         if initial_dense_initializer:
-            if config.initial_dense_initializer_config:
-                initial_dense_initializer(
-                    self.initial_dense.weight, **config.initial_dense_initializer_config
-                )
-            else:
-                initial_dense_initializer(self.initial_dense.weight)
-
+            initial_dense_initializer(
+                self.initial_dense.weight, **(config.initial_dense_initializer_config or {})
+            )
         # The main CNNTranspose stack.
         self.cnn_transpose_net = TorchCNNTranspose(
             input_dims=config.initial_image_dims,
