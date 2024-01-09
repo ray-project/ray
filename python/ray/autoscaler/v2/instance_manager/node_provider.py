@@ -91,7 +91,7 @@ class ICloudInstanceProvider(ABC):
     1. Eventually consistent
     The cloud instance provider is expected to be eventually consistent with the
     cluster state. For example, when a cloud instance is request to be terminated
-    or launched, the provider may not immediately reflect the change in its state.
+    ,the provider may not immediately reflect the change in its state.
     However, the provider is expected to eventually reflect the change in its state.
 
     2. Asynchronous
