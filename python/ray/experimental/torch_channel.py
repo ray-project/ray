@@ -10,19 +10,14 @@ from ray.experimental.channel import Channel
 # Precondition: the communication group is setup for the reader and writer actors.
 class TorchChannel(Channel):
     def __init__(self, buffer_size_bytes: int, reader_rank: int, writer_rank: int):
-        self._arr = np.zeros(4 + buffer_size_bytes, dtype=np.uint8)
+        self._buffer_size_bytes = buffer_size_bytes
         self._reader_rank = reader_rank
         self._writer_rank = writer_rank
+        self._arr = torch.from_numpy(np.zeros(4 + buffer_size_bytes, dtype=np.uint8))
         self._worker = ray._private.worker.global_worker
 
-    @staticmethod
-    def _from_arr(arr: np.ndarray, reader_rank: int, writer_rank: int) -> "Channel":
-        channel = Channel(1, reader_rank, writer_rank)
-        channel._arr = arr
-        return channel
-
     def __reduce__(self):
-        return self._from_arr, (self._arr, self._reader_rank, self._writer_rank)
+        return TorchChannel, (self._buffer_size_bytes, self._reader_rank, self._writer_rank)
 
     def write(self, value: Any) -> None:
         serialized_value = self._serialize(value)
@@ -31,14 +26,16 @@ class TorchChannel(Channel):
             raise ValueError("Serialized value larger than the channel buffer length")
         arr = np.frombuffer(serialized_value, np.uint8)
         prefix = np.array([datalen], dtype=np.uint32).view(np.uint8)
-        self._arr[:4] = prefix
-        self._arr[4 : 4 + datalen] = arr
+        self._arr[:4] = torch.from_numpy(prefix)
+        self._arr[4 : 4 + datalen] = torch.from_numpy(np.copy(arr))
+        print("SEND", len(self._arr))
         torch.distributed.isend(self._arr, self._reader_rank).wait()
 
     def begin_read(self) -> Any:
+        print("RECV", len(self._arr))
         torch.distributed.irecv(self._arr, self._writer_rank).wait()
-        datalen = self._arr[:4].view(np.uint32)[0]
-        return self._deserialize(self._arr[4 : 4 + datalen]).tobytes()
+        datalen = self._arr[:4].numpy().view(np.uint32)[0]
+        return self._deserialize(self._arr[4 : 4 + datalen].numpy().tobytes())
 
     def end_read(self):
         pass
@@ -48,8 +45,9 @@ class TorchChannel(Channel):
 
     def _serialize(self, value: Any) -> bytes:
         ctx = self._worker.get_serialization_context()
-        raise NotImplementedError
+        if not isinstance(value, bytes):
+            raise NotImplementedError("only support bytes types only for now")
+        return value
 
     def _deserialize(self, serialized_value: bytes) -> Any:
-        ctx = self._worker.get_serialization_context()
-        raise NotImplementedError
+        return serialized_value

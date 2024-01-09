@@ -1,12 +1,14 @@
 from collections import defaultdict
 from typing import Any, Dict, List, Tuple, Union, Optional
 import logging
+import os
 import threading
 import traceback
 
 import ray
 from ray.exceptions import RayTaskError
-from ray.experimental.channel import Channel, TorchChannel
+from ray.experimental.channel import Channel
+from ray.experimental.torch_channel import TorchChannel
 from ray.util.annotations import DeveloperAPI
 
 
@@ -29,10 +31,14 @@ def make_torch_channel(
         The allocated channel.
     """
     self._output_channel = TorchChannel(buffer_size_bytes, reader_rank, writer_rank)
+    return self._output_channel
 
 
 def torch_init(self, rank, world_size):
     import torch
+    print("call torch init", rank, world_size)
+    os.environ["MASTER_ADDR"] = "localhost"
+    os.environ["MASTER_PORT"] = "26254"
 
     torch.distributed.init_process_group(
         backend="gloo", world_size=world_size, rank=rank
@@ -126,6 +132,7 @@ class CompiledTask:
         """
         self.idx = idx
         self.dag_node = dag_node
+        self.output_channel = None
 
         self.downstream_node_idxs = set()
 
@@ -171,7 +178,8 @@ class CompiledDAG:
         # DAGNode -> idx.
         self.dag_node_to_idx: Dict["ray.dag.DAGNode", int] = {}
         # idx counter. rank 0 is the driver
-        self.counter: int = 1
+        self.counter: int = 0
+        self.driver_rank = None
 
         # Attributes that are set during preprocessing.
         # Preprocessing identifies the input node and output node.
@@ -329,24 +337,25 @@ class CompiledDAG:
 
             task = self.idx_to_task[cur_idx]
             # TODO: use broadcast to implement multi read
-            assert len(task.downstream_node_idxs) == 0, task.downstream_node_idxs
+            assert len(task.downstream_node_idxs) <= 1, task.downstream_node_idxs
             # Create an output buffer on the actor.
             if isinstance(task.dag_node, ClassMethodNode):
                 fn = task.dag_node._get_remote_method("__ray_call__")
-                ray.get(
+                task.output_channel = ray.get(
                     fn.remote(
                         make_torch_channel,
                         buffer_size_bytes=self._buffer_size_bytes,
-                        reader_rank=task.downstream_node_idxs[0],
+                        reader_rank=list(task.downstream_node_idxs)[0],
                         writer_rank=task.idx,
                     )
                 )
                 self.actor_refs.add(task.dag_node._get_actor_handle())
-                self.actor_ranks[task.dag_node._get_actor_handle()] = task.dag_node.idx
+                self.actor_ranks[task.dag_node._get_actor_handle()] = task.idx
             elif isinstance(task.dag_node, InputNode):
+                self.driver_rank = task.idx
                 task.output_channel = TorchChannel(
                     buffer_size_bytes=self._buffer_size_bytes,
-                    reader_rank=task.downstream_node_idxs[0],
+                    reader_rank=list(task.downstream_node_idxs)[0],
                     writer_rank=0,
                 )
             else:
@@ -355,6 +364,7 @@ class CompiledDAG:
             for idx in task.downstream_node_idxs:
                 queue.append(idx)
 
+        self._torch_init()
         for node_idx, task in self.idx_to_task.items():
             if node_idx == self.input_task_idx:
                 # We don't need to assign an actual task for the input node.
@@ -415,15 +425,17 @@ class CompiledDAG:
 
         # Driver should ray.put on input, ray.get/release on output
         self._monitor = self._monitor_failures()
-        self._torch_init()
         return (self.dag_input_channel, self.dag_output_channels, self._monitor)
 
     def _torch_init(self):
         futs = []
+        print("Actor ranks", self.actor_ranks)
+        print("Driver ranks", self.driver_rank)
         world_size = len(self.actor_ranks) + 1
         for actor, rank in self.actor_ranks.items():
             fn = actor.__ray_call__
             futs.append(fn.remote(torch_init, rank=rank, world_size=world_size))
+        torch_init(self, rank=self.driver_rank, world_size=world_size)
         ray.get(futs)
 
     def _monitor_failures(self):
