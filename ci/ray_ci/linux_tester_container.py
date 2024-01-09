@@ -30,6 +30,7 @@ class LinuxTesterContainer(TesterContainer, LinuxContainer):
             self,
             shard_count,
             gpus,
+            bazel_log_dir="/tmp/bazel_event_logs",
             network=network,
             test_envs=test_envs,
             shard_ids=shard_ids,
