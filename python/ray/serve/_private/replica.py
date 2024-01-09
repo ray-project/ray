@@ -742,7 +742,11 @@ class UserCallableWrapper:
             await Response(result).send(scope, receive, send)
 
     async def _call_func_or_gen(self, callable: Callable, *args, **kwargs) -> Any:
-        """XXX: TODO"""
+        """Call the callable with the provided arguments.
+
+        This is a convenience wrapper that will work for `def`, `async def`,
+        generator, and async generator functions.
+        """
         result = callable(*args, **kwargs)
         if inspect.iscoroutine(result):
             result = await result
