@@ -7,6 +7,7 @@ _DEPRECATION_MESSAGE = (
 )
 
 
+# TODO(justinvyu): [code_removal] Delete in Ray 2.11.
 @Deprecated
 class MosaicTrainer:
     """Deprecated. See this issue (TODO) for a migration example."""
