@@ -131,17 +131,10 @@ class ASGIMessageQueue(Send):
     `get_messages_nowait` and `wait_for_message` is undefined behavior).
     """
 
-    def __init__(
-        self, *, write_thread_safe: bool = False, loop: asyncio.AbstractEventLoop = None
-    ):
+    def __init__(self):
         self._message_queue = asyncio.Queue()
         self._new_message_event = asyncio.Event()
         self._closed = False
-        self._write_thread_safe = write_thread_safe
-        self._loop = loop
-
-        if self._write_thread_safe and self._loop is None:
-            raise ValueError("If `write_thread_safe=True`, `loop` must be provided.")
 
     def close(self):
         """Close the queue, rejecting new messages.
@@ -153,26 +146,16 @@ class ASGIMessageQueue(Send):
         self._closed = True
         self._new_message_event.set()
 
-    def _put_message(self, message: Message):
-        if self._closed:
-            raise RuntimeError("New messages cannot be sent after the queue is closed.")
-
-        self._message_queue.put_nowait(message)
-        self._new_message_event.set()
-
     async def __call__(self, message: Message):
         """Send a message, putting it on the queue.
 
-        XXX: THREAD SAFE!!!
-
         `RuntimeError` is raised if the queue has been closed using `.close()`.
         """
-        if self._write_thread_safe:
-            # await asyncio.wrap_future(
-            self._loop.call_soon_threadsafe(self._put_message, message)
-            # )
-        else:
-            self._put_message(message)
+        if self._closed:
+            raise RuntimeError("New messages cannot be sent after the queue is closed.")
+
+        await self._message_queue.put(message)
+        self._new_message_event.set()
 
     def get_messages_nowait(self) -> List[Message]:
         """Returns all messages that are currently available (non-blocking).
@@ -252,7 +235,7 @@ class ASGIReceiveProxy:
         if self._queue.empty() and self._disconnect_message is not None:
             return self._disconnect_message
 
-        message = self._queue.get()
+        message = await self._queue.get()
         if isinstance(message, Exception):
             raise message
 

@@ -490,9 +490,7 @@ class ReplicaActor:
         """Generator that is the entrypoint for all `stream=True` handle calls."""
         request_metadata = pickle.loads(pickled_request_metadata)
         with self._wrap_user_method_call(request_metadata):
-            result_queue = ASGIMessageQueue(
-                write_thread_safe=True, loop=self._event_loop
-            )
+            result_queue = ASGIMessageQueue()
             receiver_task = None
             if request_metadata.is_http_request:
                 assert len(request_args) == 1 and isinstance(
