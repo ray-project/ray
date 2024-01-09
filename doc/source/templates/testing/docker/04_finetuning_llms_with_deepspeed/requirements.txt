@@ -10,4 +10,3 @@ protobuf<3.21.0
 torchmetrics
 sentencepiece
 peft==0.7.0
-flash-attn==2.4.2 --global-option="--no-build-isolation"
