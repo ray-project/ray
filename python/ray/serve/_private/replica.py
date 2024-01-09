@@ -707,7 +707,6 @@ class UserCallableWrapper:
         self._init_kwargs = init_kwargs
         self._is_function = inspect.isfunction(deployment_def)
         self._deployment_id = deployment_id
-        self._replica_tag = replica_tag
         self._delete_lock = asyncio.Lock()
 
         # Will be populated in `initialize_callable`.
