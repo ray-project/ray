@@ -11,8 +11,6 @@ from typing import Any, AsyncGenerator, Callable, Dict, Optional, Tuple, Union
 
 import aiorwlock
 import starlette.responses
-from starlette.requests import Request
-from starlette.types import Receive, Scope, Send
 
 import ray
 from ray import cloudpickle
@@ -44,6 +42,7 @@ from ray.serve._private.constants import (
 )
 from ray.serve._private.http_util import (
     ASGIAppReplicaWrapper,
+    ASGIArgs,
     ASGIMessageQueue,
     ASGIReceiveProxy,
     Response,
@@ -286,6 +285,7 @@ class ReplicaActor:
             cloudpickle.loads(serialized_init_args),
             cloudpickle.loads(serialized_init_kwargs),
             deployment_id=deployment_id,
+            event_loop=self._event_loop,
         )
 
         # Guards against calling the user's callable constructor multiple times.
@@ -417,13 +417,12 @@ class ReplicaActor:
                 request_metadata, request_args, request_kwargs
             )
 
-    async def _call_generator(
+    async def _call_user_generator(
         self,
         request_metadata: RequestMetadata,
         request_args: Tuple[Any],
         request_kwargs: Dict[str, Any],
         result_queue: ASGIMessageQueue,
-        receiver_task: Optional[asyncio.Task],
     ) -> AsyncGenerator[Any, None]:
         """XXX.
 
@@ -475,9 +474,6 @@ class ReplicaActor:
             if e is not None:
                 raise e from None
         finally:
-            if receiver_task is not None:
-                receiver_task.cancel()
-
             if call_user_method_task is not None and not call_user_method_task.done():
                 call_user_method_task.cancel()
 
@@ -494,28 +490,12 @@ class ReplicaActor:
         request_metadata = pickle.loads(pickled_request_metadata)
         with self._wrap_user_method_call(request_metadata):
             result_queue = ASGIMessageQueue()
-            receiver_task = None
-            if request_metadata.is_http_request:
-                assert len(request_args) == 1 and isinstance(
-                    request_args[0], StreamingHTTPRequest
-                )
-                receiver = ASGIReceiveProxy(
-                    request_metadata.request_id,
-                    request_args[0].http_proxy_handle,
-                )
-                receiver_task = self._event_loop.create_task(
-                    receiver.fetch_until_disconnect()
-                )
 
-                scope = pickle.loads(request_args[0].pickled_asgi_scope)
-                request_args = (scope, receiver, result_queue)
-
-            async for result in self._call_generator(
+            async for result in self._call_user_generator(
                 request_metadata,
                 request_args,
                 request_kwargs,
                 result_queue,
-                receiver_task,
             ):
                 yield result
 
@@ -705,6 +685,7 @@ class UserCallableWrapper:
         init_kwargs: Dict,
         *,
         deployment_id: DeploymentID,
+        event_loop: asyncio.AbstractEventLoop,
     ):
         if not (inspect.isfunction(deployment_def) or inspect.isclass(deployment_def)):
             raise TypeError(
@@ -717,6 +698,7 @@ class UserCallableWrapper:
         self._init_kwargs = init_kwargs
         self._is_function = inspect.isfunction(deployment_def)
         self._deployment_id = deployment_id
+        self._event_loop = event_loop
         self._rwlock = aiorwlock.RWLock()
         self._delete_lock = asyncio.Lock()
 
@@ -747,7 +729,9 @@ class UserCallableWrapper:
         return getattr(self._callable, method_name)
 
     async def _send_user_result_over_asgi(
-        self, result: Any, scope: Scope, receive: Receive, send: Send
+        self,
+        result: Any,
+        asgi_args: ASGIArgs,
     ):
         """Handle the result from user code and send it over the ASGI interface.
 
@@ -755,6 +739,7 @@ class UserCallableWrapper:
         is converted to a custom Response type that handles serialization for
         common Python objects.
         """
+        scope, receive, send = asgi_args.to_args_tuple()
         if isinstance(result, starlette.responses.Response):
             await result(scope, receive, send)
         else:
@@ -831,6 +816,105 @@ class UserCallableWrapper:
                     user_config,
                 )
 
+    def _prepare_args_for_http_request(
+        self,
+        request: StreamingHTTPRequest,
+        request_metadata: RequestMetadata,
+        user_method_params: Dict[str, inspect.Parameter],
+        *,
+        is_asgi_app: bool,
+        result_queue: Optional[ASGIMessageQueue] = None,
+    ) -> Tuple[Tuple[Any], ASGIArgs, asyncio.Task]:
+        """Prepare arguments for a user method handling an HTTP request.
+
+        Returns (request_args, asgi_args, receive_task).
+
+        The returned `receive_task` should be cancelled when the user method exits.
+        """
+        receive = ASGIReceiveProxy(
+            request_metadata.request_id,
+            request.http_proxy_handle,
+        )
+        receive_task = self._event_loop.create_task(receive.fetch_until_disconnect())
+        asgi_args = ASGIArgs(
+            scope=pickle.loads(request.pickled_asgi_scope),
+            receive=receive,
+            send=result_queue,
+        )
+        if is_asgi_app:
+            request_args = asgi_args.to_args_tuple()
+        elif len(user_method_params) == 0:
+            # Edge case to support empty HTTP handlers: don't pass the Request
+            # argument if the callable has no parameters.
+            request_args = tuple()
+        else:
+            # Non-FastAPI HTTP handlers take only the starlette `Request`.
+            request_args = (asgi_args.to_starlette_request(),)
+
+        return request_args, asgi_args, receive_task
+
+    def _prepare_args_for_grpc_request(
+        self,
+        request: gRPCRequest,
+        request_metadata: RequestMetadata,
+        request_args: Tuple[Any],
+        user_method_params: Dict[str, inspect.Parameter],
+    ) -> Tuple[Tuple[Any], Dict[str, Any]]:
+        """Prepare arguments for a user method handling a gRPC request.
+
+        Returns (request_args, request_kwargs).
+        """
+        request_args = (pickle.loads(request_args[0].grpc_user_request),)
+        if GRPC_CONTEXT_ARG_NAME in user_method_params:
+            request_kwargs = {GRPC_CONTEXT_ARG_NAME: request_metadata.grpc_context}
+        else:
+            request_kwargs = {}
+
+        return request_args, request_kwargs
+
+    async def _handle_user_method_result(
+        self,
+        result: Any,
+        user_method_name: str,
+        request_metadata: RequestMetadata,
+        *,
+        result_queue: Optional[ASGIMessageQueue],
+        is_asgi_app: bool,
+        asgi_args: Optional[ASGIArgs],
+    ):
+        result_is_gen = inspect.isgenerator(result)
+        result_is_async_gen = inspect.isasyncgen(result)
+        if request_metadata.is_streaming:
+            if result_is_gen:
+                for r in result:
+                    if request_metadata.is_grpc_request:
+                        r = (request_metadata.grpc_context, r.SerializeToString())
+                    await result_queue(r)
+            elif result_is_async_gen:
+                async for r in result:
+                    if request_metadata.is_grpc_request:
+                        r = (request_metadata.grpc_context, r.SerializeToString())
+                    await result_queue(r)
+            elif request_metadata.is_http_request and not is_asgi_app:
+                # For the FastAPI codepath, the response has already been sent over
+                # ASGI, but for the vanilla deployment codepath we need to send it.
+                await self._send_user_result_over_asgi(result, asgi_args)
+            elif not request_metadata.is_http_request:
+                raise TypeError(
+                    f"Called method '{user_method_name}' with "
+                    "`handle.options(stream=True)` but it did not return a "
+                    "generator."
+                )
+        else:
+            if result_is_gen or result_is_async_gen:
+                raise TypeError(
+                    f"Method '{user_method_name}' returned a generator. "
+                    "You must use `handle.options(stream=True)` to call "
+                    "generators on a deployment."
+                )
+            if request_metadata.is_grpc_request:
+                result = (request_metadata.grpc_context, result.SerializeToString())
+
     async def call_user_method(
         self,
         request_metadata: RequestMetadata,
@@ -849,82 +933,63 @@ class UserCallableWrapper:
             extra={"log_to_stderr": False, "serve_access_log": True},
         )
 
-        is_asgi_app = isinstance(self._callable, ASGIAppReplicaWrapper)
-        if request_metadata.is_http_request:
-            # For HTTP requests we always expect (scope, receive, send) as args.
-            assert len(request_args) == 3
-            scope, receive, send = request_args
-
-            if is_asgi_app:
-                request_args = (scope, receive, send)
-            else:
-                request_args = (Request(scope, receive, send),)
-        elif request_metadata.is_grpc_request:
-            # Ensure the request args are a single gRPCRequest object.
-            assert len(request_args) == 1 and isinstance(request_args[0], gRPCRequest)
-            request_args = (pickle.loads(request_args[0].grpc_user_request),)
-
         result = None
-        runner_method = None
+        asgi_args = None
+        user_method = None
+        receive_task = None
+        user_method_name = "unknown"
         try:
-            runner_method = self._get_user_callable_method(request_metadata.call_method)
+            is_asgi_app = isinstance(self._callable, ASGIAppReplicaWrapper)
+            user_method = self._get_user_callable_method(request_metadata.call_method)
+            user_method_name = user_method.__name__
+            user_method_params = inspect.signature(user_method).parameters
+            if request_metadata.is_http_request:
+                assert len(request_args) == 1 and isinstance(
+                    request_args[0], StreamingHTTPRequest
+                )
+                (
+                    request_args,
+                    asgi_args,
+                    receive_task,
+                ) = self._prepare_args_for_http_request(
+                    request_args[0],
+                    request_metadata,
+                    user_method_params,
+                    is_asgi_app=is_asgi_app,
+                    result_queue=result_queue,
+                )
+            elif request_metadata.is_grpc_request:
+                # Ensure the request args are a single gRPCRequest object.
+                assert len(request_args) == 1 and isinstance(
+                    request_args[0], gRPCRequest
+                )
+                request_args, request_kwargs = self._prepare_args_for_grpc_request(
+                    request_args[0], request_metadata, user_method_params
+                )
 
-            # Edge case to support empty HTTP handlers: don't pass the Request
-            # argument if the callable has no parameters.
-            params = inspect.signature(runner_method).parameters
-            if request_metadata.is_http_request and len(params) == 0:
-                request_args, request_kwargs = tuple(), {}
-            elif request_metadata.is_grpc_request and GRPC_CONTEXT_ARG_NAME in params:
-                request_kwargs = {GRPC_CONTEXT_ARG_NAME: request_metadata.grpc_context}
-
-            result = await self._call_func_or_gen(
-                runner_method, *request_args, **request_kwargs
+            result = await self._handle_user_method_result(
+                await self._call_func_or_gen(
+                    user_method, *request_args, **request_kwargs
+                ),
+                user_method_name,
+                request_metadata,
+                result_queue=result_queue,
+                is_asgi_app=is_asgi_app,
+                asgi_args=asgi_args,
             )
-            result_is_gen = inspect.isgenerator(result)
-            result_is_async_gen = inspect.isasyncgen(result)
-            if request_metadata.is_streaming:
-                if result_is_gen:
-                    for r in result:
-                        if request_metadata.is_grpc_request:
-                            r = (request_metadata.grpc_context, r.SerializeToString())
-                        await result_queue(r)
-                elif result_is_async_gen:
-                    async for r in result:
-                        if request_metadata.is_grpc_request:
-                            r = (request_metadata.grpc_context, r.SerializeToString())
-                        await result_queue(r)
-                elif request_metadata.is_http_request and not is_asgi_app:
-                    # For the FastAPI codepath, the response has already been sent over
-                    # ASGI, but for the vanilla deployment codepath we need to send it.
-                    await self._send_user_result_over_asgi(result, scope, receive, send)
-                elif not request_metadata.is_http_request:
-                    raise TypeError(
-                        f"Called method '{runner_method.__name__}' with "
-                        "`handle.options(stream=True)` but it did not return a "
-                        "generator."
-                    )
-            else:
-                if result_is_gen or result_is_async_gen:
-                    raise TypeError(
-                        f"Method '{runner_method.__name__}' returned a generator. "
-                        "You must use `handle.options(stream=True)` to call "
-                        "generators on a deployment."
-                    )
-                if request_metadata.is_grpc_request:
-                    result = (request_metadata.grpc_context, result.SerializeToString())
 
         except Exception as e:
-            function_name = "unknown"
-            if runner_method is not None:
-                function_name = runner_method.__name__
-            e = wrap_to_ray_error(function_name, e)
-            if request_metadata.is_http_request:
+            e = wrap_to_ray_error(user_method_name, e)
+            if request_metadata.is_http_request and asgi_args is not None:
                 result = starlette.responses.Response(
                     f"Unexpected error, traceback: {e}.", status_code=500
                 )
-                await self._send_user_result_over_asgi(result, scope, receive, send)
+                await self._send_user_result_over_asgi(result, asgi_args)
 
             raise e from None
+        finally:
+            if receive_task is not None and not receive_task.done():
+                receive_task.cancel()
 
         return result
 

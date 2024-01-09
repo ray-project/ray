@@ -4,7 +4,8 @@ import json
 import logging
 import pickle
 import socket
-from typing import Any, List, Optional, Type
+from dataclasses import dataclass
+from typing import Any, List, Optional, Tuple, Type
 
 import starlette
 from fastapi.encoders import jsonable_encoder
@@ -19,6 +20,21 @@ from ray.serve._private.utils import serve_encoders
 from ray.serve.exceptions import RayServeException
 
 logger = logging.getLogger(SERVE_LOGGER_NAME)
+
+
+@dataclass(frozen=True)
+class ASGIArgs:
+    scope: Scope
+    receive: Receive
+    send: Send
+
+    def to_args_tuple(self) -> Tuple[Scope, Receive, Send]:
+        return (self.scope, self.receive, self.send)
+
+    def to_starlette_request(self) -> starlette.requests.Request:
+        return starlette.requests.Request(
+            *self.to_args_tuple(),
+        )
 
 
 def make_buffered_asgi_receive(serialized_body: bytes) -> Receive:
