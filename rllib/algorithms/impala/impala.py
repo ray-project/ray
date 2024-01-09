@@ -946,17 +946,17 @@ class Impala(Algorithm):
             self.batches_to_place_on_learner.clear()
             # If there are no learner workers and learning is directly on the driver
             # Then we can't do async updates, so we need to block.
-            blocking = self.config.num_learner_workers == 0
+            async_update = self.config.num_learner_workers > 0
             results = []
             for batch in batches:
                 result = self.learner_group.update_from_batch(
                     batch=batch,
-                    async_update=not blocking,
+                    async_update=async_update,
                     reduce_fn=_reduce_impala_results,
                     num_iters=self.config.num_sgd_iter,
                     minibatch_size=self.config.minibatch_size,
                 )
-                if blocking:
+                if not async_update:
                     results = [result]
 
                 for r in results:

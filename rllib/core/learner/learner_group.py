@@ -24,7 +24,10 @@ from ray.rllib.core.rl_module.rl_module import (
 from ray.rllib.policy.sample_batch import MultiAgentBatch
 from ray.rllib.utils.actor_manager import FaultTolerantActorManager
 from ray.rllib.utils.deprecation import Deprecated, deprecation_warning
-from ray.rllib.utils.minibatch_utils import ShardBatchIterator, ShardEpisodesIterator, ShardObjectRefIterator
+from ray.rllib.utils.minibatch_utils import (
+    ShardBatchIterator,
+    ShardEpisodesIterator,
+)
 from ray.rllib.utils.numpy import convert_to_numpy
 from ray.rllib.utils.typing import (
     EpisodeType,
@@ -190,7 +193,8 @@ class LearnerGroup:
         return {
             "learner_group_ts_dropped": self._ts_dropped,
             "actor_manager_num_outstanding_async_reqs": (
-                0 if self.is_local
+                0
+                if self.is_local
                 else self._worker_manager.num_outstanding_async_reqs()
             ),
         }
@@ -348,8 +352,8 @@ class LearnerGroup:
         if self.is_local:
             if async_update:
                 raise ValueError(
-                    "Cannot call `update_from_batch(update_async=True)` when running in "
-                    "local mode! Try setting `config.num_learner_workers > 0`."
+                    "Cannot call `update_from_batch(update_async=True)` when running in"
+                    " local mode! Try setting `config.num_learner_workers > 0`."
                 )
 
             results = [
@@ -368,7 +372,9 @@ class LearnerGroup:
             else:
                 partials = [
                     partial(_learner_update, episodes_shard=episodes_shard)
-                    for episodes_shard in ShardEpisodesIterator(episodes, len(self._workers))
+                    for episodes_shard in ShardEpisodesIterator(
+                        episodes, len(self._workers)
+                    )
                 ]
 
             if async_update:
@@ -398,14 +404,16 @@ class LearnerGroup:
                         self._ts_dropped += factor * sum(len(e) for e in episodes)
                 # NOTE: There is a strong assumption here that the requests launched to
                 # learner workers will return at the same time, since they are have a
-                # barrier inside of themselves for gradient aggregation. Therefore results
-                # should be a list of lists where each inner list should be the length of
-                # the number of learner workers, if results from an  non-blocking update are
-                # ready.
+                # barrier inside of themselves for gradient aggregation. Therefore
+                # results should be a list of lists where each inner list should be the
+                # length of the number of learner workers, if results from an
+                # non-blocking update are ready.
                 results = self._get_async_results(results)
 
             else:
-                results = self._get_results(self._worker_manager.foreach_actor(partials))
+                results = self._get_results(
+                    self._worker_manager.foreach_actor(partials)
+                )
 
         # TODO (sven): Move reduce_fn to the training_step
         if reduce_fn is None:
@@ -414,16 +422,6 @@ class LearnerGroup:
             return reduce_fn(results)
         else:
             return [reduce_fn(r) for r in results]
-
-    def _worker_manager_ready(self):
-        # TODO (sven): This probably works even without any restriction (allowing for
-        #  any arbitrary number of requests in-flight). Test with 3 first, then with
-        #  unlimited, and if both show the same behavior on an async algo, remove
-        #  this method entirely.
-        return (
-            self._worker_manager.num_outstanding_async_reqs()
-            <= self._worker_manager.num_actors() * 2
-        )
 
     def _get_results(self, results):
         processed_results = []
@@ -505,53 +503,6 @@ class LearnerGroup:
                 return results
             # TODO(sven): Move reduce_fn to the training_step
             return reduce_fn(results)
-
-    def async_additional_update(
-        self,
-        *,
-        reduce_fn: Callable[[ResultDict], ResultDict] = _reduce_mean_results,
-        **kwargs,
-    ) -> Union[Dict[str, Any], List[Dict[str, Any]]]:
-        """TODO: sven
-        """
-
-        if self.is_local:
-            raise ValueError(
-                "Cannot call `async_update` when running in local mode with "
-                "num_workers=0."
-            )
-
-        # Retrieve all ready results (kicked off by prior calls to this method).
-        results = None
-        if self._additional_update_request_tags:
-            results = self._worker_manager.fetch_ready_async_reqs(
-                tags=list(self._additional_update_request_tags)
-            )
-
-        update_tag = str(uuid.uuid4())
-        num_sent_requests = self._worker_manager.foreach_actor_async(
-            [lambda w: w.additional_update(**kwargs) for _ in self._workers], tag=update_tag
-        )
-        if num_sent_requests:
-            self._additional_update_request_tags[update_tag] = num_sent_requests
-
-        #count += 1
-
-        # NOTE: There is a strong assumption here that the requests launched to
-        # learner workers will return at the same time, since they are have a
-        # barrier inside of themselves for gradient aggregation. Therefore results
-        # should be a list of lists where each inner list should be the length of
-        # the number of learner workers, if results from an  non-blocking update are
-        # ready.
-        results = self._get_async_results(results)
-
-        #print(f"after async_additional_update() _additional_update_request_tags={self._additional_update_request_tags}")
-
-        # TODO(sven): Move reduce_fn to the training_step
-        if reduce_fn is None:
-            return results
-        else:
-            return [reduce_fn(r) for r in results]
 
     def add_module(
         self,
@@ -1044,13 +995,17 @@ class LearnerGroup:
         if not self._is_shut_down:
             self.shutdown()
 
-    @Deprecated(new="LearnerGroup.update_from_batch(async=False)", error=True)
+    @Deprecated(new="LearnerGroup.update_from_batch(async=False)", error=False)
     def update(self, *args, **kwargs):
-        pass
+        # Just in case, we would like to revert this API retirement, we can do so
+        # easily.
+        return self._update(*args, **kwargs, async_update=False)
 
-    @Deprecated(new="LearnerGroup.update_from_batch(async=True)", error=True)
+    @Deprecated(new="LearnerGroup.update_from_batch(async=True)", error=False)
     def async_update(self, *args, **kwargs):
-        pass
+        # Just in case, we would like to revert this API retirement, we can do so
+        # easily.
+        return self._update(*args, **kwargs, async_update=True)
 
     @Deprecated(new="LearnerGroup.set_should_module_be_updated_fn()", error=True)
     def set_is_module_trainable(self, *args, **kwargs):

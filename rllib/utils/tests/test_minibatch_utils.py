@@ -117,7 +117,6 @@ class TestMinibatchUtils(unittest.TestCase):
                 print(f"iteration_counter: {iteration_counter}")
 
     def test_shard_episodes_iterator(self):
-
         class DummyEpisode:
             def __init__(self, length):
                 self.length = length
@@ -138,7 +137,7 @@ class TestMinibatchUtils(unittest.TestCase):
         # Create a list of episodes with varying lengths
         episode_lens = [10, 21, 3, 4, 35, 41, 5, 15, 44]
 
-        episodes = [DummyEpisode(l) for l in episode_lens]
+        episodes = [DummyEpisode(len_) for len_ in episode_lens]
 
         # Number of shards
         num_shards = 3

@@ -200,8 +200,10 @@ class ShardEpisodesIterator:
                 # Otherwise, slice the episode
                 remaining_length = self._target_lengths[min_index] - lengths[min_index]
                 if remaining_length > 0:
-                    slice_part, remaining_part = episode[:remaining_length], episode[
-                                                                             remaining_length:]
+                    slice_part, remaining_part = (
+                        episode[:remaining_length],
+                        episode[remaining_length:],
+                    )
                     sublists[min_index].append(slice_part)
                     lengths[min_index] += len(slice_part)
                     self._episodes[episode_index] = remaining_part
