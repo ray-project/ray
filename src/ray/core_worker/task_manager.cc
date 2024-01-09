@@ -643,7 +643,7 @@ bool TaskManager::HandleReportGeneratorItemReturns(
 
     RAY_LOG(DEBUG) << "Write an object " << object_id
                    << " to the object ref stream of id " << generator_id;
-    auto index_not_used_yet = stream_it->second.InsertToStream(object_id, item_index);
+    auto index_not_used_yet = stream_it->second.InsertToStream(object_id, item_index++);
 
     // If the ref was written to a stream, we should also
     // own the dynamically generated task return.
