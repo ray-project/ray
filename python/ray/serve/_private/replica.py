@@ -877,7 +877,7 @@ class UserCallableWrapper:
         result_queue: Optional[ASGIMessageQueue],
         is_asgi_app: bool,
         asgi_args: Optional[ASGIArgs],
-    ):
+    ) -> Any:
         """Postprocess the result of a user method.
 
         If this is for a streaming request, the result should be a generator that will
@@ -918,6 +918,8 @@ class UserCallableWrapper:
                 )
             if request_metadata.is_grpc_request:
                 result = (request_metadata.grpc_context, result.SerializeToString())
+
+        return result
 
     async def call_user_method(
         self,
