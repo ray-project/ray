@@ -44,6 +44,7 @@ class SortKey:
         self,
         key: Optional[Union[str, List[str]]] = None,
         descending: Union[bool, List[bool]] = False,
+        boundaries: Optional[list] = None,
     ):
         if key is None:
             key = []
@@ -64,6 +65,15 @@ class SortKey:
                 raise ValueError("Sorting with mixed key orders not supported yet.")
         self._columns = key
         self._descending = descending
+        if boundaries:
+            for item in boundaries:
+                if not isinstance(item, (int, float)):
+                    raise ValueError(
+                        "The type of items in boundaries must be int or float."
+                    )
+            boundaries = list(set(boundaries))
+            boundaries.sort()
+        self._boundaries = boundaries
 
     def get_columns(self) -> List[str]:
         return self._columns
@@ -93,6 +103,10 @@ class SortKey:
                         "The column '{}' does not exist in the "
                         "schema '{}'.".format(column, schema)
                     )
+
+    @property
+    def boundaries(self):
+        return self._boundaries
 
 
 class _SortOp(ShuffleOp):
@@ -209,7 +223,11 @@ def sort_impl(
     # Use same number of output partitions.
     num_reducers = num_mappers
     # TODO(swang): sample_boundaries could be fused with a previous stage.
-    boundaries = sample_boundaries(blocks_list, sort_key, num_reducers, ctx)
+    if not sort_key.boundaries:
+        boundaries = sample_boundaries(blocks_list, sort_key, num_reducers, ctx)
+    else:
+        boundaries = [(b,) for b in sort_key.boundaries]
+        num_reducers = len(boundaries) + 1
     _, ascending = sort_key.to_pandas_sort_args()
     if not ascending:
         boundaries.reverse()
