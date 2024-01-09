@@ -3,14 +3,17 @@ from ray.util.annotations import Deprecated
 _DEPRECATION_MESSAGE = (
     "`ray.train.mosaic.MosaicTrainer` is deprecated. "
     "Use `ray.train.torch.TorchTrainer` instead. "
-    "See this issue (TODO) for a migration example."
+    "See this issue for a migration example: "
+    "https://github.com/ray-project/ray/issues/42257"
 )
 
 
 # TODO(justinvyu): [code_removal] Delete in Ray 2.11.
 @Deprecated
 class MosaicTrainer:
-    """Deprecated. See this issue (TODO) for a migration example."""
+    """Deprecated. See this issue for a migration example:
+    https://github.com/ray-project/ray/issues/42257
+    """
 
     def __new__(cls, *args, **kwargs):
         raise DeprecationWarning(_DEPRECATION_MESSAGE)
