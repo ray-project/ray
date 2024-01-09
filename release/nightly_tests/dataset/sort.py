@@ -109,6 +109,11 @@ if __name__ == "__main__":
         print("Using polars for sort")
         ctx = DataContext.get_current()
         ctx.use_polars = True
+    ctx = DataContext.get_current()
+    if args.limit_num_blocks is not None:
+        DataContext.get_current().set_config(
+            "debug_limit_shuffle_execution_to_num_blocks", args.limit_num_blocks
+        )
 
     num_partitions = int(args.num_partitions)
     partition_size = int(float(args.partition_size))
@@ -130,14 +135,9 @@ if __name__ == "__main__":
         )
 
         if args.shuffle:
-            ds = ds.random_shuffle(
-                _debug_limit_shuffle_execution_to_num_blocks=args.limit_num_blocks
-            )
+            ds = ds.random_shuffle()
         else:
-            ds = ds.sort(
-                key="c_0",
-                _debug_limit_shuffle_execution_to_num_blocks=args.limit_num_blocks,
-            )
+            ds = ds.sort(key="c_0")
         exc = None
         try:
             ds = ds.materialize()
