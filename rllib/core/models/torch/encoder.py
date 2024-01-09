@@ -213,7 +213,7 @@ class TorchGRUEncoder(TorchModel, Encoder):
         # Initialize, GRU weights, if necessary.
         if gru_weights_initializer:
             gru_weights_initializer(
-                self.gru.weight, **config.hidden_initializer_config or {}
+                self.gru.weight, **config.hidden_weights_initializer_config or {}
             )
         # Initialize GRU bias, if necessary.
         if gru_bias_initializer:
@@ -314,7 +314,7 @@ class TorchLSTMEncoder(TorchModel, Encoder):
         lstm_input_dim = lstm_input_dims[0]
 
         lstm_weights_initializer = get_initializer_fn(
-            config.hidden_weigths_initializer, framework="torch"
+            config.hidden_weights_initializer, framework="torch"
         )
         lstm_bias_initializer = get_initializer_fn(
             config.hidden_bias_initializer, framework="torch"

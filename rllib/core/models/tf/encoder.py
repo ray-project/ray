@@ -223,8 +223,8 @@ class TfGRUEncoder(TfModel, Encoder):
                 # Note, if the initializer is `None`, we want TensorFlow
                 # to use its default one. So we pass in `None`.
                 kernel_initializer=(
-                    gru_weights_initializer(**config.hidden_initializer_config)
-                    if config.hidden_initializer_config
+                    gru_weights_initializer(**config.hidden_weights_initializer_config)
+                    if config.hidden_weights_initializer_config
                     else gru_weights_initializer
                 ),
                 use_bias=config.use_bias,
@@ -355,8 +355,8 @@ class TfLSTMEncoder(TfModel, Encoder):
                 # Note, if the initializer is `None`, we want TensorFlow
                 # to use its default one. So we pass in `None`.
                 kernel_initializer=(
-                    lstm_weights_initializer(**config.hidden_initializer_config)
-                    if config.hidden_initializer_config
+                    lstm_weights_initializer(**config.hidden_weights_initializer_config)
+                    if config.hidden_weights_initializer_config
                     else lstm_weights_initializer
                 ),
                 use_bias=config.use_bias,
