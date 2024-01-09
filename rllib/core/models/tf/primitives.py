@@ -52,6 +52,18 @@ class TfMLP(tf.keras.Model):
                 (except for the output). Either a tf.nn.[activation fn] callable or a
                 string that's supported by tf.keras.layers.Activation(activation=...),
                 e.g. "relu", "ReLU", "silu", or "linear".
+            hidden_layer_weights_initializer: The initializer function or class to use
+                for weights initialization in the hidden layers. If `None` the default
+                initializer of the respective dense layer is used. Note, all
+                initializers defined in `tf.keras.initializers` are allowed.
+            hidden_layer_weights_initializer_config: Configuration to pass into the
+                initializer defined in `hidden_layer_weights_initializer`.
+            hidden_layer_bias_initializer: The initializer function or class to use for
+                bias initialization in the hidden layers. If `None` the default
+                initializer of the respective dense layer is used. Note, all
+                initializers defined in `tf.keras.initializers` are allowed.
+            hidden_layer_bias_initializer_config: Configuration to pass into the
+                initializer defined in `hidden_layer_bias_initializer`.
             output_dim: The output dimension of the network. If None, no specific output
                 layer will be added and the last layer in the stack will have
                 size=`hidden_layer_dims[-1]`.
@@ -61,6 +73,18 @@ class TfMLP(tf.keras.Model):
                 (if any). Either a tf.nn.[activation fn] callable or a string that's
                 supported by tf.keras.layers.Activation(activation=...), e.g. "relu",
                 "ReLU", "silu", or "linear".
+            output_layer_weights_initializer: The initializer function or class to use
+                for weights initialization in the output layers. If `None` the default
+                initializer of the respective dense layer is used. Note, all
+                initializers defined in `tf.keras.initializers` are allowed.
+            output_layer_weights_initializer_config: Configuration to pass into the
+                initializer defined in `output_layer_weights_initializer`.
+            output_layer_bias_initializer: The initializer function or class to use for
+                bias initialization in the output layers. If `None` the default
+                initializer of the respective dense layer is used. Note, all
+                initializers defined in `tf.keras.initializers` are allowed.
+            output_layer_bias_initializer_config: Configuration to pass into the
+                initializer defined in `output_layer_bias_initializer`.
         """
         super().__init__()
         assert input_dim > 0
@@ -148,12 +172,12 @@ class TfMLP(tf.keras.Model):
 class TfCNN(tf.keras.Model):
     """A model containing a CNN with N Conv2D layers.
 
-    All layers share the same activation function, bias setup (use bias or not),
-    and LayerNormalization setup (use layer normalization or not).
+    All layers share the same activation function, bias setup (use bias or not), and
+    LayerNormalization setup (use layer normalization or not).
 
     Note that there is no flattening nor an additional dense layer at the end of the
-    stack. The output of the network is a 3D tensor of dimensions
-    [width x height x num output filters].
+    stack. The output of the network is a 3D tensor of dimensions [width x height x num
+    output filters].
     """
 
     def __init__(
@@ -196,6 +220,18 @@ class TfCNN(tf.keras.Model):
             cnn_activation: The activation function to use after each Conv2D layer.
             cnn_use_layernorm: Whether to insert a LayerNormalization functionality
                 in between each Conv2D layer's outputs and its activation.
+            cnn_kernel_initializer: The initializer function or class to use for kernel
+                initialization in the CNN layers. If `None` the default initializer of
+                the respective CNN layer is used. Note, all initializers defined in
+                `tf.keras.initializers` are allowed.
+            cnn_kernel_initializer_config: Configuration to pass into the initializer
+                defined in `cnn_kernel_initializer`.
+            cnn_bias_initializer: The initializer function or class to use for bias
+                initialization in the CNN layers. If `None` the default initializer of
+                the respective CNN layer is used. Note, all initializers defined in
+                `tf.keras.initializers` are allowed.
+            cnn_bias_initializer_config: Configuration to pass into the initializer
+                defined in `cnn_bias_initializer`.
         """
         super().__init__()
 
@@ -263,9 +299,9 @@ class TfCNN(tf.keras.Model):
 class TfCNNTranspose(tf.keras.Model):
     """A model containing a CNNTranspose with N Conv2DTranspose layers.
 
-    All layers share the same activation function, bias setup (use bias or not),
-    and LayerNormalization setup (use layer normalization or not), except for the last
-    one, which is never activated and never layer norm'd.
+    All layers share the same activation function, bias setup (use bias or not), and
+    LayerNormalization setup (use layer normalization or not), except for the last one,
+    which is never activated and never layer norm'd.
 
     Note that there is no reshaping/flattening nor an additional dense layer at the
     beginning or end of the stack. The input as well as output of the network are 3D
@@ -306,6 +342,18 @@ class TfCNNTranspose(tf.keras.Model):
             cnn_transpose_activation: The activation function to use after each layer
                 (except for the last Conv2DTranspose layer, which is always
                 non-activated).
+            cnn_transpose_kernel_initializer: The initializer function or class to use
+                for kernel initialization in the CNN layers. If `None` the default
+                initializer of the respective CNN layer is used. Note, all initializers
+                defined in `tf.keras.initializers` are allowed.
+            cnn_transpose_kernel_initializer_config: Configuration to pass into the
+                initializer defined in `cnn_transpose_kernel_initializer`.
+            cnn_transpose_bias_initializer: The initializer function or class to use for
+                bias initialization in the CNN layers. If `None` the default initializer
+                of the respective CNN layer is used. Note, only the in-place
+                initializers, i.e. ending with an underscore "_" are allowed.
+            cnn_transpose_bias_initializer_config: Configuration to pass into the
+                initializer defined in `cnn_transpose_bias_initializer`.
         """
         super().__init__()
 

@@ -122,6 +122,22 @@ class _MLPConfig(ModelConfig):
             except for the output). The default activation for hidden layers is "relu".
         hidden_layer_use_layernorm: Whether to insert a LayerNorm functionality
             in between each hidden layer's output and its activation.
+        hidden_layer_weights_initializer: The initializer function or class to use for
+            weight initialization in the hidden layers. If `None` the default
+            initializer of the respective dense layer of a framework (`"torch"` or
+            `"tf2"`) is used. Note, all initializers defined in the framework `"tf2`)
+            are allowed. For `"torch"` only the in-place initializers, i.e. ending with
+            an underscore "_" are allowed.
+        hidden_layer_weights_initializer_config: Configuration to pass into the
+            initializer defined in `hidden_layer_weights_initializer`.
+        hidden_layer_bias_initializer: The initializer function or class to use for
+            bias initialization in the hidden layers. If `None` the default initializer
+            of the respective dense layer of a framework (`"torch"` or `"tf2"`) is used.
+            Note, all initializers defined in the framework `"tf2`) are allowed. For
+            `"torch"` only the in-place initializers, i.e. ending with an underscore "_"
+            are allowed.
+        hidden_layer_bias_initializer_config: Configuration to pass into the
+            initializer defined in `hidden_layer_bias_initializer`.
         output_layer_dim: An int indicating the size of the output layer. This may be
             set to `None` in case no extra output layer should be built and only the
             layers specified by `hidden_layer_dims` will be part of the network.
@@ -129,6 +145,21 @@ class _MLPConfig(ModelConfig):
         output_layer_activation: The activation function to use for the output layer,
             if any. The default activation for the output layer, if any, is "linear",
             meaning no activation.
+        output_layer_weights_initializer: The initializer function or class to use for
+            weight initialization in the output layers. If `None` the default
+            initializer of the respective dense layer of a framework (`"torch"` or `
+            "tf2"`) is used. Note, all initializers defined in the framework `"tf2`) are
+            allowed. For `"torch"` only the in-place initializers, i.e. ending with an
+            underscore "_" are allowed.
+        output_layer_weights_initializer_config: Configuration to pass into the
+            initializer defined in `output_layer_weights_initializer`.
+        output_layer_bias_initializer: The initializer function or class to use for
+            bias initialization in the output layers. If `None` the default initializer
+            of the respective dense layer of a framework (`"torch"` or `"tf2"`) is used.
+            For `"torch"` only the in-place initializers, i.e. ending with an underscore
+            "_" are allowed.
+        output_layer_bias_initializer_config: Configuration to pass into the
+            initializer defined in `output_layer_bias_initializer`.
     """
 
     hidden_layer_dims: Union[List[int], Tuple[int]] = (256, 256)
@@ -225,6 +256,9 @@ class MLPHeadConfig(_MLPConfig):
             hidden_layer_activation="silu",
             hidden_layer_use_layernorm=True,
             hidden_layer_use_bias=False,
+            # Initializer for `framework="torch"`.
+            hidden_layer_weights_initializer="xavier_normal_",
+            hidden_layer_weights_initializer_config={"gain": 0.8},
             # No final output layer (use last dim in `hidden_layer_dims`
             # as the size of the last layer in the stack).
             output_layer_dim=None,
@@ -419,6 +453,21 @@ class CNNTransposeHeadConfig(ModelConfig):
             (except for the output).
         cnn_transpose_use_layernorm: Whether to insert a LayerNorm functionality
             in between each Conv2DTranspose layer's output and its activation.
+        cnn_transpose_kernel_initializer: The initializer function or class to use for
+            kernel initialization in the CNN layers. If `None` the default initializer
+            of the respective CNN layer of a framework (`"torch"` or `"tf2"`) is used.
+            Note, all initializers defined in the framework `"tf2`) are allowed. For
+            `"torch"` only the in-place initializers, i.e. ending with an underscore "_"
+            are allowed.
+        cnn_transpose_kernel_initializer_config: Configuration to pass into the
+            initializer defined in `cnn_transpose_kernel_initializer`.
+        cnn_transpose_bias_initializer: The initializer function or class to use for
+            bias initialization in the CNN layers. If `None` the default initializer of
+            the respective CNN layer of a framework (`"torch"` or `"tf2"`) is used.
+            For `"torch"` only the in-place initializers, i.e. ending with an underscore
+            "_" are allowed.
+        cnn_transpose_bias_initializer_config: Configuration to pass into the
+            initializer defined in `cnn_transpose_bias_initializer`.
 
     Example:
     .. testcode::
@@ -471,6 +520,8 @@ class CNNTransposeHeadConfig(ModelConfig):
             cnn_transpose_activation="relu",
             cnn_transpose_use_layernorm=True,
             cnn_use_bias=False,
+            # Initializer for `framework="tf2"`.
+            cnn_transpose_kernel_initializer="HeNormal",
         )
         model = config.build(framework="torch)
 
@@ -638,6 +689,21 @@ class CNNEncoderConfig(ModelConfig):
         cnn_use_layernorm: Whether to insert a LayerNorm functionality
             in between each CNN layer's output and its activation. Note that
             the output layer.
+        cnn_kernel_initializer: The initializer function or class to use for kernel
+            initialization in the CNN layers. If `None` the default initializer of the
+            respective CNN layer of a framework (`"torch"` or `"tf2"`) is used. Note,
+            all initializers defined in the framework `"tf2`) are allowed. For `"torch"`
+            only the in-place initializers, i.e. ending with an underscore "_" are
+            allowed.
+        cnn_kernel_initializer_config: Configuration to pass into the initializer
+            defined in `cnn_kernel_initializer`.
+        cnn_bias_initializer: The initializer function or class to use for bias
+            initialization in the CNN layers. If `None` the default initializer of
+            the respective CNN layer of a framework (`"torch"` or `"tf2"`) is used.
+            For `"torch"` only the in-place initializers, i.e. ending with an underscore
+            "_" are allowed.
+        cnn_bias_initializer_config: Configuration to pass into the initializer defined
+            in  `cnn_bias_initializer`.
         flatten_at_end: Whether to flatten the output of the last conv 2D layer into
             a 1D tensor. By default, this is True. Note that if you set this to False,
             you might simply stack another CNNEncoder on top of this one (maybe with
@@ -877,7 +943,22 @@ class RecurrentEncoderConfig(ModelConfig):
         num_layers: The number of recurrent (LSTM or GRU) layers to stack.
         batch_major: Wether the input is batch major (B, T, ..) or
             time major (T, B, ..).
+        hidden_weights_initializer: The initializer function or class to use for
+            kernel initialization in the hidden layers. If `None` the default
+            initializer of the respective recurrent layer of a framework (`"torch"` or
+            `"tf2"`) is used. Note, all initializers defined in the frameworks (
+            `"torch"` or `"tf2`) are allowed. For `"torch"` only the in-place
+            initializers, i.e. ending with an underscore "_" are allowed.
+        hidden_weights_initializer_config: Configuration to pass into the
+            initializer defined in `hidden_weights_initializer`.
         use_bias: Whether to use bias on the recurrent layers in the network.
+        hidden_bias_initializer: The initializer function or class to use for bias
+            initialization in the hidden layers. If `None` the default initializer of
+            the respective recurrent layer of a framework (`"torch"` or `"tf2"`) is
+            used. For `"torch"` only the in-place initializers, i.e. ending with an
+            underscore "_" are allowed.
+        hidden_bias_initializer_config: Configuration to pass into the initializer
+            defined in `hidden_bias_initializer`.
         view_requirements_dict: The view requirements to use if anything else than
             observation_space or action_space is to be encoded. This signifies an
             advanced use case.

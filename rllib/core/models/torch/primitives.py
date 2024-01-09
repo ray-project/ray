@@ -58,6 +58,18 @@ class TorchMLP(nn.Module):
                 (except for the output). Either a torch.nn.[activation fn] callable or
                 the name thereof, or an RLlib recognized activation name,
                 e.g. "ReLU", "relu", "tanh", "SiLU", or "linear".
+            hidden_layer_weights_initializer: The initializer function or class to use
+                forweights initialization in the hidden layers. If `None` the default
+                initializer of the respective dense layer is used. Note, only the
+                in-place initializers, i.e. ending with an underscore "_" are allowed.
+            hidden_layer_weights_initializer_config: Configuration to pass into the
+                initializer defined in `hidden_layer_weights_initializer`.
+            hidden_layer_bias_initializer: The initializer function or class to use for
+                bias initialization in the hidden layers. If `None` the default
+                initializer of the respective dense layer is used. Note, only the
+                in-place initializers, i.e. ending with an underscore "_" are allowed.
+            hidden_layer_bias_initializer_config: Configuration to pass into the
+                initializer defined in `hidden_layer_bias_initializer`.
             output_dim: The output dimension of the network. If None, no specific output
                 layer will be added and the last layer in the stack will have
                 size=`hidden_layer_dims[-1]`.
@@ -67,6 +79,18 @@ class TorchMLP(nn.Module):
                 (if any). Either a torch.nn.[activation fn] callable or
                 the name thereof, or an RLlib recognized activation name,
                 e.g. "ReLU", "relu", "tanh", "SiLU", or "linear".
+            output_layer_weights_initializer: The initializer function or class to use
+                for weights initialization in the output layers. If `None` the default
+                initializer of the respective dense layer is used. Note, only the
+                in-place initializers, i.e. ending with an underscore "_" are allowed.
+            output_layer_weights_initializer_config: Configuration to pass into the
+                initializer defined in `output_layer_weights_initializer`.
+            output_layer_bias_initializer: The initializer function or class to use for
+                bias initialization in the output layers. If `None` the default
+                initializer of the respective dense layer is used. Note, only the
+                in-place initializers, i.e. ending with an underscore "_" are allowed.
+            output_layer_bias_initializer_config: Configuration to pass into the
+                initializer defined in `output_layer_bias_initializer`.
         """
         super().__init__()
         assert input_dim > 0
@@ -206,6 +230,18 @@ class TorchCNN(nn.Module):
             cnn_activation: The activation function to use after each Conv2D layer.
             cnn_use_layernorm: Whether to insert a LayerNormalization functionality
                 in between each Conv2D layer's outputs and its activation.
+            cnn_kernel_initializer: The initializer function or class to use for kernel
+                initialization in the CNN layers. If `None` the default initializer of
+                the respective CNN layer is used. Note, only the in-place
+                initializers, i.e. ending with an underscore "_" are allowed.
+            cnn_kernel_initializer_config: Configuration to pass into the initializer
+                defined in `cnn_kernel_initializer`.
+            cnn_bias_initializer: The initializer function or class to use for bias
+                initializationcin the CNN layers. If `None` the default initializer of
+                the respective CNN layer is used. Note, only the in-place initializers,
+                i.e. ending with an underscore "_" are allowed.
+            cnn_bias_initializer_config: Configuration to pass into the initializer
+                defined in `cnn_bias_initializer`.
         """
         super().__init__()
 
@@ -326,6 +362,18 @@ class TorchCNNTranspose(nn.Module):
             cnn_transpose_activation: The activation function to use after each layer
                 (except for the last Conv2DTranspose layer, which is always
                 non-activated).
+            cnn_transpose_kernel_initializer: The initializer function or class to use
+                for kernel initialization in the CNN layers. If `None` the default
+                initializer of the respective CNN layer is used. Note, only the
+                in-place initializers, i.e. ending with an underscore "_" are allowed.
+            cnn_transpose_kernel_initializer_config: Configuration to pass into the
+                initializer defined in `cnn_transpose_kernel_initializer`.
+            cnn_transpose_bias_initializer: The initializer function or class to use for
+                bias initialization in the CNN layers. If `None` the default initializer
+                of the respective CNN layer is used. Note, only the in-place
+                initializers, i.e. ending with an underscore "_" are allowed.
+            cnn_transpose_bias_initializer_config: Configuration to pass into the
+                initializer defined in `cnn_transpose_bias_initializer`.
         """
         super().__init__()
 
