@@ -2657,7 +2657,7 @@ class Dataset:
             # (see `get_legacy_lazy_block_list_read_only()`). This requires
             # the underlying logical plan to be read-only, so we skip appending
             # the Limit[1] operation as we do in the else case below. There is
-            # no downside in this case, since do not execute any read tasks.
+            # no downside in this case, since it doesn't execute any read tasks.
             base_schema = self._plan.schema(fetch_if_missing=fetch_if_missing)
         else:
             # Lazily execute only the first block to minimize computation.
@@ -4150,7 +4150,7 @@ class Dataset:
             >>> from ray.data.preprocessors import Concatenator
             >>> preprocessor = Concatenator(output_column_name="features", exclude="target")
             >>> ds = preprocessor.transform(ds)
-            >>> ds  # doctest: +ELLIPSIS
+            >>> ds
             Concatenator
             +- Dataset(
                   num_blocks=...,

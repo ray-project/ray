@@ -716,7 +716,7 @@ class DataIterator(abc.ABC):
             >>> from ray.data.preprocessors import Concatenator
             >>> preprocessor = Concatenator(output_column_name="features", exclude="target")
             >>> it = preprocessor.transform(ds).iterator()
-            >>> it  # doctest: +ELLIPSIS
+            >>> it
             DataIterator(Concatenator
             +- Dataset(
                   num_blocks=...,

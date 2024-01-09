@@ -486,7 +486,7 @@ def test_dataset_repr(ray_start_regular_shared):
     # TODO(scottjlee): include all of the input datasets to union()
     # in the repr output, instead of only the resulting unioned dataset.
     assert repr(ds3) == (
-        "Union\n" "+- Dataset(num_blocks=10, num_rows=9, schema={id: int64})"
+        "Union\n+- Dataset(num_blocks=10, num_rows=9, schema={id: int64})"
     )
     ds = ds.zip(ds3)
     assert repr(ds) == (
