@@ -135,6 +135,18 @@ export const ServeDeploymentsListPage = () => {
                     <TextField {...params} label="Status" />
                   )}
                 />
+                <Autocomplete
+                  style={{ margin: 8, width: 120 }}
+                  options={Array.from(
+                    new Set(allServeDeployments.map((e) => e.applicationName)),
+                  )}
+                  onInputChange={(_: any, value: string) => {
+                    changeFilter("applicationName", value.trim());
+                  }}
+                  renderInput={(params: TextFieldProps) => (
+                    <TextField {...params} label="Application" />
+                  )}
+                />
                 <TextField
                   style={{ margin: 8, width: 120 }}
                   label="Page Size"

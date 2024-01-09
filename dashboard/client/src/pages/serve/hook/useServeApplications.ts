@@ -16,11 +16,14 @@ export const useServeDeployments = () => {
   const [page, setPage] = useState({ pageSize: 10, pageNo: 1 });
   const [filter, setFilter] = useState<
     {
-      key: "name" | "status";
+      key: "name" | "status" | "applicationName";
       val: string;
     }[]
   >([]);
-  const changeFilter = (key: "name" | "status", val: string) => {
+  const changeFilter = (
+    key: "name" | "status" | "applicationName",
+    val: string,
+  ) => {
     const f = filter.find((e) => e.key === key);
     if (f) {
       f.val = val;
@@ -51,6 +54,7 @@ export const useServeDeployments = () => {
         const serveDeploymentsList = serveApplicationsList.flatMap((app) =>
           Object.values(app.deployments).map((d) => ({
             ...d,
+            applicationName: app.name,
             application: app,
           })),
         );
