@@ -8,6 +8,7 @@ _DEPRECATION_MESSAGE = (
     "See this issue (TODO) for a migration example."
 )
 
+# TODO(justinvyu): [code_removal] Delete in Ray 2.11.
 @Deprecated
 class SklearnTrainer:
     """Deprecated. See this issue (TODO) for a migration example."""
