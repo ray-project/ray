@@ -170,7 +170,7 @@ class ASGIMessageQueue(Send):
         if self._closed:
             raise RuntimeError("New messages cannot be sent after the queue is closed.")
 
-        self._message_queue.put_nowait(message)
+        await self._message_queue.put(message)
         self._new_message_event.set()
 
     def get_messages_nowait(self) -> List[Message]:
