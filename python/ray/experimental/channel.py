@@ -114,6 +114,15 @@ class Channel:
         if num_readers <= 0:
             raise ValueError("``num_readers`` must be a positive integer.")
 
+        serialized_value = self._serialize(value)
+
+        self._worker.core_worker.experimental_mutable_object_put_serialized(
+            serialized_value,
+            self._base_ref,
+            num_readers,
+        )
+
+    def _serialize(value: Any) -> bytes:
         try:
             serialized_value = self._worker.get_serialization_context().serialize(value)
         except TypeError as e:
@@ -125,12 +134,7 @@ class Channel:
                 f"{sio.getvalue()}"
             )
             raise TypeError(msg) from e
-
-        self._worker.core_worker.experimental_mutable_object_put_serialized(
-            serialized_value,
-            self._base_ref,
-            num_readers,
-        )
+        return serialized_value
 
     def begin_read(self) -> Any:
         """

@@ -16,7 +16,7 @@ logger = logging.getLogger(__name__)
 
 
 @DeveloperAPI
-def do_allocate_channel(self, buffer_size_bytes: int, num_readers: int = 1) -> Channel:
+def make_torch_channel(self, buffer_size_bytes: int, reader_rank: int, writer_rank: int) -> TorchChannel:
     """Generic actor method to allocate an output channel.
 
     Args:
@@ -26,8 +26,7 @@ def do_allocate_channel(self, buffer_size_bytes: int, num_readers: int = 1) -> C
     Returns:
         The allocated channel.
     """
-    self._output_channel = Channel(buffer_size_bytes, num_readers)
-    return self._output_channel
+    self._output_channel = TorchChannel(buffer_size_bytes, reader_rank, writer_rank)
 
 
 @DeveloperAPI
@@ -119,7 +118,6 @@ class CompiledTask:
         self.dag_node = dag_node
 
         self.downstream_node_idxs = set()
-        self.output_channel = None
 
     @property
     def args(self) -> Tuple[Any]:
@@ -162,8 +160,8 @@ class CompiledDAG:
         self.idx_to_task: Dict[int, "CompiledTask"] = {}
         # DAGNode -> idx.
         self.dag_node_to_idx: Dict["ray.dag.DAGNode", int] = {}
-        # idx counter.
-        self.counter: int = 0
+        # idx counter. rank 0 is the driver
+        self.counter: int = 1
 
         # Attributes that are set during preprocessing.
         # Preprocessing identifies the input node and output node.
@@ -319,22 +317,25 @@ class CompiledDAG:
             visited.add(cur_idx)
 
             task = self.idx_to_task[cur_idx]
+            # TODO: only support single send->recv rn
+            assert len(task.downstream_node_idxs) == 0, task.downstream_node_idxs
             # Create an output buffer on the actor.
-            assert task.output_channel is None
             if isinstance(task.dag_node, ClassMethodNode):
                 fn = task.dag_node._get_remote_method("__ray_call__")
-                task.output_channel = ray.get(
+                ray.get(
                     fn.remote(
-                        do_allocate_channel,
+                        make_torch_channel,
                         buffer_size_bytes=self._buffer_size_bytes,
-                        num_readers=task.num_readers,
+                        reader_rank=task.downstream_node_idxs[0],
+                        writer_rank=task.idx,
                     )
                 )
                 self.actor_refs.add(task.dag_node._get_actor_handle())
             elif isinstance(task.dag_node, InputNode):
-                task.output_channel = Channel(
+                task.output_channel = TorchChannel(
                     buffer_size_bytes=self._buffer_size_bytes,
-                    num_readers=task.num_readers,
+                    reader_rank=task.downstream_node_idxs[0],
+                    writer_rank=0,
                 )
             else:
                 assert isinstance(task.dag_node, MultiOutputNode)
