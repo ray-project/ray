@@ -94,7 +94,7 @@ class TestAppHandleStreaming:
         with pytest.raises(
             TypeError,
             match=(
-                "Method '__call__' is a generator function. You must use "
+                "Method '__call__' returned a generator. You must use "
                 "`handle.options\(stream=True\)` to call generators on a deployment."
             ),
         ):
@@ -115,7 +115,7 @@ class TestAppHandleStreaming:
         gen = h.unary.remote(0)
         with pytest.raises(
             TypeError,
-            match="must be a generator function, but 'unary' is not",
+            match=r"'unary' .* but it did not return a generator",
         ):
             next(gen)
 
