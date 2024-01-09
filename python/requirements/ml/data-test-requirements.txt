@@ -8,3 +8,7 @@ pytest-repeat
 soundfile
 google-cloud-bigquery
 google-cloud-bigquery-storage
+# this dependency can be installed with --no-dependencies
+# given that we only use the ExamplesToRecordBatchDecoder
+# which is purley c++.
+tfx-bsl
