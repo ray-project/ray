@@ -225,7 +225,7 @@ class TestPPO(unittest.TestCase):
             assert init_std == 0.0, init_std
             batch = compute_gae_for_sample_batch(policy, PENDULUM_FAKE_BATCH.copy())
             batch = policy._lazy_tensor_dict(batch)
-            algo.learner_group.update(batch.as_multi_agent())
+            algo.learner_group.update_from_batch(batch=batch.as_multi_agent())
 
             # Check the variable is updated.
             post_std = get_value()

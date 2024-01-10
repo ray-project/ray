@@ -12,7 +12,7 @@ cd ray
 
 git checkout -f "${BUILDKITE_COMMIT}"
 
-export PYTHON="3.8"
+export PYTHON="3.9"
 export RAY_USE_RANDOM_PORTS="1"
 export RAY_DEFAULT_BUILD="1"
 export LC_ALL="en_US.UTF-8"
@@ -26,9 +26,7 @@ powershell ci/pipeline/fix-windows-bazel.ps1
 readonly PIPELINE_POSTMERGE="0189e759-8c96-4302-b6b5-b4274406bf89"
 
 cleanup() {
-    if [[ "${BUILDKITE_PIPELINE_ID:-}" == "${PIPELINE_POSTMERGE}" ]]; then
-        bash ./ci/build/upload_build_info.sh
-    fi
+    bash ./ci/build/upload_build_info.sh
 }
 trap cleanup EXIT
 
