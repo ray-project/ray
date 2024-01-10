@@ -199,7 +199,7 @@ def main(
         only_tags=only_tags,
         get_flaky_tests=run_flaky_tests,
     )
-    success = container.run_tests(test_targets, test_arg)
+    success = container.run_tests(team, test_targets, test_arg)
     sys.exit(0 if success else 42)
 
 
@@ -229,8 +229,7 @@ def _get_container(
 
     if operating_system == "linux":
         return LinuxTesterContainer(
-            team,
-            build_name=build_name,
+            build_name or f"{team}build",
             test_envs=test_env,
             shard_count=shard_count,
             shard_ids=list(range(shard_start, shard_end)),
@@ -242,8 +241,7 @@ def _get_container(
 
     if operating_system == "windows":
         return WindowsTesterContainer(
-            team,
-            build_name=build_name,
+            build_name or f"{team}build",
             network=network,
             test_envs=test_env,
             shard_count=shard_count,

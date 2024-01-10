@@ -21,7 +21,6 @@ class TesterContainer(Container):
 
     def __init__(
         self,
-        team: str,
         shard_count: int = 1,
         gpus: int = 0,
         bazel_log_dir: str = "/tmp",
@@ -37,7 +36,6 @@ class TesterContainer(Container):
         used to run tests in a distributed fashion.
         :param shard_ids: The list of shard ids to run. If none, run no shards.
         """
-        self.team = team
         self.bazel_log_dir = bazel_log_dir
         self.shard_count = shard_count
         self.shard_ids = shard_ids or []
@@ -69,6 +67,7 @@ class TesterContainer(Container):
 
     def run_tests(
         self,
+        team: str,
         test_targets: List[str],
         test_arg: Optional[str] = None,
     ) -> bool:
@@ -99,14 +98,14 @@ class TesterContainer(Container):
             for i in range(len(chunks))
         ]
         exits = [run.wait() for run in runs]
-        self._persist_test_results(bazel_log_dir_container)
+        self._persist_test_results(team, bazel_log_dir_container)
         self._cleanup_bazel_log_mount(bazel_log_dir_container)
 
         return all(exit == 0 for exit in exits)
 
-    def _persist_test_results(self, bazel_log_dir: str) -> None:
+    def _persist_test_results(self, team: str, bazel_log_dir: str) -> None:
         self._upload_build_info(bazel_log_dir)
-        self._upload_test_results(bazel_log_dir)
+        self._upload_test_results(team, bazel_log_dir)
 
     def _upload_build_info(self, bazel_log_dir) -> None:
         logger.info("Uploading bazel test logs")
@@ -118,13 +117,13 @@ class TesterContainer(Container):
             ]
         )
 
-    def _upload_test_results(self, bazel_log_dir: str) -> None:
-        for test, result in self._get_test_and_results(bazel_log_dir):
+    def _upload_test_results(self, team: str, bazel_log_dir: str) -> None:
+        for test, result in self._get_test_and_results(team, bazel_log_dir):
             # TODO(can): upload test results
             logger.info(f"Test {test.get_name()} run status is {result.status}")
 
     def _get_test_and_results(
-        self, bazel_log_dir: str
+        self, team, bazel_log_dir: str
     ) -> List[Tuple[Test, TestResult]]:
         bazel_logs = []
         # Find all bazel logs
@@ -142,7 +141,7 @@ class TesterContainer(Container):
                     if "testResult" in event:
                         test_and_results.append(
                             (
-                                Test.from_bazel_event(event, self.team),
+                                Test.from_bazel_event(event, team),
                                 TestResult.from_bazel_event(event),
                             )
                         )

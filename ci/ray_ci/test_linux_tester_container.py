@@ -111,7 +111,7 @@ def test_ray_installation() -> None:
 
     with mock.patch("subprocess.check_call", side_effect=_mock_subprocess):
         LinuxTesterContainer("team", build_type="debug")
-        docker_image = f"{_DOCKER_ECR_REPO}:{_RAYCI_BUILD_ID}-teambuild"
+        docker_image = f"{_DOCKER_ECR_REPO}:{_RAYCI_BUILD_ID}-team"
         assert install_ray_cmds[-1] == [
             "docker",
             "build",
@@ -158,12 +158,12 @@ def test_run_tests() -> None:
     ):
         container = LinuxTesterContainer("team", shard_count=2, shard_ids=[0, 1])
         # test_targets are not empty
-        assert container.run_tests(["t1", "t2"], [])
+        assert container.run_tests("manu", ["t1", "t2"], [])
         # test_targets is empty after chunking, but not creating popen
-        assert container.run_tests(["t1"], [])
-        assert container.run_tests([], [])
+        assert container.run_tests("manu", ["t1"], [])
+        assert container.run_tests("manu", [], [])
         # test targets contain bad_test
-        assert not container.run_tests(["bad_test"], [])
+        assert not container.run_tests("manu", ["bad_test"], [])
 
 
 def test_create_bazel_log_mount() -> None:
@@ -189,11 +189,11 @@ def test_get_test_results() -> None:
     with tempfile.TemporaryDirectory() as tmp:
         with open(os.path.join(tmp, "bazel_log"), "w") as f:
             f.write(_BAZEL_LOG)
-        container = LinuxTesterContainer("team", skip_ray_installation=True)
-        results = container._get_test_and_results(tmp)
+        container = LinuxTesterContainer("docker_tag", skip_ray_installation=True)
+        results = container._get_test_and_results("manu", tmp)
         test, result = results[0]
         assert test.get_name() == "ray_ci_test.linux"
-        assert test.get_oncall() == "team"
+        assert test.get_oncall() == "manu"
         assert result.is_passing()
 
 
