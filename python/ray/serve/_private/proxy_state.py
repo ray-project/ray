@@ -40,7 +40,7 @@ class ProxyWrapper(ABC):
 
     @abstractmethod
     def is_ready(self, timeout_s: float) -> Optional[bool]:
-        """Return the payload from proxy ready check when ready.
+        """Return whether proxy is ready to be serving requests.
 
         Since actual readiness check is asynchronous, this method could return
         either of the following statuses:
@@ -53,7 +53,7 @@ class ProxyWrapper(ABC):
 
     @abstractmethod
     def is_healthy(self, timeout_s: float) -> Optional[bool]:
-        """Return whether the proxy actor is healthy
+        """Return whether the proxy actor is healthy.
 
         Since actual health-check is asynchronous, this method could return
         either of the following statuses:
@@ -65,7 +65,7 @@ class ProxyWrapper(ABC):
 
     @abstractmethod
     def is_drained(self) -> Optional[bool]:
-        """Return whether the proxy actor is drained
+        """Return whether the proxy actor is drained.
 
         Since actual check whether proxy is drained is asynchronous, this method could
         return either of the following statuses:
@@ -193,8 +193,8 @@ class ActorProxyWrapper(ProxyWrapper):
             self._ready_check_future = wrap_as_future(
                 self._actor_handle.ready.remote(), timeout_s=timeout_s
             )
-            return None
-        elif self._ready_check_future.done():
+
+        if self._ready_check_future.done():
             try:
                 worker_id, log_file_path = json.loads(self._ready_check_future.result())
                 self.worker_id = worker_id
@@ -224,8 +224,8 @@ class ActorProxyWrapper(ProxyWrapper):
             self._health_check_future = wrap_as_future(
                 self._actor_handle.check_health.remote(), timeout_s=timeout_s
             )
-            return None
-        elif self._health_check_future.done():
+
+        if self._health_check_future.done():
             try:
                 # NOTE: Since `check_health` method is responding with nothing, sole
                 #       purpose of fetching the result is to extract any potential
@@ -260,12 +260,9 @@ class ActorProxyWrapper(ProxyWrapper):
                 # NOTE: We use the same timeout as for health-checking
                 timeout_s=timeout_s,
             )
-            return None
-        elif self._drained_check_future.done():
+
+        if self._drained_check_future.done():
             try:
-                # NOTE: Since `check_health` method is responding with nothing, sole
-                #       purpose of fetching the result is to extract any potential
-                #       exceptions
                 is_drained = self._drained_check_future.result()
                 return is_drained
             except Exception as e:
