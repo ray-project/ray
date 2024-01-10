@@ -970,7 +970,7 @@ void LocalTaskManager::ReleaseWorkerResources(std::shared_ptr<WorkerInterface> w
   }
 }
 
-bool LocalTaskManager::ReleaseCpuResourcesFromUnblockedWorker(
+bool LocalTaskManager::ReleaseCpuResourcesFromBlockedWorker(
     std::shared_ptr<WorkerInterface> worker) {
   if (!worker || worker->IsBlocked()) {
     return false;
@@ -989,7 +989,7 @@ bool LocalTaskManager::ReleaseCpuResourcesFromUnblockedWorker(
   return false;
 }
 
-bool LocalTaskManager::ReturnCpuResourcesToBlockedWorker(
+bool LocalTaskManager::ReturnCpuResourcesToUnblockedWorker(
     std::shared_ptr<WorkerInterface> worker) {
   if (!worker || !worker->IsBlocked()) {
     return false;
