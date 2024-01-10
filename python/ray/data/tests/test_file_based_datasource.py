@@ -23,6 +23,18 @@ class MockFileBasedDatasource(FileBasedDatasource):
         yield builder.build()
 
 
+def test_local_paths(ray_start_regular_shared, tmp_path):
+    path = os.path.join(tmp_path, "test.txt")
+    with open(path, "w"):
+        pass
+
+    datasource = MockFileBasedDatasource(path)
+    assert datasource.supports_distributed_reads
+
+    datasource = MockFileBasedDatasource(f"local://{path}")
+    assert not datasource.supports_distributed_reads
+
+
 def test_include_paths(ray_start_regular_shared, tmp_path):
     path = os.path.join(tmp_path, "test.txt")
     with open(path, "w"):
