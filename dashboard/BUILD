@@ -54,13 +54,8 @@ py_test(
     size = "large",
     srcs = ["modules/reporter/tests/test_profile_manager.py"],
     data = [
-        "modules/job/tests/backwards_compatibility_scripts/test_backwards_compatibility.sh",
-        "modules/job/tests/backwards_compatibility_scripts/script.py",
-        "modules/job/tests/pip_install_test-0.5-py3-none-any.whl",
         "modules/tests/test_config_files/basic_runtime_env.yaml",
-    ] + glob([
-        "modules/job/tests/subprocess_driver_scripts/*.py",
-    ]),
+    ],
     deps = [":conftest"],
     tags = ["exclusive", "team:serve", "memray"],
 )
