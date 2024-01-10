@@ -54,7 +54,7 @@ from ray.serve._private.utils import (
     get_all_live_placement_group_names,
     get_head_node_id,
 )
-from ray.serve.config import HTTPOptions, gRPCOptions
+from ray.serve.config import HTTPOptions, gRPCOptions, ProxyLocation
 from ray.serve.generated.serve_pb2 import (
     ActorNameList,
     DeploymentArgs,
@@ -929,10 +929,14 @@ class ServeController:
         # Eventually we want to remove route_prefix from DeploymentSchema.
         http_options = HTTPOptionsSchema.parse_obj(http_config.dict(exclude_unset=True))
         grpc_options = gRPCOptionsSchema.parse_obj(grpc_config.dict(exclude_unset=True))
+        proxy_location = (
+            None if http_config.location is None
+            else ProxyLocation._from_deployment_mode(http_config.location)
+        )
         return ServeInstanceDetails(
             target_capacity=self._target_capacity,
             controller_info=self._actor_details,
-            proxy_location=http_config.location,
+            proxy_location=proxy_location,
             http_options=http_options,
             grpc_options=grpc_options,
             proxies=self.proxy_state_manager.get_proxy_details()
