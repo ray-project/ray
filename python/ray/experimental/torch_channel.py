@@ -39,6 +39,7 @@ class TorchChannel(Channel):
 
     def write(self, value: Any) -> None:
         serialized_value = self._serialize(value)
+        # TODO: can we avoid sending the entire buffer each time?
         datalen = len(serialized_value)
         if datalen + 4 > len(self._arr):
             raise ValueError("Serialized value larger than the channel buffer length")
