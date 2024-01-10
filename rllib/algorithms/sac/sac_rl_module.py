@@ -18,15 +18,18 @@ class SACRLModule(RLModule, RLModuleWithTargetNetworksInterface):
         super().setup()
         catalog: SACCatalog = self.config.get_catalog()
 
-        # SAC needs next to the Q function estimator also a
-        # value function estimator and the pi network.
-        self.pi_and_qf_encoder = catalog.build_actor_critic_encoder(
-            framework=self.framework
-        )
+        # Build the encoder for the policy.
+        self.pi_encoder = catalog.build_encoder(framework=self.framework)
 
+        # SAC needs next to the pi network also a Q network with encoder.
+        # Note, as the Q network uses next to the observations, actions as
+        # input we need an additional encoder for this.
+        self.qf_encoder = catalog.build_qf_encoder(framework=self.framework)
+
+        # Build the target Q encoder as an exact copy of the Q encoder.
         # TODO (simon): Maybe merging encoders together for target and qf
-        # and keep only the heads differently.
-        self.qf_target_encoder = catalog.build_encoder(framework=self.framework)
+        # and keep only the heads differently?
+        self.qf_target_encoder = catalog.build_qf_encoder(framework=self.framework)
 
         # Build heads.
         self.pi = catalog.build_pi_head(framework=self.framework)
@@ -70,7 +73,13 @@ class SACRLModule(RLModule, RLModuleWithTargetNetworksInterface):
 
     @override(RLModule)
     def input_specs_train(self) -> SpecType:
-        return [SampleBatch.OBS, SampleBatch.NEXT_OBS]
+        # TODO (simon): Define next actions ads a constant.
+        return [
+            SampleBatch.OBS,
+            SampleBatch.ACTIONS,
+            SampleBatch.NEXT_OBS,
+            "next_actions",
+        ]
 
     @override(RLModule)
     def output_specs_exploration(self) -> SpecType:

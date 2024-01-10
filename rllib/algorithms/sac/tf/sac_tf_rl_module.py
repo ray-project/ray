@@ -20,12 +20,12 @@ class SACTfRLModule(TfRLModule, SACRLModule):
     def _forward_inference(self, batch: NestedDict) -> Dict[str, Any]:
         output = {}
 
-        # Encoder forward pass.
-        pi_and_qf_encoder_outs = self.pi_and_qf_encoder(batch)
+        # Pi encoder forward pass.
+        pi_encoder_outs = self.pi_encoder(batch)        
 
         # Pi head.
         output[SampleBatch.ACTION_DIST_INPUTS] = self.pi(
-            pi_and_qf_encoder_outs[ENCODER_OUT][ACTOR]
+            pi_encoder_outs[ENCODER_OUT]
         )
 
         return output
@@ -38,30 +38,39 @@ class SACTfRLModule(TfRLModule, SACRLModule):
         output = {}
 
         # SAC needs also Q function values and action logits for next observations.
-        batch_next = NestedDict({SampleBatch.NEXT_OBS: {batch[SampleBatch.NEXT_OBS]}})
-        batch_curr = NestedDict({SampleBatch.OBS: {batch[SampleBatch.OBS]}})
-
-        # Encoder forward pass.
-        pi_and_qf_encoder_outs = self.pi_and_qf_encoder(batch_curr)
+        # TODO (simon): Check, if we need to override the Encoder input_sp
+        batch_curr = NestedDict({SampleBatch.OBS: batch[SampleBatch.OBS]})
+        # TODO (sven): If we deprecate 'SampleBatch.NEXT_OBS` we need to change 
+        # # this. 
+        batch_next = NestedDict({SampleBatch.OBS: batch[SampleBatch.NEXT_OBS]})
+        
+        # Encoder forward passes.
+        pi_encoder_outs = self.pi_encoder(batch_curr)
+        batch_curr.update({SampleBatch.ACTIONS: batch[SampleBatch.ACTIONS]})
+        qf_encoder_outs = self.qf_encoder(batch_curr)
         qf_target_encoder_outs = self.qf_target_encoder(batch_curr)
-        # Also encode the next observations.
-        pi_and_qf_encoder_next_outs = self.pi_and_qf_encoder(batch_next)
+        # Also encode the next observations (and next actions for the Q net).
+        pi_encoder_next_outs = self.pi_encoder(batch_next)
+        # TODO (simon): Make sure these are available.
+        batch_next.update({SampleBatch.ACTIONS: batch["next_actions"]})
+        qf_encoder_nect_outs = self.qf_encoder(batch_next)
 
         # Q heads.
-        qf_out = self.qf(pi_and_qf_encoder_outs[ENCODER_OUT][CRITIC])
+        qf_out = self.qf(qf_encoder_outs[ENCODER_OUT])
         qf_target_out = self.qf_target(qf_target_encoder_outs[ENCODER_OUT])
         # Also get the Q-value for the next observations.
-        qf_next_out = self.qf(pi_and_qf_encoder_next_outs[ENCODER_OUT][CRITIC])
+        qf_next_out = self.qf(pi_encoder_next_outs[ENCODER_OUT])
         # Squeeze out last dimension (Q function node).
         output[QF_PREDS] = tf.squeeze(qf_out, axis=-1)
         output[QF_TARGET_PREDS] = tf.squeeze(qf_target_out, axis=-1)
         output["qf_preds_next"] = tf.squeeze(qf_next_out, axis=-1)
 
         # Policy head.
-        action_logits = self.pi(pi_and_qf_encoder_outs[ENCODER_OUT][ACTOR])
+        action_logits = self.pi(pi_encoder_outs[ENCODER_OUT])
         # Also get the action logits for the next observations.
-        action_logits_next = self.pi(pi_and_qf_encoder_next_outs[ENCODER_OUT][ACTOR])
+        action_logits_next = self.pi(pi_encoder_next_outs[ENCODER_OUT])
         output[SampleBatch.ACTION_DIST_INPUTS] = action_logits
         output["action_dist_inputs_next"] = action_logits_next
 
+        # Return the network outputs.
         return output

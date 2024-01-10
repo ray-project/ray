@@ -1,12 +1,15 @@
 import gymnasium as gym
-# from ray.rllib.algorithms.ppo.ppo_catalog import _check_if_diag_gaussian
+
+# TODO (simon): Store this function somewhere more central as many
+# algorithms will use it.
+from ray.rllib.algorithms.ppo.ppo_catalog import _check_if_diag_gaussian
 from ray.rllib.core.models.catalog import Catalog
 from ray.rllib.core.models.configs import (
-    ActorCriticEncoderConfig,
-    # FreeLogStdMLPHeadConfig,
+    FreeLogStdMLPHeadConfig,
+    MLPEncoderConfig,
     MLPHeadConfig,
 )
-from ray.rllib.core.models.base import Model, ActorCriticEncoder
+from ray.rllib.core.models.base import Model, Encoder
 from ray.rllib.utils.annotations import OverrideToImplementCustomLogic
 
 
@@ -35,17 +38,19 @@ class SACCatalog(Catalog):
             model_config_dict=model_config_dict,
         )
 
-        # Replace EncoderConfig by ActorCriticEncoderConfig.
-        self.actor_critic_encoder_config = ActorCriticEncoderConfig(
-            base_encoder_config=self._encoder_config,
-            shared=False,
-            # TODO (simon): If 'vf_shared_layers=True' the `self.encoder`
-            # will be occupied and cannot be used by the Q network.
-            # TODO (sven artur): Shall the value function and pi ever share
-            # the encoder in SAC? I think it is rather unorthodox here.
-            # shared=self._model_config_dict["vf_shared_layers"],
+        # Define the encoder for the Q-network.
+        self.qf_encoder_hiddens = self._model_config_dict["fcnet_hiddens"]
+        self.qf_encoder_activation = self._model_config_dict["fcnet_hiddens_activation"]
+
+        self.qf_encoder_config = MLPEncoderConfig(
+            input_dims=observation_space.shape + action_space.shape,
+            hidden_layer_dims=self.qf_encoder_hiddens,
+            hidden_layer_activation=self.qf_encoder_activation,
+            output_layer_dim=self.latent_dims,
+            output_layer_activation=self.qf_encoder_activation,
         )
 
+        # Define the heads.
         self.pi_and_qf_head_hiddens = self._model_config_dict["post_fcnet_hiddens"]
         self.pi_and_qf_head_activation = self._model_config_dict[
             "post_fcnet_activation"
@@ -56,42 +61,36 @@ class SACCatalog(Catalog):
         # -> Build pi config only in the `self.build_pi_head` method.
         self.pi_head_config = None
 
-        # Define the Q target network.
-        # Use the base encoder for the Q target network.
         # TODO (simon): Implement in a later step a q network with
-        # different post_fcnet_hiddens than value function and pi.
-        # For the q function we know the number of output nodes to be the number of
-        # possible actions in the action space.
-        if issubclass(self.action_space, gym.spaces.Discrete):
-            self.qf_head_config = MLPHeadConfig(
-                # TODO (simon): These latent_dims could be different for the
-                # q function, value function, and pi head.
-                # Here we consider the simple case of identical encoders.
-                input_dims=self.latent_dims,
-                hidden_layer_dims=self.pi_and_qf_head_hiddens,
-                hidden_layer_activation=self.pi_and_qf_head_activation,
-                output_layer_activation="linear",
-                output_layer_dim=self.action_space.n,
-            )
-        # TODO (simon): Implement the continuous case.
+        # different `post_fcnet_hiddens` than pi.
+        self.qf_head_config = MLPHeadConfig(
+            # TODO (simon): These latent_dims could be different for the
+            # q function, value function, and pi head.
+            # Here we consider the simple case of identical encoders.
+            input_dims=self.latent_dims,
+            hidden_layer_dims=self.pi_and_qf_head_hiddens,
+            hidden_layer_activation=self.pi_and_qf_head_activation,
+            output_layer_activation="linear",
+            output_layer_dim=1,
+        )
 
     @OverrideToImplementCustomLogic
-    def build_actor_critic_encoder(self, framework: str) -> ActorCriticEncoder:
-        """Builds the ActorCriticEncoder.
+    def build_qf_encoder(self, framework: str) -> Encoder:
+        """Builds the Q-function encoder.
 
-        In contrast to PPO, SAC needs both, an ActorCriticEncoder
-        and an encoder for the Q function. The latter uses the
-        base encoder, i.e. this function does not override the
-        default behavior that builds the encoder (here for the
-        Q function) from the encoder_config.
+        In contrast to PPO, SAC needs a different encoder for Pi and
+        Q-function as the Q-function in gthe continuous case has to
+        encode actions, too. Therefore the Q-function uses its own
+        encoder config.
+        Note, the Pi network uses the base encoder from the `Catalog`.
 
         Args:
             framework: The framework to use. Either `torch` or `tf2`.
 
         Returns:
-            The `ActorCriticEncoder`.
+            The encoder for the Q-network.
         """
-        return self.actor_critic_encoder_config.build(framework=framework)
+        return self.qf_encoder_config.build(framework=framework)
 
     @OverrideToImplementCustomLogic
     def build_pi_head(self, framework: str) -> Model:
@@ -109,22 +108,20 @@ class SACCatalog(Catalog):
         """
         # Get action_distribution_cls to find out about the output dimension for pi_head
         action_distribution_cls = self.get_action_dist_cls(framework=framework)
-        # TODO (simon): Implement continuous case later, when discrete case learns.
-        # if self._model_config_dict["free_log_std"]:
-        #     _check_if_diag_gaussian(
-        #         action_distribution_cls=action_distribution_cls, framework=framework
-        #     )
+        if self._model_config_dict["free_log_std"]:
+            _check_if_diag_gaussian(
+                action_distribution_cls=action_distribution_cls, framework=framework
+            )
         required_output_dim = action_distribution_cls.required_input_dim(
             space=self.action_space, model_config=self._model_config_dict
         )
         # Now that we have the action dist class and number of outputs, we can define
         # our pi-config and build the pi head.
-        pi_head_config_class = MLPHeadConfig
-        # TODO (simon): Implement the continuous case later, when the discrete one learns.
-        #     FreeLogStdMLPHeadConfig
-        #     if self._model_config_dict["free_log_std"]
-        #     else MLPHeadConfig
-        # )
+        pi_head_config_class = (
+            FreeLogStdMLPHeadConfig
+            if self._model_config_dict["free_log_std"]
+            else MLPHeadConfig
+        )
         self.pi_head_config = pi_head_config_class(
             input_dims=self.latent_dims,
             hidden_layer_dims=self.pi_and_vf_head_hiddens,
