@@ -3,13 +3,14 @@ import inspect
 import logging
 import os
 import pickle
+import threading
 import time
 import traceback
 from contextlib import contextmanager
+from functools import wraps
 from importlib import import_module
 from typing import Any, AsyncGenerator, Callable, Dict, Optional, Tuple, Union
 
-import aiorwlock
 import starlette.responses
 
 import ray
@@ -285,7 +286,6 @@ class ReplicaActor:
             cloudpickle.loads(serialized_init_args),
             cloudpickle.loads(serialized_init_kwargs),
             deployment_id=deployment_id,
-            event_loop=self._event_loop,
         )
 
         # Guards against calling the user's callable constructor multiple times.
@@ -428,19 +428,17 @@ class ReplicaActor:
         The user method is called in a `Task` and places its results on a
         `result_queue`. This method pulls and yields from the `result_queue`.
         """
-        call_user_method_task = None
+        call_user_method_future = None
         wait_for_message_task = None
         try:
             # Handle the request in a background asyncio.Task. It's expected that
             # this task will use the result queue to send its response messages.
             result_queue = MessageQueue()
-            call_user_method_task = self._event_loop.create_task(
-                self._user_callable_wrapper.call_user_method(
-                    request_metadata,
-                    request_args,
-                    request_kwargs,
-                    result_queue=result_queue,
-                )
+            call_user_method_future = self._user_callable_wrapper.call_user_method(
+                request_metadata,
+                request_args,
+                request_kwargs,
+                result_queue=result_queue,
             )
 
             while True:
@@ -448,7 +446,7 @@ class ReplicaActor:
                     result_queue.wait_for_message()
                 )
                 done, _ = await asyncio.wait(
-                    [call_user_method_task, wait_for_message_task],
+                    [call_user_method_future, wait_for_message_task],
                     return_when=asyncio.FIRST_COMPLETED,
                 )
 
@@ -466,15 +464,18 @@ class ReplicaActor:
 
                 # Exit once `call_user_method` has finished. In this case, all
                 # messages must have already been sent.
-                if call_user_method_task in done:
+                if call_user_method_future in done:
                     break
 
-            e = call_user_method_task.exception()
+            e = call_user_method_future.exception()
             if e is not None:
                 raise e from None
         finally:
-            if call_user_method_task is not None and not call_user_method_task.done():
-                call_user_method_task.cancel()
+            if (
+                call_user_method_future is not None
+                and not call_user_method_future.done()
+            ):
+                call_user_method_future.cancel()
 
             if wait_for_message_task is not None and not wait_for_message_task.done():
                 wait_for_message_task.cancel()
@@ -674,6 +675,8 @@ class ReplicaActor:
 class UserCallableWrapper:
     """Wraps a user-provided callable that is used to handle requests to a replica."""
 
+    _event_loop: asyncio.AbstractEventLoop = asyncio.new_event_loop()
+
     def __init__(
         self,
         deployment_def: Callable,
@@ -681,7 +684,6 @@ class UserCallableWrapper:
         init_kwargs: Dict,
         *,
         deployment_id: DeploymentID,
-        event_loop: asyncio.AbstractEventLoop,
     ):
         if not (inspect.isfunction(deployment_def) or inspect.isclass(deployment_def)):
             raise TypeError(
@@ -694,12 +696,33 @@ class UserCallableWrapper:
         self._init_kwargs = init_kwargs
         self._is_function = inspect.isfunction(deployment_def)
         self._deployment_id = deployment_id
-        self._event_loop = event_loop
-        self._rwlock = aiorwlock.RWLock()
         self._delete_lock = asyncio.Lock()
+
+        # XXX: comment.
+        self._thread = threading.Thread(
+            daemon=True,
+            target=self._event_loop.run_forever,
+        )
+        self._thread.start()
 
         # Will be populated in `initialize_callable`.
         self._callable = None
+
+    def _run_on_event_loop(f: Callable):
+        assert inspect.iscoroutinefunction(
+            f
+        ), "_run_on_event_loop decorator can only be used on coroutine functions."
+
+        @wraps(f)
+        def wrapper(*args, **kwargs) -> asyncio.Future:
+            return asyncio.wrap_future(
+                asyncio.run_coroutine_threadsafe(
+                    f(*args, **kwargs),
+                    UserCallableWrapper._event_loop,
+                )
+            )
+
+        return wrapper
 
     def _get_user_callable_method(self, method_name: str) -> Callable:
         if self._is_function:
@@ -757,6 +780,7 @@ class UserCallableWrapper:
     def user_callable(self) -> Optional[Callable]:
         return self._callable
 
+    @_run_on_event_loop
     async def initialize_callable(self):
         # This closure initializes user code and finalizes replica
         # startup. By splitting the initialization step like this,
@@ -791,30 +815,29 @@ class UserCallableWrapper:
             extra={"log_to_stderr": False},
         )
 
+    @_run_on_event_loop
     async def call_user_health_check(self):
         user_health_check = getattr(self._callable, HEALTH_CHECK_METHOD, None)
         if callable(user_health_check):
             await self._call_func_or_gen(user_health_check)
 
+    @_run_on_event_loop
     async def call_reconfigure(self, user_config: Any):
-        async with self._rwlock.writer:
-            if user_config is not None:
-                if self._is_function:
-                    raise ValueError(
-                        "deployment_def must be a class to use user_config"
-                    )
-                elif not hasattr(self._callable, RECONFIGURE_METHOD):
-                    raise RayServeException(
-                        "user_config specified but deployment "
-                        + self._deployment_id
-                        + " missing "
-                        + RECONFIGURE_METHOD
-                        + " method"
-                    )
-                await self._call_func_or_gen(
-                    getattr(self._callable, RECONFIGURE_METHOD),
-                    user_config,
+        if user_config is not None:
+            if self._is_function:
+                raise ValueError("deployment_def must be a class to use user_config")
+            elif not hasattr(self._callable, RECONFIGURE_METHOD):
+                raise RayServeException(
+                    "user_config specified but deployment "
+                    + self._deployment_id
+                    + " missing "
+                    + RECONFIGURE_METHOD
+                    + " method"
                 )
+            await self._call_func_or_gen(
+                getattr(self._callable, RECONFIGURE_METHOD),
+                user_config,
+            )
 
     def _prepare_args_for_http_request(
         self,
@@ -927,6 +950,7 @@ class UserCallableWrapper:
 
         return result
 
+    @_run_on_event_loop
     async def call_user_method(
         self,
         request_metadata: RequestMetadata,
@@ -1007,6 +1031,7 @@ class UserCallableWrapper:
 
         return result
 
+    @_run_on_event_loop
     async def call_destructor(self):
         """Explicitly call the `__del__` method of the user callable.
 
