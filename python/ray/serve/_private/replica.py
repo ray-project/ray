@@ -36,7 +36,6 @@ from ray.serve._private.constants import (
     RAY_SERVE_GAUGE_METRIC_SET_PERIOD_S,
     RAY_SERVE_REPLICA_AUTOSCALING_METRIC_RECORD_PERIOD_S,
     RECONFIGURE_METHOD,
-    REPLICA_CONTROL_PLANE_CONCURRENCY_GROUP,
     SERVE_CONTROLLER_NAME,
     SERVE_LOGGER_NAME,
     SERVE_NAMESPACE,
@@ -341,7 +340,6 @@ class ReplicaActor:
             component_id=component_id,
         )
 
-    @ray.method(concurrency_group=REPLICA_CONTROL_PLANE_CONCURRENCY_GROUP)
     def get_num_ongoing_requests(self) -> int:
         """Fetch the number of ongoing requests at this replica (queue length).
 
@@ -670,9 +668,10 @@ class ReplicaActor:
 
         self._metrics_manager.shutdown()
 
-    @ray.method(concurrency_group=REPLICA_CONTROL_PLANE_CONCURRENCY_GROUP)
     async def check_health(self):
-        await self._user_callable_wrapper.call_user_health_check()
+        # XXX: NOTE HERE
+        if self._user_callable_wrapper.has_user_health_check:
+            await self._user_callable_wrapper.call_user_health_check()
 
 
 class UserCallableWrapper:
@@ -710,6 +709,7 @@ class UserCallableWrapper:
 
         # Will be populated in `initialize_callable`.
         self._callable = None
+        self._user_health_check = None
 
     def _run_on_event_loop(f: Callable):
         assert inspect.iscoroutinefunction(
@@ -813,16 +813,20 @@ class UserCallableWrapper:
             if isinstance(self._callable, ASGIAppReplicaWrapper):
                 await self._callable._run_asgi_lifespan_startup()
 
+        self._user_health_check = getattr(self._callable, HEALTH_CHECK_METHOD, None)
+
         logger.info(
             "Finished initializing replica.",
             extra={"log_to_stderr": False},
         )
 
+    @property
+    def has_user_health_check(self) -> bool:
+        return self._user_health_check is not None
+
     @_run_on_event_loop
     async def call_user_health_check(self):
-        user_health_check = getattr(self._callable, HEALTH_CHECK_METHOD, None)
-        if callable(user_health_check):
-            await self._call_func_or_gen(user_health_check)
+        await self._call_func_or_gen(self._user_health_check)
 
     @_run_on_event_loop
     async def call_reconfigure(self, user_config: Any):
