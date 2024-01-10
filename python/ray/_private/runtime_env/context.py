@@ -73,36 +73,34 @@ class RuntimeEnvContext:
         # can be different. We need the user to specify the path to
         # default_worker.py inside the container.
         if self.container:
-            default_worker_path = self.container.get("worker_path")
-            if default_worker_path:
-                logger.info(
+            worker_path = self.container.get("worker_path")
+            if worker_path:
+                logger.debug(
                     f"Changing the default worker path from {passthrough_args[0]} to "
-                    f"{default_worker_path}."
+                    f"{worker_path}."
                 )
-                passthrough_args = ["python", default_worker_path] + passthrough_args[
-                    1:
-                ]
+                passthrough_cmd = f"python {worker_path} " + " ".join(
+                    passthrough_args[1:]
+                )
             else:
-                # python_get_default_worker_path = "$(python -c 'import os,ray; f = ray.__file__; print(os.path.join(os.path.dirname(f), \"_private/workers/default_worker.py\"))')"  # noqa
-                get_worker_path = "'import os,ray; f=ray.__file__; print(os.path.join(os.path.dirname(f), \\\"_private/workers/default_worker.py\\\"))'"  # noqa
-                passthrough_args = [
-                    "python",
-                    "-c",
-                    get_worker_path,
-                    "|",
-                    "xargs",
-                    "-I{}",
-                    "python",
-                    "{}",
-                ] + passthrough_args[1:]
-            exec_command = executable + ' -c "' + " ".join(passthrough_args) + '"'
+                get_worker_path = """'
+import os, ray
+ray_dir = os.path.dirname(ray.__file__)
+relative_default_worker_path = \\"_private/workers/default_worker.py\\"
+print(os.path.join(ray_dir, relative_default_worker_path))
+'"""
+                passthrough_cmd = (
+                    "python -c "
+                    + get_worker_path
+                    + " | xargs -I{} python {} "
+                    + " ".join(passthrough_args[1:])
+                )
+            exec_command = executable + f' -c "{passthrough_cmd}"'
 
         else:
             exec_command = " ".join([f"{executable}"] + passthrough_args)
 
         command_str = " ".join(self.command_prefix + [exec_command])
-        logger.info(f"command prefix: {self.command_prefix}")
-        logger.info(f"exec command: {exec_command}")
         # TODO(SongGuyang): We add this env to command for macOS because it doesn't
         # work for the C++ process of `os.execvp`. We should find a better way to
         # fix it.
