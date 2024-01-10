@@ -316,8 +316,8 @@ class TfCNNTranspose(tf.keras.Model):
         cnn_transpose_use_bias: bool = True,
         cnn_transpose_activation: Optional[str] = "relu",
         cnn_transpose_use_layernorm: bool = False,
-        cnn_transpose_weights_initializer: Optional[Union[str, Callable]] = None,
-        cnn_transpose_weights_initializer_config: Optional[Dict] = None,
+        cnn_transpose_kernel_initializer: Optional[Union[str, Callable]] = None,
+        cnn_transpose_kernel_initializer_config: Optional[Dict] = None,
         cnn_transpose_bias_initializer: Optional[Union[str, Callable]] = None,
         cnn_transpose_bias_initializer_config: Optional[Dict] = None,
     ):
@@ -362,8 +362,8 @@ class TfCNNTranspose(tf.keras.Model):
         cnn_transpose_activation = get_activation_fn(
             cnn_transpose_activation, framework="tf2"
         )
-        cnn_transpose_weights_initializer = get_initializer_fn(
-            cnn_transpose_weights_initializer,
+        cnn_transpose_kernel_initializer = get_initializer_fn(
+            cnn_transpose_kernel_initializer,
             framework="tf2",
         )
         cnn_transpose_bias_initializer = get_initializer_fn(
@@ -394,11 +394,11 @@ class TfCNNTranspose(tf.keras.Model):
                     # Note, if the initializer is `None`, we want TensorFlow
                     # to use its default one. So we pass in `None`.
                     kernel_initializer=(
-                        cnn_transpose_weights_initializer(
-                            **cnn_transpose_weights_initializer_config
+                        cnn_transpose_kernel_initializer(
+                            **cnn_transpose_kernel_initializer_config
                         )
-                        if cnn_transpose_weights_initializer_config
-                        else cnn_transpose_weights_initializer
+                        if cnn_transpose_kernel_initializer_config
+                        else cnn_transpose_kernel_initializer
                     ),
                     # Last layer always uses bias (b/c has no LayerNorm, regardless of
                     # config).

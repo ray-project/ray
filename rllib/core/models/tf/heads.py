@@ -217,9 +217,9 @@ class TfCNNTransposeHead(TfModel):
             activation=None,
             kernel_initializer=(
                 initial_dense_weights_initializer(
-                    **config.initial_dense_initializer_config
+                    **config.initial_dense_weights_initializer_config
                 )
-                if config.initial_dense_initializer_config
+                if config.initial_dense_weights_initializer_config
                 else initial_dense_weights_initializer
             ),
             use_bias=True,

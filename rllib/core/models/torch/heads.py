@@ -206,18 +206,26 @@ class TorchCNNTransposeHead(TorchModel):
             bias=True,
         )
 
-        # Initial Dense layer initializer.
-        initial_dense_initializer = get_initializer_fn(
-            config.initial_dense_initializer, framework="torch"
+        # Initial Dense layer initializers.
+        initial_dense_weights_initializer = get_initializer_fn(
+            config.initial_dense_weights_initializer, framework="torch"
+        )
+        initial_dense_bias_initializer = get_initializer_fn(
+            config.initial_dense_bias_initializer, framework="torch"
         )
 
-        if initial_dense_initializer:
-            if config.initial_dense_initializer_config:
-                initial_dense_initializer(
-                    self.initial_dense.weight, **config.initial_dense_initializer_config
-                )
-            else:
-                initial_dense_initializer(self.initial_dense.weight)
+        # Initialize dense layer weights, if necessary.
+        if initial_dense_weights_initializer:
+            initial_dense_weights_initializer(
+                self.initial_dense.weight,
+                **config.initial_dense_initializer_config or {},
+            )
+        # Initialized dense layer bais, if necessary.
+        if initial_dense_bias_initializer:
+            initial_dense_bias_initializer(
+                self.initial_dense.bias,
+                **config.initial_dense_bias_initializer_config or {},
+            )
 
         # The main CNNTranspose stack.
         self.cnn_transpose_net = TorchCNNTranspose(

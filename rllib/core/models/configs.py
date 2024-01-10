@@ -444,6 +444,21 @@ class CNNTransposeHeadConfig(ModelConfig):
             Conv2DTranspose layer. We will make sure the input is transformed to
             these dims via a preceding initial Dense layer, followed by a reshape,
             before entering the Conv2DTranspose stack.
+        initial_dense_weights_initializer: The initializer function or class to use for
+            weight initialization in the initial dense layer. If `None` the default
+            initializer of the respective dense layer of a framework (`"torch"` or
+            `"tf2"`) is used. Note, all initializers defined in the framework `"tf2`)
+            are allowed. For `"torch"` only the in-place initializers, i.e. ending with
+            an underscore "_" are allowed.
+        initial_dense_weights_initializer_config: Configuration to pass into the
+            initializer defined in `initial_dense_weights_initializer`.
+        initial_dense_bias_initializer: The initializer function or class to use for
+            bias initialization in the initial dense layer. If `None` the default
+            initializer of the respective CNN layer of a framework (`"torch"` or `"tf2"`
+            ) is used. For `"torch"` only the in-place initializers, i.e. ending with an
+            underscore "_" are allowed.
+        initial_dense_bias_initializer_config: Configuration to pass into the
+            initializer defined in `initial_dense_bias_initializer`.
         cnn_transpose_filter_specifiers: A list of lists, where each element of an inner
             list contains elements of the form
             `[number of channels/filters, [kernel width, kernel height], stride]` to
@@ -477,6 +492,9 @@ class CNNTransposeHeadConfig(ModelConfig):
         config = CNNTransposeHeadConfig(
             input_dims=[10],  # 1D input vector (possibly coming from another NN)
             initial_image_dims=[4, 4, 96],  # first image input to deconv stack
+            # Initializer for TensorFlow.
+            initial_dense_weights_initializer="HeNormal",
+            initial_dense_weights_initializer={"seed": 334},
             cnn_transpose_filter_specifiers=[
                 [48, [4, 4], 2],
                 [24, [4, 4], 2],
@@ -521,7 +539,9 @@ class CNNTransposeHeadConfig(ModelConfig):
             cnn_transpose_use_layernorm=True,
             cnn_use_bias=False,
             # Initializer for `framework="tf2"`.
-            cnn_transpose_kernel_initializer="HeNormal",
+            # Note, for Torch only in-place initializers are allowed.
+            cnn_transpose_kernel_initializer="xavier_normal_",
+            cnn_transpose_kernel_initializer_config={"gain": 0.8},
         )
         model = config.build(framework="torch)
 
