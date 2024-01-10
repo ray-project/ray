@@ -545,6 +545,31 @@ def test_proxy_location_to_deployment_mode():
         ProxyLocation._to_deployment_mode({"some_other_obj"})
 
 
+def test_deployment_mode_to_proxy_location():
+    assert (
+        ProxyLocation._from_deployment_mode(DeploymentMode.NoServer)
+        == ProxyLocation.Disabled
+    )
+    assert (
+        ProxyLocation._from_deployment_mode(DeploymentMode.HeadOnly)
+        == ProxyLocation.HeadOnly
+    )
+    assert (
+        ProxyLocation._from_deployment_mode(DeploymentMode.EveryNode)
+        == ProxyLocation.EveryNode
+    )
+
+    assert ProxyLocation._from_deployment_mode("NoServer") == ProxyLocation.Disabled
+    assert ProxyLocation._from_deployment_mode("HeadOnly") == ProxyLocation.HeadOnly
+    assert ProxyLocation._from_deployment_mode("EveryNode") == ProxyLocation.EveryNode
+
+    with pytest.raises(ValueError):
+        ProxyLocation._from_deployment_mode("Unknown")
+
+    with pytest.raises(TypeError):
+        ProxyLocation._from_deployment_mode({"some_other_obj"})
+
+
 @pytest.mark.parametrize(
     "policy", [None, fake_policy, "ray.serve.tests.unit.test_config:fake_policy"]
 )
