@@ -8,7 +8,6 @@ from typing import Dict, List, Optional, Tuple
 
 from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
 from ray.rllib.algorithms.callbacks import DefaultCallbacks
-from ray.rllib.core.models.base import STATE_OUT
 from ray.rllib.core.rl_module.rl_module import RLModule, SingleAgentRLModuleSpec
 from ray.rllib.env.env_runner import EnvRunner
 from ray.rllib.env.single_agent_episode import SingleAgentEpisode
@@ -71,6 +70,7 @@ class SingleAgentEnvRunner(EnvRunner):
         self.num_envs: int = self.env.num_envs
         assert self.num_envs == self.config.num_envs_per_worker
 
+        # Call the `on_environment_created` callback.
         self._callbacks.on_environment_created(
             env_runner=self,
             env=self.env,
@@ -256,8 +256,8 @@ class SingleAgentEnvRunner(EnvRunner):
                 # The last entry in self.observations[i] is already the reset
                 # obs of the new episode.
                 # TODO (simon): This might be unfortunate if a user needs to set a
-                # certain env parameter during different episodes (for example for
-                # benchmarking).
+                #  certain env parameter during different episodes (for example for
+                #  benchmarking).
                 extra_model_output = tree.map_structure(lambda s: s[env_index], to_env)
 
                 # In inference we have only the action logits.
@@ -277,8 +277,7 @@ class SingleAgentEnvRunner(EnvRunner):
                         extra_model_outputs=extra_model_output,
                     )
 
-                    # Make the `on_episode_step` callback (before finalizing the
-                    # episode object).
+                    # Make `on_episode_step` callback before finalizing the episode.
                     self._make_on_episode_callback("on_episode_step", env_index)
 
                     done_episodes_to_return.append(self._episodes[env_index].finalize())
@@ -322,7 +321,7 @@ class SingleAgentEnvRunner(EnvRunner):
         ongoing_episodes_to_return = []
         for eps in self._episodes:
             # Just started Episodes do not have to be returned. There is no data
-            # in them anyways.
+            # in them anyway.
             if eps.t == 0:
                 continue
             eps.validate()
