@@ -74,7 +74,7 @@ class RuntimeEnvContext:
         if self.container:
             default_worker_path = self.container.get("worker_path")
             if default_worker_path:
-                logger.debug(
+                logger.info(
                     f"Changing the default worker path from {passthrough_args[0]} to "
                     f"{default_worker_path}."
                 )
@@ -87,7 +87,7 @@ class RuntimeEnvContext:
         exec_command = " ".join([f"{executable}"] + passthrough_args)
         command_str = " ".join(self.command_prefix + [exec_command])
         logger.info(f"command prefix: {self.command_prefix}")
-        logger.info(f"exec command: {self.exec_command}")
+        logger.info(f"exec command: {exec_command}")
         # TODO(SongGuyang): We add this env to command for macOS because it doesn't
         # work for the C++ process of `os.execvp`. We should find a better way to
         # fix it.
