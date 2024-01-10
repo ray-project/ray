@@ -71,17 +71,23 @@ class RuntimeEnvContext:
         # However, the path to default_worker.py inside the container
         # can be different. We need the user to specify the path to
         # default_worker.py inside the container.
-        default_worker_path = self.container.get("worker_path")
-        if self.container and default_worker_path:
-            logger.debug(
-                f"Changing the default worker path from {passthrough_args[0]} to "
-                f"{default_worker_path}."
-            )
-            passthrough_args[0] = default_worker_path
+        if self.container:
+            default_worker_path = self.container.get("worker_path")
+            if default_worker_path:
+                logger.debug(
+                    f"Changing the default worker path from {passthrough_args[0]} to "
+                    f"{default_worker_path}."
+                )
+                passthrough_args[0] = default_worker_path
+            else:
+                python_get_default_worker_path = "$(python -c \"import os,ray; f = ray.__file__; print(os.path.join(os.path.dirname(f), '_private/workers/default_worker.py'))\")"
+                passthrough_args[0] = python_get_default_worker_path
 
         passthrough_args = [s.replace(" ", r"\ ") for s in passthrough_args]
         exec_command = " ".join([f"{executable}"] + passthrough_args)
         command_str = " ".join(self.command_prefix + [exec_command])
+        logger.info(f"command prefix: {self.command_prefix}")
+        logger.info(f"exec command: {self.exec_command}")
         # TODO(SongGuyang): We add this env to command for macOS because it doesn't
         # work for the C++ process of `os.execvp`. We should find a better way to
         # fix it.
