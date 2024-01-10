@@ -158,7 +158,11 @@ cdef extern from * namespace "ray::gcs" nogil:
 
       auto context = cli->GetPrimaryContext();
       auto cmd = std::vector<std::string>{"DEL", key};
-      auto reply = context->RunArgvSync(cmd);
+      std::promise<std::shared_ptr<CallbackReply>> promise;
+      context->RunArgvAsync(cmd, [&promise](auto reply) {
+        promise.set_value(reply);
+      });
+      auto reply = promise.get_future().get();
       if(reply->ReadAsInteger() == 1) {
         RAY_LOG(INFO) << "Successfully deleted " << key;
         return true;
