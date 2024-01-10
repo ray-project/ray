@@ -363,6 +363,8 @@ run the following (via ``-c`` ``fastbuild``/``dbg``/``opt``, respectively):
 
 .. code-block:: shell
 
+ # Ray is sensitive to the Bazel version. Please ensure that you use the same
+ # version of Bazel as the one installed by ci/env/install-bazel.sh.
  bazel build -c fastbuild //:ray_pkg
 
 This will rebuild Ray with the appropriate options (which may take a while).
