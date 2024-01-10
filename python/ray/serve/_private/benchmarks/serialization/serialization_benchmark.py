@@ -41,7 +41,7 @@ def _create_model(cls):
     return cls(
         text="Test output",
         floats=[float(f) for f in range(1, 100)],
-        ints=[i for i in range(1, 100)],
+        ints=list(range(1, 100)),
         ts=time.time(),
         reason="Success!",
     )
@@ -81,12 +81,14 @@ async def run_serializer_benchmark(
 @click.option(
     "--payload-type",
     type=PayloadType,
-    help="Target type of the payload to be benchmarked (supported: pydantic, dataclass)",
+    help="Target type of the payload to be benchmarked (supported: pydantic, "
+    "dataclass)",
 )
 @click.option(
     "--serializer",
     type=SerializerType,
-    help="Target type of the serializer to be benchmarked (supported: ray, pickle, cloudpickle, msgpack)",
+    help="Target type of the serializer to be benchmarked (supported: ray, pickle, "
+    "cloudpickle, msgpack)",
 )
 @click.option(
     "--profile-events",
@@ -101,19 +103,26 @@ def main(
     profile_events: bool,
 ):
     if serializer == SerializerType.RAY:
+
         def _serialize(obj):
             so = sc.serialize(obj)
-            bs, metadata = so.to_bytes(), so.metadata
+            bs = so.to_bytes()
             return bs
+
     elif serializer == SerializerType.CLOUDPICKLE:
+
         def _serialize(obj):
             bs = cloudpickle_fast.dumps(obj)
             return bs
+
     elif serializer == SerializerType.PICKLE:
+
         def _serialize(obj):
             bs = pickle.dumps(obj)
             return bs
+
     elif serializer == SerializerType.MSGPACK:
+
         def _dumps(obj):
             bs = msgpack.dumps(obj.__dict__)
             # print(f"Bytes ({len(bs)}): ", bs)
@@ -127,8 +136,9 @@ def main(
 
         def _serialize(obj):
             so = sc.serialize(obj)
-            bs, metadata = so.to_bytes(), so.metadata
+            bs = so.to_bytes()
             return bs
+
     else:
         raise NotImplementedError(serializer)
 

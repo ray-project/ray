@@ -6,14 +6,14 @@ from tempfile import TemporaryDirectory
 
 import click
 import grpc
-import ray
 
+import ray
 from ray.serve._private.benchmarks.streaming._grpc import (
     test_server_pb2,
     test_server_pb2_grpc,
 )
 from ray.serve._private.benchmarks.streaming._grpc.grpc_server import TestGRPCServer
-from ray.serve._private.benchmarks.streaming.common import Caller, IOMode, GRPC_DEBUG_RUNTIME_ENV, Endpoint
+from ray.serve._private.benchmarks.streaming.common import Caller, IOMode
 
 
 # @ray.remote(runtime_env=GRPC_DEBUG_RUNTIME_ENV)
@@ -57,7 +57,7 @@ class GrpcCallerActor(Caller):
         tokens_per_request: int,
         batch_size: int,
         num_trials: int,
-        trial_runtime: float
+        trial_runtime: float,
     ):
         super().__init__(
             self.create_downstream(socket_type, tempdir),
@@ -65,7 +65,7 @@ class GrpcCallerActor(Caller):
             tokens_per_request=tokens_per_request,
             batch_size=batch_size,
             num_trials=num_trials,
-            trial_runtime=trial_runtime
+            trial_runtime=trial_runtime,
         )
 
     @staticmethod
@@ -77,7 +77,6 @@ class GrpcCallerActor(Caller):
         )
 
         return test_server_pb2_grpc.GRPCTestServerStub(channel)
-
 
     async def _consume_single_stream(self):
         try:
@@ -114,36 +113,37 @@ async def run_grpc_benchmark(
     trial_runtime,
 ):
     with TemporaryDirectory() as tempdir:
-            ea = EndpointActor.remote(
-                tokens_per_request=tokens_per_request,
-                socket_type=socket_type,
-                tempdir=tempdir
-            )
+        _ = EndpointActor.remote(
+            tokens_per_request=tokens_per_request,
+            socket_type=socket_type,
+            tempdir=tempdir,
+        )
 
-            ca = GrpcCallerActor.remote(
-                tempdir,
-                socket_type,
-                mode=IOMode(io_mode.upper()),
-                tokens_per_request=tokens_per_request,
-                batch_size=batch_size,
-                num_trials=num_trials,
-                trial_runtime=trial_runtime,
-            )
-            # TODO make starting server a method (to make synchronization explicit)
-            time.sleep(5)
+        ca = GrpcCallerActor.remote(
+            tempdir,
+            socket_type,
+            mode=IOMode(io_mode.upper()),
+            tokens_per_request=tokens_per_request,
+            batch_size=batch_size,
+            num_trials=num_trials,
+            trial_runtime=trial_runtime,
+        )
 
-            mean, stddev = await ca.run_benchmark.remote()
+        # TODO make starting server a method (to make synchronization explicit)
+        time.sleep(5)
 
-            print(
-                "gRPC streaming throughput ({}) {}: {} +- {} tokens/s".format(
-                    io_mode.upper(),
-                    f"(num_replicas={num_replicas}, "
-                    f"tokens_per_request={tokens_per_request}, "
-                    f"batch_size={batch_size})",
-                    mean,
-                    stddev,
-                )
+        mean, stddev = await ca.run_benchmark.remote()
+
+        print(
+            "gRPC streaming throughput ({}) {}: {} +- {} tokens/s".format(
+                io_mode.upper(),
+                f"(num_replicas={num_replicas}, "
+                f"tokens_per_request={tokens_per_request}, "
+                f"batch_size={batch_size})",
+                mean,
+                stddev,
             )
+        )
 
 
 @click.command(help="Benchmark streaming deployment handle throughput.")
@@ -187,7 +187,8 @@ async def run_grpc_benchmark(
     "--socket-type",
     type=str,
     default="local_tcp",
-    help="Controls type of socket used as underlying transport (either 'uds' or 'local_tcp')",
+    help="Controls type of socket used as underlying transport (either 'uds' or "
+    "'local_tcp')",
 )
 def main(
     tokens_per_request: int,

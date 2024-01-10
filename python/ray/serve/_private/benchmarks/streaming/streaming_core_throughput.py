@@ -1,7 +1,7 @@
 import click
 
 import ray
-from ray.serve._private.benchmarks.streaming.common import Caller, Endpoint, IOMode, GRPC_DEBUG_RUNTIME_ENV
+from ray.serve._private.benchmarks.streaming.common import Caller, Endpoint, IOMode
 
 
 # @ray.remote(runtime_env=GRPC_DEBUG_RUNTIME_ENV)

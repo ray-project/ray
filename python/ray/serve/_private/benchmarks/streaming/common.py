@@ -3,17 +3,13 @@ import asyncio
 import enum
 import logging
 import time
-from typing import Coroutine, Tuple, Union
+from typing import Tuple, Union
 
 import numpy as np
 
 from ray.actor import ActorHandle
 from ray.runtime_env import RuntimeEnv
-from ray.serve._private.benchmarks.common import (
-    Blackhole,
-    collect_profile_events,
-    run_throughput_benchmark,
-)
+from ray.serve._private.benchmarks.common import Blackhole, run_throughput_benchmark
 from ray.serve._private.benchmarks.serialization.common import PayloadPydantic
 from ray.serve.handle import DeploymentHandle
 
@@ -38,7 +34,7 @@ class Endpoint:
         payload = PayloadPydantic(
             text="Test output",
             floats=[float(f) for f in range(1, 100)],
-            ints=[i for i in range(1, 100)],
+            ints=list(range(1, 100)),
             ts=time.time(),
             reason="Success!",
         )
@@ -50,7 +46,7 @@ class Endpoint:
         payload = PayloadPydantic(
             text="Test output",
             floats=[float(f) for f in range(1, 100)],
-            ints=[i for i in range(1, 100)],
+            ints=list(range(1, 100)),
             ts=time.time(),
             reason="Success!",
         )
