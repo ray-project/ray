@@ -2377,7 +2377,7 @@ traitlets==5.14.0
     #   nbconvert
     #   nbformat
     #   notebook
-transformers==4.19.1
+transformers==4.36.0
     # via -r /ray/ci/../python/requirements/ml/core-requirements.txt
 trustme==0.9.0
     # via -r /ray/ci/../python/requirements/test-requirements.txt
