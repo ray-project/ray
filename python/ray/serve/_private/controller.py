@@ -54,7 +54,7 @@ from ray.serve._private.utils import (
     get_all_live_placement_group_names,
     get_head_node_id,
 )
-from ray.serve.config import HTTPOptions, gRPCOptions, ProxyLocation
+from ray.serve.config import HTTPOptions, ProxyLocation, gRPCOptions
 from ray.serve.generated.serve_pb2 import (
     ActorNameList,
     DeploymentArgs,
@@ -930,7 +930,8 @@ class ServeController:
         http_options = HTTPOptionsSchema.parse_obj(http_config.dict(exclude_unset=True))
         grpc_options = gRPCOptionsSchema.parse_obj(grpc_config.dict(exclude_unset=True))
         proxy_location = (
-            None if http_config.location is None
+            None
+            if http_config.location is None
             else ProxyLocation._from_deployment_mode(http_config.location)
         )
         return ServeInstanceDetails(

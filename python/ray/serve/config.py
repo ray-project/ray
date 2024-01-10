@@ -150,19 +150,25 @@ class ProxyLocation(str, Enum):
     EveryNode = "EveryNode"
 
     @classmethod
-    def _to_deployment_mode(cls, proxy_location: Union["ProxyLocation", str]) -> DeploymentMode:
+    def _to_deployment_mode(
+        cls, proxy_location: Union["ProxyLocation", str]
+    ) -> DeploymentMode:
         if isinstance(proxy_location, str):
             proxy_location = ProxyLocation(proxy_location)
         elif not isinstance(proxy_location, ProxyLocation):
-            raise TypeError(f"Must be a `ProxyLocation` or str, got: {type(proxy_location)}.") 
-        
+            raise TypeError(
+                f"Must be a `ProxyLocation` or str, got: {type(proxy_location)}."
+            )
+
         if proxy_location == ProxyLocation.Disabled:
             return DeploymentMode.NoServer
         else:
             return DeploymentMode(proxy_location.value)
-    
+
     @classmethod
-    def _from_deployment_mode(cls, deployment_mode: Union[DeploymentMode, str]) -> "ProxyLocation":
+    def _from_deployment_mode(
+        cls, deployment_mode: Union[DeploymentMode, str]
+    ) -> "ProxyLocation":
         if isinstance(deployment_mode, str):
             deployment_mode = DeploymentMode(deployment_mode)
         elif not isinstance(deployment_mode, DeploymentMode):
