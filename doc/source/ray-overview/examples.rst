@@ -281,7 +281,7 @@ Ray Examples
 
         Tune Basic Parallel Experiments
 
-    .. grid-item-card:: :bdg-warning:`Video`
+    .. grid-item-card:: :bdg-warning:`Talk`
         :class-item: gallery-item
         :link: https://www.youtube.com/watch?v=3t26ucTy0Rs
 
@@ -350,7 +350,7 @@ Ray Examples
 
         How To Use Tune With Optuna
 
-    .. grid-item-card:: :bdg-warning:`Video`
+    .. grid-item-card:: :bdg-warning:`Talk`
         :class-item: gallery-item tuning serving
         :link: https://www.youtube.com/watch?v=UtH-CMpmxvI
 
@@ -389,7 +389,7 @@ Ray Examples
 
         How to distribute hyperparameter tuning with Ray Tune
 
-    .. grid-item-card:: :bdg-warning:`Video`
+    .. grid-item-card:: :bdg-warning:`Talk`
         :class-item: gallery-item
         :link: https://www.youtube.com/watch?v=KgYZtlbFYXE
 
@@ -463,7 +463,7 @@ Ray Examples
 
         More Tune use cases on the Blog
 
-    .. grid-item-card:: :bdg-warning:`Video`
+    .. grid-item-card:: :bdg-warning:`Talk`
         :class-item: gallery-item pytorch
         :link: https://www.youtube.com/watch?v=e-A93QftCfc
 
@@ -892,7 +892,7 @@ Ray Examples
 
         Getting Started with RLlib
 
-    .. grid-item-card:: :bdg-warning:`Video`
+    .. grid-item-card:: :bdg-warning:`Talk`
         :class-item: gallery-item rl
         :link: https://www.anyscale.com/events/2022/03/29/deep-reinforcement-learning-at-riot-games
 
@@ -904,7 +904,7 @@ Ray Examples
 
         The Magic of Merlin - Shopify's New ML Platform
 
-    .. grid-item-card:: :bdg-success:`Tutorial`
+    .. grid-item-card:: :bdg-warning:`Talk`
         :class-item: gallery-item
         :link: https://drive.google.com/file/d/1BS5lfXfuG5bnI8UM6FdUrR7CiSuWqdLn/view
 
@@ -916,7 +916,7 @@ Ray Examples
 
         Griffin: How Instacart’s ML Platform Tripled in a year
 
-    .. grid-item-card:: :bdg-warning:`Video`
+    .. grid-item-card:: :bdg-warning:`Talk`
         :class-item: gallery-item
         :link: https://www.youtube.com/watch?v=B5v9B5VSI7Q
 
@@ -928,7 +928,7 @@ Ray Examples
 
         Building a ML Platform with Kubeflow and Ray on GKE
 
-    .. grid-item-card:: :bdg-warning:`Video`
+    .. grid-item-card:: :bdg-warning:`Talk`
         :class-item: gallery-item
         :link: https://www.youtube.com/watch?v=_L0lsShbKaY
 
