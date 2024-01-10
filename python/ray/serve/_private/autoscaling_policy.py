@@ -1,5 +1,6 @@
 import logging
 import time
+from dataclasses import replace
 from threading import Thread
 from typing import Callable, List, Optional
 
@@ -80,6 +81,7 @@ class AutoscalingPolicyManager:
         target_capacity_direction: Optional[TargetCapacityDirection] = None,
         app_name: Optional[str] = None,
         deployment_name: Optional[str] = None,
+        _skip_bound_check: bool = False,
     ) -> Optional[int]:
         """Interface with the autoscaling policy to get a decision to scale replicas.
         If the autoscaling policy is not ready or returning the same number as the
@@ -93,7 +95,8 @@ class AutoscalingPolicyManager:
             self.config.max_replicas,
             target_capacity,
         )
-        self.context.update(
+        self.context = replace(
+            self.context,
             curr_target_num_replicas=curr_target_num_replicas,
             current_num_ongoing_requests=current_num_ongoing_requests,
             current_handle_queued_queries=current_handle_queued_queries,
@@ -111,6 +114,9 @@ class AutoscalingPolicyManager:
         )
         if decision_num_replicas is not None:
             self.context.last_scale_time = time.time()
+            if _skip_bound_check:
+                return decision_num_replicas
+
             return self.apply_bounds(
                 curr_target_num_replicas=decision_num_replicas,
                 target_capacity=target_capacity,
