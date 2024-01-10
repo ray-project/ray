@@ -147,11 +147,14 @@ class MessageQueue(Send):
     `get_messages_nowait` and `wait_for_message` is undefined behavior).
 
     This class implements the ASGI `Send` interface.
+
+    If `write_event_loop` is provided, all writes will be posted to that event loop.
     """
 
-    def __init__(self):
+    def __init__(self, *, write_event_loop: Optional[asyncio.AbstractEventLoop] = None):
         self._message_queue = asyncio.Queue()
         self._new_message_event = asyncio.Event()
+        self._write_event_loop = write_event_loop
         self._closed = False
 
     def close(self):
@@ -164,6 +167,10 @@ class MessageQueue(Send):
         self._closed = True
         self._new_message_event.set()
 
+    def put_message_nowait(self, message: Message):
+        self._message_queue.put_nowait(message)
+        self._new_message_event.set()
+
     async def __call__(self, message: Message):
         """Send a message, putting it on the queue.
 
@@ -172,8 +179,12 @@ class MessageQueue(Send):
         if self._closed:
             raise RuntimeError("New messages cannot be sent after the queue is closed.")
 
-        await self._message_queue.put(message)
-        self._new_message_event.set()
+        if self._write_event_loop is not None:
+            self._write_event_loop.call_soon_threadsafe(
+                self.put_message_nowait, message
+            )
+        else:
+            self.put_message_nowait(message)
 
     def get_messages_nowait(self) -> List[Message]:
         """Returns all messages that are currently available (non-blocking).

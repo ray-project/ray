@@ -433,7 +433,10 @@ class ReplicaActor:
         try:
             # Handle the request in a background asyncio.Task. It's expected that
             # this task will use the result queue to send its response messages.
-            result_queue = MessageQueue()
+            result_queue = MessageQueue(
+                # XXX: comment!
+                write_event_loop=self._event_loop,
+            )
             call_user_method_future = self._user_callable_wrapper.call_user_method(
                 request_metadata,
                 request_args,

@@ -18,8 +18,11 @@ def shared_ray_instance(request):
 
 
 @pytest.mark.asyncio
-async def test_message_queue():
-    queue = MessageQueue()
+@pytest.mark.parametrize("pass_write_event_loop", [False, True])
+async def test_message_queue(pass_write_event_loop: bool):
+    queue = MessageQueue(
+        write_event_loop=get_or_create_event_loop() if pass_write_event_loop else None
+    )
 
     # Check that wait_for_message hangs until a message is sent.
     with pytest.raises(asyncio.TimeoutError):
