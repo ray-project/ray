@@ -1,12 +1,55 @@
 import logging
-from typing import List, Optional
+import time
+from dataclasses import replace
+from threading import Thread
+from typing import Callable, List, Optional
 
 from ray.serve._private.common import TargetCapacityDirection
 from ray.serve._private.constants import SERVE_LOGGER_NAME
 from ray.serve._private.utils import get_capacity_adjusted_num_replicas
+from ray.serve.autoscaling_policy import AutoscalingContext
 from ray.serve.config import AutoscalingConfig
 
 logger = logging.getLogger(SERVE_LOGGER_NAME)
+
+
+class ThreadManager:
+    def __init__(self, func: Callable):
+        self.func = func
+        self.decision_num_replicas = None
+        self.thread = None
+        self.start_time = time.time()
+        self.exponential_backoff = 0
+
+    def __call__(self, context: AutoscalingContext):
+        self.start_time = time.time()
+        try:
+            self.decision_num_replicas = self.func(context)
+            self.exponential_backoff = 0
+        except Exception as e:
+            self.exponential_backoff = self.exponential_backoff * 2 + 1
+            logger.warning(
+                f"Autoscaling call throw exception: {e}. \n"
+                f"Exponentially backoff {self.exponential_backoff}s before retry."
+            )
+
+    def done(self):
+        return self.thread is not None and not self.thread.is_alive()
+
+    def _should_start_thread(self):
+        return (
+            self.thread is None
+            and time.time() - self.start_time >= self.exponential_backoff
+        )
+
+    def get_decision_num_replicas(self, context: AutoscalingContext) -> Optional[int]:
+        if self._should_start_thread():
+            self.thread = Thread(target=self, kwargs={"context": context})
+            self.thread.start()
+
+        if self.done():
+            self.thread = None
+            return self.decision_num_replicas
 
 
 class AutoscalingPolicyManager:
@@ -14,14 +57,16 @@ class AutoscalingPolicyManager:
 
     def __init__(self, config: Optional[AutoscalingConfig]):
         self.config = config
+        self.context = AutoscalingContext(config=config)
         self.policy = None
-        self.policy_state = {}
+        self.thread_manager = None
         self._create_policy()
 
     def _create_policy(self):
         """Creates an autoscaling policy based on the given config."""
         if self.config:
             self.policy = self.config.get_policy()
+            self.thread_manager = ThreadManager(self.policy)
 
     def should_autoscale(self) -> bool:
         """Returns whether autoscaling should be performed."""
@@ -34,13 +79,13 @@ class AutoscalingPolicyManager:
         current_handle_queued_queries: float,
         target_capacity: Optional[float] = None,
         target_capacity_direction: Optional[TargetCapacityDirection] = None,
+        app_name: Optional[str] = None,
+        deployment_name: Optional[str] = None,
         _skip_bound_check: bool = False,
     ) -> Optional[int]:
         """Interface with the autoscaling policy to get a decision to scale replicas.
-
-        After the decision number of replicas is returned by the policy, it is then
-        bounded by the bounds min and max adjusted by the target capacity and returned.
-        If `_skip_bound_check` is True, then the bounds are not applied.
+        If the autoscaling policy is not ready or returning the same number as the
+        current replica number, return None to not execute autoscaling.
         """
         capacity_adjusted_min_replicas = self.get_current_lower_bound(
             target_capacity,
@@ -50,24 +95,33 @@ class AutoscalingPolicyManager:
             self.config.max_replicas,
             target_capacity,
         )
-        decision_num_replicas = self.policy(
+        self.context = replace(
+            self.context,
             curr_target_num_replicas=curr_target_num_replicas,
             current_num_ongoing_requests=current_num_ongoing_requests,
             current_handle_queued_queries=current_handle_queued_queries,
-            config=self.config,
             capacity_adjusted_min_replicas=capacity_adjusted_min_replicas,
             capacity_adjusted_max_replicas=capacity_adjusted_max_replicas,
-            policy_state=self.policy_state,
+            app_name=app_name,
+            deployment_name=deployment_name,
         )
-
-        if _skip_bound_check:
-            return decision_num_replicas
-
-        return self.apply_bounds(
-            curr_target_num_replicas=decision_num_replicas,
-            target_capacity=target_capacity,
-            target_capacity_direction=target_capacity_direction,
+        # Note: The thread manager will continuously return None until a decision is
+        # made. We do not currently force kill and restart the scaling call due to
+        # complexities. We will add docs to warn users not to make long-running calls
+        # here, and they can set timeout in their policies if needed.
+        decision_num_replicas = self.thread_manager.get_decision_num_replicas(
+            context=self.context,
         )
+        if decision_num_replicas is not None:
+            self.context.last_scale_time = time.time()
+            if _skip_bound_check:
+                return decision_num_replicas
+
+            return self.apply_bounds(
+                curr_target_num_replicas=decision_num_replicas,
+                target_capacity=target_capacity,
+                target_capacity_direction=target_capacity_direction,
+            )
 
     def get_current_lower_bound(
         self,
@@ -106,7 +160,6 @@ class AutoscalingPolicyManager:
             target_capacity,
         )
         lower_bound = self.get_current_lower_bound(
-            target_capacity,
-            target_capacity_direction,
+            target_capacity, target_capacity_direction
         )
         return max(lower_bound, min(upper_bound, curr_target_num_replicas))
