@@ -405,7 +405,7 @@ class PPO(Algorithm):
     @override(Algorithm)
     def training_step(self):
         # New API stack (RLModule, Learner, EnvRunner, ConnectorV2).
-        if self._uses_new_env_runners:
+        if self.config.uses_new_env_runners:
             return self._training_step_new_api_stack()
         # Old and hybrid API stacks (Policy, RolloutWorker, Connector, maybe RLModule,
         # maybe Learner).
