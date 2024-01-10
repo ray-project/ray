@@ -29,7 +29,7 @@ class Actor:
         self.sys_exit = sys_exit
 
     def inc(self, x):
-        self.i += 1
+        self.i += x
         if self.fail_after and self.i > self.fail_after:
             # Randomize the failures to better cover multi actor scenarios.
             if random.random() > 0.5:
@@ -37,7 +37,7 @@ class Actor:
                     os._exit(1)
                 else:
                     raise ValueError("injected fault")
-        return str(self.i).encode("utf-8")
+        return self.i
 
     def append_to(self, lst):
         lst.append(self.i)
@@ -61,10 +61,10 @@ def test_basic(ray_start_regular):
     compiled_dag = dag.experimental_compile()
 
     for i in range(3):
-        output_channel = compiled_dag.execute(b"hello world")
+        output_channel = compiled_dag.execute(1)
         # TODO(swang): Replace with fake ObjectRef.
         result = output_channel.begin_read()
-        assert result == str(i + 1).encode("utf-8")
+        assert result == i + 1
         output_channel.end_read()
 
     # Note: must teardown before starting a new Ray session, otherwise you'll get

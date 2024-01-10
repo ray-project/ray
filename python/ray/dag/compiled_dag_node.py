@@ -47,7 +47,8 @@ def torch_init(self, rank, world_size):
     import torch
 
     print("call torch init", rank, world_size)
-    os.environ["MASTER_ADDR"] = "localhost"
+    # TODO assign these in a better way
+    os.environ["MASTER_ADDR"] = ray._private.services.get_node_ip_address()
     os.environ["MASTER_PORT"] = "26254"
 
     torch.distributed.init_process_group(
@@ -187,7 +188,7 @@ class CompiledDAG:
         self.idx_to_task: Dict[int, "CompiledTask"] = {}
         # DAGNode -> idx.
         self.dag_node_to_idx: Dict["ray.dag.DAGNode", int] = {}
-        # idx counter. rank 0 is the driver
+        # idx counter.
         self.counter: int = 0
 
         # Attributes that are set during preprocessing.
