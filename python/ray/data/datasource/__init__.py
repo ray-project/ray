@@ -1,3 +1,5 @@
+from iceberg_datasource import IcebergDatasource
+
 from ray.data.datasource.bigquery_datasink import _BigQueryDatasink
 from ray.data.datasource.bigquery_datasource import BigQueryDatasource
 from ray.data.datasource.binary_datasource import BinaryDatasource
@@ -33,7 +35,6 @@ from ray.data.datasource.file_meta_provider import (
     FileMetadataProvider,
     ParquetMetadataProvider,
 )
-from iceberg_datasource import IcebergDatasource
 from ray.data.datasource.filename_provider import FilenameProvider
 from ray.data.datasource.image_datasink import _ImageDatasink
 from ray.data.datasource.image_datasource import ImageDatasource
