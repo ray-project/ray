@@ -108,7 +108,7 @@ class AutoscalingContext:
     # The max_replica of the deployment adjusted by the target capacity.
     capacity_adjusted_max_replicas: Optional[int] = None
     # State of the policy to be used during the call
-    policy_state: Dict[str, Any] = None
+    policy_state: Dict[str, Any] = field(default_factory=dict)
     # The timestamp of last scaled time. Will be None If not scaled yet.
     last_scale_time: Optional[float] = None
     # The name of the application.
