@@ -115,10 +115,8 @@ class Benchmark:
             if isinstance(batch, dict):
                 feature_lengths = {k: len(batch[k]) for k in batch}
                 batch_size = max(feature_lengths.values())
-                continue
             elif isinstance(batch, (pa.Table, pd.DataFrame)):
                 batch_size = len(batch)
-                continue
             elif isinstance(batch, torch.Tensor):
                 batch_size = batch.size(dim=0)
             elif isinstance(batch, tf.Tensor):
