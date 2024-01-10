@@ -62,6 +62,7 @@ class RuntimeEnvContext:
 
             class_path_args = ["-cp", ray_jars + ":" + str(":".join(local_java_jars))]
             passthrough_args = class_path_args + passthrough_args
+            passthrough_args = [s.replace(" ", r"\ ") for s in passthrough_args]
         elif sys.platform == "win32":
             executable = ""
         else:
@@ -78,13 +79,27 @@ class RuntimeEnvContext:
                     f"Changing the default worker path from {passthrough_args[0]} to "
                     f"{default_worker_path}."
                 )
-                passthrough_args[0] = default_worker_path
+                passthrough_args = ["python", default_worker_path] + passthrough_args[
+                    1:
+                ]
             else:
-                python_get_default_worker_path = "$(python -c \"import os,ray; f = ray.__file__; print(os.path.join(os.path.dirname(f), '_private/workers/default_worker.py'))\")"  # noqa
-                passthrough_args[0] = python_get_default_worker_path
+                # python_get_default_worker_path = "$(python -c 'import os,ray; f = ray.__file__; print(os.path.join(os.path.dirname(f), \"_private/workers/default_worker.py\"))')"  # noqa
+                get_worker_path = "'import os,ray; f=ray.__file__; print(os.path.join(os.path.dirname(f), \\\"_private/workers/default_worker.py\\\"))'"  # noqa
+                passthrough_args = [
+                    "python",
+                    "-c",
+                    get_worker_path,
+                    "|",
+                    "xargs",
+                    "-I{}",
+                    "python",
+                    "{}",
+                ] + passthrough_args[1:]
+            exec_command = executable + ' -c "' + " ".join(passthrough_args) + '"'
 
-        passthrough_args = [s.replace(" ", r"\ ") for s in passthrough_args]
-        exec_command = " ".join([f"{executable}"] + passthrough_args)
+        else:
+            exec_command = " ".join([f"{executable}"] + passthrough_args)
+
         command_str = " ".join(self.command_prefix + [exec_command])
         logger.info(f"command prefix: {self.command_prefix}")
         logger.info(f"exec command: {exec_command}")

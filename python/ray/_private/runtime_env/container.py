@@ -64,7 +64,7 @@ class ContainerManager:
             container_command.extend(runtime_env.py_container_run_options())
         # TODO(chenk008): add resource limit
         container_command.append("--entrypoint")
-        container_command.append("python")
+        container_command.append("sh")
         container_command.append(runtime_env.py_container_image())
         context.py_executable = " ".join(container_command)
         logger.info(
