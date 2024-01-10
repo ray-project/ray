@@ -424,8 +424,8 @@ class PPO(Algorithm):
         if self.config._enable_new_api_stack:
             # TODO (Kourosh) Clearly define what train_batch_size
             #  vs. sgd_minibatch_size and num_sgd_iter is in the config.
-            train_results = self.learner_group.update(
-                train_batch,
+            train_results = self.learner_group.update_from_batch(
+                batch=train_batch,
                 minibatch_size=self.config.sgd_minibatch_size,
                 num_iters=self.config.num_sgd_iter,
             )
