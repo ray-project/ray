@@ -830,6 +830,9 @@ class UserCallableWrapper:
 
     @_run_on_event_loop
     async def call_reconfigure(self, user_config: Any):
+        # NOTE(edoakes): there is the possibility of a race condition in user code if
+        # they don't have any form of concurrency control between `reconfigure` and
+        # other methods. See https://github.com/ray-project/ray/pull/42159.
         if user_config is not None:
             if self._is_function:
                 raise ValueError("deployment_def must be a class to use user_config")
