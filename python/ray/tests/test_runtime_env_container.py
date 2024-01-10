@@ -91,6 +91,19 @@ def test_serve_telemetry(podman_docker_cluster):
     run_in_container([cmd], container_id)
 
 
+def test_automatically_infered_worker_path(podman_docker_cluster):
+    """Docstring"""
+
+    container_id = podman_docker_cluster
+    cmd = [
+        "python",
+        "tests/test_automatic_worker_path.py",
+        "--image",
+        NESTED_IMAGE_NAME,
+    ]
+    run_in_container([cmd], container_id)
+
+
 EXPECTED_ERROR = (
     "The 'container' field currently cannot be used "
     "together with other fields of runtime_env."

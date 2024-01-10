@@ -80,7 +80,7 @@ class RuntimeEnvContext:
                 )
                 passthrough_args[0] = default_worker_path
             else:
-                python_get_default_worker_path = "$(python -c \"import os,ray; f = ray.__file__; print(os.path.join(os.path.dirname(f), '_private/workers/default_worker.py'))\")"
+                python_get_default_worker_path = "$(python -c \"import os,ray; f = ray.__file__; print(os.path.join(os.path.dirname(f), '_private/workers/default_worker.py'))\")"  # noqa
                 passthrough_args[0] = python_get_default_worker_path
 
         passthrough_args = [s.replace(" ", r"\ ") for s in passthrough_args]
