@@ -9,7 +9,13 @@ from ray.experimental.channel import Channel
 
 # Precondition: the communication group is setup for the reader and writer actors.
 class TorchChannel(Channel):
-    def __init__(self, buffer_size_bytes: int, reader_ranks: List[int], writer_rank: int, strategy: str = "isend"):
+    def __init__(
+        self,
+        buffer_size_bytes: int,
+        reader_ranks: List[int],
+        writer_rank: int,
+        strategy: str = "isend",
+    ):
         self._buffer_size_bytes = buffer_size_bytes
         self._reader_ranks = reader_ranks
         self._writer_rank = writer_rank
@@ -20,7 +26,8 @@ class TorchChannel(Channel):
         print(
             f"Created Torch channel with buffer_size_bytes={buffer_size_bytes}, "
             f"reader_ranks={reader_ranks}, writer_rank={writer_rank}, "
-            f"strategy={strategy}")
+            f"strategy={strategy}"
+        )
 
     def __reduce__(self):
         return TorchChannel, (
@@ -43,7 +50,9 @@ class TorchChannel(Channel):
         if self._strategy == "broadcast":
             work.append(
                 torch.distributed.broadcast(
-                    self._arr, src=self._writer_rank, async_op=True))
+                    self._arr, src=self._writer_rank, async_op=True
+                )
+            )
         else:
             for rank in self._reader_ranks:
                 work.append(torch.distributed.isend(self._arr, rank))
@@ -64,7 +73,6 @@ class TorchChannel(Channel):
         pass
 
     def _serialize(self, value: Any) -> bytes:
-        ctx = self._worker.get_serialization_context()
         if not isinstance(value, bytes):
             raise NotImplementedError("only support bytes types only for now")
         return value

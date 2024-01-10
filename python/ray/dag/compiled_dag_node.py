@@ -13,25 +13,34 @@ from ray.util.annotations import DeveloperAPI
 
 
 MAX_BUFFER_SIZE = int(100 * 1e6)  # 100MB
+USE_TORCH_CHANNEL = bool(int(os.environ.get("USE_TORCH_CHANNEL", "0")))
+USE_TORCH_BROADCAST = bool(int(os.environ.get("USE_TORCH_BROADCAST", "1")))
 
 logger = logging.getLogger(__name__)
 
 
 @DeveloperAPI
-def make_torch_channel(
-    self, buffer_size_bytes: int, reader_ranks: int, writer_rank: int
-) -> TorchChannel:
+def do_allocate_channel(
+    self, buffer_size_bytes: int, reader_ranks: int, writer_rank: int, strategy: str
+) -> Channel:
     """Generic actor method to allocate an output channel.
-
-    Args:
-        buffer_size_bytes: The maximum size of messages in the channel.
-        num_readers: The number of readers per message.
 
     Returns:
         The allocated channel.
     """
-    self._output_channel = TorchChannel(buffer_size_bytes, reader_ranks, writer_rank)
+    self._output_channel = _make_channel(
+        buffer_size_bytes, reader_ranks, writer_rank, strategy
+    )
     return self._output_channel
+
+
+def _make_channel(
+    buffer_size_bytes: int, reader_ranks: int, writer_rank: int, strategy: str
+):
+    if USE_TORCH_CHANNEL:
+        return TorchChannel(buffer_size_bytes, reader_ranks, writer_rank, strategy)
+    else:
+        return Channel(buffer_size_bytes, len(reader_ranks))
 
 
 def torch_init(self, rank, world_size):
@@ -133,9 +142,9 @@ class CompiledTask:
         """
         self.idx = idx
         self.dag_node = dag_node
-        self.output_channel = None
 
         self.downstream_node_idxs = set()
+        self.output_channel = None
 
     @property
     def args(self) -> Tuple[Any]:
@@ -347,21 +356,22 @@ class CompiledDAG:
                         output_indices.append(idx)
                 task.output_channel = ray.get(
                     fn.remote(
-                        make_torch_channel,
+                        do_allocate_channel,
                         buffer_size_bytes=self._buffer_size_bytes,
                         reader_ranks=output_indices,
                         writer_rank=task.idx,
+                        strategy="isend",
                     )
                 )
                 self.actor_refs.add(task.dag_node._get_actor_handle())
                 self.actor_ranks[task.dag_node._get_actor_handle()] = task.idx
             elif isinstance(task.dag_node, InputNode):
-                if len(task.downstream_node_idxs) > 1:
+                if len(task.downstream_node_idxs) > 1 and USE_TORCH_BROADCAST:
                     # TODO this assumes we send to all actors
                     strategy = "broadcast"
                 else:
                     strategy = "isend"
-                task.output_channel = TorchChannel(
+                task.output_channel = _make_channel(
                     buffer_size_bytes=self._buffer_size_bytes,
                     reader_ranks=list(task.downstream_node_idxs),
                     writer_rank=self.input_task_idx,
@@ -373,7 +383,8 @@ class CompiledDAG:
             for idx in task.downstream_node_idxs:
                 queue.append(idx)
 
-        self._torch_init()
+        if USE_TORCH_CHANNEL:
+            self._torch_init()
         for node_idx, task in self.idx_to_task.items():
             if node_idx == self.input_task_idx:
                 # We don't need to assign an actual task for the input node.
