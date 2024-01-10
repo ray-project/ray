@@ -1,14 +1,14 @@
 import asyncio
+import enum
 import pickle
 import time
-from typing import Any, Callable, List, Optional
+from typing import Any, Callable
 
 import click
 import msgpack
-from pydantic import BaseModel
 
 from ray._private.serialization import SerializationContext
-from ray.cloudpickle import cloudpickle, cloudpickle_fast
+from ray.cloudpickle import cloudpickle_fast
 from ray.serve._private.benchmarks.common import (
     collect_profile_events,
     run_latency_benchmark,
@@ -18,6 +18,19 @@ from ray.serve._private.benchmarks.serialization.common import (
     PayloadPydantic,
 )
 
+
+class PayloadType(enum.Enum):
+    PYDANTIC = "pydantic"
+    DATACLASS = "dataclass"
+
+
+class SerializerType(enum.Enum):
+    RAY = "ray"
+    PICKLE = "pickle"
+    CLOUDPICKLE = "cloudpickle"
+    MSGPACK = "msgpack"
+
+
 _PERCENTILES = [0.5, 0.99]
 
 
@@ -25,18 +38,19 @@ sc = SerializationContext(None)
 
 
 def _create_model(cls):
-    return PayloadPydantic(
+    return cls(
         text="Test output",
         floats=[float(f) for f in range(1, 100)],
         ints=[i for i in range(1, 100)],
         ts=time.time(),
         reason="Success!",
-        # error=PayloadPydantic.Error(
-        #     msg="No error!",
-        #     code=-1,
-        #     type="NoErrorError",
-        # )
     )
+
+
+def _blackhole(o):
+    """Placeholder to be used in the benchmark to make sure runtime
+    doesn't optimize out unused results"""
+    pass
 
 
 async def run_serializer_benchmark(
@@ -44,39 +58,35 @@ async def run_serializer_benchmark(
 ):
     def _serde_loop():
         bs = serializer(model)
-
-        # print(f"Bytes ({len(bs)}): ", bs)
-
-        # new = sc.deserialize_objects([(bs, metadata)], [None])
-        # assert new == r
+        _blackhole(bs)
 
     pd = await run_latency_benchmark(_serde_loop, iterations)
 
-    print("Pydantic latencies: ", pd.describe(percentiles=_PERCENTILES))
+    print("Latencies (ms):\n", pd.describe(percentiles=_PERCENTILES))
 
 
 @click.command(help="Benchmark serialization latency")
 @click.option(
-    "--iterations",
+    "--trials",
     type=int,
     default=1000,
-    help="TBA",
+    help="Total number of trials to run in a single benchmark run",
 )
 @click.option(
     "--batch-size",
     type=int,
     default=10,
-    help="TBA",
+    help="Controls how many objects are contained in a serialized batch",
 )
 @click.option(
     "--payload-type",
-    type=str,
-    help="TBA",
+    type=PayloadType,
+    help="Target type of the payload to be benchmarked (supported: pydantic, dataclass)",
 )
 @click.option(
     "--serializer",
-    type=str,
-    help="TBA",
+    type=SerializerType,
+    help="Target type of the serializer to be benchmarked (supported: ray, pickle, cloudpickle, msgpack)",
 )
 @click.option(
     "--profile-events",
@@ -84,33 +94,26 @@ async def run_serializer_benchmark(
     default=False,
 )
 def main(
-    iterations: int,
+    trials: int,
     batch_size: int,
-    payload_type: str,
-    serializer: str,
+    payload_type: PayloadType,
+    serializer: SerializerType,
     profile_events: bool,
 ):
-    if serializer == "ray":
-
+    if serializer == SerializerType.RAY:
         def _serialize(obj):
             so = sc.serialize(obj)
             bs, metadata = so.to_bytes(), so.metadata
             return bs
-
-    elif serializer == "cloudpickle":
-
+    elif serializer == SerializerType.CLOUDPICKLE:
         def _serialize(obj):
             bs = cloudpickle_fast.dumps(obj)
             return bs
-
-    elif serializer == "pickle":
-
+    elif serializer == SerializerType.PICKLE:
         def _serialize(obj):
             bs = pickle.dumps(obj)
             return bs
-
-    elif serializer == "msgpack":
-
+    elif serializer == SerializerType.MSGPACK:
         def _dumps(obj):
             bs = msgpack.dumps(obj.__dict__)
             # print(f"Bytes ({len(bs)}): ", bs)
@@ -126,20 +129,19 @@ def main(
             so = sc.serialize(obj)
             bs, metadata = so.to_bytes(), so.metadata
             return bs
-
     else:
         raise NotImplementedError(serializer)
 
-    if payload_type == "pydantic":
+    if payload_type == PayloadType.PYDANTIC:
         model = _create_model(PayloadPydantic)
-    elif payload_type == "dataclass":
+    elif payload_type == PayloadType.DATACLASS:
         model = _create_model(PayloadDataclass)
     else:
         raise NotImplementedError(f"Not supported ({payload_type})")
 
     payload = [model.copy(deep=True) for _ in range(batch_size)]
 
-    routine = run_serializer_benchmark(payload, _serialize, iterations)
+    routine = run_serializer_benchmark(payload, _serialize, trials)
 
     if profile_events:
         routine = collect_profile_events(routine)

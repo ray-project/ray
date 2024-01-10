@@ -3,8 +3,6 @@ from typing import List, Optional
 
 from pydantic import BaseModel
 
-from ray.cloudpickle import cloudpickle
-
 #
 # NOTE: PLEASE READ CAREFULLY BEFORE CHANGING
 #
@@ -15,30 +13,17 @@ from ray.cloudpickle import cloudpickle
 
 
 class PayloadPydantic(BaseModel):
-    class Error(BaseModel):
-        msg: str
-        code: int
-        type: str
-
     text: Optional[str] = None
     floats: Optional[List[float]] = None
     ints: Optional[List[int]] = None
     ts: Optional[float] = None
     reason: Optional[str] = None
-    error: Optional[Error] = None
 
 
 @dataclass
 class PayloadDataclass:
-    @dataclass
-    class Error:
-        msg: str
-        type: str
-        code: int
-
     text: Optional[str] = None
     floats: Optional[List[float]] = None
     ints: Optional[List[int]] = None
     ts: Optional[float] = None
     reason: Optional[str] = None
-    error: Optional[Error] = None
