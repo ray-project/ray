@@ -70,6 +70,7 @@ from ray.data.datasource import (
     ParquetMetadataProvider,
     PathPartitionFilter,
 )
+from datasource import IcebergDatasource
 from ray.data.datasource._default_metadata_providers import (
     get_generic_metadata_provider,
     get_image_metadata_provider,
@@ -98,6 +99,7 @@ if TYPE_CHECKING:
     import tensorflow as tf
     import torch
     from tensorflow_metadata.proto.v0 import schema_pb2
+    from pyiceberg.expressions import BooleanExpression
 
     from ray.data._internal.datasource.tfrecords_datasource import TFXReadOptions
 
@@ -2305,6 +2307,54 @@ def read_databricks_tables(
         concurrency=concurrency,
         override_num_blocks=override_num_blocks,
     )
+
+
+@PublicAPI
+def read_iceberg_table(
+    *,
+    table_identifier: str,
+    catalog_type: str = "glue",
+    row_filter: Union[str, "BooleanExpression"] = None,
+    parallelism: int = -1,
+    selected_fields: Tuple[str, ...] = ("*",),
+    snapshot_id: Optional[int] = None,
+    scan_kwargs: Optional[dict[str, str]] = None,
+    ray_remote_args: Optional[Dict[str, Any]] = None,
+) -> Dataset:
+    """
+    Read an Iceberg table into a `ray.data.Dataset` object. This function creates an IcebergDatasource object, which is
+    then passed to Ray's read_api functionality.
+
+    Args:
+        table_identifier: Fully qualified table identifier (i.e., "db_name.table_name")
+        catalog_type: The type of catalog to use PyIceberg with (defaults to "glue")
+        parallelism: Degree of parallelism to use for the Dataset. Please consult ray.data.read_api for details
+        row_filter: A PyIceberg BooleanExpression to use to filter the data *prior* to reading
+        selected_fields: Which columns from the data to read, passed directly to PyIceberg's load functions
+        snapshot_id: Optional snapshot ID for the Iceberg table
+        scan_kwargs: Optional arguments to pass to PyIceberg's Table.scan() function (e.g., case_sensitive, limit, etc.)
+        ray_remote_args: Optional arguments to pass to `ray.remote` in the read tasks
+
+    Returns:
+        dataset: A Ray dataset (of type `ray.data.Dataset`) read off the Iceberg table
+    """
+    # Setup the Datasource
+    datasource = IcebergDatasource(
+        table_identifier=table_identifier,
+        catalog_type=catalog_type,
+        row_filter=row_filter,
+        selected_fields=selected_fields,
+        snapshot_id=snapshot_id,
+        scan_kwargs=scan_kwargs,
+    )
+
+    dataset = read_datasource(
+        datasource=datasource,
+        parallelism=parallelism,
+        ray_remote_args=ray_remote_args
+    )
+
+    return dataset
 
 
 @PublicAPI

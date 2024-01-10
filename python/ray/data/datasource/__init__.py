@@ -20,6 +20,7 @@ from ray.data.datasource.file_meta_provider import (
     FastFileMetadataProvider,
     FileMetadataProvider,
 )
+from iceberg_datasource import IcebergDatasource
 from ray.data.datasource.filename_provider import FilenameProvider
 from ray.data.datasource.parquet_meta_provider import ParquetMetadataProvider
 from ray.data.datasource.partitioning import (
