@@ -30,6 +30,7 @@ class SACTfRLModule(TfRLModule, SACRLModule):
 
         return output
 
+    @override(RLModule)
     def _forward_exploration(self, batch: NestedDict) -> Dict[str, Any]:
         self._forward_inference(batch)
 
@@ -73,4 +74,40 @@ class SACTfRLModule(TfRLModule, SACRLModule):
         output["action_dist_inputs_next"] = action_logits_next
 
         # Return the network outputs.
+        return output
+    
+    def _qf_forward_train(self, batch: NestedDict) -> Dict[str, Any]:
+        """Forward pass through Q network.
+        
+        Note, this is only used in training.
+        """
+        output = {}
+
+        # Encoder forward pass.
+        qf_encoder_outs = self.qf_encoder(batch)
+        
+        # Q head forward pass.
+        qf_out = self.qf(qf_encoder_outs[ENCODER_OUT])
+        # Squeeze out the last dimension (Q function node).
+        output[QF_PREDS] = tf.squeeze(qf_out, axis=-1)
+
+        # Return Q values.
+        return output
+    
+    def _qf_target_forward_train(self, batch: NestedDict) -> Dict[str, Any]:
+        """Forward pass through Q target network.
+        
+        Note, this is only used in training.
+        """
+        output = {}
+
+        # Encoder forward pass.
+        qf_target_encoder_outs = self.qf_target_encoder(batch)
+        
+        # Target Q head forward pass.
+        qf_target_out = self.qf(qf_target_encoder_outs[ENCODER_OUT])
+        # Squeeze out the last dimension (Q function node).
+        output[QF_PREDS] = tf.squeeze(qf_target_out, axis=-1)
+
+        # Return target Q values.
         return output
