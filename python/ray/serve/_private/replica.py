@@ -809,10 +809,10 @@ class UserCallableWrapper:
                     + RECONFIGURE_METHOD
                     + " method"
                 )
-            reconfigure_method = sync_to_async(
-                getattr(self._callable, RECONFIGURE_METHOD)
+            await self._call_func_or_gen(
+                getattr(self._callable, RECONFIGURE_METHOD),
+                user_config,
             )
-            await reconfigure_method(user_config)
 
     def _prepare_args_for_http_request(
         self,
