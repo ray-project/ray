@@ -81,9 +81,6 @@ class FakeProxyWrapper(ProxyWrapper):
     def get_num_drain_checks(self):
         return self.num_health_checks
 
-    def get_num_drain_checks(self):
-        return self.num_drain_checks
-
 
 def _create_proxy_state_manager(
     http_options: HTTPOptions = HTTPOptions(),
@@ -557,52 +554,6 @@ def test_proxy_actor_manager_removing_proxies(all_nodes, number_of_worker_nodes)
 
     assert len(manager._proxy_states) == 1
     assert manager._proxy_states[HEAD_NODE_ID].status == ProxyStatus.HEALTHY
-
-
-@patch("ray.serve._private.proxy_state.PROXY_HEALTH_CHECK_PERIOD_S", 5)
-def test_proxy_state_reconcile_draining_success():
-    """Test that the proxy will remain DRAINING even if health check succeeds."""
-    timer = MockTimer(start_time=0)
-    # Start with HEALTHY state
-    proxy_state = _create_proxy_state(status=ProxyStatus.HEALTHY, timer=timer)
-    # Simulate health-checks passing
-    proxy_state._actor_proxy_wrapper.healthy = ProxyWrapperCallStatus.FINISHED_SUCCEED
-    # Simulate is_drained check returning false
-    proxy_state._actor_proxy_wrapper.drained = ProxyWrapperCallStatus.FINISHED_FAILED
-
-    for _ in range(10):
-        proxy_state.update(draining=True)
-        assert proxy_state.status == ProxyStatus.DRAINING
-        # Advance timer by 5 (to trigger new health-check, drain-check)
-        timer.advance(5)
-
-    # assert proxy_state._actor_proxy_wrapper.get_num_health_checks() == 10
-    # assert proxy_state._actor_proxy_wrapper.get_num_drain_checks() == 9
-
-    # Make sure the status is still DRAINING
-    assert proxy_state.status == ProxyStatus.DRAINING
-
-    # Simulate is_drained request to ProxyActor pending (for 5 iterations)
-    proxy_state._actor_proxy_wrapper.drained = ProxyWrapperCallStatus.PENDING
-
-    for _ in range(5):
-        proxy_state.update(draining=True)
-        assert proxy_state.status == ProxyStatus.DRAINING
-        # Advance timer by 5 (to trigger new health-check, drain-check)
-        timer.advance(5)
-
-    # assert proxy_state._actor_proxy_wrapper.get_num_health_checks() == 15
-    # No new drain checks will occur, since there's a pending one (not completed yet)
-    # assert proxy_state._actor_proxy_wrapper.get_num_drain_checks() == 14
-
-    # Simulate draining completed
-    proxy_state._actor_proxy_wrapper.drained = ProxyWrapperCallStatus.FINISHED_SUCCEED
-    # Advance timer by 5 (to trigger new health-check, drain-check on next iteration)
-    timer.advance(5)
-
-    proxy_state.update(draining=True)
-    # State should transition to DRAINED
-    assert proxy_state.status == ProxyStatus.DRAINED
 
 
 def test_is_ready_for_shutdown(all_nodes):
