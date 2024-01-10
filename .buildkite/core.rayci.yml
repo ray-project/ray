@@ -31,7 +31,7 @@ steps:
     commands:
       - bazel run //ci/ray_ci:test_in_docker -- //python/ray/tests/... //python/ray/dag/... python/ray/autoscaler/v2/... core
         --workers "$${BUILDKITE_PARALLEL_JOB_COUNT}" --worker-id "$${BUILDKITE_PARALLEL_JOB}" --parallelism-per-worker 3
-        --except-tags debug_tests,asan_tests,post_wheel_build,ha_integration,mem_pressure,container,manual
+        --except-tags debug_tests,asan_tests,post_wheel_build,ha_integration,mem_pressure,tmpfs,container,manual
 
   - label: ":ray: core: redis tests"
     tags: python
@@ -41,7 +41,7 @@ steps:
       - bazel run //ci/ray_ci:test_in_docker -- //python/ray/tests/... //python/ray/dag/... python/ray/autoscaler/v2/... core
         --workers "$${BUILDKITE_PARALLEL_JOB_COUNT}" --worker-id "$${BUILDKITE_PARALLEL_JOB}" --parallelism-per-worker 3
         --test-env=TEST_EXTERNAL_REDIS=1
-        --except-tags debug_tests,asan_tests,post_wheel_build,ha_integration,mem_pressure,container,manual
+        --except-tags debug_tests,asan_tests,post_wheel_build,ha_integration,mem_pressure,tmpfs,container,manual
 
   - label: ":ray: core: :windows: python tests"
     tags: python
@@ -73,6 +73,27 @@ steps:
       - pip install -e python[client]
       - bazel test --config=ci --jobs=1 $(./ci/run/bazel_export_options)
         --test_tag_filters=mem_pressure -- //python/ray/tests/...
+    job_env: corebuild
+
+  - label: ":ray: core: out of disk tests"
+    tags:
+      - python
+      - oss
+    instance_type: small
+    commands:
+      - bazel run //ci/ray_ci:test_in_docker -- //python/ray/tests/... core
+        --only-tags=tmpfs --tmp-filesystem=tmpfs
+    job_env: corebuild
+
+  - label: ":ray: core: out of disk redis tests"
+    tags:
+      - python
+      - oss
+    instance_type: small
+    commands:
+      - bazel run //ci/ray_ci:test_in_docker -- //python/ray/tests/... core
+        --test-env=TEST_EXTERNAL_REDIS=1
+        --only-tags=tmpfs --tmp-filesystem=tmpfs
     job_env: corebuild
 
   - label: ":ray: core: workflow tests"

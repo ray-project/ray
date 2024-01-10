@@ -516,7 +516,7 @@ class PPO(Algorithm):
                 self.config.mini_batch_size_per_learner
                 or self.config.sgd_minibatch_size
             )
-            train_results = self.learner_group.update(
+            train_results = self.learner_group.update_from_batch(
                 batch=train_batch,
                 minibatch_size=mini_batch_size_per_learner,
                 num_iters=self.config.num_sgd_iter,
