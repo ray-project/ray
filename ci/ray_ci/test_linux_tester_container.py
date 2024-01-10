@@ -1,5 +1,7 @@
+import os
 import sys
 import pytest
+import tempfile
 from unittest import mock
 from typing import List, Optional
 
@@ -49,17 +51,20 @@ def test_run_tests_in_docker() -> None:
     ):
         LinuxTesterContainer(
             "team", network="host", build_type="debug", test_envs=["ENV_01", "ENV_02"]
-        )._run_tests_in_docker(["t1", "t2"], [0, 1], ["v=k"], "flag")
+        )._run_tests_in_docker(["t1", "t2"], [0, 1], "/tmp", ["v=k"], "flag")
         input_str = inputs[-1]
         assert "--env ENV_01 --env ENV_02 --env BUILDKITE" in input_str
         assert "--network host" in input_str
         assert '--gpus "device=0,1"' in input_str
+        assert "--volume /tmp:/tmp/bazel_event_logs" in input_str
         assert (
             "bazel test --jobs=1 --config=ci $(./ci/run/bazel_export_options) "
             "--config=ci-debug --test_env v=k --test_arg flag t1 t2" in input_str
         )
 
-        LinuxTesterContainer("team")._run_tests_in_docker(["t1", "t2"], [], ["v=k"])
+        LinuxTesterContainer("team")._run_tests_in_docker(
+            ["t1", "t2"], [], "/tmp", ["v=k"]
+        )
         input_str = inputs[-1]
         assert "--env BUILDKITE_BUILD_URL" in input_str
         assert "--gpus" not in input_str
@@ -126,6 +131,7 @@ def test_run_tests() -> None:
     def _mock_run_tests_in_docker(
         test_targets: List[str],
         gpu_ids: List[int],
+        bazel_log_dir: str,
         test_envs: List[str],
         test_arg: Optional[str] = None,
     ) -> MockPopen:
@@ -134,7 +140,13 @@ def test_run_tests() -> None:
     def _mock_shard_tests(tests: List[str], workers: int, worker_id: int) -> List[str]:
         return chunk_into_n(tests, workers)[worker_id]
 
-    with mock.patch(
+    with tempfile.TemporaryDirectory() as tmpdir, mock.patch(
+        "ci.ray_ci.linux_tester_container.LinuxTesterContainer.get_artifact_mount",
+        return_value=("/tmp/artifacts", tmpdir),
+    ), mock.patch(
+        "ci.ray_ci.linux_tester_container.LinuxTesterContainer._persist_test_results",
+        return_value=None,
+    ), mock.patch(
         "ci.ray_ci.linux_tester_container.LinuxTesterContainer._run_tests_in_docker",
         side_effect=_mock_run_tests_in_docker,
     ), mock.patch(
@@ -151,6 +163,18 @@ def test_run_tests() -> None:
         assert container.run_tests([], [])
         # test targets contain bad_test
         assert not container.run_tests(["bad_test"], [])
+
+
+def test_create_bazel_log_mount() -> None:
+    with tempfile.TemporaryDirectory() as tmpdir, mock.patch(
+        "ci.ray_ci.linux_tester_container.LinuxTesterContainer.get_artifact_mount",
+        return_value=("/tmp/artifacts", tmpdir),
+    ):
+        container = LinuxTesterContainer("team", skip_ray_installation=True)
+        assert container._create_bazel_log_mount("w00t") == (
+            "/tmp/artifacts/w00t",
+            os.path.join(tmpdir, "w00t"),
+        )
 
 
 if __name__ == "__main__":
