@@ -92,16 +92,16 @@ def _calculate_desired_num_replicas(
 @dataclass
 @PublicAPI(stability="alpha")
 class AutoscalingContext:
-    """Contains the context for an autoscaling policy call."""
+    """The context for an autoscaling policy call."""
 
-    # The AutoscalingConfig the deployment started with
+    # The AutoscalingConfig which the deployment started with.
     config: AutoscalingConfig
     # The number of replicas that the deployment is currently trying to scale to.
     current_target_num_replicas: int = 0
     # List of number of ongoing requests for each replica.
     current_num_ongoing_requests: List[int] = field(default_factory=list)
     # The number of handle queued queries, if there are multiple handles, the max
-    # number of queries at a single handle should be passed in
+    # number of queries at a single handle will be passed.
     current_handle_queued_queries: float = 0.0
     # The min_replica of the deployment adjusted by the target capacity.
     capacity_adjusted_min_replicas: Optional[int] = None
@@ -109,7 +109,7 @@ class AutoscalingContext:
     capacity_adjusted_max_replicas: Optional[int] = None
     # State of the policy to be used during the call
     policy_state: Dict[str, Any] = field(default_factory=dict)
-    # The timestamp of last scaled time. Will be None If not scaled yet.
+    # The timestamp of last scaled time. Will be None If the deployment have not scaled.
     last_scale_time: Optional[float] = None
     # The name of the application.
     app_name: Optional[str] = None
