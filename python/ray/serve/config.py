@@ -150,17 +150,30 @@ class ProxyLocation(str, Enum):
     EveryNode = "EveryNode"
 
     @classmethod
-    def _to_deployment_mode(cls, v: Union["ProxyLocation", str]) -> DeploymentMode:
-        if not isinstance(v, (cls, str)):
-            raise TypeError(f"Must be a `ProxyLocation` or str, got: {type(v)}.")
-        elif v == ProxyLocation.Disabled:
+    def _to_deployment_mode(cls, proxy_location: Union["ProxyLocation", str]) -> DeploymentMode:
+        if isinstance(proxy_location, str):
+            proxy_location = ProxyLocation(proxy_location)
+        elif not isinstance(proxy_location, ProxyLocation):
+            raise TypeError(f"Must be a `ProxyLocation` or str, got: {type(proxy_location)}.") 
+        
+        if proxy_location == ProxyLocation.Disabled:
             return DeploymentMode.NoServer
-        elif v == ProxyLocation.HeadOnly:
-            return DeploymentMode.HeadOnly
-        elif v == ProxyLocation.EveryNode:
-            return DeploymentMode.EveryNode
         else:
-            raise ValueError(f"Unrecognized `ProxyLocation`: {v}.")
+            return DeploymentMode(proxy_location.value)
+    
+    @classmethod
+    def _from_deployment_mode(cls, deployment_mode: Union[DeploymentMode, str]) -> "ProxyLocation":
+        if isinstance(deployment_mode, str):
+            deployment_mode = DeploymentMode(deployment_mode)
+        elif not isinstance(deployment_mode, DeploymentMode):
+            raise TypeError(
+                f"Must be a `DeploymentMode` or str, got: {type(deployment_mode)}."
+            )
+
+        if deployment_mode == DeploymentMode.NoServer:
+            return ProxyLocation.Disabled
+        else:
+            return ProxyLocation(deployment_mode.value)
 
 
 @PublicAPI(stability="stable")
