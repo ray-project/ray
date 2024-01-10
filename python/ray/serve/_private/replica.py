@@ -907,6 +907,9 @@ class UserCallableWrapper:
                 # ASGI, but for the vanilla deployment codepath we need to send it.
                 await self._send_user_result_over_asgi(result, asgi_args)
             elif not request_metadata.is_http_request:
+                # HTTP requests are always streaming but the method itself does not
+                # return a generator. Instead, the method is provided the result queue
+                # as its ASGI `send` interface to stream back results.
                 raise TypeError(
                     f"Called method '{user_method_name}' with "
                     "`handle.options(stream=True)` but it did not return a "
@@ -932,12 +935,12 @@ class UserCallableWrapper:
         *,
         result_queue: Optional[MessageQueue] = None,
     ) -> Any:
-        """Call a user method that is *not* expected to be a generator.
+        """Call a user method (unary or generator).
+
+        The `result_queue` is used to communicate the results of generator methods.
 
         Raises any exception raised by the user code so it can be propagated as a
         `RayTaskError`.
-
-        The `result_queue` is used to communicate the results of generator methods.
         """
         logger.info(
             f"Started executing request {request_metadata.request_id}",
