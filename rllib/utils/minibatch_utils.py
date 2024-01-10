@@ -4,8 +4,7 @@ from typing import List
 from ray.rllib.policy.sample_batch import MultiAgentBatch, concat_samples
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils.annotations import DeveloperAPI
-
-# from ray.rllib.utils.typing import EpisodeType
+from ray.rllib.utils.typing import EpisodeType
 
 
 @DeveloperAPI
@@ -171,10 +170,12 @@ class ShardEpisodesIterator:
         num_shards: The number of shards to split the episodes into.
 
     Yields:
-        A sub-list of Episodes with sums of lengths as equal as possible.
+        A sub-list of Episodes of size roughly `len(episodes) / num_shards`. The yielded
+        sublists might have slightly different total sums of episode lengths, in order
+        to not have to drop even a single timestep.
     """
 
-    def __init__(self, episodes, num_shards: int):
+    def __init__(self, episodes: List[EpisodeType], num_shards: int):
         self._episodes = sorted(episodes, key=len, reverse=True)
         self._num_shards = num_shards
         self._total_length = sum(len(e) for e in episodes)

@@ -1119,30 +1119,26 @@ class Learner:
 
         return results
 
-    def update(
+    def update_from_batch(
         self,
+        batch: MultiAgentBatch,
         *,
-        batch: Optional[MultiAgentBatch] = None,
-        episodes: Optional[List[EpisodeType]] = None,
         reduce_fn: Callable[[List[Dict[str, Any]]], ResultDict] = (
             _reduce_mean_results
         ),
-        # TODO (sven): Deprecate these in favor of learner hyperparams for only those
-        #  algos actually that need to do minibatching.
+        # TODO (sven): Deprecate these in favor of config attributes for only those
+        #  algos that actually need (and know how) to do minibatching.
         minibatch_size: Optional[int] = None,
         num_iters: int = 1,
     ) -> Union[Dict[str, Any], List[Dict[str, Any]]]:
-        """Do `num_iters` minibatch updates given the original batch.
+        """Do `num_iters` minibatch updates given a train batch.
 
-        Given a batch of episodes you can use this method to take more
-        than one backward pass on the batch. The same minibatch_size and num_iters
-        will be used for all module ids in MultiAgentRLModule.
+        You can use this method to take more than one backward pass on the batch.
+        The same `minibatch_size` and `num_iters` will be used for all module ids in
+        MultiAgentRLModule.
 
         Args:
-            batch: A batch of data.
-            minibatch_size: The size of the minibatch to use for each update.
-            num_iters: The number of complete passes over all the sub-batches
-                in the input multi-agent batch.
+            batch: A batch of training data to update from.
             reduce_fn: reduce_fn: A function to reduce the results from a list of
                 minibatch updates. This can be any arbitrary function that takes a
                 list of dictionaries and returns a single dictionary. For example you
@@ -1150,13 +1146,200 @@ class Learner:
                 example for metrics) or be more selective about you want to report back
                 to the algorithm's training_step. If None is passed, the results will
                 not get reduced.
+            minibatch_size: The size of the minibatch to use for each update.
+            num_iters: The number of complete passes over all the sub-batches
+                in the input multi-agent batch.
 
         Returns:
             A dictionary of results, in numpy format or a list of such dictionaries in
             case `reduce_fn` is None and we have more than one minibatch pass.
         """
+        return self._update_from_batch_or_episodes(
+            batch=batch,
+            episodes=None,
+            reduce_fn=reduce_fn,
+            minibatch_size=minibatch_size,
+            num_iters=num_iters,
+        )
+
+    def update_from_episodes(
+        self,
+        episodes: List[EpisodeType],
+        *,
+        reduce_fn: Callable[[List[Dict[str, Any]]], ResultDict] = (
+            _reduce_mean_results
+        ),
+        # TODO (sven): Deprecate these in favor of config attributes for only those
+        #  algos that actually need (and know how) to do minibatching.
+        minibatch_size: Optional[int] = None,
+        num_iters: int = 1,
+    ) -> Union[Dict[str, Any], List[Dict[str, Any]]]:
+        """Do `num_iters` minibatch updates given a list of episodes.
+
+        You can use this method to take more than one backward pass on the batch.
+        The same `minibatch_size` and `num_iters` will be used for all module ids in
+        MultiAgentRLModule.
+
+        Args:
+            episodes: An list of episode objects to update from.
+            reduce_fn: reduce_fn: A function to reduce the results from a list of
+                minibatch updates. This can be any arbitrary function that takes a
+                list of dictionaries and returns a single dictionary. For example you
+                can either take an average (default) or concatenate the results (for
+                example for metrics) or be more selective about you want to report back
+                to the algorithm's training_step. If None is passed, the results will
+                not get reduced.
+            minibatch_size: The size of the minibatch to use for each update.
+            num_iters: The number of complete passes over all the sub-batches
+                in the input multi-agent batch.
+
+        Returns:
+            A dictionary of results, in numpy format or a list of such dictionaries in
+            case `reduce_fn` is None and we have more than one minibatch pass.
+        """
+        return self._update_from_batch_or_episodes(
+            batch=None,
+            episodes=episodes,
+            reduce_fn=reduce_fn,
+            minibatch_size=minibatch_size,
+            num_iters=num_iters,
+        )
+
+    @OverrideToImplementCustomLogic
+    def _preprocess_train_data(
+        self,
+        *,
+        batch: Optional[MultiAgentBatch] = None,
+        episodes: Optional[List[EpisodeType]] = None,
+    ) -> Tuple[Optional[MultiAgentBatch], Optional[List[EpisodeType]]]:
+        """Allows custom preprocessing of batch/episode data before the actual update.
+
+        The higher level order, in which this method is called from within
+        `Learner.update(batch, episodes)` is:
+        * batch, episodes = self._preprocess_train_data(batch, episodes)
+        * batch = self._learner_connector(batch, episodes)
+        * results = self._update(batch)
+
+        The default implementation does not do any processing and is a mere pass
+        through. However, specific algorithms should override this method to implement
+        their specific training data preprocessing needs. It is possible to perform
+        preliminary RLModule forward passes (besides the main "forward_train()" call
+        during `self._update`) in this method and custom algorithms might also want to
+        use this Learner's `self._learner_connector` to prepare the data
+        (batch/episodes) for such extra forward calls.
+
+        Args:
+            batch: An optional batch of training data to preprocess.
+            episodes: An optional list of episodes objects to preprocess.
+
+        Returns:
+            A tuple consisting of the processed `batch` and the processed list of
+            `episodes`.
+        """
+        return batch, episodes
+
+    @OverrideToImplementCustomLogic
+    @abc.abstractmethod
+    def _update(
+        self,
+        batch: NestedDict,
+        **kwargs,
+    ) -> Tuple[Any, Any, Any]:
+        """Contains all logic for an in-graph/traceable update step.
+
+        Framework specific subclasses must implement this method. This should include
+        calls to the RLModule's `forward_train`, `compute_loss`, compute_gradients`,
+        `postprocess_gradients`, and `apply_gradients` methods and return a tuple
+        with all the individual results.
+
+        Args:
+            batch: The train batch already converted in to a (tensor) NestedDict.
+            kwargs: Forward compatibility kwargs.
+
+        Returns:
+            A tuple consisting of:
+                1) The `forward_train()` output of the RLModule,
+                2) the loss_per_module dictionary mapping module IDs to individual loss
+                    tensors
+                3) a metrics dict mapping module IDs to metrics key/value pairs.
+
+        """
+
+    def set_state(self, state: Dict[str, Any]) -> None:
+        """Set the state of the learner.
+
+        Args:
+            state: The state of the optimizer and module. Can be obtained
+                from `get_state`. State is a dictionary with two keys:
+                "module_state" and "optimizer_state". The value of each key
+                is a dictionary that can be passed to `set_module_state` and
+                `set_optimizer_state` respectively.
+
+        """
+        self._check_is_built()
+        # TODO: once we figure out the optimizer format, we can set/get the state
+        if "module_state" not in state:
+            raise ValueError(
+                "state must have a key 'module_state' for the module weights"
+            )
+        if "optimizer_state" not in state:
+            raise ValueError(
+                "state must have a key 'optimizer_state' for the optimizer weights"
+            )
+
+        module_state = state.get("module_state")
+        optimizer_state = state.get("optimizer_state")
+        self.set_module_state(module_state)
+        self.set_optimizer_state(optimizer_state)
+
+    def get_state(self) -> Dict[str, Any]:
+        """Get the state of the learner.
+
+        Returns:
+            The state of the optimizer and module.
+
+        """
+        self._check_is_built()
+        return {
+            "module_state": self.get_module_state(),
+            "optimizer_state": self.get_optimizer_state(),
+        }
+
+    def set_optimizer_state(self, state: Dict[str, Any]) -> None:
+        """Sets the state of all optimizers currently registered in this Learner.
+
+        Args:
+            state: The state of the optimizers.
+        """
+        raise NotImplementedError
+
+    def get_optimizer_state(self) -> Dict[str, Any]:
+        """Returns the state of all optimizers currently registered in this Learner.
+
+        Returns:
+            The current state of all optimizers currently registered in this Learner.
+        """
+        raise NotImplementedError
+
+    def _update_from_batch_or_episodes(
+        self,
+        *,
+        # TODO (sven): We should allow passing in a single agent batch here
+        #  as well for simplicity.
+        batch: Optional[MultiAgentBatch] = None,
+        episodes: Optional[List[EpisodeType]] = None,
+        reduce_fn: Callable[[List[Dict[str, Any]]], ResultDict] = (
+            _reduce_mean_results
+        ),
+        # TODO (sven): Deprecate these in favor of config attributes for only those
+        #  algos that actually need (and know how) to do minibatching.
+        minibatch_size: Optional[int] = None,
+        num_iters: int = 1,
+    ) -> Union[Dict[str, Any], List[Dict[str, Any]]]:
         self._check_is_built()
 
+        # If a (multi-agent) batch is provided, check, whether our RLModule
+        # contains all ModuleIDs found in this batch. If not, throw an error.
         if batch is not None:
             unknown_module_ids = set(batch.policy_batches.keys()) - set(
                 self.module.keys()
@@ -1248,117 +1431,6 @@ class Learner:
         # Pass list of results dicts through `reduce_fn` and return a single results
         # dict.
         return reduce_fn(results)
-
-    @OverrideToImplementCustomLogic
-    def _preprocess_train_data(self, *, batch, episodes) -> Tuple[Any, Any]:
-        """Allows custom preprocessing of batch/episode data before the actual update.
-
-        The higher level order, in which this method is called from within
-        `Learner.update(batch, episodes)` is:
-        * _preprocess_train_data(batch, episodes)
-        * _learner_connector(batch, episodes)
-        * _update_from_batch(batch)
-
-        The default implementation does not do any processing and is a mere pass
-        through. However, specific algorithms should override this method to implement
-        their specific training data preprocessing needs. It is possible to perform
-        separate forward passes (besides the main "forward_train()" one during
-        `_update_from_batch`) in this method and custom algorithms might also want to
-        use this Learner's `self._learner_connector` to prepare the data
-        (batch/episodes) for such an extra forward call.
-
-        Args:
-            batch: A data batch to preprocess.
-            episodes: A list of episodes to preprocess.
-
-        Returns:
-            A tuple consisting of the processed `batch` and the processed list of
-            `episodes`.
-        """
-        return batch, episodes
-
-    @OverrideToImplementCustomLogic
-    @abc.abstractmethod
-    def _update(
-        self,
-        batch: NestedDict,
-        **kwargs,
-    ) -> Tuple[Any, Any, Any]:
-        """Contains all logic for an in-graph/traceable update step.
-
-        Framework specific subclasses must implement this method. This should include
-        calls to the RLModule's `forward_train`, `compute_loss`, compute_gradients`,
-        `postprocess_gradients`, and `apply_gradients` methods and return a tuple
-        with all the individual results.
-
-        Args:
-            batch: The train batch already converted in to a (tensor) NestedDict.
-            kwargs: Forward compatibility kwargs.
-
-        Returns:
-            A tuple consisting of:
-                1) The `forward_train()` output of the RLModule,
-                2) the loss_per_module dictionary mapping module IDs to individual loss
-                    tensors
-                3) a metrics dict mapping module IDs to metrics key/value pairs.
-
-        """
-
-    def set_state(self, state: Dict[str, Any]) -> None:
-        """Set the state of the learner.
-
-        Args:
-            state: The state of the optimizer and module. Can be obtained
-                from `get_state`. State is a dictionary with two keys:
-                "module_state" and "optimizer_state". The value of each key
-                is a dictionary that can be passed to `set_module_state` and
-                `set_optimizer_state` respectively.
-
-        """
-        self._check_is_built()
-        # TODO: once we figure out the optimizer format, we can set/get the state
-        if "module_state" not in state:
-            raise ValueError(
-                "state must have a key 'module_state' for the module weights"
-            )
-        if "optimizer_state" not in state:
-            raise ValueError(
-                "state must have a key 'optimizer_state' for the optimizer weights"
-            )
-
-        module_state = state.get("module_state")
-        optimizer_state = state.get("optimizer_state")
-        self.set_module_state(module_state)
-        self.set_optimizer_state(optimizer_state)
-
-    def get_state(self) -> Dict[str, Any]:
-        """Get the state of the learner.
-
-        Returns:
-            The state of the optimizer and module.
-
-        """
-        self._check_is_built()
-        return {
-            "module_state": self.get_module_state(),
-            "optimizer_state": self.get_optimizer_state(),
-        }
-
-    def set_optimizer_state(self, state: Dict[str, Any]) -> None:
-        """Sets the state of all optimizers currently registered in this Learner.
-
-        Args:
-            state: The state of the optimizers.
-        """
-        raise NotImplementedError
-
-    def get_optimizer_state(self) -> Dict[str, Any]:
-        """Returns the state of all optimizers currently registered in this Learner.
-
-        Returns:
-            The current state of all optimizers currently registered in this Learner.
-        """
-        raise NotImplementedError
 
     def _set_slicing_by_batch_id(
         self, batch: MultiAgentBatch, *, value: bool
