@@ -167,9 +167,17 @@ class ProxyLocation(str, Enum):
 
     @classmethod
     def _from_deployment_mode(
-        cls, deployment_mode: Union[DeploymentMode, str]
-    ) -> "ProxyLocation":
-        if isinstance(deployment_mode, str):
+        cls, deployment_mode: Optional[Union[DeploymentMode, str]]
+    ) -> Optional["ProxyLocation"]:
+        """Converts DeploymentMode enum into ProxyLocation enum.
+
+        DeploymentMode is a deprecated version of ProxyLocation that's still
+        used internally throughout Serve.
+        """
+
+        if deployment_mode is None:
+            return None
+        elif isinstance(deployment_mode, str):
             deployment_mode = DeploymentMode(deployment_mode)
         elif not isinstance(deployment_mode, DeploymentMode):
             raise TypeError(

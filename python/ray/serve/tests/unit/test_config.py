@@ -546,6 +546,8 @@ def test_proxy_location_to_deployment_mode():
 
 
 def test_deployment_mode_to_proxy_location():
+    assert ProxyLocation._from_deployment_mode(None) is None
+
     assert (
         ProxyLocation._from_deployment_mode(DeploymentMode.NoServer)
         == ProxyLocation.Disabled
