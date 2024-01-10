@@ -198,6 +198,8 @@ def main(
     io_mode: str,
     socket_type: grpc.LocalConnectionType,
 ):
+    """Reference benchmark for vanilla Python (w/ C-based core) gRPC implementation"""
+
     asyncio.run(
         run_grpc_benchmark(
             batch_size,
