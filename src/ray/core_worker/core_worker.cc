@@ -3156,6 +3156,8 @@ Status CoreWorker::GetAndPinArgsForExecutor(const TaskSpecification &task,
       borrowed_ids->push_back(arg_id);
       // We need to put an OBJECT_IN_PLASMA error here so the subsequent call to Get()
       // properly redirects to the plasma store.
+      // NOTE: This needs to be done after adding reference to reference counter
+      // otherwise, the put is a no-op.
       if (!options_.is_local_mode) {
         RAY_UNUSED(memory_store_->Put(RayObject(rpc::ErrorType::OBJECT_IN_PLASMA),
                                       task.ArgId(i)));
