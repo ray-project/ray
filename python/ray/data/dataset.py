@@ -1058,7 +1058,12 @@ class Dataset:
         return Dataset(plan, logical_plan)
 
     @AllToAllAPI
-    def repartition(self, num_blocks: int, *, shuffle: bool = False) -> "Dataset":
+    def repartition(
+        self,
+        num_blocks: int,
+        *,
+        shuffle: bool = False,
+    ) -> "Dataset":
         """Repartition the :class:`Dataset` into exactly this number of :ref:`blocks <dataset_concept>`.
 
         This method can be useful to tune the performance of your pipeline. To learn
@@ -1925,7 +1930,10 @@ class Dataset:
         )
 
     @AllToAllAPI
-    def groupby(self, key: Union[str, List[str], None]) -> "GroupedData":
+    def groupby(
+        self,
+        key: Union[str, List[str], None],
+    ) -> "GroupedData":
         """Group rows of a :class:`Dataset` according to a column.
 
         Use this method to transform data based on a
@@ -2286,6 +2294,7 @@ class Dataset:
         self,
         key: Union[str, List[str], None] = None,
         descending: Union[bool, List[bool]] = False,
+        boundaries: List[Union[int, float]] = None,
     ) -> "Dataset":
         """Sort the dataset by the specified key column or key function.
 
@@ -2296,9 +2305,28 @@ class Dataset:
 
         Examples:
             >>> import ray
-            >>> ds = ray.data.range(100)
-            >>> ds.sort("id", descending=True).take(3)
-            [{'id': 99}, {'id': 98}, {'id': 97}]
+            >>> ds = ray.data.range(15)
+            >>> ds = ds.sort("id", descending=False, boundaries=[5, 10])
+            >>> for df in ray.get(ds.to_pandas_refs()):
+            ...     print(df)
+               id
+            0   0
+            1   1
+            2   2
+            3   3
+            4   4
+               id
+            0   5
+            1   6
+            2   7
+            3   8
+            4   9
+               id
+            0  10
+            1  11
+            2  12
+            3  13
+            4  14
 
         Time complexity: O(dataset size * log(dataset size / parallelism))
 
@@ -2306,12 +2334,19 @@ class Dataset:
             key: The column or a list of columns to sort by.
             descending: Whether to sort in descending order. Must be a boolean or a list
                 of booleans matching the number of the columns.
+            boundaries: The list of values based on which to repartition the dataset.
+                For example, if the input boundary is [10,20], rows with values less
+                than 10 will be divided into the first block, rows with values greater
+                than or equal to 10 and less than 20 will be divided into the
+                second block, and rows with values greater than or equal to 20
+                will be divided into the third block. If not provided, the
+                boundaries will be sampled from the input blocks. This feature
+                only supports numeric columns right now.
 
         Returns:
             A new, sorted :class:`Dataset`.
         """
-
-        sort_key = SortKey(key, descending)
+        sort_key = SortKey(key, descending, boundaries)
         plan = self._plan.with_stage(SortStage(self, sort_key))
 
         logical_plan = self._logical_plan
@@ -4729,7 +4764,7 @@ class Dataset:
         .. testoutput::
             :options: +MOCK
 
-            Stage 0 Read: 20/20 blocks executed in 0.3s
+            Operator 0 Read: 1 tasks executed, 5 blocks produced in 0s
             * Remote wall time: 16.29us min, 7.29ms max, 1.21ms mean, 24.17ms total
             * Remote cpu time: 16.0us min, 2.54ms max, 810.45us mean, 16.21ms total
             * Peak heap memory usage (MiB): 137968.75 min, 142734.38 max, 139846 mean

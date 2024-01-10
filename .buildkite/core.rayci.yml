@@ -31,7 +31,7 @@ steps:
     commands:
       - bazel run //ci/ray_ci:test_in_docker -- //python/ray/tests/... //python/ray/dag/... python/ray/autoscaler/v2/... core
         --workers "$${BUILDKITE_PARALLEL_JOB_COUNT}" --worker-id "$${BUILDKITE_PARALLEL_JOB}" --parallelism-per-worker 3
-        --except-tags debug_tests,asan_tests,post_wheel_build,ha_integration,mem_pressure,container,manual
+        --except-tags debug_tests,asan_tests,post_wheel_build,ha_integration,mem_pressure,tmpfs,container,manual
 
   - label: ":ray: core: redis tests"
     tags: python
@@ -41,11 +41,12 @@ steps:
       - bazel run //ci/ray_ci:test_in_docker -- //python/ray/tests/... //python/ray/dag/... python/ray/autoscaler/v2/... core
         --workers "$${BUILDKITE_PARALLEL_JOB_COUNT}" --worker-id "$${BUILDKITE_PARALLEL_JOB}" --parallelism-per-worker 3
         --test-env=TEST_EXTERNAL_REDIS=1
-        --except-tags debug_tests,asan_tests,post_wheel_build,ha_integration,mem_pressure,xcommit,container,manual
+        --except-tags debug_tests,asan_tests,post_wheel_build,ha_integration,mem_pressure,tmpfs,container,manual
 
   - label: ":ray: core: :windows: python tests"
     tags: python
     job_env: WINDOWS
+    mount_windows_artifacts: true
     instance_type: windows
     parallelism: 5
     commands:
@@ -67,11 +68,32 @@ steps:
       - skip-on-premerge
     instance_type: medium
     commands:
-      - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/build/upload_build_info.sh; fi }; trap cleanup EXIT
+      - cleanup() { ./ci/build/upload_build_info.sh; }; trap cleanup EXIT
       - (cd dashboard/client && npm ci && npm run build)
       - pip install -e python[client]
       - bazel test --config=ci --jobs=1 $(./ci/run/bazel_export_options)
         --test_tag_filters=mem_pressure -- //python/ray/tests/...
+    job_env: corebuild
+
+  - label: ":ray: core: out of disk tests"
+    tags:
+      - python
+      - oss
+    instance_type: small
+    commands:
+      - bazel run //ci/ray_ci:test_in_docker -- //python/ray/tests/... core
+        --only-tags=tmpfs --tmp-filesystem=tmpfs
+    job_env: corebuild
+
+  - label: ":ray: core: out of disk redis tests"
+    tags:
+      - python
+      - oss
+    instance_type: small
+    commands:
+      - bazel run //ci/ray_ci:test_in_docker -- //python/ray/tests/... core
+        --test-env=TEST_EXTERNAL_REDIS=1
+        --only-tags=tmpfs --tmp-filesystem=tmpfs
     job_env: corebuild
 
   - label: ":ray: core: workflow tests"
@@ -102,7 +124,7 @@ steps:
         --parallelism-per-worker 3
       # doc examples
       - bazel run //ci/ray_ci:test_in_docker -- //doc/... core
-        --except-tags gpu,post_wheel_build,xcommit,doctest
+        --except-tags gpu,post_wheel_build,mem_pressure,doctest
         --parallelism-per-worker 3
         --skip-ray-installation
 
@@ -260,6 +282,7 @@ steps:
   - label: ":ray: core: :windows: cpp tests"
     tags: core_cpp
     job_env: WINDOWS
+    mount_windows_artifacts: true
     instance_type: windows
     commands:
       - bash ci/ray_ci/windows/install_tools.sh
@@ -306,7 +329,7 @@ steps:
       - docker
     instance_type: medium
     commands:
-      - bazel run //ci/ray_ci:build_in_docker -- docker --python-version 3.8 --platform cpu --canonical-tag ha_integration
+      - bazel run //ci/ray_ci:build_in_docker -- docker --platform cpu --canonical-tag ha_integration
       - bazel run //ci/ray_ci:test_in_docker -- //python/ray/tests/... core --only-tags ha_integration
     depends_on:
       - manylinux
@@ -320,7 +343,7 @@ steps:
       - docker
     instance_type: medium
     commands:
-      - bazel run //ci/ray_ci:build_in_docker -- docker --python-version 3.8 --platform cpu
+      - bazel run //ci/ray_ci:build_in_docker -- docker --platform cpu
         --canonical-tag test_container
       - docker build --build-arg BASE_IMAGE="rayproject/ray:test_container"
         -t rayproject/ray:runtime_env_container -f docker/runtime_env_container/Dockerfile .

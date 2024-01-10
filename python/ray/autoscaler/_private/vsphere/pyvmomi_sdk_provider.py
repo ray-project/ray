@@ -19,6 +19,7 @@ class ObjectType(Enum):
     VirtualMachine = "VirtualMachine"
     Datastore = "Datastore"
     ClusterComputeResource = "ClusterComputeResource"
+    HostSystem = "HostSystem"
 
 
 class KeyType(Enum):
@@ -36,6 +37,8 @@ def get_object_type(vimtype):
         return ObjectType.Datastore
     elif vimtype == [vim.ClusterComputeResource]:
         return ObjectType.ClusterComputeResource
+    elif vimtype == [vim.HostSystem]:
+        return ObjectType.HostSystem
     else:
         raise ValueError("Invalid Object Type")
 
@@ -73,20 +76,6 @@ class PyvmomiSdkProvider:
 
         # Instance parameters
         self.timeout = 0
-        self.cached = {
-            KeyType.Name: {
-                ObjectType.ResourcePool: {},
-                ObjectType.VirtualMachine: {},
-                ObjectType.Datastore: {},
-                ObjectType.ClusterComputeResource: {},
-            },
-            KeyType.ObjectID: {
-                ObjectType.ResourcePool: {},
-                ObjectType.VirtualMachine: {},
-                ObjectType.Datastore: {},
-                ObjectType.ClusterComputeResource: {},
-            },
-        }
 
         # Add cache to cache all fetched object
         self.cached = {
@@ -95,12 +84,14 @@ class PyvmomiSdkProvider:
                 ObjectType.VirtualMachine: {},
                 ObjectType.Datastore: {},
                 ObjectType.ClusterComputeResource: {},
+                ObjectType.HostSystem: {},
             },
             KeyType.ObjectID: {
                 ObjectType.ResourcePool: {},
                 ObjectType.VirtualMachine: {},
                 ObjectType.Datastore: {},
                 ObjectType.ClusterComputeResource: {},
+                ObjectType.HostSystem: {},
             },
         }
 
@@ -168,7 +159,8 @@ class PyvmomiSdkProvider:
     def get_pyvmomi_obj(self, vimtype, name=None, obj_id=None):
         """
         This function will return the vSphere object.
-        The argument for `vimtype` can be "vim.VM", "vim.Host", "vim.Datastore", etc.
+        The argument for `vimtype` can be "vim.VirtualMachine", "vim.HostSystem",
+        "vim.Datastore", etc.
         Then either the name or the object id need to be provided.
         To check all such object information, you can go to the managed object board
         page of your vCenter Server, such as: https://<your_vc_ip/mob
@@ -302,12 +294,19 @@ class PyvmomiSdkProvider:
         logger.warning(f"External IPv4 address of VM {vm.name} is not available")
         return None
 
-    def get_host_id_in_cluster(self, cluster_name):
+    def get_host_id_of_datastore_cluster(self, datastore_name, cluster_name):
         """
-        The function return the id of first host in cluster
+        The function return the host id of first common host in cluster and datastore
         """
         cluster = self.get_pyvmomi_obj([vim.ClusterComputeResource], cluster_name)
-        return cluster.host[0]._moId
+        cluster_host_ids = [host._moId for host in cluster.host]
+
+        datastore = self.get_pyvmomi_obj([vim.Datastore], datastore_name)
+        datastore_host_ids = [host.key._moId for host in datastore.host]
+
+        common = set(cluster_host_ids) & set(datastore_host_ids)
+
+        return common.pop() if common else None
 
     def get_resource_pool_id_in_cluster(self, cluster_name):
         """

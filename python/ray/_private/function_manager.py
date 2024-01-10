@@ -1,4 +1,5 @@
 import dis
+import sys
 import hashlib
 import importlib
 import inspect
@@ -332,7 +333,8 @@ class FunctionActorManager:
                         "The remote function failed to import on the "
                         "worker. This may be because needed library "
                         "dependencies are not installed in the worker "
-                        "environment:\n\n{}".format(traceback_str)
+                        "environment or cannot be found from sys.path "
+                        f"{sys.path}:\n\n{traceback_str}"
                     )
 
                 # Use a placeholder method when function pickled failed

@@ -923,7 +923,7 @@ class TestInitialReplicasHandling:
         self, shutdown_ray_and_serve, client: ServeControllerClient
     ):
         deployment_name = "start_at_ten"
-        min_replicas = 0
+        min_replicas = 5
         initial_replicas = 10
 
         config = ServeDeploySchema(
@@ -932,9 +932,9 @@ class TestInitialReplicasHandling:
                     import_path="ray.serve.tests.test_target_capacity:create_hang_app",
                     args={
                         "name": deployment_name,
-                        "min_replicas": 0,
+                        "min_replicas": min_replicas,
                         "initial_replicas": initial_replicas,
-                        "max_replicas": 20,
+                        "max_replicas": 15,
                     },
                 ),
             ],
@@ -944,16 +944,11 @@ class TestInitialReplicasHandling:
         wait_for_condition(lambda: len(serve.status().applications) == 1)
         assert serve.status().target_capacity is None
 
-        # No target_capacity was set, so the deployment should start with
-        # initial_replicas.
-        wait_for_condition(
-            check_expected_num_replicas,
-            deployment_to_num_replicas={deployment_name: initial_replicas},
-        )
-
         # Kick off downscaling pattern.
-        test_target_capacities = [100, 90, 60, 20, 0]
-        expected_num_replicas = [min_replicas] * len(test_target_capacities)
+        test_target_capacities = [100, 60, 40, 0]
+        expected_num_replicas = [
+            int(min_replicas * capacity / 100) for capacity in test_target_capacities
+        ]
 
         for target_capacity, num_replicas in zip(
             test_target_capacities, expected_num_replicas

@@ -1,5 +1,6 @@
 import copy
 from enum import Enum
+import inspect
 import logging
 import math
 import os
@@ -765,357 +766,30 @@ class AlgorithmConfig(_Config):
     def validate(self) -> None:
         """Validates all values in this config."""
 
-        # Validate rollout settings.
-        if (
-            self.evaluation_interval
-            and self.env_runner_cls is not None
-            and not issubclass(self.env_runner_cls, RolloutWorker)
-            and not self.enable_async_evaluation
-        ):
-            raise ValueError(
-                "When using an EnvRunner class that's not a subclass of `RolloutWorker`"
-                f"(yours is {self.env_runner_cls.__name__}), "
-                "`config.enable_async_evaluation` must be set to True! Call "
-                "`config.evaluation(enable_async_evaluation=True) on your config "
-                "object to fix this problem."
-            )
-        if self.batch_mode not in ["truncate_episodes", "complete_episodes"]:
-            raise ValueError(
-                "`config.batch_mode` must be one of [truncate_episodes|"
-                "complete_episodes]! Got {}".format(self.batch_mode)
-            )
-        if self.preprocessor_pref not in ["rllib", "deepmind", None]:
-            raise ValueError(
-                "`config.preprocessor_pref` must be either 'rllib', 'deepmind' or None!"
-            )
-        if self.num_envs_per_worker <= 0:
-            raise ValueError(
-                f"`num_envs_per_worker` ({self.num_envs_per_worker}) must be "
-                f"larger than 0!"
-            )
-
-        # Check correct framework settings, and whether configured framework is
-        # installed.
-        _tf1, _tf, _tfv = None, None, None
-        _torch = None
-        if self.framework_str not in {"tf", "tf2"} and self.framework_str != "torch":
-            return
-        elif self.framework_str in {"tf", "tf2"}:
-            _tf1, _tf, _tfv = try_import_tf()
-        else:
-            _torch, _ = try_import_torch()
-
-        # Can not use "tf" with learner API.
-        if self.framework_str == "tf" and self._enable_new_api_stack:
-            raise ValueError(
-                "Cannot use `framework=tf` with the new API stack! Either switch to tf2"
-                " via `config.framework('tf2')` OR disable the new API stack via "
-                "`config.experimental(_enable_new_api_stack=False)`."
-            )
-
-        # Check if torch framework supports torch.compile.
-        if (
-            _torch is not None
-            and self.framework_str == "torch"
-            and version.parse(_torch.__version__) < TORCH_COMPILE_REQUIRED_VERSION
-            and (self.torch_compile_learner or self.torch_compile_worker)
-        ):
-            raise ValueError("torch.compile is only supported from torch 2.0.0")
-
-        # Make sure the Learner's torch-what-to-compile setting is supported.
-        if self.torch_compile_learner:
-            from ray.rllib.core.learner.torch.torch_learner import (
-                TorchCompileWhatToCompile,
-            )
-
-            if self.torch_compile_learner_what_to_compile not in [
-                TorchCompileWhatToCompile.FORWARD_TRAIN,
-                TorchCompileWhatToCompile.COMPLETE_UPDATE,
-            ]:
-                raise ValueError(
-                    f"`config.torch_compile_learner_what_to_compile` must be one of ["
-                    f"TorchCompileWhatToCompile.forward_train, "
-                    f"TorchCompileWhatToCompile.complete_update] but is"
-                    f" {self.torch_compile_learner_what_to_compile}"
-                )
-
-        self._check_if_correct_nn_framework_installed(_tf1, _tf, _torch)
-        self._resolve_tf_settings(_tf1, _tfv)
-
-        # Check `policies_to_train` for invalid entries.
-        if isinstance(self.policies_to_train, (list, set, tuple)):
-            for pid in self.policies_to_train:
-                if pid not in self.policies:
-                    raise ValueError(
-                        "`config.multi_agent(policies_to_train=..)` contains "
-                        f"policy ID ({pid}) that was not defined in "
-                        f"`config.multi_agent(policies=..)`!"
-                    )
-
-        # If async evaluation is enabled, custom_eval_functions are not allowed.
-        if self.enable_async_evaluation and self.custom_evaluation_function:
-            raise ValueError(
-                "`config.custom_evaluation_function` not supported in combination "
-                "with `enable_async_evaluation=True` config setting!"
-            )
-
-        # If `evaluation_num_workers` > 0, warn if `evaluation_interval` is
-        # None.
-        if self.evaluation_num_workers > 0 and not self.evaluation_interval:
-            logger.warning(
-                f"You have specified {self.evaluation_num_workers} "
-                "evaluation workers, but your `evaluation_interval` is None! "
-                "Therefore, evaluation will not occur automatically with each"
-                " call to `Algorithm.train()`. Instead, you will have to call "
-                "`Algorithm.evaluate()` manually in order to trigger an "
-                "evaluation run."
-            )
-        # If `evaluation_num_workers=0` and
-        # `evaluation_parallel_to_training=True`, warn that you need
-        # at least one remote eval worker for parallel training and
-        # evaluation, and set `evaluation_parallel_to_training` to False.
-        elif self.evaluation_num_workers == 0 and self.evaluation_parallel_to_training:
-            raise ValueError(
-                "`evaluation_parallel_to_training` can only be done if "
-                "`evaluation_num_workers` > 0! Try setting "
-                "`config.evaluation_parallel_to_training` to False."
-            )
-
-        # If `evaluation_duration=auto`, error if
-        # `evaluation_parallel_to_training=False`.
-        if self.evaluation_duration == "auto":
-            if not self.evaluation_parallel_to_training:
-                raise ValueError(
-                    "`evaluation_duration=auto` not supported for "
-                    "`evaluation_parallel_to_training=False`!"
-                )
-        # Make sure, it's an int otherwise.
-        elif (
-            not isinstance(self.evaluation_duration, int)
-            or self.evaluation_duration <= 0
-        ):
-            raise ValueError(
-                f"`evaluation_duration` ({self.evaluation_duration}) must be an "
-                f"int and >0!"
-            )
-
-        # Check model config.
-        # If no preprocessing, propagate into model's config as well
-        # (so model will know, whether inputs are preprocessed or not).
-        if self._disable_preprocessor_api is True:
-            self.model["_disable_preprocessor_api"] = True
-        # If no action flattening, propagate into model's config as well
-        # (so model will know, whether action inputs are already flattened or
-        # not).
-        if self._disable_action_flattening is True:
-            self.model["_disable_action_flattening"] = True
-        if self.model.get("custom_preprocessor"):
-            deprecation_warning(
-                old="AlgorithmConfig.training(model={'custom_preprocessor': ...})",
-                help="Custom preprocessors are deprecated, "
-                "since they sometimes conflict with the built-in "
-                "preprocessors for handling complex observation spaces. "
-                "Please use wrapper classes around your environment "
-                "instead.",
-                error=True,
-            )
-
-        # New API stack (RLModule, Learner APIs) only works with connectors.
-        if not self.enable_connectors and self._enable_new_api_stack:
-            raise ValueError(
-                "The new API stack (RLModule and Learner APIs) only works with "
-                "connectors! Please enable connectors via "
-                "`config.rollouts(enable_connectors=True)`."
-            )
-
-        # Throw a warning if the user has used `self.rl_module(rl_module_spec=...)` but
-        # has not enabled the new API stack at the same time.
-        if self._rl_module_spec is not None and not self._enable_new_api_stack:
-            logger.warning(
-                "You have setup a RLModuleSpec (via calling `config.rl_module(...)`), "
-                "but have not enabled the new API stack. To enable it, call "
-                "`config.experimental(_enable_new_api_stack=True)`."
-            )
-        # LR-schedule checking.
-        if self._enable_new_api_stack:
-            Scheduler.validate(
-                fixed_value_or_schedule=self.lr,
-                setting_name="lr",
-                description="learning rate",
-            )
-        # Throw a warning if the user has used `self.training(learner_class=...)` but
-        # has not enabled the new API stack at the same time.
-        if self._learner_class is not None and not self._enable_new_api_stack:
-            logger.warning(
-                "You specified a custom Learner class (via "
-                f"`AlgorithmConfig.training(learner_class={self._learner_class})`, but "
-                "have the new API stack disabled. You need to enable it via "
-                "`AlgorithmConfig.experimental(_enable_new_api_stack=True)`."
-            )
-
-        # TODO @Avnishn: This is a short-term work around due to
-        # https://github.com/ray-project/ray/issues/35409
-        # Remove this once we are able to specify placement group bundle index in RLlib
-        if (
-            self.num_cpus_per_learner_worker > 1
-            and self.num_gpus_per_learner_worker > 0
-        ):
-            raise ValueError(
-                "Cannot set both `num_cpus_per_learner_worker` > 1 and "
-                " `num_gpus_per_learner_worker` > 0! Either set "
-                "`num_cpus_per_learner_worker` > 1 (and `num_gpus_per_learner_worker`"
-                "=0) OR set `num_gpus_per_learner_worker` > 0 (and leave "
-                "`num_cpus_per_learner_worker` at its default value of 1). "
-                "This is due to issues with placement group fragmentation. See "
-                "https://github.com/ray-project/ray/issues/35409 for more details."
-            )
-
         # TODO (sven): Remove this hack. We should not have env-var dependent logic
         #  this deep in the codebase (should only be used in example/testing scripts).
+        #  We should also never set attributes automatically for the user ->
+        #  AlgorithmConfig should always be read-only.
         if bool(os.environ.get("RLLIB_ENABLE_RL_MODULE", False)):
             self.experimental(_enable_new_api_stack=True)
             self.enable_connectors = True
 
-        # Validate grad clipping settings.
-        if self.grad_clip_by not in ["value", "norm", "global_norm"]:
-            raise ValueError(
-                f"`grad_clip_by` ({self.grad_clip_by}) must be one of: 'value', "
-                "'norm', or 'global_norm'!"
-            )
+        # Check framework specific settings.
+        self._validate_framework_settings()
+        # Check resources specific settings.
+        self._validate_resources_settings()
+        # Check multi-agent specific settings.
+        self._validate_multi_agent_settings()
+        # Check input specific settings.
+        self._validate_input_settings()
+        # Check evaluation specific settings.
+        self._validate_evaluation_settings()
 
-        # TODO: Deprecate self.simple_optimizer!
-        # Multi-GPU settings.
-        if self.simple_optimizer is True:
-            pass
-        # Multi-GPU setting: Must use MultiGPUTrainOneStep.
-        elif not self._enable_new_api_stack and self.num_gpus > 1:
-            # TODO: AlphaStar uses >1 GPUs differently (1 per policy actor), so this is
-            #  ok for tf2 here.
-            #  Remove this hacky check, once we have fully moved to the Learner API.
-            if self.framework_str == "tf2" and type(self).__name__ != "AlphaStar":
-                raise ValueError(
-                    "`num_gpus` > 1 not supported yet for "
-                    f"framework={self.framework_str}!"
-                )
-            elif self.simple_optimizer is True:
-                raise ValueError(
-                    "Cannot use `simple_optimizer` if `num_gpus` > 1! "
-                    "Consider not setting `simple_optimizer` in your config."
-                )
-            self.simple_optimizer = False
-        # Auto-setting: Use simple-optimizer for tf-eager or multiagent,
-        # otherwise: MultiGPUTrainOneStep (if supported by the algo's execution
-        # plan).
-        elif self.simple_optimizer == DEPRECATED_VALUE:
-            # tf-eager: Must use simple optimizer.
-            if self.framework_str not in ["tf", "torch"]:
-                self.simple_optimizer = True
-            # Multi-agent case: Try using MultiGPU optimizer (only
-            # if all policies used are DynamicTFPolicies or TorchPolicies).
-            elif self.is_multi_agent():
-                from ray.rllib.policy.dynamic_tf_policy import DynamicTFPolicy
-                from ray.rllib.policy.torch_policy import TorchPolicy
+        # Check new API stack specific settings.
+        self._validate_new_api_stack_settings()
 
-                default_policy_cls = None
-                if self.algo_class:
-                    default_policy_cls = self.algo_class.get_default_policy_class(self)
-
-                policies = self.policies
-                policy_specs = (
-                    [
-                        PolicySpec(*spec) if isinstance(spec, (tuple, list)) else spec
-                        for spec in policies.values()
-                    ]
-                    if isinstance(policies, dict)
-                    else [PolicySpec() for _ in policies]
-                )
-
-                if any(
-                    (spec.policy_class or default_policy_cls) is None
-                    or not issubclass(
-                        spec.policy_class or default_policy_cls,
-                        (DynamicTFPolicy, TorchPolicy),
-                    )
-                    for spec in policy_specs
-                ):
-                    self.simple_optimizer = True
-                else:
-                    self.simple_optimizer = False
-            else:
-                self.simple_optimizer = False
-
-        # User manually set simple-optimizer to False -> Error if tf-eager.
-        elif self.simple_optimizer is False:
-            if self.framework_str == "tf2":
-                raise ValueError(
-                    "`simple_optimizer=False` not supported for "
-                    f"config.framework({self.framework_str})!"
-                )
-
-        if self.input_ == "sampler" and self.off_policy_estimation_methods:
-            raise ValueError(
-                "Off-policy estimation methods can only be used if the input is a "
-                "dataset. We currently do not support applying off_policy_esitmation "
-                "method on a sampler input."
-            )
-
-        if self.input_ == "dataset":
-            # if we need to read a ray dataset set the parallelism and
-            # num_cpus_per_read_task from rollout worker settings
-            self.input_config["num_cpus_per_read_task"] = self.num_cpus_per_worker
-            if self.in_evaluation:
-                # If using dataset for evaluation, the parallelism gets set to
-                # evaluation_num_workers for backward compatibility and num_cpus gets
-                # set to num_cpus_per_worker from rollout worker. User only needs to
-                # set evaluation_num_workers.
-                self.input_config["parallelism"] = self.evaluation_num_workers or 1
-            else:
-                # If using dataset for training, the parallelism and num_cpus gets set
-                # based on rollout worker parameters. This is for backwards
-                # compatibility for now. User only needs to set num_rollout_workers.
-                self.input_config["parallelism"] = self.num_rollout_workers or 1
-
-        if self._enable_new_api_stack:
-            not_compatible_w_rlm_msg = (
-                "Cannot use `{}` option with the new API stack (RLModule and "
-                "Learner APIs)! `{}` is part of the ModelV2 API and Policy API,"
-                " which are not compatible with the new API stack. You can either "
-                "deactivate the new stack via `config.experimental( "
-                "_enable_new_api_stack=False)`,"
-                "or use the new stack (incl. RLModule API) and implement your "
-                "custom model as an RLModule."
-            )
-
-            if self.model["custom_model"] is not None:
-                raise ValueError(
-                    not_compatible_w_rlm_msg.format("custom_model", "custom_model")
-                )
-
-            if self.model["custom_model_config"] != {}:
-                raise ValueError(
-                    not_compatible_w_rlm_msg.format(
-                        "custom_model_config", "custom_model_config"
-                    )
-                )
-
-            if self.exploration_config:
-                # This is not compatible with RLModules, which have a method
-                # `forward_exploration` to specify custom exploration behavior.
-                raise ValueError(
-                    "When RLModule API are enabled, exploration_config can not be "
-                    "set. If you want to implement custom exploration behaviour, "
-                    "please modify the `forward_exploration` method of the "
-                    "RLModule at hand. On configs that have a default exploration "
-                    "config, this must be done with "
-                    "`config.exploration_config={}`."
-                )
-
-        # make sure the resource requirements for learner_group is valid
-        if self.num_learner_workers == 0 and self.num_gpus_per_worker > 1:
-            raise ValueError(
-                "num_gpus_per_worker must be 0 (cpu) or 1 (gpu) when using local mode "
-                "(i.e. num_learner_workers = 0)"
-            )
+        # Check to-be-deprecated settings (however that are still in use).
+        self._validate_to_be_deprecated_settings()
 
     def build(
         self,
@@ -1861,6 +1535,10 @@ class AlgorithmConfig(_Config):
         if num_rollout_workers is not NotProvided:
             self.num_rollout_workers = num_rollout_workers
         if num_envs_per_worker is not NotProvided:
+            if num_envs_per_worker <= 0:
+                raise ValueError(
+                    f"`num_envs_per_worker` ({num_envs_per_worker}) must be larger 0!"
+                )
             self.num_envs_per_worker = num_envs_per_worker
         if sample_collector is not NotProvided:
             self.sample_collector = sample_collector
@@ -1887,6 +1565,11 @@ class AlgorithmConfig(_Config):
                 raise ValueError("`rollout_fragment_length` must be int >0 or 'auto'!")
             self.rollout_fragment_length = rollout_fragment_length
         if batch_mode is not NotProvided:
+            if batch_mode not in ["truncate_episodes", "complete_episodes"]:
+                raise ValueError(
+                    f"`batch_mode` ({batch_mode}) must be one of [truncate_episodes|"
+                    "complete_episodes]!"
+                )
             self.batch_mode = batch_mode
         if remote_worker_envs is not NotProvided:
             self.remote_worker_envs = remote_worker_envs
@@ -2068,6 +1751,11 @@ class AlgorithmConfig(_Config):
         if grad_clip is not NotProvided:
             self.grad_clip = grad_clip
         if grad_clip_by is not NotProvided:
+            if grad_clip_by not in ["value", "norm", "global_norm"]:
+                raise ValueError(
+                    f"`grad_clip_by` ({grad_clip_by}) must be one of: 'value', 'norm', "
+                    "or 'global_norm'!"
+                )
             self.grad_clip_by = grad_clip_by
         if train_batch_size is not NotProvided:
             self.train_batch_size = train_batch_size
@@ -3013,6 +2701,12 @@ class AlgorithmConfig(_Config):
 
         return self._is_atari
 
+    @property
+    def uses_new_env_runners(self):
+        return self.env_runner_cls is not None and not issubclass(
+            self.env_runner_cls, RolloutWorker
+        )
+
     def get_rollout_fragment_length(self, worker_index: int = 0) -> int:
         """Automatically infers a proper rollout_fragment_length setting if "auto".
 
@@ -3781,6 +3475,373 @@ class AlgorithmConfig(_Config):
     def items(self):
         """Shim method to help pretend we are a dict."""
         return self.to_dict().items()
+
+    # -----------------------------------------------------------
+    # Various validation methods for different types of settings.
+    # -----------------------------------------------------------
+    def _validate_framework_settings(self) -> None:
+        """Validates framework settings and checks whether framework is installed."""
+        _tf1, _tf, _tfv = None, None, None
+        _torch = None
+        if self.framework_str not in {"tf", "tf2"} and self.framework_str != "torch":
+            return
+        elif self.framework_str in {"tf", "tf2"}:
+            _tf1, _tf, _tfv = try_import_tf()
+        else:
+            _torch, _ = try_import_torch()
+
+        # Can not use "tf" with learner API.
+        if self.framework_str == "tf" and self._enable_new_api_stack:
+            raise ValueError(
+                "Cannot use `framework=tf` with the new API stack! Either switch to tf2"
+                " via `config.framework('tf2')` OR disable the new API stack via "
+                "`config.experimental(_enable_new_api_stack=False)`."
+            )
+
+        # Check if torch framework supports torch.compile.
+        if (
+            _torch is not None
+            and self.framework_str == "torch"
+            and version.parse(_torch.__version__) < TORCH_COMPILE_REQUIRED_VERSION
+            and (self.torch_compile_learner or self.torch_compile_worker)
+        ):
+            raise ValueError("torch.compile is only supported from torch 2.0.0")
+
+        # Make sure the Learner's torch-what-to-compile setting is supported.
+        if self.torch_compile_learner:
+            from ray.rllib.core.learner.torch.torch_learner import (
+                TorchCompileWhatToCompile,
+            )
+
+            if self.torch_compile_learner_what_to_compile not in [
+                TorchCompileWhatToCompile.FORWARD_TRAIN,
+                TorchCompileWhatToCompile.COMPLETE_UPDATE,
+            ]:
+                raise ValueError(
+                    f"`config.torch_compile_learner_what_to_compile` must be one of ["
+                    f"TorchCompileWhatToCompile.forward_train, "
+                    f"TorchCompileWhatToCompile.complete_update] but is"
+                    f" {self.torch_compile_learner_what_to_compile}"
+                )
+
+        self._check_if_correct_nn_framework_installed(_tf1, _tf, _torch)
+        self._resolve_tf_settings(_tf1, _tfv)
+
+    def _validate_resources_settings(self):
+        """Checks, whether resources related settings make sense."""
+
+        # TODO @Avnishn: This is a short-term work around due to
+        #  https://github.com/ray-project/ray/issues/35409
+        #  Remove this once we are able to specify placement group bundle index in RLlib
+        if (
+            self.num_cpus_per_learner_worker > 1
+            and self.num_gpus_per_learner_worker > 0
+        ):
+            raise ValueError(
+                "Cannot set both `num_cpus_per_learner_worker` > 1 and "
+                " `num_gpus_per_learner_worker` > 0! Either set "
+                "`num_cpus_per_learner_worker` > 1 (and `num_gpus_per_learner_worker`"
+                "=0) OR set `num_gpus_per_learner_worker` > 0 (and leave "
+                "`num_cpus_per_learner_worker` at its default value of 1). "
+                "This is due to issues with placement group fragmentation. See "
+                "https://github.com/ray-project/ray/issues/35409 for more details."
+            )
+
+        # Make sure the resource requirements for learner_group is valid.
+        if self.num_learner_workers == 0 and self.num_gpus_per_worker > 1:
+            raise ValueError(
+                "num_gpus_per_worker must be 0 (cpu) or 1 (gpu) when using local mode "
+                "(i.e. num_learner_workers = 0)"
+            )
+
+    def _validate_multi_agent_settings(self):
+        """Checks, whether multi-agent related settings make sense."""
+
+        # Check `policies_to_train` for invalid entries.
+        if isinstance(self.policies_to_train, (list, set, tuple)):
+            for pid in self.policies_to_train:
+                if pid not in self.policies:
+                    raise ValueError(
+                        "`config.multi_agent(policies_to_train=..)` contains "
+                        f"policy ID ({pid}) that was not defined in "
+                        f"`config.multi_agent(policies=..)`!"
+                    )
+
+    def _validate_evaluation_settings(self):
+        """Checks, whether evaluation related settings make sense."""
+        if (
+            self.evaluation_interval
+            and self.env_runner_cls is not None
+            and not issubclass(self.env_runner_cls, RolloutWorker)
+            and not self.enable_async_evaluation
+        ):
+            raise ValueError(
+                "When using an EnvRunner class that's not a subclass of `RolloutWorker`"
+                f"(yours is {self.env_runner_cls.__name__}), "
+                "`config.enable_async_evaluation` must be set to True! Call "
+                "`config.evaluation(enable_async_evaluation=True) on your config "
+                "object to fix this problem."
+            )
+
+        # If async evaluation is enabled, custom_eval_functions are not allowed.
+        if self.enable_async_evaluation and self.custom_evaluation_function:
+            raise ValueError(
+                "`config.custom_evaluation_function` not supported in combination "
+                "with `enable_async_evaluation=True` config setting!"
+            )
+
+        # If `evaluation_num_workers` > 0, warn if `evaluation_interval` is
+        # None.
+        if self.evaluation_num_workers > 0 and not self.evaluation_interval:
+            logger.warning(
+                f"You have specified {self.evaluation_num_workers} "
+                "evaluation workers, but your `evaluation_interval` is None! "
+                "Therefore, evaluation will not occur automatically with each"
+                " call to `Algorithm.train()`. Instead, you will have to call "
+                "`Algorithm.evaluate()` manually in order to trigger an "
+                "evaluation run."
+            )
+        # If `evaluation_num_workers=0` and
+        # `evaluation_parallel_to_training=True`, warn that you need
+        # at least one remote eval worker for parallel training and
+        # evaluation, and set `evaluation_parallel_to_training` to False.
+        elif self.evaluation_num_workers == 0 and self.evaluation_parallel_to_training:
+            raise ValueError(
+                "`evaluation_parallel_to_training` can only be done if "
+                "`evaluation_num_workers` > 0! Try setting "
+                "`config.evaluation_parallel_to_training` to False."
+            )
+
+        # If `evaluation_duration=auto`, error if
+        # `evaluation_parallel_to_training=False`.
+        if self.evaluation_duration == "auto":
+            if not self.evaluation_parallel_to_training:
+                raise ValueError(
+                    "`evaluation_duration=auto` not supported for "
+                    "`evaluation_parallel_to_training=False`!"
+                )
+        # Make sure, it's an int otherwise.
+        elif (
+            not isinstance(self.evaluation_duration, int)
+            or self.evaluation_duration <= 0
+        ):
+            raise ValueError(
+                f"`evaluation_duration` ({self.evaluation_duration}) must be an "
+                f"int and >0!"
+            )
+
+    def _validate_input_settings(self):
+        """Checks, whether input related settings make sense."""
+
+        if self.input_ == "sampler" and self.off_policy_estimation_methods:
+            raise ValueError(
+                "Off-policy estimation methods can only be used if the input is a "
+                "dataset. We currently do not support applying off_policy_estimation_"
+                "method on a sampler input."
+            )
+
+        if self.input_ == "dataset":
+            # If we need to read a ray dataset set the parallelism and
+            # num_cpus_per_read_task from rollout worker settings
+            self.input_config["num_cpus_per_read_task"] = self.num_cpus_per_worker
+            if self.in_evaluation:
+                # If using dataset for evaluation, the parallelism gets set to
+                # evaluation_num_workers for backward compatibility and num_cpus gets
+                # set to num_cpus_per_worker from rollout worker. User only needs to
+                # set evaluation_num_workers.
+                self.input_config["parallelism"] = self.evaluation_num_workers or 1
+            else:
+                # If using dataset for training, the parallelism and num_cpus gets set
+                # based on rollout worker parameters. This is for backwards
+                # compatibility for now. User only needs to set num_rollout_workers.
+                self.input_config["parallelism"] = self.num_rollout_workers or 1
+
+    def _validate_new_api_stack_settings(self):
+        """Checks, whether settings related to the new API stack make sense."""
+
+        if not self._enable_new_api_stack:
+            # Throw a warning if the user has used `self.rl_module(rl_module_spec=...)`
+            # but has not enabled the new API stack at the same time.
+            if self._rl_module_spec is not None:
+                logger.warning(
+                    "You have setup a RLModuleSpec (via calling "
+                    "`config.rl_module(...)`), but have not enabled the new API stack. "
+                    "To enable it, call `config.experimental(_enable_new_api_stack="
+                    "True)`."
+                )
+            # Throw a warning if the user has used `self.training(learner_class=...)`
+            # but has not enabled the new API stack at the same time.
+            if self._learner_class is not None:
+                logger.warning(
+                    "You specified a custom Learner class (via "
+                    f"`AlgorithmConfig.training(learner_class={self._learner_class})`, "
+                    f"but have the new API stack disabled. You need to enable it via "
+                    "`AlgorithmConfig.experimental(_enable_new_api_stack=True)`."
+                )
+            # Early out. The rest of this method is only for _enable_new_api_stack=True.
+            return
+
+        # New API stack (RLModule, Learner APIs) only works with connectors.
+        if not self.enable_connectors:
+            raise ValueError(
+                "The new API stack (RLModule and Learner APIs) only works with "
+                "connectors! Please enable connectors via "
+                "`config.rollouts(enable_connectors=True)`."
+            )
+
+        # LR-schedule checking.
+        Scheduler.validate(
+            fixed_value_or_schedule=self.lr,
+            setting_name="lr",
+            description="learning rate",
+        )
+
+        # Check and error if `on_episode_created` callback has been overridden on the
+        # new API stack.
+        if self.uses_new_env_runners and self.callbacks_class is not DefaultCallbacks:
+            default_src = inspect.getsource(DefaultCallbacks.on_episode_created)
+            user_src = inspect.getsource(self.callbacks_class.on_episode_created)
+            if default_src != user_src:
+                raise ValueError(
+                    "When using the new API stack with EnvRunners, you cannot override "
+                    "the `DefaultCallbacks.on_episode_created()` method anymore! "
+                    "This particular callback is no longer supported as we are now "
+                    "using gym.vector.Env, which automatically resets individual "
+                    "sub-environments when they are terminated. Override the "
+                    "`on_episode_start` method instead, which gets fired right after "
+                    "the `env.reset()` call."
+                )
+
+        # This is not compatible with RLModules, which all have a method
+        # `forward_exploration` to specify custom exploration behavior.
+        if self.exploration_config:
+            raise ValueError(
+                "When the RLModule API is enabled, exploration_config can not be "
+                "set. If you want to implement custom exploration behaviour, "
+                "please modify the `forward_exploration` method of the "
+                "RLModule at hand. On configs that have a default exploration "
+                "config, this must be done via "
+                "`config.exploration_config={}`."
+            )
+
+        not_compatible_w_rlm_msg = (
+            "Cannot use `{}` option with the new API stack (RLModule and "
+            "Learner APIs)! `{}` is part of the ModelV2 API and Policy API,"
+            " which are not compatible with the new API stack. You can either "
+            "deactivate the new stack via `config.experimental( "
+            "_enable_new_api_stack=False)`,"
+            "or use the new stack (incl. RLModule API) and implement your "
+            "custom model as an RLModule."
+        )
+
+        if self.model["custom_model"] is not None:
+            raise ValueError(
+                not_compatible_w_rlm_msg.format("custom_model", "custom_model")
+            )
+
+        if self.model["custom_model_config"] != {}:
+            raise ValueError(
+                not_compatible_w_rlm_msg.format(
+                    "custom_model_config", "custom_model_config"
+                )
+            )
+
+    # TODO (sven): Once everything is on the new API stack, we won't need this method
+    #  anymore.
+    def _validate_to_be_deprecated_settings(self):
+        if self.preprocessor_pref not in ["rllib", "deepmind", None]:
+            raise ValueError(
+                "`config.preprocessor_pref` must be either 'rllib', 'deepmind' or None!"
+            )
+
+        # Check model config.
+        # If no preprocessing, propagate into model's config as well
+        # (so model will know, whether inputs are preprocessed or not).
+        if self._disable_preprocessor_api is True:
+            self.model["_disable_preprocessor_api"] = True
+        # If no action flattening, propagate into model's config as well
+        # (so model will know, whether action inputs are already flattened or
+        # not).
+        if self._disable_action_flattening is True:
+            self.model["_disable_action_flattening"] = True
+        if self.model.get("custom_preprocessor"):
+            deprecation_warning(
+                old="AlgorithmConfig.training(model={'custom_preprocessor': ...})",
+                help="Custom preprocessors are deprecated, "
+                "since they sometimes conflict with the built-in "
+                "preprocessors for handling complex observation spaces. "
+                "Please use wrapper classes around your environment "
+                "instead.",
+                error=True,
+            )
+
+        # Multi-GPU settings.
+        if self.simple_optimizer is True:
+            pass
+        # Multi-GPU setting: Must use MultiGPUTrainOneStep.
+        elif not self._enable_new_api_stack and self.num_gpus > 1:
+            # TODO: AlphaStar uses >1 GPUs differently (1 per policy actor), so this is
+            #  ok for tf2 here.
+            #  Remove this hacky check, once we have fully moved to the Learner API.
+            if self.framework_str == "tf2" and type(self).__name__ != "AlphaStar":
+                raise ValueError(
+                    "`num_gpus` > 1 not supported yet for "
+                    f"framework={self.framework_str}!"
+                )
+            elif self.simple_optimizer is True:
+                raise ValueError(
+                    "Cannot use `simple_optimizer` if `num_gpus` > 1! "
+                    "Consider not setting `simple_optimizer` in your config."
+                )
+            self.simple_optimizer = False
+        # Auto-setting: Use simple-optimizer for tf-eager or multiagent,
+        # otherwise: MultiGPUTrainOneStep (if supported by the algo's execution
+        # plan).
+        elif self.simple_optimizer == DEPRECATED_VALUE:
+            # tf-eager: Must use simple optimizer.
+            if self.framework_str not in ["tf", "torch"]:
+                self.simple_optimizer = True
+            # Multi-agent case: Try using MultiGPU optimizer (only
+            # if all policies used are DynamicTFPolicies or TorchPolicies).
+            elif self.is_multi_agent():
+                from ray.rllib.policy.dynamic_tf_policy import DynamicTFPolicy
+                from ray.rllib.policy.torch_policy import TorchPolicy
+
+                default_policy_cls = None
+                if self.algo_class:
+                    default_policy_cls = self.algo_class.get_default_policy_class(self)
+
+                policies = self.policies
+                policy_specs = (
+                    [
+                        PolicySpec(*spec) if isinstance(spec, (tuple, list)) else spec
+                        for spec in policies.values()
+                    ]
+                    if isinstance(policies, dict)
+                    else [PolicySpec() for _ in policies]
+                )
+
+                if any(
+                    (spec.policy_class or default_policy_cls) is None
+                    or not issubclass(
+                        spec.policy_class or default_policy_cls,
+                        (DynamicTFPolicy, TorchPolicy),
+                    )
+                    for spec in policy_specs
+                ):
+                    self.simple_optimizer = True
+                else:
+                    self.simple_optimizer = False
+            else:
+                self.simple_optimizer = False
+
+        # User manually set simple-optimizer to False -> Error if tf-eager.
+        elif self.simple_optimizer is False:
+            if self.framework_str == "tf2":
+                raise ValueError(
+                    "`simple_optimizer=False` not supported for "
+                    f"config.framework({self.framework_str})!"
+                )
 
     @staticmethod
     def _serialize_dict(config):
