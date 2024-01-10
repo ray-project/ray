@@ -439,7 +439,7 @@ class ReplicaActor:
                     request_metadata,
                     request_args,
                     request_kwargs,
-                    result_queue=result_queue,
+                    generator_result_callback=result_queue,
                 )
             )
 
@@ -823,7 +823,7 @@ class UserCallableWrapper:
         user_method_params: Dict[str, inspect.Parameter],
         *,
         is_asgi_app: bool,
-        result_queue: Optional[MessageQueue] = None,
+        generator_result_callback: Optional[Callable] = None,
     ) -> Tuple[Tuple[Any], ASGIArgs, asyncio.Task]:
         """Prepare arguments for a user method handling an HTTP request.
 
@@ -839,7 +839,7 @@ class UserCallableWrapper:
         asgi_args = ASGIArgs(
             scope=pickle.loads(request.pickled_asgi_scope),
             receive=receive,
-            send=result_queue,
+            send=generator_result_callback,
         )
         if is_asgi_app:
             request_args = asgi_args.to_args_tuple()
@@ -877,14 +877,14 @@ class UserCallableWrapper:
         user_method_name: str,
         request_metadata: RequestMetadata,
         *,
-        result_queue: Optional[MessageQueue],
+        generator_result_callback: Optional[Callable],
         is_asgi_app: bool,
         asgi_args: Optional[ASGIArgs],
     ) -> Any:
         """Postprocess the result of a user method.
 
         If this is for a streaming request, the result should be a generator that will
-        be consumed and its outputs placed on the `result_queue`.
+        be consumed and its outputs passed to the `generator_result_callback`.
 
         This method may raise an exception if the result is not of the expected type
         (e.g., non-generator for streaming requests or generator for unary requests).
@@ -896,12 +896,12 @@ class UserCallableWrapper:
                 for r in result:
                     if request_metadata.is_grpc_request:
                         r = (request_metadata.grpc_context, r.SerializeToString())
-                    await result_queue(r)
+                    await generator_result_callback(r)
             elif result_is_async_gen:
                 async for r in result:
                     if request_metadata.is_grpc_request:
                         r = (request_metadata.grpc_context, r.SerializeToString())
-                    await result_queue(r)
+                    await generator_result_callback(r)
             elif request_metadata.is_http_request and not is_asgi_app:
                 # For the FastAPI codepath, the response has already been sent over
                 # ASGI, but for the vanilla deployment codepath we need to send it.
@@ -933,11 +933,12 @@ class UserCallableWrapper:
         request_args: Tuple[Any],
         request_kwargs: Dict[str, Any],
         *,
-        result_queue: Optional[MessageQueue] = None,
+        generator_result_callback: Optional[Callable] = None,
     ) -> Any:
         """Call a user method (unary or generator).
 
-        The `result_queue` is used to communicate the results of generator methods.
+        The `generator_result_callback` is used to communicate the results of generator
+        methods.
 
         Raises any exception raised by the user code so it can be propagated as a
         `RayTaskError`.
@@ -970,7 +971,7 @@ class UserCallableWrapper:
                     request_metadata,
                     user_method_params,
                     is_asgi_app=is_asgi_app,
-                    result_queue=result_queue,
+                    generator_result_callback=generator_result_callback,
                 )
             elif request_metadata.is_grpc_request:
                 # Ensure the request args are a single gRPCRequest object.
@@ -987,7 +988,7 @@ class UserCallableWrapper:
                 ),
                 user_method_name,
                 request_metadata,
-                result_queue=result_queue,
+                generator_result_callback=generator_result_callback,
                 is_asgi_app=is_asgi_app,
                 asgi_args=asgi_args,
             )
