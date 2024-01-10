@@ -1,6 +1,9 @@
 from datetime import datetime, timedelta
 
-from ray_release.test_automation.state_machine import TestStateMachine
+from ray_release.test_automation.state_machine import (
+    TestStateMachine,
+    DEFAULT_ISSUE_OWNER,
+)
 from ray_release.test import Test, TestState
 from ray_release.logger import logger
 
@@ -67,7 +70,7 @@ class ReleaseTestStateMachine(TestStateMachine):
                 f"Managed by OSS Test Policy"
             ),
             labels=labels,
-            assignee="can-anyscale",
+            assignee=DEFAULT_ISSUE_OWNER,
         ).number
         self.test[Test.KEY_GITHUB_ISSUE_NUMBER] = issue_number
 
