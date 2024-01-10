@@ -154,6 +154,87 @@ def get_activation_fn(
 
 
 @DeveloperAPI
+def get_initializer_fn(name: Optional[Union[str, Callable]], framework: str = "torch"):
+    """Returns the framework-specific initializer class or function.
+
+    This function relies fully on the specified initializer classes and
+    functions in the frameworks `torch` and `tf2` (see for `torch`
+    https://pytorch.org/docs/stable/nn.init.html and for `tf2` see
+    https://www.tensorflow.org/api_docs/python/tf/keras/initializers).
+
+    Note, for framework `torch` the in-place initializers are needed, i.e. names
+    should end with an underscore `_`, e.g. `glorot_uniform_`.
+
+    Args:
+        name: Name of the initializer class or function in one of the two
+            supported frameworks, i.e. `torch` or `tf2`.
+        framework: The framework string, either `torch  or `tf2`.
+
+    Returns:
+        A framework-specific function or class defining an initializer to be used
+        for network initialization,
+
+    Raises:
+        `ValueError` if the `name` is neither class or function in the specified
+        `framework`. Raises also a `ValueError`, if `name` does not define an
+        in-place initializer for framework `torch`.
+    """
+    # Already a callable or `None` return as is. If `None` we use the default
+    # initializer defined in the framework-specific layers themselves.
+    if callable(name) or name is None:
+        return name
+
+    if framework == "torch":
+        name_lower = name.lower() if isinstance(name, str) else name
+
+        _, nn = try_import_torch()
+
+        # Check, if the name includes an underscore. We must use the
+        # in-place initialization from Torch.
+        if not name_lower.endswith("_"):
+            raise ValueError(
+                "Not an in-place initializer: Torch weight initializers "
+                "need to be provided as their in-place version, i.e. "
+                "<initializaer_name> + '_'. See "
+                "https://pytorch.org/docs/stable/nn.init.html. "
+                f"User provided {name}."
+            )
+
+        # First, try to get the initialization directly from `nn.init`.
+        # Note, that all initialization methods in `nn.init` are lower
+        # case and that `<method>_` defines the "in-place" method.
+        fn = getattr(nn.init, name_lower, None)
+        if fn is not None:
+            # TODO (simon): Raise a warning if not "in-place" method.
+            return fn
+        # Unknown initializer.
+        else:
+            # Inform the user that this initializer does not exist.
+            raise ValueError(
+                f"Unknown initializer name: {name_lower} is not a method in "
+                "`torch.nn.init`!"
+            )
+    elif framework == "tf2":
+        # Note, as initializer classes in TensorFlow can be either given by their
+        # name in camel toe typing or by their shortcut we use the `name` as it is.
+        # See https://www.tensorflow.org/api_docs/python/tf/keras/initializers.
+
+        _, tf, _ = try_import_tf()
+
+        # Try to get the initialization function directly from `tf.keras.initializers`.
+        fn = getattr(tf.keras.initializers, name, None)
+        if fn is not None:
+            return fn
+        # Unknown initializer.
+        else:
+            # Inform the user that this initializer does not exist.
+            raise ValueError(
+                f"Unknown initializer: {name} is not a initializer in "
+                "`tf.keras.initializers`!"
+            )
+
+
+@DeveloperAPI
 def get_filter_config(shape):
     """Returns a default Conv2D filter config (list) for a given image shape.
 
