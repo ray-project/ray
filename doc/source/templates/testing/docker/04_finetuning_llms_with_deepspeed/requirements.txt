@@ -1,4 +1,4 @@
-deepspeed==0.10.3
+deepspeed==0.10.2
 fairscale
 transformers>=4.31.0
 dataset
