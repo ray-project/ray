@@ -72,12 +72,13 @@ class APPOTfLearner(AppoLearner, TfLearner):
             trajectory_len=rollout_frag_or_episode_len,
             recurrent_seq_len=recurrent_seq_len,
         )
-        bootstrap_values_time_major = make_time_major(
-            batch[SampleBatch.VALUES_BOOTSTRAPPED],
-            trajectory_len=rollout_frag_or_episode_len,
-            recurrent_seq_len=recurrent_seq_len,
-        )
-        bootstrap_value = bootstrap_values_time_major[-1]
+        #bootstrap_values_time_major = make_time_major(
+        #    batch[SampleBatch.VALUES_BOOTSTRAPPED],
+        #    trajectory_len=rollout_frag_or_episode_len,
+        #    recurrent_seq_len=recurrent_seq_len,
+        #)
+        #bootstrap_value = bootstrap_values_time_major[-1]
+        bootstrap_values = batch[SampleBatch.VALUES_BOOTSTRAPPED]
 
         # The discount factor that is used should be gamma except for timesteps where
         # the episode is terminated. In that case, the discount factor should be 0.
@@ -100,7 +101,7 @@ class APPOTfLearner(AppoLearner, TfLearner):
             discounts=discounts_time_major,
             rewards=rewards_time_major,
             values=values_time_major,
-            bootstrap_value=bootstrap_value,
+            bootstrap_values=bootstrap_values,
             clip_pg_rho_threshold=config.vtrace_clip_pg_rho_threshold,
             clip_rho_threshold=config.vtrace_clip_rho_threshold,
         )

@@ -151,6 +151,16 @@ py_test(
 
 # APPO
 py_test(
+    name = "learning_tests_cartpole_appo_w_env_runner",
+    main = "tests/run_regression_tests.py",
+    tags = ["team:rllib", "exclusive", "learning_tests", "learning_tests_cartpole", "learning_tests_discrete"],
+    size = "large",
+    srcs = ["tests/run_regression_tests.py"],
+    data = ["tuned_examples/appo/cartpole_appo_envrunner.py"],
+    args = ["--dir=tuned_examples/appo/"]
+)
+
+py_test(
     name = "learning_tests_cartpole_appo_no_vtrace",
     main = "tests/run_regression_tests.py",
     tags = ["team:rllib", "exclusive", "learning_tests", "learning_tests_cartpole", "learning_tests_discrete"],
@@ -317,8 +327,8 @@ py_test(
     tags = ["team:rllib", "exclusive", "learning_tests", "learning_tests_cartpole", "learning_tests_discrete"],
     size = "large",
     srcs = ["tests/run_regression_tests.py"],
-    data = ["tuned_examples/impala/cartpole-impala-envrunner.py"],
-    args = ["--dir=tuned_examples/impala"]
+    data = ["tuned_examples/impala/cartpole_impala_envrunner.py"],
+    args = ["--dir=tuned_examples/impala/"]
 )
 
 py_test(
@@ -361,7 +371,7 @@ py_test(
     tags = ["team:rllib", "exclusive", "learning_tests", "learning_tests_cartpole", "learning_tests_discrete", "no_tf_static_graph"],
     size = "large",
     srcs = ["tests/run_regression_tests.py"],
-    data = ["tuned_examples/ppo/cartpole-ppo-envrunner.py"],
+    data = ["tuned_examples/ppo/cartpole_ppo_envrunner.py"],
     args = ["--dir=tuned_examples/ppo"]
 )
 
@@ -590,7 +600,7 @@ py_test(
     srcs = ["algorithms/dreamerv3/tests/test_dreamerv3.py"]
 )
 
-# Impala
+# IMPALA
 py_test(
     name = "test_impala",
     tags = ["team:rllib", "algorithms_dir"],

@@ -1,34 +1,40 @@
-from ray.rllib.algorithms.impala import ImpalaConfig
+from ray.rllib.algorithms.appo import APPOConfig
 from ray.rllib.env.single_agent_env_runner import SingleAgentEnvRunner
 from ray import air, tune
 
 
 config = (
-    ImpalaConfig()
+    APPOConfig()
     # Enable new API stack and use EnvRunner.
     .experimental(_enable_new_api_stack=True)
     .environment("CartPole-v1")
     .rollouts(
         env_runner_cls=SingleAgentEnvRunner,
-        num_rollout_workers=10,
+        num_rollout_workers=1,
+        num_envs_per_worker=5,
+        # TODO (sven): Add MeanStd connector, once fully tested (should learn much
+        #  better with it).
     )
     .resources(
-        num_learner_workers=2,
+        num_learner_workers=1,
         num_gpus_per_learner_worker=0,
         num_gpus=0,
         num_cpus_for_local_worker=0,
     )
     .training(
-        train_batch_size_per_learner=500,
-        grad_clip=40.0,
-        grad_clip_by="global_norm",
-        #lr=[[0, 0.0005], [2000000, 0.000005]],
+        num_sgd_iter=1,
+        vf_loss_coeff=0.01,
+        model={
+            "fcnet_hiddens": [32],
+            "fcnet_activation": "linear",
+            "vf_share_layers": True,
+        }
     )
 )
 
 stop = {
-    "timesteps_total": 50000000,
-    "sampler_results/episode_reward_mean": 500.0,
+    "timesteps_total": 1000000,
+    "sampler_results/episode_reward_mean": 200.0,
 }
 
 

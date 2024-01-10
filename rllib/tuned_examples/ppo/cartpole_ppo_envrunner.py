@@ -9,6 +9,8 @@ config = (
     .rollouts(
         env_runner_cls=SingleAgentEnvRunner,
         num_rollout_workers=1,
+        # TODO (sven): Add MeanStd connector, once fully tested (should learn much
+        #  better with it).
     )
     .environment("CartPole-v1")
     .training(
@@ -31,5 +33,5 @@ config = (
 
 stop = {
     "timesteps_total": 100000,
-    "evaluation/sampler_results/episode_reward_mean": 150.0,
+    "evaluation/sampler_results/episode_reward_mean": 200.0,
 }
