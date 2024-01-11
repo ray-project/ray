@@ -385,7 +385,9 @@ class SingleAgentEnvRunner(EnvRunner):
         eps = 0
         while eps < num_episodes:
             if random_actions:
-                actions = self.env.action_space.sample()
+                to_env = {
+                    SampleBatch.ACTIONS: self.env.action_space.sample(),
+                }
             else:
                 to_module = self._env_to_module(
                     rl_module=self.module,
@@ -404,8 +406,8 @@ class SingleAgentEnvRunner(EnvRunner):
                     episodes=self._episodes,
                     explore=explore,
                 )
-                actions = to_env.pop(SampleBatch.ACTIONS)
 
+            actions = to_env.pop(SampleBatch.ACTIONS)
             obs, rewards, terminateds, truncateds, infos = self.env.step(actions)
             if with_render_data:
                 render_images = [e.render() for e in self.env.envs]
