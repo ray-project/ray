@@ -46,6 +46,7 @@ class TestState(enum.Enum):
 
     JAILED = "jailed"
     FAILING = "failing"
+    FLAKY = "flaky"
     CONSITENTLY_FAILING = "consistently_failing"
     PASSING = "passing"
 
