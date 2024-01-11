@@ -429,13 +429,11 @@ class ReplicaActor:
         call_user_method_future = None
         wait_for_message_task = None
         try:
-            # Handle the request in a background asyncio.Task. It's expected that
-            # this task will use the result queue to send its response messages.
-            # XXX: FIX COMMENT!!!
             result_queue = MessageQueue()
 
+            # `asyncio.Queue`s are not thread safe, so `call_soon_threadsafe` must be
+            # used to interact with the result queue from the user callable thread.
             async def write_to_result_queue_thread_safe(item: Any):
-                # XXX: thread safety comment!!!
                 self._event_loop.call_soon_threadsafe(result_queue.put_nowait, item)
 
             call_user_method_future = self._user_callable_wrapper.call_user_method(
@@ -672,7 +670,12 @@ class ReplicaActor:
         self._metrics_manager.shutdown()
 
     async def check_health(self):
-        # XXX: NOTE HERE
+        # If the user provided a health check, call it via `user_callable_wrapper` on
+        # the user code thread. This means if user code blocks the event loop the health
+        # check may time out.
+        #
+        # To avoid this issue for basic cases without a user-defined health check, skip
+        # interacting with the `user_callable_wrapper` entirely.
         if self._user_callable_wrapper.has_user_health_check:
             await self._user_callable_wrapper.call_user_health_check()
 
@@ -680,7 +683,12 @@ class ReplicaActor:
 class UserCallableWrapper:
     """Wraps a user-provided callable that is used to handle requests to a replica."""
 
-    _event_loop: asyncio.AbstractEventLoop = asyncio.new_event_loop()
+    # All interactions with user code run on this loop to avoid blocking the replica's
+    # main event loop.
+    # NOTE(edoakes): this is a class variable rather than an instance variable to
+    # enable writing the `_run_on_user_code_event_loop` decorator method (the decorator
+    # doesn't have access to `self` at class definition time).
+    _user_code_event_loop: asyncio.AbstractEventLoop = asyncio.new_event_loop()
 
     def __init__(
         self,
@@ -703,20 +711,24 @@ class UserCallableWrapper:
         self._deployment_id = deployment_id
         self._delete_lock = asyncio.Lock()
 
-        # XXX: comment.
         self._thread = threading.Thread(
             daemon=True,
-            target=self._event_loop.run_forever,
+            target=self._user_code_event_loop.run_forever,
         )
         self._thread.start()
 
         # Will be populated in `initialize_callable`.
         self._callable = None
 
-    def _run_on_event_loop(f: Callable):
+    def _run_on_user_code_event_loop(f: Callable):
+        """Wrap the provided coroutine function to run on the user code event loop.
+
+        The function will be modified to be a sync function that returns an
+        `asyncio.Future`.
+        """
         assert inspect.iscoroutinefunction(
             f
-        ), "_run_on_event_loop decorator can only be used on coroutine functions."
+        ), "_run_on_user_code_event_loop can only be used on coroutine functions."
 
         @wraps(f)
         def wrapper(*args, **kwargs) -> asyncio.Future:
@@ -785,7 +797,7 @@ class UserCallableWrapper:
     def user_callable(self) -> Optional[Callable]:
         return self._callable
 
-    @_run_on_event_loop
+    @_run_on_user_code_event_loop
     async def initialize_callable(self):
         # This closure initializes user code and finalizes replica
         # startup. By splitting the initialization step like this,
@@ -826,11 +838,11 @@ class UserCallableWrapper:
     def has_user_health_check(self) -> bool:
         return self._user_health_check is not None
 
-    @_run_on_event_loop
+    @_run_on_user_code_event_loop
     async def call_user_health_check(self):
         await self._call_func_or_gen(self._user_health_check)
 
-    @_run_on_event_loop
+    @_run_on_user_code_event_loop
     async def call_reconfigure(self, user_config: Any):
         # NOTE(edoakes): there is the possibility of a race condition in user code if
         # they don't have any form of concurrency control between `reconfigure` and
@@ -972,7 +984,7 @@ class UserCallableWrapper:
 
         return result
 
-    @_run_on_event_loop
+    @_run_on_user_code_event_loop
     async def call_user_method(
         self,
         request_metadata: RequestMetadata,
@@ -1054,7 +1066,7 @@ class UserCallableWrapper:
 
         return result
 
-    @_run_on_event_loop
+    @_run_on_user_code_event_loop
     async def call_destructor(self):
         """Explicitly call the `__del__` method of the user callable.
 
