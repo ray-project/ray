@@ -1,25 +1,26 @@
 import copy
 import logging
+import time
 from abc import ABC, abstractmethod
 from collections import defaultdict
 from dataclasses import dataclass, field
-from enum import Enum
+from enum import Enum, IntEnum
 from typing import Dict, List, Optional, Tuple
 
 from google.protobuf.json_format import MessageToDict
 
 from ray.autoscaler._private.resource_demand_scheduler import UtilizationScore
+from ray.autoscaler.v2.instance_manager.common import InstanceUtil
 from ray.autoscaler.v2.instance_manager.config import NodeTypeConfig
-from ray.autoscaler.v2.schema import NodeType
-from ray.autoscaler.v2.utils import is_pending, resource_requests_by_count
+from ray.autoscaler.v2.schema import AutoscalerInstance, NodeType
+from ray.autoscaler.v2.utils import resource_requests_by_count
 from ray.core.generated.autoscaler_pb2 import (
     ClusterResourceConstraint,
     GangResourceRequest,
-    NodeState,
     ResourceRequest,
     ResourceRequestByCount,
 )
-from ray.core.generated.instance_manager_pb2 import Instance
+from ray.core.generated.instance_manager_pb2 import LaunchRequest
 
 # ============= Resource Scheduling Service API =======================
 #
@@ -46,22 +47,31 @@ class SchedulingRequest:
     cluster_resource_constraints: List[ClusterResourceConstraint] = field(
         default_factory=list
     )
-    # The ray nodes
-    current_nodes: List[NodeState] = field(default_factory=list)
-    # The current list of instances.
-    current_instances: List[Instance] = field(default_factory=list)
+    # Current autoscaler instances.
+    instances: List[AutoscalerInstance] = field(default_factory=list)
+
+
+class TerminationReason(IntEnum):
+    """
+    The reason for terminating an instance.
+    """
+
+    # Idle termination.
+    IDLE_TERMINATE = 1
+    # Max node count constraints.
+    MAX_WORKER_NODES = 2
+    # Per node type constraints.
+    MAX_WORKER_NODES_PER_NODE_TYPE = 3
 
 
 @dataclass
 class SchedulingReply:
-    # The target cluster shape, given the current resource demands and instances.
-    # Key is the node type name, value is the number of nodes.
-    # This is needed to prevent autoscaler terminating nodes needed for cluster
-    # constraints.
-    # Note this might be "smaller" than the current cluster shape, since there
-    # could be cluster constraints enforced, e.g. a newly updated max_workers value
-    # would result in a target count smaller than the current count of the node type.
-    target_cluster_shape: Dict[NodeType, int]
+    # The launch requests for new instances.
+    to_launch: List[LaunchRequest] = field(default_factory=list)
+    # Instances to be terminated
+    to_terminate: Dict[AutoscalerInstance, TerminationReason] = field(
+        default_factory=list
+    )
     # The infeasible resource bundles.
     infeasible_resource_requests: List[ResourceRequestByCount] = field(
         default_factory=list
@@ -104,6 +114,8 @@ class SchedulingNodeStatus(Enum):
     PENDING = "PENDING"
     # The node is running.
     RUNNING = "RUNNING"
+    # The node is to be terminated.
+    TO_TERMINATE = "TO_TERMINATE"
 
 
 @dataclass
@@ -126,7 +138,8 @@ class SchedulingNode:
     def from_node_config(
         cls,
         node_config: NodeTypeConfig,
-        status: SchedulingNodeStatus = SchedulingNodeStatus.TO_LAUNCH,
+        status: SchedulingNodeStatus,
+        im_instance_id: Optional[str] = None,
     ) -> "SchedulingNode":
         """
         Create a scheduling node from a node config.
@@ -137,6 +150,7 @@ class SchedulingNode:
             available_resources=dict(node_config.resources),
             labels=dict(node_config.labels),
             status=status,
+            im_instance_id=im_instance_id,
         )
 
     # Node type name.
@@ -154,6 +168,12 @@ class SchedulingNode:
     # Observability descriptive message for why the node was launched in the
     # first place.
     launch_reason: Optional[str] = None
+    # Termination reason.
+    termination_reason: Optional[TerminationReason] = None
+    # Instance manager id.
+    im_instance_id: Optional[str] = None
+    # Idle time in ms.
+    idle_duration_ms: int = 0
 
     def try_schedule(
         self, requests: List[ResourceRequest]
@@ -289,40 +309,60 @@ class ResourceDemandScheduler(IResourceScheduler):
 
             nodes = []
             node_type_configs = req.node_type_configs
-            # Populate already running nodes.
-            for node in req.current_nodes:
-                nodes.append(
-                    SchedulingNode(
-                        node_type=node.ray_node_type_name,
-                        total_resources=dict(node.total_resources),
-                        available_resources=dict(node.available_resources),
-                        labels=dict(node.dynamic_labels),
-                        status=SchedulingNodeStatus.RUNNING,
+
+            # Initialize the scheduling nodes needed.
+            for instance in req.instances:
+                if instance.ray_node is not None:
+                    im_instance_id = (
+                        instance.im_instance.instance_id
+                        if instance.im_instance
+                        else None
                     )
-                )
-
-            # Populate pending nodes.
-            for instance in req.current_instances:
-                if not is_pending(instance):
-                    continue
-                node_config = node_type_configs.get(instance.instance_type, None)
-
-                if node_config is None:
-                    # Configs might have been updated, and no more
-                    # node_type_configs for this node type.
-                    logger.info(
-                        "Skipping instance {} since no node config found".format(
-                            instance.instance_id
+                    nodes.append(
+                        SchedulingNode(
+                            node_type=instance.ray_node.ray_node_type_name,
+                            total_resources=dict(instance.ray_node.total_resources),
+                            available_resources=dict(
+                                instance.ray_node.available_resources
+                            ),
+                            labels=dict(instance.ray_node.dynamic_labels),
+                            status=SchedulingNodeStatus.RUNNING,
+                            im_instance_id=im_instance_id,
+                            idle_duration_ms=instance.ray_node.idle_duration_ms,
                         )
                     )
-                    continue
-                nodes.append(
-                    SchedulingNode.from_node_config(
-                        node_config,
-                        status=SchedulingNodeStatus.PENDING,
+                elif (
+                    instance.im_instance is not None
+                    and InstanceUtil.is_ray_running_reachable(
+                        instance.im_instance.status
                     )
-                )
+                ):
+                    node_config = node_type_configs.get(
+                        instance.im_instance.instance_type, None
+                    )
 
+                    if node_config is None:
+                        # Configs might have been updated, and no more
+                        # node_type_configs for this node type.
+                        logger.info(
+                            "Skipping instance {} since no node config found".format(
+                                instance.im_instance.instance_id
+                            )
+                        )
+                        continue
+                    nodes.append(
+                        SchedulingNode.from_node_config(
+                            node_config,
+                            status=SchedulingNodeStatus.PENDING,
+                            im_instance_id=instance.im_instance.instance_id,
+                        )
+                    )
+                else:
+                    logger.info(
+                        "Skipping instance {} since it's not pending/running".format(
+                            instance
+                        )
+                    )
             return cls(
                 nodes=nodes,
                 node_type_configs=node_type_configs,
@@ -388,6 +428,37 @@ class ResourceDemandScheduler(IResourceScheduler):
                 len(self._nodes), self._node_type_available, self._nodes
             )
 
+        def get_to_launch(self) -> List[LaunchRequest]:
+            """
+            Get new instances to launch.
+            """
+            launch_by_type = defaultdict(int)
+            for node in self._nodes:
+                if node.status == SchedulingNodeStatus.TO_LAUNCH:
+                    launch_by_type[node.node_type] += 1
+
+            launch_requests = []
+            for instance_type, count in launch_by_type.items():
+                launch_requests.append(
+                    LaunchRequest(
+                        instance_type=instance_type,
+                        count=count,
+                        id=str(time.time_ns()),
+                        request_ts_ms=time.time_ns() // 1000,
+                    )
+                )
+            return launch_requests
+
+        def get_to_terminate(self) -> Dict[AutoscalerInstance, TerminationReason]:
+            """
+            Get instances to terminate.
+            """
+            return {
+                node.autoscaling_instance: node.termination_reason
+                for node in self._nodes
+                if node.status == SchedulingNodeStatus.TO_TERMINATE
+            }
+
     def schedule(self, request: SchedulingRequest) -> SchedulingReply:
         self._init_context(request)
 
@@ -416,7 +487,8 @@ class ResourceDemandScheduler(IResourceScheduler):
             ),
             infeasible_gang_resource_requests=infeasible_gang_requests,
             infeasible_cluster_resource_constraints=infeasible_constraints,
-            target_cluster_shape=self._ctx.get_cluster_shape(),
+            to_launch=self._ctx.get_to_launch(),
+            to_terminate=self._ctx.get_to_terminate(),
         )
 
         return reply

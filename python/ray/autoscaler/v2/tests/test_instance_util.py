@@ -8,8 +8,10 @@ from unittest.mock import patch
 
 import pytest
 
-from ray.autoscaler.v2.instance_manager.instance_manager import InstanceUtil
-from ray.autoscaler.v2.schema import InvalidInstanceStatusError
+from ray.autoscaler.v2.instance_manager.common import (
+    InstanceUtil,
+    InvalidInstanceStatusError,
+)
 from ray.core.generated.instance_manager_pb2 import Instance
 
 
@@ -147,14 +149,14 @@ class InstanceUtilTest(unittest.TestCase):
         }
         for s in positive_status:
             instance.status = s
-            assert InstanceUtil.is_cloud_instance_allocated(instance)
+            assert InstanceUtil.is_cloud_instance_allocated(instance.status)
             all_status.remove(s)
 
         # Unknown not possible.
         all_status.remove(Instance.UNKNOWN)
         for s in all_status:
             instance.status = s
-            assert not InstanceUtil.is_cloud_instance_allocated(instance)
+            assert not InstanceUtil.is_cloud_instance_allocated(instance.status)
 
     def test_is_ray_running_reachable(self):
         all_status = set(Instance.InstanceStatus.values())
@@ -168,7 +170,7 @@ class InstanceUtilTest(unittest.TestCase):
         }
         for s in positive_status:
             instance.status = s
-            assert InstanceUtil.is_ray_running_reachable(instance)
+            assert InstanceUtil.is_ray_running_reachable(instance.status)
             assert exists_path(
                 s, Instance.RAY_RUNNING, InstanceUtil.get_valid_transitions()
             )
@@ -178,7 +180,7 @@ class InstanceUtilTest(unittest.TestCase):
         all_status.remove(Instance.UNKNOWN)
         for s in all_status:
             instance.status = s
-            assert not InstanceUtil.is_ray_running_reachable(instance)
+            assert not InstanceUtil.is_ray_running_reachable(instance.status)
             assert not exists_path(
                 s, Instance.RAY_RUNNING, InstanceUtil.get_valid_transitions()
             )
