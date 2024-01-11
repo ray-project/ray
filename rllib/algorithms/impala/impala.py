@@ -1049,26 +1049,23 @@ class Impala(Algorithm):
         # There are batches on the queue -> Send them all to the learner group.
         data = self.data_to_place_on_learner[:]
         self.data_to_place_on_learner.clear()
+
         # If there are no learner workers and learning is directly on the driver
         # Then we can't do async updates, so we need to block.
-        blocking = self.config.num_learner_workers == 0
+        async_update = self.config.num_learner_workers > 0
         results = []
-        for batch_or_episodes in data:
-            if blocking:
-                result = self.learner_group.update(
-                    reduce_fn=_reduce_impala_results,
-                    num_iters=self.config.num_sgd_iter,
-                    minibatch_size=self.config.minibatch_size,
-                    **{update_kwarg: batch_or_episodes},
-                )
+
+        for episodes in data:
+            result = self.learner_group.update_from_episodes(
+                episodes=episodes,
+                async_update=async_update,
+                reduce_fn=_reduce_impala_results,
+                num_iters=self.config.num_sgd_iter,
+                minibatch_size=self.config.minibatch_size,
+                **{update_kwarg: episodes},
+            )
+            if not async_update:
                 results = [result]
-            else:
-                results = self.learner_group.async_update(
-                    reduce_fn=_reduce_impala_results,
-                    num_iters=self.config.num_sgd_iter,
-                    minibatch_size=self.config.minibatch_size,
-                    **{update_kwarg: batch_or_episodes},
-                )
 
             for r in results:
                 self._counters[NUM_ENV_STEPS_TRAINED] += r[ALL_MODULES].pop(
@@ -1077,6 +1074,8 @@ class Impala(Algorithm):
                 self._counters[NUM_AGENT_STEPS_TRAINED] += r[ALL_MODULES].pop(
                     NUM_AGENT_STEPS_TRAINED
                 )
+
+        self._counters.update(self.learner_group.get_stats())
 
         # If there are results, reduce-mean over each individual value and return.
         if results:
@@ -1087,6 +1086,10 @@ class Impala(Algorithm):
                 if "_state_after_update" in r:
                     state = r.pop("_state_after_update")
             return tree.map_structure(lambda *x: np.mean(x), *results), state
+
+        # Nothing on the queue -> Don't send requests to learner group
+        # or no results ready (from previous `self.learner_group.update_from_batch()`
+        # calls) for reducing.
         return {}, {}
 
     def place_processed_samples_on_learner_thread_queue(self) -> None:

@@ -1089,7 +1089,7 @@ def _setup_ray_cluster_internal(
     if "autoscale" in kwargs:
         raise ValueError(
             "'autoscale' argument is removed. You can set 'min_worker_nodes' argument "
-            "to be less than 'min_worker_nodes' to make autoscaling enabled."
+            "to be less than 'max_worker_nodes' to make autoscaling enabled."
         )
 
     if min_worker_nodes is None:

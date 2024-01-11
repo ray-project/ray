@@ -1,7 +1,9 @@
+import json
 import sys
 import os
 from unittest import mock
 
+import boto3
 import pytest
 from unittest.mock import patch
 
@@ -13,6 +15,7 @@ from ray_release.configs.global_config import (
 from ray_release.test import (
     Test,
     TestResult,
+    TestState,
     _convert_env_list_to_dict,
     DATAPLANE_ECR_REPO,
     DATAPLANE_ECR_ML_REPO,
@@ -180,6 +183,24 @@ def test_from_bazel_event() -> None:
     )
     assert test.get_name() == "ray_ci_test.linux"
     assert test.get_oncall() == "ci"
+
+
+@patch.object(boto3, "client")
+def test_update_from_s3(mock_client) -> None:
+    mock_object = mock.Mock()
+    mock_object.return_value.get.return_value.read.return_value = json.dumps(
+        {
+            "state": "failing",
+            "team": "core",
+            "github_issue_number": "1234",
+        }
+    ).encode("utf-8")
+    mock_client.return_value.get_object = mock_object
+    test = _stub_test({"team": "ci"})
+    test.update_from_s3()
+    assert test.get_state() == TestState.FAILING
+    assert test.get_oncall() == "ci"
+    assert test["github_issue_number"] == "1234"
 
 
 if __name__ == "__main__":
