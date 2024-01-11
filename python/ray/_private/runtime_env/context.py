@@ -103,4 +103,4 @@ class RuntimeEnvContext:
             # instead of os.execvp(file="executable", args=[])
             # We use shlex to do the necessary shell escape
             # of special characters in cmd.
-            os.execvp("bash", args=["bash", "-c", shlex.join(cmd)])" "
+            os.execvp("bash", args=["bash", "-c", shlex.join(cmd)])
