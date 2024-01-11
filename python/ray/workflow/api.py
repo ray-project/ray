@@ -1,8 +1,10 @@
 import functools
 import logging
+import tempfile
 from typing import Dict, Set, List, Tuple, Union, Optional, Any
 import time
 import uuid
+from pathlib import Path
 
 import ray
 from ray.dag import DAGNode
@@ -70,8 +72,9 @@ def init(
         # We should use get_temp_dir_path, but for ray client, we don't
         # have this one. We need a flag to tell whether it's a client
         # or a driver to use the right dir.
-        # For now, just use /tmp/ray/workflow_data
-        ray.init(storage="file:///tmp/ray/workflow_data")
+        # For now, just use $TMP/ray/workflow_data
+        workflow_dir = Path(tempfile.gettempdir()) / "ray" / "workflow_data"
+        ray.init(storage=workflow_dir.as_uri())
     workflow_access.init_management_actor(max_running_workflows, max_pending_workflows)
     serialization.init_manager()
 
