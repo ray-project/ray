@@ -34,14 +34,14 @@ class CloudInstance:
     cloud_instance_id: CloudInstanceId
     # The node type of the cloud instance.
     node_type: NodeType
-    # Update id from which the cloud instance is launched.
-    update_id: str
+    # Update request id from which the cloud instance is launched.
+    request_id: str
 
 
 @dataclass
 class CloudInstanceProviderError:
     """
-    An error class that represents an error that happened in the cloud instance
+    An base error class that represents an error that happened in the cloud instance
     provider.
     """
 
@@ -60,7 +60,7 @@ class LaunchNodeError(CloudInstanceProviderError):
     # Number of nodes that failed to launch.
     count: int
     # A unique id that identifies from which update request the error originates.
-    update_id: str
+    request_id: str
 
 
 @dataclass
@@ -68,7 +68,7 @@ class TerminateNodeError(CloudInstanceProviderError):
     # The cloud instance id of the node that failed to terminate.
     cloud_instance_id: CloudInstanceId
     # From which update request the error originates.
-    update_id: str
+    request_id: str
 
 
 class ICloudInstanceProvider(ABC):
@@ -145,7 +145,7 @@ class ICloudInstanceProvider(ABC):
         self,
         target_running_nodes: Dict[NodeType, int],
         to_terminate: List[CloudInstanceId],
-        id: str,
+        request_id: str,
     ) -> None:
         """Update the provider target cluster shape.
 
@@ -153,9 +153,9 @@ class ICloudInstanceProvider(ABC):
 
         Args:
             target_running_nodes: the target cluster shape (number of running nodes by
-                type).
+                type). This includes the nodes that are already running.
             to_terminate: the nodes to terminate.
-            id: the unique id of the update request.
+            request_id: a unique id that identifies the update request.
         """
         pass
 
@@ -163,6 +163,8 @@ class ICloudInstanceProvider(ABC):
     def poll_errors(self) -> List[CloudInstanceProviderError]:
         """
         Poll the errors that happened since the last poll.
+
+        This method would also clear the errors that happened since the last poll.
 
         Returns:
             The errors that happened since the last poll.
