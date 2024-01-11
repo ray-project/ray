@@ -3,14 +3,14 @@ import logging
 from abc import ABC, abstractmethod
 from collections import defaultdict
 from dataclasses import dataclass, field
-from enum import Enum
+from enum import Enum, IntEnum
 from typing import Dict, List, Optional, Tuple
 
 from google.protobuf.json_format import MessageToDict
 
 from ray.autoscaler._private.resource_demand_scheduler import UtilizationScore
 from ray.autoscaler.v2.instance_manager.config import NodeTypeConfig
-from ray.autoscaler.v2.schema import NodeType
+from ray.autoscaler.v2.schema import NodeType, AutoscalerInstance
 from ray.autoscaler.v2.utils import is_pending, resource_requests_by_count
 from ray.core.generated.autoscaler_pb2 import (
     ClusterResourceConstraint,
@@ -46,22 +46,27 @@ class SchedulingRequest:
     cluster_resource_constraints: List[ClusterResourceConstraint] = field(
         default_factory=list
     )
-    # The ray nodes
-    current_nodes: List[NodeState] = field(default_factory=list)
-    # The current list of instances.
-    current_instances: List[Instance] = field(default_factory=list)
+    # Autoscaler instances.
+    current_instances: List[AutoscalerInstance] = field(default_factory=list)
+
+
+class TerminationReason(IntEnum):
+    # Idle termination.
+    IDLE_TERMINATE = 1
+    # Max node count constraints.
+    MAX_WORKER_NODES = 2
+    # Per node type constraints.
+    MAX_WORKER_NODES_PER_NODE_TYPE = 3
 
 
 @dataclass
 class SchedulingReply:
-    # The target cluster shape, given the current resource demands and instances.
-    # Key is the node type name, value is the number of nodes.
-    # This is needed to prevent autoscaler terminating nodes needed for cluster
-    # constraints.
-    # Note this might be "smaller" than the current cluster shape, since there
-    # could be cluster constraints enforced, e.g. a newly updated max_workers value
-    # would result in a target count smaller than the current count of the node type.
-    target_cluster_shape: Dict[NodeType, int]
+    # The number of nodes to launch by node type.
+    to_launch: Dict[NodeType, int] = field(default_factory=dict)
+    # Instances to terminate.
+    to_terminate: Dict[AutoscalerInstance, TerminationReason] = field(
+        default_factory=dict
+    )
     # The infeasible resource bundles.
     infeasible_resource_requests: List[ResourceRequestByCount] = field(
         default_factory=list

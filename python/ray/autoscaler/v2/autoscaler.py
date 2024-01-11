@@ -1,24 +1,33 @@
-import logging
+from calendar import c
+import time
+
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
-from typing import Dict, List, Optional
-
-from ray._raylet import GcsClient
-from ray.autoscaler.v2.instance_manager.config import AutoscalingConfig, IConfigReader
-from ray.autoscaler.v2.instance_manager.instance_manager import (
+from collections import defaultdict
+from typing import Dict, List, Optional, Set, Tuple
+from attr import dataclass
+from ray.autoscaler.v2.instance_manager import (
     InstanceManager,
-    InstanceUtil,
 )
+from ray.autoscaler.v2.instance_manager.config import AutoscalingConfig, IConfigReader
+from ray.autoscaler.v2.schema import InstanceUtil, AutoscalerInstance, NodeType
 from ray.autoscaler.v2.scheduler import (
     IResourceScheduler,
     SchedulingReply,
     SchedulingRequest,
+    TerminationReason,
 )
+from ray._raylet import GcsClient
+
 from ray.core.generated.autoscaler_pb2 import (
     AutoscalingState,
     ClusterResourceState,
+    DrainNodeReason,
     NodeState,
     NodeStatus,
+    PendingInstanceRequest,
+    PendingInstance,
+    FailedInstanceRequest,
 )
 from ray.core.generated.instance_manager_pb2 import (
     GetInstanceManagerStateRequest,
@@ -26,8 +35,12 @@ from ray.core.generated.instance_manager_pb2 import (
     InstanceManagerState,
     InstanceUpdateEvent,
     StatusCode,
+    UpdateInstanceManagerStateReply,
     UpdateInstanceManagerStateRequest,
+    LaunchRequest,
 )
+
+import logging
 
 logger = logging.getLogger(__name__)
 
@@ -49,7 +62,7 @@ class IAutoscaler(ABC):
     """The autoscaler interface."""
 
     @abstractmethod
-    def get_autoscaling_state(
+    def compute_autoscaling_state(
         self, cluster_resource_state: ClusterResourceState
     ) -> Optional[AutoscalingState]:
         """
@@ -69,38 +82,7 @@ class IAutoscaler(ABC):
         pass
 
 
-@dataclass
-class AutoscalerInstance:
-    """
-    AutoscalerInstance represents an instance that's managed by the autoscaler.
-    This includes two states:
-        1. the instance manager state: information of the underlying cloud node
-            and the exact status before/after ray runs.
-        2. the ray node state. the ray node like existing resources.
-
-    The two states are linked by the cloud_instance_id.
-
-    It's possible that one state is missing, for example:
-    - Instance state could be missing if the instance manager hasn't discovered
-    the instance yet. (i.e. the node provider didn't inform the instance manager
-    but already started a ray node)
-    - Ray node state could be missing if the ray node has been stopped or hasn't
-    started yet.
-    """
-
-    # The cloud instance id. It could be None if the instance manager hasn't
-    # discovered the instance yet.
-    cloud_instance_id: Optional[str] = None
-    # The instance manager state.
-    im_instance: Optional[Instance] = None
-    # The ray node state.
-    ray_node: Optional[NodeState] = None
-    # The cached instance state as updates being populated. We need this
-    # to avoid querying the instance manager state again.
-    current_instance_status: Optional["Instance.InstanceStatus"] = None
-
-
-class AutoscalerV2(IAutoscaler):
+class DefaultAutoscaler(IAutoscaler):
     def __init__(
         self,
         config_reader: IConfigReader,
@@ -126,11 +108,11 @@ class AutoscalerV2(IAutoscaler):
         # The last seen cluster resource state version.
         self._last_seen_cluster_resource_state_version: Optional[int] = None
 
-    def get_autoscaling_state(
+    def compute_autoscaling_state(
         self, cluster_resource_state: ClusterResourceState
     ) -> Optional[AutoscalingState]:
         """
-        Get the autoscaling state. Overrides IAutoscaler.get_autoscaling_state.
+        Get the autoscaling state. Overrides IAutoscaler.compute_autoscaling_state.
 
         On a high level this function does the following:
         1. Get the newest autoscaling config.
@@ -176,68 +158,30 @@ class AutoscalerV2(IAutoscaler):
         # Get the updated instance manager states.
         im_state = self._get_instance_manager_state()
 
-        im_update = UpdateInstanceManagerStateRequest()
-        # Get the scheduling decisions.
-        sched_result = self._schedule(
-            autoscaling_config, cluster_resource_state, im_state
-        )
-        target_cluster_shape = dict(sched_result.target_cluster_shape)
-
         # Merge the ray node states from the cluster resource state and the
         # instance manager state.
         instances = self._merge_ray_node_states(cluster_resource_state, im_state)
 
-        self._get_updates_new_ray_nodes(im_update, instances)
-        self._get_updates_dead_ray_nodes(im_update, instances)
-        self._get_updates_idle_terminated_nodes(
-            im_update, instances, autoscaling_config
+        # Get the scheduling decisions.
+        sched_result = self._schedule(
+            autoscaling_config, cluster_resource_state, im_state
         )
-        self._get_updates_max_worker_nodes_per_node(
-            im_update, autoscaling_config, instances
-        )
-        self._get_updates_max_nodes(im_update, autoscaling_config, instances)
-        self._get_updates_nodes_to_launch(im_update, instances, target_cluster_shape)
+        to_launch = sched_result.to_launch
 
-        self._update_instance_manager_state(im_update)
+        # Compute the updates to existing instances.
+        updates: List[InstanceUpdateEvent] = []
+
+        updates.extend(self._make_updates_new_ray_nodes(instances))
+        updates.extend(self._make_updates_dead_ray_nodes(instances))
+        updates.extend(self._make_updates_stopping_instances(sched_result.to_terminate))
+
+        self._update_instance_manager_state(updates, to_launch)
         updated_im_state = self._get_instance_manager_state()
 
         return self._make_autoscaling_state(
             updated_im_state,
             sched_result,
         )
-
-    def _make_autoscaling_state(
-        self,
-        im_state: InstanceManagerState,
-        sched_result: SchedulingReply,
-    ) -> AutoscalingState:
-        """
-        Make the autoscaling state.
-
-        Args:
-            im_state: The current instance manager state.
-            sched_result: The scheduling result.
-
-        Returns:
-            The autoscaling state.
-        """
-        return AutoscalingState()
-
-    def _get_updates_nodes_to_launch(
-        self,
-        update_req: UpdateInstanceManagerStateRequest,
-        instances: List[AutoscalerInstance],
-        target_cluster_shape: Dict[str, int],
-    ) -> None:
-        pass
-
-    def _get_updates_idle_terminated_nodes(
-        self,
-        update_req: UpdateInstanceManagerStateRequest,
-        instances: List[AutoscalerInstance],
-        autoscaling_config: AutoscalingConfig,
-    ) -> None:
-        pass
 
     def _merge_ray_node_states(
         self,
@@ -257,10 +201,14 @@ class AutoscalerV2(IAutoscaler):
         Returns:
             List[AutoscalerInstance]: The merged ray node states.
         """
-        cloud_ids_to_instances: Dict[str, AutoscalerV2.AutoscalerInstance] = {}
+        cloud_ids_to_instances: Dict[str, AutoscalerInstance] = {}
         instances_without_cloud_instance_id = []
 
         for im_instance in im_state.instances:
+            if im_instance.status in [Instance.STOPPED]:
+                # Skip stopped instances.
+                continue
+
             cloud_instance_id = (
                 im_instance.cloud_instance_id
                 if im_instance.HasField("cloud_instance_id")
@@ -273,7 +221,6 @@ class AutoscalerV2(IAutoscaler):
                 instances_without_cloud_instance_id.append(
                     AutoscalerInstance(
                         im_instance=im_instance,
-                        current_instance_status=im_instance.status,
                     )
                 )
                 continue
@@ -281,7 +228,6 @@ class AutoscalerV2(IAutoscaler):
             cloud_ids_to_instances[cloud_instance_id] = AutoscalerInstance(
                 cloud_instance_id=cloud_instance_id,
                 im_instance=im_instance,
-                current_instance_status=im_instance.status,
             )
 
         for ray_node in cluster_resource_state.node_states:
@@ -315,11 +261,58 @@ class AutoscalerV2(IAutoscaler):
             list(cloud_ids_to_instances.values()) + instances_without_cloud_instance_id
         )
 
-    def _get_updates_new_ray_nodes(
+    def _make_updates_stopping_instances(
         self,
-        update_req: UpdateInstanceManagerStateRequest,
+        to_stop: Dict[AutoscalerInstance, TerminationReason],
+    ) -> List[InstanceUpdateEvent]:
+
+        updates = []
+        for instance, reason in to_stop.items():
+            detail_str = ""
+            if reason == TerminationReason.IDLE_TERMINATE:
+                # Drain the node for idle termination.
+                assert instance.ray_node is not None, "ray node shouldn't be None"
+                idle_time_ms = instance.ray_node.idle_duration_ms
+                accepted = self._gcs_client.drain_node(
+                    instance.ray_node.node_id.decode("utf-8"),
+                    DrainNodeReason.DRAIN_NODE_REASON_IDLE_TERMINATION,
+                    f"Idle termination after {idle_time_ms / 1000} seconds",
+                )
+                if accepted:
+                    # Update the instance status to RAY_STOPPING
+                    detail_str = f"Ray node is idle for {idle_time_ms} ms"
+                else:
+                    logger.info(
+                        f"Failed to drain ray node {instance.ray_node.node_id.decode('utf-8')} for idle termination"
+                    )
+                    continue
+            elif reason in [
+                TerminationReason.MAX_WORKER_NODES,
+                TerminationReason.MAX_WORKER_NODES_PER_NODE_TYPE,
+            ]:
+                # Drain the node for max worker nodes.
+                assert instance.ray_node is not None, "ray node shouldn't be None"
+                self._gcs_client.drain_node(
+                    instance.ray_node.node_id.decode("utf-8"),
+                    DrainNodeReason.DRAIN_NODE_REASON_PREEMPTION,
+                    f"Terminating extra node for {reason}",
+                )
+                detail_str = f"Terminating extra node for {reason}"
+
+            assert detail_str != "", "detail_str shouldn't be empty"
+            updates.append(
+                InstanceUpdateEvent(
+                    instance_id=instance.im_instance.instance_id,
+                    new_instance_status=Instance.RAY_STOPPING,
+                    details=detail_str,
+                )
+            )
+            InstanceUtil.set_status(instance.im_instance, Instance.RAY_STOPPING)
+
+    def _make_updates_new_ray_nodes(
+        self,
         instances: List[AutoscalerInstance],
-    ) -> None:
+    ) -> List[InstanceUpdateEvent]:
         """Get the updates for new Ray nodes.
 
         For an instance manager instance that's not running ray yet, if we
@@ -328,59 +321,65 @@ class AutoscalerV2(IAutoscaler):
         Args:
             update_req: The update request.
             instances: The autoscaler instances.
-
         """
+        im_updates = []
         for instance in instances:
+            if instance.im_instance is None or instance.ray_node is None:
+                # Skip instances that InstanceManager isn't aware of, as well
+                # as instances that have no ray yet.
+                continue
+
+            # Mark any ray-running pending instances that are now running ray
+            # as RAY_RUNNING.
             if (
-                instance.im_instance is not None
-                and instance.ray_node is not None
-                and InstanceUtil.is_ray_running_reachable(
-                    instance.current_instance_status
-                )
-                and instance.ray_node.status in [NodeStatus.RUNNING, NodeStatus.IDLE]
+                InstanceUtil.is_ray_running_reachable(instance.im_instance.status)
+                and instance.is_ray_running()
             ):
-                # Update the instance status to RAY_RUNNING.
-                update_req.updates.append(
+                # Update the instance manager instance status to RAY_RUNNING.
+                im_updates.append(
                     InstanceUpdateEvent(
                         instance_id=instance.im_instance.instance_id,
                         new_instance_status=Instance.RAY_RUNNING,
                         details="Running ray node",
                     )
                 )
-                instance.current_instance_status = Instance.RAY_RUNNING
+                instance.im_instance.status = Instance.RAY_RUNNING
 
-    def _get_updates_dead_ray_nodes(
+        logger.debug(f"Instance updates: {len(im_updates)} new ray nodes")
+        return im_updates
+
+    def _make_updates_dead_ray_nodes(
         self,
-        update_req: UpdateInstanceManagerStateRequest,
         instances: List[AutoscalerInstance],
-    ) -> None:
+    ) -> List[InstanceUpdateEvent]:
         """Get the updates for dead Ray nodes.
 
         For an instance manager instance that's running ray, if we discover
         the ray node is dead, we update the instance status to RAY_STOPPED.
 
         """
-        pass
+        im_updates = []
+        for instance in instances:
+            if instance.im_instance is None or instance.ray_node is None:
+                # Skip instances that InstanceManager isn't aware of, as well
+                # as instances that have no ray yet.
+                continue
 
-    def _get_updates_max_nodes(
-        self,
-        update_req: UpdateInstanceManagerStateRequest,
-        autoscaling_config: AutoscalingConfig,
-        instances: List[AutoscalerInstance],
-    ) -> None:
-        pass
+            if (
+                InstanceUtil.is_ray_stop_reachable(instance.im_instance.status)
+                and instance.is_ray_stop()
+            ):
+                # Update the instance status to RAY_STOPPED.
+                im_updates.append(
+                    InstanceUpdateEvent(
+                        instance_id=instance.im_instance.instance_id,
+                        new_instance_status=Instance.RAY_STOPPED,
+                        details="Ray node is dead",
+                    )
+                )
+                InstanceUtil.set_status(instance.im_instance, Instance.RAY_STOPPED)
 
-    def _get_updates_max_worker_nodes_per_node(
-        self,
-        update_req: UpdateInstanceManagerStateRequest,
-        autoscaling_config: AutoscalingConfig,
-        instances: List[AutoscalerInstance],
-    ) -> None:
-        """Get the updates for extra nodes.
-
-        Create instances updates for the extra nodes by terminating them.
-        """
-        pass
+        return im_updates
 
     def _schedule(
         self,
@@ -423,8 +422,10 @@ class AutoscalerV2(IAutoscaler):
         return reply.state
 
     def _update_instance_manager_state(
-        self, update_req: UpdateInstanceManagerStateRequest
-    ) -> InstanceManagerState:
+        self,
+        updates: List[InstanceUpdateEvent],
+        to_launch: Dict[NodeType, int],
+    ) -> None:
         """Update the instance manager state.
 
         Args:
@@ -436,7 +437,20 @@ class AutoscalerV2(IAutoscaler):
         Raises:
             AutoscalerError: If the instance manager state cannot be updated.
         """
+        update_req = UpdateInstanceManagerStateRequest()
         update_req.expected_version = self._last_seen_instance_manager_state_version
+        update_req.updates.extend(updates)
+        update_req.launches.extend(
+            [
+                LaunchRequest(
+                    instance_type=ray_node_type_name,
+                    count=count,
+                    id=str(time.ns()),
+                    request_ts_ms=int(time.time() * 1000),
+                )
+                for ray_node_type_name, count in to_launch.items()
+            ]
+        )
         reply = self._instance_manager.update_instance_manager_state(request=update_req)
 
         if reply.status.code != StatusCode.OK:
@@ -444,3 +458,103 @@ class AutoscalerV2(IAutoscaler):
                 msg=f"Failed to update instance manager state: {reply.status.message}",
                 status=reply.status,
             )
+
+    def _make_autoscaling_state(
+        self,
+        im_state: InstanceManagerState,
+        sched_result: SchedulingReply,
+    ) -> AutoscalingState:
+        """
+        Make the autoscaling state.
+
+        Args:
+            im_state: The current instance manager state.
+            sched_result: The scheduling result.
+
+        Returns:
+            The autoscaling state.
+        """
+        infeasible_resource_requests = []
+        for r_count in sched_result.infeasible_resource_requests:
+            infeasible_resource_requests.extend([r_count.request] * r_count.count)
+
+        return AutoscalingState(
+            # TODO: reject stale updates
+            last_seen_cluster_resource_state_version=self._last_seen_cluster_resource_state_version,
+            autoscaler_state_version=self._last_seen_instance_manager_state_version,
+            pending_instance_requests=self._get_pending_instances_requests(im_state),
+            infeasible_resource_requests=infeasible_resource_requests,
+            infeasible_gang_resource_requests=sched_result.infeasible_gang_resource_requests,
+            infeasible_cluster_resource_constraints=sched_result.infeasible_cluster_resource_constraints,
+            pending_instances=self._get_pending_instances(im_state),
+            failed_instance_requests=self._get_failed_instance_requests(im_state),
+        )
+
+    def _get_pending_instances_requests(
+        self, im_state: InstanceManagerState
+    ) -> List[PendingInstanceRequest]:
+        pending_instance_requests = []
+        ns_to_s = 10**9
+        for instance in im_state.instances:
+            if instance.status in [Instance.REQUESTED, Instance.QUEUED]:
+                pending_instance_requests.append(
+                    PendingInstanceRequest(
+                        ray_node_type_name=instance.instance_type,
+                        count=1,
+                        request_ts=InstanceUtil.get_status_times_ns(instance.status)
+                        // ns_to_s
+                        if instance.status == Instance.REQUESTED
+                        else 0,
+                    )
+                )
+        return pending_instance_requests
+
+    def _get_pending_instances(
+        self, im_state: InstanceManagerState
+    ) -> List[PendingInstance]:
+        pending_instances = []
+        for instance in im_state.instances:
+            if instance.status in [Instance.ALLOCATED, Instance.RAY_INSTALLING]:
+                pending_instances.append(
+                    PendingInstance(
+                        ray_node_type_name=instance.instance_type,
+                        instance_id=instance.cloud_instance_id,
+                        ip_address=instance.external_ip,
+                    )
+                )
+
+        return pending_instances
+
+    def _get_failed_instance_requests(
+        self, im_state: InstanceManagerState
+    ) -> List[FailedInstanceRequest]:
+        failed_instance_requests = []
+        ns_to_s = 10**9
+        for instance in im_state.instances:
+            if instance.status in [
+                Instance.ALLOCATION_FAILED,
+                Instance.RAY_INSTALL_FAILED,
+            ]:
+                start_ts = (
+                    InstanceUtil.get_status_times_ns(
+                        instance, select_instance_status=Instance.QUEUED
+                    )[0]
+                    // ns_to_s
+                )
+                failed_ts = (
+                    InstanceUtil.get_status_times_ns(
+                        instance, select_instance_status=instance.status
+                    )[0]
+                    // ns_to_s
+                )
+
+                failed_instance_requests.append(
+                    FailedInstanceRequest(
+                        ray_node_type_name=instance.instance_type,
+                        count=1,
+                        reason=instance.exit_details,
+                        start_ts=start_ts,
+                        failed_ts=failed_ts,
+                    )
+                )
+        return failed_instance_requests

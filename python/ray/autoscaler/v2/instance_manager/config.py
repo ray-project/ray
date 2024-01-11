@@ -264,9 +264,17 @@ class AutoscalingConfig:
 
     def get_max_num_worker_nodes(self) -> Optional[int]:
         return self.get_config("max_workers", None)
+    
+    def get_max_num_nodes(self) -> Optional[int]:
+        if self.get_max_num_worker_nodes() is None:
+            return None
+        return self.get_max_num_worker_nodes() + 1
 
     def get_raw_config_mutable(self) -> Dict[str, Any]:
         return self._configs
+
+    def get_idle_terminate_threshold_s(self) -> int:
+        return self.get_config("idle_timeout_minutes", 0) * 60
 
     @property
     def provider(self) -> Provider:
