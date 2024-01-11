@@ -36,7 +36,7 @@ class TestGRPCServer(test_server_pb2_grpc.GRPCTestServerServicer):
                 details="client streaming rpc error",
             )
 
-        return test_server_pb2.Response(response_data=f"OK")
+        return test_server_pb2.Response(response_data="OK")
 
     async def ServerStreaming(self, request, context):
         if request.request_data == "error":
@@ -46,7 +46,7 @@ class TestGRPCServer(test_server_pb2_grpc.GRPCTestServerServicer):
             )
 
         for i in range(self._tokens_per_request):
-            yield test_server_pb2.Response(response_data=f"OK")
+            yield test_server_pb2.Response(response_data="OK")
 
     async def BidiStreaming(self, request_iterator, context):
         data = await _async_list(request_iterator)
@@ -57,4 +57,4 @@ class TestGRPCServer(test_server_pb2_grpc.GRPCTestServerServicer):
             )
 
         for i in range(self._tokens_per_request):
-            yield test_server_pb2.Response(response_data=f"OK")
+            yield test_server_pb2.Response(response_data="OK")
