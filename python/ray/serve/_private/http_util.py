@@ -4,6 +4,7 @@ import json
 import logging
 import pickle
 import socket
+from collections import deque
 from dataclasses import dataclass
 from typing import Any, List, Optional, Tuple, Type
 
@@ -150,7 +151,8 @@ class MessageQueue(Send):
     """
 
     def __init__(self):
-        self._message_queue = asyncio.Queue()
+        # XXX: note about thread safety.
+        self._message_queue = deque()
         self._new_message_event = asyncio.Event()
         self._closed = False
 
@@ -165,7 +167,7 @@ class MessageQueue(Send):
         self._new_message_event.set()
 
     def put_nowait(self, message: Message):
-        self._message_queue.put_nowait(message)
+        self._message_queue.append(message)
         self._new_message_event.set()
 
     async def __call__(self, message: Message):
@@ -186,8 +188,8 @@ class MessageQueue(Send):
         least one new message is available.
         """
         messages = []
-        while not self._message_queue.empty():
-            messages.append(self._message_queue.get_nowait())
+        while len(self._message_queue) > 0:
+            messages.append(self._message_queue.popleft())
 
         self._new_message_event.clear()
         return messages
