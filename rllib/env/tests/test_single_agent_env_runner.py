@@ -16,8 +16,7 @@ class TestSingleAgentEnvRunner(unittest.TestCase):
 
     def test_sample(self):
         config = (
-            AlgorithmConfig()
-            .environment("CartPole-v1")
+            AlgorithmConfig().environment("CartPole-v1")
             # Vectorize x2 and by default, rollout 64 timesteps per individual env.
             .rollouts(
                 num_envs_per_worker=2,
@@ -65,8 +64,7 @@ class TestSingleAgentEnvRunner(unittest.TestCase):
 
         for envs_parallel in remote_worker_envs:
             config = (
-                AlgorithmConfig()
-                .environment("CartPole-v1")
+                AlgorithmConfig().environment("CartPole-v1")
                 # Vectorize x2 and by default, rollout 64 timesteps per individual env.
                 .rollouts(
                     num_rollout_workers=5,
