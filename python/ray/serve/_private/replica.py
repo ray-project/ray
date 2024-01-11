@@ -423,7 +423,7 @@ class ReplicaActor:
     ) -> AsyncGenerator[Any, None]:
         """Calls a user method for a streaming call and yields its results.
 
-        The user method is called in a `Task` and places its results on a
+        The user method is called in an asyncio `Task` and places its results on a
         `result_queue`. This method pulls and yields from the `result_queue`.
         """
         call_user_method_future = None
@@ -431,6 +431,7 @@ class ReplicaActor:
         try:
             # Handle the request in a background asyncio.Task. It's expected that
             # this task will use the result queue to send its response messages.
+            # XXX: FIX COMMENT!!!
             result_queue = MessageQueue(
                 # XXX: comment!
                 write_event_loop=self._event_loop,
@@ -439,7 +440,7 @@ class ReplicaActor:
                 request_metadata,
                 request_args,
                 request_kwargs,
-                result_queue=result_queue,
+                generator_result_callback=result_queue,
             )
 
             while True:
@@ -856,7 +857,7 @@ class UserCallableWrapper:
         user_method_params: Dict[str, inspect.Parameter],
         *,
         is_asgi_app: bool,
-        result_queue: Optional[MessageQueue] = None,
+        generator_result_callback: Optional[Callable] = None,
     ) -> Tuple[Tuple[Any], ASGIArgs, asyncio.Task]:
         """Prepare arguments for a user method handling an HTTP request.
 
@@ -872,7 +873,7 @@ class UserCallableWrapper:
         asgi_args = ASGIArgs(
             scope=pickle.loads(request.pickled_asgi_scope),
             receive=receive,
-            send=result_queue,
+            send=generator_result_callback,
         )
         if is_asgi_app:
             request_args = asgi_args.to_args_tuple()
@@ -910,17 +911,21 @@ class UserCallableWrapper:
         user_method_name: str,
         request_metadata: RequestMetadata,
         *,
-        result_queue: Optional[MessageQueue],
+        generator_result_callback: Optional[Callable],
         is_asgi_app: bool,
         asgi_args: Optional[ASGIArgs],
     ) -> Any:
         """Postprocess the result of a user method.
 
-        If this is for a streaming request, the result should be a generator that will
-        be consumed and its outputs placed on the `result_queue`.
-
-        This method may raise an exception if the result is not of the expected type
+        User methods can be regular unary functions or return a sync or async generator.
+        This method will raise an exception if the result is not of the expected type
         (e.g., non-generator for streaming requests or generator for unary requests).
+
+        Generator outputs will be written to the `generator_result_callback`.
+
+        Note that HTTP requests are an exception: they are *always* streaming requests,
+        but for ASGI apps (like FastAPI), the actual method will be a regular function
+        implementing the ASGI `__call__` protocol.
         """
         result_is_gen = inspect.isgenerator(result)
         result_is_async_gen = inspect.isasyncgen(result)
@@ -929,26 +934,32 @@ class UserCallableWrapper:
                 for r in result:
                     if request_metadata.is_grpc_request:
                         r = (request_metadata.grpc_context, r.SerializeToString())
-                    await result_queue(r)
+                    await generator_result_callback(r)
             elif result_is_async_gen:
                 async for r in result:
                     if request_metadata.is_grpc_request:
                         r = (request_metadata.grpc_context, r.SerializeToString())
-                    await result_queue(r)
+                    await generator_result_callback(r)
             elif request_metadata.is_http_request and not is_asgi_app:
                 # For the FastAPI codepath, the response has already been sent over
                 # ASGI, but for the vanilla deployment codepath we need to send it.
                 await self._send_user_result_over_asgi(result, asgi_args)
             elif not request_metadata.is_http_request:
-                # HTTP requests are always streaming but the method itself does not
-                # return a generator. Instead, the method is provided the result queue
-                # as its ASGI `send` interface to stream back results.
+                # If a unary method is called with stream=True for anything EXCEPT
+                # an HTTP request, raise an error.
+                # HTTP requests are always streaming regardless of if the method
+                # returns a generator, because it's provided the result queue as its
+                # ASGI `send` interface to stream back results.
                 raise TypeError(
                     f"Called method '{user_method_name}' with "
                     "`handle.options(stream=True)` but it did not return a "
                     "generator."
                 )
         else:
+            assert (
+                not request_metadata.is_http_request
+            ), "All HTTP requests go through the streaming codepath."
+
             if result_is_gen or result_is_async_gen:
                 raise TypeError(
                     f"Method '{user_method_name}' returned a generator. "
@@ -967,11 +978,12 @@ class UserCallableWrapper:
         request_args: Tuple[Any],
         request_kwargs: Dict[str, Any],
         *,
-        result_queue: Optional[MessageQueue] = None,
+        generator_result_callback: Optional[Callable] = None,
     ) -> Any:
         """Call a user method (unary or generator).
 
-        The `result_queue` is used to communicate the results of generator methods.
+        The `generator_result_callback` is used to communicate the results of generator
+        methods.
 
         Raises any exception raised by the user code so it can be propagated as a
         `RayTaskError`.
@@ -1004,7 +1016,7 @@ class UserCallableWrapper:
                     request_metadata,
                     user_method_params,
                     is_asgi_app=is_asgi_app,
-                    result_queue=result_queue,
+                    generator_result_callback=generator_result_callback,
                 )
             elif request_metadata.is_grpc_request:
                 # Ensure the request args are a single gRPCRequest object.
@@ -1021,7 +1033,7 @@ class UserCallableWrapper:
                 ),
                 user_method_name,
                 request_metadata,
-                result_queue=result_queue,
+                generator_result_callback=generator_result_callback,
                 is_asgi_app=is_asgi_app,
                 asgi_args=asgi_args,
             )
