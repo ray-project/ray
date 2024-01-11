@@ -1,3 +1,5 @@
+import math
+
 from typing import Dict
 
 from ray.rllib.core.learner.learner import Learner
@@ -16,8 +18,10 @@ class SACLearner(Learner):
     def build(self) -> None:
         super.build()
 
-        self.curr_alpha: Dict[ModuleID, Scheduler] = LambdaDefaultDict(
+        # Store the current alpha in log form. We need it during optimization
+        # in log form.
+        self.curr_log_alpha: Dict[ModuleID, Scheduler] = LambdaDefaultDict(
             lambda module_id: self._get_tensor_variable(
-                self.config.get_config_for_module(module_id).initial_alpha
+                math.log(self.config.get_config_for_module(module_id).initial_alpha)
             )
         )
