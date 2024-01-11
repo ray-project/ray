@@ -91,21 +91,14 @@ static int DoGetNextJobID(redisContext *context) {
 RedisClient::RedisClient(const RedisClientOptions &options) : options_(options) {}
 
 Status RedisClient::Connect(instrumented_io_context &io_service) {
-  std::vector<instrumented_io_context *> io_services;
-  io_services.emplace_back(&io_service);
-  return Connect(io_services);
-}
-
-Status RedisClient::Connect(std::vector<instrumented_io_context *> io_services) {
   RAY_CHECK(!is_connected_);
-  RAY_CHECK(!io_services.empty());
 
   if (options_.server_ip_.empty()) {
     RAY_LOG(ERROR) << "Failed to connect, redis server address is empty.";
     return Status::Invalid("Redis server address is invalid!");
   }
 
-  primary_context_ = std::make_shared<RedisContext>(*io_services[0]);
+  primary_context_ = std::make_shared<RedisContext>(io_service);
 
   RAY_CHECK_OK(primary_context_->Connect(options_.server_ip_,
                                          options_.server_port_,
