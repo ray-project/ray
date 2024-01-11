@@ -1,4 +1,5 @@
 import copy
+import json
 import logging
 import sys
 from typing import Dict, List, Optional, Union
@@ -15,6 +16,7 @@ from ray.serve.schema import (
     RayActorOptionsSchema,
     ServeApplicationSchema,
     ServeDeploySchema,
+    ServeInstanceDetails,
 )
 from ray.serve.tests.common.remote_uris import (
     TEST_DEPLOY_GROUP_PINNED_URI,
@@ -724,6 +726,42 @@ def test_unset_fields_schema_to_deployment_ray_actor_options():
     # Serve will set num_cpus to 1 if it's not set.
     assert len(deployment.ray_actor_options) == 1
     assert deployment.ray_actor_options["num_cpus"] == 1
+
+
+def test_serve_instance_details_is_json_serializable():
+    """Test that ServeInstanceDetails is json serializable."""
+    details = ServeInstanceDetails(
+        controller_info={"node_id": "fake_node_id"},
+        proxy_location="EveryNode",
+        proxies={"node1": {"status": "HEALTHY"}},
+        applications={
+            "app1": {
+                "name": "app1",
+                "route_prefix": "/app1",
+                "docs_path": "/docs/app1",
+                "status": "RUNNING",
+                "message": "fake_message",
+                "last_deployed_time_s": 123,
+                "deployments": {
+                    "deployment1": {
+                        "name": "deployment1",
+                        "status": "HEALTHY",
+                        "status_trigger": "AUTOSCALING",
+                        "message": "fake_message",
+                        "deployment_config": {
+                            "name": "deployment1",
+                            "autoscaling_config": {
+                                # Byte object will cause json serializable error
+                                "serialized_policy_def": b"123",
+                            },
+                        },
+                        "replicas": [],
+                    }
+                },
+            }
+        },
+    ).dict(exclude_unset=True)
+    json.dumps(details)
 
 
 if __name__ == "__main__":

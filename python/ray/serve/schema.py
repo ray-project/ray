@@ -1,4 +1,5 @@
 import logging
+from base64 import b64encode
 from collections import Counter
 from dataclasses import dataclass, field
 from enum import Enum
@@ -1042,3 +1043,18 @@ class ServeInstanceDetails(BaseModel, extra=Extra.forbid):
                 for app_name, app in self.applications.items()
             },
         )
+
+    def _serialize_bytes(self, values):
+        """Recursively convert bytes to str for JSON serialization."""
+        for key, value in values.items():
+            if isinstance(value, bytes):
+                values[key] = b64encode(value).decode("utf8")
+            elif isinstance(value, dict):
+                values[key] = self._serialize_bytes(value)
+        return values
+
+    def dict(self, *args, **kwargs):
+        """Override dict method to convert bytes to str for JSON serialization."""
+        result = super().dict(*args, **kwargs)
+
+        return self._serialize_bytes(result)

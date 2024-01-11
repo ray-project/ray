@@ -1,3 +1,4 @@
+import json
 import time
 
 import pytest
@@ -69,6 +70,25 @@ def test_deploy_app_custom_exception(serve_instance):
         return True
 
     wait_for_condition(check_custom_exception, timeout=10)
+
+
+def test_get_serve_instance_details_json_serializable(serve_instance):
+    """Test that ServeInstanceDetails is json serializable."""
+
+    controller = _get_global_client()._controller
+
+    @serve.deployment(
+        autoscaling_config={
+            "min_replicas": 1,
+            "max_replicas": 10,
+        },
+    )
+    def autoscaling_app():
+        return "1"
+
+    serve.run(autoscaling_app.bind())
+    details = ray.get(controller.get_serve_instance_details.remote())
+    json.dumps(details)
 
 
 if __name__ == "__main__":
