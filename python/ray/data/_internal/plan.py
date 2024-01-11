@@ -430,23 +430,15 @@ class ExecutionPlan:
                         self._logical_plan = randomize_blocks_op
                 else:
                     self.execute()
-            elif self.is_from_in_memory_only() or (
+            elif self.needs_eager_execution() or (
                 isinstance(self._logical_plan.dag, RandomizeBlocks)
-                and self.is_from_in_memory_only(
+                and self.needs_eager_execution(
                     self._logical_plan.dag.input_dependencies[0]
                 )
             ):
-                # If InputData only, or if RandomizeBlocks is following an InputData
-                # only plan, we execute it (regardless of the fetch_if_missing),
-                # since RandomizeBlocksStage is just changing the order of references
-                # (hence super cheap).
-                self.execute()
-            elif self.is_read_only() or (
-                isinstance(self._logical_plan.dag, RandomizeBlocks)
-                and self.is_read_only(self._logical_plan.dag.input_dependencies[0])
-            ):
-                # Similarly for Read only plan, or if RandomizeBlocks is following
-                # a Read only plan, we execute it (regardless of the fetch_if_missing),
+                # If the plan is input/read only, we execute it, so snapshot has output.
+                # If RandomizeBlocks is the last operator preceded by a input/read
+                # only plan, we can also execute it (regardless of the fetch_if_missing)
                 # since RandomizeBlocksStage is just changing the order of references
                 # (hence super cheap). Calling execute does not trigger read tasks.
                 self.execute()
@@ -731,9 +723,13 @@ class ExecutionPlan:
         return _is_lazy(self._in_blocks)
 
     def needs_eager_execution(self, root_op: Optional[LogicalOperator] = None) -> bool:
-        """Return whether this plan should be eagerly executed without
-        executing the underlying read tasks. This is often useful for
-        fetching accurate metadata for the dataset."""
+        """Return whether the LogicalPlan corresponding to `root_op`
+        should be eagerly executed. By default, the last operator of
+        the LogicalPlan is used.
+
+        This is often useful for input/read-only plans,
+        where eager execution fetches accurate metadata for the dataset
+        without executing the underlying read tasks."""
         if root_op is None:
             root_op = self._logical_plan.dag
         # Since read tasks will not be scheduled until data is consumed or materialized,
@@ -743,17 +739,19 @@ class ExecutionPlan:
         return self.is_from_in_memory_only(root_op) or self.is_read_only(root_op)
 
     def is_read_only(self, root_op: Optional[LogicalOperator] = None) -> bool:
-        """Return whether the underlying logical plan contains only a Read op."""
+        """Return whether the LogicalPlan corresponding to `root_op`
+        contains only a Read op. By default, the last operator of
+        the LogicalPlan is used."""
         if root_op is None:
             root_op = self._logical_plan.dag
         return isinstance(root_op, Read) and len(root_op.input_dependencies) == 0
 
     def is_from_in_memory_only(self, root_op: Optional[LogicalOperator] = None) -> bool:
-        """Return whether the underlying logical plan contains only a read
-        of already in-memory data (e.g. `FromXXX` operators for `from_xxx` APIs,
-        `InputData` operator for :class:`~ray.data.MaterializedDataset`, ).
-        When this is `True`, `self.execute()` is very cheap (since data
-        is already in-memory)."""
+        """Return whether the LogicalPlan corresponding to `root_op`
+        contains only a read of already in-memory data (e.g. `FromXXX`
+        operators for `from_xxx` APIs, `InputData` operator for
+        :class:`~ray.data.MaterializedDataset`). By default, the last operator of
+        the LogicalPlan is used."""
         if root_op is None:
             root_op = self._logical_plan.dag
         return (

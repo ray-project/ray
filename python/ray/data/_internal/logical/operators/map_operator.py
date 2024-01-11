@@ -36,25 +36,6 @@ class AbstractMap(AbstractOneToOne):
         self._ray_remote_args = ray_remote_args or {}
 
 
-def _get_udf_name(fn: UserDefinedFunction) -> str:
-    try:
-        if inspect.isclass(fn):
-            # callable class
-            return fn.__name__
-        elif inspect.ismethod(fn):
-            # class method
-            return f"{fn.__self__.__class__.__name__}.{fn.__name__}"
-        elif inspect.isfunction(fn):
-            # normal function or lambda function.
-            return fn.__name__
-        else:
-            # callable object.
-            return fn.__class__.__name__
-    except AttributeError as e:
-        logger.get_logger().error("Failed to get name of UDF %s: %s", fn, e)
-        return "<unknown>"
-
-
 class AbstractUDFMap(AbstractMap):
     """Abstract class for logical operators performing a UDF that should be converted
     to physical MapOperator.
