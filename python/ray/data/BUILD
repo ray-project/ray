@@ -498,6 +498,14 @@ py_test(
 )
 
 py_test(
+    name = "test_streaming_executor_errored_blocks",
+    size = "medium",
+    srcs = ["tests/test_streaming_executor_errored_blocks.py"],
+    tags = ["team:data", "exclusive"],
+    deps = ["//:ray_lib", ":conftest"],
+)
+
+py_test(
     name = "test_streaming_integration",
     size = "medium",
     srcs = ["tests/test_streaming_integration.py"],
