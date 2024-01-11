@@ -1,5 +1,4 @@
 import logging
-from base64 import b64encode
 from collections import Counter
 from dataclasses import dataclass, field
 from enum import Enum
@@ -1044,17 +1043,21 @@ class ServeInstanceDetails(BaseModel, extra=Extra.forbid):
             },
         )
 
-    def _serialize_bytes(self, values):
-        """Recursively convert bytes to base64 encoded str for JSON serialization."""
-        for key, value in values.items():
-            if isinstance(value, bytes):
-                values[key] = b64encode(value).decode("utf8")
-            elif isinstance(value, dict):
-                values[key] = self._serialize_bytes(value)
-        return values
+    def dict(self, *args, **kwargs) -> dict:
+        """Override dict method to remove internal fields.
 
-    def dict(self, *args, **kwargs):
-        """Override dict method to convert bytes to str for JSON serialization."""
+        `serialized_policy_def` is only used internally and should not be exposed to
+        the REST api. This method iteratively removes it from each autoscaling config
+        if exists.
+        """
         values = super().dict(*args, **kwargs)
-
-        return self._serialize_bytes(values=values)
+        for app_name, application in values["applications"].items():
+            for deployment_name, deployment in application["deployments"].items():
+                if (
+                    "deployment_config" in deployment
+                    and "autoscaling_config" in deployment["deployment_config"]
+                ):
+                    deployment["deployment_config"]["autoscaling_config"].pop(
+                        "serialized_policy_def"
+                    )
+        return values

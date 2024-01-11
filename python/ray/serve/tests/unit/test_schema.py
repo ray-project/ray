@@ -763,6 +763,12 @@ def test_serve_instance_details_is_json_serializable():
     ).dict(exclude_unset=True)
     json.dumps(details)
 
+    # ensure internal field is not exposed serialized_policy_def
+    application = details["applications"]["app1"]
+    deployment = application["deployments"]["deployment1"]
+    autoscaling_config = deployment["deployment_config"]["autoscaling_config"]
+    assert "serialized_policy_def" not in autoscaling_config
+
 
 if __name__ == "__main__":
     sys.exit(pytest.main(["-v", __file__]))
