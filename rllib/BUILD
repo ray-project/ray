@@ -382,7 +382,7 @@ py_test(
     tags = ["torch_only", "team:rllib", "exclusive", "learning_tests", "learning_tests_pendulum", "learning_tests_continuous"],
     size = "large",
     srcs = ["tests/run_regression_tests.py"],
-    data = ["tuned_examples/ppo/pendulum-ppo-envrunner.py"],
+    data = ["tuned_examples/ppo/pendulum_ppo_envrunner.py"],
     args = ["--dir=tuned_examples/ppo"]
 )
 
