@@ -82,8 +82,8 @@ class AbstractUDFMap(AbstractMap):
         self._min_rows_per_block = min_rows_per_block
         self._compute = compute or TaskPoolStrategy()
 
-    def _get_operator_name(self, op_name, fn):
-        """Gets the Operator name including the map UDF name."""
+    def _get_operator_name(self, op_name: str, fn: UserDefinedFunction):
+        """Gets the Operator name including the map `fn` UDF name."""
         # If the input `fn` is a Preprocessor, the
         # name is simply the name of the Preprocessor class.
         if inspect.ismethod(fn) and isinstance(fn.__self__, Preprocessor):

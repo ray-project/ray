@@ -45,6 +45,7 @@ if TYPE_CHECKING:
     import pyarrow
 
     from ray.data._internal.execution.interfaces import Executor
+    from ray.data._internal.logical.interfaces.logical_plan import LogicalPlan
 
 
 # Scheduling strategy can be inherited from prev stage if not specified.
@@ -327,7 +328,7 @@ class ExecutionPlan:
         copy = self.copy()
         return copy
 
-    def link_logical_plan(self, logical_plan):
+    def link_logical_plan(self, logical_plan: "LogicalPlan"):
         """Link the logical plan into this execution plan.
 
         This is used for triggering execution for optimizer code path in this legacy
