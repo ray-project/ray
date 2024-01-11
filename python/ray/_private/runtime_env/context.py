@@ -2,6 +2,7 @@ import json
 import logging
 import os
 import subprocess
+import shlex
 import sys
 from typing import Any, Dict, List, Optional
 
@@ -48,11 +49,11 @@ class RuntimeEnvContext:
         update_envs(self.env_vars)
 
         if language == Language.PYTHON and sys.platform == "win32":
-            executable = self.py_executable
+            executable = [self.py_executable]
         elif language == Language.PYTHON:
-            executable = f"exec {self.py_executable}"
+            executable = ["exec", self.py_executable]
         elif language == Language.JAVA:
-            executable = "java"
+            executable = ["java"]
             ray_jars = os.path.join(get_ray_jars_dir(), "*")
 
             local_java_jars = []
@@ -63,9 +64,9 @@ class RuntimeEnvContext:
             class_path_args = ["-cp", ray_jars + ":" + str(":".join(local_java_jars))]
             passthrough_args = class_path_args + passthrough_args
         elif sys.platform == "win32":
-            executable = ""
+            executable = []
         else:
-            executable = "exec "
+            executable = ["exec"]
 
         # By default, raylet uses the path to default_worker.py on host.
         # However, the path to default_worker.py inside the container
@@ -80,23 +81,19 @@ class RuntimeEnvContext:
             passthrough_args[0] = default_worker_path
 
         passthrough_args = [s.replace(" ", r"\ ") for s in passthrough_args]
-        exec_command = " ".join([f"{executable}"] + passthrough_args)
-        command_str = " ".join(self.command_prefix + [exec_command])
+        cmd = [*self.command_prefix, *executable, *passthrough_args]
         # TODO(SongGuyang): We add this env to command for macOS because it doesn't
         # work for the C++ process of `os.execvp`. We should find a better way to
         # fix it.
         MACOS_LIBRARY_PATH_ENV_NAME = "DYLD_LIBRARY_PATH"
         if MACOS_LIBRARY_PATH_ENV_NAME in os.environ:
-            command_str = (
-                MACOS_LIBRARY_PATH_ENV_NAME
-                + "="
-                + os.environ.get(MACOS_LIBRARY_PATH_ENV_NAME)
-                + " "
-                + command_str
+            cmd.insert(
+                0,
+                f"{MACOS_LIBRARY_PATH_ENV_NAME}="
+                f"{os.environ[MACOS_LIBRARY_PATH_ENV_NAME]}",
             )
-        logger.debug(f"Exec'ing worker with command: {command_str}")
+        logger.debug(f"Exec'ing worker with command: {cmd}")
         if sys.platform == "win32":
-            cmd = [*self.command_prefix, executable, *passthrough_args]
             subprocess.Popen(cmd, shell=True).wait()
         else:
             # PyCharm will monkey patch the os.execvp at
@@ -104,4 +101,6 @@ class RuntimeEnvContext:
             # The monkey patched os.execvp function has a different
             # signature. So, we use os.execvp("executable", args=[])
             # instead of os.execvp(file="executable", args=[])
-            os.execvp("bash", args=["bash", "-c", command_str])
+            # We use shlex to do the necessary shell escape
+            # of special characters in cmd.
+            os.execvp("bash", args=["bash", "-c", shlex.join(cmd)])" "
