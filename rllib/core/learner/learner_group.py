@@ -392,9 +392,10 @@ class LearnerGroup:
 
             results = [
                 _learner_update(
-                    learner=self._learner,
-                    batch_shard=batch,
-                    episodes_shard=episodes,
+                    _learner=self._learner,
+                    _batch_shard=batch,
+                    _episodes_shard=episodes,
+                    _return_state=return_state,
                 )
             ]
         else:
