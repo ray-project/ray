@@ -71,11 +71,7 @@ def test_torch_get_device(
             visible_devices = os.environ["CUDA_VISIBLE_DEVICES"]
             assert visible_devices == "1,2"
 
-        devices = (
-            sorted([device.index for device in train.torch.get_device()])
-            if num_gpus_per_worker > 1
-            else train.torch.get_device().index
-        )
+        devices = sorted([device.index for device in train.torch.get_devices()])
         write_rank_data(tmp_path, devices)
 
     trainer = TorchTrainer(
@@ -108,11 +104,7 @@ def test_torch_get_device(
 def test_torch_get_device_dist(ray_2_node_2_gpu, num_gpus_per_worker, tmp_path):
     @patch("torch.cuda.is_available", lambda: True)
     def train_fn():
-        devices = (
-            sorted([device.index for device in train.torch.get_device()])
-            if num_gpus_per_worker > 1
-            else train.torch.get_device().index
-        )
+        devices = sorted([device.index for device in train.torch.get_devices()])
         write_rank_data(tmp_path, devices)
 
     trainer = TorchTrainer(

@@ -39,7 +39,7 @@ logger = logging.getLogger(__name__)
 
 
 @PublicAPI(stability="stable")
-def get_device() -> Union[torch.device, List[torch.device]]:
+def get_device() -> torch.device:
     """Gets the correct torch device configured for this process.
 
     Returns a list of devices if more than 1 GPU per worker
@@ -67,7 +67,37 @@ def get_device() -> Union[torch.device, List[torch.device]]:
     from ray.air._internal import torch_utils
 
     record_extra_usage_tag(TagKey.TRAIN_TORCH_GET_DEVICE, "1")
-    return torch_utils.get_device()
+    return torch_utils.get_devices()[0]
+
+
+@PublicAPI(stability="alpha")
+def get_devices() -> List[torch.device]:
+    """Gets the correct torch device list configured for this process.
+
+    Assumes that `CUDA_VISIBLE_DEVICES` is set and is a
+    superset of the `ray.get_gpu_ids()`.
+
+    Example:
+        >>> # os.environ["CUDA_VISIBLE_DEVICES"] = "3,4"
+        >>> # ray.get_gpu_ids() == [3]
+        >>> # torch.cuda.is_available() == True
+        >>> # get_devices() == [torch.device("cuda:0")]
+
+        >>> # os.environ["CUDA_VISIBLE_DEVICES"] = "0,1,2,3,4"
+        >>> # ray.get_gpu_ids() == [4]
+        >>> # torch.cuda.is_available() == True
+        >>> # get_devices() == [torch.device("cuda:4")]
+
+        >>> # os.environ["CUDA_VISIBLE_DEVICES"] = "0,1,2,3,4,5"
+        >>> # ray.get_gpu_ids() == [4,5]
+        >>> # torch.cuda.is_available() == True
+        >>> # get_devices() == [torch.device("cuda:4"), torch.device("cuda:5")]
+    """
+
+    from ray.air._internal import torch_utils
+
+    # record_extra_usage_tag(TagKey.TRAIN_TORCH_GET_DEVICE, "1")
+    return torch_utils.get_devices()
 
 
 @PublicAPI(stability="stable")

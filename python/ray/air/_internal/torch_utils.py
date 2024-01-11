@@ -10,7 +10,7 @@ import ray
 from ray.air.util.data_batch_conversion import _unwrap_ndarray_object_type_if_needed
 
 
-def get_device() -> Union[torch.device, List[torch.device]]:
+def get_devices() -> List[torch.device]:
     """Gets the correct torch device configured for this process.
 
     Returns a list of devices if more than 1 GPU per worker
@@ -55,12 +55,10 @@ def get_device() -> Union[torch.device, List[torch.device]]:
             device_ids.append(0)
 
         devices = [torch.device(f"cuda:{device_id}") for device_id in device_ids]
-        device = devices[0] if len(devices) == 1 else devices
     else:
-        device = torch.device("cpu")
+        devices = [torch.device("cpu")]
 
-    return device
-
+    return devices
 
 def convert_pandas_to_torch_tensor(
     data_batch: pd.DataFrame,
