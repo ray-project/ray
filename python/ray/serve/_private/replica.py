@@ -424,7 +424,7 @@ class ReplicaActor:
     ) -> AsyncGenerator[Any, None]:
         """Calls a user method for a streaming call and yields its results.
 
-        The user method is called in a `Task` and places its results on a
+        The user method is called in an asyncio `Task` and places its results on a
         `result_queue`. This method pulls and yields from the `result_queue`.
         """
         call_user_method_task = None
@@ -905,9 +905,11 @@ class UserCallableWrapper:
                 # ASGI, but for the vanilla deployment codepath we need to send it.
                 await self._send_user_result_over_asgi(result, asgi_args)
             elif not request_metadata.is_http_request:
-                # HTTP requests are always streaming but the method itself does not
-                # return a generator. Instead, the method is provided the result queue
-                # as its ASGI `send` interface to stream back results.
+                # If a unary method is called with stream=True for anything EXCEPT
+                # an HTTP request, raise an error.
+                # HTTP requests are always streaming regardless of if the method
+                # returns a generator, because it's provided the result queue as its
+                # ASGI `send` interface to stream back results.
                 raise TypeError(
                     f"Called method '{user_method_name}' with "
                     "`handle.options(stream=True)` but it did not return a "
