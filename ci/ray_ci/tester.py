@@ -206,7 +206,7 @@ def main(
         only_tags=only_tags,
         get_flaky_tests=run_flaky_tests,
     )
-    success = container.run_tests(test_targets, test_arg)
+    success = container.run_tests(team, test_targets, test_arg)
     sys.exit(0 if success else 42)
 
 
