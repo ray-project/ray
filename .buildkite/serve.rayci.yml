@@ -11,6 +11,7 @@ steps:
     label: "wanda: servebuild-py{{matrix}}"
     wanda: ci/docker/serve.build.wanda.yaml
     matrix:
+      - "3.9"
       - "3.11"
     env:
       PYTHON: "{{matrix}}"
