@@ -146,7 +146,7 @@ CoreWorker::CoreWorker(const CoreWorkerOptions &options, const WorkerID &worker_
                                   std::placeholders::_8);
     direct_task_receiver_ = std::make_unique<CoreWorkerDirectTaskReceiver>(
         worker_context_, task_execution_service_, execute_task, [this] {
-          return local_raylet_client_->TaskDone();
+          return local_raylet_client_->ActorCreationTaskDone();
         });
   }
 
@@ -1348,6 +1348,10 @@ Status CoreWorker::ExperimentalMutableObjectWriteAcquire(
 
 Status CoreWorker::ExperimentalMutableObjectWriteRelease(const ObjectID &object_id) {
   return plasma_store_provider_->ExperimentalMutableObjectWriteRelease(object_id);
+}
+
+Status CoreWorker::ExperimentalMutableObjectSetError(const ObjectID &object_id) {
+  return plasma_store_provider_->ExperimentalMutableObjectSetError(object_id);
 }
 
 Status CoreWorker::SealOwned(const ObjectID &object_id,

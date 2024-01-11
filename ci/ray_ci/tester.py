@@ -100,6 +100,11 @@ bazel_workspace_dir = os.environ.get("BUILD_WORKSPACE_DIRECTORY", "")
     help=("Number of GPUs to use for the test."),
 )
 @click.option(
+    "--network",
+    type=str,
+    help="Network to use for the test.",
+)
+@click.option(
     "--test-env",
     multiple=True,
     type=str,
@@ -142,6 +147,11 @@ bazel_workspace_dir = os.environ.get("BUILD_WORKSPACE_DIRECTORY", "")
     type=click.Choice(["linux", "windows"]),
     help=("Operating system to run tests on"),
 )
+@click.option(
+    "--tmp-filesystem",
+    type=str,
+    help=("Filesystem to use for /tmp"),
+)
 def main(
     targets: List[str],
     team: str,
@@ -155,18 +165,17 @@ def main(
     skip_ray_installation: bool,
     build_only: bool,
     gpus: int,
+    network: Optional[str],
     test_env: Tuple[str],
     test_arg: Optional[str],
     build_name: Optional[str],
     build_type: Optional[str],
+    tmp_filesystem: Optional[str],
 ) -> None:
     if not bazel_workspace_dir:
         raise Exception("Please use `bazelisk run //ci/ray_ci`")
     os.chdir(bazel_workspace_dir)
-    # TODO(can): only linux uses intermediate dockers publised to ECR; remove this when
-    # we can build intermediate dockers for Windows
-    if operating_system == "linux":
-        docker_login(_DOCKER_ECR_REPO.split("/")[0])
+    docker_login(_DOCKER_ECR_REPO.split("/")[0])
 
     if build_type == "wheel" or build_type == "wheel-aarch64":
         # for wheel testing, we first build the wheel and then use it for running tests
@@ -179,6 +188,8 @@ def main(
         worker_id,
         parallelism_per_worker,
         gpus,
+        network=network,
+        tmp_filesystem=tmp_filesystem,
         test_env=list(test_env),
         build_name=build_name,
         build_type=build_type,
@@ -190,6 +201,7 @@ def main(
         container,
         targets,
         team,
+        operating_system,
         except_tags=_add_default_except_tags(except_tags),
         only_tags=only_tags,
         get_flaky_tests=run_flaky_tests,
@@ -212,6 +224,8 @@ def _get_container(
     worker_id: int,
     parallelism_per_worker: int,
     gpus: int,
+    network: Optional[str],
+    tmp_filesystem: Optional[str] = None,
     test_env: Optional[List[str]] = None,
     build_name: Optional[str] = None,
     build_type: Optional[str] = None,
@@ -228,13 +242,16 @@ def _get_container(
             shard_count=shard_count,
             shard_ids=list(range(shard_start, shard_end)),
             gpus=gpus,
+            network=network,
             skip_ray_installation=skip_ray_installation,
             build_type=build_type,
+            tmp_filesystem=tmp_filesystem,
         )
 
     if operating_system == "windows":
         return WindowsTesterContainer(
             build_name or f"{team}build",
+            network=network,
             test_envs=test_env,
             shard_count=shard_count,
             shard_ids=list(range(shard_start, shard_end)),
@@ -293,6 +310,7 @@ def _get_test_targets(
     container: TesterContainer,
     targets: str,
     team: str,
+    operating_system: str,
     except_tags: Optional[str] = "",
     only_tags: Optional[str] = "",
     yaml_dir: Optional[str] = None,
@@ -312,16 +330,18 @@ def _get_test_targets(
         # CUDA image comes with a license header that we need to remove
         .replace(CUDA_COPYRIGHT, "")
         .strip()
-        .split("\n")
+        .split(os.linesep)
     )
-    flaky_tests = set(_get_flaky_test_targets(team, yaml_dir))
+    flaky_tests = set(_get_flaky_test_targets(team, operating_system, yaml_dir))
 
     if get_flaky_tests:
         return list(flaky_tests.intersection(test_targets))
     return list(test_targets.difference(flaky_tests))
 
 
-def _get_flaky_test_targets(team: str, yaml_dir: Optional[str] = None) -> List[str]:
+def _get_flaky_test_targets(
+    team: str, operating_system: str, yaml_dir: Optional[str] = None
+) -> List[str]:
     """
     Get all test targets that are flaky
     """
@@ -329,6 +349,16 @@ def _get_flaky_test_targets(team: str, yaml_dir: Optional[str] = None) -> List[s
         yaml_dir = os.path.join(bazel_workspace_dir, "ci/ray_ci")
 
     with open(f"{yaml_dir}/{team}.tests.yml", "rb") as f:
-        flaky_tests = yaml.safe_load(f)["flaky_tests"]
+        all_flaky_tests = yaml.safe_load(f)["flaky_tests"]
 
-    return flaky_tests
+        # linux tests are prefixed with "//"
+        if operating_system == "linux":
+            return [test for test in all_flaky_tests if test.startswith("//")]
+
+        # and other os tests are prefixed with "os:"
+        os_prefix = f"{operating_system}:"
+        return [
+            test.lstrip(os_prefix)
+            for test in all_flaky_tests
+            if test.startswith(os_prefix)
+        ]

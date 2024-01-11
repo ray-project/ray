@@ -4,17 +4,78 @@
 * dark/light theme specific values, which normally take precedence over the PST defaults.
 * */
 html {
-  --anyscale-blue: #0641AC;
-  --ray-blue: #3C8AE9; /* Ray blue color - use this for all ray branding */
+  --anyscale-blue: #0641ac;
+  --ray-blue: #3c8ae9; /* Ray blue color - use this for all ray branding */
   --pst-color-primary: var(--ray-blue) !important;
-  --pst-color-link-hover: var(--ray-blue) !important;
   --pst-color-inline-code-links: var(--ray-blue) !important;
 
   /* Transparent highlight color; default yellow is hard on the eyes */
-  --pst-color-target: #FFFFFF00 !important;
+  --pst-color-target: #ffffff00 !important;
   --color-diff-delete-bg: rgba(212, 118, 22, 0.3);
   --color-diff-insert-bg: rgba(56, 139, 253, 0.3);
   --color-diff-nochange-bg: rgba(0, 0, 0, 0);
+
+  --pst-font-family-base: 'Inter', sans-serif;
+  --stata-dark-background: #232629;
+}
+
+html[data-theme='dark'] {
+  --pst-color-background: #161a1d;
+  --pst-color-text-base: #f1f2f4;
+  --pst-color-text-muted: #b3b9c4;
+  --heading-color: #ffffff;
+  --base-pygments-code-color: #cccccc;
+}
+
+html[data-theme='light'] {
+  --pst-color-background: #ffffff;
+  --pst-color-text-base: #22272b;
+  --pst-color-text-muted: #454f59;
+  --heading-color: #161a1d;
+  --base-pygments-code-color: #cccccc;
+}
+
+nav.bd-links li > a:hover {
+  text-decoration: none;
+}
+
+a:hover {
+  text-decoration-thickness: unset;
+}
+
+h1,
+h2,
+h3,
+h4,
+h5,
+h6 {
+  color: var(--heading-color);
+}
+
+/* Gradient ellipse background */
+.bd-sidebar-secondary {
+  background-color: transparent;
+}
+.bd-content:after {
+  background: linear-gradient(
+    60deg,
+    rgba(0, 85, 204, 0.18) 14%,
+    rgba(110, 93, 198, 0.18) 49.2%,
+    rgba(174, 71, 135, 0.18) 81.54%
+  );
+  background-size: 746px 746px;
+  background-repeat: no-repeat;
+  background-position: center;
+  border-radius: 373px;
+  background-origin: 50%;
+  background-attachment: scroll;
+  content: '';
+  transform: translate(50%, 0%);
+  width: 746px;
+  height: 746px;
+  position: absolute;
+  filter: blur(100px);
+  z-index: -1;
 }
 
 /* Pygments diff code cell line colors; match github colorblind theme */
@@ -29,6 +90,14 @@ div.highlight > pre > span.gi {
 div.highlight > pre > span.w {
   background-color: var(--color-diff-nochange-bg);
   color: var(--pst-color-text-base) !important;
+}
+
+/* Make the article content take up all available space */
+.bd-main .bd-content .bd-article-container {
+  max-width: 100%; /* default is 60em */
+}
+.bd-page-width {
+  max-width: 100%; /* default is 88rem */
 }
 
 /* Hide the "Hide Search Matches" button (we aren't highlighting search terms anyway) */
@@ -70,9 +139,6 @@ span.navbar-link-title {
 }
 ul.navbar-toplevel li:hover > div.navbar-dropdown {
   display: block;
-}
-ul.navbar-toplevel > li:hover {
-  border-bottom:
 }
 ul.navbar-toplevel {
   display: flex;
@@ -181,32 +247,58 @@ button#pst-back-to-top {
 }
 
 .bottom-right-promo-banner {
-    position: fixed;
-    bottom: 100px;
-    right: 20px;
-    width: 270px;
+  position: fixed;
+  bottom: 100px;
+  right: 20px;
+  width: 270px;
 }
 
 @media (max-width: 1500px) {
-    .bottom-right-promo-banner {
-        display: none;
-    }
+  .bottom-right-promo-banner {
+    display: none;
+  }
 }
 
 /* Nav sidebar styles */
-/* Sidebar checkboxes are toggled by clicking on the label; hide actual checkboxes */
-.sidebar-checkbox {
-  display: none;
+.bd-sidebar-primary {
+  width: 280px;
+  padding: 2em 2em 0em 2em;
 }
-.sidebar-checkbox[type="checkbox"]:checked ~ dd {
-  display: none;
+/* Make sidebar take up full primary sidebar gutter, but don't wrap content */
+#main-sidebar {
+  width: 100%;
+}
+nav.bd-links li > a {
+  color: var(--pst-color-text-base);
+}
+/* Sidebar checkboxes are toggled by clicking on the label; hide actual checkboxes */
+.toctree-checkbox[type='checkbox']:checked ~ ul > li.current-page:before {
+  background-color: var(--ray-blue);
+  border-radius: 0.5px;
+}
+.toctree-checkbox[type='checkbox']:checked ~ ul > li:before {
+  content: '';
+  width: 1px;
+  height: 100%;
+  position: absolute;
+  background-color: var(--pst-color-border);
+}
+/* Highlight and bold the primary sidebar entry for the current page */
+#main-sidebar li.current-page > a {
+  color: var(--ray-blue) !important;
+  font-weight: 600;
+}
+/* Bold the top level primary sidebar links */
+#main-sidebar > .navbar-nav > .nav.bd-sidenav > li > a {
+  font-weight: 500;
 }
 
 /* Fix some spacing issues associated with competition with PST styles */
 .sidebar-content dl {
   margin-bottom: 0;
 }
-.sidebar-content ol li > p:first-child, ul li > p:first-child {
+.sidebar-content ol li > p:first-child,
+ul li > p:first-child {
   margin-top: 0 !important;
 }
 
@@ -229,4 +321,18 @@ table.autosummary tr > td:first-child > p > a > code > span {
   display: block;
   overflow: clip;
   text-overflow: ellipsis;
+}
+
+/* RTD footer container makes the parent */
+/* #main-sidebar always scrollable if you don't remove negative margin. */
+/* Restrict width to 30% of the window */
+.bd-sidebar-primary div#rtd-footer-container {
+  margin: unset;
+  max-width: 30vw;
+}
+
+/* Fix some pygments styles that inadvertently get overridden by PST */
+.highlight pre {
+  background-color: var(--stata-dark-background);
+  color: var(--base-pygments-code-color);
 }

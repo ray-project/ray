@@ -273,12 +273,11 @@ With Ray Datasets, you can do scalable offline batch inference with Torch models
                 # Get the predictions from the input batch.
                 return {"output": self.model(tensor).numpy()}
 
+    # Step 2: Map the Predictor over the Dataset to get predictions.
     # Use 2 parallel actors for inference. Each actor predicts on a
     # different partition of data.
-    scale = ray.data.ActorPoolStrategy(size=2)
-    # Step 3: Map the Predictor over the Dataset to get predictions.
-    predictions = ds.map_batches(TorchPredictor, compute=scale)
-    # Step 4: Show one prediction output.
+    predictions = ds.map_batches(TorchPredictor, concurrency=2)
+    # Step 3: Show one prediction output.
     predictions.show(limit=1)
 
 .. testoutput::

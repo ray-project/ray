@@ -320,7 +320,7 @@ class Dataset:
         Args:
             fn: The function to apply to each row, or a class type
                 that can be instantiated to create such a callable.
-            compute: This argument is deprecated. Please use ``concurrency`` argument.
+            compute: This argument is deprecated. Use ``concurrency`` argument.
             fn_args: Positional arguments to pass to ``fn`` after the first argument.
                 These arguments are top-level arguments to the underlying Ray task.
             fn_kwargs: Keyword arguments to pass to ``fn``. These arguments are
@@ -533,9 +533,7 @@ class Dataset:
                 The actual size of the batch provided to ``fn`` may be smaller than
                 ``batch_size`` if ``batch_size`` doesn't evenly divide the block(s) sent
                 to a given map task. Default batch_size is 1024 with "default".
-            compute: Either "tasks" (default) to use Ray Tasks or an
-                :class:`~ray.data.ActorPoolStrategy` to use an autoscaling actor pool.
-                This argument is deprecated. Please use ``concurrency`` argument instead.
+            compute: This argument is deprecated. Use ``concurrency`` argument.
             batch_format: If ``"default"`` or ``"numpy"``, batches are
                 ``Dict[str, numpy.ndarray]``. If ``"pandas"``, batches are
                 ``pandas.DataFrame``.
@@ -716,7 +714,7 @@ class Dataset:
                 column is overwritten.
             fn: Map function generating the column values given a batch of
                 records in pandas format.
-            compute: This argument is deprecated. Please use ``concurrency`` argument.
+            compute: This argument is deprecated. Use ``concurrency`` argument.
             concurrency: The number of Ray workers to use concurrently. For a
                 fixed-sized worker pool of size ``n``, specify ``concurrency=n``. For
                 an autoscaling worker pool from ``m`` to ``n`` workers, specify
@@ -780,7 +778,7 @@ class Dataset:
         Args:
             cols: Names of the columns to drop. If any name does not exist,
                 an exception is raised.
-            compute: This argument is deprecated. Please use ``concurrency`` argument.
+            compute: This argument is deprecated. Use ``concurrency`` argument.
             concurrency: The number of Ray workers to use concurrently. For a fixed-sized
                 worker pool of size ``n``, specify ``concurrency=n``. For an autoscaling
                 worker pool from ``m`` to ``n`` workers, specify ``concurrency=(m, n)``.
@@ -839,7 +837,7 @@ class Dataset:
         Args:
             cols: Names of the columns to select. If a name isn't in the
                 dataset schema, an exception is raised.
-            compute: This argument is deprecated. Please use ``concurrency`` argument.
+            compute: This argument is deprecated. Use ``concurrency`` argument.
             concurrency: The number of Ray workers to use concurrently. For a fixed-sized
                 worker pool of size ``n``, specify ``concurrency=n``. For an autoscaling
                 worker pool from ``m`` to ``n`` workers, specify ``concurrency=(m, n)``.
@@ -917,7 +915,7 @@ class Dataset:
         Args:
             fn: The function or generator to apply to each record, or a class type
                 that can be instantiated to create such a callable.
-            compute: This argument is deprecated. Please use ``concurrency`` argument.
+            compute: This argument is deprecated. Use ``concurrency`` argument.
             fn_args: Positional arguments to pass to ``fn`` after the first argument.
                 These arguments are top-level arguments to the underlying Ray task.
             fn_kwargs: Keyword arguments to pass to ``fn``. These arguments are
@@ -1025,7 +1023,7 @@ class Dataset:
         Args:
             fn: The predicate to apply to each row, or a class type
                 that can be instantiated to create such a callable.
-            compute: This argument is deprecated. Please use ``concurrency`` argument.
+            compute: This argument is deprecated. Use ``concurrency`` argument.
             concurrency: The number of Ray workers to use concurrently. For a
                 fixed-sized worker pool of size ``n``, specify ``concurrency=n``.
                 For an autoscaling worker pool from ``m`` to ``n`` workers, specify
@@ -1060,7 +1058,12 @@ class Dataset:
         return Dataset(plan, logical_plan)
 
     @AllToAllAPI
-    def repartition(self, num_blocks: int, *, shuffle: bool = False) -> "Dataset":
+    def repartition(
+        self,
+        num_blocks: int,
+        *,
+        shuffle: bool = False,
+    ) -> "Dataset":
         """Repartition the :class:`Dataset` into exactly this number of :ref:`blocks <dataset_concept>`.
 
         This method can be useful to tune the performance of your pipeline. To learn
@@ -1652,7 +1655,7 @@ class Dataset:
         splits = []
 
         for bs, ms in zip(blocks, metadata):
-            stats = DatasetStats(stages={"Split": ms}, parent=parent_stats)
+            stats = DatasetStats(metadata={"Split": ms}, parent=parent_stats)
             stats.time_total_s = split_duration
 
             split_block_list = BlockList(
@@ -1917,7 +1920,7 @@ class Dataset:
                 logical_plan = LogicalPlan(op)
 
         stats = DatasetStats(
-            stages={"Union": []},
+            metadata={"Union": []},
             parent=[d._plan.stats() for d in datasets],
         )
         stats.time_total_s = time.perf_counter() - start_time
@@ -1927,7 +1930,10 @@ class Dataset:
         )
 
     @AllToAllAPI
-    def groupby(self, key: Union[str, List[str], None]) -> "GroupedData":
+    def groupby(
+        self,
+        key: Union[str, List[str], None],
+    ) -> "GroupedData":
         """Group rows of a :class:`Dataset` according to a column.
 
         Use this method to transform data based on a
@@ -2288,6 +2294,7 @@ class Dataset:
         self,
         key: Union[str, List[str], None] = None,
         descending: Union[bool, List[bool]] = False,
+        boundaries: List[Union[int, float]] = None,
     ) -> "Dataset":
         """Sort the dataset by the specified key column or key function.
 
@@ -2298,9 +2305,28 @@ class Dataset:
 
         Examples:
             >>> import ray
-            >>> ds = ray.data.range(100)
-            >>> ds.sort("id", descending=True).take(3)
-            [{'id': 99}, {'id': 98}, {'id': 97}]
+            >>> ds = ray.data.range(15)
+            >>> ds = ds.sort("id", descending=False, boundaries=[5, 10])
+            >>> for df in ray.get(ds.to_pandas_refs()):
+            ...     print(df)
+               id
+            0   0
+            1   1
+            2   2
+            3   3
+            4   4
+               id
+            0   5
+            1   6
+            2   7
+            3   8
+            4   9
+               id
+            0  10
+            1  11
+            2  12
+            3  13
+            4  14
 
         Time complexity: O(dataset size * log(dataset size / parallelism))
 
@@ -2308,12 +2334,19 @@ class Dataset:
             key: The column or a list of columns to sort by.
             descending: Whether to sort in descending order. Must be a boolean or a list
                 of booleans matching the number of the columns.
+            boundaries: The list of values based on which to repartition the dataset.
+                For example, if the input boundary is [10,20], rows with values less
+                than 10 will be divided into the first block, rows with values greater
+                than or equal to 10 and less than 20 will be divided into the
+                second block, and rows with values greater than or equal to 20
+                will be divided into the third block. If not provided, the
+                boundaries will be sampled from the input blocks. This feature
+                only supports numeric columns right now.
 
         Returns:
             A new, sorted :class:`Dataset`.
         """
-
-        sort_key = SortKey(key, descending)
+        sort_key = SortKey(key, descending, boundaries)
         plan = self._plan.with_stage(SortStage(self, sort_key))
 
         logical_plan = self._logical_plan
@@ -4731,7 +4764,7 @@ class Dataset:
         .. testoutput::
             :options: +MOCK
 
-            Stage 0 Read: 20/20 blocks executed in 0.3s
+            Operator 0 Read: 1 tasks executed, 5 blocks produced in 0s
             * Remote wall time: 16.29us min, 7.29ms max, 1.21ms mean, 24.17ms total
             * Remote cpu time: 16.0us min, 2.54ms max, 810.45us mean, 16.21ms total
             * Peak heap memory usage (MiB): 137968.75 min, 142734.38 max, 139846 mean

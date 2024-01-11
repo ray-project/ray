@@ -180,7 +180,7 @@ def from_items(
     return MaterializedDataset(
         ExecutionPlan(
             BlockList(blocks, metadata, owned_by_consumer=False),
-            DatasetStats(stages={"FromItems": metadata}, parent=None),
+            DatasetStats(metadata={"FromItems": metadata}, parent=None),
             run_by_consumer=False,
         ),
         logical_plan,
@@ -381,6 +381,7 @@ def read_datasource(
         datasource_or_legacy_reader,
         parallelism,
         inmemory_size,
+        block_list._estimated_num_blocks,
         ray_remote_args,
     )
 
@@ -1935,8 +1936,21 @@ def read_databricks_tables(
         A :class:`Dataset` containing the queried data.
     """  # noqa: E501
     from ray.data.datasource.databricks_uc_datasource import DatabricksUCDatasource
-    from ray.util.spark.databricks_hook import get_dbutils
     from ray.util.spark.utils import get_spark_session, is_in_databricks_runtime
+
+    def get_dbutils():
+        no_dbutils_error = RuntimeError("No dbutils module found.")
+        try:
+            import IPython
+
+            ip_shell = IPython.get_ipython()
+            if ip_shell is None:
+                raise no_dbutils_error
+            return ip_shell.ns_table["user_global"]["dbutils"]
+        except ImportError:
+            raise no_dbutils_error
+        except KeyError:
+            raise no_dbutils_error
 
     token = os.environ.get("DATABRICKS_TOKEN")
 
@@ -1960,12 +1974,11 @@ def read_databricks_tables(
                 '(e.g. "adb-<workspace-id>.<random-number>.azuredatabricks.net").'
             )
 
-    spark = get_spark_session()
     if not catalog:
-        catalog = spark.sql("SELECT CURRENT_CATALOG()").collect()[0][0]
+        catalog = get_spark_session().sql("SELECT CURRENT_CATALOG()").collect()[0][0]
 
     if not schema:
-        schema = spark.sql("SELECT CURRENT_DATABASE()").collect()[0][0]
+        schema = get_spark_session().sql("SELECT CURRENT_DATABASE()").collect()[0][0]
 
     if query is not None and table is not None:
         raise ValueError("Only one of 'query' and 'table' arguments can be set.")
@@ -1974,7 +1987,7 @@ def read_databricks_tables(
         query = f"select * from {table}"
 
     if query is None:
-        raise ValueError("One of 'query' and 'table_name' arguments should be set.")
+        raise ValueError("One of 'query' and 'table' arguments should be set.")
 
     datasource = DatabricksUCDatasource(
         host=host,
@@ -2147,7 +2160,7 @@ def from_pandas_refs(
         return MaterializedDataset(
             ExecutionPlan(
                 BlockList(dfs, metadata, owned_by_consumer=False),
-                DatasetStats(stages={"FromPandas": metadata}, parent=None),
+                DatasetStats(metadata={"FromPandas": metadata}, parent=None),
                 run_by_consumer=False,
             ),
             logical_plan,
@@ -2162,7 +2175,7 @@ def from_pandas_refs(
     return MaterializedDataset(
         ExecutionPlan(
             BlockList(blocks, metadata, owned_by_consumer=False),
-            DatasetStats(stages={"FromPandas": metadata}, parent=None),
+            DatasetStats(metadata={"FromPandas": metadata}, parent=None),
             run_by_consumer=False,
         ),
         logical_plan,
@@ -2249,7 +2262,7 @@ def from_numpy_refs(
     return MaterializedDataset(
         ExecutionPlan(
             BlockList(blocks, metadata, owned_by_consumer=False),
-            DatasetStats(stages={"FromNumpy": metadata}, parent=None),
+            DatasetStats(metadata={"FromNumpy": metadata}, parent=None),
             run_by_consumer=False,
         ),
         logical_plan,
@@ -2329,7 +2342,7 @@ def from_arrow_refs(
     return MaterializedDataset(
         ExecutionPlan(
             BlockList(tables, metadata, owned_by_consumer=False),
-            DatasetStats(stages={"FromArrow": metadata}, parent=None),
+            DatasetStats(metadata={"FromArrow": metadata}, parent=None),
             run_by_consumer=False,
         ),
         logical_plan,

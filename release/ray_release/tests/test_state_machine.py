@@ -12,6 +12,7 @@ from ray_release.result import (
     Result,
     ResultStatus,
 )
+from ray_release.test_automation.release_state_machine import ReleaseTestStateMachine
 from ray_release.test_automation.state_machine import TestStateMachine
 
 
@@ -100,7 +101,7 @@ def test_move_from_passing_to_failing():
         0,
         TestResult.from_result(Result(status=ResultStatus.ERROR.value)),
     )
-    sm = TestStateMachine(test)
+    sm = ReleaseTestStateMachine(test)
     sm.move()
     assert test.get_state() == TestState.FAILING
     assert test[Test.KEY_BISECT_BUILD_NUMBER] == 1
@@ -110,7 +111,7 @@ def test_move_from_passing_to_failing():
         0,
         TestResult.from_result(Result(status=ResultStatus.ERROR.value)),
     )
-    sm = TestStateMachine(test)
+    sm = ReleaseTestStateMachine(test)
     sm.move()
     assert test.get_state() == TestState.CONSITENTLY_FAILING
     assert test[Test.KEY_GITHUB_ISSUE_NUMBER] == MockIssueDB.issue_id - 1
@@ -122,11 +123,11 @@ def test_move_from_failing_to_consisently_failing():
     test.test_results = [
         TestResult.from_result(Result(status=ResultStatus.ERROR.value)),
     ]
-    sm = TestStateMachine(test)
+    sm = ReleaseTestStateMachine(test)
     sm.move()
     assert test.get_state() == TestState.FAILING
     test[Test.KEY_BISECT_BLAMED_COMMIT] = "1234567890"
-    sm = TestStateMachine(test)
+    sm = ReleaseTestStateMachine(test)
     sm.move()
     sm.comment_blamed_commit_on_github_issue()
     issue = MockIssueDB.issue_db[test.get(Test.KEY_GITHUB_ISSUE_NUMBER)]
@@ -143,7 +144,7 @@ def test_move_from_failing_to_passing():
         TestResult.from_result(Result(status=ResultStatus.ERROR.value)),
         TestResult.from_result(Result(status=ResultStatus.ERROR.value)),
     ]
-    sm = TestStateMachine(test)
+    sm = ReleaseTestStateMachine(test)
     sm.move()
     assert test.get_state() == TestState.CONSITENTLY_FAILING
     assert test[Test.KEY_GITHUB_ISSUE_NUMBER] == MockIssueDB.issue_id - 1
@@ -151,7 +152,7 @@ def test_move_from_failing_to_passing():
         0,
         TestResult.from_result(Result(status=ResultStatus.SUCCESS.value)),
     )
-    sm = TestStateMachine(test)
+    sm = ReleaseTestStateMachine(test)
     sm.move()
     assert test.get_state() == TestState.PASSING
     assert test.get(Test.KEY_GITHUB_ISSUE_NUMBER) is None
@@ -167,14 +168,14 @@ def test_move_from_failing_to_jailed():
         TestResult.from_result(Result(status=ResultStatus.ERROR.value)),
         TestResult.from_result(Result(status=ResultStatus.ERROR.value)),
     ]
-    sm = TestStateMachine(test)
+    sm = ReleaseTestStateMachine(test)
     sm.move()
     assert test.get_state() == TestState.CONSITENTLY_FAILING
     test.test_results.insert(
         0,
         TestResult.from_result(Result(status=ResultStatus.ERROR.value)),
     )
-    sm = TestStateMachine(test)
+    sm = ReleaseTestStateMachine(test)
     sm.move()
     assert test.get_state() == TestState.JAILED
 
@@ -185,7 +186,7 @@ def test_move_from_failing_to_jailed():
         0,
         TestResult.from_result(Result(status=ResultStatus.ERROR.value)),
     )
-    sm = TestStateMachine(test)
+    sm = ReleaseTestStateMachine(test)
     sm.move()
     assert test.get_state() == TestState.JAILED
     assert issue.state == "open"
@@ -195,7 +196,7 @@ def test_move_from_failing_to_jailed():
         0,
         TestResult.from_result(Result(status=ResultStatus.SUCCESS.value)),
     )
-    sm = TestStateMachine(test)
+    sm = ReleaseTestStateMachine(test)
     sm.move()
     assert test.get_state() == TestState.PASSING
     assert test.get(Test.KEY_GITHUB_ISSUE_NUMBER) is None
