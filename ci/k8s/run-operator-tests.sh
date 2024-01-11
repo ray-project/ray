@@ -6,7 +6,7 @@ set -euo pipefail
 
 echo "--- Build image"
 bazel run //ci/ray_ci:build_in_docker -- docker \
-    --python-version 3.8 --platform cpu --canonical-tag kuberay-test
+    --platform cpu --canonical-tag kuberay-test
 docker tag rayproject/ray:kuberay-test ray-ci:kuberay-test
 
 echo "--- Setup k8s environment"
