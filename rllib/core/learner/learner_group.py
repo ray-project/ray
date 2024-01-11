@@ -214,6 +214,7 @@ class LearnerGroup:
         batch: MultiAgentBatch,
         *,
         async_update: bool = False,
+        return_state: bool = False,
         reduce_fn: Optional[Callable[[List[Dict[str, Any]]], ResultDict]] = (
             _reduce_mean_results
         ),
@@ -233,6 +234,12 @@ class LearnerGroup:
                 sent asynchronously. If True, will return NOT the results from the
                 update on the given data, but all results from prior asynchronous update
                 requests that have not been returned thus far.
+            return_state: Whether to include one of the Learner worker's state from
+                after the update step in the returned results dict (under the
+                `_state_after_update` key). Note that after an update, all Learner
+                workers' states should be identical, so we use the first Learner's state
+                here. Useful for avoiding an extra `get_weights()` call, e.g. for
+                synchronizing EnvRunner weights.
             reduce_fn: An optional callable to reduce the results from a list of the
                 Learner actors into a single result. This can be any arbitrary function
                 that takes a list of dictionaries and returns a single dictionary. For
@@ -269,6 +276,7 @@ class LearnerGroup:
             batch=train_batch,
             episodes=None,
             async_update=async_update,
+            return_state=return_state,
             reduce_fn=reduce_fn,
             minibatch_size=minibatch_size,
             num_iters=num_iters,
@@ -279,6 +287,7 @@ class LearnerGroup:
         episodes: List[EpisodeType],
         *,
         async_update: bool = False,
+        return_state: bool = False,
         reduce_fn: Optional[Callable[[List[Dict[str, Any]]], ResultDict]] = (
             _reduce_mean_results
         ),
@@ -298,6 +307,12 @@ class LearnerGroup:
                 sent asynchronously. If True, will return NOT the results from the
                 update on the given data, but all results from prior asynchronous update
                 requests that have not been returned thus far.
+            return_state: Whether to include one of the Learner worker's state from
+                after the update step in the returned results dict (under the
+                `_state_after_update` key). Note that after an update, all Learner
+                workers' states should be identical, so we use the first Learner's state
+                here. Useful for avoiding an extra `get_weights()` call, e.g. for
+                synchronizing EnvRunner weights.
             minibatch_size: The minibatch size to use for the update.
             num_iters: The number of complete passes over all the sub-batches in the
                 input multi-agent batch.
@@ -323,6 +338,7 @@ class LearnerGroup:
             batch=None,
             episodes=episodes,
             async_update=async_update,
+            return_state=return_state,
             reduce_fn=reduce_fn,
             minibatch_size=minibatch_size,
             num_iters=num_iters,
@@ -334,7 +350,7 @@ class LearnerGroup:
         batch: Optional[MultiAgentBatch] = None,
         episodes: Optional[List[EpisodeType]] = None,
         async_update: bool = False,
-        return_weights_after_update: bool = False,
+        return_state: bool = False,
         reduce_fn: Optional[Callable[[List[Dict[str, Any]]], ResultDict]] = (
             _reduce_mean_results
         ),
@@ -344,27 +360,27 @@ class LearnerGroup:
 
         # Define function to be called on all Learner actors (or the local learner).
         def _learner_update(
-            learner,
-            batch_shard=None,
-            episodes_shard=None,
-            return_weights=False,
+            _learner,
+            _batch_shard=None,
+            _episodes_shard=None,
+            _return_state=False,
         ):
-            if batch_shard is not None:
-                result = learner.update_from_batch(
-                    batch=batch_shard,
+            if _batch_shard is not None:
+                result = _learner.update_from_batch(
+                    batch=_batch_shard,
                     reduce_fn=reduce_fn,
                     minibatch_size=minibatch_size,
                     num_iters=num_iters,
                 )
             else:
-                result = learner.update_from_episodes(
-                    episodes=episodes_shard,
+                result = _learner.update_from_episodes(
+                    episodes=_episodes_shard,
                     reduce_fn=reduce_fn,
                     minibatch_size=minibatch_size,
                     num_iters=num_iters,
                 )
-            if return_weights:
-                result["_state_after_update"] = learner.get_state()
+            if _return_state:
+                result["_state_after_update"] = _learner.get_state()
             return result
 
         if self.is_local:
@@ -384,20 +400,20 @@ class LearnerGroup:
         else:
             if batch is not None:
                 partials = [
-                    partial(_learner_update, batch_shard=batch_shard, return_weights=(return_weights_after_update and i == 0))
+                    partial(_learner_update, _batch_shard=batch_shard, _return_state=(return_state and i == 0))
                     for i, batch_shard in enumerate(ShardBatchIterator(batch, len(self._workers)))
                 ]
             elif isinstance(episodes, list) and isinstance(episodes[0], ObjectRef):
                 partials = [
-                    partial(_learner_update, episodes_shard=episodes_shard,
-                            return_weights=(return_weights_after_update and i == 0))
+                    partial(_learner_update, _episodes_shard=episodes_shard,
+                            _return_state=(return_state and i == 0))
                     for i, episodes_shard in enumerate(ShardObjectRefIterator(
                         episodes, len(self._workers)
                     ))
                 ]
             else:
                 partials = [
-                    partial(_learner_update, episodes_shard=episodes_shard, return_weights=(return_weights_after_update and i == 0))
+                    partial(_learner_update, _episodes_shard=episodes_shard, _return_state=(return_state and i == 0))
                     for i, episodes_shard in enumerate(ShardEpisodesIterator(
                         episodes, len(self._workers)
                     ))

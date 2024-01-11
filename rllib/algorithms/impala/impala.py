@@ -4,7 +4,7 @@ import logging
 import platform
 import queue
 import random
-from typing import Callable, List, Optional, Set, Tuple, Type, Union
+from typing import Any, Callable, Dict, List, Optional, Set, Tuple, Type, Union
 
 import numpy as np
 import tree  # pip install dm_tree
@@ -1031,7 +1031,7 @@ class Impala(Algorithm):
 
         return sample_batches
 
-    def learn_on_processed_samples(self) -> ResultDict:
+    def learn_on_processed_samples(self) -> Tuple[ResultDict, Dict[str, Any]]:
         """Update the learner group with the latest batch of processed samples.
 
         Returns:
@@ -1059,6 +1059,7 @@ class Impala(Algorithm):
             result = getattr(self.learner_group, f"update_from_{update_kwarg}")(
                 async_update=async_update,
                 reduce_fn=_reduce_impala_results,
+                return_state=True,
                 num_iters=self.config.num_sgd_iter,
                 minibatch_size=self.config.minibatch_size,
                 **{update_kwarg: batch_or_episodes},
