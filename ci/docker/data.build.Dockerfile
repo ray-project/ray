@@ -28,6 +28,11 @@ sudo apt-get purge -y mongodb*
 sudo apt-get install -y mongodb
 sudo rm -rf /var/lib/mongodb/mongod.lock
 
+# Dependency used for read_tfrecords function.
+# Given that we only use the ExamplesToRecordBatchDecoder
+# which is purley c++, we can isntall it with --no-dependencies.
+pip install tfx-bsl==1.14.0 --no-dependencies
+
 if [[ $RAY_CI_JAVA_BUILD == 1 ]]; then
   # These packages increase the image size quite a bit, so we only install them 
   # as needed.

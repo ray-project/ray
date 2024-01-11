@@ -1,6 +1,8 @@
 import struct
 from typing import TYPE_CHECKING, Dict, Iterable, Iterator, List, Optional, Union
 
+import numpy as np
+
 from ray.data.aggregate import AggregateFn
 from ray.data.block import Block
 from ray.data.datasource.file_based_datasource import FileBasedDatasource
@@ -13,6 +15,9 @@ if TYPE_CHECKING:
     from tensorflow_metadata.proto.v0 import schema_pb2
 
     from ray.data.dataset import Dataset
+
+
+DEFAULT_BATCH_SIZE = 2048
 
 
 @PublicAPI(stability="alpha")
@@ -33,12 +38,15 @@ class TFRecordDatasource(FileBasedDatasource):
 
         self._tf_schema = tf_schema
         self._fast_read = fast_read
-        self._batch_size = batch_size or 2048
+        self._batch_size = batch_size or DEFAULT_BATCH_SIZE
 
     def _read_stream(self, f: "pyarrow.NativeFile", path: str) -> Iterator[Block]:
+        print(f"_read_stream -> _fast_read: {self._fast_read}")
         if self._fast_read:
+            print("reading fast!")
             yield from self._fast_read_stream(f, path)
         else:
+            print("reading slow!")
             yield from self._slow_read_stream(f, path)
 
     def _slow_read_stream(self, f: "pyarrow.NativeFile", path: str) -> Iterator[Block]:
@@ -87,6 +95,7 @@ def _convert_example_to_dict(
     example: "tf.train.Example",
     tf_schema: Optional["schema_pb2.Schema"],
 ) -> Dict[str, "pyarrow.Array"]:
+    print("_convert_example_to_dict HERE")
     record = {}
     schema_dict = {}
     # Convert user-specified schema into dict for convenient mapping
@@ -394,20 +403,21 @@ def _read_records(
             raise RuntimeError(error_message) from e
 
 
-def unwrap_single_value_columns(dataset: "Dataset"):
+def infer_schema_and_transform(dataset: "Dataset"):
     list_sizes = dataset.aggregate(_MaxListSize(dataset.schema().names))
 
     return dataset.map_batches(
         _unwrap_single_value_lists,
         fn_kwargs={"col_lengths": list_sizes["max_list_size"]},
-        batch_format="pandas",
     )
 
 
-def _unwrap_single_value_lists(batch: "pd.DataFrame", col_lengths: Dict[str, int]):
+def _unwrap_single_value_lists(
+    batch: Dict[str, np.ndarray], col_lengths: Dict[str, int]
+):
     for col in col_lengths:
         if col_lengths[col] == 1:
-            batch[col] = batch[col].str[0]
+            batch[col] = batch[col][0]
 
     return batch
 
@@ -483,7 +493,6 @@ def _write_record(
 def _masked_crc(data: bytes) -> bytes:
     """CRC checksum."""
     import crc32c
-    import numpy as np
 
     mask = 0xA282EAD8
     crc = crc32c.crc32(data)
