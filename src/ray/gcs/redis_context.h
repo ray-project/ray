@@ -158,7 +158,6 @@ class RedisContext {
   ///
   /// \param args The vector of command args to pass to Redis.
   /// \param redis_callback The Redis callback function.
-  /// \return Status.
   void RunArgvAsync(std::vector<std::string> args,
                     RedisCallback redis_callback = nullptr);
 
