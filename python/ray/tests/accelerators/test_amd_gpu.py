@@ -7,6 +7,7 @@ import ray
 from ray._private.accelerators import AMDGPUAcceleratorManager
 from ray._private.accelerators import get_accelerator_manager_for_resource
 
+
 @patch(
     "ray._private.accelerators.AMDGPUAcceleratorManager.get_current_node_num_accelerators",  # noqa: E501
     return_value=4,
@@ -40,6 +41,7 @@ def test_visible_amd_gpu_type(mock_get_amd_pci_ids, shutdown_only):
         )
     else:
         assert AMDGPUAcceleratorManager.get_current_node_accelerator_type() is None
+
 
 @patch(
     "ray._private.accelerators.AMDGPUAcceleratorManager._get_amd_pci_ids",
