@@ -268,6 +268,13 @@ class ActorProxyWrapper(ProxyWrapper):
                         f"Didn't receive drain check response for proxy"
                         f" on {self._node_id} after {timeout_s}s."
                     )
+                else:
+                    logger.error(
+                        f"Unexpected error invoking drain-check for proxy "
+                        f"on {self._node_id}",
+                        exc_info=e,
+                    )
+
                 return False
             finally:
                 self._drained_check_future = None
