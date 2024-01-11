@@ -60,6 +60,7 @@ def get_devices() -> List[torch.device]:
 
     return devices
 
+
 def convert_pandas_to_torch_tensor(
     data_batch: pd.DataFrame,
     columns: Optional[Union[List[str], List[List[str]]]] = None,

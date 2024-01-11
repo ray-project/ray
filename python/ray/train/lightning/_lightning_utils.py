@@ -50,6 +50,7 @@ logger = logging.getLogger(__name__)
 
 LIGHTNING_REPORT_STAGE_KEY = "_report_on"
 
+
 @PublicAPI(stability="beta")
 class RayDDPStrategy(pl.strategies.DDPStrategy):
     """Subclass of DDPStrategy to ensure compatibility with Ray orchestration.
