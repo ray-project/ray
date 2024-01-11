@@ -25,7 +25,7 @@ steps:
       IMAGE_TO: mlbuild-py{{matrix}}
       RAYCI_IS_GPU_BUILD: "false"
     matrix:
-      - "3.8"
+      - "3.9"
 
   - name: mllightning2gpubuild
     wanda: ci/docker/mllightning2gpu.build.wanda.yaml
@@ -47,7 +47,7 @@ steps:
       IMAGE_TO: mlgpubuild-py{{matrix}}
       RAYCI_IS_GPU_BUILD: "true"
     matrix:
-      - "3.8"
+      - "3.9"
 
   # tests
   - label: ":train: ml: train tests"
@@ -72,7 +72,7 @@ steps:
     depends_on: [ "mlbuild-multipy", "forge" ]
     matrix:
       setup:
-        python: ["3.8"]
+        python: ["3.9"]
         worker_id: ["0", "1"]
 
   - label: ":train: ml: train gpu tests"
@@ -103,7 +103,7 @@ steps:
     depends_on: [ "mlgpubuild-multipy", "forge" ]
     matrix:
       setup:
-        python: ["3.8"]
+        python: ["3.9"]
         worker_id: ["0", "1"]
 
   - label: ":train: ml: train authentication tests"
@@ -141,7 +141,7 @@ steps:
         --except-tags soft_imports,gpu_only,rllib,multinode
         --python-version {{matrix}}
     depends_on: [ "mlbuild-multipy", "forge" ]
-    matrix: ["3.8"]
+    matrix: ["3.9"]
 
   - label: ":train: ml: tune new output tests"
     tags: tune
@@ -190,7 +190,7 @@ steps:
         --python-version {{matrix}}
         --skip-ray-installation
     depends_on: [ "mlbuild-multipy", "forge" ]
-    matrix: ["3.8"]
+    matrix: ["3.9"]
 
   - label: ":train: ml: train+tune tests"
     tags: train

@@ -38,7 +38,6 @@ DOCKER_HUB_DESCRIPTION = {
 }
 
 PY_MATRIX = {
-    "py38": "3.8",
     "py39": "3.9",
     "py310": "3.10",
     "py311": "3.11",
