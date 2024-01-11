@@ -200,7 +200,7 @@ class Test(dict):
 
     def update_from_s3(self) -> None:
         """
-        Update test object with data field from s3
+        Update test object with data fields that exist only on s3
         """
         try:
             data = (
@@ -216,7 +216,9 @@ class Test(dict):
         except ClientError as e:
             logger.warning(f"Failed to update data for {self.get_name()} from s3:  {e}")
             return
-        self.update(json.loads(data))
+        for key, value in json.loads(data).items():
+            if key not in self:
+                self[key] = value
 
     def get_state(self) -> TestState:
         """
