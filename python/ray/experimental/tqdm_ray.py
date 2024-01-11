@@ -379,7 +379,6 @@ def instance() -> _BarManager:
 
 
 if __name__ == "__main__":
-    import time
 
     @ray.remote
     def processing(delay):

@@ -87,7 +87,6 @@ def test_flush_interval():
         bar = list(bar_group.bars_by_uuid.values())[0]
         assert bar.bar.n == expected_value
 
-
     bar = tqdm_ray.tqdm(
         desc="bar",
         total=100,
@@ -108,6 +107,7 @@ def test_flush_interval():
     bar.update(1)
     check_value(12)
     bar.close()
+
 
 if __name__ == "__main__":
     # Test suite is timing out. Disable on windows for now.
