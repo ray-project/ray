@@ -424,7 +424,7 @@ class ReplicaActor:
     ) -> AsyncGenerator[Any, None]:
         """Calls a user method for a streaming call and yields its results.
 
-        The user method is called in a `Task` and places its results on a
+        The user method is called in an asyncio `Task` and places its results on a
         `result_queue`. This method pulls and yields from the `result_queue`.
         """
         call_user_method_task = None
