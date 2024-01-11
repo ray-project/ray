@@ -432,15 +432,17 @@ class ReplicaActor:
             # Handle the request in a background asyncio.Task. It's expected that
             # this task will use the result queue to send its response messages.
             # XXX: FIX COMMENT!!!
-            result_queue = MessageQueue(
-                # XXX: comment!
-                write_event_loop=self._event_loop,
-            )
+            result_queue = MessageQueue()
+
+            async def write_to_result_queue_thread_safe(item: Any):
+                # XXX: thread safety comment!!!
+                self._event_loop.call_soon_threadsafe(result_queue.put_nowait, item)
+
             call_user_method_future = self._user_callable_wrapper.call_user_method(
                 request_metadata,
                 request_args,
                 request_kwargs,
-                generator_result_callback=result_queue,
+                generator_result_callback=write_to_result_queue_thread_safe,
             )
 
             while True:
