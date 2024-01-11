@@ -3029,13 +3029,14 @@ Status CoreWorker::ReportGeneratorItemReturns(
                        << reply.total_num_object_consumed();
         if (waiter) {
           RAY_LOG(DEBUG) << "Total object consumed: " << waiter->TotalObjectConsumed()
-                         << ". Total object generated: " << waiter->TotalObjectGenerated();
+                         << ". Total object generated: "
+                         << waiter->TotalObjectGenerated();
           if (status.ok()) {
             /// Since unary gRPC requests are not ordered, it is possible the stale
             /// total value can be replied. Since total object consumed only can
             /// increment, we always choose the larger value here.
-            waiter->UpdateTotalObjectConsumed(
-                std::max(waiter->TotalObjectConsumed(), reply.total_num_object_consumed()));
+            waiter->UpdateTotalObjectConsumed(std::max(
+                waiter->TotalObjectConsumed(), reply.total_num_object_consumed()));
           } else {
             // TODO(sang): Handle network error more gracefully.
             // If the request fails, we should just resume until task finishes without

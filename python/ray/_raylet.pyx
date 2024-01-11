@@ -1220,7 +1220,9 @@ cdef class StreamingGeneratorExecutionContext:
         self.should_retry_exceptions = should_retry_exceptions
 
         if generator_backpressure_num_objects > 0:
-            self.waiter = make_shared[CGeneratorBackpressureWaiter](generator_backpressure_num_objects)
+            self.waiter = make_shared[CGeneratorBackpressureWaiter](
+                generator_backpressure_num_objects
+            )
         else:
             self.waiter = shared_ptr[CGeneratorBackpressureWaiter]()
 
