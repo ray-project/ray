@@ -64,7 +64,7 @@ class ProxyWrapper(ABC):
         raise NotImplementedError
 
     @abstractmethod
-    def is_drained(self) -> Optional[bool]:
+    def is_drained(self, timeout_s: float) -> Optional[bool]:
         """Return whether the proxy actor is drained.
 
         Since actual check whether proxy is drained is asynchronous, this method could
@@ -251,13 +251,10 @@ class ActorProxyWrapper(ProxyWrapper):
         else:
             return None
 
-    def is_drained(
-        self, timeout_s: float = PROXY_HEALTH_CHECK_TIMEOUT_S
-    ) -> Optional[bool]:
+    def is_drained(self, timeout_s: float) -> Optional[bool]:
         if self._drained_check_future is None:
             self._drained_check_future = wrap_as_future(
                 self._actor_handle.is_drained.remote(),
-                # NOTE: We use the same timeout as for health-checking
                 timeout_s=timeout_s,
             )
 
@@ -507,7 +504,10 @@ class ProxyState:
                         >= PROXY_DRAIN_CHECK_PERIOD_S
                     )
                     if should_check_drain:
-                        is_drained_response = self._actor_proxy_wrapper.is_drained()
+                        # NOTE: We use the same timeout as for readiness checking
+                        is_drained_response = self._actor_proxy_wrapper.is_drained(
+                            PROXY_READY_CHECK_TIMEOUT_S
+                        )
                         if is_drained_response is not None:
                             if is_drained_response:
                                 self.try_update_status(ProxyStatus.DRAINED)

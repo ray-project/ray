@@ -62,7 +62,7 @@ class FakeProxyWrapper(ProxyWrapper):
         self.num_health_checks += 1
         return self.is_healthy_response
 
-    def is_drained(self) -> Optional[bool]:
+    def is_drained(self, timeout_s: float) -> Optional[bool]:
         self.num_drain_checks += 1
         return self.is_drained_response
 
