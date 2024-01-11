@@ -63,9 +63,23 @@ class TestBufferWithInfiniteLookback(unittest.TestCase):
         self.assertTrue(len(buffer), 5)
         check(buffer.data, [0, 1, 2, 3, 10])
         buffer.finalize()
-        self.assertRaises(RuntimeError, lambda: buffer.append("something"))
-        self.assertRaises(RuntimeError, lambda: buffer.extend(["something"]))
-        self.assertRaises(RuntimeError, lambda: buffer.pop())
+
+        # Even after finalizing, we can still add data to the buffer.
+        buffer.append(11)
+        self.assertTrue(buffer.get(indices=-1) == 11)
+        test = buffer.get(indices=[-2, -1])
+        self.assertTrue(np.all(test == np.array([10, 11])))
+        self.assertTrue(isinstance(test, np.ndarray))
+
+        buffer.extend([12, 13])
+        self.assertTrue(buffer.get(indices=-1) == 13)
+        test = buffer.get(indices=[-2, -1])
+        self.assertTrue(np.all(test == np.array([12, 13])))
+        self.assertTrue(isinstance(test, np.ndarray))
+
+        buffer.pop()
+        self.assertTrue(buffer.get(indices=-1) == 12)
+        self.assertTrue(buffer.get(indices=0) == 0)
 
     def test_complex_structs(self):
         buffer = BufferWithInfiniteLookback(
@@ -78,7 +92,6 @@ class TestBufferWithInfiniteLookback(unittest.TestCase):
         self.assertTrue(len(buffer), 6)
 
         buffer.finalize()
-        self.assertRaises(RuntimeError, lambda: buffer.append("something"))
 
         self.assertTrue(isinstance(buffer.data, dict))
         self.assertTrue(isinstance(buffer.data["a"], np.ndarray))

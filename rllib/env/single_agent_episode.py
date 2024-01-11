@@ -459,7 +459,7 @@ class SingleAgentEpisode:
                 )
             # TODO: This check will fail unless we add action clipping to
             #  default module-to-env connector piece.
-            #if self.action_space is not None:
+            # if self.action_space is not None:
             #    assert self.action_space.contains(action), (
             #        f"`action` {action} does NOT fit SingleAgentEpisode's "
             #        f"action_space: {self.action_space}!"
