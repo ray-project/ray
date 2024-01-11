@@ -171,32 +171,40 @@ class ExecutionPlan:
             or self._snapshot_operator != self._logical_plan.dag
         ):
 
-            def generate_logical_plan_string(op: LogicalOperator, depth: int = 0):
-                nonlocal plan_str
-                nonlocal plan_max_depth
-                plan_max_depth = max(plan_max_depth, depth)
+            def generate_logical_plan_string(
+                op: LogicalOperator,
+                curr_str: str = "",
+                depth: int = 0,
+            ):
+                """Traverse (DFS) the LogicalPlan DAG and
+                return a string representation of the operators."""
                 if isinstance(op, (Read, InputData, AbstractFrom)):
-                    return
+                    return curr_str, depth
 
+                curr_max_depth = depth
                 op_name = op.name
                 if depth == 0:
-                    plan_str += f"{op_name}\n"
+                    curr_str += f"{op_name}\n"
                 else:
                     trailing_space = " " * ((depth - 1) * 3)
-                    plan_str += f"{trailing_space}+- {op_name}\n"
+                    curr_str += f"{trailing_space}+- {op_name}\n"
 
                 for input in op.input_dependencies:
-                    generate_logical_plan_string(input, depth + 1)
+                    curr_str, input_max_depth = generate_logical_plan_string(
+                        input, curr_str, depth + 1
+                    )
+                    curr_max_depth = max(curr_max_depth, input_max_depth)
+                return curr_str, curr_max_depth
 
-            generate_logical_plan_string(self._logical_plan.dag)
+            # generate_logical_plan_string(self._logical_plan.dag)
+            plan_str, plan_max_depth = generate_logical_plan_string(
+                self._logical_plan.dag
+            )
 
             # Get schema of initial blocks.
-            if self.is_from_in_memory_only() or self.is_read_only():
-                # In the case where the plan contains only a read operator,
-                # it is cheap to execute it, since read tasks will not be
-                # scheduled until data is consumed or materialized.
-                # In the case where the data is already in-memory (InputData,
-                # FromXXX operator), it is also cheap to execute it.
+            if self.needs_eager_execution():
+                # In the case where the plan contains only a Read/From operator,
+                # it is cheap to execute it.
                 # This allows us to get the most accurate estimates related
                 # to the dataset, after applying execution plan optimizer rules
                 # (e.g. number of blocks may change based on parallelism).
@@ -494,7 +502,7 @@ class ExecutionPlan:
         Returns:
             The number of records of the result Dataset, or None.
         """
-        if self.is_from_in_memory_only() or self.is_read_only():
+        if self.needs_eager_execution():
             # If the plan is input/read only, we execute it, so snapshot has output.
             # This applies to newly created dataset. For example, initial dataset
             # from read, and output datasets of Dataset.split().
@@ -722,9 +730,22 @@ class ExecutionPlan:
         """Return whether this plan has lazy input blocks."""
         return _is_lazy(self._in_blocks)
 
-    def is_read_only(self) -> bool:
+    def needs_eager_execution(self, root_op: Optional[LogicalOperator] = None) -> bool:
+        """Return whether this plan should be eagerly executed without
+        executing the underlying read tasks. This is often useful for
+        fetching accurate metadata for the dataset."""
+        if root_op is None:
+            root_op = self._logical_plan.dag
+        # Since read tasks will not be scheduled until data is consumed or materialized,
+        # it is cheap to execute the plan (i.e. run the plan optimizer).
+        # In the case where the data is already in-memory (InputData,
+        # FromXXX operator), it is similarly also cheap to execute it.
+        return self.is_from_in_memory_only(root_op) or self.is_read_only(root_op)
+
+    def is_read_only(self, root_op: Optional[LogicalOperator] = None) -> bool:
         """Return whether the underlying logical plan contains only a Read op."""
-        root_op = self._logical_plan.dag
+        if root_op is None:
+            root_op = self._logical_plan.dag
         return isinstance(root_op, Read) and len(root_op.input_dependencies) == 0
 
     def is_from_in_memory_only(self, root_op: Optional[LogicalOperator] = None) -> bool:
