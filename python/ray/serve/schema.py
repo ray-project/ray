@@ -1045,7 +1045,7 @@ class ServeInstanceDetails(BaseModel, extra=Extra.forbid):
         )
 
     def _serialize_bytes(self, values):
-        """Recursively convert bytes to str for JSON serialization."""
+        """Recursively convert bytes to base64 encoded str for JSON serialization."""
         for key, value in values.items():
             if isinstance(value, bytes):
                 values[key] = b64encode(value).decode("utf8")
@@ -1055,6 +1055,6 @@ class ServeInstanceDetails(BaseModel, extra=Extra.forbid):
 
     def dict(self, *args, **kwargs):
         """Override dict method to convert bytes to str for JSON serialization."""
-        result = super().dict(*args, **kwargs)
+        values = super().dict(*args, **kwargs)
 
-        return self._serialize_bytes(result)
+        return self._serialize_bytes(values=values)

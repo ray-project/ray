@@ -73,7 +73,7 @@ def test_deploy_app_custom_exception(serve_instance):
 
 
 def test_get_serve_instance_details_json_serializable(serve_instance):
-    """Test that ServeInstanceDetails is json serializable."""
+    """Test the result from get_serve_instance_details is json serializable."""
 
     controller = _get_global_client()._controller
 
