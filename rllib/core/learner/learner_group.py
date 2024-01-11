@@ -382,10 +382,18 @@ class LearnerGroup:
                 )
             ]
         else:
-            if episodes is None:
+            if batch is not None:
                 partials = [
                     partial(_learner_update, batch_shard=batch_shard, return_weights=(return_weights_after_update and i == 0))
                     for i, batch_shard in enumerate(ShardBatchIterator(batch, len(self._workers)))
+                ]
+            elif isinstance(episodes, list) and isinstance(episodes[0], ObjectRef):
+                partials = [
+                    partial(_learner_update, episodes_shard=episodes_shard,
+                            return_weights=(return_weights_after_update and i == 0))
+                    for i, episodes_shard in enumerate(ShardObjectRefIterator(
+                        episodes, len(self._workers)
+                    ))
                 ]
             else:
                 partials = [

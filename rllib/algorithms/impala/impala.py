@@ -738,7 +738,7 @@ class Impala(Algorithm):
                 mark_healthy=True,
             )
 
-        self._counters.update(self.learner_group.get_queue_stats())
+        self._counters.update(self.learner_group.get_stats())
 
         if train_results:
             # Store the most recent result and return it if no new result is
@@ -1055,14 +1055,13 @@ class Impala(Algorithm):
         async_update = self.config.num_learner_workers > 0
         results = []
 
-        for episodes in data:
-            result = self.learner_group.update_from_episodes(
-                episodes=episodes,
+        for batch_or_episodes in data:
+            result = getattr(self.learner_group, f"update_from_{update_kwarg}")(
                 async_update=async_update,
                 reduce_fn=_reduce_impala_results,
                 num_iters=self.config.num_sgd_iter,
                 minibatch_size=self.config.minibatch_size,
-                **{update_kwarg: episodes},
+                **{update_kwarg: batch_or_episodes},
             )
             if not async_update:
                 results = [result]
