@@ -1056,7 +1056,7 @@ class Impala(Algorithm):
         results = []
 
         for batch_or_episodes in data:
-            result = getattr(self.learner_group, f"update_from_{update_kwarg}")(
+            results = getattr(self.learner_group, f"update_from_{update_kwarg}")(
                 async_update=async_update,
                 reduce_fn=_reduce_impala_results,
                 return_state=True,
@@ -1065,7 +1065,7 @@ class Impala(Algorithm):
                 **{update_kwarg: batch_or_episodes},
             )
             if not async_update:
-                results = [result]
+                results = [results]
 
             for r in results:
                 self._counters[NUM_ENV_STEPS_TRAINED] += r[ALL_MODULES].pop(

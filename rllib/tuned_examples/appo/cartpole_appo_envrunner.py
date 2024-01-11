@@ -11,8 +11,8 @@ config = (
     .environment("CartPole-v1")
     .rollouts(
         env_runner_cls=SingleAgentEnvRunner,
-        num_rollout_workers=0,
-        num_envs_per_worker=1,
+        num_rollout_workers=1,
+        num_envs_per_worker=5,
         # TODO (sven): Add MeanStd connector, once fully tested (should learn much
         #  better with it).
         #observation_filter="MeanStdFilter",

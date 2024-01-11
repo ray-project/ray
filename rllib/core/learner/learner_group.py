@@ -441,10 +441,18 @@ class LearnerGroup:
                 if num_sent_requests != len(self._workers):
                     # assert num_sent_requests == 0, num_sent_requests
                     factor = 1 - (num_sent_requests / len(self._workers))
+                    # Batch: Measure its length.
                     if episodes is None:
-                        self._ts_dropped += factor * len(batch)
+                        dropped = len(batch)
+                    # List of Ray ObjectRefs (each object ref is a list of episodes of total
+                    # len=`rollout_fragment_length * num_envs_per_worker`)
+                    elif isinstance(episodes[0], ObjectRef):
+                        dropped = len(episodes) * self.config.get_rollout_fragment_length() * self.config.num_envs_per_worker
                     else:
-                        self._ts_dropped += factor * sum(len(e) for e in episodes)
+                        dropped = sum(len(e) for e in episodes)
+
+                    self._ts_dropped += factor * dropped
+
                 # NOTE: There is a strong assumption here that the requests launched to
                 # learner workers will return at the same time, since they are have a
                 # barrier inside of themselves for gradient aggregation. Therefore
