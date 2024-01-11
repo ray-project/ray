@@ -19,6 +19,37 @@ from ray.data.tests.util import extract_values
 from ray.tests.conftest import *  # noqa
 
 
+@pytest.mark.parametrize(
+    "descending,boundaries",
+    [
+        (True, list(range(100, 1000, 200))),
+        (False, list(range(100, 1000, 200))),
+        (True, [1, 998]),
+        (False, [1, 998]),
+        # Test float.
+        (True, [501.5]),
+        (False, [501.5]),
+    ],
+)
+def test_sort_with_specified_boundaries(ray_start_regular, descending, boundaries):
+    num_items = 1000
+    ds = ray.data.range(num_items)
+    ds = ds.sort("id", descending, boundaries).materialize()
+
+    items = range(num_items)
+    boundaries = [0] + sorted([round(b) for b in boundaries]) + [num_items]
+    expected_blocks = [
+        items[boundaries[i] : boundaries[i + 1]] for i in range(len(boundaries) - 1)
+    ]
+    if descending:
+        expected_blocks = [list(reversed(block)) for block in reversed(expected_blocks)]
+
+    blocks = list(ds.iter_batches(batch_size=None))
+    assert len(blocks) == len(expected_blocks)
+    for block, expected_block in zip(blocks, expected_blocks):
+        assert np.all(block["id"] == expected_block)
+
+
 def test_sort_simple(ray_start_regular, use_push_based_shuffle):
     num_items = 100
     parallelism = 4
@@ -30,6 +61,7 @@ def test_sort_simple(ray_start_regular, use_push_based_shuffle):
     )
     # Make sure we have rows in each block.
     assert len([n for n in ds.sort("item")._block_num_rows() if n > 0]) == parallelism
+
     assert extract_values(
         "item", ds.sort("item", descending=True).take(num_items)
     ) == list(reversed(range(num_items)))
