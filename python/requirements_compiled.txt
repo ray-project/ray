@@ -837,7 +837,7 @@ jaxlib==0.4.13
     #   orbax-checkpoint
 jedi==0.19.1
     # via ipython
-jinja2==3.0.3
+jinja2==3.1.3
     # via
     #   -r /ray/ci/../python/requirements/test-requirements.txt
     #   aim
