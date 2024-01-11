@@ -1,11 +1,12 @@
 import datasets
+import pyarrow
 import pytest
 
 import ray
 from ray.tests.conftest import *  # noqa
 
 
-def test_huggingface(ray_start_regular_shared):
+def test_from_huggingface(ray_start_regular_shared):
     data = datasets.load_dataset("tweet_eval", "emotion")
 
     # Check that DatasetDict is not directly supported.
@@ -44,6 +45,10 @@ def test_huggingface(ray_start_regular_shared):
 @pytest.mark.skipif(
     datasets.Version(datasets.__version__) < datasets.Version("2.8.0"),
     reason="IterableDataset.iter() added in 2.8.0",
+)
+@pytest.mark.skipif(
+    datasets.Version(pyarrow.__version__) < datasets.Version("8.0.0"),
+    reason="pyarrow.Table.to_reader() added in 8.0.0",
 )
 # Note, pandas is excluded here because IterableDatasets do not support pandas format.
 @pytest.mark.parametrize(
