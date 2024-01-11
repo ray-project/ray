@@ -735,7 +735,7 @@ class UserCallableWrapper:
             return asyncio.wrap_future(
                 asyncio.run_coroutine_threadsafe(
                     f(*args, **kwargs),
-                    UserCallableWrapper._event_loop,
+                    UserCallableWrapper._user_code_event_loop,
                 )
             )
 
@@ -882,7 +882,9 @@ class UserCallableWrapper:
             request_metadata.request_id,
             request.http_proxy_handle,
         )
-        receive_task = self._user_code_event_loop.create_task(receive.fetch_until_disconnect())
+        receive_task = self._user_code_event_loop.create_task(
+            receive.fetch_until_disconnect()
+        )
         asgi_args = ASGIArgs(
             scope=pickle.loads(request.pickled_asgi_scope),
             receive=receive,
