@@ -730,6 +730,11 @@ def test_unset_fields_schema_to_deployment_ray_actor_options():
 
 def test_serve_instance_details_is_json_serializable():
     """Test that ServeInstanceDetails is json serializable."""
+    serialized_policy_def = (
+        b"\x80\x05\x95L\x00\x00\x00\x00\x00\x00\x00\x8c\x1cray."
+        b"serve.autoscaling_policy\x94\x8c'replica_queue_length_"
+        b"autoscaling_policy\x94\x93\x94."
+    )
     details = ServeInstanceDetails(
         controller_info={"node_id": "fake_node_id"},
         proxy_location="EveryNode",
@@ -752,7 +757,7 @@ def test_serve_instance_details_is_json_serializable():
                             "name": "deployment1",
                             "autoscaling_config": {
                                 # Byte object will cause json serializable error
-                                "serialized_policy_def": b"123",
+                                "serialized_policy_def": serialized_policy_def
                             },
                         },
                         "replicas": [],
@@ -760,7 +765,7 @@ def test_serve_instance_details_is_json_serializable():
                 },
             }
         },
-    ).dict(exclude_unset=True)
+    )._get_user_facing_json_serializable_dict(exclude_unset=True)
     json.dumps(details)
 
     # ensure internal field, serialized_policy_def, is not exposed

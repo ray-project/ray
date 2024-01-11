@@ -7,8 +7,12 @@ import ray
 from ray import serve
 from ray._private.test_utils import wait_for_condition
 from ray.serve._private.common import ApplicationStatus
-from ray.serve._private.constants import SERVE_DEFAULT_APP_NAME
+from ray.serve._private.constants import (
+    DEFAULT_AUTOSCALING_POLICY,
+    SERVE_DEFAULT_APP_NAME,
+)
 from ray.serve._private.deployment_info import DeploymentInfo
+from ray.serve.autoscaling_policy import default_autoscaling_policy
 from ray.serve.context import _get_global_client
 from ray.serve.generated.serve_pb2 import DeploymentRoute
 from ray.serve.schema import ServeDeploySchema
@@ -72,17 +76,23 @@ def test_deploy_app_custom_exception(serve_instance):
     wait_for_condition(check_custom_exception, timeout=10)
 
 
-def test_get_serve_instance_details_json_serializable(serve_instance):
+@pytest.mark.parametrize(
+    "policy", [None, DEFAULT_AUTOSCALING_POLICY, default_autoscaling_policy]
+)
+def test_get_serve_instance_details_json_serializable(serve_instance, policy):
     """Test the result from get_serve_instance_details is json serializable."""
 
     controller = _get_global_client()._controller
 
-    @serve.deployment(
-        autoscaling_config={
-            "min_replicas": 1,
-            "max_replicas": 10,
-        },
-    )
+    autoscaling_config = {
+        "min_replicas": 1,
+        "max_replicas": 10,
+        "policy": policy,
+    }
+    if policy is None:
+        autoscaling_config.pop("policy")
+
+    @serve.deployment(autoscaling_config=autoscaling_config)
     def autoscaling_app():
         return "1"
 

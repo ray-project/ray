@@ -939,7 +939,7 @@ class ServeController:
             if self.proxy_state_manager
             else None,
             applications=applications,
-        ).dict(exclude_unset=True)
+        )._get_user_facing_json_serializable_dict(exclude_unset=True)
 
     def get_serve_status(self, name: str = SERVE_DEFAULT_APP_NAME) -> bytes:
         """Return application status

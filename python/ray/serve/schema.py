@@ -1043,8 +1043,10 @@ class ServeInstanceDetails(BaseModel, extra=Extra.forbid):
             },
         )
 
-    def dict(self, *args, **kwargs) -> Dict[str, Any]:
-        """Generates dictionary with user facing data."""
+    def _get_user_facing_json_serializable_dict(
+        self, *args, **kwargs
+    ) -> Dict[str, Any]:
+        """Generates json serializable dictionary with user facing data."""
         values = super().dict(*args, **kwargs)
 
         # `serialized_policy_def` is only used internally and should not be exposed to
