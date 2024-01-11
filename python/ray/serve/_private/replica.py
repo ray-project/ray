@@ -285,6 +285,7 @@ class ReplicaActor:
             cloudpickle.loads(serialized_init_args),
             cloudpickle.loads(serialized_init_kwargs),
             deployment_id=deployment_id,
+            event_loop=self._event_loop,
         )
 
         # Guards against calling the user's callable constructor multiple times.
@@ -689,6 +690,7 @@ class UserCallableWrapper:
         init_kwargs: Dict,
         *,
         deployment_id: DeploymentID,
+        event_loop: asyncio.AbstractEventLoop,
     ):
         if not (inspect.isfunction(deployment_def) or inspect.isclass(deployment_def)):
             raise TypeError(
@@ -701,6 +703,7 @@ class UserCallableWrapper:
         self._init_kwargs = init_kwargs
         self._is_function = inspect.isfunction(deployment_def)
         self._deployment_id = deployment_id
+        self._event_loop = event_loop
         self._delete_lock = asyncio.Lock()
 
         # XXX: comment.
@@ -712,7 +715,6 @@ class UserCallableWrapper:
 
         # Will be populated in `initialize_callable`.
         self._callable = None
-        self._user_health_check = None
 
     def _run_on_event_loop(f: Callable):
         assert inspect.iscoroutinefunction(

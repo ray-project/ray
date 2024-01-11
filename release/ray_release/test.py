@@ -110,12 +110,11 @@ class Test(dict):
 
     @classmethod
     def from_bazel_event(cls, event: dict, team: str):
-        bazel_rule = event["id"]["testResult"]["label"]
-        prefix = bazel_rule.replace("//", "").replace("/", "_").replace(":", "_")
-        suffix = platform.system().lower()
+        name = event["id"]["testResult"]["label"]
+        system = platform.system().lower()
         return cls(
             {
-                "name": f"{prefix}.{suffix}",
+                "name": f"{system}:{name}",
                 "team": team,
             }
         )
@@ -192,6 +191,13 @@ class Test(dict):
         """
         return self["name"]
 
+    def _get_s3_name(self) -> str:
+        """
+        Returns the name of the test for s3. Since '/' is not allowed in s3 key,
+        replace it with '_'.
+        """
+        return self["name"].replace("/", "_")
+
     def get_oncall(self) -> str:
         """
         Returns the oncall for the test.
@@ -207,7 +213,7 @@ class Test(dict):
                 boto3.client("s3")
                 .get_object(
                     Bucket=get_global_config()["state_machine_aws_bucket"],
-                    Key=f"{AWS_TEST_KEY}/{self.get_name()}.json",
+                    Key=f"{AWS_TEST_KEY}/{self._get_s3_name()}.json",
                 )
                 .get("Body")
                 .read()
@@ -358,7 +364,7 @@ class Test(dict):
         files = sorted(
             s3_client.list_objects_v2(
                 Bucket=get_global_config()["state_machine_aws_bucket"],
-                Prefix=f"{AWS_TEST_RESULT_KEY}/{self.get_name()}-",
+                Prefix=f"{AWS_TEST_RESULT_KEY}/{self._get_s3_name()}-",
             ).get("Contents", []),
             key=lambda file: int(file["LastModified"].strftime("%s")),
             reverse=True,
@@ -386,7 +392,7 @@ class Test(dict):
         boto3.client("s3").put_object(
             Bucket=get_global_config()["state_machine_aws_bucket"],
             Key=f"{AWS_TEST_RESULT_KEY}/"
-            f"{self.get_name()}-{int(time.time() * 1000)}.json",
+            f"{self._get_s3_name()}-{int(time.time() * 1000)}.json",
             Body=json.dumps(TestResult.from_result(result).__dict__),
         )
 
@@ -396,7 +402,7 @@ class Test(dict):
         """
         boto3.client("s3").put_object(
             Bucket=get_global_config()["state_machine_aws_bucket"],
-            Key=f"{AWS_TEST_KEY}/{self.get_name()}.json",
+            Key=f"{AWS_TEST_KEY}/{self._get_s3_name()}.json",
             Body=json.dumps(self),
         )
 
