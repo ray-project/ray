@@ -23,7 +23,7 @@ from ray.rllib.utils.metrics import (
     NUM_AGENT_STEPS_SAMPLED,
     NUM_ENV_STEPS_SAMPLED,
     SAMPLE_TIMER,
-    SYNCH_WORKER_WEIGHTS_TIMER
+    SYNCH_WORKER_WEIGHTS_TIMER,
 )
 from ray.rllib.utils.replay_buffers.utils import (
     sample_min_n_steps_from_buffer,
@@ -361,26 +361,28 @@ class SACConfig(AlgorithmConfig):
     def get_default_rl_module_spec(self) -> RLModuleSpec:
         from ray.rllib.algorithms.sac.sac_catalog import SACCatalog
 
-        if self.framework_str == "tf2":
-            from ray.rllib.algorithms.sac.tf.sac_tf_rl_module import SACTfRLModule
+        if self.framework_str == "torch":
+            from ray.rllib.algorithms.sac.torch.sac_torch_rl_module import (
+                SACTorchRLModule,
+            )
 
             return SingleAgentRLModuleSpec(
-                module_class=SACTfRLModule, catalog_class=SACCatalog
+                module_class=SACTorchRLModule, catalog_class=SACCatalog
             )
         else:
             raise ValueError(
-                f"The framework {self.framework_str} is not supported. " "Use `tf2`."
+                f"The framework {self.framework_str} is not supported. " "Use `torch`."
             )
 
     @override(AlgorithmConfig)
     def get_default_learner_class(self) -> Union[Type["Learner"], str]:
-        if self.framework_str == "tf2":
-            from ray.rllib.algorithms.sac.tf.sac_tf_learner import SACTfLearner
+        if self.framework_str == "torch":
+            from ray.rllib.algorithms.sac.torch.sac_torch_learner import SACTorchLearner
 
-            return SACTfLearner
+            return SACTorchLearner
         else:
             raise ValueError(
-                f"The framework {self.framework_str} is not supported. " "Use `tf2`."
+                f"The framework {self.framework_str} is not supported. " "Use `torch`."
             )
 
 
@@ -432,7 +434,7 @@ class SAC(DQN):
         # Alternate between storing and sampling and training.
         store_weight, sample_and_train_weight = calculate_rr_weights(self.config)
         train_results = {}
-        
+
         # Run multiple sampling iterations.
         for _ in range(store_weight):
             # Otherwise, we use the new stack.
@@ -457,68 +459,65 @@ class SAC(DQN):
             # Add the sampled experiences to the replay buffer.
             self.local_replay_buffer.add(train_batch)
 
-            # Update the target network each `target_network_update_freq` steps.
-            current_ts = self._counters[
-                NUM_AGENT_STEPS_SAMPLED
-                if self.config.count_steps_by == "agent_steps"
-                else NUM_ENV_STEPS_SAMPLED
-            ]
+        # Update the target network each `target_network_update_freq` steps.
+        current_ts = self._counters[
+            NUM_AGENT_STEPS_SAMPLED
+            if self.config.count_steps_by == "agent_steps"
+            else NUM_ENV_STEPS_SAMPLED
+        ]
 
-            # If enough experiences have been sampled start training.
-            if current_ts > self.config.num_steps_sampled_before_training_starts:
-                # Run multiple training iterations.
-                for _ in range(sample_and_train_weight):
-                    # Sample training batch (MultiAgentBatch) from replay buffer.
-                    train_batch = sample_min_n_steps_from_buffer(
-                        self.local_replay_buffer,
-                        self.config.train_batch_size,
-                        count_by_agent_steps=self.config.count_steps_by
-                        == "agent_steps",
-                    )
+        # If enough experiences have been sampled start training.
+        if current_ts > self.config.num_steps_sampled_before_training_starts:
+            # Run multiple training iterations.
+            for _ in range(sample_and_train_weight):
+                # Sample training batch (MultiAgentBatch) from replay buffer.
+                train_batch = sample_min_n_steps_from_buffer(
+                    self.local_replay_buffer,
+                    self.config.train_batch_size,
+                    count_by_agent_steps=self.config.count_steps_by == "agent_steps",
+                )
 
-                    # Training on batch.
-                    train_results = self.learner_group.update(
-                        train_batch,
-                        minibatch_size=self.config.train_batch_size,
-                        num_iters=1,
-                    )
+                # Training on batch.
+                train_results = self.learner_group.update(
+                    train_batch,
+                    minibatch_size=self.config.train_batch_size,
+                    num_iters=1,
+                )
 
-                    # Update replay buffer priorities.
-                    update_priorities_in_replay_buffer(
-                        self.local_replay_buffer,
-                        self.config,
-                        train_batch,
-                        train_results,
-                    )
+                # Update replay buffer priorities.
+                update_priorities_in_replay_buffer(
+                    self.local_replay_buffer,
+                    self.config,
+                    train_batch,
+                    train_results,
+                )
 
-
-                    # TODO (simon): Use here the 
-                    # `Leaner.additional_update_for_module` and load the pairs 
-                    # from 
-                    # `RLModuleWithTargetNetworks.get_target_network_pairs`
-                    last_update = self._counters[LAST_TARGET_UPDATE_TS]
-
-                # TODO (simon): CHeck, if this is better - as we are not sampling at the
-                # same time, updating weights after all training iteration should be faster.
-                # Update weights and global_vars - after learning on the local worker -
-                # on all remote workers.
+                # Update the target networks if necessary.
                 policies_to_update = set(train_results.keys()) - {ALL_MODULES}
-                with self._timers[SYNCH_WORKER_WEIGHTS_TIMER]:
-                    if self.workers.num_remote_workers() > 0:
-                        # NOTE: the new API stack does not use global vars.
-                        self.workers.sync_weights(
-                            from_worker_or_learner_group=self.learner_group,
-                            policies_to_update=policies_to_update,
-                            global_vars=None,                            
-                        )
-                    # Then we must have a local worker.
-                    else:
-                        weights = self.learner_group.get_weights()
-                        self.workers.local_worker().set_weights(weights)
+                additional_results = self.learner_group.additional_update(
+                    module_ids_to_update=policies_to_update,
+                    timestep=self._counters[NUM_AGENT_STEPS_SAMPLED],
+                    last_update=self._counters[LAST_TARGET_UPDATE_TS],
+                )
+                for pid, res in additional_results.items():
+                    train_results[pid].update(res)                    
 
-            return train_results
+            # TODO (simon): Check, if this is better - as we are not sampling at the
+            # same time, updating weights after all training iteration should be faster.
+            # Update weights and global_vars - after learning on the local worker -
+            # on all remote workers.
+            
+            with self._timers[SYNCH_WORKER_WEIGHTS_TIMER]:
+                if self.workers.num_remote_workers() > 0:
+                    # NOTE: the new API stack does not use global vars.
+                    self.workers.sync_weights(
+                        from_worker_or_learner_group=self.learner_group,
+                        policies_to_update=policies_to_update,
+                        global_vars=None,
+                    )
+                # Then we must have a local worker.
+                else:
+                    weights = self.learner_group.get_weights()
+                    self.workers.local_worker().set_weights(weights)
 
-                
-
-                        
-
+        return train_results

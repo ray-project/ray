@@ -1,14 +1,18 @@
-from typing import Any, Dict
+from typing import Any, Dict, List, Tuple
 
 from ray.rllib.algorithms.sac.sac_learner import QF_PREDS, QF_TARGET_PREDS
 from ray.rllib.algorithms.sac.sac_rl_module import SACRLModule
 from ray.rllib.core.models.base import ENCODER_OUT
 from ray.rllib.core.rl_module.torch.torch_rl_module import TorchRLModule
 from ray.rllib.core.rl_module.rl_module import RLModule
+from ray.rllib.core.rl_module.rl_module_with_target_networks_interface import (
+    RLModuleWithTargetNetworksInterface,
+)
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.framework import try_import_torch
 from ray.rllib.utils.nested_dict import NestedDict
+from ray.rllib.utils.typing import NetworkType
 
 
 torch, nn = try_import_torch()
@@ -110,3 +114,8 @@ class SACTorchRLModule(SACRLModule, TorchRLModule):
 
         # Return target Q values.
         return output
+
+    @override(RLModuleWithTargetNetworksInterface)
+    def get_target_network_pairs(self) -> List[Tuple[NetworkType, NetworkType]]:
+        """Returns target Q and Q network(s) to update the target network(s)."""
+        return [(self.qf_target_encoder, self.qf_encoder), (self.qf_target, self.qf)]
