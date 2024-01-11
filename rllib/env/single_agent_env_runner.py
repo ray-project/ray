@@ -391,7 +391,7 @@ class SingleAgentEnvRunner(EnvRunner):
             else:
                 to_module = self._env_to_module(
                     rl_module=self.module,
-                    episodes=self._episodes,
+                    episodes=episodes,
                     explore=explore,
                 )
                 # Explore or not.
@@ -403,7 +403,7 @@ class SingleAgentEnvRunner(EnvRunner):
                 to_env = self._module_to_env(
                     rl_module=self.module,
                     data=to_env,
-                    episodes=self._episodes,
+                    episodes=episodes,
                     explore=explore,
                 )
 
