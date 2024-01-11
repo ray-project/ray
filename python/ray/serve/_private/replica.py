@@ -881,11 +881,15 @@ class UserCallableWrapper:
     ) -> Any:
         """Postprocess the result of a user method.
 
-        If this is for a streaming request, the result should be a generator that will
-        be consumed and its outputs passed to the `generator_result_callback`.
-
-        This method may raise an exception if the result is not of the expected type
+        User methods can be regular unary functions or return a sync or async generator.
+        This method will raise an exception if the result is not of the expected type
         (e.g., non-generator for streaming requests or generator for unary requests).
+
+        Generator outputs will be written to the `generator_result_callback`.
+
+        Note that HTTP requests are an exception: they are *always* streaming requests,
+        but for ASGI apps (like FastAPI), the actual method will be a regular function
+        implementing the ASGI `__call__` protocol.
         """
         result_is_gen = inspect.isgenerator(result)
         result_is_async_gen = inspect.isasyncgen(result)
@@ -916,6 +920,10 @@ class UserCallableWrapper:
                     "generator."
                 )
         else:
+            assert (
+                not request_metadata.is_http_request
+            ), "All HTTP requests go through the streaming codepath."
+
             if result_is_gen or result_is_async_gen:
                 raise TypeError(
                     f"Method '{user_method_name}' returned a generator. "
