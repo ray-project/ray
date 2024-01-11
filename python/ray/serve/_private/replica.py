@@ -721,9 +721,9 @@ class UserCallableWrapper:
         self._callable = None
 
     def _run_on_user_code_event_loop(f: Callable):
-        """Wrap the provided coroutine function to run on the user code event loop.
+        """Decorator to run a coroutine method on the user code event loop.
 
-        The function will be modified to be a sync function that returns an
+        The method will be modified to be a sync function that returns an
         `asyncio.Future`.
         """
         assert inspect.iscoroutinefunction(
@@ -882,7 +882,7 @@ class UserCallableWrapper:
             request_metadata.request_id,
             request.http_proxy_handle,
         )
-        receive_task = self._event_loop.create_task(receive.fetch_until_disconnect())
+        receive_task = self._user_code_event_loop.create_task(receive.fetch_until_disconnect())
         asgi_args = ASGIArgs(
             scope=pickle.loads(request.pickled_asgi_scope),
             receive=receive,
