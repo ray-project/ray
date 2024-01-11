@@ -362,11 +362,11 @@ class ConcurrentMeanStdFilter(MeanStdFilter):
         super(ConcurrentMeanStdFilter, self).__init__(*args, **kwargs)
         deprecation_warning(
             old="ConcurrentMeanStdFilter",
-            error=False,
             help="ConcurrentMeanStd filters are only used for testing and will "
             "therefore be deprecated in the course of moving to the "
             "Connetors API, where testing of filters will be done by other "
             "means.",
+            error=False,
         )
 
         self._lock = threading.RLock()

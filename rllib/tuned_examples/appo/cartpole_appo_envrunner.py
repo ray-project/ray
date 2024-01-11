@@ -1,4 +1,5 @@
 from ray.rllib.algorithms.appo import APPOConfig
+from ray.rllib.connectors.env_to_module.mean_std_filter import MeanStdFilter
 from ray.rllib.env.single_agent_env_runner import SingleAgentEnvRunner
 from ray import air, tune
 
@@ -14,6 +15,11 @@ config = (
         num_envs_per_worker=5,
         # TODO (sven): Add MeanStd connector, once fully tested (should learn much
         #  better with it).
+        #observation_filter="MeanStdFilter",
+        env_to_module_connector=lambda env: MeanStdFilter(
+            input_observation_space=env.single_observation_space,
+            input_action_space=env.single_action_space,
+        ),
     )
     .resources(
         num_learner_workers=1,
@@ -24,17 +30,12 @@ config = (
     .training(
         num_sgd_iter=1,
         vf_loss_coeff=0.01,
-        model={
-            "fcnet_hiddens": [32],
-            "fcnet_activation": "linear",
-            "vf_share_layers": True,
-        }
     )
 )
 
 stop = {
-    "timesteps_total": 1000000,
-    "sampler_results/episode_reward_mean": 200.0,
+    "timesteps_total": 10000000,
+    "sampler_results/episode_reward_mean": 400.0,
 }
 
 
@@ -57,6 +58,6 @@ if __name__ == "__main__":
             stop=stop,
             verbose=2,
         ),
-        tune_config=tune.TuneConfig(num_samples=1),
+        tune_config=tune.TuneConfig(num_samples=5),
     )
     results = tuner.fit()

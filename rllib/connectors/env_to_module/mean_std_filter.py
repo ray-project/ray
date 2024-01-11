@@ -89,7 +89,9 @@ class MeanStdFilter(ConnectorV2):
             self._input_observation_space_struct,
         )
         if isinstance(self.observation_space, (gym.spaces.Dict, gym.spaces.Tuple)):
-            type(self.observation_space)(_observation_space_struct)
+            self.observation_space = (
+                type(self.observation_space)(_observation_space_struct)
+            )
         else:
             self.observation_space = _observation_space_struct
 
@@ -109,18 +111,21 @@ class MeanStdFilter(ConnectorV2):
         self,
         *,
         rl_module: RLModule,
-        input_: Any,
+        data: Any,
         episodes: List[EpisodeType],
         explore: Optional[bool] = None,
         persistent_data: Optional[dict] = None,
         **kwargs,
     ) -> Any:
         # This connector acts as a classic postprocessor. We process and then replace
-        # observations inside the episodes directly. Thus, all following connectors
-        # will only see and operate the already normalized data (w/o having access
-        # anymore to the original observations).
+        # the most recent observation inside the episodes directly. Thus, all
+        # following connectors (module-to-env and learner connectors) as well as other
+        # components (e.g. the RLModule) will only see and operate on the already
+        # normalized data (w/o having access anymore to the original observations).
         for episode in episodes:
+            # Get the most recent observation in this episode.
             observations = episode.get_observations(indices=-1)
+            # Normalize it through our filter.
             normalized_observations = self._filter(
                 observations, update=self._update_stats
             )
@@ -128,7 +133,7 @@ class MeanStdFilter(ConnectorV2):
             #  We set the Episode's observation space to ours so that we can safely
             #  set the last obs to the new value (without causing a space mismatch
             #  error). However, this would NOT work if our
-            #  space were to be more more restrictive than the env's original space
+            #  space were to be more restrictive than the env's original space
             #  b/c then the adding of the original env observation would fail.
             episode.observation_space = episode.observations.space = self.observation_space
             episode.set_observations(
@@ -136,9 +141,9 @@ class MeanStdFilter(ConnectorV2):
                 at_indices=-1,
             )
 
-        # Leave the `input_` as is. RLlib's default connector will automatically
+        # Leave the `data` as is. RLlib's default connector will automatically
         # populate the OBS column therein from the episodes' (transformed) observations.
-        return input_
+        return data
 
     def get_state(self) -> Any:
         return self._get_state_from_filter(self._filter)
@@ -159,8 +164,8 @@ class MeanStdFilter(ConnectorV2):
     @override(ConnectorV2)
     def set_state(self, state: Dict[str, Any]) -> None:
         self._filter.shape = state["shape"]
-        self._filter.demean = state["demean"]
-        self._filter.destd = state["destd"]
+        self._filter.demean = state["de_mean_to_zero"]
+        self._filter.destd = state["de_std_to_one"]
         self._filter.clip = state["clip_by_value"]
         running_stats = [RunningStat.from_state(s) for s in state["running_stats"]]
         self._filter.running_stats = tree.unflatten_as(

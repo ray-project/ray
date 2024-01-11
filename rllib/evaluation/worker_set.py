@@ -364,29 +364,47 @@ class WorkerSet:
     @DeveloperAPI
     def sync_connectors(self):
         """TODO: (sven) """
+
+        # Only local EnvRunner worker: No need to do anything.
+        if self.num_remote_workers() == 0:
+            return
+
+        local_worker = self.local_worker()
+
+        # Gather connector states of all remote EnvRunner workers.
         connector_states = self.foreach_worker(
             lambda w: (w._env_to_module.get_state(), w._module_to_env.get_state()),
-            healthy_only=True,
             local_worker=False,
+            healthy_only=True,
         )
         env_to_module_states = [s[0] for s in connector_states]
         module_to_env_states = [s[1] for s in connector_states]
-        
-        self.local_worker()._env_to_module.merge_states(env_to_module_states)
-        ref_env_to_module_state = ray.put(
-            self.local_worker()._env_to_module.get_state()
-        )
-        self.local_worker()._module_to_env.merge_states(module_to_env_states)
-        ref_module_to_env_state = ray.put(
-            self.local_worker()._module_to_env.get_state()
-        )
 
-        def _update(w):
-            w._env_to_module.set_state(ray.get(ref_env_to_module_state))
-            w._module_to_env.set_state(ray.get(ref_module_to_env_state))
+        # If only one remote worker: No need to merge, only set state on local worker
+        # to the single remote worker's one.
+        if self.num_remote_workers() == 1:
+            local_worker._env_to_module.set_state(env_to_module_states[0])
+            local_worker._module_to_env.set_state(module_to_env_states[0])
+        else:
+            env_to_module_state = (
+                local_worker._env_to_module.merge_states(env_to_module_states)
+            )
+            ref_env_to_module_state = ray.put(env_to_module_state)
+            local_worker._env_to_module.set_state(env_to_module_state)
 
-        # Broadcast updated states back to all workers.
-        self.foreach_worker(_update, local_worker=False, healthy_only=True)
+            module_to_env_state = (
+                local_worker._module_to_env.merge_states(module_to_env_states)
+            )
+            ref_module_to_env_state = ray.put(module_to_env_state)
+            local_worker._module_to_env.set_state(module_to_env_state)
+
+            def _update(w):
+                w._env_to_module.set_state(ray.get(ref_env_to_module_state))
+                w._module_to_env.set_state(ray.get(ref_module_to_env_state))
+    
+            # Broadcast updated states back to all workers. Do this asynchronously to
+            # save time (fire and forget).
+            self.foreach_worker_async(_update, healthy_only=True)
 
     @DeveloperAPI
     def sync_weights(
@@ -802,7 +820,11 @@ class WorkerSet:
             remote_worker_ids: Apply `func` on a selected set of remote workers.
 
         Returns:
-             The number of async requests that are currently in-flight.
+             The number of async requests that have actually been made. This is the
+             length of `remote_worker_ids` (or self.num_remote_workers()` if
+             `remote_worker_ids` is None) minus the number of requests that were NOT
+             made b/c a remote worker already had its
+             `max_remote_requests_in_flight_per_actor` counter reached.
         """
         return self.__worker_manager.foreach_actor_async(
             func,
