@@ -1043,7 +1043,7 @@ class ServeInstanceDetails(BaseModel, extra=Extra.forbid):
             },
         )
 
-    def dict(self, *args, **kwargs) -> dict:
+    def dict(self, *args, **kwargs) -> Dict[str, Any]:
         """Override dict method to remove internal fields.
 
         `serialized_policy_def` is only used internally and should not be exposed to

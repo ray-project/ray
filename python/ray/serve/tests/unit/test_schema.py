@@ -763,7 +763,7 @@ def test_serve_instance_details_is_json_serializable():
     ).dict(exclude_unset=True)
     json.dumps(details)
 
-    # ensure internal field is not exposed serialized_policy_def
+    # ensure internal field, serialized_policy_def, is not exposed
     application = details["applications"]["app1"]
     deployment = application["deployments"]["deployment1"]
     autoscaling_config = deployment["deployment_config"]["autoscaling_config"]
