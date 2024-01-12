@@ -76,3 +76,7 @@ async def test_basic_class_callable():
     assert (
         await user_callable_wrapper.call_user_method(request_metadata, tuple(), dict())
     ) == "hi"
+
+
+if __name__ == "__main__":
+    sys.exit(pytest.main(["-v", "-s", __file__]))
