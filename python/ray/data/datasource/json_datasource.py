@@ -1,3 +1,4 @@
+import logging
 from typing import TYPE_CHECKING, Any, Dict, List, Optional, Union
 
 from ray.data.datasource.file_based_datasource import FileBasedDatasource
@@ -5,6 +6,8 @@ from ray.util.annotations import PublicAPI
 
 if TYPE_CHECKING:
     import pyarrow
+
+logger = logging.getLogger(__name__)
 
 
 @PublicAPI
@@ -34,6 +37,32 @@ class JSONDatasource(FileBasedDatasource):
 
     # TODO(ekl) The PyArrow JSON reader doesn't support streaming reads.
     def _read_stream(self, f: "pyarrow.NativeFile", path: str):
-        from pyarrow import json
+        from pyarrow import ArrowInvalid, json
 
-        yield json.read_json(f, read_options=self.read_options, **self.arrow_json_args)
+        # Create local copy of read_options so block_size increases are not persisted
+        # between _read_stream calls.
+        local_read_options = json.ReadOptions(
+            use_threads=self.read_options.use_threads,
+            block_size=self.read_options.block_size,
+        )
+        while True:
+            try:
+                yield json.read_json(
+                    f, read_options=local_read_options, **self.arrow_json_args
+                )
+            except ArrowInvalid as e:
+                # TODO: Figure out what MAX_BLOCK_SIZE would be / if necessary.
+                if (
+                    isinstance(e, ArrowInvalid)
+                    and "straddling" not in str(e)
+                    or local_read_options.block_size > MAX_BLOCK_SIZE
+                ):
+                    raise e
+                else:
+                    # Increase the block size in case it was too small.
+                    logger.debug(
+                        f"JSONDatasource read failed with "
+                        f"block_size={local_read_options.block_size}. Retrying with "
+                        f"block_size={local_read_options.block_size * 2}."
+                    )
+                    local_read_options.block_size *= 2
