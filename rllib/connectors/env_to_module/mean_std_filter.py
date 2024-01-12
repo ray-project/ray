@@ -185,20 +185,18 @@ class MeanStdFilter(ConnectorV2):
         self._init_new_filter()
 
     @override(ConnectorV2)
-    @staticmethod
-    def merge_states(states: List[Dict[str, Any]]) -> Dict[str, Any]:
+    def merge_states(self, other_states: List[Dict[str, Any]]) -> Dict[str, Any]:
         # Make sure data is uniform across given states.
-        ref = states[0]
+        ref = self.get_state()
         assert all(
             s["shape"] == ref["shape"]
             and s["de_mean_to_zero"] == ref["de_mean_to_zero"]
             and s["de_std_to_one"] == ref["de_std_to_one"]
             and s["clip_by_value"] == ref["clip_by_value"]
-            for s in states
+            for s in other_states
         )
 
-        filter = None
-        for state in states:
+        for state in other_states:
             _other_filter = _MeanStdFilter(
                 ref["shape"],
                 demean=ref["de_mean_to_zero"],
@@ -209,12 +207,8 @@ class MeanStdFilter(ConnectorV2):
             _other_filter.running_stats = (
                 tree.map_structure(lambda s: RunningStat.from_state(s), state["shape"])
             )
-            # Initialize `filter`, if necessary.
-            if filter is None:
-                filter = _other_filter
-                continue
 
-            # Update `filter` with all `_filter`s.
-            filter.apply_changes(_other_filter, with_buffer=False)
+            # Update `self._filter` with all `_filter`s.
+            self._filter.apply_changes(_other_filter, with_buffer=False)
 
-        return MeanStdFilter._get_state_from_filter(filter)
+        return self.get_state()

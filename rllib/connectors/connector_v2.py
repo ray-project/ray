@@ -179,19 +179,19 @@ class ConnectorV2(abc.ABC):
         """
         pass
 
-    @staticmethod
-    def merge_states(states: List[Dict[str, Any]]) -> Dict[str, Any]:
+    def merge_states(self, other_states: List[Dict[str, Any]]) -> Dict[str, Any]:
         """Computes a resulting state given a list of other state dicts.
 
         Algorithms should use this method for synchronizing states between connectors
         running on workers (of the same type, e.g. EnvRunner workers).
 
         Args:
-            states: The list of n other ConnectorV2 states to merge into a single
-                resulting state.
+            other_states: The list of n other ConnectorV2 states to merge with this
+                ConnectorV2's state into a single resulting state.
 
         Returns:
-            The resulting state dict.
+            The resulting state dict after merging `self.get_state()` with
+            `other_states`.
         """
         return {}
 

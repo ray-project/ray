@@ -2743,16 +2743,16 @@ class AlgorithmConfig(_Config):
         """Automatically infers a proper rollout_fragment_length setting if "auto".
 
         Uses the simple formula:
-        `rollout_fragment_length` = `train_batch_size` /
+        `rollout_fragment_length` = `total_train_batch_size` /
         (`num_envs_per_worker` * `num_rollout_workers`)
 
         If result is a fraction AND `worker_index` is provided, will make
         those workers add additional timesteps, such that the overall batch size (across
-        the workers) will add up to exactly the `train_batch_size`.
+        the workers) will add up to exactly the `total_train_batch_size`.
 
         Returns:
             The user-provided `rollout_fragment_length` or a computed one (if user
-            provided value is "auto"), making sure `train_batch_size` is reached
+            provided value is "auto"), making sure `total_train_batch_size` is reached
             exactly in each iteration.
         """
         if self.rollout_fragment_length == "auto":

@@ -456,7 +456,10 @@ class ImpalaConfig(AlgorithmConfig):
         # If 'auto', use the train_batch_size (meaning each SGD iter is a single pass
         # through the entire train batch). Otherwise, use user provided setting.
         return (
-            self.train_batch_size
+            (
+                self.train_batch_size_per_learner if self.uses_new_env_runners
+                else self.train_batch_size
+            )
             if self._minibatch_size == "auto"
             else self._minibatch_size
         )
@@ -698,7 +701,9 @@ class Impala(Algorithm):
         module_ids_to_update = set(train_results.keys()) - {ALL_MODULES}
         #print("additional_update ...")
         if train_results:
-            additional_results = self.learner_group.async_additional_update(
+            async_update = self.config.num_learner_workers > 0
+            additional_results = self.learner_group.additional_update(
+                async_update=async_update,
                 module_ids_to_update=module_ids_to_update,
                 timestep=self._counters[
                     NUM_ENV_STEPS_TRAINED
@@ -713,7 +718,9 @@ class Impala(Algorithm):
                 **self._get_additional_update_kwargs(train_results),
             )
             if additional_results:
-                for key, res in additional_results[-1].items():
+                if async_update:
+                    additional_results = additional_results[-1]
+                for key, res in additional_results.items():
                     if key in train_results:
                         train_results[key].update(res)
             # Sync worker weights (only those policies that were actually updated).

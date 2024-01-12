@@ -170,6 +170,9 @@ class SingleAgentEnvRunner(EnvRunner):
         # Make the `on_sample_end` callback.
         self._callbacks.on_sample_end(env_runner=self, samples=samples)
 
+        #TODO (sven): TEST
+        print(f"samples is None={samples is None} None in samples={None in samples}")
+
         return samples
 
     def _sample_timesteps(

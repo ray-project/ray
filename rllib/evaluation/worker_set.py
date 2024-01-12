@@ -390,13 +390,11 @@ class WorkerSet:
                 local_worker._env_to_module.merge_states(env_to_module_states)
             )
             ref_env_to_module_state = ray.put(env_to_module_state)
-            local_worker._env_to_module.set_state(env_to_module_state)
 
             module_to_env_state = (
                 local_worker._module_to_env.merge_states(module_to_env_states)
             )
             ref_module_to_env_state = ray.put(module_to_env_state)
-            local_worker._module_to_env.set_state(module_to_env_state)
 
             def _update(w):
                 w._env_to_module.set_state(ray.get(ref_env_to_module_state))

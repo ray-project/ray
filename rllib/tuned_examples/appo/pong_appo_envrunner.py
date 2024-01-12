@@ -134,10 +134,11 @@ config = (
         env_runner_cls=SingleAgentEnvRunner,
         #env_to_module_connector=_make_env_to_module_connector,
         num_rollout_workers=args.num_env_runners,  # 31
-        num_envs_per_worker=8,
+        num_envs_per_worker=4,
+        rollout_fragment_length=50,
     )
     .resources(
-        num_learner_workers=args.num_gpus, # 4
+        num_learner_workers=args.num_gpus,  # 4
         num_gpus_per_learner_worker=1 if args.num_gpus else 0,
         num_cpus_for_local_worker=1,
         num_gpus=0,
@@ -146,7 +147,6 @@ config = (
         # Use our frame stacking learner connector.
         #learner_connector=_make_learner_connector,
         train_batch_size_per_learner=1000,
-        rollout_fragment_length=50,
         use_kl_loss=False,
         grad_clip=10.0,
         num_sgd_iter=2,
@@ -173,6 +173,11 @@ stop = {
 
 if __name__ == "__main__":
     from ray import air, tune
+
+    algo = config.build()
+    for _ in range(10000):
+        algo.train()
+    quit()
 
     tuner = tune.Tuner(
         config.algo_class,

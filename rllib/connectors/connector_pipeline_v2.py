@@ -200,6 +200,13 @@ class ConnectorPipelineV2(ConnectorV2):
                 raise KeyError(f"No state found in `state` for connector piece: {key}!")
             connector.set_state(state[key])
 
+    @override(ConnectorV2)
+    def merge_states(self, other_states: List[Dict[str, Any]]) -> Dict[str, Any]:
+        for i, connector in enumerate(self.connectors):
+            key = f"{i:03d}_{type(connector).__name__}"
+            connector.merge_states([os[key] for os in other_states])
+        return self.get_state()
+
     def __repr__(self, indentation: int = 0):
         return "\n".join(
             [" " * indentation + self.__class__.__name__]
