@@ -431,9 +431,9 @@ class ReplicaActor:
         try:
             result_queue = MessageQueue()
 
-            # `asyncio.Queue`s are not thread safe, so `call_soon_threadsafe` must be
+            # `asyncio.Event`s are not thread safe, so `call_soon_threadsafe` must be
             # used to interact with the result queue from the user callable thread.
-            async def write_to_result_queue_thread_safe(item: Any):
+            async def _enqueue_thread_safe(item: Any):
                 self._event_loop.call_soon_threadsafe(result_queue.put_nowait, item)
 
             call_user_method_future = self._user_callable_wrapper.call_user_method(
