@@ -1,3 +1,4 @@
+import json
 import os
 import platform
 import random
@@ -5,10 +6,15 @@ import shutil
 import string
 import subprocess
 from typing import List, Tuple, Optional
+from os import path, listdir
 
 from ci.ray_ci.utils import shard_tests, chunk_into_n
 from ci.ray_ci.utils import logger
 from ci.ray_ci.container import Container
+from ray_release.test import TestResult, Test
+
+
+PIPELINE_POSTMERGE = "0189e759-8c96-4302-b6b5-b4274406bf89"
 
 
 class TesterContainer(Container):
@@ -64,6 +70,7 @@ class TesterContainer(Container):
 
     def run_tests(
         self,
+        team: str,
         test_targets: List[str],
         test_arg: Optional[str] = None,
     ) -> bool:
@@ -94,14 +101,21 @@ class TesterContainer(Container):
             for i in range(len(chunks))
         ]
         exits = [run.wait() for run in runs]
-        self._persist_test_results(bazel_log_dir_container)
+        self._persist_test_results(team, bazel_log_dir_container)
         self._cleanup_bazel_log_mount(bazel_log_dir_container)
 
         return all(exit == 0 for exit in exits)
 
-    def _persist_test_results(self, bazel_log_dir: str) -> None:
-        # TODO(can): implement the logic to persist test results to a database
+    def _persist_test_results(self, team: str, bazel_log_dir: str) -> None:
+        if os.environ.get("BUILDKITE_BRANCH") != "master":
+            logger.info("Skip upload test results. We only upload on master branch.")
+        if os.environ.get("BUILDKITE_PIPELINE_ID") != PIPELINE_POSTMERGE:
+            logger.info(
+                "Skip upload test results. We only upload on postmerge pipeline."
+            )
+            return
         self._upload_build_info(bazel_log_dir)
+        self._upload_test_results(team, bazel_log_dir)
 
     def _upload_build_info(self, bazel_log_dir) -> None:
         logger.info("Uploading bazel test logs")
@@ -112,6 +126,39 @@ class TesterContainer(Container):
                 bazel_log_dir,
             ]
         )
+
+    def _upload_test_results(self, team: str, bazel_log_dir: str) -> None:
+        for test, result in self._get_test_and_results(team, bazel_log_dir):
+            logger.info(f"Test {test.get_name()} run status is {result.status}")
+            test.update_from_s3()
+            test.persist_to_s3()
+            test.persist_test_result_to_s3(result)
+
+    def _get_test_and_results(
+        self, team, bazel_log_dir: str
+    ) -> List[Tuple[Test, TestResult]]:
+        bazel_logs = []
+        # Find all bazel logs
+        for file in listdir(bazel_log_dir):
+            log = path.join(bazel_log_dir, file)
+            if path.isfile(log) and file.startswith("bazel_log"):
+                bazel_logs.append(log)
+
+        test_and_results = []
+        # Parse bazel logs and print test results
+        for file in bazel_logs:
+            with open(file, "rb") as f:
+                for line in f:
+                    event = json.loads(line.decode("utf-8"))
+                    if "testResult" in event:
+                        test_and_results.append(
+                            (
+                                Test.from_bazel_event(event, team),
+                                TestResult.from_bazel_event(event),
+                            )
+                        )
+
+        return test_and_results
 
     def _cleanup_bazel_log_mount(self, bazel_log_dir: str) -> None:
         shutil.rmtree(bazel_log_dir)

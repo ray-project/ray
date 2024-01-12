@@ -145,12 +145,14 @@ class SingleAgentEpisode:
         self,
         id_: Optional[str] = None,
         *,
-        observations: List[ObsType] = None,
+        observations: Optional[Union[List[ObsType], BufferWithInfiniteLookback]] = None,
         observation_space: Optional[gym.Space] = None,
-        actions: List[ActType] = None,
+        actions: Optional[Union[List[ActType], BufferWithInfiniteLookback]] = None,
         action_space: Optional[gym.Space] = None,
-        rewards: List[SupportsFloat] = None,
-        infos: List[Dict] = None,
+        rewards: Optional[
+            Union[List[SupportsFloat], BufferWithInfiniteLookback]
+        ] = None,
+        infos: Optional[Union[List[Dict], BufferWithInfiniteLookback]] = None,
         terminated: bool = False,
         truncated: bool = False,
         extra_model_outputs: Optional[Dict[str, Any]] = None,
@@ -164,102 +166,118 @@ class SingleAgentEpisode:
         which might then go into the lookback buffer.
 
         Args:
-            id_: Optional. Unique identifier for this episode. If no id is
-                provided the constructor generates a hexadecimal code for the id.
-            observations: Optional. A list of observations from a rollout. If
-                data is provided it should be complete (i.e. observations, actions,
-                rewards, terminated, truncated, and all necessary
-                `extra_model_outputs`). The length of the `observations` defines
-                the default starting value. See the parameter `t_started`.
-            actions: Optional. A list of actions from a rollout. If data is
-                provided it should be complete (i.e. observations, actions,
-                rewards, terminated, truncated, and all necessary
-                `extra_model_outputs`).
-            rewards: Optional. A list of rewards from a rollout. If data is
-                provided it should be complete (i.e. observations, actions,
-                rewards, terminated, truncated, and all necessary
-                `extra_model_outputs`).
-            infos: Optional. A list of infos from a rollout. If data is
-                provided it should be complete (i.e. observations, actions,
-                rewards, terminated, truncated, and all necessary
-                `extra_model_outputs`).
-            states: Optional. The hidden model states from a rollout. If
-                data is provided it should be complete (i.e. observations, actions,
-                rewards, terminated, truncated, and all necessary
-                `extra_model_outputs`). States are only avasilable if a stateful
-                model (`RLModule`) is used.
-            terminated: Optional. A boolean indicating, if the episode is already
-                terminated. Note, this parameter is only needed, if episode data is
-                provided in the constructor. The default is `False`.
-            truncated: Optional. A boolean indicating, if the episode was
-                truncated. Note, this parameter is only needed, if episode data is
-                provided in the constructor. The default is `False`.
-            extra_model_outputs: Optional. A list of dictionaries containing specific
-                model outputs for the algorithm used (e.g. `vf_preds` and `action_logp`
-                for PPO) from a rollout. If data is provided it should be complete
-                (i.e. observations, actions, rewards, terminated, truncated,
-                and all necessary `extra_model_outputs`).
-            render_images: Optional. A list of RGB uint8 images from rendering
+            id_: Unique identifier for this episode. If no ID is provided the
+                constructor generates a unique hexadecimal code for the id.
+            observations: Either a list of individual observations from a sampling or
+                an already instantiated `BufferWithInfiniteLookback` object (possibly
+                with observation data in it). If a list, will construct the buffer
+                automatically (given the data and the `len_lookback_buffer` argument).
+            observation_space: An optional gym.Space, which all individual observations
+                should abide to. If data is appended or set in this SingleAgentEpisode
+                and a space has been provided during construction, any new observation
+                data will be checked for correctness.
+            actions: Either a list of individual info dicts from a sampling or
+                an already instantiated `BufferWithInfiniteLookback` object (possibly
+                with info dict] data in it). If a list, will construct the buffer
+                automatically (given the data and the `len_lookback_buffer` argument).
+            actions: Either a list of individual actions from a sampling or
+                an already instantiated `BufferWithInfiniteLookback` object (possibly
+                with action data in it). If a list, will construct the buffer
+                automatically (given the data and the `len_lookback_buffer` argument).
+            action_space: An optional gym.Space, which all individual actions
+                should abide to. If data is appended or set in this SingleAgentEpisode
+                and a space has been provided during construction, any new action
+                data will be checked for correctness.
+            rewards: Either a list of individual rewards from a sampling or
+                an already instantiated `BufferWithInfiniteLookback` object (possibly
+                with reward data in it). If a list, will construct the buffer
+                automatically (given the data and the `len_lookback_buffer` argument).
+            actions: A dict mapping string keys to either lists of individual extra
+                model output tensors (e.g. `action_logp` or state outs) from a
+                sampling or to an already instantiated `BufferWithInfiniteLookback`
+                object (possibly with extra model output data in it). If mapping is to
+                a list, will construct the buffer automatically (given the data and
+                the `len_lookback_buffer` argument).
+            render_images: An optional list of RGB uint8 images from rendering
                 the environment.
+            terminated: A boolean indicating, if the episode is already terminated.
+            truncated: A boolean indicating, if the episode has been truncated.
             t_started: Optional. The starting timestep of the episode. The default
                 is zero. If data is provided, the starting point is from the last
                 observation onwards (i.e. `t_started = len(observations) - 1). If
                 this parameter is provided the episode starts at the provided value.
-            len_lookback_buffer: The size of an optional lookback buffer to keep in
-                front of this Episode. If >0, will interpret the first
-                `len_lookback_buffer` items in each data as NOT part of this actual
-                episode chunk, but instead serve as historic data that may be viewed.
-                If None, will interpret all provided data in constructor as part of the
-                lookback buffer.
+            len_lookback_buffer: The size of the (optional) lookback buffers to keep in
+                front of this Episode for each type of data (observations, actions,
+                etc..). If larger 0, will interpret the first `len_lookback_buffer`
+                items in each type of data as NOT part of this actual
+                episode chunk, but instead serve as "historical" record that may be
+                viewed and used to derive new data from. For example, it might be
+                necessary to have a lookback buffer of four if you would like to do
+                observation frame stacking and your episode has been cut and you are now
+                operating on a new chunk (continuing from the cut one). Then, for the
+                first 3 items, you would have to be able to look back into the old
+                chunk's data.
+                If `len_lookback_buffer` is None, will interpret all provided data in
+                constructor as part of the lookback buffers.
         """
         self.id_ = id_ or uuid.uuid4().hex
 
-        # Lookback buffer length is provided.
-        if len_lookback_buffer is not None:
-            self._len_lookback_buffer = len_lookback_buffer
         # Lookback buffer length is not provided. Interpret already given data as
-        # lookback buffer.
-        else:
-            self._len_lookback_buffer = len(rewards or [])
+        # lookback buffer lengths for all data types.
+        if len_lookback_buffer is None:
+            len_lookback_buffer = len(rewards or [])
 
         infos = infos or [{} for _ in range(len(observations or []))]
 
         # Observations: t0 (initial obs) to T.
         self.observation_space = observation_space
-        self.observations = BufferWithInfiniteLookback(
-            data=observations,
-            lookback=self._len_lookback_buffer,
-            space=observation_space,
-        )
+        if isinstance(observations, BufferWithInfiniteLookback):
+            self.observations = observations
+        else:
+            self.observations = BufferWithInfiniteLookback(
+                data=observations,
+                lookback=len_lookback_buffer,
+                space=observation_space,
+            )
+        # Infos: t0 (initial info) to T.
+        if isinstance(infos, BufferWithInfiniteLookback):
+            self.infos = infos
+        else:
+            self.infos = BufferWithInfiniteLookback(
+                data=infos,
+                lookback=len_lookback_buffer,
+            )
         # Actions: t1 to T.
         self.action_space = action_space
-        self.actions = BufferWithInfiniteLookback(
-            data=actions,
-            lookback=self._len_lookback_buffer,
-            space=action_space,
-        )
+        if isinstance(actions, BufferWithInfiniteLookback):
+            self.actions = actions
+        else:
+            self.actions = BufferWithInfiniteLookback(
+                data=actions,
+                lookback=len_lookback_buffer,
+                space=action_space,
+            )
         # Rewards: t1 to T.
-        self.rewards = BufferWithInfiniteLookback(
-            data=rewards,
-            lookback=self._len_lookback_buffer,
-            space=gym.spaces.Box(float("-inf"), float("inf"), (), np.float32),
-        )
-        # Infos: t0 (initial info) to T.
-        self.infos = BufferWithInfiniteLookback(
-            data=infos,
-            lookback=self._len_lookback_buffer,
-        )
+        if isinstance(rewards, BufferWithInfiniteLookback):
+            self.rewards = rewards
+        else:
+            self.rewards = BufferWithInfiniteLookback(
+                data=rewards,
+                lookback=len_lookback_buffer,
+                space=gym.spaces.Box(float("-inf"), float("inf"), (), np.float32),
+            )
 
         # obs[-1] is the final observation in the episode.
         self.is_terminated = terminated
         # obs[-1] is the last obs in a truncated-by-the-env episode (there will no more
         # observations in following chunks for this episode).
         self.is_truncated = truncated
+
         # Extra model outputs, e.g. `action_dist_input` needed in the batch.
         self.extra_model_outputs = defaultdict(
             functools.partial(
                 BufferWithInfiniteLookback,
-                lookback=self._len_lookback_buffer,
+                lookback=len_lookback_buffer,
             ),
         )
         for k, v in (extra_model_outputs or {}).items():
@@ -279,7 +297,7 @@ class SingleAgentEpisode:
 
         self.t = (
             (len(rewards) if rewards is not None else 0)
-            - self._len_lookback_buffer
+            - len_lookback_buffer
             + self.t_started
         )
 
@@ -439,11 +457,13 @@ class SingleAgentEpisode:
                     f"`observation` {observation} does NOT fit SingleAgentEpisode's "
                     f"observation_space: {self.observation_space}!"
                 )
-            if self.action_space is not None:
-                assert self.action_space.contains(action), (
-                    f"`action` {action} does NOT fit SingleAgentEpisode's "
-                    f"action_space: {self.action_space}!"
-                )
+            # TODO: This check will fail unless we add action clipping to
+            #  default module-to-env connector piece.
+            # if self.action_space is not None:
+            #    assert self.action_space.contains(action), (
+            #        f"`action` {action} does NOT fit SingleAgentEpisode's "
+            #        f"action_space: {self.action_space}!"
+            #    )
 
     def validate(self) -> None:
         """Validates the episode's data.
@@ -468,9 +488,6 @@ class SingleAgentEpisode:
             )
             for k, v in self.extra_model_outputs.items():
                 assert len(v) == len(self.observations) - 1
-
-            # Make sure, length of pre-buffer and len(self) make sense.
-            assert self._len_lookback_buffer + len(self) == len(self.rewards.data)
 
     @property
     def is_finalized(self) -> bool:
@@ -612,8 +629,10 @@ class SingleAgentEpisode:
             # Same ID.
             id_=self.id_,
             observations=self.get_observations(indices=indices_obs_and_infos),
+            observation_space=self.observation_space,
             infos=self.get_infos(indices=indices_obs_and_infos),
             actions=self.get_actions(indices=indices_rest),
+            action_space=self.action_space,
             rewards=self.get_rewards(indices=indices_rest),
             extra_model_outputs={
                 k: self.get_extra_model_outputs(k, indices_rest)
@@ -621,6 +640,8 @@ class SingleAgentEpisode:
             },
             # Continue with self's current timestep.
             t_started=self.t,
+            # Use the length of the provided data as lookback buffer.
+            len_lookback_buffer=None,
         )
 
     def get_observations(
@@ -1038,6 +1059,10 @@ class SingleAgentEpisode:
                 neg_indices_left_of_zero=neg_indices_left_of_zero,
                 fill=fill,
             )
+        # TODO (sven): This does not seem to be solid yet. Users should NOT be able
+        #  to just write directly into our buffers. Instead, use:
+        #  `self.set_extra_model_outputs(key, new_data, at_indices=...)` and if key
+        #  is not known, add a new buffer to the `extra_model_outputs` dict.
         # It might be that the user has added new key/value pairs in their custom
         # postprocessing/connector logic. The values are then most likely numpy
         # arrays. We convert them automatically to buffers and get the requested
@@ -1045,6 +1070,241 @@ class SingleAgentEpisode:
         return BufferWithInfiniteLookback(value).get(
             indices, fill=fill, neg_indices_left_of_zero=neg_indices_left_of_zero
         )
+
+    def set_observations(
+        self,
+        *,
+        new_data,
+        at_indices: Optional[Union[int, List[int], slice]] = None,
+        neg_indices_left_of_zero: bool = False,
+    ) -> None:
+        """Overwrites all or some of this Episode's observations with the provided data.
+
+        Note that an episode's observation data cannot be written to directly as it is
+        managed by a `BufferWithInfiniteLookback` object. Normally, individual, current
+        observations are added to the episode either by calling `self.add_env_step` or
+        more directly (and manually) via `self.observations.append|extend()`.
+        However, for certain postprocessing steps, the entirety (or a slice) of an
+        episode's observations might have to be rewritten, which is when
+        `self.set_observations()` should be used.
+
+        Args:
+            new_data: The new observation data to overwrite existing data with.
+                This may be a list of individual observation(s) in case this episode
+                is still not finalized yet. In case this episode has already been
+                finalized, this should be (possibly complex) struct matching the
+                observation space and with a batch size of its leafs exactly the size
+                of the to-be-overwritten slice or segment (provided by `at_indices`).
+            at_indices: A single int is interpreted as one index, which to overwrite
+                with `new_data` (which is expected to be a single observation).
+                A list of ints is interpreted as a list of indices, all of which to
+                overwrite with `new_data` (which is expected to be of the same size
+                as `len(at_indices)`).
+                A slice object is interpreted as a range of indices to be overwritten
+                with `new_data` (which is expected to be of the same size as the
+                provided slice).
+                Thereby, negative indices by default are interpreted as "before the end"
+                unless the `neg_indices_left_of_zero=True` option is used, in which case
+                negative indices are interpreted as "before ts=0", meaning going back
+                into the lookback buffer.
+            neg_indices_left_of_zero: If True, negative values in `at_indices` are
+                interpreted as "before ts=0", meaning going back into the lookback
+                buffer. For example, an episode with
+                observations = [4, 5, 6,  7, 8, 9], where [4, 5, 6] is the
+                lookback buffer range (ts=0 item is 7), will handle a call to
+                `set_observations(individual_observation, -1,
+                neg_indices_left_of_zero=True)` by overwriting the value of 6 in our
+                observations buffer with the provided "individual_observation".
+
+        Raises:
+            IndexError: If the provided `at_indices` do not match the size of
+                `new_data`.
+        """
+        self.observations.set(
+            new_data=new_data,
+            at_indices=at_indices,
+            neg_indices_left_of_zero=neg_indices_left_of_zero,
+        )
+
+    def set_actions(
+        self,
+        *,
+        new_data,
+        at_indices: Optional[Union[int, List[int], slice]] = None,
+        neg_indices_left_of_zero: bool = False,
+    ) -> None:
+        """Overwrites all or some of this Episode's actions with the provided data.
+
+        Note that an episode's action data cannot be written to directly as it is
+        managed by a `BufferWithInfiniteLookback` object. Normally, individual, current
+        actions are added to the episode either by calling `self.add_env_step` or
+        more directly (and manually) via `self.actions.append|extend()`.
+        However, for certain postprocessing steps, the entirety (or a slice) of an
+        episode's actions might have to be rewritten, which is when
+        `self.set_actions()` should be used.
+
+        Args:
+            new_data: The new action data to overwrite existing data with.
+                This may be a list of individual action(s) in case this episode
+                is still not finalized yet. In case this episode has already been
+                finalized, this should be (possibly complex) struct matching the
+                action space and with a batch size of its leafs exactly the size
+                of the to-be-overwritten slice or segment (provided by `at_indices`).
+            at_indices: A single int is interpreted as one index, which to overwrite
+                with `new_data` (which is expected to be a single action).
+                A list of ints is interpreted as a list of indices, all of which to
+                overwrite with `new_data` (which is expected to be of the same size
+                as `len(at_indices)`).
+                A slice object is interpreted as a range of indices to be overwritten
+                with `new_data` (which is expected to be of the same size as the
+                provided slice).
+                Thereby, negative indices by default are interpreted as "before the end"
+                unless the `neg_indices_left_of_zero=True` option is used, in which case
+                negative indices are interpreted as "before ts=0", meaning going back
+                into the lookback buffer.
+            neg_indices_left_of_zero: If True, negative values in `at_indices` are
+                interpreted as "before ts=0", meaning going back into the lookback
+                buffer. For example, an episode with
+                actions = [4, 5, 6,  7, 8, 9], where [4, 5, 6] is the
+                lookback buffer range (ts=0 item is 7), will handle a call to
+                `set_actions(individual_action, -1,
+                neg_indices_left_of_zero=True)` by overwriting the value of 6 in our
+                actions buffer with the provided "individual_action".
+
+        Raises:
+            IndexError: If the provided `at_indices` do not match the size of
+                `new_data`.
+        """
+        self.actions.set(
+            new_data=new_data,
+            at_indices=at_indices,
+            neg_indices_left_of_zero=neg_indices_left_of_zero,
+        )
+
+    def set_rewards(
+        self,
+        *,
+        new_data,
+        at_indices: Optional[Union[int, List[int], slice]] = None,
+        neg_indices_left_of_zero: bool = False,
+    ) -> None:
+        """Overwrites all or some of this Episode's rewards with the provided data.
+
+        Note that an episode's reward data cannot be written to directly as it is
+        managed by a `BufferWithInfiniteLookback` object. Normally, individual, current
+        rewards are added to the episode either by calling `self.add_env_step` or
+        more directly (and manually) via `self.rewards.append|extend()`.
+        However, for certain postprocessing steps, the entirety (or a slice) of an
+        episode's rewards might have to be rewritten, which is when
+        `self.set_rewards()` should be used.
+
+        Args:
+            new_data: The new reward data to overwrite existing data with.
+                This may be a list of individual reward(s) in case this episode
+                is still not finalized yet. In case this episode has already been
+                finalized, this should be a np.ndarray with a length exactly
+                the size of the to-be-overwritten slice or segment (provided by
+                `at_indices`).
+            at_indices: A single int is interpreted as one index, which to overwrite
+                with `new_data` (which is expected to be a single reward).
+                A list of ints is interpreted as a list of indices, all of which to
+                overwrite with `new_data` (which is expected to be of the same size
+                as `len(at_indices)`).
+                A slice object is interpreted as a range of indices to be overwritten
+                with `new_data` (which is expected to be of the same size as the
+                provided slice).
+                Thereby, negative indices by default are interpreted as "before the end"
+                unless the `neg_indices_left_of_zero=True` option is used, in which case
+                negative indices are interpreted as "before ts=0", meaning going back
+                into the lookback buffer.
+            neg_indices_left_of_zero: If True, negative values in `at_indices` are
+                interpreted as "before ts=0", meaning going back into the lookback
+                buffer. For example, an episode with
+                rewards = [4, 5, 6,  7, 8, 9], where [4, 5, 6] is the
+                lookback buffer range (ts=0 item is 7), will handle a call to
+                `set_rewards(individual_reward, -1,
+                neg_indices_left_of_zero=True)` by overwriting the value of 6 in our
+                rewards buffer with the provided "individual_reward".
+
+        Raises:
+            IndexError: If the provided `at_indices` do not match the size of
+                `new_data`.
+        """
+        self.rewards.set(
+            new_data=new_data,
+            at_indices=at_indices,
+            neg_indices_left_of_zero=neg_indices_left_of_zero,
+        )
+
+    def set_extra_model_outputs(
+        self,
+        *,
+        key,
+        new_data,
+        at_indices: Optional[Union[int, List[int], slice]] = None,
+        neg_indices_left_of_zero: bool = False,
+    ) -> None:
+        """Overwrites all or some of this Episode's extra model outputs with `new_data`.
+
+        Note that an episode's `extra_model_outputs` data cannot be written to directly
+        as it is managed by a `BufferWithInfiniteLookback` object. Normally, individual,
+        current `extra_model_output` values are added to the episode either by calling
+        `self.add_env_step` or more directly (and manually) via
+        `self.extra_model_outputs[key].append|extend()`. However, for certain
+        postprocessing steps, the entirety (or a slice) of an episode's
+        `extra_model_outputs` might have to be rewritten or a new key (a new type of
+        `extra_model_outputs`) must be inserted, which is when
+        `self.set_extra_model_outputs()` should be used.
+
+        Args:
+            key: The `key` within `self.extra_model_outputs` to override data on or
+                to insert as a new key into `self.extra_model_outputs`.
+            new_data: The new reward data to overwrite existing data with.
+                This may be a list of individual reward(s) in case this episode
+                is still not finalized yet. In case this episode has already been
+                finalized, this should be a np.ndarray with a length exactly
+                the size of the to-be-overwritten slice or segment (provided by
+                `at_indices`).
+            at_indices: A single int is interpreted as one index, which to overwrite
+                with `new_data` (which is expected to be a single reward).
+                A list of ints is interpreted as a list of indices, all of which to
+                overwrite with `new_data` (which is expected to be of the same size
+                as `len(at_indices)`).
+                A slice object is interpreted as a range of indices to be overwritten
+                with `new_data` (which is expected to be of the same size as the
+                provided slice).
+                Thereby, negative indices by default are interpreted as "before the end"
+                unless the `neg_indices_left_of_zero=True` option is used, in which case
+                negative indices are interpreted as "before ts=0", meaning going back
+                into the lookback buffer.
+            neg_indices_left_of_zero: If True, negative values in `at_indices` are
+                interpreted as "before ts=0", meaning going back into the lookback
+                buffer. For example, an episode with
+                rewards = [4, 5, 6,  7, 8, 9], where [4, 5, 6] is the
+                lookback buffer range (ts=0 item is 7), will handle a call to
+                `set_rewards(individual_reward, -1,
+                neg_indices_left_of_zero=True)` by overwriting the value of 6 in our
+                rewards buffer with the provided "individual_reward".
+
+        Raises:
+            IndexError: If the provided `at_indices` do not match the size of
+                `new_data`.
+        """
+        # Record already exists -> Set existing record's data to new values.
+        if key in self.extra_model_outputs:
+            self.extra_model_outputs[key].set(
+                new_data=new_data,
+                at_indices=at_indices,
+                neg_indices_left_of_zero=neg_indices_left_of_zero,
+            )
+        # Users wants to add a new record -> Create new buffer.
+        else:
+            if at_indices is not None:
+                raise AttributeError(
+                    f"Cannot set non-existing extra_model_outputs[{key}] using the "
+                    "`at_indices` arg! Try leaving `at_indices` None."
+                )
+            self.extra_model_outputs[key] = BufferWithInfiniteLookback(data=new_data)
 
     def slice(self, slice_: slice) -> "SingleAgentEpisode":
         """Returns a slice of this episode with the given slice object.
@@ -1058,9 +1318,10 @@ class SingleAgentEpisode:
         reset.
 
         Note that in any case, the lookback buffer will remain (if possible) at the same
-        size as it has been previously set to (`self._len_lookback_buffer`) and the
-        given slice object will NOT have to provide for this extra offset at the
-        beginning.
+        size as it has been previously set to (during construction) and the
+        provided `slice` arg will NOT have to account for this extra offset at the
+        beginning in order for the returned SingleAgentEpisode to have such a
+        lookback buffer.
 
         Args:
             slice_: The slice object to use for slicing. This should exclude the
@@ -1077,49 +1338,59 @@ class SingleAgentEpisode:
         t_started = self.t_started + start + (0 if start >= 0 else len(self))
 
         neg_indices_left_of_zero = (slice_.start or 0) >= 0
-        slice_ = slice(
-            # Make sure that the lookback buffer is part of the new slice as well.
-            (slice_.start or 0) - self._len_lookback_buffer,
-            slice_.stop,
-            slice_.step,
-        )
-        slice_obs_infos = slice(
-            slice_.start,
-            # Obs and infos need one more step at the end.
-            ((slice_.stop if slice_.stop != -1 else (len(self) - 1)) or len(self)) + 1,
-            slice_.step,
-        )
+
+        start = slice_.start or 0
+        stop = slice_.stop
+        # Obs and infos need one more step at the end.
+        stop_obs_infos = ((stop if stop != -1 else (len(self) - 1)) or len(self)) + 1
+        step = slice_.step
         return SingleAgentEpisode(
             id_=self.id_,
-            observations=self.get_observations(
-                slice_obs_infos,
-                neg_indices_left_of_zero=neg_indices_left_of_zero,
+            observations=BufferWithInfiniteLookback(
+                data=self.get_observations(
+                    slice(start - self.observations.lookback, stop_obs_infos, step),
+                    neg_indices_left_of_zero=neg_indices_left_of_zero,
+                ),
+                lookback=self.observations.lookback,
+                space=self.observation_space,
             ),
-            infos=self.get_infos(
-                slice_obs_infos,
-                neg_indices_left_of_zero=neg_indices_left_of_zero,
+            infos=BufferWithInfiniteLookback(
+                data=self.get_infos(
+                    slice(start - self.infos.lookback, stop_obs_infos, step),
+                    neg_indices_left_of_zero=neg_indices_left_of_zero,
+                ),
+                lookback=self.infos.lookback,
             ),
-            actions=self.get_actions(
-                slice_,
-                neg_indices_left_of_zero=neg_indices_left_of_zero,
+            actions=BufferWithInfiniteLookback(
+                data=self.get_actions(
+                    slice(start - self.actions.lookback, stop, step),
+                    neg_indices_left_of_zero=neg_indices_left_of_zero,
+                ),
+                lookback=self.actions.lookback,
+                space=self.action_space,
             ),
-            rewards=self.get_rewards(
-                slice_,
-                neg_indices_left_of_zero=neg_indices_left_of_zero,
+            rewards=BufferWithInfiniteLookback(
+                data=self.get_rewards(
+                    slice(start - self.rewards.lookback, stop, step),
+                    neg_indices_left_of_zero=neg_indices_left_of_zero,
+                ),
+                lookback=self.rewards.lookback,
             ),
             extra_model_outputs={
-                k: self.get_extra_model_outputs(
-                    k,
-                    slice_,
-                    neg_indices_left_of_zero=neg_indices_left_of_zero,
+                k: BufferWithInfiniteLookback(
+                    data=self.get_extra_model_outputs(
+                        k,
+                        slice(start - v.lookback, stop, step),
+                        neg_indices_left_of_zero=neg_indices_left_of_zero,
+                    ),
+                    lookback=v.lookback,
                 )
-                for k in self.extra_model_outputs
+                for k, v in self.extra_model_outputs.items()
             },
             terminated=(self.is_terminated if keep_done else False),
             truncated=(self.is_truncated if keep_done else False),
             # Provide correct timestep- and pre-buffer information.
             t_started=t_started,
-            len_lookback_buffer=self._len_lookback_buffer,
         )
 
     def get_data_dict(self):
@@ -1152,9 +1423,10 @@ class SingleAgentEpisode:
                 SampleBatch.EPS_ID: eps_id,
                 # Retrieve obs, infos, actions, rewards using our get_... APIs,
                 # which return all relevant timesteps (excluding the lookback
-                # buffer!).
+                # buffer!). Slice off last obs and infos to have the same number
+                # of them as we have actions and rewards.
                 SampleBatch.OBS: self.get_observations(slice(None, -1)),
-                SampleBatch.INFOS: self.get_infos(),
+                SampleBatch.INFOS: self.get_infos(slice(None, -1)),
                 SampleBatch.ACTIONS: self.get_actions(),
                 SampleBatch.REWARDS: self.get_rewards(),
             },
@@ -1177,10 +1449,14 @@ class SingleAgentEpisode:
         """Calculates an episode's return, excluding the lookback buffer's rewards.
 
         The return is computed by a simple sum, neglecting the discount factor.
+        Note that if `self` is a continuation chunk (resulting from a call to
+        `self.cut()`), the previous chunk's rewards are NOT counted and thus NOT
+        part of the returned reward sum.
 
         Returns:
             The sum of rewards collected during this episode, excluding possible data
-            inside the lookback buffer.
+            inside the lookback buffer and excluding possible data in a predecessor
+            chunk.
         """
         return sum(self.get_rewards())
 
@@ -1202,7 +1478,10 @@ class SingleAgentEpisode:
         return self.t - self.t_started
 
     def __repr__(self):
-        return f"SAEps({self.id_} len={len(self)})"
+        return (
+            f"SAEps(len={len(self)} done={self.is_done} "
+            f"R={self.get_return()} id_={self.id_})"
+        )
 
     def __getitem__(self, item: slice) -> "SingleAgentEpisode":
         """Enable squared bracket indexing- and slicing syntax, e.g. episode[-4:]."""

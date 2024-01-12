@@ -3,7 +3,10 @@ import numpy as np
 
 from ray.rllib.policy.sample_batch import SampleBatch, MultiAgentBatch
 from ray.rllib.utils.framework import try_import_tf
-from ray.rllib.utils.minibatch_utils import MiniBatchCyclicIterator
+from ray.rllib.utils.minibatch_utils import (
+    MiniBatchCyclicIterator,
+    ShardEpisodesIterator,
+)
 from ray.rllib.utils.test_utils import check
 
 tf1, tf, tfv = try_import_tf()
@@ -112,6 +115,56 @@ class TestMinibatchUtils(unittest.TestCase):
                 if not seq_lens:
                     check(iteration_counter, expected_iteration_counter)
                 print(f"iteration_counter: {iteration_counter}")
+
+    def test_shard_episodes_iterator(self):
+        class DummyEpisode:
+            def __init__(self, length):
+                self.length = length
+                # Dummy data to represent the episode content.
+                self.data = [0] * length
+
+            def __len__(self):
+                return self.length
+
+            def __getitem__(self, key):
+                assert isinstance(key, slice)
+                # Create a new Episode object with the sliced length
+                return DummyEpisode(len(self.data[key]))
+
+            def __repr__(self):
+                return f"{(type(self).__name__)}({self.length})"
+
+        # Create a list of episodes with varying lengths
+        episode_lens = [10, 21, 3, 4, 35, 41, 5, 15, 44]
+
+        episodes = [DummyEpisode(len_) for len_ in episode_lens]
+
+        # Number of shards
+        num_shards = 3
+        # Create the iterator
+        iterator = ShardEpisodesIterator(episodes, num_shards)
+        # Iterate and collect the results
+        shards = list(iterator)
+        # The sharder should try to split as few times as possible. In our
+        # case here, only the len=4 episode is split into 1 and 3. All other
+        # episodes are kept as-is. Yet, the resulting sub-lists have all
+        # either size 59 or 60.
+        check([len(e) for e in shards[0]], [44, 10, 5])  # 59
+        check([len(e) for e in shards[1]], [41, 15, 3])  # 59
+        check([len(e) for e in shards[2]], [35, 21, 1, 3])  # 60
+
+        # Different number of shards.
+        num_shards = 4
+        # Create the iterator.
+        iterator = ShardEpisodesIterator(episodes, num_shards)
+        # Iterate and collect the results
+        shards = list(iterator)
+        # The sharder should try to split as few times as possible, keeping
+        # as many episodes as-is (w/o splitting).
+        check([len(e) for e in shards[0]], [44])  # 44
+        check([len(e) for e in shards[1]], [41, 3])  # 44
+        check([len(e) for e in shards[2]], [35, 10])  # 45
+        check([len(e) for e in shards[3]], [21, 15, 5, 1, 3])  # 45
 
 
 if __name__ == "__main__":

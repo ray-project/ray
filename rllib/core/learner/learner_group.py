@@ -1,4 +1,4 @@
-from collections import defaultdict, deque
+from collections import defaultdict, Counter
 from functools import partial
 import pathlib
 from typing import (
@@ -9,13 +9,13 @@ from typing import (
     Optional,
     Set,
     Type,
-    TYPE_CHECKING,
     Union,
 )
 import uuid
 
 import ray
 from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
+from ray.rllib.core.learner.learner import Learner
 from ray.rllib.core.learner.reduce_result_dict_fn import _reduce_mean_results
 from ray.rllib.core.rl_module.rl_module import (
     SingleAgentRLModuleSpec,
@@ -24,9 +24,13 @@ from ray.rllib.core.rl_module.rl_module import (
 from ray.rllib.policy.sample_batch import MultiAgentBatch
 from ray.rllib.utils.actor_manager import FaultTolerantActorManager
 from ray.rllib.utils.deprecation import Deprecated, deprecation_warning
-from ray.rllib.utils.minibatch_utils import ShardBatchIterator
+from ray.rllib.utils.minibatch_utils import (
+    ShardBatchIterator,
+    ShardEpisodesIterator,
+)
 from ray.rllib.utils.numpy import convert_to_numpy
 from ray.rllib.utils.typing import (
+    EpisodeType,
     ModuleID,
     ResultDict,
     RLModuleSpec,
@@ -37,11 +41,7 @@ from ray.tune.utils.file_transfer import sync_dir_between_nodes
 from ray.util.annotations import PublicAPI
 
 
-if TYPE_CHECKING:
-    from ray.rllib.core.learner.learner import Learner
-
-
-def _get_backend_config(learner_class: Type["Learner"]) -> str:
+def _get_backend_config(learner_class: Type[Learner]) -> str:
     if learner_class.framework == "torch":
         from ray.train.torch import TorchConfig
 
@@ -71,7 +71,8 @@ def _default_should_module_be_updated_fn(
 class LearnerGroup:
     """Coordinator of n (possibly remote) Learner workers.
 
-    Each Learner worker
+    Each Learner worker has a copy of the RLModule, the loss function(s), and
+    one or more optimizers.
     """
 
     def __init__(
@@ -134,14 +135,13 @@ class LearnerGroup:
         self._should_module_be_updated_fn = _default_should_module_be_updated_fn
 
         # How many timesteps had to be dropped due to a full input queue?
-        self._in_queue_ts_dropped = 0
+        self._ts_dropped = 0
 
         # A single local Learner.
         if not self.is_remote:
             self._learner = learner_class(config=config, module_spec=module_spec)
             self._learner.build()
             self._worker_manager = None
-            self._in_queue = []
         # N remote Learner workers.
         else:
             backend_config = _get_backend_config(learner_class)
@@ -182,17 +182,21 @@ class LearnerGroup:
                 #  an async algo, remove this restriction entirely.
                 max_remote_requests_in_flight_per_actor=3,
             )
-            # This is a list of the tags for asynchronous update requests that are
-            # inflight, and is used for grouping together the results of requests
-            # that were sent to the workers at the same time.
-            self._inflight_request_tags: Set[str] = set()
-            self._in_queue = deque(maxlen=max_queue_len)
+            # Counters for the tags for asynchronous update requests that are
+            # in-flight. Used for keeping trakc of and grouping together the results of
+            # requests that were sent to the workers at the same time.
+            self._update_request_tags = Counter()
+            self._additional_update_request_tags = Counter()
 
-    def get_in_queue_stats(self) -> Dict[str, Any]:
+    def get_stats(self) -> Dict[str, Any]:
         """Returns the current stats for the input queue for this learner group."""
         return {
-            "learner_group_queue_size": len(self._in_queue),
-            "learner_group_queue_ts_dropped": self._in_queue_ts_dropped,
+            "learner_group_ts_dropped": self._ts_dropped,
+            "actor_manager_num_outstanding_async_reqs": (
+                0
+                if self.is_local
+                else self._worker_manager.num_outstanding_async_reqs()
+            ),
         }
 
     @property
@@ -203,187 +207,228 @@ class LearnerGroup:
     def is_local(self) -> bool:
         return not self.is_remote
 
-    def update(
+    def update_from_batch(
         self,
         batch: MultiAgentBatch,
         *,
-        minibatch_size: Optional[int] = None,
-        num_iters: int = 1,
+        async_update: bool = False,
         reduce_fn: Optional[Callable[[List[Dict[str, Any]]], ResultDict]] = (
             _reduce_mean_results
         ),
-    ) -> Union[Dict[str, Any], List[Dict[str, Any]]]:
-        """Do one or more gradient based updates to the Learner(s) based on given data.
+        # TODO (sven): Deprecate the following args. They should be extracted from the
+        #  LearnerHyperparameters of those specific algorithms that actually require
+        #  these settings.
+        minibatch_size: Optional[int] = None,
+        num_iters: int = 1,
+    ) -> Union[Dict[str, Any], List[Dict[str, Any]], List[List[Dict[str, Any]]]]:
+        """Performs gradient based update(s) on the Learner(s), based on given batch.
 
         Args:
-            batch: The data batch to use for the update.
-            minibatch_size: The minibatch size to use for the update.
-            num_iters: The number of complete passes over all the sub-batches in the
-                input multi-agent batch.
+            batch: A data batch to use for the update. If there are more
+                than one Learner workers, the batch is split amongst these and one
+                shard is sent to each Learner.
+            async_update: Whether the update request(s) to the Learner workers should be
+                sent asynchronously. If True, will return NOT the results from the
+                update on the given data, but all results from prior asynchronous update
+                requests that have not been returned thus far.
             reduce_fn: An optional callable to reduce the results from a list of the
                 Learner actors into a single result. This can be any arbitrary function
                 that takes a list of dictionaries and returns a single dictionary. For
-                example you can either take an average (default) or concatenate the
+                example, you can either take an average (default) or concatenate the
                 results (for example for metrics) or be more selective about you want to
                 report back to the algorithm's training_step. If None is passed, the
                 results will not get reduced.
+            minibatch_size: The minibatch size to use for the update.
+            num_iters: The number of complete passes over all the sub-batches in the
+                input multi-agent batch.
 
         Returns:
-            A dictionary with the reduced results of the updates from the Learner(s) or
-            a list of dictionaries of results from the updates from the Learner(s).
+            If `async_update` is False, a dictionary with the reduced results of the
+            updates from the Learner(s) or a list of dictionaries of results from the
+            updates from the Learner(s).
+            If `async_update` is True, a list of list of dictionaries of results, where
+            the outer list corresponds to separate previous calls to this method, and
+            the inner list corresponds to the results from each Learner(s). Or if the
+            results are reduced, a list of dictionaries of the reduced results from each
+            call to async_update that is ready.
         """
-
         # Construct a multi-agent batch with only those modules in it that should
         # be updated.
+        # TODO (sven): Move this filtering of input data into individual Learners.
+        #  It might be that the postprocessing of batch/episodes on each Learner
+        #  requires the non-trainable modules' data.
         train_batch = {}
         for module_id in batch.policy_batches.keys():
             if self.should_module_be_updated_fn(module_id, batch):
                 train_batch[module_id] = batch.policy_batches[module_id]
         train_batch = MultiAgentBatch(train_batch, batch.count)
 
-        if self.is_local:
-            results = [
-                self._learner.update(
-                    train_batch,
-                    minibatch_size=minibatch_size,
-                    num_iters=num_iters,
-                    reduce_fn=reduce_fn,
-                )
-            ]
-        else:
+        return self._update(
+            batch=train_batch,
+            episodes=None,
+            async_update=async_update,
+            reduce_fn=reduce_fn,
+            minibatch_size=minibatch_size,
+            num_iters=num_iters,
+        )
 
-            def _learner_update(learner, minibatch):
-                return learner.update(
-                    minibatch,
-                    minibatch_size=minibatch_size,
-                    num_iters=num_iters,
-                    reduce_fn=reduce_fn,
-                )
-
-            results = self._get_results(
-                self._worker_manager.foreach_actor(
-                    [
-                        partial(_learner_update, minibatch=minibatch)
-                        for minibatch in ShardBatchIterator(batch, len(self._workers))
-                    ]
-                )
-            )
-
-        # TODO(sven): Move reduce_fn to the training_step
-        if reduce_fn is None:
-            return results
-        else:
-            return reduce_fn(results)
-
-    def async_update(
+    def update_from_episodes(
         self,
-        batch: MultiAgentBatch,
+        episodes: List[EpisodeType],
         *,
-        minibatch_size: Optional[int] = None,
-        num_iters: int = 1,
+        async_update: bool = False,
         reduce_fn: Optional[Callable[[List[Dict[str, Any]]], ResultDict]] = (
             _reduce_mean_results
         ),
-    ) -> Union[List[Dict[str, Any]], List[List[Dict[str, Any]]]]:
-        """Asnychronously do gradient based updates to the Learner(s) with `batch`.
+        # TODO (sven): Deprecate the following args. They should be extracted from the
+        #  LearnerHyperparameters of those specific algorithms that actually require
+        #  these settings.
+        minibatch_size: Optional[int] = None,
+        num_iters: int = 1,
+    ) -> Union[Dict[str, Any], List[Dict[str, Any]], List[List[Dict[str, Any]]]]:
+        """Performs gradient based update(s) on the Learner(s), based on given episodes.
 
         Args:
-            batch: The data batch to use for the update.
+            episodes: A list of Episodes to process and perform the update
+                for. If there are more than one Learner workers, the list of episodes
+                is split amongst these and one list shard is sent to each Learner.
+            async_update: Whether the update request(s) to the Learner workers should be
+                sent asynchronously. If True, will return NOT the results from the
+                update on the given data, but all results from prior asynchronous update
+                requests that have not been returned thus far.
             minibatch_size: The minibatch size to use for the update.
             num_iters: The number of complete passes over all the sub-batches in the
                 input multi-agent batch.
             reduce_fn: An optional callable to reduce the results from a list of the
                 Learner actors into a single result. This can be any arbitrary function
                 that takes a list of dictionaries and returns a single dictionary. For
-                example you can either take an average (default) or concatenate the
+                example, you can either take an average (default) or concatenate the
                 results (for example for metrics) or be more selective about you want to
                 report back to the algorithm's training_step. If None is passed, the
                 results will not get reduced.
 
         Returns:
-            A list of list of dictionaries of results, where the outer list
-            corresponds to separate calls to `async_update`, and the inner
-            list corresponds to the results from each Learner(s). Or if the results
-            are reduced, a list of dictionaries of the reduced results from each
+            If async_update is False, a dictionary with the reduced results of the
+            updates from the Learner(s) or a list of dictionaries of results from the
+            updates from the Learner(s).
+            If async_update is True, a list of list of dictionaries of results, where
+            the outer list corresponds to separate previous calls to this method, and
+            the inner list corresponds to the results from each Learner(s). Or if the
+            results are reduced, a list of dictionaries of the reduced results from each
             call to async_update that is ready.
         """
-        if self.is_local:
-            raise ValueError(
-                "Cannot call `async_update` when running in local mode with "
-                "num_workers=0."
-            )
-        else:
-            if minibatch_size is not None:
-                minibatch_size //= len(self._workers)
+        return self._update(
+            batch=None,
+            episodes=episodes,
+            async_update=async_update,
+            reduce_fn=reduce_fn,
+            minibatch_size=minibatch_size,
+            num_iters=num_iters,
+        )
 
-            def _learner_update(learner, minibatch):
-                return learner.update(
-                    minibatch,
+    def _update(
+        self,
+        *,
+        batch: Optional[MultiAgentBatch] = None,
+        episodes: Optional[List[EpisodeType]] = None,
+        async_update: bool = False,
+        reduce_fn: Optional[Callable[[List[Dict[str, Any]]], ResultDict]] = (
+            _reduce_mean_results
+        ),
+        minibatch_size: Optional[int] = None,
+        num_iters: int = 1,
+    ) -> Union[Dict[str, Any], List[Dict[str, Any]], List[List[Dict[str, Any]]]]:
+
+        # Define function to be called on all Learner actors (or the local learner).
+        def _learner_update(learner: Learner, batch_shard=None, episodes_shard=None):
+            if batch_shard is not None:
+                return learner.update_from_batch(
+                    batch=batch_shard,
+                    reduce_fn=reduce_fn,
                     minibatch_size=minibatch_size,
                     num_iters=num_iters,
+                )
+            else:
+                return learner.update_from_episodes(
+                    episodes=episodes_shard,
                     reduce_fn=reduce_fn,
+                    minibatch_size=minibatch_size,
+                    num_iters=num_iters,
                 )
 
-            # Queue the new batches.
-            # If queue is full, kick out the oldest item (and thus add its
-            # length to the "dropped ts" counter).
-            if len(self._in_queue) == self._in_queue.maxlen:
-                self._in_queue_ts_dropped += len(self._in_queue[0])
+        if self.is_local:
+            if async_update:
+                raise ValueError(
+                    "Cannot call `update_from_batch(update_async=True)` when running in"
+                    " local mode! Try setting `config.num_learner_workers > 0`."
+                )
 
-            self._in_queue.append(batch)
-
-            # Retrieve all ready results (kicked off by prior calls to this method).
-            results = self._worker_manager.fetch_ready_async_reqs(
-                tags=list(self._inflight_request_tags)
-            )
-            # Only if there are no more requests in-flight on any of the learners,
-            # we can send in one new batch for sharding and parallel learning.
-            if self._worker_manager_ready():
-                count = 0
-                # TODO (sven): This probably works even without any restriction
-                #  (allowing for any arbitrary number of requests in-flight). Test with
-                #  3 first, then with unlimited, and if both show the same behavior on
-                #  an async algo, remove this restriction entirely.
-                while len(self._in_queue) > 0 and count < 3:
-                    # Pull a single batch from the queue (from the left side, meaning:
-                    # use the oldest one first).
-                    update_tag = str(uuid.uuid4())
-                    self._inflight_request_tags.add(update_tag)
-                    batch = self._in_queue.popleft()
-                    self._worker_manager.foreach_actor_async(
-                        [
-                            partial(_learner_update, minibatch=minibatch)
-                            for minibatch in ShardBatchIterator(
-                                batch, len(self._workers)
-                            )
-                        ],
-                        tag=update_tag,
-                    )
-                    count += 1
-
-            # NOTE: There is a strong assumption here that the requests launched to
-            # learner workers will return at the same time, since they are have a
-            # barrier inside of themselves for gradient aggregation. Therefore results
-            # should be a list of lists where each inner list should be the length of
-            # the number of learner workers, if results from an  non-blocking update are
-            # ready.
-            results = self._get_async_results(results)
-
-            # TODO(sven): Move reduce_fn to the training_step
-            if reduce_fn is None:
-                return results
+            results = [
+                _learner_update(
+                    learner=self._learner,
+                    batch_shard=batch,
+                    episodes_shard=episodes,
+                )
+            ]
+        else:
+            if episodes is None:
+                partials = [
+                    partial(_learner_update, batch_shard=batch_shard)
+                    for batch_shard in ShardBatchIterator(batch, len(self._workers))
+                ]
             else:
-                return [reduce_fn(r) for r in results]
+                partials = [
+                    partial(_learner_update, episodes_shard=episodes_shard)
+                    for episodes_shard in ShardEpisodesIterator(
+                        episodes, len(self._workers)
+                    )
+                ]
 
-    def _worker_manager_ready(self):
-        # TODO (sven): This probably works even without any restriction (allowing for
-        #  any arbitrary number of requests in-flight). Test with 3 first, then with
-        #  unlimited, and if both show the same behavior on an async algo, remove
-        #  this method entirely.
-        return (
-            self._worker_manager.num_outstanding_async_reqs()
-            <= self._worker_manager.num_actors() * 2
-        )
+            if async_update:
+                # Retrieve all ready results (kicked off by prior calls to this method).
+                results = None
+                if self._update_request_tags:
+                    results = self._worker_manager.fetch_ready_async_reqs(
+                        tags=list(self._update_request_tags)
+                    )
+
+                update_tag = str(uuid.uuid4())
+
+                num_sent_requests = self._worker_manager.foreach_actor_async(
+                    partials, tag=update_tag
+                )
+
+                if num_sent_requests:
+                    self._update_request_tags[update_tag] = num_sent_requests
+
+                # Some requests were dropped, record lost ts/data.
+                if num_sent_requests != len(self._workers):
+                    # assert num_sent_requests == 0, num_sent_requests
+                    factor = 1 - (num_sent_requests / len(self._workers))
+                    if episodes is None:
+                        self._ts_dropped += factor * len(batch)
+                    else:
+                        self._ts_dropped += factor * sum(len(e) for e in episodes)
+                # NOTE: There is a strong assumption here that the requests launched to
+                # learner workers will return at the same time, since they are have a
+                # barrier inside of themselves for gradient aggregation. Therefore
+                # results should be a list of lists where each inner list should be the
+                # length of the number of learner workers, if results from an
+                # non-blocking update are ready.
+                results = self._get_async_results(results)
+
+            else:
+                results = self._get_results(
+                    self._worker_manager.foreach_actor(partials)
+                )
+
+        # TODO (sven): Move reduce_fn to the training_step
+        if reduce_fn is None:
+            return results
+        elif not async_update:
+            return reduce_fn(results)
+        else:
+            return [reduce_fn(r) for r in results]
 
     def _get_results(self, results):
         processed_results = []
@@ -403,19 +448,34 @@ class LearnerGroup:
             for same tags.
 
         """
+        if results is None:
+            return []
+
         unprocessed_results = defaultdict(list)
         for result in results:
             result_or_error = result.get()
             if result.ok:
-                assert (
-                    result.tag
-                ), "Cannot call _get_async_results on untagged async requests."
-                unprocessed_results[result.tag].append(result_or_error)
+                tag = result.tag
+                if not tag:
+                    raise RuntimeError(
+                        "Cannot call `LearnerGroup._get_async_results()` on untagged "
+                        "async requests!"
+                    )
+                unprocessed_results[tag].append(result_or_error)
+
+                if tag in self._update_request_tags:
+                    self._update_request_tags[tag] -= 1
+                    if self._update_request_tags[tag] == 0:
+                        del self._update_request_tags[tag]
+                else:
+                    assert tag in self._additional_update_request_tags
+                    self._additional_update_request_tags[tag] -= 1
+                    if self._additional_update_request_tags[tag] == 0:
+                        del self._additional_update_request_tags[tag]
+
             else:
                 raise result_or_error
 
-        for tag in unprocessed_results.keys():
-            self._inflight_request_tags.remove(tag)
         return list(unprocessed_results.values())
 
     def additional_update(
@@ -519,7 +579,7 @@ class LearnerGroup:
         """Set the weights of the MultiAgentRLModule maintained by each Learner.
 
         The weights don't have to include all the modules in the MARLModule.
-            This way the weights of only some of the Agents can be set.
+        This way the weights of only some of the Agents can be set.
 
         Args:
             weights: The weights to set each RLModule in the MARLModule to.
@@ -552,6 +612,7 @@ class LearnerGroup:
                 lambda w: w.get_state(), remote_actor_ids=[worker]
             )
             learner_state = self._get_results(results)[0]
+
         return {
             "learner_state": learner_state,
             "should_module_be_updated_fn": self.should_module_be_updated_fn,
@@ -776,16 +837,14 @@ class LearnerGroup:
             # so we should not load any modules in the MARLModule checkpoint that are
             # also in the RLModule checkpoints.
             if modules_to_load:
-                if any(
-                    module_id in modules_to_load
-                    for module_id in rl_module_ckpt_dirs.keys()
-                ):
-                    raise ValueError(
-                        f"module_id {module_id} was specified in both "
-                        "modules_to_load and rl_module_ckpt_dirs. Please only "
-                        "specify a module to be loaded only once, either in "
-                        "modules_to_load or rl_module_ckpt_dirs, but not both."
-                    )
+                for module_id in rl_module_ckpt_dirs.keys():
+                    if module_id in modules_to_load:
+                        raise ValueError(
+                            f"module_id {module_id} was specified in both "
+                            "`modules_to_load` AND `rl_module_ckpt_dirs`! "
+                            "Specify a module to be loaded either in `modules_to_load` "
+                            "or `rl_module_ckpt_dirs`, but not in both."
+                        )
             else:
                 modules_to_load = module_keys - set(rl_module_ckpt_dirs.keys())
 
@@ -942,6 +1001,18 @@ class LearnerGroup:
     def __del__(self):
         if not self._is_shut_down:
             self.shutdown()
+
+    @Deprecated(new="LearnerGroup.update_from_batch(async=False)", error=False)
+    def update(self, *args, **kwargs):
+        # Just in case, we would like to revert this API retirement, we can do so
+        # easily.
+        return self._update(*args, **kwargs, async_update=False)
+
+    @Deprecated(new="LearnerGroup.update_from_batch(async=True)", error=False)
+    def async_update(self, *args, **kwargs):
+        # Just in case, we would like to revert this API retirement, we can do so
+        # easily.
+        return self._update(*args, **kwargs, async_update=True)
 
     @Deprecated(new="LearnerGroup.set_should_module_be_updated_fn()", error=True)
     def set_is_module_trainable(self, *args, **kwargs):

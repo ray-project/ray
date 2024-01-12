@@ -23,21 +23,21 @@ export type NodeGPUEntryProps = {
 export const NodeGPUEntry: React.FC<NodeGPUEntryProps> = ({ gpu, slot }) => {
   const classes = useStyles();
   return (
-    <Box className={classes.box}>
-      <Tooltip title={gpu.name}>
+    <Tooltip title={gpu.name}>
+      <Box className={classes.box}>
         <RightPaddedTypography variant="body1">[{slot}]:</RightPaddedTypography>
-      </Tooltip>
-      {gpu.utilizationGpu !== undefined ? (
-        <UsageBar
-          percent={gpu.utilizationGpu}
-          text={`${gpu.utilizationGpu.toFixed(1)}%`}
-        />
-      ) : (
-        <Typography color="textSecondary" component="span" variant="inherit">
-          N/A
-        </Typography>
-      )}
-    </Box>
+        {gpu.utilizationGpu !== undefined ? (
+          <UsageBar
+            percent={gpu.utilizationGpu}
+            text={`${gpu.utilizationGpu.toFixed(1)}%`}
+          />
+        ) : (
+          <Typography color="textSecondary" component="span" variant="inherit">
+            N/A
+          </Typography>
+        )}
+      </Box>
+    </Tooltip>
   );
 };
 

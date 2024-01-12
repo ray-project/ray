@@ -267,7 +267,6 @@ if setup_spec.type == SetupType.RAY:
             "requests",
             "starlette",
             "fastapi",
-            "aiorwlock",
             "watchfiles",
         ],
         "tune": ["pandas", "tensorboardX>=1.9", "requests", pyarrow_dep, "fsspec"],

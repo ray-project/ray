@@ -5,7 +5,6 @@ import time
 from collections import OrderedDict
 from typing import Any, Callable, List, Set
 
-from ray._private.async_compat import sync_to_async
 from ray.serve import metrics
 from ray.serve._private.common import DeploymentID, MultiplexedReplicaInfo
 from ray.serve._private.constants import (
@@ -247,7 +246,7 @@ class _ModelMultiplexWrapper:
             if not inspect.iscoroutinefunction(model.__del__):
                 await asyncio.get_running_loop().run_in_executor(None, model.__del__)
             else:
-                await sync_to_async(model.__del__)()
+                await model.__del__()
             setattr(model, "__del__", lambda _: None)
         unloaded_time = time.time() - unload_start_time
         self.model_unload_latency_ms.observe(unloaded_time * 1000.0)

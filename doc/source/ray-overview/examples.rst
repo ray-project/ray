@@ -132,13 +132,6 @@ Ray Examples
         How to use Ray Data to do batch prediction with the Hugging Face Transformers GPT-J model
 
     .. grid-item-card:: :bdg-secondary:`Code example`
-        :class-item: gallery-item serving large-language-models generative-ai
-        :link: /ray-air/examples/gptj_serving
-        :link-type: doc
-
-        How to use Ray Serve to do online serving with the Hugging Face Transformers GPT-J model
-
-    .. grid-item-card:: :bdg-secondary:`Code example`
         :class-item: gallery-item computer-vision training generative-ai
         :link: /train/examples/pytorch/dreambooth_finetuning
         :link-type: doc

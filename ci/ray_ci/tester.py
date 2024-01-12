@@ -16,6 +16,8 @@ from ci.ray_ci.linux_tester_container import LinuxTesterContainer
 from ci.ray_ci.windows_tester_container import WindowsTesterContainer
 from ci.ray_ci.tester_container import TesterContainer
 from ci.ray_ci.utils import docker_login
+from ray_release.configs.global_config import init_global_config
+from ray_release.bazel import bazel_runfile
 
 CUDA_COPYRIGHT = """
 ==========
@@ -175,6 +177,7 @@ def main(
     if not bazel_workspace_dir:
         raise Exception("Please use `bazelisk run //ci/ray_ci`")
     os.chdir(bazel_workspace_dir)
+    init_global_config(bazel_runfile("release/ray_release/configs/oss_config.yaml"))
     docker_login(_DOCKER_ECR_REPO.split("/")[0])
 
     if build_type == "wheel" or build_type == "wheel-aarch64":
@@ -206,7 +209,7 @@ def main(
         only_tags=only_tags,
         get_flaky_tests=run_flaky_tests,
     )
-    success = container.run_tests(test_targets, test_arg)
+    success = container.run_tests(team, test_targets, test_arg)
     sys.exit(0 if success else 42)
 
 

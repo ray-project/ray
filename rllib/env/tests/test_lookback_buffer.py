@@ -12,12 +12,41 @@ class TestBufferWithInfiniteLookback(unittest.TestCase):
     space = gym.spaces.Dict(
         {
             "a": gym.spaces.Discrete(4),
-            "b": gym.spaces.Box(-1.0, 1.0, (2, 3)),
+            "b": gym.spaces.Box(-1.0, 1.0, (2, 3), np.float32),
             "c": gym.spaces.Tuple(
-                [gym.spaces.MultiDiscrete([2, 3]), gym.spaces.Box(-1.0, 1.0, (1,))]
+                [
+                    gym.spaces.MultiDiscrete([2, 3]),
+                    gym.spaces.Box(-1.0, 1.0, (1,), np.float32),
+                ]
             ),
         }
     )
+
+    buffer_0 = {
+        "a": 0,
+        "b": np.array([[0, 0, 0], [0, 0, 0]], np.float32),
+        "c": (np.array([0, 0]), np.array([0], np.float32)),
+    }
+    buffer_0_one_hot = {
+        "a": np.array([0.0, 0.0, 0.0, 0.0], np.float32),
+        "b": np.array([[0, 0, 0], [0, 0, 0]], np.float32),
+        "c": (np.array([0, 0, 0, 0, 0]), np.array([0], np.float32)),
+    }
+    buffer_1 = {
+        "a": 1,
+        "b": np.array([[1, 1, 1], [1, 1, 1]], np.float32),
+        "c": (np.array([1, 1]), np.array([1], np.float32)),
+    }
+    buffer_2 = {
+        "a": 2,
+        "b": np.array([[2, 2, 2], [2, 2, 2]], np.float32),
+        "c": (np.array([2, 2]), np.array([2], np.float32)),
+    }
+    buffer_3 = {
+        "a": 3,
+        "b": np.array([[3, 3, 3], [3, 3, 3]], np.float32),
+        "c": (np.array([3, 3]), np.array([3], np.float32)),
+    }
 
     def test_append_and_pop(self):
         buffer = BufferWithInfiniteLookback(data=[0, 1, 2, 3])
@@ -34,9 +63,23 @@ class TestBufferWithInfiniteLookback(unittest.TestCase):
         self.assertTrue(len(buffer), 5)
         check(buffer.data, [0, 1, 2, 3, 10])
         buffer.finalize()
-        self.assertRaises(RuntimeError, lambda: buffer.append("something"))
-        self.assertRaises(RuntimeError, lambda: buffer.extend(["something"]))
-        self.assertRaises(RuntimeError, lambda: buffer.pop())
+
+        # Even after finalizing, we can still add data to the buffer.
+        buffer.append(11)
+        self.assertTrue(buffer.get(indices=-1) == 11)
+        test = buffer.get(indices=[-2, -1])
+        self.assertTrue(np.all(test == np.array([10, 11])))
+        self.assertTrue(isinstance(test, np.ndarray))
+
+        buffer.extend([12, 13])
+        self.assertTrue(buffer.get(indices=-1) == 13)
+        test = buffer.get(indices=[-2, -1])
+        self.assertTrue(np.all(test == np.array([12, 13])))
+        self.assertTrue(isinstance(test, np.ndarray))
+
+        buffer.pop()
+        self.assertTrue(buffer.get(indices=-1) == 12)
+        self.assertTrue(buffer.get(indices=0) == 0)
 
     def test_complex_structs(self):
         buffer = BufferWithInfiniteLookback(
@@ -49,7 +92,6 @@ class TestBufferWithInfiniteLookback(unittest.TestCase):
         self.assertTrue(len(buffer), 6)
 
         buffer.finalize()
-        self.assertRaises(RuntimeError, lambda: buffer.append("something"))
 
         self.assertTrue(isinstance(buffer.data, dict))
         self.assertTrue(isinstance(buffer.data["a"], np.ndarray))
@@ -414,32 +456,6 @@ class TestBufferWithInfiniteLookback(unittest.TestCase):
             space=self.space,
         )
 
-        buffer_0 = {
-            "a": 0,
-            "b": np.array([[0, 0, 0], [0, 0, 0]]),
-            "c": (np.array([0, 0]), np.array([0])),
-        }
-        buffer_0_one_hot = {
-            "a": np.array([0.0, 0.0, 0.0, 0.0]),
-            "b": np.array([[0, 0, 0], [0, 0, 0]]),
-            "c": (np.array([0, 0, 0, 0, 0]), np.array([0])),
-        }
-        buffer_1 = {
-            "a": 1,
-            "b": np.array([[1, 1, 1], [1, 1, 1]]),
-            "c": (np.array([1, 1]), np.array([1])),
-        }
-        buffer_2 = {
-            "a": 2,
-            "b": np.array([[2, 2, 2], [2, 2, 2]]),
-            "c": (np.array([2, 2]), np.array([2])),
-        }
-        buffer_3 = {
-            "a": 3,
-            "b": np.array([[3, 3, 3], [3, 3, 3]]),
-            "c": (np.array([3, 3]), np.array([3])),
-        }
-
         # Test on ongoing and finalized buffer.
         for finalized in [False, True]:
             if finalized:
@@ -455,33 +471,139 @@ class TestBufferWithInfiniteLookback(unittest.TestCase):
 
             self.assertTrue(len(buffer), 2)
 
-            check(buffer.get(-1), buffer_3)
-            check(buffer.get(-2), buffer_2)
-            check(buffer.get(-3), buffer_1)
-            check(buffer.get(-4), buffer_0)
-            check(buffer.get(-5, fill=0.0), buffer_0)
-            check(buffer.get([-5, 5], fill=0.0), batch_([buffer_0, buffer_0]))
-            check(buffer.get([-5, 1], fill=0.0), batch_([buffer_0, buffer_3]))
-            check(buffer.get([1, -10], fill=0.0), batch_([buffer_3, buffer_0]))
+            check(buffer.get(-1), self.buffer_3)
+            check(buffer.get(-2), self.buffer_2)
+            check(buffer.get(-3), self.buffer_1)
+            check(buffer.get(-4), self.buffer_0)
+            check(buffer.get(-5, fill=0.0), self.buffer_0)
+            check(buffer.get([-5, 5], fill=0.0), batch_([self.buffer_0, self.buffer_0]))
+            check(buffer.get([-5, 1], fill=0.0), batch_([self.buffer_0, self.buffer_3]))
+            check(
+                buffer.get([1, -10], fill=0.0), batch_([self.buffer_3, self.buffer_0])
+            )
             check(
                 buffer.get([-10], fill=0.0, one_hot_discrete=True),
-                batch_([buffer_0_one_hot]),
+                batch_([self.buffer_0_one_hot]),
             )
-            check(buffer.get(slice(0, 1), fill=0.0), batch_([buffer_2]))
-            check(buffer.get(slice(1, 3), fill=0.0), batch_([buffer_3, buffer_0]))
-            check(buffer.get(slice(-10, -12), fill=0.0), batch_([buffer_0, buffer_0]))
+            check(buffer.get(slice(0, 1), fill=0.0), batch_([self.buffer_2]))
+            check(
+                buffer.get(slice(1, 3), fill=0.0),
+                batch_([self.buffer_3, self.buffer_0]),
+            )
+            check(
+                buffer.get(slice(-10, -12), fill=0.0),
+                batch_([self.buffer_0, self.buffer_0]),
+            )
             check(
                 buffer.get(slice(-10, -12), fill=0.0, neg_indices_left_of_zero=True),
-                batch_([buffer_0, buffer_0]),
+                batch_([self.buffer_0, self.buffer_0]),
             )
             check(
                 buffer.get(slice(100, 98), fill=0.0, neg_indices_left_of_zero=True),
-                batch_([buffer_0, buffer_0]),
+                batch_([self.buffer_0, self.buffer_0]),
             )
             check(
                 buffer.get(slice(100, 98), fill=0.0),
-                batch_([buffer_0, buffer_0]),
+                batch_([self.buffer_0, self.buffer_0]),
             )
+
+    def test_set(self):
+        buffer = BufferWithInfiniteLookback(
+            data=[0, 1, 2, 3, 4, 5, 6, 7],
+            lookback=2,
+        )
+        # Directly via the []-notation.
+        buffer[0:2] = [200, 300]
+        check(buffer.data, [0, 1, 200, 300, 4, 5, 6, 7])
+        buffer[-1] = 700
+        check(buffer.data, [0, 1, 200, 300, 4, 5, 6, 700])
+        buffer[-3] = 500
+        check(buffer.data, [0, 1, 200, 300, 4, 500, 6, 700])
+        buffer[-4:-2] = [400, 5000]
+        check(buffer.data, [0, 1, 200, 300, 400, 5000, 6, 700])
+        buffer[0] = 2000
+        check(buffer.data, [0, 1, 2000, 300, 400, 5000, 6, 700])
+        buffer[-4:-1] = [400, 5000, 60]
+        check(buffer.data, [0, 1, 2000, 300, 400, 5000, 60, 700])
+
+        # Reset to initial values (excluding lookback buffer).
+        buffer[:] = [2, 3, 4, 5, 6, 7]
+        check(buffer.data, [0, 1, 2, 3, 4, 5, 6, 7])
+
+        # Via the `set` method.
+        buffer.set([200, 300], at_indices=slice(0, 2))
+        check(buffer.data, [0, 1, 200, 300, 4, 5, 6, 7])
+        buffer.set(700, at_indices=-1)
+        check(buffer.data, [0, 1, 200, 300, 4, 5, 6, 700])
+        buffer.set(500, at_indices=-3)
+        check(buffer.data, [0, 1, 200, 300, 4, 500, 6, 700])
+        buffer.set([400, 5000], at_indices=slice(-4, -2))
+        check(buffer.data, [0, 1, 200, 300, 400, 5000, 6, 700])
+        buffer.set(2000, at_indices=0)
+        check(buffer.data, [0, 1, 2000, 300, 400, 5000, 6, 700])
+        buffer.set([400, 5000, 60], at_indices=slice(-4, -1))
+        check(buffer.data, [0, 1, 2000, 300, 400, 5000, 60, 700])
+        # Check "out of index" conditions.
+        self.assertRaises(IndexError, lambda: buffer.set(100, at_indices=-100))
+        self.assertRaises(
+            IndexError,
+            lambda: buffer.set(100, at_indices=-3, neg_indices_left_of_zero=True),
+        )
+        self.assertRaises(
+            IndexError,
+            lambda: buffer.set(100, at_indices=-9, neg_indices_left_of_zero=False),
+        )
+        self.assertRaises(IndexError, lambda: buffer.set(100, at_indices=6))
+        self.assertRaises(IndexError, lambda: buffer.set(100, at_indices=100))
+
+        # Reset to initial values (excluding lookback buffer).
+        buffer.set([2, 3, 4, 5, 6, 7])
+        check(buffer.data, [0, 1, 2, 3, 4, 5, 6, 7])
+
+        # Via the `set` method with going into the lookback buffer.
+        buffer.set(
+            [100, 200, 300], at_indices=slice(-1, 2), neg_indices_left_of_zero=True
+        )
+        check(buffer.data, [0, 100, 200, 300, 4, 5, 6, 7])
+        buffer.set(-999, at_indices=-2, neg_indices_left_of_zero=True)
+        check(buffer.data, [-999, 100, 200, 300, 4, 5, 6, 7])
+        buffer.set([-998, 1000], at_indices=slice(-2, 0), neg_indices_left_of_zero=True)
+        check(buffer.data, [-998, 1000, 200, 300, 4, 5, 6, 7])
+        buffer.set(2000, at_indices=0, neg_indices_left_of_zero=True)
+        check(buffer.data, [-998, 1000, 2000, 300, 4, 5, 6, 7])
+        # Negative steps.
+        buffer.set([-1, -4], at_indices=slice(3, 1, -1), neg_indices_left_of_zero=True)
+        check(buffer.data, [-998, 1000, 2000, 300, -4, -1, 6, 7])
+        buffer.set([-10, -40, -30], at_indices=slice(3, 0, -1))
+        check(buffer.data, [-998, 1000, 2000, -30, -40, -10, 6, 7])
+        # Check proper error handling if provided new_data is larger/smaller than slice.
+        self.assertRaises(
+            IndexError,
+            lambda: buffer.set([100, 101], at_indices=slice(0, 1)),
+        )
+
+    def test_set_with_complex_space(self):
+        """Tests setting data in a buffer using a complex space."""
+        buffer = BufferWithInfiniteLookback(
+            data=[
+                get_dummy_batch_for_space(
+                    space=self.space,
+                    batch_size=0,
+                    fill_value=float(i),
+                )
+                for i in range(10)
+            ],
+            lookback=2,
+            space=self.space,
+        )
+        # Directly via the []-notation.
+        buffer[0:2] = [self.buffer_1, self.buffer_3]
+        # Lookback buffer (untouched).
+        check(buffer.data[0], self.buffer_0)
+        check(buffer.data[1], self.buffer_1)
+        # Actual buffer has been changed by our set above.
+        check(buffer.data[2], self.buffer_1)
+        check(buffer.data[3], self.buffer_3)
 
 
 if __name__ == "__main__":

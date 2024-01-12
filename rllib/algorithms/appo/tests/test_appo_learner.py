@@ -97,7 +97,7 @@ class TestAPPOTfLearner(unittest.TestCase):
                 env=algo.workers.local_worker().env
             )
             learner_group.set_weights(algo.get_weights())
-            learner_group.update(train_batch.as_multi_agent())
+            learner_group.update_from_batch(batch=train_batch.as_multi_agent())
 
             algo.stop()
 

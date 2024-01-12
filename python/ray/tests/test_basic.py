@@ -69,6 +69,35 @@ def test_release_resources_race(shutdown_only):
     assert len(pids) <= 2, pids
 
 
+def test_not_release_resource(shutdown_only):
+    # Test to make sure we don't release CPU
+    # resource if the object is already fetched.
+    ray.init(num_cpus=1)
+
+    @ray.remote
+    def task1():
+        return [1] * (1024 * 1024)
+
+    o1 = task1.remote()
+
+    @ray.remote
+    def task2(*args, **kwargs):
+        # ray.get here should not release
+        # CPU resource since the object is already
+        # available in args[0]
+        assert args[0] == ray.get(kwargs["o"][0])
+        return os.getpid()
+
+    @ray.remote
+    def task3(*args):
+        return os.getpid()
+
+    o2 = task2.remote(o1, o=[o1])
+    # This should run after task2 finishes
+    o3 = task3.remote(o1)
+    assert len(set(ray.get([o2, o3]))) == 1
+
+
 # https://github.com/ray-project/ray/issues/22504
 def test_worker_isolation_by_resources(shutdown_only):
     ray.init(num_cpus=1, num_gpus=1)

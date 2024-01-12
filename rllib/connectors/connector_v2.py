@@ -134,10 +134,7 @@ class ConnectorV2(abc.ABC):
         """Method for transforming input data into output data.
 
         Args:
-            rl_module: An optional RLModule object that the connector might need to know
-                about. Note that normally, only module-to-env connectors get this
-                information at construction time, but env-to-module and learner
-                connectors won't (b/c they get constructed before the RLModule).
+            rl_module: The RLModule object that the connector connects to or from.
             data: The input data abiding to `self.input_type` to be transformed by
                 this connector. Transformations might either be done in-place or a new
                 structure may be returned that matches `self.output_type`.

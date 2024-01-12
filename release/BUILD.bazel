@@ -393,6 +393,7 @@ py_library(
     data = glob(["ray_release/environments/*.env"]) + [
         "ray_release/buildkite/aws_instance_types.csv",
         "ray_release/schema.json",
+        "ray_release/configs/oss_config.yaml",
     ],
     imports = ["."],
     visibility = ["//visibility:public"],

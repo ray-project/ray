@@ -161,6 +161,15 @@ class DefaultLearnerConnector(ConnectorV2):
                 T=T,
             )
 
+        # TODO (sven): Convert data to proper tensor formats, depending on framework
+        #  used by the RLModule. We cannot do this right now as the RLModule does NOT
+        #  know its own device. Only the Learner knows the device. Also, on the
+        #  EnvRunner side, we assume that it's always the CPU (even though one could
+        #  imagine a GPU-based EnvRunner + RLModule for sampling).
+        # if rl_module.framework == "torch":
+        #    data = convert_to_torch_tensor(data, device=??)
+        # elif rl_module.framework == "tf2":
+        #    data =
         return data
 
 

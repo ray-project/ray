@@ -46,6 +46,7 @@ class TestState(enum.Enum):
 
     JAILED = "jailed"
     FAILING = "failing"
+    FLAKY = "flaky"
     CONSITENTLY_FAILING = "consistently_failing"
     PASSING = "passing"
 
@@ -109,12 +110,11 @@ class Test(dict):
 
     @classmethod
     def from_bazel_event(cls, event: dict, team: str):
-        bazel_rule = event["id"]["testResult"]["label"]
-        prefix = bazel_rule.replace("//", "").replace("/", "_").replace(":", "_")
-        suffix = platform.system().lower()
+        name = event["id"]["testResult"]["label"]
+        system = platform.system().lower()
         return cls(
             {
-                "name": f"{prefix}.{suffix}",
+                "name": f"{system}:{name}",
                 "team": team,
             }
         )
@@ -191,6 +191,13 @@ class Test(dict):
         """
         return self["name"]
 
+    def _get_s3_name(self) -> str:
+        """
+        Returns the name of the test for s3. Since '/' is not allowed in s3 key,
+        replace it with '_'.
+        """
+        return self["name"].replace("/", "_")
+
     def get_oncall(self) -> str:
         """
         Returns the oncall for the test.
@@ -199,14 +206,14 @@ class Test(dict):
 
     def update_from_s3(self) -> None:
         """
-        Update test object with data field from s3
+        Update test object with data fields that exist only on s3
         """
         try:
             data = (
                 boto3.client("s3")
                 .get_object(
                     Bucket=get_global_config()["state_machine_aws_bucket"],
-                    Key=f"{AWS_TEST_KEY}/{self.get_name()}.json",
+                    Key=f"{AWS_TEST_KEY}/{self._get_s3_name()}.json",
                 )
                 .get("Body")
                 .read()
@@ -215,7 +222,9 @@ class Test(dict):
         except ClientError as e:
             logger.warning(f"Failed to update data for {self.get_name()} from s3:  {e}")
             return
-        self.update(json.loads(data))
+        for key, value in json.loads(data).items():
+            if key not in self:
+                self[key] = value
 
     def get_state(self) -> TestState:
         """
@@ -355,7 +364,7 @@ class Test(dict):
         files = sorted(
             s3_client.list_objects_v2(
                 Bucket=get_global_config()["state_machine_aws_bucket"],
-                Prefix=f"{AWS_TEST_RESULT_KEY}/{self.get_name()}-",
+                Prefix=f"{AWS_TEST_RESULT_KEY}/{self._get_s3_name()}-",
             ).get("Contents", []),
             key=lambda file: int(file["LastModified"].strftime("%s")),
             reverse=True,
@@ -378,13 +387,19 @@ class Test(dict):
 
     def persist_result_to_s3(self, result: Result) -> bool:
         """
+        Persist result object to s3
+        """
+        self.persist_test_result_to_s3(TestResult.from_result(result))
+
+    def persist_test_result_to_s3(self, test_result: TestResult) -> bool:
+        """
         Persist test result object to s3
         """
         boto3.client("s3").put_object(
             Bucket=get_global_config()["state_machine_aws_bucket"],
             Key=f"{AWS_TEST_RESULT_KEY}/"
-            f"{self.get_name()}-{int(time.time() * 1000)}.json",
-            Body=json.dumps(TestResult.from_result(result).__dict__),
+            f"{self._get_s3_name()}-{int(time.time() * 1000)}.json",
+            Body=json.dumps(test_result.__dict__),
         )
 
     def persist_to_s3(self) -> bool:
@@ -393,7 +408,7 @@ class Test(dict):
         """
         boto3.client("s3").put_object(
             Bucket=get_global_config()["state_machine_aws_bucket"],
-            Key=f"{AWS_TEST_KEY}/{self.get_name()}.json",
+            Key=f"{AWS_TEST_KEY}/{self._get_s3_name()}.json",
             Body=json.dumps(self),
         )
 

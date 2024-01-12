@@ -3134,12 +3134,6 @@ Status CoreWorker::GetAndPinArgsForExecutor(const TaskSpecification &task,
 
   for (size_t i = 0; i < task.NumArgs(); ++i) {
     if (task.ArgByRef(i)) {
-      // We need to put an OBJECT_IN_PLASMA error here so the subsequent call to Get()
-      // properly redirects to the plasma store.
-      if (!options_.is_local_mode) {
-        RAY_UNUSED(memory_store_->Put(RayObject(rpc::ErrorType::OBJECT_IN_PLASMA),
-                                      task.ArgId(i)));
-      }
       const auto &arg_ref = task.ArgRef(i);
       const auto arg_id = ObjectID::FromBinary(arg_ref.object_id());
       by_ref_ids.insert(arg_id);
@@ -3160,6 +3154,14 @@ Status CoreWorker::GetAndPinArgsForExecutor(const TaskSpecification &task,
       reference_counter_->AddBorrowedObject(
           arg_id, ObjectID::Nil(), task.ArgRef(i).owner_address());
       borrowed_ids->push_back(arg_id);
+      // We need to put an OBJECT_IN_PLASMA error here so the subsequent call to Get()
+      // properly redirects to the plasma store.
+      // NOTE: This needs to be done after adding reference to reference counter
+      // otherwise, the put is a no-op.
+      if (!options_.is_local_mode) {
+        RAY_UNUSED(memory_store_->Put(RayObject(rpc::ErrorType::OBJECT_IN_PLASMA),
+                                      task.ArgId(i)));
+      }
     } else {
       // A pass-by-value argument.
       std::shared_ptr<LocalMemoryBuffer> data = nullptr;

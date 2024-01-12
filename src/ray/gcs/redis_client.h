@@ -64,16 +64,6 @@ class RedisClient {
   /// \return Status
   Status Connect(instrumented_io_context &io_service);
 
-  // TODO(micafan) Maybe it's not necessary to use multi threads.
-  /// Connect to Redis. Non-thread safe.
-  /// Call this function before calling other functions.
-  ///
-  /// \param io_services The event loops for this client. Each RedisContext bind to
-  /// an event loop. Each io_service must be single-threaded. Because `RedisAsioClient`
-  /// is non-thread safe.
-  /// \return Status
-  Status Connect(std::vector<instrumented_io_context *> io_services);
-
   /// Disconnect with Redis. Non-thread safe.
   void Disconnect();
 

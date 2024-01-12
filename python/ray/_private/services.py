@@ -1661,7 +1661,6 @@ def start_raylet(
             f"--object-store-name={plasma_store_name}",
             f"--raylet-name={raylet_name}",
             f"--redis-address={redis_address}",
-            f"--temp-dir={temp_dir}",
             f"--metrics-agent-port={metrics_agent_port}",
             f"--runtime-env-agent-port={runtime_env_agent_port}",
             f"--logging-rotate-bytes={max_bytes}",

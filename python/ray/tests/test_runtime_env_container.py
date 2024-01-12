@@ -91,6 +91,7 @@ def test_serve_telemetry(podman_docker_cluster):
     run_in_container([cmd], container_id)
 
 
+@pytest.mark.skipif(sys.platform != "linux", reason="Only works on Linux.")
 def test_automatically_infered_worker_path(podman_docker_cluster):
     """Docstring"""
 
