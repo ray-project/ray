@@ -44,6 +44,7 @@ async def test_calling_initialize_twice():
     user_callable_wrapper = _make_user_callable_wrapper()
 
     await user_callable_wrapper.initialize_callable()
+    assert isinstance(user_callable_wrapper.user_callable, BasicClass)
     with pytest.raises(RuntimeError):
         await user_callable_wrapper.initialize_callable()
 
