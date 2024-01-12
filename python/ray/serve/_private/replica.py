@@ -670,14 +670,7 @@ class ReplicaActor:
         self._metrics_manager.shutdown()
 
     async def check_health(self):
-        # If the user provided a health check, call it via `user_callable_wrapper` on
-        # the user code thread. This means if user code blocks the event loop the health
-        # check may time out.
-        #
-        # To avoid this issue for basic cases without a user-defined health check, skip
-        # interacting with the `user_callable_wrapper` entirely.
-        if self._user_callable_wrapper.has_user_health_check:
-            await self._user_callable_wrapper.call_user_health_check()
+        await self._user_callable_wrapper.call_user_health_check()
 
 
 class UserCallableWrapper:
@@ -834,13 +827,18 @@ class UserCallableWrapper:
             extra={"log_to_stderr": False},
         )
 
-    @property
-    def has_user_health_check(self) -> bool:
-        return self._user_health_check is not None
-
     @_run_on_user_code_event_loop
-    async def call_user_health_check(self):
+    async def _call_user_health_check(self):
         await self._call_func_or_gen(self._user_health_check)
+
+    async def call_user_health_check(self):
+        # If the user provided a health check, call it on the user code thread. If user
+        # code blocks the event loop the health check may time out.
+        #
+        # To avoid this issue for basic cases without a user-defined health check, skip
+        # interacting with the user callable entirely.
+        if self._user_health_check is not None:
+            return await self._call_user_health_check()
 
     @_run_on_user_code_event_loop
     async def call_reconfigure(self, user_config: Any):
