@@ -47,6 +47,7 @@ def test_get_container() -> None:
             parallelism_per_worker=2,
             network=None,
             gpus=0,
+            tmp_filesystem=None,
         )
         assert isinstance(container, LinuxTesterContainer)
         assert container.docker_tag == "corebuild"

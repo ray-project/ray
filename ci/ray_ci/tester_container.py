@@ -1,7 +1,10 @@
 import os
 import platform
+import random
+import shutil
+import string
 import subprocess
-from typing import List, Optional
+from typing import List, Tuple, Optional
 
 from ci.ray_ci.utils import shard_tests, chunk_into_n
 from ci.ray_ci.utils import logger
@@ -17,6 +20,7 @@ class TesterContainer(Container):
         self,
         shard_count: int = 1,
         gpus: int = 0,
+        bazel_log_dir: str = "/tmp",
         network: Optional[str] = None,
         test_envs: Optional[List[str]] = None,
         shard_ids: Optional[List[int]] = None,
@@ -29,6 +33,7 @@ class TesterContainer(Container):
         used to run tests in a distributed fashion.
         :param shard_ids: The list of shard ids to run. If none, run no shards.
         """
+        self.bazel_log_dir = bazel_log_dir
         self.shard_count = shard_count
         self.shard_ids = shard_ids or []
         self.test_envs = test_envs or []
@@ -41,6 +46,21 @@ class TesterContainer(Container):
 
         if not skip_ray_installation:
             self.install_ray(build_type)
+
+    def _create_bazel_log_mount(self, tmp_dir: Optional[str] = None) -> Tuple[str, str]:
+        """
+        Create a temporary directory in the current container to store bazel event logs
+        produced by the test runs. We do this by using the artifact mount directory from
+        the host machine as a shared directory between all containers.
+        """
+        tmp_dir = tmp_dir or "".join(
+            random.choice(string.ascii_lowercase) for _ in range(5)
+        )
+        artifact_host, artifact_container = self.get_artifact_mount()
+        bazel_log_dir_host = os.path.join(artifact_host, tmp_dir)
+        bazel_log_dir_container = os.path.join(artifact_container, tmp_dir)
+        os.mkdir(bazel_log_dir_container)
+        return (bazel_log_dir_host, bazel_log_dir_container)
 
     def run_tests(
         self,
@@ -66,29 +86,49 @@ class TesterContainer(Container):
 
         # divide gpus evenly among chunks
         gpu_ids = chunk_into_n(list(range(self.gpus)), len(chunks))
+        bazel_log_dir_host, bazel_log_dir_container = self._create_bazel_log_mount()
         runs = [
-            self._run_tests_in_docker(chunks[i], gpu_ids[i], self.test_envs, test_arg)
+            self._run_tests_in_docker(
+                chunks[i], gpu_ids[i], bazel_log_dir_host, self.test_envs, test_arg
+            )
             for i in range(len(chunks))
         ]
         exits = [run.wait() for run in runs]
+        self._persist_test_results(bazel_log_dir_container)
+        self._cleanup_bazel_log_mount(bazel_log_dir_container)
+
         return all(exit == 0 for exit in exits)
+
+    def _persist_test_results(self, bazel_log_dir: str) -> None:
+        # TODO(can): implement the logic to persist test results to a database
+        self._upload_build_info(bazel_log_dir)
+
+    def _upload_build_info(self, bazel_log_dir) -> None:
+        logger.info("Uploading bazel test logs")
+        subprocess.check_call(
+            [
+                "bash",
+                "ci/build/upload_build_info.sh",
+                bazel_log_dir,
+            ]
+        )
+
+    def _cleanup_bazel_log_mount(self, bazel_log_dir: str) -> None:
+        shutil.rmtree(bazel_log_dir)
 
     def _run_tests_in_docker(
         self,
         test_targets: List[str],
         gpu_ids: List[int],
+        bazel_log_dir_host: str,
         test_envs: List[str],
         test_arg: Optional[str] = None,
     ) -> subprocess.Popen:
         logger.info("Running tests: %s", test_targets)
-        commands = []
-        if os.environ.get("BUILDKITE_BRANCH", "") == "master":
-            commands.extend(
-                [
-                    "cleanup() { ./ci/build/upload_build_info.sh; }",
-                    "trap cleanup EXIT",
-                ]
-            )
+        commands = [
+            f'cleanup() {{ chmod -R a+r "{self.bazel_log_dir}"; }}',
+            "trap cleanup EXIT",
+        ]
         if platform.system() == "Windows":
             # allow window tests to access aws services
             commands.append(
@@ -124,5 +164,6 @@ class TesterContainer(Container):
                 commands,
                 network=self.network,
                 gpu_ids=gpu_ids,
+                volumes=[f"{bazel_log_dir_host}:{self.bazel_log_dir}"],
             )
         )

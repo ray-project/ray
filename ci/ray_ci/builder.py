@@ -3,6 +3,7 @@ from typing import List
 import click
 
 from ci.ray_ci.builder_container import (
+    DEFAULT_PYTHON_VERSION,
     PYTHON_VERSIONS,
     BUILD_TYPES,
     ARCHITECTURE,
@@ -34,7 +35,7 @@ from ci.ray_ci.utils import logger, docker_login
 )
 @click.option(
     "--python-version",
-    default="3.8",
+    default=DEFAULT_PYTHON_VERSION,
     type=click.Choice(list(PYTHON_VERSIONS.keys())),
     help=("Python version to build the wheel with"),
 )
