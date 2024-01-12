@@ -144,21 +144,20 @@ class TesterContainer(Container):
             if path.isfile(log) and file.startswith("bazel_log"):
                 bazel_logs.append(log)
 
-        test_and_results = []
+        tests = {}
         # Parse bazel logs and print test results
         for file in bazel_logs:
             with open(file, "rb") as f:
                 for line in f:
                     event = json.loads(line.decode("utf-8"))
                     if "testResult" in event:
-                        test_and_results.append(
-                            (
-                                Test.from_bazel_event(event, team),
-                                TestResult.from_bazel_event(event),
-                            )
-                        )
+                        test = Test.from_bazel_event(event, team)
+                        test_result = TestResult.from_bazel_event(event)
+                        # Obtain only the final test result for a given test in case
+                        # the test is retried.
+                        tests[test.get_name()] = (test, test_result)
 
-        return test_and_results
+        return tests.keys()
 
     def _cleanup_bazel_log_mount(self, bazel_log_dir: str) -> None:
         shutil.rmtree(bazel_log_dir)

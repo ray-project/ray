@@ -183,8 +183,20 @@ def test_get_test_results() -> None:
     _BAZEL_LOG = json.dumps(
         {
             "id": {"testResult": {"label": "//ray/ci:test"}},
+            "testResult": {"status": "FAILED"},
+        },
+        {
+            "id": {"testResult": {"label": "//ray/ci:reef"}},
+            "testResult": {"status": "FAILED"},
+        },
+        {
+            "id": {"testResult": {"label": "//ray/ci:test"}},
+            "testResult": {"status": "FAILED"},
+        },
+        {
+            "id": {"testResult": {"label": "//ray/ci:test"}},
             "testResult": {"status": "PASSED"},
-        }
+        },
     )
 
     with tempfile.TemporaryDirectory() as tmp:
@@ -192,7 +204,13 @@ def test_get_test_results() -> None:
             f.write(_BAZEL_LOG)
         container = LinuxTesterContainer("docker_tag", skip_ray_installation=True)
         results = container._get_test_and_results("manu", tmp)
+
         test, result = results[0]
+        assert test.get_name() == f"{platform.system().lower()}://ray/ci:reef"
+        assert test.get_oncall() == "manu"
+        assert result.is_failing()
+
+        test, result = results[1]
         assert test.get_name() == f"{platform.system().lower()}://ray/ci:test"
         assert test.get_oncall() == "manu"
         assert result.is_passing()
