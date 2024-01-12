@@ -322,7 +322,6 @@ class PPOConfig(AlgorithmConfig):
         # SGD minibatch size must be smaller than train_batch_size (b/c
         # we subsample a batch of `sgd_minibatch_size` from the train-batch for
         # each `num_sgd_iter`).
-        # Note: Only check this if `train_batch_size` > 0.
         if (
             not self._enable_new_api_stack
             and self.sgd_minibatch_size > self.train_batch_size

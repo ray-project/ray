@@ -2,7 +2,6 @@ import pathlib
 from typing import Any, List, Mapping, Tuple, Union, Type
 
 from packaging import version
-import tree  # pip install dm_tree
 
 from ray.rllib.core.rl_module import RLModule
 from ray.rllib.core.rl_module.rl_module_with_target_networks_interface import (

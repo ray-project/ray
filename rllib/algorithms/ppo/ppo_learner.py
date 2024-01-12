@@ -186,22 +186,11 @@ class PPOLearner(Learner):
             # Use the episode API that allows appending (possibly complex) structs
             # to the data.
             episode.observations.append(episode.observations[-1])
-            # = tree.map_structure(
-            # lambda s: np.concatenate([s, [s[-1]]]),
-            # episode.observations,
-            # )
             episode.infos.append(episode.infos[-1])
-            episode.actions.append(episode.actions[-1])  # = tree.map_structure(
-            # lambda s: np.concatenate([s, [s[-1]]]),
-            # episode.actions,
-            # )
-            episode.rewards.append(0.0)  # = np.append(episode.rewards, 0.0)
+            episode.actions.append(episode.actions[-1])
+            episode.rewards.append(0.0)
             for v in list(episode.extra_model_outputs.values()):
                 v.append(v[-1])
-            # episode.extra_model_outputs = tree.map_structure(
-            #    lambda s: np.concatenate([s, [s[-1]]], axis=0),
-            #    episode.extra_model_outputs,
-            # )
             # Artificially make this episode truncated for the upcoming
             # GAE computations.
             if not episode.is_done:

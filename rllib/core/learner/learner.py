@@ -20,6 +20,9 @@ from typing import (
 
 import ray
 from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
+from ray.rllib.connectors.learner.learner_connector_pipeline import (
+    LearnerConnectorPipeline,
+)
 from ray.rllib.core.learner.reduce_result_dict_fn import _reduce_mean_results
 from ray.rllib.core.rl_module.marl_module import (
     MultiAgentRLModule,

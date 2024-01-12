@@ -3132,10 +3132,10 @@ class AlgorithmConfig(_Config):
             batch_size = min_batch_size
             while batch_size < self.total_train_batch_size:
                 batch_size += min_batch_size
-            if (
-                batch_size - train_batch_size > 0.1 * self.total_train_batch_size
-                or batch_size - min_batch_size - self.total_train_batch_size
-                > (0.1 * train_batch_size)
+            if batch_size - self.total_train_batch_size > (
+                0.1 * self.total_train_batch_size
+            ) or batch_size - min_batch_size - self.total_train_batch_size > (
+                0.1 * self.total_train_batch_size
             ):
                 suggested_rollout_fragment_length = self.total_train_batch_size // (
                     self.num_envs_per_worker * (self.num_rollout_workers or 1)
