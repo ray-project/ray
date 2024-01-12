@@ -6,7 +6,7 @@ from ray._private.utils import import_attr
 from ray.serve._private.config import DeploymentConfig, ReplicaConfig, _proto_to_dict
 from ray.serve._private.constants import DEFAULT_AUTOSCALING_POLICY, DEFAULT_GRPC_PORT
 from ray.serve._private.utils import DEFAULT
-from ray.serve.autoscaling_policy import DefaultAutoscalingPolicy
+from ray.serve.autoscaling_policy import default_autoscaling_policy
 from ray.serve.config import (
     AutoscalingConfig,
     DeploymentMode,
@@ -545,6 +545,33 @@ def test_proxy_location_to_deployment_mode():
         ProxyLocation._to_deployment_mode({"some_other_obj"})
 
 
+def test_deployment_mode_to_proxy_location():
+    assert ProxyLocation._from_deployment_mode(None) is None
+
+    assert (
+        ProxyLocation._from_deployment_mode(DeploymentMode.NoServer)
+        == ProxyLocation.Disabled
+    )
+    assert (
+        ProxyLocation._from_deployment_mode(DeploymentMode.HeadOnly)
+        == ProxyLocation.HeadOnly
+    )
+    assert (
+        ProxyLocation._from_deployment_mode(DeploymentMode.EveryNode)
+        == ProxyLocation.EveryNode
+    )
+
+    assert ProxyLocation._from_deployment_mode("NoServer") == ProxyLocation.Disabled
+    assert ProxyLocation._from_deployment_mode("HeadOnly") == ProxyLocation.HeadOnly
+    assert ProxyLocation._from_deployment_mode("EveryNode") == ProxyLocation.EveryNode
+
+    with pytest.raises(ValueError):
+        ProxyLocation._from_deployment_mode("Unknown")
+
+    with pytest.raises(TypeError):
+        ProxyLocation._from_deployment_mode({"some_other_obj"})
+
+
 @pytest.mark.parametrize(
     "policy", [None, fake_policy, "ray.serve.tests.unit.test_config:fake_policy"]
 )
@@ -564,7 +591,7 @@ def test_autoscaling_policy_serializations(policy):
     ).autoscaling_config.get_policy()
 
     if policy is None:
-        assert deserialized_autoscaling_policy == DefaultAutoscalingPolicy
+        assert deserialized_autoscaling_policy == default_autoscaling_policy
     else:
         assert deserialized_autoscaling_policy() == fake_policy_return_value
 
@@ -584,7 +611,7 @@ def test_default_autoscaling_policy_import_path():
     """Test that default autoscaling policy can be imported."""
     policy = import_attr(DEFAULT_AUTOSCALING_POLICY)
 
-    assert policy == DefaultAutoscalingPolicy
+    assert policy == default_autoscaling_policy
 
 
 class TestProtoToDict:

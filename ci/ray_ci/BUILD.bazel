@@ -11,11 +11,12 @@ py_library(
             "build_in_docker.py",
         ],
     ),
-    visibility = ["//visibility:private"],
+    visibility = ["//ci/ray_ci:__subpackages__"],
     deps = [
         ci_require("boto3"),
         ci_require("pyyaml"),
         ci_require("click"),
+        "//release:ray_release",
     ],
 )
 
