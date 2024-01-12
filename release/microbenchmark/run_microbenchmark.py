@@ -2,6 +2,11 @@ import json
 import os
 
 
+import argparse
+
+parser = argparse.ArgumentParser()
+parser.add_argument("--run-dag", action="store_true", default=False, help="Run DAG related tests")
+
 def to_dict_key(key: str):
     for r in [" ", ":", "-"]:
         key = key.replace(r, "_")
@@ -13,7 +18,9 @@ def to_dict_key(key: str):
 if __name__ == "__main__":
     from ray._private.ray_perf import main
 
-    results = main() or []
+    args = parser.parse_args()
+
+    results = main(run_dag=args.run_dag) or []
 
     result_dict = {
         f"{to_dict_key(v[0])}": (v[1], v[2]) for v in results if v is not None
