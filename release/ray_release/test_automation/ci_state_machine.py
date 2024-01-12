@@ -23,9 +23,9 @@ MAX_REPORT_FAILURE_NO = 5
 
 
 class CITestStateMachine(TestStateMachine):
-    def __init__(self, test: Test) -> None:
+    def __init__(self, test: Test, dry_run: bool = False) -> None:
         # Need long enough test history to detect flaky tests
-        super().__init__(test, history_length=100)
+        super().__init__(test, dry_run=dry_run, history_length=100)
 
     def _move_hook(self, from_state: TestState, to_state: TestState) -> None:
         change = (from_state, to_state)
