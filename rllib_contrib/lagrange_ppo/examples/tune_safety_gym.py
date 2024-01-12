@@ -1,6 +1,6 @@
 import pprint
 
-import envs
+import envs  # noqa # pylint: disable=unused-import
 from lagrange_ppo import PPOLagrange
 
 import ray

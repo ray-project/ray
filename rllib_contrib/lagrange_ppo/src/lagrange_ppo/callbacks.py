@@ -1,5 +1,5 @@
 from collections import deque
-from typing import List, Dict
+from typing import Dict, List
 
 from ray.rllib.algorithms.callbacks import DefaultCallbacks
 from ray.rllib.env import BaseEnv
@@ -7,8 +7,10 @@ from ray.rllib.evaluation import RolloutWorker
 from ray.rllib.evaluation.episode_v2 import EpisodeV2
 from ray.rllib.policy import Policy
 
-def mean(array:List) -> float:
+
+def mean(array: List) -> float:
     return sum(array) / float(len(array))
+
 
 class ComputeEpisodeCostCallback(DefaultCallbacks):
     def on_episode_start(
