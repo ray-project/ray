@@ -12,14 +12,17 @@ log = logging.getLogger(__name__)
 POST_MORTEM_ERROR_UUID = "post_mortem_error_uuid"
 
 
-def _try_import(module):
+def _try_import_debugpy():
     try:
-        return importlib.import_module(module)
-    except ModuleNotFoundError:
+        debugpy = importlib.import_module("debugpy")
+        if not hasattr(debugpy, "__version__") or debugpy.__version__ < "1.8.0":
+            raise ImportError()
+        return debugpy
+    except (ModuleNotFoundError, ImportError):
         log.error(
-            f"Module '{module}' cannot be loaded. "
-            f"Ray Debugger will not work without '{module}'. "
-            f"Install this module using 'pip install {module}' "
+            "Module 'debugpy>=1.8.0' cannot be loaded. "
+            "Ray Debugpy Debugger will not work without 'debugpy>=1.8.0' installed. "
+            "Install this module using 'pip install debugpy==1.8.0' "
         )
         return None
 
@@ -50,7 +53,7 @@ def _ensure_debugger_port_open_thread_safe():
     # The lock is acquired before checking the debugger port so only
     # one thread can open the debugger port.
     with debugger_port_lock:
-        debugpy = _try_import("debugpy")
+        debugpy = _try_import_debugpy()
         if not debugpy:
             return
 
@@ -70,7 +73,7 @@ def set_trace(breakpoint_uuid=None):
     """Interrupt the flow of the program and drop into the Ray debugger.
     Can be used within a Ray task or actor.
     """
-    debugpy = _try_import("debugpy")
+    debugpy = _try_import_debugpy()
     if not debugpy:
         return
 
