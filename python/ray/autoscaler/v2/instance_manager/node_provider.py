@@ -81,7 +81,7 @@ class ICloudInstanceProvider(ABC):
     The cloud instance provider is responsible for managing the cloud instances in the
     cluster. It provides the following main functionalities:
         - Update the cloud instances:
-            1. Given a target running set of cloud instances, may launch new ones.
+            1. Given a minimal running set of cloud instances, may launch new ones.
             2. Terminate existing running instances.
         - Get the running cloud instances in the cluster.
         - Poll the errors that happened for the updates to the cloud instance provider.
@@ -102,28 +102,33 @@ class ICloudInstanceProvider(ABC):
     Cloud instance ids are expected to be unique across the cluster.
 
     4. Idempotent updates
-    For the update APIs (e.g. update_cluster, terminate), the provider may use the
-    update ids to provide idempotency.
+    For the update APIs (e.g. ensure_min_nodes, terminate), the provider may use the
+    request ids to provide idempotency.
 
     Usage:
         ```
             provider: ICloudInstanceProvider = ...
 
-            # Update the cluster with a designed shape.
-            provider.update(
-                target_running_nodes={
+            # Update the cluster with a desired shape.
+            provider.ensure_min_nodes(
+                shape={
                     "worker_nodes": 10,
                     "ray_head": 1,
                 },
-                to_terminate=["node_1", "node_2"],
-                id="update_1",
+                request_id="1",
             )
 
-            # Poll the state of the cloud instance provider.
+            # Get the running nodes of the cloud instance provider.
             running = provider.get_running()
 
             # Poll the errors
             errors = provider.poll_errors()
+
+            # Terminate nodes.
+            provider.terminate_nodes(
+                ids=["cloud_instance_id_1", "cloud_instance_id_2"],
+                request_id="2",
+            )
 
             # Process the state of the provider.
             ...
@@ -141,20 +146,29 @@ class ICloudInstanceProvider(ABC):
         pass
 
     @abstractmethod
-    def update(
-        self,
-        target_running_nodes: Dict[NodeType, int],
-        to_terminate: List[CloudInstanceId],
-        request_id: str,
-    ) -> None:
-        """Update the provider target cluster shape.
-
-        The provider should launch new nodes to match the target shape.
+    def terminate(self, ids: List[CloudInstanceId], request_id: str) -> None:
+        """
+        Terminate the cloud instances asynchronously.
 
         Args:
-            target_running_nodes: the target cluster shape (number of running nodes by
+            ids: the cloud instance ids to terminate.
+            request_id: a unique id that identifies the request.
+        """
+        pass
+
+    @abstractmethod
+    def ensure_min_nodes(
+        self,
+        shape: Dict[NodeType, int],
+        request_id: str,
+    ) -> None:
+        """Update the provider to ensure minimal running nodes.
+
+        The provider should launch new nodes to match the min shape.
+
+        Args:
+            shape: the target cluster shape (number of running nodes by
                 type). This includes the nodes that are already running.
-            to_terminate: the nodes to terminate.
             request_id: a unique id that identifies the update request.
         """
         pass
