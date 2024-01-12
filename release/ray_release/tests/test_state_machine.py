@@ -12,6 +12,13 @@ from ray_release.result import (
     Result,
     ResultStatus,
 )
+from ray_release.test_automation.release_state_machine import ReleaseTestStateMachine
+from ray_release.test_automation.ci_state_machine import (
+    CITestStateMachine,
+    CONTINUOUS_FAILURE_TO_FLAKY,
+    CONTINUOUS_PASSING_TO_PASSING,
+    FAILING_TO_FLAKY_MESSAGE,
+)
 from ray_release.test_automation.state_machine import TestStateMachine
 
 
@@ -87,7 +94,56 @@ TestStateMachine.ray_repo = MockRepo()
 TestStateMachine.ray_buildkite = MockBuildkite()
 
 
-def test_move_from_passing_to_failing():
+def test_ci_move_from_passing_to_failing_to_flaky():
+    """
+    Test the entire lifecycle of a CI test when it moves from passing to failing.
+    Check that the conditions are met for each state transition. Also check that
+    gihub issues are created and closed correctly.
+    """
+    test = Test(name="test", team="ci")
+    # start from passing
+    assert test.get_state() == TestState.PASSING
+
+    # passing to failing
+    test.test_results = [
+        TestResult.from_result(Result(status=ResultStatus.ERROR.value)),
+    ]
+    CITestStateMachine(test).move()
+    assert test.get_state() == TestState.FAILING
+
+    # failing to consistently failing
+    test.test_results.extend(
+        [
+            TestResult.from_result(Result(status=ResultStatus.ERROR.value)),
+            TestResult.from_result(Result(status=ResultStatus.ERROR.value)),
+        ]
+    )
+    CITestStateMachine(test).move()
+    assert test.get_state() == TestState.CONSITENTLY_FAILING
+    issue = MockIssueDB.issue_db[test.get(Test.KEY_GITHUB_ISSUE_NUMBER)]
+    assert issue.state == "open"
+    assert "ci-test" in [label.name for label in issue.labels]
+
+    # move from consistently failing to flaky
+    test.test_results.extend(
+        [TestResult.from_result(Result(status=ResultStatus.ERROR.value))]
+        * CONTINUOUS_FAILURE_TO_FLAKY
+    )
+    CITestStateMachine(test).move()
+    assert test.get_state() == TestState.FLAKY
+    assert issue.comments[-1] == FAILING_TO_FLAKY_MESSAGE
+
+    # go back to passing
+    test.test_results = [
+        TestResult.from_result(Result(status=ResultStatus.SUCCESS.value)),
+    ] * CONTINUOUS_PASSING_TO_PASSING
+    CITestStateMachine(test).move()
+    assert test.get_state() == TestState.PASSING
+    assert test.get(Test.KEY_GITHUB_ISSUE_NUMBER) is None
+    assert issue.state == "closed"
+
+
+def test_release_move_from_passing_to_failing():
     test = Test(name="test", team="ci")
     # Test original state
     test.test_results = [
@@ -100,7 +156,7 @@ def test_move_from_passing_to_failing():
         0,
         TestResult.from_result(Result(status=ResultStatus.ERROR.value)),
     )
-    sm = TestStateMachine(test)
+    sm = ReleaseTestStateMachine(test)
     sm.move()
     assert test.get_state() == TestState.FAILING
     assert test[Test.KEY_BISECT_BUILD_NUMBER] == 1
@@ -110,23 +166,23 @@ def test_move_from_passing_to_failing():
         0,
         TestResult.from_result(Result(status=ResultStatus.ERROR.value)),
     )
-    sm = TestStateMachine(test)
+    sm = ReleaseTestStateMachine(test)
     sm.move()
     assert test.get_state() == TestState.CONSITENTLY_FAILING
     assert test[Test.KEY_GITHUB_ISSUE_NUMBER] == MockIssueDB.issue_id - 1
 
 
-def test_move_from_failing_to_consisently_failing():
+def test_release_move_from_failing_to_consisently_failing():
     test = Test(name="test", team="ci", stable=False)
     test[Test.KEY_BISECT_BUILD_NUMBER] = 1
     test.test_results = [
         TestResult.from_result(Result(status=ResultStatus.ERROR.value)),
     ]
-    sm = TestStateMachine(test)
+    sm = ReleaseTestStateMachine(test)
     sm.move()
     assert test.get_state() == TestState.FAILING
     test[Test.KEY_BISECT_BLAMED_COMMIT] = "1234567890"
-    sm = TestStateMachine(test)
+    sm = ReleaseTestStateMachine(test)
     sm.move()
     sm.comment_blamed_commit_on_github_issue()
     issue = MockIssueDB.issue_db[test.get(Test.KEY_GITHUB_ISSUE_NUMBER)]
@@ -137,13 +193,13 @@ def test_move_from_failing_to_consisently_failing():
     assert "unstable-release-test" in labels
 
 
-def test_move_from_failing_to_passing():
+def test_release_move_from_failing_to_passing():
     test = Test(name="test", team="ci")
     test.test_results = [
         TestResult.from_result(Result(status=ResultStatus.ERROR.value)),
         TestResult.from_result(Result(status=ResultStatus.ERROR.value)),
     ]
-    sm = TestStateMachine(test)
+    sm = ReleaseTestStateMachine(test)
     sm.move()
     assert test.get_state() == TestState.CONSITENTLY_FAILING
     assert test[Test.KEY_GITHUB_ISSUE_NUMBER] == MockIssueDB.issue_id - 1
@@ -151,7 +207,7 @@ def test_move_from_failing_to_passing():
         0,
         TestResult.from_result(Result(status=ResultStatus.SUCCESS.value)),
     )
-    sm = TestStateMachine(test)
+    sm = ReleaseTestStateMachine(test)
     sm.move()
     assert test.get_state() == TestState.PASSING
     assert test.get(Test.KEY_GITHUB_ISSUE_NUMBER) is None
@@ -159,7 +215,7 @@ def test_move_from_failing_to_passing():
     assert test.get(Test.KEY_BISECT_BLAMED_COMMIT) is None
 
 
-def test_move_from_failing_to_jailed():
+def test_release_move_from_failing_to_jailed():
     test = Test(name="test", team="ci")
     test.test_results = [
         TestResult.from_result(Result(status=ResultStatus.ERROR.value)),
@@ -167,14 +223,14 @@ def test_move_from_failing_to_jailed():
         TestResult.from_result(Result(status=ResultStatus.ERROR.value)),
         TestResult.from_result(Result(status=ResultStatus.ERROR.value)),
     ]
-    sm = TestStateMachine(test)
+    sm = ReleaseTestStateMachine(test)
     sm.move()
     assert test.get_state() == TestState.CONSITENTLY_FAILING
     test.test_results.insert(
         0,
         TestResult.from_result(Result(status=ResultStatus.ERROR.value)),
     )
-    sm = TestStateMachine(test)
+    sm = ReleaseTestStateMachine(test)
     sm.move()
     assert test.get_state() == TestState.JAILED
 
@@ -185,7 +241,7 @@ def test_move_from_failing_to_jailed():
         0,
         TestResult.from_result(Result(status=ResultStatus.ERROR.value)),
     )
-    sm = TestStateMachine(test)
+    sm = ReleaseTestStateMachine(test)
     sm.move()
     assert test.get_state() == TestState.JAILED
     assert issue.state == "open"
@@ -195,7 +251,7 @@ def test_move_from_failing_to_jailed():
         0,
         TestResult.from_result(Result(status=ResultStatus.SUCCESS.value)),
     )
-    sm = TestStateMachine(test)
+    sm = ReleaseTestStateMachine(test)
     sm.move()
     assert test.get_state() == TestState.PASSING
     assert test.get(Test.KEY_GITHUB_ISSUE_NUMBER) is None

@@ -226,9 +226,6 @@ class GenericProxy(ABC):
             }
         )
 
-        # `self._prevent_node_downscale_ref` is used to prevent the node from being
-        # downscaled when there are ongoing requests
-        self._prevent_node_downscale_ref = ray.put("prevent_node_downscale_object")
         # `self._ongoing_requests` is used to count the number of ongoing requests
         self._ongoing_requests = 0
         # The time when the node starts to drain.
@@ -1037,24 +1034,37 @@ class HTTPProxy(GenericProxy):
             )
 
         finally:
+            # For websocket connection, queue receive task is done when receiving
+            # disconnect message from client.
+            receive_client_disconnect_msg = False
             if not proxy_asgi_receive_task.done():
                 proxy_asgi_receive_task.cancel()
             else:
-                # If the server disconnects, status_code is set above from the
-                # disconnect message. Otherwise the disconnect code comes from
-                # a client message via the receive interface.
-                if (
-                    status is None
-                    and proxy_request.request_type == "websocket"
-                    and proxy_asgi_receive_task.exception() is None
-                ):
+                receive_client_disconnect_msg = True
+
+            # If the server disconnects, status_code can be set above from the
+            # disconnect message.
+            # If client disconnects, the disconnect code comes from
+            # a client message via the receive interface.
+            if status is None and proxy_request.request_type == "websocket":
+                if receive_client_disconnect_msg:
+                    # The disconnect message is sent from the client.
                     status = ResponseStatus(
                         code=str(proxy_asgi_receive_task.result()),
+                        is_error=True,
+                    )
+                else:
+                    # The server disconnect without sending a disconnect message
+                    # (otherwise the `status` would be set).
+                    status = ResponseStatus(
+                        code="1000",  # [Sihan] is there a better code for this?
                         is_error=True,
                     )
 
             del self.asgi_receive_queues[request_id]
 
+        # The status code should always be set.
+        assert status is not None
         yield status
 
 

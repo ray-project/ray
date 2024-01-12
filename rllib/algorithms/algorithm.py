@@ -5,12 +5,12 @@ from datetime import datetime
 import functools
 import gymnasium as gym
 import importlib
+import importlib.metadata
 import json
 import logging
 import numpy as np
 import os
 from packaging import version
-import importlib.metadata
 import re
 import tempfile
 import time
@@ -46,8 +46,6 @@ from ray.rllib.evaluation.metrics import (
     collect_metrics,
     summarize_episodes,
 )
-from ray.rllib.evaluation.postprocessing_v2 import postprocess_episodes_to_sample_batch
-from ray.rllib.evaluation.rollout_worker import RolloutWorker
 from ray.rllib.evaluation.worker_set import WorkerSet
 from ray.rllib.execution.rollout_ops import synchronous_parallel_sample
 from ray.rllib.execution.train_ops import multi_gpu_train_one_step, train_one_step
@@ -833,7 +831,7 @@ class Algorithm(Trainable, AlgorithmBase):
             results.update(self.evaluation_metrics)
 
         # Sync filters on workers.
-        if self._uses_new_env_runners:
+        if self.config.uses_new_env_runners:
             # Synchronize EnvToModule and ModuleToEnv connector states and broadcast new
             # states back to all workers.
             with self._timers[SYNCH_ENV_CONNECTOR_STATES_TIMER]:
@@ -1451,11 +1449,10 @@ class Algorithm(Trainable, AlgorithmBase):
                     rollout_metrics.extend(metrics)
                 i += 1
 
-            # Convert our list of Episodes to a single SampleBatch.
-            batch = postprocess_episodes_to_sample_batch(episodes)
             # Collect steps stats.
-            _agent_steps = batch.agent_steps()
-            _env_steps = batch.env_steps()
+            # TODO (sven): Solve for proper multi-agent env/agent steps counting.
+            _agent_steps = sum(len(e) for e in episodes)
+            _env_steps = sum(len(e) for e in episodes)
 
             # Only complete episodes done by eval workers.
             if unit == "episodes":
@@ -1469,6 +1466,7 @@ class Algorithm(Trainable, AlgorithmBase):
                 )
 
             if self.reward_estimators:
+                batch = concat_samples([e.get_sample_batch() for e in episodes])
                 all_batches.append(batch)
 
             agent_steps_this_iter += _agent_steps
@@ -1609,7 +1607,7 @@ class Algorithm(Trainable, AlgorithmBase):
             # TODO: (sven) rename MultiGPUOptimizer into something more
             #  meaningful.
             if self.config._enable_new_api_stack:
-                train_results = self.learner_group.update(train_batch)
+                train_results = self.learner_group.update_from_batch(batch=train_batch)
             elif self.config.get("simple_optimizer") is True:
                 train_results = train_one_step(self, train_batch)
             else:

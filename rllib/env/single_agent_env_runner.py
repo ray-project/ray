@@ -277,6 +277,10 @@ class SingleAgentEnvRunner(EnvRunner):
                         extra_model_outputs=extra_model_output,
                     )
 
+                    # Make `on_episode_step` callback before finalizing the episode.
+                    self._make_on_episode_callback("on_episode_step", env_index)
+                    done_episodes_to_return.append(self._episodes[env_index].finalize())
+
                     # Make the `on_episode_env` callback (after having finalized the
                     # episode object).
                     self._make_on_episode_callback("on_episode_end", env_index)

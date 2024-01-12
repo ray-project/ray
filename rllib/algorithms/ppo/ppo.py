@@ -405,7 +405,7 @@ class PPO(Algorithm):
     @override(Algorithm)
     def training_step(self):
         # New API stack (RLModule, Learner, EnvRunner, ConnectorV2).
-        if self._uses_new_env_runners:
+        if self.config.uses_new_env_runners:
             return self._training_step_new_api_stack()
         # Old and hybrid API stacks (Policy, RolloutWorker, Connector, maybe RLModule,
         # maybe Learner).
@@ -516,7 +516,7 @@ class PPO(Algorithm):
                 self.config.mini_batch_size_per_learner
                 or self.config.sgd_minibatch_size
             )
-            train_results = self.learner_group.update(
+            train_results = self.learner_group.update_from_batch(
                 batch=train_batch,
                 minibatch_size=mini_batch_size_per_learner,
                 num_iters=self.config.num_sgd_iter,

@@ -1,5 +1,6 @@
 import enum
 import os
+import platform
 import json
 import time
 from typing import Optional, List, Dict
@@ -20,7 +21,7 @@ from ray_release.util import dict_hash
 AWS_TEST_KEY = "ray_tests"
 AWS_TEST_RESULT_KEY = "ray_test_results"
 DEFAULT_PYTHON_VERSION = tuple(
-    int(v) for v in os.environ.get("RELEASE_PY", "3.8").split(".")
+    int(v) for v in os.environ.get("RELEASE_PY", "3.9").split(".")
 )
 DATAPLANE_ECR_REPO = "anyscale/ray"
 DATAPLANE_ECR_ML_REPO = "anyscale/ray-ml"
@@ -45,6 +46,7 @@ class TestState(enum.Enum):
 
     JAILED = "jailed"
     FAILING = "failing"
+    FLAKY = "flaky"
     CONSITENTLY_FAILING = "consistently_failing"
     PASSING = "passing"
 
@@ -63,6 +65,20 @@ class TestResult:
             commit=os.environ.get("BUILDKITE_COMMIT", ""),
             url=result.buildkite_url,
             timestamp=int(time.time() * 1000),
+        )
+
+    @classmethod
+    def from_bazel_event(cls, event: dict):
+        return cls.from_result(
+            Result(
+                status=ResultStatus.SUCCESS.value
+                if event["testResult"]["status"] == "PASSED"
+                else ResultStatus.ERROR.value,
+                buildkite_url=(
+                    f"{os.environ.get('BUILDKITE_BUILD_URL')}"
+                    f"#{os.environ.get('BUILDKITE_JOB_ID')}"
+                ),
+            )
         )
 
     @classmethod
@@ -91,6 +107,18 @@ class Test(dict):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.test_results = None
+
+    @classmethod
+    def from_bazel_event(cls, event: dict, team: str):
+        bazel_rule = event["id"]["testResult"]["label"]
+        prefix = bazel_rule.replace("//", "").replace("/", "_").replace(":", "_")
+        suffix = platform.system().lower()
+        return cls(
+            {
+                "name": f"{prefix}.{suffix}",
+                "team": team,
+            }
+        )
 
     def is_jailed_with_open_issue(self, ray_github: Repository) -> bool:
         """
@@ -172,7 +200,7 @@ class Test(dict):
 
     def update_from_s3(self) -> None:
         """
-        Update test object with data field from s3
+        Update test object with data fields that exist only on s3
         """
         try:
             data = (
@@ -188,7 +216,9 @@ class Test(dict):
         except ClientError as e:
             logger.warning(f"Failed to update data for {self.get_name()} from s3:  {e}")
             return
-        self.update(json.loads(data))
+        for key, value in json.loads(data).items():
+            if key not in self:
+                self[key] = value
 
     def get_state(self) -> TestState:
         """

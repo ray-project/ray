@@ -1,3 +1,4 @@
+import base64
 import sys
 import pytest
 from unittest import mock
@@ -12,7 +13,8 @@ def test_chunk_into_n() -> None:
     assert chunk_into_n([1, 2], 1) == [[1, 2]]
 
 
-def test_docker_login() -> None:
+@mock.patch("boto3.client")
+def test_docker_login(mock_client) -> None:
     def _mock_subprocess_run(
         cmd: List[str],
         stdin=None,
@@ -20,11 +22,16 @@ def test_docker_login() -> None:
         stderr=None,
         check=True,
     ) -> None:
-        assert cmd == ["pip", "install", "awscli"] or stdin.read() == b"password"
+        assert stdin.read() == b"password"
 
-    with mock.patch("subprocess.check_output", return_value=b"password"):
-        with mock.patch("subprocess.run", side_effect=_mock_subprocess_run):
-            docker_login("docker_ecr")
+    mock_client.return_value.get_authorization_token.return_value = {
+        "authorizationData": [
+            {"authorizationToken": base64.b64encode(b"AWS:password")},
+        ],
+    }
+
+    with mock.patch("subprocess.run", side_effect=_mock_subprocess_run):
+        docker_login("docker_ecr")
 
 
 if __name__ == "__main__":
