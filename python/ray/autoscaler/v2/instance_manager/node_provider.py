@@ -125,7 +125,7 @@ class ICloudInstanceProvider(ABC):
             errors = provider.poll_errors()
 
             # Terminate nodes.
-            provider.terminate_nodes(
+            provider.terminate(
                 ids=["cloud_instance_id_1", "cloud_instance_id_2"],
                 request_id="2",
             )
