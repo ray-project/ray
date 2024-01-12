@@ -13,6 +13,15 @@ steps:
     commands:
       - ./ci/ray_ci/macos/macos_ci_build.sh build_x86_64
 
+  - label: ":tapioca: build: :mac: wheels and jars (aarch64)"
+    tags:
+      - macos_wheels
+      - python_dependencies
+    job_env: MACOS
+    instance_type: macos-arm64
+    commands:
+      - ./ci/ray_ci/macos/macos_ci_build.sh build_aarch64
+
   - label: ":ray: core: :mac: small & client tests"
     tags: 
       - core_cpp
