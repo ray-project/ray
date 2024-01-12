@@ -9,7 +9,7 @@ import {
   ServeReplicaState,
 } from "../../type/serve";
 import { TEST_APP_WRAPPER } from "../../util/test-utils";
-import { ServeApplicationDetailPage } from "./ServeApplicationDetailPage";
+import { ServeDeploymentDetailPage } from "./ServeDeploymentDetailPage";
 
 jest.mock("react-router-dom", () => ({
   ...jest.requireActual("react-router-dom"),
@@ -20,12 +20,13 @@ jest.mock("../../service/serve");
 const mockUseParams = jest.mocked(useParams);
 const mockGetServeApplications = jest.mocked(getServeApplications);
 
-describe("ServeApplicationDetailPage", () => {
-  it("renders page with deployments and replicas", async () => {
-    expect.assertions(13);
+describe("ServeDeploymentDetailPage", () => {
+  it("renders page with deployment details", async () => {
+    expect.assertions(9);
 
     mockUseParams.mockReturnValue({
       applicationName: "home",
+      deploymentName: "FirstDeployment",
     });
     mockGetServeApplications.mockResolvedValue({
       data: {
@@ -103,45 +104,35 @@ describe("ServeApplicationDetailPage", () => {
       },
     } as any);
 
-    render(<ServeApplicationDetailPage />, { wrapper: TEST_APP_WRAPPER });
+    render(<ServeDeploymentDetailPage />, { wrapper: TEST_APP_WRAPPER });
 
     const user = userEvent.setup();
 
-    await screen.findAllByText("home");
+    await screen.findByText("FirstDeployment");
     expect(screen.getByTestId("metadata-content-for-Name")).toHaveTextContent(
-      "home",
+      "FirstDeployment",
     );
-    expect(
-      screen.getByTestId("metadata-content-for-Route prefix"),
-    ).toHaveTextContent("/home");
     expect(screen.getByTestId("metadata-content-for-Status")).toHaveTextContent(
-      "RUNNING",
+      "HEALTHY",
     );
     expect(
       screen.getByTestId("metadata-content-for-Replicas"),
-    ).toHaveTextContent("3");
+    ).toHaveTextContent("2");
 
-    // First deployment
-    expect(screen.getByText("FirstDeployment")).toBeVisible();
-    expect(screen.getByText("deployment is healthy")).toBeVisible();
-    expect(screen.getByText("HEALTHY")).toBeVisible();
+    // First replica
+    expect(screen.getByText("test-replica-1")).toBeVisible();
+    expect(screen.getByText("STARTING")).toBeVisible();
 
-    // Second deployment
-    expect(screen.getByText("SecondDeployment")).toBeVisible();
-    expect(screen.getByText("deployment is updating")).toBeVisible();
-    expect(screen.getByText("UPDATING")).toBeVisible();
+    // Second replica
+    expect(screen.getByText("test-replica-2")).toBeVisible();
+    expect(screen.getByText("RUNNING")).toBeVisible();
 
-    // Config dialog for application
+    // Config dialog for deployment
     await user.click(
       within(
-        screen.getByTestId("metadata-content-for-Application config"),
+        screen.getByTestId("metadata-content-for-Deployment config"),
       ).getByText("View"),
     );
-    await screen.findByText(/import_path: home:graph/);
-    expect(screen.getByText(/import_path: home:graph/)).toBeVisible();
-
-    // Config dialog for first deployment
-    await user.click(screen.getAllByText("View config")[0]);
     await screen.findByText(/test-config: 1/);
     expect(screen.getByText(/test-config: 1/)).toBeVisible();
     expect(screen.getByText(/autoscaling-value: 2/)).toBeVisible();

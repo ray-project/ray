@@ -25,8 +25,8 @@ import { MetadataSection } from "../../components/MetadataSection";
 import { StatusChip } from "../../components/StatusChip";
 import { HelpInfo } from "../../components/Tooltip";
 import { MainNavPageInfo } from "../layout/mainNavContext";
-import { useServeApplicationDetails } from "./hook/useServeApplications";
-import { ServeDeploymentRow } from "./ServeDeploymentRow";
+import { useServeDeploymentDetails } from "./hook/useServeApplications";
+import { ServeReplicaRow } from "./ServeDeploymentRow";
 
 const useStyles = makeStyles((theme) =>
   createStyles({
@@ -39,37 +39,29 @@ const useStyles = makeStyles((theme) =>
     helpInfo: {
       marginLeft: theme.spacing(1),
     },
-    statusMessage: {
-      display: "inline-flex",
-      maxWidth: "100%",
-    },
   }),
 );
 
 const columns: { label: string; helpInfo?: ReactElement; width?: string }[] = [
-  { label: "Deployment name" },
+  { label: "Replica ID" },
   { label: "Status" },
-  { label: "Status message", width: "30%" },
-  { label: "Num replicas" },
   { label: "Actions" },
-  { label: "Application" },
-  { label: "Route prefix" },
-  { label: "Last deployed at" },
-  { label: "Duration (since last deploy)" },
+  { label: "Started at" },
+  { label: "Duration" },
 ];
 
-export const ServeApplicationDetailPage = () => {
+export const ServeDeploymentDetailPage = () => {
   const classes = useStyles();
-  const { applicationName } = useParams();
+  const { applicationName, deploymentName } = useParams();
 
   const {
     application,
-    filteredDeployments,
+    deployment,
+    filteredReplicas,
     page,
     setPage,
     changeFilter,
-    allDeployments,
-  } = useServeApplicationDetails(applicationName);
+  } = useServeDeploymentDetails(applicationName, deploymentName);
 
   if (!application) {
     return (
@@ -79,36 +71,27 @@ export const ServeApplicationDetailPage = () => {
     );
   }
 
-  const appName = application.name ? application.name : "-";
+  if (!deployment) {
+    return (
+      <Typography color="error">
+        Deployment with name "{deploymentName}" not found.
+      </Typography>
+    );
+  }
 
   return (
     <div className={classes.root}>
       <MetadataSection
         metadataList={[
           {
-            label: "Name",
-            content: {
-              value: appName,
-            },
-          },
-          {
-            label: "Route prefix",
-            content: {
-              value: application.route_prefix,
-            },
-          },
-          {
             label: "Status",
             content: (
               <React.Fragment>
-                <StatusChip
-                  type="serveApplication"
-                  status={application.status}
-                />{" "}
-                {application.message && (
+                <StatusChip type="serveDeployment" status={deployment.status} />{" "}
+                {deployment.message && (
                   <CodeDialogButton
                     title="Status details"
-                    code={application.message}
+                    code={deployment.message}
                     buttonText="View details"
                   />
                 )}
@@ -116,30 +99,27 @@ export const ServeApplicationDetailPage = () => {
             ),
           },
           {
-            label: "Deployments",
+            label: "Name",
             content: {
-              value: `${Object.keys(application.deployments).length}`,
+              value: deployment.name,
             },
           },
           {
             label: "Replicas",
             content: {
-              value: Object.values(application.deployments)
-                .map(({ replicas }) => replicas.length)
-                .reduce((acc, curr) => acc + curr, 0)
-                .toString(),
+              value: `${Object.keys(deployment.replicas).length}`,
             },
           },
           {
-            label: "Application config",
-            content: application.deployed_app_config ? (
+            label: "Deployment config",
+            content: deployment.deployment_config ? (
               <CodeDialogButton
                 title={
-                  application.name
-                    ? `Application config for ${application.name}`
-                    : `Application config`
+                  deployment.name
+                    ? `Deployment config for ${deployment.name}`
+                    : `Deployment config`
                 }
-                code={application.deployed_app_config}
+                code={deployment.deployment_config}
               />
             ) : (
               <Typography>-</Typography>
@@ -161,35 +141,36 @@ export const ServeApplicationDetailPage = () => {
               />
             ),
           },
-          {
-            label: "Import path",
-            content: {
-              value: application?.deployed_app_config?.import_path || "-",
-            },
-          },
         ]}
       />
-      <CollapsibleSection title="Deployments" startExpanded>
+      <CollapsibleSection title="Replicas" startExpanded>
         <TableContainer>
           <div style={{ flex: 1, display: "flex", alignItems: "center" }}>
             <Autocomplete
               style={{ margin: 8, width: 120 }}
-              options={Array.from(new Set(allDeployments.map((e) => e.name)))}
+              options={Array.from(
+                new Set(deployment.replicas.map((e) => e.replica_id)),
+              )}
               onInputChange={(_: any, value: string) => {
-                changeFilter("name", value.trim() !== "-" ? value.trim() : "");
+                changeFilter(
+                  "replica_id",
+                  value.trim() !== "-" ? value.trim() : "",
+                );
               }}
               renderInput={(params: TextFieldProps) => (
-                <TextField {...params} label="Name" />
+                <TextField {...params} label="ID" />
               )}
             />
             <Autocomplete
               style={{ margin: 8, width: 120 }}
-              options={Array.from(new Set(allDeployments.map((e) => e.status)))}
+              options={Array.from(
+                new Set(deployment.replicas.map((e) => e.state)),
+              )}
               onInputChange={(_: any, value: string) => {
-                changeFilter("status", value.trim());
+                changeFilter("state", value.trim());
               }}
               renderInput={(params: TextFieldProps) => (
-                <TextField {...params} label="Status" />
+                <TextField {...params} label="State" />
               )}
             />
             <TextField
@@ -209,7 +190,7 @@ export const ServeApplicationDetailPage = () => {
           </div>
           <div style={{ display: "flex", alignItems: "center" }}>
             <Pagination
-              count={Math.ceil(filteredDeployments.length / page.pageSize)}
+              count={Math.ceil(filteredReplicas.length / page.pageSize)}
               page={page.pageNo}
               onChange={(e, pageNo) => setPage("pageNo", pageNo)}
             />
@@ -240,16 +221,16 @@ export const ServeApplicationDetailPage = () => {
               </TableRow>
             </TableHead>
             <TableBody>
-              {filteredDeployments
+              {filteredReplicas
                 .slice(
                   (page.pageNo - 1) * page.pageSize,
                   page.pageNo * page.pageSize,
                 )
-                .map((deployment) => (
-                  <ServeDeploymentRow
-                    key={deployment.name}
+                .map((replica) => (
+                  <ServeReplicaRow
+                    key={replica.replica_id}
                     deployment={deployment}
-                    application={application}
+                    replica={replica}
                   />
                 ))}
             </TableBody>
@@ -260,17 +241,34 @@ export const ServeApplicationDetailPage = () => {
   );
 };
 
-export const ServeApplicationDetailLayout = () => {
-  const { applicationName } = useParams();
+export const ServeDeploymentDetailLayout = () => {
+  const { applicationName, deploymentName } = useParams();
 
-  const { loading, application } = useServeApplicationDetails(applicationName);
+  const { application, deployment, loading, error } = useServeDeploymentDetails(
+    applicationName,
+    deploymentName,
+  );
 
   if (loading) {
     return <Loading loading />;
-  } else if (!application) {
+  }
+
+  if (error) {
+    return <Typography color="error">{error.message}</Typography>;
+  }
+
+  if (!application) {
     return (
       <Typography color="error">
         Application with name "{applicationName}" not found.
+      </Typography>
+    );
+  }
+
+  if (!deployment) {
+    return (
+      <Typography color="error">
+        Deployment with name "{deploymentName}" not found.
       </Typography>
     );
   }
@@ -281,10 +279,12 @@ export const ServeApplicationDetailLayout = () => {
     <React.Fragment>
       <MainNavPageInfo
         pageInfo={{
-          id: "serveApplicationDetail",
-          title: appName,
-          pageTitle: `${appName} | Serve Application`,
-          path: `/serve/applications/${encodeURIComponent(appName)}`,
+          id: "serveDeploymentDetail",
+          title: deployment.name,
+          pageTitle: `${deployment.name} | Serve Deployment`,
+          path: `/serve/applications/${encodeURIComponent(
+            appName,
+          )}/${encodeURIComponent(deployment.name)}`,
         }}
       />
       <Outlet />
