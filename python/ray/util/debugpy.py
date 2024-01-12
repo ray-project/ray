@@ -2,6 +2,7 @@ import logging
 import os
 import sys
 import threading
+import importlib
 
 import ray
 from ray.util.annotations import DeveloperAPI
@@ -9,6 +10,19 @@ from ray.util.annotations import DeveloperAPI
 log = logging.getLogger(__name__)
 
 POST_MORTEM_ERROR_UUID = "post_mortem_error_uuid"
+
+
+def _try_import(module):
+    try:
+        return importlib.import_module(module)
+    except ModuleNotFoundError:
+        log.error(
+            f"Module '{module}' cannot be loaded. "
+            f"Ray Debugger will not work without '{module}'. "
+            f"Install this module using 'pip install {module}' "
+        )
+        return None
+
 
 # A lock to ensure that only one thread can open the debugger port.
 debugger_port_lock = threading.Lock()
@@ -36,7 +50,9 @@ def _ensure_debugger_port_open_thread_safe():
     # The lock is acquired before checking the debugger port so only
     # one thread can open the debugger port.
     with debugger_port_lock:
-        import debugpy
+        debugpy = _try_import("debugpy")
+        if not debugpy:
+            return
 
         debugger_port = ray._private.worker.global_worker.debugger_port
         if not debugger_port:
@@ -54,7 +70,9 @@ def set_trace(breakpoint_uuid=None):
     """Interrupt the flow of the program and drop into the Ray debugger.
     Can be used within a Ray task or actor.
     """
-    import debugpy
+    debugpy = _try_import("debugpy")
+    if not debugpy:
+        return
 
     _ensure_debugger_port_open_thread_safe()
 
