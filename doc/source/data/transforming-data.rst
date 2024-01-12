@@ -328,8 +328,8 @@ input files to workers for reading.
 
 .. tip::
 
-    This is the fastest option for shuffle, and is purely metadata operation. This
-    option does not shuffle the actual rows inside files, so the randomness would be
+    This is the fastest option for shuffle, and is a purely metadata operation. This
+    option doesn't shuffle the actual rows inside files, so the randomness might be
     poor if each file has many rows.
 
 Local shuffle when iterating over batches
@@ -375,7 +375,7 @@ To randomly shuffle all rows globally, call :meth:`~ray.data.Dataset.random_shuf
 
 .. tip::
 
-    This is the slowest option for shuffle, and requires tranasferring data across
+    This is the slowest option for shuffle, and requires transferring data across
     network between workers. This option achieves the best randomness among all options.
 
 .. _repartitioning_data:
