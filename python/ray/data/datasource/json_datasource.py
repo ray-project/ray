@@ -1,6 +1,7 @@
 import logging
 from typing import TYPE_CHECKING, Any, Dict, List, Optional, Union
 
+from ray.data.context import DataContext
 from ray.data.datasource.file_based_datasource import FileBasedDatasource
 from ray.util.annotations import PublicAPI
 
@@ -45,6 +46,8 @@ class JSONDatasource(FileBasedDatasource):
             use_threads=self.read_options.use_threads,
             block_size=self.read_options.block_size,
         )
+        ctx = DataContext.get_current()
+        max_block_size = ctx.target_max_block_size
         while True:
             try:
                 yield json.read_json(
@@ -55,7 +58,7 @@ class JSONDatasource(FileBasedDatasource):
                 if (
                     isinstance(e, ArrowInvalid)
                     and "straddling" not in str(e)
-                    or local_read_options.block_size > MAX_BLOCK_SIZE
+                    or local_read_options.block_size > max_block_size
                 ):
                     raise e
                 else:
