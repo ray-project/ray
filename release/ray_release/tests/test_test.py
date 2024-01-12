@@ -1,6 +1,7 @@
 import json
 import sys
 import os
+import platform
 from unittest import mock
 
 import boto3
@@ -181,7 +182,7 @@ def test_from_bazel_event() -> None:
         },
         "ci",
     )
-    assert test.get_name() == "ray_ci_test.linux"
+    assert test.get_name() == f"{platform.system().lower()}://ray/ci:test"
     assert test.get_oncall() == "ci"
 
 

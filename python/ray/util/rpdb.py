@@ -280,8 +280,8 @@ def set_trace(breakpoint_uuid=None):
 
     Can be used within a Ray task or actor.
     """
-    if ray.anyscale.anyscale_debugpy._is_ray_debugger_enabled():
-        return ray.anyscale.anyscale_debugpy.set_trace(breakpoint_uuid)
+    if ray.util.ray_debugpy._is_ray_debugger_enabled():
+        return ray.util.ray_debugpy.set_trace(breakpoint_uuid)
 
     # If there is an active debugger already, we do not want to
     # start another one, so "set_trace" is just a no-op in that case.
@@ -304,8 +304,8 @@ def _driver_set_trace():
     This disables Ray driver logs temporarily so that the PDB console is not
     spammed: https://github.com/ray-project/ray/issues/18172
     """
-    if ray.anyscale.anyscale_debugpy._is_ray_debugger_enabled():
-        return ray.anyscale.anyscale_debugpy.set_trace()
+    if ray.util.ray_debugpy._is_ray_debugger_enabled():
+        return ray.util.ray_debugpy.set_trace()
 
     print("*** Temporarily disabling Ray worker logs ***")
     ray._private.worker._worker_logs_enabled = False
@@ -320,15 +320,12 @@ def _driver_set_trace():
 
 
 def _is_ray_debugger_enabled():
-    return (
-        "RAY_PDB" in os.environ
-        or ray.anyscale.anyscale_debugpy._is_ray_debugger_enabled()
-    )
+    return "RAY_PDB" in os.environ or ray.util.ray_debugpy._is_ray_debugger_enabled()
 
 
 def _post_mortem():
-    if ray.anyscale.anyscale_debugpy._is_ray_debugger_enabled():
-        return ray.anyscale.anyscale_debugpy._post_mortem()
+    if ray.util.ray_debugpy._is_ray_debugger_enabled():
+        return ray.util.ray_debugpy._post_mortem()
 
     rdb = _connect_ray_pdb(
         host=None,

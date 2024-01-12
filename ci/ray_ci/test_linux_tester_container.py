@@ -1,5 +1,6 @@
 import json
 import os
+import platform
 import sys
 import pytest
 import tempfile
@@ -192,7 +193,7 @@ def test_get_test_results() -> None:
         container = LinuxTesterContainer("docker_tag", skip_ray_installation=True)
         results = container._get_test_and_results("manu", tmp)
         test, result = results[0]
-        assert test.get_name() == "ray_ci_test.linux"
+        assert test.get_name() == f"{platform.system().lower()}://ray/ci:test"
         assert test.get_oncall() == "manu"
         assert result.is_passing()
 
