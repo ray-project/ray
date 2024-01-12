@@ -4,7 +4,7 @@ import tree
 
 from collections import defaultdict
 from functools import partial
-from typing import Dict, List, Optional, Tuple
+from typing import Dict, List, Optional
 
 from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
 from ray.rllib.algorithms.callbacks import DefaultCallbacks
@@ -17,7 +17,7 @@ from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID, SampleBatch
 from ray.rllib.utils.annotations import ExperimentalAPI, override
 from ray.rllib.utils.framework import try_import_tf, try_import_torch
 from ray.rllib.utils.torch_utils import convert_to_torch_tensor
-from ray.rllib.utils.typing import TensorStructType, TensorType
+from ray.rllib.utils.typing import TensorType
 from ray.tune.registry import ENV_CREATOR, _global_registry
 
 
@@ -224,7 +224,9 @@ class SingleAgentEnvRunner(EnvRunner):
         while ts < num_timesteps:
             # Act randomly.
             if random_actions:
-                actions = self.env.action_space.sample()
+                to_env = {
+                    SampleBatch.ACTIONS: self.env.action_space.sample(),
+                }
             # Compute an action using the RLModule.
             else:
                 to_module = self._env_to_module(
@@ -246,7 +248,8 @@ class SingleAgentEnvRunner(EnvRunner):
                     explore=explore,
                     # persistent_data=None, #TODO
                 )
-                actions = to_env.pop(SampleBatch.ACTIONS)
+
+            actions = to_env.pop(SampleBatch.ACTIONS)
 
             obs, rewards, terminateds, truncateds, infos = self.env.step(actions)
 
@@ -277,7 +280,8 @@ class SingleAgentEnvRunner(EnvRunner):
                         extra_model_outputs=extra_model_output,
                     )
 
-                    # Make `on_episode_step` callback before finalizing the episode.
+                    # Make the `on_episode_step` callback (before finalizing the
+                    # episode object).
                     self._make_on_episode_callback("on_episode_step", env_index)
                     done_episodes_to_return.append(self._episodes[env_index].finalize())
 
@@ -381,11 +385,13 @@ class SingleAgentEnvRunner(EnvRunner):
         eps = 0
         while eps < num_episodes:
             if random_actions:
-                actions = self.env.action_space.sample()
+                to_env = {
+                    SampleBatch.ACTIONS: self.env.action_space.sample(),
+                }
             else:
                 to_module = self._env_to_module(
                     rl_module=self.module,
-                    episodes=self._episodes,
+                    episodes=episodes,
                     explore=explore,
                 )
                 # Explore or not.
@@ -397,11 +403,11 @@ class SingleAgentEnvRunner(EnvRunner):
                 to_env = self._module_to_env(
                     rl_module=self.module,
                     data=to_env,
-                    episodes=self._episodes,
+                    episodes=episodes,
                     explore=explore,
                 )
-                actions = to_env.pop(SampleBatch.ACTIONS)
 
+            actions = to_env.pop(SampleBatch.ACTIONS)
             obs, rewards, terminateds, truncateds, infos = self.env.step(actions)
             if with_render_data:
                 render_images = [e.render() for e in self.env.envs]

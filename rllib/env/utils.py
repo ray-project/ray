@@ -205,7 +205,7 @@ class BufferWithInfiniteLookback:
         """Appends all items in `items` to the end of this buffer."""
         if self.finalized:
             self.data = tree.map_structure(
-                lambda d, i: np.concatenate([d, i], axis=0), self.data, items
+                lambda d, i: np.concatenate([d, i], axis=0), self.data, np.array(items)
             )
         else:
             for item in items:
@@ -431,15 +431,13 @@ class BufferWithInfiniteLookback:
         )
 
         # Perform the actual slice.
-        data_slice = None
-        if slice_len > 0:
-            if self.finalized:
-                data_slice = tree.map_structure(lambda s: s[slice_], self.data)
-            else:
-                data_slice = self.data[slice_]
+        if self.finalized:
+            data_slice = tree.map_structure(lambda s: s[slice_], self.data)
+        else:
+            data_slice = self.data[slice_]
 
-            if one_hot_discrete:
-                data_slice = self._one_hot(data_slice, space_struct=self.space_struct)
+        if one_hot_discrete and slice_len > 0:
+            data_slice = self._one_hot(data_slice, space_struct=self.space_struct)
 
         # Data is shorter than the range requested -> Fill the rest with `fill` data.
         if fill is not None and (fill_right_count > 0 or fill_left_count > 0):
@@ -590,8 +588,6 @@ class BufferWithInfiniteLookback:
                 if self.space:
                     assert self.space.contains(new_data), new_data
                 self.data[actual_idx] = new_data
-        except Exception as e:
-            print(e)#TODO
         except IndexError:
             raise IndexError(
                 f"Cannot `set()` value at index {idx} (option "
