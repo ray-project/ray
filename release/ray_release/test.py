@@ -387,13 +387,19 @@ class Test(dict):
 
     def persist_result_to_s3(self, result: Result) -> bool:
         """
+        Persist result object to s3
+        """
+        self.persist_test_result_to_s3(TestResult.from_result(result))
+
+    def persist_test_result_to_s3(self, test_result: TestResult) -> bool:
+        """
         Persist test result object to s3
         """
         boto3.client("s3").put_object(
             Bucket=get_global_config()["state_machine_aws_bucket"],
             Key=f"{AWS_TEST_RESULT_KEY}/"
             f"{self._get_s3_name()}-{int(time.time() * 1000)}.json",
-            Body=json.dumps(TestResult.from_result(result).__dict__),
+            Body=json.dumps(test_result.__dict__),
         )
 
     def persist_to_s3(self) -> bool:
