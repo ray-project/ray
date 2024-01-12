@@ -151,7 +151,7 @@ class MessageQueue(Send):
     """
 
     def __init__(self):
-        # XXX: note about thread safety.
+        # NOTE(edoakes): `deque` appends and pops are thread safe in CPython.
         self._message_queue = deque()
         self._new_message_event = asyncio.Event()
         self._closed = False
