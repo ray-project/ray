@@ -150,14 +150,15 @@ class TesterContainer(Container):
             with open(file, "rb") as f:
                 for line in f:
                     event = json.loads(line.decode("utf-8"))
-                    if "testResult" in event:
-                        test = Test.from_bazel_event(event, team)
-                        test_result = TestResult.from_bazel_event(event)
-                        # Obtain only the final test result for a given test in case
-                        # the test is retried.
-                        tests[test.get_name()] = (test, test_result)
+                    if "testResult" not in event:
+                        continue
+                    test = Test.from_bazel_event(event, team)
+                    test_result = TestResult.from_bazel_event(event)
+                    # Obtain only the final test result for a given test in case
+                    # the test is retried.
+                    tests[test.get_name()] = (test, test_result)
 
-        return tests.keys()
+        return list(tests.values())
 
     def _cleanup_bazel_log_mount(self, bazel_log_dir: str) -> None:
         shutil.rmtree(bazel_log_dir)
