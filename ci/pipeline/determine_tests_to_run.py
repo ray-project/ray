@@ -11,6 +11,9 @@ from pprint import pformat
 import traceback
 
 
+PIPELINE_POSTMERGE = "0189e759-8c96-4302-b6b5-b4274406bf89"
+
+
 # NOTE(simon): do not add type hint here because it's ran using python2 in CI.
 def list_changed_files(commit_range):
     """Returns a list of names of files changed in the given commit range.
@@ -48,6 +51,14 @@ def is_pull_request():
         event_type = "pull_request"
 
     return event_type == "pull_request"
+
+
+def is_continuous_run():
+    # Periodically continuous run only on master branch
+    return (
+        os.environ.get("RAYCI_CONTINUOUS_RUN")
+        and os.environ.get("BUILDKITE_PIPELINE_ID") == PIPELINE_POSTMERGE
+    )
 
 
 def get_commit_range():
@@ -108,8 +119,12 @@ if __name__ == "__main__":
     RAY_CI_WORKFLOW_AFFECTED = 0
     RAY_CI_RELEASE_TESTS_AFFECTED = 0
     RAY_CI_COMPILED_PYTHON_AFFECTED = 0
+    RAY_CI_CONTINUOUS_RUN_AFFECTED = 0
 
-    if is_pull_request():
+    if is_continuous_run():
+        # Run only continuous jobs on continuous run
+        RAY_CI_CONTINUOUS_RUN_AFFECTED = 1
+    elif is_pull_request():
         commit_range = get_commit_range()
         files = list_changed_files(commit_range)
         print(pformat(commit_range), file=sys.stderr)
@@ -419,6 +434,7 @@ if __name__ == "__main__":
         RAY_CI_DATA_AFFECTED = 1
         RAY_CI_RELEASE_TESTS_AFFECTED = 1
         RAY_CI_COMPILED_PYTHON_AFFECTED = 1
+        RAY_CI_CONTINUOUS_RUN_AFFECTED = 1
 
     # Log the modified environment variables visible in console.
     output_string = " ".join(
@@ -450,6 +466,7 @@ if __name__ == "__main__":
             "RAY_CI_COMPILED_PYTHON_AFFECTED={}".format(
                 RAY_CI_COMPILED_PYTHON_AFFECTED
             ),
+            "RAY_CI_CONTINUOUS_RUN_AFFECTED={}".format(RAY_CI_CONTINUOUS_RUN_AFFECTED),
         ]
     )
 
