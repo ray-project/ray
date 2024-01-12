@@ -38,9 +38,7 @@ def download_file(url, filename):
         with open(filename, "wb") as file:
             for chunk in response.iter_content(chunk_size=block_size):
                 file.write(chunk)
-                downloaded_size_in_mb += len(chunk) / (
-                    1024 * 1024
-                )
+                downloaded_size_in_mb += len(chunk) / (1024 * 1024)
                 print(
                     f"Downloaded: {downloaded_size_in_mb:.2f} MB / "
                     f"{total_size_in_mb:.2f} MB",

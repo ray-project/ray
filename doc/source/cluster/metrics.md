@@ -102,7 +102,7 @@ If you are using macOS, you may receive an error at this point about trying to l
 
 Now, you can access Ray metrics from the default Prometheus URL, `http://localhost:9090`.
 
-### Production: Running Prometheus in production
+### Running Prometheus in production
 
 For a production environment, view [Prometheus documentation](https://prometheus.io/docs/introduction/overview/) for the best strategy to set up your Prometheus server. The Prometheus server should live outside of the Ray Cluster, so that metrics are still accessible if the Cluster is down. For KubeRay users, follow [these instructions](kuberay-prometheus-grafana) to set up Prometheus.
 
