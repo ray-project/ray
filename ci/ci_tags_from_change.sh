@@ -2,7 +2,7 @@
 
 set -euo pipefail
 
-if [[ "${RAYCI_RUN_ALL_TESTS:-}" == "1" || "${BUILDKITE_BRANCH:-}" =~ ^releases/.* ]]; then
+if [[ "${RAYCI_RUN_ALL_TESTS:-}" == "1" || "${BUILDKITE_BRANCH:-}" == "master" || "${BUILDKITE_BRANCH:-}" =~ ^releases/.* ]]; then
     echo '*'
     exit 0
 fi
