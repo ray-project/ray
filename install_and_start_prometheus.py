@@ -30,7 +30,7 @@ def download_file(url, filename):
         response.raise_for_status()
 
         total_size_in_bytes = int(response.headers.get("content-length", 0))
-        total_size_in_mb = total_size_in_bytes / (1024 * 1024)  # Convert to MB
+        total_size_in_mb = total_size_in_bytes / (1024 * 1024)
 
         downloaded_size_in_mb = 0
         block_size = 8192  # 8 Kibibytes
@@ -40,7 +40,7 @@ def download_file(url, filename):
                 file.write(chunk)
                 downloaded_size_in_mb += len(chunk) / (
                     1024 * 1024
-                )  # Update the downloaded size in MB
+                )
                 print(
                     f"Downloaded: {downloaded_size_in_mb:.2f} MB / "
                     f"{total_size_in_mb:.2f} MB",
