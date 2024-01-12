@@ -117,6 +117,7 @@ def get_latest_prometheus_version():
 
 
 def main():
+    logging.warning("This script is not intended for production use.")
     os_type, architecture = get_system_info()
 
     prometheus_version = get_latest_prometheus_version()
