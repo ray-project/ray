@@ -440,7 +440,7 @@ class ReplicaActor:
                 request_metadata,
                 request_args,
                 request_kwargs,
-                generator_result_callback=write_to_result_queue_thread_safe,
+                generator_result_callback=_enqueue_thread_safe,
             )
 
             while True:
