@@ -682,6 +682,7 @@ class UserCallableWrapper:
     # enable writing the `_run_on_user_code_event_loop` decorator method (the decorator
     # doesn't have access to `self` at class definition time).
     _user_code_event_loop: asyncio.AbstractEventLoop = asyncio.new_event_loop()
+    _user_code_event_loop_thread: Optional[threading.Thread] = None
 
     def __init__(
         self,
@@ -704,14 +705,21 @@ class UserCallableWrapper:
         self._deployment_id = deployment_id
         self._delete_lock = asyncio.Lock()
 
-        self._thread = threading.Thread(
-            daemon=True,
-            target=self._user_code_event_loop.run_forever,
-        )
-        self._thread.start()
-
         # Will be populated in `initialize_callable`.
         self._callable = None
+
+        # Start the `_user_code_event_loop_thread` singleton if needed.
+        if self._user_code_event_loop_thread is None:
+
+            def _run_user_code_event_loop():
+                asyncio.set_event_loop(self._user_code_event_loop)
+                self._user_code_event_loop.run_forever()
+
+            self._user_code_event_loop_thread = threading.Thread(
+                daemon=True,
+                target=_run_user_code_event_loop,
+            )
+            self._user_code_event_loop_thread.start()
 
     def _run_on_user_code_event_loop(f: Callable):
         """Decorator to run a coroutine method on the user code event loop.
@@ -792,6 +800,9 @@ class UserCallableWrapper:
 
     @_run_on_user_code_event_loop
     async def initialize_callable(self):
+        if self._callable is not None:
+            raise RuntimeError("initialize_callable should only be called once.")
+
         # This closure initializes user code and finalizes replica
         # startup. By splitting the initialization step like this,
         # we can already access this actor before the user code
@@ -832,6 +843,11 @@ class UserCallableWrapper:
         await self._call_func_or_gen(self._user_health_check)
 
     async def call_user_health_check(self):
+        if self._callable is None:
+            raise RuntimeError(
+                "initialize_callable must be called before health check."
+            )
+
         # If the user provided a health check, call it on the user code thread. If user
         # code blocks the event loop the health check may time out.
         #
@@ -842,6 +858,9 @@ class UserCallableWrapper:
 
     @_run_on_user_code_event_loop
     async def call_reconfigure(self, user_config: Any):
+        if self._callable is None:
+            raise RuntimeError("initialize_callable must be called before reconfigure.")
+
         # NOTE(edoakes): there is the possibility of a race condition in user code if
         # they don't have any form of concurrency control between `reconfigure` and
         # other methods. See https://github.com/ray-project/ray/pull/42159.
@@ -1001,6 +1020,9 @@ class UserCallableWrapper:
         Raises any exception raised by the user code so it can be propagated as a
         `RayTaskError`.
         """
+        if self._callable is None:
+            raise RuntimeError("initialize_callable must be called before user method.")
+
         logger.info(
             f"Started executing request {request_metadata.request_id}",
             extra={"log_to_stderr": False, "serve_access_log": True},

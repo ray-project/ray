@@ -1,0 +1,56 @@
+import pytest
+
+from ray.serve._private.common import DeploymentID
+from ray.serve._private.http_util import MessageQueue
+from ray.serve._private.replica import UserCallableWrapper
+from ray.serve._private.router import RequestMetadata
+
+class BasicCallable:
+    def __call__(self):
+        return "hi"
+
+@pytest.fixture
+def user_callable_wrapper(request) -> UserCallableWrapper:
+    try:
+        callable = request.param
+    except AttributeError:
+        callable = BasicCallable
+
+    wrapper = UserCallableWrapper(
+        callable,
+        tuple(),
+        dict(),
+        deployment_id=DeploymentID(app="test_app", name="test_name")
+    )
+    yield wrapper
+
+@pytest.mark.asyncio
+async def test_calling_initialize_twice(user_callable_wrapper):
+    await user_callable_wrapper.initialize_callable()
+    with pytest.raises(RuntimeError):
+        await user_callable_wrapper.initialize_callable()
+
+@pytest.mark.asyncio
+async def test_calling_methods_before_initialize(user_callable_wrapper):
+    with pytest.raises(RuntimeError):
+        await user_callable_wrapper.call_user_method(
+            None, tuple(), dict()
+        )
+
+    with pytest.raises(RuntimeError):
+        await user_callable_wrapper.call_user_health_check()
+
+    with pytest.raises(RuntimeError):
+        await user_callable_wrapper.call_reconfigure(None)
+
+    await user_callable_wrapper.call_destructor()
+
+@pytest.mark.asyncio
+async def test_basic_unary_call(user_callable_wrapper):
+    request_metadata = RequestMetadata(
+        request_id="test_request", endpoint="test_endpoint"
+    )
+    await user_callable_wrapper.initialize_callable()
+    assert (await user_callable_wrapper.call_user_method(
+        request_metadata, tuple(), dict()
+    )) == "hi"
