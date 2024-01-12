@@ -703,7 +703,7 @@ class UserCallableWrapper:
         self._init_kwargs = init_kwargs
         self._is_function = inspect.isfunction(deployment_def)
         self._deployment_id = deployment_id
-        self._delete_lock = asyncio.Lock()
+        self._destructor_called = False
 
         # Will be populated in `initialize_callable`.
         self._callable = None
@@ -1092,26 +1092,25 @@ class UserCallableWrapper:
     async def call_destructor(self):
         """Explicitly call the `__del__` method of the user callable.
 
-        We set the del method to noop after successfully calling it so the
-        destructor is called only once.
+        Calling this multiple times has no effect; only the first call will actually
+        call the destructor.
         """
-        async with self._delete_lock:
-            if not hasattr(self, "_callable"):
-                return
+        if self._callable is None:
+            raise RuntimeError("initialize_callable must be called before destructor.")
 
-            try:
-                if hasattr(self._callable, "__del__"):
-                    # Make sure to accept `async def __del__(self)` as well.
-                    await self._call_func_or_gen(self._callable.__del__)
-                    setattr(self._callable, "__del__", lambda _: None)
+        # Only run the destructor once. This is safe because there is no `await` between
+        # checking the flag here and flipping it to `True` below.
+        if self._destructor_called:
+            return
 
-                if hasattr(self._callable, "__serve_multiplex_wrapper"):
-                    await getattr(
-                        self._callable, "__serve_multiplex_wrapper"
-                    ).shutdown()
+        self._destructor_called = True
+        try:
+            if hasattr(self._callable, "__del__"):
+                # Make sure to accept `async def __del__(self)` as well.
+                await self._call_func_or_gen(self._callable.__del__)
 
-            except Exception as e:
-                logger.exception(f"Exception during graceful shutdown of replica: {e}")
-            finally:
-                if hasattr(self._callable, "__del__"):
-                    del self._callable
+            if hasattr(self._callable, "__serve_multiplex_wrapper"):
+                await getattr(self._callable, "__serve_multiplex_wrapper").shutdown()
+
+        except Exception as e:
+            logger.exception(f"Exception during graceful shutdown of replica: {e}")
