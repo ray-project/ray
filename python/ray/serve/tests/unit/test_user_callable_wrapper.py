@@ -1,3 +1,4 @@
+import sys
 from typing import Callable, Optional
 
 import pytest
