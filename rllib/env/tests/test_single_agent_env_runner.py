@@ -18,10 +18,7 @@ class TestSingleAgentEnvRunner(unittest.TestCase):
         config = (
             AlgorithmConfig().environment("CartPole-v1")
             # Vectorize x2 and by default, rollout 64 timesteps per individual env.
-            .rollouts(
-                num_envs_per_worker=2,
-                rollout_fragment_length=64,
-            )
+            .rollouts(num_envs_per_worker=2, rollout_fragment_length=64)
         )
         env_runner = SingleAgentEnvRunner(config=config)
 
@@ -60,7 +57,7 @@ class TestSingleAgentEnvRunner(unittest.TestCase):
         remote_class = ray.remote(num_cpus=1, num_gpus=0)(SingleAgentEnvRunner)
 
         # Test with both parallelized sub-envs and w/o.
-        remote_worker_envs = [True, False]
+        remote_worker_envs = [False, True]
 
         for envs_parallel in remote_worker_envs:
             config = (
