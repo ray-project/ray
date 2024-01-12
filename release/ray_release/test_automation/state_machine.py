@@ -28,9 +28,11 @@ class TestStateMachine(abc.ABC):
     ray_repo = None
     ray_buildkite = None
 
-    def __init__(self, test: Test, dry_run: bool = False) -> None:
+    def __init__(
+        self, test: Test, history_length: int = 10, dry_run: bool = False
+    ) -> None:
         self.test = test
-        self.test_results = test.get_test_results()
+        self.test_results = test.get_test_results(limit=history_length)
         self.dry_run = dry_run
         TestStateMachine._init_ray_repo()
         TestStateMachine._init_ray_buildkite()
