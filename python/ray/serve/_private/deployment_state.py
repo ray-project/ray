@@ -1524,9 +1524,10 @@ class DeploymentState:
                 logger.warning(
                     "The downscale smoothing factor for deployment "
                     f"'{self.deployment_name}' is set to a low value: "
-                    f"{downscale_smoothing_factor}. Note that this means the "
+                    f"{downscale_smoothing_factor}. This means the "
                     "deployment is unlikely to scale below "
-                    f"{int(1 / downscale_smoothing_factor)} replicas."
+                    f"{int(1 / downscale_smoothing_factor)} replicas. "
+                    "The recommended minimum smoothing factor is 0.6."
                 )
         else:
             target_num_replicas = get_capacity_adjusted_num_replicas(
