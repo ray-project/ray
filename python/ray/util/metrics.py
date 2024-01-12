@@ -78,7 +78,10 @@ class Metric:
         return self
 
     def record(
-        self, value: Union[int, float], tags: Optional[Dict[str, str]] = None, _internal=False
+        self,
+        value: Union[int, float],
+        tags: Optional[Dict[str, str]] = None,
+        _internal=False,
     ) -> None:
         """Record the metric point of the metric.
 
