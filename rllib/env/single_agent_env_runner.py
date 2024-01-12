@@ -4,7 +4,7 @@ import tree
 
 from collections import defaultdict
 from functools import partial
-from typing import Dict, List, Optional, Tuple
+from typing import Dict, List, Optional
 
 from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
 from ray.rllib.algorithms.callbacks import DefaultCallbacks
@@ -17,7 +17,7 @@ from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID, SampleBatch
 from ray.rllib.utils.annotations import ExperimentalAPI, override
 from ray.rllib.utils.framework import try_import_tf, try_import_torch
 from ray.rllib.utils.torch_utils import convert_to_torch_tensor
-from ray.rllib.utils.typing import TensorStructType, TensorType
+from ray.rllib.utils.typing import TensorType
 from ray.tune.registry import ENV_CREATOR, _global_registry
 
 
@@ -170,9 +170,6 @@ class SingleAgentEnvRunner(EnvRunner):
         # Make the `on_sample_end` callback.
         self._callbacks.on_sample_end(env_runner=self, samples=samples)
 
-        #TODO (sven): TEST
-        print(f"samples is None={samples is None} None in samples={None in samples}")
-
         return samples
 
     def _sample_timesteps(
@@ -282,7 +279,8 @@ class SingleAgentEnvRunner(EnvRunner):
                         extra_model_outputs=extra_model_output,
                     )
 
-                    # Make `on_episode_step` callback before finalizing the episode.
+                    # Make the `on_episode_step` callback (before finalizing the
+                    # episode object).
                     self._make_on_episode_callback("on_episode_step", env_index)
 
                     done_episodes_to_return.append(self._episodes[env_index].finalize())
@@ -301,6 +299,7 @@ class SingleAgentEnvRunner(EnvRunner):
 
                     # Make the `on_episode_start` callback.
                     self._make_on_episode_callback("on_episode_start", env_index)
+
                 else:
                     self._episodes[env_index].add_env_step(
                         obs[env_index],
@@ -309,6 +308,7 @@ class SingleAgentEnvRunner(EnvRunner):
                         infos=infos[env_index],
                         extra_model_outputs=extra_model_output,
                     )
+
                     # Make the `on_episode_step` callback.
                     self._make_on_episode_callback("on_episode_step", env_index)
 
@@ -391,7 +391,7 @@ class SingleAgentEnvRunner(EnvRunner):
             else:
                 to_module = self._env_to_module(
                     rl_module=self.module,
-                    episodes=self._episodes,
+                    episodes=episodes,
                     explore=explore,
                 )
                 # Explore or not.
@@ -403,7 +403,7 @@ class SingleAgentEnvRunner(EnvRunner):
                 to_env = self._module_to_env(
                     rl_module=self.module,
                     data=to_env,
-                    episodes=self._episodes,
+                    episodes=episodes,
                     explore=explore,
                 )
 
