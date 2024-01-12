@@ -5,12 +5,12 @@ from datetime import datetime
 import functools
 import gymnasium as gym
 import importlib
+import importlib.metadata
 import json
 import logging
 import numpy as np
 import os
 from packaging import version
-import importlib.metadata
 import re
 import tempfile
 import time
@@ -47,7 +47,6 @@ from ray.rllib.evaluation.metrics import (
     summarize_episodes,
 )
 from ray.rllib.evaluation.postprocessing_v2 import postprocess_episodes_to_sample_batch
-from ray.rllib.evaluation.rollout_worker import RolloutWorker
 from ray.rllib.evaluation.worker_set import WorkerSet
 from ray.rllib.execution.rollout_ops import synchronous_parallel_sample
 from ray.rllib.execution.train_ops import multi_gpu_train_one_step, train_one_step
@@ -372,6 +371,7 @@ class Algorithm(Trainable, AlgorithmBase):
         new_algo = algorithm_class(config=config)
         # Set the new algo's state.
         new_algo.__setstate__(state)
+
         # Return the new algo.
         return new_algo
 
@@ -551,7 +551,6 @@ class Algorithm(Trainable, AlgorithmBase):
     @OverrideToImplementCustomLogic_CallToSuperRecommended
     @override(Trainable)
     def setup(self, config: AlgorithmConfig) -> None:
-
         # Setup our config: Merge the user-supplied config dict (which could
         # be a partial config dict) with the class' default.
         if not isinstance(config, AlgorithmConfig):
@@ -563,11 +562,6 @@ class Algorithm(Trainable, AlgorithmBase):
             config_obj.update_from_dict(config)
             config_obj.env = self._env_id
             self.config = config_obj
-
-        self._uses_new_env_runners = (
-            self.config.env_runner_cls is not None
-            and not issubclass(self.config.env_runner_cls, RolloutWorker)
-        )
 
         # Set Algorithm's seed after we have - if necessary - enabled
         # tf eager-execution.
@@ -761,7 +755,7 @@ class Algorithm(Trainable, AlgorithmBase):
             # Note that with the new EnvRunner API in combination with the new stack,
             # this information only needs to be kept in the LearnerGroup and not on the
             # EnvRunners anymore.
-            if not self._uses_new_env_runners:
+            if not self.config.uses_new_env_runners:
                 update_fn = self.learner_group.should_module_be_updated_fn
                 self.workers.foreach_worker(
                     lambda w: w.set_is_policy_to_train(update_fn),
@@ -1613,7 +1607,7 @@ class Algorithm(Trainable, AlgorithmBase):
             # TODO: (sven) rename MultiGPUOptimizer into something more
             #  meaningful.
             if self.config._enable_new_api_stack:
-                train_results = self.learner_group.update(train_batch)
+                train_results = self.learner_group.update_from_batch(batch=train_batch)
             elif self.config.get("simple_optimizer") is True:
                 train_results = train_one_step(self, train_batch)
             else:
@@ -2357,7 +2351,6 @@ class Algorithm(Trainable, AlgorithmBase):
     def default_resource_request(
         cls, config: Union[AlgorithmConfig, PartialAlgorithmConfigDict]
     ) -> Union[Resources, PlacementGroupFactory]:
-
         # Default logic for RLlib Algorithms:
         # Create one bundle per individual worker (local or remote).
         # Use `num_cpus_for_local_worker` and `num_gpus` for the local worker and
@@ -2773,7 +2766,7 @@ class Algorithm(Trainable, AlgorithmBase):
         #  Also, what should the behavior be if e.g. some training parameter
         #  (e.g. lr) changed?
 
-        if hasattr(self, "workers") and "worker" in state:
+        if hasattr(self, "workers") and "worker" in state and state["worker"]:
             self.workers.local_worker().set_state(state["worker"])
             remote_state = ray.put(state["worker"])
             self.workers.foreach_worker(
@@ -2813,6 +2806,15 @@ class Algorithm(Trainable, AlgorithmBase):
                 logger.warning(
                     "`store_buffer_in_checkpoints` is False, but some replay "
                     "data found in state!"
+                )
+
+        if self.config._enable_new_api_stack:
+            if "learner_state_dir" in state:
+                self.learner_group.load_state(state["learner_state_dir"])
+            else:
+                logger.warning(
+                    "You configured `_enable_new_api_stack=True`, but no "
+                    "`learner_state_dir` key could be found in the state dict!"
                 )
 
         if "counters" in state:
@@ -2878,6 +2880,7 @@ class Algorithm(Trainable, AlgorithmBase):
         if (
             checkpoint_info["checkpoint_version"] > version.Version("0.1")
             and state.get("worker") is not None
+            and state.get("worker")
         ):
             worker_state = state["worker"]
 
@@ -2966,6 +2969,11 @@ class Algorithm(Trainable, AlgorithmBase):
             ):
                 worker_state["is_policy_to_train"] = policies_to_train
 
+        if state["config"]._enable_new_api_stack:
+            state["learner_state_dir"] = os.path.join(
+                checkpoint_info["checkpoint_dir"], "learner"
+            )
+
         return state
 
     @DeveloperAPI
@@ -3034,7 +3042,7 @@ class Algorithm(Trainable, AlgorithmBase):
         """
         eval_func_to_use = (
             self._evaluate_async_with_env_runner
-            if (self.config.enable_async_evaluation and self._uses_new_env_runners)
+            if self.config.enable_async_evaluation and self.config.uses_new_env_runners
             else self._evaluate_async
             if self.config.enable_async_evaluation
             else self.evaluate
@@ -3331,7 +3339,6 @@ class TrainIterCtx:
         return self.time_stop - self.time_start
 
     def should_stop(self, results):
-
         # Before first call to `step()`.
         if results is None:
             # Fail after n retries.

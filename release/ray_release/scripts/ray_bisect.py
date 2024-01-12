@@ -17,7 +17,7 @@ from ray_release.byod.build import (
 from ray_release.config import read_and_validate_release_test_collection
 from ray_release.configs.global_config import init_global_config
 from ray_release.test import Test
-from ray_release.test_automation.state_machine import TestStateMachine
+from ray_release.test_automation.release_state_machine import ReleaseTestStateMachine
 
 
 @click.command()
@@ -208,16 +208,20 @@ def _obtain_test_result(
             if commit in outcomes and len(outcomes[commit]) == run_per_commit:
                 continue
             for run in range(run_per_commit):
-                outcome = subprocess.check_output(
-                    [
-                        "buildkite-agent",
-                        "step",
-                        "get",
-                        "outcome",
-                        "--step",
-                        f"{commit}-{run}",
-                    ]
-                ).decode("utf-8")
+                outcome = (
+                    subprocess.check_output(
+                        [
+                            "buildkite-agent",
+                            "step",
+                            "get",
+                            "outcome",
+                            "--step",
+                            f"{commit}-{run}",
+                        ]
+                    )
+                    .decode("utf-8")
+                    .strip()
+                )
                 if not outcome:
                     continue
                 if commit not in outcomes:
@@ -261,7 +265,7 @@ def _update_test_state(test: Test, blamed_commit: str) -> None:
     test[Test.KEY_BISECT_BLAMED_COMMIT] = blamed_commit
 
     # Compute and update the next test state, then comment blamed commit on github issue
-    sm = TestStateMachine(test)
+    sm = ReleaseTestStateMachine(test)
     sm.move()
     sm.comment_blamed_commit_on_github_issue()
 

@@ -18,11 +18,13 @@ from ray.exceptions import RayActorError, RayError, RayTaskError, RuntimeEnvSetu
 from ray.serve import metrics
 from ray.serve._private import default_impl
 from ray.serve._private.autoscaling_metrics import InMemoryMetricsStore
+from ray.serve._private.autoscaling_policy import AutoscalingPolicyManager
 from ray.serve._private.cluster_node_info_cache import ClusterNodeInfoCache
 from ray.serve._private.common import (
     DeploymentID,
     DeploymentStatus,
     DeploymentStatusInfo,
+    DeploymentStatusInternalTrigger,
     DeploymentStatusTrigger,
     Duration,
     MultiplexedReplicaInfo,
@@ -701,7 +703,7 @@ class ActorReplicaWrapper:
             handle = ray.get_actor(self._actor_name, namespace=SERVE_NAMESPACE)
             if self._is_cross_language:
                 handle = JavaActorHandleProxy(handle)
-            self._graceful_shutdown_ref = handle.prepare_for_shutdown.remote()
+            self._graceful_shutdown_ref = handle.perform_graceful_shutdown.remote()
         except ValueError:
             # ValueError thrown from ray.get_actor means actor has already been deleted.
             pass
@@ -1259,17 +1261,21 @@ class DeploymentState:
 
         self._last_notified_running_replica_infos: List[RunningReplicaInfo] = []
 
+    @property
+    def autoscaling_policy_manager(self) -> AutoscalingPolicyManager:
+        return self._target_state.info.autoscaling_policy_manager
+
     def should_autoscale(self) -> bool:
         """
         Check if the deployment is under autoscaling
         """
-        return self._target_state.info.autoscaling_policy is not None
+        return self.autoscaling_policy_manager.should_autoscale()
 
     def get_autoscale_metric_lookback_period(self) -> float:
         """
         Return the autoscaling metrics look back period
         """
-        return self._target_state.info.autoscaling_policy.config.look_back_period_s
+        return self.autoscaling_policy_manager.config.look_back_period_s
 
     def get_checkpoint_data(self) -> DeploymentTargetState:
         """
@@ -1410,10 +1416,8 @@ class DeploymentState:
         self._save_checkpoint_func(writeahead_checkpoints={self._id: target_state})
 
         self._target_state = target_state
-        self._curr_status_info = DeploymentStatusInfo(
-            self.deployment_name,
-            DeploymentStatus.UPDATING,
-            status_trigger=DeploymentStatusTrigger.DELETING,
+        self._curr_status_info = self._curr_status_info.handle_transition(
+            trigger=DeploymentStatusInternalTrigger.DELETE
         )
         app_msg = f" in application '{self.app_name}'" if self.app_name else ""
         logger.info(
@@ -1425,8 +1429,6 @@ class DeploymentState:
         self,
         target_info: DeploymentInfo,
         target_num_replicas: int,
-        status_trigger: DeploymentStatusTrigger,
-        allow_scaling_statuses: bool,
     ) -> None:
         """Set the target state for the deployment to the provided info.
 
@@ -1435,8 +1437,6 @@ class DeploymentState:
             target_num_replicas: The number of replicas that this deployment
                 should attempt to run.
             status_trigger: The driver that triggered this change of state.
-            allow_scaling_statuses: Whether to allow this method
-                to set the status to UPSCALING/DOWNSCALING or not.
         """
 
         # We must write ahead the target state in case of GCS failure (we don't
@@ -1458,33 +1458,6 @@ class DeploymentState:
                 != new_target_state.version.deployment_config.num_replicas
             ):
                 ServeUsageTag.NUM_REPLICAS_LIGHTWEIGHT_UPDATED.record("True")
-
-        # Determine if the updated target state simply scales the current state.
-        if new_target_state.is_scaled_copy_of(self._target_state):
-
-            curr_num_replicas = self._target_state.target_num_replicas
-            new_num_replicas = new_target_state.target_num_replicas
-            num_replicas_changed = curr_num_replicas != new_num_replicas
-
-            if allow_scaling_statuses and num_replicas_changed:
-                scaling_direction = (
-                    DeploymentStatus.UPSCALING
-                    if new_num_replicas > curr_num_replicas
-                    else DeploymentStatus.DOWNSCALING
-                )
-                self._curr_status_info = self._curr_status_info.update(
-                    status=scaling_direction,
-                    status_trigger=status_trigger,
-                    message=(
-                        f"{scaling_direction.capitalize()} from "
-                        f"{curr_num_replicas} to {new_num_replicas} replicas."
-                    ),
-                )
-        else:
-            # Otherwise, the deployment configuration has actually been updated.
-            self._curr_status_info = self._curr_status_info.update(
-                status=DeploymentStatus.UPDATING, status_trigger=status_trigger
-            )
 
         self._target_state = new_target_state
 
@@ -1529,18 +1502,16 @@ class DeploymentState:
             return False
 
         # Decide new target num_replicas.
-        autoscaling_policy = deployment_info.autoscaling_policy
-        if autoscaling_policy is not None:
-            if (
-                deployment_settings_changed
-                and autoscaling_policy.config.initial_replicas is not None
-            ):
+        autoscaling_policy_manager = deployment_info.autoscaling_policy_manager
+        if autoscaling_policy_manager.should_autoscale():
+            initial_replicas = autoscaling_policy_manager.config.initial_replicas
+            if deployment_settings_changed and initial_replicas is not None:
                 target_num_replicas = get_capacity_adjusted_num_replicas(
-                    autoscaling_policy.config.initial_replicas,
+                    initial_replicas,
                     deployment_info.target_capacity,
                 )
             else:
-                target_num_replicas = autoscaling_policy.apply_bounds(
+                target_num_replicas = autoscaling_policy_manager.apply_bounds(
                     self._target_state.target_num_replicas,
                     deployment_info.target_capacity,
                     deployment_info.target_capacity_direction,
@@ -1551,18 +1522,29 @@ class DeploymentState:
                 deployment_info.target_capacity,
             )
 
-        # Only allow the deployment status to become UPSCALING or DOWNSCALING
-        # if the deployment is not currently UPDATING.
-        allow_scaling_statuses = (
-            self.curr_status_info.status is not DeploymentStatus.UPDATING
-        )
+        old_target_state = self._target_state
+        self._set_target_state(deployment_info, target_num_replicas=target_num_replicas)
 
-        self._set_target_state(
-            deployment_info,
-            target_num_replicas=target_num_replicas,
-            status_trigger=DeploymentStatusTrigger.CONFIG_UPDATE_STARTED,
-            allow_scaling_statuses=allow_scaling_statuses,
-        )
+        # Determine if the updated target state simply scales the current state.
+        if self._target_state.is_scaled_copy_of(old_target_state):
+            old_num = old_target_state.target_num_replicas
+            new_num = self._target_state.target_num_replicas
+
+            if new_num > old_num:
+                self._curr_status_info = self._curr_status_info.handle_transition(
+                    trigger=DeploymentStatusInternalTrigger.MANUALLY_INCREASE_NUM_REPLICAS,  # noqa: E501
+                    message=f"Upscaling from {old_num} to {new_num} replicas.",
+                )
+            elif new_num < old_num:
+                self._curr_status_info = self._curr_status_info.handle_transition(
+                    trigger=DeploymentStatusInternalTrigger.MANUALLY_DECREASE_NUM_REPLICAS,  # noqa: E501
+                    message=f"Downscaling from {old_num} to {new_num} replicas.",
+                )
+        else:
+            # Otherwise, the deployment configuration has actually been updated.
+            self._curr_status_info = self._curr_status_info.handle_transition(
+                trigger=DeploymentStatusInternalTrigger.CONFIG_UPDATE
+            )
 
         logger.info(
             f"Deploying new version of deployment {self.deployment_name} in "
@@ -1602,8 +1584,8 @@ class DeploymentState:
             return
 
         current_num_ongoing_requests = self.get_replica_current_ongoing_requests()
-        autoscaling_policy = self._target_state.info.autoscaling_policy
-        decision_num_replicas = autoscaling_policy.get_decision_num_replicas(
+        autoscaling_policy_manager = self.autoscaling_policy_manager
+        decision_num_replicas = autoscaling_policy_manager.get_decision_num_replicas(
             curr_target_num_replicas=self._target_state.target_num_replicas,
             current_num_ongoing_requests=current_num_ongoing_requests,
             current_handle_queued_queries=current_handle_queued_queries,
@@ -1611,7 +1593,10 @@ class DeploymentState:
             target_capacity_direction=self._target_state.info.target_capacity_direction,
         )
 
-        if decision_num_replicas == self._target_state.target_num_replicas:
+        if (
+            decision_num_replicas is None
+            or decision_num_replicas == self._target_state.target_num_replicas
+        ):
             return
 
         logger.info(
@@ -1624,21 +1609,25 @@ class DeploymentState:
         new_info = copy(self._target_state.info)
         new_info.version = self._target_state.version.code_version
 
-        # The deployment should only transition to UPSCALING/DOWNSCALING if
-        # it's within the autoscaling bounds, or if it's not currently
-        # performing a config update.
-        allow_scaling_statuses = (
-            self._is_within_autoscaling_bounds()
-            or self.curr_status_info.status_trigger
-            != DeploymentStatusTrigger.CONFIG_UPDATE_STARTED
-        )
+        old_num = self._target_state.target_num_replicas
+        self._set_target_state(new_info, decision_num_replicas)
 
-        self._set_target_state(
-            new_info,
-            decision_num_replicas,
-            status_trigger=DeploymentStatusTrigger.AUTOSCALING,
-            allow_scaling_statuses=allow_scaling_statuses,
-        )
+        # The deployment should only transition to UPSCALING/DOWNSCALING
+        # if it's within the autoscaling bounds
+        if not self._is_within_autoscaling_bounds():
+            return
+
+        new_num = self._target_state.target_num_replicas
+        if new_num > old_num:
+            self._curr_status_info = self._curr_status_info.handle_transition(
+                trigger=DeploymentStatusInternalTrigger.AUTOSCALE_UP,
+                message=f"Upscaling from {old_num} to {new_num} replicas.",
+            )
+        elif new_num < old_num:
+            self._curr_status_info = self._curr_status_info.handle_transition(
+                trigger=DeploymentStatusInternalTrigger.AUTOSCALE_DOWN,
+                message=f"Downscaling from {old_num} to {new_num} replicas.",
+            )
 
     def _is_within_autoscaling_bounds(self) -> bool:
         """Whether or not this deployment is within the autoscaling bounds.
@@ -1656,19 +1645,16 @@ class DeploymentState:
             states=[ReplicaState.RUNNING], version=target_version
         )
 
-        autoscaling_policy = self._target_state.info.autoscaling_policy
-        assert autoscaling_policy is not None
+        assert self.autoscaling_policy_manager is not None
 
-        lower_bound = autoscaling_policy.get_current_lower_bound(
-            self._target_state.info.target_capacity,
-            self._target_state.info.target_capacity_direction,
+        return (
+            self.autoscaling_policy_manager.apply_bounds(
+                num_replicas_running_at_target_version,
+                self._target_state.info.target_capacity,
+                self._target_state.info.target_capacity_direction,
+            )
+            == num_replicas_running_at_target_version
         )
-        upper_bound = get_capacity_adjusted_num_replicas(
-            autoscaling_policy.config.max_replicas,
-            self._target_state.info.target_capacity,
-        )
-
-        return lower_bound <= num_replicas_running_at_target_version <= upper_bound
 
     def delete(self) -> None:
         if not self._target_state.deleting:
@@ -1930,9 +1916,8 @@ class DeploymentState:
                 # reached target replica count
                 self._replica_constructor_retry_counter = -1
             else:
-                self._curr_status_info = self._curr_status_info.update(
-                    status=DeploymentStatus.UNHEALTHY,
-                    status_trigger=DeploymentStatusTrigger.REPLICA_STARTUP_FAILED,
+                self._curr_status_info = self._curr_status_info.handle_transition(
+                    trigger=DeploymentStatusInternalTrigger.REPLICA_STARTUP_FAILED,
                     message=(
                         f"The deployment failed to start {failed_to_start_count} times "
                         "in a row. This may be due to a problem with its "
@@ -1965,26 +1950,9 @@ class DeploymentState:
                 == running_at_target_version_replica_cnt
                 and running_at_target_version_replica_cnt == all_running_replica_cnt
             ):
-                if self._curr_status_info.status == DeploymentStatus.UPSCALING:
-                    status_trigger = DeploymentStatusTrigger.UPSCALE_COMPLETED
-                elif self._curr_status_info.status == DeploymentStatus.DOWNSCALING:
-                    status_trigger = DeploymentStatusTrigger.DOWNSCALE_COMPLETED
-                elif (
-                    self._curr_status_info.status == DeploymentStatus.UPDATING
-                    and self._curr_status_info.status_trigger
-                    == DeploymentStatusTrigger.CONFIG_UPDATE_STARTED
-                ):
-                    status_trigger = DeploymentStatusTrigger.CONFIG_UPDATE_COMPLETED
-                elif self._curr_status_info.status == DeploymentStatus.UNHEALTHY:
-                    status_trigger = DeploymentStatusTrigger.UNSPECIFIED
-                else:
-                    status_trigger = self._curr_status_info.status_trigger
-
-                self._curr_status_info = self._curr_status_info.update(
-                    status=DeploymentStatus.HEALTHY,
-                    status_trigger=status_trigger,
+                self._curr_status_info = self._curr_status_info.handle_transition(
+                    trigger=DeploymentStatusInternalTrigger.HEALTHY
                 )
-
                 return False, any_replicas_recovering
 
         return False, any_replicas_recovering
@@ -2129,9 +2097,8 @@ class DeploymentState:
                 # enters the "UNHEALTHY" status until the replica is
                 # recovered or a new deploy happens.
                 if replica.version == self._target_state.version:
-                    self._curr_status_info = self._curr_status_info.update(
-                        status=DeploymentStatus.UNHEALTHY,
-                        status_trigger=DeploymentStatusTrigger.HEALTH_CHECK_FAILED,
+                    self._curr_status_info = self._curr_status_info.handle_transition(
+                        trigger=DeploymentStatusInternalTrigger.HEALTH_CHECK_FAILED,
                         message="A replica's health check failed. This "
                         "deployment will be UNHEALTHY until the replica "
                         "recovers or a new deploy happens.",
@@ -2177,8 +2144,8 @@ class DeploymentState:
                 # The issue that caused the deployment to be unhealthy should be
                 # prioritized over this resource availability issue.
                 if self._curr_status_info.status != DeploymentStatus.UNHEALTHY:
-                    self._curr_status_info = self._curr_status_info.update(
-                        message=message,
+                    self._curr_status_info = self._curr_status_info.update_message(
+                        message
                     )
 
             if len(pending_initialization) > 0:
@@ -2194,8 +2161,8 @@ class DeploymentState:
                 # The issue that caused the deployment to be unhealthy should be
                 # prioritized over this resource availability issue.
                 if self._curr_status_info.status != DeploymentStatus.UNHEALTHY:
-                    self._curr_status_info = self._curr_status_info.update(
-                        message=message,
+                    self._curr_status_info = self._curr_status_info.update_message(
+                        message
                     )
 
             self._prev_startup_warning = time.time()
@@ -2257,9 +2224,8 @@ class DeploymentState:
                 "Exception occurred trying to update deployment state:\n"
                 + traceback.format_exc()
             )
-            self._curr_status_info = self._curr_status_info.update(
-                status=DeploymentStatus.UNHEALTHY,
-                status_trigger=DeploymentStatusTrigger.INTERNAL_ERROR,
+            self._curr_status_info = self._curr_status_info.handle_transition(
+                trigger=DeploymentStatusInternalTrigger.INTERNAL_ERROR,
                 message="Failed to update deployment:" f"\n{traceback.format_exc()}",
             )
 

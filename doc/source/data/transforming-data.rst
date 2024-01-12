@@ -14,9 +14,9 @@ This guide shows you how to:
 
 * :ref:`Transform rows <transforming_rows>`
 * :ref:`Transform batches <transforming_batches>`
-* :ref:`Stateful Transforms <stateful_transforms>`
+* :ref:`Stateful transforms <stateful_transforms>`
 * :ref:`Groupby and transform groups <transforming_groupby>`
-* :ref:`Shuffle rows <shuffling_rows>`
+* :ref:`Shuffle data <shuffling_data>`
 * :ref:`Repartition data <repartitioning_data>`
 
 .. _transforming_rows:
@@ -305,12 +305,64 @@ To transform groups, call :meth:`~ray.data.Dataset.groupby` to group rows. Then,
                 .map_groups(normalize_features)
             )
 
-.. _shuffling_rows:
+.. _shuffling_data:
 
-Shuffling rows
+Shuffling data
 ==============
 
-To randomly shuffle all rows, call :meth:`~ray.data.Dataset.random_shuffle`.
+Shuffle the ordering of files
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+To randomly shuffle the ordering of input files before reading, call a function like
+:func:`~ray.data.read_images` and specify ``shuffle="files"``. This randomly assigns
+input files to workers for reading.
+
+.. testcode::
+
+    import ray
+
+    ds = ray.data.read_images(
+        "s3://anonymous@ray-example-data/image-datasets/simple",
+        shuffle="files",
+    )
+
+.. tip::
+
+    This is the fastest option for shuffle, and is a purely metadata operation. This
+    option doesn't shuffle the actual rows inside files, so the randomness might be
+    poor if each file has many rows.
+
+Local shuffle when iterating over batches
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+To locally shuffle a subset of rows, call a function like :meth:`~ray.data.Dataset.iter_batches`
+and specify `local_shuffle_buffer_size`. This shuffles the rows up to a provided buffer
+size during iteration. See more details in
+:ref:`Iterating over batches with shuffling <iterating-over-batches-with-shuffling>`.
+
+.. testcode::
+
+    import ray
+
+    ds = ray.data.read_images("s3://anonymous@ray-example-data/image-datasets/simple")
+
+    for batch in ds.iter_batches(
+        batch_size=2,
+        batch_format="numpy",
+        local_shuffle_buffer_size=250,
+    ):
+        print(batch)
+
+.. tip::
+
+    This is slower than shuffling ordering of files, and shuffles rows locally without
+    network transfer. This option can be used together with shuffling ordering of
+    files.
+
+Shuffle all rows
+~~~~~~~~~~~~~~~~
+
+To randomly shuffle all rows globally, call :meth:`~ray.data.Dataset.random_shuffle`.
 
 .. testcode::
 
@@ -323,8 +375,8 @@ To randomly shuffle all rows, call :meth:`~ray.data.Dataset.random_shuffle`.
 
 .. tip::
 
-    :meth:`~ray.data.Dataset.random_shuffle` is slow. For better performance, try
-    :ref:`Iterating over batches with shuffling <iterating-over-batches-with-shuffling>`.
+    This is the slowest option for shuffle, and requires transferring data across
+    network between workers. This option achieves the best randomness among all options.
 
 .. _repartitioning_data:
 

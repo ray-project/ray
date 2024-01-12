@@ -22,16 +22,17 @@ def calculate_capacity_threshold(disk_capacity_in_bytes):
 def get_current_usage():
     usage = shutil.disk_usage("/tmp")
     print(f"free: {usage.free} ")
-    print(f"current usage: {1.0 - 1.0 * usage.free  / usage.total}")
-    return 1.0 - 1.0 * usage.free / usage.total
+    usage_percentage = 1.0 - 1.0 * usage.free / usage.total
+    print(f"current usage: {usage_percentage}")
+    return usage_percentage
 
 
 @contextmanager
-def create_tmp_file(bytes):
+def create_tmp_file(n):
     tmp_dir = tempfile.mkdtemp(dir="/tmp")
     tmp_path = os.path.join(tmp_dir, "test.txt")
     with open(tmp_path, "wb") as f:
-        f.write(os.urandom(bytes))
+        f.write(os.urandom(n))
     try:
         yield tmp_path
     finally:
@@ -245,6 +246,10 @@ def test_ood_events(shutdown_only):
             ray.get(foo.remote())
         except ray.exceptions.RayTaskError as e:
             assert isinstance(e.cause, ray.exceptions.OutOfDiskError)
+
+    # Give it some time for events to appear.
+    # TODO(core-team): provide some way to wait for events to be flushed.
+    time.sleep(2)
 
     events = list_cluster_events()
     print(events)
