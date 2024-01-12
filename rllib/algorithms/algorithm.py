@@ -1409,7 +1409,9 @@ class Algorithm(Trainable, AlgorithmBase):
             worker.set_weights(
                 weights=ray.get(weights_ref), weights_seq_no=weights_seq_no
             )
-            episodes = worker.sample(explore=False)
+            episodes = worker.sample(
+                explore=False, num_episodes=1 if unit == "episodes" else None
+            )
             metrics = worker.get_metrics()
             return episodes, metrics, weights_seq_no
 
