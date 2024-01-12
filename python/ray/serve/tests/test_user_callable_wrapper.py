@@ -1,3 +1,5 @@
+from typing import Callable, Optional
+
 import pytest
 
 from ray.serve._private.common import DeploymentID
@@ -5,37 +7,50 @@ from ray.serve._private.http_util import MessageQueue
 from ray.serve._private.replica import UserCallableWrapper
 from ray.serve._private.router import RequestMetadata
 
-class BasicCallable:
+
+class BasicClass:
     def __call__(self):
         return "hi"
 
-@pytest.fixture
-def user_callable_wrapper(request) -> UserCallableWrapper:
-    try:
-        callable = request.param
-    except AttributeError:
-        callable = BasicCallable
 
-    wrapper = UserCallableWrapper(
-        callable,
-        tuple(),
-        dict(),
-        deployment_id=DeploymentID(app="test_app", name="test_name")
+"""
+Tests to write:
+    - async __init__
+    - destructor is idempotent
+    - health check doesn't call user one if not defined
+    - sync method calls
+    - async method calls
+    - sync generator calls
+    - async generator calls
+    - stuff related to grpc
+    - stuff related to http
+"""
+
+
+def _make_user_callable_wrapper(callable: Optional[Callable] = None, *init_args, **init_kwargs):
+    return UserCallableWrapper(
+        callable if callable is not None else BasicClass,
+        init_args,
+        init_kwargs,
+        deployment_id=DeploymentID(app="test_app", name="test_name"),
     )
-    yield wrapper
+
 
 @pytest.mark.asyncio
-async def test_calling_initialize_twice(user_callable_wrapper):
+async def test_calling_initialize_twice():
+    user_callable_wrapper = _make_user_callable_wrapper()
+
     await user_callable_wrapper.initialize_callable()
     with pytest.raises(RuntimeError):
         await user_callable_wrapper.initialize_callable()
 
+
 @pytest.mark.asyncio
-async def test_calling_methods_before_initialize(user_callable_wrapper):
+async def test_calling_methods_before_initialize():
+    user_callable_wrapper = _make_user_callable_wrapper()
+
     with pytest.raises(RuntimeError):
-        await user_callable_wrapper.call_user_method(
-            None, tuple(), dict()
-        )
+        await user_callable_wrapper.call_user_method(None, tuple(), dict())
 
     with pytest.raises(RuntimeError):
         await user_callable_wrapper.call_user_health_check()
@@ -45,12 +60,15 @@ async def test_calling_methods_before_initialize(user_callable_wrapper):
 
     await user_callable_wrapper.call_destructor()
 
+
 @pytest.mark.asyncio
-async def test_basic_unary_call(user_callable_wrapper):
+async def test_basic_class_callable():
+    user_callable_wrapper = _make_user_callable_wrapper()
+
     request_metadata = RequestMetadata(
         request_id="test_request", endpoint="test_endpoint"
     )
     await user_callable_wrapper.initialize_callable()
-    assert (await user_callable_wrapper.call_user_method(
-        request_metadata, tuple(), dict()
-    )) == "hi"
+    assert (
+        await user_callable_wrapper.call_user_method(request_metadata, tuple(), dict())
+    ) == "hi"
