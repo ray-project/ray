@@ -1,6 +1,7 @@
 import { Box, createStyles, makeStyles } from "@material-ui/core";
 import classNames from "classnames";
 import React from "react";
+import { IconBaseProps } from "react-icons";
 import {
   RiCheckboxCircleFill,
   RiCloseCircleFill,
@@ -9,7 +10,7 @@ import {
 } from "react-icons/ri";
 import { StatusChip } from "../components/StatusChip";
 import { JobStatus, UnifiedJob } from "../type/job";
-import { ClassNameProps, DataTestIdProps } from "./props";
+import { ClassNameProps } from "./props";
 
 const useJobRunningIconStyles = makeStyles((theme) =>
   createStyles({
@@ -39,18 +40,16 @@ const useJobRunningIconStyles = makeStyles((theme) =>
   }),
 );
 
-type JobRunningIconProps = { small?: boolean } & ClassNameProps &
-  DataTestIdProps;
+type JobRunningIconProps = { small?: boolean } & ClassNameProps & IconBaseProps;
 
 export const JobRunningIcon = ({
   className,
   small = false,
-  "data-testid": dataTestId,
+  ...props
 }: JobRunningIconProps) => {
   const classes = useJobRunningIconStyles();
   return (
     <RiLoader4Line
-      data-testid={dataTestId}
       className={classNames(
         classes.icon,
         classes.iconRunning,
@@ -59,6 +58,7 @@ export const JobRunningIcon = ({
         },
         className,
       )}
+      {...props}
     />
   );
 };

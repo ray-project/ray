@@ -42,25 +42,21 @@ export const ServeStatusIcon = ({
     case "HEALTHY":
       return (
         <RiRecordCircleFill
-          data-testid="serve-status-icon"
           className={classNames(classes.icon, classes.colorSuccess)}
+          title="Healthy"
         />
       );
     case "UNHEALTHY":
       return (
         <RiCloseCircleFill
-          data-testid="serve-status-icon"
           className={classNames(classes.icon, classes.colorError)}
+          title="Unhealthy"
         />
       );
     default:
       // UPDATING
       return (
-        <JobRunningIcon
-          data-testid="serve-status-icon"
-          className={className}
-          small={small}
-        />
+        <JobRunningIcon className={className} small={small} title="Updating" />
       );
   }
 };
