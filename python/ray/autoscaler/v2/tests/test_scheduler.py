@@ -14,16 +14,14 @@ from ray.autoscaler.v2.scheduler import (
     SchedulingRequest,
     logger,
 )
-from ray.autoscaler.v2.utils import ResourceRequestUtil
 from ray.autoscaler.v2.schema import AutoscalerInstance, NodeType
 from ray.autoscaler.v2.tests.util import make_autoscaler_instance
+from ray.autoscaler.v2.utils import ResourceRequestUtil
 from ray.core.generated.autoscaler_pb2 import (
     ClusterResourceConstraint,
     GangResourceRequest,
     NodeState,
     ResourceRequest,
-    NodeStatus,
-    ResourceRequestByCount,
 )
 from ray.core.generated.instance_manager_pb2 import Instance, TerminationRequest
 
@@ -36,7 +34,7 @@ ResourceMap = Dict[str, float]
 def sched_request(
     node_type_configs: Dict[NodeType, NodeTypeConfig],
     max_num_nodes: Optional[int] = None,
-    resource_requests: Optional[List[ResourceRequestByCount]] = None,
+    resource_requests: Optional[List[ResourceRequest]] = None,
     gang_resource_requests: Optional[List[GangResourceRequest]] = None,
     cluster_resource_constraints: Optional[List[ClusterResourceConstraint]] = None,
     instances: Optional[List[AutoscalerInstance]] = None,
@@ -412,8 +410,8 @@ def test_single_resources():
         resource_requests=[ResourceRequestUtil.make({"CPU": 1})],
     )
     reply = scheduler.schedule(request)
-    target_cluster_shape = {"type_1": 1}
-    assert sorted(reply.target_cluster_shape) == sorted(target_cluster_shape)
+    to_lauch, _ = _launch_and_terminate(reply)
+    assert sorted(to_lauch) == sorted({"type_1": 1})
 
     # Request multiple CPUs should start multiple nodes
     request = sched_request(
@@ -421,60 +419,64 @@ def test_single_resources():
         resource_requests=[ResourceRequestUtil.make({"CPU": 1})] * 3,
     )
     reply = scheduler.schedule(request)
-    target_cluster_shape = {"type_1": 3}
-    assert sorted(reply.target_cluster_shape) == sorted(target_cluster_shape)
+    to_lauch, _ = _launch_and_terminate(reply)
+    assert sorted(to_lauch) == sorted({"type_1": 3})
 
     # Request resources with already existing nodes should not launch new nodes.
     request = sched_request(
         node_type_configs=node_type_configs,
         resource_requests=[ResourceRequestUtil.make({"CPU": 1})],
-        current_nodes=[
-            NodeState(
-                ray_node_type_name="type_1",
-                available_resources={"CPU": 1},
-                total_resources={"CPU": 1},
+        instances=[
+            make_autoscaler_instance(
+                ray_node=NodeState(
+                    ray_node_type_name="type_1",
+                    available_resources={"CPU": 1},
+                    total_resources={"CPU": 1},
+                ),
             ),
         ],
     )
     reply = scheduler.schedule(request)
-    target_cluster_shape = {"type_1": 1}
-    assert sorted(reply.target_cluster_shape) == sorted(target_cluster_shape)
+    to_lauch, _ = _launch_and_terminate(reply)
+    assert sorted(to_lauch) == sorted({})
 
     # Request resources with already existing nodes not sufficient should launch
     # new nodes.
     request = sched_request(
         node_type_configs=node_type_configs,
         resource_requests=[ResourceRequestUtil.make({"CPU": 1})],
-        current_nodes=[
-            NodeState(
-                ray_node_type_name="type_1",
-                available_resources={"CPU": 0.9},
-                total_resources={"CPU": 1},
+        instances=[
+            make_autoscaler_instance(
+                ray_node=NodeState(
+                    ray_node_type_name="type_1",
+                    available_resources={"CPU": 0.9},
+                    total_resources={"CPU": 1},
+                ),
             ),
         ],
     )
     reply = scheduler.schedule(request)
-    target_cluster_shape = {"type_1": 2}
-    assert sorted(reply.target_cluster_shape) == sorted(target_cluster_shape)
+    to_lauch, _ = _launch_and_terminate(reply)
+    assert sorted(to_lauch) == sorted({"type_1": 1})
 
     # Request resources with already pending nodes should NOT launch new nodes
     request = sched_request(
         node_type_configs=node_type_configs,
         resource_requests=[ResourceRequestUtil.make({"CPU": 1})],
-        current_instances=[
-            Instance(
-                instance_type="type_1",
-                status=Instance.REQUESTED,
-                total_resources={"CPU": 1},
+        instances=[
+            make_autoscaler_instance(
+                im_instance=Instance(
+                    instance_type="type_1", status=Instance.REQUESTED, instance_id="0"
+                ),
             ),
         ],
     )
     reply = scheduler.schedule(request)
-    target_cluster_shape = {"type_1": 1}
-    assert sorted(reply.target_cluster_shape) == sorted(target_cluster_shape)
+    to_lauch, _ = _launch_and_terminate(reply)
+    assert sorted(to_lauch) == sorted({})
 
 
-def test_max_worker_num_enforce():
+def test_max_worker_num_enforce_with_resource_requests():
     scheduler = ResourceDemandScheduler()
     node_type_configs = {
         "type_1": NodeTypeConfig(
@@ -484,20 +486,26 @@ def test_max_worker_num_enforce():
             max_worker_nodes=10,
         ),
     }
-    max_num_worker_nodes = 2
+    max_num_nodes = 2
 
     # Request 10 CPUs should start at most 2 nodes.
     request = sched_request(
         node_type_configs=node_type_configs,
-        max_num_worker_nodes=max_num_worker_nodes,
+        max_num_nodes=max_num_nodes,
         resource_requests=[ResourceRequestUtil.make({"CPU": 1})] * 3,
-        current_nodes=[
-            NodeState(ray_node_type_name="type_1"),  # head node
+        instances=[
+            make_autoscaler_instance(
+                ray_node=NodeState(
+                    ray_node_type_name="type_1",
+                    available_resources={"CPU": 1},
+                    total_resources={"CPU": 1},
+                ),
+            ),
         ],
     )
     reply = scheduler.schedule(request)
-    target_cluster_shape = {"type_1": 3}
-    assert sorted(reply.target_cluster_shape) == sorted(target_cluster_shape)
+    to_lauch, _ = _launch_and_terminate(reply)
+    assert sorted(to_lauch) == sorted({"type_1": 1})
 
 
 def test_multi_requests_fittable():
@@ -530,7 +538,8 @@ def test_multi_requests_fittable():
         ],
     )
     reply = scheduler.schedule(request)
-    assert sorted(reply.target_cluster_shape) == sorted({"type_1": 1, "type_2": 1})
+    to_launch, _ = _launch_and_terminate(reply)
+    assert sorted(to_launch) == sorted({"type_1": 1, "type_2": 1})
     assert reply.infeasible_resource_requests == []
 
     # Change the ordering of requests should not affect the result.
@@ -544,7 +553,8 @@ def test_multi_requests_fittable():
         ],
     )
     reply = scheduler.schedule(request)
-    assert sorted(reply.target_cluster_shape) == sorted({"type_1": 1, "type_2": 1})
+    to_launch, _ = _launch_and_terminate(reply)
+    assert sorted(to_launch) == sorted({"type_1": 1, "type_2": 1})
     assert reply.infeasible_resource_requests == []
 
     request = sched_request(
@@ -557,7 +567,8 @@ def test_multi_requests_fittable():
         ],
     )
     reply = scheduler.schedule(request)
-    assert sorted(reply.target_cluster_shape) == sorted({"type_1": 1, "type_2": 1})
+    to_launch, _ = _launch_and_terminate(reply)
+    assert sorted(to_launch) == sorted({"type_1": 1, "type_2": 1})
     assert reply.infeasible_resource_requests == []
 
     # However, if we already have fragmentation. We should not be able
@@ -569,16 +580,19 @@ def test_multi_requests_fittable():
             ResourceRequestUtil.make({"CPU": 1}),
             ResourceRequestUtil.make({"CPU": 1, "GPU": 1}),
         ],
-        current_nodes=[
-            NodeState(
-                ray_node_type_name="type_1",
-                available_resources={"CPU": 0, "GPU": 1},  # fragmentation
-                total_resources={"CPU": 1, "GPU": 1},
+        instances=[
+            make_autoscaler_instance(
+                ray_node=NodeState(
+                    ray_node_type_name="type_1",
+                    available_resources={"CPU": 0, "GPU": 1},
+                    total_resources={"CPU": 1, "GPU": 1},
+                ),
             ),
         ],
     )
     reply = scheduler.schedule(request)
-    assert sorted(reply.target_cluster_shape) == sorted({"type_1": 1, "type_2": 1})
+    to_launch, _ = _launch_and_terminate(reply)
+    assert sorted(to_launch) == sorted({"type_2": 1})
     assert len(reply.infeasible_resource_requests) == 1
 
 
@@ -617,7 +631,8 @@ def test_multi_node_types_score():
         resource_requests=[ResourceRequestUtil.make({"CPU": 1})],
     )
     reply = scheduler.schedule(request)
-    assert sorted(reply.target_cluster_shape) == sorted({"type_small": 1})
+    to_launch, _ = _launch_and_terminate(reply)
+    assert sorted(to_launch) == sorted({"type_small": 1})
 
     # type_small should be preferred over type_large.
     request = sched_request(
@@ -625,7 +640,8 @@ def test_multi_node_types_score():
         resource_requests=[ResourceRequestUtil.make({"CPU": 2})],
     )
     reply = scheduler.schedule(request)
-    assert sorted(reply.target_cluster_shape) == sorted({"type_small": 1})
+    to_launch, _ = _launch_and_terminate(reply)
+    assert sorted(to_launch) == sorted({"type_small": 1})
 
 
 def test_multi_node_types_score_with_gpu(monkeypatch):
@@ -653,13 +669,15 @@ def test_multi_node_types_score_with_gpu(monkeypatch):
         resource_requests=[ResourceRequestUtil.make({"CPU": 1})],
     )
     reply = scheduler.schedule(request)
-    assert sorted(reply.target_cluster_shape) == sorted({"type_multi": 1})
+    to_launch, _ = _launch_and_terminate(reply)
+    assert sorted(to_launch) == sorted({"type_multi": 1})
 
     with monkeypatch.context() as m:
         m.setattr(ray.autoscaler.v2.scheduler, "AUTOSCALER_CONSERVE_GPU_NODES", 0)
         # type_multi should now be preferred over type_gpu.
         reply = scheduler.schedule(request)
-        assert sorted(reply.target_cluster_shape) == sorted({"type_gpu": 1})
+        to_launch, _ = _launch_and_terminate(reply)
+        assert sorted(to_launch) == sorted({"type_gpu": 1})
 
 
 if __name__ == "__main__":

@@ -9,11 +9,10 @@ from typing import Callable, Dict, List, Optional, Tuple
 
 from ray.autoscaler._private.constants import AUTOSCALER_CONSERVE_GPU_NODES
 from ray.autoscaler._private.resource_demand_scheduler import UtilizationScore
-from ray.autoscaler.v2.instance_manager.config import NodeTypeConfig
-from ray.autoscaler.v2.schema import NodeType
-from ray.autoscaler.v2.utils import ResourceRequestUtil
 from ray.autoscaler.v2.instance_manager.common import InstanceUtil
+from ray.autoscaler.v2.instance_manager.config import NodeTypeConfig
 from ray.autoscaler.v2.schema import AutoscalerInstance, NodeType
+from ray.autoscaler.v2.utils import ProtobufUtil, ResourceRequestUtil
 from ray.core.generated.autoscaler_pb2 import (
     ClusterResourceConstraint,
     GangResourceRequest,
@@ -96,7 +95,7 @@ class SchedulingNodeStatus(Enum):
     # The node is to be launched.
     TO_LAUNCH = "TO_LAUNCH"
     # Ray is pending on the node.
-    RAY_PENDING = "PENDING"
+    RAY_PENDING = "RAY_PENDING"
     # ray is already running.
     RUNNING = "RUNNING"
     # The node is to be terminated.
@@ -329,7 +328,7 @@ class SchedulingNode:
             instance_id=self.im_instance_id,
             ray_node_id=self.ray_node_id,
             idle_duration_ms=self.idle_duration_ms,
-            termination_request=str(MessageToDict(self.termination_request))
+            termination_request=str(ProtobufUtil.to_dict(self.termination_request))
             if self.termination_request
             else None,
             status=self.status,
@@ -438,7 +437,8 @@ class ResourceDemandScheduler(IResourceScheduler):
                         # Configs might have been updated, and no more
                         # node_type_configs for this node type.
                         logger.info(
-                            "Skipping instance {} since no node config found for {}".format(
+                            "Skipping instance {} since no node config "
+                            "found for {}".format(
                                 instance.im_instance.instance_id,
                                 instance.im_instance.instance_type,
                             )
@@ -447,7 +447,7 @@ class ResourceDemandScheduler(IResourceScheduler):
                     nodes.append(
                         SchedulingNode.from_node_config(
                             node_config,
-                            status=SchedulingNodeStatus.PENDING,
+                            status=SchedulingNodeStatus.RAY_PENDING,
                             im_instance_id=instance.im_instance.instance_id,
                         )
                     )
@@ -536,8 +536,8 @@ class ResourceDemandScheduler(IResourceScheduler):
             return self._node_type_configs
 
         def __str__(self) -> str:
-            return "ScheduleContext({} nodes, node_type_available={}): {}".format(
-                len(self._nodes), self._node_type_available, self._nodes
+            return "ScheduleContext({} nodes, node_type_available={})".format(
+                len(self._nodes), dict(self._node_type_available)
             )
 
         def get_to_launch(self) -> List[LaunchRequest]:
@@ -618,6 +618,7 @@ class ResourceDemandScheduler(IResourceScheduler):
 
     def _init_context(self, request: SchedulingRequest) -> None:
         self._ctx = self.ScheduleContext.from_schedule_request(request)
+        logger.info(f"===========Scheduling request========:\n{request}")
 
     def _enforce_max_workers(self) -> None:
         """
@@ -629,6 +630,7 @@ class ResourceDemandScheduler(IResourceScheduler):
         """
 
         # Get all the nodes by type
+        logger.info("Enforcing max workers: {}".format(self._ctx))
         nodes = self._ctx.get_nodes(
             filter_fn=lambda n: n.status != SchedulingNodeStatus.TO_TERMINATE
         )
@@ -700,7 +702,7 @@ class ResourceDemandScheduler(IResourceScheduler):
         )
         assert len(all_nodes) == num_nodes_total
         self._ctx.update(all_nodes)
-        logger.debug("After enforced max nodes: {}".format(self._ctx))
+        logger.info("After enforced max nodes: {}".format(self._ctx))
         return
 
     @staticmethod
@@ -793,7 +795,7 @@ class ResourceDemandScheduler(IResourceScheduler):
 
         # Count the existing nodes by type
         count_by_node_type = self._ctx.get_cluster_shape()
-        logger.debug("Enforcing min workers: {}".format(self._ctx))
+        logger.info("Enforcing min workers: {}".format(self._ctx))
 
         new_nodes = []
         # Launch new nodes to satisfy min count for each node type.
@@ -818,7 +820,7 @@ class ResourceDemandScheduler(IResourceScheduler):
 
         # Add the new nodes to the existing nodes and update the context.
         self._ctx.update(new_nodes + self._ctx.get_nodes())
-        logger.debug("After enforced min workers: {}".format(self._ctx))
+        logger.info("After enforced min workers: {}".format(self._ctx))
 
     def _enforce_resource_constraints(
         self,
@@ -853,12 +855,21 @@ class ResourceDemandScheduler(IResourceScheduler):
         Returns:
             A list of infeasible resource requests.
         """
+        logger.debug(
+            "Scheduling resource requests: {}".format(
+                ProtobufUtil.to_dict_list(requests_by_count)
+            )
+        )
         requests = ResourceRequestUtil.ungroup_by_count(requests_by_count)
         nodes, infeasible = self._try_schedule(requests)
 
         # Regardless if there's feasible, we will update the context for schedule nodes.
         self._ctx.update(nodes)
 
+        logger.info(
+            f"Resource requests scheduled: {self._ctx}, "
+            f"infeasible: {ResourceRequestUtil.to_dict_list(infeasible)}"
+        )
         return infeasible
 
     def _sched_gang_resource_requests(
@@ -922,21 +933,21 @@ class ResourceDemandScheduler(IResourceScheduler):
 
         # Try scheduling resource requests with new nodes.
         node_pools = [
-            SchedulingNode.from_node_config(self._ctx.get_node_config(node_type))
+            SchedulingNode.from_node_config(
+                self._ctx.get_node_config(node_type),
+                status=SchedulingNodeStatus.TO_LAUNCH,
+            )
             for node_type, num_available in node_type_available.items()
             if num_available > 0
         ]
         while len(requests_to_sched) > 0 and len(node_pools) > 0:
             # Max number of nodes reached.
-            max_num_worker_nodes = self._ctx._max_num_worker_nodes
-            if (
-                max_num_worker_nodes is not None
-                and len(target_nodes) >= max_num_worker_nodes + 1
-            ):
+            max_num_nodes = self._ctx.get_max_num_nodes()
+            if max_num_nodes is not None and len(target_nodes) >= max_num_nodes:
                 # +1 for the head node.
                 logger.debug(
-                    "Max number of worker nodes reached: {}, "
-                    "cannot launch more nodes.".format(max_num_worker_nodes)
+                    "Max number of nodes reached: {}, "
+                    "cannot launch more nodes.".format(max_num_nodes)
                 )
                 break
 
@@ -953,7 +964,8 @@ class ResourceDemandScheduler(IResourceScheduler):
             if node_type_available[best_node.node_type] > 0:
                 node_pools.append(
                     SchedulingNode.from_node_config(
-                        self._ctx.get_node_config(best_node.node_type)
+                        self._ctx.get_node_config(best_node.node_type),
+                        status=SchedulingNodeStatus.TO_LAUNCH,
                     )
                 )
 

@@ -1,6 +1,6 @@
 import os
 import sys
-import unittest
+
 import pytest
 
 from ray.autoscaler.v2.schema import AutoscalerInstance
