@@ -1,0 +1,2 @@
+torch==1.13.1
+safety_gymnasium==1.0.0
