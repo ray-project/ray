@@ -5,6 +5,7 @@ from typing import Callable, Optional
 
 import pytest
 
+from ray.exceptions import RayTaskError
 from ray.serve._private.common import DeploymentID, RequestProtocol
 
 # from ray.serve._private.http_util import MessageQueue
@@ -13,8 +14,35 @@ from ray.serve._private.router import RequestMetadata
 
 
 class BasicClass:
-    def __call__(self):
-        return "hi"
+    def __call__(self, suffix: Optional[str] = None, raise_exception: bool = False):
+        if raise_exception:
+            raise RuntimeError("uh-oh!")
+
+        return "hi" + (suffix if suffix is not None else "")
+
+    async def call_async(
+        self, suffix: Optional[str] = None, raise_exception: bool = False
+    ):
+        if raise_exception:
+            raise RuntimeError("uh-oh!")
+
+        return "hi" + (suffix if suffix is not None else "")
+
+
+def basic_sync_function(suffix: Optional[str] = None, raise_exception: bool = False):
+    if raise_exception:
+        raise RuntimeError("uh-oh!")
+
+    return "hi" + (suffix if suffix is not None else "")
+
+
+async def basic_async_function(
+    suffix: Optional[str] = None, raise_exception: bool = False
+):
+    if raise_exception:
+        raise RuntimeError("uh-oh!")
+
+    return "hi" + (suffix if suffix is not None else "")
 
 
 """
@@ -91,10 +119,71 @@ async def test_basic_class_callable():
     user_callable_wrapper = _make_user_callable_wrapper()
 
     await user_callable_wrapper.initialize_callable()
+
+    # Test calling default sync `__call__` method.
     request_metadata = _make_request_metadata()
     assert (
         await user_callable_wrapper.call_user_method(request_metadata, tuple(), dict())
     ) == "hi"
+    assert (
+        await user_callable_wrapper.call_user_method(
+            request_metadata, ("-arg",), dict()
+        )
+    ) == "hi-arg"
+    assert (
+        await user_callable_wrapper.call_user_method(
+            request_metadata, tuple(), {"suffix": "-kwarg"}
+        )
+    ) == "hi-kwarg"
+    with pytest.raises(RayTaskError, match="uh-oh"):
+        await user_callable_wrapper.call_user_method(
+            request_metadata, tuple(), {"raise_exception": True}
+        )
+
+    # Test calling `call_async` method.
+    request_metadata = _make_request_metadata(call_method="call_async")
+    assert (
+        await user_callable_wrapper.call_user_method(request_metadata, tuple(), dict())
+    ) == "hi"
+    assert (
+        await user_callable_wrapper.call_user_method(
+            request_metadata, ("-arg",), dict()
+        )
+    ) == "hi-arg"
+    assert (
+        await user_callable_wrapper.call_user_method(
+            request_metadata, tuple(), {"suffix": "-kwarg"}
+        )
+    ) == "hi-kwarg"
+    with pytest.raises(RayTaskError, match="uh-oh"):
+        await user_callable_wrapper.call_user_method(
+            request_metadata, tuple(), {"raise_exception": True}
+        )
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("fn", [basic_sync_function, basic_async_function])
+async def test_basic_function_callable(fn: Callable):
+    user_callable_wrapper = _make_user_callable_wrapper(fn)
+    await user_callable_wrapper.initialize_callable()
+    request_metadata = _make_request_metadata()
+    assert (
+        await user_callable_wrapper.call_user_method(request_metadata, tuple(), dict())
+    ) == "hi"
+    assert (
+        await user_callable_wrapper.call_user_method(
+            request_metadata, ("-arg",), dict()
+        )
+    ) == "hi-arg"
+    assert (
+        await user_callable_wrapper.call_user_method(
+            request_metadata, tuple(), {"suffix": "-kwarg"}
+        )
+    ) == "hi-kwarg"
+    with pytest.raises(RayTaskError, match="uh-oh"):
+        await user_callable_wrapper.call_user_method(
+            request_metadata, tuple(), {"raise_exception": True}
+        )
 
 
 @pytest.mark.asyncio
@@ -183,7 +272,7 @@ async def test_no_user_health_check_not_blocked(async_del: bool):
 
     class LoopBlocker:
         async def __call__(self) -> str:
-            # Block the loop.
+            # Block the loop until the event is set.
             sync_event.wait()
             return "Sorry I got stuck!"
 
