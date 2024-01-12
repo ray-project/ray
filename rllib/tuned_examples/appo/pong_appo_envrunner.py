@@ -22,7 +22,7 @@ parser = argparse.ArgumentParser()
 parser.add_argument("--num-cpus", type=int, default=0)
 parser.add_argument(
     "--framework",
-    choices=["tf", "tf2", "torch"],
+    choices=["tf2", "torch"],
     default="torch",
     help="The DL framework specifier.",
 )

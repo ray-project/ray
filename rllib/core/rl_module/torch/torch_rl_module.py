@@ -93,11 +93,6 @@ class TorchRLModule(nn.Module, RLModule):
         """
         return self.forward_train(batch, **kwargs)
 
-    @override(RLModule)
-    def forward_exploration(self, batch, **kwargs) -> Mapping[str, Any]:
-        batch = tree.map_structure(lambda s: torch.from_numpy(s), batch)
-        return self._forward_exploration(batch, **kwargs)
-
     def compile(self, compile_config: TorchCompileConfig):
         """Compile the forward methods of this module.
 

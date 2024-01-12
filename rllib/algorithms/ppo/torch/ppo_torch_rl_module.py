@@ -41,22 +41,6 @@ class PPOTorchRLModule(TorchRLModule, PPORLModule):
         policy and the new policy during training.
         """
         return self._forward_inference(batch)
-        output = {}
-
-        # Shared encoder
-        encoder_outs = self.encoder(batch)
-        if STATE_OUT in encoder_outs:
-            output[STATE_OUT] = encoder_outs[STATE_OUT]
-
-        # Value head
-        vf_out = self.vf(encoder_outs[ENCODER_OUT][CRITIC])
-        output[SampleBatch.VF_PREDS] = vf_out.squeeze(-1)
-
-        # Policy head
-        action_logits = self.pi(encoder_outs[ENCODER_OUT][ACTOR])
-        output[SampleBatch.ACTION_DIST_INPUTS] = action_logits
-
-        return output
 
     @override(RLModule)
     def _forward_train(self, batch: NestedDict) -> Dict[str, Any]:

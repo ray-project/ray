@@ -656,7 +656,6 @@ class Impala(Algorithm):
         # This variable is used to keep track of the statistics from the most recent
         # update of the learner group
         self._results = {}
-        self._timeout_s_sampler_manager = self.config.timeout_s_sampler_manager
 
         if not self.config._enable_new_api_stack:
             # Create and start the learner thread.
@@ -677,6 +676,7 @@ class Impala(Algorithm):
         unprocessed_episodes = self.get_samples_from_workers(
             return_object_refs=True,
         )
+
         # Tag workers that actually produced ready sample batches this iteration.
         # Those workers will have to get updated at the end of the iteration.
         workers_that_need_updates = set()
@@ -943,6 +943,7 @@ class Impala(Algorithm):
         Args:
             batches: List of batches of experiences from EnvRunners.
         """
+        raise NotImplementedError
 
         def aggregate_into_larger_batch():
             if (
@@ -1017,9 +1018,13 @@ class Impala(Algorithm):
                 sample_batches: List[
                     Tuple[int, ObjectRef]
                 ] = self.workers.fetch_ready_async_reqs(
-                    timeout_seconds=self._timeout_s_sampler_manager,
+                    timeout_seconds=self.config.timeout_s_sampler_manager,
                     return_obj_refs=return_object_refs,
                 )
+                # TEST
+                e = tree.flatten(ray.get([u[1] for u in sample_batches]))
+                print(None in e)
+                # END TEST
             elif (
                 self.config.num_rollout_workers == 0
                 or (
@@ -1027,12 +1032,14 @@ class Impala(Algorithm):
                     and self.workers.local_worker().async_env is not None
                 )
             ):
+                raise NotImplementedError
                 # Sampling from the local worker
                 sample_batch = self.workers.local_worker().sample()
                 if return_object_refs:
                     sample_batch = ray.put(sample_batch)
                 sample_batches = [(0, sample_batch)]
             else:
+                raise NotImplementedError
                 # Not much we can do. Return empty list and wait.
                 sample_batches = []
 

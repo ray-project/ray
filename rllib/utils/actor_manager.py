@@ -669,11 +669,6 @@ class FaultTolerantActorManager:
         num_calls_to_make: Dict[int, int] = defaultdict(lambda: 0)
         # Drop calls to actors that are too busy.
         if isinstance(func, list):
-            #if len(func) != len(remote_actor_ids):
-            #    raise RuntimeError(
-            #        "List of Callables must have the same length as list of actors, "
-            #        f"but their lengths are {len(func)} and {len(remote_actor_ids)}!"
-            #    )
             limited_func = []
             limited_remote_actor_ids = []
             for i, f in zip(remote_actor_ids, func):
@@ -687,6 +682,8 @@ class FaultTolerantActorManager:
                     num_calls_to_make[i] += 1
                     limited_func.append(f)
                     limited_remote_actor_ids.append(i)
+                else:
+                    print("skipping a remote request due to overload of that actor.")
         else:
             limited_func = func
             limited_remote_actor_ids = []
@@ -700,6 +697,8 @@ class FaultTolerantActorManager:
                 ):
                     num_calls_to_make[i] += 1
                     limited_remote_actor_ids.append(i)
+                else:
+                    print("skipping a remote request due to overload of that actor.")
 
         #print("Calling actors from within ActorManager")
         remote_calls = self.__call_actors(

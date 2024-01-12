@@ -629,7 +629,7 @@ class RLModule(abc.ABC):
             The output of the forward pass. This output should comply with the
             ouptut_specs_exploration().
         """
-        raise NotImplementedError  # TODO
+        return self._forward_exploration(batch, **kwargs)
 
     @abc.abstractmethod
     def _forward_exploration(self, batch: NestedDict, **kwargs) -> Mapping[str, Any]:
