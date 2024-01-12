@@ -65,6 +65,9 @@ class AutoscalingConfig(BaseModel):
     # Cloudpickled policy definition.
     serialized_policy_def: bytes = b""
 
+    # The function name of the policy.
+    policy_name: str = ""
+
     # Custom autoscaling config. Defaults to the request-based autoscaler.
     policy: Union[str, Callable] = DEFAULT_AUTOSCALING_POLICY
 
@@ -104,6 +107,9 @@ class AutoscalingConfig(BaseModel):
 
         if not values.get("serialized_policy_def"):
             values["serialized_policy_def"] = cloudpickle.dumps(policy)
+
+        if not values.get("policy_name"):
+            values["policy_name"] = policy.__name__
         return policy
 
     def get_policy(self) -> Callable:

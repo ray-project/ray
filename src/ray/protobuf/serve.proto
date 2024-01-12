@@ -63,6 +63,9 @@ message AutoscalingConfig {
 
   // The cloudpickled policy definition.
   bytes serialized_policy_def = 12;
+
+  // The name function of the policy.
+  string policy_function_name = 13;
 }
 
 //[Begin] LOGGING CONFIG
