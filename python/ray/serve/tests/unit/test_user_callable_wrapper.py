@@ -3,7 +3,8 @@ from typing import Callable, Optional
 import pytest
 
 from ray.serve._private.common import DeploymentID
-from ray.serve._private.http_util import MessageQueue
+
+# from ray.serve._private.http_util import MessageQueue
 from ray.serve._private.replica import UserCallableWrapper
 from ray.serve._private.router import RequestMetadata
 
@@ -27,7 +28,9 @@ Tests to write:
 """
 
 
-def _make_user_callable_wrapper(callable: Optional[Callable] = None, *init_args, **init_kwargs):
+def _make_user_callable_wrapper(
+    callable: Optional[Callable] = None, *init_args, **init_kwargs
+):
     return UserCallableWrapper(
         callable if callable is not None else BasicClass,
         init_args,

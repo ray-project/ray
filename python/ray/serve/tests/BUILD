@@ -35,8 +35,7 @@ py_test_module_list(
     "test_deployment_graph_handle_serde.py",
     "test_websockets.py",
     "test_deployment_node.py",
-    "test_expected_versions.py",
-    "test_user_callable_wrapper.py"
+    "test_expected_versions.py"
   ],
   size = "small",
   tags = ["exclusive", "team:serve"],
