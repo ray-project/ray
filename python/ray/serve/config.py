@@ -65,9 +65,6 @@ class AutoscalingConfig(BaseModel):
     # Cloudpickled policy definition.
     serialized_policy_def: bytes = b""
 
-    # The function name of the policy.
-    policy_name: str = ""
-
     # Custom autoscaling config. Defaults to the request-based autoscaler.
     policy: Union[str, Callable] = DEFAULT_AUTOSCALING_POLICY
 
@@ -96,21 +93,23 @@ class AutoscalingConfig(BaseModel):
         return max_replicas
 
     @validator("policy", always=True)
-    def serialize_policy(cls, policy, values) -> Callable:
+    def serialize_policy(cls, policy, values) -> str:
         """Serialize policy with cloudpickle.
 
         Import the policy if it's passed in as a string import path. Then cloudpickle
         the policy and set `serialized_policy_def` if it's empty.
         """
+        if isinstance(policy, Callable):
+            policy_path = f"{policy.__module__}.{policy.__name__}"
+
         if isinstance(policy, str):
+            policy_path = policy
             policy = import_attr(policy)
 
         if not values.get("serialized_policy_def"):
             values["serialized_policy_def"] = cloudpickle.dumps(policy)
 
-        if not values.get("policy_name"):
-            values["policy_name"] = policy.__name__
-        return policy
+        return policy_path
 
     def get_policy(self) -> Callable:
         """Deserialize policy from cloudpickled bytes."""
