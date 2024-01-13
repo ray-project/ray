@@ -92,16 +92,16 @@ def _gym_env_creator(
 
     Note: This function tries to construct the env from a string descriptor
     only using possibly installed RL env packages (such as gym, pybullet_envs,
-    vizdoomgym, etc..). These packages are no installation requirements for
-    RLlib. In case you would like to support more such env packages, add the
-    necessary imports and construction logic below.
+    etc). These packages are no installation requirements for RLlib. In case
+    you would like to support more such env packages, add the necessary imports
+    and construction logic below.
 
     Args:
         env_context: The env context object to configure the env.
             Note that this is a config dict, plus the properties:
             `worker_index`, `vector_index`, and `remote`.
         env_descriptor: The env descriptor as a gym-registered string, e.g. CartPole-v1,
-            ALE/MsPacman-v5, VizdoomBasic-v0, or CartPoleContinuousBulletEnv-v0.
+            ALE/MsPacman-v5, or CartPoleContinuousBulletEnv-v0.
             Alternatively, the gym.Env subclass to use.
         auto_wrap_old_gym_envs: Whether to auto-wrap old gym environments (using
             the pre 0.24 gym APIs, e.g. reset() returning single obs and no info
@@ -116,21 +116,13 @@ def _gym_env_creator(
     Raises:
         gym.error.Error: If the env cannot be constructed.
     """
-    # Allow for PyBullet or VizdoomGym envs to be used as well
-    # (via string). This allows for doing things like
-    # `env=CartPoleContinuousBulletEnv-v0` or
-    # `env=VizdoomBasic-v0`.
+    # Allow for PyBullet or envs to be used as well (via string). This allows
+    # for doing things like `env=CartPoleContinuousBulletEnv-v0`.
     try:
         import pybullet_envs
 
         pybullet_envs.getList()
     except (AttributeError, ModuleNotFoundError, ImportError):
-        pass
-    try:
-        import vizdoomgym
-
-        vizdoomgym.__name__  # trick LINTer.
-    except (ModuleNotFoundError, ImportError):
         pass
 
     # Try creating a gym env. If this fails we can output a
