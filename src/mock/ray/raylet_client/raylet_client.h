@@ -81,33 +81,32 @@ class MockRayletClientInterface : public RayletClientInterface {
               (const std::vector<rpc::Bundle> &bundles_in_use,
                const rpc::ClientCallback<rpc::ReleaseUnusedBundlesReply> &callback),
               (override));
-  MOCK_METHOD(void,
-              PrepareVirtualClusterBundle,
-              (const VirtualClusterBundleSpec &bundle_spec,
-               const ray::rpc::ClientCallback<ray::rpc::PrepareVirtualClusterBundleReply>
-                   &callback),
-              (override));
-
-  MOCK_METHOD(void,
-              CommitVirtualClusterBundle,
-              (const VirtualClusterID &virtual_cluster_id,
-               const ray::rpc::ClientCallback<ray::rpc::CommitVirtualClusterBundleReply>
-                   &callback),
-              (override));
-
-  MOCK_METHOD(void,
-              ReturnVirtualClusterBundle,
-              (const VirtualClusterID &virtual_cluster_id,
-               const ray::rpc::ClientCallback<ray::rpc::ReturnVirtualClusterBundleReply>
-                   &callback),
-              (override));
   MOCK_METHOD(
       void,
-      ReleaseUnusedVirtualClusterBundles,
-      (const std::vector<VirtualClusterID> &virtual_cluster_ids,
-       const ray::rpc::ClientCallback<ray::rpc::ReleaseUnusedVirtualClusterBundlesReply>
-           &callback),
+      PrepareVirtualCluster,
+      (const VirtualClusterNodesSpec &vnodes_spec,
+       const ray::rpc::ClientCallback<ray::rpc::PrepareVirtualClusterReply> &callback),
       (override));
+
+  MOCK_METHOD(
+      void,
+      CommitVirtualCluster,
+      (const VirtualClusterID &virtual_cluster_id,
+       const ray::rpc::ClientCallback<ray::rpc::CommitVirtualClusterReply> &callback),
+      (override));
+
+  MOCK_METHOD(
+      void,
+      ReturnVirtualCluster,
+      (const VirtualClusterID &virtual_cluster_id,
+       const ray::rpc::ClientCallback<ray::rpc::ReturnVirtualClusterReply> &callback),
+      (override));
+  MOCK_METHOD(void,
+              ReleaseUnusedVirtualClusters,
+              (const std::vector<VirtualClusterID> &virtual_cluster_ids,
+               const ray::rpc::ClientCallback<ray::rpc::ReleaseUnusedVirtualClustersReply>
+                   &callback),
+              (override));
 
   MOCK_METHOD(void,
               PinObjectIDs,

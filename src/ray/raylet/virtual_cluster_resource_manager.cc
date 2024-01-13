@@ -18,7 +18,7 @@
 #include <fstream>
 #include <memory>
 
-#include "ray/common/virtual_cluster_bundle_spec.h"
+#include "ray/common/virtual_cluster_node_spec.h"
 
 namespace ray {
 
@@ -29,12 +29,11 @@ VirtualClusterResourceManager::VirtualClusterResourceManager(
     : cluster_resource_scheduler_(cluster_resource_scheduler) {}
 
 bool VirtualClusterResourceManager::PrepareBundle(
-    const VirtualClusterBundleSpec &bundle_spec) {
-  const auto vc_id = bundle_spec.GetVirtualClusterId();
-  auto iter = vc_bundles_.find(vc_id);
-  if (iter != vc_bundles_.end()) {
-    if (iter->second->state_ ==
-        VirtualClusterBundleTransactionState::CommitState::COMMITTED) {
+    const VirtualClusterNodesSpec &nodes_spec) {
+  const auto &vc_id = nodes_spec.vc_id;
+  auto iter = vcs_.find(vc_id);
+  if (iter != vcs_.end()) {
+    if (iter->second->state_ == VirtualClusterTransactionState::CommitState::COMMITTED) {
       // If the bundle state is already committed, it means that prepare request is just
       // stale.
       RAY_LOG(DEBUG) << "Duplicate prepare virtual cluster bundle request, skip it "
@@ -54,20 +53,20 @@ bool VirtualClusterResourceManager::PrepareBundle(
   auto resource_instances = std::make_shared<TaskResourceInstances>();
   bool allocated =
       cluster_resource_scheduler_->GetLocalResourceManager().AllocateLocalTaskResources(
-          bundle_spec.GetRequiredResources(), resource_instances);
+          nodes_spec.GetRequiredResources(), resource_instances);
 
   if (!allocated) {
     return false;
   }
 
-  vc_bundles_[vc_id] = std::make_shared<VirtualClusterBundleTransactionState>(
-      bundle_spec, resource_instances);
+  vcs_[vc_id] =
+      std::make_shared<VirtualClusterTransactionState>(nodes_spec, resource_instances);
   return true;
 }
 
 void VirtualClusterResourceManager::ReturnUnusedBundles(
     const std::unordered_set<VirtualClusterID> &in_use_bundles) {
-  for (auto iter = vc_bundles_.begin(); iter != vc_bundles_.end();) {
+  for (auto iter = vcs_.begin(); iter != vcs_.end();) {
     VirtualClusterID vc_id = iter->first;
     iter++;
     if (0 == in_use_bundles.count(vc_id)) {
@@ -77,35 +76,34 @@ void VirtualClusterResourceManager::ReturnUnusedBundles(
 }
 
 void VirtualClusterResourceManager::CommitBundle(VirtualClusterID vc_id) {
-  auto it = vc_bundles_.find(vc_id);
-  if (it == vc_bundles_.end()) {
+  auto it = vcs_.find(vc_id);
+  if (it == vcs_.end()) {
     // We should only ever receive a commit for a non-existent virtual cluster when a
     // virtual cluster is created and removed in quick succession.
     RAY_LOG(DEBUG) << "Received a commit message for an unknown vc_id = " << vc_id;
     return;
   } else {
     // Ignore request If the bundle state is already committed.
-    if (it->second->state_ ==
-        VirtualClusterBundleTransactionState::CommitState::COMMITTED) {
+    if (it->second->state_ == VirtualClusterTransactionState::CommitState::COMMITTED) {
       RAY_LOG(DEBUG) << "Duplicate commit vc bundle request, skip it directly.";
       return;
     }
   }
 
   const auto &bundle_state = it->second;
-  bundle_state->state_ = VirtualClusterBundleTransactionState::CommitState::COMMITTED;
+  bundle_state->state_ = VirtualClusterTransactionState::CommitState::COMMITTED;
 
   const auto &task_resource_instances = *bundle_state->resources_;
-  const auto &bundle_spec = bundle_state->bundle_spec_;
+  const auto &nodes_spec = bundle_state->nodes_spec_;
 
   // For each resource {"CPU": 2} allocated, add a {"CPU_vc_vchex": 2}. For the resource
   // "vcbundle" we did not allocate but we will add 1000 anyway. I feel we can write it
   // better by adding a ResourceSet of {"vcbundle":1000} in prepare time so we won't need
   // the `if` here.
-  const auto &resources = bundle_spec.GetFormattedResources();
+  const auto &resources = nodes_spec.GetFormattedResources();
   for (const auto &resource : resources) {
     const std::string &resource_name = resource.first;
-    auto label = VirtualClusterBundleResourceLabel::Parse(resource_name);
+    auto label = VirtualClusterResourceLabel::Parse(resource_name);
     RAY_CHECK(label.has_value());
     const std::string &original_resource_name = label->original_resource;
     if (original_resource_name != kVirtualClusterBundle_ResourceLabel) {
@@ -121,14 +119,13 @@ void VirtualClusterResourceManager::CommitBundle(VirtualClusterID vc_id) {
 }
 
 void VirtualClusterResourceManager::ReturnBundle(VirtualClusterID vc_id) {
-  auto it = vc_bundles_.find(vc_id);
-  if (it == vc_bundles_.end()) {
+  auto it = vcs_.find(vc_id);
+  if (it == vcs_.end()) {
     RAY_LOG(DEBUG) << " VirtualClusterResourceManager::ReturnBundle vc_id not found";
     return;
   }
   const auto &bundle_state = it->second;
-  if (bundle_state->state_ ==
-      VirtualClusterBundleTransactionState::CommitState::PREPARED) {
+  if (bundle_state->state_ == VirtualClusterTransactionState::CommitState::PREPARED) {
     // Commit bundle first so that we can remove the bundle with consistent
     // implementation.
     CommitBundle(vc_id);
@@ -141,9 +138,9 @@ void VirtualClusterResourceManager::ReturnBundle(VirtualClusterID vc_id) {
 
   // Substract virtual cluster resources from resource allocator
   // `ClusterResourceScheduler`.
-  const auto &bundle_spec = bundle_state->bundle_spec_;
+  const auto &nodes_spec = bundle_state->nodes_spec_;
   // TODO: what if the tasks and actors in the VC has not yet been killed?
-  const auto &virtual_cluster_resources = bundle_spec.GetFormattedResources();
+  const auto &virtual_cluster_resources = nodes_spec.GetFormattedResources();
 
   auto resource_instances = std::make_shared<TaskResourceInstances>();
   cluster_resource_scheduler_->GetLocalResourceManager().AllocateLocalTaskResources(
@@ -164,7 +161,7 @@ void VirtualClusterResourceManager::ReturnBundle(VirtualClusterID vc_id) {
                      << "] is not empty. Resources are not deleted from the local node.";
     }
   }
-  vc_bundles_.erase(it);
+  vcs_.erase(it);
 }
 
 }  // namespace raylet

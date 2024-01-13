@@ -18,7 +18,7 @@
 #include "ray/common/id.h"
 #include "ray/common/scheduling/resource_set.h"
 #include "ray/common/virtual_cluster.h"
-#include "ray/common/virtual_cluster_bundle_spec.h"
+#include "ray/common/virtual_cluster_node_spec.h"
 #include "ray/raylet/scheduling/cluster_resource_scheduler.h"
 #include "ray/util/util.h"
 #include "src/ray/protobuf/common.pb.h"
@@ -26,7 +26,7 @@
 namespace ray {
 namespace raylet {
 
-struct VirtualClusterBundleTransactionState {
+struct VirtualClusterTransactionState {
   enum CommitState {
     // The bundle has been prepared.
     // Invariant: resources_ is non empty, and holds the resources as requested by the
@@ -38,12 +38,12 @@ struct VirtualClusterBundleTransactionState {
     COMMITTED
   };
 
-  explicit VirtualClusterBundleTransactionState(
-      const VirtualClusterBundleSpec &bundle_spec,
+  explicit VirtualClusterTransactionState(
+      const VirtualClusterNodesSpec &nodes_spec,
       std::shared_ptr<TaskResourceInstances> resources)
-      : state_(PREPARED), bundle_spec_(bundle_spec), resources_(resources) {}
+      : state_(PREPARED), nodes_spec_(nodes_spec), resources_(resources) {}
   CommitState state_;
-  VirtualClusterBundleSpec bundle_spec_;
+  VirtualClusterNodesSpec nodes_spec_;
   std::shared_ptr<TaskResourceInstances> resources_;
 };
 
@@ -65,8 +65,8 @@ class VirtualClusterResourceManager {
   VirtualClusterResourceManager(
       std::shared_ptr<ClusterResourceScheduler> cluster_resource_scheduler);
 
-  /// Prepare a bundle.
-  /// If this vc_id already exists in `vc_bundles_`, and
+  /// Prepare a virtual cluster.
+  /// If this vc_id already exists in `vcs_`, and
   /// - if the pre-existing vc is COMMITTED -> fast return true;
   /// - if the pre-existing vc is PREPARED -> return it first to re-prepare.
   ///
@@ -74,21 +74,17 @@ class VirtualClusterResourceManager {
   /// different amount of resources, it is IGNORED and the resources is kept as the old
   /// request.
   ///
-  /// \param bundle_specs A set of bundles that waiting to be prepared.
+  /// \param nodes_spec A set of bundles that waiting to be prepared.
   /// \return bool True if all bundles successfully reserved resources, otherwise false.
-  virtual bool PrepareBundle(const VirtualClusterBundleSpec &bundle_spec);
+  virtual bool PrepareBundle(const VirtualClusterNodesSpec &nodes_spec);
 
   /// Convert the required resources to virtual cluster resources(like CPU ->
   /// CPU_cluster_i). This is phase two of 2PC.
-  ///
-  /// \param bundle_spec Specification of bundle whose resources will be commited.
   void CommitBundle(VirtualClusterID vc_id);
 
   /// Return back all the bundle resource.
   /// Removes the added renamed resources, releases the original resources, and erases the
-  /// entry in `vc_bundles_`.
-  ///
-  /// \param bundle_spec Specification of bundle whose resources will be returned.
+  /// entry in `vcs_`.
   virtual void ReturnBundle(VirtualClusterID vc_id);
 
   /// Return back all the bundle(which is unused) resource.
@@ -105,11 +101,10 @@ class VirtualClusterResourceManager {
  private:
   std::shared_ptr<ClusterResourceScheduler> cluster_resource_scheduler_;
 
-  /// Tracking virtual cluster bundles and their states. This mapping is the source of
+  /// Tracking virtual clusters and their states. This mapping is the source of
   /// truth for the scheduler.
-  absl::flat_hash_map<VirtualClusterID,
-                      std::shared_ptr<VirtualClusterBundleTransactionState>>
-      vc_bundles_;
+  absl::flat_hash_map<VirtualClusterID, std::shared_ptr<VirtualClusterTransactionState>>
+      vcs_;
 };
 
 }  // namespace raylet

@@ -38,35 +38,6 @@ class VirtualClusterSpecification : public MessageWrapper<rpc::VirtualClusterSpe
   VirtualClusterID VirtualClusterId() const;
 };
 
-class VirtualClusterSpecBuilder {
- public:
-  VirtualClusterSpecBuilder() : message_(std::make_shared<rpc::VirtualClusterSpec>()) {}
-
-  /// Set the common attributes of the virtual cluster spec.
-  /// See `common.proto` for meaning of the arguments.
-  ///
-  /// \return Reference to the builder object itself.
-  VirtualClusterSpecBuilder &SetVirtualClusterSpec(
-      const VirtualClusterID &virtual_cluster_id,
-      const std::vector<std::unordered_map<std::string, double>>
-          &virtual_cluster_bundles) {
-    message_->set_virtual_cluster_id(virtual_cluster_id.Binary());
-
-    for (const auto &resources : virtual_cluster_bundles) {
-      auto *message_bundle = message_->add_bundles();
-      for (const auto &[name, count] : resources) {
-        if (count != 0) {
-          message_bundle->mutable_resources()->insert({name, count});
-        }
-      }
-    }
-    return *this;
-  }
-
-  VirtualClusterSpecification Build() { return VirtualClusterSpecification(message_); }
-
- private:
-  std::shared_ptr<rpc::VirtualClusterSpec> message_;
-};
+// TODO: make a VirtualClusterSpecBuilder to make sure a VC Spec is valid.
 
 }  // namespace ray

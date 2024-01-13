@@ -1896,24 +1896,26 @@ void NodeManager::HandleCancelResourceReserve(
   send_reply_callback(Status::OK(), nullptr, nullptr);
 }
 
-void NodeManager::HandlePrepareVirtualClusterBundle(
-    rpc::PrepareVirtualClusterBundleRequest request,
-    rpc::PrepareVirtualClusterBundleReply *reply,
+void NodeManager::HandlePrepareVirtualCluster(
+    rpc::PrepareVirtualClusterRequest request,
+    rpc::PrepareVirtualClusterReply *reply,
     rpc::SendReplyCallback send_reply_callback) {
-  RAY_LOG(INFO) << "HandlePrepareVirtualClusterBundle " << request.DebugString();
+  RAY_LOG(INFO) << "HandlePrepareVirtualCluster " << request.DebugString();
   auto vc_id = VirtualClusterID::FromBinary(request.virtual_cluster_id());
-  auto bundle_spec = VirtualClusterBundleSpec(request.bundle_spec(), vc_id);
-  RAY_LOG(DEBUG) << "Request to prepare resources for virtual cluster bundle: "
-                 << bundle_spec.DebugString();
-  bool prepared = virtual_cluster_resource_manager_->PrepareBundle(bundle_spec);
+  VirtualClusterNodesSpec vnodes;
+  vnodes.vc_id = vc_id;
+  for (auto &vnode : request.fixed_size_nodes()) {
+    vnodes.fixed_size_nodes.emplace_back(std::move(vnode), vc_id);
+  }
+
+  bool prepared = virtual_cluster_resource_manager_->PrepareBundle(vnodes);
   reply->set_success(prepared);
   send_reply_callback(Status::OK(), nullptr, nullptr);
 }
 
-void NodeManager::HandleCommitVirtualClusterBundle(
-    rpc::CommitVirtualClusterBundleRequest request,
-    rpc::CommitVirtualClusterBundleReply *reply,
-    rpc::SendReplyCallback send_reply_callback) {
+void NodeManager::HandleCommitVirtualCluster(rpc::CommitVirtualClusterRequest request,
+                                             rpc::CommitVirtualClusterReply *reply,
+                                             rpc::SendReplyCallback send_reply_callback) {
   auto vc_id = VirtualClusterID::FromBinary(request.virtual_cluster_id());
   RAY_LOG(DEBUG) << "Request to commit resources for virtual cluster bundle: " << vc_id;
   virtual_cluster_resource_manager_->CommitBundle(vc_id);
@@ -1921,10 +1923,9 @@ void NodeManager::HandleCommitVirtualClusterBundle(
   cluster_task_manager_->ScheduleAndDispatchTasks();
 }
 
-void NodeManager::HandleReturnVirtualClusterBundle(
-    rpc::ReturnVirtualClusterBundleRequest request,
-    rpc::ReturnVirtualClusterBundleReply *reply,
-    rpc::SendReplyCallback send_reply_callback) {
+void NodeManager::HandleReturnVirtualCluster(rpc::ReturnVirtualClusterRequest request,
+                                             rpc::ReturnVirtualClusterReply *reply,
+                                             rpc::SendReplyCallback send_reply_callback) {
   auto vc_id = VirtualClusterID::FromBinary(request.virtual_cluster_id());
   RAY_LOG(DEBUG) << "Request to return resources for virtual cluster bundle: " << vc_id;
   virtual_cluster_resource_manager_->ReturnBundle(vc_id);
@@ -1932,9 +1933,9 @@ void NodeManager::HandleReturnVirtualClusterBundle(
   send_reply_callback(Status::OK(), nullptr, nullptr);
 }
 
-void NodeManager::HandleReleaseUnusedVirtualClusterBundles(
-    rpc::ReleaseUnusedVirtualClusterBundlesRequest request,
-    rpc::ReleaseUnusedVirtualClusterBundlesReply *reply,
+void NodeManager::HandleReleaseUnusedVirtualClusters(
+    rpc::ReleaseUnusedVirtualClustersRequest request,
+    rpc::ReleaseUnusedVirtualClustersReply *reply,
     rpc::SendReplyCallback send_reply_callback) {
   std::unordered_set<VirtualClusterID> in_use_bundles;
   for (const std::string &binary : request.virtual_cluster_ids()) {

@@ -154,7 +154,8 @@ ray_cc_library(
         "task/task.cc",
         "task/task_spec.cc",
         "virtual_cluster.cc",
-        "virtual_cluster_bundle_spec.cc",
+        "virtual_cluster_resource_label.cc",
+        "virtual_cluster_node_spec.cc",
     ],
     hdrs = [
         "bundle_location_index.h",
@@ -171,7 +172,8 @@ ray_cc_library(
         "task/task_spec.h",
         "task/task_util.h",
         "virtual_cluster.h",
-        "virtual_cluster_bundle_spec.h",
+        "virtual_cluster_resource_label.h",
+        "virtual_cluster_node_spec.h",
     ],
     deps = [
         ":event_stats",

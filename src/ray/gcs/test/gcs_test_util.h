@@ -24,7 +24,7 @@
 #include "ray/common/task/task.h"
 #include "ray/common/task/task_util.h"
 #include "ray/common/test_util.h"
-#include "ray/common/virtual_cluster_bundle_spec.h"
+#include "ray/common/virtual_cluster_node_spec.h"
 #include "ray/gcs/pb_util.h"
 #include "src/ray/protobuf/autoscaler.grpc.pb.h"
 #include "src/ray/protobuf/gcs_service.grpc.pb.h"
@@ -197,15 +197,15 @@ struct Mocker {
     return request;
   }
 
-  static VirtualClusterBundleSpec GenVirtualClusterBundle(
+  static VirtualClusterSpec GenVirtualCluster(
       const VirtualClusterID &vc_id,
       absl::flat_hash_map<std::string, double> &unit_resource) {
-    rpc::VirtualClusterBundle bundle;
+    rpc::VirtualCluster bundle;
     auto mutable_resources = bundle.mutable_resources();
     for (auto &resource : unit_resource) {
       mutable_resources->insert({resource.first, resource.second});
     }
-    return VirtualClusterBundleSpec(bundle, vc_id);
+    return VirtualClusterSpec(bundle, vc_id);
   }
 
   static std::shared_ptr<rpc::GcsNodeInfo> GenNodeInfo(

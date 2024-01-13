@@ -563,16 +563,73 @@ message PlacementGroupSpec {
   double max_cpu_fraction_per_node = 10;
 }
 
-message VirtualClusterBundle {
-  map<string, double> resources = 1;
-}
-
-// Specification of a virtual cluster. Each Bundle is scheduled atomically to 1 node.
+// A virtual cluster consits of flexible resources and fixed size resources.
 message VirtualClusterSpec {
+  
+  // ID of the virtual cluster. Unique in a cluster.
   bytes virtual_cluster_id = 1;
-  repeated VirtualClusterBundle bundles = 2;
+
+  // == Flexible resources ==
+  // Flexible resources are stored in flexible virtual nodes
+  // and Ray will use as few flexible virtual nodes as possible
+  // for the given amount of flexible resources to minimize fragmentation.
+  // In other words, Ray prefers to scale up a flexible virtual node
+  // than adding a new flexible virtual node.
+
+  // If specified, ensure we have at least this min amount
+  // of resources before starting the cluster.
+  // If not specified, the default value is 0.
+  map<string, double> flex_resource_min = 2;
+
+  // If specified, limit the consumption of these resources to
+  // the specified values.
+  // If not specified, the default value is infinite.
+  map<string, double> flex_resource_max = 3;
+
+  // == Fixed size resources ==
+  // Fixed sized virtual nodes to request, e.g. {"GPU": 4}.
+  // These virtual node resources are part of the min resources
+  // together with flex_resource_min
+  // that will be atomically reserved when the
+  // virtual cluster is created.
+  repeated FixedSizeNodes fixed_size_nodes = 4;
 }
 
+
+message FixedSizeNodes {
+  // This can be used to represent placement groups where each bundle is a FixedSizeNode
+  // and the scheduling policy is the placement group strategy.
+  repeated VirtualClusterNode nodes = 1;
+  // One of PACK, SPREAD, or STRICT_SPREAD. These would be defined with respect to
+  // parent virtual nodes for nested clusters.
+  //
+  // NOTE: There is no STRICT_PACK because that's equivalent to have 1 fixed node = sum
+  // of all nodes.
+  SchedulingPolicy scheduling_policy = 2;
+}
+
+// A fixed or a flex virtual cluster node. 
+// When representing a fixed size node, all properties are const.
+// When representing a flex node, `resources` may change.
+message VirtualClusterNode {
+  // Resources for a fixed size node. The resource is allocated atomically.
+  map<string, double> resources = 1;
+
+  // Use label match expression to specify candidate parent nodes of this fixed size
+  // node.
+  LabelMatchExpressions parent_node_selector = 2;
+
+  // Additional labels that the virtual node has in addition to those inherited from the
+  // parent node.
+  map<string, string> labels = 3;
+}
+
+// Same as the current placement group strategies.
+enum SchedulingPolicy {
+  SCHEDULING_POLICY_PACK = 0;
+  SCHEDULING_POLICY_SPREAD = 1;
+  SCHEDULING_POLICY_STRICT_SPREAD = 2;
+}
 message ObjectReference {
   // ObjectID that the worker has a reference to.
   bytes object_id = 1;

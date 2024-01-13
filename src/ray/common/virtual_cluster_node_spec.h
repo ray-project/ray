@@ -25,37 +25,23 @@
 #include "ray/common/id.h"
 #include "ray/common/scheduling/cluster_resource_data.h"
 #include "ray/common/task/task_common.h"
+#include "ray/common/virtual_cluster_resource_label.h"
 
 namespace ray {
 
-constexpr static std::string_view kVirtualClusterKeyword = "_vc_";
-constexpr static size_t kVirtualClusterKeywordSize = kVirtualClusterKeyword.size();
-
-struct VirtualClusterBundleResourceLabel {
-  std::string original_resource;
-  VirtualClusterID vc_id;
-
-  // Parses from "CPU_vc_vchex" to
-  // {.original_resource = "CPU", .vc_id = VirtualClusterID::FromHex("vchex")}
-  static std::optional<VirtualClusterBundleResourceLabel> Parse(
-      const std::string &resource);
-};
-
-class VirtualClusterBundleSpec : public MessageWrapper<rpc::VirtualClusterBundle> {
+class VirtualClusterNodeSpec : public MessageWrapper<rpc::VirtualClusterNode> {
  public:
   /// Construct from a protobuf message object.
   /// The input message will be **copied** into this object.
   ///
   /// \param message The protobuf message.
-  explicit VirtualClusterBundleSpec(rpc::VirtualClusterBundle message,
-                                    VirtualClusterID vc_id)
+  explicit VirtualClusterNodeSpec(rpc::VirtualClusterNode message, VirtualClusterID vc_id)
       : MessageWrapper(std::move(message)),
         vc_id_(vc_id),
         unit_resource_(ComputeResources(*message_)),
-        bundle_resource_labels_(
-            ComputeFormattedBundleResourceLabels(unit_resource_, vc_id_)) {}
+        bundle_resource_labels_(ComputeFormattedResourceLabels(unit_resource_, vc_id_)) {}
 
-  explicit VirtualClusterBundleSpec(const VirtualClusterBundleSpec &) = default;
+  explicit VirtualClusterNodeSpec(const VirtualClusterNodeSpec &) = default;
 
   VirtualClusterID GetVirtualClusterId() const { return vc_id_; }
 
@@ -82,6 +68,8 @@ class VirtualClusterBundleSpec : public MessageWrapper<rpc::VirtualClusterBundle
  private:
   const VirtualClusterID vc_id_;
 
+  // TODO: make these fields non-const to support flex nodes.
+
   /// Field storing unit resources. Initialized in constructor.
   /// TODO(ekl) consider optimizing the representation of ResourceSet for fast copies
   /// instead of keeping shared pointers here.
@@ -91,15 +79,39 @@ class VirtualClusterBundleSpec : public MessageWrapper<rpc::VirtualClusterBundle
 
   // static compute methods
 
-  static ResourceRequest ComputeResources(const rpc::VirtualClusterBundle &);
+  static ResourceRequest ComputeResources(const rpc::VirtualClusterNode &);
 
   /// Computes the labels for `GetFormattedResources()`.
-  static absl::flat_hash_map<std::string, double> ComputeFormattedBundleResourceLabels(
+  static absl::flat_hash_map<std::string, double> ComputeFormattedResourceLabels(
       const ray::ResourceRequest &, VirtualClusterID);
 };
 
-/// Format a virtual cluster resource, e.g., CPU -> CPU_vc_vchex
-std::string FormatVirtualClusterResource(const std::string &original_resource_name,
-                                         const VirtualClusterID &vc_id);
+// Represents all vnodes on a parent node.
+// NOTE: now we don't distiguish fixed_size_nodes from each group because maybe the raylet
+// does not need to know that. Maybe later we need to also propagate this knowledge.
+struct VirtualClusterNodesSpec {
+  VirtualClusterID vc_id;
+  std::vector<VirtualClusterNodeSpec> fixed_size_nodes;
+  // TODO:
+  //  VirtualClusterNodeSpec flex_node;
+
+  ResourceRequest GetRequiredResources() const {
+    ResourceRequest request;
+    for (const auto &vnode : fixed_size_nodes) {
+      request += vnode.GetRequiredResources();
+    }
+    return request;
+  }
+
+  absl::flat_hash_map<std::string, double> GetFormattedResources() const {
+    absl::flat_hash_map<std::string, double> resources;
+    for (const auto &vnode : fixed_size_nodes) {
+      for (const auto &[k, v] : vnode.GetFormattedResources()) {
+        resources[k] += v;
+      }
+    }
+    return resources;
+  }
+};
 
 }  // namespace ray

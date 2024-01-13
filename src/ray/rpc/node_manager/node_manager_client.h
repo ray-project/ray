@@ -158,25 +158,25 @@ class NodeManagerWorkerClient
 
   /// Request to prepare resources for a virtual cluster bundle creation.
   VOID_RPC_CLIENT_METHOD(NodeManagerService,
-                         PrepareVirtualClusterBundle,
+                         PrepareVirtualCluster,
                          grpc_client_,
                          /*method_timeout_ms*/ -1, )
 
   /// Request to commit resources for a virtual cluster bundle creation.
   VOID_RPC_CLIENT_METHOD(NodeManagerService,
-                         CommitVirtualClusterBundle,
+                         CommitVirtualCluster,
                          grpc_client_,
                          /*method_timeout_ms*/ -1, )
 
   /// Return resource lease for a virtual cluster bundle.
   VOID_RPC_CLIENT_METHOD(NodeManagerService,
-                         ReturnVirtualClusterBundle,
+                         ReturnVirtualCluster,
                          grpc_client_,
                          /*method_timeout_ms*/ -1, )
 
   /// Release unused virtual cluster bundles.
   VOID_RPC_CLIENT_METHOD(NodeManagerService,
-                         ReleaseUnusedVirtualClusterBundles,
+                         ReleaseUnusedVirtualClusters,
                          grpc_client_,
                          /*method_timeout_ms*/ -1, )
 

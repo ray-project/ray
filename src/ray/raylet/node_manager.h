@@ -530,28 +530,25 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
   void HandleReleaseUnusedBundles(rpc::ReleaseUnusedBundlesRequest request,
                                   rpc::ReleaseUnusedBundlesReply *reply,
                                   rpc::SendReplyCallback send_reply_callback) override;
-  /// Handle a `PrepareVirtualClusterBundle` request.
-  void HandlePrepareVirtualClusterBundle(
-      rpc::PrepareVirtualClusterBundleRequest request,
-      rpc::PrepareVirtualClusterBundleReply *reply,
-      rpc::SendReplyCallback send_reply_callback) override;
+  /// Handle a `PrepareVirtualCluster` request.
+  void HandlePrepareVirtualCluster(rpc::PrepareVirtualClusterRequest request,
+                                   rpc::PrepareVirtualClusterReply *reply,
+                                   rpc::SendReplyCallback send_reply_callback) override;
 
-  /// Handle a `CommitVirtualClusterBundle` request.
-  void HandleCommitVirtualClusterBundle(
-      rpc::CommitVirtualClusterBundleRequest request,
-      rpc::CommitVirtualClusterBundleReply *reply,
-      rpc::SendReplyCallback send_reply_callback) override;
+  /// Handle a `CommitVirtualCluster` request.
+  void HandleCommitVirtualCluster(rpc::CommitVirtualClusterRequest request,
+                                  rpc::CommitVirtualClusterReply *reply,
+                                  rpc::SendReplyCallback send_reply_callback) override;
 
-  /// Handle a `ReturnVirtualClusterBundle` request.
-  void HandleReturnVirtualClusterBundle(
-      rpc::ReturnVirtualClusterBundleRequest request,
-      rpc::ReturnVirtualClusterBundleReply *reply,
-      rpc::SendReplyCallback send_reply_callback) override;
+  /// Handle a `ReturnVirtualCluster` request.
+  void HandleReturnVirtualCluster(rpc::ReturnVirtualClusterRequest request,
+                                  rpc::ReturnVirtualClusterReply *reply,
+                                  rpc::SendReplyCallback send_reply_callback) override;
 
-  /// Handle a `ReleaseUnusedVirtualClusterBundles` request.
-  void HandleReleaseUnusedVirtualClusterBundles(
-      rpc::ReleaseUnusedVirtualClusterBundlesRequest request,
-      rpc::ReleaseUnusedVirtualClusterBundlesReply *reply,
+  /// Handle a `ReleaseUnusedVirtualClusters` request.
+  void HandleReleaseUnusedVirtualClusters(
+      rpc::ReleaseUnusedVirtualClustersRequest request,
+      rpc::ReleaseUnusedVirtualClustersReply *reply,
       rpc::SendReplyCallback send_reply_callback) override;
 
   /// Handle a `WorkerLease` request.

@@ -40,7 +40,7 @@ class GcsVirtualClusterManager : public rpc::VirtualClusterInfoHandler {
   std::vector<rpc::PlacementGroupTableData> GetVirtualClusterLoad() const;
 
  private:
-  std::optional<std::unordered_map<NodeID, VirtualClusterBundleSpec>> Schedule(
+  std::optional<std::unordered_map<NodeID, VirtualClusterNodesSpec>> Schedule(
       const rpc::CreateVirtualClusterRequest &request);
 
   std::shared_ptr<ResourceReserveInterface> GetLeaseClientFromNode(

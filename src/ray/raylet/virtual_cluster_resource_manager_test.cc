@@ -68,45 +68,45 @@ class VirtualClusterResourceManagerTest : public ::testing::Test {
 };
 
 TEST_F(VirtualClusterResourceManagerTest, TestParse) {
-  ASSERT_FALSE(VirtualClusterBundleResourceLabel::Parse(
-                   "CPU_vc_0_4482dec0faaf5ead891ff1659a9501000000")
-                   .has_value());
-  ASSERT_FALSE(VirtualClusterBundleResourceLabel::Parse("CPU").has_value());
-  ASSERT_EQ(VirtualClusterBundleResourceLabel::Parse(
-                "CPU_vc_4482dec0faaf5ead891ff1659a9501000000")
-                ->original_resource,
-            "CPU");
-  ASSERT_EQ(VirtualClusterBundleResourceLabel::Parse(
-                "GPU_vc_4482dec0faaf5ead891ff1659a9501000000")
-                ->original_resource,
-            "GPU");
-  ASSERT_FALSE(VirtualClusterBundleResourceLabel::Parse(
-                   "GPU_vc_0_4482dec0faaf5ead891ff1659a9501000000")
-                   .has_value());
+  ASSERT_FALSE(
+      VirtualClusterResourceLabel::Parse("CPU_vc_0_4482dec0faaf5ead891ff1659a9501000000")
+          .has_value());
+  ASSERT_FALSE(VirtualClusterResourceLabel::Parse("CPU").has_value());
+  ASSERT_EQ(
+      VirtualClusterResourceLabel::Parse("CPU_vc_4482dec0faaf5ead891ff1659a9501000000")
+          ->original_resource,
+      "CPU");
+  ASSERT_EQ(
+      VirtualClusterResourceLabel::Parse("GPU_vc_4482dec0faaf5ead891ff1659a9501000000")
+          ->original_resource,
+      "GPU");
+  ASSERT_FALSE(
+      VirtualClusterResourceLabel::Parse("GPU_vc_0_4482dec0faaf5ead891ff1659a9501000000")
+          .has_value());
 }
 
-TEST_F(VirtualClusterResourceManagerTest, TestParseVirtualClusterBundleResourceLabel) {
+TEST_F(VirtualClusterResourceManagerTest, TestParseVirtualClusterResourceLabel) {
   // Test indexed resources
-  ASSERT_FALSE(VirtualClusterBundleResourceLabel::Parse(
-                   "CPU_vc_0_4482dec0faaf5ead891ff1659a9501000000")
-                   .has_value());
+  ASSERT_FALSE(
+      VirtualClusterResourceLabel::Parse("CPU_vc_0_4482dec0faaf5ead891ff1659a9501000000")
+          .has_value());
 
   // Parse incorrect resource parsing.
-  ASSERT_FALSE(VirtualClusterBundleResourceLabel::Parse("CPU").has_value());
+  ASSERT_FALSE(VirtualClusterResourceLabel::Parse("CPU").has_value());
 
   // Parse wildcard resources.
-  ASSERT_EQ(VirtualClusterBundleResourceLabel::Parse(
-                "CPU_vc_4482dec0faaf5ead891ff1659a9501000000")
-                ->original_resource,
-            "CPU");
-  ASSERT_EQ(VirtualClusterBundleResourceLabel::Parse(
-                "custom_vc_4482dec0faaf5ead891ff1659a9501000000")
-                ->original_resource,
-            "custom");
-  ASSERT_EQ(VirtualClusterBundleResourceLabel::Parse(
-                "GPU_vc_4482dec0faaf5ead891ff1659a9501000000")
-                ->original_resource,
-            "GPU");
+  ASSERT_EQ(
+      VirtualClusterResourceLabel::Parse("CPU_vc_4482dec0faaf5ead891ff1659a9501000000")
+          ->original_resource,
+      "CPU");
+  ASSERT_EQ(
+      VirtualClusterResourceLabel::Parse("custom_vc_4482dec0faaf5ead891ff1659a9501000000")
+          ->original_resource,
+      "custom");
+  ASSERT_EQ(
+      VirtualClusterResourceLabel::Parse("GPU_vc_4482dec0faaf5ead891ff1659a9501000000")
+          ->original_resource,
+      "GPU");
 }
 
 TEST_F(VirtualClusterResourceManagerTest, TestPrepareBundleResource) {
@@ -114,7 +114,7 @@ TEST_F(VirtualClusterResourceManagerTest, TestPrepareBundleResource) {
   auto vc_id = VirtualClusterID::Of(JobID::FromInt(1));
   absl::flat_hash_map<std::string, double> unit_resource;
   unit_resource.insert({"CPU", 1.0});
-  auto bundle_spec = Mocker::GenVirtualClusterBundle(vc_id, unit_resource);
+  auto bundle_spec = Mocker::GenVirtualCluster(vc_id, unit_resource);
   /// 2. init local available resource.
   InitLocalAvailableResource(unit_resource);
   /// 3. prepare bundle resource.
@@ -128,7 +128,7 @@ TEST_F(VirtualClusterResourceManagerTest, TestPrepareBundleWithInsufficientResou
   auto vc_id = VirtualClusterID::Of(JobID::FromInt(1));
   absl::flat_hash_map<std::string, double> unit_resource;
   unit_resource.insert({"CPU", 2.0});
-  auto bundle_spec = Mocker::GenVirtualClusterBundle(vc_id, unit_resource);
+  auto bundle_spec = Mocker::GenVirtualCluster(vc_id, unit_resource);
   /// 2. init local available resource.
   absl::flat_hash_map<std::string, double> init_unit_resource;
   init_unit_resource.insert({"CPU", 1.0});
@@ -142,10 +142,10 @@ TEST_F(VirtualClusterResourceManagerTest, TestPrepareBundleDuringDraining) {
   absl::flat_hash_map<std::string, double> unit_resource;
   unit_resource.insert({"CPU", 1.0});
   auto vc1_id = VirtualClusterID::Of(JobID::FromInt(1));
-  auto bundle1_spec = Mocker::GenVirtualClusterBundle(vc1_id, unit_resource);
+  auto bundle1_spec = Mocker::GenVirtualCluster(vc1_id, unit_resource);
 
   auto vc2_id = VirtualClusterID::Of(JobID::FromInt(2));
-  auto bundle2_spec = Mocker::GenVirtualClusterBundle(vc2_id, unit_resource);
+  auto bundle2_spec = Mocker::GenVirtualCluster(vc2_id, unit_resource);
 
   /// 2. init local available resource.
   absl::flat_hash_map<std::string, double> init_unit_resource;
@@ -183,7 +183,7 @@ TEST_F(VirtualClusterResourceManagerTest, TestCommitBundleResource) {
   auto vc_id = VirtualClusterID::Of(JobID::FromInt(1));
   absl::flat_hash_map<std::string, double> unit_resource;
   unit_resource.insert({"CPU", 1.0});
-  auto bundle_spec = Mocker::GenVirtualClusterBundle(vc_id, unit_resource);
+  auto bundle_spec = Mocker::GenVirtualCluster(vc_id, unit_resource);
   /// 2. init local available resource.
   InitLocalAvailableResource(unit_resource);
   /// 3. prepare and commit bundle resource.
@@ -213,7 +213,7 @@ TEST_F(VirtualClusterResourceManagerTest, TestReturnBundleResource) {
   auto vc_id = VirtualClusterID::Of(JobID::FromInt(1));
   absl::flat_hash_map<std::string, double> unit_resource;
   unit_resource.insert({"CPU", 1.0});
-  auto bundle_spec = Mocker::GenVirtualClusterBundle(vc_id, unit_resource);
+  auto bundle_spec = Mocker::GenVirtualCluster(vc_id, unit_resource);
   /// 2. init local available resource.
   InitLocalAvailableResource(unit_resource);
   /// 3. prepare and commit bundle resource.
@@ -235,7 +235,7 @@ TEST_F(VirtualClusterResourceManagerTest, TestIdempotencyWithMultiPrepare) {
   auto vc_id = VirtualClusterID::Of(JobID::FromInt(1));
   absl::flat_hash_map<std::string, double> unit_resource;
   unit_resource.insert({"CPU", 1.0});
-  auto bundle_spec = Mocker::GenVirtualClusterBundle(vc_id, unit_resource);
+  auto bundle_spec = Mocker::GenVirtualCluster(vc_id, unit_resource);
   /// 2. init local available resource.
   absl::flat_hash_map<std::string, double> available_resource = {
       std::make_pair("CPU", 3.0)};
@@ -267,7 +267,7 @@ TEST_F(VirtualClusterResourceManagerTest, TestIdempotencyWithRandomOrder) {
   auto vc_id = VirtualClusterID::Of(JobID::FromInt(1));
   absl::flat_hash_map<std::string, double> unit_resource;
   unit_resource.insert({"CPU", 1.0});
-  auto bundle_spec = Mocker::GenVirtualClusterBundle(vc_id, unit_resource);
+  auto bundle_spec = Mocker::GenVirtualCluster(vc_id, unit_resource);
   /// 2. init local available resource.
   absl::flat_hash_map<std::string, double> available_resource = {
       std::make_pair("CPU", 3.0)};

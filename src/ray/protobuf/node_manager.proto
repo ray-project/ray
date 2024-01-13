@@ -120,33 +120,47 @@ message CancelResourceReserveRequest {
 message CancelResourceReserveReply {
 }
 
-message PrepareVirtualClusterBundleRequest {
+////// Virtual Cluster APIs ////////
+// A node manager manages several virtual clusters on this node.
+// Each virtual cluster have 1 flex vnode as well as several fixed vnodes.
+// The fixed vnodes and the initial flex node are created atomically on this node and
+// across the cluster, so we use 2pc:
+// - prepare: allocate resources for all these nodes
+// - commit: rename them accoridingly.
+// - return: release all those resources. Remove any renamed resources if any.
+// During the running, the flex node can scale up or down. This movement is not needed
+// to be 2pc, but we don't need another API anyway. so the gcs calls `prepare` then `commit`
+
+// Prepares a virtual cluster creation in a node.
+// There may be multiple fixed size node on a parent node.
+message PrepareVirtualClusterRequest {
   bytes virtual_cluster_id = 1;
-  // 1 virtual cluster can only have 1 bundle on a node.
-  VirtualClusterBundle bundle_spec = 2;
+  repeated VirtualClusterNode fixed_size_nodes = 2;
+  // TODO: add min resource for the flex node as a vnode here
+  // TODO: repurpose this into a "borrow" API, add a parent vc id (or vnode id).
 }
 
-message PrepareVirtualClusterBundleReply {
+message PrepareVirtualClusterReply {
   // The status if prepare request was successful.
   bool success = 1;
 }
 
-message CommitVirtualClusterBundleRequest {
+message CommitVirtualClusterRequest {
   bytes virtual_cluster_id = 1;
 }
 
-message CommitVirtualClusterBundleReply {}
+message CommitVirtualClusterReply {}
 
-message ReturnVirtualClusterBundleRequest {
+message ReturnVirtualClusterRequest {
   bytes virtual_cluster_id = 1;
 }
 
-message ReturnVirtualClusterBundleReply {}
+message ReturnVirtualClusterReply {}
 
-message ReleaseUnusedVirtualClusterBundlesRequest {
+message ReleaseUnusedVirtualClustersRequest {
   repeated bytes virtual_cluster_ids = 1;
 }
-message ReleaseUnusedVirtualClusterBundlesReply {}
+message ReleaseUnusedVirtualClustersReply {}
 
 
 // Release a worker back to its raylet.
@@ -428,19 +442,19 @@ service NodeManagerService {
   // Begins the reservation of resources for a virtual cluster bundle on a node.
   // This is the initial phase of the two-phase commit (2PC) for atomic virtual cluster
   // bundle creation.
-  rpc PrepareVirtualClusterBundle(PrepareVirtualClusterBundleRequest)
-      returns (PrepareVirtualClusterBundleReply);
+  rpc PrepareVirtualCluster(PrepareVirtualClusterRequest)
+      returns (PrepareVirtualClusterReply);
   // Finalizes the reservation of resources for a virtual cluster bundle on a node.
   // This is the commit phase of the two-phase commit (2PC) for atomic virtual cluster
   // bundle creation.
-  rpc CommitVirtualClusterBundle(CommitVirtualClusterBundleRequest)
-      returns (CommitVirtualClusterBundleReply);
+  rpc CommitVirtualCluster(CommitVirtualClusterRequest)
+      returns (CommitVirtualClusterReply);
   // Releases the resources reserved for a virtual cluster bundle on a node.
-  rpc ReturnVirtualClusterBundle(ReturnVirtualClusterBundleRequest)
-      returns (ReturnVirtualClusterBundleReply);
+  rpc ReturnVirtualCluster(ReturnVirtualClusterRequest)
+      returns (ReturnVirtualClusterReply);
   // Release unused virtual cluster bundles identified by virtual_cluster_ids.
-  rpc ReleaseUnusedVirtualClusterBundles(ReleaseUnusedVirtualClusterBundlesRequest)
-      returns (ReleaseUnusedVirtualClusterBundlesReply);
+  rpc ReleaseUnusedVirtualClusters(ReleaseUnusedVirtualClustersRequest)
+      returns (ReleaseUnusedVirtualClustersReply);
   // Cancel a pending lease request. This only returns success if the
   // lease request was not yet granted.
   rpc CancelWorkerLease(CancelWorkerLeaseRequest) returns (CancelWorkerLeaseReply);
