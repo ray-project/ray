@@ -53,6 +53,7 @@ class JSONDatasource(FileBasedDatasource):
                 yield json.read_json(
                     f, read_options=local_read_options, **self.arrow_json_args
                 )
+                break
             except ArrowInvalid as e:
                 # TODO: Figure out what MAX_BLOCK_SIZE would be / if necessary.
                 if (
