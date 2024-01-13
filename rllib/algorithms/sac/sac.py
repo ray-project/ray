@@ -6,6 +6,7 @@ from ray.rllib.algorithms.dqn.dqn import calculate_rr_weights, DQN
 from ray.rllib.algorithms.sac.sac_tf_policy import SACTFPolicy
 from ray.rllib.core.learner import Learner
 from ray.rllib.core.rl_module.rl_module import SingleAgentRLModuleSpec
+from ray.rllib.env.env_runner import EnvRunner
 from ray.rllib.env.single_agent_episode import SingleAgentEpisode
 from ray.rllib.evaluation.rollout_worker import RolloutWorker
 from ray.rllib.execution.rollout_ops import synchronous_parallel_sample
@@ -78,18 +79,34 @@ class SACConfig(AlgorithmConfig):
         self.initial_alpha = 1.0
         self.target_entropy = "auto"
         self.n_step = 1
-        self.replay_buffer_config = {
-            "_enable_replay_buffer_api": True,
-            "type": "MultiAgentPrioritizedReplayBuffer",
-            "capacity": int(1e6),
-            # If True prioritized replay buffer will be used.
-            "prioritized_replay": False,
-            "prioritized_replay_alpha": 0.6,
-            "prioritized_replay_beta": 0.4,
-            "prioritized_replay_eps": 1e-6,
-            # Whether to compute priorities already on the remote worker side.
-            "worker_side_prioritization": False,
-        }
+        if self._enable_new_api_stack and self.uses_new_env_runners:
+            # Then we are using `Episodes`.
+            self.replay_buffer_config = {
+                "_enable_replay_buffer_api": True,
+                "type": "EpisodeReplayBuffer",
+                "capacity": int(1e6),
+            }
+        elif not self._enable_new_api_stack and not self.uses_new_env_runners:
+            # Then use a `SampleBatch` replay buffer.
+            self.replay_buffer_config = {
+                "_enable_replay_buffer_api": True,
+                "type": "MultiAgentPrioritizedReplayBuffer",
+                "capacity": int(1e6),
+                # If True prioritized replay buffer will be used.
+                "prioritized_replay": False,
+                "prioritized_replay_alpha": 0.6,
+                "prioritized_replay_beta": 0.4,
+                "prioritized_replay_eps": 1e-6,
+                # Whether to compute priorities already on the remote worker side.
+                "worker_side_prioritization": False,
+            }
+        else:
+            raise ValueError(
+                "SAC not implemented for mixing old stack and `EnvRunner` sampling "
+                "or new stack and `RolloutWorker` sampling. Try "
+                "`_enable_new_api_stack=True` and `env_runner_cls='SingleAgentEnvRunner'."
+            )
+        
         self.store_buffer_in_checkpoints = False
         self.training_intensity = None
         self.optimization = {
@@ -450,9 +467,10 @@ class SAC(DQN):
                     )
                 # Perform SAC postprocessing (Prio weights) on a (flattened)
                 # list of Episodes.
-                postprocessed_episodes = self.postprocess_episodes(episodes)
+                # TODO (simon): Change this to a preprocessing in the learner.
+                #postprocessed_episodes = self.postprocess_episodes(episodes)
 
-            train_batch = train_batch.as_multi_agent()
+            #train_batch = train_batch.as_multi_agent()
             self._counters[NUM_AGENT_STEPS_SAMPLED] += train_batch.agent_steps()
             self._counters[NUM_ENV_STEPS_SAMPLED] += train_batch.env_steps()
 
@@ -500,13 +518,13 @@ class SAC(DQN):
                     last_update=self._counters[LAST_TARGET_UPDATE_TS],
                 )
                 for pid, res in additional_results.items():
-                    train_results[pid].update(res)                    
+                    train_results[pid].update(res)
 
             # TODO (simon): Check, if this is better - as we are not sampling at the
             # same time, updating weights after all training iteration should be faster.
             # Update weights and global_vars - after learning on the local worker -
             # on all remote workers.
-            
+
             with self._timers[SYNCH_WORKER_WEIGHTS_TIMER]:
                 if self.workers.num_remote_workers() > 0:
                     # NOTE: the new API stack does not use global vars.

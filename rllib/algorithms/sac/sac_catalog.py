@@ -1,4 +1,5 @@
 import gymnasium as gym
+import numpy as np
 
 # TODO (simon): Store this function somewhere more central as many
 # algorithms will use it.
@@ -39,11 +40,24 @@ class SACCatalog(Catalog):
         )
 
         # Define the encoder for the Q-network.
+        if (
+            isinstance(self.observation_space, gym.spaces.Box)
+            and len(self.observation_space.shape) == 1
+        ):
+            input_space = gym.spaces.Box(
+                -np.inf,
+                np.inf,
+                (self.observation_space.shape[0] + self.action_space.shape[0],),
+                dtype=np.float32,
+            )
+        else:
+            raise ValueError(f"The observation space is not supported by RLlib's SAC.")
+
         self.qf_encoder_hiddens = self._model_config_dict["fcnet_hiddens"]
-        self.qf_encoder_activation = self._model_config_dict["fcnet_hiddens_activation"]
+        self.qf_encoder_activation = self._model_config_dict["fcnet_activation"]
 
         self.qf_encoder_config = MLPEncoderConfig(
-            input_dims=observation_space.shape + action_space.shape,
+            input_dims=input_space.shape,
             hidden_layer_dims=self.qf_encoder_hiddens,
             hidden_layer_activation=self.qf_encoder_activation,
             output_layer_dim=self.latent_dims,

@@ -38,7 +38,7 @@ class SACTorchRLModule(SACRLModule, TorchRLModule):
         self._forward_inference(batch)
 
     @override(RLModule)
-    def _forward_train(self, batch: NestedDict) -> Dict(str, Any):
+    def _forward_train(self, batch: NestedDict) -> Dict[str, Any]:
         output = {}
 
         # SAC needs also Q function values and action logits for next observations.
