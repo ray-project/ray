@@ -100,11 +100,13 @@ class AutoscalingConfig(BaseModel):
         the policy and set `serialized_policy_def` if it's empty.
         """
         if isinstance(policy, Callable):
-            policy_path = f"{policy.__module__}.{policy.__name__}"
+            policy = f"{policy.__module__}.{policy.__name__}"
 
-        if isinstance(policy, str):
-            policy_path = policy
-            policy = import_attr(policy)
+        if not policy:
+            policy = DEFAULT_AUTOSCALING_POLICY
+
+        policy_path = policy
+        policy = import_attr(policy)
 
         if not values.get("serialized_policy_def"):
             values["serialized_policy_def"] = cloudpickle.dumps(policy)
