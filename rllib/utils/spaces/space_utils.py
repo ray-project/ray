@@ -97,6 +97,7 @@ def get_base_struct_from_space(space):
 def get_dummy_batch_for_space(
     space: gym.Space,
     batch_size: int = 32,
+    *,
     fill_value: Union[float, int, str] = 0.0,
     time_size: Optional[int] = None,
     time_major: bool = False,

@@ -119,6 +119,30 @@ class Test(dict):
             }
         )
 
+    @classmethod
+    def gen_from_s3(cls, prefix: str):
+        """
+        Obtain all tests whose names start with the given prefix from s3
+        """
+        bucket = get_global_config()["state_machine_aws_bucket"]
+        s3_client = boto3.client("s3")
+        files = s3_client.list_objects_v2(
+            Bucket=bucket,
+            Prefix=f"{AWS_TEST_KEY}/{prefix}",
+        ).get("Contents", [])
+
+        return [
+            Test(
+                json.loads(
+                    s3_client.get_object(Bucket=bucket, Key=file["Key"])
+                    .get("Body")
+                    .read()
+                    .decode("utf-8")
+                )
+            )
+            for file in files
+        ]
+
     def is_jailed_with_open_issue(self, ray_github: Repository) -> bool:
         """
         Returns whether this test is jailed with open issue.
