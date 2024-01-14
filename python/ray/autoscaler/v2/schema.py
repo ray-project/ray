@@ -225,7 +225,7 @@ class AutoscalerInstance:
     """
     AutoscalerInstance represents an instance that's managed by the autoscaler.
     This includes two states:
-        1. the instance manager state: information of the underlying cloud node.
+        1. the instance manager state: information of the underlying cloud instance.
         2. the ray node state, e.g. resources, ray node status.
 
     The two states are linked by the cloud instance id, which should be set
@@ -233,22 +233,23 @@ class AutoscalerInstance:
     """
 
     # The cloud instance id. It could be None if the instance hasn't been assigned
-    # a cloud node id, e.g. the instance is still in QUEUED or REQUESTED status.
+    # a cloud instance id, e.g. the instance is still in QUEUED or REQUESTED status.
     cloud_instance_id: Optional[str] = None
 
     # The ray node state status. It could be None when no ray node is running
-    # or has run on the cloud node: for example, ray is still being installed
-    # or the instance manager hasn't had a cloud node assigned (e.g. QUEUED,
+    # or has run on the cloud instance: for example, ray is still being installed
+    # or the instance manager hasn't had a cloud instance assigned (e.g. QUEUED,
     # REQUESTED).
     ray_node: Optional[NodeState] = None
 
-    # The instance manager state. It would be None when the ray_node is not None.
+    # The instance manager instance state. It would be None when the ray_node is not
+    # None.
     # It could be None iff:
     #   1. There's a ray node, but the instance manager hasn't discovered the
-    #   cloud node that's running this ray process yet. This could happen since
+    #   cloud instance that's running this ray process yet. This could happen since
     #   the instance manager only discovers instances periodically.
     #
-    #   2. There was a ray node running on the cloud node, which was already stopped
+    #   2. There was a ray node running on the cloud instance, which was already stopped
     #   and removed from the instance manager state. But the ray state is still lagging
     #   behind.
     #
@@ -266,15 +267,22 @@ class AutoscalerInstance:
     # | not None          | None     | not None    | OK. e.g. An instance that's not running ray yet. # noqa E501
     # | not None          | Not None | None        | OK. See scenario 1, 2, 3 above.
     # | not None          | Not None | not None    | OK. An instance that's running ray.
-    def is_valid(self) -> Tuple[bool, str]:
-        # Valid combinations:
-        valid_combinations = {
+    def validate(self) -> Tuple[bool, str]:
+        """Validate the autoscaler instance state.
+
+        Returns:
+            A tuple of (valid, error_msg) where:
+            - valid is whether the state is valid
+            - error_msg is the error message for the validation results.
+        """
+
+        state_combinations = {
             # (cloud_instance_id is None, ray_node is None, im_instance is None): (valid, error_msg) # noqa E501
             (True, True, True): (False, "Not possible"),
             (True, True, False): (True, ""),
             (True, False, True): (
                 True,
-                "There's a ray node w/o cloud node id, must be started not "
+                "There's a ray node w/o cloud instance id, must be started not "
                 "by autoscaler",
             ),
             (True, False, False): (
@@ -291,7 +299,7 @@ class AutoscalerInstance:
             (False, False, False): (True, ""),
         }
 
-        valid, error_msg = valid_combinations[
+        valid, error_msg = state_combinations[
             (
                 self.cloud_instance_id is None,
                 self.ray_node is None,
@@ -307,7 +315,7 @@ class AutoscalerInstance:
                 if InstanceUtil.is_cloud_instance_allocated(self.im_instance.status):
                     return (
                         False,
-                        "instance should be in a status where cloud node "
+                        "instance should be in a status where cloud instance "
                         "is not allocated.",
                     )
             else:
@@ -316,7 +324,8 @@ class AutoscalerInstance:
                 ):
                     return (
                         False,
-                        "instance should be in a status where cloud node is allocated.",
+                        "instance should be in a status where cloud instance is "
+                        "allocated.",
                     )
 
         if self.ray_node is not None:

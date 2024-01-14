@@ -13,10 +13,12 @@ from ray.core.generated.instance_manager_pb2 import Instance
 def make_autoscaler_instance(
     im_instance: Optional[Instance] = None,
     ray_node: Optional[autoscaler_pb2.NodeState] = None,
+    cloud_instance_id: Optional[str] = None,
 ) -> AutoscalerInstance:
     return AutoscalerInstance(
         im_instance=im_instance,
         ray_node=ray_node,
+        cloud_instance_id=cloud_instance_id,
     )
 
 
