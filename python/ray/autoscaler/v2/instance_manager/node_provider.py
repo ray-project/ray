@@ -80,9 +80,8 @@ class ICloudInstanceProvider(ABC):
 
     The cloud instance provider is responsible for managing the cloud instances in the
     cluster. It provides the following main functionalities:
-        - Update the cloud instances:
-            1. Given a minimal running set of cloud instances, may launch new ones.
-            2. Terminate existing running instances.
+        - Launch new cloud instances.
+        - Terminate existing running instances.
         - Get the running cloud instances in the cluster.
         - Poll the errors that happened for the updates to the cloud instance provider.
 
@@ -91,7 +90,7 @@ class ICloudInstanceProvider(ABC):
     1. Eventually consistent
     The cloud instance provider is expected to be eventually consistent with the
     cluster state. For example, when a cloud instance is request to be terminated
-    ,the provider may not immediately reflect the change in its state.
+    or launched, the provider may not immediately reflect the change in its state.
     However, the provider is expected to eventually reflect the change in its state.
 
     2. Asynchronous
@@ -110,7 +109,7 @@ class ICloudInstanceProvider(ABC):
             provider: ICloudInstanceProvider = ...
 
             # Update the cluster with a desired shape.
-            provider.ensure_min_nodes(
+            provider.launch(
                 shape={
                     "worker_nodes": 10,
                     "ray_head": 1,
@@ -157,18 +156,15 @@ class ICloudInstanceProvider(ABC):
         pass
 
     @abstractmethod
-    def ensure_min_nodes(
+    def launch(
         self,
         shape: Dict[NodeType, int],
         request_id: str,
     ) -> None:
-        """Update the provider to ensure minimal running nodes.
-
-        The provider should launch new nodes to match the min shape.
+        """Launch the cloud instances asynchronously.
 
         Args:
-            shape: the target cluster shape (number of running nodes by
-                type). This includes the nodes that are already running.
+            shape: A map from node type to number of nodes to launch.
             request_id: a unique id that identifies the update request.
         """
         pass
