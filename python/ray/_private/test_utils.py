@@ -2117,3 +2117,11 @@ def skip_flaky_core_test_premerge(reason: str):
         )(func)
 
     return wrapper
+
+
+def get_ray_default_worker_file_path():
+    py_version = f"{sys.version_info[0]}.{sys.version_info[1]}"
+    return (
+        f"/home/ray/anaconda3/lib/python{py_version}/"
+        "site-packages/ray/_private/workers/default_worker.py"
+    )
