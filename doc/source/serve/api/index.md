@@ -355,7 +355,6 @@ Content-Type: application/json
 .. autosummary::
    :nosignatures:
    :toctree: doc/
-   :template: autosummary/class_with_inherited_members.rst
 
    schema.ServeInstanceDetails
    schema.ApplicationDetails
@@ -363,7 +362,8 @@ Content-Type: application/json
    schema.ReplicaDetails
 ```
 
-## Metrics API
+## Observability
+
 ```{eval-rst}
 .. autosummary::
    :nosignatures:
@@ -372,4 +372,5 @@ Content-Type: application/json
    metrics.Counter
    metrics.Histogram
    metrics.Gauge
+   schema.LoggingConfig
 ```

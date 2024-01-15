@@ -310,7 +310,10 @@ if __name__ == "__main__":
             elif any(changed_file.startswith(prefix) for prefix in skip_prefix_list):
                 # nothing is run but linting in these cases
                 pass
-            elif changed_file.startswith("ci/lint"):
+            elif (
+                changed_file.startswith("ci/lint")
+                or changed_file == ".buildkite/lint.rayci.yml"
+            ):
                 # Linter will always be run
                 RAY_CI_TOOLS_AFFECTED = 1
             elif (
@@ -329,6 +332,7 @@ if __name__ == "__main__":
                 RAY_CI_TOOLS_AFFECTED = 1
             elif (
                 changed_file.endswith("build-docker-images.py")
+                or changed_file == ".buildkite/base.rayci.yml"
                 or changed_file == ".buildkite/build.rayci.yml"
                 or changed_file == ".buildkite/pipeline.arm64.yml"
                 or changed_file == "ci/docker/manylinux.Dockerfile"
@@ -338,10 +342,17 @@ if __name__ == "__main__":
                 or changed_file == "ci/docker/ray.cpu.base.aarch64.wanda.yaml"
                 or changed_file == "ci/docker/ray.cuda.base.wanda.yaml"
                 or changed_file == "ci/docker/ray.cuda.base.aarch64.wanda.yaml"
+                or changed_file == "ci/docker/windows.build.Dockerfile"
+                or changed_file == "ci/docker/windows.build.wanda.yaml"
             ):
                 RAY_CI_DOCKER_AFFECTED = 1
                 RAY_CI_LINUX_WHEELS_AFFECTED = 1
                 RAY_CI_TOOLS_AFFECTED = 1
+            elif (
+                changed_file == ".buildkite/macos.rayci.yml"
+                or changed_file == ".buildkite/pipeline.macos.yml"
+            ):
+                RAY_CI_MACOS_WHEELS_AFFECTED = 1
             elif changed_file.startswith("ci/run") or changed_file == "ci/ci.sh":
                 RAY_CI_TOOLS_AFFECTED = 1
             elif changed_file.startswith("src/"):

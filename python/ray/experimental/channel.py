@@ -12,7 +12,7 @@ logger = logging.getLogger(__name__)
 
 
 def _create_channel_ref(
-    buffer_size: int,
+    buffer_size_bytes: int,
 ) -> "ray.ObjectRef":
     """
     Create a channel that can be read and written by co-located Ray processes.
@@ -21,7 +21,7 @@ def _create_channel_ref(
     read the previous value. Only the channel creator may write to the channel.
 
     Args:
-        buffer_size: The number of bytes to allocate for the object data and
+        buffer_size_bytes: The number of bytes to allocate for the object data and
             metadata. Writes to the channel must produce serialized data and
             metadata less than or equal to this value.
     Returns:
@@ -30,7 +30,7 @@ def _create_channel_ref(
     worker = ray._private.worker.global_worker
     worker.check_connected()
 
-    value = b"0" * buffer_size
+    value = b"0" * buffer_size_bytes
 
     try:
         object_ref = worker.put_object(
@@ -52,7 +52,12 @@ class Channel:
     ray.wait.
     """
 
-    def __init__(self, buffer_size: Optional[int] = None, num_readers: int = 1):
+    def __init__(
+        self,
+        buffer_size_bytes: Optional[int] = None,
+        num_readers: int = 1,
+        _base_ref: Optional["ray.ObjectRef"] = None,
+    ):
         """
         Create a channel that can be read and written by co-located Ray processes.
 
@@ -60,16 +65,25 @@ class Channel:
         so the writer will block until reader(s) have read the previous value.
 
         Args:
-            buffer_size: The number of bytes to allocate for the object data and
+            buffer_size_bytes: The number of bytes to allocate for the object data and
                 metadata. Writes to the channel must produce serialized data and
                 metadata less than or equal to this value.
         Returns:
             Channel: A wrapper around ray.ObjectRef.
         """
-        if buffer_size is None:
-            self._base_ref = None
+        if buffer_size_bytes is None:
+            if _base_ref is None:
+                raise ValueError(
+                    "One of `buffer_size_bytes` or `_base_ref` must be provided"
+                )
+            self._base_ref = _base_ref
         else:
-            self._base_ref = _create_channel_ref(buffer_size)
+            if not isinstance(buffer_size_bytes, int):
+                raise ValueError("buffer_size_bytes must be an integer")
+            self._base_ref = _create_channel_ref(buffer_size_bytes)
+
+        if not isinstance(num_readers, int):
+            raise ValueError("num_readers must be an integer")
 
         self._num_readers = num_readers
         self._worker = ray._private.worker.global_worker
@@ -77,9 +91,7 @@ class Channel:
 
     @staticmethod
     def _from_base_ref(base_ref: "ray.ObjectRef", num_readers: int) -> "Channel":
-        chan = Channel(num_readers=num_readers)
-        chan._base_ref = base_ref
-        return chan
+        return Channel(num_readers=num_readers, _base_ref=base_ref)
 
     def __reduce__(self):
         return self._from_base_ref, (self._base_ref, self._num_readers)
@@ -147,3 +159,13 @@ class Channel:
         self._worker.core_worker.experimental_mutable_object_read_release(
             [self._base_ref]
         )
+
+    def close(self) -> None:
+        """
+        Close this channel by setting the error bit on the object.
+
+        Does not block. Any existing values in the channel may be lost after the
+        channel is closed.
+        """
+        logger.debug(f"Setting error bit on channel: {self._base_ref}")
+        self._worker.core_worker.experimental_mutable_object_set_error(self._base_ref)

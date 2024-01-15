@@ -20,6 +20,7 @@ import ray
 from ray import serve
 from ray._private.utils import get_or_create_event_loop
 from ray.actor import ActorHandle
+from ray.exceptions import RayActorError, RayTaskError
 from ray.serve._private.common import EndpointInfo, EndpointTag, NodeId, RequestProtocol
 from ray.serve._private.constants import (
     DEFAULT_LATENCY_BUCKET_MS,
@@ -33,7 +34,7 @@ from ray.serve._private.constants import (
 )
 from ray.serve._private.grpc_util import DummyServicer, create_serve_grpc_server
 from ray.serve._private.http_util import (
-    ASGIMessageQueue,
+    MessageQueue,
     convert_object_to_asgi_messages,
     receive_http_body,
     set_socket_reuse_port,
@@ -149,20 +150,11 @@ class GenericProxy(ABC):
 
         self._node_id = node_id
 
-        # Set the controller name so that serve connects to the
-        # controller instance this proxy is running in.
-        ray.serve.context._set_internal_replica_context(
-            app_name=None,
-            deployment=None,
-            replica_tag=None,
-            servable_object=None,
-        )
-
         # Used only for displaying the route table.
         self.route_info: Dict[str, EndpointTag] = dict()
 
         self.self_actor_handle = proxy_actor or ray.get_runtime_context().current_actor
-        self.asgi_receive_queues: Dict[str, ASGIMessageQueue] = dict()
+        self.asgi_receive_queues: Dict[str, MessageQueue] = dict()
 
         self.proxy_router = proxy_router_class(
             serve.get_deployment_handle, self.protocol
@@ -234,9 +226,6 @@ class GenericProxy(ABC):
             }
         )
 
-        # `self._prevent_node_downscale_ref` is used to prevent the node from being
-        # downscaled when there are ongoing requests
-        self._prevent_node_downscale_ref = ray.put("prevent_node_downscale_object")
         # `self._ongoing_requests` is used to count the number of ongoing requests
         self._ongoing_requests = 0
         # The time when the node starts to drain.
@@ -737,12 +726,12 @@ class gRPCProxy(GenericProxy):
 
         try:
             async for context, result in response_generator:
-                context.set_on_grpc_context(proxy_request.context)
+                context._set_on_grpc_context(proxy_request.context)
                 yield result
 
             yield ResponseStatus(code=grpc.StatusCode.OK)
         except TimeoutError:
-            message = f"Request {request_id} timed out after {self.request_timeout_s}s."
+            message = f"Request timed out after {self.request_timeout_s}s."
             logger.warning(message)
             yield ResponseStatus(
                 code=grpc.StatusCode.DEADLINE_EXCEEDED,
@@ -758,7 +747,10 @@ class gRPCProxy(GenericProxy):
                 message=message,
             )
         except Exception as e:
-            logger.exception(e)
+            if isinstance(e, (RayActorError, RayTaskError)):
+                logger.warning(f"Request failed: {e}", extra={"log_to_stderr": False})
+            else:
+                logger.exception("Request failed due to unexpected error.")
             yield ResponseStatus(
                 code=grpc.StatusCode.INTERNAL,
                 is_error=True,
@@ -855,7 +847,7 @@ class HTTPProxy(GenericProxy):
                 await send(message)
 
     async def proxy_asgi_receive(
-        self, receive: Receive, queue: ASGIMessageQueue
+        self, receive: Receive, queue: MessageQueue
     ) -> Optional[int]:
         """Proxies the `receive` interface, placing its messages into the queue.
 
@@ -951,7 +943,7 @@ class HTTPProxy(GenericProxy):
         # Proxy the receive interface by placing the received messages on a queue.
         # The downstream replica must call back into `receive_asgi_messages` on this
         # actor to receive the messages.
-        receive_queue = ASGIMessageQueue()
+        receive_queue = MessageQueue()
         self.asgi_receive_queues[request_id] = receive_queue
         proxy_asgi_receive_task = get_or_create_event_loop().create_task(
             self.proxy_asgi_receive(proxy_request.receive, receive_queue)
@@ -1016,9 +1008,7 @@ class HTTPProxy(GenericProxy):
                 code=TIMEOUT_ERROR_CODE,
                 is_error=True,
             )
-            logger.warning(
-                f"Request {request_id} timed out after {self.request_timeout_s}s."
-            )
+            logger.warning(f"Request timed out after {self.request_timeout_s}s.")
             # We should only send timeout response if we have not sent
             # any messages to the client yet. Header (including status code)
             # messages can only be sent once.
@@ -1034,31 +1024,47 @@ class HTTPProxy(GenericProxy):
                 f"Client for request {request_id} disconnected, cancelling request."
             )
         except Exception as e:
-            logger.exception(e)
+            if isinstance(e, (RayActorError, RayTaskError)):
+                logger.warning(f"Request failed: {e}", extra={"log_to_stderr": False})
+            else:
+                logger.exception("Request failed due to unexpected error.")
             status = ResponseStatus(
                 code="500",
                 is_error=True,
             )
 
         finally:
+            # For websocket connection, queue receive task is done when receiving
+            # disconnect message from client.
+            receive_client_disconnect_msg = False
             if not proxy_asgi_receive_task.done():
                 proxy_asgi_receive_task.cancel()
             else:
-                # If the server disconnects, status_code is set above from the
-                # disconnect message. Otherwise the disconnect code comes from
-                # a client message via the receive interface.
-                if (
-                    status is None
-                    and proxy_request.request_type == "websocket"
-                    and proxy_asgi_receive_task.exception() is None
-                ):
+                receive_client_disconnect_msg = True
+
+            # If the server disconnects, status_code can be set above from the
+            # disconnect message.
+            # If client disconnects, the disconnect code comes from
+            # a client message via the receive interface.
+            if status is None and proxy_request.request_type == "websocket":
+                if receive_client_disconnect_msg:
+                    # The disconnect message is sent from the client.
                     status = ResponseStatus(
                         code=str(proxy_asgi_receive_task.result()),
+                        is_error=True,
+                    )
+                else:
+                    # The server disconnect without sending a disconnect message
+                    # (otherwise the `status` would be set).
+                    status = ResponseStatus(
+                        code="1000",  # [Sihan] is there a better code for this?
                         is_error=True,
                     )
 
             del self.asgi_receive_queues[request_id]
 
+        # The status code should always be set.
+        assert status is not None
         yield status
 
 

@@ -247,14 +247,13 @@ if setup_spec.type == SetupType.RAY:
             "colorful",
             "py-spy >= 0.2.0",
             "requests",
-            "gpustat >= 1.0.0",  # for windows
             "grpcio >= 1.32.0; python_version < '3.10'",  # noqa:E501
             "grpcio >= 1.42.0; python_version >= '3.10'",  # noqa:E501
             "opencensus",
             "pydantic!=2.0.*,!=2.1.*,!=2.2.*,!=2.3.*,!=2.4.*,<3",
             "prometheus_client >= 0.7.1",
             "smart_open",
-            "virtualenv >=20.0.24, < 20.21.1",  # For pip runtime env.
+            "virtualenv >=20.0.24, !=20.21.1",  # For pip runtime env.
         ],
         "client": [
             # The Ray client needs a specific range of gRPC to work:
@@ -268,7 +267,6 @@ if setup_spec.type == SetupType.RAY:
             "requests",
             "starlette",
             "fastapi",
-            "aiorwlock",
             "watchfiles",
         ],
         "tune": ["pandas", "tensorboardX>=1.9", "requests", pyarrow_dep, "fsspec"],

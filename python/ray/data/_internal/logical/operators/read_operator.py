@@ -13,9 +13,12 @@ class Read(AbstractMap):
         datasource_or_legacy_reader: Union[Datasource, Reader],
         parallelism: int,
         mem_size: Optional[int],
+        num_outputs: Optional[int] = None,
         ray_remote_args: Optional[Dict[str, Any]] = None,
     ):
-        super().__init__(f"Read{datasource.get_name()}", None, ray_remote_args)
+        super().__init__(
+            f"Read{datasource.get_name()}", None, num_outputs, ray_remote_args
+        )
         self._datasource = datasource
         self._datasource_or_legacy_reader = datasource_or_legacy_reader
         self._parallelism = parallelism

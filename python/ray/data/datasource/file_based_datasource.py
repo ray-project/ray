@@ -155,6 +155,15 @@ class FileBasedDatasource(Datasource):
         file_extensions: Optional[List[str]] = None,
     ):
         _check_pyarrow_version()
+
+        self._supports_distributed_reads = not _is_local_scheme(paths)
+        if not self._supports_distributed_reads and ray.util.client.ray.is_connected():
+            raise ValueError(
+                "Because you're using Ray Client, read tasks scheduled on the Ray "
+                "cluster can't access your local files. To fix this issue, store "
+                "files in cloud storage or a distributed filesystem like NFS."
+            )
+
         self._schema = schema
         self._open_stream_args = open_stream_args
         self._meta_provider = meta_provider
@@ -181,14 +190,6 @@ class FileBasedDatasource(Datasource):
                 "The 'ignore_missing_paths' field is set to True."
             )
 
-        self._supports_distributed_reads = not _is_local_scheme(paths)
-        if not self._supports_distributed_reads and ray.util.client.ray.is_connected():
-            raise ValueError(
-                "Because you're using Ray Client, read tasks scheduled on the Ray "
-                "cluster can't access your local files. To fix this issue, store "
-                "files in cloud storage or a distributed filesystem like NFS."
-            )
-
         if self._partition_filter is not None:
             # Use partition filter to skip files which are not needed.
             path_to_size = dict(zip(paths, file_sizes))
@@ -206,7 +207,8 @@ class FileBasedDatasource(Datasource):
             file_sizes = [path_to_size[p] for p in paths]
             if len(paths) == 0:
                 raise ValueError(
-                    "No input files found to read. Please double check that "
+                    "No input files found to read with the following file extensions: "
+                    f"{file_extensions}. Please double check that "
                     "'file_extensions' field is set properly."
                 )
 

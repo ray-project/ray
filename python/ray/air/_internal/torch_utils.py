@@ -145,11 +145,11 @@ def convert_pandas_to_torch_tensor(
             col_vals = batch[col].values
             try:
                 t = tensorize(col_vals, dtype=dtype)
-            except Exception:
+            except Exception as e:
                 raise ValueError(
                     f"Failed to convert column {col} to a Torch Tensor of dtype "
                     f"{dtype}. See above exception chain for the exact failure."
-                )
+                ) from e
             if unsqueeze:
                 t = t.unsqueeze(1)
             feature_tensors.append(t)
