@@ -3578,6 +3578,18 @@ class AlgorithmConfig(_Config):
                         f"`config.multi_agent(policies=..)`!"
                     )
 
+        # TODO (sven): For now, vectorization is not allowed on new EnvRunners with
+        #  multi-agent.
+        if (
+            self.is_multi_agent()
+            and self.uses_new_env_runners
+            and self.num_envs_per_worker > 1
+        ):
+            raise ValueError(
+                "For now, using env vectorization (`config.num_envs_per_worker > 1`) "
+                "in combination with multi-agent AND the new EnvRunners is not "
+                "supported! Try setting `config.num_envs_per_worker = 1`.")
+
     def _validate_evaluation_settings(self):
         """Checks, whether evaluation related settings make sense."""
         if (

@@ -14,6 +14,7 @@ from ray.rllib.core.rl_module.marl_module import (
 )
 from ray.rllib.env.env_runner import EnvRunner
 from ray.rllib.env.multi_agent_env import MultiAgentEnv
+from ray.rllib.env.multi_agent_episode import MultiAgentEpisode
 from ray.rllib.env.utils import _gym_env_creator
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils.annotations import override
@@ -30,10 +31,6 @@ from ray.tune.registry import ENV_CREATOR, _global_registry
 if TYPE_CHECKING:
     from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
 
-    # TODO (sven): This gives a tricky circular import that goes
-    #  deep into the library. We have to see, where to dissolve it.
-    from ray.rllib.env.multi_agent_episode import MultiAgentEpisode
-
 _, tf, _ = try_import_tf()
 torch, nn = try_import_torch()
 
@@ -46,16 +43,13 @@ class MultiAgentEnvRunner(EnvRunner):
         """Initializes a `MultiAgentEnvRunner` instance.
 
         Args:
-            config: An `AlgorithmConfig` object containing all parameters
-                needed to build this `EnvRunner` class.
+            config: An `AlgorithmConfig` object containing all settings needed to
+                build this `EnvRunner` class.
         """
         super().__init__(config=config)
 
         # Get the worker index on which this instance is running.
         self.worker_index: int = kwargs.get("worker_index")
-
-        # TODO (simon): Instantiate an error in `Algorithm.validate()`
-        # if `num_envs_per_worker > 1` and `is_multi_agent==True`.
 
         # Register env for the local context.
         # Note, `gym.register` has to be called on each worker.
@@ -80,9 +74,7 @@ class MultiAgentEnvRunner(EnvRunner):
         )
 
         # Wrap into `VectorListInfo`` wrapper to get infos as lists.
-        self.env = gym.make(
-            "rllib-multi-agent-env-runner-v0",
-        )
+        self.env = gym.make("rllib-multi-agent-env-runner-v0")
 
         # Create the vectorized gymnasium env.
         assert isinstance(self.env.unwrapped, MultiAgentEnv), (
@@ -140,40 +132,33 @@ class MultiAgentEnvRunner(EnvRunner):
                     agent_module_spec.observation_space = self.env.observation_space
 
             # Build the module from its spec.
-            self.marl_module: MultiAgentRLModule = module_spec.build()
+            self.module: MultiAgentRLModule = module_spec.build()
             # Get the policy mapping function b/c we need it to map observations and
             # states to single-agent `RLModule`s.
-            # TODO (sven, simon): We have to rebuild the `AlgorithmConfig` to work on
-            # `RLModule`s and not `Policy`s. Like here `policies`->`modules`
-            self._agent_id_to_module_id = {
-                agent_id: self.config.policy_mapping_fn()(agent_id, None, self)
-                for agent_id in self.agent_ids
-            }
-            # Remove as soon as multi-agent connectors are ready.
-            self._module_id_to_agent_id = {
-                module_id: agent_id
-                for agent_id, module_id in self._agent_id_to_module_id.items()
-            }
+            # # TODO (sven, simon): We have to rebuild the `AlgorithmConfig` to work on
+            # #  `RLModule`s and not `Policy`s. Like here `policies`->`modules`
+            # self._agent_id_to_module_id = {
+            #    agent_id: self.config.policy_mapping_fn()(agent_id, None, self)
+            #    for agent_id in self.agent_ids
+            # }
+            # # Remove as soon as multi-agent connectors are ready.
+            # self._module_id_to_agent_id = {
+            #    module_id: agent_id
+            #    for agent_id, module_id in self._agent_id_to_module_id.items()
+            # }
         # This error could be thrown, when only random actions are used.
         except NotImplementedError:
-            self.marl_module = None
+            self.module = None
 
         # This should be the default.
         self._needs_initial_reset: bool = True
-        self._episode: "MultiAgentEpisode" = None
+        self._episode: Optional[MultiAgentEpisode] = None
 
-        self._done_episodes_for_metrics: List["MultiAgentEpisode"] = []
+        self._done_episodes_for_metrics: List[MultiAgentEpisode] = []
         self._ongoing_episode_for_metrics: Dict[
-            List["MultiAgentEpisode"]
+            List[MultiAgentEpisode]
         ] = defaultdict(list)
-        self._ts_since_last_metrics: int = 0
         self._weights_seq_no: int = 0
-
-        # TODO (simon): Following `SingleAgentEpisode`
-        # This is a temporary solution. STATE_OUTs
-        # will be resolved entirely as `extra_model_outputs` and
-        # not be stored separately inside Episodes.
-        self._states = {agent_id: None for agent_id in self.marl_module.keys()}
 
     @override(EnvRunner)
     def sample(
@@ -184,7 +169,7 @@ class MultiAgentEnvRunner(EnvRunner):
         explore: bool = True,
         random_actions: bool = False,
         with_render_data: bool = False,
-    ) -> List["MultiAgentEpisode"]:
+    ) -> List[MultiAgentEpisode]:
         """Runs and returns a sample (n timesteps or m episodes) on the env(s).
 
         Args:
@@ -217,7 +202,7 @@ class MultiAgentEnvRunner(EnvRunner):
             else:
                 num_episodes = 1
 
-        # Sample n timesteps
+        # Sample n timesteps.
         if num_timesteps is not None:
             return self._sample_timesteps(
                 num_timesteps=num_timesteps,
@@ -240,7 +225,7 @@ class MultiAgentEnvRunner(EnvRunner):
         explore: bool = True,
         random_actions: bool = False,
         force_reset: bool = False,
-    ) -> List["MultiAgentEpisode"]:
+    ) -> List[MultiAgentEpisode]:
         """Helper method to sample n timesteps.
 
         Args:
@@ -258,26 +243,21 @@ class MultiAgentEnvRunner(EnvRunner):
         Returns:
             `Lists of `MultiAgentEpisode` instances, carrying the collected sample data.
         """
+        done_episodes_to_return: List[MultiAgentEpisode] = []
 
-        # TODO (sven): This gives a tricky circular import that goes
-        # deep into the library. We have to see, where to dissolve it.
-        from ray.rllib.env.multi_agent_episode import MultiAgentEpisode
-
-        done_episodes_to_return: List["MultiAgentEpisode"] = []
-
-        # Get the initial states for all modules. Note, `get_initial_state()`
-        # returns an empty dictionary, if no initial states are defined.
-        # TODO (sven, simon): We could simply use `MARLModule._run_forward_pass()`
-        # to get also an initial state for all modules. Maybe this can be
-        # added to the MARLModule.
-        if self.marl_module:
-            initial_states = {
-                agent_id: self.marl_module[agent_id].get_initial_state()
-                for agent_id in self.marl_module.keys()
-            }
-        else:
-            # TODO (sven, simon): Do we even need states when we have no module?
-            initial_states = {agent_id: {} for agent_id in self.env.get_agent_ids()}
+        # # Get the initial states for all modules. Note, `get_initial_state()`
+        # # returns an empty dictionary, if no initial states are defined.
+        # # TODO (sven, simon): We could simply use `MARLModule._run_forward_pass()`
+        # # to get also an initial state for all modules. Maybe this can be
+        # # added to the MARLModule.
+        # if self.module:
+        #   initial_states = {
+        #       agent_id: self.module[agent_id].get_initial_state()
+        #       for agent_id in self.module.keys()
+        #   }
+        # else:
+        #    # TODO (sven, simon): Do we even need states when we have no module?
+        #    initial_states = {agent_id: {} for agent_id in self.env.get_agent_ids()}
 
         # Have to reset the env.
         if force_reset or self._needs_initial_reset:
@@ -295,9 +275,6 @@ class MultiAgentEnvRunner(EnvRunner):
             # TODO (sven): maybe move this into connector pipeline (even
             # if automated).
             self._episode.add_env_reset(observations=obs, infos=infos)
-
-            # Get the states for all agents.
-            states = initial_states
         # Do not reset environments, but instead continue in already started episodes.
         else:
             # Pick up stored observations from previous timesteps.
@@ -305,12 +282,12 @@ class MultiAgentEnvRunner(EnvRunner):
             # Get the states from the buffer or get the initial states.
             # TODO (simon): Do we need to iterate here over agents? Or can
             # one agent have no buffered state while another one has?
-            states = {
-                agent_id: initial_states[agent_id]
-                if agent_state is None
-                else agent_state
-                for agent_id, agent_state in self._states.items()
-            }
+            # states = {
+            #    agent_id: initial_states[agent_id]
+            #    if agent_state is None
+            #    else agent_state
+            #    for agent_id, agent_state in self._states.items()
+            # }
 
         # Loop through timesteps.
         env_steps = 0
@@ -322,86 +299,72 @@ class MultiAgentEnvRunner(EnvRunner):
             if random_actions:
                 # Note, to get sampled actions from all agents' action
                 # spaces we need to call `MultiAgentEnv.action_space_sample()`.
-                if self.env.unwrapped._action_space_iin_preferred_format:
+                if self.env.unwrapped._action_space_in_preferred_format:
                     actions = self.env.action_space.sample()
                 # Otherwise, `action_space_sample()` needs to be implemented.
                 else:
                     actions = self.env.action_space_sample()
                 # Remove all actions for agents that had no observation.
-                actions = {
-                    agent_id: agent_action
-                    for agent_id, agent_action in actions.items()
-                    if agent_id in obs
+                to_env = {
+                    SampleBatch.ACTIONS: {
+                        agent_id: agent_action
+                        for agent_id, agent_action in actions.items()
+                        if agent_id in obs
+                    }
                 }
-
+            # Compute an action using the RLModule.
             else:
                 # TODO (simon): This is not correct `forward()` expects
                 # `SampleBatchType`.
                 # Note, `RLModule`'s `forward()` methods expect `NestedDict`s.
                 # Note, we only consider for states and obs agents that step.
-                batch: MultiAgentDict = {
-                    self._agent_id_to_module_id[agent_id]: {
-                        STATE_IN: tree.map_structure(
-                            lambda s: self._convert_from_numpy(s),
-                            states[self._agent_id_to_module_id[agent_id]],
-                        ),
-                        SampleBatch.OBS: self._convert_from_numpy(
-                            np.expand_dims(agent_obs, axis=0)
-                        ),
-                    }
-                    for agent_id, agent_obs in obs.items()
-                }
+                # batch: MultiAgentDict = {
+                #    self._agent_id_to_module_id[agent_id]: {
+                #        STATE_IN: tree.map_structure(
+                #            lambda s: self._convert_from_numpy(s),
+                #            states[self._agent_id_to_module_id[agent_id]],
+                #        ),
+                #        SampleBatch.OBS: self._convert_from_numpy(
+                #            np.expand_dims(agent_obs, axis=0)
+                #        ),
+                #    }
+                #    for agent_id, agent_obs in obs.items()
+                # }
                 # TODO (Sven, Simon): The `RLModule` has `SampleBatchType` as input
-                # type. Only the _forward_x()` methods have a `NestedDict`. Shall we
-                # compile to `SampleBatchType` here and in `SingleAgentEnvRunner`?
-                from ray.rllib.utils.nested_dict import NestedDict
+                #  type. Only the _forward_x()` methods have a `NestedDict`. Shall we
+                #  compile to `SampleBatchType` here and in `SingleAgentEnvRunner`?
+                # from ray.rllib.utils.nested_dict import NestedDict
+                # batch = NestedDict(batch)
 
-                batch = NestedDict(batch)
-
-                # Explore or not.
-                if explore:
-                    fwd_out = self.marl_module.forward_exploration(batch)
-                else:
-                    fwd_out = self.marl_module.forward_inference(batch)
-
-                # Sample the actions or draw randomly.
-                actions, action_logps = self._sample_actions_if_necessary(
-                    fwd_out,
+                to_module = self._env_to_module(
+                    rl_module=self.module,
+                    episodes=[self._episode],
                     explore=explore,
                 )
 
-                # Convert to numpy for recording later to the episode.
-                fwd_out = tree.map_structure(convert_to_numpy, fwd_out)
+                # Explore or not.
+                if explore:
+                    to_env = self.module.forward_exploration(to_module)
+                else:
+                    to_env = self.module.forward_inference(to_module)
 
-                # Assign the new states for the agents that stepped.
-                if STATE_OUT in fwd_out:
-                    states.update(tree.map_structure(lambda s: s[STATE_OUT], fwd_out))
+            actions = to_env.pop(SampleBatch.ACTIONS)
 
             obs, rewards, terminateds, truncateds, infos = self.env.step(actions)
 
             env_steps += 1
             agent_steps += len(obs)
+
             # If we count by environment steps.
             # TODO (sven, simon): We have to record these steps somewhere.
             # TODO: Refactor into multiagent-episode sth. like `get_agent_steps()`.
             if self.config.count_steps_by == "env_steps":
-                ts = env_steps
+                ts += env_steps
             # Or by agent steps.
             else:
-                ts = agent_steps
+                ts += agent_steps
 
-            # TODO (simon): Remove when connector API for multi-agent is ready.
-            extra_model_outputs = {
-                self._module_id_to_agent_id[module_id]: {
-                    k: v for k, v in module_fwd_out.items() if k != SampleBatch.ACTIONS
-                }
-                for module_id, module_fwd_out in fwd_out.items()
-            }
-            # TODO (sven, simon): There are algos that do not need ACTION_LOGP.
-            for agent_id, agent_extra_model_output in extra_model_outputs.items():
-                agent_extra_model_output[SampleBatch.ACTION_LOGP] = action_logps[
-                    agent_id
-                ]
+            extra_model_output = tree.map_structure(lambda s: s[0], to_env)
 
             # Record the timestep in the episode instance.
             self._episode.add_env_step(
@@ -411,7 +374,7 @@ class MultiAgentEnvRunner(EnvRunner):
                 infos=infos,
                 terminateds=terminateds,
                 truncateds=truncateds,
-                extra_model_outputs=extra_model_outputs,
+                extra_model_outputs=extra_model_output,
             )
 
             # TODO (sven, simon): We have to check, if we need this elaborate
@@ -424,11 +387,6 @@ class MultiAgentEnvRunner(EnvRunner):
             #       truncated and vice versa.
             # See also `MultiAgentEpisode` for handling the `__all__`.
             if self._all_agents_done(terminateds, truncateds):
-                # Reset all h-states to the model's initial ones b/c we are starting
-                # a new episode.
-                if self.marl_module and self.marl_module.is_stateful():
-                    states = initial_states
-
                 # Finish the episode.
                 for agent_eps in self._episode.agent_episodes.values():
                     agent_eps.finalize()
@@ -440,22 +398,13 @@ class MultiAgentEnvRunner(EnvRunner):
                 obs, infos = self.env.reset()
                 # Add initial observations and infos.
                 self._episode.add_env_reset(observations=obs, infos=infos)
-                # Reset h-states to the models' initial ones b/c we are starting a new
-                # episode.
-                if self.marl_module:
-                    # TODO (sven, simon): Are there cases where a module overrides its
-                    # own `initial_states` while learning?
-                    states = initial_states
-            else:
-                # Buffer the states for an eventual next `sample()` call.
-                self._states = states
 
         # Return done episodes ...
         # TODO (simon): Check, how much memory this attribute uses.
         self._done_episodes_for_metrics.extend(done_episodes_to_return)
         # ... and the ongoing episode chunk. Exclude the ongoing episode if
         # it is only initialized.
-        ongoing_episode: List["MultiAgentEpisode"] = (
+        ongoing_episode: List[MultiAgentEpisode] = (
             [self._episode] if self._episode.t > 0 else []
         )
         # Also make sure, we return a copy and start new chunks so that callers
@@ -468,9 +417,6 @@ class MultiAgentEnvRunner(EnvRunner):
                 ongoing_episode[0]
             )
 
-        # Record last metrics collection.
-        self._ts_since_last_metrics += ts
-
         # Return collected episode data.
         return done_episodes_to_return + ongoing_episode
 
@@ -480,7 +426,7 @@ class MultiAgentEnvRunner(EnvRunner):
         explore: bool = True,
         random_actions: bool = False,
         with_render_data: bool = False,
-    ) -> List["MultiAgentEpisode"]:
+    ) -> List[MultiAgentEpisode]:
         """Helper method to run n episodes.
 
         Args:
@@ -498,32 +444,14 @@ class MultiAgentEnvRunner(EnvRunner):
         Returns:
             `Lists of `MultiAgentEpisode` instances, carrying the collected sample data.
         """
-
-        # TODO (sven): This gives a tricky circular import that goes
-        # deep into the library. We have to see, where to dissolve it.
-        from ray.rllib.env.multi_agent_episode import MultiAgentEpisode
-
         # If user calls sample(num_timesteps=..) after this, we must reset again
         # at the beginning.
         self._needs_initial_reset = True
 
-        done_episodes_to_return: List["MultiAgentEpisode"] = []
-
-        # Get the initial states for all modules. Note, `get_initial_state()`
-        # returns an empty dictionary, if no initial states are defined.
-        # TODO (sven, simon): We could simply use `MARLModule._run_forward_pass()`
-        # to get also an initial state for all modules. Maybe this can be
-        # added to the MARLModule.
-        if self.marl_module:
-            initial_states = {
-                agent_id: self.marl_module[agent_id].get_initial_state()
-                for agent_id in self.marl_module.keys()
-            }
-        else:
-            initial_states = {agent_id: {} for agent_id in self.env.get_agent_ids()}
+        done_episodes_to_return: List[MultiAgentEpisode] = []
 
         # Reset the environment.
-        # TODO (simon): CHeck, if we need here the seed from the config.
+        # TODO (simon): Check, if we need here the seed from the config.
         obs, infos = self.env.reset()
 
         # Create a new multi-agent episode.
@@ -534,14 +462,10 @@ class MultiAgentEnvRunner(EnvRunner):
         if with_render_data:
             render_image = self.env.render()
 
-        # Set the initial observations in the episodes.
-        # TODO (sven): maybe move this into connector pipeline (even
-        # if automated).
+        # Set initial obs and infos in the episodes.
         self._episode.add_env_reset(
             observations=obs, infos=infos, render_image=render_image
         )
-        # Set states to initial states and start sampling.
-        states = initial_states
 
         # Loop over episodes.
         eps = 0
@@ -550,80 +474,51 @@ class MultiAgentEnvRunner(EnvRunner):
             if random_actions:
                 # Note, to get sampled actions from all agents' action
                 # spaces we need to call `MultiAgentEnv.action_space_sample()`.
-                if self.env.unwrapped._action_space_iin_preferred_format:
+                if self.env.unwrapped._action_space_in_preferred_format:
                     actions = self.env.action_space.sample()
                 # Otherwise, `action_space_sample()` needs to be implemented.
                 else:
                     actions = self.env.action_space_sample()
                 # Remove all actions for agents that had no observation.
-                actions = {
-                    agent_id: agent_action
-                    for agent_id, agent_action in actions.items()
-                    if agent_id in obs
+                to_env = {
+                    SampleBatch.ACTIONS: {
+                        agent_id: agent_action
+                        for agent_id, agent_action in actions.items()
+                        if agent_id in obs
+                    },
                 }
-
             else:
-                # TODO (sven): This will move entirely into connector logic in
-                #  upcoming PR.
-                # TODO (simon): This is not correct `forward()` expects
-                # `SampleBatchType`.
-                # Note, `RLModule`'s `forward()` methods expect `NestedDict`s.
-                # Note, we only consider for states and obs of agents that step.
-                batch: MultiAgentDict = {
-                    agent_id: {
-                        STATE_IN: tree.map_structure(
-                            lambda s: self._convert_from_numpy(s),
-                            states[agent_id],
-                        ),
-                        SampleBatch.OBS: self._convert_from_numpy(
-                            np.expand_dims(agent_obs, axis=0)
-                        ),
-                    }
-                    for agent_id, agent_obs in obs.items()
-                }
-                # TODO (Sven, Simon): The `RLModule` has `SampleBatchType` as input
-                # type. Only the _forward_x()` methods have a `NestedDict`. Shall we
-                # compile to `SampleBatchType` here and in `SingleAgentEnvRunner`?
-                from ray.rllib.utils.nested_dict import NestedDict
-
-                batch = NestedDict(batch)
-
-                # Explore or not.
-                if explore:
-                    fwd_out = self.marl_module.forward_exploration(batch)
-                else:
-                    fwd_out = self.marl_module.forward_inference(batch)
-
-                # Sample the actions or draw randomly.
-                actions, action_logps = self._sample_actions_if_necessary(
-                    fwd_out,
+                to_module = self._env_to_module(
+                    rl_module=self.module,
+                    episodes=[self._episode],
                     explore=explore,
                 )
 
-                # Convert to numpy for recording later to the episode.
-                fwd_out = tree.map_structure(convert_to_numpy, fwd_out)
+                # Explore or not.
+                if explore:
+                    to_env = self.marl_module.forward_exploration(to_module)
+                else:
+                    to_env = self.marl_module.forward_inference(to_module)
 
-                # Assign the new states for the agents that stepped.
-                if STATE_OUT in fwd_out:
-                    states.update(tree.map_structure(lambda s: s[STATE_OUT], fwd_out))
+                to_env = self._module_to_env(
+                    rl_module=self.module,
+                    data=to_env,
+                    episodes=[self._episode],
+                    explore=explore,
+                )
 
             # Step the environment.
+            actions = to_env.pop(SampleBatch.ACTIONS)
+
             obs, rewards, terminateds, truncateds, infos = self.env.step(actions)
             # Add render data if needed.
             if with_render_data:
                 render_image = self.env.render()
 
-            extra_model_outputs = {
-                agent_id: {
-                    k: v for k, v in agent_fwd_out.items() if k != SampleBatch.ACTIONS
-                }
-                for agent_id, agent_fwd_out in fwd_out.items()
-            }
-            # TODO (sven, simon): There are algos that do not need ACTION_LOGP.
-            for agent_id, agent_extra_model_output in extra_model_outputs.items():
-                agent_extra_model_output[SampleBatch.ACTION_LOGP] = action_logps[
-                    agent_id
-                ]
+            # TODO (simon): This might be unfortunate if a user needs to set a
+            #  certain env parameter during different episodes (for example for
+            #  benchmarking).
+            extra_model_output = tree.map_structure(lambda s: s[0], to_env)
 
             # Record the timestep in the episode instance.
             self._episode.add_env_step(
@@ -633,7 +528,7 @@ class MultiAgentEnvRunner(EnvRunner):
                 infos=infos,
                 terminateds=terminateds,
                 truncateds=truncateds,
-                extra_model_outputs=extra_model_outputs,
+                extra_model_outputs=extra_model_output,
                 render_image=render_image,
             )
 
@@ -649,10 +544,6 @@ class MultiAgentEnvRunner(EnvRunner):
             if self._all_agents_done(terminateds, truncateds):
                 # Increase episode count.
                 eps += 1
-                # Reset all h-states to the model's initial ones b/c we are starting
-                # a new episode.
-                if self.marl_module and self.marl_module.is_stateful():
-                    states = initial_states
 
                 # Finish the episode.
                 # TODO (simon): Call here the `MAE.finalize()` method when ready.
@@ -663,17 +554,8 @@ class MultiAgentEnvRunner(EnvRunner):
                 obs, infos = self.env.reset()
                 # Add initial observations and infos.
                 self._episode.add_env_reset(observations=obs, infos=infos)
-                # Reset h-states to the models' initial ones b/c we are starting a new
-                # episode.
-                if self.marl_module:
-                    # TODO (sven, simon): Are there cases where a module overrides its
-                    # own `initial_states` while learning?
-                    states = initial_states
 
         self._done_episodes_for_metrics.extend(done_episodes_to_return)
-        # TODO (sven, simon): It might be appropriate here to replace this attribute
-        # with two, one for env steps and one for agent steps.
-        self._ts_since_last_metrics += sum(len(eps) for eps in done_episodes_to_return)
 
         return done_episodes_to_return
 
@@ -764,87 +646,6 @@ class MultiAgentEnvRunner(EnvRunner):
 
         # TODO (sven): Replace by default "to-env" connector.
 
-    def _sample_actions_if_necessary(
-        self, fwd_out: TensorStructType, explore: bool = True
-    ) -> Tuple[np.array, np.array]:
-        """Samples actions from action distribution if necessary.
-
-        The `RLModule`s return `TensorType`s specific to the framework
-        used (i.e. either Torch or TensorFlow). These need to be converted.
-        In addition, action log-probabilities are converted if provided
-        by an agent module.
-        Furthermore, the `MultiAgentRLModule` returns a `MultiAgentDict`
-        mapping `ModuleID`s to their corresponding `forward()` outputs.
-        The environment needs, however, a `MultiAgentDict` mapping
-        agent ids to their corresponding actions, only. This function
-        converts the parameters accordingly.
-
-        Args:
-            fwd_out: dict. A dictionary mapping `ModuleID`s to the outputs
-                of their module`s `forward()` method.
-
-        Returns:
-            A `tuple` containing a `MultiAgentDict` mapping agent ids to their
-            corresponding actions and a second `MultiAgentDict` mapping agent ids
-            to their corresponding action log-probabilities if provided by their
-            modules.
-        """
-
-        # TODO (sven): Move this into connector pipeline (if no
-        # "actions" key in returned dict, sample automatically as
-        # the last piece of the connector pipeline; basically do
-        # the same thing that the Policy is currently doing, but
-        # using connectors)
-        actions = {}
-        action_logps = {}
-        for module_id, module_fwd_out in fwd_out.items():
-            # If actions are provided just load them.
-            if SampleBatch.ACTIONS in module_fwd_out.keys():
-                actions[self._module_id_to_agent_id[module_id]] = convert_to_numpy(
-                    module_fwd_out[SampleBatch.ACTIONS]
-                )
-                # TODO (simon, sven): Some algos do not return logps.
-                if SampleBatch.ACTION_LOGP in module_fwd_out:
-                    action_logps[
-                        self._module_id_to_agent_id[module_id]
-                    ] = convert_to_numpy(module_fwd_out[SampleBatch.ACTION_LOGP])
-            # If no actions are provided we need to sample them.
-            else:
-                # Explore or not.
-                if explore:
-                    action_dist_cls = self.marl_module[
-                        module_id
-                    ].get_exploration_action_dist_cls()
-                else:
-                    action_dist_cls = self.marl_module[
-                        module_id
-                    ].get_inference_action_dist_cls()
-                # Generate action distribution and sample actions.
-                action_dist = action_dist_cls.from_logits(
-                    module_fwd_out[SampleBatch.ACTION_DIST_INPUTS]
-                )
-                action = action_dist.sample()
-                # We need numpy actions for gym environments.
-                action_logps[self._module_id_to_agent_id[module_id]] = convert_to_numpy(
-                    action_dist.logp(action)
-                )
-                actions[self._module_id_to_agent_id[module_id]] = convert_to_numpy(
-                    action
-                ).reshape(-1)
-                # Squeeze for the last dimension if necessary.
-                # TODO (sven, simon): This is not optimal here. But there seems
-                # to be some differences between MultiDiscrete action spaces
-                # and Box action spaces for `gym.VectorEnv`.
-                # For the former we have to squeeze away the last action
-                # dimension delivered from the action_dist and for the latter
-                # we should not. This might be connected to the way how the
-                # `action_space` is defined for the `RLModule` in the
-                # `__init__()` of this class here.
-                # if actions.ndim > len(self.env.action_space.shape):
-                #    actions = actions.squeeze(axis=-1)
-
-        return actions, action_logps
-
     def _all_agents_done(self, terminateds, truncateds):
         """Determines, if all agents are either terminated or truncated
 
@@ -885,3 +686,84 @@ class MultiAgentEnvRunner(EnvRunner):
             # CASE 3: there are still some agents alive.
             else:
                 return False
+
+    # def _sample_actions_if_necessary(
+    #     self, fwd_out: TensorStructType, explore: bool = True
+    # ) -> Tuple[np.array, np.array]:
+    #     """Samples actions from action distribution if necessary.
+    #
+    #     The `RLModule`s return `TensorType`s specific to the framework
+    #     used (i.e. either Torch or TensorFlow). These need to be converted.
+    #     In addition, action log-probabilities are converted if provided
+    #     by an agent module.
+    #     Furthermore, the `MultiAgentRLModule` returns a `MultiAgentDict`
+    #     mapping `ModuleID`s to their corresponding `forward()` outputs.
+    #     The environment needs, however, a `MultiAgentDict` mapping
+    #     agent ids to their corresponding actions, only. This function
+    #     converts the parameters accordingly.
+    #
+    #     Args:
+    #         fwd_out: dict. A dictionary mapping `ModuleID`s to the outputs
+    #             of their module`s `forward()` method.
+    #
+    #     Returns:
+    #         A `tuple` containing a `MultiAgentDict` mapping agent ids to their
+    #         corresponding actions and a second `MultiAgentDict` mapping agent ids
+    #         to their corresponding action log-probabilities if provided by their
+    #         modules.
+    #     """
+    #
+    #     # TODO (sven): Move this into connector pipeline (if no
+    #     # "actions" key in returned dict, sample automatically as
+    #     # the last piece of the connector pipeline; basically do
+    #     # the same thing that the Policy is currently doing, but
+    #     # using connectors)
+    #     actions = {}
+    #     action_logps = {}
+    #     for module_id, module_fwd_out in fwd_out.items():
+    #         # If actions are provided just load them.
+    #         if SampleBatch.ACTIONS in module_fwd_out.keys():
+    #             actions[self._module_id_to_agent_id[module_id]] = convert_to_numpy(
+    #                 module_fwd_out[SampleBatch.ACTIONS]
+    #             )
+    #             # TODO (simon, sven): Some algos do not return logps.
+    #             if SampleBatch.ACTION_LOGP in module_fwd_out:
+    #                 action_logps[
+    #                     self._module_id_to_agent_id[module_id]
+    #                 ] = convert_to_numpy(module_fwd_out[SampleBatch.ACTION_LOGP])
+    #         # If no actions are provided we need to sample them.
+    #         else:
+    #             # Explore or not.
+    #             if explore:
+    #                 action_dist_cls = self.marl_module[
+    #                     module_id
+    #                 ].get_exploration_action_dist_cls()
+    #             else:
+    #                 action_dist_cls = self.marl_module[
+    #                     module_id
+    #                 ].get_inference_action_dist_cls()
+    #             # Generate action distribution and sample actions.
+    #             action_dist = action_dist_cls.from_logits(
+    #                 module_fwd_out[SampleBatch.ACTION_DIST_INPUTS]
+    #             )
+    #             action = action_dist.sample()
+    #             # We need numpy actions for gym environments.
+    #             action_logps[self._module_id_to_agent_id[module_id]] = convert_to_numpy(
+    #                 action_dist.logp(action)
+    #             )
+    #             actions[self._module_id_to_agent_id[module_id]] = convert_to_numpy(
+    #                 action
+    #             ).reshape(-1)
+    #             # Squeeze for the last dimension if necessary.
+    #             # TODO (sven, simon): This is not optimal here. But there seems
+    #             # to be some differences between MultiDiscrete action spaces
+    #             # and Box action spaces for `gym.VectorEnv`.
+    #             # For the former we have to squeeze away the last action
+    #             # dimension delivered from the action_dist and for the latter
+    #             # we should not. This might be connected to the way how the
+    #             # `action_space` is defined for the `RLModule` in the
+    #             # `__init__()` of this class here.
+    #             # if actions.ndim > len(self.env.action_space.shape):
+    #             #    actions = actions.squeeze(axis=-1)
+    #
+    #     return actions, action_logps

@@ -209,10 +209,8 @@ class SingleAgentEnvRunner(EnvRunner):
                 for _ in range(self.num_envs)
             ]
 
-            # Set initial obs and states in the episodes.
+            # Set initial obs and infos in the episodes.
             for env_index in range(self.num_envs):
-                # TODO (sven): Maybe move this into connector pipeline
-                # (even if automated).
                 self._episodes[env_index].add_env_reset(
                     observation=obs[env_index],
                     infos=infos[env_index],
@@ -233,7 +231,6 @@ class SingleAgentEnvRunner(EnvRunner):
                     rl_module=self.module,
                     episodes=self._episodes,
                     explore=explore,
-                    # persistent_data=None, #TODO
                 )
                 # Explore or not.
                 if explore:
@@ -246,7 +243,6 @@ class SingleAgentEnvRunner(EnvRunner):
                     data=to_env,
                     episodes=self._episodes,
                     explore=explore,
-                    # persistent_data=None, #TODO
                 )
 
             actions = to_env.pop(SampleBatch.ACTIONS)
@@ -256,8 +252,6 @@ class SingleAgentEnvRunner(EnvRunner):
             ts += self.num_envs
 
             for env_index in range(self.num_envs):
-                # The last entry in self.observations[i] is already the reset
-                # obs of the new episode.
                 # TODO (simon): This might be unfortunate if a user needs to set a
                 #  certain env parameter during different episodes (for example for
                 #  benchmarking).
