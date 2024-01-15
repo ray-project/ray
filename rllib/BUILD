@@ -845,6 +845,13 @@ py_test(
 )
 
 # py_test(
+#    name = "env/tests/test_multi_agent_env_runner",
+#    tags = ["team:rllib", "env"],
+#    size = "medium",
+#    srcs = ["env/tests/test_multi_agent_env_runner.py"]
+# )
+
+# py_test(
 #    name = "env/tests/test_multi_agent_episode",
 #    tags = ["team:rllib", "env"],
 #    size = "medium",
@@ -3017,6 +3024,7 @@ py_test_module_list(
   files = [
     "env/wrappers/tests/test_kaggle_wrapper.py",
     "env/tests/test_multi_agent_episode.py",
+    "env/tests/test_multi_agent_env_runner.py",
     "examples/env/tests/test_cliff_walking_wall_env.py",
     "examples/env/tests/test_coin_game_non_vectorized_env.py",
     "examples/env/tests/test_coin_game_vectorized_env.py",

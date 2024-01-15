@@ -7,7 +7,7 @@ import numpy as np
 
 from ray.rllib.env.single_agent_episode import SingleAgentEpisode
 from ray.rllib.policy.sample_batch import MultiAgentBatch
-from ray.rllib.utils.typing import MultiAgentDict
+from ray.rllib.utils.typing import AgentID, MultiAgentDict
 
 
 # TODO (simon): Add a `finalize()` method to the episode that calls
@@ -36,8 +36,8 @@ class MultiAgentEpisode:
     def __init__(
         self,
         id_: Optional[str] = None,
-        agent_ids: List[str] = None,
-        agent_episode_ids: Optional[Dict[str, str]] = None,
+        agent_ids: Optional[List[AgentID]] = None,
+        agent_episode_ids: Optional[Dict[AgentID, str]] = None,
         *,
         observations: Optional[List[MultiAgentDict]] = None,
         infos: Optional[List[MultiAgentDict]] = None,
@@ -56,13 +56,13 @@ class MultiAgentEpisode:
                 If None, a hexadecimal id is created. In case of providing
                 a string, make sure that it is unique, as episodes get
                 concatenated via this string.
-            agent_ids: A list of strings containing the agent ids.
+            agent_ids: A list of strings containing the agent IDs.
                 These have to be provided at initialization.
-            agent_episode_ids: Either a dictionary mapping agent ids
-                corresponding `SingleAgentEpisode` or None. If None, each
+            agent_episode_ids: An optional dictionary mapping agent IDs
+                to their corresponding `SingleAgentEpisode`. If None, each
                 `SingleAgentEpisode` in `MultiAgentEpisode.agent_episodes`
                 will generate a hexadecimal code. If a dictionary is provided
-                make sure that ids are unique as agents'  `SingleAgentEpisode`s
+                make sure that IDs are unique as agents' `SingleAgentEpisode`s
                 get concatenated or recreated by it.
             observations: A list of dictionaries mapping agent IDs to observations.
                 Can be None. If provided, should match all other episode data
@@ -104,10 +104,8 @@ class MultiAgentEpisode:
 
         # Agent ids must be provided if data is provided. The Episode cannot
         # know how many agents are in the environment. Also the number of agents
-        # can grwo or shrink.
-        self._agent_ids: Union[Set[str], Set[object]] = (
-            set() if agent_ids is None else set(agent_ids)
-        )
+        # can grow or shrink.
+        self._agent_ids: Set[AgentID] = set() if agent_ids is None else set(agent_ids)
 
         # The global last timestep of the episode and the timesteps when this chunk
         # started.
