@@ -1189,7 +1189,10 @@ def test_actor_autocomplete(ray_start_regular_shared):
 
     method_options = [fn for fn in dir(f.method_one) if not fn.startswith("_")]
 
-    assert set(method_options) == {"options", "remote"}
+    if client_test_enabled():
+        assert set(method_options) == {"options", "remote"}
+    else:
+        assert set(method_options) == {"options", "remote", "bind"}
 
 
 def test_actor_mro(ray_start_regular_shared):
@@ -1357,6 +1360,37 @@ def test_parent_task_correct_concurrent_async_actor(shutdown_only):
     result = ray.get(refs)
     for actual, expected in result:
         assert actual, expected
+
+
+def test_actor_hash(ray_start_regular_shared):
+    @ray.remote
+    class Actor:
+        ...
+
+    origin = Actor.remote()
+
+    @ray.remote
+    def get_actor(actor):
+        return actor
+
+    remote = ray.get(get_actor.remote(origin))
+    assert hash(origin) == hash(remote)
+
+
+def test_actor_equal(ray_start_regular_shared):
+    @ray.remote
+    class Actor:
+        ...
+
+    origin = Actor.remote()
+    assert origin != 1
+
+    @ray.remote
+    def get_actor(actor):
+        return actor
+
+    remote = ray.get(get_actor.remote(origin))
+    assert origin == remote
 
 
 if __name__ == "__main__":

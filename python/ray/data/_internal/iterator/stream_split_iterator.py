@@ -66,7 +66,7 @@ class StreamSplitDataIterator(DataIterator):
         self._coord_actor = coord_actor
         self._output_split_idx = output_split_idx
         self._world_size = world_size
-        self._iter_stats = DatasetStats(stages={}, parent=None)
+        self._iter_stats = DatasetStats(metadata={}, parent=None)
 
     def _to_block_iterator(
         self,

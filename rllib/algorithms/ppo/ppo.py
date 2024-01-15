@@ -9,7 +9,6 @@ See `ppo_[tf|torch]_policy.py` for the definition of the policy loss.
 Detailed documentation: https://docs.ray.io/en/master/rllib-algorithms.html#ppo
 """
 
-import dataclasses
 import logging
 from typing import List, Optional, Type, Union, TYPE_CHECKING
 
@@ -18,11 +17,6 @@ import tree
 
 from ray.rllib.algorithms.algorithm import Algorithm
 from ray.rllib.algorithms.algorithm_config import AlgorithmConfig, NotProvided
-from ray.rllib.algorithms.ppo.ppo_catalog import PPOCatalog
-from ray.rllib.algorithms.ppo.ppo_learner import (
-    PPOLearnerHyperparameters,
-    LEARNER_RESULTS_KL_KEY,
-)
 from ray.rllib.core.rl_module.rl_module import SingleAgentRLModuleSpec
 from ray.rllib.evaluation.postprocessing_v2 import postprocess_episodes_to_sample_batch
 from ray.rllib.evaluation.rollout_worker import RolloutWorker
@@ -56,6 +50,12 @@ if TYPE_CHECKING:
 
 
 logger = logging.getLogger(__name__)
+
+LEARNER_RESULTS_VF_LOSS_UNCLIPPED_KEY = "vf_loss_unclipped"
+LEARNER_RESULTS_VF_EXPLAINED_VAR_KEY = "vf_explained_var"
+LEARNER_RESULTS_KL_KEY = "mean_kl_loss"
+LEARNER_RESULTS_CURR_KL_COEFF_KEY = "curr_kl_coeff"
+LEARNER_RESULTS_CURR_ENTROPY_COEFF_KEY = "curr_entropy_coeff"
 
 
 class PPOConfig(AlgorithmConfig):
@@ -152,6 +152,8 @@ class PPOConfig(AlgorithmConfig):
 
     @override(AlgorithmConfig)
     def get_default_rl_module_spec(self) -> SingleAgentRLModuleSpec:
+        from ray.rllib.algorithms.ppo.ppo_catalog import PPOCatalog
+
         if self.framework_str == "torch":
             from ray.rllib.algorithms.ppo.torch.ppo_torch_rl_module import (
                 PPOTorchRLModule,
@@ -189,22 +191,6 @@ class PPOConfig(AlgorithmConfig):
                 f"The framework {self.framework_str} is not supported. "
                 "Use either 'torch' or 'tf2'."
             )
-
-    @override(AlgorithmConfig)
-    def get_learner_hyperparameters(self) -> PPOLearnerHyperparameters:
-        base_hps = super().get_learner_hyperparameters()
-        return PPOLearnerHyperparameters(
-            use_critic=self.use_critic,
-            use_kl_loss=self.use_kl_loss,
-            kl_coeff=self.kl_coeff,
-            kl_target=self.kl_target,
-            vf_loss_coeff=self.vf_loss_coeff,
-            entropy_coeff=self.entropy_coeff,
-            entropy_coeff_schedule=self.entropy_coeff_schedule,
-            clip_param=self.clip_param,
-            vf_clip_param=self.vf_clip_param,
-            **dataclasses.asdict(base_hps),
-        )
 
     @override(AlgorithmConfig)
     def training(
@@ -267,13 +253,10 @@ class PPOConfig(AlgorithmConfig):
         # Pass kwargs onto super's `training()` method.
         super().training(**kwargs)
 
-        # TODO (sven): Move to generic AlgorithmConfig.
-        if lr_schedule is not NotProvided:
-            self.lr_schedule = lr_schedule
         if use_critic is not NotProvided:
             self.use_critic = use_critic
-            # TODO (Kourosh) This is experimental. Set learner_hps parameters as
-            # well. Don't forget to remove .use_critic from algorithm config.
+            # TODO (Kourosh) This is experimental.
+            #  Don't forget to remove .use_critic from algorithm config.
         if use_gae is not NotProvided:
             self.use_gae = use_gae
         if lambda_ is not NotProvided:
@@ -294,14 +277,18 @@ class PPOConfig(AlgorithmConfig):
             self.vf_loss_coeff = vf_loss_coeff
         if entropy_coeff is not NotProvided:
             self.entropy_coeff = entropy_coeff
-        if entropy_coeff_schedule is not NotProvided:
-            self.entropy_coeff_schedule = entropy_coeff_schedule
         if clip_param is not NotProvided:
             self.clip_param = clip_param
         if vf_clip_param is not NotProvided:
             self.vf_clip_param = vf_clip_param
         if grad_clip is not NotProvided:
             self.grad_clip = grad_clip
+
+        # TODO (sven): Remove these once new API stack is only option for PPO.
+        if lr_schedule is not NotProvided:
+            self.lr_schedule = lr_schedule
+        if entropy_coeff_schedule is not NotProvided:
+            self.entropy_coeff_schedule = entropy_coeff_schedule
 
         return self
 
@@ -326,8 +313,8 @@ class PPOConfig(AlgorithmConfig):
             raise ValueError(
                 f"`sgd_minibatch_size` ({self.sgd_minibatch_size}) must be <= "
                 f"`train_batch_size` ({self.train_batch_size}). In PPO, the train batch"
-                f" is be split into {self.sgd_minibatch_size} chunks, each of which is "
-                f"iterated over (used for updating the policy) {self.num_sgd_iter} "
+                f" will be split into {self.sgd_minibatch_size} chunks, each of which "
+                f"is iterated over (used for updating the policy) {self.num_sgd_iter} "
                 "times."
             )
 
@@ -437,23 +424,8 @@ class PPO(Algorithm):
         if self.config._enable_new_api_stack:
             # TODO (Kourosh) Clearly define what train_batch_size
             #  vs. sgd_minibatch_size and num_sgd_iter is in the config.
-            # TODO (Kourosh) Do this inside the Learner so that we don't have to do
-            #  this back and forth communication between driver and the remote
-            #  learner actors.
-            # TODO (sven): What's the plan for multi-agent setups when the
-            #  policy is gone?
-            # TODO (simon): The default method has already this functionality,
-            #  but this serves simply as a placeholder until it is decided on
-            #  how to replace the functionalities of the policy.
-
-            if (
-                self.config.env_runner_cls is None
-                or self.config.env_runner_cls.__name__ == "RolloutWorker"
-            ):
-                is_module_trainable = self.workers.local_worker().is_policy_to_train
-                self.learner_group.set_is_module_trainable(is_module_trainable)
-            train_results = self.learner_group.update(
-                train_batch,
+            train_results = self.learner_group.update_from_batch(
+                batch=train_batch,
                 minibatch_size=self.config.sgd_minibatch_size,
                 num_iters=self.config.num_sgd_iter,
             )
@@ -505,7 +477,6 @@ class PPO(Algorithm):
                 self.workers.local_worker().set_weights(weights)
 
         if self.config._enable_new_api_stack:
-
             kl_dict = {}
             if self.config.use_kl_loss:
                 for pid in policies_to_update:

@@ -189,28 +189,41 @@ class BufferWithInfiniteLookback:
         self.data = data if data is not None else []
         self.lookback = lookback
         self.finalized = not isinstance(self.data, list)
-        self._final_len = None
         self.space = space
         self.space_struct = get_base_struct_from_space(self.space)
 
     def append(self, item) -> None:
         """Appends the given item to the end of this buffer."""
         if self.finalized:
-            raise RuntimeError(f"Cannot `append` to a finalized {type(self).__name__}.")
-        self.data.append(item)
+            self.data = tree.map_structure(
+                lambda d, i: np.concatenate([d, [i]], axis=0), self.data, item
+            )
+        else:
+            self.data.append(item)
 
     def extend(self, items):
         """Appends all items in `items` to the end of this buffer."""
         if self.finalized:
-            raise RuntimeError(f"Cannot `extend` a finalized {type(self).__name__}.")
-        for item in items:
-            self.append(item)
+            self.data = tree.map_structure(
+                lambda d, i: np.concatenate([d, i], axis=0), self.data, np.array(items)
+            )
+        else:
+            for item in items:
+                self.append(item)
 
-    def pop(self, index: int = -1):
-        """Removes the item at `index` from this buffer."""
+    def pop(self, index: int = -1) -> None:
+        """Removes the item at `index` from this buffer, but does NOT return it.
+
+        Args:
+            index: The index to pop out of this buffer (w/o returning it from this
+                method).
+        """
         if self.finalized:
-            raise RuntimeError(f"Cannot `pop` from a finalized {type(self).__name__}.")
-        return self.data.pop(index)
+            self.data = tree.map_structure(
+                lambda s: np.delete(s, index, axis=0), self.data
+            )
+        else:
+            self.data.pop(index)
 
     def finalize(self):
         """Finalizes this buffer by converting internal data lists into numpy arrays.
@@ -218,13 +231,13 @@ class BufferWithInfiniteLookback:
         Thereby, if the individual items in the list are complex (nested 2)
         """
         if not self.finalized:
-            self._final_len = len(self.data) - self.lookback
             self.data = batch(self.data)
             self.finalized = True
 
     def get(
         self,
         indices: Optional[Union[int, slice, List[int]]] = None,
+        *,
         neg_indices_left_of_zero: bool = False,
         fill: Optional[float] = None,
         one_hot_discrete: bool = False,
@@ -300,22 +313,111 @@ class BufferWithInfiniteLookback:
 
         return data
 
+    def __add__(self, other):
+        """Adds another buffer or list to the end of this one.
+
+        Args:
+            other: Either `BufferWithInfiniteLookback` or `list`.
+                If a `BufferWithInfiniteLookback` the data gets
+                concatenated. If a `list` the list is concatenated to the
+                `self.data`.
+
+        Returns:
+            A new `BufferWithInfiniteLookback` instance `self.data` cotnaining
+            concatenated data from `self.` and `other`.
+        """
+
+        if self.finalized:
+            raise RuntimeError(f"Cannot `add` to a finalized {type(self).__name__}.")
+        else:
+            if isinstance(other, BufferWithInfiniteLookback):
+                data = self.data + other.data
+            else:
+                data = self.data + other
+            return BufferWithInfiniteLookback(
+                data=data,
+                lookback=self.lookback,
+                space=self.space,
+            )
+
     def __getitem__(self, item):
         """Support squared bracket syntax, e.g. buffer[:5]."""
         return self.get(item)
 
+    def __setitem__(self, key, value):
+        self.set(new_data=value, at_indices=key)
+
+    def set(
+        self,
+        new_data,
+        *,
+        at_indices: Optional[Union[int, slice, List[int]]] = None,
+        neg_indices_left_of_zero: bool = False,
+    ) -> None:
+        """Overwrites all or some of the data in this buffer with the provided data.
+
+        Args:
+            new_data: The new data to overwrite existing records with.
+            at_indices: A single int is interpreted as an index, at which to overwrite
+                the individual record stored at this index with `new_data`.
+                A list of ints is interpreted as a list of indices, which to overwrite
+                with `new_data`, which must be a batch of size `len(at_indices)`.
+                A slice object is interpreted as a range, which to overwrite with
+                `new_data`. Thereby, negative indices by default are interpreted as
+                "before the end" unless the `neg_indices_left_of_zero=True` option is
+                used, in which case negative indices are interpreted as
+                "before ts=0", meaning going back into the lookback buffer.
+            neg_indices_left_of_zero: If True, negative values in `at_indices` are
+                interpreted as "before ts=0", meaning going back into the lookback
+                buffer. For example, a buffer with data [4, 5, 6,  7, 8, 9],
+                where [4, 5, 6] is the lookback buffer range (ts=0 item is 7), will
+                handle a call `set(99, at_indices=-1, neg_indices_left_of_zero=True)`
+                with `6` being replaced by 99 and to `set([98, 99, 100],
+                at_indices=slice(-2, 1), neg_indices_left_of_zero=True)` with
+                `[5, 6,  7]` being replaced by `[98, 99,  100]`.
+        """
+        # `at_indices` is None -> Override all our data (excluding the lookback buffer).
+        if at_indices is None:
+            self._set_all_data(new_data)
+
+        elif isinstance(at_indices, slice):
+            self._set_slice(
+                new_data,
+                slice_=at_indices,
+                neg_indices_left_of_zero=neg_indices_left_of_zero,
+            )
+        elif isinstance(at_indices, list):
+            for i, idx in enumerate(at_indices):
+                self._set_int_index(
+                    new_data[i],
+                    idx=idx,
+                    neg_indices_left_of_zero=neg_indices_left_of_zero,
+                )
+        else:
+            assert isinstance(at_indices, int)
+            self._set_int_index(
+                new_data,
+                idx=at_indices,
+                neg_indices_left_of_zero=neg_indices_left_of_zero,
+            )
+
     def __len__(self):
         """Return the length of our data, excluding the lookback buffer."""
-        if self._final_len is not None:
-            assert self.finalized
-            return self._final_len
-        return len(self.data) - self.lookback
+        if self.finalized:
+            len_ = len(tree.flatten(self.data)[0])
+        else:
+            len_ = len(self.data)
+        # Only count the data after the lookback.
+        return max(len_ - self.lookback, 0)
 
     def _get_all_data(self, one_hot_discrete=False):
         data = self[:]
         if one_hot_discrete:
             data = self._one_hot(data, space_struct=self.space_struct)
         return data
+
+    def _set_all_data(self, new_data):
+        self._set_slice(new_data, slice(0, None))
 
     def _get_slice(
         self,
@@ -324,6 +426,176 @@ class BufferWithInfiniteLookback:
         neg_indices_left_of_zero=False,
         one_hot_discrete=False,
     ):
+        slice_, slice_len, fill_left_count, fill_right_count = self._interpret_slice(
+            slice_, neg_indices_left_of_zero
+        )
+
+        # Perform the actual slice.
+        if self.finalized:
+            data_slice = tree.map_structure(lambda s: s[slice_], self.data)
+        else:
+            data_slice = self.data[slice_]
+
+        if one_hot_discrete and slice_len > 0:
+            data_slice = self._one_hot(data_slice, space_struct=self.space_struct)
+
+        # Data is shorter than the range requested -> Fill the rest with `fill` data.
+        if fill is not None and (fill_right_count > 0 or fill_left_count > 0):
+            if self.finalized:
+                if fill_left_count:
+                    fill_batch = get_dummy_batch_for_space(
+                        self.space,
+                        fill_value=fill,
+                        batch_size=fill_left_count,
+                        one_hot_discrete=one_hot_discrete,
+                    )
+                    if data_slice is not None:
+                        data_slice = tree.map_structure(
+                            lambda s0, s: np.concatenate([s0, s]),
+                            fill_batch,
+                            data_slice,
+                        )
+                    else:
+                        data_slice = fill_batch
+                if fill_right_count:
+                    fill_batch = get_dummy_batch_for_space(
+                        self.space,
+                        fill_value=fill,
+                        batch_size=fill_right_count,
+                        one_hot_discrete=one_hot_discrete,
+                    )
+                    if data_slice is not None:
+                        data_slice = tree.map_structure(
+                            lambda s0, s: np.concatenate([s, s0]),
+                            fill_batch,
+                            data_slice,
+                        )
+                    else:
+                        data_slice = fill_batch
+
+            else:
+                fill_batch = [
+                    get_dummy_batch_for_space(
+                        self.space,
+                        fill_value=fill,
+                        batch_size=0,
+                        one_hot_discrete=one_hot_discrete,
+                    )
+                ]
+                data_slice = (
+                    fill_batch * fill_left_count
+                    + (data_slice if data_slice is not None else [])
+                    + fill_batch * fill_right_count
+                )
+
+        return data_slice
+
+    def _set_slice(
+        self,
+        new_data,
+        slice_,
+        neg_indices_left_of_zero=False,
+    ):
+        slice_, _, _, _ = self._interpret_slice(slice_, neg_indices_left_of_zero)
+
+        # Check, whether the setting to new_data changes the length of self
+        # (it shouldn't). If it does, raise an error.
+        try:
+            if self.finalized:
+
+                def __set(s, n):
+                    if self.space:
+                        assert self.space.contains(n[0])
+                    assert len(s[slice_]) == len(n)
+                    s[slice_] = n
+
+                tree.map_structure(__set, self.data, new_data)
+            else:
+                if self.space:
+                    assert self.space.contains(new_data[0])
+                assert len(self.data[slice_]) == len(new_data)
+                self.data[slice_] = new_data
+        except AssertionError:
+            raise IndexError(
+                f"Cannot `set()` value via at_indices={slice_} (option "
+                f"neg_indices_left_of_zero={neg_indices_left_of_zero})! Slice of data "
+                "does NOT have the same size as `new_data`."
+            )
+
+    def _get_int_index(
+        self,
+        idx: int,
+        fill=None,
+        neg_indices_left_of_zero=False,
+        one_hot_discrete=False,
+    ):
+        # If index >= 0 -> Ignore lookback buffer.
+        # Otherwise, include lookback buffer.
+        if idx >= 0 or neg_indices_left_of_zero:
+            idx = self.lookback + idx
+        # Negative indices mean: Go to left into lookback buffer starting from idx=0.
+        # But if we pass the lookback buffer, the index should be invalid and we will
+        # have to fill, if required. Invalidate the index by setting it to one larger
+        # than max.
+        if neg_indices_left_of_zero and idx < 0:
+            idx = len(self) + self.lookback
+
+        try:
+            if self.finalized:
+                data = tree.map_structure(lambda s: s[idx], self.data)
+            else:
+                data = self.data[idx]
+        # Out of range index -> If `fill`, use a fill dummy (B=0), if not, error out.
+        except IndexError as e:
+            if fill is not None:
+                return get_dummy_batch_for_space(
+                    self.space,
+                    fill_value=fill,
+                    batch_size=0,
+                    one_hot_discrete=one_hot_discrete,
+                )
+            else:
+                raise e
+
+        # Convert discrete/multi-discrete components to one-hot vectors, if required.
+        if one_hot_discrete:
+            data = self._one_hot(data, self.space_struct)
+        return data
+
+    def _set_int_index(self, new_data, idx, neg_indices_left_of_zero):
+        actual_idx = idx
+        # If index >= 0 -> Ignore lookback buffer.
+        # Otherwise, include lookback buffer.
+        if actual_idx >= 0 or neg_indices_left_of_zero:
+            actual_idx = self.lookback + actual_idx
+        # Negative indices mean: Go to left into lookback buffer starting from idx=0.
+        # But if we pass the lookback buffer, the index should be invalid and we will
+        # have to fill, if required. Invalidate the index by setting it to one larger
+        # than max.
+        if neg_indices_left_of_zero and actual_idx < 0:
+            actual_idx = len(self) + self.lookback
+
+        try:
+            if self.finalized:
+
+                def __set(s, n):
+                    if self.space:
+                        assert self.space.contains(n), n
+                    s[actual_idx] = n
+
+                tree.map_structure(__set, self.data, new_data)
+            else:
+                if self.space:
+                    assert self.space.contains(new_data), new_data
+                self.data[actual_idx] = new_data
+        except IndexError:
+            raise IndexError(
+                f"Cannot `set()` value at index {idx} (option "
+                f"neg_indices_left_of_zero={neg_indices_left_of_zero})! Out of range "
+                f"of buffer data."
+            )
+
+    def _interpret_slice(self, slice_, neg_indices_left_of_zero):
         len_self_plus_lookback = len(self) + self.lookback
         fill_left_count = fill_right_count = 0
 
@@ -389,97 +661,11 @@ class BufferWithInfiniteLookback:
             start,
             stop,
         )
-        slice_ = slice(start, stop, slice_.step)
 
-        # Perform the actual slice.
-        if self.finalized:
-            data_slice = tree.map_structure(lambda s: s[slice_], self.data)
-        else:
-            data_slice = self.data[slice_]
-
-        if one_hot_discrete:
-            data_slice = self._one_hot(data_slice, space_struct=self.space_struct)
-
-        # Data is shorter than the range requested -> Fill the rest with `fill` data.
-        if fill is not None and (fill_right_count > 0 or fill_left_count > 0):
-            if self.finalized:
-                if fill_left_count:
-                    fill_batch = get_dummy_batch_for_space(
-                        self.space,
-                        fill_value=fill,
-                        batch_size=fill_left_count,
-                        one_hot_discrete=one_hot_discrete,
-                    )
-                    data_slice = tree.map_structure(
-                        lambda s0, s: np.concatenate([s0, s]), fill_batch, data_slice
-                    )
-                if fill_right_count:
-                    fill_batch = get_dummy_batch_for_space(
-                        self.space,
-                        fill_value=fill,
-                        batch_size=fill_right_count,
-                        one_hot_discrete=one_hot_discrete,
-                    )
-                    data_slice = tree.map_structure(
-                        lambda s0, s: np.concatenate([s, s0]), fill_batch, data_slice
-                    )
-
-            else:
-                fill_batch = [
-                    get_dummy_batch_for_space(
-                        self.space,
-                        fill_value=fill,
-                        batch_size=0,
-                        one_hot_discrete=one_hot_discrete,
-                    )
-                ]
-                data_slice = (
-                    fill_batch * fill_left_count
-                    + data_slice
-                    + fill_batch * fill_right_count
-                )
-
-        return data_slice
-
-    def _get_int_index(
-        self,
-        idx: int,
-        fill=None,
-        neg_indices_left_of_zero=False,
-        one_hot_discrete=False,
-    ):
-        # If index >= 0 -> Ignore lookback buffer.
-        # Otherwise, include lookback buffer.
-        if idx >= 0 or neg_indices_left_of_zero:
-            idx = self.lookback + idx
-        # Negative indices mean: Go to left into lookback buffer starting from idx=0.
-        # But if we pass the lookback buffer, the index should be invalid and we will
-        # have to fill, if required. Invalidate the index by setting it to one larger
-        # than max.
-        if neg_indices_left_of_zero and idx < 0:
-            idx = len(self) + self.lookback
-
-        try:
-            if self.finalized:
-                data = tree.map_structure(lambda s: s[idx], self.data)
-            else:
-                data = self.data[idx]
-        # Out of range index -> If `fill`, use a fill dummy (B=0), if not, error out.
-        except IndexError as e:
-            if fill is not None:
-                return get_dummy_batch_for_space(
-                    self.space,
-                    fill_value=fill,
-                    batch_size=0,
-                    one_hot_discrete=one_hot_discrete,
-                )
-            else:
-                raise e
-
-        # Convert discrete/multi-discrete components to one-hot vectors, if required.
-        if one_hot_discrete:
-            data = self._one_hot(data, self.space_struct)
-        return data
+        step = slice_.step if slice_.step is not None else 1
+        slice_ = slice(start, stop, step)
+        slice_len = max(0, (stop - start + (step - (1 if step > 0 else -1))) // step)
+        return slice_, slice_len, fill_left_count, fill_right_count
 
     def _one_hot(self, data, space_struct):
         if space_struct is None:
