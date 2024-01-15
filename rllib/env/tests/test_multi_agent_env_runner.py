@@ -185,7 +185,7 @@ class TestMultiAgentEnvRunner(unittest.TestCase):
         # Generate the `policy_dict` for the multi-agent setup and
         # use `PPO` for each agent.
         # TODO (sven, simon): Setup is still for `Policy`, change as soon
-        # as we have switched fully to the new stack.
+        #  as we have switched fully to the new stack.
         multi_agent_policies = {}
         for agent_id in env.get_agent_ids():
             multi_agent_policies[agent_id] = PolicySpec(config=PPOConfig())
