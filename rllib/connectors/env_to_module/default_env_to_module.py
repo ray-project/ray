@@ -23,15 +23,15 @@ class DefaultEnvToModule(ConnectorV2):
     """Default connector piece added by RLlib to the end of any env-to-module pipeline.
 
     Makes sure that the output data will have at the minimum:
-    a) An observation (the most recent one returned by `env.step()`) under the
+    - An observation (the most recent one returned by `env.step()`) under the
     SampleBatch.OBS key for each agent and
-    b) In case the RLModule is stateful, a STATE_IN key populated with the most recently
+    - In case the RLModule is stateful, a STATE_IN key populated with the most recently
     computed STATE_OUT.
+    - The output data is in the correct tensor format (torch or tf tensors), ready for
+    the RLModule.
 
     The connector will not add any new data in case other connector pieces in the
     pipeline already take care of populating these fields (obs and state in).
-
-    TODO (sven): Generalize to MultiAgentEpisodes.
     """
 
     @override(ConnectorV2)
@@ -85,7 +85,7 @@ class DefaultEnvToModule(ConnectorV2):
         # Convert data to proper tensor formats, depending on framework used by the
         # RLModule.
         # TODO (sven): Support GPU-based EnvRunners + RLModules for sampling. Right
-        #  now we assume EnvRunners are always only on the CPU.
+        #  now we assume EnvRunners have their RLModule always placed on the CPU.
         if rl_module.framework == "torch":
             data = convert_to_torch_tensor(data)
         elif rl_module.framework == "tf2":
