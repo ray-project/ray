@@ -2362,13 +2362,14 @@ def from_spark(
         datasource = SparkDatasource(df, -1)
         if parallelism is None:
             parallelism = -1
-        dataset = read_datasource(
-            datasource=datasource,
-            parallelism=parallelism,
-        )
-        materialized_dataset = dataset.materialize()
-        datasource.dispose_spark_cache()
-        return materialized_dataset
+        try:
+            dataset = read_datasource(
+                datasource=datasource,
+                parallelism=parallelism,
+            )
+            return dataset.materialize()
+        finally:
+            datasource.dispose_spark_cache()
     else:
         import raydp
 
