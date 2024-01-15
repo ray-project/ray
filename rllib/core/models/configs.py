@@ -1046,7 +1046,7 @@ class ActorCriticEncoderConfig(ModelConfig):
     """Configuration for an ActorCriticEncoder.
 
     The base encoder functions like other encoders in RLlib. It is wrapped by the
-    ActorCriticEncoder to provides a shared encoder Model to use in RLModules that
+    ActorCriticEncoder to provide a shared encoder Model to use in RLModules that
     provides twofold outputs: one for the actor and one for the critic. See
     ModelConfig for usage details.
 

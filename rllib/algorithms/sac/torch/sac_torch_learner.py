@@ -11,12 +11,11 @@ from ray.rllib.core.learner.learner import (
     QF_MIN_KEY,
 )
 from ray.rllib.core.learner.torch.torch_learner import TorchLearner
-from ray.rllib.core.rl_module.rl_module import ModuleID
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.framework import try_import_torch
 from ray.rllib.utils.nested_dict import NestedDict
-from ray.rllib.utils.typing import TensorType
+from ray.rllib.utils.typing import ModuleID, TensorType
 
 
 torch, nn = try_import_torch()
@@ -115,7 +114,9 @@ class SACTorchLearner(SACLearner, TorchLearner):
         # backpropagate through the target network when optimizing the Q loss.
         q_selected_target = (
             batch[SampleBatch.REWARDS]
-            + (self.config["gamma"] ** self.config["n_step"]) * q_next_masked
+            # TODO (simon): Implement n-step adjustment.
+            #+ (self.config["gamma"] ** self.config["n_step"]) * q_next_masked
+            + (self.config["gamma"]) * q_next_masked
         ).detach()
 
         # MSBE loss for the critic(s) (i.e. Q, see eqs. (7-8) Haarnoja et al. (2018)).

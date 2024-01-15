@@ -18,7 +18,7 @@ from ray.rllib.utils.typing import NetworkType
 torch, nn = try_import_torch()
 
 
-class SACTorchRLModule(SACRLModule, TorchRLModule):
+class SACTorchRLModule(TorchRLModule, SACRLModule):
     framework: str = "torch"
 
     @override(RLModule)
@@ -35,7 +35,7 @@ class SACTorchRLModule(SACRLModule, TorchRLModule):
 
     @override(RLModule)
     def _forward_exploration(self, batch: NestedDict) -> Dict[str, Any]:
-        self._forward_inference(batch)
+        return self._forward_inference(batch)
 
     @override(RLModule)
     def _forward_train(self, batch: NestedDict) -> Dict[str, Any]:
@@ -50,7 +50,8 @@ class SACTorchRLModule(SACRLModule, TorchRLModule):
 
         # Encoder forward passes.
         pi_encoder_outs = self.pi_encoder(batch_curr)
-        batch_curr.update({SampleBatch.ACTIONS: batch[SampleBatch.ACTIONS]})
+        batch_curr.update({SampleBatch.ACTIONS: batch[SampleBatch.ACTIONS]}) 
+        # torch.concat((batch_curr[SampleBatch.OBS], batch[SampleBatch.ACTIONS]),dim=-1)
         qf_encoder_outs = self.qf_encoder(batch_curr)
         qf_target_encoder_outs = self.qf_target_encoder(batch_curr)
         # Also encode the next observations (and next actions for the Q net).

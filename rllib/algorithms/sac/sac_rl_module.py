@@ -1,6 +1,7 @@
 from typing import Type
 from ray.rllib.algorithms.sac.sac_catalog import SACCatalog
 from ray.rllib.algorithms.sac.sac_learner import QF_PREDS, QF_TARGET_PREDS
+from ray.rllib.core.models.base import ACTOR, CRITIC
 from ray.rllib.core.models.specs.typing import SpecType
 from ray.rllib.core.rl_module.rl_module import RLModule
 from ray.rllib.core.rl_module.rl_module_with_target_networks_interface import (
@@ -10,16 +11,17 @@ from ray.rllib.models.distributions import Distribution
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils.annotations import ExperimentalAPI, override
 
+CRITIC_TARGET = "critic_target"
 
 @ExperimentalAPI
 class SACRLModule(RLModule, RLModuleWithTargetNetworksInterface):
     def setup(self):
         # __sphinx_doc_begin__
-        super().setup()
+        #super().setup()
         catalog: SACCatalog = self.config.get_catalog()
 
         # Build the encoder for the policy.
-        #self.pi_encoder = catalog.build_encoder(framework=self.framework)
+        self.pi_encoder = catalog.build_encoder(framework=self.framework)
 
         # SAC needs next to the pi network also a Q network with encoder.
         # Note, as the Q network uses next to the observations, actions as
@@ -55,13 +57,15 @@ class SACRLModule(RLModule, RLModuleWithTargetNetworksInterface):
 
     @override(RLModule)
     def get_initial_state(self) -> dict:
-        if hasattr(self.pi_and_qf_encoder, "get_initial_state"):
-            return {
-                "pi_and_qf": self.pi_and_qf_encoder.get_initial_state(),
-                "qf_target": self.qf_target_encoder.get_initial_state(),
-            }
-        else:
-            return {}
+        # if hasattr(self.pi_encoder, "get_initial_state"):
+        #     return {
+        #         ACTOR: self.pi_encoder.get_initial_state(),
+        #         CRITIC: self.qf_encoder.get_initial_state(),
+        #         CRITIC_TARGET: self.qf_target_encoder.get_initial_state(),
+        #     }
+        # else:
+        #     return {}
+        return {}
 
     @override(RLModule)
     def input_specs_exploration(self) -> SpecType:

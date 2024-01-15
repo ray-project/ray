@@ -1,4 +1,5 @@
 import logging
+import tree
 from typing import Any, Dict, List, Optional, Type, Union
 
 from ray.rllib.algorithms.algorithm_config import AlgorithmConfig, NotProvided
@@ -79,33 +80,18 @@ class SACConfig(AlgorithmConfig):
         self.initial_alpha = 1.0
         self.target_entropy = "auto"
         self.n_step = 1
-        if self._enable_new_api_stack and self.uses_new_env_runners:
-            # Then we are using `Episodes`.
-            self.replay_buffer_config = {
-                "_enable_replay_buffer_api": True,
-                "type": "EpisodeReplayBuffer",
-                "capacity": int(1e6),
-            }
-        elif not self._enable_new_api_stack and not self.uses_new_env_runners:
-            # Then use a `SampleBatch` replay buffer.
-            self.replay_buffer_config = {
-                "_enable_replay_buffer_api": True,
-                "type": "MultiAgentPrioritizedReplayBuffer",
-                "capacity": int(1e6),
-                # If True prioritized replay buffer will be used.
-                "prioritized_replay": False,
-                "prioritized_replay_alpha": 0.6,
-                "prioritized_replay_beta": 0.4,
-                "prioritized_replay_eps": 1e-6,
-                # Whether to compute priorities already on the remote worker side.
-                "worker_side_prioritization": False,
-            }
-        else:
-            raise ValueError(
-                "SAC not implemented for mixing old stack and `EnvRunner` sampling "
-                "or new stack and `RolloutWorker` sampling. Try "
-                "`_enable_new_api_stack=True` and `env_runner_cls='SingleAgentEnvRunner'."
-            )
+        self.replay_buffer_config = {
+            "_enable_replay_buffer_api": True,
+            "type": "MultiAgentPrioritizedReplayBuffer",
+            "capacity": int(1e6),
+            # If True prioritized replay buffer will be used.
+            "prioritized_replay": False,
+            "prioritized_replay_alpha": 0.6,
+            "prioritized_replay_beta": 0.4,
+            "prioritized_replay_eps": 1e-6,
+            # Whether to compute priorities already on the remote worker side.
+            "worker_side_prioritization": False,
+        }
         
         self.store_buffer_in_checkpoints = False
         self.training_intensity = None
@@ -367,6 +353,15 @@ class SACConfig(AlgorithmConfig):
             )
             try_import_tfp(error=True)
 
+        if (
+            self.uses_new_env_runners
+            and self.replay_buffer_config["type"] != "EpisodeReplayBuffer"
+        ):
+            raise ValueError(
+                "When using the new `EnvRunner API` the replay buffer must be of type "
+                "`EpisodeReplayBuffer`."
+            )
+
     @override(AlgorithmConfig)
     def get_rollout_fragment_length(self, worker_index: int = 0) -> int:
         if self.rollout_fragment_length == "auto":
@@ -435,7 +430,6 @@ class SAC(DQN):
         else:
             return SACTFPolicy
 
-    @classmethod
     @override(DQN)
     def training_step(self) -> ResultDict:
         # Check, if we use `RolloutWorker` or `EnvRunner`.
@@ -445,7 +439,7 @@ class SAC(DQN):
 
         # If `RolloutWorker` is used and the old stack, then use as before
         # the training step of the DQN algorithm.
-        if use_rollout_worker and not self.config._enable_new_api_stack:
+        if use_rollout_worker or not self.config._enable_new_api_stack:
             return super().training_step(self)
 
         # Alternate between storing and sampling and training.
@@ -468,14 +462,17 @@ class SAC(DQN):
                 # Perform SAC postprocessing (Prio weights) on a (flattened)
                 # list of Episodes.
                 # TODO (simon): Change this to a preprocessing in the learner.
-                #postprocessed_episodes = self.postprocess_episodes(episodes)
+                # postprocessed_episodes = self.postprocess_episodes(episodes)
 
-            #train_batch = train_batch.as_multi_agent()
-            self._counters[NUM_AGENT_STEPS_SAMPLED] += train_batch.agent_steps()
-            self._counters[NUM_ENV_STEPS_SAMPLED] += train_batch.env_steps()
+            episodes = tree.flatten(episodes)
+            # TODO (sven): single- vs multi-agent.
+            self._counters[NUM_AGENT_STEPS_SAMPLED] += sum(len(e) for e in episodes)
+            self._counters[NUM_ENV_STEPS_SAMPLED] += sum(len(e) for e in episodes)
 
             # Add the sampled experiences to the replay buffer.
-            self.local_replay_buffer.add(train_batch)
+            # TODO (simon): Apply the same function like in PPO to aggregate episodes
+            # over workers.
+            self.local_replay_buffer.add(episodes[0])
 
         # Update the target network each `target_network_update_freq` steps.
         current_ts = self._counters[
@@ -485,19 +482,40 @@ class SAC(DQN):
         ]
 
         # If enough experiences have been sampled start training.
-        if current_ts > self.config.num_steps_sampled_before_training_starts:
+        if current_ts > self.config.num_steps_sampled_before_learning_starts:
             # Run multiple training iterations.
             for _ in range(sample_and_train_weight):
-                # Sample training batch (MultiAgentBatch) from replay buffer.
-                train_batch = sample_min_n_steps_from_buffer(
-                    self.local_replay_buffer,
-                    self.config.train_batch_size,
-                    count_by_agent_steps=self.config.count_steps_by == "agent_steps",
+                # Sample training batch from replay_buffer.
+                train_dict = self.local_replay_buffer.sample(
+                    num_items=self.config.train_batch_size,
+                    # TODO (simon): Implement for n-step adjustment.
+                    # batch_length_T=self.config.n_step,
+                    batch_length_T=2,
                 )
+                from ray.rllib.policy.sample_batch import SampleBatch
+
+                train_batch = SampleBatch(
+                    {
+                        SampleBatch.OBS: train_dict[SampleBatch.OBS][:, 0],
+                        SampleBatch.NEXT_OBS: train_dict[SampleBatch.OBS][:, 1],
+                        **{
+                            key: value[:, 0]
+                            for key, value in train_dict.items()
+                            if (key != SampleBatch.OBS and key != SampleBatch.NEXT_OBS)
+                        },
+                    }
+                )
+                train_batch = train_batch.as_multi_agent()
+                # Sample training batch (MultiAgentBatch) from replay buffer.
+                # train_batch = sample_min_n_steps_from_buffer(
+                #     self.local_replay_buffer,
+                #     self.config.train_batch_size,
+                #     count_by_agent_steps=self.config.count_steps_by == "agent_steps",
+                # )
 
                 # Training on batch.
                 train_results = self.learner_group.update(
-                    train_batch,
+                    batch=train_batch,
                     minibatch_size=self.config.train_batch_size,
                     num_iters=1,
                 )

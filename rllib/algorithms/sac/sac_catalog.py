@@ -40,29 +40,29 @@ class SACCatalog(Catalog):
         )
 
         # Define the encoder for the Q-network.
-        if (
-            isinstance(self.observation_space, gym.spaces.Box)
-            and len(self.observation_space.shape) == 1
-        ):
-            input_space = gym.spaces.Box(
-                -np.inf,
-                np.inf,
-                (self.observation_space.shape[0] + self.action_space.shape[0],),
-                dtype=np.float32,
-            )
-        else:
-            raise ValueError(f"The observation space is not supported by RLlib's SAC.")
+        # if (
+        #     isinstance(self.observation_space, gym.spaces.Box)
+        #     and len(self.observation_space.shape) == 1
+        # ):
+        #     input_space = gym.spaces.Box(
+        #         -np.inf,
+        #         np.inf,
+        #         (self.observation_space.shape[0] + self.action_space.shape[0],),
+        #         dtype=np.float32,
+        #     )
+        # else:
+        #     raise ValueError(f"The observation space is not supported by RLlib's SAC.")
 
-        self.qf_encoder_hiddens = self._model_config_dict["fcnet_hiddens"]
-        self.qf_encoder_activation = self._model_config_dict["fcnet_activation"]
+        # self.qf_encoder_hiddens = self._model_config_dict["fcnet_hiddens"]
+        # self.qf_encoder_activation = self._model_config_dict["fcnet_activation"]
 
-        self.qf_encoder_config = MLPEncoderConfig(
-            input_dims=input_space.shape,
-            hidden_layer_dims=self.qf_encoder_hiddens,
-            hidden_layer_activation=self.qf_encoder_activation,
-            output_layer_dim=self.latent_dims,
-            output_layer_activation=self.qf_encoder_activation,
-        )
+        # self.qf_encoder_config = MLPEncoderConfig(
+        #     input_dims=input_space.shape,
+        #     hidden_layer_dims=self.qf_encoder_hiddens,
+        #     hidden_layer_activation=self.qf_encoder_activation,
+        #     output_layer_dim=self.latent_dims[0],
+        #     output_layer_activation=self.qf_encoder_activation,
+        # )
 
         # Define the heads.
         self.pi_and_qf_head_hiddens = self._model_config_dict["post_fcnet_hiddens"]
@@ -104,6 +104,41 @@ class SACCatalog(Catalog):
         Returns:
             The encoder for the Q-network.
         """
+        
+        # action_distribution_cls = self.get_action_dist_cls(framework=framework)
+        # if self._model_config_dict["free_log_std"]:
+        #     _check_if_diag_gaussian(
+        #         action_distribution_cls=action_distribution_cls, framework=framework
+        #     )
+        # required_action_dim = action_distribution_cls.required_input_dim(
+        #     space=self.action_space, model_config=self._model_config_dict
+        # )
+        required_action_dim = self.action_space.shape[0]
+
+        if (
+            isinstance(self.observation_space, gym.spaces.Box)
+            and len(self.observation_space.shape) == 1
+        ):
+            input_space = gym.spaces.Box(
+                -np.inf,
+                np.inf,
+                (self.observation_space.shape[0] + required_action_dim,),
+                dtype=np.float32,
+            )
+        else:
+            raise ValueError(f"The observation space is not supported by RLlib's SAC.")
+
+        self.qf_encoder_hiddens = self._model_config_dict["fcnet_hiddens"]
+        self.qf_encoder_activation = self._model_config_dict["fcnet_activation"]
+
+        self.qf_encoder_config = MLPEncoderConfig(
+            input_dims=input_space.shape,
+            hidden_layer_dims=self.qf_encoder_hiddens,
+            hidden_layer_activation=self.qf_encoder_activation,
+            output_layer_dim=self.latent_dims[0],
+            output_layer_activation=self.qf_encoder_activation,
+        )
+
         return self.qf_encoder_config.build(framework=framework)
 
     @OverrideToImplementCustomLogic
@@ -138,8 +173,8 @@ class SACCatalog(Catalog):
         )
         self.pi_head_config = pi_head_config_class(
             input_dims=self.latent_dims,
-            hidden_layer_dims=self.pi_and_vf_head_hiddens,
-            hidden_layer_activation=self.pi_and_vf_head_activation,
+            hidden_layer_dims=self.pi_and_qf_head_hiddens,
+            hidden_layer_activation=self.pi_and_qf_head_activation,
             output_layer_dim=required_output_dim,
             output_layer_activation="linear",
         )

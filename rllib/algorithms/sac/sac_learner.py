@@ -18,7 +18,7 @@ QF_TARGET_PREDS = "qf_target_preds"
 class SACLearner(Learner):
     @override(Learner)
     def build(self) -> None:
-        super.build()
+        super().build()
 
         # Store the current alpha in log form. We need it during optimization
         # in log form.
