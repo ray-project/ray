@@ -296,7 +296,7 @@ class Learner:
         # TODO (sven): Support multi-agent cases.
         if self.config.uses_new_env_runners and not self.config.is_multi_agent():
             module_spec = (
-                self._module_spec.as_multi_agent().module_specs["default_policy"]
+                self._module_spec.as_multi_agent().module_specs[DEFAULT_POLICY_ID]
             )
             self._learner_connector = self.config.build_learner_connector(
                 input_observation_space=module_spec.observation_space,
