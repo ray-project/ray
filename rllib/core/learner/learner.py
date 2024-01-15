@@ -293,15 +293,16 @@ class Learner:
             return
 
         # Build learner connector pipeline used on this Learner worker.
-        # TODO (sven): Support multi-agent.
-        module_spec = self._module_spec.module_specs["default_policy"]
-        self._learner_connector = self.config.build_learner_connector(
-            input_observation_space=module_spec.observation_space,
-            input_action_space=module_spec.action_space,
-        )
-        # Adjust module spec based on connector's (possibly transformed) spaces.
-        module_spec.observation_space = self._learner_connector.observation_space
-        module_spec.action_space = self._learner_connector.action_space
+        # TODO (sven): Support multi-agent cases.
+        if not self.config.is_multi_agent():
+            module_spec = self._module_spec.module_specs["default_policy"]
+            self._learner_connector = self.config.build_learner_connector(
+                input_observation_space=module_spec.observation_space,
+                input_action_space=module_spec.action_space,
+            )
+            # Adjust module spec based on connector's (possibly transformed) spaces.
+            module_spec.observation_space = self._learner_connector.observation_space
+            module_spec.action_space = self._learner_connector.action_space
 
         # Build the module to be trained by this learner.
         self._module = self._make_module()
@@ -1358,20 +1359,18 @@ class Learner:
         batch, episodes = self._preprocess_train_data(batch=batch, episodes=episodes)
 
         # Call the learner connector.
-        batch = self._learner_connector(
-            rl_module=self.module["default_policy"],  # TODO: make multi-agent capable
-            data=batch,
-            episodes=episodes,
-            # persistent_data=None, # TODO
-        )
-
-        # TODO (sven): Thus far, processing from episodes and the learner connector are
-        #  solely single-agent.
-        if episodes is not None:
-            batch = MultiAgentBatch(
-                policy_batches={DEFAULT_POLICY_ID: SampleBatch(batch)},
-                env_steps=sum(len(e) for e in episodes),
+        # TODO (sven): make multi-agent capable.
+        if not self.config.is_multi_agent():
+            batch = self._learner_connector(
+                rl_module=self.module["default_policy"],
+                data=batch,
+                episodes=episodes,
             )
+            if episodes is not None:
+                batch = MultiAgentBatch(
+                    policy_batches={DEFAULT_POLICY_ID: SampleBatch(batch)},
+                    env_steps=sum(len(e) for e in episodes),
+                )
 
         if minibatch_size:
             batch_iter = MiniBatchCyclicIterator
