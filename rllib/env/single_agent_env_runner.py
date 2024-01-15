@@ -15,14 +15,12 @@ from ray.rllib.env.utils import _gym_env_creator
 from ray.rllib.evaluation.metrics import RolloutMetrics
 from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID, SampleBatch
 from ray.rllib.utils.annotations import ExperimentalAPI, override
-from ray.rllib.utils.framework import try_import_tf, try_import_torch
+from ray.rllib.utils.framework import try_import_tf
 from ray.rllib.utils.torch_utils import convert_to_torch_tensor
 from ray.rllib.utils.typing import TensorType
 from ray.tune.registry import ENV_CREATOR, _global_registry
 
-
 _, tf, _ = try_import_tf()
-torch, nn = try_import_torch()
 
 
 @ExperimentalAPI
@@ -31,6 +29,12 @@ class SingleAgentEnvRunner(EnvRunner):
 
     @override(EnvRunner)
     def __init__(self, config: AlgorithmConfig, **kwargs):
+        """Initializes a SingleAgentEnvRunner instance.
+
+        Args:
+            config: An `AlgorithmConfig` object containing all settings needed to
+                build this `EnvRunner` class.
+        """
         super().__init__(config=config)
 
         # Get the worker index on which this instance is running.
@@ -102,13 +106,12 @@ class SingleAgentEnvRunner(EnvRunner):
 
         # This should be the default.
         self._needs_initial_reset: bool = True
-        self._episodes: List[Optional["SingleAgentEpisode"]] = [
+        self._episodes: List[Optional[SingleAgentEpisode]] = [
             None for _ in range(self.num_envs)
         ]
 
-        self._done_episodes_for_metrics: List["SingleAgentEpisode"] = []
+        self._done_episodes_for_metrics: List[SingleAgentEpisode] = []
         self._ongoing_episodes_for_metrics: Dict[List] = defaultdict(list)
-        self._ts_since_last_metrics: int = 0
         self._weights_seq_no: int = 0
 
     @override(EnvRunner)
@@ -120,8 +123,27 @@ class SingleAgentEnvRunner(EnvRunner):
         explore: bool = True,
         random_actions: bool = False,
         with_render_data: bool = False,
-    ) -> List["SingleAgentEpisode"]:
-        """Runs and returns a sample (n timesteps or m episodes) on the env(s)."""
+    ) -> List[SingleAgentEpisode]:
+        """Runs and returns a sample (n timesteps or m episodes) on the env(s).
+
+        Args:
+            num_timesteps: int. Number of timesteps to sample during rollout.
+                Note, only one of `num_timetseps` or `num_episodes` may be provided.
+            num_episodes: int. Number of episodes to sample during rollout.
+                Note, only one parameter, `num_timetseps` or `num_episodes`
+                    can be provided.
+            explore: boolean. If in exploration or inference mode. Exploration
+                mode might for some algorithms provide extza model outputs that
+                are redundant in inference mode.
+            random_actions: boolean. If actions should be sampled from the action
+                space. In default mode (i.e. `False`) we sample actions frokm the
+                policy.
+            with_render_data: If render data from the environment should be collected.
+                This is only available when sampling episodes, i.e. `num_episodes` is
+                not `None`.
+        Returns:
+            `Lists of `MultiAgentEpisode` instances, carrying the collected sample data.
+        """
         assert not (num_timesteps is not None and num_episodes is not None)
 
         # If no execution details are provided, use the config to try to infer the
@@ -188,9 +210,16 @@ class SingleAgentEnvRunner(EnvRunner):
             # Create n new episodes and make the `on_episode_created` callbacks.
             self._episodes = []
             for env_index in range(self.num_envs):
-                self._episodes.append(SingleAgentEpisode())
+                self._episodes.append(
+                    SingleAgentEpisode(
+                        observation_space=self.env.single_observation_space,
+                        action_space=self.env.single_action_space,
+                    )
+                )
                 self._make_on_episode_callback("on_episode_created", env_index)
 
+            # Reset the environment.
+            # TODO (simon): Check, if we need here the seed from the config.
             obs, infos = self.env.reset()
 
             # Call `on_episode_start()` callbacks.
@@ -201,14 +230,6 @@ class SingleAgentEnvRunner(EnvRunner):
             # call to `self._sample_timesteps()`.
             self._needs_initial_reset = False
 
-            self._episodes = [
-                SingleAgentEpisode(
-                    observation_space=self.env.single_observation_space,
-                    action_space=self.env.single_action_space,
-                )
-                for _ in range(self.num_envs)
-            ]
-
             # Set initial obs and infos in the episodes.
             for env_index in range(self.num_envs):
                 self._episodes[env_index].add_env_reset(
@@ -216,7 +237,7 @@ class SingleAgentEnvRunner(EnvRunner):
                     infos=infos[env_index],
                 )
 
-        # Loop through env in enumerate.(self._episodes):
+        # Loop through timesteps.
         ts = 0
 
         while ts < num_timesteps:
@@ -307,6 +328,7 @@ class SingleAgentEnvRunner(EnvRunner):
                     self._make_on_episode_callback("on_episode_step", env_index)
 
         # Return done episodes ...
+        # TODO (simon): Check, how much memory this attribute uses.
         self._done_episodes_for_metrics.extend(done_episodes_to_return)
         # ... and all ongoing episode chunks.
 
@@ -331,9 +353,7 @@ class SingleAgentEnvRunner(EnvRunner):
         # Continue collecting into the cut Episode chunks.
         self._episodes = ongoing_episodes_continuations
 
-        # Record last metrics collection.
-        self._ts_since_last_metrics += ts
-
+        # Return collected episode data.
         return done_episodes_to_return + ongoing_episodes_to_return
 
     def _sample_episodes(
@@ -342,7 +362,7 @@ class SingleAgentEnvRunner(EnvRunner):
         explore: bool = True,
         random_actions: bool = False,
         with_render_data: bool = False,
-    ) -> List["SingleAgentEpisode"]:
+    ) -> List[SingleAgentEpisode]:
         """Helper method to run n episodes.
 
         See docstring of `self.sample()` for more details.
@@ -351,8 +371,10 @@ class SingleAgentEnvRunner(EnvRunner):
         # at the beginning.
         self._needs_initial_reset = True
 
-        done_episodes_to_return: List["SingleAgentEpisode"] = []
+        done_episodes_to_return: List[SingleAgentEpisode] = []
 
+        # Reset the environment.
+        # TODO (simon): Check, if we need here the seed from the config.
         obs, infos = self.env.reset()
         episodes = []
         for env_index in range(self.num_envs):
@@ -364,6 +386,7 @@ class SingleAgentEnvRunner(EnvRunner):
             )
             self._make_on_episode_callback("on_episode_created", env_index, episodes)
 
+        # Initialize image rendering if needed.
         render_images = [None] * self.num_envs
         if with_render_data:
             render_images = [e.render() for e in self.env.envs]
@@ -376,12 +399,15 @@ class SingleAgentEnvRunner(EnvRunner):
             )
             self._make_on_episode_callback("on_episode_start", env_index, episodes)
 
+        # Loop over episodes.
         eps = 0
         while eps < num_episodes:
+            # Act randomly.
             if random_actions:
                 to_env = {
                     SampleBatch.ACTIONS: self.env.action_space.sample(),
                 }
+            # Compute an action using the RLModule.
             else:
                 to_module = self._env_to_module(
                     rl_module=self.module,
@@ -401,8 +427,12 @@ class SingleAgentEnvRunner(EnvRunner):
                     explore=explore,
                 )
 
+            # Step the environment.
             actions = to_env.pop(SampleBatch.ACTIONS)
+
             obs, rewards, terminateds, truncateds, infos = self.env.step(actions)
+
+            # Add render data if needed.
             if with_render_data:
                 render_images = [e.render() for e in self.env.envs]
 
@@ -470,22 +500,11 @@ class SingleAgentEnvRunner(EnvRunner):
                     )
 
         self._done_episodes_for_metrics.extend(done_episodes_to_return)
-        self._ts_since_last_metrics += sum(len(eps) for eps in done_episodes_to_return)
 
         # Initialized episodes have to be removed as they lack `extra_model_outputs`.
         samples = [episode for episode in done_episodes_to_return if episode.t > 0]
 
         return samples
-
-    def _make_on_episode_callback(self, which: str, idx: int, episodes=None):
-        episodes = episodes if episodes is not None else self._episodes
-        getattr(self._callbacks, which)(
-            episode=episodes[idx],
-            env_runner=self,
-            env=self.env,
-            rl_module=self.module,
-            env_index=idx,
-        )
 
     # TODO (sven): Remove the requirement for EnvRunners/RolloutWorkers to have this
     #  API. Instead Algorithm should compile episode metrics itself via its local
@@ -512,7 +531,6 @@ class SingleAgentEnvRunner(EnvRunner):
             )
 
         self._done_episodes_for_metrics.clear()
-        self._ts_since_last_metrics = 0
 
         return metrics
 
@@ -550,6 +568,14 @@ class SingleAgentEnvRunner(EnvRunner):
 
     @override(EnvRunner)
     def assert_healthy(self):
+        """Checks that self.__init__() has been completed properly.
+
+        Ensures that the instances has a `MultiAgentRLModule` and an
+        environment defined.
+
+        Raises:
+            AssertionError: If the EnvRunner Actor has NOT been properly initialized.
+        """
         # Make sure, we have built our gym.vector.Env and RLModule properly.
         assert self.env and self.module
 
@@ -558,13 +584,15 @@ class SingleAgentEnvRunner(EnvRunner):
         # Close our env object via gymnasium's API.
         self.env.close()
 
-    def _convert_from_numpy(self, array: np.array) -> TensorType:
-        """Converts a numpy array to a framework-specific tensor."""
-
-        if self.config.framework_str == "torch":
-            return torch.from_numpy(array)
-        else:
-            return tf.convert_to_tensor(array)
+    def _make_on_episode_callback(self, which: str, idx: int, episodes=None):
+        episodes = episodes if episodes is not None else self._episodes
+        getattr(self._callbacks, which)(
+            episode=episodes[idx],
+            env_runner=self,
+            env=self.env,
+            rl_module=self.module,
+            env_index=idx,
+        )
 
     def _convert_to_tensor(self, struct) -> TensorType:
         """Converts structs to a framework-specific tensor."""
