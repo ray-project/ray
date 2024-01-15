@@ -1,12 +1,10 @@
 import gymnasium as gym
-import numpy as np
 import tree
 
 from collections import defaultdict
 from functools import partial
-from typing import Dict, List, Optional, Tuple, TYPE_CHECKING, Union
+from typing import Dict, List, Optional, TYPE_CHECKING, Union
 
-from ray.rllib.core.models.base import STATE_IN, STATE_OUT
 from ray.rllib.core.rl_module.marl_module import (
     ModuleID,
     MultiAgentRLModule,
@@ -18,21 +16,11 @@ from ray.rllib.env.multi_agent_episode import MultiAgentEpisode
 from ray.rllib.env.utils import _gym_env_creator
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils.annotations import override
-from ray.rllib.utils.framework import try_import_tf, try_import_torch
-from ray.rllib.utils.numpy import convert_to_numpy
-from ray.rllib.utils.typing import (
-    ModelWeights,
-    MultiAgentDict,
-    TensorStructType,
-    TensorType,
-)
+from ray.rllib.utils.typing import ModelWeights
 from ray.tune.registry import ENV_CREATOR, _global_registry
 
 if TYPE_CHECKING:
     from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
-
-_, tf, _ = try_import_tf()
-torch, nn = try_import_torch()
 
 
 class MultiAgentEnvRunner(EnvRunner):
@@ -155,9 +143,9 @@ class MultiAgentEnvRunner(EnvRunner):
         self._episode: Optional[MultiAgentEpisode] = None
 
         self._done_episodes_for_metrics: List[MultiAgentEpisode] = []
-        self._ongoing_episode_for_metrics: Dict[
-            List[MultiAgentEpisode]
-        ] = defaultdict(list)
+        self._ongoing_episode_for_metrics: Dict[List[MultiAgentEpisode]] = defaultdict(
+            list
+        )
         self._weights_seq_no: int = 0
 
     @override(EnvRunner)
@@ -625,27 +613,6 @@ class MultiAgentEnvRunner(EnvRunner):
         # Note, `MultiAgentEnv` inherits `close()`-method from `gym.Env`.
         self.env.close()
 
-    def _convert_from_numpy(self, array: np.array) -> TensorType:
-        """Converts a numpy array to a framework-specific tensor.
-
-        This helper function is needed as an environment returns numpy
-        arrays and the `RLModule`s need `TensorType`s.
-
-        Args:
-            array: numpy.array. An array to be converted to a framework-specific
-                tensor.
-
-        Returns:
-            A framework-specific tensor containing all values from `array`.
-        """
-
-        if self.config.framework_str == "torch":
-            return torch.from_numpy(array)
-        else:
-            return tf.convert_to_tensor(array)
-
-        # TODO (sven): Replace by default "to-env" connector.
-
     def _all_agents_done(self, terminateds, truncateds):
         """Determines, if all agents are either terminated or truncated
 
@@ -748,7 +715,8 @@ class MultiAgentEnvRunner(EnvRunner):
     #             )
     #             action = action_dist.sample()
     #             # We need numpy actions for gym environments.
-    #             action_logps[self._module_id_to_agent_id[module_id]] = convert_to_numpy(
+    #             action_logps[self._module_id_to_agent_id[module_id]] =
+    #             convert_to_numpy(
     #                 action_dist.logp(action)
     #             )
     #             actions[self._module_id_to_agent_id[module_id]] = convert_to_numpy(

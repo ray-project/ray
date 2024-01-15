@@ -3588,7 +3588,8 @@ class AlgorithmConfig(_Config):
             raise ValueError(
                 "For now, using env vectorization (`config.num_envs_per_worker > 1`) "
                 "in combination with multi-agent AND the new EnvRunners is not "
-                "supported! Try setting `config.num_envs_per_worker = 1`.")
+                "supported! Try setting `config.num_envs_per_worker = 1`."
+            )
 
     def _validate_evaluation_settings(self):
         """Checks, whether evaluation related settings make sense."""
