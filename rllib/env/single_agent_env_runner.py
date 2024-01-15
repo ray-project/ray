@@ -250,6 +250,7 @@ class SingleAgentEnvRunner(EnvRunner):
                 )
 
             actions = to_env.pop(SampleBatch.ACTIONS)
+
             obs, rewards, terminateds, truncateds, infos = self.env.step(actions)
 
             ts += self.num_envs
