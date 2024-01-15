@@ -212,10 +212,6 @@ def test_spread_hint_inherit(ray_start_regular_shared):
     ds = ray.data.range(10)
     ds = ds.map(column_udf("id", lambda x: x + 1))
     ds = ds.random_shuffle()
-    for s in ds._plan._stages_before_snapshot:
-        assert s.ray_remote_args == {}, s.ray_remote_args
-    for s in ds._plan._stages_after_snapshot:
-        assert s.ray_remote_args == {}, s.ray_remote_args
 
     shuffle_op = ds._plan._logical_plan.dag
     read_op = shuffle_op.input_dependencies[0].input_dependencies[0]
