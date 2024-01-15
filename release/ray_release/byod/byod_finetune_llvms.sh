@@ -17,6 +17,6 @@ pip3 install -U \
     torchmetrics==1.0.3 \
     sentencepiece==0.1.99 \
     "urllib3<1.27" \
-    transformers==4.31.0 \
+    transformers==4.36.2 \
     peft==0.7.0
 pip3 install -U flash-attn==2.4.2 --no-build-isolation

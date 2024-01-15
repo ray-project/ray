@@ -1,6 +1,6 @@
 deepspeed==0.10.2
 fairscale
-transformers>=4.31.0
+transformers>=4.36.2
 dataset
 accelerate
 evaluate
