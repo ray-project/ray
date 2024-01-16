@@ -647,6 +647,8 @@ def test_disable_report_task_events(shutdown_only):
 
     wait_for_condition(verify)
 
+    # TODO: more testing on actor/task, per actor task configuration and etc.
+
 
 if __name__ == "__main__":
     if os.environ.get("PARALLEL_CI"):
