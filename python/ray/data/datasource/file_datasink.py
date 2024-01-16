@@ -10,7 +10,6 @@ from ray.data.block import Block, BlockAccessor
 from ray.data.context import DataContext
 from ray.data.datasource.block_path_provider import BlockWritePathProvider
 from ray.data.datasource.datasink import Datasink
-from ray.data.datasource.file_based_datasource import _open_file_with_retry
 from ray.data.datasource.filename_provider import (
     FilenameProvider,
     _DefaultFilenameProvider,
@@ -85,6 +84,9 @@ class _FileDatasink(Datasink):
         self.file_format = file_format
 
         self.has_created_dir = False
+
+    def open_output_stream(self, path: str) -> "pyarrow.NativeFile":
+        return self.filesystem.open_output_stream(path, **self.open_stream_args)
 
     def on_write_start(self) -> None:
         """Create a directory to write files to.
@@ -187,17 +189,6 @@ class RowBasedFileDatasink(_FileDatasink):
         """
         raise NotImplementedError
 
-    def _write_row_to_file_with_retry(
-        self, row: Dict[str, Any], file: "pyarrow.NativeFile", path: str
-    ):
-        call_with_retry(
-            lambda: self.write_row_to_file(row, file),
-            match=DataContext.get_current().write_file_retry_on_errors,
-            description=f"write '{path}'",
-            max_attempts=WRITE_FILE_MAX_ATTEMPTS,
-            max_backoff_s=WRITE_FILE_RETRY_MAX_BACKOFF_SECONDS,
-        )
-
     def write_block(self, block: BlockAccessor, block_index: int, ctx: TaskContext):
         for row_index, row in enumerate(block.iter_rows(public_row_format=False)):
             if self.filename_provider is not None:
@@ -212,14 +203,18 @@ class RowBasedFileDatasink(_FileDatasink):
                 )
             write_path = posixpath.join(self.path, filename)
 
+            def write_row_to_path():
+                with self.open_output_stream(write_path) as file:
+                    self.write_row_to_file(row, file)
+
             logger.get_logger().debug(f"Writing {write_path} file.")
-            with _open_file_with_retry(
-                write_path,
-                lambda: self.filesystem.open_output_stream(
-                    write_path, **self.open_stream_args
-                ),
-            ) as file:
-                self._write_row_to_file_with_retry(row, file, write_path)
+            call_with_retry(
+                write_row_to_path,
+                match=DataContext.get_current().write_file_retry_on_errors,
+                description=f"write '{write_path}'",
+                max_attempts=WRITE_FILE_MAX_ATTEMPTS,
+                max_backoff_s=WRITE_FILE_RETRY_MAX_BACKOFF_SECONDS,
+            )
 
 
 @DeveloperAPI
@@ -250,17 +245,6 @@ class BlockBasedFileDatasink(_FileDatasink):
         """
         raise NotImplementedError
 
-    def _write_block_to_file_with_retry(
-        self, block: BlockAccessor, file: "pyarrow.NativeFile", path: str
-    ):
-        call_with_retry(
-            lambda: self.write_block_to_file(block, file),
-            match=DataContext.get_current().write_file_retry_on_errors,
-            description=f"write '{path}'",
-            max_attempts=WRITE_FILE_MAX_ATTEMPTS,
-            max_backoff_s=WRITE_FILE_RETRY_MAX_BACKOFF_SECONDS,
-        )
-
     def write_block(self, block: BlockAccessor, block_index: int, ctx: TaskContext):
         if self.filename_provider is not None:
             filename = self.filename_provider.get_filename_for_block(
@@ -278,11 +262,15 @@ class BlockBasedFileDatasink(_FileDatasink):
                 file_format=self.file_format,
             )
 
+        def write_block_to_path():
+            with self.open_output_stream(write_path) as file:
+                self.write_block_to_file(block, file)
+
         logger.get_logger().debug(f"Writing {write_path} file.")
-        with _open_file_with_retry(
-            write_path,
-            lambda: self.filesystem.open_output_stream(
-                write_path, **self.open_stream_args
-            ),
-        ) as file:
-            self._write_block_to_file_with_retry(block, file, write_path)
+        call_with_retry(
+            write_block_to_path,
+            match=DataContext.get_current().write_file_retry_on_errors,
+            description=f"write '{write_path}'",
+            max_attempts=WRITE_FILE_MAX_ATTEMPTS,
+            max_backoff_s=WRITE_FILE_RETRY_MAX_BACKOFF_SECONDS,
+        )

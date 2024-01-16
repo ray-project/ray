@@ -465,8 +465,16 @@ py_test(
 
 py_test_module_list(
   files = [
-    "test_tqdm.py",
     "test_out_of_disk_space.py",
+  ],
+  size = "large",
+  tags = ["exclusive", "tmpfs", "team:core"],
+  deps = ["//:ray_lib", ":conftest"],
+)
+
+py_test_module_list(
+  files = [
+    "test_tqdm.py",
     "test_failure_4.py",
     "test_iter.py",
     "test_object_spilling.py",
@@ -651,7 +659,7 @@ py_test(
     name = "kuberay/test_autoscaling_e2e",
     size = "large",
     srcs = ["kuberay/test_autoscaling_e2e.py"],
-    tags = ["exclusive", "kuberay_operator", "no_windows", "team:serverless"],
+    tags = ["exclusive", "no_windows", "team:kuberay"],
     deps = ["//:ray_lib", ":conftest"],
 )
 

@@ -480,10 +480,22 @@ py_test(
 )
 
 py_test(
-    name = "test_callbacks",
+    name = "test_callbacks_on_algorithm",
     tags = ["team:rllib", "algorithms_dir", "algorithms_dir_generic"],
     size = "large",
-    srcs = ["algorithms/tests/test_callbacks.py"]
+    srcs = ["algorithms/tests/test_callbacks_on_algorithm.py"]
+)
+py_test(
+    name = "test_callbacks_on_env_runner",
+    tags = ["team:rllib", "algorithms_dir", "algorithms_dir_generic"],
+    size = "medium",
+    srcs = ["algorithms/tests/test_callbacks_on_env_runner.py"]
+)
+py_test(
+    name = "test_callbacks_old_stack",
+    tags = ["team:rllib", "algorithms_dir", "algorithms_dir_generic"],
+    size = "medium",
+    srcs = ["algorithms/tests/test_callbacks_old_stack.py"]
 )
 
 py_test(
@@ -747,7 +759,7 @@ py_test(
 
 
 # --------------------------------------------------------------------
-# Connector tests
+# Connector(V1) tests
 # rllib/connector/
 #
 # Tag: connector
@@ -773,6 +785,21 @@ py_test(
     size = "medium",
     srcs = ["connectors/tests/test_agent.py"]
 )
+
+# --------------------------------------------------------------------
+# ConnectorV2 tests
+# rllib/connector/
+#
+# Tag: connector_v2
+# --------------------------------------------------------------------
+
+# TODO (sven): Add these tests in a separate PR.
+# py_test(
+#    name = "connectors/tests/test_connector_v2",
+#    tags = ["team:rllib", "connector_v2"],
+#    size = "small",
+#    srcs = ["connectors/tests/test_connector_v2.py"]
+# )
 
 # --------------------------------------------------------------------
 # Env tests

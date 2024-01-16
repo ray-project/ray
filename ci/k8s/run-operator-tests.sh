@@ -6,7 +6,7 @@ set -euo pipefail
 
 echo "--- Build image"
 bazel run //ci/ray_ci:build_in_docker -- docker \
-    --python-version 3.8 --platform cpu --canonical-tag kuberay-test
+    --platform cpu --canonical-tag kuberay-test
 docker tag rayproject/ray:kuberay-test ray-ci:kuberay-test
 
 echo "--- Setup k8s environment"
@@ -42,10 +42,9 @@ echo "--- Run bazel tests"
 
 # Needs to send in the kubeconfig file in base64 encoding.
 
-bazel run //ci/ray_ci:test_in_docker -- //python/ray/tests/... serverless \
+bazel run //ci/ray_ci:test_in_docker -- //python/ray/tests/... kuberay \
     --build-name k8sbuild \
     --network host \
-    --only-tags kuberay_operator \
     --test-env=RAY_IMAGE=docker.io/library/ray-ci:kuberay-test \
     --test-env=PULL_POLICY=Never \
     --test-env=KUBECONFIG=/tmp/rayci-kubeconfig \

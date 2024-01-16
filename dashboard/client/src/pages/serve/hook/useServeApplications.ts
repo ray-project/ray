@@ -16,11 +16,14 @@ export const useServeDeployments = () => {
   const [page, setPage] = useState({ pageSize: 10, pageNo: 1 });
   const [filter, setFilter] = useState<
     {
-      key: "name" | "status";
+      key: "name" | "status" | "applicationName";
       val: string;
     }[]
   >([]);
-  const changeFilter = (key: "name" | "status", val: string) => {
+  const changeFilter = (
+    key: "name" | "status" | "applicationName",
+    val: string,
+  ) => {
     const f = filter.find((e) => e.key === key);
     if (f) {
       f.val = val;
@@ -51,6 +54,7 @@ export const useServeDeployments = () => {
         const serveDeploymentsList = serveApplicationsList.flatMap((app) =>
           Object.values(app.deployments).map((d) => ({
             ...d,
+            applicationName: app.name,
             application: app,
           })),
         );
@@ -165,6 +169,23 @@ export const useServeDeploymentDetails = (
   applicationName: string | undefined,
   deploymentName: string | undefined,
 ) => {
+  const [page, setPage] = useState({ pageSize: 10, pageNo: 1 });
+  const [filter, setFilter] = useState<
+    {
+      key: "replica_id" | "state";
+      val: string;
+    }[]
+  >([]);
+  const changeFilter = (key: "replica_id" | "state", val: string) => {
+    const f = filter.find((e) => e.key === key);
+    if (f) {
+      f.val = val;
+    } else {
+      filter.push({ key, val });
+    }
+    setFilter([...filter]);
+  };
+
   // TODO(aguo): Use a fetch by deploymentId endpoint?
   const { data, error } = useSWR(
     "useServeApplications",
@@ -185,12 +206,22 @@ export const useServeDeploymentDetails = (
     ? application?.deployments[deploymentName]
     : undefined;
 
+  const replicas = deployment?.replicas ?? [];
+
   // Need to expose loading because it's not clear if undefined values
   // for application, deployment, or replica means loading or missing data.
   return {
     loading: !data && !error,
     application,
     deployment,
+    filteredReplicas: replicas.filter((replica) =>
+      filter.every((f) =>
+        f.val ? replica[f.key] && (replica[f.key] ?? "").includes(f.val) : true,
+      ),
+    ),
+    changeFilter,
+    page,
+    setPage: (key: string, val: number) => setPage({ ...page, [key]: val }),
     error,
   };
 };

@@ -18,6 +18,8 @@ import React, { ReactElement } from "react";
 import { CollapsibleSection } from "../../common/CollapsibleSection";
 import Loading from "../../components/Loading";
 import { HelpInfo } from "../../components/Tooltip";
+import { ServeSystemActor } from "../../type/serve";
+import { useFetchActor } from "../actor/hook/useActorDetail";
 import { useServeDeployments } from "./hook/useServeApplications";
 import { ServeDeploymentRow } from "./ServeDeploymentRow";
 import { ServeEntityLogViewer } from "./ServeEntityLogViewer";
@@ -127,6 +129,18 @@ export const ServeDeploymentsListPage = () => {
                   }}
                   renderInput={(params: TextFieldProps) => (
                     <TextField {...params} label="Status" />
+                  )}
+                />
+                <Autocomplete
+                  style={{ margin: 8, width: 120 }}
+                  options={Array.from(
+                    new Set(allServeDeployments.map((e) => e.applicationName)),
+                  )}
+                  onInputChange={(_: any, value: string) => {
+                    changeFilter("applicationName", value.trim());
+                  }}
+                  renderInput={(params: TextFieldProps) => (
+                    <TextField {...params} label="Application" />
                   )}
                 />
                 <TextField

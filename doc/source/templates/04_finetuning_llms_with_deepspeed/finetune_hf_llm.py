@@ -287,6 +287,7 @@ def training_function(kwargs: dict):
         torch_dtype=torch.bfloat16,
         # `use_cache=True` is incompatible with gradient checkpointing.
         use_cache=False,
+        use_flash_attention_2=True,
     )
     print(f"Done loading model in {time.time() - s} seconds.")
 
@@ -487,7 +488,7 @@ def training_function(kwargs: dict):
             "learning_rate": lr_scheduler.get_lr()[0],
         }
 
-        with tempfile.TemporaryDirectory() as temp_checkpoint_dir:
+        with tempfile.TemporaryDirectory(dir=args.output_dir) as temp_checkpoint_dir:
             accelerator.print(f"Saving the model locally at {temp_checkpoint_dir}")
             accelerator.wait_for_everyone()
 

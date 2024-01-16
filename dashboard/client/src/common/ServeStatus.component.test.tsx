@@ -15,11 +15,7 @@ describe("ServeStatusIcon", () => {
   it("renders HEALTHY status", async () => {
     render(<ServeStatusIcon deployment={DEPLOYMENT} small={false} />);
 
-    await screen.findByTestId("serve-status-icon");
-
-    const icon = screen.getByTestId("serve-status-icon");
-    const classList = icon.getAttribute("class");
-    expect(classList).toContain("colorSuccess");
+    await screen.findByTitle("Healthy");
   });
 
   it("renders UNHEALTHY status", async () => {
@@ -30,14 +26,7 @@ describe("ServeStatusIcon", () => {
       />,
     );
 
-    await screen.findByTestId("serve-status-icon");
-
-    expect(screen.queryByTestId("serve-status-icon")).not.toHaveClass(
-      "colorSuccess",
-    );
-    expect(screen.queryByTestId("serve-status-icon")).not.toHaveClass(
-      "colorError",
-    );
+    await screen.findByTitle("Unhealthy");
   });
 
   it("renders UPDATING status", async () => {
@@ -48,10 +37,6 @@ describe("ServeStatusIcon", () => {
       />,
     );
 
-    await screen.findByTestId("serve-status-icon");
-
-    const icon = screen.getByTestId("serve-status-icon");
-    const classList = icon.getAttribute("class");
-    expect(classList).toContain("iconRunning");
+    await screen.findByTitle("Updating");
   });
 });
