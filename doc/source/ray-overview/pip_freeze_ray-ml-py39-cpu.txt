@@ -397,7 +397,6 @@ soupsieve==2.5
 SQLAlchemy==1.4.17
 sqlparse==0.4.4
 stack-data==0.6.3
-starlette==0.27.0
 statsmodels==0.14.0
 SuperSuit==3.8.0
 sympy==1.12

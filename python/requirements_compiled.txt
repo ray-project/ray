@@ -2175,11 +2175,6 @@ sshpubkeys==3.3.1
     # via moto
 stack-data==0.6.3
     # via ipython
-starlette==0.27.0
-    # via
-    #   -r /ray/ci/../python/requirements.txt
-    #   -r /ray/ci/../python/requirements/test-requirements.txt
-    #   fastapi
 statsmodels==0.14.0
     # via hpbandster
 supersuit==3.8.0
