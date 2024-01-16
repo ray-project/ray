@@ -171,5 +171,5 @@ const ServeReplicaLogs = ({
         ]
       : []),
   ];
-  return <MultiTabLogViewer tabs={tabs} />;
+  return <MultiTabLogViewer tabs={tabs} tabMemoryContextKey="serve-replica" />;
 };

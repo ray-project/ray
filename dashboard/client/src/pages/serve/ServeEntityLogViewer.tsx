@@ -276,7 +276,10 @@ export const ServeEntityLogViewer = ({
       </Box>
       <Box marginTop={2}>
         <Section noTopPadding>
-          <MultiTabLogViewer tabs={tabs} />
+          <MultiTabLogViewer
+            tabs={tabs}
+            tabMemoryContextKey="serve-system-detail"
+          />
         </Section>
       </Box>
     </div>

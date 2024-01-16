@@ -18,8 +18,6 @@ import React, { ReactElement } from "react";
 import { CollapsibleSection } from "../../common/CollapsibleSection";
 import Loading from "../../components/Loading";
 import { HelpInfo } from "../../components/Tooltip";
-import { ServeSystemActor } from "../../type/serve";
-import { useFetchActor } from "../actor/hook/useActorDetail";
 import { useServeDeployments } from "./hook/useServeApplications";
 import { ServeDeploymentRow } from "./ServeDeploymentRow";
 import { ServeEntityLogViewer } from "./ServeEntityLogViewer";

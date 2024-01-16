@@ -257,5 +257,5 @@ const ServeSystemActorLogs = ({
         : systemLogFilePath,
     },
   ];
-  return <MultiTabLogViewer tabs={tabs} />;
+  return <MultiTabLogViewer tabs={tabs} tabMemoryContextKey="serve-system" />;
 };

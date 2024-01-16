@@ -10,6 +10,7 @@ import {
 import React, { useEffect, useState } from "react";
 import { RiExternalLinkLine, RiSortAsc, RiSortDesc } from "react-icons/ri";
 import { Link } from "react-router-dom";
+import { useLocalStorage } from "usehooks-ts";
 import { useStateApiLogs } from "../pages/log/hooks";
 import { LogViewer } from "../pages/log/LogViewer";
 import { HideableBlock } from "./CollapsibleSection";
@@ -30,15 +31,33 @@ export type MultiTabLogViewerTabDetails = {
 export type MultiTabLogViewerProps = {
   tabs: MultiTabLogViewerTabDetails[];
   otherLogsLink?: string;
+  /**
+   * If set, this multi-tab log viewer will remember the last selected tab and start on that tab
+   * the next time this component is rendered.
+   *
+   * Different string values to provide different contexts for this memory. For example, if you
+   * want all multi-tab log viewers in the actor detail page to share one memory, they should have
+   * the same string value here.
+   */
+  tabMemoryContextKey?: string;
 } & ClassNameProps;
 
 export const MultiTabLogViewer = ({
   tabs,
   otherLogsLink,
+  tabMemoryContextKey,
   className,
 }: MultiTabLogViewerProps) => {
   const classes = useStyles();
-  const [value, setValue] = useState(tabs[0]?.title);
+
+  const [rememberedTab, setRememberedTab] = useLocalStorage(
+    `MultiTabLogViewer-tabMemory-${tabMemoryContextKey}`,
+    null,
+  );
+
+  const [value, setValue] = useState(
+    tabMemoryContextKey && rememberedTab ? rememberedTab : tabs[0]?.title,
+  );
   const [expanded, setExpanded] = useState(false);
 
   useEffect(() => {
@@ -73,6 +92,9 @@ export const MultiTabLogViewer = ({
               className={classes.tabs}
               value={value}
               onChange={(_, newValue) => {
+                if (tabMemoryContextKey) {
+                  setRememberedTab(newValue);
+                }
                 setValue(newValue);
               }}
               indicatorColor="primary"
@@ -88,7 +110,7 @@ export const MultiTabLogViewer = ({
                     </Box>
                   }
                   onClick={(event) => {
-                    // Prevent the tab from changing
+                    // Prevent the tab from changing by setting value to the current value
                     setValue(value);
                   }}
                   component={Link}
