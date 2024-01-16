@@ -178,14 +178,3 @@ function rayAssistant(event) {
 
 searchBtn.addEventListener('click', rayAssistant);
 searchBar.addEventListener('keydown', rayAssistant);
-
-// $(document).ready(function() {
-
-//   $('textarea').keydown(function(event) {
-
-//       if (event.keyCode == 13) {
-//           console.log("hi")
-//           event.preventDefault();
-//       }
-//   });
-// });
