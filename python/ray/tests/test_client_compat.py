@@ -9,6 +9,12 @@ except ImportError:
     pyspark = None
 
 
+@pytest.mark.skip(
+    reason=(
+        "Ray Client not supported with Ray Data streaming execution, "
+        "which is enabled for all datasets by default in Ray 2.9."
+    )
+)
 @pytest.mark.skipif(pyspark is None, reason="PySpark dependency not found")
 @pytest.mark.parametrize(
     "call_ray_start",

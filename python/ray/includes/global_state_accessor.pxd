@@ -40,6 +40,9 @@ cdef extern from "ray/gcs/gcs_client/global_state_accessor.h" nogil:
         c_bool AddWorkerInfo(const c_string &serialized_string)
         c_bool UpdateWorkerDebuggerPort(const CWorkerID &worker_id,
                                         const c_uint32_t debuger_port)
+        c_bool UpdateWorkerNumPausedThreads(const CWorkerID &worker_id,
+                                            const c_int32_t num_paused_threads_delta)
+        c_uint32_t GetWorkerDebuggerPort(const CWorkerID &worker_id)
         unique_ptr[c_string] GetPlacementGroupInfo(
             const CPlacementGroupID &placement_group_id)
         unique_ptr[c_string] GetPlacementGroupByName(
@@ -72,7 +75,7 @@ cdef extern from * namespace "ray::gcs" nogil:
                                              ray::RayLogLevel::WARNING,
                                              "" /* log_dir */);
 
-      RedisClientOptions options(host, port, password, false, use_ssl);
+      RedisClientOptions options(host, port, password, use_ssl);
 
       std::string config_list;
       RAY_CHECK(absl::Base64Unescape(config, &config_list));
@@ -135,7 +138,7 @@ cdef extern from * namespace "ray::gcs" nogil:
                          const std::string& password,
                          bool use_ssl,
                          const std::string& key) {
-      RedisClientOptions options(host, port, password, false, use_ssl);
+      RedisClientOptions options(host, port, password, use_ssl);
       auto cli = std::make_unique<RedisClient>(options);
 
       instrumented_io_context io_service;
@@ -153,7 +156,7 @@ cdef extern from * namespace "ray::gcs" nogil:
       auto status = cli->Connect(io_service);
       RAY_CHECK(status.ok()) << "Failed to connect to redis: " << status.ToString();
 
-      auto context = cli->GetShardContext(key);
+      auto context = cli->GetPrimaryContext();
       auto cmd = std::vector<std::string>{"DEL", key};
       auto reply = context->RunArgvSync(cmd);
       if(reply->ReadAsInteger() == 1) {

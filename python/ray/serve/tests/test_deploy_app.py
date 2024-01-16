@@ -6,7 +6,7 @@ import time
 from contextlib import contextmanager
 from copy import copy
 from functools import partial
-from typing import Dict, List
+from typing import Dict, List, Union
 
 import pytest
 import requests
@@ -17,7 +17,12 @@ import ray.actor
 from ray import serve
 from ray._private.test_utils import SignalActor, wait_for_condition
 from ray.serve._private.client import ServeControllerClient
-from ray.serve._private.common import ApplicationStatus, DeploymentID, DeploymentStatus
+from ray.serve._private.common import (
+    ApplicationStatus,
+    DeploymentID,
+    DeploymentStatus,
+    ReplicaName,
+)
 from ray.serve._private.constants import SERVE_DEFAULT_APP_NAME, SERVE_NAMESPACE
 from ray.serve.context import _get_global_client
 from ray.serve.schema import ServeDeploySchema, ServeInstanceDetails
@@ -86,6 +91,12 @@ def check_running(_client: ServeControllerClient):
     return True
 
 
+def check_endpoint(endpoint: str, json: Union[List, Dict], expected: str):
+    resp = requests.post(f"http://localhost:8000/{endpoint}", json=json)
+    assert resp.text == expected
+    return True
+
+
 def check_deployments_dead(deployment_ids: List[DeploymentID]):
     prefixes = [f"{id.app}#{id.name}" for id in deployment_ids]
     actor_names = [
@@ -96,18 +107,6 @@ def check_deployments_dead(deployment_ids: List[DeploymentID]):
 
 def get_test_config() -> Dict:
     return {"import_path": "ray.serve.tests.test_config_files.pizza.serve_dag"}
-
-
-def check_single_app():
-    """Checks the application deployed through the config from get_test_config()"""
-    wait_for_condition(
-        lambda: requests.post("http://localhost:8000/", json=["ADD", 2]).text
-        == "4 pizzas please!"
-    )
-    wait_for_condition(
-        lambda: requests.post("http://localhost:8000/", json=["MUL", 3]).text
-        == "9 pizzas please!"
-    )
 
 
 def get_test_deploy_config() -> Dict:
@@ -148,21 +147,29 @@ def check_multi_app():
     """
 
     wait_for_condition(
-        lambda: requests.post("http://localhost:8000/app1", json=["ADD", 2]).text
-        == "4 pizzas please!"
+        check_endpoint,
+        endpoint="app1",
+        json=["ADD", 2],
+        expected="4 pizzas please!",
     )
     wait_for_condition(
-        lambda: requests.post("http://localhost:8000/app1", json=["MUL", 3]).text
-        == "9 pizzas please!"
+        check_endpoint,
+        endpoint="app1",
+        json=["MUL", 3],
+        expected="9 pizzas please!",
     )
 
     wait_for_condition(
-        lambda: requests.post("http://localhost:8000/app2", json=["ADD", 2]).text
-        == "5 pizzas please!"
+        check_endpoint,
+        endpoint="app2",
+        json=["ADD", 2],
+        expected="5 pizzas please!",
     )
     wait_for_condition(
-        lambda: requests.post("http://localhost:8000/app2", json=["MUL", 3]).text
-        == "12 pizzas please!"
+        check_endpoint,
+        endpoint="app2",
+        json=["MUL", 3],
+        expected="12 pizzas please!",
     )
 
 
@@ -482,7 +489,7 @@ def test_deploy_multi_app_deployments_removed(client: ServeControllerClient):
             actor["name"] for actor in list_actors(filters=[("state", "=", "ALIVE")])
         }
         expected_actor_name_prefixes = {
-            "SERVE_CONTROLLER_ACTOR:SERVE_PROXY_ACTOR",
+            "SERVE_PROXY_ACTOR",
             "SERVE_CONTROLLER_ACTOR",
         }.union({f"SERVE_REPLICA::app1#{deployment}" for deployment in deployments})
         for prefix in expected_actor_name_prefixes:
@@ -816,8 +823,11 @@ def test_deploy_separate_runtime_envs(client: ServeControllerClient):
     client.deploy_apps(ServeDeploySchema(**config_template))
 
     wait_for_condition(
-        lambda: requests.post("http://localhost:8000/app1", json=["ADD", 2]).json()
-        == "0 pizzas please!"
+        check_endpoint,
+        endpoint="app1",
+        json=["ADD", 2],
+        expected="0 pizzas please!",
+        timeout=90,
     )
 
     wait_for_condition(
@@ -1178,8 +1188,9 @@ def test_change_route_prefix(client: ServeControllerClient):
 def check_log_file(log_file: str, expected_regex: list):
     with open(log_file, "r") as f:
         s = f.read()
+        print(s)
         for regex in expected_regex:
-            assert re.findall(regex, s) != []
+            assert re.findall(regex, s) != [], f"Did not find pattern '{regex}' in {s}"
     return True
 
 
@@ -1217,10 +1228,11 @@ class TestDeploywithLoggingConfig:
 
         resp = requests.post("http://localhost:8000/app1").json()
 
+        replica_id = resp["replica"].split("#")[-1]
         if encoding_type == "JSON":
-            expected_log_regex = [f'"replica": "{resp["replica"]}", ']
+            expected_log_regex = [f'"replica": "{replica_id}", ']
         else:
-            expected_log_regex = [f'.*{resp["replica"]}.*']
+            expected_log_regex = [f".*{replica_id}.*"]
         check_log_file(resp["log_file"], expected_log_regex)
 
     @pytest.mark.parametrize("encoding_type", ["TEXT", "JSON"])
@@ -1246,10 +1258,11 @@ class TestDeploywithLoggingConfig:
 
         resp = requests.post("http://localhost:8000/app1").json()
 
+        replica_id = resp["replica"].split("#")[-1]
         if encoding_type == "JSON":
-            expected_log_regex = [f'"replica": "{resp["replica"]}", ']
+            expected_log_regex = [f'"replica": "{replica_id}", ']
         else:
-            expected_log_regex = [f'.*{resp["replica"]}.*']
+            expected_log_regex = [f".*{replica_id}.*"]
         check_log_file(resp["log_file"], expected_log_regex)
 
     def test_deploy_app_with_deployment_logging_config_in_code(
@@ -1276,12 +1289,27 @@ class TestDeploywithLoggingConfig:
             lambda: requests.post("http://localhost:8000/app1").status_code == 200
         )
 
-        # By default, log level is "INFO"
-        resp = requests.post("http://localhost:8000/app1").json()
+        def get_replica_info_format(replica_name: ReplicaName) -> str:
+            return (
+                f"{replica_name.app_name}_{replica_name.deployment_name} "
+                f"{replica_name.replica_suffix}"
+            )
 
-        # Make sure 'model_debug_level' log content does not exist
+        # By default, log level is "INFO"
+        r = requests.post("http://localhost:8000/app1")
+        r.raise_for_status()
+        request_id = r.headers["X-Request-Id"]
+        replica_name = ReplicaName.from_replica_tag(r.json()["replica"])
+
+        # Make sure 'model_debug_level' log content does not exist.
         with pytest.raises(AssertionError):
-            check_log_file(resp["log_file"], [".*this_is_debug_info.*"])
+            check_log_file(r.json()["log_file"], [".*this_is_debug_info.*"])
+
+        # Check the log formatting.
+        check_log_file(
+            r.json()["log_file"],
+            f" {get_replica_info_format(replica_name)} {request_id} ",
+        )
 
         # Set log level to "DEBUG"
         config_dict["applications"][0]["logging_config"] = {
@@ -1295,8 +1323,19 @@ class TestDeploywithLoggingConfig:
             and requests.post("http://localhost:8000/app1").json()["log_level"]
             == logging.DEBUG,
         )
-        resp = requests.post("http://localhost:8000/app1").json()
-        check_log_file(resp["log_file"], [".*this_is_debug_info.*"])
+        r = requests.post("http://localhost:8000/app1")
+        r.raise_for_status()
+        request_id = r.headers["X-Request-Id"]
+        replica_name = ReplicaName.from_replica_tag(r.json()["replica"])
+        check_log_file(
+            r.json()["log_file"],
+            [
+                # Check for DEBUG-level log statement.
+                ".*this_is_debug_info.*",
+                # Check that the log formatting has remained the same.
+                f" {get_replica_info_format(replica_name)} {request_id} ",
+            ],
+        )
 
     def test_not_overwritting_logging_config_in_yaml(
         self, client: ServeControllerClient

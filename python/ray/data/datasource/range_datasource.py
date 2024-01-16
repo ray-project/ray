@@ -1,11 +1,12 @@
 import builtins
 from copy import copy
-from typing import List, Optional, Tuple
+from typing import Iterable, List, Optional, Tuple
 
 import numpy as np
 
 from ray.data._internal.util import _check_pyarrow_version
 from ray.data.block import Block, BlockAccessor, BlockMetadata
+from ray.data.context import DataContext
 from ray.data.datasource import Datasource, ReadTask
 from ray.util.annotations import PublicAPI
 
@@ -42,6 +43,16 @@ class RangeDatasource(Datasource):
         block_format = self._block_format
         tensor_shape = self._tensor_shape
         block_size = max(1, n // parallelism)
+        # TODO(swang): This target block size may not match the driver's
+        # context if it was overridden. Set target max block size during
+        # optimizer stage to fix this.
+        ctx = DataContext.get_current()
+        if self._n == 0:
+            target_rows_per_block = 0
+        else:
+            row_size_bytes = self.estimate_inmemory_data_size() // self._n
+            row_size_bytes = max(row_size_bytes, 1)
+            target_rows_per_block = max(1, ctx.target_max_block_size // row_size_bytes)
 
         # Example of a read task. In a real datasource, this would pull data
         # from an external system instead of generating dummy data.
@@ -65,6 +76,15 @@ class RangeDatasource(Datasource):
                 )
             else:
                 return list(builtins.range(start, start + count))
+
+        def make_blocks(
+            start: int, count: int, target_rows_per_block: int
+        ) -> Iterable[Block]:
+            while count > 0:
+                num_rows = min(count, target_rows_per_block)
+                yield make_block(start, num_rows)
+                start += num_rows
+                count -= num_rows
 
         if block_format == "arrow":
             _check_pyarrow_version()
@@ -101,7 +121,12 @@ class RangeDatasource(Datasource):
                 exec_stats=None,
             )
             read_tasks.append(
-                ReadTask(lambda i=i, count=count: [make_block(i, count)], meta)
+                ReadTask(
+                    lambda i=i, count=count: make_blocks(
+                        i, count, target_rows_per_block
+                    ),
+                    meta,
+                )
             )
             i += block_size
 

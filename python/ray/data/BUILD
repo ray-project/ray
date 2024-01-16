@@ -98,6 +98,14 @@ py_test(
 )
 
 py_test(
+    name = "test_arrow_block",
+    size = "small",
+    srcs = ["tests/test_arrow_block.py"],
+    tags = ["team:data", "exclusive"],
+    deps = ["//:ray_lib", ":conftest"],
+)
+
+py_test(
     name = "test_auto_parallelism",
     size = "medium",
     srcs = ["tests/test_auto_parallelism.py"],
@@ -123,7 +131,7 @@ py_test(
 
 py_test(
     name = "test_block_sizing",
-    size = "small",
+    size = "medium",
     srcs = ["tests/test_block_sizing.py"],
     tags = ["team:data", "exclusive"],
     deps = ["//:ray_lib", ":conftest"],
@@ -253,6 +261,14 @@ py_test(
     name = "test_pandas",
     size = "small",
     srcs = ["tests/test_pandas.py"],
+    tags = ["team:data", "exclusive"],
+    deps = ["//:ray_lib", ":conftest"],
+)
+
+py_test(
+    name = "test_pandas_block",
+    size = "small",
+    srcs = ["tests/test_pandas_block.py"],
     tags = ["team:data", "exclusive"],
     deps = ["//:ray_lib", ":conftest"],
 )
@@ -467,6 +483,22 @@ py_test(
 )
 
 py_test(
+    name = "test_streaming_executor_resource_limits",
+    size = "medium",
+    srcs = ["tests/test_streaming_executor_resource_limits.py"],
+    tags = ["team:data", "exclusive"],
+    deps = ["//:ray_lib", ":conftest"],
+)
+
+py_test(
+    name = "test_streaming_executor_errored_blocks",
+    size = "medium",
+    srcs = ["tests/test_streaming_executor_errored_blocks.py"],
+    tags = ["team:data", "exclusive"],
+    deps = ["//:ray_lib", ":conftest"],
+)
+
+py_test(
     name = "test_streaming_integration",
     size = "medium",
     srcs = ["tests/test_streaming_integration.py"],
@@ -508,7 +540,7 @@ py_test(
 
 py_test(
     name = "test_backpressure_policies",
-    size = "small",
+    size = "medium",
     srcs = ["tests/test_backpressure_policies.py"],
     tags = ["team:data", "exclusive"],
     deps = ["//:ray_lib", ":conftest"],

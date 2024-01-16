@@ -375,7 +375,7 @@ cdef extern from "ray/gcs/gcs_client/gcs_client.h" nogil:
         UNIMPLEMENTED "grpc::StatusCode::UNIMPLEMENTED",
 
     cdef cppclass CGcsClientOptions "ray::gcs::GcsClientOptions":
-        CGcsClientOptions(const c_string &gcs_address)
+        CGcsClientOptions(const c_string &gcs_address, int port)
 
     cdef cppclass CPythonGcsClient "ray::gcs::PythonGcsClient":
         CPythonGcsClient(const CGcsClientOptions &options)

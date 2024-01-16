@@ -1,5 +1,6 @@
 import ipaddress
 import time
+from datetime import datetime
 from enum import Enum
 
 
@@ -48,4 +49,19 @@ def singleton_client(cls):
                 instances[cls] = (instance, current_time)
         return instances[cls][0]
 
+    # For singleton-decorator, it can't direct access to the class object
+    # without decorator. So you cannot call methods using a class name in unit tests.
+    # It would not work because You Class actually contains a wrapper function but not
+    # your class object. This is a workaround solution for this issue. It uses a
+    # separate wrapper object for each decorated class and holds a class within
+    # __wrapped__ attribute so you can access the decorated class directly in your
+    # unit tests.
+    # Please refer to https://stackoverflow.com/questions/70958126
+    # /how-to-mock-a-method-inside-a-singleton-decorated-class-in-python
+    get_instance.__wrapped__ = cls
+
     return get_instance
+
+
+def now_ts():
+    return datetime.now().strftime("%Y%m%d-%H%M%S")

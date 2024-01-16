@@ -47,6 +47,15 @@ logger = logging.getLogger(__name__)
 FRAGMENTS_PER_META_FETCH = 6
 PARALLELIZE_META_FETCH_THRESHOLD = 24
 
+# The `num_cpus` for each metadata prefetching task.
+# Default to 0.5 instead of 1 because it is cheaper than normal read task.
+NUM_CPUS_FOR_META_FETCH_TASK = 0.5
+
+# The application-level exceptions to retry for metadata prefetching task.
+# Default to retry on `OSError` because AWS S3 would throw this transient
+# error when load is too high.
+RETRY_EXCEPTIONS_FOR_META_FETCH_TASK = [OSError]
+
 # The number of rows to read per batch. This is sized to generate 10MiB batches
 # for rows about 1KiB in size.
 PARQUET_READER_ROW_BATCH_SIZE = 10_000
@@ -181,6 +190,7 @@ class ParquetDatasource(Datasource):
         meta_provider: ParquetMetadataProvider = DefaultParquetMetadataProvider(),
         partition_filter: PathPartitionFilter = None,
         shuffle: Union[Literal["files"], None] = None,
+        include_paths: bool = False,
         file_extensions: Optional[List[str]] = None,
     ):
         _check_pyarrow_version()
@@ -225,10 +235,10 @@ class ParquetDatasource(Datasource):
 
             filtered_paths = set(expanded_paths) - set(paths)
             if filtered_paths:
-                logger.info(f"Filtered out the following paths: {filtered_paths}")
-
-        if len(paths) == 1:
-            paths = paths[0]
+                logger.info(f"Filtered out {len(filtered_paths)} paths")
+        else:
+            if len(paths) == 1:
+                paths = paths[0]
 
         if dataset_kwargs is None:
             dataset_kwargs = {}
@@ -267,8 +277,22 @@ class ParquetDatasource(Datasource):
 
         try:
             prefetch_remote_args = {}
+            prefetch_remote_args["num_cpus"] = NUM_CPUS_FOR_META_FETCH_TASK
             if self._local_scheduling:
                 prefetch_remote_args["scheduling_strategy"] = self._local_scheduling
+            else:
+                # Use the scheduling strategy ("SPREAD" by default) provided in
+                # `DataContext``, to spread out prefetch tasks in cluster, avoid
+                # AWS S3 throttling error.
+                # Note: this is the same scheduling strategy used by read tasks.
+                prefetch_remote_args[
+                    "scheduling_strategy"
+                ] = DataContext.get_current().scheduling_strategy
+            if RETRY_EXCEPTIONS_FOR_META_FETCH_TASK is not None:
+                prefetch_remote_args[
+                    "retry_exceptions"
+                ] = RETRY_EXCEPTIONS_FOR_META_FETCH_TASK
+
             self._metadata = (
                 meta_provider.prefetch_file_metadata(
                     pq_ds.fragments, **prefetch_remote_args
@@ -294,6 +318,7 @@ class ParquetDatasource(Datasource):
         self._schema = schema
         self._encoding_ratio = self._estimate_files_encoding_ratio()
         self._file_metadata_shuffler = None
+        self._include_paths = include_paths
         if shuffle == "files":
             self._file_metadata_shuffler = np.random.default_rng()
 
@@ -373,11 +398,12 @@ class ParquetDatasource(Datasource):
                 )
             else:
                 default_read_batch_size_rows = PARQUET_READER_ROW_BATCH_SIZE
-            block_udf, to_batches_kwargs, columns, schema = (
+            block_udf, to_batches_kwargs, columns, schema, include_paths = (
                 self._block_udf,
                 self._to_batches_kwargs,
                 self._columns,
                 self._schema,
+                self._include_paths,
             )
             read_tasks.append(
                 ReadTask(
@@ -388,6 +414,7 @@ class ParquetDatasource(Datasource):
                         columns,
                         schema,
                         f,
+                        include_paths,
                     ),
                     meta,
                 )
@@ -465,6 +492,7 @@ def _read_fragments(
     columns,
     schema,
     serialized_fragments: List[_SerializedFragment],
+    include_paths: bool,
 ) -> Iterator["pyarrow.Table"]:
     # This import is necessary to load the tensor extension type.
     from ray.data.extensions.tensor_extension import ArrowTensorType  # noqa
@@ -496,11 +524,15 @@ def _read_fragments(
             table = pa.Table.from_batches([batch], schema=schema)
             if part:
                 for col, value in part.items():
+                    if columns and col not in columns:
+                        continue
                     table = table.set_column(
                         table.schema.get_field_index(col),
                         col,
                         pa.array([value] * len(table)),
                     )
+            if include_paths:
+                table = table.append_column("path", [[fragment.path]] * len(table))
             # If the table is empty, drop it.
             if table.num_rows > 0:
                 if block_udf is not None:

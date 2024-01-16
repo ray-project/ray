@@ -1,4 +1,5 @@
 import os
+from typing import Iterator
 from unittest import mock
 
 import pyarrow
@@ -16,10 +17,48 @@ from ray.data.datasource.path_util import _is_local_windows_path
 
 
 class MockFileBasedDatasource(FileBasedDatasource):
-    def _read_file(self, f: "pyarrow.NativeFile", path: str) -> Block:
+    def _read_stream(self, f: "pyarrow.NativeFile", path: str) -> Iterator[Block]:
         builder = DelegatingBlockBuilder()
         builder.add({"data": f.readall()})
-        return builder.build()
+        yield builder.build()
+
+
+def test_local_paths(ray_start_regular_shared, tmp_path):
+    path = os.path.join(tmp_path, "test.txt")
+    with open(path, "w"):
+        pass
+
+    datasource = MockFileBasedDatasource(path)
+    assert datasource.supports_distributed_reads
+
+    datasource = MockFileBasedDatasource(f"local://{path}")
+    assert not datasource.supports_distributed_reads
+
+
+def test_local_paths_with_client_raises_error(ray_start_cluster_enabled, tmp_path):
+    ray_start_cluster_enabled.add_node(num_cpus=1)
+    ray_start_cluster_enabled.head_node._ray_params.ray_client_server_port = "10004"
+    ray_start_cluster_enabled.head_node.start_ray_client_server()
+    ray.init("ray://localhost:10004")
+
+    path = os.path.join(tmp_path, "test.txt")
+    with open(path, "w"):
+        pass
+
+    with pytest.raises(ValueError):
+        MockFileBasedDatasource(f"local://{path}")
+
+
+def test_include_paths(ray_start_regular_shared, tmp_path):
+    path = os.path.join(tmp_path, "test.txt")
+    with open(path, "w"):
+        pass
+
+    datasource = MockFileBasedDatasource(path, include_paths=True)
+    ds = ray.data.read_datasource(datasource)
+
+    paths = [row["path"] for row in ds.take_all()]
+    assert paths == [path]
 
 
 def test_file_extensions(ray_start_regular_shared, tmp_path):

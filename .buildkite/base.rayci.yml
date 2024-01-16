@@ -1,11 +1,30 @@
 group: base
 steps:
   - name: oss-ci-base_test
+    wanda: ci/docker/base.test.py39.wanda.yaml
+
+  - name: oss-ci-base_test-multipy
+    label: "wanda: oss-ci-base_test-py{{matrix}}"
     wanda: ci/docker/base.test.wanda.yaml
+    matrix:
+      - "3.8"
+      - "3.10"
+    env:
+      PYTHON: "{{matrix}}"
   
   - name: oss-ci-base_build
-    wanda: ci/docker/base.build.wanda.yaml
+    wanda: ci/docker/base.build.py39.wanda.yaml
     depends_on: oss-ci-base_test
+
+  - name: oss-ci-base_build-multipy
+    label: "wanda: oss-ci-base_build-py{{matrix}}"
+    wanda: ci/docker/base.build.wanda.yaml
+    matrix:
+      - "3.8"
+      - "3.10"
+    env:
+      PYTHON: "{{matrix}}"
+    depends_on: oss-ci-base_test-multipy
 
   - name: oss-ci-base_test-aarch64
     wanda: ci/docker/base.test.aarch64.wanda.yaml
@@ -30,3 +49,7 @@ steps:
   - name: docgpubuild
     wanda: ci/docker/docgpu.build.wanda.yaml
     depends_on: oss-ci-base_gpu
+
+  - name: windowsbuild
+    wanda: ci/docker/windows.build.wanda.yaml
+    instance_type: builder-windows

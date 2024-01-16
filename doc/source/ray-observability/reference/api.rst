@@ -23,9 +23,9 @@ Summary APIs
    :nosignatures:
    :toctree: doc/
 
-    ray.util.state.summarize_actors
-    ray.util.state.summarize_objects
-    ray.util.state.summarize_tasks
+   ray.util.state.summarize_actors
+   ray.util.state.summarize_objects
+   ray.util.state.summarize_tasks
 
 List APIs
 ~~~~~~~~~~

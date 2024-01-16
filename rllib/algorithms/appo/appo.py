@@ -9,17 +9,11 @@ See `appo_[tf|torch]_policy.py` for the definition of the policy loss.
 Detailed documentation:
 https://docs.ray.io/en/master/rllib-algorithms.html#appo
 """
-import dataclasses
 from typing import Optional, Type
 import logging
 
 from ray.rllib.algorithms.algorithm_config import AlgorithmConfig, NotProvided
-from ray.rllib.algorithms.appo.appo_learner import (
-    AppoLearnerHyperparameters,
-    LEARNER_RESULTS_KL_KEY,
-)
 from ray.rllib.algorithms.impala.impala import Impala, ImpalaConfig
-from ray.rllib.algorithms.ppo.ppo import UpdateKL
 from ray.rllib.core.rl_module.rl_module import SingleAgentRLModuleSpec
 from ray.rllib.policy.policy import Policy
 from ray.rllib.utils.annotations import override
@@ -35,6 +29,12 @@ from ray.rllib.utils.typing import (
 )
 
 logger = logging.getLogger(__name__)
+
+
+LEARNER_RESULTS_KL_KEY = "mean_kl_loss"
+LEARNER_RESULTS_CURR_KL_COEFF_KEY = "curr_kl_coeff"
+OLD_ACTION_DIST_KEY = "old_action_dist"
+OLD_ACTION_DIST_LOGITS_KEY = "old_action_dist_logits"
 
 
 class APPOConfig(ImpalaConfig):
@@ -256,28 +256,6 @@ class APPOConfig(ImpalaConfig):
 
         return SingleAgentRLModuleSpec(module_class=RLModule, catalog_class=APPOCatalog)
 
-    @override(ImpalaConfig)
-    def get_learner_hyperparameters(self) -> AppoLearnerHyperparameters:
-        base_hps = super().get_learner_hyperparameters()
-        return AppoLearnerHyperparameters(
-            use_kl_loss=self.use_kl_loss,
-            kl_target=self.kl_target,
-            kl_coeff=self.kl_coeff,
-            clip_param=self.clip_param,
-            tau=self.tau,
-            target_update_frequency_ts=(
-                self.train_batch_size * self.num_sgd_iter * self.target_update_frequency
-            ),
-            **dataclasses.asdict(base_hps),
-        )
-
-
-# Still used by one of the old checkpoints in tests.
-# Keep a shim version of this around.
-class UpdateTargetAndKL:
-    def __init__(self, workers, config):
-        pass
-
 
 class APPO(Impala):
     def __init__(self, config, *args, **kwargs):
@@ -292,16 +270,6 @@ class APPO(Impala):
             self.workers.local_worker().foreach_policy_to_train(
                 lambda p, _: p.update_target()
             )
-
-    @override(Impala)
-    def setup(self, config: AlgorithmConfig):
-        super().setup(config)
-
-        # TODO(avnishn):
-        # this attribute isn't used anywhere else in the code. I think we can safely
-        # delete it.
-        if not self.config._enable_new_api_stack:
-            self.update_kl = UpdateKL(self.workers)
 
     def after_train_step(self, train_results: ResultDict) -> None:
         """Updates the target network and the KL coefficient for the APPO-loss.

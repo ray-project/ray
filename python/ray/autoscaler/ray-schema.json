@@ -24,7 +24,7 @@
             "type": "string"
         },
         "max_workers": {
-            "description": "The maximum number of workers nodes to launch in addition to the head node. This takes precedence over min_workers.",
+            "description": "The maximum number of workers nodes to launch in addition to the head node. This should be no larger than the sum of min_workers for all available node types.",
             "type": "integer",
             "minimum": 0
         },

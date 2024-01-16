@@ -685,6 +685,40 @@ class GlobalState:
             worker_id, debugger_port
         )
 
+    def get_worker_debugger_port(self, worker_id):
+        """Get the debugger port of a worker.
+
+        Args:
+            worker_id: ID of this worker. Type is bytes.
+
+        Returns:
+             Debugger port of the worker.
+        """
+        self._check_connected()
+
+        assert worker_id is not None, "worker_id is not valid"
+
+        return self.global_state_accessor.get_worker_debugger_port(worker_id)
+
+    def update_worker_num_paused_threads(self, worker_id, num_paused_threads_delta):
+        """Updates the number of paused threads of a worker.
+
+        Args:
+            worker_id: ID of this worker. Type is bytes.
+            num_paused_threads_delta: The delta of the number of paused threads.
+
+        Returns:
+             Is operation success
+        """
+        self._check_connected()
+
+        assert worker_id is not None, "worker_id is not valid"
+        assert num_paused_threads_delta is not None, "worker_id is not valid"
+
+        return self.global_state_accessor.update_worker_num_paused_threads(
+            worker_id, num_paused_threads_delta
+        )
+
     def cluster_resources(self):
         """Get the current total cluster resources.
 
@@ -967,3 +1001,28 @@ def update_worker_debugger_port(worker_id, debugger_port):
          Is operation success
     """
     return state.update_worker_debugger_port(worker_id, debugger_port)
+
+
+def update_worker_num_paused_threads(worker_id, num_paused_threads_delta):
+    """Update the number of paused threads of a worker.
+
+    Args:
+        worker_id: ID of this worker. Type is bytes.
+        num_paused_threads_delta: The delta of the number of paused threads.
+
+    Returns:
+         Is operation success
+    """
+    return state.update_worker_num_paused_threads(worker_id, num_paused_threads_delta)
+
+
+def get_worker_debugger_port(worker_id):
+    """Get the debugger port of a worker.
+
+    Args:
+        worker_id: ID of this worker. Type is bytes.
+
+    Returns:
+         Debugger port of the worker.
+    """
+    return state.get_worker_debugger_port(worker_id)

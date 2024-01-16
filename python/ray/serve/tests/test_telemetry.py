@@ -11,21 +11,18 @@ import ray
 from ray import serve
 from ray._private.test_utils import wait_for_condition
 from ray._private.usage.usage_lib import get_extra_usage_tags_to_report
-from ray.dag.input_node import InputNode
 from ray.serve._private.common import ApplicationStatus
 from ray.serve._private.constants import SERVE_MULTIPLEXED_MODEL_ID
-from ray.serve._private.usage import ServeUsageTag
-from ray.serve.context import _get_global_client
-from ray.serve.drivers import DAGDriver
-from ray.serve.http_adapters import json_request
-from ray.serve.schema import ServeDeploySchema
-from ray.serve.tests.common.utils import (
+from ray.serve._private.test_utils import (
     TELEMETRY_ROUTE_PREFIX,
     TelemetryStorage,
     check_ray_started,
     receiver_app,
     start_telemetry_app,
 )
+from ray.serve._private.usage import ServeUsageTag
+from ray.serve.context import _get_global_client
+from ray.serve.schema import ServeDeploySchema
 
 
 def test_fastapi_detected(manage_ray_with_telemetry):
@@ -99,72 +96,6 @@ def test_fastapi_detected(manage_ray_with_telemetry):
     assert ServeUsageTag.REST_API_VERSION.get_value_from_report(report) is None
 
 
-@pytest.mark.parametrize("use_adapter", [True, False])
-def test_graph_detected(manage_ray_with_telemetry, use_adapter):
-    """
-    Check that DAGDriver and HTTP adapters are detected by telemetry.
-    """
-
-    subprocess.check_output(["ray", "start", "--head"])
-    wait_for_condition(check_ray_started, timeout=5)
-
-    storage_handle = start_telemetry_app()
-
-    wait_for_condition(
-        lambda: ray.get(storage_handle.get_reports_received.remote()) > 0, timeout=5
-    )
-
-    # Check that telemetry related to DAGDriver app is not set
-    report = ray.get(storage_handle.get_report.remote())
-    assert ServeUsageTag.DAG_DRIVER_USED.get_value_from_report(report) is None
-    assert ServeUsageTag.HTTP_ADAPTER_USED.get_value_from_report(report) is None
-
-    @serve.deployment(ray_actor_options={"num_cpus": 0})
-    def greeter(input):
-        return "Hello!"
-
-    with InputNode() as input:
-        greeter_node = greeter.bind(input)
-
-    if use_adapter:
-        graph_app = DAGDriver.bind(greeter_node, http_adapter=json_request)
-    else:
-        graph_app = DAGDriver.bind(greeter_node)
-
-    serve.run(graph_app, name="graph_app", route_prefix="/graph")
-
-    wait_for_condition(
-        lambda: serve.status().applications["graph_app"].status
-        == ApplicationStatus.RUNNING,
-        timeout=15,
-    )
-
-    current_num_reports = ray.get(storage_handle.get_reports_received.remote())
-
-    wait_for_condition(
-        lambda: ray.get(storage_handle.get_reports_received.remote())
-        > current_num_reports,
-        timeout=5,
-    )
-    report = ray.get(storage_handle.get_report.remote())
-
-    # Check all telemetry relevant to the Serve apps on this cluster
-    assert ServeUsageTag.DAG_DRIVER_USED.get_value_from_report(report) == "1"
-    assert ServeUsageTag.API_VERSION.get_value_from_report(report) == "v2"
-    assert int(ServeUsageTag.NUM_APPS.get_value_from_report(report)) == 2
-    assert int(ServeUsageTag.NUM_DEPLOYMENTS.get_value_from_report(report)) == 3
-    assert int(ServeUsageTag.NUM_GPU_DEPLOYMENTS.get_value_from_report(report)) == 0
-    if use_adapter:
-        assert ServeUsageTag.HTTP_ADAPTER_USED.get_value_from_report(report) == "1"
-
-    # Check that Serve telemetry not relevant to the running apps is omitted
-    assert ServeUsageTag.FASTAPI_USED.get_value_from_report(report) is None
-    assert ServeUsageTag.GRPC_INGRESS_USED.get_value_from_report(report) is None
-    assert ServeUsageTag.REST_API_VERSION.get_value_from_report(report) is None
-    if not use_adapter:
-        assert ServeUsageTag.HTTP_ADAPTER_USED.get_value_from_report(report) is None
-
-
 @serve.deployment
 class Stub:
     pass
@@ -205,7 +136,7 @@ def test_rest_api(manage_ray_with_telemetry, tmp_dir):
         "applications": [
             {
                 "name": "receiver_app",
-                "import_path": "ray.serve.tests.common.utils.receiver_app",
+                "import_path": "ray.serve._private.test_utils.receiver_app",
                 "route_prefix": TELEMETRY_ROUTE_PREFIX,
             },
             {
@@ -263,7 +194,7 @@ def test_rest_api(manage_ray_with_telemetry, tmp_dir):
         "applications": [
             {
                 "name": "receiver_app",
-                "import_path": "ray.serve.tests.common.utils.receiver_app",
+                "import_path": "ray.serve._private.test_utils.receiver_app",
                 "route_prefix": TELEMETRY_ROUTE_PREFIX,
             },
         ]
@@ -346,7 +277,7 @@ def test_lightweight_config_options(
         "applications": [
             {
                 "name": "receiver_app",
-                "import_path": "ray.serve.tests.common.utils.receiver_app",
+                "import_path": "ray.serve._private.test_utils.receiver_app",
                 "route_prefix": TELEMETRY_ROUTE_PREFIX,
             },
             {

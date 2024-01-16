@@ -167,6 +167,17 @@ class ArrowBlockAccessor(TableBlockAccessor):
     def column_names(self) -> List[str]:
         return self._table.column_names
 
+    def append_column(self, name: str, data: Any) -> Block:
+        assert name not in self._table.column_names
+
+        if any(isinstance(item, np.ndarray) for item in data):
+            raise NotImplementedError(
+                f"`{self.__class__.__name__}.append_column()` doesn't support "
+                "array-like data."
+            )
+
+        return self._table.append_column(name, [data])
+
     @classmethod
     def from_bytes(cls, data: bytes) -> "ArrowBlockAccessor":
         reader = pyarrow.ipc.open_stream(data)
@@ -204,7 +215,7 @@ class ArrowBlockAccessor(TableBlockAccessor):
     def _build_tensor_row(
         row: ArrowRow, col_name: str = TENSOR_COLUMN_NAME
     ) -> np.ndarray:
-        from pkg_resources._vendor.packaging.version import parse as parse_version
+        from packaging.version import parse as parse_version
 
         element = row[col_name][0]
         # TODO(Clark): Reduce this to np.asarray(element) once we only support Arrow
@@ -236,6 +247,10 @@ class ArrowBlockAccessor(TableBlockAccessor):
         return view
 
     def random_shuffle(self, random_seed: Optional[int]) -> "pyarrow.Table":
+        # TODO(swang): Creating this np.array index can add a lot of memory
+        # pressure when there are a large number of small rows. Investigate
+        # random shuffling in place to reduce memory pressure.
+        # See https://github.com/ray-project/ray/issues/42146.
         random = np.random.RandomState(random_seed)
         return self.take(random.permutation(self.num_rows()))
 

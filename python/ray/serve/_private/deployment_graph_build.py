@@ -2,8 +2,7 @@ import inspect
 from collections import OrderedDict
 from typing import List
 
-from ray import cloudpickle
-from ray.dag import PARENT_CLASS_NODE_KEY, ClassMethodNode, ClassNode, DAGNode
+from ray.dag import ClassNode, DAGNode
 from ray.dag.function_node import FunctionNode
 from ray.dag.utils import _DAGNodeNameGenerator
 from ray.experimental.gradio_utils import type_to_string
@@ -16,13 +15,8 @@ from ray.serve._private.deployment_function_executor_node import (
     DeploymentFunctionExecutorNode,
 )
 from ray.serve._private.deployment_function_node import DeploymentFunctionNode
-from ray.serve._private.deployment_method_executor_node import (
-    DeploymentMethodExecutorNode,
-)
-from ray.serve._private.deployment_method_node import DeploymentMethodNode
 from ray.serve._private.deployment_node import DeploymentNode
 from ray.serve.deployment import Deployment, schema_to_deployment
-from ray.serve.deployment_graph import RayServeDAGHandle
 from ray.serve.handle import DeploymentHandle, RayServeHandle
 from ray.serve.schema import DeploymentSchema
 
@@ -151,8 +145,7 @@ def transform_ray_dag_to_serve_dag(
 ):
     """
     Transform a Ray DAG to a Serve DAG. Map ClassNode to DeploymentNode with
-    ray decorated body passed in, and ClassMethodNode to DeploymentMethodNode.
-    When provided name, all Deployment name will {name}_{deployment_name}
+    ray decorated body passed in.
     """
     if isinstance(dag_node, ClassNode):
         deployment_name = node_name_generator.get_node_name(dag_node)
@@ -190,11 +183,9 @@ def transform_ray_dag_to_serve_dag(
                 # re-resolved child DAGNodes, otherwise with KeyError
                 (
                     DeploymentNode,
-                    DeploymentMethodNode,
                     DeploymentFunctionNode,
                     DeploymentExecutorNode,
                     DeploymentFunctionExecutorNode,
-                    DeploymentMethodExecutorNode,
                 ),
             ),
             apply_fn=replace_with_handle,
@@ -241,28 +232,6 @@ def transform_ray_dag_to_serve_dag(
             dag_node.get_kwargs(),
             dag_node.get_options(),
             other_args_to_resolve=dag_node.get_other_args_to_resolve(),
-        )
-
-    elif isinstance(dag_node, ClassMethodNode):
-        other_args_to_resolve = dag_node.get_other_args_to_resolve()
-        # TODO: (jiaodong) Need to capture DAGNodes in the parent node
-        parent_deployment_node = other_args_to_resolve[PARENT_CLASS_NODE_KEY]
-
-        parent_class = parent_deployment_node._deployment.func_or_class
-        method = getattr(parent_class, dag_node._method_name)
-        if "return" in method.__annotations__:
-            other_args_to_resolve["result_type_string"] = type_to_string(
-                method.__annotations__["return"]
-            )
-
-        return DeploymentMethodNode(
-            parent_deployment_node._deployment,
-            dag_node._method_name,
-            app_name,
-            dag_node.get_args(),
-            dag_node.get_kwargs(),
-            dag_node.get_options(),
-            other_args_to_resolve=other_args_to_resolve,
         )
     elif isinstance(
         dag_node,
@@ -339,14 +308,6 @@ def transform_serve_dag_to_serve_executor_dag(serve_dag_root_node: DAGNode):
             serve_dag_root_node.get_args(),
             serve_dag_root_node.get_kwargs(),
         )
-    elif isinstance(serve_dag_root_node, DeploymentMethodNode):
-        return DeploymentMethodExecutorNode(
-            # Deployment method handle
-            serve_dag_root_node._deployment_method_name,
-            serve_dag_root_node.get_args(),
-            serve_dag_root_node.get_kwargs(),
-            other_args_to_resolve=serve_dag_root_node.get_other_args_to_resolve(),
-        )
     elif isinstance(serve_dag_root_node, DeploymentFunctionNode):
         return DeploymentFunctionExecutorNode(
             serve_dag_root_node._deployment_handle,
@@ -379,12 +340,8 @@ def generate_executor_dag_driver_deployment(
         if isinstance(node, DeploymentExecutorNode):
             return node._deployment_handle
         elif isinstance(node, DeploymentFunctionExecutorNode):
-            if len(node.get_args()) == 0 and len(node.get_kwargs()) == 0:
-                return node._deployment_function_handle
-            else:
-                return RayServeDAGHandle(cloudpickle.dumps(node))
-        elif isinstance(node, DeploymentMethodExecutorNode):
-            return RayServeDAGHandle(cloudpickle.dumps(node))
+            assert len(node.get_args()) == 0 and len(node.get_kwargs()) == 0
+            return node._deployment_function_handle
 
     (
         replaced_deployment_init_args,
@@ -399,7 +356,6 @@ def generate_executor_dag_driver_deployment(
             (
                 DeploymentExecutorNode,
                 DeploymentFunctionExecutorNode,
-                DeploymentMethodExecutorNode,
             ),
         ),
         apply_fn=replace_with_handle,
