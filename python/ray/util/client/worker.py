@@ -400,10 +400,10 @@ class Worker:
         self.data_client.RegisterGetCallback(req, callback)
 
     def get(self, vals, *, timeout: Optional[float] = None) -> Any:
-        if isinstance(vals, list):
+        if isinstance(vals, (list, tuple)):
             if not vals:
                 return []
-            to_get = vals
+            to_get = list(vals)
         elif isinstance(vals, ClientObjectRef):
             to_get = [vals]
         else:
