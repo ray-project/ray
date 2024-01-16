@@ -476,7 +476,7 @@ class MultiAgentEnvRunner(EnvRunner):
             render_image = self.env.render()
 
         # Set initial obs and infos in the episodes.
-        self._episode.add_env_reset(
+        _episode.add_env_reset(
             observations=obs, infos=infos, render_image=render_image
         )
         self._make_on_episode_callback("on_episode_start", _episode)
@@ -505,7 +505,7 @@ class MultiAgentEnvRunner(EnvRunner):
             else:
                 to_module = self._env_to_module(
                     rl_module=self.module,
-                    episodes=[self._episode],
+                    episodes=[_episode],
                     explore=explore,
                 )
 
@@ -518,7 +518,7 @@ class MultiAgentEnvRunner(EnvRunner):
                 to_env = self._module_to_env(
                     rl_module=self.module,
                     data=to_env,
-                    episodes=[self._episode],
+                    episodes=[_episode],
                     explore=explore,
                 )
 
@@ -537,7 +537,7 @@ class MultiAgentEnvRunner(EnvRunner):
             extra_model_output = tree.map_structure(lambda s: s[0], to_env)
 
             # Record the timestep in the episode instance.
-            self._episode.add_env_step(
+            _episode.add_env_step(
                 obs,
                 actions,
                 rewards,
@@ -582,7 +582,7 @@ class MultiAgentEnvRunner(EnvRunner):
                 # Reset the environment.
                 obs, infos = self.env.reset()
                 # Add initial observations and infos.
-                self._episode.add_env_reset(observations=obs, infos=infos)
+                _episode.add_env_reset(observations=obs, infos=infos)
 
                 # Make `on_episode_start` callback.
                 self._make_on_episode_callback("on_episode_start", _episode)

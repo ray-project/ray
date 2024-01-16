@@ -857,8 +857,12 @@ class AlgorithmConfig(_Config):
 
         pipeline = EnvToModulePipeline(
             connectors=custom_connectors,
-            input_observation_space=env.single_observation_space,
-            input_action_space=env.single_action_space,
+            input_observation_space=getattr(
+                env, "single_observation_space", env.observation_space
+            ),
+            input_action_space=getattr(
+                env, "single_action_space", env.action_space
+            ),
             env=env,
         )
         pipeline.append(
@@ -895,8 +899,12 @@ class AlgorithmConfig(_Config):
 
         pipeline = ModuleToEnvPipeline(
             connectors=custom_connectors,
-            input_observation_space=env.single_observation_space,
-            input_action_space=env.single_action_space,
+            input_observation_space=getattr(
+                env, "single_observation_space", env.observation_space
+            ),
+            input_action_space=getattr(
+                env, "single_action_space", env.action_space
+            ),
             env=env,
         )
         pipeline.append(
