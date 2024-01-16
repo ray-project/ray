@@ -25,6 +25,7 @@ html[data-theme='dark'] {
   --pst-color-text-muted: #b3b9c4;
   --heading-color: #ffffff;
   --base-pygments-code-color: #cccccc;
+  --pst-color-link-hover: #cce0ff;
 }
 
 html[data-theme='light'] {
@@ -33,6 +34,7 @@ html[data-theme='light'] {
   --pst-color-text-muted: #454f59;
   --heading-color: #161a1d;
   --base-pygments-code-color: #cccccc;
+  --pst-color-link-hover: #09326c;
 }
 
 nav.bd-links li > a:hover {
