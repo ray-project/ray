@@ -46,9 +46,9 @@ class CloudInstanceProviderError:
     """
 
     # The exception that caused the error.
-    exception: Optional[Exception] = None
+    exception: Optional[Exception]
     # The details of the error.
-    details: Optional[str] = None
+    details: Optional[str]
     # The timestamp of the error occurred in nanoseconds.
     timestamp_ns: int
 
