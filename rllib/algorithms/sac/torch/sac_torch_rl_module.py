@@ -50,25 +50,21 @@ class SACTorchRLModule(TorchRLModule, SACRLModule):
 
         # Encoder forward passes.
         pi_encoder_outs = self.pi_encoder(batch_curr)
-        batch_curr.update({SampleBatch.ACTIONS: batch[SampleBatch.ACTIONS]}) 
-        # torch.concat((batch_curr[SampleBatch.OBS], batch[SampleBatch.ACTIONS]),dim=-1)
+        batch_curr.update(
+            {
+                SampleBatch.OBS: torch.concat(
+                    (batch_curr[SampleBatch.OBS], batch[SampleBatch.ACTIONS]), dim=-1
+                )
+            }
+        )
         qf_encoder_outs = self.qf_encoder(batch_curr)
-        qf_target_encoder_outs = self.qf_target_encoder(batch_curr)
         # Also encode the next observations (and next actions for the Q net).
         pi_encoder_next_outs = self.pi_encoder(batch_next)
-        # TODO (simon): Make sure these are available.
-        batch_next.update({SampleBatch.ACTIONS: batch["next_actions"]})
-        qf_encoder_nect_outs = self.qf_encoder(batch_next)
 
-        # Q heads.
+        # Q head.
         qf_out = self.qf(qf_encoder_outs[ENCODER_OUT])
-        qf_target_out = self.qf_target(qf_target_encoder_outs[ENCODER_OUT])
-        # Also get the Q-value for the next observations.
-        qf_next_out = self.qf(pi_encoder_next_outs[ENCODER_OUT])
         # Squeeze out last dimension (Q function node).
         output[QF_PREDS] = qf_out.squeeze(dim=-1)
-        output[QF_TARGET_PREDS] = qf_target_out.squeeze(dim=-1)
-        output["qf_preds_next"] = qf_next_out.squeeze(dim=-1)
 
         # Policy head.
         action_logits = self.pi(pi_encoder_outs[ENCODER_OUT])
@@ -109,7 +105,7 @@ class SACTorchRLModule(TorchRLModule, SACRLModule):
         qf_target_encoder_outs = self.qf_target_encoder(batch)
 
         # Target Q head forward pass.
-        qf_target_out = self.qf(qf_target_encoder_outs[ENCODER_OUT])
+        qf_target_out = self.qf_target(qf_target_encoder_outs[ENCODER_OUT])
         # Squeeze out the last dimension (Q function node).
         output[QF_PREDS] = qf_target_out.squeeze(dim=-1)
 

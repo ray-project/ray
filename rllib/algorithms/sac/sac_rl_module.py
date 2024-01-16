@@ -97,8 +97,6 @@ class SACRLModule(RLModule, RLModuleWithTargetNetworksInterface):
     def output_specs_train(self) -> SpecType:
         return [
             QF_PREDS,
-            QF_TARGET_PREDS,
             SampleBatch.ACTION_DIST_INPUTS,
-            "qf_preds_next",
             "action_dist_inputs_next",
         ]

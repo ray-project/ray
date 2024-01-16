@@ -16,6 +16,7 @@ from ray.rllib.utils.annotations import OverrideToImplementCustomLogic
 
 # TODO (simon): Check, if we can directly derive from DQNCatalog.
 # This should work as we need a qf and qf_target.
+# TODO (simon): Add CNNEnocders for Image observations.
 class SACCatalog(Catalog):
     """The catalog class used to build models for SAC."""
 

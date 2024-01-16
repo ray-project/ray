@@ -472,7 +472,7 @@ class SAC(DQN):
             # Add the sampled experiences to the replay buffer.
             # TODO (simon): Apply the same function like in PPO to aggregate episodes
             # over workers.
-            self.local_replay_buffer.add(episodes[0])
+            self.local_replay_buffer.add(episodes)
 
         # Update the target network each `target_network_update_freq` steps.
         current_ts = self._counters[
@@ -494,15 +494,18 @@ class SAC(DQN):
                 )
                 from ray.rllib.policy.sample_batch import SampleBatch
 
+                # TODO (sven): This looks a bit ugly, but we have not the same 
+                # naming in `SingleAgentEpisode` and `SampleBatch`.
                 train_batch = SampleBatch(
                     {
                         SampleBatch.OBS: train_dict[SampleBatch.OBS][:, 0],
                         SampleBatch.NEXT_OBS: train_dict[SampleBatch.OBS][:, 1],
-                        **{
-                            key: value[:, 0]
-                            for key, value in train_dict.items()
-                            if (key != SampleBatch.OBS and key != SampleBatch.NEXT_OBS)
-                        },
+                        SampleBatch.ACTIONS: train_dict[SampleBatch.ACTIONS][:, 0],
+                        SampleBatch.REWARDS: train_dict[SampleBatch.REWARDS][:, 0],
+                        SampleBatch.TERMINATEDS: train_dict["is_terminated"][:, 0],
+                        SampleBatch.TRUNCATEDS: train_dict["is_truncated"][:, 0],
+                        "is_first": train_dict["is_first"][:, 0],
+                        "is_last": train_dict["is_last"][:, 0],                        
                     }
                 )
                 train_batch = train_batch.as_multi_agent()
