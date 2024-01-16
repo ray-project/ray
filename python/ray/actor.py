@@ -275,6 +275,7 @@ class ActorMethod:
         retry_exceptions=None,
         concurrency_group=None,
         _generator_backpressure_num_objects=None,
+        _report_task_events=True,
     ):
         if num_returns is None:
             num_returns = self._num_returns
@@ -308,6 +309,7 @@ class ActorMethod:
                 generator_backpressure_num_objects=(
                     _generator_backpressure_num_objects
                 ),
+                report_task_events=_report_task_events,
             )
 
         # Apply the decorator if there is one.
@@ -771,6 +773,8 @@ class ActorClass:
             _metadata: Extended options for Ray libraries. For example,
                 _metadata={"workflows.io/options": <workflow options>} for
                 Ray workflows.
+            _report_task_events: True if task events from the actor should be
+                reported. Defaults to True.
 
         Examples:
 
@@ -882,6 +886,8 @@ class ActorClass:
                 Note that this limit is counted per handle. -1 means that the
                 number of pending calls is unlimited.
             scheduling_strategy: Strategy about how to schedule this actor.
+            _report_task_events: True if task events from the actor should be
+                reported. Defaults to True.
 
         Returns:
             A handle to the newly created actor.
@@ -951,6 +957,7 @@ class ActorClass:
         max_restarts = actor_options["max_restarts"]
         max_task_retries = actor_options["max_task_retries"]
         max_pending_calls = actor_options["max_pending_calls"]
+        report_task_events = actor_options["_report_task_events"]
 
         if scheduling_strategy is None or not isinstance(
             scheduling_strategy, PlacementGroupSchedulingStrategy
@@ -1149,6 +1156,7 @@ class ActorClass:
             concurrency_groups_dict=concurrency_groups_dict or dict(),
             max_pending_calls=max_pending_calls,
             scheduling_strategy=scheduling_strategy,
+            report_task_events=report_task_events,
         )
 
         if _actor_launch_hook:
@@ -1319,6 +1327,7 @@ class ActorHandle:
         retry_exceptions: Union[bool, list, tuple] = None,
         concurrency_group_name: Optional[str] = None,
         generator_backpressure_num_objects: Optional[int] = None,
+        report_task_events: bool = True,
     ):
         """Method execution stub for an actor handle.
 
@@ -1403,6 +1412,7 @@ class ActorHandle:
             self._ray_actor_method_cpus,
             concurrency_group_name if concurrency_group_name is not None else b"",
             generator_backpressure_num_objects,
+            report_task_events,
         )
 
         if num_returns == STREAMING_GENERATOR_RETURN:

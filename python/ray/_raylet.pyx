@@ -3890,6 +3890,7 @@ cdef class CoreWorker:
                      concurrency_groups_dict,
                      int32_t max_pending_calls,
                      scheduling_strategy,
+                     c_bool report_task_events,
                      ):
         cdef:
             CRayFunction ray_function
@@ -4027,7 +4028,8 @@ cdef class CoreWorker:
                           retry_exception_allowlist,
                           double num_method_cpus,
                           c_string concurrency_group_name,
-                          int64_t generator_backpressure_num_objects):
+                          int64_t generator_backpressure_num_objects,
+                          c_bool report_task_events):
 
         cdef:
             CActorID c_actor_id = actor_id.native()
@@ -4039,6 +4041,7 @@ cdef class CoreWorker:
             CTaskID current_c_task_id = CTaskID.Nil()
             TaskID current_task = self.get_current_task_id()
             c_string serialized_retry_exception_allowlist
+            c_string serialized_runtime_env = b"{}"
 
         serialized_retry_exception_allowlist = serialize_retry_exception_allowlist(
             retry_exception_allowlist,
@@ -4065,7 +4068,9 @@ cdef class CoreWorker:
                         num_returns,
                         c_resources,
                         concurrency_group_name,
-                        generator_backpressure_num_objects),
+                        generator_backpressure_num_objects,
+                        serialized_runtime_env,
+                        report_task_events),
                     max_retries,
                     retry_exceptions,
                     serialized_retry_exception_allowlist,

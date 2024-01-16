@@ -66,13 +66,15 @@ struct TaskOptions {
               std::unordered_map<std::string, double> &resources,
               const std::string &concurrency_group_name = "",
               int64_t generator_backpressure_num_objects = -1,
-              const std::string &serialized_runtime_env_info = "{}")
+              const std::string &serialized_runtime_env_info = "{}",
+              bool report_task_events = true)
       : name(name),
         num_returns(num_returns),
         resources(resources),
         concurrency_group_name(concurrency_group_name),
         serialized_runtime_env_info(serialized_runtime_env_info),
-        generator_backpressure_num_objects(generator_backpressure_num_objects) {}
+        generator_backpressure_num_objects(generator_backpressure_num_objects),
+        report_task_events(report_task_events) {}
 
   /// The name of this task.
   std::string name;
@@ -90,6 +92,9 @@ struct TaskOptions {
   /// -1 means either streaming generator is not used or
   /// it is used but the feature is disabled.
   int64_t generator_backpressure_num_objects;
+  /// True if task events (worker::TaskEvent) from this task should be reported, default
+  /// to true.
+  bool report_task_events = true;
 };
 
 /// Options for actor creation tasks.
@@ -109,7 +114,8 @@ struct ActorCreationOptions {
                        const std::string &serialized_runtime_env_info = "{}",
                        const std::vector<ConcurrencyGroup> &concurrency_groups = {},
                        bool execute_out_of_order = false,
-                       int32_t max_pending_calls = -1)
+                       int32_t max_pending_calls = -1,
+                       bool report_task_events = true)
       : max_restarts(max_restarts),
         max_task_retries(max_task_retries),
         max_concurrency(max_concurrency),
@@ -125,7 +131,8 @@ struct ActorCreationOptions {
         concurrency_groups(concurrency_groups.begin(), concurrency_groups.end()),
         execute_out_of_order(execute_out_of_order),
         max_pending_calls(max_pending_calls),
-        scheduling_strategy(scheduling_strategy) {
+        scheduling_strategy(scheduling_strategy),
+        report_task_events(report_task_events) {
     // Check that resources is a subset of placement resources.
     for (auto &resource : resources) {
       auto it = this->placement_resources.find(resource.first);
@@ -177,6 +184,9 @@ struct ActorCreationOptions {
   const int max_pending_calls = -1;
   // The strategy about how to schedule this actor.
   rpc::SchedulingStrategy scheduling_strategy;
+  /// True if task events (worker::TaskEvent) from this creation task should be reported
+  /// default to true.
+  const bool report_task_events = true;
 };
 
 using PlacementStrategy = rpc::PlacementStrategy;

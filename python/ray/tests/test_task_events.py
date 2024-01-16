@@ -623,6 +623,31 @@ def test_is_debugger_paused_async_actor(shutdown_only, actor_concurrency):
     wait_for_condition(verify, expected_task_name="AsyncActor.main_task")
 
 
+def test_disable_report_task_events(shutdown_only):
+    ray.init(num_cpus=1, _system_config=_SYSTEM_CONFIG)
+
+    @ray.remote
+    class Actor:
+        def f(self):
+            pass
+
+    a = Actor.remote()
+
+    ray.get(a.f.options(name="no-report", _report_task_events=False).remote())
+    ray.get(a.f.options(name="report").remote())
+
+    def verify():
+        tasks = list_tasks()
+        print(tasks)
+        assert len(tasks) == 2
+        assert sorted({t["name"] for t in tasks}) == sorted(
+            {"report", "Actor.__init__"}
+        )
+        return True
+
+    wait_for_condition(verify)
+
+
 if __name__ == "__main__":
     if os.environ.get("PARALLEL_CI"):
         sys.exit(pytest.main(["-n", "auto", "--boxed", "-vs", __file__]))

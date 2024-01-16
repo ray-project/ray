@@ -1880,7 +1880,8 @@ void CoreWorker::BuildCommonTaskSpec(
     const TaskID &main_thread_current_task_id,
     const std::string &concurrency_group_name,
     bool include_job_config,
-    int64_t generator_backpressure_num_objects) {
+    int64_t generator_backpressure_num_objects,
+    bool report_task_events) {
   // Build common task spec.
   auto override_runtime_env_info =
       OverrideTaskOrActorRuntimeEnvInfo(serialized_runtime_env_info);
@@ -1925,7 +1926,8 @@ void CoreWorker::BuildCommonTaskSpec(
       depth,
       main_thread_current_task_id,
       override_runtime_env_info,
-      concurrency_group_name);
+      concurrency_group_name,
+      report_task_events);
   // Set task arguments.
   for (const auto &arg : args) {
     builder.AddArg(*arg);
@@ -1980,7 +1982,8 @@ std::vector<rpc::ObjectReference> CoreWorker::SubmitTask(
                       /*concurrency_group_name*/ "",
                       /*include_job_config*/ true,
                       /*generator_backpressure_num_objects*/
-                      task_options.generator_backpressure_num_objects);
+                      task_options.generator_backpressure_num_objects,
+                      /*report_task_event*/ task_options.report_task_events);
   builder.SetNormalTaskSpec(max_retries,
                             retry_exceptions,
                             serialized_retry_exception_allowlist,
@@ -2065,7 +2068,8 @@ Status CoreWorker::CreateActor(const RayFunction &function,
                       worker_context_.GetMainThreadOrActorCreationTaskID(),
                       /*concurrency_group_name*/ "",
                       /*include_job_config*/ true,
-                      /*generator_backpressure_num_objects*/ -1);
+                      /*generator_backpressure_num_objects*/ -1,
+                      /*report_task_events*/ actor_creation_options.report_task_events);
 
   // If the namespace is not specified, get it from the job.
   const auto ray_namespace = (actor_creation_options.ray_namespace.empty()
@@ -2309,7 +2313,8 @@ Status CoreWorker::SubmitActorTask(
                       task_options.concurrency_group_name,
                       /*include_job_config*/ false,
                       /*generator_backpressure_num_objects*/
-                      task_options.generator_backpressure_num_objects);
+                      task_options.generator_backpressure_num_objects,
+                      /*report_task_events*/ task_options.report_task_events);
   // NOTE: placement_group_capture_child_tasks and runtime_env will
   // be ignored in the actor because we should always follow the actor's option.
 
@@ -2683,21 +2688,18 @@ Status CoreWorker::ExecuteTask(
   if (!options_.is_local_mode) {
     task_counter_.MovePendingToRunning(func_name, task_spec.IsRetry());
 
-    if (task_spec.IsActorTask() && !actor_repr_name.empty()) {
-      task_manager_->RecordTaskStatusEvent(
-          task_spec.AttemptNumber(),
-          task_spec,
-          rpc::TaskStatus::RUNNING,
-          /* include_task_info */ false,
-          worker::TaskStatusEvent::TaskStateUpdate(actor_repr_name, pid_));
-    } else {
-      task_manager_->RecordTaskStatusEvent(
-          task_spec.AttemptNumber(),
-          task_spec,
-          rpc::TaskStatus::RUNNING,
-          /* include_task_info */ false,
-          worker::TaskStatusEvent::TaskStateUpdate(pid_));
-    }
+    const auto update =
+        (task_spec.IsActorTask() && !actor_repr_name.empty())
+            ? worker::TaskStatusEvent::TaskStateUpdate(actor_repr_name, pid_)
+            : worker::TaskStatusEvent::TaskStateUpdate(pid_);
+    RAY_UNUSED(
+        task_manager_->RecordTaskStatusEventIfNeeded(task_spec.TaskId(),
+                                                     worker_context_.GetCurrentJobID(),
+                                                     task_spec.AttemptNumber(),
+                                                     task_spec,
+                                                     rpc::TaskStatus::RUNNING,
+                                                     /* include_task_info */ false,
+                                                     update));
 
     worker_context_.SetCurrentTask(task_spec);
     SetCurrentTaskId(task_spec.TaskId(), task_spec.AttemptNumber(), task_spec.GetName());
@@ -4379,12 +4381,14 @@ void CoreWorker::RecordTaskLogStart(const TaskID &task_id,
   auto current_task = worker_context_.GetCurrentTask();
   RAY_CHECK(current_task)
       << "We should have set the current task spec while executing the task.";
-  task_manager_->RecordTaskStatusEvent(
+  RAY_UNUSED(task_manager_->RecordTaskStatusEventIfNeeded(
       task_id,
       worker_context_.GetCurrentJobID(),
       attempt_number,
+      *current_task,
       rpc::TaskStatus::NIL,
-      worker::TaskStatusEvent::TaskStateUpdate(task_log_info));
+      /* include_task_info */ false,
+      worker::TaskStatusEvent::TaskStateUpdate(task_log_info)));
 }
 
 void CoreWorker::RecordTaskLogEnd(const TaskID &task_id,
@@ -4401,12 +4405,14 @@ void CoreWorker::RecordTaskLogEnd(const TaskID &task_id,
   auto current_task = worker_context_.GetCurrentTask();
   RAY_CHECK(current_task)
       << "We should have set the current task spec before executing the task.";
-  task_manager_->RecordTaskStatusEvent(
+  RAY_UNUSED(task_manager_->RecordTaskStatusEventIfNeeded(
       task_id,
       worker_context_.GetCurrentJobID(),
       attempt_number,
+      *current_task,
       rpc::TaskStatus::NIL,
-      worker::TaskStatusEvent::TaskStateUpdate(task_log_info));
+      /* include_task_info */ false,
+      worker::TaskStatusEvent::TaskStateUpdate(task_log_info)));
 }
 
 void CoreWorker::UpdateTaskIsDebuggerPaused(const TaskID &task_id,
@@ -4417,12 +4423,14 @@ void CoreWorker::UpdateTaskIsDebuggerPaused(const TaskID &task_id,
       << "We should have set the current task spec before executing the task.";
   RAY_LOG(DEBUG) << "Task " << current_task_it->second.TaskId()
                  << " is paused by debugger set to" << is_debugger_paused;
-  task_manager_->RecordTaskStatusEvent(
+  RAY_UNUSED(task_manager_->RecordTaskStatusEventIfNeeded(
+      task_id,
+      worker_context_.GetCurrentJobID(),
       current_task_it->second.AttemptNumber(),
       current_task_it->second,
       rpc::TaskStatus::NIL,
       /* include_task_info */ false,
-      worker::TaskStatusEvent::TaskStateUpdate(is_debugger_paused));
+      worker::TaskStatusEvent::TaskStateUpdate(is_debugger_paused)));
 }
 
 ClusterSizeBasedLeaseRequestRateLimiter::ClusterSizeBasedLeaseRequestRateLimiter(
