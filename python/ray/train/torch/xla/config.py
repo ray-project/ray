@@ -2,6 +2,7 @@ import os
 import uuid
 from dataclasses import dataclass
 import re
+import shutil
 
 import ray
 from ray.train._internal.utils import get_address_and_port
@@ -96,6 +97,8 @@ def _neuron_compile_extracted_graphs():
         parallel_compile_workdir = (
             f"/var/tmp/{os.environ.get('USER','no-user')}_parallel_compile_workdir/"
         )
+        if os.path.exists(parallel_compile_workdir):
+            shutil.rmtree(parallel_compile_workdir)
         os.makedirs(parallel_compile_workdir, exist_ok=True)
 
         # Users can set the cache directory using --cache_dir in NEURON_CC_FLAGS or by
