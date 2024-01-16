@@ -446,6 +446,15 @@ def _get_default_ray_tmp_dir():
     return os.path.join(os.environ.get("RAY_TMPDIR", "/tmp"), "ray")
 
 
+def _create_hook_entry(is_global):
+    if RAY_ON_SPARK_START_HOOK in os.environ:
+        return _load_class(os.environ[RAY_ON_SPARK_START_HOOK])()
+    elif is_in_databricks_runtime():
+        return DefaultDatabricksRayOnSparkStartHook(is_global)
+    else:
+        return RayOnSparkStartHook(is_global)
+
+
 def _setup_ray_cluster(
     *,
     max_worker_nodes: int,
@@ -484,13 +493,7 @@ def _setup_ray_cluster(
     from pyspark.util import inheritable_thread_target
     import fcntl
 
-    if RAY_ON_SPARK_START_HOOK in os.environ:
-        start_hook = _load_class(os.environ[RAY_ON_SPARK_START_HOOK])()
-    elif is_in_databricks_runtime():
-        start_hook = DefaultDatabricksRayOnSparkStartHook(is_global)
-    else:
-        start_hook = RayOnSparkStartHook(is_global)
-
+    start_hook = _create_hook_entry(is_global)
     spark = get_spark_session()
 
     ray_head_ip = socket.gethostbyname(get_spark_application_driver_host(spark))
@@ -700,6 +703,7 @@ def _setup_ray_cluster(
             extra_env={
                 RAY_ON_SPARK_COLLECT_LOG_TO_PATH: collect_log_to_path or "",
                 RAY_ON_SPARK_START_RAY_PARENT_PID: str(os.getpid()),
+                **start_hook.custom_environment_variables(),
             },
         )
         spark_job_server = None
@@ -1085,7 +1089,7 @@ def _setup_ray_cluster_internal(
     if "autoscale" in kwargs:
         raise ValueError(
             "'autoscale' argument is removed. You can set 'min_worker_nodes' argument "
-            "to be less than 'min_worker_nodes' to make autoscaling enabled."
+            "to be less than 'max_worker_nodes' to make autoscaling enabled."
         )
 
     if min_worker_nodes is None:
@@ -1508,10 +1512,13 @@ def _start_ray_worker_nodes(
         if ray_temp_dir is not None:
             ray_worker_node_cmd.append(f"--temp-dir={ray_temp_dir}")
 
+        hook_entry = _create_hook_entry(is_global=(ray_temp_dir is None))
+
         ray_worker_node_extra_envs = {
             RAY_ON_SPARK_COLLECT_LOG_TO_PATH: collect_log_to_path or "",
             RAY_ON_SPARK_START_RAY_PARENT_PID: str(os.getpid()),
             "RAY_ENABLE_WINDOWS_OR_OSX_CLUSTER": "1",
+            **hook_entry.custom_environment_variables(),
         }
 
         if num_gpus_per_node > 0:
@@ -1611,6 +1618,9 @@ def _start_ray_worker_nodes(
             num_gpus_per_node,
         )
         job_rdd = job_rdd.withResources(resource_profile)
+
+    hook_entry = _create_hook_entry(is_global=(ray_temp_dir is None))
+    hook_entry.on_spark_job_created(spark_job_group_id)
 
     job_rdd.mapPartitions(ray_cluster_job_mapper).collect()
 
@@ -1774,10 +1784,13 @@ class AutoscalingCluster:
         )
         ray_head_node_cmd.extend(_convert_ray_node_options(head_node_options))
 
+        hook_entry = _create_hook_entry(is_global=(ray_temp_dir is None))
+
         extra_env = {
             "AUTOSCALER_UPDATE_INTERVAL_S": "1",
             RAY_ON_SPARK_COLLECT_LOG_TO_PATH: collect_log_to_path or "",
             RAY_ON_SPARK_START_RAY_PARENT_PID: str(os.getpid()),
+            **hook_entry.custom_environment_variables(),
         }
 
         self.ray_head_node_cmd = ray_head_node_cmd

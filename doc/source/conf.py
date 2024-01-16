@@ -213,9 +213,6 @@ if build_one_lib and build_one_lib in all_toc_libs:
     exclude_patterns += all_toc_libs
 
 
-# The name of the Pygments (syntax highlighting) style to use.
-pygments_style = "lovelace"
-
 # If true, `todo` and `todoList` produce output, else they produce nothing.
 todo_include_todos = False
 
@@ -290,6 +287,7 @@ html_theme_options = {
     },
     "navbar_start": ["navbar-ray-logo"],
     "navbar_end": [
+        "search-button-field",
         "navbar-icon-links",
         "navbar-anyscale",
     ],
@@ -307,6 +305,8 @@ html_theme_options = {
     ],
     "navigation_depth": 4,
     "analytics": {"google_analytics_id": "UA-110413294-1"},
+    "pygment_light_style": "stata-dark",
+    "pygment_dark_style": "stata-dark",
 }
 
 html_context = {
@@ -317,11 +317,7 @@ html_context = {
 }
 
 html_sidebars = {
-    "**": [
-        "release-header",
-        "search-button-field",
-        "main-sidebar",
-    ],
+    "**": ["main-sidebar"],
     "ray-overview/examples": ["examples-sidebar"],
 }
 
@@ -410,12 +406,13 @@ def add_custom_assets(
     See documentation on Sphinx Core Events for more information:
     https://www.sphinx-doc.org/en/master/extdev/appapi.html#sphinx-core-events
     """
+    if pagename == "index":
+        app.add_css_file("css/index.css")
+        app.add_js_file("js/index.js")
+        return "index.html"  # Use the special index.html template for this page
+
     if pagename == "train/train":
         app.add_css_file("css/ray-train.css")
-    elif pagename == "index":
-        # CSS for HTML part of index.html
-        app.add_css_file("css/splash.css")
-        app.add_js_file("js/splash.js")
     elif pagename == "ray-overview/examples":
         # Example gallery
         app.add_css_file("css/examples.css")

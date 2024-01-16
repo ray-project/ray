@@ -34,7 +34,7 @@ from ray.serve._private.constants import (
 )
 from ray.serve._private.grpc_util import DummyServicer, create_serve_grpc_server
 from ray.serve._private.http_util import (
-    ASGIMessageQueue,
+    MessageQueue,
     convert_object_to_asgi_messages,
     receive_http_body,
     set_socket_reuse_port,
@@ -150,20 +150,11 @@ class GenericProxy(ABC):
 
         self._node_id = node_id
 
-        # Set the controller name so that serve connects to the
-        # controller instance this proxy is running in.
-        ray.serve.context._set_internal_replica_context(
-            app_name=None,
-            deployment=None,
-            replica_tag=None,
-            servable_object=None,
-        )
-
         # Used only for displaying the route table.
         self.route_info: Dict[str, EndpointTag] = dict()
 
         self.self_actor_handle = proxy_actor or ray.get_runtime_context().current_actor
-        self.asgi_receive_queues: Dict[str, ASGIMessageQueue] = dict()
+        self.asgi_receive_queues: Dict[str, MessageQueue] = dict()
 
         self.proxy_router = proxy_router_class(
             serve.get_deployment_handle, self.protocol
@@ -235,9 +226,6 @@ class GenericProxy(ABC):
             }
         )
 
-        # `self._prevent_node_downscale_ref` is used to prevent the node from being
-        # downscaled when there are ongoing requests
-        self._prevent_node_downscale_ref = ray.put("prevent_node_downscale_object")
         # `self._ongoing_requests` is used to count the number of ongoing requests
         self._ongoing_requests = 0
         # The time when the node starts to drain.
@@ -859,7 +847,7 @@ class HTTPProxy(GenericProxy):
                 await send(message)
 
     async def proxy_asgi_receive(
-        self, receive: Receive, queue: ASGIMessageQueue
+        self, receive: Receive, queue: MessageQueue
     ) -> Optional[int]:
         """Proxies the `receive` interface, placing its messages into the queue.
 
@@ -955,7 +943,7 @@ class HTTPProxy(GenericProxy):
         # Proxy the receive interface by placing the received messages on a queue.
         # The downstream replica must call back into `receive_asgi_messages` on this
         # actor to receive the messages.
-        receive_queue = ASGIMessageQueue()
+        receive_queue = MessageQueue()
         self.asgi_receive_queues[request_id] = receive_queue
         proxy_asgi_receive_task = get_or_create_event_loop().create_task(
             self.proxy_asgi_receive(proxy_request.receive, receive_queue)
@@ -1046,24 +1034,37 @@ class HTTPProxy(GenericProxy):
             )
 
         finally:
+            # For websocket connection, queue receive task is done when receiving
+            # disconnect message from client.
+            receive_client_disconnect_msg = False
             if not proxy_asgi_receive_task.done():
                 proxy_asgi_receive_task.cancel()
             else:
-                # If the server disconnects, status_code is set above from the
-                # disconnect message. Otherwise the disconnect code comes from
-                # a client message via the receive interface.
-                if (
-                    status is None
-                    and proxy_request.request_type == "websocket"
-                    and proxy_asgi_receive_task.exception() is None
-                ):
+                receive_client_disconnect_msg = True
+
+            # If the server disconnects, status_code can be set above from the
+            # disconnect message.
+            # If client disconnects, the disconnect code comes from
+            # a client message via the receive interface.
+            if status is None and proxy_request.request_type == "websocket":
+                if receive_client_disconnect_msg:
+                    # The disconnect message is sent from the client.
                     status = ResponseStatus(
                         code=str(proxy_asgi_receive_task.result()),
+                        is_error=True,
+                    )
+                else:
+                    # The server disconnect without sending a disconnect message
+                    # (otherwise the `status` would be set).
+                    status = ResponseStatus(
+                        code="1000",  # [Sihan] is there a better code for this?
                         is_error=True,
                     )
 
             del self.asgi_receive_queues[request_id]
 
+        # The status code should always be set.
+        assert status is not None
         yield status
 
 

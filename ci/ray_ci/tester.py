@@ -16,6 +16,8 @@ from ci.ray_ci.linux_tester_container import LinuxTesterContainer
 from ci.ray_ci.windows_tester_container import WindowsTesterContainer
 from ci.ray_ci.tester_container import TesterContainer
 from ci.ray_ci.utils import docker_login
+from ray_release.configs.global_config import init_global_config
+from ray_release.bazel import bazel_runfile
 
 CUDA_COPYRIGHT = """
 ==========
@@ -147,6 +149,11 @@ bazel_workspace_dir = os.environ.get("BUILD_WORKSPACE_DIRECTORY", "")
     type=click.Choice(["linux", "windows"]),
     help=("Operating system to run tests on"),
 )
+@click.option(
+    "--tmp-filesystem",
+    type=str,
+    help=("Filesystem to use for /tmp"),
+)
 def main(
     targets: List[str],
     team: str,
@@ -165,10 +172,12 @@ def main(
     test_arg: Optional[str],
     build_name: Optional[str],
     build_type: Optional[str],
+    tmp_filesystem: Optional[str],
 ) -> None:
     if not bazel_workspace_dir:
         raise Exception("Please use `bazelisk run //ci/ray_ci`")
     os.chdir(bazel_workspace_dir)
+    init_global_config(bazel_runfile("release/ray_release/configs/oss_config.yaml"))
     docker_login(_DOCKER_ECR_REPO.split("/")[0])
 
     if build_type == "wheel" or build_type == "wheel-aarch64":
@@ -182,7 +191,8 @@ def main(
         worker_id,
         parallelism_per_worker,
         gpus,
-        network,
+        network=network,
+        tmp_filesystem=tmp_filesystem,
         test_env=list(test_env),
         build_name=build_name,
         build_type=build_type,
@@ -199,7 +209,7 @@ def main(
         only_tags=only_tags,
         get_flaky_tests=run_flaky_tests,
     )
-    success = container.run_tests(test_targets, test_arg)
+    success = container.run_tests(team, test_targets, test_arg)
     sys.exit(0 if success else 42)
 
 
@@ -218,6 +228,7 @@ def _get_container(
     parallelism_per_worker: int,
     gpus: int,
     network: Optional[str],
+    tmp_filesystem: Optional[str] = None,
     test_env: Optional[List[str]] = None,
     build_name: Optional[str] = None,
     build_type: Optional[str] = None,
@@ -237,6 +248,7 @@ def _get_container(
             network=network,
             skip_ray_installation=skip_ray_installation,
             build_type=build_type,
+            tmp_filesystem=tmp_filesystem,
         )
 
     if operating_system == "windows":

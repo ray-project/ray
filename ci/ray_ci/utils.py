@@ -1,8 +1,10 @@
+import base64
 import logging
 import subprocess
 import sys
 import tempfile
 
+import boto3
 from typing import List
 from math import ceil
 
@@ -36,12 +38,14 @@ def docker_login(docker_ecr: str) -> None:
     """
     Login to docker with AWS credentials
     """
-    password = subprocess.check_output(
-        ["bash", "-c", "aws ecr get-login-password --region us-west-2"],
-        stderr=sys.stderr,
+    token = boto3.client("ecr", region_name="us-west-2").get_authorization_token()
+    user, password = (
+        base64.b64decode(token["authorizationData"][0]["authorizationToken"])
+        .decode("utf-8")
+        .split(":")
     )
     with tempfile.TemporaryFile() as f:
-        f.write(password)
+        f.write(bytes(password, "utf-8"))
         f.flush()
         f.seek(0)
 
@@ -50,7 +54,7 @@ def docker_login(docker_ecr: str) -> None:
                 "docker",
                 "login",
                 "--username",
-                "AWS",
+                user,
                 "--password-stdin",
                 docker_ecr,
             ],

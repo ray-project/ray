@@ -418,7 +418,7 @@ RAY_CONFIG(uint32_t, object_store_full_delay_ms, 10)
 RAY_CONFIG(double, high_plasma_storage_usage, 0.7)
 
 /// The amount of time between automatic local Python GC triggers.
-RAY_CONFIG(uint64_t, local_gc_interval_s, 10 * 60)
+RAY_CONFIG(uint64_t, local_gc_interval_s, 90 * 60)
 
 /// The min amount of time between local GCs (whether auto or mem pressure triggered).
 RAY_CONFIG(uint64_t, local_gc_min_interval_s, 10)
@@ -745,7 +745,7 @@ RAY_CONFIG(std::string, predefined_unit_instance_resources, "GPU")
 /// "neuron_cores", "TPUs" and "FPGAs".
 /// Default custom_unit_instance_resources is "neuron_cores,TPU".
 /// When set it to "neuron_cores,TPU,FPGA", we will also treat FPGA as unit_instance.
-RAY_CONFIG(std::string, custom_unit_instance_resources, "neuron_cores,TPU,NPU")
+RAY_CONFIG(std::string, custom_unit_instance_resources, "neuron_cores,TPU,NPU,HPU")
 
 /// The name of the system-created concurrency group for actors. This group is
 /// created with 1 thread, and is created lazily. The intended usage is for

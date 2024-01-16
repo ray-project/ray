@@ -86,18 +86,17 @@ class ImpalaConfig(AlgorithmConfig):
 
         # Update the config object.
         config = config.training(
-            lr=tune.grid_search([0.0001, ]), grad_clip=20.0
+            lr=tune.grid_search([0.0001, 0.0002]), grad_clip=20.0
         )
         config = config.resources(num_gpus=0)
         config = config.rollouts(num_rollout_workers=1)
         # Set the config object's env.
         config = config.environment(env="CartPole-v1")
-        # Use to_dict() to get the old-style python config dict
-        # when running with tune.
+        # Run with tune.
         tune.Tuner(
             "IMPALA",
+            param_space=config,
             run_config=air.RunConfig(stop={"training_iteration": 1}),
-            param_space=config.to_dict(),
         ).fit()
 
     .. testoutput::
@@ -947,24 +946,18 @@ class Impala(Algorithm):
             self.batches_to_place_on_learner.clear()
             # If there are no learner workers and learning is directly on the driver
             # Then we can't do async updates, so we need to block.
-            blocking = self.config.num_learner_workers == 0
+            async_update = self.config.num_learner_workers > 0
             results = []
             for batch in batches:
-                if blocking:
-                    result = self.learner_group.update(
-                        batch,
-                        reduce_fn=_reduce_impala_results,
-                        num_iters=self.config.num_sgd_iter,
-                        minibatch_size=self.config.minibatch_size,
-                    )
+                result = self.learner_group.update_from_batch(
+                    batch=batch,
+                    async_update=async_update,
+                    reduce_fn=_reduce_impala_results,
+                    num_iters=self.config.num_sgd_iter,
+                    minibatch_size=self.config.minibatch_size,
+                )
+                if not async_update:
                     results = [result]
-                else:
-                    results = self.learner_group.async_update(
-                        batch,
-                        reduce_fn=_reduce_impala_results,
-                        num_iters=self.config.num_sgd_iter,
-                        minibatch_size=self.config.minibatch_size,
-                    )
 
                 for r in results:
                     self._counters[NUM_ENV_STEPS_TRAINED] += r[ALL_MODULES].pop(
@@ -974,14 +967,14 @@ class Impala(Algorithm):
                         NUM_AGENT_STEPS_TRAINED
                     )
 
-            self._counters.update(self.learner_group.get_in_queue_stats())
+            self._counters.update(self.learner_group.get_stats())
             # If there are results, reduce-mean over each individual value and return.
             if results:
                 return tree.map_structure(lambda *x: np.mean(x), *results)
 
         # Nothing on the queue -> Don't send requests to learner group
-        # or no results ready (from previous `self.learner_group.update()` calls) for
-        # reducing.
+        # or no results ready (from previous `self.learner_group.update_from_batch()`
+        # calls) for reducing.
         return {}
 
     def place_processed_samples_on_learner_thread_queue(self) -> None:
