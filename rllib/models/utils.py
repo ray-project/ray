@@ -277,11 +277,7 @@ def get_filter_config(shape):
     ]
 
     shape = list(shape)
-    if len(shape) in [2, 3] and (shape[:2] == [480, 640] or shape[1:] == [480, 640]):
-        return filters_480x640
-    elif len(shape) in [2, 3] and (shape[:2] == [240, 320] or shape[1:] == [240, 320]):
-        return filters_240x320
-    elif len(shape) in [2, 3] and (shape[:2] == [96, 96] or shape[1:] == [96, 96]):
+    if len(shape) in [2, 3] and (shape[:2] == [96, 96] or shape[1:] == [96, 96]):
         return filters_96x96
     elif len(shape) in [2, 3] and (shape[:2] == [84, 84] or shape[1:] == [84, 84]):
         return filters_84x84
@@ -296,9 +292,8 @@ def get_filter_config(shape):
             "No default configuration for obs shape {}".format(shape)
             + ", you must specify `conv_filters` manually as a model option. "
             "Default configurations are only available for inputs of the following "
-            "shapes: [42, 42, K], [84, 84, K], [64, 64, K], [10, 10, K], "
-            "[240, 320, K], and [480, 640, K]. You may alternatively want "
-            "to use a custom model or preprocessor."
+            "shapes: [42, 42, K], [84, 84, K], [64, 64, K], [10, 10, K]. You may "
+            "alternatively want to use a custom model or preprocessor."
         )
 
 
