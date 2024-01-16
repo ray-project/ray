@@ -3,6 +3,7 @@ import uuid
 from dataclasses import dataclass
 import re
 import shutil
+import logging
 
 import ray
 from ray.train._internal.utils import get_address_and_port
@@ -10,6 +11,8 @@ from ray.train._internal.worker_group import WorkerGroup
 from ray.train.backend import Backend
 from ray.train.torch import TorchConfig
 from ray.util import PublicAPI
+
+logger = logging.getLogger(__name__)
 
 
 @PublicAPI(stability="alpha")
@@ -92,10 +95,10 @@ def _neuron_compile_extracted_graphs():
 
     # Only 1 worker per node should run parallel_compile()
     if os.environ.get("LOCAL_RANK") == "0":
-        print("Compiling extracted graphs on local rank0 worker")
+        logger.info("Compiling extracted graphs on local rank0 worker")
 
         parallel_compile_workdir = (
-            f"/var/tmp/{os.environ.get('USER','no-user')}_parallel_compile_workdir/"
+            f"/tmp/{os.environ.get('USER','no-user')}/parallel_compile_workdir/"
         )
         if os.path.exists(parallel_compile_workdir):
             shutil.rmtree(parallel_compile_workdir)
@@ -138,7 +141,7 @@ class _TorchAwsNeuronXLABackend(Backend):
 
         # Set up env vars for neuron parallel compilation graph extraction
         if backend_config.neuron_parallel_compile:
-            print("Extracting graphs for Neuron parallel compilation")
+            logger.info("Extracting graphs for Neuron parallel compilation")
             worker_group.execute(_set_neuron_parallel_compile_env_vars)
 
     def on_training_start(
