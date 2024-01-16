@@ -24,7 +24,9 @@ from ray.dashboard.modules.metrics import install_and_start_prometheus
         ("windows", "arm64"),
     ],
 )
-def test_download_prometheus(os_type, architecture):
+def test_download_prometheus(os_type, architecture, monkeypatch):
+    # set TEST_MODE_ENV_VAR to True to use requests.head instead of requests.get
+    monkeypatch.setenv(install_and_start_prometheus.TEST_MODE_ENV_VAR, "True")
     downloaded, _ = install_and_start_prometheus.download_prometheus(os_type, architecture)
     assert downloaded
 

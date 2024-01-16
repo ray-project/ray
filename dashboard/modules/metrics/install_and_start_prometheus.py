@@ -17,7 +17,7 @@ logging.basicConfig(
 
 FALLBACK_PROMETHEUS_VERSION = "2.48.1"
 DOWNLOAD_BLOCK_SIZE = 8192  # 8 KB
-
+TEST_MODE_ENV_VAR = "RAY_PROMETHEUS_DOWNLOAD_TEST_MODE"
 def get_system_info():
     os_type = platform.system().lower()
     architecture = platform.machine()
@@ -30,7 +30,9 @@ def get_system_info():
 def download_file(url, filename):
     logging.info(f"Downloading {url} to {Path(filename).absolute()}...")
     try:
-        response = requests.get(url, stream=True)
+        test_mode = os.environ.get(TEST_MODE_ENV_VAR, False)
+        request_method = requests.head if test_mode else requests.get
+        response = request_method(url, stream=True)
         response.raise_for_status()
 
         total_size_in_bytes = int(response.headers.get("content-length", 0))
@@ -117,7 +119,7 @@ def get_latest_prometheus_version():
         logging.error(f"Error fetching latest Prometheus version: {e}")
         return None
 
-def download_prometheus(os_type=None, architecture=None, prometheus_version=None):
+def get_prometheus_filename(os_type=None, architecture=None, prometheus_version=None):
     if os_type is None or architecture is None:
         os_type, architecture = get_system_info()
 
@@ -128,11 +130,18 @@ def download_prometheus(os_type=None, architecture=None, prometheus_version=None
             # Fall back to a hardcoded version
             prometheus_version = FALLBACK_PROMETHEUS_VERSION
 
-    file_name = f"prometheus-{prometheus_version}.{os_type}-{architecture}.tar.gz"
-    download_url = (
+    return f"prometheus-{prometheus_version}.{os_type}-{architecture}.tar.gz", prometheus_version
+
+def get_prometheus_download_url(os_type=None, architecture=None, prometheus_version=None):
+    file_name, prometheus_version = get_prometheus_filename(os_type, architecture, prometheus_version)
+    return (
         "https://github.com/prometheus/prometheus/releases/"
         f"download/v{prometheus_version}/{file_name}"
     )
+
+def download_prometheus(os_type=None, architecture=None, prometheus_version=None):
+    file_name = get_prometheus_filename(os_type, architecture, prometheus_version)
+    download_url = get_prometheus_download_url(os_type, architecture, prometheus_version)
 
     return download_file(download_url, file_name), file_name
 
