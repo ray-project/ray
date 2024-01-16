@@ -1211,6 +1211,7 @@ Status CoreWorker::PutInLocalPlasmaStore(const RayObject &object,
       RAY_RETURN_NOT_OK(plasma_store_provider_->Release(object_id));
     }
   }
+  RAY_LOG(INFO) << "jjyao PutInLocalPlasmaStore " << object_id;
   RAY_CHECK(memory_store_->Put(RayObject(rpc::ErrorType::OBJECT_IN_PLASMA), object_id));
   return Status::OK();
 }
@@ -1313,6 +1314,7 @@ Status CoreWorker::CreateOwnedAndIncrementLocalRef(
     } else if (*data == nullptr) {
       // Object already exists in plasma. Store the in-memory value so that the
       // client will check the plasma store.
+      RAY_LOG(INFO) << "jjyao CreateOwnedAndIncrementLocalRef " << *object_id;
       RAY_CHECK(
           memory_store_->Put(RayObject(rpc::ErrorType::OBJECT_IN_PLASMA), *object_id));
     }
@@ -1393,6 +1395,7 @@ Status CoreWorker::SealExisting(const ObjectID &object_id,
     RAY_RETURN_NOT_OK(plasma_store_provider_->Release(object_id));
     reference_counter_->FreePlasmaObjects({object_id});
   }
+  RAY_LOG(INFO) << "jjyao SealExisting " << object_id;
   RAY_CHECK(memory_store_->Put(RayObject(rpc::ErrorType::OBJECT_IN_PLASMA), object_id));
   return Status::OK();
 }
@@ -3159,10 +3162,12 @@ Status CoreWorker::GetAndPinArgsForExecutor(const TaskSpecification &task,
       // NOTE: This needs to be done after adding reference to reference counter
       // otherwise, the put is a no-op.
       if (!options_.is_local_mode) {
+        RAY_LOG(INFO) << "jjyao GetAndPinArgsForExecutor " << task.ArgId(i);
         RAY_UNUSED(memory_store_->Put(RayObject(rpc::ErrorType::OBJECT_IN_PLASMA),
                                       task.ArgId(i)));
       }
     } else {
+      RAY_LOG(INFO) << "jjyao pass-by-value";
       // A pass-by-value argument.
       std::shared_ptr<LocalMemoryBuffer> data = nullptr;
       if (task.ArgDataSize(i)) {
@@ -4135,6 +4140,7 @@ void CoreWorker::HandleAssignObjectOwner(rpc::AssignObjectOwnerRequest request,
       /*add_local_ref=*/false,
       /*pinned_at_raylet_id=*/NodeID::FromBinary(borrower_address.raylet_id()));
   reference_counter_->AddBorrowerAddress(object_id, borrower_address);
+  RAY_LOG(INFO) << "jjyao HandleAssignObjectOwner " << object_id;
   RAY_CHECK(memory_store_->Put(RayObject(rpc::ErrorType::OBJECT_IN_PLASMA), object_id));
   send_reply_callback(Status::OK(), nullptr, nullptr);
 }

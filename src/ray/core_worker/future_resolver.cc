@@ -101,6 +101,7 @@ void FutureResolver::ProcessResolvedObject(const ObjectID &object_id,
                                             object_id,
                                             inlined_ref.owner_address());
     }
+    RAY_LOG(INFO) << "Future resolver put " << object_id;
     RAY_UNUSED(in_memory_store_->Put(
         RayObject(data_buffer, metadata_buffer, inlined_refs), object_id));
   }

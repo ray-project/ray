@@ -329,6 +329,7 @@ Status CoreWorkerMemoryStore::GetImpl(const std::vector<ObjectID> &object_ids,
     size_t required_objects = num_objects - (object_ids.size() - remaining_ids.size());
 
     // Otherwise, create a GetRequest to track remaining objects.
+    RAY_LOG(INFO) << "jjyao Get remaining " << debug_string(remaining_ids);
     get_request = std::make_shared<GetRequest>(std::move(remaining_ids),
                                                required_objects,
                                                remove_after_get,
@@ -339,11 +340,19 @@ Status CoreWorkerMemoryStore::GetImpl(const std::vector<ObjectID> &object_ids,
   }
 
   // Only send block/unblock IPCs for non-actor tasks on the main thread.
+  bool any_owned_by_us = false;
+  for (const auto &object_id : get_request->ObjectIds()) {
+    if (ref_counter_->OwnedByUs(object_id)) {
+      any_owned_by_us = true;
+      break;
+    }
+  }
   bool should_notify_raylet =
-      (raylet_client_ != nullptr && ctx.ShouldReleaseResourcesOnBlockingCalls());
+      (raylet_client_ != nullptr && ctx.ShouldReleaseResourcesOnBlockingCalls() && any_owned_by_us);
 
   // Wait for remaining objects (or timeout).
   if (should_notify_raylet) {
+    RAY_LOG(INFO) << "jjyao NotifyDirectCallTaskBlocked";
     RAY_CHECK_OK(raylet_client_->NotifyDirectCallTaskBlocked(/*release_resources=*/true));
   }
 
