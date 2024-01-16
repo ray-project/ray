@@ -984,9 +984,7 @@ def test_args_named_and_star(ray_start_shared_local_modes):
         assert fn(1, 2, y=3) == ray.get(remote_fn.remote(1, 2, y=3))
         assert fn(1, y=3) == ray.get(remote_fn.remote(1, y=3))
 
-        assert fn(
-            1,
-        ) == ray.get(
+        assert fn(1,) == ray.get(
             remote_fn.remote(
                 1,
             )
