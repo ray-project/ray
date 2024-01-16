@@ -35,7 +35,6 @@ struct MemoryStoreStats {
 };
 
 class GetRequest;
-class CoreWorkerMemoryStore;
 
 /// The class provides implementations for local process memory store.
 /// An example usage for this is to retrieve the returned objects from direct
@@ -44,8 +43,7 @@ class CoreWorkerMemoryStore {
  public:
   /// Create a memory store.
   ///
-  /// \param[in] counter If not null, this enables ref counting for local objects,
-  ///            and the `remove_after_get` flag for Get() will be ignored.
+  /// \param[in] counter If not null, this enables ref counting for local objects.
   /// \param[in] raylet_client If not null, used to notify tasks blocked / unblocked.
   CoreWorkerMemoryStore(
       std::shared_ptr<ReferenceCounter> counter = nullptr,
@@ -71,15 +69,12 @@ class CoreWorkerMemoryStore {
   /// \param[in] num_objects Number of objects that should appear.
   /// \param[in] timeout_ms Timeout in milliseconds, wait infinitely if it's negative.
   /// \param[in] ctx The current worker context.
-  /// \param[in] remove_after_get When to remove the objects from store after `Get`
-  /// finishes. This has no effect if ref counting is enabled.
   /// \param[out] results Result list of objects data.
   /// \return Status.
   Status Get(const std::vector<ObjectID> &object_ids,
              int num_objects,
              int64_t timeout_ms,
              const WorkerContext &ctx,
-             bool remove_after_get,
              std::vector<std::shared_ptr<RayObject>> *results);
 
   /// Convenience wrapper around Get() that stores results in a given result map.
@@ -176,7 +171,6 @@ class CoreWorkerMemoryStore {
                  int num_objects,
                  int64_t timeout_ms,
                  const WorkerContext &ctx,
-                 bool remove_after_get,
                  std::vector<std::shared_ptr<RayObject>> *results,
                  bool abort_if_any_object_is_exception);
 

@@ -223,7 +223,7 @@ TEST_F(TaskManagerTest, TestTaskSuccess) {
   ASSERT_FALSE(reference_counter_->IsObjectPendingCreation(return_id));
 
   std::vector<std::shared_ptr<RayObject>> results;
-  RAY_CHECK_OK(store_->Get({return_id}, 1, -1, ctx, false, &results));
+  RAY_CHECK_OK(store_->Get({return_id}, 1, -1, ctx, &results));
   ASSERT_EQ(results.size(), 1);
   ASSERT_FALSE(results[0]->IsException());
   ASSERT_EQ(std::memcmp(results[0]->GetData()->Data(),
@@ -260,7 +260,7 @@ TEST_F(TaskManagerTest, TestTaskFailure) {
   ASSERT_FALSE(reference_counter_->IsObjectPendingCreation(return_id));
 
   std::vector<std::shared_ptr<RayObject>> results;
-  RAY_CHECK_OK(store_->Get({return_id}, 1, -1, ctx, false, &results));
+  RAY_CHECK_OK(store_->Get({return_id}, 1, -1, ctx, &results));
   ASSERT_EQ(results.size(), 1);
   rpc::ErrorType stored_error;
   ASSERT_TRUE(results[0]->IsException(&stored_error));
@@ -302,7 +302,7 @@ TEST_F(TaskManagerTest, TestPlasmaConcurrentFailure) {
   std::vector<std::shared_ptr<RayObject>> results;
   // Caller of FlushObjectsToRecover is responsible for deleting the object
   // from the in-memory store and recovering the object.
-  ASSERT_TRUE(store_->Get({return_id}, 1, 0, ctx, false, &results).ok());
+  ASSERT_TRUE(store_->Get({return_id}, 1, 0, ctx, &results).ok());
   auto objects_to_recover = reference_counter_->FlushObjectsToRecover();
   ASSERT_EQ(objects_to_recover.size(), 1);
   ASSERT_EQ(objects_to_recover[0], return_id);
@@ -330,7 +330,7 @@ TEST_F(TaskManagerTest, TestFailPendingTask) {
   ASSERT_FALSE(reference_counter_->IsObjectPendingCreation(return_id));
 
   std::vector<std::shared_ptr<RayObject>> results;
-  RAY_CHECK_OK(store_->Get({return_id}, 1, 0, ctx, false, &results));
+  RAY_CHECK_OK(store_->Get({return_id}, 1, 0, ctx, &results));
   ASSERT_EQ(results.size(), 1);
   rpc::ErrorType stored_error;
   ASSERT_TRUE(results[0]->IsException(&stored_error));
@@ -365,7 +365,7 @@ TEST_F(TaskManagerTest, TestTaskReconstruction) {
     ASSERT_TRUE(reference_counter_->IsObjectPendingCreation(return_id));
     ASSERT_EQ(reference_counter_->NumObjectIDsInScope(), 3);
     std::vector<std::shared_ptr<RayObject>> results;
-    ASSERT_FALSE(store_->Get({return_id}, 1, 0, ctx, false, &results).ok());
+    ASSERT_FALSE(store_->Get({return_id}, 1, 0, ctx, &results).ok());
     ASSERT_EQ(num_retries_, i + 1);
     ASSERT_EQ(last_delay_ms_, RayConfig::instance().task_retry_delay_ms());
     ASSERT_EQ(last_object_recovery_, false);
@@ -378,7 +378,7 @@ TEST_F(TaskManagerTest, TestTaskReconstruction) {
   ASSERT_FALSE(reference_counter_->IsObjectPendingCreation(return_id));
 
   std::vector<std::shared_ptr<RayObject>> results;
-  RAY_CHECK_OK(store_->Get({return_id}, 1, 0, ctx, false, &results));
+  RAY_CHECK_OK(store_->Get({return_id}, 1, 0, ctx, &results));
   ASSERT_EQ(results.size(), 1);
   rpc::ErrorType stored_error;
   ASSERT_TRUE(results[0]->IsException(&stored_error));
@@ -407,7 +407,7 @@ TEST_F(TaskManagerTest, TestTaskKill) {
   manager_.FailOrRetryPendingTask(spec.TaskId(), error);
   ASSERT_FALSE(manager_.IsTaskPending(spec.TaskId()));
   std::vector<std::shared_ptr<RayObject>> results;
-  RAY_CHECK_OK(store_->Get({return_id}, 1, 0, ctx, false, &results));
+  RAY_CHECK_OK(store_->Get({return_id}, 1, 0, ctx, &results));
   ASSERT_EQ(results.size(), 1);
   rpc::ErrorType stored_error;
   ASSERT_TRUE(results[0]->IsException(&stored_error));
@@ -430,7 +430,7 @@ TEST_F(TaskManagerTest, TestTaskOomKillNoOomRetryFailsImmediately) {
 
     std::vector<std::shared_ptr<RayObject>> results;
     WorkerContext ctx(WorkerType::WORKER, WorkerID::FromRandom(), JobID::FromInt(0));
-    RAY_CHECK_OK(store_->Get({return_id}, 1, 0, ctx, false, &results));
+    RAY_CHECK_OK(store_->Get({return_id}, 1, 0, ctx, &results));
     ASSERT_EQ(results.size(), 1);
     rpc::ErrorType stored_error;
     ASSERT_TRUE(results[0]->IsException(&stored_error));
@@ -450,7 +450,7 @@ TEST_F(TaskManagerTest, TestTaskOomKillNoOomRetryFailsImmediately) {
 
     std::vector<std::shared_ptr<RayObject>> results;
     WorkerContext ctx(WorkerType::WORKER, WorkerID::FromRandom(), JobID::FromInt(0));
-    RAY_CHECK_OK(store_->Get({return_id}, 1, 0, ctx, false, &results));
+    RAY_CHECK_OK(store_->Get({return_id}, 1, 0, ctx, &results));
     ASSERT_EQ(results.size(), 1);
     rpc::ErrorType stored_error;
     ASSERT_TRUE(results[0]->IsException(&stored_error));
@@ -488,7 +488,7 @@ TEST_F(TaskManagerTest, TestTaskOomAndNonOomKillReturnsLastError) {
 
   std::vector<std::shared_ptr<RayObject>> results;
   WorkerContext ctx(WorkerType::WORKER, WorkerID::FromRandom(), JobID::FromInt(0));
-  RAY_CHECK_OK(store_->Get({return_id}, 1, 0, ctx, false, &results));
+  RAY_CHECK_OK(store_->Get({return_id}, 1, 0, ctx, &results));
   ASSERT_EQ(results.size(), 1);
   rpc::ErrorType stored_error;
   ASSERT_TRUE(results[0]->IsException(&stored_error));
@@ -530,7 +530,7 @@ TEST_F(TaskManagerTest, TestTaskNotRetriableOomFailsImmediatelyEvenWithOomRetryC
 
   std::vector<std::shared_ptr<RayObject>> results;
   WorkerContext ctx(WorkerType::WORKER, WorkerID::FromRandom(), JobID::FromInt(0));
-  RAY_CHECK_OK(store_->Get({return_id}, 1, 0, ctx, false, &results));
+  RAY_CHECK_OK(store_->Get({return_id}, 1, 0, ctx, &results));
   ASSERT_EQ(results.size(), 1);
   rpc::ErrorType stored_error;
   ASSERT_TRUE(results[0]->IsException(&stored_error));
@@ -557,7 +557,7 @@ TEST_F(TaskManagerTest, TestFailsImmediatelyOverridesRetry) {
 
     std::vector<std::shared_ptr<RayObject>> results;
     WorkerContext ctx(WorkerType::WORKER, WorkerID::FromRandom(), JobID::FromInt(0));
-    RAY_CHECK_OK(store_->Get({return_id}, 1, 0, ctx, false, &results));
+    RAY_CHECK_OK(store_->Get({return_id}, 1, 0, ctx, &results));
     ASSERT_EQ(results.size(), 1);
     rpc::ErrorType stored_error;
     ASSERT_TRUE(results[0]->IsException(&stored_error));
@@ -581,7 +581,7 @@ TEST_F(TaskManagerTest, TestFailsImmediatelyOverridesRetry) {
 
     std::vector<std::shared_ptr<RayObject>> results;
     WorkerContext ctx(WorkerType::WORKER, WorkerID::FromRandom(), JobID::FromInt(0));
-    RAY_CHECK_OK(store_->Get({return_id}, 1, 0, ctx, false, &results));
+    RAY_CHECK_OK(store_->Get({return_id}, 1, 0, ctx, &results));
     ASSERT_EQ(results.size(), 1);
     rpc::ErrorType stored_error;
     ASSERT_TRUE(results[0]->IsException(&stored_error));
@@ -1113,7 +1113,7 @@ TEST_F(TaskManagerLineageTest, TestDynamicReturnsTask) {
 
   WorkerContext ctx(WorkerType::WORKER, WorkerID::FromRandom(), JobID::FromInt(0));
   std::vector<std::shared_ptr<RayObject>> results;
-  RAY_CHECK_OK(store_->Get(dynamic_return_ids, 3, -1, ctx, false, &results));
+  RAY_CHECK_OK(store_->Get(dynamic_return_ids, 3, -1, ctx, &results));
   ASSERT_EQ(results.size(), 3);
   for (int i = 0; i < 3; i++) {
     ASSERT_TRUE(results[i]->IsInPlasmaError());
@@ -1192,10 +1192,10 @@ TEST_F(TaskManagerLineageTest, TestResubmittedDynamicReturnsTaskFails) {
   // No error stored for the generator ID, which should have gone out of scope.
   WorkerContext ctx(WorkerType::WORKER, WorkerID::FromRandom(), JobID::FromInt(0));
   std::vector<std::shared_ptr<RayObject>> results;
-  ASSERT_FALSE(store_->Get({generator_id}, 1, 0, ctx, false, &results).ok());
+  ASSERT_FALSE(store_->Get({generator_id}, 1, 0, ctx, &results).ok());
 
   // The internal ObjectRefs have the right error.
-  RAY_CHECK_OK(store_->Get(dynamic_return_ids, 3, -1, ctx, false, &results));
+  RAY_CHECK_OK(store_->Get(dynamic_return_ids, 3, -1, ctx, &results));
   ASSERT_EQ(results.size(), 3);
   for (int i = 0; i < 3; i++) {
     rpc::ErrorType stored_error;
@@ -1565,7 +1565,7 @@ TEST_F(TaskManagerTest, TestObjectRefStreamEndtoEnd) {
   ASSERT_EQ(reference_counter_->NumObjectIDsInScope(), 2);
   std::vector<std::shared_ptr<RayObject>> results;
   WorkerContext ctx(WorkerType::WORKER, WorkerID::FromRandom(), JobID::FromInt(0));
-  RAY_CHECK_OK(store_->Get({dynamic_return_id}, 1, 1, ctx, false, &results));
+  RAY_CHECK_OK(store_->Get({dynamic_return_id}, 1, 1, ctx, &results));
   ASSERT_EQ(results.size(), 1);
 
   // Make sure you can read.
@@ -1594,7 +1594,7 @@ TEST_F(TaskManagerTest, TestObjectRefStreamEndtoEnd) {
 
   // NumObjectIDsInScope == Generator + 2 intermediate result.
   results.clear();
-  RAY_CHECK_OK(store_->Get({dynamic_return_id2}, 1, 1, ctx, false, &results));
+  RAY_CHECK_OK(store_->Get({dynamic_return_id2}, 1, 1, ctx, &results));
   ASSERT_EQ(results.size(), 1);
 
   // Make sure you can read.
@@ -1657,10 +1657,10 @@ TEST_F(TaskManagerTest, TestObjectRefStreamDelCleanReferences) {
   ASSERT_EQ(store_->Size(), 2);
   std::vector<std::shared_ptr<RayObject>> results;
   WorkerContext ctx(WorkerType::WORKER, WorkerID::FromRandom(), JobID::FromInt(0));
-  RAY_CHECK_OK(store_->Get({dynamic_return_id}, 1, 1, ctx, false, &results));
+  RAY_CHECK_OK(store_->Get({dynamic_return_id}, 1, 1, ctx, &results));
   ASSERT_EQ(results.size(), 1);
   results.clear();
-  RAY_CHECK_OK(store_->Get({dynamic_return_id2}, 1, 1, ctx, false, &results));
+  RAY_CHECK_OK(store_->Get({dynamic_return_id2}, 1, 1, ctx, &results));
   ASSERT_EQ(results.size(), 1);
   results.clear();
 
@@ -1669,9 +1669,9 @@ TEST_F(TaskManagerTest, TestObjectRefStreamDelCleanReferences) {
   ASSERT_EQ(reference_counter_->NumObjectIDsInScope(), 1);
   // All the in memory objects should be cleaned up.
   ASSERT_EQ(store_->Size(), 0);
-  ASSERT_TRUE(store_->Get({dynamic_return_id}, 1, 1, ctx, false, &results).IsTimedOut());
+  ASSERT_TRUE(store_->Get({dynamic_return_id}, 1, 1, ctx, &results).IsTimedOut());
   results.clear();
-  ASSERT_TRUE(store_->Get({dynamic_return_id2}, 1, 1, ctx, false, &results).IsTimedOut());
+  ASSERT_TRUE(store_->Get({dynamic_return_id2}, 1, 1, ctx, &results).IsTimedOut());
   results.clear();
 
   // NOTE: We panic if READ is called after DELETE. The
@@ -1693,7 +1693,7 @@ TEST_F(TaskManagerTest, TestObjectRefStreamDelCleanReferences) {
   ASSERT_EQ(reference_counter_->NumObjectIDsInScope(), 1);
   // All the in memory objects should be cleaned up.
   ASSERT_EQ(store_->Size(), 0);
-  ASSERT_TRUE(store_->Get({dynamic_return_id3}, 1, 1, ctx, false, &results).IsTimedOut());
+  ASSERT_TRUE(store_->Get({dynamic_return_id3}, 1, 1, ctx, &results).IsTimedOut());
   results.clear();
 
   CompletePendingStreamingTask(spec, caller_address, 2);

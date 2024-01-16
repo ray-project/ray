@@ -63,7 +63,6 @@ std::vector<std::shared_ptr<msgpack::sbuffer>> LocalModeObjectStore::GetRaw(
                                             (int)ids.size(),
                                             timeout_ms,
                                             local_mode_ray_tuntime_.GetWorkerContext(),
-                                            false,
                                             &results);
   if (!status.ok()) {
     throw RayException("Get object error: " + status.ToString());

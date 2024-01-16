@@ -834,7 +834,7 @@ TEST(MemoryStoreIntegrationTest, TestSimple) {
   RAY_CHECK(store.Put(buffer, id2));
   ASSERT_EQ(store.Size(), 0);
 
-  // Tests ref counting overrides remove after get option.
+  // Tests object is not removed after get.
   rc->AddLocalReference(id1, "");
   RAY_CHECK(store.Put(buffer, id1));
   ASSERT_EQ(store.Size(), 1);
@@ -844,7 +844,6 @@ TEST(MemoryStoreIntegrationTest, TestSimple) {
                          /*num_objects*/ 1,
                          /*timeout_ms*/ -1,
                          ctx,
-                         /*remove_after_get*/ true,
                          &results));
   ASSERT_EQ(results.size(), 1);
   ASSERT_EQ(store.Size(), 1);
