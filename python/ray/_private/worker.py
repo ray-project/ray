@@ -2837,10 +2837,10 @@ def get(
 @PublicAPI
 @client_mode_hook
 def put(
-    value: Any,
+    value: T,
     *,
     _owner: Optional["ray.actor.ActorHandle"] = None,
-) -> "ray.ObjectRef":
+) -> "ray.ObjectRef[T]":
     """Store an object in the object store.
 
     The object may not be evicted while a reference to the returned ID exists.
