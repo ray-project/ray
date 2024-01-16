@@ -158,9 +158,9 @@ def test_torch_conversion_collate_fn(ray_start_regular_shared):
 
     # Test that we don't automatically set device if collate_fn is specified.
     with patch(
-        "ray.air._internal.torch_utils.get_device", lambda: torch.device("cuda")
+        "ray.air._internal.torch_utils.get_devices", lambda: torch.device("cuda")
     ):
-        assert ray.air._internal.torch_utils.get_device().type == "cuda"
+        assert ray.air._internal.torch_utils.get_devices().type == "cuda"
 
         it.iter_batches = MagicMock()
         for batch in it.iter_torch_batches(collate_fn=collate_fn):
