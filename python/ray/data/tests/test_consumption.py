@@ -452,14 +452,14 @@ def test_dataset_repr(ray_start_regular_shared):
     )
     ds = ds.filter(lambda x: x["id"] > 0)
     assert repr(ds) == (
-        "Filter\n"
+        "Filter(<lambda>)\n"
         "+- MapBatches(<lambda>)\n"
         "   +- Dataset(num_blocks=10, num_rows=10, schema={id: int64})"
     )
     ds = ds.random_shuffle()
     assert repr(ds) == (
         "RandomShuffle\n"
-        "+- Filter\n"
+        "+- Filter(<lambda>)\n"
         "   +- MapBatches(<lambda>)\n"
         "      +- Dataset(num_blocks=10, num_rows=10, schema={id: int64})"
     )
@@ -468,6 +468,7 @@ def test_dataset_repr(ray_start_regular_shared):
         repr(ds) == "MaterializedDataset(num_blocks=10, num_rows=9, schema={id: int64})"
     )
     ds = ds.map_batches(lambda x: x)
+
     assert repr(ds) == (
         "MapBatches(<lambda>)\n"
         "+- Dataset(num_blocks=10, num_rows=9, schema={id: int64})"
@@ -482,10 +483,17 @@ def test_dataset_repr(ray_start_regular_shared):
         "schema={id: int64})"
     )
     ds3 = ds1.union(ds2)
-    assert repr(ds3) == "Dataset(num_blocks=10, num_rows=9, schema={id: int64})"
+    # TODO(scottjlee): include all of the input datasets to union()
+    # in the repr output, instead of only the resulting unioned dataset.
+    assert repr(ds3) == (
+        "Union\n+- Dataset(num_blocks=10, num_rows=9, schema={id: int64})"
+    )
     ds = ds.zip(ds3)
     assert repr(ds) == (
-        "Zip\n" "+- Dataset(num_blocks=10, num_rows=9, schema={id: int64})"
+        "Zip\n"
+        "+- MapBatches(<lambda>)\n"
+        "+- Union\n"
+        "   +- Dataset(num_blocks=10, num_rows=9, schema={id: int64})"
     )
 
     def my_dummy_fn(x):

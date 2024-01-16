@@ -25,8 +25,8 @@ import Loading from "../../components/Loading";
 import { HelpInfo } from "../../components/Tooltip";
 import { ServeSystemActor } from "../../type/serve";
 import { useFetchActor } from "../actor/hook/useActorDetail";
-import { useServeApplications } from "./hook/useServeApplications";
-import { ServeApplicationRow } from "./ServeApplicationRow";
+import { useServeDeployments } from "./hook/useServeApplications";
+import { ServeDeploymentRow } from "./ServeDeploymentRow";
 import { ServeMetricsSection } from "./ServeMetricsSection";
 import { ServeSystemPreview } from "./ServeSystemDetails";
 
@@ -44,7 +44,7 @@ const useStyles = makeStyles((theme) =>
     helpInfo: {
       marginLeft: theme.spacing(1),
     },
-    applicationsSection: {
+    deploymentsSection: {
       marginTop: theme.spacing(4),
     },
     section: {
@@ -54,28 +54,29 @@ const useStyles = makeStyles((theme) =>
 );
 
 const columns: { label: string; helpInfo?: ReactElement; width?: string }[] = [
-  { label: "Application name" },
-  { label: "Route prefix" },
+  { label: "Deployment name" },
   { label: "Status" },
   { label: "Status message", width: "30%" },
-  { label: "Num deployments" },
+  { label: "Num replicas" },
+  { label: "Actions" },
+  { label: "Application" },
+  { label: "Route prefix" },
   { label: "Last deployed at" },
   { label: "Duration (since last deploy)" },
-  { label: "Application config" },
 ];
 
-export const ServeApplicationsListPage = () => {
+export const ServeDeploymentsListPage = () => {
   const classes = useStyles();
   const {
     serveDetails,
-    filteredServeApplications,
+    filteredServeDeployments,
     error,
-    allServeApplications,
+    allServeDeployments,
     page,
     setPage,
     proxies,
     changeFilter,
-  } = useServeApplications();
+  } = useServeDeployments();
 
   if (error) {
     return <Typography color="error">{error.toString()}</Typography>;
@@ -94,14 +95,14 @@ export const ServeApplicationsListPage = () => {
       ) : (
         <React.Fragment>
           <ServeSystemPreview
-            allApplications={allServeApplications}
+            allDeployments={allServeDeployments}
             proxies={proxies}
             serveDetails={serveDetails}
           />
           <CollapsibleSection
-            title="Applications"
+            title="Deployments"
             startExpanded
-            className={classes.applicationsSection}
+            className={classes.deploymentsSection}
           >
             <TableContainer>
               <div style={{ flex: 1, display: "flex", alignItems: "center" }}>
@@ -109,7 +110,7 @@ export const ServeApplicationsListPage = () => {
                   style={{ margin: 8, width: 120 }}
                   options={Array.from(
                     new Set(
-                      allServeApplications.map((e) => (e.name ? e.name : "-")),
+                      allServeDeployments.map((e) => (e.name ? e.name : "-")),
                     ),
                   )}
                   onInputChange={(_: any, value: string) => {
@@ -125,13 +126,25 @@ export const ServeApplicationsListPage = () => {
                 <Autocomplete
                   style={{ margin: 8, width: 120 }}
                   options={Array.from(
-                    new Set(allServeApplications.map((e) => e.status)),
+                    new Set(allServeDeployments.map((e) => e.status)),
                   )}
                   onInputChange={(_: any, value: string) => {
                     changeFilter("status", value.trim());
                   }}
                   renderInput={(params: TextFieldProps) => (
                     <TextField {...params} label="Status" />
+                  )}
+                />
+                <Autocomplete
+                  style={{ margin: 8, width: 120 }}
+                  options={Array.from(
+                    new Set(allServeDeployments.map((e) => e.applicationName)),
+                  )}
+                  onInputChange={(_: any, value: string) => {
+                    changeFilter("applicationName", value.trim());
+                  }}
+                  renderInput={(params: TextFieldProps) => (
+                    <TextField {...params} label="Application" />
                   )}
                 />
                 <TextField
@@ -152,7 +165,7 @@ export const ServeApplicationsListPage = () => {
               <div style={{ display: "flex", alignItems: "center" }}>
                 <Pagination
                   count={Math.ceil(
-                    filteredServeApplications.length / page.pageSize,
+                    filteredServeDeployments.length / page.pageSize,
                   )}
                   page={page.pageNo}
                   onChange={(e, pageNo) => setPage("pageNo", pageNo)}
@@ -184,15 +197,16 @@ export const ServeApplicationsListPage = () => {
                   </TableRow>
                 </TableHead>
                 <TableBody>
-                  {filteredServeApplications
+                  {filteredServeDeployments
                     .slice(
                       (page.pageNo - 1) * page.pageSize,
                       page.pageNo * page.pageSize,
                     )
-                    .map((application) => (
-                      <ServeApplicationRow
-                        key={application.name}
-                        application={application}
+                    .map((deployment) => (
+                      <ServeDeploymentRow
+                        key={`${deployment.application.name}-${deployment.name}`}
+                        deployment={deployment}
+                        application={deployment.application}
                       />
                     ))}
                 </TableBody>

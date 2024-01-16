@@ -2294,6 +2294,7 @@ class Dataset:
         self,
         key: Union[str, List[str], None] = None,
         descending: Union[bool, List[bool]] = False,
+        boundaries: List[Union[int, float]] = None,
     ) -> "Dataset":
         """Sort the dataset by the specified key column or key function.
 
@@ -2304,9 +2305,28 @@ class Dataset:
 
         Examples:
             >>> import ray
-            >>> ds = ray.data.range(100)
-            >>> ds.sort("id", descending=True).take(3)
-            [{'id': 99}, {'id': 98}, {'id': 97}]
+            >>> ds = ray.data.range(15)
+            >>> ds = ds.sort("id", descending=False, boundaries=[5, 10])
+            >>> for df in ray.get(ds.to_pandas_refs()):
+            ...     print(df)
+               id
+            0   0
+            1   1
+            2   2
+            3   3
+            4   4
+               id
+            0   5
+            1   6
+            2   7
+            3   8
+            4   9
+               id
+            0  10
+            1  11
+            2  12
+            3  13
+            4  14
 
         Time complexity: O(dataset size * log(dataset size / parallelism))
 
@@ -2314,12 +2334,19 @@ class Dataset:
             key: The column or a list of columns to sort by.
             descending: Whether to sort in descending order. Must be a boolean or a list
                 of booleans matching the number of the columns.
+            boundaries: The list of values based on which to repartition the dataset.
+                For example, if the input boundary is [10,20], rows with values less
+                than 10 will be divided into the first block, rows with values greater
+                than or equal to 10 and less than 20 will be divided into the
+                second block, and rows with values greater than or equal to 20
+                will be divided into the third block. If not provided, the
+                boundaries will be sampled from the input blocks. This feature
+                only supports numeric columns right now.
 
         Returns:
             A new, sorted :class:`Dataset`.
         """
-
-        sort_key = SortKey(key, descending)
+        sort_key = SortKey(key, descending, boundaries)
         plan = self._plan.with_stage(SortStage(self, sort_key))
 
         logical_plan = self._logical_plan
@@ -2651,10 +2678,19 @@ class Dataset:
         if not fetch_if_missing:
             return None
 
-        # Lazily execute only the first block to minimize computation.
-        # We achieve this by appending a Limit[1] operation to a copy
-        # of this Dataset, which we then execute to get its schema.
-        base_schema = self.limit(1)._plan.schema(fetch_if_missing=fetch_if_missing)
+        if self._plan.is_read_only():
+            # For read-only plans, there is special logic for fetching the
+            # schema from already known metadata
+            # (see `get_legacy_lazy_block_list_read_only()`). This requires
+            # the underlying logical plan to be read-only, so we skip appending
+            # the Limit[1] operation as we do in the else case below. There is
+            # no downside in this case, since it doesn't execute any read tasks.
+            base_schema = self._plan.schema(fetch_if_missing=fetch_if_missing)
+        else:
+            # Lazily execute only the first block to minimize computation.
+            # We achieve this by appending a Limit[1] operation to a copy
+            # of this Dataset, which we then execute to get its schema.
+            base_schema = self.limit(1)._plan.schema(fetch_if_missing=fetch_if_missing)
         if base_schema:
             self._plan.cache_schema(base_schema)
             return Schema(base_schema)
