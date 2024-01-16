@@ -432,7 +432,7 @@ class PPO(Algorithm):
             self._counters[NUM_ENV_STEPS_SAMPLED] += sum(len(e) for e in episodes)
 
         # Perform a train step on the collected batch.
-        train_results = self.learner_group.update(
+        train_results = self.learner_group.update_from_episodes(
             episodes=episodes,
             minibatch_size=(
                 self.config.mini_batch_size_per_learner
