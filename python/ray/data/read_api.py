@@ -2371,6 +2371,7 @@ def from_spark(
 
     if SparkSession.getActiveSession() is not None:
         from ray.data.datasource.spark_datasource import SparkDatasource
+        from ray.util.spark.databricks_hook import get_databricks_function
         # Ray on spark
         datasource = SparkDatasource(df, -1)
         if parallelism is None:
@@ -2385,6 +2386,18 @@ def from_spark(
             datasource.dispose_spark_cache()
 
         dataset.__del__ = patched_dataset_del
+
+        try:
+            get_databricks_function("displayHTML")(
+                "<b style='background-color:yellow;'>The Ray dataset converted from "
+                "spark dataset puts cached data in spark cluster side, "
+                "when you don't use this Ray dataset instance any more, please "
+                "remember to call `del this_ray_dataset` in order to release "
+                "cached data in spark side.</b>"
+            )
+        except Exception:
+            pass
+
 
         return dataset
     else:
