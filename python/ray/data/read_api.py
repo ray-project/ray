@@ -2375,14 +2375,18 @@ def from_spark(
         datasource = SparkDatasource(df, -1)
         if parallelism is None:
             parallelism = -1
-        try:
-            dataset = read_datasource(
-                datasource=datasource,
-                parallelism=parallelism,
-            )
-            return dataset.materialize()
-        finally:
+        dataset = read_datasource(
+            datasource=datasource,
+            parallelism=parallelism,
+        )
+
+        def patched_dataset_del(obj):
+            super(obj.__class__, obj).__del__()
             datasource.dispose_spark_cache()
+
+        dataset.__del__ = patched_dataset_del
+
+        return dataset
     else:
         import raydp
 
