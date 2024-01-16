@@ -1613,9 +1613,9 @@ def read_tfrecords(
     ds = read_datasource(datasource, parallelism=parallelism)
 
     if fast_read_auto_infer_schema and fast_read and not tf_schema:
-        from ray.data.datasource.tfrecords_datasource import infer_schema_and_transform
+        from ray.data.datasource.tfrecords_datasource import _infer_schema_and_transform
 
-        return infer_schema_and_transform(ds)
+        return _infer_schema_and_transform(ds)
 
     return ds
 

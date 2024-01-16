@@ -339,12 +339,20 @@ def _ds_eq_streaming(ds_expected, ds_actual) -> bool:
 
 
 @pytest.mark.parametrize(
-    "with_tf_schema,fast_read",
-    [(True, True), (True, False), (False, True), (False, False)],
+    "with_tf_schema,fast_read,compression",
+    [
+        (True, True, None),
+        (True, True, "GZIP"),
+        (True, False, None),
+        (False, True, None),
+        (False, True, "GZIP"),
+        (False, False, None),
+    ],
 )
 def test_read_tfrecords(
     with_tf_schema,
     fast_read,
+    compression,
     ray_start_regular_shared,
     tmp_path,
 ):
@@ -358,11 +366,20 @@ def test_read_tfrecords(
         tf_schema = _features_to_schema(example.features)
 
     path = os.path.join(tmp_path, "data.tfrecords")
-    with tf.io.TFRecordWriter(path=path) as writer:
+    with tf.io.TFRecordWriter(
+        path=path, options=tf.io.TFRecordOptions(compression_type=compression)
+    ) as writer:
         writer.write(example.SerializeToString())
 
+    arrow_open_stream_args = None
+    if compression:
+        arrow_open_stream_args = {"compression": compression}
+
     ds = read_tfrecords_with_fast_read_override(
-        path, tf_schema=tf_schema, fast_read=fast_read
+        path,
+        tf_schema=tf_schema,
+        fast_read=fast_read,
+        arrow_open_stream_args=arrow_open_stream_args,
     )
 
     df = ds.to_pandas()
@@ -651,15 +668,17 @@ def test_write_invalid_tfrecords(ray_start_regular_shared, tmp_path):
         ds.write_tfrecords(tmp_path)
 
 
-def test_read_invalid_tfrecords(ray_start_regular_shared, tmp_path):
+@pytest.mark.parametrize("fast_read", (True, False))
+def test_read_invalid_tfrecords(ray_start_regular_shared, fast_read, tmp_path):
     file_path = os.path.join(tmp_path, "file.json")
     with open(file_path, "w") as file:
         json.dump({"number": 0, "string": "foo"}, file)
 
     # Expect RuntimeError raised when reading JSON as TFRecord file.
-    # with pytest.raises(RuntimeError, match="Failed to read TFRecord file"):
-    ds = read_tfrecords_with_fast_read_override(file_path)
-    schema = ds.schema()  # noqa: F841
+    with pytest.raises(RuntimeError, match="Failed to read TFRecord file"):
+        read_tfrecords_with_fast_read_override(
+            file_path, fast_read=fast_read, fast_read_auto_infer_schema=False
+        ).schema()
 
 
 def test_read_with_invalid_schema(
@@ -717,16 +736,22 @@ def test_read_with_invalid_schema(
 
 
 def read_tfrecords_with_fast_read_override(paths, fast_read=False, **read_opts):
-    ds = ray.data.read_tfrecords(paths=paths, **read_opts)
-    tf_schema = read_opts.pop("tf_schema", None)
-    # when fast read and a tf_schema is not provided, we infer
-    # it, which adds some extra operations to the dag
-    if not tf_schema:
-        read_op = ds._plan._logical_plan.dag.input_dependencies[0]
-    else:
-        read_op = ds._plan._logical_plan.dag
+    infer_schema = read_opts.pop("fast_read_auto_infer_schema", fast_read)
+    tf_ds = ray.data.read_tfrecords(
+        paths=paths, fast_read_auto_infer_schema=infer_schema, **read_opts
+    )
 
-    read_op._datasource._fast_read = fast_read
+    # if fast read is enaled, we just return the dataset because, by default
+    # fast_read will be used in unit tests given that tfx-bsl dependency is
+    # installed
+    if fast_read:
+        return tf_ds
+
+    read_op = tf_ds._plan._logical_plan.dag
+    datasource_override = read_op._datasource
+    datasource_override._fast_read = fast_read
+    parallelism = read_opts.pop("parallelism", -1)
+    ds = ray.data.read_datasource(datasource_override, parallelism=parallelism)
 
     return ds
 

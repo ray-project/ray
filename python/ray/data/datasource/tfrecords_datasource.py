@@ -41,12 +41,9 @@ class TFRecordDatasource(FileBasedDatasource):
         self._batch_size = batch_size or DEFAULT_BATCH_SIZE
 
     def _read_stream(self, f: "pyarrow.NativeFile", path: str) -> Iterator[Block]:
-        print(f"_read_stream -> _fast_read: {self._fast_read}")
         if self._fast_read:
-            print("reading fast!")
             yield from self._fast_read_stream(f, path)
         else:
-            print("reading slow!")
             yield from self._slow_read_stream(f, path)
 
     def _slow_read_stream(self, f: "pyarrow.NativeFile", path: str) -> Iterator[Block]:
@@ -84,18 +81,30 @@ class TFRecordDatasource(FileBasedDatasource):
         )
 
         decoder = ExamplesToRecordBatchDecoder(tf_schema_string)
+        exception_thrown = None
+        try:
+            for record in tf.data.TFRecordDataset(
+                path, compression_type=compression
+            ).batch(self._batch_size):
+                yield pa.Table.from_batches([decoder.DecodeBatch(record.numpy())])
+        except Exception as error:
+            exception_thrown = error
 
-        for record in tf.data.TFRecordDataset(path, compression_type=compression).batch(
-            self._batch_size
-        ):
-            yield pa.Table.from_batches([decoder.DecodeBatch(record.numpy())])
+        # we need to do this hack were we raise an exception outside of the
+        # except block because tensorflow DataLossError is unpickable, and
+        # even if we raise a runtime error, ray keeps information about the
+        # original error, which makes it unpickable still.
+        if exception_thrown:
+            raise RuntimeError(
+                f"Failed to read TFRecord file {path}. Please ensure that the "
+                f"TFRecord file has correct format."
+            )
 
 
 def _convert_example_to_dict(
     example: "tf.train.Example",
     tf_schema: Optional["schema_pb2.Schema"],
 ) -> Dict[str, "pyarrow.Array"]:
-    print("_convert_example_to_dict HERE")
     record = {}
     schema_dict = {}
     # Convert user-specified schema into dict for convenient mapping
@@ -403,7 +412,7 @@ def _read_records(
             raise RuntimeError(error_message) from e
 
 
-def infer_schema_and_transform(dataset: "Dataset"):
+def _infer_schema_and_transform(dataset: "Dataset"):
     list_sizes = dataset.aggregate(_MaxListSize(dataset.schema().names))
 
     return dataset.map_batches(
