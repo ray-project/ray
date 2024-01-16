@@ -571,7 +571,7 @@ class ServeController:
     def get_deployment_details(
         self, app_name: str, deployment_name: str
     ) -> DeploymentDetails:
-        """Returns the deployment details for each app.
+        """Returns the deployment details for the app and deployment.
 
         Currently used for test only.
         """
