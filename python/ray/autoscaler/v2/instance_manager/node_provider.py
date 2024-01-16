@@ -36,6 +36,8 @@ class CloudInstance:
     node_type: NodeType
     # Update request id from which the cloud instance is launched.
     request_id: str
+    # If the cloud instance is running.
+    is_running: bool
 
 
 @dataclass
@@ -82,7 +84,7 @@ class ICloudInstanceProvider(ABC):
     cluster. It provides the following main functionalities:
         - Launch new cloud instances.
         - Terminate existing running instances.
-        - Get the running cloud instances in the cluster.
+        - Get the non-terminated cloud instances in the cluster.
         - Poll the errors that happened for the updates to the cloud instance provider.
 
     Below properties of the cloud instance provider are assumed with this interface:
@@ -117,8 +119,8 @@ class ICloudInstanceProvider(ABC):
                 request_id="1",
             )
 
-            # Get the running nodes of the cloud instance provider.
-            running = provider.get_running()
+            # Get the non-terminated nodes of the cloud instance provider.
+            running = provider.get_non_terminated()
 
             # Poll the errors
             errors = provider.poll_errors()
@@ -135,11 +137,11 @@ class ICloudInstanceProvider(ABC):
     """
 
     @abstractmethod
-    def get_running(self) -> Dict[CloudInstanceId, CloudInstance]:
-        """Get the running cloud instances in the cluster.
+    def get_non_terminated(self) -> Dict[CloudInstanceId, CloudInstance]:
+        """Get the non-terminated cloud instances in the cluster.
 
         Returns:
-            A dictionary of the running cloud instances in the cluster.
+            A dictionary of the non-terminated cloud instances in the cluster.
             The key is the cloud instance id, and the value is the cloud instance.
         """
         pass
