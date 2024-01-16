@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import atexit
 import faulthandler
 import functools
@@ -117,6 +119,16 @@ T7 = TypeVar("T7")
 T8 = TypeVar("T8")
 T9 = TypeVar("T9")
 R = TypeVar("R")
+R0 = TypeVar("R0")
+R1 = TypeVar("R1")
+R2 = TypeVar("R2")
+R3 = TypeVar("R3")
+R4 = TypeVar("R4")
+R5 = TypeVar("R5")
+R6 = TypeVar("R6")
+R7 = TypeVar("R7")
+R8 = TypeVar("R8")
+R9 = TypeVar("R9")
 
 DAGNode = TypeVar("DAGNode")
 
@@ -2554,8 +2566,136 @@ blocking_get_inside_async_warned = False
 
 @overload
 def get(
-    object_refs: "Sequence[ObjectRef[Any]]", *, timeout: Optional[float] = None
-) -> List[Any]:
+    object_refs: tuple[ObjectRef[R0]], *, timeout: Optional[float] = None
+) -> tuple[R0]:
+    ...
+
+
+@overload
+def get(
+    object_refs: tuple[ObjectRef[R0], ObjectRef[R1]],
+    *,
+    timeout: Optional[float] = None,
+) -> tuple[R0, R1]:
+    ...
+
+
+@overload
+def get(
+    object_refs: tuple[ObjectRef[R0], ObjectRef[R1], ObjectRef[R2]],
+    *,
+    timeout: Optional[float] = None,
+) -> tuple[R0, R1, R2]:
+    ...
+
+
+@overload
+def get(
+    object_refs: tuple[ObjectRef[R0], ObjectRef[R1], ObjectRef[R2], ObjectRef[R3]],
+    *,
+    timeout: Optional[float] = None,
+) -> tuple[R0, R1, R2, R3]:
+    ...
+
+
+@overload
+def get(
+    object_refs: tuple[
+        ObjectRef[R0], ObjectRef[R1], ObjectRef[R2], ObjectRef[R3], ObjectRef[R4]
+    ],
+    *,
+    timeout: Optional[float] = None,
+) -> tuple[R0, R1, R2, R3, R4]:
+    ...
+
+
+@overload
+def get(
+    object_refs: tuple[
+        ObjectRef[R0],
+        ObjectRef[R1],
+        ObjectRef[R2],
+        ObjectRef[R3],
+        ObjectRef[R4],
+        ObjectRef[R5],
+    ],
+    *,
+    timeout: Optional[float] = None,
+) -> tuple[R0, R1, R2, R3, R4, R5]:
+    ...
+
+
+@overload
+def get(
+    object_refs: tuple[
+        ObjectRef[R0],
+        ObjectRef[R1],
+        ObjectRef[R2],
+        ObjectRef[R3],
+        ObjectRef[R4],
+        ObjectRef[R5],
+        ObjectRef[R6],
+    ],
+    *,
+    timeout: Optional[float] = None,
+) -> tuple[R0, R1, R2, R3, R4, R5, R6]:
+    ...
+
+
+@overload
+def get(
+    object_refs: tuple[
+        ObjectRef[R0],
+        ObjectRef[R1],
+        ObjectRef[R2],
+        ObjectRef[R3],
+        ObjectRef[R4],
+        ObjectRef[R5],
+        ObjectRef[R6],
+        ObjectRef[R7],
+    ],
+    *,
+    timeout: Optional[float] = None,
+) -> tuple[R0, R1, R2, R3, R4, R5, R6, R7]:
+    ...
+
+
+@overload
+def get(
+    object_refs: tuple[
+        ObjectRef[R0],
+        ObjectRef[R1],
+        ObjectRef[R2],
+        ObjectRef[R3],
+        ObjectRef[R4],
+        ObjectRef[R5],
+        ObjectRef[R6],
+        ObjectRef[R7],
+        ObjectRef[R8],
+    ],
+    *,
+    timeout: Optional[float] = None,
+) -> tuple[R0, R1, R2, R3, R4, R5, R6, R7, R8]:
+    ...
+
+
+@overload
+def get(
+    object_refs: tuple[
+        ObjectRef[R0],
+        ObjectRef[R1],
+        ObjectRef[R2],
+        ObjectRef[R3],
+        ObjectRef[R4],
+        ObjectRef[R5],
+        ObjectRef[R6],
+        ObjectRef[R7],
+        ObjectRef[R8],
+        ObjectRef[R9],
+    ],
+    *,
+    timeout: Optional[float] = None,
+) -> tuple[R0, R1, R2, R3, R4, R5, R6, R7, R8, R9]:
     ...
 
 
@@ -2567,6 +2707,13 @@ def get(
 
 
 @overload
+def get(
+    object_refs: "Sequence[ObjectRef[Any]]", *, timeout: Optional[float] = None
+) -> List[Any]:
+    ...
+
+
+@overload
 def get(object_refs: "ObjectRef[R]", *, timeout: Optional[float] = None) -> R:
     ...
 
@@ -2574,7 +2721,9 @@ def get(object_refs: "ObjectRef[R]", *, timeout: Optional[float] = None) -> R:
 @PublicAPI
 @client_mode_hook
 def get(
-    object_refs: Union["ObjectRef[Any]", Sequence["ObjectRef[Any]"]],
+    object_refs: Union[
+        "ObjectRef[Any]", Sequence["ObjectRef[Any]"], tuple[ObjectRef, ...]
+    ],
     *,
     timeout: Optional[float] = None,
 ) -> Union[Any, List[Any]]:
@@ -2646,14 +2795,16 @@ def get(
         if is_individual_id:
             object_refs = [object_refs]
 
-        if not isinstance(object_refs, list):
+        if not isinstance(object_refs, (list, tuple)):
             raise ValueError(
                 f"Invalid type of object refs, {type(object_refs)}, is given. "
                 "'object_refs' must either be an ObjectRef or a list of ObjectRefs. "
             )
 
         # TODO(ujvl): Consider how to allow user to retrieve the ready objects.
-        values, debugger_breakpoint = worker.get_objects(object_refs, timeout=timeout)
+        values, debugger_breakpoint = worker.get_objects(
+            list(object_refs), timeout=timeout
+        )
         for i, value in enumerate(values):
             if isinstance(value, RayError):
                 if isinstance(value, ray.exceptions.ObjectLostError):
