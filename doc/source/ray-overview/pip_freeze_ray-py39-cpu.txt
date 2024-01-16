@@ -42,7 +42,6 @@ distlib==0.3.7
 dm-tree==0.1.8
 exceptiongroup==1.1.3
 Farama-Notifications==0.0.4
-fastapi==0.104.0
 filelock==3.13.1
 flatbuffers==23.5.26
 flit_core @ file:///opt/conda/conda-bld/flit-core_1644941570762/work/source/flit_core

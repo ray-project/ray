@@ -118,7 +118,6 @@ exceptiongroup==1.1.3
 executing==2.0.1
 fairscale==0.4.6
 Farama-Notifications==0.0.4
-fastapi==0.104.0
 fasteners==0.19
 fastjsonschema==2.18.1
 filelock==3.13.1
