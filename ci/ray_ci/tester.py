@@ -18,7 +18,7 @@ from ci.ray_ci.tester_container import TesterContainer
 from ci.ray_ci.utils import docker_login
 from ray_release.configs.global_config import init_global_config
 from ray_release.bazel import bazel_runfile
-from ray_release.test import Test
+from ray_release.test import Test, TestState
 
 CUDA_COPYRIGHT = """
 ==========
@@ -353,28 +353,26 @@ def _get_flaky_test_targets(
         yaml_dir = os.path.join(bazel_workspace_dir, "ci/ray_ci")
 
     with open(f"{yaml_dir}/{team}.tests.yml", "rb") as f:
-        all_flaky_tests = []
         # load flaky tests from yaml
-        all_flaky_tests.extend(yaml.safe_load(f)["flaky_tests"])
+        yaml_flaky_tests = set(yaml.safe_load(f)["flaky_tests"])
         # load flaky tests from DB
-        all_flaky_tests.extend([test.get_name() for test in Test.gen_from_s3(prefix=f"{operating_system}:") if test.get_oncall() == team])
+        s3_flaky_tests = {
+            # remove "linux:" prefix for linux tests to be consistent with the
+            # interface supported in the yaml file
+            test.get_name().lstrip("linux:")
+            for test in Test.gen_from_s3(prefix=f"{operating_system}:")
+            if test.get_oncall() == team and test.get_state() == TestState.FLAKY
+        }
+        all_flaky_tests = sorted(yaml_flaky_tests.union(s3_flaky_tests))
 
-        flaky_tests = []
-
-        # linux tests can also be prefixed with "//"
+        # linux tests are prefixed with "//"
         if operating_system == "linux":
-            flaky_tests.extend(
-                [test for test in all_flaky_tests if test.startswith("//")]
-            )
+            return [test for test in all_flaky_tests if test.startswith("//")]
 
-        # os tests are prefixed with "os:"
+        # and other os tests are prefixed with "os:"
         os_prefix = f"{operating_system}:"
-        flaky_tests.extend(
-            [
-                test.lstrip(os_prefix)
-                for test in all_flaky_tests
-                if test.startswith(os_prefix)
-            ]
-        )
-
-        return flaky_tests
+        return [
+            test.lstrip(os_prefix)
+            for test in all_flaky_tests
+            if test.startswith(os_prefix)
+        ]
