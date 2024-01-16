@@ -1,4 +1,5 @@
 import logging
+import os
 import platform
 import subprocess
 import sys
@@ -14,11 +15,14 @@ logging.basicConfig(
     level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s"
 )
 
+FALLBACK_PROMETHEUS_VERSION = "2.48.1"
+DOWNLOAD_BLOCK_SIZE = 8192  # 8 KB
 
 def get_system_info():
     os_type = platform.system().lower()
     architecture = platform.machine()
     if architecture == "x86_64":
+        # In the Prometheus filename, it's called amd64
         architecture = "amd64"
     return os_type, architecture
 
@@ -33,7 +37,7 @@ def download_file(url, filename):
         total_size_in_mb = total_size_in_bytes / (1024 * 1024)
 
         downloaded_size_in_mb = 0
-        block_size = 8192  # 8 Kibibytes
+        block_size = DOWNLOAD_BLOCK_SIZE
 
         with open(filename, "wb") as file:
             for chunk in response.iter_content(chunk_size=block_size):
@@ -113,16 +117,16 @@ def get_latest_prometheus_version():
         logging.error(f"Error fetching latest Prometheus version: {e}")
         return None
 
+def download_prometheus(os_type=None, architecture=None, prometheus_version=None):
+    if os_type is None or architecture is None:
+        os_type, architecture = get_system_info()
 
-def main():
-    logging.warning("This script is not intended for production use.")
-    os_type, architecture = get_system_info()
-
-    prometheus_version = get_latest_prometheus_version()
     if prometheus_version is None:
-        logging.error("Failed to retrieve the latest Prometheus version.")
-        # Fallback to a hardcoded version
-        prometheus_version = "2.48.1"
+        prometheus_version = get_latest_prometheus_version()
+        if prometheus_version is None:
+            logging.error("Failed to retrieve the latest Prometheus version.")
+            # Fall back to a hardcoded version
+            prometheus_version = FALLBACK_PROMETHEUS_VERSION
 
     file_name = f"prometheus-{prometheus_version}.{os_type}-{architecture}.tar.gz"
     download_url = (
@@ -130,7 +134,14 @@ def main():
         f"download/v{prometheus_version}/{file_name}"
     )
 
-    if not download_file(download_url, file_name):
+    return download_file(download_url, file_name), file_name
+
+
+def main():
+    logging.warning("This script is not intended for production use.")
+
+    downloaded, file_name = download_prometheus()
+    if not downloaded:
         logging.error("Failed to download Prometheus.")
         sys.exit(1)
 
@@ -143,7 +154,7 @@ def main():
     # TODO: Add a check to see if Prometheus is already running
 
     process = start_prometheus(
-        prometheus_dir=f"prometheus-{prometheus_version}.{os_type}-{architecture}"
+        prometheus_dir=os.path.splitext(file_name)[0] # Remove the .tar.gz extension
     )
     if process:
         print_shutdown_message(process.pid)
