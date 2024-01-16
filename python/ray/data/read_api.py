@@ -2390,9 +2390,9 @@ def from_spark(
         try:
             get_databricks_function("displayHTML")(
                 "<b style='background-color:yellow;'>The Ray dataset converted from "
-                "spark dataset puts cached data in spark cluster side, "
+                "spark dataset puts cached data in spark distributed cache system, "
                 "when you don't use this Ray dataset instance any more, please "
-                "remember to call `del this_ray_dataset` in order to release "
+                "remember to call `del this_ray_dataset` in order to release the "
                 "cached data in spark side.</b>"
             )
         except Exception:
