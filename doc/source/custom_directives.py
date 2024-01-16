@@ -19,6 +19,11 @@ from docutils import nodes
 from functools import lru_cache
 from pydata_sphinx_theme.toctree import add_collapse_checkboxes
 
+from pygments import highlight
+from pygments.lexers import PythonLexer
+from pygments.formatters import HtmlFormatter
+
+
 logger = logging.getLogger(__name__)
 
 __all__ = [
@@ -434,6 +439,11 @@ def setup_context(app, pagename, templatename, context, doctree):
         pagename,
     )
     context["render_header_nav_links"] = render_header_nav_links
+
+    # Update the HTML page context with a few extra utilities.
+    context["pygments_highlight_python"] = lambda code: highlight(
+        code, PythonLexer(), HtmlFormatter()
+    )
 
 
 def update_hrefs(input_soup: bs4.BeautifulSoup, n_levels_deep=0):

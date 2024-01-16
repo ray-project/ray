@@ -1,4 +1,6 @@
+import json
 import os
+import platform
 import sys
 import pytest
 import tempfile
@@ -157,12 +159,12 @@ def test_run_tests() -> None:
     ):
         container = LinuxTesterContainer("team", shard_count=2, shard_ids=[0, 1])
         # test_targets are not empty
-        assert container.run_tests(["t1", "t2"], [])
+        assert container.run_tests("manu", ["t1", "t2"], [])
         # test_targets is empty after chunking, but not creating popen
-        assert container.run_tests(["t1"], [])
-        assert container.run_tests([], [])
+        assert container.run_tests("manu", ["t1"], [])
+        assert container.run_tests("manu", [], [])
         # test targets contain bad_test
-        assert not container.run_tests(["bad_test"], [])
+        assert not container.run_tests("manu", ["bad_test"], [])
 
 
 def test_create_bazel_log_mount() -> None:
@@ -175,6 +177,47 @@ def test_create_bazel_log_mount() -> None:
             "/tmp/artifacts/w00t",
             os.path.join(tmpdir, "w00t"),
         )
+
+
+def test_get_test_results() -> None:
+    _BAZEL_LOGS = [
+        json.dumps(log)
+        for log in [
+            {
+                "id": {"testResult": {"label": "//ray/ci:test"}},
+                "testResult": {"status": "FAILED"},
+            },
+            {
+                "id": {"testResult": {"label": "//ray/ci:reef"}},
+                "testResult": {"status": "FAILED"},
+            },
+            {
+                "id": {"testResult": {"label": "//ray/ci:test"}},
+                "testResult": {"status": "FAILED"},
+            },
+            {
+                "id": {"testResult": {"label": "//ray/ci:test"}},
+                "testResult": {"status": "PASSED"},
+            },
+        ]
+    ]
+
+    with tempfile.TemporaryDirectory() as tmp:
+        with open(os.path.join(tmp, "bazel_log"), "w") as f:
+            f.write("\n".join(_BAZEL_LOGS))
+        container = LinuxTesterContainer("docker_tag", skip_ray_installation=True)
+        results = container._get_test_and_results("manu", tmp)
+        results.sort(key=lambda x: x[0].get_name())
+
+        test, result = results[0]
+        assert test.get_name() == f"{platform.system().lower()}://ray/ci:reef"
+        assert test.get_oncall() == "manu"
+        assert result.is_failing()
+
+        test, result = results[1]
+        assert test.get_name() == f"{platform.system().lower()}://ray/ci:test"
+        assert test.get_oncall() == "manu"
+        assert result.is_passing()
 
 
 if __name__ == "__main__":

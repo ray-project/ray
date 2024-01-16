@@ -1242,10 +1242,9 @@ def test_dataset_name():
     ds = ray.data.range(100, parallelism=20).map_batches(lambda x: x)
     ds._set_name("test_ds")
     assert ds._name == "test_ds"
-    assert (
-        str(ds)
-        == """MapBatches(<lambda>)
-+- Dataset(name=test_ds, num_blocks=20, num_rows=100, schema={id: int64})"""
+    assert str(ds) == (
+        "MapBatches(<lambda>)\n"
+        "+- Dataset(name=test_ds, num_blocks=20, num_rows=100, schema={id: int64})"
     )
     with patch_update_stats_actor() as update_fn:
         mds = ds.materialize()

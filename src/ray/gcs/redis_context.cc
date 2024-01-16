@@ -571,8 +571,6 @@ void RedisContext::RunArgvAsync(std::vector<std::string> args,
   request_context->Run();
 }
 
-void RedisContext::FreeRedisReply(void *reply) { return freeReplyObject(reply); }
-
 }  // namespace gcs
 
 }  // namespace ray
