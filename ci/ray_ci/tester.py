@@ -353,15 +353,22 @@ def _get_flaky_test_targets(
 
     with open(f"{yaml_dir}/{team}.tests.yml", "rb") as f:
         all_flaky_tests = yaml.safe_load(f)["flaky_tests"]
+        flaky_tests = []
 
-        # linux tests are prefixed with "//"
+        # linux tests can also be prefixed with "//"
         if operating_system == "linux":
-            return [test for test in all_flaky_tests if test.startswith("//")]
+            flaky_tests.extend(
+                [test for test in all_flaky_tests if test.startswith("//")]
+            )
 
-        # and other os tests are prefixed with "os:"
+        # os tests are prefixed with "os:"
         os_prefix = f"{operating_system}:"
-        return [
-            test.lstrip(os_prefix)
-            for test in all_flaky_tests
-            if test.startswith(os_prefix)
-        ]
+        flaky_tests.extend(
+            [
+                test.lstrip(os_prefix)
+                for test in all_flaky_tests
+                if test.startswith(os_prefix)
+            ]
+        )
+
+        return flaky_tests

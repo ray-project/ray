@@ -142,13 +142,16 @@ def test_get_all_test_query() -> None:
 
 
 def test_get_flaky_test_targets() -> None:
-    _TEST_YAML = "flaky_tests: [windows://t1, //t2]"
+    _TEST_YAML = "flaky_tests: [windows://t1, //t2, linux://t3]"
 
     with TemporaryDirectory() as tmp:
         with open(os.path.join(tmp, "core.tests.yml"), "w") as f:
             f.write(_TEST_YAML)
         assert _get_flaky_test_targets("core", "windows", yaml_dir=tmp) == ["//t1"]
-        assert _get_flaky_test_targets("core", "linux", yaml_dir=tmp) == ["//t2"]
+        assert _get_flaky_test_targets("core", "linux", yaml_dir=tmp) == [
+            "//t2",
+            "//t3",
+        ]
 
 
 if __name__ == "__main__":
