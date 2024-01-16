@@ -21,7 +21,7 @@ chatPopupDiv.innerHTML = `
   </div>
   <div id="chatContainer" class="chatContentContainer">
     <div id="result">
-      Please note that the results of this bot are automated & may be incorrect or contain inappropriate information.
+      Please note that the results of this bot are automated and may be incorrect or contain inappropriate information.
       <div id="anchor"></div>
     </div>
     <div class="input-group">
@@ -111,6 +111,14 @@ function rayAssistant(event) {
     }
 
     if (event.type === 'click' || event.type === 'keydown' && event.key === 'Enter'){
+        // for improved UX, we want to equate a carriage return as hitting the send button and prevent default behavior of entering a new line
+        if (event.type === 'keydown' && event.key === 'Enter') {
+          event.preventDefault();
+        }
+        // clear search bar value and change placeholder to prompt user to ask follow up question
+        searchBar.value = ""
+        searchBar.placeholder = "Ask follow up question here"
+        
         let msgBlock = document.createElement('div');
         
         resultDiv.insertBefore(msgBlock, anchorDiv);
@@ -158,9 +166,6 @@ function rayAssistant(event) {
                 }
                 // we want to autoscroll to the bottom of the chat container after the answer is streamed in
                 chatContainerDiv.scrollTo(0, chatContainerDiv.scrollHeight);
-                // clear search bar value and change placeholder to prompt user to ask follow up question
-                searchBar.value = ""
-                searchBar.placeholder = "Ask follow up question here"
             } catch (error) {
                 console.error('Fetch API failed:', error);
             }
@@ -173,3 +178,14 @@ function rayAssistant(event) {
 
 searchBtn.addEventListener('click', rayAssistant);
 searchBar.addEventListener('keydown', rayAssistant);
+
+// $(document).ready(function() {
+
+//   $('textarea').keydown(function(event) {
+
+//       if (event.keyCode == 13) {
+//           console.log("hi")
+//           event.preventDefault();
+//       }
+//   });
+// });
