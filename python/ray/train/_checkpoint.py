@@ -322,7 +322,7 @@ class Checkpoint(metaclass=_CheckpointMetaClass):
                     "Couldn't create checkpoint directory due to length "
                     "constraints. Try specifying a shorter checkpoint path."
                 )
-        return os.path.join(tmp_dir_path, checkpoint_dir_name)
+        return Path(tmp_dir_path, checkpoint_dir_name).as_posix()
 
     def __fspath__(self):
         raise TypeError(
