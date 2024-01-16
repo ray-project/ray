@@ -42,8 +42,14 @@ logger = logging.getLogger(__name__)
 def get_device() -> torch.device:
     """Gets the correct torch device configured for this process.
 
-    Returns a list of devices if more than 1 GPU per worker
-    is requested.
+    Returns the torch device for the current worker. If more than
+    1 GPU is requested per worker, returns the first device.
+
+    .. note::
+
+        If you requested multiple GPUs per worker, and want to get
+        the full list of torch devices, please use
+        :meth:`~ray.train.torch.get_devices`.
 
     Assumes that `CUDA_VISIBLE_DEVICES` is set and is a
     superset of the `ray.get_gpu_ids()`.
