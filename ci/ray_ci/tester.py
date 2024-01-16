@@ -18,6 +18,7 @@ from ci.ray_ci.tester_container import TesterContainer
 from ci.ray_ci.utils import docker_login
 from ray_release.configs.global_config import init_global_config
 from ray_release.bazel import bazel_runfile
+from ray_release.test import Test
 
 CUDA_COPYRIGHT = """
 ==========
@@ -352,7 +353,12 @@ def _get_flaky_test_targets(
         yaml_dir = os.path.join(bazel_workspace_dir, "ci/ray_ci")
 
     with open(f"{yaml_dir}/{team}.tests.yml", "rb") as f:
-        all_flaky_tests = yaml.safe_load(f)["flaky_tests"]
+        all_flaky_tests = []
+        # load flaky tests from yaml
+        all_flaky_tests.extend(yaml.safe_load(f)["flaky_tests"])
+        # load flaky tests from DB
+        all_flaky_tests.extend([test.get_name() for test in Test.gen_from_s3(prefix=f"{operating_system}:") if test.get_oncall() == team])
+
         flaky_tests = []
 
         # linux tests can also be prefixed with "//"
