@@ -1,12 +1,19 @@
 import logging
-from typing import List, Optional
+from typing import Iterator, List, Optional
 import numpy as np
+import pyarrow
 
 from ray.data.block import BlockMetadata
 from ray.data.datasource.datasource import Datasource, ReadTask
 from ray.util.annotations import PublicAPI
 
 logger = logging.getLogger(__name__)
+
+
+def read_chunk_fn(chunk_id_list) -> Iterator["pyarrow.Table"]:
+    from pyspark.sql.chunk_api import read_chunk
+    for chunk_id in chunk_id_list:
+        yield read_chunk(chunk_id)
 
 
 @PublicAPI(stability="alpha")
@@ -56,12 +63,10 @@ class SparkDatasource(Datasource):
             for chunk_index in chunk_index_list
         ]
 
-        def read_fn():
-            from pyspark.sql.chunk_api import read_chunk
-            for chunk_id in chunk_id_list:
-                yield read_chunk(chunk_id)
-
-        return ReadTask(read_fn=read_fn, metadata=metadata)
+        return ReadTask(
+            lambda l=chunk_id_list: read_chunk_fn(l),
+            metadata,
+        )
 
     def get_read_tasks(self, parallelism: int) -> List[ReadTask]:
         assert parallelism > 0, f"Invalid parallelism {parallelism}"
