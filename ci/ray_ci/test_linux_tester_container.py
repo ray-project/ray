@@ -1,5 +1,6 @@
 import json
 import os
+import platform
 import sys
 import pytest
 import tempfile
@@ -179,20 +180,42 @@ def test_create_bazel_log_mount() -> None:
 
 
 def test_get_test_results() -> None:
-    _BAZEL_LOG = json.dumps(
-        {
-            "id": {"testResult": {"label": "//ray/ci:test"}},
-            "testResult": {"status": "PASSED"},
-        }
-    )
+    _BAZEL_LOGS = [
+        json.dumps(log)
+        for log in [
+            {
+                "id": {"testResult": {"label": "//ray/ci:test"}},
+                "testResult": {"status": "FAILED"},
+            },
+            {
+                "id": {"testResult": {"label": "//ray/ci:reef"}},
+                "testResult": {"status": "FAILED"},
+            },
+            {
+                "id": {"testResult": {"label": "//ray/ci:test"}},
+                "testResult": {"status": "FAILED"},
+            },
+            {
+                "id": {"testResult": {"label": "//ray/ci:test"}},
+                "testResult": {"status": "PASSED"},
+            },
+        ]
+    ]
 
     with tempfile.TemporaryDirectory() as tmp:
         with open(os.path.join(tmp, "bazel_log"), "w") as f:
-            f.write(_BAZEL_LOG)
+            f.write("\n".join(_BAZEL_LOGS))
         container = LinuxTesterContainer("docker_tag", skip_ray_installation=True)
         results = container._get_test_and_results("manu", tmp)
+        results.sort(key=lambda x: x[0].get_name())
+
         test, result = results[0]
-        assert test.get_name() == "ray_ci_test.linux"
+        assert test.get_name() == f"{platform.system().lower()}://ray/ci:reef"
+        assert test.get_oncall() == "manu"
+        assert result.is_failing()
+
+        test, result = results[1]
+        assert test.get_name() == f"{platform.system().lower()}://ray/ci:test"
         assert test.get_oncall() == "manu"
         assert result.is_passing()
 

@@ -8,9 +8,14 @@ from ray.rllib.core.models.base import STATE_IN, STATE_OUT
 from ray.rllib.core.rl_module.rl_module import RLModule
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils.annotations import override
+from ray.rllib.utils.framework import try_import_tf
 from ray.rllib.utils.spaces.space_utils import batch
+from ray.rllib.utils.torch_utils import convert_to_torch_tensor
 from ray.rllib.utils.typing import EpisodeType
 from ray.util.annotations import PublicAPI
+
+
+_, tf, _ = try_import_tf()
 
 
 @PublicAPI(stability="alpha")
@@ -76,5 +81,14 @@ class DefaultEnvToModule(ConnectorV2):
             # Batch states (from list of individual vector sub-env states).
             # Note that state ins should NOT have the extra time dimension.
             data[STATE_IN] = batch(states)
+
+        # Convert data to proper tensor formats, depending on framework used by the
+        # RLModule.
+        # TODO (sven): Support GPU-based EnvRunners + RLModules for sampling. Right
+        #  now we assume EnvRunners are always only on the CPU.
+        if rl_module.framework == "torch":
+            data = convert_to_torch_tensor(data)
+        elif rl_module.framework == "tf2":
+            data = tree.map_structure(lambda s: tf.convert_to_tensor(s), data)
 
         return data
