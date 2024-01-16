@@ -1,17 +1,8 @@
 import pytest
 import sys
-import os
-import ray
 import runpy
 
 from ray.dashboard.modules.metrics import install_and_start_prometheus
-
-# def get_system_info():
-#     os_type = platform.system().lower()
-#     architecture = platform.machine()
-#     if architecture == "x86_64":
-#         architecture = "amd64"
-#     return os_type, architecture
 
 
 @pytest.mark.parametrize(
