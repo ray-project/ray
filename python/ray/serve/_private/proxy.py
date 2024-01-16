@@ -1196,7 +1196,9 @@ class ProxyActor:
 
         for middleware in http_middlewares:
             self.wrapped_http_proxy = middleware.cls(
-                self.wrapped_http_proxy, **middleware.options
+                self.wrapped_http_proxy,
+                *middleware.args,
+                **middleware.kwargs,
             )
 
         # Start running the HTTP server on the event loop.
