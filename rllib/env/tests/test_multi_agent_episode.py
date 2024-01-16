@@ -261,7 +261,7 @@ class TestMultiAgentEpisode(unittest.TestCase):
         self.assertEqual(len(episode.agent_episodes["agent_5"]), 0)
 
         # TODO (simon): Also test the other structs inside the MAE for agent 5 and
-        # the other agents.
+        #  the other agents.
 
     def test_add_initial_observation(self):
         # Generate an enviornment.
@@ -1941,7 +1941,7 @@ class TestMultiAgentEpisode(unittest.TestCase):
         episode, env = self._mock_multi_agent_records_from_env()
 
         # Now convert to sample batch.
-        batch = episode.to_sample_batch()
+        batch = episode.get_sample_batch()
 
         # Assert that the timestep in the `MultiAgentBatch` is identical
         # to the episode timestep.
@@ -1965,7 +1965,7 @@ class TestMultiAgentEpisode(unittest.TestCase):
             episode=successor, env=env, init=False
         )
         # Convert this episode to a `MultiAgentBatch`.
-        batch = successor.to_sample_batch()
+        batch = successor.get_sample_batch()
         # Assert that the number of timesteps match between episode and batch.
         # Note, the successor starts at `ts=100`.
         self.assertEqual(len(batch), len(successor))
@@ -1985,7 +1985,7 @@ class TestMultiAgentEpisode(unittest.TestCase):
         # Test now that when we concatenate the same logic holds.
         episode.concat_episode(successor)
         # Convert the concatenated episode to a sample batch now.
-        batch = episode.to_sample_batch()
+        batch = episode.get_sample_batch()
         # Assert that the length of episode and batch match.
         self.assertEqual(len(batch), len(episode))
         # Assert that all agents are present in the multi-agent batch.
@@ -2006,7 +2006,7 @@ class TestMultiAgentEpisode(unittest.TestCase):
         # Finally, test that an empty episode, gives an empty batch.
         episode = MultiAgentEpisode(agent_ids=env.get_agent_ids())
         # Convert now to sample batch.
-        batch = episode.to_sample_batch()
+        batch = episode.get_sample_batch()
         # Ensure that this batch is empty.
         self.assertEqual(len(batch), 0)
 
@@ -2058,7 +2058,8 @@ class TestMultiAgentEpisode(unittest.TestCase):
         # Return both, epsiode and environment.
         return episode, env
 
-    def _mock_multi_agent_records(self):
+    @staticmethod
+    def _mock_multi_agent_records():
         # Create some simple observations, actions, rewards, infos and
         # extra model outputs.
         observations = [
@@ -2089,7 +2090,7 @@ class TestMultiAgentEpisode(unittest.TestCase):
             {"agent_1": {}, "agent_3": {}, "agent_4": {}},
             {"agent_2": {}, "agent_4": {}},
         ]
-        # Let no agent terminate or being truncated.
+        # Let no agent be terminated or truncated.
         terminateds = {
             "__all__": False,
             "agent_1": False,
@@ -2103,7 +2104,6 @@ class TestMultiAgentEpisode(unittest.TestCase):
             "agent_4": False,
         }
 
-        # Return all observations.
         return observations, actions, rewards, terminateds, truncateds, infos
 
 

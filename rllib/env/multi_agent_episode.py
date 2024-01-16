@@ -10,8 +10,6 @@ from ray.rllib.policy.sample_batch import MultiAgentBatch
 from ray.rllib.utils.typing import AgentID, MultiAgentDict
 
 
-# TODO (simon): Add a `finalize()` method to the episode that calls
-# `SAE.finalize()` for all agents.
 # TODO (simon): Include cases in which the number of agents in an
 # episode are shrinking or growing during the episode itself.
 # Note, recorded `terminateds`/`truncateds` come as simple
@@ -286,18 +284,18 @@ class MultiAgentEpisode:
         if episode_chunk.is_truncated:
             self.is_truncated = True
 
-        # Validate
-        # TODO (simon): Write validate function.
-        # self.validate()
+        # Validate.
+        self.validate()
 
-    # TODO (simon): Maybe adding agent axis. We might need only some agent observations.
-    # Then also add possibility to get all obs (or None)
-    # Write many test cases (numbered obs).
     def get_observations(
         self,
         indices: Union[int, List[int]] = -1,
+        agent_ids: Optional[List[AgentID]] = None,
         global_ts: bool = True,
-        as_list: bool = False,
+        *,
+        neg_indices_left_of_zero: bool = False,
+        fill: Optional[float] = None,
+        one_hot_discrete: bool = False,
     ) -> Union[MultiAgentDict, List[MultiAgentDict]]:
         """Gets observations for all agents that stepped in the last timesteps.
 
@@ -1162,6 +1160,27 @@ class MultiAgentEpisode:
                     else extra_model_outputs[agent_id],
                 )
 
+    def validate(self) -> None:
+        """Validates the episode's data.
+
+        This function ensures that the data stored to a `MultiAgentEpisode` is
+        in order (e.g. that the correct number of observations, actions, rewards
+        are there).
+        """
+        for eps in self.agent_episodes.values():
+            eps.validate()
+
+        # TODO (sven): Validate MultiAgentEpisode specifics, like the timestep mappings,
+        #  action/reward buffers, etc..
+
+    @property
+    def is_finalized(self) -> bool:
+        """True, if the data in this episode is already stored as numpy arrays."""
+        ret = next(iter(self.agent_episodes.values())).is_finalized
+        # Make sure that all single agent's episodes' `finalized` flags are the same.
+        assert all(eps.is_finalized is ret for eps in self.agent_episodes.values())
+        return ret
+
     @property
     def is_done(self):
         """Whether the episode is actually done (terminated or truncated).
@@ -1191,15 +1210,127 @@ class MultiAgentEpisode:
         """
         return self.is_terminated or self.is_truncated
 
+    def finalize(self) -> "MultiAgentEpisode":
+        """Converts this Episode's list attributes to numpy arrays.
+
+        This means in particular that this episodes' lists (per single agent) of
+        (possibly complex) data (e.g. an agent having a dict obs space) will be
+        converted to (possibly complex) structs, whose leafs are now numpy arrays.
+        Each of these leaf numpy arrays will have the same length (batch dimension)
+        as the length of the original lists.
+
+        Note that SampleBatch.INFOS are NEVER numpy'ized and will remain a list
+        (normally, a list of the original, env-returned dicts). This is due to the
+        herterogenous nature of INFOS returned by envs, which would make it unwieldy to
+        convert this information to numpy arrays.
+
+        After calling this method, no further data may be added to this episode via
+        the `self.add_env_step()` method.
+
+        Examples:
+
+        .. testcode::
+
+            import numpy as np
+
+            from ray.rllib.env.multi_agent_episode import MultiAgentEpisode
+            from ray.rllib.env.tests.test_multi_agent_episode import (
+                TestMultiAgentEpisode
+            )
+
+            # Create some multi-agent episode data.
+            (
+                observations,
+                actions,
+                rewards,
+                terminateds,
+                truncateds,
+                infos,
+            ) = TestMultiAgentEpisode._mock_multi_agent_records()
+            # Define the agent ids.
+            agent_ids = ["agent_1", "agent_2", "agent_3", "agent_4", "agent_5"]
+
+            episode = MultiAgentEpisode(
+                agent_ids=agent_ids,
+                observations=observations,
+                actions=actions,
+                rewards=rewards,
+                # Note: terminated/truncated have nothing to do with an episode
+                # being `finalized` or not (via the `self.finalize()` method)!
+                terminateds=terminateds,
+                truncateds=truncateds,
+                infos=infos,
+            )
+
+            # Episode has not been finalized (numpy'ized) yet.
+            assert not episode.is_finalized
+            # We are still operating on lists.
+            assert episode.get_observations([1]) == [1]
+            assert episode.get_observations(slice(None, 2)) == [0, 1]
+            # We can still add data (and even add the terminated=True flag).
+            episode.add_env_step(
+                observation=4,
+                action=4,
+                reward=4,
+                terminated=True,
+            )
+            # Still NOT finalized.
+            assert not episode.is_finalized
+
+            # Let's finalize the episode.
+            episode.finalize()
+            assert episode.is_finalized
+
+            # We cannot add data anymore. The following would crash.
+            # episode.add_env_step(observation=5, action=5, reward=5)
+
+            # Everything is now numpy arrays (with 0-axis of size
+            # B=[len of requested slice]).
+            assert isinstance(episode.get_observations([1]), np.ndarray)  # B=1
+            assert isinstance(episode.actions[0:2], np.ndarray)  # B=2
+            assert isinstance(episode.rewards[1:4], np.ndarray)  # B=3
+
+        Returns:
+             This `MultiAgentEpisode` object with the converted numpy data.
+        """
+        for agent_id, agent_eps in self.agent_episodes.items():
+            agent_eps.finalize()
+
+        return self
+
     # TODO (sven, simon): We are taking over dead agents to the successor
     #  is this intended or should we better check during concatenation, if
     #  the union of agents from both episodes is included? Next issue.
-    def cut(self) -> "MultiAgentEpisode":
+    def cut(self, len_lookback_buffer: int = 0) -> "MultiAgentEpisode":
         """Returns a successor episode chunk (of len=0) continuing from this Episode.
 
-        The successor will have the same ID as `self` and starts at the timestep where
-        it's predecessor `self` left off. The current observations and infos
-        are carried over from the predecessor as initial observations/infos.
+        The successor will have the same ID as `self`.
+        If no lookback buffer is requested (len_lookback_buffer=0), the successor's
+        observations will be the last observation(s) of `self` and its length will
+        therefore be 0 (no further steps taken yet). If `len_lookback_buffer` > 0,
+        the returned successor will have `len_lookback_buffer` observations (and
+        actions, rewards, etc..) taken from the right side (end) of `self`. For example
+        if `len_lookback_buffer=2`, the returned successor's lookback buffer actions
+        will be identical to `self.actions[-2:]`.
+
+        This method is useful if you would like to discontinue building an episode
+        chunk (b/c you have to return it from somewhere), but would like to have a new
+        episode instance to continue building the actual gym.Env episode at a later
+        time. Vie the `len_lookback_buffer` argument, the continuing chunk (successor)
+        will still be able to "look back" into this predecessor episode's data (at
+        least to some extend, depending on the value of `len_lookback_buffer`).
+
+        Args:
+            len_lookback_buffer: The number of timesteps to take along into the new
+                chunk as "lookback buffer". A lookback buffer is additional data on
+                the left side of the actual episode data for visibility purposes
+                (but without actually being part of the new chunk). For example, if
+                `self` ends in actions 5, 6, 7, and 8, and we call
+                `self.cut(len_lookback_buffer=2)`, the returned chunk will have
+                actions 7 and 8 already in it, but still `t_started`==t==8 (not 7!) and
+                a length of 0. If there is not enough data in `self` yet to fulfil
+                the `len_lookback_buffer` request, the value of `len_lookback_buffer`
+                is automatically adjusted (lowered).
 
         Returns: A MultiAgentEpisode starting at the timestep where its predecessor
             stopped.
@@ -1219,11 +1350,13 @@ class MultiAgentEpisode:
         )
 
         for agent_id, agent_eps in self.agent_episodes.items():
-            # Call the `SingleAgentEpisode.create_successor` method for
-            # all agents that are still alive.
+            # Call the `SingleAgentEpisode.cut()` method for all agents that are
+            # still alive.
             if not agent_eps.is_done and agent_eps.observations:
                 # Build a successor for each agent that is not done, yet.
-                successor.agent_episodes[agent_id] = agent_eps.cut()
+                successor.agent_episodes[agent_id] = agent_eps.cut(
+                    len_lookback_buffer=len_lookback_buffer
+                )
                 # Record the initial observation in the global timestep mapping.
                 successor.global_t_to_local_t[agent_id] = _IndexMapping(
                     [self.global_t_to_local_t[agent_id][-1]]
@@ -1239,7 +1372,7 @@ class MultiAgentEpisode:
                 successor.global_t_to_local_t[agent_id] = _IndexMapping()
 
         # Copy the agent buffers to the successor. These remain the same as
-        # no agent has stepped, yet.
+        # no agent has stepped yet.
         successor._copy_buffer(self)
 
         # Build the global action timestep mapping for buffered actions.
@@ -1317,15 +1450,15 @@ class MultiAgentEpisode:
         episode.is_trcunated = state[11][1]
         return episode
 
-    def to_sample_batch(self) -> MultiAgentBatch:
-        """Converts a `MultiAgentEpisode` into a `MultiAgentBatch`.
+    def get_sample_batch(self) -> MultiAgentBatch:
+        """Converts this `MultiAgentEpisode` into a `MultiAgentBatch`.
 
-        Each `SingleAgentEpisode` instances in
-        `MultiAgentEpisode.agent_epiosdes` will be converted into
-        a `SampleBatch` and the environment timestep will be passed
-        towards the `MultiAgentBatch`'s `count`.
+        Each `SingleAgentEpisode` instances in `MultiAgentEpisode.agent_epiosdes`
+        will be converted into a `SampleBatch` and the environment timestep will be
+        passed as the returned MultiAgentBatch's `env_steps`.
 
-        Returns: A `MultiAgentBatch` instance.
+        Returns:
+            A MultiAgentBatch containing all of this episode's data.
         """
         # TODO (simon): Check, if timesteps should be converted into global
         # timesteps instead of agent steps.
@@ -1656,7 +1789,7 @@ class MultiAgentEpisode:
 
     def _getattr_by_index(
         self,
-        attr: str = "observations",
+        attr: str,
         indices: Union[int, List[int]] = -1,
         key: Optional[str] = None,
         has_initial_value=False,
@@ -1667,6 +1800,7 @@ class MultiAgentEpisode:
         buffered_values: MultiAgentDict = None,
     ) -> MultiAgentDict:
         """Returns values in the form of indices: [-1, -2]."""
+
         # TODO (simon): Does not give yet indices that are in between.
         # TODO (sven): Do we even need indices in between? This is very
         # tricky.
