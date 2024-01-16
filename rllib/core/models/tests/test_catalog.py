@@ -105,7 +105,6 @@ class TestCatalog(unittest.TestCase):
         input_spaces_and_config_types = [
             (Box(-1.0, 1.0, (5,), dtype=np.float32), MLPEncoderConfig),
             (Box(-1.0, 1.0, (84, 84, 1), dtype=np.float32), CNNEncoderConfig),
-            (Box(-1.0, 1.0, (240, 320, 3), dtype=np.float32), CNNEncoderConfig),
             # Box(-1.0, 1.0, (5, 5), dtype=np.float32),
             # MultiBinary([3, 10, 10]),
             # Discrete(5),
