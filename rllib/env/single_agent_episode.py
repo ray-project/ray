@@ -304,7 +304,7 @@ class SingleAgentEpisode:
         # Validate the episode data thus far.
         self.validate()
 
-    def concat_episode(self, episode_chunk: "SingleAgentEpisode"):
+    def concat_episode(self, episode_chunk: "SingleAgentEpisode") -> None:
         """Adds the given `episode_chunk` to the right side of self.
 
         In order for this to work, both chunks (`self` and `episode_chunk`) must fit
@@ -664,6 +664,7 @@ class SingleAgentEpisode:
                 unless the `neg_indices_left_of_zero=True` option is used, in which case
                 negative indices are interpreted as "before ts=0", meaning going back
                 into the lookback buffer.
+                If None, will return all observations (from ts=0 to the end).
             neg_indices_left_of_zero: If True, negative values in `indices` are
                 interpreted as "before ts=0", meaning going back into the lookback
                 buffer. For example, an episode with observations [4, 5, 6,  7, 8, 9],
@@ -757,6 +758,7 @@ class SingleAgentEpisode:
                 unless the `neg_indices_left_of_zero=True` option is used, in which case
                 negative indices are interpreted as "before ts=0", meaning going back
                 into the lookback buffer.
+                If None, will return all infos (from ts=0 to the end).
             neg_indices_left_of_zero: If True, negative values in `indices` are
                 interpreted as "before ts=0", meaning going back into the lookback
                 buffer. For example, an episode with infos
@@ -835,6 +837,7 @@ class SingleAgentEpisode:
                 unless the `neg_indices_left_of_zero=True` option is used, in which case
                 negative indices are interpreted as "before ts=0", meaning going back
                 into the lookback buffer.
+                If None, will return all actions (from ts=0 to the end).
             neg_indices_left_of_zero: If True, negative values in `indices` are
                 interpreted as "before ts=0", meaning going back into the lookback
                 buffer. For example, an episode with actions [4, 5, 6,  7, 8, 9], where
@@ -927,6 +930,7 @@ class SingleAgentEpisode:
                 unless the `neg_indices_left_of_zero=True` option is used, in which case
                 negative indices are interpreted as "before ts=0", meaning going back
                 into the lookback buffer.
+                If None, will return all rewards (from ts=0 to the end).
             neg_indices_left_of_zero: Negative values in `indices` are interpreted as
                  as "before ts=0", meaning going back into the lookback buffer.
                  For example, an episode with rewards [4, 5, 6,  7, 8, 9], where
@@ -998,6 +1002,7 @@ class SingleAgentEpisode:
                 "before the end" unless the `neg_indices_left_of_zero=True` option is
                 used, in which case negative indices are interpreted as "before ts=0",
                 meaning going back into the lookback buffer.
+                If None, will return all extra model outputs (from ts=0 to the end).
             neg_indices_left_of_zero: If True, negative values in `indices` are
                 interpreted as "before ts=0", meaning going back into the lookback
                 buffer. For example, an episode with

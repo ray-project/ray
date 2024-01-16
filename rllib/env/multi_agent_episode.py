@@ -204,7 +204,7 @@ class MultiAgentEpisode:
 
         Args:
             episode_chunk: `MultiAgentEpsiode` instance that should be concatenated
-                to `self`.
+                to `self` (resulting in `self` being extended).
         """
         assert episode_chunk.id_ == self.id_
         assert not self.is_done
@@ -303,12 +303,43 @@ class MultiAgentEpisode:
         during the given index range.
 
         Args:
-            indices: Either a single index or a list of indices. The indices
-                can be reversed (e.g. [-1, -2]) or absolute (e.g. [98, 99]).
-                This defines the time indices for which the observations
-                should be returned.
-            global_ts: Boolean that defines, if the indices should be considered
-                environment (`True`) or agent (`False`) steps.
+            indices: A single int is interpreted as an index, from which to return the
+                individual observation stored at this index.
+                A list of ints is interpreted as a list of indices from which to gather
+                individual observations in a batch of size len(indices).
+                A slice object is interpreted as a range of observations to be returned.
+                Thereby, negative indices by default are interpreted as "before the end"
+                unless the `neg_indices_left_of_zero=True` option is used, in which case
+                negative indices are interpreted as "before ts=0", meaning going back
+                into the lookback buffer.
+                If None, will return all observations (from ts=0 to the end).
+            agent_ids: An optional list/tuple of agent IDs to get observations for.
+                If None, will return observations for all agents in this episode.
+            global_ts: Whether indices should be interpreted as global environment
+                time steps (True) or per-agent timesteps (False).
+            neg_indices_left_of_zero: If True, negative values in `indices` are
+                interpreted as "before ts=0", meaning going back into the lookback
+                buffer. For example, an episode with observations [4, 5, 6,  7, 8, 9],
+                where [4, 5, 6] is the lookback buffer range (ts=0 item is 7), will
+                respond to `get_observations(-1, neg_indices_left_of_zero=True)`
+                with `6` and to
+                `get_observations(slice(-2, 1), neg_indices_left_of_zero=True)` with
+                `[5, 6,  7]`.
+            fill: An optional float value to use for filling up the returned results at
+                the boundaries. This filling only happens if the requested index range's
+                start/stop boundaries exceed the episode's boundaries (including the
+                lookback buffer on the left side). This comes in very handy, if users
+                don't want to worry about reaching such boundaries and want to zero-pad.
+                For example, an episode with observations [10, 11,  12, 13, 14] and
+                lookback buffer size of 2 (meaning observations `10` and `11` are part
+                of the lookback buffer) will respond to
+                `get_observations(slice(-7, -2), fill=0.0)` with
+                `[0.0, 0.0, 10, 11, 12]`.
+            one_hot_discrete: If True, will return one-hot vectors (instead of
+                int-values) for those sub-components of a (possibly complex) observation
+                space that are Discrete or MultiDiscrete.  Note that if `fill=0` and the
+                requested `indices` are out of the range of our data, the returned
+                one-hot vectors will actually be zero-hot (all slots zero).
 
         Returns: A dictionary mapping agent ids to observations (of different
             timesteps). Only for agents that have stepped (were ready) at a
@@ -318,9 +349,13 @@ class MultiAgentEpisode:
         return self._getattr_by_index(
             "observations",
             indices,
-            has_initial_value=True,
+            agent_ids=agent_ids,
             global_ts=global_ts,
-            as_list=as_list,
+            neg_indices_left_of_zero=neg_indices_left_of_zero,
+            fill=fill,
+            one_hot_discrete=one_hot_discrete,
+            #as_list=as_list,
+            has_initial_value=True,
         )
 
     # TODO (simon): Make sure that users always give in sorted lists.
@@ -1791,9 +1826,14 @@ class MultiAgentEpisode:
         self,
         attr: str,
         indices: Union[int, List[int]] = -1,
+        agent_ids: Optional[List[AgentID]] = None,
+        global_ts: bool = True,
+        *,
+        neg_indices_left_of_zero: bool = False,
+        fill: Optional[float] = None,
+        one_hot_discrete: bool = False,
         key: Optional[str] = None,
         has_initial_value=False,
-        global_ts: bool = True,
         global_ts_mapping: Optional[MultiAgentDict] = None,
         shift: int = 0,
         as_list: bool = False,
@@ -1801,109 +1841,80 @@ class MultiAgentEpisode:
     ) -> MultiAgentDict:
         """Returns values in the form of indices: [-1, -2]."""
 
+        agent_ids = agent_ids if agent_ids is not None else self._agent_ids
+
+        # Return per-agent data using each agent's own timestep axis with respect to
+        # `indices`. Simply delegate all getter calls to our SingleAgentEpisode objects.
+        if global_ts is False:
+            ret = {}
+            for agent_id in agent_ids:
+                ret[agent_id] = getattr(self.agent_episodes[agent_id], "get_" + attr)(
+                    indices=indices,
+                    neg_indices_left_of_zero=neg_indices_left_of_zero,
+                    fill=fill,
+                    one_hot_discrete=one_hot_discrete,
+                )
+            return ret
+
         # TODO (simon): Does not give yet indices that are in between.
         # TODO (sven): Do we even need indices in between? This is very
-        # tricky.
+        #  tricky.
+        global_ts_mapping = global_ts_mapping or self.global_t_to_local_t
 
-        if not global_ts_mapping:
-            global_ts_mapping = self.global_t_to_local_t
+        # Check, if the indices are iterable.
+        if isinstance(indices, list):
+            indices = [
+                (self.t + idx + int(has_initial_value))
+                if idx < 0
+                else idx + self.ts_carriage_return
+                for idx in indices
+            ]
+        # If not make them iterable.
+        else:
+            indices = (
+                [
+                    self.t
+                    # - self.ts_carriage_return
+                    + indices
+                    + int(has_initial_value)
+                ]
+                if indices < 0
+                # else [indices + 1]
+                else [indices + self.ts_carriage_return]
+            )
 
-        # First for global_ts = True:
-        if global_ts:
-            # Check, if the indices are iterable.
-            if isinstance(indices, list):
-                indices = [
-                    (self.t + idx + int(has_initial_value))
-                    if idx < 0
-                    else idx + self.ts_carriage_return
+        # If a list should be returned.
+        if as_list:
+            if buffered_values:
+                return [
+                    {
+                        agent_id: (
+                            getattr(agent_eps, attr).get(key)
+                            + buffered_values[agent_id]
+                        )[global_ts_mapping[agent_id].find_indices([idx])[0]]
+                        for agent_id, agent_eps in self.agent_episodes.items()
+                        if global_ts_mapping[agent_id].find_indices([idx], shift)
+                    }
                     for idx in indices
                 ]
-            # If not make them iterable.
             else:
-                indices = (
-                    [
-                        self.t
-                        # - self.ts_carriage_return
-                        + indices
-                        + int(has_initial_value)
-                    ]
-                    if indices < 0
-                    # else [indices + 1]
-                    else [indices + self.ts_carriage_return]
-                )
-
-            # If a list should be returned.
-            if as_list:
-                if buffered_values:
-                    return [
-                        {
-                            agent_id: (
-                                getattr(agent_eps, attr).get(key)
-                                + buffered_values[agent_id]
-                            )[global_ts_mapping[agent_id].find_indices([idx])[0]]
-                            for agent_id, agent_eps in self.agent_episodes.items()
-                            if global_ts_mapping[agent_id].find_indices([idx], shift)
-                        }
-                        for idx in indices
-                    ]
-                else:
-                    return [
-                        {
-                            agent_id: (getattr(agent_eps, attr))[
-                                global_ts_mapping[agent_id].find_indices([idx], shift)[
-                                    0
-                                ]
+                return [
+                    {
+                        agent_id: (getattr(agent_eps, attr))[
+                            global_ts_mapping[agent_id].find_indices([idx], shift)[
+                                0
                             ]
-                            for agent_id, agent_eps in self.agent_episodes.items()
-                            if global_ts_mapping[agent_id].find_indices([idx], shift)
-                        }
-                        for idx in indices
-                    ]
-            # Otherwise we return a dictionary.
-            else:
-                if buffered_values:
-                    # Note, for addition we have to ensure that both elements are lists
-                    # and terminated/truncated agents have numpy arrays.
-                    return {
-                        agent_id: list(
-                            map(
-                                (
-                                    getattr(agent_eps, attr).get(key)
-                                    + buffered_values[agent_id]
-                                ).__getitem__,
-                                global_ts_mapping[agent_id].find_indices(
-                                    indices, shift
-                                ),
-                            )
-                        )
+                        ]
                         for agent_id, agent_eps in self.agent_episodes.items()
-                        # Only include agent data for agents that stepped.
-                        if global_ts_mapping[agent_id].find_indices(indices, shift)
+                        if global_ts_mapping[agent_id].find_indices([idx], shift)
                     }
-                else:
-                    return {
-                        agent_id: list(
-                            map(
-                                getattr(agent_eps, attr).__getitem__,
-                                global_ts_mapping[agent_id].find_indices(
-                                    indices, shift
-                                ),
-                            )
-                        )
-                        for agent_id, agent_eps in self.agent_episodes.items()
-                        # Only include agent data for agents that stepped.
-                        if global_ts_mapping[agent_id].find_indices(indices, shift)
-                    }
-        # Otherwise just look for the timesteps in the `SingleAgentEpisode`s
-        # directly.
+                    for idx in indices
+                ]
+        # Otherwise we return a dictionary.
         else:
-            # Check, if the indices are iterable.
-            if not isinstance(indices, list):
-                indices = [indices]
-
-            # If we have buffered values for the attribute we want to concatenate
-            # while searching for the indices.
             if buffered_values:
+                # Note, for addition we have to ensure that both elements are lists
+                # and terminated/truncated agents have numpy arrays.
                 return {
                     agent_id: list(
                         map(
@@ -1911,51 +1922,92 @@ class MultiAgentEpisode:
                                 getattr(agent_eps, attr).get(key)
                                 + buffered_values[agent_id]
                             ).__getitem__,
-                            set(indices).intersection(
-                                set(
-                                    range(
-                                        -len(global_ts_mapping[agent_id]),
-                                        len(global_ts_mapping[agent_id]),
-                                    )
-                                )
+                            global_ts_mapping[agent_id].find_indices(
+                                indices, shift
                             ),
                         )
                     )
                     for agent_id, agent_eps in self.agent_episodes.items()
-                    if set(indices).intersection(
-                        set(
-                            range(
-                                -len(global_ts_mapping[agent_id]),
-                                len(global_ts_mapping[agent_id]),
-                            )
-                        )
-                    )
+                    # Only include agent data for agents that stepped.
+                    if global_ts_mapping[agent_id].find_indices(indices, shift)
                 }
             else:
                 return {
                     agent_id: list(
                         map(
                             getattr(agent_eps, attr).__getitem__,
-                            set(indices).intersection(
-                                set(
-                                    range(
-                                        -len(global_ts_mapping[agent_id]),
-                                        len(global_ts_mapping[agent_id]),
-                                    )
-                                )
+                            global_ts_mapping[agent_id].find_indices(
+                                indices, shift
                             ),
                         )
                     )
                     for agent_id, agent_eps in self.agent_episodes.items()
-                    if set(indices).intersection(
-                        set(
-                            range(
-                                -len(global_ts_mapping[agent_id]),
-                                len(global_ts_mapping[agent_id]),
-                            )
-                        )
-                    )
+                    # Only include agent data for agents that stepped.
+                    if global_ts_mapping[agent_id].find_indices(indices, shift)
                 }
+
+        # Otherwise just look for the timesteps in the `SingleAgentEpisode`s
+        # directly.
+        # else:
+        #    # Check, if the indices are iterable.
+        #    if not isinstance(indices, list):
+        #        indices = [indices]
+
+        #    # If we have buffered values for the attribute we want to concatenate
+        #    # while searching for the indices.
+        #    if buffered_values:
+        #        return {
+        #            agent_id: list(
+        #                map(
+        #                    (
+        #                        getattr(agent_eps, attr).get(key)
+        #                        + buffered_values[agent_id]
+        #                    ).__getitem__,
+        #                    set(indices).intersection(
+        #                        set(
+        #                            range(
+        #                                -len(global_ts_mapping[agent_id]),
+        #                                len(global_ts_mapping[agent_id]),
+        #                            )
+        #                        )
+        #                    ),
+        #                )
+        #            )
+        #            for agent_id, agent_eps in self.agent_episodes.items()
+        #            if set(indices).intersection(
+        #                set(
+        #                    range(
+        #                        -len(global_ts_mapping[agent_id]),
+        #                        len(global_ts_mapping[agent_id]),
+        #                    )
+        #                )
+        #            )
+        #        }
+        #    else:
+        #        return {
+        #            agent_id: list(
+        #                map(
+        #                    getattr(agent_eps, attr).__getitem__,
+        #                    set(indices).intersection(
+        #                        set(
+        #                            range(
+        #                                -len(global_ts_mapping[agent_id]),
+        #                                len(global_ts_mapping[agent_id]),
+        #                            )
+        #                        )
+        #                    ),
+        #                )
+        #            )
+        #            for agent_id, agent_eps in self.agent_episodes.items()
+        #            if set(indices).intersection(
+        #                set(
+        #                    range(
+        #                        -len(global_ts_mapping[agent_id]),
+        #                        len(global_ts_mapping[agent_id]),
+        #                    )
+        #                )
+        #            )
+        #        }
 
     def _get_single_agent_data(
         self,
