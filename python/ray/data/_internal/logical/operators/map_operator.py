@@ -7,6 +7,7 @@ from ray.data._internal.logical.interfaces import LogicalOperator
 from ray.data._internal.logical.operators.one_to_one_operator import AbstractOneToOne
 from ray.data.block import UserDefinedFunction
 from ray.data.context import DEFAULT_BATCH_SIZE
+from ray.data.preprocessor import Preprocessor
 
 logger = DatasetLogger(__name__)
 
@@ -20,6 +21,7 @@ class AbstractMap(AbstractOneToOne):
         self,
         name: str,
         input_op: Optional[LogicalOperator] = None,
+        num_outputs: Optional[int] = None,
         ray_remote_args: Optional[Dict[str, Any]] = None,
     ):
         """
@@ -30,27 +32,8 @@ class AbstractMap(AbstractOneToOne):
                 of `input_op` will be the inputs to this operator.
             ray_remote_args: Args to provide to ray.remote.
         """
-        super().__init__(name, input_op)
+        super().__init__(name, input_op, num_outputs)
         self._ray_remote_args = ray_remote_args or {}
-
-
-def _get_udf_name(fn: UserDefinedFunction) -> str:
-    try:
-        if inspect.isclass(fn):
-            # callable class
-            return fn.__name__
-        elif inspect.ismethod(fn):
-            # class method
-            return f"{fn.__self__.__class__.__name__}.{fn.__name__}"
-        elif inspect.isfunction(fn):
-            # normal function or lambda function.
-            return fn.__name__
-        else:
-            # callable object.
-            return fn.__class__.__name__
-    except AttributeError as e:
-        logger.get_logger().error("Failed to get name of UDF %s: %s", fn, e)
-        return "<unknown>"
 
 
 class AbstractUDFMap(AbstractMap):
@@ -89,8 +72,8 @@ class AbstractUDFMap(AbstractMap):
                 tasks, or ``"actors"`` to use an autoscaling actor pool.
             ray_remote_args: Args to provide to ray.remote.
         """
-        name = f"{name}({_get_udf_name(fn)})"
-        super().__init__(name, input_op, ray_remote_args)
+        name = self._get_operator_name(name, fn)
+        super().__init__(name, input_op, ray_remote_args=ray_remote_args)
         self._fn = fn
         self._fn_args = fn_args
         self._fn_kwargs = fn_kwargs
@@ -98,6 +81,32 @@ class AbstractUDFMap(AbstractMap):
         self._fn_constructor_kwargs = fn_constructor_kwargs
         self._min_rows_per_block = min_rows_per_block
         self._compute = compute or TaskPoolStrategy()
+
+    def _get_operator_name(self, op_name: str, fn: UserDefinedFunction):
+        """Gets the Operator name including the map `fn` UDF name."""
+        # If the input `fn` is a Preprocessor, the
+        # name is simply the name of the Preprocessor class.
+        if inspect.ismethod(fn) and isinstance(fn.__self__, Preprocessor):
+            return fn.__self__.__class__.__name__
+
+        # Otherwise, it takes the form of `<MapOperator class>(<UDF name>)`,
+        # e.g. `MapBatches(my_udf)`.
+        try:
+            if inspect.isclass(fn):
+                # callable class
+                return f"{op_name}({fn.__name__})"
+            elif inspect.ismethod(fn):
+                # class method
+                return f"{op_name}({fn.__self__.__class__.__name__}.{fn.__name__})"
+            elif inspect.isfunction(fn):
+                # normal function or lambda function.
+                return f"{op_name}({fn.__name__})"
+            else:
+                # callable object.
+                return f"{op_name}({fn.__class__.__name__})"
+        except AttributeError as e:
+            logger.get_logger().error("Failed to get name of UDF %s: %s", fn, e)
+            return "<unknown>"
 
 
 class MapBatches(AbstractUDFMap):

@@ -13,3 +13,6 @@ class RayOnSparkStartHook:
 
     def on_spark_job_created(self, job_group_id):
         pass
+
+    def custom_environment_variables(self):
+        return {}

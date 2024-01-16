@@ -1,7 +1,7 @@
 from typing import Any, Dict, Optional
 
 import ray
-from ray.serve._private.autoscaling_policy import BasicAutoscalingPolicy
+from ray.serve._private.autoscaling_policy import AutoscalingPolicyManager
 from ray.serve._private.common import TargetCapacityDirection
 from ray.serve._private.config import DeploymentConfig, ReplicaConfig
 from ray.serve._private.constants import REPLICA_CONTROL_PLANE_CONCURRENCY_GROUP
@@ -53,12 +53,9 @@ class DeploymentInfo:
         self.target_capacity = target_capacity
         self.target_capacity_direction = target_capacity_direction
 
-        if deployment_config.autoscaling_config is not None:
-            self.autoscaling_policy = BasicAutoscalingPolicy(
-                deployment_config.autoscaling_config
-            )
-        else:
-            self.autoscaling_policy = None
+        self.autoscaling_policy_manager = AutoscalingPolicyManager(
+            config=deployment_config.autoscaling_config
+        )
 
     def __getstate__(self) -> Dict[Any, Any]:
         clean_dict = self.__dict__.copy()

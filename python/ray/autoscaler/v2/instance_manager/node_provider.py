@@ -24,155 +24,182 @@ logger = logging.getLogger(__name__)
 # Type Alias. This is a **unique identifier** for a cloud node in the cluster.
 # The node provider should guarantee that this id is unique across the cluster,
 # such that:
-#   - When a cloud node is created and running, no other cloud node in the
+#   - When a cloud instance is created and running, no other cloud instance in the
 #     cluster has the same id.
-#   - When a cloud node is terminated, no other cloud node in the cluster should
+#   - When a cloud instance is terminated, no other cloud instance in the cluster will
 #     be assigned the same id later.
 CloudInstanceId = str
 
 
 @dataclass
 class CloudInstance:
+    """
+    A class that represents a cloud instance in the cluster, with necessary metadata
+    of the cloud instance.
+    """
+
     # The cloud instance id.
     cloud_instance_id: CloudInstanceId
     # The node type of the cloud instance.
     node_type: NodeType
+    # Update request id from which the cloud instance is launched.
+    request_id: str
 
 
 @dataclass
-class CloudNodeProviderError:
+class CloudInstanceProviderError:
     """
-    An error class that represents an error that happened in the cloud node provider.
+    An base error class that represents an error that happened in the cloud instance
+    provider.
     """
 
     # The exception that caused the error.
     exception: Optional[Exception]
     # The details of the error.
     details: Optional[str]
-    # The timestamp of the error in nanoseconds.
+    # The timestamp of the error occurred in nanoseconds.
     timestamp_ns: int
 
 
 @dataclass
-class LaunchNodeError(CloudNodeProviderError):
+class LaunchNodeError(CloudInstanceProviderError):
     # The node type that failed to launch.
     node_type: NodeType
     # Number of nodes that failed to launch.
     count: int
-    # From which update request the error originates.
-    update_id: str
+    # A unique id that identifies from which update request the error originates.
+    request_id: str
 
 
 @dataclass
-class TerminateNodeError(CloudNodeProviderError):
+class TerminateNodeError(CloudInstanceProviderError):
     # The cloud instance id of the node that failed to terminate.
     cloud_instance_id: CloudInstanceId
     # From which update request the error originates.
-    update_id: str
+    request_id: str
 
 
-@dataclass
-class CloudNodeProviderState:
+class ICloudInstanceProvider(ABC):
     """
-    The state of a cloud node provider.
-    """
-
-    # The cloud nodes that are currently running.
-    running_nodes: Dict[CloudInstanceId, CloudInstance] = field(default_factory=dict)
-    # New errors that have happened when launching nodes.
-    launch_errors: List[LaunchNodeError] = field(default_factory=list)
-    # New errors that have happened when terminating nodes.
-    termination_errors: List[TerminateNodeError] = field(default_factory=list)
-
-
-class ICloudNodeProvider(ABC):
-    """
-    The interface for a cloud node provider.
+    The interface for a cloud instance provider.
 
     This interface is a minimal interface that should be implemented by the
-    various cloud node providers (e.g. AWS, and etc).
+    various cloud instance providers (e.g. AWS, and etc).
 
-    The cloud node provider is responsible for managing the cloud nodes in the
+    The cloud instance provider is responsible for managing the cloud instances in the
     cluster. It provides the following main functionalities:
-        - Launch new cloud nodes.
-        - Terminate cloud nodes.
-        - Get the running cloud nodes in the cluster.
+        - Launch new cloud instances.
+        - Terminate existing running instances.
+        - Get the running cloud instances in the cluster.
+        - Poll the errors that happened for the updates to the cloud instance provider.
 
-    Below properties of the cloud node provider are assumed with this interface:
+    Below properties of the cloud instance provider are assumed with this interface:
 
     1. Eventually consistent
-    The cloud node provider is expected to be eventually consistent with the
-    cluster state. For example, when a node is request to be terminated/launched,
-    the node provider may not immediately reflect the change in its state.
+    The cloud instance provider is expected to be eventually consistent with the
+    cluster state. For example, when a cloud instance is request to be terminated
+    or launched, the provider may not immediately reflect the change in its state.
+    However, the provider is expected to eventually reflect the change in its state.
 
     2. Asynchronous
-    The node provider could also be asynchronous, where the termination/launch
+    The provider could also be asynchronous, where the termination/launch
     request may not immediately return the result of the request.
 
-    3. Unique cloud node ids
-    Cloud node ids are expected to be unique across the cluster.
+    3. Unique cloud instance ids
+    Cloud instance ids are expected to be unique across the cluster.
+
+    4. Idempotent updates
+    For the update APIs (e.g. ensure_min_nodes, terminate), the provider may use the
+    request ids to provide idempotency.
 
     Usage:
         ```
-            cloud_node_provider: ICloudNodeProvider = ...
+            provider: ICloudInstanceProvider = ...
 
-            # Update the cluster with a designed shape.
-            cloud_node_provider.update(
-                id="update_1",
-                target_running_nodes={
+            # Update the cluster with a desired shape.
+            provider.launch(
+                shape={
                     "worker_nodes": 10,
                     "ray_head": 1,
                 },
-                to_terminate=["node_1", "node_2"],
+                request_id="1",
             )
 
-            # Poll the state of the cloud node provider.
-            state = cloud_node_provider.get_state()
+            # Get the running nodes of the cloud instance provider.
+            running = provider.get_running()
 
-            # Process the state of the cloud node provider.
+            # Poll the errors
+            errors = provider.poll_errors()
+
+            # Terminate nodes.
+            provider.terminate(
+                ids=["cloud_instance_id_1", "cloud_instance_id_2"],
+                request_id="2",
+            )
+
+            # Process the state of the provider.
+            ...
         ```
     """
 
     @abstractmethod
-    def get_state(self) -> CloudNodeProviderState:
-        """Get the current state of the cloud node provider.
+    def get_running(self) -> Dict[CloudInstanceId, CloudInstance]:
+        """Get the running cloud instances in the cluster.
 
         Returns:
-            The current state of the cloud node provider.
+            A dictionary of the running cloud instances in the cluster.
+            The key is the cloud instance id, and the value is the cloud instance.
         """
         pass
 
     @abstractmethod
-    def update(
-        self,
-        id: str,
-        target_running_nodes: Dict[NodeType, int],
-        to_terminate: Optional[List[CloudInstanceId]] = None,
-        wait: bool = False,
-    ) -> None:
-        """Update the cloud node provider state by launching
-         or terminating cloud nodes.
+    def terminate(self, ids: List[CloudInstanceId], request_id: str) -> None:
+        """
+        Terminate the cloud instances asynchronously.
 
         Args:
-            id: the id of the update request.
-            target_running_nodes: the target cluster shape (number of running nodes by type).
-            to_terminate: the nodes to terminate.
-            wait: whether to wait for the update to finish. It's useful to set this to True
-            in testing. 
+            ids: the cloud instance ids to terminate.
+            request_id: a unique id that identifies the request.
+        """
+        pass
+
+    @abstractmethod
+    def launch(
+        self,
+        shape: Dict[NodeType, int],
+        request_id: str,
+    ) -> None:
+        """Launch the cloud instances asynchronously.
+
+        Args:
+            shape: A map from node type to number of nodes to launch.
+            request_id: a unique id that identifies the update request.
+        """
+        pass
+
+    @abstractmethod
+    def poll_errors(self) -> List[CloudInstanceProviderError]:
+        """
+        Poll the errors that happened since the last poll.
+
+        This method would also clear the errors that happened since the last poll.
+
+        Returns:
+            The errors that happened since the last poll.
         """
         pass
 
 
-class NodeProviderAdapter(ICloudNodeProvider):
+class NodeProviderAdapter(ICloudInstanceProvider):
     """
-    Warps a NodeProviderV1 to a ICloudNodeProvider.
+    Warps a NodeProviderV1 to a ICloudInstanceProvider.
 
     TODO(rickyx):
     The current adapter right now consists of two sets of APIs:
     - v1: the old APIs that are used by the autoscaler, where
     we forward the calls to the NodeProviderV1.
     - v2: the new APIs that are used by the autoscaler v2, this is
-    defined in the ICloudNodeProvider interface.
+    defined in the ICloudInstanceProvider interface.
 
     We should eventually remove the v1 APIs and only use the v2 APIs.
     It's currently left as a TODO since changing the v1 APIs would
@@ -285,7 +312,9 @@ class NodeProviderAdapter(ICloudNodeProvider):
 
         to_launch = self._compute_to_launch(target_running_nodes, to_terminate)
 
-        logger.debug(f"Launching nodes: {dict(to_launch)}; Terminating nodes: {all_to_terminate}")
+        logger.debug(
+            f"Launching nodes: {dict(to_launch)}; Terminating nodes: {all_to_terminate}"
+        )
 
         futs_to_updates = {}
         # Launch nodes in the thread pool.
@@ -306,7 +335,6 @@ class NodeProviderAdapter(ICloudNodeProvider):
                     cloud_instance_id,
                 )
             ] = ("terminate", (cloud_instance_id, update_id))
-
 
         # Wait for all the futures to finish.
         for fut in as_completed(futs_to_updates):
@@ -406,7 +434,7 @@ class NodeProviderAdapter(ICloudNodeProvider):
     for V2 node provider.
     The goal is to eventually remove these APIs and only use the
     V2 APIs by modifying the individual node provider to inherit
-    from ICloudNodeProvider.
+    from ICloudInstanceProvider.
     """
 
     def _v1_terminate_node(self, node_id: CloudInstanceId) -> Optional[Dict[str, Any]]:

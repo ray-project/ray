@@ -9,7 +9,6 @@ import pytest
 
 import ray
 from ray.data._internal.execution.interfaces import ExecutionOptions
-from ray.data._internal.execution.legacy_compat import _blocks_to_input_buffer
 from ray.data._internal.execution.operators.base_physical_operator import (
     AllToAllOperator,
 )
@@ -1477,17 +1476,6 @@ def test_limit_pushdown(ray_start_regular_shared, enable_optimizer):
         "Sort[Sort] -> Limit[limit=5] -> MapRows[Map(f2)]",
         [{"id": i} for i in range(5)],
     )
-
-
-def test_blocks_to_input_buffer_op_name(
-    ray_start_regular_shared,
-    enable_streaming_executor,
-):
-    ds: ray.data.Dataset = ray.data.range(10)
-    blocks, _, _ = ds._plan._optimize()
-    assert hasattr(blocks, "_tasks"), blocks
-    physical_op = _blocks_to_input_buffer(blocks, owns_blocks=False)
-    assert physical_op.name == "ReadRange"
 
 
 def test_execute_to_legacy_block_list(

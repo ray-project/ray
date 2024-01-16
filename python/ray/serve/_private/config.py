@@ -2,7 +2,8 @@ import inspect
 import json
 from typing import Any, Callable, Dict, List, Optional, Set, Tuple, Union
 
-from google.protobuf.json_format import MessageToDict
+from google.protobuf.descriptor import FieldDescriptor
+from google.protobuf.message import Message
 
 from ray import cloudpickle
 from ray._private import ray_option_utils
@@ -46,6 +47,34 @@ def _needs_pickle(deployment_language: DeploymentLanguage, is_cross_language: bo
         return True
     else:
         return False
+
+
+def _proto_to_dict(proto: Message) -> Dict:
+    """Recursively convert a protobuf into a Python dictionary.
+
+    This is an alternative to protobuf's `MessageToDict`. Unlike
+    `MessageToDict`, this function doesn't add an extra base64
+    encoding to bytes when constructing a json response.
+    """
+    data = {}
+    # Fill data with non-empty fields.
+    for field, value in proto.ListFields():
+        # Recursively call if the field is another protobuf.
+        if field.type == FieldDescriptor.TYPE_MESSAGE:
+            data[field.name] = _proto_to_dict(value)
+        else:
+            data[field.name] = value
+
+    # Fill data default values.
+    for field in proto.DESCRIPTOR.fields:
+        if (
+            field.name not in data  # skip the fields that are already set
+            and field.type != FieldDescriptor.TYPE_MESSAGE  # skip nested messages
+            and not field.containing_oneof  # skip optional fields
+        ):
+            data[field.name] = field.default_value
+
+    return data
 
 
 class DeploymentConfig(BaseModel):
@@ -179,6 +208,10 @@ class DeploymentConfig(BaseModel):
             if self.needs_pickle():
                 data["user_config"] = cloudpickle.dumps(data["user_config"])
         if data.get("autoscaling_config"):
+            # policy is only used for user-facing API. Internally we will refer to
+            # serialized_policy_def to get the policy.
+            if "policy" in data["autoscaling_config"]:
+                data["autoscaling_config"].pop("policy")
             data["autoscaling_config"] = AutoscalingConfigProto(
                 **data["autoscaling_config"]
             )
@@ -199,14 +232,9 @@ class DeploymentConfig(BaseModel):
 
     @classmethod
     def from_proto(cls, proto: DeploymentConfigProto):
-        data = MessageToDict(
-            proto,
-            including_default_value_fields=True,
-            preserving_proto_field_name=True,
-            use_integers_for_enums=True,
-        )
+        data = _proto_to_dict(proto)
         if "user_config" in data:
-            if data["user_config"] != "":
+            if data["user_config"] != b"":
                 deployment_language = (
                     data["deployment_language"]
                     if "deployment_language" in data
@@ -219,7 +247,6 @@ class DeploymentConfig(BaseModel):
                 if needs_pickle:
                     data["user_config"] = cloudpickle.loads(proto.user_config)
                 else:
-                    # after MessageToDict, bytes data has been deal with base64
                     data["user_config"] = proto.user_config
             else:
                 data["user_config"] = None

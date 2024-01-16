@@ -41,6 +41,7 @@ repos:
             python/ray/thirdparty_files/|
             python/ray/_private/thirdparty/|
             python/ray/serve/tests/test_config_files/syntax_error\.py|
+            python/ray/serve/_private/benchmarks/streaming/_grpc/test_server_pb2_grpc\.py|
             doc/external/
           )
         types_or: [python]
@@ -61,7 +62,7 @@ repos:
     hooks:
       - id: prettier
         files: 'doc/'
-        types_or: [javascript, ts, tsx, html]
+        types_or: [javascript, ts, tsx, html, css]
 
   - repo: https://github.com/pre-commit/mirrors-mypy
     rev: v1.7.0

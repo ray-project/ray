@@ -381,6 +381,7 @@ def read_datasource(
         datasource_or_legacy_reader,
         parallelism,
         inmemory_size,
+        block_list._estimated_num_blocks,
         ray_remote_args,
     )
 
@@ -671,7 +672,7 @@ def read_parquet(
         shuffle: If setting to "files", randomly shuffle input files order before read.
             Defaults to not shuffle with ``None``.
         arrow_parquet_args: Other parquet read options to pass to PyArrow. For the full
-            set of arguments, see the`PyArrow API <https://arrow.apache.org/docs/\
+            set of arguments, see the `PyArrow API <https://arrow.apache.org/docs/\
                 python/generated/pyarrow.dataset.Scanner.html\
                     #pyarrow.dataset.Scanner.from_fragment>`_
         include_paths: If ``True``, include the path to each file. File paths are
