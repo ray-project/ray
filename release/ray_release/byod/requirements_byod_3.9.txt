@@ -148,7 +148,6 @@ anyio==3.7.1 \
     --hash=sha256:91dee416e570e92c64041bd18b900d1d6fa78dff7048769ce5ac5ddad004fbb5
     # via
     #   -c release/ray_release/byod/requirements_compiled.txt
-    #   fastapi
     #   starlette
 argcomplete==1.12.3 \
     --hash=sha256:291f0beca7fd49ce285d2f10e4c1c77e9460cf823eef2de54df0c0fec88b0d81 \
@@ -578,12 +577,10 @@ exceptiongroup==1.2.0 \
     # via
     #   -c release/ray_release/byod/requirements_compiled.txt
     #   anyio
-fastapi==0.104.0 \
-    --hash=sha256:456482c1178fb7beb2814b88e1885bc49f9a81f079665016feffe3e1c6a7663e \
-    --hash=sha256:9c44de45693ae037b0c6914727a29c49a40668432b67c859a87851fc6a7b74c6
-    # via
-    #   -c release/ray_release/byod/requirements_compiled.txt
-    #   -r release/ray_release/byod/requirements_byod_3.9.in
+fastapi==0.109.0 \
+    --hash=sha256:8c77515984cd8e8cfeb58364f8cc7a28f0692088475e2614f7bf03275eba9093 \
+    --hash=sha256:b978095b9ee01a5cf49b19f4bc1ac9b8ca83aa076e770ef8fd9af09a2b88d191
+    # via -r release/ray_release/byod/requirements_byod_3.9.in
 fasteners==0.19 \
     --hash=sha256:758819cb5d94cdedf4e836988b74de396ceacb8e2794d21f82d131fd9ee77237 \
     --hash=sha256:b4f37c3ac52d8a445af3a66bce57b33b5e90b97c696b7b984f530cf8f0ded09c
@@ -2095,12 +2092,10 @@ sniffio==1.3.0 \
     # via
     #   -c release/ray_release/byod/requirements_compiled.txt
     #   anyio
-starlette==0.27.0 \
-    --hash=sha256:6a6b0d042acb8d469a01eba54e9cda6cbd24ac602c4cd016723117d6a7e73b75 \
-    --hash=sha256:918416370e846586541235ccd38a474c08b80443ed31c578a418e2209b3eef91
-    # via
-    #   -c release/ray_release/byod/requirements_compiled.txt
-    #   fastapi
+starlette==0.35.1 \
+    --hash=sha256:3e2639dac3520e4f58734ed22553f950d3f3cb1001cd2eaac4d57e8cdc5f66bc \
+    --hash=sha256:50bbbda9baa098e361f398fda0928062abbaf1f54f4fadcbe17c092a01eb9a25
+    # via fastapi
 tblib==3.0.0 \
     --hash=sha256:80a6c77e59b55e83911e1e607c649836a69c103963c5f28a46cbeef44acf8129 \
     --hash=sha256:93622790a0a29e04f0346458face1e144dc4d32f493714c6c3dff82a4adb77e6

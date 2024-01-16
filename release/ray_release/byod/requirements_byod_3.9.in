@@ -6,7 +6,7 @@ boto3
 cmake
 crc32c
 cython
-fastapi
+fastapi==0.109.0
 gcsfs==2023.5.0
 gsutil
 gym
