@@ -13,6 +13,7 @@ from ray.dashboard.modules.metrics import install_and_start_prometheus
 #         architecture = "amd64"
 #     return os_type, architecture
 
+
 @pytest.mark.parametrize(
     "os_type,architecture",
     [
@@ -27,7 +28,9 @@ from ray.dashboard.modules.metrics import install_and_start_prometheus
 def test_download_prometheus(os_type, architecture, monkeypatch):
     # set TEST_MODE_ENV_VAR to True to use requests.head instead of requests.get
     monkeypatch.setenv(install_and_start_prometheus.TEST_MODE_ENV_VAR, "True")
-    downloaded, _ = install_and_start_prometheus.download_prometheus(os_type, architecture)
+    downloaded, _ = install_and_start_prometheus.download_prometheus(
+        os_type, architecture
+    )
     assert downloaded
 
 
@@ -38,6 +41,7 @@ def test_e2e(capsys):
     captured = capsys.readouterr()
     assert "Download completed." in captured.out
     assert "Prometheus has started" in captured.out
+
 
 if __name__ == "__main__":
     sys.exit(pytest.main(["-v", __file__]))
