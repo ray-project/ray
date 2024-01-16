@@ -180,9 +180,11 @@ def _setup_cluster_for_test(request, ray_start_cluster):
 
     worker_should_exit = SignalActor.remote()
 
+    extra_tags = {"ray_version": ray.__version__}
+
     # Generate a metric in the driver.
     counter = Counter("test_driver_counter", description="desc")
-    counter.inc()
+    counter.inc(tags=extra_tags)
 
     # Generate some metrics from actor & tasks.
     @ray.remote
@@ -190,8 +192,8 @@ def _setup_cluster_for_test(request, ray_start_cluster):
         counter = Counter("test_counter", description="desc")
         counter.inc()
         counter = ray.get(ray.put(counter))  # Test serialization.
-        counter.inc()
-        counter.inc(2)
+        counter.inc(tags=extra_tags)
+        counter.inc(2, tags=extra_tags)
         ray.get(worker_should_exit.wait.remote())
 
     # Generate some metrics for the placement group.
@@ -206,7 +208,7 @@ def _setup_cluster_for_test(request, ray_start_cluster):
                 "test_histogram", description="desc", boundaries=[0.1, 1.6]
             )
             histogram = ray.get(ray.put(histogram))  # Test serialization.
-            histogram.observe(1.5)
+            histogram.observe(1.5, tags=extra_tags)
             ray.get(worker_should_exit.wait.remote())
 
     a = A.remote()
