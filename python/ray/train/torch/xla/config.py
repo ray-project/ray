@@ -1,6 +1,7 @@
 import os
 import uuid
 from dataclasses import dataclass
+import re
 
 import ray
 from ray.train._internal.utils import get_address_and_port
@@ -19,6 +20,8 @@ class TorchXLAConfig(TorchConfig):
     Currently, only "neuron_cores" accelerator (AwsNeuronXLABackend)
     is supported with xrt runtime.
     """
+
+    neuron_parallel_compile: bool = False
 
     @property
     def backend_cls(self):
@@ -68,6 +71,46 @@ def _setup_xla_torch_process_group():
         raise ImportError("torch_xla must be installed to use torch_xla backend.")
 
 
+# The following env vars enable Neuron graph extraction for parallel compilation
+#   Note: model outputs are invalid and should be ignored while these env vars are set
+def _set_neuron_parallel_compile_env_vars():
+    os.environ["NEURON_PARALLEL_COMPILE"] = "1"
+    os.environ["NEURON_EXTRACT_GRAPHS_ONLY"] = "1"
+    os.environ["NEURON_FALL_BACK_TO_NULL_NEFF"] = "1"
+
+
+# Compile previously extracted Neuron graphs
+def _neuron_compile_extracted_graphs():
+    try:
+        from libneuronxla.neuron_parallel_compile import parallel_compile
+        from libneuronxla.neuron_cc_cache import CacheUrl
+    except ImportError:
+        raise ImportError(
+            "libneuronxla must be installed to use Neuron parallel compilation."
+        )
+
+    # Only 1 worker per node should run parallel_compile()
+    if os.environ.get("LOCAL_RANK") == "0":
+        print("Compiling extracted graphs on local rank0 worker")
+
+        parallel_compile_workdir = (
+            f"/var/tmp/{os.environ.get('USER','no-user')}_parallel_compile_workdir/"
+        )
+        os.makedirs(parallel_compile_workdir, exist_ok=True)
+
+        # Users can set the cache directory using --cache_dir in NEURON_CC_FLAGS or by
+        # using NEURON_COMPILE_CACHE_URL. --cache_dir takes precedence.
+        explicit_cache_dir = None
+        if neuron_cc_flags := os.environ.get("NEURON_CC_FLAGS"):
+            if s := re.search(r"--cache_dir[= ](\S+)", neuron_cc_flags):
+                explicit_cache_dir = s.group(1)
+
+        parallel_compile(
+            parallel_compile_workdir,
+            CacheUrl.get_cache_url(explicit_cache_dir),
+        )
+
+
 class _TorchAwsNeuronXLABackend(Backend):
     unique_run_id: str = str(uuid.uuid4())
 
@@ -90,6 +133,11 @@ class _TorchAwsNeuronXLABackend(Backend):
         # Set the env vars on all workers.
         worker_group.execute(set_env_vars, addr=master_addr, port=master_port)
 
+        # Set up env vars for neuron parallel compilation graph extraction
+        if backend_config.neuron_parallel_compile:
+            print("Extracting graphs for Neuron parallel compilation")
+            worker_group.execute(_set_neuron_parallel_compile_env_vars)
+
     def on_training_start(
         self, worker_group: WorkerGroup, backend_config: TorchXLAConfig
     ):
@@ -105,6 +153,11 @@ class _TorchAwsNeuronXLABackend(Backend):
     def on_shutdown(self, worker_group: WorkerGroup, backend_config: TorchXLAConfig):
         """
         Logic ran right after training is finished.
-        This is a sanity cleanup to kill xrt server.
+        This is a sanity cleanup to kill xrt server, and to optionally
+        run neuron parallel graph compilation
         """
         worker_group.execute(_kill_xrt_server)
+
+        # Compile the extracted graphs. This must run at end of training.
+        if backend_config.neuron_parallel_compile:
+            worker_group.execute(_neuron_compile_extracted_graphs)
