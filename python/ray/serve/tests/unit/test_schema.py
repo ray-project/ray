@@ -766,7 +766,39 @@ def test_serve_instance_details_is_json_serializable():
             }
         },
     )._get_user_facing_json_serializable_dict(exclude_unset=True)
-    json.dumps(details)
+    details_json = json.dumps(details)
+
+    expected_json = json.dumps(
+        {
+            "controller_info": {"node_id": "fake_node_id"},
+            "proxy_location": "EveryNode",
+            "proxies": {"node1": {"status": "HEALTHY"}},
+            "applications": {
+                "app1": {
+                    "name": "app1",
+                    "route_prefix": "/app1",
+                    "docs_path": "/docs/app1",
+                    "status": "RUNNING",
+                    "message": "fake_message",
+                    "last_deployed_time_s": 123.0,
+                    "deployments": {
+                        "deployment1": {
+                            "name": "deployment1",
+                            "status": "HEALTHY",
+                            "status_trigger": "AUTOSCALING",
+                            "message": "fake_message",
+                            "deployment_config": {
+                                "name": "deployment1",
+                                "autoscaling_config": {},
+                            },
+                            "replicas": [],
+                        }
+                    },
+                }
+            },
+        }
+    )
+    assert details_json == expected_json
 
     # ensure internal field, serialized_policy_def, is not exposed
     application = details["applications"]["app1"]

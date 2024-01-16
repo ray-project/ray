@@ -98,7 +98,111 @@ def test_get_serve_instance_details_json_serializable(serve_instance, policy):
 
     serve.run(autoscaling_app.bind())
     details = ray.get(controller.get_serve_instance_details.remote())
-    json.dumps(details)
+    details_json = json.dumps(details)
+    controller_details = ray.get(controller.get_actor_details.remote())
+    node_id = controller_details.node_id
+    node_ip = controller_details.node_ip
+    proxy_details = ray.get(controller.get_proxy_details.remote(node_id=node_id))
+    deployment_timestamp = ray.get(
+        controller.get_deployment_timestamps.remote(app_name="default")
+    )
+    deployment_details = ray.get(
+        controller.get_deployment_details.remote("default", "autoscaling_app")
+    )
+    replica = deployment_details.replicas[0]
+    policy_path = "ray.serve.autoscaling_policy:default_autoscaling_policy"
+    if policy == default_autoscaling_policy:
+        policy_path = (
+            "ray.serve.autoscaling_policy.replica_queue_length_autoscaling_policy"
+        )
+
+    expected_json = json.dumps(
+        {
+            "controller_info": {
+                "node_id": node_id,
+                "node_ip": node_ip,
+                "actor_id": controller_details.actor_id,
+                "actor_name": controller_details.actor_name,
+                "worker_id": controller_details.worker_id,
+                "log_file_path": controller_details.log_file_path,
+            },
+            "proxy_location": "HeadOnly",
+            "http_options": {"host": "0.0.0.0"},
+            "grpc_options": {},
+            "proxies": {
+                node_id: {
+                    "node_id": node_id,
+                    "node_ip": node_ip,
+                    "actor_id": proxy_details.actor_id,
+                    "actor_name": proxy_details.actor_name,
+                    "worker_id": proxy_details.worker_id,
+                    "log_file_path": proxy_details.log_file_path,
+                    "status": proxy_details.status,
+                }
+            },
+            "applications": {
+                "default": {
+                    "name": "default",
+                    "route_prefix": "/",
+                    "docs_path": None,
+                    "status": "RUNNING",
+                    "message": "",
+                    "last_deployed_time_s": deployment_timestamp,
+                    "deployed_app_config": None,
+                    "deployments": {
+                        "autoscaling_app": {
+                            "name": "autoscaling_app",
+                            "status": "HEALTHY",
+                            "status_trigger": "CONFIG_UPDATE_COMPLETED",
+                            "message": "",
+                            "deployment_config": {
+                                "name": "autoscaling_app",
+                                "max_concurrent_queries": 100,
+                                "user_config": None,
+                                "autoscaling_config": {
+                                    "min_replicas": 1,
+                                    "max_replicas": 10,
+                                    "target_num_ongoing_requests_per_replica": 1.0,
+                                    "metrics_interval_s": 10.0,
+                                    "look_back_period_s": 30.0,
+                                    "smoothing_factor": 1.0,
+                                    "upscale_smoothing_factor": None,
+                                    "downscale_smoothing_factor": None,
+                                    "downscale_delay_s": 600.0,
+                                    "upscale_delay_s": 30.0,
+                                    "policy": policy_path,
+                                },
+                                "graceful_shutdown_wait_loop_s": 2.0,
+                                "graceful_shutdown_timeout_s": 20.0,
+                                "health_check_period_s": 10.0,
+                                "health_check_timeout_s": 30.0,
+                                "ray_actor_options": {
+                                    "runtime_env": {},
+                                    "num_cpus": 1.0,
+                                },
+                            },
+                            "replicas": [
+                                {
+                                    "node_id": node_id,
+                                    "node_ip": node_ip,
+                                    "actor_id": replica.actor_id,
+                                    "actor_name": replica.actor_name,
+                                    "worker_id": replica.worker_id,
+                                    "log_file_path": replica.log_file_path,
+                                    "replica_id": replica.replica_id,
+                                    "state": "RUNNING",
+                                    "pid": replica.pid,
+                                    "start_time_s": replica.start_time_s,
+                                }
+                            ],
+                        }
+                    },
+                }
+            },
+            "target_capacity": None,
+        }
+    )
+    assert details_json == expected_json
 
     # ensure internal field, serialized_policy_def, is not exposed
     application = details["applications"]["default"]
