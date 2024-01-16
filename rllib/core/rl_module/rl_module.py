@@ -162,9 +162,8 @@ class SingleAgentRLModuleSpec:
         self.catalog_class = other.catalog_class or self.catalog_class
         self.load_state_path = other.load_state_path or self.load_state_path
 
-    def as_multi_agent(self):
-        """Returns a MultiAgentRLModuleSpec based on self under a DEFAULT_POLICY_ID key.
-        """
+    def as_multi_agent(self) -> MultiAgentRLModuleSpec:
+        """Returns a MultiAgentRLModuleSpec (`self` under DEFAULT_POLICY_ID key)."""
         return MultiAgentRLModuleSpec(
             module_specs={DEFAULT_POLICY_ID: self},
             load_state_path=self.load_state_path,

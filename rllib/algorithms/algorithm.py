@@ -1409,6 +1409,9 @@ class Algorithm(Trainable, AlgorithmBase):
             worker.set_weights(
                 weights=ray.get(weights_ref), weights_seq_no=weights_seq_no
             )
+            # By episode: Run always only one episode per remote call.
+            # By timesteps: By default EnvRunner runs for the configured number of
+            # timesteps (based on `rollout_fragment_length` and `num_envs_per_worker`).
             episodes = worker.sample(
                 explore=False, num_episodes=1 if unit == "episodes" else None
             )
@@ -1452,6 +1455,9 @@ class Algorithm(Trainable, AlgorithmBase):
 
             # Collect steps stats.
             # TODO (sven): Solve for proper multi-agent env/agent steps counting.
+            #  Once we have multi-agent support on EnvRunner stack, we can simply do:
+            #  `len(episode)` for env steps and `episode.num_agent_steps()` for agent
+            #  steps.
             _agent_steps = sum(len(e) for e in episodes)
             _env_steps = sum(len(e) for e in episodes)
 

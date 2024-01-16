@@ -22,6 +22,7 @@ from ray.rllib.core.rl_module.rl_module import (
     RLMODULE_STATE_DIR_NAME,
     SingleAgentRLModuleSpec,
 )
+
 # TODO (Kourosh): change this to module_id later to enforce consistency
 from ray.rllib.utils.annotations import (
     ExperimentalAPI,
@@ -585,8 +586,8 @@ class MultiAgentRLModuleSpec:
             else:
                 self.module_specs.update(other.module_specs)
 
-    def as_multi_agent(self):
-        """Returns self to match behavior of SingleAgentRLModuleSpec."""
+    def as_multi_agent(self) -> "MultiAgentRLModuleSpec":
+        """Returns self to match `SingleAgentRLModuleSpec.as_multi_agent()`."""
         return self
 
 

@@ -1733,11 +1733,14 @@ class AlgorithmConfig(_Config):
                 clipping. Allowed values are `value`, `norm`, and `global_norm`.
             train_batch_size_per_learner: Train batch size per individual Learner
                 worker. This setting only applies to the new API stack. The number
-                of Learner workers can be set via
-                `config.resources(num_learner_workers=...)`.
+                of Learner workers can be set via `config.resources(
+                num_learner_workers=...)`. The total effective batch size is then
+                `num_learner_workers` x `train_batch_size_per_learner` and can
+                be accessed via the property `AlgorithmConfig.total_train_batch_size`.
             train_batch_size: Training batch size, if applicable. When on the new API
-                stack, this setting should no longer be used and instead
-                `train_batch_size_per_worker` should be used.
+                stack, this setting should no longer be used. Instead, use
+                `train_batch_size_per_learner` (in combination with
+                `num_learner_workers`).
             model: Arguments passed into the policy model. See models/catalog.py for a
                 full list of the available model options.
                 TODO: Provide ModelConfig objects instead of dicts.

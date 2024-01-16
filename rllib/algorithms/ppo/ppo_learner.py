@@ -1,5 +1,5 @@
 import abc
-from typing import Any, Dict
+from typing import Any, Dict, List, Tuple
 
 import numpy as np
 
@@ -8,6 +8,7 @@ from ray.rllib.algorithms.ppo.ppo import (
     PPOConfig,
 )
 from ray.rllib.core.learner.learner import Learner
+from ray.rllib.env.single_agent_episode import SingleAgentEpisode
 from ray.rllib.evaluation.postprocessing import Postprocessing
 from ray.rllib.evaluation.postprocessing_v2 import compute_value_targets
 from ray.rllib.policy.sample_batch import SampleBatch
@@ -163,17 +164,31 @@ class PPOLearner(Learner):
         """
 
     @staticmethod
-    def _add_ts_to_episodes_and_truncate(episodes):
+    def _add_ts_to_episodes_and_truncate(episodes: List[SingleAgentEpisode]):
         """Adds an artificial timestep to an episode at the end.
 
-        Useful for value function bootstrapping, where it is required to compute
-        a forward pass for the very last timestep within the episode,
+        In detail: The last observations, infos, actions, and all `extra_model_outputs`
+        will be duplicated and appended to each episode's data. An extra 0.0 reward
+        will be appended to the episode's rewards. The episode's timestep will be
+        increased by 1. Also, adds the truncated=True flag to each episode if the
+        episode is not already done (terminated or truncated).
+
+        Useful for value function bootstrapping, where it is required to compute a
+        forward pass for the very last timestep within the episode,
         i.e. using the following input dict: {
           obs=[final obs],
           state=[final state output],
           prev. reward=[final reward],
           etc..
         }
+
+        Args:
+            episodes: The list of SingleAgentEpisode objects to extend by one timestep
+                and add a truncation flag if necessary.
+
+        Returns:
+            A list of the original episodes' truncated values (so the episodes can be
+            properly restored later into their original states).
         """
         orig_truncateds = []
         for episode in episodes:
@@ -191,8 +206,8 @@ class PPOLearner(Learner):
             episode.rewards.append(0.0)
             for v in list(episode.extra_model_outputs.values()):
                 v.append(v[-1])
-            # Artificially make this episode truncated for the upcoming
-            # GAE computations.
+            # Artificially make this episode truncated for the upcoming GAE
+            # computations.
             if not episode.is_done:
                 episode.is_truncated = True
             # Validate to make sure, everything is in order.
@@ -201,11 +216,24 @@ class PPOLearner(Learner):
         return orig_truncateds
 
     @staticmethod
-    def _remove_last_ts_from_episodes_and_restore_truncateds(episodes, orig_truncateds):
-        # Fix episodes (remove the extra timestep).
+    def _remove_last_ts_from_episodes_and_restore_truncateds(
+        episodes: List[SingleAgentEpisode],
+        orig_truncateds: List[bool],
+    ) -> None:
+        """Reverts the effects of `_add_ts_to_episodes_and_truncate`.
+
+        Args:
+            episodes: The list of SingleAgentEpisode objects to extend by one timestep
+                and add a truncation flag if necessary.
+            orig_truncateds: A list of the original episodes' truncated values to be
+                applied to the `episodes`.
+        """
+
+        # Fix all episodes.
         for episode, orig_truncated in zip(episodes, orig_truncateds):
             # Reduce timesteps by 1.
             episode.t -= 1
+            # Remove all extra timestep data from the episode's buffers.
             episode.observations.pop()
             episode.infos.pop()
             episode.actions.pop()
@@ -216,8 +244,41 @@ class PPOLearner(Learner):
             episode.is_truncated = orig_truncated
 
     @staticmethod
-    def _unpad_data_if_necessary(episode_lens, data):
-        # If data des NOT have time dimension, return right away.
+    def _unpad_data_if_necessary(episode_lens: List[int], data: np._typing.NDArray):
+        """Removes right-side zero-padding from data based on `episode_lens`.
+
+        ..testcode::
+
+            from ray.rllib.algorithms.ppo.ppo_learner import PPOLearner
+            import numpy as np
+
+            unpadded = PPOLearner._unpad_data_if_necessary(
+                episode_lens=[4, 2],
+                data=np.array([
+                    [2, 4, 5, 3, 0, 0, 0, 0],
+                    [-1, 3, 0, 0, 0, 0, 0, 0],
+                ]),
+            )
+            assert (unpadded == [2, 4, 5, 3, -1, 3]).all()
+
+            unpadded = PPOLearner._unpad_data_if_necessary(
+                episode_lens=[1, 5],
+                data=np.array([
+                    [2, 0, 0, 0, 0],
+                    [-1, -2, -3, -4, -5],
+                ]),
+            )
+            assert (unpadded == [2, -1, -2, -3, -4, -5]).all()
+
+        Args:
+            episode_lens: A list of actual episode lengths.
+            data: A 2D np.ndarray with right-side zero-padded rows.
+
+        Returns:
+            A 1D np.ndarray resulting from concatenation of the un-padded
+            input data along the 0-axis.
+        """
+        # If data does NOT have time dimension, return right away.
         if len(data.shape) == 1:
             return data
 
@@ -250,12 +311,57 @@ class PPOLearner(Learner):
         return np.concatenate(new_data)
 
     @staticmethod
-    def _remove_last_ts_from_data(episode_lens, *data):
+    def _remove_last_ts_from_data(
+        episode_lens: List[int],
+        *data: Tuple[np._typing.NDArray],
+    ) -> Tuple[np._typing.NDArray]:
+        """Removes the last timesteps from each given data item.
+
+        Each item in data is a concatenated sequence of episodes data.
+        For example if `episode_lens` is [2, 4], then data is a shape=(6,)
+        ndarray. The returned corresponding value will have shape (4,), meaning
+        both episodes have been shortened by exactly one timestep to 1 and 3.
+
+        ..testcode::
+
+            from ray.rllib.algorithms.ppo.ppo_learner import PPOLearner
+            import numpy as np
+
+            unpadded = PPOLearner._remove_last_ts_from_data(
+                [5, 3],
+                np.array([0, 1, 2, 3, 4,  0, 1, 2]),
+            )
+            assert (unpadded[0] == [0, 1, 2, 3, 0, 1]).all()
+
+            unpadded = PPOLearner._remove_last_ts_from_data(
+                [4, 2, 3],
+                np.array([0, 1, 2, 3,  0, 1,  0, 1, 2]),
+                np.array([4, 5, 6, 7,  2, 3,  3, 4, 5]),
+            )
+            assert (unpadded[0] == [0, 1, 2,  0,  0, 1]).all()
+            assert (unpadded[1] == [4, 5, 6,  2,  3, 4]).all()
+
+        Args:
+            episode_lens: A list of current episode lengths. The returned
+                data will have the same lengths minus 1 timestep.
+            data: A tuple of data items (np.ndarrays) representing concatenated episodes
+                to be shortened by one timestep per episode.
+                Note that only arrays with `shape=(n,)` are supported! The
+                returned data will have `shape=(n-len(episode_lens),)` (each
+                episode gets shortened by one timestep).
+
+        Returns:
+            A tuple of new data items shortened by one timestep.
+        """
+        # Figure out the new slices to apply to each data item based on
+        # the given episode_lens.
         slices = []
         sum = 0
         for len_ in episode_lens:
             slices.append(slice(sum, sum + len_ - 1))
             sum += len_
+        # Compiling return data by slicing off one timestep at the end of
+        # each episode.
         ret = []
         for d in data:
             ret.append(np.concatenate([d[s] for s in slices]))
