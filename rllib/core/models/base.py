@@ -446,6 +446,7 @@ def tokenize(tokenizer: Encoder, inputs: dict, framework: str) -> dict:
     """
     # Tokenizer may depend solely on observations.
     obs = inputs[SampleBatch.OBS]
+    print(f"obs.shape={obs.shape}")
     tokenizer_inputs = {SampleBatch.OBS: obs}
     size = list(obs.size() if framework == "torch" else obs.shape)
     b_dim, t_dim = size[:2]

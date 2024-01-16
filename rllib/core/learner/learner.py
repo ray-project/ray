@@ -1360,6 +1360,7 @@ class Learner:
         # Call the learner connector.
         # TODO (sven): make multi-agent capable.
         if self._learner_connector is not None:
+            assert False
             # Call the train data preprocessor.
             batch, episodes = self._preprocess_train_data(
                 batch=batch, episodes=episodes
