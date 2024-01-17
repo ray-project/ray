@@ -226,7 +226,7 @@ if TYPE_CHECKING:
         max_task_retries: int
         max_pending_calls: int
         max_concurrency: int
-        nam: str
+        name: str
         namespace: str
         lifetime: Literal["detached"] | None
         runtime_env: dict[str, Any]
