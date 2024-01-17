@@ -55,7 +55,7 @@ def test_load_balancing(ray_start_cluster):
     @ray.remote
     def f():
         time.sleep(0.10)
-        return ray._private.worker.global_worker.node.unique_id
+        return ray.get_runtime_context().get_node_id()
 
     attempt_to_load_balance(f, [], 100, num_nodes, 10)
     attempt_to_load_balance(f, [], 1000, num_nodes, 100)
@@ -191,10 +191,10 @@ def test_local_scheduling_first(ray_start_cluster):
     @ray.remote(num_cpus=1)
     def f():
         time.sleep(0.01)
-        return ray._private.worker.global_worker.node.unique_id
+        return ray.get_runtime_context().get_node_id()
 
     def local():
-        return ray.get(f.remote()) == ray._private.worker.global_worker.node.unique_id
+        return ray.get(f.remote()) == ray.get_runtime_context().get_node_id()
 
     # Wait for a worker to get started.
     wait_for_condition(local)
@@ -216,7 +216,7 @@ def test_load_balancing_with_dependencies(ray_start_cluster):
     @ray.remote
     def f(x):
         time.sleep(0.1)
-        return ray._private.worker.global_worker.node.unique_id
+        return ray.get_runtime_context().get_node_id()
 
     # This object will be local to one of the raylets. Make sure
     # this doesn't prevent tasks from being scheduled on other raylets.
@@ -288,11 +288,11 @@ def test_spread_scheduling_overrides_locality_aware_scheduling(ray_start_cluster
 
     @ray.remote(resources={"pin": 1})
     def non_local():
-        return ray._private.worker.global_worker.node.unique_id
+        return ray.get_runtime_context().get_node_id()
 
     @ray.remote(scheduling_strategy="SPREAD")
     def f(x):
-        return ray._private.worker.global_worker.node.unique_id
+        return ray.get_runtime_context().get_node_id()
 
     # Test that task f() runs on the local node as well
     # even though remote node has the dependencies.
@@ -337,11 +337,11 @@ def test_locality_aware_leasing(ray_start_cluster):
 
     @ray.remote(resources={"pin": 1})
     def non_local():
-        return ray._private.worker.global_worker.node.unique_id
+        return ray.get_runtime_context().get_node_id()
 
     @ray.remote
     def f(x):
-        return ray._private.worker.global_worker.node.unique_id
+        return ray.get_runtime_context().get_node_id()
 
     # Test that task f() runs on the same node as non_local()
     # even though local node is lower critical resource utilization.
@@ -369,15 +369,15 @@ def test_locality_aware_leasing_cached_objects(ray_start_cluster):
 
     @ray.remote
     def f():
-        return ray._private.worker.global_worker.node.unique_id
+        return ray.get_runtime_context().get_node_id()
 
     @ray.remote
     def g(x):
-        return ray._private.worker.global_worker.node.unique_id
+        return ray.get_runtime_context().get_node_id()
 
     @ray.remote
     def h(x, y):
-        return ray._private.worker.global_worker.node.unique_id
+        return ray.get_runtime_context().get_node_id()
 
     # f_obj1 pinned on worker1.
     f_obj1 = f.options(resources={"pin_worker1": 1}).remote()
@@ -411,7 +411,7 @@ def test_locality_aware_leasing_borrowed_objects(ray_start_cluster):
 
     @ray.remote
     def f():
-        return ray._private.worker.global_worker.node.unique_id
+        return ray.get_runtime_context().get_node_id()
 
     @ray.remote
     def g(x):
@@ -419,7 +419,7 @@ def test_locality_aware_leasing_borrowed_objects(ray_start_cluster):
 
     @ray.remote
     def h(x):
-        return ray._private.worker.global_worker.node.unique_id
+        return ray.get_runtime_context().get_node_id()
 
     # f will run on worker, f_obj will be pinned on worker.
     f_obj = f.options(resources={"pin_worker": 1}).remote()
@@ -563,12 +563,12 @@ def test_gpu(monkeypatch):
                 pass
 
             def get_location(self):
-                return ray._private.worker.global_worker.node.unique_id
+                return ray.get_runtime_context().get_node_id()
 
         @ray.remote(num_cpus=1)
         def task_cpu():
             time.sleep(10)
-            return ray._private.worker.global_worker.node.unique_id
+            return ray.get_runtime_context().get_node_id()
 
         @ray.remote(num_returns=2, num_gpus=0.5)
         def launcher():
@@ -578,7 +578,7 @@ def test_gpu(monkeypatch):
             actor_results = [a.get_location.remote() for _ in range(n)]
             return (
                 ray.get(task_results + actor_results),
-                ray._private.worker.global_worker.node.unique_id,
+                ray.get_runtime_context().get_node_id(),
             )
 
         r = launcher.remote()

@@ -57,9 +57,9 @@ def test_load_balancing_under_constrained_memory(
 
     @ray.remote
     def f(i, x):
-        print(i, ray._private.worker.global_worker.node.unique_id)
+        print(i, ray.get_runtime_context().get_node_id())
         time.sleep(0.1)
-        return ray._private.worker.global_worker.node.unique_id
+        return ray.get_runtime_context().get_node_id()
 
     deps = [create_object.remote() for _ in range(num_tasks)]
     for i, dep in enumerate(deps):
@@ -91,7 +91,7 @@ def test_critical_object_store_mem_resource_utilization(ray_start_cluster):
 
     @ray.remote
     def f():
-        return ray._private.worker.global_worker.node.unique_id
+        return ray.get_runtime_context().get_node_id()
 
     # Wait for resource availabilities to propagate.
     time.sleep(1)

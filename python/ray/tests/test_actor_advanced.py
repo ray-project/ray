@@ -80,7 +80,7 @@ def test_actor_load_balancing(ray_start_cluster):
             pass
 
         def get_location(self):
-            return ray._private.worker.global_worker.node.unique_id
+            return ray.get_runtime_context().get_node_id()
 
     # Create a bunch of actors.
     num_actors = 30
@@ -181,7 +181,7 @@ def test_exception_raised_when_actor_node_dies(ray_start_cluster_head):
             self.x = 0
 
         def node_id(self):
-            return ray._private.worker.global_worker.node.unique_id
+            return ray.get_runtime_context().get_node_id()
 
         def inc(self):
             self.x += 1

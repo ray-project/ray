@@ -34,7 +34,8 @@ def test_actor_scheduling_latency(ray_start_cluster, args):
             if i == 0
             else {},
         )
-    ray.init(address=cluster.address)
+        if i == 0:
+            ray.init(address=cluster.address)
     cluster.wait_for_nodes()
 
     # Driver will create all UpperActors, and then each UpperActor will
@@ -45,7 +46,7 @@ def test_actor_scheduling_latency(ray_start_cluster, args):
             self.start = time.time()
 
         def info(self):
-            return [ray._private.worker.global_worker.node.unique_id, self.start]
+            return [ray.get_runtime_context().get_node_id(), self.start]
 
         def create(self, num):
             ret_list = []
@@ -60,7 +61,7 @@ def test_actor_scheduling_latency(ray_start_cluster, args):
             self.start = time.time()
 
         def info(self):
-            return [ray._private.worker.global_worker.node.unique_id, self.start]
+            return [ray.get_runtime_context().get_node_id(), self.start]
 
     actor_distribution = {}
     actor_list = []

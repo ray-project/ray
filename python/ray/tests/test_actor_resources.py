@@ -98,7 +98,7 @@ def test_actor_gpus(ray_start_cluster):
         def get_location_and_ids(self):
             assert ray.get_gpu_ids() == self.gpu_ids
             return (
-                ray._private.worker.global_worker.node.unique_id,
+                ray.get_runtime_context().get_node_id(),
                 tuple(self.gpu_ids),
             )
 
@@ -141,7 +141,7 @@ def test_actor_multiple_gpus(ray_start_cluster):
         def get_location_and_ids(self):
             assert ray.get_gpu_ids() == self.gpu_ids
             return (
-                ray._private.worker.global_worker.node.unique_id,
+                ray.get_runtime_context().get_node_id(),
                 tuple(self.gpu_ids),
             )
 
@@ -175,7 +175,7 @@ def test_actor_multiple_gpus(ray_start_cluster):
 
         def get_location_and_ids(self):
             return (
-                ray._private.worker.global_worker.node.unique_id,
+                ray.get_runtime_context().get_node_id(),
                 tuple(self.gpu_ids),
             )
 
@@ -217,7 +217,7 @@ def test_actor_different_numbers_of_gpus(ray_start_cluster):
 
         def get_location_and_ids(self):
             return (
-                ray._private.worker.global_worker.node.unique_id,
+                ray.get_runtime_context().get_node_id(),
                 tuple(self.gpu_ids),
             )
 
@@ -264,7 +264,7 @@ def test_actor_multiple_gpus_from_multiple_tasks(ray_start_cluster):
 
             def get_location_and_ids(self):
                 return (
-                    (ray._private.worker.global_worker.node.unique_id),
+                    (ray.get_runtime_context().get_node_id()),
                     tuple(self.gpu_ids),
                 )
 
@@ -310,7 +310,7 @@ def test_actor_multiple_gpus_from_multiple_tasks(ray_start_cluster):
 
         def get_location_and_ids(self):
             return (
-                ray._private.worker.global_worker.node.unique_id,
+                ray.get_runtime_context().get_node_id(),
                 tuple(self.gpu_ids),
             )
 
@@ -356,7 +356,7 @@ def test_actors_and_tasks_with_gpus(ray_start_cluster):
         assert len(gpu_ids) == 1
         assert gpu_ids[0] in range(num_gpus_per_raylet)
         return (
-            ray._private.worker.global_worker.node.unique_id,
+            ray.get_runtime_context().get_node_id(),
             tuple(gpu_ids),
             [t1, t2],
         )
@@ -371,7 +371,7 @@ def test_actors_and_tasks_with_gpus(ray_start_cluster):
         assert gpu_ids[0] in range(num_gpus_per_raylet)
         assert gpu_ids[1] in range(num_gpus_per_raylet)
         return (
-            ray._private.worker.global_worker.node.unique_id,
+            ray.get_runtime_context().get_node_id(),
             tuple(gpu_ids),
             [t1, t2],
         )
@@ -386,7 +386,7 @@ def test_actors_and_tasks_with_gpus(ray_start_cluster):
         def get_location_and_ids(self):
             assert ray.get_gpu_ids() == self.gpu_ids
             return (
-                ray._private.worker.global_worker.node.unique_id,
+                ray.get_runtime_context().get_node_id(),
                 tuple(self.gpu_ids),
             )
 
@@ -598,12 +598,12 @@ def test_custom_label_placement(ray_start_cluster):
     @ray.remote(resources={"CustomResource1": 1})
     class ResourceActor1:
         def get_location(self):
-            return ray._private.worker.global_worker.node.unique_id
+            return ray.get_runtime_context().get_node_id()
 
     @ray.remote(resources={"CustomResource2": 1})
     class ResourceActor2:
         def get_location(self):
-            return ray._private.worker.global_worker.node.unique_id
+            return ray.get_runtime_context().get_node_id()
 
     # Create some actors.
     actors1 = [ResourceActor1.remote() for _ in range(2)]
