@@ -440,9 +440,12 @@ else:
             self._default_opts = default_opts
 
         def remote(self, *args, **kwargs):
-            handle = ray.remote(**self._default_opts)(self._klass).remote(
-                *args, **kwargs
-            )
+            if self._default_opts:
+                handle = ray.remote(**self._default_opts)(self._klass).remote(
+                    *args, **kwargs
+                )
+            else:
+                handle = ray.remote(self._klass).remote(*args, **kwargs)
             return Actor(handle)
 
         def options(self, **opts):
@@ -458,7 +461,10 @@ else:
             self._opts = opts
 
         def remote(self, *args, **kwargs):
-            handle = ray.remote(**self._opts)(self._klass).remote(*args, **kwargs)
+            if self._opts:
+                handle = ray.remote(**self._opts)(self._klass).remote(*args, **kwargs)
+            else:
+                handle = ray.remote(self._klass).remote(*args, **kwargs)
             return Actor(handle)
 
         def bind(self, *args, **kwargs):
