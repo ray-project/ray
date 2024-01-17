@@ -102,7 +102,7 @@ def get_devices() -> List[torch.device]:
 
     from ray.air._internal import torch_utils
 
-    # record_extra_usage_tag(TagKey.TRAIN_TORCH_GET_DEVICE, "1")
+    record_extra_usage_tag(TagKey.TRAIN_TORCH_GET_DEVICES, "1")
     return torch_utils.get_devices()
 
 

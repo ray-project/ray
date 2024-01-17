@@ -109,6 +109,7 @@ def test_torch_utility_usage_tags(shutdown_only, framework):
         run_torch()
         expected_tags = [
             TagKey.TRAIN_TORCH_GET_DEVICE,
+            TagKey.TRAIN_TORCH_GET_DEVICES,
             TagKey.TRAIN_TORCH_PREPARE_MODEL,
             TagKey.TRAIN_TORCH_PREPARE_DATALOADER,
         ]
