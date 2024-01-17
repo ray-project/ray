@@ -51,15 +51,6 @@ def read_chunk(chunk_id):
         assert len(batch_list) == 1
         arrow_batch = batch_list[0]
 
-        arrow_batch = pa.RecordBatch.from_arrays(
-            [
-                # This call actually reallocates the array
-                pa.concat_arrays([array])
-                for array in arrow_batch
-            ],
-            schema=arrow_batch.schema,
-        )
-
         arrow_table = pa.Table.from_batches([arrow_batch])
 
         return arrow_table
@@ -71,9 +62,7 @@ def read_chunk(chunk_id):
 
 def _read_chunk_fn(chunk_id_list) -> Iterator["pyarrow.Table"]:
     for chunk_id in chunk_id_list:
-        # yield read_chunk(chunk_id)
-        read_chunk(chunk_id)
-        yield _gen_chunk(32)
+        yield read_chunk(chunk_id)
 
 
 @PublicAPI(stability="alpha")
