@@ -1,6 +1,6 @@
+import subprocess
 import pytest
 import sys
-import runpy
 
 from ray.dashboard.modules.metrics import install_and_start_prometheus
 
@@ -17,7 +17,9 @@ from ray.dashboard.modules.metrics import install_and_start_prometheus
     ],
 )
 def test_download_prometheus(os_type, architecture, monkeypatch):
-    # set TEST_MODE_ENV_VAR to True to use requests.head instead of requests.get
+    # set TEST_MODE_ENV_VAR to True to use requests.head instead of requests.get.
+    # This will make the download faster. We just want to make sure the URL
+    # exists.
     monkeypatch.setenv(install_and_start_prometheus.TEST_MODE_ENV_VAR, "True")
     downloaded, _ = install_and_start_prometheus.download_prometheus(
         os_type, architecture
@@ -27,11 +29,11 @@ def test_download_prometheus(os_type, architecture, monkeypatch):
 
 def test_e2e(capsys):
     path = install_and_start_prometheus.__file__
-    runpy.run_path(path)
+    result = subprocess.run([sys.executable, path], capture_output=True, text=True)
 
-    captured = capsys.readouterr()
-    assert "Download completed." in captured.out
-    assert "Prometheus has started" in captured.out
+    assert "Download completed." in result.stdout
+    assert "Prometheus has started" in result.stdout
+    assert result.returncode == 0
 
 
 if __name__ == "__main__":

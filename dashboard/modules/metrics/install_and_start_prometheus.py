@@ -64,12 +64,14 @@ def download_file(url, filename):
 def install_prometheus(file_path):
     try:
         with tarfile.open(file_path) as tar:
+            # Get the first member of the tar archive (usually the root directory)
+            root_dir = tar.getmembers()[0].name
             tar.extractall()
         logging.info("Prometheus installed successfully.")
-        return True
+        return True, root_dir
     except Exception as e:
         logging.error(f"Error installing Prometheus: {e}")
-        return False
+        return False, None
 
 
 def start_prometheus(prometheus_dir):
@@ -129,7 +131,10 @@ def get_prometheus_filename(os_type=None, architecture=None, prometheus_version=
     if prometheus_version is None:
         prometheus_version = get_latest_prometheus_version()
         if prometheus_version is None:
-            logging.error("Failed to retrieve the latest Prometheus version.")
+            logging.warning(
+                "Failed to retrieve the latest Prometheus version. Falling "
+                f"back to {FALLBACK_PROMETHEUS_VERSION}."
+            )
             # Fall back to a hardcoded version
             prometheus_version = FALLBACK_PROMETHEUS_VERSION
 
@@ -152,7 +157,7 @@ def get_prometheus_download_url(
 
 
 def download_prometheus(os_type=None, architecture=None, prometheus_version=None):
-    file_name = get_prometheus_filename(os_type, architecture, prometheus_version)
+    file_name, _ = get_prometheus_filename(os_type, architecture, prometheus_version)
     download_url = get_prometheus_download_url(
         os_type, architecture, prometheus_version
     )
@@ -170,16 +175,15 @@ def main():
 
     # TODO: Verify the checksum of the downloaded file
 
-    if not install_prometheus(file_name):
+    installed, prometheus_dir = install_prometheus(file_name)
+    if not installed:
         logging.error("Installation failed.")
         sys.exit(1)
 
     # TODO: Add a check to see if Prometheus is already running
 
-    process = start_prometheus(
-        prometheus_dir=os.path.splitext(file_name)[0]  # Remove the .tar.gz extension
-    )
-    if process:
+    process = start_prometheus(prometheus_dir)
+    if process is not None:
         print_shutdown_message(process.pid)
 
 
