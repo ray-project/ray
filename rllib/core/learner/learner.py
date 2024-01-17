@@ -440,7 +440,7 @@ class Learner:
         This method is called for each RLModule in the Multi-Agent RLModule being
         trained by the Learner, as well as any new module added during training via
         `self.add_module()`. It should configure and construct one or more optimizers
-        and register them via calls to `self.register_optimizer()` along with the
+        and register them via calls to f`self.register_optimizer()` along with the
         `module_id`, an optional optimizer name (str), a list of the optimizer's
         framework specific parameters (variables), and an optional learning rate value
         or -schedule.

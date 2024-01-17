@@ -1,4 +1,5 @@
-from typing import Mapping
+from typing import Dict, Mapping
+from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
 from ray.rllib.algorithms.dqn.dqn_tf_policy import PRIO_WEIGHTS
 from ray.rllib.algorithms.sac.sac import SACConfig
 from ray.rllib.algorithms.sac.sac_learner import QF_PREDS, SACLearner
@@ -16,7 +17,7 @@ from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.framework import try_import_torch
 from ray.rllib.utils.nested_dict import NestedDict
-from ray.rllib.utils.typing import ModuleID, TensorType
+from ray.rllib.utils.typing import ModuleID, ParamDict, TensorType
 
 
 torch, nn = try_import_torch()
@@ -28,6 +29,53 @@ class SACTorchLearner(SACLearner, TorchLearner):
     This ' Learner' class implements the loss in its
     `self.compute_loss_for_module()` method.
     """
+
+    # TODO (simon): Set different learning rates for optimizers.
+    @override(TorchLearner)
+    def configure_optimizers_for_module(
+        self, module_id: ModuleID, config: AlgorithmConfig = None, hps=None
+    ) -> None:
+        module = self._module[module_id]
+        # Define the optimizer for the critic.
+        params_critic = self.get_parameters(module.qf_encoder) + self.get_parameters(
+            module.qf
+        )
+        optim_critic = torch.optim.Adam(params_critic)
+
+        self.register_optimizer(
+            module_id=module_id,
+            optimizer_name="critic",
+            optimizer=optim_critic,
+            params=params_critic,
+            lr_or_lr_schedule=self.config.lr,
+        )
+
+        # Define the optimizer for the actor.
+        params_actor = self.get_parameters(module.pi_encoder) + self.get_parameters(
+            module.pi
+        )
+        optim_actor = torch.optim.Adam(params_actor)
+
+        self.register_optimizer(
+            module_id=module_id,
+            optimizer_name="actor",
+            optimizer=optim_actor,
+            params=params_actor,
+            lr_or_lr_schedule=self.config.lr,
+        )
+
+        # Define the optimizer for the temperature.
+        # TODO (Simon): Test, if this works. Otherwise define the alphas
+        # in the `TorchLearner` instead.
+        param_alpha = module.curr_log_alpha
+        optim_temperature = torch.optim.Adam(param_alpha)
+        self.register_optimizer(
+            module_id=module_id,
+            optimizer_name="temperature",
+            optimizer=optim_temperature,
+            params=param_alpha,
+            lr_or_lr_schedule=self.config.lr,
+        )
 
     @override(TorchLearner)
     def compute_loss_for_module(
@@ -42,7 +90,7 @@ class SACTorchLearner(SACLearner, TorchLearner):
         deterministic = self.config._deterministic_loss
 
         # Receive the current alpha hyperparameter.
-        alpha = torch.exp(self.curr_log_alpha[module_id])
+        alpha = torch.exp(self.module[module_id].log_alpha)
 
         # Get the train action distribution for the current policy and current state.
         # This is needed for the policy (actor) loss in SAC.
@@ -57,7 +105,7 @@ class SACTorchLearner(SACLearner, TorchLearner):
             fwd_out["action_dist_inputs_next"]
         )
 
-        # Sample actions for the current state. Note that we need to apply the 
+        # Sample actions for the current state. Note that we need to apply the
         # reparameterization trick here to avoid the expectation over actions.
         actions_curr = (
             action_dist_curr.rsample()
@@ -88,9 +136,8 @@ class SACTorchLearner(SACLearner, TorchLearner):
         # the sampled actions.
         q_batch_curr = NestedDict(
             {
-                SampleBatch.OBS: batch[SampleBatch.OBS], 
+                SampleBatch.OBS: batch[SampleBatch.OBS],
                 SampleBatch.ACTIONS: actions_curr,
-                
             }
         )
         q_curr = self.module[module_id]._qf_forward_train(q_batch_curr)[QF_PREDS]
@@ -99,8 +146,8 @@ class SACTorchLearner(SACLearner, TorchLearner):
         # sampled actions for the next state.
         q_batch_next = NestedDict(
             {
-                SampleBatch.OBS: batch[SampleBatch.NEXT_OBS], 
-                SampleBatch.ACTIONS: actions_next                
+                SampleBatch.OBS: batch[SampleBatch.NEXT_OBS],
+                SampleBatch.ACTIONS: actions_next,
             }
         )
         q_next = self.module[module_id]._qf_target_forward_train(q_batch_next)[QF_PREDS]
@@ -120,7 +167,7 @@ class SACTorchLearner(SACLearner, TorchLearner):
             + self.config.gamma * q_next_masked
         ).detach()
 
-        # Calculate the TD-error. Note, this is needed for the priority weights in 
+        # Calculate the TD-error. Note, this is needed for the priority weights in
         # the replay buffer.
         td_error = torch.abs(q_selected - q_selected_target)
 
@@ -129,7 +176,7 @@ class SACTorchLearner(SACLearner, TorchLearner):
         # Note further, we use here the Huber loss instead of the mean squared error
         # as it improves training performance.
         critic_loss = torch.mean(
-            #batch[PRIO_WEIGHTS]
+            # batch[PRIO_WEIGHTS]
             torch.nn.HuberLoss(reduction="none", delta=1.0)(
                 q_selected, q_selected_target
             )
@@ -146,12 +193,12 @@ class SACTorchLearner(SACLearner, TorchLearner):
         # TODO (simon): Check, if this is indeed log(alpha), prob. just better
         # to optimize and monotonic function.
         alpha_loss = -torch.mean(
-            self.curr_log_alpha[module_id]
+            self.module[module_id].log_alpha
             * (logps_curr.detach() + self.target_entropy[module_id])
         )
 
         total_loss = actor_loss + critic_loss + alpha_loss
-        
+
         self.register_metrics(
             module_id,
             {

@@ -44,6 +44,9 @@ class SACRLModule(RLModule, RLModuleWithTargetNetworksInterface):
         self.qf_target.trainable = False
 
         self.action_dist_cls = catalog.get_action_dist_cls(framework=self.framework)
+
+        # Define the temperature.
+        self.alpha = self.config.initial_alpha
         # __sphinx_doc_end__
 
     def get_exploration_action_dist_cls(self) -> Type[Distribution]:
@@ -81,8 +84,8 @@ class SACRLModule(RLModule, RLModuleWithTargetNetworksInterface):
         return [
             SampleBatch.OBS,
             SampleBatch.ACTIONS,
-            SampleBatch.NEXT_OBS,
-            "next_actions",
+            # SampleBatch.NEXT_OBS,
+            # "next_actions",
         ]
 
     @override(RLModule)

@@ -24,21 +24,13 @@ class SACLearner(Learner):
 
         # Store the current alpha in log form. We need it during optimization
         # in log form.
-        self.curr_log_alpha: Dict[ModuleID, Scheduler] = LambdaDefaultDict(
-            lambda module_id: self._get_tensor_variable(
-                # Note, we want to train the temperature parameter.
-                np.log(self.config.get_config_for_module(module_id).initial_alpha),
-                trainable=True,
-            )
-        )
-
-        # TODO (simon): Write an `add_parameters` and `remove_parameters` methods to the
-        # `Learner`.
-        # Add the temperature parameters to the optimizer's parameters.
-        for module_id, log_alpha in self.curr_log_alpha.items():
-            self._named_optimizers[module_id + "_default_optimizer"].param_groups.append(
-                {"log_alpha": log_alpha}
-            )
+        # self.curr_log_alpha: Dict[ModuleID, Scheduler] = LambdaDefaultDict(
+        #     lambda module_id: self._get_tensor_variable(
+        #         # Note, we want to train the temperature parameter.
+        #         np.log(self.config.get_config_for_module(module_id).initial_alpha),
+        #         trainable=True,
+        #     )
+        # )
 
         def get_target_entropy(module_id):
             """Returns the target entropy to use for the loss.
