@@ -158,7 +158,7 @@ class SingleAgentEpisode:
         extra_model_outputs: Optional[Dict[str, Any]] = None,
         render_images: Optional[List[np.ndarray]] = None,
         t_started: Optional[int] = None,
-        len_lookback_buffer: Optional[int] = 0,
+        len_lookback_buffer: Optional[int] = None,
     ) -> "SingleAgentEpisode":
         """Initializes a SingleAgentEpisode instance.
 

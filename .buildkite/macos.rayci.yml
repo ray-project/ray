@@ -1,4 +1,5 @@
 group: macos tests
+sort_key: "~macos"
 steps:
   # block on premerge
   - block: "run macos tests"
