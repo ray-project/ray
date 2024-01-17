@@ -1107,6 +1107,11 @@ def test_queued_queries_disconnected(serve_start_shutdown):
         timeout=15,
         metric="ray_serve_num_scheduling_tasks",
         expected=-1,  # -1 means not expected to be present yet.
+        # TODO(zcin): this tag shouldn't be necessary, there shouldn't be a mix of
+        # metrics from new and old sessions.
+        expected_tags={
+            "SessionName": ray._private.worker.global_worker.node.session_name
+        },
     )
     print("ray_serve_num_scheduling_tasks updated successfully.")
     wait_for_condition(
@@ -1114,6 +1119,11 @@ def test_queued_queries_disconnected(serve_start_shutdown):
         timeout=15,
         metric="serve_num_scheduling_tasks_in_backoff",
         expected=-1,  # -1 means not expected to be present yet.
+        # TODO(zcin): this tag shouldn't be necessary, there shouldn't be a mix of
+        # metrics from new and old sessions.
+        expected_tags={
+            "SessionName": ray._private.worker.global_worker.node.session_name
+        },
     )
     print("serve_num_scheduling_tasks_in_backoff updated successfully.")
 
