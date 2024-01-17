@@ -1195,7 +1195,7 @@ class ProxyActor:
         self.wrapped_http_proxy = self.http_proxy
 
         for middleware in http_middlewares:
-            if starlette.__version__ >= '0.35.0':
+            if starlette.__version__ >= "0.35.0":
                 self.wrapped_http_proxy = middleware.cls(
                     self.wrapped_http_proxy,
                     *middleware.args,
