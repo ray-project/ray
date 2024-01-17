@@ -208,10 +208,6 @@ class DeploymentConfig(BaseModel):
             if self.needs_pickle():
                 data["user_config"] = cloudpickle.dumps(data["user_config"])
         if data.get("autoscaling_config"):
-            # policy is only used for user-facing API. Internally we will refer to
-            # serialized_policy_def to get the policy.
-            if "policy" in data["autoscaling_config"]:
-                data["autoscaling_config"].pop("policy")
             data["autoscaling_config"] = AutoscalingConfigProto(
                 **data["autoscaling_config"]
             )
