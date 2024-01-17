@@ -117,6 +117,7 @@ def test_ray_installation() -> None:
             "docker",
             "build",
             "--pull",
+            "--progress=plain",
             "--build-arg",
             f"BASE_IMAGE={docker_image}",
             "--build-arg",

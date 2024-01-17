@@ -917,10 +917,9 @@ def test_status_package_unavailable_in_controller(serve_instance):
 
     def check_for_failed_deployment():
         default_app = serve.status().applications[SERVE_DEFAULT_APP_NAME]
-        return (
-            default_app.status == "DEPLOY_FAILED"
-            and "some_wrong_url" in default_app.deployments["MyDeployment"].message
-        )
+        assert default_app.status == "DEPLOY_FAILED"
+        assert "some_wrong_url" in default_app.deployments["MyDeployment"].message
+        return True
 
     wait_for_condition(check_for_failed_deployment, timeout=15)
 
