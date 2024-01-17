@@ -15,7 +15,12 @@ def shutdown_only():
 def run_torch():
     from torch.utils.data import DataLoader, TensorDataset
 
-    from ray.train.torch import get_device, prepare_data_loader, prepare_model
+    from ray.train.torch import (
+        get_device,
+        get_devices,
+        prepare_data_loader,
+        prepare_model,
+    )
 
     def train_func():
         # Create dummy model and data loader
@@ -27,6 +32,7 @@ def run_torch():
         prepare_data_loader(dataloader)
         prepare_model(model)
         get_device()
+        get_devices()
 
     trainer = TorchTrainer(
         train_func, scaling_config=ScalingConfig(num_workers=2, use_gpu=False)
