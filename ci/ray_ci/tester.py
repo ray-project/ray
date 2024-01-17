@@ -11,6 +11,7 @@ from ci.ray_ci.builder_container import (
     DEFAULT_BUILD_TYPE,
     DEFAULT_PYTHON_VERSION,
     DEFAULT_ARCHITECTURE,
+    PYTHON_VERSIONS,
 )
 from ci.ray_ci.linux_tester_container import LinuxTesterContainer
 from ci.ray_ci.windows_tester_container import WindowsTesterContainer
@@ -118,6 +119,11 @@ bazel_workspace_dir = os.environ.get("BUILD_WORKSPACE_DIRECTORY", "")
     help=("Arguments to pass to the test."),
 )
 @click.option(
+    "--python-version",
+    type=click.Choice(list(PYTHON_VERSIONS.keys())),
+    help=("Python version to build the wheel with"),
+)
+@click.option(
     "--build-name",
     type=str,
     help="Name of the build used to run tests",
@@ -170,6 +176,7 @@ def main(
     network: Optional[str],
     test_env: Tuple[str],
     test_arg: Optional[str],
+    python_version: Optional[str],
     build_name: Optional[str],
     build_type: Optional[str],
     tmp_filesystem: Optional[str],
@@ -194,6 +201,7 @@ def main(
         network=network,
         tmp_filesystem=tmp_filesystem,
         test_env=list(test_env),
+        python_version=python_version,
         build_name=build_name,
         build_type=build_type,
         skip_ray_installation=skip_ray_installation,
@@ -230,6 +238,7 @@ def _get_container(
     network: Optional[str],
     tmp_filesystem: Optional[str] = None,
     test_env: Optional[List[str]] = None,
+    python_version: Optional[str] = None,
     build_name: Optional[str] = None,
     build_type: Optional[str] = None,
     skip_ray_installation: bool = False,
@@ -237,10 +246,14 @@ def _get_container(
     shard_count = workers * parallelism_per_worker
     shard_start = worker_id * parallelism_per_worker
     shard_end = (worker_id + 1) * parallelism_per_worker
+    if not build_name:
+        build_name = (
+            f"{team}build-py{python_version}" if python_version else f"{team}build"
+        )
 
     if operating_system == "linux":
         return LinuxTesterContainer(
-            build_name or f"{team}build",
+            build_name,
             test_envs=test_env,
             shard_count=shard_count,
             shard_ids=list(range(shard_start, shard_end)),
@@ -253,7 +266,7 @@ def _get_container(
 
     if operating_system == "windows":
         return WindowsTesterContainer(
-            build_name or f"{team}build",
+            build_name,
             network=network,
             test_envs=test_env,
             shard_count=shard_count,
