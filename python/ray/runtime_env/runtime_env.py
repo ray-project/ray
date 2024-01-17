@@ -347,8 +347,9 @@ class RuntimeEnv(dict):
                 if field not in valid_fields:
                     raise ValueError(
                         "The 'container' field currently cannot be used "
-                        f"together with '{field}'."
-                        f"Specified '{field}' field: {runtime_env[field]}"
+                        f"together with '{field}'. The fields that are allowed to be "
+                        f"used together with 'container' are {valid_fields}. "
+                        f"Specified '{field}' field: {runtime_env[field]}."
                     )
 
         for option, validate_fn in OPTION_TO_VALIDATION_FN.items():
