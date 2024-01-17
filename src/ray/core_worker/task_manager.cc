@@ -792,9 +792,11 @@ void TaskManager::CompletePendingTask(const TaskID &task_id,
 
       if (spec.IsStreamingGenerator()) {
         RAY_CHECK(reply.return_objects_size() == 1)
-            << "Streaming generator should be returned as the only directly returned object";
+            << "Streaming generator should be returned as the only directly returned "
+               "object";
 
-        const auto generator_id = ObjectID::FromBinary(reply.return_objects(0).object_id());
+        const auto generator_id =
+            ObjectID::FromBinary(reply.return_objects(0).object_id());
 
         absl::MutexLock lock(&objet_ref_stream_ops_mu_);
         auto stream_it = object_ref_streams_.find(generator_id);
@@ -811,8 +813,8 @@ void TaskManager::CompletePendingTask(const TaskID &task_id,
         spec.SetNumStreamingGeneratorReturns(num_streaming_generator_returns);
 
         RAY_LOG(DEBUG) << "Completed streaming generator task " << spec.TaskId()
-                         << " has " << num_streaming_generator_returns
-                         << " return objects.";
+                       << " has " << num_streaming_generator_returns
+                       << " return objects.";
       }
     }
 

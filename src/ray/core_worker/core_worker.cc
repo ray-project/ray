@@ -2988,8 +2988,7 @@ Status CoreWorker::ReportGeneratorItemReturns(
     const rpc::Address &caller_address,
     int64_t item_index,
     uint64_t attempt_number,
-    std::shared_ptr<GeneratorBackpressureWaiter> waiter
-) {
+    std::shared_ptr<GeneratorBackpressureWaiter> waiter) {
   rpc::ReportGeneratorItemReturnsRequest request;
   request.mutable_worker_addr()->CopyFrom(rpc_address_);
   request.set_item_index(item_index);
