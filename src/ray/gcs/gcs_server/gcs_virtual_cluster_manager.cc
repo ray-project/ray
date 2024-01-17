@@ -37,6 +37,101 @@ rpc::PlacementStrategy PolicyToStrategy(rpc::SchedulingPolicy policy) {
 
 }  // namespace
 
+void CreatingVirtualCluster::PrepareOneNode(NodeID node_id) {
+  auto done = [this](bool success) {
+    if (!success) {
+      has_failed_prepares = true;
+    }
+    num_replied_prepares++;
+    if (num_replied_prepares == node_to_vnodes.size()) {
+      AllPrepared();
+    }
+  };
+
+  const auto maybe_lease_client = manager->GetLeaseClientFromAliveNode(node_id);
+  if (!maybe_lease_client.has_value()) {
+    done(false);
+    return;
+  }
+
+  maybe_lease_client->get()->PrepareVirtualCluster(
+      node_to_vnodes.at(node_id),
+      [done](const Status &status, const rpc::PrepareVirtualClusterReply &reply) {
+        done(status.ok() && reply.success());
+      });
+}
+
+void CreatingVirtualCluster::AllPrepared() {
+  if (has_failed_prepares) {
+    ReturnAll();
+    manager->CreatedVirtualCluster(vc.VirtualClusterId(), false);
+    return;
+  } else {
+    CommitAll();
+  }
+}
+
+void CreatingVirtualCluster::CommitOneNode(NodeID node_id) {
+  auto done = [this](bool success) {
+    if (!success) {
+      has_failed_commits = true;
+    }
+    num_replied_commits++;
+    if (num_replied_commits == node_to_vnodes.size()) {
+      AllCommitted();
+    }
+  };
+
+  const auto maybe_lease_client = manager->GetLeaseClientFromAliveNode(node_id);
+  if (!maybe_lease_client.has_value()) {
+    done(false);
+    return;
+  }
+
+  auto vc_id = vc.VirtualClusterId();
+  maybe_lease_client->get()->CommitVirtualCluster(
+      vc_id, [done](const Status &status, const rpc::CommitVirtualClusterReply &reply) {
+        done(status.ok());
+      });
+}
+
+void CreatingVirtualCluster::CommitAll() {
+  for (const auto &[node_id, vnodes] : node_to_vnodes) {
+    CommitOneNode(node_id);
+  }
+}
+
+void CreatingVirtualCluster::AllCommitted() {
+  if (has_failed_prepares) {
+    ReturnAll();
+    manager->CreatedVirtualCluster(vc.VirtualClusterId(), false);
+  } else {
+    manager->CreatedVirtualCluster(vc.VirtualClusterId(), true);
+  }
+}
+
+void CreatingVirtualCluster::ReturnOneNode(NodeID node_id) {
+  // Crashes on node failure (can't find lease client)
+  const auto lease_client = manager->GetLeaseClientFromAliveNode(node_id).value();
+  auto vc_id = vc.VirtualClusterId();
+  lease_client->ReturnVirtualCluster(
+      vc_id, [](const Status &status, const rpc::ReturnVirtualClusterReply &reply) {
+        RAY_CHECK(status.ok());
+      });
+}
+
+void CreatingVirtualCluster::ReturnAll() {
+  for (const auto &[node_id, vnodes] : node_to_vnodes) {
+    ReturnOneNode(node_id);
+  }
+}
+
+void CreatingVirtualCluster::PrepareAll() {
+  for (const auto &[node_id, vnodes] : node_to_vnodes) {
+    PrepareOneNode(node_id);
+  }
+}
+
 GcsVirtualClusterManager::GcsVirtualClusterManager(
     instrumented_io_context &io_context,
     const gcs::GcsNodeManager &gcs_node_manager,
@@ -54,7 +149,7 @@ void GcsVirtualClusterManager::HandleCreateVirtualCluster(
     rpc::CreateVirtualClusterReply *reply,
     rpc::SendReplyCallback send_reply_callback) {
   RAY_LOG(INFO) << "Creating virtual cluster " << request.DebugString();
-  pending_virtual_clusters_.emplace_back(request);
+  pending_virtual_clusters_.emplace_back(std::move(request.virtual_cluster_spec()));
   GCS_RPC_SEND_REPLY(send_reply_callback, reply, Status::OK());
 }
 
@@ -71,18 +166,18 @@ void GcsVirtualClusterManager::HandleRemoveVirtualCluster(
           RAY_CHECK(status.ok());
         });
   }
+  // TODO: remove all vc references in the manager's fields.
   GCS_RPC_SEND_REPLY(send_reply_callback, reply, Status::OK());
 }
 
 std::vector<rpc::PlacementGroupTableData>
 GcsVirtualClusterManager::GetVirtualClusterLoad() const {
   std::vector<rpc::PlacementGroupTableData> load;
-  for (const auto &request : pending_virtual_clusters_) {
+  for (const auto &vc : pending_virtual_clusters_) {
     // We add 1 `data` for each `fixed_size_nodes`.
     // TODO: also add load from min flex nodes.
     // Q: we should not add it as a PlacementGroupTableData, needs a return type change?
-    for (const auto &fixed_size_nodes :
-         request.virtual_cluster_spec().fixed_size_nodes()) {
+    for (const auto &fixed_size_nodes : vc.GetMessage().fixed_size_nodes()) {
       rpc::PlacementGroupTableData data;
       data.set_strategy(PolicyToStrategy(fixed_size_nodes.scheduling_policy()));
       for (const auto &vnode : fixed_size_nodes.nodes()) {
@@ -97,6 +192,9 @@ GcsVirtualClusterManager::GetVirtualClusterLoad() const {
 }
 
 void GcsVirtualClusterManager::Tick() {
+  RAY_LOG(DEBUG) << "GcsVirtualClusterManager::Tick() "
+                 << pending_virtual_clusters_.size() << " pending virtual clusters, "
+                 << creating_virtual_clusters_.size() << " ongoing virtual clusters.";
   CreateVirtualClusters();
   execute_after(
       io_context_,
@@ -108,16 +206,14 @@ void GcsVirtualClusterManager::CreateVirtualClusters() {
   if (pending_virtual_clusters_.empty()) {
     return;
   }
-  if (!ongoing_virtual_clusters_.empty()) {
+  if (!creating_virtual_clusters_.empty()) {
     // Wait for the ongoing virtual cluster to be created.
     return;
   }
 
-  const rpc::CreateVirtualClusterRequest request = *pending_virtual_clusters_.begin();
+  VirtualClusterSpecification vc = *pending_virtual_clusters_.begin();
 
-  VirtualClusterID vc_id =
-      VirtualClusterID::FromBinary(request.virtual_cluster_spec().virtual_cluster_id());
-  auto node_to_vnodes = Schedule(request);
+  auto node_to_vnodes = Schedule(vc);
   if (!node_to_vnodes.has_value()) {
     // Cluster has no free resources to create the virtual cluster,
     // wait until the next time.
@@ -125,63 +221,27 @@ void GcsVirtualClusterManager::CreateVirtualClusters() {
   }
 
   pending_virtual_clusters_.pop_front();
-  ongoing_virtual_clusters_.emplace(vc_id, request);
-  for (const auto &[node_id, vnodes] : *node_to_vnodes) {
-    ongoing_virtual_clusters_.at(vc_id).nodes.emplace(node_id);
-    const auto lease_client =
-        GetLeaseClientFromNode(gcs_node_manager_.GetAliveNode(node_id).value());
-    lease_client->PrepareVirtualCluster(
-        vnodes,
-        [vc_id, this](const Status &status,
-                      const rpc::PrepareVirtualClusterReply &reply) {
-          auto &ongoing_virtual_cluster = ongoing_virtual_clusters_.at(vc_id);
-          ongoing_virtual_cluster.num_replied_prepares++;
-          if (!reply.success()) {
-            ongoing_virtual_cluster.has_failed_prepares = true;
-          }
-          if (ongoing_virtual_cluster.num_replied_prepares !=
-              ongoing_virtual_cluster.nodes.size()) {
-            return;
-          }
-          if (ongoing_virtual_cluster.has_failed_prepares) {
-            for (const auto &node_id : ongoing_virtual_cluster.nodes) {
-              const auto lease_client =
-                  GetLeaseClientFromNode(gcs_node_manager_.GetAliveNode(node_id).value());
-              lease_client->ReturnVirtualCluster(
-                  vc_id,
-                  [](const Status &status, const rpc::ReturnVirtualClusterReply &reply) {
-                    RAY_CHECK(status.ok());
-                  });
-            }
-            // Add back to the pending queue and try again later.
-            pending_virtual_clusters_.push_front(ongoing_virtual_cluster.request);
-          } else {
-            for (const auto &node_id : ongoing_virtual_cluster.nodes) {
-              const auto lease_client =
-                  GetLeaseClientFromNode(gcs_node_manager_.GetAliveNode(node_id).value());
-              lease_client->CommitVirtualCluster(
-                  vc_id,
-                  [](const Status &status, const rpc::CommitVirtualClusterReply &reply) {
-                    RAY_CHECK(status.ok());
-                  });
-            }
-          }
-          ongoing_virtual_clusters_.erase(vc_id);
-        });
-  }
+
+  auto vc_id = vc.VirtualClusterId();
+  auto creating_vc =
+      std::make_unique<CreatingVirtualCluster>(this, vc, std::move(*node_to_vnodes));
+  creating_virtual_clusters_.emplace(vc_id, std::move(creating_vc));
+  creating_virtual_clusters_.at(vc_id)->PrepareAll();
 }
 
 std::optional<std::unordered_map<NodeID, VirtualClusterNodesSpec>>
-GcsVirtualClusterManager::Schedule(const rpc::CreateVirtualClusterRequest &request) {
-  const auto &spec = request.virtual_cluster_spec();
-  VirtualClusterID vc_id = VirtualClusterID::FromBinary(spec.virtual_cluster_id());
+GcsVirtualClusterManager::Schedule(const VirtualClusterSpecification &vc) {
+  VirtualClusterID vc_id = vc.VirtualClusterId();
 
   std::unordered_map<NodeID, VirtualClusterNodesSpec> node_to_vnodes;
 
   // Prepare for each set of fixed size nodes. If we can't schedule for this
   // fixed_size_node, early return. If we can, add the scheduling result to
   // physical_nodes.
-  for (const auto &fixed_size_nodes : spec.fixed_size_nodes()) {
+  for (const auto &fixed_size_nodes : vc.GetMessage().fixed_size_nodes()) {
+    if (fixed_size_nodes.nodes().empty()) {
+      continue;
+    }
     std::vector<VirtualClusterNodeSpec> vnodes;
     std::vector<const ResourceRequest *> resource_request_list;
     vnodes.reserve(fixed_size_nodes.nodes().size());
@@ -206,6 +266,22 @@ GcsVirtualClusterManager::Schedule(const rpc::CreateVirtualClusterRequest &reque
   return node_to_vnodes;
 }
 
+void GcsVirtualClusterManager::CreatedVirtualCluster(VirtualClusterID vc_id,
+                                                     bool success) {
+  const auto &creating_vc = creating_virtual_clusters_.at(vc_id);
+  if (!success) {
+    RAY_LOG(INFO) << "Failed to create virtual cluster " << vc_id << ", will retry";
+    pending_virtual_clusters_.push_front(creating_vc->vc);
+  } else {
+    RAY_LOG(INFO) << "Created virtual cluster " << vc_id;
+    running_virtual_clusters_.emplace(
+        vc_id,
+        RunningVirtualCluster(creating_vc->vc,
+                              /*node_to_allocated_vnodes=*/creating_vc->node_to_vnodes));
+  }
+  creating_virtual_clusters_.erase(vc_id);
+}
+
 std::shared_ptr<ResourceReserveInterface>
 GcsVirtualClusterManager::GetLeaseClientFromNode(
     const std::shared_ptr<rpc::GcsNodeInfo> &node) {
@@ -214,6 +290,15 @@ GcsVirtualClusterManager::GetLeaseClientFromNode(
   remote_address.set_ip_address(node->node_manager_address());
   remote_address.set_port(node->node_manager_port());
   return raylet_client_pool_->GetOrConnectByAddress(remote_address);
+}
+
+absl::optional<std::shared_ptr<ResourceReserveInterface>>
+GcsVirtualClusterManager::GetLeaseClientFromAliveNode(const NodeID &node_id) {
+  auto maybe_node = gcs_node_manager_.GetAliveNode(node_id);
+  if (!maybe_node.has_value()) {
+    return {};
+  }
+  return GetLeaseClientFromNode(maybe_node.value());
 }
 
 }  // namespace gcs

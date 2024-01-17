@@ -48,6 +48,7 @@ class VirtualClusterNodeSpec : public MessageWrapper<rpc::VirtualClusterNode> {
   std::string DebugString() const;
 
   /// Return the resources that are to be acquired by this bundle.
+  /// NOTE: This does NOT include the `vcbundle` resource.
   ///
   /// \return The resources that will be acquired by this bundle.
   const ResourceRequest &GetRequiredResources() const { return unit_resource_; }

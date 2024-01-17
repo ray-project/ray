@@ -101,19 +101,18 @@ void VirtualClusterResourceManager::CommitBundle(VirtualClusterID vc_id) {
   // better by adding a ResourceSet of {"vcbundle":1000} in prepare time so we won't need
   // the `if` here.
   const auto &resources = nodes_spec.GetFormattedResources();
-  for (const auto &resource : resources) {
-    const std::string &resource_name = resource.first;
-    auto label = VirtualClusterResourceLabel::Parse(resource_name);
+  for (const auto &[name, count] : resources) {
+    auto label = VirtualClusterResourceLabel::Parse(name);
     RAY_CHECK(label.has_value());
     const std::string &original_resource_name = label->original_resource;
     if (original_resource_name != kVirtualClusterBundle_ResourceLabel) {
       const auto &instances =
           task_resource_instances.Get(ResourceID(original_resource_name));
       cluster_resource_scheduler_->GetLocalResourceManager().AddLocalResourceInstances(
-          scheduling::ResourceID{resource_name}, instances);
+          scheduling::ResourceID{name}, instances);
     } else {
       cluster_resource_scheduler_->GetLocalResourceManager().AddLocalResourceInstances(
-          scheduling::ResourceID{resource_name}, {resource.second});
+          scheduling::ResourceID{name}, {count});
     }
   }
 }
