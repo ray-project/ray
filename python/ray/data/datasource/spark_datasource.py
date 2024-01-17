@@ -22,6 +22,7 @@ class SparkDatasource(Datasource):
     def __init__(self, spark_dataframe, rows_per_chunk):
         try:
             from pyspark.sql.chunk_api import persist_dataframe_as_chunks
+            from pyspark.sql.chunk_api import read_chunk
         except ImportError:
             raise RuntimeError(
                 "Current spark version does not support Ray SparkDatasource."
@@ -33,6 +34,8 @@ class SparkDatasource(Datasource):
         self._estimate_inmemory_data_size = sum(
             chunk_meta.byte_count for chunk_meta in self.chunk_meta_list
         )
+        first_chunk_id = self.chunk_meta_list[0].id
+        self.schema = read_chunk(first_chunk_id).schema
 
     def estimate_inmemory_data_size(self) -> Optional[int]:
         return self._estimate_inmemory_data_size
@@ -53,7 +56,7 @@ class SparkDatasource(Datasource):
         metadata = BlockMetadata(
             num_rows=num_rows,
             size_bytes=size_bytes,
-            schema=None,
+            schema=self.schema,
             input_files=None,
             exec_stats=None,
         )
