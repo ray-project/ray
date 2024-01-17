@@ -37,7 +37,7 @@ if TYPE_CHECKING:
 
     class Actor(Generic[_ClassT]):
         def __init__(self, actor_handle) -> None:
-            self._actor_handle = actor_handle
+            ...
 
         @property
         def methods(self) -> type[_ClassT]:
