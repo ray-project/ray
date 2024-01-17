@@ -1,6 +1,6 @@
 import { Button, MenuItem, Paper, TextField } from "@mui/material";
-import createStyles from '@mui/styles/createStyles';
-import makeStyles from '@mui/styles/makeStyles';
+import createStyles from "@mui/styles/createStyles";
+import makeStyles from "@mui/styles/makeStyles";
 import React, { useContext, useEffect, useState } from "react";
 import { RiExternalLinkLine } from "react-icons/ri";
 import { GlobalContext } from "../../App";
@@ -134,7 +134,6 @@ export const ServeMetricsSection = ({
               <Paper
                 key={pathParams}
                 className={classes.chart}
-                elevation={1}
                 variant="outlined"
               >
                 <iframe

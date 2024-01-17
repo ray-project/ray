@@ -1,16 +1,8 @@
-import { ThemeProvider, Theme, StyledEngineProvider } from "@mui/material";
 import { render, screen } from "@testing-library/react";
 import React from "react";
-import { lightTheme } from "../../../theme";
+import { STYLE_WRAPPER } from "../../../util/test-utils";
 import { useJobProgressByTaskName } from "../hook/useJobProgress";
 import { JobTaskNameProgressTable } from "./JobTaskNameProgressTable";
-
-
-declare module '@mui/styles/defaultTheme' {
-  // eslint-disable-next-line @typescript-eslint/no-empty-interface
-  interface DefaultTheme extends Theme {}
-}
-
 
 jest.mock("../hook/useJobProgress");
 
@@ -41,11 +33,9 @@ describe("JobTaskNameProgressTable", () => {
     } as any);
 
     render(
-      <StyledEngineProvider injectFirst>
-        <ThemeProvider theme={lightTheme}>
-          <JobTaskNameProgressTable jobId="01000000" />
-        </ThemeProvider>
-      </StyledEngineProvider>,
+      <STYLE_WRAPPER>
+        <JobTaskNameProgressTable jobId="01000000" />
+      </STYLE_WRAPPER>,
     );
 
     await screen.findByText("Task name");

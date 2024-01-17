@@ -1,7 +1,7 @@
 import { Theme } from "@mui/material";
-import { WithStyles } from '@mui/styles';
-import createStyles from '@mui/styles/createStyles';
-import withStyles from '@mui/styles/withStyles';
+import { WithStyles } from "@mui/styles";
+import createStyles from "@mui/styles/createStyles";
+import withStyles from "@mui/styles/withStyles";
 import React, { HTMLAttributes } from "react";
 
 const styles = (theme: Theme) =>

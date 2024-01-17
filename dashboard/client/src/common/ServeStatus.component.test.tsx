@@ -1,6 +1,7 @@
 import { render, screen } from "@testing-library/react";
 import React from "react";
 import { ServeDeployment, ServeDeploymentStatus } from "../type/serve";
+import { TEST_APP_WRAPPER } from "../util/test-utils";
 import { ServeStatusIcon } from "./ServeStatus";
 
 const DEPLOYMENT: ServeDeployment = {
@@ -13,7 +14,9 @@ const DEPLOYMENT: ServeDeployment = {
 
 describe("ServeStatusIcon", () => {
   it("renders HEALTHY status", async () => {
-    render(<ServeStatusIcon deployment={DEPLOYMENT} small={false} />);
+    render(<ServeStatusIcon deployment={DEPLOYMENT} small={false} />, {
+      wrapper: TEST_APP_WRAPPER,
+    });
 
     await screen.findByTitle("Healthy");
   });
@@ -24,6 +27,7 @@ describe("ServeStatusIcon", () => {
         deployment={{ ...DEPLOYMENT, status: ServeDeploymentStatus.UNHEALTHY }}
         small={false}
       />,
+      { wrapper: TEST_APP_WRAPPER },
     );
 
     await screen.findByTitle("Unhealthy");
@@ -35,6 +39,7 @@ describe("ServeStatusIcon", () => {
         deployment={{ ...DEPLOYMENT, status: ServeDeploymentStatus.UPDATING }}
         small={false}
       />,
+      { wrapper: TEST_APP_WRAPPER },
     );
 
     await screen.findByTitle("Updating");

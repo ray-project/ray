@@ -420,7 +420,6 @@ const MetricsSection = ({
             <Paper
               key={pathParams}
               className={classes.chart}
-              elevation={1}
               variant="outlined"
             >
               <iframe

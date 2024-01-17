@@ -1,5 +1,5 @@
 import { Button, List, ListItem, Paper, Typography } from "@mui/material";
-import makeStyles from '@mui/styles/makeStyles';
+import makeStyles from "@mui/styles/makeStyles";
 import React, { useState } from "react";
 import { Link, Outlet, useSearchParams } from "react-router-dom";
 import useSWR from "swr";

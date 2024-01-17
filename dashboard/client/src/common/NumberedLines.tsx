@@ -1,7 +1,7 @@
 import { Table, TableBody, TableCell, TableRow, Theme } from "@mui/material";
-import { WithStyles } from '@mui/styles';
-import createStyles from '@mui/styles/createStyles';
-import withStyles from '@mui/styles/withStyles';
+import { WithStyles } from "@mui/styles";
+import createStyles from "@mui/styles/createStyles";
+import withStyles from "@mui/styles/withStyles";
 import classNames from "classnames";
 import React from "react";
 

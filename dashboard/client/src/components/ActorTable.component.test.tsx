@@ -1,8 +1,9 @@
 import { render, within } from "@testing-library/react";
 import React from "react";
-import { MemoryRouter } from "react-router-dom";
 import { Actor } from "../type/actor";
+import { TEST_APP_WRAPPER } from "../util/test-utils";
 import ActorTable from "./ActorTable";
+
 const MOCK_ACTORS: { [actorId: string]: Actor } = {
   ACTOR_1: {
     actorId: "ACTOR_1",
@@ -49,11 +50,9 @@ const MOCK_ACTORS: { [actorId: string]: Actor } = {
 };
 describe("ActorTable", () => {
   it("renders a table of actors sorted by state", () => {
-    const { getByRole } = render(
-      <MemoryRouter>
-        <ActorTable actors={MOCK_ACTORS} />
-      </MemoryRouter>,
-    );
+    const { getByRole } = render(<ActorTable actors={MOCK_ACTORS} />, {
+      wrapper: TEST_APP_WRAPPER,
+    });
 
     const actor1Row = getByRole("row", {
       name: /ACTOR_1/,
@@ -79,11 +78,9 @@ describe("ActorTable", () => {
       },
     };
 
-    const { getByRole } = render(
-      <MemoryRouter>
-        <ActorTable actors={RUNNING_ACTORS} />
-      </MemoryRouter>,
-    );
+    const { getByRole } = render(<ActorTable actors={RUNNING_ACTORS} />, {
+      wrapper: TEST_APP_WRAPPER,
+    });
     const actor1Row = getByRole("row", {
       name: /ACTOR_1/,
     });
@@ -109,11 +106,9 @@ describe("ActorTable", () => {
       },
     };
 
-    const { getByRole } = render(
-      <MemoryRouter>
-        <ActorTable actors={RUNNING_ACTORS} />
-      </MemoryRouter>,
-    );
+    const { getByRole } = render(<ActorTable actors={RUNNING_ACTORS} />, {
+      wrapper: TEST_APP_WRAPPER,
+    });
     const actor1Row = getByRole("row", {
       name: /ACTOR_1/,
     });

@@ -1,5 +1,5 @@
 import { Paper } from "@mui/material";
-import makeStyles from '@mui/styles/makeStyles';
+import makeStyles from "@mui/styles/makeStyles";
 import React, { PropsWithChildren, ReactNode } from "react";
 
 const useStyles = makeStyles((theme) => ({

@@ -1,6 +1,6 @@
 import { IconButton, Tooltip, Typography } from "@mui/material";
-import createStyles from '@mui/styles/createStyles';
-import makeStyles from '@mui/styles/makeStyles';
+import createStyles from "@mui/styles/createStyles";
+import makeStyles from "@mui/styles/makeStyles";
 import classNames from "classnames";
 import React, { useContext } from "react";
 import { RiBookMarkLine, RiFeedbackLine } from "react-icons/ri/";
@@ -201,7 +201,8 @@ const MainNavBar = () => {
             href="https://docs.ray.io/en/latest/ray-core/ray-dashboard.html"
             target="_blank"
             rel="noopener noreferrer"
-            size="large">
+            size="large"
+          >
             <RiBookMarkLine />
           </IconButton>
         </Tooltip>
@@ -211,7 +212,8 @@ const MainNavBar = () => {
             href="https://github.com/ray-project/ray/issues/new?assignees=&labels=bug%2Ctriage%2Cdashboard&template=bug-report.yml&title=%5BDashboard%5D+%3CTitle%3E"
             target="_blank"
             rel="noopener noreferrer"
-            size="large">
+            size="large"
+          >
             <RiFeedbackLine />
           </IconButton>
         </Tooltip>

@@ -1,5 +1,5 @@
 import { Checkbox, FormControlLabel, LinearProgress } from "@mui/material";
-import makeStyles from '@mui/styles/makeStyles';
+import makeStyles from "@mui/styles/makeStyles";
 import React, { useEffect, useState } from "react";
 import { UnifiedJob } from "../../type/job";
 import {

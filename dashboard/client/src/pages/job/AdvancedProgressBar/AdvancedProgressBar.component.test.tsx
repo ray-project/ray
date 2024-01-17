@@ -1,21 +1,18 @@
 import { Table, TableBody } from "@mui/material";
-import { StyledEngineProvider, ThemeProvider } from "@mui/material/styles";
 import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import React, { PropsWithChildren } from "react";
-import { lightTheme } from "../../../theme";
 import { TypeTaskType } from "../../../type/task";
+import { STYLE_WRAPPER } from "../../../util/test-utils";
 import { AdvancedProgressBarSegment } from "./AdvancedProgressBar";
 
 const Wrapper = ({ children }: PropsWithChildren<{}>) => {
   return (
-    <StyledEngineProvider injectFirst>
-      <ThemeProvider theme={lightTheme}>
-        <Table>
-          <TableBody>{children}</TableBody>
-        </Table>
-      </ThemeProvider>
-    </StyledEngineProvider>
+    <STYLE_WRAPPER>
+      <Table>
+        <TableBody>{children}</TableBody>
+      </Table>
+    </STYLE_WRAPPER>
   );
 };
 
