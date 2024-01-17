@@ -136,7 +136,7 @@ DEFAULT_USE_RAY_TQDM = bool(int(os.environ.get("RAY_TQDM", "1")))
 # If driver memory exceeds this threshold, warn the user.
 # For now, this only applies to shuffle ops because most other ops are unlikely
 # to use as much driver memory.
-DEFAULT_WARN_ON_DRIVER_MEMORY_USAGE_BYTES = 2 * 1024 * 1024
+DEFAULT_WARN_ON_DRIVER_MEMORY_USAGE_BYTES = 2 * 1024 * 1024 * 1024
 
 # Use this to prefix important warning messages for the user.
 WARN_PREFIX = "⚠️ "

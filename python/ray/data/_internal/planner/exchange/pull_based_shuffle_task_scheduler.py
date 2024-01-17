@@ -10,7 +10,6 @@ from ray.data._internal.planner.exchange.interfaces import (
 from ray.data._internal.remote_fn import cached_remote_fn
 from ray.data._internal.stats import StatsDict
 from ray.data._internal.util import convert_bytes_to_human_readable_str
-from ray.data.context import DataContext
 
 logger = DatasetLogger(__name__)
 
@@ -49,19 +48,18 @@ class PullBasedShuffleTaskScheduler(ExchangeTaskScheduler):
         caller_memory_usage = (
             input_num_blocks * output_num_blocks * CALLER_MEMORY_USAGE_PER_OBJECT_REF
         )
-        ctx = DataContext.get_current()
-        if caller_memory_usage > ctx.warn_on_driver_memory_usage_bytes:
-            logger.get_logger().warn(
-                "Execution is estimated to use "
-                f"~{convert_bytes_to_human_readable_str(caller_memory_usage)} "
-                "of driver memory. Ensure that the driver machine has at least "
-                "this much memory to ensure job completion.\n\n"
-                "To reduce the "
-                "amount of driver memory needed, enable push-based shuffle using "
-                "RAY_DATA_PUSH_BASED_SHUFFLE=1 "
-                "(https://docs.ray.io/en/latest/data/performance-tips.html"
-                "#enabling-push-based-shuffle)."
-            )
+        task_ctx.warn_on_driver_memory_usage(
+            caller_memory_usage,
+            "Execution is estimated to use at least "
+            f"{convert_bytes_to_human_readable_str(caller_memory_usage)} "
+            "of driver memory. Ensure that the driver machine has at least "
+            "this much memory to ensure job completion.\n\n"
+            "To reduce the "
+            "amount of driver memory needed, enable push-based shuffle using "
+            "RAY_DATA_PUSH_BASED_SHUFFLE=1 "
+            "(https://docs.ray.io/en/latest/data/performance-tips.html"
+            "#enabling-push-based-shuffle).",
+        )
 
         if map_ray_remote_args is None:
             map_ray_remote_args = {}
@@ -105,6 +103,8 @@ class PullBasedShuffleTaskScheduler(ExchangeTaskScheduler):
 
         shuffle_map_metadata = map_bar.fetch_until_complete(shuffle_map_metadata)
 
+        task_ctx.warn_on_high_local_memory_store_usage()
+
         bar_name = ExchangeTaskSpec.REDUCE_SUB_PROGRESS_BAR_NAME
         assert bar_name in sub_progress_bar_dict, sub_progress_bar_dict
         reduce_bar = sub_progress_bar_dict[bar_name]
@@ -129,6 +129,8 @@ class PullBasedShuffleTaskScheduler(ExchangeTaskScheduler):
         if shuffle_reduce_out:
             new_blocks, new_metadata = zip(*shuffle_reduce_out)
         new_metadata = reduce_bar.fetch_until_complete(list(new_metadata))
+
+        task_ctx.warn_on_high_local_memory_store_usage()
 
         output = []
         for block, meta in zip(new_blocks, new_metadata):

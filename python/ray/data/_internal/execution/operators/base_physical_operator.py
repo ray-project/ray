@@ -9,6 +9,7 @@ from ray.data._internal.execution.interfaces import (
 from ray.data._internal.logical.interfaces import LogicalOperator
 from ray.data._internal.progress_bar import ProgressBar
 from ray.data._internal.stats import StatsDict
+from ray.data.context import DataContext
 
 
 class OneToOneOperator(PhysicalOperator):
@@ -85,8 +86,12 @@ class AllToAllOperator(PhysicalOperator):
         self._input_buffer.append(refs)
 
     def all_inputs_done(self) -> None:
+        warn_on_driver_memory_usage_bytes = (
+            DataContext.get_current().warn_on_driver_memory_usage_bytes
+        )
         ctx = TaskContext(
             task_idx=self._next_task_index,
+            warn_on_driver_memory_usage_bytes=warn_on_driver_memory_usage_bytes,
             sub_progress_bar_dict=self._sub_progress_bar_dict,
             target_max_block_size=self.actual_target_max_block_size,
         )

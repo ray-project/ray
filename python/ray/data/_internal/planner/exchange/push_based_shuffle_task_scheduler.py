@@ -483,14 +483,13 @@ class PushBasedShuffleTaskScheduler(ExchangeTaskScheduler):
         caller_memory_usage = (
             stage.get_estimated_num_refs() * CALLER_MEMORY_USAGE_PER_OBJECT_REF
         )
-        ctx = DataContext.get_current()
-        if caller_memory_usage > ctx.warn_on_driver_memory_usage_bytes:
-            logger.get_logger().warn(
-                "Execution is estimated to use "
-                f"~{convert_bytes_to_human_readable_str(caller_memory_usage)}"
-                " of driver memory. Ensure that the driver machine has at least "
-                "this much memory to ensure job completion."
-            )
+        task_ctx.warn_on_driver_memory_usage(
+            caller_memory_usage,
+            "Execution is estimated to use at least "
+            f"{convert_bytes_to_human_readable_str(caller_memory_usage)}"
+            " of driver memory. Ensure that the driver machine has at least "
+            "this much memory to ensure job completion.",
+        )
 
         # TODO(swang): Use INFO level. Currently there is no easy way to set
         # the logging level to DEBUG from a driver script, so just print
@@ -561,6 +560,9 @@ class PushBasedShuffleTaskScheduler(ExchangeTaskScheduler):
             except StopIteration:
                 merge_done = True
                 break
+
+            task_ctx.warn_on_high_local_memory_store_usage()
+
         all_merge_results = merge_stage_iter.pop_merge_results()
 
         if _debug_limit_execution_to_num_blocks is not None:
@@ -607,6 +609,8 @@ class PushBasedShuffleTaskScheduler(ExchangeTaskScheduler):
                 reduce_stage_metadata += next(reduce_stage_executor)
             except StopIteration:
                 break
+
+            task_ctx.warn_on_high_local_memory_store_usage()
 
         new_blocks = reduce_stage_iter.pop_reduce_results()
         sorted_blocks = [
