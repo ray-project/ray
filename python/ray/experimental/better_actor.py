@@ -7,7 +7,7 @@ import ray
 __all__ = ["remote_method", "ActorMixin", "Actor"]
 
 if TYPE_CHECKING:
-    from typing import Any, Callable, Generic, TypeVar, Union
+    from typing import Any, Callable, Generic, TypeVar, Union, Coroutine
 
     from typing_extensions import Concatenate, Literal, ParamSpec, TypedDict, Unpack
 
@@ -32,6 +32,7 @@ if TYPE_CHECKING:
     _Method_co = TypeVar("_Method_co", covariant=True, bound=Callable)
 
     RemoteArg = Union[_T, ray.ObjectRef[_T]]
+    RemoteRet = Union[_R, Coroutine[Any, Any, _R]]
 
     _ClassT = TypeVar("_ClassT")
 
@@ -249,13 +250,13 @@ if TYPE_CHECKING:
     class ActorMethodRemote(Generic[_Method_co]):
         @overload
         def __call__(
-            self: ActorMethodRemote[Callable[[], _R]], **kwargs
+            self: ActorMethodRemote[Callable[[], RemoteRet[_R]]], **kwargs
         ) -> ray.ObjectRef[_R]:
             ...
 
         @overload
         def __call__(
-            self: ActorMethodRemote[Callable[Concatenate[_T0, ...], _R]],
+            self: ActorMethodRemote[Callable[Concatenate[_T0, ...], RemoteRet[_R]]],
             __arg0: RemoteArg[_T0],
             **kwargs,
         ) -> ray.ObjectRef[_R]:
@@ -263,7 +264,9 @@ if TYPE_CHECKING:
 
         @overload
         def __call__(
-            self: ActorMethodRemote[Callable[Concatenate[_T0, _T1, ...], _R]],
+            self: ActorMethodRemote[
+                Callable[Concatenate[_T0, _T1, ...], RemoteRet[_R]]
+            ],
             __arg0: RemoteArg[_T0],
             __arg1: RemoteArg[_T1],
             **kwargs,
@@ -272,7 +275,9 @@ if TYPE_CHECKING:
 
         @overload
         def __call__(
-            self: ActorMethodRemote[Callable[Concatenate[_T0, _T1, _T2, ...], _R]],
+            self: ActorMethodRemote[
+                Callable[Concatenate[_T0, _T1, _T2, ...], RemoteRet[_R]]
+            ],
             __arg0: RemoteArg[_T0],
             __arg1: RemoteArg[_T1],
             __arg2: RemoteArg[_T2],
@@ -282,7 +287,9 @@ if TYPE_CHECKING:
 
         @overload
         def __call__(
-            self: ActorMethodRemote[Callable[Concatenate[_T0, _T1, _T2, _T3, ...], _R]],
+            self: ActorMethodRemote[
+                Callable[Concatenate[_T0, _T1, _T2, _T3, ...], RemoteRet[_R]]
+            ],
             __arg0: RemoteArg[_T0],
             __arg1: RemoteArg[_T1],
             __arg2: RemoteArg[_T2],
@@ -294,7 +301,7 @@ if TYPE_CHECKING:
         @overload
         def __call__(
             self: ActorMethodRemote[
-                Callable[Concatenate[_T0, _T1, _T2, _T3, _T4, ...], _R]
+                Callable[Concatenate[_T0, _T1, _T2, _T3, _T4, ...], RemoteRet[_R]]
             ],
             __arg0: RemoteArg[_T0],
             __arg1: RemoteArg[_T1],
@@ -308,7 +315,7 @@ if TYPE_CHECKING:
         @overload
         def __call__(
             self: ActorMethodRemote[
-                Callable[Concatenate[_T0, _T1, _T2, _T3, _T4, _T5, ...], _R]
+                Callable[Concatenate[_T0, _T1, _T2, _T3, _T4, _T5, ...], RemoteRet[_R]]
             ],
             __arg0: RemoteArg[_T0],
             __arg1: RemoteArg[_T1],
@@ -323,7 +330,9 @@ if TYPE_CHECKING:
         @overload
         def __call__(
             self: ActorMethodRemote[
-                Callable[Concatenate[_T0, _T1, _T2, _T3, _T4, _T5, _T6, ...], _R]
+                Callable[
+                    Concatenate[_T0, _T1, _T2, _T3, _T4, _T5, _T6, ...], RemoteRet[_R]
+                ]
             ],
             __arg0: RemoteArg[_T0],
             __arg1: RemoteArg[_T1],
@@ -339,7 +348,10 @@ if TYPE_CHECKING:
         @overload
         def __call__(
             self: ActorMethodRemote[
-                Callable[Concatenate[_T0, _T1, _T2, _T3, _T4, _T5, _T6, _T7, ...], _R]
+                Callable[
+                    Concatenate[_T0, _T1, _T2, _T3, _T4, _T5, _T6, _T7, ...],
+                    RemoteRet[_R],
+                ]
             ],
             __arg0: RemoteArg[_T0],
             __arg1: RemoteArg[_T1],
@@ -357,7 +369,8 @@ if TYPE_CHECKING:
         def __call__(
             self: ActorMethodRemote[
                 Callable[
-                    Concatenate[_T0, _T1, _T2, _T3, _T4, _T5, _T6, _T7, _T8, ...], _R
+                    Concatenate[_T0, _T1, _T2, _T3, _T4, _T5, _T6, _T7, _T8, ...],
+                    RemoteRet[_R],
                 ]
             ],
             __arg0: RemoteArg[_T0],
@@ -378,7 +391,7 @@ if TYPE_CHECKING:
             self: ActorMethodRemote[
                 Callable[
                     Concatenate[_T0, _T1, _T2, _T3, _T4, _T5, _T6, _T7, _T8, _T9, ...],
-                    _R,
+                    RemoteRet[_R],
                 ]
             ],
             __arg0: RemoteArg[_T0],
@@ -397,7 +410,7 @@ if TYPE_CHECKING:
 
         @overload
         def __call__(
-            self: ActorMethodRemote[Callable[..., _R]],
+            self: ActorMethodRemote[Callable[..., RemoteRet[_R]]],
             **kwargs,
         ) -> ray.ObjectRef[_R]:
             ...
