@@ -7,7 +7,7 @@ import ray
 __all__ = ["remote_method", "ActorMixin", "Actor"]
 
 if TYPE_CHECKING:
-    from typing import Any, Callable, Generic, TypeVar, Union, Coroutine
+    from typing import Any, Callable, Coroutine, Generic, TypeVar, Union
 
     from typing_extensions import Concatenate, Literal, ParamSpec, TypedDict, Unpack
 
