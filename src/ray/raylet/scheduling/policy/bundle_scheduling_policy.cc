@@ -123,9 +123,13 @@ const absl::flat_hash_map<scheduling::NodeID, double>
 BundleSchedulingPolicy::GetAvailableCpusBeforeBundleScheduling() const {
   absl::flat_hash_map<scheduling::NodeID, double> result;
   for (const auto &entry : cluster_resource_manager_.GetResourceView()) {
-    result.emplace(
-        entry.first,
-        entry.second.GetLocalView().available.Get(ray::ResourceID::CPU())[0].Double());
+    if (entry.second.GetLocalView().available.Has(ray::ResourceID::CPU())) {
+      result.emplace(
+          entry.first,
+          entry.second.GetLocalView().available.Get(ray::ResourceID::CPU())[0].Double());
+    } else {
+      result.emplace(entry.first, 0.0);
+    }
   }
   return result;
 }
