@@ -39,3 +39,7 @@ TAG_RAY_RUNTIME_CONFIG = "ray-runtime-config"
 # if the node is a worker, this also hashes content of the directories
 # specified by the cluster_synced_files config
 TAG_RAY_FILE_MOUNTS_CONTENTS = "ray-file-mounts-contents"
+
+# Tag for the launch request id, used to identify nodes launched by the same
+# launch request.
+TAG_RAY_LAUNCH_REQUEST = "ray-launch-request"

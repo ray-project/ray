@@ -55,6 +55,12 @@ AUTOSCALER_MAX_CONCURRENT_TERMINATING = env_integer(
     "AUTOSCALER_MAX_CONCURRENT_TERMINATING", 1
 )
 
+# Max concurrent number of node type to launch at a time.
+# NOTE: this is needed since node provider launches nodes by type.
+AUTOSCALER_MAX_CONCURRENT_TYPES_TO_LAUNCH = env_integer(
+    "AUTOSCALER_MAX_CONCURRENT_TYPES_TO_LAUNCH", 5
+)
+
 # Interval at which to perform autoscaling updates.
 AUTOSCALER_UPDATE_INTERVAL_S = env_integer("AUTOSCALER_UPDATE_INTERVAL_S", 5)
 
