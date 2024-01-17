@@ -197,15 +197,20 @@ struct Mocker {
     return request;
   }
 
-  static VirtualClusterSpec GenVirtualCluster(
+  // Creates a VC spec with a single fixed node with the given resources.
+  static VirtualClusterSpecification GenVirtualCluster(
       const VirtualClusterID &vc_id,
       absl::flat_hash_map<std::string, double> &unit_resource) {
-    rpc::VirtualCluster bundle;
-    auto mutable_resources = bundle.mutable_resources();
+    rpc::VirtualClusterSpec proto;
+    proto.set_virtual_cluster_id(vc_id.Binary());
+    auto *fixed_size_nodes = proto.add_fixed_size_nodes();
+    rpc::VirtualClusterNode *node = fixed_size_nodes->add_nodes();
+
+    auto mutable_resources = node->mutable_resources();
     for (auto &resource : unit_resource) {
       mutable_resources->insert({resource.first, resource.second});
     }
-    return VirtualClusterSpec(bundle, vc_id);
+    return VirtualClusterSpecification(std::move(proto));
   }
 
   static std::shared_ptr<rpc::GcsNodeInfo> GenNodeInfo(
