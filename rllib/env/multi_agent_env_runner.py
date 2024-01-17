@@ -136,19 +136,7 @@ class MultiAgentEnvRunner(EnvRunner):
 
             # Build the module from its spec.
             self.module: MultiAgentRLModule = module_spec.build()
-            # Get the policy mapping function b/c we need it to map observations and
-            # states to single-agent `RLModule`s.
-            # # TODO (sven, simon): We have to rebuild the `AlgorithmConfig` to work on
-            # #  `RLModule`s and not `Policy`s. Like here `policies`->`modules`
-            # self._agent_id_to_module_id = {
-            #    agent_id: self.config.policy_mapping_fn()(agent_id, None, self)
-            #    for agent_id in self.agent_ids
-            # }
-            # # Remove as soon as multi-agent connectors are ready.
-            # self._module_id_to_agent_id = {
-            #    module_id: agent_id
-            #    for agent_id, module_id in self._agent_id_to_module_id.items()
-            # }
+
         # This error could be thrown, when only random actions are used.
         except NotImplementedError:
             self.module = None
@@ -250,20 +238,6 @@ class MultiAgentEnvRunner(EnvRunner):
         """
         done_episodes_to_return: List[MultiAgentEpisode] = []
 
-        # # Get the initial states for all modules. Note, `get_initial_state()`
-        # # returns an empty dictionary, if no initial states are defined.
-        # # TODO (sven, simon): We could simply use `MARLModule._run_forward_pass()`
-        # # to get also an initial state for all modules. Maybe this can be
-        # # added to the MARLModule.
-        # if self.module:
-        #   initial_states = {
-        #       agent_id: self.module[agent_id].get_initial_state()
-        #       for agent_id in self.module.keys()
-        #   }
-        # else:
-        #    # TODO (sven, simon): Do we even need states when we have no module?
-        #    initial_states = {agent_id: {} for agent_id in self.env.get_agent_ids()}
-
         # Have to reset the env.
         if force_reset or self._needs_initial_reset:
             # Create n new episodes and make the `on_episode_created` callbacks.
@@ -283,22 +257,12 @@ class MultiAgentEnvRunner(EnvRunner):
             self._needs_initial_reset = False
 
             # Set the initial observations in the episodes.
-            # TODO (sven): maybe move this into connector pipeline (even
-            # if automated).
             self._episode.add_env_reset(observations=obs, infos=infos)
+
         # Do not reset environments, but instead continue in already started episodes.
         else:
             # Pick up stored observations from previous timesteps.
             obs = self._episode.get_observations(as_list=True)[0]
-            # Get the states from the buffer or get the initial states.
-            # TODO (simon): Do we need to iterate here over agents? Or can
-            # one agent have no buffered state while another one has?
-            # states = {
-            #    agent_id: initial_states[agent_id]
-            #    if agent_state is None
-            #    else agent_state
-            #    for agent_id, agent_state in self._states.items()
-            # }
 
         # Loop through timesteps.
         env_steps = 0
@@ -325,28 +289,6 @@ class MultiAgentEnvRunner(EnvRunner):
                 }
             # Compute an action using the RLModule.
             else:
-                # TODO (simon): This is not correct `forward()` expects
-                # `SampleBatchType`.
-                # Note, `RLModule`'s `forward()` methods expect `NestedDict`s.
-                # Note, we only consider for states and obs agents that step.
-                # batch: MultiAgentDict = {
-                #    self._agent_id_to_module_id[agent_id]: {
-                #        STATE_IN: tree.map_structure(
-                #            lambda s: self._convert_from_numpy(s),
-                #            states[self._agent_id_to_module_id[agent_id]],
-                #        ),
-                #        SampleBatch.OBS: self._convert_from_numpy(
-                #            np.expand_dims(agent_obs, axis=0)
-                #        ),
-                #    }
-                #    for agent_id, agent_obs in obs.items()
-                # }
-                # TODO (Sven, Simon): The `RLModule` has `SampleBatchType` as input
-                #  type. Only the _forward_x()` methods have a `NestedDict`. Shall we
-                #  compile to `SampleBatchType` here and in `SingleAgentEnvRunner`?
-                # from ray.rllib.utils.nested_dict import NestedDict
-                # batch = NestedDict(batch)
-
                 to_module = self._env_to_module(
                     rl_module=self.module,
                     episodes=[self._episode],

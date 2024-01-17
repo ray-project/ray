@@ -7,7 +7,7 @@ import numpy as np
 
 from ray.rllib.env.single_agent_episode import SingleAgentEpisode
 from ray.rllib.policy.sample_batch import MultiAgentBatch
-from ray.rllib.utils.typing import AgentID, MultiAgentDict
+from ray.rllib.utils.typing import AgentID, ModuleID, MultiAgentDict
 
 
 # TODO (simon): Include cases in which the number of agents in an
@@ -104,6 +104,9 @@ class MultiAgentEpisode:
         # know how many agents are in the environment. Also the number of agents
         # can grow or shrink.
         self._agent_ids: Set[AgentID] = set() if agent_ids is None else set(agent_ids)
+        # Container class to keep information on which agent maps to which module
+        # (always for the duration of this episode).
+        self.agent_to_module_map: Dict[AgentID, ModuleID] = {}
 
         # The global last timestep of the episode and the timesteps when this chunk
         # started.
@@ -1632,9 +1635,9 @@ class MultiAgentEpisode:
                         global_t_to_local_t[agent_id].append(
                             t + self.ts_carriage_return
                         )
-            # Otherwise, set to an empoty dict (when creating an empty episode).
-            else:
-                global_t_to_local_t = {agent_id: [] for agent_id in self._agent_ids}
+            ## Otherwise, set to an empty dict (when creating an empty episode).
+            #else:
+            #    global_t_to_local_t = {agent_id: [] for agent_id in self._agent_ids}
         # Otherwise, set to an empoty dict (when creating an empty episode).
         else:
             global_t_to_local_t = {}

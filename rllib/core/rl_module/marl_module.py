@@ -31,9 +31,12 @@ from ray.rllib.core.rl_module.rl_module import (
 from ray.rllib.utils.annotations import OverrideToImplementCustomLogic
 from ray.rllib.utils.policy import validate_policy_id
 from ray.rllib.utils.serialization import serialize_type, deserialize_type
-from ray.rllib.utils.typing import T
+from ray.rllib.utils.typing import ModuleID, T
 
-ModuleID = str
+
+# TODO (sven): This will replace all occurrences of DEFAULT_POLICY_ID on the new API
+#  stack.
+DEFAULT_MODULE_ID = "default_policy"
 
 
 @PublicAPI(stability="alpha")

@@ -135,7 +135,7 @@ class DefaultModuleToEnv(ConnectorV2):
         # For convenience and if possible, compute action logp from distribution
         # and add to output.
         if action_dist is not None and SampleBatch.ACTION_LOGP not in data:
-            data[SampleBatch.ACTION_LOGP] = convert_to_numpy(action_dist.logp(actions))
+            data[SampleBatch.ACTION_LOGP] = action_dist.logp(actions)
 
         actions = convert_to_numpy(actions)
 
@@ -147,9 +147,10 @@ class DefaultModuleToEnv(ConnectorV2):
         elif self.clip_actions:
             actions = clip_action(actions, self._action_space_struct)
 
-        data[SampleBatch.ACTIONS] = actions
-
         # Convert everything into numpy.
         data = convert_to_numpy(data)
+
+        # Add `ACTIONS` (which has already been numpy'ized).
+        data[SampleBatch.ACTIONS] = actions
 
         return data
