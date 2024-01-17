@@ -1,6 +1,7 @@
 import logging
 from typing import Iterator, List, Optional
 import numpy as np
+import pandas as pd
 import pyarrow
 
 from ray.data.block import BlockMetadata
@@ -56,13 +57,14 @@ def read_chunk(chunk_id):
         return arrow_table
     finally:
         if pa_reader is not None:
-            pa_reader.close()
+            if hasattr(pa_reader, "close"):
+                pa_reader.close()
         sockfile.close()
 
 
-def _read_chunk_fn(chunk_id_list) -> Iterator["pyarrow.Table"]:
+def _read_chunk_fn(chunk_id_list) -> Iterator["pd.DataFrame"]:
     for chunk_id in chunk_id_list:
-        yield read_chunk(chunk_id)
+        yield read_chunk(chunk_id).to_pandas(self_destruct=True)
 
 
 @PublicAPI(stability="alpha")
@@ -82,8 +84,6 @@ class SparkDatasource(Datasource):
         self._estimate_inmemory_data_size = sum(
             chunk_meta.byte_count for chunk_meta in self.chunk_meta_list
         )
-        first_chunk_id = self.chunk_meta_list[0].id
-        self.schema = read_chunk(first_chunk_id).schema
 
     def estimate_inmemory_data_size(self) -> Optional[int]:
         return self._estimate_inmemory_data_size
@@ -104,7 +104,7 @@ class SparkDatasource(Datasource):
         metadata = BlockMetadata(
             num_rows=num_rows,
             size_bytes=size_bytes,
-            schema=self.schema,
+            schema=None,
             input_files=None,
             exec_stats=None,
         )
