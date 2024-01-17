@@ -2378,7 +2378,7 @@ def from_spark(
         # Ray on spark
         datasource = SparkDatasource(df, -1)
         if parallelism is None:
-            parallelism = -1
+            parallelism = datasource.num_chunks
         dataset = read_datasource(
             datasource=datasource,
             parallelism=parallelism,
