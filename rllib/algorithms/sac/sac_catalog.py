@@ -11,7 +11,8 @@ from ray.rllib.core.models.configs import (
     MLPHeadConfig,
 )
 from ray.rllib.core.models.base import Model, Encoder
-from ray.rllib.utils.annotations import OverrideToImplementCustomLogic
+from ray.rllib.models.torch.torch_distributions import TorchSquashedGaussian
+from ray.rllib.utils.annotations import override, OverrideToImplementCustomLogic
 
 
 # TODO (simon): Check, if we can directly derive from DQNCatalog.
@@ -158,6 +159,7 @@ class SACCatalog(Catalog):
         """
         # Get action_distribution_cls to find out about the output dimension for pi_head
         action_distribution_cls = self.get_action_dist_cls(framework=framework)
+        # TODO (simon): CHeck, if this holds also for Squashed Gaussian.
         if self._model_config_dict["free_log_std"]:
             _check_if_diag_gaussian(
                 action_distribution_cls=action_distribution_cls, framework=framework
@@ -187,6 +189,11 @@ class SACCatalog(Catalog):
         """Build the Q function head."""
 
         return self.qf_head_config.build(framework=framework)
+    
+    @override(Catalog)
+    def get_action_dist_cls(self, framework: str) -> "TorchSquashedGaussian":
+        assert framework == "torch"
+        return TorchSquashedGaussian
 
 
 # __sphinx_doc_end__

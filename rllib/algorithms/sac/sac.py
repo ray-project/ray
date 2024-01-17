@@ -440,7 +440,7 @@ class SAC(DQN):
         # If `RolloutWorker` is used and the old stack, then use as before
         # the training step of the DQN algorithm.
         if use_rollout_worker or not self.config._enable_new_api_stack:
-            return super().training_step(self)
+            return super().training_step()
 
         # Alternate between storing and sampling and training.
         store_weight, sample_and_train_weight = calculate_rr_weights(self.config)

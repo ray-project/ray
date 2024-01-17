@@ -9,6 +9,7 @@ from ray.rllib.core.learner.learner import (
     QF_MEAN_KEY,
     QF_MAX_KEY,
     QF_MIN_KEY,
+    TD_ERROR,
 )
 from ray.rllib.core.learner.torch.torch_learner import TorchLearner
 from ray.rllib.policy.sample_batch import SampleBatch
@@ -56,12 +57,13 @@ class SACTorchLearner(SACLearner, TorchLearner):
             fwd_out["action_dist_inputs_next"]
         )
 
-        # Sample actions for the current state.
+        # Sample actions for the current state. Note that we need to apply the 
+        # reparameterization trick here to avoid the expectation over actions.
         actions_curr = (
-            action_dist_curr.sample()
+            action_dist_curr.rsample()
             if not deterministic
             # If deterministic, we use the mean.
-            else action_dist_curr.to_deterministic.sample()
+            else action_dist_curr.to_deterministic().sample()
         )
         # Compute the log probabilities for the current state (for the critic loss).
         logps_curr = action_dist_curr.logp(actions_curr)
@@ -118,6 +120,10 @@ class SACTorchLearner(SACLearner, TorchLearner):
             + self.config.gamma * q_next_masked
         ).detach()
 
+        # Calculate the TD-error. Note, this is needed for the priority weights in 
+        # the replay buffer.
+        td_error = torch.abs(q_selected - q_selected_target)
+
         # MSBE loss for the critic(s) (i.e. Q, see eqs. (7-8) Haarnoja et al. (2018)).
         # Note, this needs a sample from the current policy given the next state.
         # Note further, we use here the Huber loss instead of the mean squared error
@@ -151,6 +157,7 @@ class SACTorchLearner(SACLearner, TorchLearner):
             {
                 POLICY_LOSS_KEY: torch.mean(actor_loss),
                 QF_LOSS_KEY: torch.mean(critic_loss),
+                TD_ERROR: td_error,
                 "alpha_loss": torch.mean(alpha_loss),
                 "alpha_value": alpha,
                 # TODO (Sven): Do we really need this? We have alpha.
