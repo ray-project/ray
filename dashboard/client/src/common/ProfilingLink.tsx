@@ -11,32 +11,29 @@ import {
   Select,
   TextField,
   Typography,
-} from "@material-ui/core";
-import { makeStyles } from "@material-ui/core/styles";
+} from "@mui/material";
+import createStyles from "@mui/styles/createStyles";
+import makeStyles from "@mui/styles/makeStyles";
 import React, { PropsWithChildren, useState } from "react";
 import { HelpInfo } from "../components/Tooltip";
 import { ClassNameProps } from "./props";
 
-const buttonLinkStyles = makeStyles((theme) => ({
-  buttonLink: {
-    textDecoration: "none",
-    textTransform: "capitalize",
-    padding: "0px",
-    "&:hover": {
-      backgroundColor: "transparent",
-      textDecoration: "underline",
+const useStyles = makeStyles((theme) =>
+  createStyles({
+    buttonLink: {
+      cursor: "pointer",
     },
-  },
-  dialogContent: {
-    padding: "12px",
-    display: "flex",
-    justifyContent: "flex-end",
-  },
-  secondaryButton: {
-    textTransform: "capitalize",
-    color: "#5F6469",
-  },
-}));
+    dialogContent: {
+      padding: "12px",
+      display: "flex",
+      justifyContent: "flex-end",
+    },
+    secondaryButton: {
+      textTransform: "capitalize",
+      color: "#5F6469",
+    },
+  }),
+);
 
 type CpuProfilingLinkProps = PropsWithChildren<
   {
@@ -171,19 +168,17 @@ export const ProfilerButton = ({
     setOpen(false);
   };
 
-  const buttonLinkClasses = buttonLinkStyles();
+  const buttonLinkClasses = useStyles();
 
   return (
     <div>
-      <Button
-        className={buttonLinkClasses.buttonLink}
+      <Link
         onClick={handleOpen}
         aria-label="Memory Profiling"
+        className={buttonLinkClasses.buttonLink}
       >
-        <Typography component={Link} variant="body2">
-          Memory&nbsp;Profiling{type ? ` (${type})` : ""}
-        </Typography>
-      </Button>
+        Memory&nbsp;Profiling{type ? ` (${type})` : ""}
+      </Link>
 
       <Dialog open={open} onClose={handleClose}>
         <DialogTitle>Memory Profiling Config</DialogTitle>

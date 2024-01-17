@@ -1,8 +1,8 @@
-import { Tooltip } from "@material-ui/core";
+import { Tooltip } from "@mui/material";
 import React, { CSSProperties } from "react";
 
 export const longTextCut = (text = "", len = 28) => (
-  <Tooltip title={text} interactive>
+  <Tooltip title={text}>
     <span>{text.length > len ? text.slice(0, len) + "..." : text}</span>
   </Tooltip>
 );

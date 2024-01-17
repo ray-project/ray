@@ -1,5 +1,5 @@
-import { Table, TableBody } from "@material-ui/core";
-import { ThemeProvider } from "@material-ui/styles";
+import { Table, TableBody } from "@mui/material";
+import { StyledEngineProvider, ThemeProvider } from "@mui/material/styles";
 import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import React, { PropsWithChildren } from "react";
@@ -9,11 +9,13 @@ import { AdvancedProgressBarSegment } from "./AdvancedProgressBar";
 
 const Wrapper = ({ children }: PropsWithChildren<{}>) => {
   return (
-    <ThemeProvider theme={lightTheme}>
-      <Table>
-        <TableBody>{children}</TableBody>
-      </Table>
-    </ThemeProvider>
+    <StyledEngineProvider injectFirst>
+      <ThemeProvider theme={lightTheme}>
+        <Table>
+          <TableBody>{children}</TableBody>
+        </Table>
+      </ThemeProvider>
+    </StyledEngineProvider>
   );
 };
 

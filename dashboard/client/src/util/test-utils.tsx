@@ -1,4 +1,4 @@
-import { ThemeProvider } from "@material-ui/styles";
+import { StyledEngineProvider, ThemeProvider } from "@mui/material/styles";
 import React, { PropsWithChildren } from "react";
 import { MemoryRouter } from "react-router-dom";
 import { SWRConfig } from "swr";
@@ -24,15 +24,17 @@ export const TEST_APP_WRAPPER = ({ children }: PropsWithChildren<{}>) => {
   };
 
   return (
-    <ThemeProvider theme={lightTheme}>
-      {/*
-        Clear SWR cache between tests so that tests do impact each other.
-      */}
-      <SWRConfig value={{ provider: () => new Map() }}>
-        <GlobalContext.Provider value={context}>
-          <MemoryRouter>{children}</MemoryRouter>
-        </GlobalContext.Provider>
-      </SWRConfig>
-    </ThemeProvider>
+    <StyledEngineProvider injectFirst>
+      <ThemeProvider theme={lightTheme}>
+        {/*
+          Clear SWR cache between tests so that tests do impact each other.
+        */}
+        <SWRConfig value={{ provider: () => new Map() }}>
+          <GlobalContext.Provider value={context}>
+            <MemoryRouter>{children}</MemoryRouter>
+          </GlobalContext.Provider>
+        </SWRConfig>
+      </ThemeProvider>
+    </StyledEngineProvider>
   );
 };

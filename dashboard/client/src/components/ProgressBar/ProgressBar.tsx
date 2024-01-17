@@ -1,11 +1,6 @@
-import {
-  Box,
-  createStyles,
-  makeStyles,
-  Paper,
-  TooltipProps,
-  Typography,
-} from "@material-ui/core";
+import { Box, Paper, TooltipProps, Typography } from "@mui/material";
+import createStyles from '@mui/styles/createStyles';
+import makeStyles from '@mui/styles/makeStyles';
 import React from "react";
 import { RiArrowDownSLine, RiArrowRightSLine } from "react-icons/ri";
 import { HelpInfo, StyledTooltip } from "../Tooltip";

@@ -1,11 +1,5 @@
-import {
-  Button,
-  Grid,
-  makeStyles,
-  MenuItem,
-  Paper,
-  Select,
-} from "@material-ui/core";
+import { Button, Grid, MenuItem, Paper, Select } from "@mui/material";
+import makeStyles from '@mui/styles/makeStyles';
 import React, { useCallback, useEffect, useState } from "react";
 import { useParams } from "react-router-dom";
 import LogVirtualView from "../../components/LogView/LogVirtualView";

@@ -1,5 +1,9 @@
-import { CssBaseline } from "@material-ui/core";
-import { ThemeProvider } from "@material-ui/core/styles";
+import { CssBaseline } from "@mui/material";
+import {
+  StyledEngineProvider,
+  Theme,
+  ThemeProvider,
+} from "@mui/material/styles";
 import dayjs from "dayjs";
 import duration from "dayjs/plugin/duration";
 import React, { Suspense, useEffect, useState } from "react";
@@ -52,6 +56,11 @@ import {
 import { TaskPage } from "./pages/task/TaskPage";
 import { getNodeList } from "./service/node";
 import { lightTheme } from "./theme";
+
+declare module "@mui/styles/defaultTheme" {
+  // eslint-disable-next-line @typescript-eslint/no-empty-interface, @typescript-eslint/consistent-type-definitions
+  interface DefaultTheme extends Theme {}
+}
 
 dayjs.extend(duration);
 
@@ -159,149 +168,154 @@ const App = () => {
   }, []);
 
   return (
-    <ThemeProvider theme={lightTheme}>
-      <Suspense fallback={Loading}>
-        <GlobalContext.Provider value={context}>
-          <CssBaseline />
-          <HashRouter>
-            <Routes>
-              {/* Redirect people hitting the /new path to root. TODO(aguo): Delete this redirect in ray 2.5 */}
-              <Route element={<Navigate replace to="/" />} path="/new" />
-              <Route element={<MainNavLayout />} path="/">
-                <Route element={<Navigate replace to="overview" />} path="" />
-                <Route element={<OverviewPage />} path="overview" />
-                <Route element={<ClusterMainPageLayout />} path="cluster">
-                  <Route element={<ClusterLayout />} path="">
-                    <Route
-                      element={
-                        <SideTabPage tabId="info">
-                          <ClusterDetailInfoPage />
-                        </SideTabPage>
-                      }
-                      path="info"
-                    />
-                    <Route
-                      element={
-                        <SideTabPage tabId="table">
-                          <Nodes />
-                        </SideTabPage>
-                      }
-                      path=""
-                    />
-                  </Route>
-                  <Route element={<NodeDetailPage />} path="nodes/:id" />
-                </Route>
-                <Route element={<JobsLayout />} path="jobs">
-                  <Route element={<JobList />} path="" />
-                  <Route element={<JobPage />} path=":id">
-                    <Route element={<JobDetailLayout />} path="">
+    <StyledEngineProvider injectFirst>
+      <ThemeProvider theme={lightTheme}>
+        <Suspense fallback={Loading}>
+          <GlobalContext.Provider value={context}>
+            <CssBaseline />
+            <HashRouter>
+              <Routes>
+                {/* Redirect people hitting the /new path to root. TODO(aguo): Delete this redirect in ray 2.5 */}
+                <Route element={<Navigate replace to="/" />} path="/new" />
+                <Route element={<MainNavLayout />} path="/">
+                  <Route element={<Navigate replace to="overview" />} path="" />
+                  <Route element={<OverviewPage />} path="overview" />
+                  <Route element={<ClusterMainPageLayout />} path="cluster">
+                    <Route element={<ClusterLayout />} path="">
                       <Route
                         element={
                           <SideTabPage tabId="info">
-                            <JobDetailInfoPage />
+                            <ClusterDetailInfoPage />
                           </SideTabPage>
                         }
                         path="info"
                       />
                       <Route
                         element={
-                          <SideTabPage tabId="charts">
-                            <JobDetailChartsPage />
+                          <SideTabPage tabId="table">
+                            <Nodes />
                           </SideTabPage>
                         }
                         path=""
                       />
+                    </Route>
+                    <Route element={<NodeDetailPage />} path="nodes/:id" />
+                  </Route>
+                  <Route element={<JobsLayout />} path="jobs">
+                    <Route element={<JobList />} path="" />
+                    <Route element={<JobPage />} path=":id">
+                      <Route element={<JobDetailLayout />} path="">
+                        <Route
+                          element={
+                            <SideTabPage tabId="info">
+                              <JobDetailInfoPage />
+                            </SideTabPage>
+                          }
+                          path="info"
+                        />
+                        <Route
+                          element={
+                            <SideTabPage tabId="charts">
+                              <JobDetailChartsPage />
+                            </SideTabPage>
+                          }
+                          path=""
+                        />
+                        <Route
+                          element={
+                            <SideTabPage tabId="actors">
+                              <JobDetailActorsPage />
+                            </SideTabPage>
+                          }
+                          path="actors"
+                        />
+                      </Route>
                       <Route
                         element={
-                          <SideTabPage tabId="actors">
-                            <JobDetailActorsPage />
-                          </SideTabPage>
+                          <JobDetailActorDetailWrapper>
+                            <ActorDetailLayout />
+                          </JobDetailActorDetailWrapper>
                         }
-                        path="actors"
-                      />
+                        path="actors/:actorId"
+                      >
+                        <Route element={<ActorDetailPage />} path="" />
+                        <Route element={<TaskPage />} path="tasks/:taskId" />
+                      </Route>
+                      <Route element={<TaskPage />} path="tasks/:taskId" />
                     </Route>
-                    <Route
-                      element={
-                        <JobDetailActorDetailWrapper>
-                          <ActorDetailLayout />
-                        </JobDetailActorDetailWrapper>
-                      }
-                      path="actors/:actorId"
-                    >
+                  </Route>
+                  <Route element={<ActorLayout />} path="actors">
+                    <Route element={<Actors />} path="" />
+                    <Route element={<ActorDetailLayout />} path=":actorId">
                       <Route element={<ActorDetailPage />} path="" />
                       <Route element={<TaskPage />} path="tasks/:taskId" />
                     </Route>
-                    <Route element={<TaskPage />} path="tasks/:taskId" />
                   </Route>
-                </Route>
-                <Route element={<ActorLayout />} path="actors">
-                  <Route element={<Actors />} path="" />
-                  <Route element={<ActorDetailLayout />} path=":actorId">
-                    <Route element={<ActorDetailPage />} path="" />
-                    <Route element={<TaskPage />} path="tasks/:taskId" />
-                  </Route>
-                </Route>
-                <Route element={<Metrics />} path="metrics" />
-                <Route element={<ServeLayout />} path="serve">
-                  <Route element={<ServeSideTabLayout />} path="">
-                    <Route
-                      element={
-                        <SideTabPage tabId="system">
-                          <ServeSystemDetailPage />
-                        </SideTabPage>
-                      }
-                      path="system"
-                    />
-                    <Route
-                      element={
-                        <SideTabPage tabId="deployments">
-                          <ServeDeploymentsListPage />
-                        </SideTabPage>
-                      }
-                      path=""
-                    />
-                  </Route>
-                  <Route element={<ServeSystemDetailLayout />} path="system">
-                    <Route
-                      element={<ServeControllerDetailPage />}
-                      path="controller"
-                    />
-                    <Route
-                      element={<ServeProxyDetailPage />}
-                      path="proxies/:proxyId"
-                    />
-                  </Route>
-                  <Route
-                    element={<ServeApplicationDetailLayout />}
-                    path="applications/:applicationName"
-                  >
-                    <Route element={<ServeApplicationDetailPage />} path="" />
-                    <Route
-                      element={<ServeDeploymentDetailLayout />}
-                      path=":deploymentName"
-                    >
-                      <Route element={<ServeDeploymentDetailPage />} path="" />
+                  <Route element={<Metrics />} path="metrics" />
+                  <Route element={<ServeLayout />} path="serve">
+                    <Route element={<ServeSideTabLayout />} path="">
                       <Route
-                        element={<ServeReplicaDetailLayout />}
-                        path=":replicaId"
+                        element={
+                          <SideTabPage tabId="system">
+                            <ServeSystemDetailPage />
+                          </SideTabPage>
+                        }
+                        path="system"
+                      />
+                      <Route
+                        element={
+                          <SideTabPage tabId="deployments">
+                            <ServeDeploymentsListPage />
+                          </SideTabPage>
+                        }
+                        path=""
+                      />
+                    </Route>
+                    <Route element={<ServeSystemDetailLayout />} path="system">
+                      <Route
+                        element={<ServeControllerDetailPage />}
+                        path="controller"
+                      />
+                      <Route
+                        element={<ServeProxyDetailPage />}
+                        path="proxies/:proxyId"
+                      />
+                    </Route>
+                    <Route
+                      element={<ServeApplicationDetailLayout />}
+                      path="applications/:applicationName"
+                    >
+                      <Route element={<ServeApplicationDetailPage />} path="" />
+                      <Route
+                        element={<ServeDeploymentDetailLayout />}
+                        path=":deploymentName"
                       >
-                        <Route element={<ServeReplicaDetailPage />} path="" />
-                        <Route path="tasks/:taskId" element={<TaskPage />} />
+                        <Route
+                          element={<ServeDeploymentDetailPage />}
+                          path=""
+                        />
+                        <Route
+                          element={<ServeReplicaDetailLayout />}
+                          path=":replicaId"
+                        >
+                          <Route element={<ServeReplicaDetailPage />} path="" />
+                          <Route path="tasks/:taskId" element={<TaskPage />} />
+                        </Route>
                       </Route>
                     </Route>
                   </Route>
+                  <Route element={<LogsLayout />} path="logs">
+                    <Route element={<StateApiLogsListPage />} path="" />
+                    <Route element={<StateApiLogViewerPage />} path="viewer" />
+                  </Route>
                 </Route>
-                <Route element={<LogsLayout />} path="logs">
-                  <Route element={<StateApiLogsListPage />} path="" />
-                  <Route element={<StateApiLogViewerPage />} path="viewer" />
-                </Route>
-              </Route>
-              <Route element={<CMDResult />} path="/cmd/:cmd/:ip/:pid" />
-            </Routes>
-          </HashRouter>
-        </GlobalContext.Provider>
-      </Suspense>
-    </ThemeProvider>
+                <Route element={<CMDResult />} path="/cmd/:cmd/:ip/:pid" />
+              </Routes>
+            </HashRouter>
+          </GlobalContext.Provider>
+        </Suspense>
+      </ThemeProvider>
+    </StyledEngineProvider>
   );
 };
 

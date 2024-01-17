@@ -8,9 +8,9 @@ import {
   TableHead,
   TableRow,
   Typography,
-} from "@material-ui/core";
-import { makeStyles } from "@material-ui/core/styles";
-import Pagination from "@material-ui/lab/Pagination";
+} from "@mui/material";
+import Pagination from "@mui/material/Pagination";
+import makeStyles from "@mui/styles/makeStyles";
 import React from "react";
 import { Outlet } from "react-router-dom";
 import Loading from "../../components/Loading";

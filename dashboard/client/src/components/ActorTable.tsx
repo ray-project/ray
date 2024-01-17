@@ -1,3 +1,4 @@
+import { SearchOutlined } from "@mui/icons-material";
 import {
   Box,
   InputAdornment,
@@ -10,11 +11,10 @@ import {
   TextFieldProps,
   Tooltip,
   Typography,
-} from "@material-ui/core";
-import { orange } from "@material-ui/core/colors";
-import { SearchOutlined } from "@material-ui/icons";
-import Autocomplete from "@material-ui/lab/Autocomplete";
-import Pagination from "@material-ui/lab/Pagination";
+} from "@mui/material";
+import Autocomplete from "@mui/material/Autocomplete";
+import { orange } from "@mui/material/colors";
+import Pagination from "@mui/material/Pagination";
 import _ from "lodash";
 import React, { useMemo, useState } from "react";
 import { DurationText } from "../common/DurationText";
@@ -322,9 +322,6 @@ const ActorTable = ({
             onChange: ({ target: { value } }) => {
               setPageSize(Math.min(Number(value), 500) || 10);
             },
-            endAdornment: (
-              <InputAdornment position="end">Per Page</InputAdornment>
-            ),
           }}
         />
       </div>
@@ -402,12 +399,7 @@ const ActorTable = ({
                   key={actorId}
                 >
                   <TableCell align="center">
-                    <Tooltip
-                      className={classes.idCol}
-                      title={actorId}
-                      arrow
-                      interactive
-                    >
+                    <Tooltip className={classes.idCol} title={actorId} arrow>
                       <div>
                         <ActorLink
                           actorId={actorId}
@@ -484,7 +476,6 @@ const ActorTable = ({
                       className={classes.idCol}
                       title={placementGroupId ? placementGroupId : "-"}
                       arrow
-                      interactive
                     >
                       <div>{placementGroupId ? placementGroupId : "-"}</div>
                     </Tooltip>
@@ -500,7 +491,6 @@ const ActorTable = ({
                         ),
                       )}
                       arrow
-                      interactive
                     >
                       <div>
                         {Object.entries(requiredResources || {})
@@ -514,7 +504,6 @@ const ActorTable = ({
                       className={classes.OverflowCol}
                       title={exitDetail}
                       arrow
-                      interactive
                     >
                       <div>{exitDetail}</div>
                     </Tooltip>

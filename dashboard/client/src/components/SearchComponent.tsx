@@ -1,10 +1,6 @@
-import {
-  InputAdornment,
-  makeStyles,
-  MenuItem,
-  TextField,
-} from "@material-ui/core";
-import { SearchOutlined } from "@material-ui/icons";
+import { SearchOutlined } from "@mui/icons-material";
+import { InputAdornment, MenuItem, TextField } from "@mui/material";
+import makeStyles from "@mui/styles/makeStyles";
 import React from "react";
 
 const useStyles = makeStyles((theme) => ({
