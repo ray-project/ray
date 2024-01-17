@@ -897,7 +897,7 @@ class UserCallableWrapper:
         """
         receive = ASGIReceiveProxy(
             request_metadata.request_id,
-            request.http_proxy_handle,
+            request.receive_asgi_messages,
         )
         receive_task = self._user_code_event_loop.create_task(
             receive.fetch_until_disconnect()

@@ -6,7 +6,7 @@ import pickle
 import socket
 from collections import deque
 from dataclasses import dataclass
-from typing import Any, List, Optional, Tuple, Type
+from typing import Any, Awaitable, Callable, List, Optional, Tuple, Type
 
 import starlette
 from fastapi.encoders import jsonable_encoder
@@ -15,7 +15,6 @@ from uvicorn.config import Config
 from uvicorn.lifespan.on import LifespanOn
 
 from ray._private.pydantic_compat import IS_PYDANTIC_2
-from ray.actor import ActorHandle
 from ray.serve._private.constants import SERVE_LOGGER_NAME
 from ray.serve._private.utils import serve_encoders
 from ray.serve.exceptions import RayServeException
@@ -210,19 +209,18 @@ class MessageQueue(Send):
 class ASGIReceiveProxy:
     """Proxies ASGI receive from an actor.
 
-    The provided actor handle is expected to implement a single method:
-    `receive_asgi_messages`. It will be called repeatedly until a disconnect message
-    is received.
+    The `receive_asgi_messages` callback will be called repeatedly to fetch messages
+    until a disconnect message is received.
     """
 
     def __init__(
         self,
         request_id: str,
-        actor_handle: ActorHandle,
+        receive_asgi_messages: Callable[[str], Awaitable[bytes]],
     ):
         self._queue = asyncio.Queue()
         self._request_id = request_id
-        self._actor_handle = actor_handle
+        self._receive_asgi_messages = receive_asgi_messages
         self._disconnect_message = None
 
     async def fetch_until_disconnect(self):
@@ -235,11 +233,7 @@ class ASGIReceiveProxy:
         """
         while True:
             try:
-                pickled_messages = (
-                    await self._actor_handle.receive_asgi_messages.remote(
-                        self._request_id
-                    )
-                )
+                pickled_messages = await self._receive_asgi_messages(self._request_id)
                 for message in pickle.loads(pickled_messages):
                     self._queue.put_nowait(message)
 

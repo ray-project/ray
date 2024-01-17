@@ -252,7 +252,6 @@ class TestgRPCProxyRequest:
         request_object = proxy_request.request_object(proxy_handle=proxy_handle)
         assert isinstance(request_object, gRPCRequest)
         assert pickle.loads(request_object.grpc_user_request) == request_proto
-        assert request_object.grpc_proxy_handle == proxy_handle
 
 
 if __name__ == "__main__":

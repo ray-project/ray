@@ -98,7 +98,7 @@ class ASGIProxyRequest(ProxyRequest):
     def request_object(self, proxy_handle) -> StreamingHTTPRequest:
         return StreamingHTTPRequest(
             pickled_asgi_scope=pickle.dumps(self.scope),
-            http_proxy_handle=proxy_handle,
+            receive_asgi_messages=proxy_handle.receive_asgi_messages.remote,
         )
 
 
@@ -171,7 +171,6 @@ class gRPCProxyRequest(ProxyRequest):
     def request_object(self, proxy_handle: ActorHandle) -> gRPCRequest:
         return gRPCRequest(
             grpc_user_request=self.user_request,
-            grpc_proxy_handle=proxy_handle,
         )
 
 
