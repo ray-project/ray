@@ -416,6 +416,7 @@ py_test_module_list(
 py_test_module_list(
   files = [
     "test_actor.py",
+    "test_actor_mixin.py",
     "test_actor_retry.py",
     "test_actor_failures.py",
     "test_actor_resources.py",
