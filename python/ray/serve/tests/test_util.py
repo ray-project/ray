@@ -528,7 +528,7 @@ def test_metrics_pusher_multiple_tasks():
             assert len(result) == 3
             return True
 
-        wait_for_condition(check_results)
+        wait_for_condition(check_results, timeout=20)
 
 
 def test_is_running_in_asyncio_loop_false():

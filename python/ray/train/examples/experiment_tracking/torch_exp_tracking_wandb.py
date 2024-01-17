@@ -52,6 +52,9 @@ def train_func(config):
 
     # Training
     for epoch in range(1):
+        if ray.train.get_context().get_world_size() > 1:
+            train_loader.sampler.set_epoch(epoch)
+
         for images, labels in train_loader:
             outputs = model(images)
             loss = criterion(outputs, labels)

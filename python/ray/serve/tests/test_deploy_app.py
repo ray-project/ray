@@ -17,7 +17,12 @@ import ray.actor
 from ray import serve
 from ray._private.test_utils import SignalActor, wait_for_condition
 from ray.serve._private.client import ServeControllerClient
-from ray.serve._private.common import ApplicationStatus, DeploymentID, DeploymentStatus
+from ray.serve._private.common import (
+    ApplicationStatus,
+    DeploymentID,
+    DeploymentStatus,
+    ReplicaName,
+)
 from ray.serve._private.constants import SERVE_DEFAULT_APP_NAME, SERVE_NAMESPACE
 from ray.serve.context import _get_global_client
 from ray.serve.schema import ServeDeploySchema, ServeInstanceDetails
@@ -484,7 +489,7 @@ def test_deploy_multi_app_deployments_removed(client: ServeControllerClient):
             actor["name"] for actor in list_actors(filters=[("state", "=", "ALIVE")])
         }
         expected_actor_name_prefixes = {
-            "SERVE_CONTROLLER_ACTOR:SERVE_PROXY_ACTOR",
+            "SERVE_PROXY_ACTOR",
             "SERVE_CONTROLLER_ACTOR",
         }.union({f"SERVE_REPLICA::app1#{deployment}" for deployment in deployments})
         for prefix in expected_actor_name_prefixes:
@@ -1183,8 +1188,9 @@ def test_change_route_prefix(client: ServeControllerClient):
 def check_log_file(log_file: str, expected_regex: list):
     with open(log_file, "r") as f:
         s = f.read()
+        print(s)
         for regex in expected_regex:
-            assert re.findall(regex, s) != []
+            assert re.findall(regex, s) != [], f"Did not find pattern '{regex}' in {s}"
     return True
 
 
@@ -1283,12 +1289,27 @@ class TestDeploywithLoggingConfig:
             lambda: requests.post("http://localhost:8000/app1").status_code == 200
         )
 
-        # By default, log level is "INFO"
-        resp = requests.post("http://localhost:8000/app1").json()
+        def get_replica_info_format(replica_name: ReplicaName) -> str:
+            return (
+                f"{replica_name.app_name}_{replica_name.deployment_name} "
+                f"{replica_name.replica_suffix}"
+            )
 
-        # Make sure 'model_debug_level' log content does not exist
+        # By default, log level is "INFO"
+        r = requests.post("http://localhost:8000/app1")
+        r.raise_for_status()
+        request_id = r.headers["X-Request-Id"]
+        replica_name = ReplicaName.from_replica_tag(r.json()["replica"])
+
+        # Make sure 'model_debug_level' log content does not exist.
         with pytest.raises(AssertionError):
-            check_log_file(resp["log_file"], [".*this_is_debug_info.*"])
+            check_log_file(r.json()["log_file"], [".*this_is_debug_info.*"])
+
+        # Check the log formatting.
+        check_log_file(
+            r.json()["log_file"],
+            f" {get_replica_info_format(replica_name)} {request_id} ",
+        )
 
         # Set log level to "DEBUG"
         config_dict["applications"][0]["logging_config"] = {
@@ -1302,8 +1323,19 @@ class TestDeploywithLoggingConfig:
             and requests.post("http://localhost:8000/app1").json()["log_level"]
             == logging.DEBUG,
         )
-        resp = requests.post("http://localhost:8000/app1").json()
-        check_log_file(resp["log_file"], [".*this_is_debug_info.*"])
+        r = requests.post("http://localhost:8000/app1")
+        r.raise_for_status()
+        request_id = r.headers["X-Request-Id"]
+        replica_name = ReplicaName.from_replica_tag(r.json()["replica"])
+        check_log_file(
+            r.json()["log_file"],
+            [
+                # Check for DEBUG-level log statement.
+                ".*this_is_debug_info.*",
+                # Check that the log formatting has remained the same.
+                f" {get_replica_info_format(replica_name)} {request_id} ",
+            ],
+        )
 
     def test_not_overwritting_logging_config_in_yaml(
         self, client: ServeControllerClient

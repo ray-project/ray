@@ -58,7 +58,8 @@ class RedisAsioTest : public ::testing::Test {
 TEST_F(RedisAsioTest, TestRedisCommands) {
   redisAsyncContext *ac = redisAsyncConnect("127.0.0.1", TEST_REDIS_SERVER_PORTS.front());
   ASSERT_TRUE(ac->err == 0);
-  ray::gcs::RedisAsyncContext redis_async_context(ac);
+  ray::gcs::RedisAsyncContext redis_async_context(
+      std::unique_ptr<redisAsyncContext, RedisContextDeleter>(ac, RedisContextDeleter()));
 
   RedisAsioClient client(io_service, redis_async_context);
 
@@ -73,7 +74,6 @@ TEST_F(RedisAsioTest, TestRedisCommands) {
   ASSERT_TRUE(shard_context
                   ->Connect(std::string("127.0.0.1"),
                             TEST_REDIS_SERVER_PORTS.front(),
-                            /*sharding=*/true,
                             /*password=*/std::string())
                   .ok());
 

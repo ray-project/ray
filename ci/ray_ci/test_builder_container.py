@@ -27,7 +27,7 @@ def test_run() -> None:
         BuilderContainer("3.10", "optimized", "x86_64").run()
         assert cmds[-1] == [
             "./ci/build/build-manylinux-ray.sh",
-            "./ci/build/build-manylinux-wheel.sh cp310-cp310 1.22.0",
+            "./ci/build/build-manylinux-wheel.sh cp310-cp310",
             "chown -R 2000:100 /artifact-mount",
         ]
 
@@ -36,7 +36,7 @@ def test_run() -> None:
         assert cmds[-1] == [
             "export RAY_DEBUG_BUILD=debug",
             "./ci/build/build-manylinux-ray.sh",
-            "./ci/build/build-manylinux-wheel.sh cp39-cp39 1.19.3",
+            "./ci/build/build-manylinux-wheel.sh cp39-cp39",
             "chown -R 2000:100 /artifact-mount",
         ]
 

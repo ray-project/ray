@@ -28,6 +28,10 @@
 #include "ray/util/logging.h"
 #include "src/ray/protobuf/gcs.pb.h"
 
+extern "C" {
+#include "hiredis/hiredis.h"
+}
+
 struct redisContext;
 struct redisAsyncContext;
 struct redisSSLContext;
@@ -104,11 +108,16 @@ class CallbackReply {
 /// operation.
 using RedisCallback = std::function<void(std::shared_ptr<CallbackReply>)>;
 
+class RedisContext;
 struct RedisRequestContext {
   RedisRequestContext(instrumented_io_context &io_service,
                       RedisCallback callback,
                       RedisAsyncContext *context,
                       std::vector<std::string> args);
+
+  static void RedisResponseFn(struct redisAsyncContext *async_context,
+                              void *raw_reply,
+                              void *privdata);
 
   void Run();
 
@@ -133,7 +142,6 @@ class RedisContext {
 
   Status Connect(const std::string &address,
                  int port,
-                 bool sharding,
                  const std::string &password,
                  bool enable_ssl = false);
 
@@ -150,31 +158,25 @@ class RedisContext {
   ///
   /// \param args The vector of command args to pass to Redis.
   /// \param redis_callback The Redis callback function.
-  /// \return Status.
   void RunArgvAsync(std::vector<std::string> args,
                     RedisCallback redis_callback = nullptr);
 
   redisContext *sync_context() {
     RAY_CHECK(context_);
-    return context_;
+    return context_.get();
   }
 
   RedisAsyncContext &async_context() {
     RAY_CHECK(redis_async_context_);
-    return *redis_async_context_;
+    return *redis_async_context_.get();
   }
 
   instrumented_io_context &io_service() { return io_service_; }
 
-  std::pair<std::string, int> GetLeaderAddress();
-
  private:
-  // These functions avoid problems with dependence on hiredis headers with clang-cl.
-  static int GetRedisError(redisContext *context);
-  static void FreeRedisReply(void *reply);
-
   instrumented_io_context &io_service_;
-  redisContext *context_;
+
+  std::unique_ptr<redisContext, RedisContextDeleter> context_;
   redisSSLContext *ssl_context_;
   std::unique_ptr<RedisAsyncContext> redis_async_context_;
 };

@@ -9,12 +9,7 @@ gcp_advanced_configurations_json:
       - boot: true
         auto_delete: true
         initialize_params:
-          disk_size_gb: 800
-          disk_type: pd-standard
-      - boot: false
-        auto_delete: true
-        initialize_params:
-          disk_size_gb: 800
+          disk_size_gb: 2000
           disk_type: pd-standard
 
 head_node_type:

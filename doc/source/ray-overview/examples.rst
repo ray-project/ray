@@ -132,13 +132,6 @@ Ray Examples
         How to use Ray Data to do batch prediction with the Hugging Face Transformers GPT-J model
 
     .. grid-item-card:: :bdg-secondary:`Code example`
-        :class-item: gallery-item serving large-language-models generative-ai
-        :link: /ray-air/examples/gptj_serving
-        :link-type: doc
-
-        How to use Ray Serve to do online serving with the Hugging Face Transformers GPT-J model
-
-    .. grid-item-card:: :bdg-secondary:`Code example`
         :class-item: gallery-item computer-vision training generative-ai
         :link: /train/examples/pytorch/dreambooth_finetuning
         :link-type: doc
@@ -200,13 +193,6 @@ Ray Examples
         :link-type: doc
 
         Batching tutorial for Ray Serve
-
-    .. grid-item-card:: :bdg-secondary:`Code example`
-        :class-item: gallery-item reinforcement-learning serving
-        :link: /serve/tutorials/rllib
-        :link-type: doc
-
-        Serving RLlib Models with Ray Serve
 
     .. grid-item-card:: :bdg-secondary:`Code example`
         :class-item: gallery-item serving
@@ -288,7 +274,7 @@ Ray Examples
 
         Tune Basic Parallel Experiments
 
-    .. grid-item-card:: :bdg-warning:`Video`
+    .. grid-item-card:: :bdg-warning:`Talk`
         :class-item: gallery-item
         :link: https://www.youtube.com/watch?v=3t26ucTy0Rs
 
@@ -357,7 +343,7 @@ Ray Examples
 
         How To Use Tune With Optuna
 
-    .. grid-item-card:: :bdg-warning:`Video`
+    .. grid-item-card:: :bdg-warning:`Talk`
         :class-item: gallery-item tuning serving
         :link: https://www.youtube.com/watch?v=UtH-CMpmxvI
 
@@ -396,7 +382,7 @@ Ray Examples
 
         How to distribute hyperparameter tuning with Ray Tune
 
-    .. grid-item-card:: :bdg-warning:`Video`
+    .. grid-item-card:: :bdg-warning:`Talk`
         :class-item: gallery-item
         :link: https://www.youtube.com/watch?v=KgYZtlbFYXE
 
@@ -470,7 +456,7 @@ Ray Examples
 
         More Tune use cases on the Blog
 
-    .. grid-item-card:: :bdg-warning:`Video`
+    .. grid-item-card:: :bdg-warning:`Talk`
         :class-item: gallery-item pytorch
         :link: https://www.youtube.com/watch?v=e-A93QftCfc
 
@@ -696,13 +682,6 @@ Ray Examples
 
     .. grid-item-card:: :bdg-secondary:`Code example`
         :class-item: gallery-item reinforcement-learning rllib serving
-        :link: serve-rllib-tutorial
-        :link-type: ref
-
-        Example of using Ray Serve to serve RLlib models with HTTP and JSON interface
-
-    .. grid-item-card:: :bdg-secondary:`Code example`
-        :class-item: gallery-item reinforcement-learning rllib serving
         :link: https://github.com/ray-project/ray/tree/master/rllib/examples/inference_and_serving/serve_and_rllib.py
 
         This script offers a simple workflow for 1) training a policy with RLlib first, 2) creating a new policy 3) restoring its weights from the trained one and serving the new policy via Ray Serve.
@@ -906,7 +885,7 @@ Ray Examples
 
         Getting Started with RLlib
 
-    .. grid-item-card:: :bdg-warning:`Video`
+    .. grid-item-card:: :bdg-warning:`Talk`
         :class-item: gallery-item rl
         :link: https://www.anyscale.com/events/2022/03/29/deep-reinforcement-learning-at-riot-games
 
@@ -918,7 +897,7 @@ Ray Examples
 
         The Magic of Merlin - Shopify's New ML Platform
 
-    .. grid-item-card:: :bdg-success:`Tutorial`
+    .. grid-item-card:: :bdg-warning:`Talk`
         :class-item: gallery-item
         :link: https://drive.google.com/file/d/1BS5lfXfuG5bnI8UM6FdUrR7CiSuWqdLn/view
 
@@ -930,7 +909,7 @@ Ray Examples
 
         Griffin: How Instacart’s ML Platform Tripled in a year
 
-    .. grid-item-card:: :bdg-warning:`Video`
+    .. grid-item-card:: :bdg-warning:`Talk`
         :class-item: gallery-item
         :link: https://www.youtube.com/watch?v=B5v9B5VSI7Q
 
@@ -942,7 +921,7 @@ Ray Examples
 
         Building a ML Platform with Kubeflow and Ray on GKE
 
-    .. grid-item-card:: :bdg-warning:`Video`
+    .. grid-item-card:: :bdg-warning:`Talk`
         :class-item: gallery-item
         :link: https://www.youtube.com/watch?v=_L0lsShbKaY
 
@@ -979,13 +958,6 @@ Ray Examples
         :link-type: doc
 
         Speed up your web crawler by parallelizing it with Ray
-
-    .. grid-item-card:: :bdg-success:`Tutorial`
-        :class-item: gallery-item huggingface computer-vision data inference
-        :link: /data/examples/huggingface_vit_batch_prediction
-        :link-type: doc
-
-        Image Classification Batch Inference with Huggingface Vision Transformer
 
     .. grid-item-card:: :bdg-secondary:`Code example`
         :class-item: gallery-item core inference
@@ -1035,13 +1007,6 @@ Ray Examples
         :link-type: doc
 
         Running a Simple MapReduce Example with Ray Core
-
-    .. grid-item-card:: :bdg-success:`Tutorial`
-        :class-item: gallery-item tune
-        :link: /tune/examples/tune-sklearn
-        :link-type: doc
-
-        How To Use Tune's Scikit-Learn Adapters?
 
     .. grid-item-card:: :bdg-secondary:`Code example`
         :class-item: gallery-item tune
