@@ -75,7 +75,6 @@ from ray.data._internal.stage_impl import (
     RandomizeBlocksStage,
     RandomShuffleStage,
     RepartitionStage,
-    SortStage,
     ZipStage,
 )
 from ray.data._internal.stats import DatasetStats, DatasetStatsSummary, StatsManager
@@ -2347,7 +2346,7 @@ class Dataset:
             A new, sorted :class:`Dataset`.
         """
         sort_key = SortKey(key, descending, boundaries)
-        plan = self._plan.with_stage(SortStage(self, sort_key))
+        plan = self._plan.copy()
 
         logical_plan = self._logical_plan
         if logical_plan is not None:

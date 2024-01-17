@@ -12,7 +12,6 @@ from ray.data._internal.shuffle_and_partition import (
     PushBasedShufflePartitionOp,
     SimpleShufflePartitionOp,
 )
-from ray.data._internal.sort import SortKey, sort_impl
 from ray.data._internal.split import _split_at_index, _split_at_indices
 from ray.data.block import (
     Block,
@@ -306,35 +305,6 @@ def _do_zip(
     result = BlockAccessor.for_block(block).zip(other_block)
     br = BlockAccessor.for_block(result)
     return result, br.get_metadata(input_files=[], exec_stats=stats.build())
-
-
-class SortStage(AllToAllStage):
-    """Implementation of `Dataset.sort()`."""
-
-    def __init__(self, ds: "Dataset", sort_key: SortKey):
-        def do_sort(
-            block_list,
-            ctx: TaskContext,
-            clear_input_blocks: bool,
-            *_,
-        ):
-            # Handle empty dataset.
-            if block_list.initial_num_blocks() == 0:
-                return block_list, {}
-            if clear_input_blocks:
-                blocks = block_list.copy()
-                block_list.clear()
-            else:
-                blocks = block_list
-            sort_key.validate_schema(ds.schema(fetch_if_missing=True))
-            return sort_impl(blocks, clear_input_blocks, sort_key, ctx)
-
-        super().__init__(
-            "Sort",
-            None,
-            do_sort,
-            sub_stage_names=["SortSample", "ShuffleMap", "ShuffleReduce"],
-        )
 
 
 class LimitStage(AllToAllStage):
