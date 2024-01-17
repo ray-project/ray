@@ -1,4 +1,3 @@
-import json
 import os
 from timeit import default_timer as timer
 from typing import Dict
@@ -8,6 +7,7 @@ import torch
 import ray
 from ray.anyscale.data import AudioDatasource
 from ray.data.datasource import FileExtensionFilter
+from benchmark import Benchmark, BenchmarkMetric
 import whisper
 
 DATA_URI = (
@@ -56,12 +56,9 @@ def run_benchmark(args):
         )
     )
 
-    num_files = 0
     total_size_bytes = 0
-
     start_time = timer()
     for batch in ds.iter_batches(batch_size=None, batch_format="pyarrow"):
-        num_files += len(batch)
         total_size_bytes += sum(batch["audio_size_bytes"].to_pylist())
     end_time = timer()
 
@@ -70,19 +67,10 @@ def run_benchmark(args):
 
     # For structured output integration with internal tooling
     results = {
-        "data_uri": DATA_URI,
-        "perf_metrics": {
-            "total_time_s": total_time,
-            "throughput_bytes": throughput_bytes,
-            "num_files": num_files,
-        },
+        BenchmarkMetric.RUNTIME: total_time,
+        BenchmarkMetric.THROUGHPUT: throughput_bytes,
     }
-
-    test_output_json = os.environ.get("TEST_OUTPUT_JSON", "/tmp/release_test_out.json")
-    with open(test_output_json, "wt") as f:
-        json.dump(results, f)
-    print(f"Metrics written to {test_output_json}:")
-    print(results)
+    return results
 
 
 def preprocess(row):
@@ -116,4 +104,7 @@ class BatchInference:
 
 if __name__ == "__main__":
     args = parse_args()
-    run_benchmark(args)
+    benchmark = Benchmark("audio_batch_inference_benchmark")
+    benchmark.run_fn("main", run_benchmark, args)
+    test_output_json = os.environ.get("TEST_OUTPUT_JSON", "/tmp/release_test_out.json")
+    benchmark.write_result(test_output_json)
