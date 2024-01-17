@@ -133,6 +133,11 @@ DEFAULT_OPTIMIZER_ENABLED = bool(
 # Set this env var to enable distributed tqdm (experimental).
 DEFAULT_USE_RAY_TQDM = bool(int(os.environ.get("RAY_TQDM", "1")))
 
+# If driver memory exceeds this threshold, warn the user.
+# For now, this only applies to shuffle ops because most other ops are unlikely
+# to use as much driver memory.
+DEFAULT_WARN_ON_DRIVER_MEMORY_USAGE_BYTES = 2 * 1024 * 1024
+
 # Use this to prefix important warning messages for the user.
 WARN_PREFIX = "⚠️ "
 
@@ -197,6 +202,7 @@ class DataContext:
         enable_get_object_locations_for_metrics: bool,
         use_runtime_metrics_scheduling: bool,
         write_file_retry_on_errors: List[str],
+        warn_on_driver_memory_usage_bytes: int,
     ):
         """Private constructor (use get_current() instead)."""
         self.target_max_block_size = target_max_block_size
@@ -235,6 +241,7 @@ class DataContext:
         )
         self.use_runtime_metrics_scheduling = use_runtime_metrics_scheduling
         self.write_file_retry_on_errors = write_file_retry_on_errors
+        self.warn_on_driver_memory_usage_bytes = warn_on_driver_memory_usage_bytes
         # The additonal ray remote args that should be added to
         # the task-pool-based data tasks.
         self._task_pool_data_task_remote_args: Dict[str, Any] = {}
@@ -305,6 +312,9 @@ class DataContext:
                     enable_get_object_locations_for_metrics=DEFAULT_ENABLE_GET_OBJECT_LOCATIONS_FOR_METRICS,  # noqa E501
                     use_runtime_metrics_scheduling=DEFAULT_USE_RUNTIME_METRICS_SCHEDULING,  # noqa: E501
                     write_file_retry_on_errors=DEFAULT_WRITE_FILE_RETRY_ON_ERRORS,
+                    warn_on_driver_memory_usage_bytes=(
+                        DEFAULT_WARN_ON_DRIVER_MEMORY_USAGE_BYTES
+                    ),
                 )
 
             return _default_context

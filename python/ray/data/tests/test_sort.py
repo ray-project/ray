@@ -1,3 +1,4 @@
+import logging
 import random
 from collections import defaultdict
 
@@ -638,6 +639,37 @@ def test_memory_usage(ray_start_regular, restore_data_context, use_push_based_sh
     # one task uses much more memory than the other.
     for op_stats in stats.operators_stats:
         assert op_stats.memory["max"] < 2000
+
+
+@pytest.mark.parametrize("use_push_based_shuffle", [False, True])
+@pytest.mark.parametrize("under_threshold", [False, True])
+def test_sort_warnings(
+    ray_start_regular,
+    restore_data_context,
+    use_push_based_shuffle,
+    under_threshold,
+    propagate_logs,
+    caplog,
+):
+    warning_str = "Execution is estimated to use"
+    warning_str_with_bytes = (
+        f"Execution is estimated to use ~{90 if use_push_based_shuffle else 300}KB"
+    )
+
+    DataContext.get_current().use_push_based_shuffle = use_push_based_shuffle
+    if not under_threshold:
+        DataContext.get_current().warn_on_driver_memory_usage_bytes = 10_000
+
+    ds = ray.data.range(int(1e8), parallelism=10)
+    with caplog.at_level(logging.WARNING, logger="ray.data.dataset"):
+        ds = ds.random_shuffle().materialize()
+
+    if under_threshold:
+        assert warning_str not in caplog.text
+        assert warning_str_with_bytes not in caplog.text
+    else:
+        assert warning_str in caplog.text
+        assert warning_str_with_bytes in caplog.text
 
 
 if __name__ == "__main__":

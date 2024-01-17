@@ -1,5 +1,6 @@
 from typing import Any, Dict, List, Optional, Tuple
 
+from ray._private.ray_constants import CALLER_MEMORY_USAGE_PER_OBJECT_REF
 from ray.data._internal.dataset_logger import DatasetLogger
 from ray.data._internal.execution.interfaces import RefBundle, TaskContext
 from ray.data._internal.planner.exchange.interfaces import (
@@ -8,6 +9,8 @@ from ray.data._internal.planner.exchange.interfaces import (
 )
 from ray.data._internal.remote_fn import cached_remote_fn
 from ray.data._internal.stats import StatsDict
+from ray.data._internal.util import convert_bytes_to_human_readable_str
+from ray.data.context import DataContext
 
 logger = DatasetLogger(__name__)
 
@@ -29,7 +32,7 @@ class PullBasedShuffleTaskScheduler(ExchangeTaskScheduler):
         self,
         refs: List[RefBundle],
         output_num_blocks: int,
-        ctx: TaskContext,
+        task_ctx: TaskContext,
         map_ray_remote_args: Optional[Dict[str, Any]] = None,
         reduce_ray_remote_args: Optional[Dict[str, Any]] = None,
         _debug_limit_execution_to_num_blocks: int = None,
@@ -43,6 +46,23 @@ class PullBasedShuffleTaskScheduler(ExchangeTaskScheduler):
         input_num_blocks = len(input_blocks_list)
         input_owned = all(b.owns_blocks for b in refs)
 
+        caller_memory_usage = (
+            input_num_blocks * output_num_blocks * CALLER_MEMORY_USAGE_PER_OBJECT_REF
+        )
+        ctx = DataContext.get_current()
+        if caller_memory_usage > ctx.warn_on_driver_memory_usage_bytes:
+            logger.get_logger().warn(
+                "Execution is estimated to use "
+                f"~{convert_bytes_to_human_readable_str(caller_memory_usage)} "
+                "of driver memory. Ensure that the driver machine has at least "
+                "this much memory to ensure job completion.\n\n"
+                "To reduce the "
+                "amount of driver memory needed, enable push-based shuffle using "
+                "RAY_DATA_PUSH_BASED_SHUFFLE=1 "
+                "(https://docs.ray.io/en/latest/data/performance-tips.html"
+                "#enabling-push-based-shuffle)."
+            )
+
         if map_ray_remote_args is None:
             map_ray_remote_args = {}
         if reduce_ray_remote_args is None:
@@ -54,7 +74,7 @@ class PullBasedShuffleTaskScheduler(ExchangeTaskScheduler):
         shuffle_map = cached_remote_fn(self._exchange_spec.map)
         shuffle_reduce = cached_remote_fn(self._exchange_spec.reduce)
 
-        sub_progress_bar_dict = ctx.sub_progress_bar_dict
+        sub_progress_bar_dict = task_ctx.sub_progress_bar_dict
         bar_name = ExchangeTaskSpec.MAP_SUB_PROGRESS_BAR_NAME
         assert bar_name in sub_progress_bar_dict, sub_progress_bar_dict
         map_bar = sub_progress_bar_dict[bar_name]
