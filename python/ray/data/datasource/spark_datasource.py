@@ -19,8 +19,57 @@ def _gen_chunk(rows_in_chunk):
     return pyarrow.Table.from_arrays([data_col], names=["dd"])
 
 
+def read_chunk(chunk_id):
+    """
+    Read chunk by id, return this chunk as an arrow table.
+    You can call this function from spark driver, spark python UDF python,
+    descendant process of spark driver, or descendant process of spark python UDF worker.
+    """
+    import os
+    import pyarrow as pa
+    from pyspark.rdd import _create_local_socket
+    from pyspark.serializers import read_with_length, write_with_length
+
+    port = int(os.environ["PYSPARK_EXECUTOR_CACHED_ARROW_BATCH_SERVER_PORT"])
+    auth_secret = os.environ["PYSPARK_EXECUTOR_CACHED_ARROW_BATCH_SERVER_SECRET"]
+
+    sockfile = _create_local_socket((port, auth_secret))
+    pa_reader = None
+    try:
+        write_with_length(chunk_id.encode("utf-8"), sockfile)
+        sockfile.flush()
+        err_message = read_with_length(sockfile).decode("utf-8")
+
+        if err_message != "ok":
+            raise RuntimeError(f"Read chunk '{chunk_id}' failed (error: {err_message}).")
+
+        pa_reader = pa.ipc.open_stream(sockfile)
+        batch_list = []
+        for batch in pa_reader:
+            batch_list.append(batch)
+
+        assert len(batch_list) == 1
+        arrow_batch = batch_list[0]
+
+        arrow_batch = pa.RecordBatch.from_arrays(
+            [
+                # This call actually reallocates the array
+                pa.concat_arrays([array])
+                for array in arrow_batch
+            ],
+            schema=arrow_batch.schema,
+        )
+
+        arrow_table = pa.Table.from_batches([arrow_batch])
+
+        return arrow_table
+    finally:
+        if pa_reader is not None:
+            pa_reader.close()
+        sockfile.close()
+
+
 def _read_chunk_fn(chunk_id_list) -> Iterator["pyarrow.Table"]:
-    from pyspark.sql.chunk_api import read_chunk
     for chunk_id in chunk_id_list:
         # yield read_chunk(chunk_id)
         read_chunk(chunk_id)
@@ -33,7 +82,6 @@ class SparkDatasource(Datasource):
     def __init__(self, spark_dataframe, rows_per_chunk):
         try:
             from pyspark.sql.chunk_api import persist_dataframe_as_chunks
-            from pyspark.sql.chunk_api import read_chunk
         except ImportError:
             raise RuntimeError(
                 "Current spark version does not support Ray SparkDatasource."
