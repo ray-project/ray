@@ -23,6 +23,7 @@ def _read_chunk_fn(chunk_id_list) -> Iterator["pyarrow.Table"]:
     from pyspark.sql.chunk_api import read_chunk
     for chunk_id in chunk_id_list:
         # yield read_chunk(chunk_id)
+        read_chunk(chunk_id)
         yield _gen_chunk(32)
 
 
