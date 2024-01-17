@@ -343,7 +343,7 @@ steps:
 
   - label: ":ray: core: cpp worker tests"
     tags: core_cpp
-    instance_type: small
+    instance_type: medium
     commands:
       - ci/ci.sh build
       - ci/ci.sh test_cpp
