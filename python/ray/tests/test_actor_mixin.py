@@ -1,8 +1,11 @@
 from __future__ import annotations
 
+import os
+import sys
+import pytest
+
 from ray.experimental.better_actor import ActorMixin, remote_method
 import ray
-import pytest
 
 
 def test_define_actor_with_mixin(ray_start_2_cpus):
@@ -102,3 +105,10 @@ def test_directly_call_remote_method_will_fail(ray_start_2_cpus):
     actor = Actor.new_actor().remote(1)
     with pytest.raises(TypeError, match="Actor methods cannot be called directly"):
         actor.methods.add(1)
+
+
+if __name__ == "__main__":
+    if os.environ.get("PARALLEL_CI"):
+        sys.exit(pytest.main(["-n", "auto", "--boxed", "-vs", __file__]))
+    else:
+        sys.exit(pytest.main(["-sv", __file__]))
