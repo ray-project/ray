@@ -204,7 +204,7 @@ class TestMultiAgentEpisode(unittest.TestCase):
                 len(episode.partial_rewards_t[agent_id]),
             )
 
-        # Test now intiializing an episode and setting the starting timestep at once.
+        # Test now intializing an episode and setting the starting timestep at once.
         episode = MultiAgentEpisode(
             agent_ids=list(env._agents_alive) + ["agent_5"],
             observations=observations[-11:],
