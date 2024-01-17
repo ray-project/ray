@@ -4,7 +4,7 @@ from typing import TYPE_CHECKING, overload
 
 import ray
 
-__all__ = ["remote_method", "ActorMixin"]
+__all__ = ["remote_method", "ActorMixin", "Actor"]
 
 if TYPE_CHECKING:
     from typing import Any, Callable, Generic, TypeVar, Union
