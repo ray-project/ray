@@ -15,6 +15,7 @@ from ray.rllib.utils.typing import ModuleID
 QF_PREDS = "qf_preds"
 QF_TARGET_PREDS = "qf_target_preds"
 
+
 # TODO (simon): Add and remove variables, if module is added or removed.
 class SACLearner(Learner):
     @override(Learner)
@@ -30,6 +31,14 @@ class SACLearner(Learner):
                 trainable=True,
             )
         )
+
+        # TODO (simon): Write an `add_parameters` and `remove_parameters` methods to the
+        # `Learner`.
+        # Add the temperature parameters to the optimizer's parameters.
+        for module_id, log_alpha in self.curr_log_alpha.items():
+            self._named_optimizers[module_id + "_default_optimizer"].param_groups.append(
+                {"log_alpha": log_alpha}
+            )
 
         def get_target_entropy(module_id):
             """Returns the target entropy to use for the loss.

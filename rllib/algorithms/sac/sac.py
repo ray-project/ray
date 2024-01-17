@@ -551,7 +551,7 @@ class SAC(DQN):
                     # NOTE: the new API stack does not use global vars.
                     self.workers.sync_weights(
                         from_worker_or_learner_group=self.learner_group,
-                        policies_to_update=policies_to_update,
+                        policies=policies_to_update,
                         global_vars=None,
                     )
                 # Then we must have a local worker.

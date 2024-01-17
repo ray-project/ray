@@ -86,10 +86,9 @@ class SACTorchLearner(SACLearner, TorchLearner):
         # the sampled actions.
         q_batch_curr = NestedDict(
             {
-                # TODO (simon): Check, if we need to convert to tensor here.
-                SampleBatch.OBS: torch.concat(
-                    (batch[SampleBatch.OBS], actions_curr), dim=-1
-                )
+                SampleBatch.OBS: batch[SampleBatch.OBS], 
+                SampleBatch.ACTIONS: actions_curr,
+                
             }
         )
         q_curr = self.module[module_id]._qf_forward_train(q_batch_curr)[QF_PREDS]
@@ -98,10 +97,8 @@ class SACTorchLearner(SACLearner, TorchLearner):
         # sampled actions for the next state.
         q_batch_next = NestedDict(
             {
-                # TODO (simon): Check, if we need to convert to tensor here.
-                SampleBatch.OBS: torch.concat(
-                    (batch[SampleBatch.NEXT_OBS], actions_next), dim=-1
-                )
+                SampleBatch.OBS: batch[SampleBatch.NEXT_OBS], 
+                SampleBatch.ACTIONS: actions_next                
             }
         )
         q_next = self.module[module_id]._qf_target_forward_train(q_batch_next)[QF_PREDS]
@@ -118,7 +115,7 @@ class SACTorchLearner(SACLearner, TorchLearner):
             batch[SampleBatch.REWARDS]
             # TODO (simon): Implement n-step adjustment.
             # + (self.config["gamma"] ** self.config["n_step"]) * q_next_masked
-            + (self.config.gamma) * q_next_masked
+            + self.config.gamma * q_next_masked
         ).detach()
 
         # MSBE loss for the critic(s) (i.e. Q, see eqs. (7-8) Haarnoja et al. (2018)).

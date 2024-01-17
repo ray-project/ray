@@ -83,8 +83,16 @@ class SACTorchRLModule(TorchRLModule, SACRLModule):
         """
         output = {}
 
+        # Construct batch. Note, we need to feed observations and actions.
+        qf_batch = NestedDict(
+            {
+                SampleBatch.OBS: torch.concat(
+                    (batch[SampleBatch.OBS], batch[SampleBatch.ACTIONS]), dim=-1
+                )
+            }
+        )
         # Encoder forward pass.
-        qf_encoder_outs = self.qf_encoder(batch)
+        qf_encoder_outs = self.qf_encoder(qf_batch)
 
         # Q head forward pass.
         qf_out = self.qf(qf_encoder_outs[ENCODER_OUT])
@@ -101,8 +109,16 @@ class SACTorchRLModule(TorchRLModule, SACRLModule):
         """
         output = {}
 
+        # Construct batch. Note, we need to feed observations and actions.
+        qf_target_batch = NestedDict(
+            {
+                SampleBatch.OBS: torch.concat(
+                    (batch[SampleBatch.OBS], batch[SampleBatch.ACTIONS]), dim=-1
+                )
+            }
+        )
         # Encoder forward pass.
-        qf_target_encoder_outs = self.qf_target_encoder(batch)
+        qf_target_encoder_outs = self.qf_target_encoder(qf_target_batch)
 
         # Target Q head forward pass.
         qf_target_out = self.qf_target(qf_target_encoder_outs[ENCODER_OUT])
