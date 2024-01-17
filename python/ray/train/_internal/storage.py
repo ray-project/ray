@@ -71,12 +71,13 @@ class _ExcludingLocalFilesystem(LocalFileSystem):
         `self._exclude` patterns."""
         path = Path(path)
         relative_path = path.relative_to(self._root_path).as_posix()
-        alt = os.path.join(relative_path, "") if path.is_dir() else None
+        match_candidates = [relative_path]
+        if path.is_dir():
+            # Everything is in posix path format ('/')
+            match_candidates.append(relative_path + "/")
 
         for excl in self._exclude:
-            if fnmatch.fnmatch(relative_path, excl):
-                return True
-            if alt and fnmatch.fnmatch(alt, excl):
+            if any(fnmatch.fnmatch(candidate, excl) for candidate in match_candidates):
                 return True
         return False
 
@@ -357,7 +358,7 @@ class StorageContext:
     There are 2 types of paths:
     1. *_fs_path: A path on the `storage_filesystem`. This is a regular path
         which has been prefix-stripped by pyarrow.fs.FileSystem.from_uri and
-        can be joined with `os.path.join`.
+        can be joined with `Path(...).as_posix()`.
     2. *_local_path: The path on the local filesystem where results are saved to
        before persisting to storage.
 
@@ -412,7 +413,7 @@ class StorageContext:
 
         pyarrow.fs.copy_files(
             local_dir,
-            os.path.join(storage.trial_fs_path, "subdir"),
+            Path(storage.trial_fs_path, "subdir").as_posix(),
             destination_filesystem=storage.filesystem
         )
     """
