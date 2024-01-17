@@ -633,7 +633,9 @@ def test_json_read_across_blocks(ray_start_regular_shared, fs, data_path, endpoi
     df1 = pd.DataFrame({"one": [1, 2, 3], "two": ["a", "b", "c"]})
     path1 = os.path.join(data_path, "test1.json")
     df1.to_json(path1, orient="records", lines=True, storage_options=storage_options)
-    ds = ray.data.read_json(path1, filesystem=fs, read_options=pajson.ReadOptions(block_size=1))
+    ds = ray.data.read_json(
+        path1, filesystem=fs, read_options=pajson.ReadOptions(block_size=1)
+    )
     dsdf = ds.to_pandas()
     assert df1.equals(dsdf)
     # Test metadata ops.
@@ -644,7 +646,12 @@ def test_json_read_across_blocks(ray_start_regular_shared, fs, data_path, endpoi
     # Single large file, default block_size
     num_chars = 2500000
     num_rows = 3
-    df2 = pd.DataFrame({"one": ["a" * num_chars for _ in range(num_rows)], "two": ["b" * num_chars for _ in range(num_rows)]})
+    df2 = pd.DataFrame(
+        {
+            "one": ["a" * num_chars for _ in range(num_rows)],
+            "two": ["b" * num_chars for _ in range(num_rows)],
+        }
+    )
     tmp2 = os.path.join(data_path, "tmp2.json")
     path2 = os.path.join(data_path, "test2.json")
     df2.to_json(tmp2, orient="records", lines=True, storage_options=storage_options)
@@ -666,13 +673,17 @@ def test_json_read_across_blocks(ray_start_regular_shared, fs, data_path, endpoi
     df3.to_json(path3, orient="records", lines=True, storage_options=storage_options)
     try:
         # Negative Buffer Size
-        ds = ray.data.read_json(path3, filesystem=fs, read_options=pajson.ReadOptions(block_size=-1))
+        ds = ray.data.read_json(
+            path3, filesystem=fs, read_options=pajson.ReadOptions(block_size=-1)
+        )
         dsdf = ds.to_pandas()
     except pa.ArrowInvalid as e:
         assert "Negative buffer resize" in str(e.cause)
     try:
         # Zero Buffer Size
-        ds = ray.data.read_json(path3, filesystem=fs, read_options=pajson.ReadOptions(block_size=0))
+        ds = ray.data.read_json(
+            path3, filesystem=fs, read_options=pajson.ReadOptions(block_size=0)
+        )
         dsdf = ds.to_pandas()
     except pa.ArrowInvalid as e:
         assert "Empty JSON file" in str(e.cause)
