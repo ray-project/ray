@@ -332,6 +332,7 @@ class AlgorithmConfig(_Config):
         self.enable_connectors = True
         self._env_to_module_connector = None
         self._module_to_env_connector = None
+        self.episode_lookback_horizon = 1
         # TODO (sven): Rename into `sample_timesteps` (or `sample_duration`
         #  and `sample_duration_unit` (replacing batch_mode), like we do it
         #  in the evaluation config).
@@ -870,7 +871,6 @@ class AlgorithmConfig(_Config):
         return pipeline
 
     def build_module_to_env_connector(self, env):
-
         from ray.rllib.connectors.module_to_env import (
             DefaultModuleToEnv,
             ModuleToEnvPipeline,
@@ -1307,9 +1307,8 @@ class AlgorithmConfig(_Config):
                 via `tune.register_env([name], lambda env_ctx: [env object])`,
                 or a string specifier of an RLlib supported type. In the latter case,
                 RLlib will try to interpret the specifier as either an Farama-Foundation
-                gymnasium env, a PyBullet env, a ViZDoomGym env, or a fully qualified
-                classpath to an Env class, e.g.
-                "ray.rllib.examples.env.random_env.RandomEnv".
+                gymnasium env, a PyBullet env, or a fully qualified classpath to an Env
+                class, e.g. "ray.rllib.examples.env.random_env.RandomEnv".
             env_config: Arguments dict passed to the env creator as an EnvContext
                 object (which is a dict plus the properties: num_rollout_workers,
                 worker_index, vector_index, and remote).
@@ -1405,6 +1404,7 @@ class AlgorithmConfig(_Config):
         module_to_env_connector: Optional[
             Callable[[EnvType, "RLModule"], "ConnectorV2"]
         ] = NotProvided,
+        episode_lookback_horizon: Optional[int] = NotProvided,
         use_worker_filter_stats: Optional[bool] = NotProvided,
         update_worker_filter_stats: Optional[bool] = NotProvided,
         rollout_fragment_length: Optional[Union[int, str]] = NotProvided,
@@ -1455,6 +1455,13 @@ class AlgorithmConfig(_Config):
             module_to_env_connector: A callable taking an Env and an RLModule as input
                 args and returning a module-to-env ConnectorV2 (might be a pipeline)
                 object.
+            episode_lookback_horizon: The amount of data (in timesteps) to keep from the
+                preceeding episode chunk when a new chunk (for the same episode) is
+                generated to continue sampling at a later time. The larger this value,
+                the more an env-to-module connector will be able to look back in time
+                and compile RLModule input data from this information. For example, if
+                your custom env-to-module connector (and your custom RLModule) requires
+                the previous 10 rewards as inputs, you must set this to at least 10.
             use_worker_filter_stats: Whether to use the workers in the WorkerSet to
                 update the central filters (held by the local worker). If False, stats
                 from the workers will not be used and discarded.
@@ -1550,6 +1557,8 @@ class AlgorithmConfig(_Config):
             self._env_to_module_connector = env_to_module_connector
         if module_to_env_connector is not NotProvided:
             self._module_to_env_connector = module_to_env_connector
+        if episode_lookback_horizon is not NotProvided:
+            self.episode_lookback_horizon = episode_lookback_horizon
         if use_worker_filter_stats is not NotProvided:
             self.use_worker_filter_stats = use_worker_filter_stats
         if update_worker_filter_stats is not NotProvided:

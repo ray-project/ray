@@ -1,7 +1,7 @@
 import os
 import subprocess
 import sys
-from typing import List, Optional
+from typing import List, Tuple, Optional
 
 from ci.ray_ci.container import Container
 
@@ -21,8 +21,8 @@ class WindowsContainer(Container):
                 "-t",
                 self._get_docker_image(),
                 "-f",
-                "c:\\workdir\\ci\\ray_ci\\windows\\tests.env.Dockerfile",
-                "c:\\workdir",
+                "C:\\workdir\\ci\\ray_ci\\windows\\tests.env.Dockerfile",
+                "C:\\workdir",
             ],
             stdout=sys.stdout,
             stderr=sys.stderr,
@@ -37,3 +37,6 @@ class WindowsContainer(Container):
     ) -> List[str]:
         assert not gpu_ids, "Windows does not support gpu ids"
         return []
+
+    def get_artifact_mount(self) -> Tuple[str, str]:
+        return ("C:\\tmp\\artifacts", "C:\\artifact-mount")
