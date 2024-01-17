@@ -10,10 +10,20 @@ from ray.util.annotations import PublicAPI
 logger = logging.getLogger(__name__)
 
 
+def _gen_chunk(rows_in_chunk):
+    data_list = [
+        np.random.rand(150528)
+        for _ in range(rows_in_chunk)
+    ]
+    data_col = pyarrow.array(data_list)
+    return pyarrow.Table.from_arrays([data_col], names=["dd"])
+
+
 def read_chunk_fn(chunk_id_list) -> Iterator["pyarrow.Table"]:
     from pyspark.sql.chunk_api import read_chunk
     for chunk_id in chunk_id_list:
-        yield read_chunk(chunk_id)
+        # yield read_chunk(chunk_id)
+        yield _gen_chunk(16)
 
 
 @PublicAPI(stability="alpha")
