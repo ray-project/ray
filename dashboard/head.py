@@ -136,7 +136,6 @@ class DashboardHead:
         self.aiogrpc_gcs_channel = None
         self.gcs_aio_client = None
         self.gcs_error_subscriber = None
-        self.gcs_log_subscriber = None
         self.ip = node_ip_address
         DataOrganizer.head_node_ip = self.ip
 
