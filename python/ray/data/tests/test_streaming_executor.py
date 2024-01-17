@@ -250,15 +250,15 @@ def test_dispatch_next_task():
     ref1 = make_ref_bundle("dummy1")
     ref2 = make_ref_bundle("dummy2")
     op_state.inqueues[0].append(ref1)
-    op_state.inqueues[0].append(ref1)
+    op_state.inqueues[0].append(ref2)
 
     o2.add_input = MagicMock()
     op_state.dispatch_next_task()
-    assert o2.add_input.called_once_with(ref1)
+    o2.add_input.assert_called_once_with(ref1, input_index=0)
 
     o2.add_input = MagicMock()
     op_state.dispatch_next_task()
-    assert o2.add_input.called_once_with(ref2)
+    o2.add_input.assert_called_once_with(ref2, input_index=0)
 
 
 def test_debug_dump_topology():
@@ -696,47 +696,6 @@ def test_execution_allowed_nothrottle():
         ),
         ExecutionResources(object_store_memory=900),
     )
-
-
-@pytest.mark.parametrize(
-    "max_errored_blocks, num_errored_blocks",
-    [
-        (0, 0),
-        (0, 1),
-        (2, 1),
-        (2, 2),
-        (2, 3),
-        (-1, 5),
-    ],
-)
-def test_max_errored_blocks(
-    restore_data_context,
-    max_errored_blocks,
-    num_errored_blocks,
-):
-    """Test DataContext.max_errored_blocks."""
-    num_tasks = 5
-
-    ctx = ray.data.DataContext.get_current()
-    ctx.max_errored_blocks = max_errored_blocks
-
-    def map_func(row):
-        id = row["id"]
-        if id < num_errored_blocks:
-            # Fail the first num_errored_tasks tasks.
-            raise RuntimeError(f"Task failed: {id}")
-        return row
-
-    ds = ray.data.range(num_tasks, parallelism=num_tasks).map(map_func)
-    should_fail = 0 <= max_errored_blocks < num_errored_blocks
-    if should_fail:
-        with pytest.raises(Exception, match="Task failed"):
-            res = ds.take_all()
-    else:
-        res = sorted([row["id"] for row in ds.take_all()])
-        assert res == list(range(num_errored_blocks, num_tasks))
-        stats = ds._get_stats_summary()
-        assert stats.extra_metrics["num_tasks_failed"] == num_errored_blocks
 
 
 def test_exception_concise_stacktrace():

@@ -18,6 +18,7 @@ import { NodeLink } from "../../common/links";
 import {
   CpuProfilingLink,
   CpuStackTraceLink,
+  MemoryProfilingButton,
 } from "../../common/ProfilingLink";
 import rowStyles from "../../common/RowStyles";
 import PercentageBar from "../../components/PercentageBar";
@@ -284,6 +285,7 @@ export const WorkerRow = ({ node, worker }: WorkerRowProps) => {
         <br />
         <CpuStackTraceLink pid={pid} ip={ip} type="" />
         <br />
+        <MemoryProfilingButton pid={pid} ip={ip} />
       </TableCell>
       <TableCell>
         <PercentageBar num={Number(cpu)} total={100}>

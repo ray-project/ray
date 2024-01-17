@@ -24,6 +24,7 @@ from ray._raylet import GcsClient
 from ray.cluster_utils import Cluster, cluster_not_supported
 from ray.serve._private import api as _private_api
 from ray.serve._private.constants import (
+    SERVE_CONTROLLER_NAME,
     SERVE_DEFAULT_APP_NAME,
     SERVE_NAMESPACE,
     SERVE_PROXY_NAME,
@@ -97,12 +98,10 @@ def test_shutdown(ray_shutdown):
 
     serve.run(f.bind())
 
-    serve_controller_name = serve.context._global_client._controller_name
     actor_names = [
-        serve_controller_name,
+        SERVE_CONTROLLER_NAME,
         format_actor_name(
             SERVE_PROXY_NAME,
-            serve.context._global_client._controller_name,
             cluster_node_info_cache.get_alive_nodes()[0][0],
         ),
     ]
@@ -324,7 +323,6 @@ def test_multiple_routers(ray_cluster):
             proxy_names.append(
                 format_actor_name(
                     SERVE_PROXY_NAME,
-                    serve.context._global_client._controller_name,
                     node_id,
                 )
             )

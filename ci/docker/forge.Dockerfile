@@ -8,7 +8,9 @@ ENV DEBIAN_FRONTEND=noninteractive
 ENV PATH="/home/forge/.local/bin:${PATH}"
 ENV BUILDKITE_BAZEL_CACHE_URL=${BUILDKITE_BAZEL_CACHE_URL}
 
-RUN <<EOF
+RUN \
+  --mount=type=bind,source=ci/k8s/install-k8s-tools.sh,target=install-k8s-tools.sh \
+<<EOF
 #!/bin/bash
 
 set -euo pipefail
@@ -38,7 +40,7 @@ apt-get install -y \
 
 # As a convention, we pin all python packages to a specific version. This
 # is to to make sure we can control version upgrades through code changes.
-python -m pip install pip==23.2.1
+python -m pip install pip==23.2.1 cffi==1.16.0
 
 # Needs to be synchronized to the host group id as we map /var/run/docker.sock
 # into the container.
@@ -53,6 +55,10 @@ ln -s /usr/local/bin/bazel /usr/local/bin/bazelisk
 adduser --home /home/forge --uid 2000 forge --gid 100
 usermod -a -G docker0 forge
 usermod -a -G docker forge
+
+if [[ "$(uname -i)" == "x86_64" ]]; then
+  bash install-k8s-tools.sh
+fi
 
 EOF
 

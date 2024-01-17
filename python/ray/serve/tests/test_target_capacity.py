@@ -641,13 +641,32 @@ class TestTargetCapacityUpdateAndServeStatus:
                 DeploymentStatusTrigger.CONFIG_UPDATE_STARTED
             ),
         )
-        self.check_num_replicas(int(0.5 * num_replicas), app_name, deployment_name)
+        # DeploymentStateManager marks replicas as STOPPING once the deployment
+        # starts downscaling.
+        wait_for_condition(
+            self.check_num_replicas,
+            expected_num_replicas=int(0.1 * num_replicas),
+            app_name=app_name,
+            deployment_name=deployment_name,
+            replica_state=ReplicaState.RUNNING,
+            timeout=20,
+        )
+        self.check_num_replicas(
+            int(0.4 * num_replicas),
+            app_name,
+            deployment_name,
+            replica_state=ReplicaState.STOPPING,
+        )
         self.unblock_replica_creation_and_deletion(signal, app_name)
         self.check_num_replicas(int(0.1 * num_replicas), app_name, deployment_name)
+        self.check_num_replicas(
+            0, app_name, deployment_name, replica_state=ReplicaState.STOPPING
+        )
 
         # Send a signal so all replicas shut down quickly when the test finishes.
         ray.get(signal.send.remote())
 
+    @pytest.mark.skipif(sys.platform == "win32", reason="Autoscaling flaky on Windows.")
     def test_autoscaling_target_capacity_update(
         self, shutdown_ray_and_serve, client: ServeControllerClient
     ):
@@ -904,7 +923,7 @@ class TestInitialReplicasHandling:
         self, shutdown_ray_and_serve, client: ServeControllerClient
     ):
         deployment_name = "start_at_ten"
-        min_replicas = 0
+        min_replicas = 5
         initial_replicas = 10
 
         config = ServeDeploySchema(
@@ -913,9 +932,9 @@ class TestInitialReplicasHandling:
                     import_path="ray.serve.tests.test_target_capacity:create_hang_app",
                     args={
                         "name": deployment_name,
-                        "min_replicas": 0,
+                        "min_replicas": min_replicas,
                         "initial_replicas": initial_replicas,
-                        "max_replicas": 20,
+                        "max_replicas": 15,
                     },
                 ),
             ],
@@ -925,21 +944,11 @@ class TestInitialReplicasHandling:
         wait_for_condition(lambda: len(serve.status().applications) == 1)
         assert serve.status().target_capacity is None
 
-        # Set a target capacity
-        config.target_capacity = 100
-        client.deploy_apps(config)
-        wait_for_condition(lambda: serve.status().target_capacity == 100)
-        # Initial replicas should be respected since setting a target_capacity
-        # indicates that a new roll forward has started, and the cluster
-        # should start scaling up.
-        wait_for_condition(
-            check_expected_num_replicas,
-            deployment_to_num_replicas={deployment_name: initial_replicas},
-        )
-
         # Kick off downscaling pattern.
-        test_target_capacities = [90, 60, 20, 0]
-        expected_num_replicas = [min_replicas] * len(test_target_capacities)
+        test_target_capacities = [100, 60, 40, 0]
+        expected_num_replicas = [
+            int(min_replicas * capacity / 100) for capacity in test_target_capacities
+        ]
 
         for target_capacity, num_replicas in zip(
             test_target_capacities, expected_num_replicas

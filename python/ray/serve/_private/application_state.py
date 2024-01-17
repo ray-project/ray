@@ -406,6 +406,10 @@ class ApplicationState:
             # will be set once the new app has finished building.
             self._clear_target_state_and_store_config(config)
 
+            # Record telemetry for container runtime env feature
+            if self._target_state.config.runtime_env.get("container"):
+                ServeUsageTag.APP_CONTAINER_RUNTIME_ENV_USED.record("1")
+
             # Kick off new build app task
             logger.info(f"Building application '{self._name}'.")
             build_app_obj_ref = build_serve_application.options(
@@ -450,38 +454,18 @@ class ApplicationState:
         if self._target_state.deleting:
             return ApplicationStatus.DELETING, ""
 
-        num_healthy_deployments = 0
-        num_autoscaling_deployments = 0
-        num_updating_deployments = 0
-        num_manually_scaling_deployments = 0
-        unhealthy_deployment_names = []
-
-        for deployment_status in self.get_deployments_statuses():
-            if deployment_status.status == DeploymentStatus.UNHEALTHY:
-                unhealthy_deployment_names.append(deployment_status.name)
-            elif deployment_status.status == DeploymentStatus.HEALTHY:
-                num_healthy_deployments += 1
-            elif (
-                deployment_status.status_trigger == DeploymentStatusTrigger.AUTOSCALING
-            ):
-                num_autoscaling_deployments += 1
-            elif deployment_status.status == DeploymentStatus.UPDATING:
-                num_updating_deployments += 1
-            elif (
-                deployment_status.status
-                in [DeploymentStatus.UPSCALING, DeploymentStatus.DOWNSCALING]
-                and deployment_status.status_trigger
-                == DeploymentStatusTrigger.CONFIG_UPDATE_STARTED
-            ):
-                num_manually_scaling_deployments += 1
-            else:
-                raise RuntimeError(
-                    "Found deployment with unexpected status "
-                    f"{deployment_status.status} and status trigger "
-                    f"{deployment_status.status_trigger}."
-                )
-
-        if len(unhealthy_deployment_names):
+        # Get the lowest rank, i.e. highest priority, deployment status info object
+        # The deployment status info with highest priority determines the corresponding
+        # application status to set.
+        lowest_rank_status = min(
+            self.get_deployments_statuses(), key=lambda info: info.rank
+        )
+        if lowest_rank_status.status == DeploymentStatus.UNHEALTHY:
+            unhealthy_deployment_names = [
+                s.name
+                for s in self.get_deployments_statuses()
+                if s.status == DeploymentStatus.UNHEALTHY
+            ]
             status_msg = f"The deployments {unhealthy_deployment_names} are UNHEALTHY."
             if self._status in [
                 ApplicationStatus.DEPLOYING,
@@ -490,17 +474,16 @@ class ApplicationState:
                 return ApplicationStatus.DEPLOY_FAILED, status_msg
             else:
                 return ApplicationStatus.UNHEALTHY, status_msg
-        elif num_updating_deployments + num_manually_scaling_deployments > 0:
-            # If deployments are UPDATING or UPSCALING/DOWNSCALING
-            # with status trigger CONFIG_UPDATE_STARTED, then
-            # application is still DEPLOYING
+        elif lowest_rank_status.status == DeploymentStatus.UPDATING:
+            return ApplicationStatus.DEPLOYING, ""
+        elif (
+            lowest_rank_status.status
+            in [DeploymentStatus.UPSCALING, DeploymentStatus.DOWNSCALING]
+            and lowest_rank_status.status_trigger
+            == DeploymentStatusTrigger.CONFIG_UPDATE_STARTED
+        ):
             return ApplicationStatus.DEPLOYING, ""
         else:
-            # If all deployments are HEALTHY or autoscaling, then
-            # application is RUNNING
-            assert num_healthy_deployments + num_autoscaling_deployments == len(
-                self.target_deployments
-            )
             return ApplicationStatus.RUNNING, ""
 
     def _reconcile_build_app_task(self) -> Tuple[Tuple, BuildAppStatus, str]:
@@ -731,10 +714,15 @@ class ApplicationState:
         return {k: v for k, v in details.items() if v is not None}
 
     def _update_status(self, status: ApplicationStatus, status_msg: str = "") -> None:
-        if status_msg and status in [
-            ApplicationStatus.DEPLOY_FAILED,
-            ApplicationStatus.UNHEALTHY,
-        ]:
+        if (
+            status_msg
+            and status
+            in [
+                ApplicationStatus.DEPLOY_FAILED,
+                ApplicationStatus.UNHEALTHY,
+            ]
+            and status_msg != self._status_msg
+        ):
             logger.warning(status_msg)
 
         self._status = status
@@ -1087,6 +1075,12 @@ def override_deployment_info(
         override_max_replicas_per_node = options.pop(
             "max_replicas_per_node", replica_config.max_replicas_per_node
         )
+
+        # Record telemetry for container runtime env feature at deployment level
+        if override_actor_options.get("runtime_env") and override_actor_options[
+            "runtime_env"
+        ].get("container"):
+            ServeUsageTag.DEPLOYMENT_CONTAINER_RUNTIME_ENV_USED.record("1")
 
         merged_env = override_runtime_envs_except_env_vars(
             app_runtime_env, override_actor_options.get("runtime_env", {})

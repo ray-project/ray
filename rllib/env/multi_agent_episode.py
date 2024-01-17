@@ -1957,7 +1957,9 @@ class MultiAgentEpisode:
                         # TODO (simon): Check, if we need to use here also
                         # `ts_carriage_return`.
                         partial_agent_rewards_t.append(t + self.ts_carriage_return + 1)
-                        if (t + 1) in self.global_t_to_local_t[agent_id][1:]:
+                        if (
+                            t + self.ts_carriage_return + 1
+                        ) in self.global_t_to_local_t[agent_id][1:]:
                             agent_rewards.append(agent_reward)
                             agent_reward = 0.0
 
@@ -1991,6 +1993,7 @@ class MultiAgentEpisode:
         self,
         attr: str = "observations",
         indices: Union[int, List[int]] = -1,
+        key: Optional[str] = None,
         has_initial_value=False,
         global_ts: bool = True,
         global_ts_mapping: Optional[MultiAgentDict] = None,
@@ -2038,9 +2041,9 @@ class MultiAgentEpisode:
                     return [
                         {
                             agent_id: (
-                                list(getattr(agent_eps, attr))
+                                getattr(agent_eps, attr).get(key)
                                 + buffered_values[agent_id]
-                            )[global_ts_mapping[agent_id].find_indices([idx], shift)[0]]
+                            )[global_ts_mapping[agent_id].find_indices([idx])[0]]
                             for agent_id, agent_eps in self.agent_episodes.items()
                             if global_ts_mapping[agent_id].find_indices([idx], shift)
                         }
@@ -2068,7 +2071,7 @@ class MultiAgentEpisode:
                         agent_id: list(
                             map(
                                 (
-                                    list(getattr(agent_eps, attr))
+                                    getattr(agent_eps, attr).get(key)
                                     + buffered_values[agent_id]
                                 ).__getitem__,
                                 global_ts_mapping[agent_id].find_indices(
@@ -2101,12 +2104,15 @@ class MultiAgentEpisode:
             if not isinstance(indices, list):
                 indices = [indices]
 
+            # If we have buffered values for the attribute we want to concatenate
+            # while searching for the indices.
             if buffered_values:
                 return {
                     agent_id: list(
                         map(
                             (
-                                getattr(agent_eps, attr) + buffered_values[agent_id]
+                                getattr(agent_eps, attr).get(key)
+                                + buffered_values[agent_id]
                             ).__getitem__,
                             set(indices).intersection(
                                 set(

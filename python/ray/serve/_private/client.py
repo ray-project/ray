@@ -56,10 +56,8 @@ class ServeControllerClient:
     def __init__(
         self,
         controller: ActorHandle,
-        controller_name: str,
     ):
         self._controller: ServeController = controller
-        self._controller_name = controller_name
         self._shutdown = False
         self._http_config: HTTPOptions = ray.get(controller.get_http_config.remote())
         self._root_url = ray.get(controller.get_root_url.remote())
@@ -590,6 +588,6 @@ class ServeControllerClient:
         self._controller.record_multiplexed_replica_info.remote(info)
 
     @_ensure_connected
-    def update_system_logging_config(self, logging_config: LoggingConfig):
+    def update_global_logging_config(self, logging_config: LoggingConfig):
         """Reconfigure the logging config for the controller & proxies."""
-        self._controller.reconfigure_system_logging_config.remote(logging_config)
+        self._controller.reconfigure_global_logging_config.remote(logging_config)

@@ -5,6 +5,7 @@ import sys
 import time
 from dataclasses import asdict
 from pathlib import Path
+from unittest.mock import patch
 
 import requests
 import pytest
@@ -25,6 +26,7 @@ from ray.autoscaler._private.cli_logger import cli_logger
 from ray.util.placement_group import (
     placement_group,
 )
+from ray._private.accelerators import NvidiaGPUAcceleratorManager
 
 schema = {
     "$schema": "http://json-schema.org/draft-07/schema#",
@@ -53,6 +55,10 @@ schema = {
         "total_memory_gb": {"type": ["null", "number"]},
         "total_object_store_memory_gb": {"type": ["null", "number"]},
         "library_usages": {
+            "type": ["null", "array"],
+            "items": {"type": "string"},
+        },
+        "hardware_usages": {
             "type": ["null", "array"],
             "items": {"type": "string"},
         },
@@ -700,6 +706,22 @@ def test_usage_stats_enabled_endpoint(
         assert response.json()["data"]["usageStatsPromptEnabled"] is False
 
 
+def test_hardware_usages(shutdown_only, reset_usage_stats):
+    with patch.object(
+        NvidiaGPUAcceleratorManager,
+        "get_current_node_accelerator_type",
+        return_value="TestAccelerator",
+    ), patch.object(
+        ray._private.utils, "get_current_node_cpu_model_name", return_value="TestCPU"
+    ):
+        ray.init(num_gpus=4)
+        assert set(
+            ray_usage_lib.get_hardware_usages_to_report(
+                ray.experimental.internal_kv.internal_kv_get_gcs_client()
+            )
+        ) == {"TestAccelerator", "TestCPU"}
+
+
 @pytest.mark.skipif(
     os.environ.get("RAY_MINIMAL") == "1",
     reason="This test is not supposed to work for minimal installation "
@@ -1080,7 +1102,9 @@ provider:
     availability_zone: us-west-2a
 """
     )
-    with monkeypatch.context() as m:
+    with patch.object(
+        ray._private.utils, "get_current_node_cpu_model_name", return_value="TestCPU"
+    ), monkeypatch.context() as m:
         m.setenv("HOME", str(tmp_path))
         m.setenv("RAY_USAGE_STATS_ENABLED", "1")
         m.setenv("RAY_USAGE_STATS_REPORT_URL", "http://127.0.0.1:8000")
@@ -1223,6 +1247,7 @@ provider:
             assert set(payload["library_usages"]) == set()
         else:
             assert set(payload["library_usages"]) == {"rllib", "train", "tune"}
+        assert payload["hardware_usages"] == ["TestCPU"]
         validate(instance=payload, schema=schema)
         """
         Verify the usage_stats.json is updated.

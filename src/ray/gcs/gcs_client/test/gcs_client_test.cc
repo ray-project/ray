@@ -56,7 +56,6 @@ class GcsClientTest : public ::testing::TestWithParam<bool> {
   void SetUp() override {
     if (!no_redis_) {
       config_.redis_address = "127.0.0.1";
-      config_.enable_sharding_conn = false;
       config_.redis_port = TEST_REDIS_SERVER_PORTS.front();
     } else {
       config_.redis_port = 0;
@@ -67,7 +66,6 @@ class GcsClientTest : public ::testing::TestWithParam<bool> {
     config_.grpc_server_name = "MockedGcsServer";
     config_.grpc_server_thread_num = 1;
     config_.node_ip_address = "127.0.0.1";
-    config_.enable_sharding_conn = false;
 
     // Tests legacy code paths. The poller and broadcaster have their own dedicated unit
     // test targets.

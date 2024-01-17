@@ -1007,7 +1007,7 @@ def test_actor_pool_strategy_bundles_to_max_actors(shutdown_only):
     # TODO(https://github.com/ray-project/ray/issues/31723): implement the feature
     # of capping bundle size by actor pool size, and then re-enable this test.
     if not DataContext.get_current().new_execution_backend:
-        assert f"{max_size}/{max_size} blocks" in ds.stats()
+        assert f"{max_size} blocks" in ds.stats()
 
     # Check batch size is still respected.
     ds = (
@@ -1016,7 +1016,7 @@ def test_actor_pool_strategy_bundles_to_max_actors(shutdown_only):
         .materialize()
     )
 
-    assert "1/1 blocks" in ds.stats()
+    assert "1 blocks" in ds.stats()
 
 
 def test_nonserializable_map_batches(shutdown_only):

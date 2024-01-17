@@ -1,8 +1,9 @@
+import abc
 import os
 import subprocess
 import sys
 
-from typing import List, Optional
+from typing import List, Tuple, Optional
 
 _DOCKER_ECR_REPO = os.environ.get(
     "RAYCI_WORK_REPO",
@@ -13,6 +14,7 @@ _DOCKER_GCP_REGISTRY = os.environ.get(
     "us-west1-docker.pkg.dev/anyscale-oss-ci",
 )
 _DOCKER_ENV = [
+    "BUILDKITE",
     "BUILDKITE_BUILD_URL",
     "BUILDKITE_BRANCH",
     "BUILDKITE_COMMIT",
@@ -20,27 +22,16 @@ _DOCKER_ENV = [
     "BUILDKITE_LABEL",
     "BUILDKITE_PIPELINE_ID",
 ]
-_DOCKER_CAP_ADD = [
-    "SYS_PTRACE",
-    "SYS_ADMIN",
-    "NET_ADMIN",
-]
 _RAYCI_BUILD_ID = os.environ.get("RAYCI_BUILD_ID", "unknown")
 
 
-class Container:
+class Container(abc.ABC):
     """
     A wrapper for running commands in ray ci docker container
     """
 
-    def __init__(
-        self,
-        docker_tag: str,
-        volumes: Optional[List[str]] = None,
-        envs: Optional[List[str]] = None,
-    ) -> None:
+    def __init__(self, docker_tag: str, envs: Optional[List[str]] = None) -> None:
         self.docker_tag = docker_tag
-        self.volumes = volumes or []
         self.envs = envs or []
         self.envs += _DOCKER_ENV
 
@@ -48,82 +39,81 @@ class Container:
         """
         Run a script in container and returns output
         """
-        return subprocess.check_output(self._get_run_command(script))
+        return subprocess.check_output(self.get_run_command(script))
 
     def run_script(self, script: List[str]) -> None:
         """
         Run a script in container
         """
         return subprocess.check_call(
-            self._get_run_command(script),
+            self.get_run_command(script),
             stdout=sys.stdout,
             stderr=sys.stderr,
         )
-
-    def install_ray(self, build_type: Optional[str] = None) -> None:
-        env = os.environ.copy()
-        env["DOCKER_BUILDKIT"] = "1"
-        subprocess.check_call(
-            [
-                "docker",
-                "build",
-                "--pull",
-                "--build-arg",
-                f"BASE_IMAGE={self._get_docker_image()}",
-                "--build-arg",
-                f"BUILD_TYPE={build_type or ''}",
-                "-t",
-                self._get_docker_image(),
-                "-f",
-                "/ray/ci/ray_ci/tests.env.Dockerfile",
-                "/ray",
-            ],
-            env=env,
-            stdout=sys.stdout,
-            stderr=sys.stderr,
-        )
-
-    def _get_run_command(
-        self,
-        script: List[str],
-        gpu_ids: Optional[List[int]] = None,
-    ) -> List[str]:
-        command = [
-            "docker",
-            "run",
-            "-i",
-            "--rm",
-            "--env",
-            "NVIDIA_DISABLE_REQUIRE=1",
-            "--volume",
-            "/tmp/artifacts:/artifact-mount",
-            "--add-host",
-            "rayci.localhost:host-gateway",
-        ]
-        for volume in self.volumes:
-            command += ["--volume", volume]
-        for env in self.envs:
-            command += ["--env", env]
-        for cap in _DOCKER_CAP_ADD:
-            command += ["--cap-add", cap]
-        if gpu_ids:
-            command += ["--gpus", f'"device={",".join(map(str, gpu_ids))}"']
-        command += [
-            "--workdir",
-            "/rayci",
-            "--shm-size=2.5gb",
-            self._get_docker_image(),
-            "/bin/bash",
-            "-iecuo",
-            "pipefail",
-            "--",
-            "\n".join(script),
-        ]
-
-        return command
 
     def _get_docker_image(self) -> str:
         """
         Get docker image for a particular commit
         """
         return f"{_DOCKER_ECR_REPO}:{_RAYCI_BUILD_ID}-{self.docker_tag}"
+
+    @abc.abstractmethod
+    def install_ray(self, build_type: Optional[str] = None) -> None:
+        """
+        Build and install ray in container
+        :param build_type: opt, asan, tsan, etc.
+        """
+        pass
+
+    def get_run_command(
+        self,
+        script: List[str],
+        network: Optional[str] = None,
+        gpu_ids: Optional[List[int]] = None,
+        volumes: Optional[List[str]] = None,
+    ) -> List[str]:
+        """
+        Get docker run command
+        :param script: script to run in container
+        :param gpu_ids: ids of gpus on the host machine
+        """
+        artifact_mount_host, artifact_mount_container = self.get_artifact_mount()
+        command = [
+            "docker",
+            "run",
+            "-i",
+            "--rm",
+            "--volume",
+            f"{artifact_mount_host}:{artifact_mount_container}",
+        ]
+        for env in self.envs:
+            command += ["--env", env]
+        if network:
+            command += ["--network", network]
+        for volume in volumes or []:
+            command += ["--volume", volume]
+        return (
+            command
+            + self.get_run_command_extra_args(gpu_ids)
+            + [self._get_docker_image()]
+            + self.get_run_command_shell()
+            + ["\n".join(script)]
+        )
+
+    @abc.abstractmethod
+    def get_run_command_shell(self) -> List[str]:
+        pass
+
+    @abc.abstractmethod
+    def get_run_command_extra_args(
+        self,
+        gpu_ids: Optional[List[int]] = None,
+    ) -> List[str]:
+        pass
+
+    @abc.abstractmethod
+    def get_artifact_mount(self) -> Tuple[str, str]:
+        """
+        Get artifact mount path on host and container
+        """
+        pass
