@@ -19,11 +19,11 @@ def _gen_chunk(rows_in_chunk):
     return pyarrow.Table.from_arrays([data_col], names=["dd"])
 
 
-def read_chunk_fn(chunk_id_list) -> Iterator["pyarrow.Table"]:
+def _read_chunk_fn(chunk_id_list) -> Iterator["pyarrow.Table"]:
     from pyspark.sql.chunk_api import read_chunk
     for chunk_id in chunk_id_list:
         # yield read_chunk(chunk_id)
-        yield _gen_chunk(16)
+        yield _gen_chunk(32)
 
 
 @PublicAPI(stability="alpha")
@@ -77,7 +77,7 @@ class SparkDatasource(Datasource):
         ]
 
         return ReadTask(
-            lambda l=chunk_id_list: read_chunk_fn(l),
+            lambda l=chunk_id_list: _read_chunk_fn(l),
             metadata,
         )
 

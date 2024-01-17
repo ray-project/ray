@@ -2364,7 +2364,10 @@ def from_spark(
             the original Spark DataFrame.
 
     Returns:
-        A :class:`~ray.data.MaterializedDataset` holding rows read from the DataFrame.
+        If you run Ray application with Ray on spark, it returns a ray dataset, the
+        data is cached in spark distributed cache system, but is not cached
+        in ray object store, otherwise it returns
+        a :class:`~ray.data.MaterializedDataset` holding rows read from the DataFrame.
     """  # noqa: E501
 
     from pyspark.sql import SparkSession
