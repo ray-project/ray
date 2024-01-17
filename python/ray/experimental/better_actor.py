@@ -7,10 +7,12 @@ import ray
 __all__ = ["remote_method", "ActorMixin"]
 
 if TYPE_CHECKING:
-    from typing import TypeVar, Union, Generic, Callable, Any
-    from typing_extensions import ParamSpec, TypedDict, Literal, Concatenate, Unpack
-    from ray.util import scheduling_strategies
+    from typing import Any, Callable, Generic, TypeVar, Union
+
+    from typing_extensions import Concatenate, Literal, ParamSpec, TypedDict, Unpack
+
     from ray.dag import ClassNode
+    from ray.util import scheduling_strategies
 
     _P = ParamSpec("_P")
     _R = TypeVar("_R")
