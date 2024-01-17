@@ -36,6 +36,7 @@ class LinuxContainer(Container):
                 "docker",
                 "build",
                 "--pull",
+                "--progress=plain",
                 "--build-arg",
                 f"BASE_IMAGE={self._get_docker_image()}",
                 "--build-arg",
