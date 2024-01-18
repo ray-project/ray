@@ -434,6 +434,21 @@ else:
         def methods(self):
             return self._actor_handle
 
+        def __repr__(self) -> str:
+            return repr(self._actor_handle)
+
+        def __str__(self) -> str:
+            return str(self._actor_handle)
+
+        def __eq__(self, other) -> bool:
+            return (
+                isinstance(other, Actor)
+                and self._actor_handle._actor_id == other._actor_handle._actor_id
+            )
+
+        def __hash__(self) -> int:
+            return hash(self._actor_handle._actor_id)
+
     class ActorClass:
         def __init__(self, klass, default_opts):
             self._klass = klass
