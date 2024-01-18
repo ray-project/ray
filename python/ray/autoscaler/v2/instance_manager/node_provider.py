@@ -1,19 +1,15 @@
-import copy
 import logging
-import math
 import time
 from abc import ABC, abstractmethod
-from collections import defaultdict
 from concurrent.futures import Future, ThreadPoolExecutor, as_completed
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from queue import Queue
-from typing import Any, Dict, List, Optional, Tuple, Union
+from typing import Any, Dict, List, Optional, Union
 
 from ray.autoscaler._private.constants import (
     AUTOSCALER_MAX_CONCURRENT_TERMINATING,
     AUTOSCALER_MAX_CONCURRENT_TYPES_TO_LAUNCH,
 )
-from ray.autoscaler._private.node_launcher import BaseNodeLauncher
 from ray.autoscaler._private.util import hash_launch_conf
 from ray.autoscaler.node_provider import NodeProvider as NodeProviderV1
 from ray.autoscaler.tags import (
@@ -26,8 +22,8 @@ from ray.autoscaler.tags import (
     TAG_RAY_NODE_STATUS,
     TAG_RAY_USER_NODE_TYPE,
 )
-from ray.autoscaler.v2.schema import NodeType
 from ray.autoscaler.v2.instance_manager.config import AutoscalingConfig, IConfigReader
+from ray.autoscaler.v2.schema import NodeType
 
 logger = logging.getLogger(__name__)
 
@@ -87,14 +83,20 @@ class LaunchNodeError(CloudInstanceProviderError):
         request_id: str,
         timestamp_ns: int,
     ) -> None:
-        msg = f"Failed to launch {count} nodes of type {node_type} with request id {request_id}."
+        msg = (
+            f"Failed to launch {count} nodes of type {node_type} with "
+            f"request id {request_id}."
+        )
         super().__init__(msg, timestamp_ns=timestamp_ns)
         self.node_type = node_type
         self.count = count
         self.request_id = request_id
 
     def __repr__(self) -> str:
-        return f"LaunchNodeError(node_type={self.node_type}, count={self.count}, request_id={self.request_id}): {self.__cause__}"
+        return (
+            f"LaunchNodeError(node_type={self.node_type}, count={self.count}, "
+            f"request_id={self.request_id}): {self.__cause__}"
+        )
 
 
 class TerminateNodeError(CloudInstanceProviderError):
@@ -117,7 +119,10 @@ class TerminateNodeError(CloudInstanceProviderError):
         self.request_id = request_id
 
     def __repr__(self) -> str:
-        return f"TerminateNodeError(cloud_instance_id={self.cloud_instance_id}, request_id={self.request_id}): {self.__cause__}"
+        return (
+            f"TerminateNodeError(cloud_instance_id={self.cloud_instance_id}, "
+            f"request_id={self.request_id}): {self.__cause__}"
+        )
 
 
 class ICloudInstanceProvider(ABC):

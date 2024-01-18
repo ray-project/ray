@@ -16,11 +16,11 @@ from ray.autoscaler.tags import (
     NODE_KIND_WORKER,
     STATUS_UNINITIALIZED,
     TAG_RAY_LAUNCH_CONFIG,
+    TAG_RAY_LAUNCH_REQUEST,
     TAG_RAY_NODE_KIND,
     TAG_RAY_NODE_NAME,
     TAG_RAY_NODE_STATUS,
     TAG_RAY_USER_NODE_TYPE,
-    TAG_RAY_LAUNCH_REQUEST,
 )
 
 logger = logging.getLogger(__name__)

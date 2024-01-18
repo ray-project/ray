@@ -1,31 +1,22 @@
-# coding: utf-8
-from collections import defaultdict
+import logging
 import os
 import sys
+
+# coding: utf-8
+from collections import defaultdict
 from typing import Literal
 
 import pytest  # noqa
 
-from ray._private.test_utils import (
-    get_test_config_path,
-    load_test_config,
-    wait_for_condition,
-)
-from ray.autoscaler.node_launch_exception import NodeLaunchException
-from ray.autoscaler.v2.instance_manager.config import (
-    AutoscalingConfig,
-    FileConfigReader,
-)
+from ray._private.test_utils import get_test_config_path, wait_for_condition
+from ray.autoscaler.v2.instance_manager.config import FileConfigReader
 from ray.autoscaler.v2.instance_manager.node_provider import (
     LaunchNodeError,
     NodeProviderAdapter,
     TerminateNodeError,
+    logger,
 )
-from ray.autoscaler.v2.tests.util import FakeCounter
 from ray.tests.autoscaler_test_utils import MockBatchingProvider, MockProvider
-
-import logging
-from ray.autoscaler.v2.instance_manager.node_provider import logger
 
 logger.setLevel(logging.DEBUG)
 
