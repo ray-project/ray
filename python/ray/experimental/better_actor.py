@@ -3,17 +3,17 @@ from __future__ import annotations
 from typing import TYPE_CHECKING, Generic, TypeVar, overload
 
 import ray
-from ray.actor import ActorHandle
 
 __all__ = ["remote_method", "ActorMixin", "Actor"]
 
 _ClassT = TypeVar("_ClassT")
 
 if TYPE_CHECKING:
-    from typing import Any, Callable, Coroutine, TypeVar, Union
+    from typing import Any, Callable, Coroutine, Union
 
     from typing_extensions import Concatenate, Literal, ParamSpec, TypedDict, Unpack
 
+    from ray.actor import ActorHandle
     from ray.dag import ClassNode
     from ray.util import scheduling_strategies
 
