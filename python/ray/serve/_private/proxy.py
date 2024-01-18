@@ -34,7 +34,7 @@ from ray.serve._private.constants import (
 )
 from ray.serve._private.grpc_util import DummyServicer, create_serve_grpc_server
 from ray.serve._private.http_util import (
-    ASGIMessageQueue,
+    MessageQueue,
     convert_object_to_asgi_messages,
     receive_http_body,
     set_socket_reuse_port,
@@ -154,7 +154,7 @@ class GenericProxy(ABC):
         self.route_info: Dict[str, EndpointTag] = dict()
 
         self.self_actor_handle = proxy_actor or ray.get_runtime_context().current_actor
-        self.asgi_receive_queues: Dict[str, ASGIMessageQueue] = dict()
+        self.asgi_receive_queues: Dict[str, MessageQueue] = dict()
 
         self.proxy_router = proxy_router_class(
             serve.get_deployment_handle, self.protocol
@@ -226,9 +226,6 @@ class GenericProxy(ABC):
             }
         )
 
-        # `self._prevent_node_downscale_ref` is used to prevent the node from being
-        # downscaled when there are ongoing requests
-        self._prevent_node_downscale_ref = ray.put("prevent_node_downscale_object")
         # `self._ongoing_requests` is used to count the number of ongoing requests
         self._ongoing_requests = 0
         # The time when the node starts to drain.
@@ -850,7 +847,7 @@ class HTTPProxy(GenericProxy):
                 await send(message)
 
     async def proxy_asgi_receive(
-        self, receive: Receive, queue: ASGIMessageQueue
+        self, receive: Receive, queue: MessageQueue
     ) -> Optional[int]:
         """Proxies the `receive` interface, placing its messages into the queue.
 
@@ -946,7 +943,7 @@ class HTTPProxy(GenericProxy):
         # Proxy the receive interface by placing the received messages on a queue.
         # The downstream replica must call back into `receive_asgi_messages` on this
         # actor to receive the messages.
-        receive_queue = ASGIMessageQueue()
+        receive_queue = MessageQueue()
         self.asgi_receive_queues[request_id] = receive_queue
         proxy_asgi_receive_task = get_or_create_event_loop().create_task(
             self.proxy_asgi_receive(proxy_request.receive, receive_queue)

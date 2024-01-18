@@ -217,7 +217,7 @@ Run the following command on your local machine, where ``cluster.yaml`` is the c
     ray dashboard cluster.yaml
 
 Once this command is running, verify that you can view the Ray Dashboard in your local browser at ``http://127.0.0.1:8265``.  
-Also, verify that you set the environment variable ``RAY_ADDRESS`` to ``"http://127.0.0.1:8265"``. After this setup, you can the Jobs CLI on the local machine as in the preceding example to interact with the remote Ray cluster.
+Also, verify that you set the environment variable ``RAY_ADDRESS`` to ``"http://127.0.0.1:8265"``. After this setup, you can use the Jobs CLI on the local machine as in the preceding example to interact with the remote Ray cluster.
 
 Using the CLI on Kubernetes
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^

@@ -8,7 +8,7 @@ import {
   ServeSystemActorStatus,
 } from "../../type/serve";
 import { TEST_APP_WRAPPER } from "../../util/test-utils";
-import { ServeApplicationsListPage } from "./ServeApplicationsListPage";
+import { ServeDeploymentsListPage } from "./ServeDeploymentsListPage";
 
 jest.mock("../../service/actor");
 jest.mock("../../service/serve");
@@ -16,9 +16,9 @@ jest.mock("../../service/serve");
 const mockGetServeApplications = jest.mocked(getServeApplications);
 const mockGetActor = jest.mocked(getActor);
 
-describe("ServeApplicationsListPage", () => {
+describe("ServeDeploymentsListPage", () => {
   it("renders list", async () => {
-    expect.assertions(5);
+    expect.assertions(6);
 
     // Mock ServeController actor fetch
     mockGetActor.mockResolvedValue({
@@ -57,8 +57,14 @@ describe("ServeApplicationsListPage", () => {
             },
             last_deployed_time_s: new Date().getTime() / 1000,
             deployments: {
-              FirstDeployment: {},
-              SecondDeployment: {},
+              FirstDeployment: {
+                name: "FirstDeployment",
+                replicas: [],
+              },
+              SecondDeployment: {
+                name: "SecondDeployment",
+                replicas: [],
+              },
             },
           },
           "second-app": {
@@ -71,24 +77,29 @@ describe("ServeApplicationsListPage", () => {
             },
             last_deployed_time_s: new Date().getTime() / 1000,
             deployments: {
-              ThirdDeployment: {},
+              ThirdDeployment: {
+                name: "ThirdDeployment",
+                replicas: [],
+              },
             },
           },
         },
       },
     } as any);
 
-    render(<ServeApplicationsListPage />, { wrapper: TEST_APP_WRAPPER });
-    await screen.findByText("Application status");
+    render(<ServeDeploymentsListPage />, { wrapper: TEST_APP_WRAPPER });
+    await screen.findByText("Deployments status");
 
     // First row
-    expect(screen.getByText("home")).toBeVisible();
-    expect(screen.getByText("/")).toBeVisible();
+    expect(screen.getByText("FirstDeployment")).toBeVisible();
+    expect(screen.getAllByText("/")[0]).toBeVisible();
 
     // Second row
-    expect(screen.getByText("second-app")).toBeVisible();
-    expect(screen.getByText("/second-app")).toBeVisible();
+    expect(screen.getByText("SecondDeployment")).toBeVisible();
+    expect(screen.getAllByText("/")[1]).toBeVisible();
 
-    expect(screen.getByText("Metrics")).toBeVisible();
+    // Third row
+    expect(screen.getByText("ThirdDeployment")).toBeVisible();
+    expect(screen.getByText("/second-app")).toBeVisible();
   });
 });

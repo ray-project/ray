@@ -70,6 +70,7 @@ class Container(abc.ABC):
         script: List[str],
         network: Optional[str] = None,
         gpu_ids: Optional[List[int]] = None,
+        volumes: Optional[List[str]] = None,
     ) -> List[str]:
         """
         Get docker run command
@@ -89,6 +90,8 @@ class Container(abc.ABC):
             command += ["--env", env]
         if network:
             command += ["--network", network]
+        for volume in volumes or []:
+            command += ["--volume", volume]
         return (
             command
             + self.get_run_command_extra_args(gpu_ids)
