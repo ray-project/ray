@@ -764,18 +764,21 @@ def _try_set_exception(fut: asyncio.Future, e: Exception):
         fut.set_exception(e)
 
 
-def wrap_as_future(ref: ObjectRef, timeout_s: float) -> asyncio.Future:
+def wrap_as_future(ref: ObjectRef, timeout_s: Optional[float] = None) -> asyncio.Future:
     loop = asyncio.get_running_loop()
 
     aio_fut = asyncio.wrap_future(ref.future())
-    # Schedule handle to time out the future
-    timeout_handler = loop.call_later(
-        max(timeout_s, 0),
-        _try_set_exception,
-        aio_fut,
-        TimeoutError(f"Future cancelled after timeout {timeout_s}s"),
-    )
-    # Cancel timeout handler upon completion of the future
-    aio_fut.add_done_callback(lambda _: timeout_handler.cancel())
+
+    if timeout_s is not None:
+        assert timeout_s >= 0, "Timeout value should be non-negative"
+        # Schedule handler to complete future exceptionally
+        timeout_handler = loop.call_later(
+            max(timeout_s, 0),
+            _try_set_exception,
+            aio_fut,
+            TimeoutError(f"Future cancelled after timeout {timeout_s}s"),
+        )
+        # Cancel timeout handler upon completion of the future
+        aio_fut.add_done_callback(lambda _: timeout_handler.cancel())
 
     return aio_fut
