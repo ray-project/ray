@@ -202,7 +202,7 @@ async def test_is_drained_check_success(response, is_drained):
     proxy_wrapper = _create_mocked_actor_proxy_wrapper(actor_handle_mock)
 
     for _ in range(10):
-        assert proxy_wrapper.is_drained(timeout_s=0) is None
+        assert proxy_wrapper.is_drained(timeout_s=1) is None
         # Yield loop!
         await asyncio.sleep(0.01)
 
@@ -218,7 +218,7 @@ async def test_is_drained_check_success(response, is_drained):
     await asyncio.sleep(0)
     # NOTE: Timeout setting is only relevant, in case there's no pending request
     #       and one will be issued
-    assert proxy_wrapper.is_drained(timeout_s=0) is is_drained
+    assert proxy_wrapper.is_drained(timeout_s=1) is is_drained
 
 
 @pytest.mark.asyncio
