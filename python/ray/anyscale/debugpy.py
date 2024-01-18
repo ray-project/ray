@@ -1,7 +1,6 @@
 import logging
 import os
 import sys
-import threading
 
 import ray
 from ray.util.annotations import DeveloperAPI
@@ -9,44 +8,6 @@ from ray.util.annotations import DeveloperAPI
 log = logging.getLogger(__name__)
 
 POST_MORTEM_ERROR_UUID = "post_mortem_error_uuid"
-
-# A lock to ensure that only one thread can open the debugger port.
-debugger_port_lock = threading.Lock()
-
-
-def _override_breakpoint_hooks():
-    """
-    This method overrides the breakpoint() function to set_trace()
-    so that other threads can reuse the same setup logic.
-    This is based on: https://github.com/microsoft/debugpy/blob/ef9a67fe150179ee4df9997f9273723c26687fab/src/debugpy/_vendored/pydevd/pydev_sitecustomize/sitecustomize.py#L87 # noqa: E501
-    """
-    sys.__breakpointhook__ = set_trace
-    sys.breakpointhook = set_trace
-    import builtins as __builtin__
-
-    __builtin__.breakpoint = set_trace
-
-
-def _ensure_debugger_port_open_thread_safe():
-    """
-    This is a thread safe method that ensure that the debugger port
-    is open, and if not, open it.
-    """
-
-    # The lock is acquired before checking the debugger port so only
-    # one thread can open the debugger port.
-    with debugger_port_lock:
-        import debugpy
-
-        debugger_port = ray._private.worker.global_worker.debugger_port
-        if not debugger_port:
-            (host, port) = debugpy.listen(
-                (ray._private.worker.global_worker.node_ip_address, 0)
-            )
-            ray._private.worker.global_worker.set_debugger_port(port)
-            log.info(f"Ray debugger is listening on {host}:{port}")
-        else:
-            log.info(f"Ray debugger is already open on {debugger_port}")
 
 
 @DeveloperAPI
@@ -57,17 +18,16 @@ def set_trace(breakpoint_uuid=None):
     """
     import debugpy
 
-    _ensure_debugger_port_open_thread_safe()
+    if not ray._private.worker.global_worker.debugger_port:
+        (host, port) = debugpy.listen(
+            (ray._private.worker.global_worker.node_ip_address, 0)
+        )
+        ray._private.worker.global_worker.set_debugger_port(port)
+        print(f"Ray debugger is listening on {host}:{port}")
 
-    # debugpy overrides the breakpoint() function, so we need to set it back
-    # so other threads can reuse it.
-    _override_breakpoint_hooks()
-
-    with ray._private.worker.global_worker.worker_paused_by_debugger():
-        log.info("Waiting for debugger to attach...")
+    with ray._private.worker.global_worker.task_paused_by_debugger():
         debugpy.wait_for_client()
 
-    log.info("Debugger client is connected")
     if breakpoint_uuid == POST_MORTEM_ERROR_UUID:
         _debugpy_excepthook()
     else:
