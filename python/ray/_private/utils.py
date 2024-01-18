@@ -431,42 +431,13 @@ def open_log(path, unbuffered=False, **kwargs):
         return stream
 
 
-def get_system_memory(
-    # For cgroups v1:
-    memory_limit_filename="/sys/fs/cgroup/memory/memory.limit_in_bytes",
-    # For cgroups v2:
-    memory_limit_filename_v2="/sys/fs/cgroup/memory.max",
-):
+def get_system_memory():
     """Return the total amount of system memory in bytes.
 
     Returns:
         The total amount of system memory in bytes.
     """
-    # Try to accurately figure out the memory limit if we are in a docker
-    # container. Note that this file is not specific to Docker and its value is
-    # often much larger than the actual amount of memory.
-    docker_limit = None
-    if os.path.exists(memory_limit_filename):
-        with open(memory_limit_filename, "r") as f:
-            docker_limit = int(f.read().strip())
-    elif os.path.exists(memory_limit_filename_v2):
-        with open(memory_limit_filename_v2, "r") as f:
-            # Don't forget to strip() the newline:
-            max_file = f.read().strip()
-            if max_file.isnumeric():
-                docker_limit = int(max_file)
-            else:
-                # max_file is "max", i.e. is unset.
-                docker_limit = None
-
-    # Use psutil if it is available.
     psutil_memory_in_bytes = psutil.virtual_memory().total
-
-    if docker_limit is not None:
-        # We take the min because the cgroup limit is very large if we aren't
-        # in Docker.
-        return min(docker_limit, psutil_memory_in_bytes)
-
     return psutil_memory_in_bytes
 
 
@@ -649,25 +620,6 @@ def get_used_memory():
     Returns:
         The total amount of used memory
     """
-    # Try to accurately figure out the memory usage if we are in a docker
-    # container.
-    docker_usage = None
-    # For cgroups v1:
-    memory_usage_filename = "/sys/fs/cgroup/memory/memory.stat"
-    # For cgroups v2:
-    memory_usage_filename_v2 = "/sys/fs/cgroup/memory.current"
-    memory_stat_filename_v2 = "/sys/fs/cgroup/memory.stat"
-    if os.path.exists(memory_usage_filename):
-        docker_usage = get_cgroupv1_used_memory(memory_usage_filename)
-    elif os.path.exists(memory_usage_filename_v2) and os.path.exists(
-        memory_stat_filename_v2
-    ):
-        docker_usage = get_cgroupv2_used_memory(
-            memory_stat_filename_v2, memory_usage_filename_v2
-        )
-
-    if docker_usage is not None:
-        return docker_usage
     return psutil.virtual_memory().used
 
 

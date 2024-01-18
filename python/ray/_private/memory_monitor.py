@@ -141,16 +141,6 @@ class MemoryMonitor:
         total_gb = psutil_mem.total / (1024**3)
         used_gb = psutil_mem.used / (1024**3)
 
-        if self.cgroup_memory_limit_gb < total_gb:
-            total_gb = self.cgroup_memory_limit_gb
-            with open("/sys/fs/cgroup/memory/memory.usage_in_bytes", "rb") as f:
-                used_gb = int(f.read()) / (1024**3)
-            # Exclude the page cache
-            with open("/sys/fs/cgroup/memory/memory.stat", "r") as f:
-                for line in f.readlines():
-                    if line.split(" ")[0] == "cache":
-                        used_gb = used_gb - int(line.split(" ")[1]) / (1024**3)
-            assert used_gb >= 0
         return used_gb, total_gb
 
     def raise_if_low_memory(self):
