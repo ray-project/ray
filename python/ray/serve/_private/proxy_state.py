@@ -43,7 +43,7 @@ class ProxyWrapper(ABC):
         """Return whether proxy is ready to be serving requests.
 
         Since actual readiness check is asynchronous, this method could return
-        either of the following statuses:
+        any of the following statuses:
             - None: Readiness check is pending
             - True: Readiness check completed successfully (proxy is ready)
             - False: Readiness check completed with failure (either timing out
@@ -207,10 +207,9 @@ class ActorProxyWrapper(ProxyWrapper):
                         f" didn't complete in {timeout_s}s."
                     )
                 else:
-                    logger.error(
+                    logger.exception(
                         f"Unexpected error invoking readiness check for proxy"
                         f" on {self._node_id}",
-                        exc_info=e,
                     )
 
                 return False
