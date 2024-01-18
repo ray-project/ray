@@ -68,10 +68,12 @@ class BaseNodeLauncher:
         count: int,
         node_type: str,
         raise_exception: bool = False,  # Only True in v2 now
-        request_id: str = "", # Only used in v2 now
+        request_id: str = "",  # Only used in v2 now
     ) -> Optional[Dict]:
         self.log("Got {} nodes to launch.".format(count))
-        created_nodes = self._launch_node(config, count, node_type, raise_exception, request_id)
+        created_nodes = self._launch_node(
+            config, count, node_type, raise_exception, request_id
+        )
         self.pending.dec(node_type, count)
         return created_nodes
 
@@ -106,7 +108,7 @@ class BaseNodeLauncher:
             TAG_RAY_NODE_KIND: NODE_KIND_WORKER,
             TAG_RAY_NODE_STATUS: STATUS_UNINITIALIZED,
             TAG_RAY_LAUNCH_CONFIG: launch_hash,
-            TAG_RAY_LAUNCH_REQUEST: request_id
+            TAG_RAY_LAUNCH_REQUEST: request_id,
         }
         # A custom node type is specified; set the tag in this case, and also
         # merge the configs. We merge the configs instead of overriding, so
