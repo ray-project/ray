@@ -330,7 +330,7 @@ class NodeProviderAdapter(ICloudInstanceProvider):
     def poll_errors(self) -> List[CloudInstanceProviderError]:
         errors = []
         while not self._errors_q.empty():
-            errors.append(self._errors_q.get())
+            errors.append(self._errors_q.get_nowait())
         return errors
 
     def launch(
