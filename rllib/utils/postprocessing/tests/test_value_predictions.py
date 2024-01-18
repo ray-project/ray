@@ -38,3 +38,10 @@ class TestPostprocessing(unittest.TestCase):
             T=T,
         )
         check(result, [1, "b", 5, 2, 1, 3, 2, "c"])
+
+
+if __name__ == "__main__":
+    import pytest
+    import sys
+
+    sys.exit(pytest.main(["-v", __file__]))
