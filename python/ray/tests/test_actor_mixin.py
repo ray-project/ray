@@ -4,7 +4,7 @@ import os
 import sys
 import pytest
 
-from ray.experimental.better_actor import ActorMixin, remote_method
+from ray.experimental.better_actor import ActorMixin, remote_method, Actor as RayActor
 import ray
 
 
@@ -127,6 +127,29 @@ def test_actor_hash(ray_start_2_cpus):
     actor2 = Actor.new_actor().remote(2)
     assert hash(actor1) == hash(actor1)
     assert hash(actor1) != hash(actor2)
+
+
+def test_pass_actor_as_remote_arg(ray_start_2_cpus):
+    class Actor1(ActorMixin):
+        def __init__(self, x: int) -> None:
+            self.x = x
+
+        @remote_method
+        def get_x(self) -> int:
+            return self.x
+
+    class Actor2(ActorMixin):
+        def __init__(self, actor: RayActor[Actor1]) -> None:
+            self.actor = actor
+
+        @remote_method
+        def get_x(self) -> int:
+            return ray.get(self.actor.methods.get_x.remote())
+
+    x = 1
+    actor1 = Actor1.new_actor().remote(x)
+    actor2 = Actor2.new_actor().remote(actor1)
+    assert ray.get(actor2.methods.get_x.remote()) == x
 
 
 if __name__ == "__main__":
