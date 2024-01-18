@@ -144,8 +144,7 @@ class TestPPO(unittest.TestCase):
             )
             .rollouts(
                 # Run locally.
-                num_rollout_workers=1,
-                enable_connectors=True,
+                num_rollout_workers=0,
             )
         )
         obs = np.array(0)

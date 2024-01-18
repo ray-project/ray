@@ -873,6 +873,7 @@ class AlgorithmConfig(_Config):
         return pipeline
 
     def build_module_to_env_connector(self, env):
+
         from ray.rllib.connectors.module_to_env import (
             DefaultModuleToEnv,
             ModuleToEnvPipeline,
@@ -2743,16 +2744,16 @@ class AlgorithmConfig(_Config):
         """Automatically infers a proper rollout_fragment_length setting if "auto".
 
         Uses the simple formula:
-        `rollout_fragment_length` = `train_batch_size` /
+        `rollout_fragment_length` = `total_train_batch_size` /
         (`num_envs_per_worker` * `num_rollout_workers`)
 
         If result is a fraction AND `worker_index` is provided, will make
         those workers add additional timesteps, such that the overall batch size (across
-        the workers) will add up to exactly the `train_batch_size`.
+        the workers) will add up to exactly the `total_train_batch_size`.
 
         Returns:
             The user-provided `rollout_fragment_length` or a computed one (if user
-            provided value is "auto"), making sure `train_batch_size` is reached
+            provided value is "auto"), making sure `total_train_batch_size` is reached
             exactly in each iteration.
         """
         if self.rollout_fragment_length == "auto":
@@ -3118,7 +3119,7 @@ class AlgorithmConfig(_Config):
 
         Raises:
             ValueError: If there is a mismatch between user provided
-            `rollout_fragment_length` and `train_batch_size`.
+            `rollout_fragment_length` and `total_train_batch_size`.
         """
         if (
             self.rollout_fragment_length != "auto"
@@ -3142,7 +3143,9 @@ class AlgorithmConfig(_Config):
                     self.num_envs_per_worker * (self.num_rollout_workers or 1)
                 )
                 raise ValueError(
-                    f"Your desired `train_batch_size` ({self.total_train_batch_size}) "
+                    "Your desired `total_train_batch_size` "
+                    f"({self.total_train_batch_size}={self.num_learner_workers} "
+                    f"learners x {self.train_batch_size_per_learner}) "
                     "or a value 10% off of that cannot be achieved with your other "
                     f"settings (num_rollout_workers={self.num_rollout_workers}; "
                     f"num_envs_per_worker={self.num_envs_per_worker}; "
@@ -3603,8 +3606,7 @@ class AlgorithmConfig(_Config):
         """Checks, whether evaluation related settings make sense."""
         if (
             self.evaluation_interval
-            and self.env_runner_cls is not None
-            and not issubclass(self.env_runner_cls, RolloutWorker)
+            and self.uses_new_env_runners
             and not self.enable_async_evaluation
         ):
             raise ValueError(
