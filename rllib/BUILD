@@ -1444,6 +1444,13 @@ py_test(
 )
 
 py_test(
+    name = "utils/postprocessing/test_value_predictions",
+    tags = ["team:rllib", "utils"],
+    size = "small",
+    srcs = ["utils/postprocessing/test_value_predictions"]
+)
+
+py_test(
     name = "test_random_encoder",
     tags = ["team:rllib", "utils"],
     size = "large",
@@ -1451,7 +1458,7 @@ py_test(
 )
 
 py_test(
-    name = "utils/tests/test_torch_utils",
+    name = "test_torch_utils",
     tags = ["team:rllib", "utils", "gpu"],
     size = "medium",
     srcs = ["utils/tests/test_torch_utils.py"]
