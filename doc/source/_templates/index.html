@@ -187,21 +187,21 @@ predictions.show(limit=1)
 from ray.train import ScalingConfig
 from ray.train.torch import TorchTrainer
 
-# Step 1: setup PyTorch model training as you normally would
-def train_loop_per_worker():
+# Step 1: Set up PyTorch model training as you normally would.
+def train_func():
     model = ...
     train_dataset = ...
     for epoch in range(num_epochs):
         ...  # model training logic
 
-# Step 2: setup Ray\'s PyTorch Trainer to run on 32 GPUs
+# Step 2: Set up Ray\'s PyTorch Trainer to run on 32 GPUs.
 trainer = TorchTrainer(
-    train_loop_per_worker=train_loop_per_worker,
+    train_loop_per_worker=train_func,
     scaling_config=ScalingConfig(num_workers=32, use_gpu=True),
     datasets={"train": train_dataset},
 )
 
-# Step 3: run distributed model training on 32 GPUs
+# Step 3: Run distributed model training on 32 GPUs.
 result = trainer.fit()
         ''') }}
           <div class="row" style="padding: 16px">
@@ -237,21 +237,21 @@ from ray.train.lightgbm import LightGBMTrainer
 
 train_dataset, eval_dataset = ...
 
-# Step 1: setup Ray\'s LightGBM Trainer to train on 64 CPUs
+# Step 1: Set up Ray\'s LightGBM Trainer to train on 64 CPUs.
 trainer = LightGBMTrainer(
     ...
     scaling_config=ScalingConfig(num_workers=64),
     datasets={"train": train_dataset, "eval": eval_dataset},
 )
 
-# Step 2: setup Ray Tuner to run 1000 trials
+# Step 2: Set up Ray Tuner to run 1000 trials.
 tuner = tune.Tuner(
     trainer=trainer,
     param_space=hyper_param_space,
     tune_config=tune.TuneConfig(num_samples=1000),
 )
 
-# Step 3: run distributed HPO with 1000 trials; each trial runs on 64 CPUs
+# Step 3: Run distributed HPO with 1000 trials; each trial runs on 64 CPUs.
 result_grid = tuner.fit()
         ''') }}
           <div class="row" style="padding: 16px">
@@ -371,7 +371,7 @@ entrypoint = APIIngress.bind(StableDiffusionV2.bind())
         {{ pygments_highlight_python('''
 from ray.rllib.algorithms.ppo import PPOConfig
 
-# Step 1: configure PPO to run 64 parallel workers to collect samples from the env.
+# Step 1: Configure PPO to run 64 parallel workers to collect samples from the env.
 ppo_config = (
     PPOConfig()
     .environment(env="Taxi-v3")
@@ -380,10 +380,10 @@ ppo_config = (
     .training(model=rnn_lage)
 )
 
-# Step 2: build the PPO algorithm
+# Step 2: Build the PPO algorithm.
 ppo_algo = ppo_config.build()
 
-# Step 3: train and evaluate PPO
+# Step 3: Train and evaluate PPO.
 for _ in range(5):
     print(ppo_algo.train())
 
