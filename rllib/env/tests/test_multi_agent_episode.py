@@ -175,7 +175,9 @@ class TestMultiAgentEpisode(unittest.TestCase):
                 {agent_id: {"extra_1": 10.5} for agent_id in agents_to_step_next}
             )
 
-        # Now create the episode from the recorded data.
+        # Now create the episode from the recorded data. Pretend that the given data
+        # is all part of the lookback buffer and the episode (chunk) started at the
+        # end of that lookback buffer data.
         episode = MultiAgentEpisode(
             agent_ids=list(env.get_agent_ids()),
             observations=observations,
@@ -185,10 +187,12 @@ class TestMultiAgentEpisode(unittest.TestCase):
             terminateds=terminateds,
             truncateds=truncateds,
             extra_model_outputs=extra_model_outputs,
+            t_started=len(rewards),
+            len_lookback_buffer=None,  # default
         )
 
         # The starting point and count should now be at `len(observations) - 1`.+
-        self.assertTrue(episode.t == episode.t_started == (len(observations) - 1))
+        self.assertTrue(episode.t == episode.t_started == len(rewards))
         # Assert that agent 1 and agent 5 are both terminated.
         self.assertTrue(episode.agent_episodes["agent_1"].is_terminated)
         self.assertTrue(episode.agent_episodes["agent_5"].is_terminated)

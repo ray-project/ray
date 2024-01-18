@@ -225,7 +225,7 @@ class TimestepMappingWithInfiniteLookback:
         stop = global_timesteps.stop
         step = global_timesteps.step
 
-        if stop < start and step > 0:
+        if (start is not None and stop is not None and step is not None) and stop < start and step > 0:
             return []
 
         if start is None:

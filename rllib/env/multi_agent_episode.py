@@ -47,7 +47,7 @@ class MultiAgentEpisode:
         render_images: Optional[List[np.ndarray]] = None,
         extra_model_outputs: Optional[List[MultiAgentDict]] = None,
         t_started: Optional[int] = None,
-        len_lookback_buffer: Optional[int] = 0,
+        len_lookback_buffer: Optional[int] = None,
     ) -> "MultiAgentEpisode":
         """Initializes a `MultiAgentEpisode`.
 
@@ -99,6 +99,19 @@ class MultiAgentEpisode:
                 of the episode. This is only larger zero, if an ongoing episode is
                 created, for example by slicing an ongoing episode or by calling
                 the `cut()` method on an ongoing episode.
+            len_lookback_buffer: The size of the (optional) lookback buffers to keep in
+                front of this Episode for each type of data (observations, actions,
+                etc..). If larger 0, will interpret the first `len_lookback_buffer`
+                items in each type of data as NOT part of this actual
+                episode chunk, but instead serve as "historical" record that may be
+                viewed and used to derive new data from. For example, it might be
+                necessary to have a lookback buffer of four if you would like to do
+                observation frame stacking and your episode has been cut and you are now
+                operating on a new chunk (continuing from the cut one). Then, for the
+                first 3 items, you would have to be able to look back into the old
+                chunk's data.
+                If `len_lookback_buffer` is None, will interpret all provided data in
+                the constructor as part of the lookback buffers.
         """
 
         self.id_: str = id_ or uuid.uuid4().hex
@@ -117,15 +130,25 @@ class MultiAgentEpisode:
         self.agent_to_module_map: Dict[AgentID, ModuleID] = {}
 
         # The global last timestep of the episode and the timesteps when this chunk
-        # started.
-        self.t = self.t_started = (
-            t_started
-            if t_started is not None
-            else (len(observations) - 1 if observations is not None else 0)
+        # started (excluding a possible lookback buffer).
+        self.t_started = t_started or 0
+
+        self.t = (
+            (len(rewards) if rewards is not None else 0)
+            - len_lookback_buffer
+            + self.t_started
         )
 
+        # The global last timestep of the episode and the timesteps when this chunk
+        # started.
+        #self.t = self.t_started = (
+        #    t_started
+        #    if t_started is not None
+        #    else (len(observations) - 1 if observations is not None else 0)
+        #)
+
         self.ts_carriage_return: int = self.t_started - (
-            len(observations) - 1 if observations else 0
+            len(rewards) if rewards is not None else 0
         )
         # Keeps track of the correspondence between agent steps and environment steps.
         # This is a mapping from agents to `_IndexMapping`. The latter keeps
@@ -1103,7 +1126,7 @@ class MultiAgentEpisode:
         # this might be removed.
         if len(self.global_t_to_local_t) == 0:
             self.global_t_to_local_t = {
-                agent_id: _IndexMapping() for agent_id in self._agent_ids
+                agent_id: TimestepMappingWithInfiniteLookback() for agent_id in self._agent_ids
             }
 
         # Note that we store the render images into the `MultiAgentEpisode`
@@ -1822,63 +1845,63 @@ class MultiAgentEpisode:
         else:
             return env_return
 
-    def _generate_action_timestep_mappings(self):
-        # Note, here we use the indices that are from the predecessor, i.e.
-        # these timesteps do not occur in the successor. This will have
-        # the consequences that `get_actions()` will not list any actions
-        # that come from the buffers of the predecessor.
-        return {
-            agent_id: _IndexMapping([self.global_actions_t[agent_id][-1]])
-            if agent_buffer["actions"].full()
-            else _IndexMapping()
-            for agent_id, agent_buffer in self.agent_buffers.items()
-        }
+    # def _generate_action_timestep_mappings(self):
+    #    # Note, here we use the indices that are from the predecessor, i.e.
+    #    # these timesteps do not occur in the successor. This will have
+    #    # the consequences that `get_actions()` will not list any actions
+    #    # that come from the buffers of the predecessor.
+    #    return {
+    #        agent_id: _IndexMapping([self.global_actions_t[agent_id][-1]])
+    #        if agent_buffer["actions"].full()
+    #        else _IndexMapping()
+    #        for agent_id, agent_buffer in self.agent_buffers.items()
+    #    }
 
-    def _add_partial_rewards(self, successor):
-        # TODO (simon): This could be made simpler with a reward buffer that
-        # is longer than 1 and does not add, but append. Then we just collect
-        # the buffer.
-        for agent_id, agent_partial_rewards in self.partial_rewards.items():
-            # If a global timestep mapping exists for the agent use it.
-            if self.global_t_to_local_t[agent_id]:
-                # The successor episode only need the partial rewards that
-                # have not yet recorded in the `SingleAgentEpisode`.
-                indices_to_keep = self.partial_rewards_t[agent_id].find_indices_right(
-                    self.global_t_to_local_t[agent_id][-1],
-                )
-            # Otherwise, use the partial rewards timestep mapping.
-            else:
-                # The partial rewards timestep mapping does only exist for agents that
-                # have stepped or have not stepped and received at least a single
-                # partial reward.
-                if self.partial_rewards_t[agent_id]:
-                    indices_to_keep = list(range(len(self.partial_rewards_t[agent_id])))
-                # Otherwise return an empty index list.
-                else:
-                    indices_to_keep = []
+    # def _add_partial_rewards(self, successor):
+    #    # TODO (simon): This could be made simpler with a reward buffer that
+    #    # is longer than 1 and does not add, but append. Then we just collect
+    #    # the buffer.
+    #    for agent_id, agent_partial_rewards in self.partial_rewards.items():
+    #        # If a global timestep mapping exists for the agent use it.
+    #        if self.global_t_to_local_t[agent_id]:
+    #            # The successor episode only need the partial rewards that
+    #            # have not yet recorded in the `SingleAgentEpisode`.
+    #            indices_to_keep = self.partial_rewards_t[agent_id].find_indices_right(
+    #                self.global_t_to_local_t[agent_id][-1],
+    #            )
+    #        # Otherwise, use the partial rewards timestep mapping.
+    #        else:
+    #            # The partial rewards timestep mapping does only exist for agents that
+    #            # have stepped or have not stepped and received at least a single
+    #            # partial reward.
+    #            if self.partial_rewards_t[agent_id]:
+    #                indices_to_keep = list(range(len(self.partial_rewards_t[agent_id])))
+    #            # Otherwise return an empty index list.
+    #            else:
+    #                indices_to_keep = []
 
-            successor.partial_rewards_t[agent_id] = _IndexMapping(
-                map(self.partial_rewards_t[agent_id].__getitem__, indices_to_keep)
-            )
-            successor.partial_rewards[agent_id] = list(
-                map(agent_partial_rewards.__getitem__, indices_to_keep)
-            )
-            # Leave partial results after the last observation in the buffer
-            # as long as the agent is not temrinated/truncated.
-            # Note, we still need to consider the `partial_rewards` and
-            # `partial_rewards_t` for two reasons:
-            #   1. The agent is terminated in the last step before creating
-            #       this successor.
-            #   2. We might want to concatenate the successor to its
-            #       predecessor and therefore need structs for each agent
-            #       (dead or alive).
-            if not self.agent_episodes[agent_id].is_done:
-                successor.agent_buffers[agent_id]["rewards"].get_nowait()
-                successor.agent_buffers[agent_id]["rewards"].put_nowait(
-                    sum(successor.partial_rewards[agent_id])
-                )
+    #        successor.partial_rewards_t[agent_id] = _IndexMapping(
+    #            map(self.partial_rewards_t[agent_id].__getitem__, indices_to_keep)
+    #        )
+    #        successor.partial_rewards[agent_id] = list(
+    #            map(agent_partial_rewards.__getitem__, indices_to_keep)
+    #        )
+    #        # Leave partial results after the last observation in the buffer
+    #        # as long as the agent is not temrinated/truncated.
+    #        # Note, we still need to consider the `partial_rewards` and
+    #        # `partial_rewards_t` for two reasons:
+    #        #   1. The agent is terminated in the last step before creating
+    #        #       this successor.
+    #        #   2. We might want to concatenate the successor to its
+    #        #       predecessor and therefore need structs for each agent
+    #        #       (dead or alive).
+    #        if not self.agent_episodes[agent_id].is_done:
+    #            successor.agent_buffers[agent_id]["rewards"].get_nowait()
+    #            successor.agent_buffers[agent_id]["rewards"].put_nowait(
+    #                sum(successor.partial_rewards[agent_id])
+    #            )
 
-        return successor
+    #    return successor
 
     def _generate_ts_mapping(
         self, observations: List[MultiAgentDict], len_lookback_buffer: int
@@ -1972,13 +1995,13 @@ class MultiAgentEpisode:
         # If an episode id for an agent episode was provided assign it.
         episode_id = None if agent_episode_ids is None else agent_episode_ids[agent_id]
         # We need the timestep mapping to create single agent's episode.
-        if self.global_t_to_local_t and self.global_t_to_local_t[agent_id]:
+        if agent_id in self.global_t_to_local_t:
             # Set to None if not provided.
             agent_observations = (
                 None
                 if observations is None
                 else self._get_single_agent_data(
-                    agent_id, observations, shift=-self.ts_carriage_return
+                    agent_id, observations, use_global_t_to_local_t=False, #shift=-self.ts_carriage_return
                 )
             )
 
@@ -2012,7 +2035,7 @@ class MultiAgentEpisode:
                 None
                 if infos is None
                 else self._get_single_agent_data(
-                    agent_id, infos, shift=-self.ts_carriage_return
+                    agent_id, infos, use_global_t_to_local_t=False,#shift=-self.ts_carriage_return
                 )
             )
 
@@ -2074,37 +2097,39 @@ class MultiAgentEpisode:
             #       and added to the next observation.
             # All partial rewards are recorded in `partial_rewards` together
             # with their corresponding timesteps in `partial_rewards_t`.
-            if agent_rewards and observations:
-                partial_agent_rewards_t = TimestepMappingWithInfiniteLookback(
-                    lookback=len_lookback_buffer, t_started=self.t_started,
-                )
-                partial_agent_rewards = []
-                agent_rewards = []
-                agent_reward = 0.0
-                for t, reward in enumerate(rewards):
-                    if agent_id in reward:
-                        # Add the rewards
-                        partial_agent_rewards.append(reward[agent_id])
-                        # Then add the reward.
-                        agent_reward += reward[agent_id]
-                        # Note, rewards start at timestep 1 (there are no initial ones).
-                        # TODO (simon): Check, if we need to use here also
-                        # `ts_carriage_return`.
-                        partial_agent_rewards_t.append(t + self.ts_carriage_return + 1)
-                        if (
-                            t + self.ts_carriage_return + 1
-                        ) in self.global_t_to_local_t[agent_id][1:]:
-                            agent_rewards.append(agent_reward)
-                            agent_reward = 0.0
+            # if agent_rewards and observations:
+            #    partial_agent_rewards_t = TimestepMappingWithInfiniteLookback(
+            #        lookback=len_lookback_buffer, t_started=self.t_started,
+            #    )
+            #    partial_agent_rewards = []
+            #    new_agent_rewards = []
+            #    agent_reward = 0.0
+            #    for t, reward in enumerate(rewards):
+            #        if agent_id not in reward:
+            #            continue
 
-                # If the agent reward is not zero, we must have rewards that came
-                # after the last observation. Then we buffer this reward.
-                self.agent_buffers[agent_id]["rewards"].put_nowait(
-                    self.agent_buffers[agent_id]["rewards"].get_nowait() + agent_reward
-                )
-                # Now save away the original rewards and the reward timesteps.
-                self.partial_rewards_t[agent_id] = partial_agent_rewards_t
-                self.partial_rewards[agent_id] = partial_agent_rewards
+            #        # Add the rewards.
+            #        partial_agent_rewards.append(reward[agent_id])
+            #        # Then add the reward.
+            #        agent_reward += reward[agent_id]
+            #        # Note, rewards start at timestep 1 (there are no initial ones).
+            #        # TODO (simon): Check, if we need to use here also
+            #        # `ts_carriage_return`.
+            #        partial_agent_rewards_t.append(t + self.ts_carriage_return + 1)
+            #        if (t + self.ts_carriage_return + 1) in self.global_t_to_local_t[agent_id][1:]:
+            #            new_agent_rewards.append(agent_reward)
+            #            agent_reward = 0.0
+
+            #    # If the agent reward is not zero, we must have rewards that came
+            #    # after the last observation. Then we buffer this reward.
+            #    self.agent_buffers[agent_id]["rewards"].put_nowait(
+            #        self.agent_buffers[agent_id]["rewards"].get_nowait() + agent_reward
+            #    )
+            #    # Now save away the original rewards and the reward timesteps.
+            #    self.partial_rewards_t[agent_id] = partial_agent_rewards_t
+            #    self.partial_rewards[agent_id] = partial_agent_rewards
+
+            #    agent_rewards = new_agent_rewards
 
             return SingleAgentEpisode(
                 id_=episode_id,

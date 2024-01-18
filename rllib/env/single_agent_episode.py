@@ -218,7 +218,7 @@ class SingleAgentEpisode:
                 first 3 items, you would have to be able to look back into the old
                 chunk's data.
                 If `len_lookback_buffer` is None, will interpret all provided data in
-                constructor as part of the lookback buffers.
+                the constructor as part of the lookback buffers.
         """
         self.id_ = id_ or uuid.uuid4().hex
 
@@ -291,10 +291,10 @@ class SingleAgentEpisode:
         assert render_images is None or observations is not None
         self.render_images = render_images or []
 
-        # The global last timestep of the episode and the timesteps when this chunk
-        # started (excluding a possible lookback buffer).
+        # The (global) timestep when this episode (possibly an episode chunk) started,
+        # excluding a possible lookback buffer.
         self.t_started = t_started or 0
-
+        # The current (global) timestep in the episode (possibly an episode chunk).
         self.t = (
             (len(rewards) if rewards is not None else 0)
             - len_lookback_buffer
@@ -478,7 +478,7 @@ class SingleAgentEpisode:
             for k, v in self.extra_model_outputs.items():
                 assert len(v) == 0
         # Make sure we always have one more obs stored than rewards (and actions)
-        # due to the reset and last-obs logic of an MDP.
+        # due to the reset/last-obs logic of an MDP.
         else:
             assert (
                 len(self.observations)
