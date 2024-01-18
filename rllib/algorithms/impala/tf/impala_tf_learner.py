@@ -137,9 +137,7 @@ class ImpalaTfLearner(ImpalaLearner, TfLearner):
     @override(ImpalaLearner)
     def _compute_values(self, batch):
         infos = batch.pop(SampleBatch.INFOS, None)
-        batch = tree.map_structure(
-            lambda s: tf.convert_to_tensor(s), batch
-        )
+        batch = tree.map_structure(lambda s: tf.convert_to_tensor(s), batch)
         if infos is not None:
             batch[SampleBatch.INFOS] = infos
 
