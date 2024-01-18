@@ -3,6 +3,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING, Generic, TypeVar, overload
 
 import ray
+from ray.actor import ActorHandle
 
 __all__ = ["remote_method", "ActorMixin", "Actor"]
 
@@ -456,12 +457,12 @@ else:
 
 
 class Actor(Generic[_ClassT]):
-    def __init__(self, actor_handle):
+    def __init__(self, actor_handle: ActorHandle):
         self._actor_handle = actor_handle
 
     @property
     def methods(self) -> type[_ClassT]:
-        return self._actor_handle
+        return self._actor_handle  # type: ignore[return-value]
 
     def __repr__(self) -> str:
         return repr(self._actor_handle)
