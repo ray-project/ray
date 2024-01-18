@@ -143,14 +143,16 @@ async def receive_http_body(scope, receive, send):
 class MessageQueue(Send):
     """Queue enables polling for received or sent messages.
 
-    This class assumes a single consumer of the queue (concurrent calls to
-    `get_messages_nowait` and `wait_for_message` is undefined behavior).
+    Implements the ASGI `Send` interface.
 
-    This class implements the ASGI `Send` interface.
+    This class:
+        - Is *NOT* thread safe and should only be accessed from a single asyncio
+          event loop.
+        - Assumes a single consumer of the queue (concurrent calls to
+          `get_messages_nowait` and `wait_for_message` is undefined behavior).
     """
 
     def __init__(self):
-        # NOTE(edoakes): `deque` appends and pops are thread safe in CPython.
         self._message_queue = deque()
         self._new_message_event = asyncio.Event()
         self._closed = False
