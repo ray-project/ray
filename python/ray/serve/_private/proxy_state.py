@@ -759,7 +759,7 @@ class ProxyStateManager:
             proxy_state.shutdown()
 
 
-def _try_cancel_future(fut: asyncio.Future, e: Exception):
+def _try_set_exception(fut: asyncio.Future, e: Exception):
     if not fut.done():
         fut.set_exception(e)
 
@@ -767,11 +767,11 @@ def _try_cancel_future(fut: asyncio.Future, e: Exception):
 def wrap_as_future(ref: ObjectRef, timeout_s: float) -> asyncio.Future:
     loop = asyncio.get_running_loop()
 
-    aio_fut = asyncio.wrap_future(ref.future(), loop=loop)
-    # Schedule cancellation for the future
+    aio_fut = asyncio.wrap_future(ref.future())
+    # Schedule handle to time out the future
     timeout_handler = loop.call_later(
         max(timeout_s, 0),
-        _try_cancel_future,
+        _try_set_exception,
         aio_fut,
         TimeoutError(f"Future cancelled after timeout {timeout_s}s"),
     )
