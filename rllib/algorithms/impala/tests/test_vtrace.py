@@ -39,7 +39,7 @@ def _ground_truth_vtrace_calculation(
     log_rhos: np.ndarray,
     rewards: np.ndarray,
     values: np.ndarray,
-    bootstrap_values: np.ndarray,
+    bootstrap_value: np.ndarray,
     clip_rho_threshold: float,
     clip_pg_rho_threshold: float,
 ):
@@ -97,7 +97,7 @@ def _ground_truth_vtrace_calculation(
     # notation
     # of the paper is inclusive of the `t-1`, but Python is exclusive.
     # Also note that np.prod([]) == 1.
-    values_t_plus_1 = np.concatenate([values[1:], bootstrap_values[None, :]], axis=0)
+    values_t_plus_1 = np.concatenate([values[1:], bootstrap_value[None, :]], axis=0)
     for s in range(seq_len):
         v_s = np.copy(values[s])  # Very important copy.
         for t in range(s, seq_len):
@@ -111,7 +111,7 @@ def _ground_truth_vtrace_calculation(
     vs = np.stack(vs, axis=0)
     pg_advantages = clipped_pg_rhos * (
         rewards
-        + discounts * np.concatenate([vs[1:], bootstrap_values[None, :]], axis=0)
+        + discounts * np.concatenate([vs[1:], bootstrap_value[None, :]], axis=0)
         - values
     )
     return vs, pg_advantages

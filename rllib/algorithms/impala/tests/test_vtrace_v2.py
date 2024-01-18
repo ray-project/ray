@@ -117,7 +117,7 @@ class TestVtraceRLModule(unittest.TestCase):
             log_rhos=log_rhos,
             rewards=cls.rewards_time_major,
             values=cls.values_time_major,
-            bootstrap_values=cls.bootstrap_values,
+            bootstrap_value=cls.bootstrap_values,
             clip_rho_threshold=cls.clip_rho_threshold,
             clip_pg_rho_threshold=cls.clip_pg_rho_threshold,
         )
