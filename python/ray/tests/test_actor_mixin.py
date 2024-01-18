@@ -107,6 +107,28 @@ def test_directly_call_remote_method_will_fail(ray_start_2_cpus):
         actor.methods.add(1)
 
 
+def test_actor_eq(ray_start_2_cpus):
+    class Actor(ActorMixin):
+        def __init__(self, x: int) -> None:
+            self.x = x
+
+    actor1 = Actor.new_actor().remote(1)
+    actor2 = Actor.new_actor().remote(2)
+    assert actor1 == actor1
+    assert actor1 != actor2
+
+
+def test_actor_hash(ray_start_2_cpus):
+    class Actor(ActorMixin):
+        def __init__(self, x: int) -> None:
+            self.x = x
+
+    actor1 = Actor.new_actor().remote(1)
+    actor2 = Actor.new_actor().remote(2)
+    assert hash(actor1) == hash(actor1)
+    assert hash(actor1) != hash(actor2)
+
+
 if __name__ == "__main__":
     if os.environ.get("PARALLEL_CI"):
         sys.exit(pytest.main(["-n", "auto", "--boxed", "-vs", __file__]))
