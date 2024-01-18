@@ -59,6 +59,9 @@ class InfiniteLookbackTimestepMapping:
         """
         return len(self.timesteps[self.lookback :])  # - self.lookback
 
+    def __iter__(self):
+        return iter(self.timesteps)
+
     def __getitem__(self, item):
         """Gets a global timestep."""
         return self.timesteps[item]
@@ -136,7 +139,7 @@ class InfiniteLookbackTimestepMapping:
         global_timesteps: Optional[Union[int, List[int], slice]] = None,
         *,
         neg_timesteps_left_of_zero: bool = False,
-        fill: float = None,
+        #fill: float = None,
         #return_none: bool = False,
         t: int = 0,
         #shift: int = 0,
@@ -180,7 +183,7 @@ class InfiniteLookbackTimestepMapping:
                 global_timesteps,
                 neg_timesteps_left_of_zero=neg_timesteps_left_of_zero,
                 #return_none=return_none,
-                #t=t,
+                t=t,
                 #shift=shift,
             )
 
@@ -192,7 +195,7 @@ class InfiniteLookbackTimestepMapping:
         return self.timesteps
 
     def _get_single_local_timestep(
-        self, global_timesteps, neg_timesteps_left_of_zero, #return_none, t #, shift=0
+        self, global_timesteps, neg_timesteps_left_of_zero, t, #return_none, t #, shift=0
     ):
         # User wants negative timesteps.
         if global_timesteps < 0:

@@ -228,10 +228,10 @@ class TestMultiAgentEpisode(unittest.TestCase):
             [
                 max(timesteps)
                 for timesteps in episode.global_t_to_local_t.values()
-                if len(timesteps) > 0
+                if len(timesteps.timesteps) > 0
             ]
         )
-        self.assertGreaterEqual(100, highest_index)
+        self.assertGreaterEqual(10, highest_index)
         # Assert that agent 5 is terminated.
         self.assertTrue(episode.agent_episodes["agent_5"].is_terminated)
 

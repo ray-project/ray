@@ -408,10 +408,10 @@ class MultiAgentEpisode:
                 agent_id: agent_map.get_local_timesteps(
                     indices,
                     neg_timesteps_left_of_zero=neg_indices_left_of_zero,
-                    fill=fill,
+                    #fill=fill,
                     # Return `None` for timesteps not found, if user wants list.
-                    return_none=as_list,
-                    t=self.t,
+                    #return_none=as_list,
+                    #t=self.t,
                 )
                 for agent_id, agent_map in self.global_t_to_local_t.items()
                 if agent_id in agent_ids
