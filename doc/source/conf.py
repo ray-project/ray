@@ -19,6 +19,7 @@ from custom_directives import (  # noqa
     LinkcheckSummarizer,
     parse_navbar_config,
     setup_context,
+    pregenerate_example_rsts,
 )
 
 # If extensions (or modules to document with autodoc) are in another directory,
@@ -298,7 +299,7 @@ html_context = {
 
 html_sidebars = {
     "**": ["main-sidebar"],
-    "ray-overview/examples": ["examples-sidebar"],
+    "ray-overview/examples": [],
 }
 
 # The name for this set of Sphinx documents.  If None, it defaults to
@@ -391,12 +392,20 @@ def add_custom_assets(
         app.add_js_file("js/index.js")
         return "index.html"  # Use the special index.html template for this page
 
-    if pagename == "train/train":
-        app.add_css_file("css/ray-train.css")
-    elif pagename == "ray-overview/examples":
-        # Example gallery
+    if pagename == "ray-overview/examples":
         app.add_css_file("css/examples.css")
         app.add_js_file("js/examples.js")
+        return "ray-overview/examples.html"
+
+    if pagename in [
+        "data/examples",
+        "train/examples",
+        "serve/examples",
+    ]:
+        return "examples.html"
+
+    if pagename == "train/train":
+        app.add_css_file("css/ray-train.css")
     elif pagename == "ray-overview/ray-libraries":
         app.add_css_file("css/ray-libraries.css")
     elif pagename == "ray-overview/use-cases":
@@ -404,6 +413,8 @@ def add_custom_assets(
 
 
 def setup(app):
+    pregenerate_example_rsts(app)
+
     # NOTE: 'MOCK' is a custom option we introduced to illustrate mock outputs. Since
     # `doctest` doesn't support this flag by default, `sphinx.ext.doctest` raises
     # warnings when we build the documentation.

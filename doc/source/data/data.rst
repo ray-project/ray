@@ -10,7 +10,7 @@ Ray Data: Scalable Datasets for ML
     Overview <overview>
     key-concepts
     user-guide
-    examples/index
+    examples
     api/api
     data-internals
 
@@ -94,7 +94,7 @@ Learn more
         Find both simple and scaling-out examples of using Ray Data.
 
         +++
-        .. button-ref:: data-recipes
+        .. button-ref:: examples
             :color: primary
             :outline:
             :expand:

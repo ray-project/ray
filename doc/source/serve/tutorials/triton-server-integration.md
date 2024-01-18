@@ -1,3 +1,6 @@
+---
+orphan: true
+---
 (serve-triton-server-integration)=
 
 # Serving models with Triton Server in Ray Serve
