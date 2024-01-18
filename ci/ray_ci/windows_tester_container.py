@@ -19,6 +19,7 @@ class WindowsTesterContainer(TesterContainer, WindowsContainer):
             self,
             shard_count,
             gpus=0,  # We don't support GPU tests on Windows yet.
+            bazel_log_dir="C:\\msys64\\tmp\\bazel_event_logs",
             network=network,
             test_envs=test_envs,
             shard_ids=shard_ids,

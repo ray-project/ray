@@ -48,6 +48,7 @@ from ray.rllib.utils.numpy import convert_to_numpy
 from ray.rllib.utils.schedules.scheduler import Scheduler
 from ray.rllib.utils.serialization import serialize_type
 from ray.rllib.utils.typing import (
+    EpisodeType,
     LearningRateOrSchedule,
     ModuleID,
     Optimizer,
@@ -1097,27 +1098,26 @@ class Learner:
 
         return results
 
-    def update(
+    def update_from_batch(
         self,
         batch: MultiAgentBatch,
         *,
-        minibatch_size: Optional[int] = None,
-        num_iters: int = 1,
         reduce_fn: Callable[[List[Dict[str, Any]]], ResultDict] = (
             _reduce_mean_results
         ),
+        # TODO (sven): Deprecate these in favor of config attributes for only those
+        #  algos that actually need (and know how) to do minibatching.
+        minibatch_size: Optional[int] = None,
+        num_iters: int = 1,
     ) -> Union[Dict[str, Any], List[Dict[str, Any]]]:
-        """Do `num_iters` minibatch updates given the original batch.
+        """Do `num_iters` minibatch updates given a train batch.
 
-        Given a batch of episodes you can use this method to take more
-        than one backward pass on the batch. The same minibatch_size and num_iters
-        will be used for all module ids in MultiAgentRLModule.
+        You can use this method to take more than one backward pass on the batch.
+        The same `minibatch_size` and `num_iters` will be used for all module ids in
+        MultiAgentRLModule.
 
         Args:
-            batch: A batch of data.
-            minibatch_size: The size of the minibatch to use for each update.
-            num_iters: The number of complete passes over all the sub-batches
-                in the input multi-agent batch.
+            batch: A batch of training data to update from.
             reduce_fn: reduce_fn: A function to reduce the results from a list of
                 minibatch updates. This can be any arbitrary function that takes a
                 list of dictionaries and returns a single dictionary. For example you
@@ -1125,81 +1125,97 @@ class Learner:
                 example for metrics) or be more selective about you want to report back
                 to the algorithm's training_step. If None is passed, the results will
                 not get reduced.
+            minibatch_size: The size of the minibatch to use for each update.
+            num_iters: The number of complete passes over all the sub-batches
+                in the input multi-agent batch.
+
         Returns:
             A dictionary of results, in numpy format or a list of such dictionaries in
             case `reduce_fn` is None and we have more than one minibatch pass.
         """
-        self._check_is_built()
+        return self._update_from_batch_or_episodes(
+            batch=batch,
+            episodes=None,
+            reduce_fn=reduce_fn,
+            minibatch_size=minibatch_size,
+            num_iters=num_iters,
+        )
 
-        missing_module_ids = set(batch.policy_batches.keys()) - set(self.module.keys())
-        if len(missing_module_ids) > 0:
-            raise ValueError(
-                "Batch contains module ids that are not in the learner: "
-                f"{missing_module_ids}"
-            )
+    def update_from_episodes(
+        self,
+        episodes: List[EpisodeType],
+        *,
+        reduce_fn: Callable[[List[Dict[str, Any]]], ResultDict] = (
+            _reduce_mean_results
+        ),
+        # TODO (sven): Deprecate these in favor of config attributes for only those
+        #  algos that actually need (and know how) to do minibatching.
+        minibatch_size: Optional[int] = None,
+        num_iters: int = 1,
+    ) -> Union[Dict[str, Any], List[Dict[str, Any]]]:
+        """Do `num_iters` minibatch updates given a list of episodes.
 
-        if num_iters < 1:
-            # We must do at least one pass on the batch for training.
-            raise ValueError("`num_iters` must be >= 1")
+        You can use this method to take more than one backward pass on the batch.
+        The same `minibatch_size` and `num_iters` will be used for all module ids in
+        MultiAgentRLModule.
 
-        if minibatch_size:
-            batch_iter = MiniBatchCyclicIterator
-        elif num_iters > 1:
-            # `minibatch_size` was not set but `num_iters` > 1.
-            # Under the old training stack, users could do multiple sgd passes
-            # over a batch without specifying a minibatch size. We enable
-            # this behavior here by setting the minibatch size to be the size
-            # of the batch (e.g. 1 minibatch of size batch.count)
-            minibatch_size = batch.count
-            batch_iter = MiniBatchCyclicIterator
-        else:
-            # `minibatch_size` and `num_iters` are not set by the user.
-            batch_iter = MiniBatchDummyIterator
+        Args:
+            episodes: An list of episode objects to update from.
+            reduce_fn: reduce_fn: A function to reduce the results from a list of
+                minibatch updates. This can be any arbitrary function that takes a
+                list of dictionaries and returns a single dictionary. For example you
+                can either take an average (default) or concatenate the results (for
+                example for metrics) or be more selective about you want to report back
+                to the algorithm's training_step. If None is passed, the results will
+                not get reduced.
+            minibatch_size: The size of the minibatch to use for each update.
+            num_iters: The number of complete passes over all the sub-batches
+                in the input multi-agent batch.
 
-        results = []
-        # Convert input batch into a tensor batch (MultiAgentBatch) on the correct
-        # device (e.g. GPU). We move the batch already here to avoid having to move
-        # every single minibatch that is created in the `batch_iter` below.
-        batch = self._convert_batch_type(batch)
-        batch = self._set_slicing_by_batch_id(batch, value=True)
+        Returns:
+            A dictionary of results, in numpy format or a list of such dictionaries in
+            case `reduce_fn` is None and we have more than one minibatch pass.
+        """
+        return self._update_from_batch_or_episodes(
+            batch=None,
+            episodes=episodes,
+            reduce_fn=reduce_fn,
+            minibatch_size=minibatch_size,
+            num_iters=num_iters,
+        )
 
-        for tensor_minibatch in batch_iter(batch, minibatch_size, num_iters):
-            # Make the actual in-graph/traced `_update` call. This should return
-            # all tensor values (no numpy).
-            nested_tensor_minibatch = NestedDict(tensor_minibatch.policy_batches)
-            (
-                fwd_out,
-                loss_per_module,
-                metrics_per_module,
-            ) = self._update(nested_tensor_minibatch)
+    @OverrideToImplementCustomLogic
+    def _preprocess_train_data(
+        self,
+        *,
+        batch: Optional[MultiAgentBatch] = None,
+        episodes: Optional[List[EpisodeType]] = None,
+    ) -> Tuple[Optional[MultiAgentBatch], Optional[List[EpisodeType]]]:
+        """Allows custom preprocessing of batch/episode data before the actual update.
 
-            result = self.compile_results(
-                batch=tensor_minibatch,
-                fwd_out=fwd_out,
-                loss_per_module=loss_per_module,
-                metrics_per_module=defaultdict(dict, **metrics_per_module),
-            )
-            self._check_result(result)
-            # TODO (sven): Figure out whether `compile_metrics` should be forced
-            #  to return all numpy/python data, then we can skip this conversion
-            #  step here.
-            results.append(convert_to_numpy(result))
+        The higher level order, in which this method is called from within
+        `Learner.update(batch, episodes)` is:
+        * batch, episodes = self._preprocess_train_data(batch, episodes)
+        * batch = self._learner_connector(batch, episodes)
+        * results = self._update(batch)
 
-        self._set_slicing_by_batch_id(batch, value=False)
+        The default implementation does not do any processing and is a mere pass
+        through. However, specific algorithms should override this method to implement
+        their specific training data preprocessing needs. It is possible to perform
+        preliminary RLModule forward passes (besides the main "forward_train()" call
+        during `self._update`) in this method and custom algorithms might also want to
+        use this Learner's `self._learner_connector` to prepare the data
+        (batch/episodes) for such extra forward calls.
 
-        # Reduce results across all minibatches, if necessary.
+        Args:
+            batch: An optional batch of training data to preprocess.
+            episodes: An optional list of episodes objects to preprocess.
 
-        # If we only have one result anyways, then the user will not expect a list
-        # to be reduced here (and might not provide a `reduce_fn` therefore) ->
-        # Return single results dict.
-        if len(results) == 1:
-            return results[0]
-        # If no `reduce_fn` provided, return list of results dicts.
-        elif reduce_fn is None:
-            return results
-        # Pass list of results dicts through `reduce_fn` and return a single results
-        # dict.
-        return reduce_fn(results)
+        Returns:
+            A tuple consisting of the processed `batch` and the processed list of
+            `episodes`.
+        """
+        return batch, episodes
 
     @OverrideToImplementCustomLogic
     @abc.abstractmethod
@@ -1283,6 +1299,105 @@ class Learner:
             The current state of all optimizers currently registered in this Learner.
         """
         raise NotImplementedError
+
+    def _update_from_batch_or_episodes(
+        self,
+        *,
+        # TODO (sven): We should allow passing in a single agent batch here
+        #  as well for simplicity.
+        batch: Optional[MultiAgentBatch] = None,
+        episodes: Optional[List[EpisodeType]] = None,
+        reduce_fn: Callable[[List[Dict[str, Any]]], ResultDict] = (
+            _reduce_mean_results
+        ),
+        # TODO (sven): Deprecate these in favor of config attributes for only those
+        #  algos that actually need (and know how) to do minibatching.
+        minibatch_size: Optional[int] = None,
+        num_iters: int = 1,
+    ) -> Union[Dict[str, Any], List[Dict[str, Any]]]:
+        self._check_is_built()
+
+        # If a (multi-agent) batch is provided, check, whether our RLModule
+        # contains all ModuleIDs found in this batch. If not, throw an error.
+        if batch is not None:
+            unknown_module_ids = set(batch.policy_batches.keys()) - set(
+                self.module.keys()
+            )
+            if len(unknown_module_ids) > 0:
+                raise ValueError(
+                    "Batch contains module ids that are not in the learner: "
+                    f"{unknown_module_ids}"
+                )
+
+        if num_iters < 1:
+            # We must do at least one pass on the batch for training.
+            raise ValueError("`num_iters` must be >= 1")
+
+        # Call the train data preprocessor.
+        batch, episodes = self._preprocess_train_data(batch=batch, episodes=episodes)
+
+        # TODO (sven): Insert a call to the Learner ConnectorV2 pipeline here, providing
+        #  it both `batch` and `episode` for further custom processing before the
+        #  actual `Learner._update()` call.
+
+        if minibatch_size:
+            batch_iter = MiniBatchCyclicIterator
+        elif num_iters > 1:
+            # `minibatch_size` was not set but `num_iters` > 1.
+            # Under the old training stack, users could do multiple sgd passes
+            # over a batch without specifying a minibatch size. We enable
+            # this behavior here by setting the minibatch size to be the size
+            # of the batch (e.g. 1 minibatch of size batch.count)
+            minibatch_size = batch.count
+            batch_iter = MiniBatchCyclicIterator
+        else:
+            # `minibatch_size` and `num_iters` are not set by the user.
+            batch_iter = MiniBatchDummyIterator
+
+        results = []
+        # Convert input batch into a tensor batch (MultiAgentBatch) on the correct
+        # device (e.g. GPU). We move the batch already here to avoid having to move
+        # every single minibatch that is created in the `batch_iter` below.
+        batch = self._convert_batch_type(batch)
+        batch = self._set_slicing_by_batch_id(batch, value=True)
+
+        for tensor_minibatch in batch_iter(batch, minibatch_size, num_iters):
+            # Make the actual in-graph/traced `_update` call. This should return
+            # all tensor values (no numpy).
+            nested_tensor_minibatch = NestedDict(tensor_minibatch.policy_batches)
+            (
+                fwd_out,
+                loss_per_module,
+                metrics_per_module,
+            ) = self._update(nested_tensor_minibatch)
+
+            result = self.compile_results(
+                batch=tensor_minibatch,
+                fwd_out=fwd_out,
+                loss_per_module=loss_per_module,
+                metrics_per_module=defaultdict(dict, **metrics_per_module),
+            )
+            self._check_result(result)
+            # TODO (sven): Figure out whether `compile_results` should be forced
+            #  to return all numpy/python data, then we can skip this conversion
+            #  step here.
+            results.append(convert_to_numpy(result))
+
+        self._set_slicing_by_batch_id(batch, value=False)
+
+        # Reduce results across all minibatches, if necessary.
+
+        # If we only have one result anyways, then the user will not expect a list
+        # to be reduced here (and might not provide a `reduce_fn` therefore) ->
+        # Return single results dict.
+        if len(results) == 1:
+            return results[0]
+        # If no `reduce_fn` provided, return list of results dicts.
+        elif reduce_fn is None:
+            return results
+        # Pass list of results dicts through `reduce_fn` and return a single results
+        # dict.
+        return reduce_fn(results)
 
     def _set_slicing_by_batch_id(
         self, batch: MultiAgentBatch, *, value: bool
@@ -1396,7 +1511,7 @@ class Learner:
         self._check_is_built()
         path = pathlib.Path(path)
         del self._module
-        # TODO(avnishn) from checkpoint doesn't currently support modules_to_load,
+        # TODO (avnishn): from checkpoint doesn't currently support modules_to_load,
         #  but it should, so we will add it later.
         self._module_obj = MultiAgentRLModule.from_checkpoint(path / "module_state")
         self._reset()

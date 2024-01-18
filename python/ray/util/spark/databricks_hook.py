@@ -166,4 +166,14 @@ class DefaultDatabricksRayOnSparkStartHook(RayOnSparkStartHook):
 
     def on_spark_job_created(self, job_group_id):
         db_api_entry = get_db_entry_point()
-        db_api_entry.registerBackgroundSparkJobGroup("job_group_id")
+        db_api_entry.registerBackgroundSparkJobGroup(job_group_id)
+
+    def custom_environment_variables(self):
+        """Hardcode `GLOO_SOCKET_IFNAME` to `eth0` for Databricks runtime.
+
+        Torch on DBR does not reliably detect the correct interface to use,
+        and ends up selecting the loopback interface, breaking cross-node
+        commnication."""
+        return {
+            "GLOO_SOCKET_IFNAME": "eth0",
+        }

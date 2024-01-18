@@ -1,0 +1,7 @@
+load("@rules_python//python:defs.bzl", "py_binary", "py_library", "py_test")
+
+py_binary(
+    name = "state_machine_bot",
+    srcs = ["state_machine_bot.py"],
+    deps = ["//ci/ray_ci:ray_ci_lib"],
+)

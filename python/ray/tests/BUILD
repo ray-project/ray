@@ -142,6 +142,7 @@ py_test_module_list(
     "accelerators/test_nvidia_gpu.py",
     "accelerators/test_hpu.py",
     "accelerators/test_intel_gpu.py",
+    "accelerators/test_amd_gpu.py",
     "test_log_dedup.py",
     "test_logging.py",
     "test_memory_scheduling.py",
@@ -465,8 +466,16 @@ py_test(
 
 py_test_module_list(
   files = [
-    "test_tqdm.py",
     "test_out_of_disk_space.py",
+  ],
+  size = "large",
+  tags = ["exclusive", "tmpfs", "team:core"],
+  deps = ["//:ray_lib", ":conftest"],
+)
+
+py_test_module_list(
+  files = [
+    "test_tqdm.py",
     "test_failure_4.py",
     "test_iter.py",
     "test_object_spilling.py",
