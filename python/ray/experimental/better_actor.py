@@ -1,13 +1,15 @@
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, overload
+from typing import TYPE_CHECKING, Generic, TypeVar, overload
 
 import ray
 
 __all__ = ["remote_method", "ActorMixin", "Actor"]
 
+_ClassT = TypeVar("_ClassT")
+
 if TYPE_CHECKING:
-    from typing import Any, Callable, Coroutine, Generic, TypeVar, Union
+    from typing import Any, Callable, Coroutine, TypeVar, Union
 
     from typing_extensions import Concatenate, Literal, ParamSpec, TypedDict, Unpack
 
@@ -33,16 +35,6 @@ if TYPE_CHECKING:
 
     RemoteArg = Union[_T, ray.ObjectRef[_T]]
     RemoteRet = Union[_R, Coroutine[Any, Any, _R]]
-
-    _ClassT = TypeVar("_ClassT")
-
-    class Actor(Generic[_ClassT]):
-        def __init__(self, actor_handle) -> None:
-            ...
-
-        @property
-        def methods(self) -> type[_ClassT]:
-            ...
 
     class ActorClass(Generic[_P, _R]):
         def __init__(self, klass: Callable[_P, _R], default_opts: ActorOptions):
@@ -426,29 +418,6 @@ if TYPE_CHECKING:
 
 else:
 
-    class Actor:
-        def __init__(self, actor_handle):
-            self._actor_handle = actor_handle
-
-        @property
-        def methods(self):
-            return self._actor_handle
-
-        def __repr__(self) -> str:
-            return repr(self._actor_handle)
-
-        def __str__(self) -> str:
-            return str(self._actor_handle)
-
-        def __eq__(self, other) -> bool:
-            return (
-                isinstance(other, Actor)
-                and self._actor_handle._actor_id == other._actor_handle._actor_id
-            )
-
-        def __hash__(self) -> int:
-            return hash(self._actor_handle._actor_id)
-
     class ActorClass:
         def __init__(self, klass, default_opts):
             self._klass = klass
@@ -484,6 +453,30 @@ else:
 
         def bind(self, *args, **kwargs):
             return ray.remote(**self._opts)(self._klass).bind(*args, **kwargs)
+
+
+class Actor(Generic[_ClassT]):
+    def __init__(self, actor_handle):
+        self._actor_handle = actor_handle
+
+    @property
+    def methods(self) -> type[_ClassT]:
+        return self._actor_handle
+
+    def __repr__(self) -> str:
+        return repr(self._actor_handle)
+
+    def __str__(self) -> str:
+        return str(self._actor_handle)
+
+    def __eq__(self, other) -> bool:
+        return (
+            isinstance(other, Actor)
+            and self._actor_handle._actor_id == other._actor_handle._actor_id
+        )
+
+    def __hash__(self) -> int:
+        return hash(self._actor_handle._actor_id)
 
 
 @overload
