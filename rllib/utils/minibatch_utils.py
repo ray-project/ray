@@ -69,6 +69,7 @@ class MiniBatchCyclicIterator(MiniBatchIteratorBase):
                         "the same number of samples for each module_id."
                     )
                 s = self._start[module_id]  # start
+                n_steps = self._minibatch_size
 
                 samples_to_concat = []
 
@@ -86,13 +87,7 @@ class MiniBatchCyclicIterator(MiniBatchIteratorBase):
                     def get_len(b):
                         return len(b[SampleBatch.SEQ_LENS])
 
-                    n_steps = int(
-                        get_len(module_batch)
-                        * (self._minibatch_size / len(module_batch))
-                    )
-
                 else:
-                    n_steps = self._minibatch_size
 
                     def get_len(b):
                         return len(b)
