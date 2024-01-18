@@ -194,29 +194,28 @@ class ActorProxyWrapper(ProxyWrapper):
                 self._actor_handle.ready.remote(), timeout_s=timeout_s
             )
 
-        if self._ready_check_future.done():
-            try:
-                worker_id, log_file_path = json.loads(self._ready_check_future.result())
-                self.worker_id = worker_id
-                self.log_file_path = log_file_path
-                return True
-            except Exception as e:
-                if isinstance(e, TimeoutError):
-                    logger.warning(
-                        f"Proxy actor readiness check for proxy on {self._node_id}"
-                        f" didn't complete in {timeout_s}s."
-                    )
-                else:
-                    logger.exception(
-                        f"Unexpected error invoking readiness check for proxy"
-                        f" on {self._node_id}",
-                    )
-
-                return False
-            finally:
-                self._ready_check_future = None
-        else:
+        if not self._ready_check_future.done():
             return None
+
+        try:
+            worker_id, log_file_path = json.loads(self._ready_check_future.result())
+            self.worker_id = worker_id
+            self.log_file_path = log_file_path
+            return True
+        except TimeoutError:
+            logger.warning(
+                f"Proxy actor readiness check for proxy on {self._node_id}"
+                f" didn't complete in {timeout_s}s."
+            )
+        except Exception:
+            logger.exception(
+                f"Unexpected error invoking readiness check for proxy"
+                f" on {self._node_id}",
+            )
+        finally:
+            self._ready_check_future = None
+
+        return False
 
     def is_healthy(self, timeout_s: float) -> Optional[bool]:
         if self._health_check_future is None:
@@ -224,31 +223,30 @@ class ActorProxyWrapper(ProxyWrapper):
                 self._actor_handle.check_health.remote(), timeout_s=timeout_s
             )
 
-        if self._health_check_future.done():
-            try:
-                # NOTE: Since `check_health` method is responding with nothing, sole
-                #       purpose of fetching the result is to extract any potential
-                #       exceptions
-                self._health_check_future.result()
-                return True
-            except Exception as e:
-                if isinstance(e, TimeoutError):
-                    logger.warning(
-                        f"Didn't receive health check response for proxy"
-                        f" on {self._node_id} after {timeout_s}s."
-                    )
-                else:
-                    logger.error(
-                        f"Unexpected error invoking health check for proxy "
-                        f"on {self._node_id}",
-                        exc_info=e,
-                    )
-
-                return False
-            finally:
-                self._health_check_future = None
-        else:
+        if not self._health_check_future.done():
             return None
+
+        try:
+            # NOTE: Since `check_health` method is responding with nothing, sole
+            #       purpose of fetching the result is to extract any potential
+            #       exceptions
+            self._health_check_future.result()
+            return True
+        except TimeoutError:
+            logger.warning(
+                f"Didn't receive health check response for proxy"
+                f" on {self._node_id} after {timeout_s}s."
+            )
+        except Exception:
+            logger.error(
+                f"Unexpected error invoking health check for proxy "
+                f"on {self._node_id}",
+                exc_info=e,
+            )
+        finally:
+            self._health_check_future = None
+
+        return False
 
     def is_drained(self, timeout_s: float) -> Optional[bool]:
         if self._drained_check_future is None:
@@ -257,28 +255,27 @@ class ActorProxyWrapper(ProxyWrapper):
                 timeout_s=timeout_s,
             )
 
-        if self._drained_check_future.done():
-            try:
-                is_drained = self._drained_check_future.result()
-                return is_drained
-            except Exception as e:
-                if isinstance(e, TimeoutError):
-                    logger.warning(
-                        f"Didn't receive drain check response for proxy"
-                        f" on {self._node_id} after {timeout_s}s."
-                    )
-                else:
-                    logger.error(
-                        f"Unexpected error invoking drain-check for proxy "
-                        f"on {self._node_id}",
-                        exc_info=e,
-                    )
-
-                return False
-            finally:
-                self._drained_check_future = None
-        else:
+        if not self._drained_check_future.done():
             return None
+
+        try:
+            is_drained = self._drained_check_future.result()
+            return is_drained
+        except TimeoutError:
+            logger.warning(
+                f"Didn't receive drain check response for proxy"
+                f" on {self._node_id} after {timeout_s}s."
+            )
+        except Exception:
+            logger.error(
+                f"Unexpected error invoking drain-check for proxy "
+                f"on {self._node_id}",
+                exc_info=e,
+            )
+        finally:
+            self._drained_check_future = None
+
+        return False
 
     def is_shutdown(self) -> bool:
         """Return whether the proxy actor is shutdown.
