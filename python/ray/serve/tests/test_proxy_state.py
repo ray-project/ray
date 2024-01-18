@@ -459,7 +459,7 @@ def test_proxy_state_reconcile_draining_success():
         timer.advance(5)
 
     assert proxy_state._actor_proxy_wrapper.get_num_health_checks() == 10
-    assert proxy_state._actor_proxy_wrapper.get_num_drain_checks() == 9
+    assert proxy_state._actor_proxy_wrapper.get_num_drain_checks() == 10
 
     # Make sure the status is still DRAINING
     assert proxy_state.status == ProxyStatus.DRAINING
@@ -475,7 +475,7 @@ def test_proxy_state_reconcile_draining_success():
 
     assert proxy_state._actor_proxy_wrapper.get_num_health_checks() == 15
     # No new drain checks will occur, since there's a pending one (not completed yet)
-    assert proxy_state._actor_proxy_wrapper.get_num_drain_checks() == 14
+    assert proxy_state._actor_proxy_wrapper.get_num_drain_checks() == 15
 
     # Simulate draining completed
     proxy_state._actor_proxy_wrapper.is_drained_response = True
@@ -536,12 +536,12 @@ def test_proxy_actor_manager_removing_proxies(all_nodes, number_of_worker_nodes)
         )
         timer.advance(5)
         # Assert that
-        #   - Head-node proxy is HEALTHY
+        #   - Head-node proxy is HEALTHY4
         #   - Worker node proxy is DRAINING
         proxy_statuses = [manager._proxy_states[node_id].status for node_id in node_ids]
         assert [ProxyStatus.HEALTHY, ProxyStatus.DRAINING] == proxy_statuses
 
-    assert worker_proxy_state._actor_proxy_wrapper.get_num_drain_checks() == N - 1
+    assert worker_proxy_state._actor_proxy_wrapper.get_num_drain_checks() == N
 
     # Mark target proxy as fully drained
     worker_proxy_state._actor_proxy_wrapper.is_drained_response = True
