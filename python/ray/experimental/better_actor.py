@@ -60,10 +60,6 @@ if TYPE_CHECKING:
 
     class ActorClassRemote(Generic[_Method_co]):
         @overload
-        def __call__(self: ActorClassRemote[Callable[[], _R]]) -> Actor[_R]:
-            ...
-
-        @overload
         def __call__(
             self: ActorClassRemote[Callable[Concatenate[_T0, ...], _R]],
             __arg0: RemoteArg[_T0],
@@ -205,6 +201,10 @@ if TYPE_CHECKING:
         ) -> Actor[_R]:
             ...
 
+        @overload
+        def __call__(self: ActorClassRemote[Callable[..., _R]]) -> Actor[_R]:
+            ...
+
         def __call__(self, *args, **kwargs) -> Actor:
             ...
 
@@ -241,12 +241,6 @@ if TYPE_CHECKING:
             ...
 
     class ActorMethodRemote(Generic[_Method_co]):
-        @overload
-        def __call__(
-            self: ActorMethodRemote[Callable[[], RemoteRet[_R]]], **kwargs
-        ) -> ray.ObjectRef[_R]:
-            ...
-
         @overload
         def __call__(
             self: ActorMethodRemote[Callable[Concatenate[_T0, ...], RemoteRet[_R]]],
