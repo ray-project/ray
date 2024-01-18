@@ -1,5 +1,5 @@
 import itertools
-from typing import TYPE_CHECKING, List, Optional, Tuple
+from typing import TYPE_CHECKING, List, Tuple
 
 import ray
 from ray.data._internal.block_list import BlockList
@@ -17,22 +17,6 @@ from ray.data.block import (
 
 if TYPE_CHECKING:
     from ray.data import Dataset
-
-
-class RandomizeBlocksStage(AllToAllStage):
-    """Implementation of `Dataset.randomize_blocks()`."""
-
-    def __init__(self, seed: Optional[int]):
-        self._seed = seed
-
-        super().__init__("RandomizeBlockOrder", None, self.do_randomize)
-
-    def do_randomize(self, block_list, *_):
-        num_blocks = block_list.initial_num_blocks()
-        if num_blocks == 0:
-            return block_list, {}
-        randomized_block_list = block_list.randomize_block_order(self._seed)
-        return randomized_block_list, {}
 
 
 class ZipStage(AllToAllStage):

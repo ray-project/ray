@@ -1092,7 +1092,6 @@ class AllToAllStage(Stage):
     def __call__(
         self, blocks: BlockList, clear_input_blocks: bool, run_by_consumer: bool
     ) -> Tuple[BlockList, dict]:
-        from ray.data._internal.stage_impl import RandomizeBlocksStage
 
         in_blocks_owned_by_consumer = blocks._owned_by_consumer
         if in_blocks_owned_by_consumer:
@@ -1104,12 +1103,7 @@ class AllToAllStage(Stage):
         )
         assert isinstance(blocks, BlockList), blocks
 
-        # RandomizeBlocksStage is an in-place transformation, so the ownership
-        # of blocks doesn't change.
-        if isinstance(self, RandomizeBlocksStage):
-            blocks._owned_by_consumer = in_blocks_owned_by_consumer
-        else:
-            blocks._owned_by_consumer = run_by_consumer
+        blocks._owned_by_consumer = run_by_consumer
 
         return blocks, stage_info
 
