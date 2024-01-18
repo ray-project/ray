@@ -15,11 +15,11 @@ from typing import (
     Sequence,
     Set,
     Tuple,
+    TYPE_CHECKING,
     Union,
 )
 
 import ray
-from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
 from ray.rllib.connectors.learner.learner_connector_pipeline import (
     LearnerConnectorPipeline,
 )
@@ -66,6 +66,9 @@ from ray.rllib.utils.typing import (
     TensorType,
 )
 from ray.util.annotations import PublicAPI
+
+if TYPE_CHECKING:
+    from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
 
 
 torch, _ = try_import_torch()
@@ -212,7 +215,7 @@ class Learner:
     def __init__(
         self,
         *,
-        config: AlgorithmConfig,
+        config: "AlgorithmConfig",
         module_spec: Optional[
             Union[SingleAgentRLModuleSpec, MultiAgentRLModuleSpec]
         ] = None,
@@ -430,7 +433,7 @@ class Learner:
     @OverrideToImplementCustomLogic
     @abc.abstractmethod
     def configure_optimizers_for_module(
-        self, module_id: ModuleID, config: AlgorithmConfig = None, hps=None
+        self, module_id: ModuleID, config: "AlgorithmConfig" = None, hps=None
     ) -> None:
         """Configures an optimizer for the given module_id.
 
@@ -522,7 +525,7 @@ class Learner:
         self,
         *,
         module_id: ModuleID,
-        config: AlgorithmConfig = None,
+        config: Optional["AlgorithmConfig"] = None,
         module_gradients_dict: ParamDict,
         hps=None,
     ) -> ParamDict:
@@ -925,7 +928,7 @@ class Learner:
         self,
         *,
         module_id: ModuleID,
-        config: AlgorithmConfig = None,
+        config: Optional["AlgorithmConfig"] = None,
         batch: NestedDict,
         fwd_out: Dict[str, TensorType],
     ) -> TensorType:
@@ -1077,7 +1080,7 @@ class Learner:
         self,
         *,
         module_id: ModuleID,
-        config: AlgorithmConfig = None,
+        config: Optional["AlgorithmConfig"] = None,
         timestep: int,
         hps=None,
         **kwargs,
