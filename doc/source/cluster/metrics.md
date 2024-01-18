@@ -55,10 +55,10 @@ ray start --head --metrics-export-port=8080
 Then go to the Prometheus UI and run the following query:
 
 ```shell
-ray_node_cpu_count
+ray_dashboard_api_requests_count_requests_total
 ```
 
-You should see the CPU count of your machine.
+You can then see the number of requests to the Ray Dashboard API over time.
 
 To stop Prometheus, run `kill <PID>` where `<PID>` is the PID of the Prometheus process that was printed out when you ran the command. To find the PID, you can also run `ps aux | grep prometheus`.
 
