@@ -70,13 +70,7 @@ from ray.data._internal.planner.plan_write_op import generate_write_fn
 from ray.data._internal.remote_fn import cached_remote_fn
 from ray.data._internal.sort import SortKey
 from ray.data._internal.split import _get_num_rows, _split_at_indices
-from ray.data._internal.stage_impl import (
-    LimitStage,
-    RandomizeBlocksStage,
-    RandomShuffleStage,
-    RepartitionStage,
-    ZipStage,
-)
+from ray.data._internal.stage_impl import LimitStage, RandomizeBlocksStage, ZipStage
 from ray.data._internal.stats import DatasetStats, DatasetStatsSummary, StatsManager
 from ray.data._internal.util import (
     AllToAllAPI,
@@ -1104,8 +1098,7 @@ class Dataset:
         Returns:
             The repartitioned :class:`Dataset`.
         """  # noqa: E501
-
-        plan = self._plan.with_stage(RepartitionStage(num_blocks, shuffle))
+        plan = self._plan.copy()
 
         logical_plan = self._logical_plan
         if logical_plan is not None:
@@ -1158,10 +1151,7 @@ class Dataset:
                 "repartition() instead.",  # noqa: E501
                 DeprecationWarning,
             )
-
-        plan = self._plan.with_stage(
-            RandomShuffleStage(seed, num_blocks, ray_remote_args)
-        )
+        plan = self._plan.copy()
 
         logical_plan = self._logical_plan
         if logical_plan is not None:

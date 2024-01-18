@@ -5,8 +5,7 @@ import numpy as np
 
 from ray.data._internal.delegating_block_builder import DelegatingBlockBuilder
 from ray.data._internal.execution.interfaces import TaskContext
-from ray.data._internal.push_based_shuffle import PushBasedShufflePlan
-from ray.data._internal.shuffle import ShuffleOp, SimpleShufflePlan
+from ray.data._internal.shuffle import ShuffleOp
 from ray.data.block import Block, BlockAccessor, BlockExecStats, BlockMetadata
 
 
@@ -97,11 +96,3 @@ class _ShufflePartitionOp(ShuffleOp):
             exec_stats=stats.build(),
         )
         return new_block, new_metadata
-
-
-class SimpleShufflePartitionOp(_ShufflePartitionOp, SimpleShufflePlan):
-    pass
-
-
-class PushBasedShufflePartitionOp(_ShufflePartitionOp, PushBasedShufflePlan):
-    pass
