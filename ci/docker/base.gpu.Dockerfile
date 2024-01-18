@@ -62,5 +62,8 @@ WORKDIR /ray
 # Below should be re-run each time
 COPY . .
 
-RUN BUILD=1 ./ci/env/install-dependencies.sh
-RUN RLLIB_TESTING=1 TRAIN_TESTING=1 TUNE_TESTING=1 bash --login -i ./ci/env/install-dependencies.sh
+RUN bash --login -ie -c '\
+    BUILD=1 ./ci/env/install-dependencies.sh \
+    RLLIB_TESTING=1 TRAIN_TESTING=1 TUNE_TESTING=1 ./ci/env/install-dependencies.sh \
+    pip uninstall -y ray \
+'

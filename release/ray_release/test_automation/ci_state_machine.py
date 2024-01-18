@@ -61,6 +61,7 @@ class CITestStateMachine(TestStateMachine):
             "bug",
             "ci-test",
             "ray-test-bot",
+            "flaky-tracker",
             "triage",
             self.test.get_oncall(),
         ]
@@ -73,7 +74,9 @@ class CITestStateMachine(TestStateMachine):
         )
         for failure in recent_failures:
             body += f"\t- {failure.url}\n"
-        body += "\nManaged by OSS Test Policy"
+        # This line is to match the regex in https://shorturl.at/aiK25
+        body += f"\nDataCaseName-{self.test.get_name()}-END\n"
+        body += "Managed by OSS Test Policy"
         issue_number = self.ray_repo.create_issue(
             title=f"CI test {self.test.get_name()} is {self.test.get_state().value}",
             body=body,
