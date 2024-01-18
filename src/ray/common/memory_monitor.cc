@@ -95,12 +95,7 @@ bool MemoryMonitor::IsUsageAboveThreshold(MemorySnapshot system_memory,
 }
 
 std::tuple<int64_t, int64_t> MemoryMonitor::GetMemoryBytes() {
-  auto [cgroup_used_bytes, cgroup_total_bytes] = GetCGroupMemoryBytes();
-#ifndef __linux__
-  RAY_CHECK(false) << "Memory monitor currently supports only linux";
-#endif
-  auto [system_used_bytes, system_total_bytes] = GetLinuxMemoryBytes();
-  return std::tuple(system_used_bytes, system_total_bytes);
+  return GetLinuxMemoryBytes();
 }
 
 int64_t MemoryMonitor::GetCGroupV1MemoryUsedBytes(const char *path) {
