@@ -7,8 +7,8 @@ import pandas as pd
 import pyarrow as pa
 import pyarrow.json as pajson
 import pytest
-from pytest_lazyfixture import lazy_fixture
 import smart_open
+from pytest_lazyfixture import lazy_fixture
 
 import ray
 from ray.data.block import BlockAccessor
@@ -657,8 +657,8 @@ def test_json_read_across_blocks(ray_start_regular_shared, fs, data_path, endpoi
     path2 = os.path.join(data_path, "test2.json")
     df2.to_json(tmp2, orient="records", lines=True, storage_options=storage_options)
     # force long line to break line size
-    with smart_open(path2, "w") as w_file:
-        with smart_open(tmp2, "r") as r_file:
+    with smart_open.open(path2, "w") as w_file:
+        with smart_open.open(tmp2, "r") as r_file:
             w_file.write(r_file.read().replace("\n", ""))
     ds = ray.data.read_json(path2, filesystem=fs)
     dsdf = ds.to_pandas()
