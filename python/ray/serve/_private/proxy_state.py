@@ -238,10 +238,9 @@ class ActorProxyWrapper(ProxyWrapper):
                 f" on {self._node_id} after {timeout_s}s."
             )
         except Exception:
-            logger.error(
+            logger.exception(
                 f"Unexpected error invoking health check for proxy "
                 f"on {self._node_id}",
-                exc_info=e,
             )
         finally:
             self._health_check_future = None
@@ -267,10 +266,9 @@ class ActorProxyWrapper(ProxyWrapper):
                 f" on {self._node_id} after {timeout_s}s."
             )
         except Exception:
-            logger.error(
+            logger.exception(
                 f"Unexpected error invoking drain-check for proxy "
                 f"on {self._node_id}",
-                exc_info=e,
             )
         finally:
             self._drained_check_future = None
