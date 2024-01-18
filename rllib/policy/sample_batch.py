@@ -1178,9 +1178,9 @@ class SampleBatch(dict):
             infos = self.pop(SampleBatch.INFOS, None)
             data = tree.map_structure_with_path(map_, self)
             if infos is not None and isinstance(infos, list):
-                data[SampleBatch.INFOS] = self[SampleBatch.INFOS] = (
-                    infos[start_unpadded:stop_unpadded]
-                )
+                data[SampleBatch.INFOS] = self[SampleBatch.INFOS] = infos[
+                    start_unpadded:stop_unpadded
+                ]
 
             return SampleBatch(
                 data,
