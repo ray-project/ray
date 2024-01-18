@@ -339,7 +339,10 @@ class Dataset:
                 worker pool of size ``n``, specify ``concurrency=n``. For an autoscaling
                 worker pool from ``m`` to ``n`` workers, specify ``concurrency=(m, n)``.
             ray_remote_args: Additional resource requirements to request from
-                Ray for each map worker.
+                ray for each map worker. This applies to Ray tasks and actors.
+                To request resource requirements for tasks launched by Ray actor,
+                specify ``ray_actor_task_remote_args={...}`` inside
+                ``ray_remote_args``.
 
         .. seealso::
 
@@ -563,7 +566,10 @@ class Dataset:
                 worker pool of size ``n``, specify ``concurrency=n``. For an autoscaling
                 worker pool from ``m`` to ``n`` workers, specify ``concurrency=(m, n)``.
             ray_remote_args: Additional resource requirements to request from
-                ray for each map worker.
+                ray for each map worker. This applies to Ray tasks and actors.
+                To request resource requirements for tasks launched by Ray actor,
+                specify ``ray_actor_task_remote_args={...}`` inside
+                ``ray_remote_args``.
 
         .. note::
 
@@ -935,7 +941,10 @@ class Dataset:
                 For an autoscaling worker pool from ``m`` to ``n`` workers, specify
                 ``concurrency=(m, n)``.
             ray_remote_args: Additional resource requirements to request from
-                ray for each map worker.
+                ray for each map worker. This applies to Ray tasks and actors.
+                To request resource requirements for tasks launched by Ray actor,
+                specify ``ray_actor_task_remote_args={...}`` inside
+                ``ray_remote_args``.
 
         .. seealso::
 
@@ -1029,7 +1038,10 @@ class Dataset:
                 For an autoscaling worker pool from ``m`` to ``n`` workers, specify
                 ``concurrency=(m, n)``.
             ray_remote_args: Additional resource requirements to request from
-                ray (e.g., num_gpus=1 to request GPUs for the map tasks).
+                ray for each map worker. This applies to Ray tasks and actors.
+                To request resource requirements for tasks launched by Ray actor,
+                specify ``ray_actor_task_remote_args={...}`` inside
+                ``ray_remote_args``.
         """
         compute = get_compute_strategy(
             fn,
