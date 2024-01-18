@@ -64,14 +64,12 @@ def download_file(url, filename):
 def install_prometheus(file_path):
     try:
         with tarfile.open(file_path) as tar:
-            # Get the first member of the tar archive (usually the root directory)
-            root_dir = tar.getmembers()[0].name
             tar.extractall()
         logging.info("Prometheus installed successfully.")
-        return True, root_dir
+        return True
     except Exception as e:
         logging.error(f"Error installing Prometheus: {e}")
-        return False, None
+        return False
 
 
 def start_prometheus(prometheus_dir):
@@ -175,15 +173,18 @@ def main():
 
     # TODO: Verify the checksum of the downloaded file
 
-    installed, prometheus_dir = install_prometheus(file_name)
-    if not installed:
+    if not install_prometheus(file_name):
         logging.error("Installation failed.")
         sys.exit(1)
 
     # TODO: Add a check to see if Prometheus is already running
 
-    process = start_prometheus(prometheus_dir)
-    if process is not None:
+    assert file_name.endswith(".tar.gz")
+    process = start_prometheus(
+        # remove the .tar.gz extension
+        prometheus_dir=file_name.rstrip(".tar.gz")
+    )
+    if process:
         print_shutdown_message(process.pid)
 
 

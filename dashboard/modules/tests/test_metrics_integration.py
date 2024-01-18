@@ -28,12 +28,13 @@ def test_download_prometheus(os_type, architecture, monkeypatch):
 
 
 def test_e2e(capsys):
-    path = install_and_start_prometheus.__file__
-    result = subprocess.run([sys.executable, path], capture_output=True, text=True)
-
-    assert "Download completed." in result.stdout
-    assert "Prometheus has started" in result.stdout
-    assert result.returncode == 0
+    install_and_start_prometheus.main()
+    captured = capsys.readouterr()
+    assert "Prometheus is running" in captured.out
+    # Find the Prometheus process and kill it.
+    # Find the PID from the output: "To stop Prometheus, use the command: 'kill 22790'"
+    pid = int(captured.out.split("kill ")[1].split("'")[0])
+    subprocess.run(["kill", str(pid)])
 
 
 if __name__ == "__main__":
