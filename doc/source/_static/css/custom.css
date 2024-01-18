@@ -25,6 +25,7 @@ html[data-theme='dark'] {
   --pst-color-text-muted: #b3b9c4;
   --heading-color: #ffffff;
   --base-pygments-code-color: #cccccc;
+  --pst-color-link-hover: #cce0ff;
 }
 
 html[data-theme='light'] {
@@ -33,6 +34,7 @@ html[data-theme='light'] {
   --pst-color-text-muted: #454f59;
   --heading-color: #161a1d;
   --base-pygments-code-color: #cccccc;
+  --pst-color-link-hover: #09326c;
 }
 
 nav.bd-links li > a:hover {
@@ -81,15 +83,17 @@ h6 {
 /* Pygments diff code cell line colors; match github colorblind theme */
 div.highlight > pre > span.gd {
   background-color: var(--color-diff-delete-bg);
-  color: var(--pst-color-text-base) !important;
 }
 div.highlight > pre > span.gi {
   background-color: var(--color-diff-insert-bg);
-  color: var(--pst-color-text-base) !important;
 }
 div.highlight > pre > span.w {
   background-color: var(--color-diff-nochange-bg);
-  color: var(--pst-color-text-base) !important;
+}
+/* Fix some pygments styles that inadvertently get overridden by PST */
+.highlight pre {
+  background-color: var(--stata-dark-background);
+  color: var(--base-pygments-code-color);
 }
 
 /* Make the article content take up all available space */
@@ -329,10 +333,4 @@ table.autosummary tr > td:first-child > p > a > code > span {
 .bd-sidebar-primary div#rtd-footer-container {
   margin: unset;
   max-width: 30vw;
-}
-
-/* Fix some pygments styles that inadvertently get overridden by PST */
-.highlight pre {
-  background-color: var(--stata-dark-background);
-  color: var(--base-pygments-code-color);
 }

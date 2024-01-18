@@ -8,7 +8,7 @@ from starlette.types import Message
 import ray
 from ray._private.utils import get_or_create_event_loop
 from ray.actor import ActorHandle
-from ray.serve._private.http_util import ASGIMessageQueue, ASGIReceiveProxy
+from ray.serve._private.http_util import ASGIReceiveProxy, MessageQueue
 
 
 @pytest.fixture(scope="session")
@@ -18,8 +18,8 @@ def shared_ray_instance(request):
 
 
 @pytest.mark.asyncio
-async def test_asgi_message_queue():
-    queue = ASGIMessageQueue()
+async def test_message_queue():
+    queue = MessageQueue()
 
     # Check that wait_for_message hangs until a message is sent.
     with pytest.raises(asyncio.TimeoutError):
@@ -80,7 +80,7 @@ def setup_receive_proxy(
     @ray.remote
     class ASGIReceive:
         def __init__(self):
-            self._message_queue = ASGIMessageQueue()
+            self._message_queue = MessageQueue()
 
         def ready(self):
             pass

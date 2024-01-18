@@ -18,6 +18,7 @@ from ray.exceptions import RayActorError, RayError, RayTaskError, RuntimeEnvSetu
 from ray.serve import metrics
 from ray.serve._private import default_impl
 from ray.serve._private.autoscaling_metrics import InMemoryMetricsStore
+from ray.serve._private.autoscaling_policy import AutoscalingPolicyManager
 from ray.serve._private.cluster_node_info_cache import ClusterNodeInfoCache
 from ray.serve._private.common import (
     DeploymentID,
@@ -1259,18 +1260,23 @@ class DeploymentState:
         self._multiplexed_model_ids_updated = False
 
         self._last_notified_running_replica_infos: List[RunningReplicaInfo] = []
+        self._last_notified_autoscaling_config = None
+
+    @property
+    def autoscaling_policy_manager(self) -> AutoscalingPolicyManager:
+        return self._target_state.info.autoscaling_policy_manager
 
     def should_autoscale(self) -> bool:
         """
         Check if the deployment is under autoscaling
         """
-        return self._target_state.info.autoscaling_policy is not None
+        return self.autoscaling_policy_manager.should_autoscale()
 
     def get_autoscale_metric_lookback_period(self) -> float:
         """
         Return the autoscaling metrics look back period
         """
-        return self._target_state.info.autoscaling_policy.config.look_back_period_s
+        return self.autoscaling_policy_manager.config.look_back_period_s
 
     def get_checkpoint_data(self) -> DeploymentTargetState:
         """
@@ -1398,6 +1404,20 @@ class DeploymentState:
         self._last_notified_running_replica_infos = running_replica_infos
         self._multiplexed_model_ids_updated = False
 
+    def notify_autoscaling_config_changed(self) -> None:
+        current_autoscaling_config = (
+            self._target_state.info.deployment_config.autoscaling_config
+        )
+        if self._last_notified_autoscaling_config == current_autoscaling_config:
+            return
+
+        self._long_poll_host.notify_changed(
+            (LongPollNamespace.AUTOSCALING_CONFIG, self._id),
+            current_autoscaling_config,
+        )
+
+        self._last_notified_autoscaling_config = current_autoscaling_config
+
     def _set_target_state_deleting(self) -> None:
         """Set the target state for the deployment to be deleted."""
 
@@ -1497,21 +1517,32 @@ class DeploymentState:
             return False
 
         # Decide new target num_replicas.
-        autoscaling_policy = deployment_info.autoscaling_policy
-        if autoscaling_policy is not None:
-            if (
-                deployment_settings_changed
-                and autoscaling_policy.config.initial_replicas is not None
-            ):
+        autoscaling_policy_manager = deployment_info.autoscaling_policy_manager
+        if autoscaling_policy_manager.should_autoscale():
+            initial_replicas = autoscaling_policy_manager.config.initial_replicas
+            if deployment_settings_changed and initial_replicas is not None:
                 target_num_replicas = get_capacity_adjusted_num_replicas(
-                    autoscaling_policy.config.initial_replicas,
+                    initial_replicas,
                     deployment_info.target_capacity,
                 )
             else:
-                target_num_replicas = autoscaling_policy.apply_bounds(
+                target_num_replicas = autoscaling_policy_manager.apply_bounds(
                     self._target_state.target_num_replicas,
                     deployment_info.target_capacity,
                     deployment_info.target_capacity_direction,
+                )
+
+            downscale_smoothing_factor = (
+                autoscaling_policy_manager.config.get_downscale_smoothing_factor()
+            )
+            if downscale_smoothing_factor <= 0.5:
+                logger.warning(
+                    "The downscale smoothing factor for deployment "
+                    f"'{self.deployment_name}' is set to a low value: "
+                    f"{downscale_smoothing_factor}. This means the "
+                    "deployment is unlikely to scale below "
+                    f"{int(1 / downscale_smoothing_factor)} replicas. "
+                    "The recommended minimum smoothing factor is 0.6."
                 )
         else:
             target_num_replicas = get_capacity_adjusted_num_replicas(
@@ -1581,8 +1612,8 @@ class DeploymentState:
             return
 
         current_num_ongoing_requests = self.get_replica_current_ongoing_requests()
-        autoscaling_policy = self._target_state.info.autoscaling_policy
-        decision_num_replicas = autoscaling_policy.get_decision_num_replicas(
+        autoscaling_policy_manager = self.autoscaling_policy_manager
+        decision_num_replicas = autoscaling_policy_manager.get_decision_num_replicas(
             curr_target_num_replicas=self._target_state.target_num_replicas,
             current_num_ongoing_requests=current_num_ongoing_requests,
             current_handle_queued_queries=current_handle_queued_queries,
@@ -1590,7 +1621,10 @@ class DeploymentState:
             target_capacity_direction=self._target_state.info.target_capacity_direction,
         )
 
-        if decision_num_replicas == self._target_state.target_num_replicas:
+        if (
+            decision_num_replicas is None
+            or decision_num_replicas == self._target_state.target_num_replicas
+        ):
             return
 
         logger.info(
@@ -1639,19 +1673,16 @@ class DeploymentState:
             states=[ReplicaState.RUNNING], version=target_version
         )
 
-        autoscaling_policy = self._target_state.info.autoscaling_policy
-        assert autoscaling_policy is not None
+        assert self.autoscaling_policy_manager is not None
 
-        lower_bound = autoscaling_policy.get_current_lower_bound(
-            self._target_state.info.target_capacity,
-            self._target_state.info.target_capacity_direction,
+        return (
+            self.autoscaling_policy_manager.apply_bounds(
+                num_replicas_running_at_target_version,
+                self._target_state.info.target_capacity,
+                self._target_state.info.target_capacity_direction,
+            )
+            == num_replicas_running_at_target_version
         )
-        upper_bound = get_capacity_adjusted_num_replicas(
-            autoscaling_policy.config.max_replicas,
-            self._target_state.info.target_capacity,
-        )
-
-        return lower_bound <= num_replicas_running_at_target_version <= upper_bound
 
     def delete(self) -> None:
         if not self._target_state.deleting:
@@ -2643,6 +2674,7 @@ class DeploymentStateManager:
 
         for deployment_state in self._deployment_states.values():
             deployment_state.notify_running_replicas_changed()
+            deployment_state.notify_autoscaling_config_changed()
 
         for deployment_id in deleted_ids:
             self._deployment_scheduler.on_deployment_deleted(deployment_id)

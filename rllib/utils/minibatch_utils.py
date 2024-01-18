@@ -1,8 +1,10 @@
 import math
+from typing import List
 
 from ray.rllib.policy.sample_batch import MultiAgentBatch, concat_samples
-from ray.rllib.utils.annotations import DeveloperAPI
 from ray.rllib.policy.sample_batch import SampleBatch
+from ray.rllib.utils.annotations import DeveloperAPI
+from ray.rllib.utils.typing import EpisodeType
 
 
 @DeveloperAPI
@@ -153,3 +155,62 @@ class ShardBatchIterator:
             # TODO (Avnish): int(batch_size) ? How should we shard MA batches really?
             new_batch = MultiAgentBatch(batch_to_send, int(batch_size))
             yield new_batch
+
+
+@DeveloperAPI
+class ShardEpisodesIterator:
+    """Iterator for sharding a list of Episodes into num_shards sub-lists of Episodes.
+
+    Args:
+        episodes: The input list of Episodes.
+        num_shards: The number of shards to split the episodes into.
+
+    Yields:
+        A sub-list of Episodes of size roughly `len(episodes) / num_shards`. The yielded
+        sublists might have slightly different total sums of episode lengths, in order
+        to not have to drop even a single timestep.
+    """
+
+    def __init__(self, episodes: List[EpisodeType], num_shards: int):
+        self._episodes = sorted(episodes, key=len, reverse=True)
+        self._num_shards = num_shards
+        self._total_length = sum(len(e) for e in episodes)
+        self._target_lengths = [0 for _ in range(self._num_shards)]
+        remaining_length = self._total_length
+        for s in range(self._num_shards):
+            len_ = remaining_length // (num_shards - s)
+            self._target_lengths[s] = len_
+            remaining_length -= len_
+
+    def __iter__(self):
+        sublists = [[] for _ in range(self._num_shards)]
+        lengths = [0 for _ in range(self._num_shards)]
+        episode_index = 0
+
+        while episode_index < len(self._episodes):
+            episode = self._episodes[episode_index]
+            min_index = lengths.index(min(lengths))
+
+            if lengths[min_index] + len(episode) <= self._target_lengths[min_index]:
+                # Add the whole episode if it fits within the target length
+                sublists[min_index].append(episode)
+                lengths[min_index] += len(episode)
+                episode_index += 1
+            else:
+                # Otherwise, slice the episode
+                remaining_length = self._target_lengths[min_index] - lengths[min_index]
+                if remaining_length > 0:
+                    slice_part, remaining_part = (
+                        episode[:remaining_length],
+                        episode[remaining_length:],
+                    )
+                    sublists[min_index].append(slice_part)
+                    lengths[min_index] += len(slice_part)
+                    self._episodes[episode_index] = remaining_part
+                else:
+                    assert remaining_length == 0
+                    sublists[min_index].append(episode)
+                    episode_index += 1
+
+        for sublist in sublists:
+            yield sublist
