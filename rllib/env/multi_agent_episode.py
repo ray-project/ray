@@ -6,7 +6,9 @@ import uuid
 import numpy as np
 
 from ray.rllib.env.single_agent_episode import SingleAgentEpisode
-from ray.rllib.env.timestep_mapping import TimestepMappingWithInfiniteLookback
+from ray.rllib.env.utils.infinite_lookback_timestep_mapping import (
+    InfiniteLookbackTimestepMapping
+)
 from ray.rllib.policy.sample_batch import MultiAgentBatch
 from ray.rllib.utils.typing import AgentID, ModuleID, MultiAgentDict
 
@@ -156,7 +158,7 @@ class MultiAgentEpisode:
         # Note, global (env) timesteps are values, while local (agent) steps are the
         # indices at which these global steps are recorded.
         self.global_t_to_local_t: Dict[
-            str, "TimestepMappingWithInfiniteLookback"
+            str, "InfiniteLookbackTimestepMapping"
         ] = self._generate_ts_mapping(observations, len_lookback_buffer)
 
         # In the `MultiAgentEpisode` we need these buffers to keep track of actions,
@@ -190,11 +192,11 @@ class MultiAgentEpisode:
         # is specific to multi-agent environemnts.
         self.partial_rewards = {agent_id: [] for agent_id in self._agent_ids}
         self.partial_rewards_t = defaultdict(
-            lambda: TimestepMappingWithInfiniteLookback(
+            lambda: InfiniteLookbackTimestepMapping(
                 lookback=len_lookback_buffer, t_started=self.t_started
             )
         )
-        # TODO (simon): remove as soon as `TimestepMappingWithInfiniteLookback` has
+        # TODO (simon): remove as soon as `InfiniteLookbackTimestepMapping` has
         # been fully tested.
         # self.partial_rewards_t = {
         #     agent_id: _IndexMapping() for agent_id in self._agent_ids
@@ -1126,7 +1128,7 @@ class MultiAgentEpisode:
         # this might be removed.
         if len(self.global_t_to_local_t) == 0:
             self.global_t_to_local_t = {
-                agent_id: TimestepMappingWithInfiniteLookback() for agent_id in self._agent_ids
+                agent_id: InfiniteLookbackTimestepMapping() for agent_id in self._agent_ids
             }
 
         # Note that we store the render images into the `MultiAgentEpisode`
@@ -1926,7 +1928,7 @@ class MultiAgentEpisode:
             # If we have observations, we can generate the timestep mapping.
             if observations:
                 agent_ts_maps = defaultdict(
-                    lambda: TimestepMappingWithInfiniteLookback(
+                    lambda: InfiniteLookbackTimestepMapping(
                         lookback=len_lookback_buffer, t_started=self.t_started
                     )
                 )
@@ -1938,10 +1940,10 @@ class MultiAgentEpisode:
             # Otherwise we return a dictionary that generates by default empty timestep
             # mappings.
             else:
-                return defaultdict(TimestepMappingWithInfiniteLookback)
+                return defaultdict(InfiniteLookbackTimestepMapping)
         # Otherwise, we return a dictionary that creates by default timestep mappings.
         else:
-            return defaultdict(TimestepMappingWithInfiniteLookback)
+            return defaultdict(InfiniteLookbackTimestepMapping)
 
     def _generate_global_actions_t(self, actions, len_lookback_buffer):
         # Only, if we have agent ids we can provide the action timestep mappings.
@@ -1950,7 +1952,7 @@ class MultiAgentEpisode:
             # mappings.
             if actions:
                 agent_ts_maps = defaultdict(
-                    lambda: TimestepMappingWithInfiniteLookback(
+                    lambda: InfiniteLookbackTimestepMapping(
                         lookback=len_lookback_buffer, t_started=self.t_started
                     )
                 )
@@ -1965,9 +1967,9 @@ class MultiAgentEpisode:
                 return agent_ts_maps
 
             else:
-                return defaultdict(TimestepMappingWithInfiniteLookback)
+                return defaultdict(InfiniteLookbackTimestepMapping)
         else:
-            return defaultdict(TimestepMappingWithInfiniteLookback)
+            return defaultdict(InfiniteLookbackTimestepMapping)
 
     # TODO (sven, simon): This function can only deal with data if it does not contain
     # terminated or truncated agents (i.e. you have to provide ONLY alive agents in the
@@ -2098,7 +2100,7 @@ class MultiAgentEpisode:
             # All partial rewards are recorded in `partial_rewards` together
             # with their corresponding timesteps in `partial_rewards_t`.
             # if agent_rewards and observations:
-            #    partial_agent_rewards_t = TimestepMappingWithInfiniteLookback(
+            #    partial_agent_rewards_t = InfiniteLookbackTimestepMapping(
             #        lookback=len_lookback_buffer, t_started=self.t_started,
             #    )
             #    partial_agent_rewards = []

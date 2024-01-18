@@ -1,7 +1,7 @@
 from typing import List, Optional, Union
 
 
-class TimestepMappingWithInfiniteLookback:
+class InfiniteLookbackTimestepMapping:
     """Stores and manages mappings from global to local agent timesteps.
 
     This class stores a list of global timesteps, i.e. environment steps in a
@@ -69,7 +69,7 @@ class TimestepMappingWithInfiniteLookback:
         else:
             # TODO (simon): This can still add mappings of chunks where
             # another one is in between (even when using ids)
-            return TimestepMappingWithInfiniteLookback(
+            return InfiniteLookbackTimestepMapping(
                 timesteps=self.timesteps + other.timesteps[other.lookback :],
                 lookback=self.lookback,
                 t_started=self.t_started,
@@ -125,7 +125,7 @@ class TimestepMappingWithInfiniteLookback:
         # Then it will never been found when `global_ts` = True.
         # The only timesteps that count here (and the lookback and initial ones
         # are the global ones not the local ones with global_ts=True)
-        return TimestepMappingWithInfiniteLookback(
+        return InfiniteLookbackTimestepMapping(
             timesteps=timesteps,
             lookback=lookback,
             t_started=t_started,
@@ -134,11 +134,12 @@ class TimestepMappingWithInfiniteLookback:
     def get_local_timesteps(
         self,
         global_timesteps: Optional[Union[int, List[int], slice]] = None,
+        *,
         neg_timesteps_left_of_zero: bool = False,
         fill: float = None,
-        return_none: bool = False,
+        #return_none: bool = False,
         t: int = 0,
-        shift: int = 0,
+        #shift: int = 0,
     ) -> List[int]:
         """Maps global timesteps to corresponding local ones.
 
@@ -160,8 +161,8 @@ class TimestepMappingWithInfiniteLookback:
                 global_timesteps,
                 neg_timesteps_left_of_zero=neg_timesteps_left_of_zero,
                 t=t,
-                shift=shift,
-                return_none=return_none,
+                #shift=shift,
+                #return_none=return_none,
             )
         # If timesteps come as a `list`, we also return a `list`
         elif isinstance(global_timesteps, list):
@@ -169,8 +170,8 @@ class TimestepMappingWithInfiniteLookback:
                 global_timesteps,
                 neg_timesteps_left_of_zero=neg_timesteps_left_of_zero,
                 t=t,
-                shift=shift,
-                return_none=return_none,
+                #shift=shift,
+                #return_none=return_none,
             )
         # Must be single time step.
         else:
@@ -178,9 +179,9 @@ class TimestepMappingWithInfiniteLookback:
             return self._get_single_local_timestep(
                 global_timesteps,
                 neg_timesteps_left_of_zero=neg_timesteps_left_of_zero,
-                return_none=return_none,
-                t=t,
-                shift=shift,
+                #return_none=return_none,
+                #t=t,
+                #shift=shift,
             )
 
     def _get_all_local_timesteps(self):
@@ -191,7 +192,7 @@ class TimestepMappingWithInfiniteLookback:
         return self.timesteps
 
     def _get_single_local_timestep(
-        self, global_timesteps, neg_timesteps_left_of_zero, return_none, t, shift=0
+        self, global_timesteps, neg_timesteps_left_of_zero, #return_none, t #, shift=0
     ):
         # User wants negative timesteps.
         if global_timesteps < 0:
@@ -200,17 +201,20 @@ class TimestepMappingWithInfiniteLookback:
                 # Translate negative timestep to global timestep.
                 global_timesteps = global_timesteps + self.t_started
             # User wants to lookback from actual global timesteps `t`.
-            else:
-                # Translate negative timestep to global timestep
-                global_timesteps = t + global_timesteps
+            #else:
+            #    # Translate negative timestep to global timestep
+            #    global_timesteps = t + global_timesteps
 
         # Only return if the global timestep is present in `timesteps`.
         # Shift back or forth by `shift`, e.g. for searching for actions.
-        return (
-            [self.timesteps.index(global_timesteps + shift) - self.lookback]
-            if (global_timesteps + shift) in self.timesteps
-            else ([None] if return_none else None)
-        )
+        #if (global_timesteps + shift) in self.timesteps:
+        if global_timesteps in self.timesteps:
+            return self.timesteps.index(global_timesteps)
+            #return [self.timesteps.index(global_timesteps + shift) - self.lookback]
+        #elif return_none:
+        #    return None
+        else:
+            None
 
     def _get_local_timestep_slice(
         self,
@@ -218,7 +222,7 @@ class TimestepMappingWithInfiniteLookback:
         neg_timesteps_left_of_zero: bool,
         return_none: bool,
         t: int,
-        shift: int = 0,
+        #shift: int = 0,
     ):
         # Retrieve the slice's attributes.
         start = global_timesteps.start

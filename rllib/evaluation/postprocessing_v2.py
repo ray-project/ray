@@ -199,7 +199,7 @@ def compute_advantages(
                 episode.extra_model_outputs[Postprocessing.ADVANTAGES]
             )
 
-    # TODO (sven, simon): Maybe change to `BufferWithInfiniteLookback`
+    # TODO (sven, simon): Maybe change to `InfiniteLookbackBuffer`
     episode.extra_model_outputs[
         Postprocessing.ADVANTAGES
     ] = episode.extra_model_outputs[Postprocessing.ADVANTAGES].astype(np.float32)

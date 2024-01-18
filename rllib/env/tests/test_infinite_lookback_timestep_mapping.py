@@ -3,10 +3,12 @@ import unittest
 
 from ray.rllib.env.multi_agent_episode import MultiAgentEpisode
 from ray.rllib.env.tests.test_multi_agent_episode import MultiAgentTestEnv
-from ray.rllib.env.timestep_mapping import TimestepMappingWithInfiniteLookback
+from ray.rllib.env.utils.infinite_lookback_timestep_mapping import (
+    InfiniteLookbackTimestepMapping
+)
 
 
-class Test_TimestepMapping(unittest.TestCase):
+class TestInfiniteLookbackTimestepMapping(unittest.TestCase):
     @classmethod
     def setUpClass(cls) -> None:
         ray.init()
@@ -17,33 +19,34 @@ class Test_TimestepMapping(unittest.TestCase):
 
     def test_init(self):
         # Generate empty mapping.
-        ts_map = TimestepMappingWithInfiniteLookback()
+        ts_map = InfiniteLookbackTimestepMapping()
         self.assertEqual(ts_map.lookback, 0)
         self.assertEqual(ts_map.t_started, 0)
         self.assertEqual(len(ts_map), 0)
 
         # Now initialize with a lookback.
         timesteps = list(range(10))
-        ts_map = TimestepMappingWithInfiniteLookback(timesteps, lookback=3, t_started=4)
+        ts_map = InfiniteLookbackTimestepMapping(timesteps, lookback=3, t_started=4)
         self.assertEqual(ts_map.lookback, 3)
         self.assertEqual(ts_map.t_started, 4)
         self.assertEqual(len(ts_map), 7)
 
     def test_get_local_timesteps(self):
         # Generate empty mapping.
-        ts_map = TimestepMappingWithInfiniteLookback()
+        ts_map = InfiniteLookbackTimestepMapping()
         local_ts = ts_map.get_local_timesteps()
         self.assertListEqual(local_ts, [])
 
         local_ts = ts_map.get_local_timesteps(slice(-10, None))
         self.assertListEqual(local_ts, [])
 
-        timesteps = list(range(0, 10))
-        ts_map = TimestepMappingWithInfiniteLookback(timesteps, lookback=9, t_started=9)
-        local_ts = ts_map.get_local_timesteps(0, t=9)
+        # [0, 1, 2, 3, 4, 5, 6, 7, 8, (9) <- index=0]
+        timesteps = list(range(10))
+        ts_map = InfiniteLookbackTimestepMapping(timesteps, lookback=9, t_started=9)
+        local_ts = ts_map.get_local_timesteps(0)#, t=9)
         self.assertEqual(local_ts, 0)
 
-        local_ts = ts_map.get_local_timesteps(-1, t=9)
+        local_ts = ts_map.get_local_timesteps(-1, neg_timesteps_left_of_zero=True)#, t=9)
         self.assertEqual(local_ts, 8)
 
         local_ts = ts_map.get_local_timesteps(slice(-10, None), t=9)

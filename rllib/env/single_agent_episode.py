@@ -8,7 +8,7 @@ from gymnasium.core import ActType, ObsType
 from typing import Any, Dict, List, Optional, SupportsFloat, Union
 
 from ray.rllib.policy.sample_batch import SampleBatch
-from ray.rllib.env.utils import BufferWithInfiniteLookback
+from ray.rllib.env.utils.infinite_lookback_buffer import InfiniteLookbackBuffer
 
 
 class SingleAgentEpisode:
@@ -145,14 +145,14 @@ class SingleAgentEpisode:
         self,
         id_: Optional[str] = None,
         *,
-        observations: Optional[Union[List[ObsType], BufferWithInfiniteLookback]] = None,
+        observations: Optional[Union[List[ObsType], InfiniteLookbackBuffer]] = None,
         observation_space: Optional[gym.Space] = None,
-        actions: Optional[Union[List[ActType], BufferWithInfiniteLookback]] = None,
+        actions: Optional[Union[List[ActType], InfiniteLookbackBuffer]] = None,
         action_space: Optional[gym.Space] = None,
         rewards: Optional[
-            Union[List[SupportsFloat], BufferWithInfiniteLookback]
+            Union[List[SupportsFloat], InfiniteLookbackBuffer]
         ] = None,
-        infos: Optional[Union[List[Dict], BufferWithInfiniteLookback]] = None,
+        infos: Optional[Union[List[Dict], InfiniteLookbackBuffer]] = None,
         terminated: bool = False,
         truncated: bool = False,
         extra_model_outputs: Optional[Dict[str, Any]] = None,
@@ -169,7 +169,7 @@ class SingleAgentEpisode:
             id_: Unique identifier for this episode. If no ID is provided the
                 constructor generates a unique hexadecimal code for the id.
             observations: Either a list of individual observations from a sampling or
-                an already instantiated `BufferWithInfiniteLookback` object (possibly
+                an already instantiated `InfiniteLookbackBuffer` object (possibly
                 with observation data in it). If a list, will construct the buffer
                 automatically (given the data and the `len_lookback_buffer` argument).
             observation_space: An optional gym.Space, which all individual observations
@@ -177,11 +177,11 @@ class SingleAgentEpisode:
                 and a space has been provided during construction, any new observation
                 data will be checked for correctness.
             actions: Either a list of individual info dicts from a sampling or
-                an already instantiated `BufferWithInfiniteLookback` object (possibly
+                an already instantiated `InfiniteLookbackBuffer` object (possibly
                 with info dict] data in it). If a list, will construct the buffer
                 automatically (given the data and the `len_lookback_buffer` argument).
             actions: Either a list of individual actions from a sampling or
-                an already instantiated `BufferWithInfiniteLookback` object (possibly
+                an already instantiated `InfiniteLookbackBuffer` object (possibly
                 with action data in it). If a list, will construct the buffer
                 automatically (given the data and the `len_lookback_buffer` argument).
             action_space: An optional gym.Space, which all individual actions
@@ -189,12 +189,12 @@ class SingleAgentEpisode:
                 and a space has been provided during construction, any new action
                 data will be checked for correctness.
             rewards: Either a list of individual rewards from a sampling or
-                an already instantiated `BufferWithInfiniteLookback` object (possibly
+                an already instantiated `InfiniteLookbackBuffer` object (possibly
                 with reward data in it). If a list, will construct the buffer
                 automatically (given the data and the `len_lookback_buffer` argument).
             actions: A dict mapping string keys to either lists of individual extra
                 model output tensors (e.g. `action_logp` or state outs) from a
-                sampling or to an already instantiated `BufferWithInfiniteLookback`
+                sampling or to an already instantiated `InfiniteLookbackBuffer`
                 object (possibly with extra model output data in it). If mapping is to
                 a list, will construct the buffer automatically (given the data and
                 the `len_lookback_buffer` argument).
@@ -231,37 +231,37 @@ class SingleAgentEpisode:
 
         # Observations: t0 (initial obs) to T.
         self.observation_space = observation_space
-        if isinstance(observations, BufferWithInfiniteLookback):
+        if isinstance(observations, InfiniteLookbackBuffer):
             self.observations = observations
         else:
-            self.observations = BufferWithInfiniteLookback(
+            self.observations = InfiniteLookbackBuffer(
                 data=observations,
                 lookback=len_lookback_buffer,
                 space=observation_space,
             )
         # Infos: t0 (initial info) to T.
-        if isinstance(infos, BufferWithInfiniteLookback):
+        if isinstance(infos, InfiniteLookbackBuffer):
             self.infos = infos
         else:
-            self.infos = BufferWithInfiniteLookback(
+            self.infos = InfiniteLookbackBuffer(
                 data=infos,
                 lookback=len_lookback_buffer,
             )
         # Actions: t1 to T.
         self.action_space = action_space
-        if isinstance(actions, BufferWithInfiniteLookback):
+        if isinstance(actions, InfiniteLookbackBuffer):
             self.actions = actions
         else:
-            self.actions = BufferWithInfiniteLookback(
+            self.actions = InfiniteLookbackBuffer(
                 data=actions,
                 lookback=len_lookback_buffer,
                 space=action_space,
             )
         # Rewards: t1 to T.
-        if isinstance(rewards, BufferWithInfiniteLookback):
+        if isinstance(rewards, InfiniteLookbackBuffer):
             self.rewards = rewards
         else:
-            self.rewards = BufferWithInfiniteLookback(
+            self.rewards = InfiniteLookbackBuffer(
                 data=rewards,
                 lookback=len_lookback_buffer,
                 space=gym.spaces.Box(float("-inf"), float("inf"), (), np.float32),
@@ -276,12 +276,12 @@ class SingleAgentEpisode:
         # Extra model outputs, e.g. `action_dist_input` needed in the batch.
         self.extra_model_outputs = defaultdict(
             functools.partial(
-                BufferWithInfiniteLookback,
+                InfiniteLookbackBuffer,
                 lookback=len_lookback_buffer,
             ),
         )
         for k, v in (extra_model_outputs or {}).items():
-            if isinstance(v, BufferWithInfiniteLookback):
+            if isinstance(v, InfiniteLookbackBuffer):
                 self.extra_model_outputs[k] = v
             else:
                 self.extra_model_outputs[k].data = v
@@ -1057,8 +1057,8 @@ class SingleAgentEpisode:
             As single item (B=0 -> no additional 0-axis) if `indices` is a single int.
         """
         value = self.extra_model_outputs[key]
-        # The expected case is: `value` is a `BufferWithInfiniteLookback`.
-        if isinstance(value, BufferWithInfiniteLookback):
+        # The expected case is: `value` is a `InfiniteLookbackBuffer`.
+        if isinstance(value, InfiniteLookbackBuffer):
             return value.get(
                 indices=indices,
                 neg_indices_left_of_zero=neg_indices_left_of_zero,
@@ -1072,7 +1072,7 @@ class SingleAgentEpisode:
         # postprocessing/connector logic. The values are then most likely numpy
         # arrays. We convert them automatically to buffers and get the requested
         # indices (with the given options) from there.
-        return BufferWithInfiniteLookback(value).get(
+        return InfiniteLookbackBuffer(value).get(
             indices, fill=fill, neg_indices_left_of_zero=neg_indices_left_of_zero
         )
 
@@ -1086,7 +1086,7 @@ class SingleAgentEpisode:
         """Overwrites all or some of this Episode's observations with the provided data.
 
         Note that an episode's observation data cannot be written to directly as it is
-        managed by a `BufferWithInfiniteLookback` object. Normally, individual, current
+        managed by a `InfiniteLookbackBuffer` object. Normally, individual, current
         observations are added to the episode either by calling `self.add_env_step` or
         more directly (and manually) via `self.observations.append|extend()`.
         However, for certain postprocessing steps, the entirety (or a slice) of an
@@ -1141,7 +1141,7 @@ class SingleAgentEpisode:
         """Overwrites all or some of this Episode's actions with the provided data.
 
         Note that an episode's action data cannot be written to directly as it is
-        managed by a `BufferWithInfiniteLookback` object. Normally, individual, current
+        managed by a `InfiniteLookbackBuffer` object. Normally, individual, current
         actions are added to the episode either by calling `self.add_env_step` or
         more directly (and manually) via `self.actions.append|extend()`.
         However, for certain postprocessing steps, the entirety (or a slice) of an
@@ -1196,7 +1196,7 @@ class SingleAgentEpisode:
         """Overwrites all or some of this Episode's rewards with the provided data.
 
         Note that an episode's reward data cannot be written to directly as it is
-        managed by a `BufferWithInfiniteLookback` object. Normally, individual, current
+        managed by a `InfiniteLookbackBuffer` object. Normally, individual, current
         rewards are added to the episode either by calling `self.add_env_step` or
         more directly (and manually) via `self.rewards.append|extend()`.
         However, for certain postprocessing steps, the entirety (or a slice) of an
@@ -1252,7 +1252,7 @@ class SingleAgentEpisode:
         """Overwrites all or some of this Episode's extra model outputs with `new_data`.
 
         Note that an episode's `extra_model_outputs` data cannot be written to directly
-        as it is managed by a `BufferWithInfiniteLookback` object. Normally, individual,
+        as it is managed by a `InfiniteLookbackBuffer` object. Normally, individual,
         current `extra_model_output` values are added to the episode either by calling
         `self.add_env_step` or more directly (and manually) via
         `self.extra_model_outputs[key].append|extend()`. However, for certain
@@ -1309,7 +1309,7 @@ class SingleAgentEpisode:
                     f"Cannot set non-existing extra_model_outputs[{key}] using the "
                     "`at_indices` arg! Try leaving `at_indices` None."
                 )
-            self.extra_model_outputs[key] = BufferWithInfiniteLookback(data=new_data)
+            self.extra_model_outputs[key] = InfiniteLookbackBuffer(data=new_data)
 
     def slice(self, slice_: slice) -> "SingleAgentEpisode":
         """Returns a slice of this episode with the given slice object.
@@ -1351,7 +1351,7 @@ class SingleAgentEpisode:
         step = slice_.step
         return SingleAgentEpisode(
             id_=self.id_,
-            observations=BufferWithInfiniteLookback(
+            observations=InfiniteLookbackBuffer(
                 data=self.get_observations(
                     slice(start - self.observations.lookback, stop_obs_infos, step),
                     neg_indices_left_of_zero=neg_indices_left_of_zero,
@@ -1359,14 +1359,14 @@ class SingleAgentEpisode:
                 lookback=self.observations.lookback,
                 space=self.observation_space,
             ),
-            infos=BufferWithInfiniteLookback(
+            infos=InfiniteLookbackBuffer(
                 data=self.get_infos(
                     slice(start - self.infos.lookback, stop_obs_infos, step),
                     neg_indices_left_of_zero=neg_indices_left_of_zero,
                 ),
                 lookback=self.infos.lookback,
             ),
-            actions=BufferWithInfiniteLookback(
+            actions=InfiniteLookbackBuffer(
                 data=self.get_actions(
                     slice(start - self.actions.lookback, stop, step),
                     neg_indices_left_of_zero=neg_indices_left_of_zero,
@@ -1374,7 +1374,7 @@ class SingleAgentEpisode:
                 lookback=self.actions.lookback,
                 space=self.action_space,
             ),
-            rewards=BufferWithInfiniteLookback(
+            rewards=InfiniteLookbackBuffer(
                 data=self.get_rewards(
                     slice(start - self.rewards.lookback, stop, step),
                     neg_indices_left_of_zero=neg_indices_left_of_zero,
@@ -1382,7 +1382,7 @@ class SingleAgentEpisode:
                 lookback=self.rewards.lookback,
             ),
             extra_model_outputs={
-                k: BufferWithInfiniteLookback(
+                k: InfiniteLookbackBuffer(
                     data=self.get_extra_model_outputs(
                         k,
                         slice(start - v.lookback, stop, step),

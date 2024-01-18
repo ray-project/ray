@@ -139,7 +139,7 @@ class TestMultiAgentEpisode(unittest.TestCase):
         # Empty episode should have a start point and count of zero.
         self.assertTrue(episode.t_started == episode.t == 0)
 
-        # Create an episode with a specific starting point.
+        # Create an episode with a specific starting point, but no data.
         episode = MultiAgentEpisode(t_started=10)
         self.assertTrue(episode.t == episode.t_started == 10)
 
@@ -215,10 +215,10 @@ class TestMultiAgentEpisode(unittest.TestCase):
             actions=actions[-10:],
             rewards=rewards[-10:],
             infos=infos[-11:],
-            t_started=100,
             terminateds=terminateds,
             truncateds=truncateds,
             extra_model_outputs=extra_model_outputs[-10:],
+            t_started=100,
         )
 
         # Assert that the episode starts indeed at 100.
