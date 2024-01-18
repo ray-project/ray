@@ -110,7 +110,14 @@ def test_ray_installation() -> None:
     def _mock_subprocess(inputs: List[str], env, stdout, stderr) -> None:
         install_ray_cmds.append(inputs)
 
-    with mock.patch("subprocess.check_call", side_effect=_mock_subprocess):
+    with mock.patch(
+        "subprocess.check_call", side_effect=_mock_subprocess
+    ), mock.patch.dict(
+        "os.environ",
+        {
+            "BUILDKITE_PIPELINE_ID": "w00t",
+        },
+    ):
         LinuxTesterContainer("team", build_type="debug")
         docker_image = f"{_DOCKER_ECR_REPO}:{_RAYCI_BUILD_ID}-team"
         assert install_ray_cmds[-1] == [
@@ -122,6 +129,8 @@ def test_ray_installation() -> None:
             f"BASE_IMAGE={docker_image}",
             "--build-arg",
             "BUILD_TYPE=debug",
+            "--build-arg",
+            "BUILDKITE_PIPELINE_ID=w00t",
             "-t",
             docker_image,
             "-f",
