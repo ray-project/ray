@@ -999,7 +999,7 @@
   cluster:
     byod:
       type: gpu
-      post_build_script: bydo_stable_diffusion.sh
+      post_build_script: byod_stable_diffusion.sh
     cluster_compute: ../testing/compute_configs/gpu/aws.yaml
 
   run:

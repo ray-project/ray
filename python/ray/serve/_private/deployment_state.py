@@ -1260,6 +1260,7 @@ class DeploymentState:
         self._multiplexed_model_ids_updated = False
 
         self._last_notified_running_replica_infos: List[RunningReplicaInfo] = []
+        self._last_notified_autoscaling_config = None
 
     @property
     def autoscaling_policy_manager(self) -> AutoscalingPolicyManager:
@@ -1403,6 +1404,20 @@ class DeploymentState:
         self._last_notified_running_replica_infos = running_replica_infos
         self._multiplexed_model_ids_updated = False
 
+    def notify_autoscaling_config_changed(self) -> None:
+        current_autoscaling_config = (
+            self._target_state.info.deployment_config.autoscaling_config
+        )
+        if self._last_notified_autoscaling_config == current_autoscaling_config:
+            return
+
+        self._long_poll_host.notify_changed(
+            (LongPollNamespace.AUTOSCALING_CONFIG, self._id),
+            current_autoscaling_config,
+        )
+
+        self._last_notified_autoscaling_config = current_autoscaling_config
+
     def _set_target_state_deleting(self) -> None:
         """Set the target state for the deployment to be deleted."""
 
@@ -1515,6 +1530,19 @@ class DeploymentState:
                     self._target_state.target_num_replicas,
                     deployment_info.target_capacity,
                     deployment_info.target_capacity_direction,
+                )
+
+            downscale_smoothing_factor = (
+                autoscaling_policy_manager.config.get_downscale_smoothing_factor()
+            )
+            if downscale_smoothing_factor <= 0.5:
+                logger.warning(
+                    "The downscale smoothing factor for deployment "
+                    f"'{self.deployment_name}' is set to a low value: "
+                    f"{downscale_smoothing_factor}. This means the "
+                    "deployment is unlikely to scale below "
+                    f"{int(1 / downscale_smoothing_factor)} replicas. "
+                    "The recommended minimum smoothing factor is 0.6."
                 )
         else:
             target_num_replicas = get_capacity_adjusted_num_replicas(
@@ -2646,6 +2674,7 @@ class DeploymentStateManager:
 
         for deployment_state in self._deployment_states.values():
             deployment_state.notify_running_replicas_changed()
+            deployment_state.notify_autoscaling_config_changed()
 
         for deployment_id in deleted_ids:
             self._deployment_scheduler.on_deployment_deleted(deployment_id)

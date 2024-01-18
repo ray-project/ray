@@ -79,3 +79,11 @@ steps:
         --test-env=USERPROFILE
     depends_on: windowsbuild
     soft_fail: true
+
+  # bot
+  - label: ":robot_face: CI state machine bot"
+    tags: skip-on-premerge
+    if: build.branch == "master" && build.env("RAYCI_CONTINUOUS_BUILD") == "1"
+    instance_type: small
+    commands:
+      - bazel run //ci/ray_ci/automation:state_machine_bot -- --production

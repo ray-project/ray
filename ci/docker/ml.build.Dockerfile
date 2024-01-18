@@ -37,4 +37,7 @@ if [[ "$RAYCI_LIGHTNING_2" == "true" ]]; then
   pip install lightning==2.1.2 pytorch-lightning==2.1.2
 fi
 
+# Remove installed ray.
+pip uninstall -y ray
+
 EOF

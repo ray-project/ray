@@ -2480,7 +2480,7 @@ class Algorithm(Trainable, AlgorithmBase):
                     return env_obj
 
                 return env_specifier, env_creator_from_classpath
-            # Try gym/PyBullet/Vizdoom.
+            # Try gym/PyBullet.
             else:
                 return env_specifier, functools.partial(
                     _gym_env_creator, env_descriptor=env_specifier
