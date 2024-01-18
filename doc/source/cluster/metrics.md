@@ -21,10 +21,10 @@ For a quick demo, you can run Prometheus locally on your machine. Follow the qui
 
 ### Quickstart: Running Prometheus locally
 
-The steps of downloading and running Prometheus have been automated in the script `install_and_start_prometheus.py`. Running this script will download and start Prometheus with the Ray-provided config.
+Run the following command to download and start Prometheus locally with a configuration that scrapes metrics from a local Ray Cluster.
 
-```python
-python install_and_start_prometheus.py
+```bash
+ray metrics launch-prometheus
 ```
 
 You should see the following output:
@@ -60,11 +60,11 @@ ray_node_cpu_count
 
 You should see the CPU count of your machine.
 
-To stop Prometheus, run `kill <PID>` where `<PID>` is the PID of the Prometheus process that was printed out when you ran the script. To find the PID, you can also run `ps aux | grep prometheus`.
+To stop Prometheus, run `kill <PID>` where `<PID>` is the PID of the Prometheus process that was printed out when you ran the command. To find the PID, you can also run `ps aux | grep prometheus`.
 
 ### [Optional] Manual: Running Prometheus locally
 
-If the automatic script does not work or you would prefer to install and start Prometheus manually, follow these instructions.
+If the preceding automatic script doesn't work or you would prefer to install and start Prometheus manually, follow these instructions.
 
 First, [download Prometheus](https://prometheus.io/download/). Make sure to download the correct binary for your operating system. (For example, Darwin for macOS X.)
 
