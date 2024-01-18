@@ -57,8 +57,8 @@ def attempt_count_timesteps(tensor_dict: dict):
         else:
             return int(sum(seq_lens))
 
-    for k in [SampleBatch.REWARDS, SampleBatch.OBS] + list(tensor_dict.keys()):
-        if k not in tensor_dict or k == SampleBatch.SEQ_LENS:
+    for k, v in tensor_dict.items():
+        if k == SampleBatch.SEQ_LENS:
             continue
 
         assert isinstance(k, str), tensor_dict
@@ -73,8 +73,6 @@ def attempt_count_timesteps(tensor_dict: dict):
             # Don't attempt to count on state since nesting can potentially mess
             # things up
             continue
-
-        v = tensor_dict[k]
 
         # If this is a nested dict (for example a nested observation),
         # try to flatten it, assert that all elements have the same length (batch
