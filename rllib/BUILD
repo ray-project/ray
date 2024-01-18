@@ -1447,7 +1447,7 @@ py_test(
     name = "test_value_predictions",
     tags = ["team:rllib", "utils"],
     size = "small",
-    srcs = ["utils/postprocessing/tests/test_value_predictions"]
+    srcs = ["utils/postprocessing/tests/test_value_predictions.py"]
 )
 
 py_test(
