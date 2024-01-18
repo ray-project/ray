@@ -16,7 +16,6 @@ from ray.autoscaler.tags import (
     NODE_KIND_WORKER,
     STATUS_UNINITIALIZED,
     TAG_RAY_LAUNCH_CONFIG,
-    TAG_RAY_LAUNCH_REQUEST,
     TAG_RAY_NODE_KIND,
     TAG_RAY_NODE_NAME,
     TAG_RAY_NODE_STATUS,
@@ -63,27 +62,15 @@ class BaseNodeLauncher:
         self.index = str(index) if index is not None else ""
 
     def launch_node(
-        self,
-        config: Dict[str, Any],
-        count: int,
-        node_type: str,
-        raise_exception: bool = False,  # Only True in v2 now
-        request_id: str = "",  # Only used in v2 now
+        self, config: Dict[str, Any], count: int, node_type: str
     ) -> Optional[Dict]:
         self.log("Got {} nodes to launch.".format(count))
-        created_nodes = self._launch_node(
-            config, count, node_type, raise_exception, request_id
-        )
+        created_nodes = self._launch_node(config, count, node_type)
         self.pending.dec(node_type, count)
         return created_nodes
 
     def _launch_node(
-        self,
-        config: Dict[str, Any],
-        count: int,
-        node_type: str,
-        raise_exception: bool = False,
-        request_id: str = "",
+        self, config: Dict[str, Any], count: int, node_type: str
     ) -> Optional[Dict]:
         if self.node_types:
             assert node_type, node_type
@@ -108,7 +95,6 @@ class BaseNodeLauncher:
             TAG_RAY_NODE_KIND: NODE_KIND_WORKER,
             TAG_RAY_NODE_STATUS: STATUS_UNINITIALIZED,
             TAG_RAY_LAUNCH_CONFIG: launch_hash,
-            TAG_RAY_LAUNCH_REQUEST: request_id,
         }
         # A custom node type is specified; set the tag in this case, and also
         # merge the configs. We merge the configs instead of overriding, so
@@ -122,8 +108,6 @@ class BaseNodeLauncher:
 
         error_msg = None
         full_exception = None
-        exception = None
-        # Initialize to empty dict assuming synchronous results.
         created_nodes = {}
         try:
             created_nodes = self.provider.create_node_with_resources_and_labels(
@@ -144,11 +128,9 @@ class BaseNodeLauncher:
                 f"({node_launch_exception.category}): "
                 f"{node_launch_exception.description}"
             )
-            exception = node_launch_exception
-        except Exception as e:
+        except Exception:
             error_msg = f"Failed to launch {{}} node(s) of type {node_type}."
             full_exception = traceback.format_exc()
-            exception = e
         else:
             # Record some metrics/observability information when a node is launched.
             launch_time = time.time() - node_launch_start_time
@@ -184,12 +166,6 @@ class BaseNodeLauncher:
 
         if full_exception is not None:
             self.log(full_exception)
-
-        if raise_exception and exception:
-            # NOTE(rickyx): this allows one to differentiate
-            # between the case where the node provider returns a synchronous
-            # update or an asynchronous update.
-            raise exception
 
         return created_nodes
 
