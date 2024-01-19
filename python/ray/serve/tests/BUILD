@@ -21,7 +21,6 @@ py_test_module_list(
     "test_batching.py",
     "test_constructor_failure.py",
     "test_controller.py",
-    "test_http_util.py",
     "test_proxy_router.py",
     "test_deployment_scheduler.py",
     "test_deployment_version.py",

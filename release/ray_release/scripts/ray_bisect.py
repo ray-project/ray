@@ -208,16 +208,20 @@ def _obtain_test_result(
             if commit in outcomes and len(outcomes[commit]) == run_per_commit:
                 continue
             for run in range(run_per_commit):
-                outcome = subprocess.check_output(
-                    [
-                        "buildkite-agent",
-                        "step",
-                        "get",
-                        "outcome",
-                        "--step",
-                        f"{commit}-{run}",
-                    ]
-                ).decode("utf-8")
+                outcome = (
+                    subprocess.check_output(
+                        [
+                            "buildkite-agent",
+                            "step",
+                            "get",
+                            "outcome",
+                            "--step",
+                            f"{commit}-{run}",
+                        ]
+                    )
+                    .decode("utf-8")
+                    .strip()
+                )
                 if not outcome:
                     continue
                 if commit not in outcomes:

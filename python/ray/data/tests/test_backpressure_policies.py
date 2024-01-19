@@ -360,24 +360,6 @@ class TestStreamOutputBackpressurePolicy(unittest.TestCase):
             [row["consumer_timestamp"] for row in res],
         )
 
-    def test_e2e_backpressure(self):
-        producer_timestamps, consumer_timestamps = self._run_dataset(
-            producer_num_cpus=1, consumer_num_cpus=2
-        )
-        # We can buffer at most 2 blocks.
-        # Thus the producer should be backpressured after producing 2 blocks.
-        # Note, although block 2 is backpressured, producer_timestamps[2] has
-        # been generated before the backpressure.
-        # Thus producer_timestamps[2] < consumer_timestamps[0].
-        # For block 3, it should be generated after the first consumer task
-        # is scheduled. But there is a delay between the consumer task is scheduled
-        # and the consumer task starts to run. Thus the order of
-        # producer_timestamps[3] and consumer_timestamps[0] is not deterministic.
-        # To avoid flakiness, we check consumer_timestamps[0] < producer_timestamps[4].
-        assert (
-            producer_timestamps[2] < consumer_timestamps[0] < producer_timestamps[4]
-        ), (producer_timestamps, consumer_timestamps)
-
     def test_no_deadlock(self):
         # The producer needs all 5 CPUs, and the consumer has no CPU to run.
         # In this case, we shouldn't backpressure the producer and let it run

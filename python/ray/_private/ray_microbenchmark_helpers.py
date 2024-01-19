@@ -9,12 +9,15 @@ from contextlib import contextmanager
 # Only run tests matching this filter pattern.
 
 filter_pattern = os.environ.get("TESTS_TO_RUN", "")
+skip_pattern = os.environ.get("TESTS_TO_SKIP", "")
 
 
 def timeit(
     name, fn, multiplier=1, warmup_time_sec=10
 ) -> List[Optional[Tuple[str, float, float]]]:
-    if filter_pattern not in name:
+    if filter_pattern and filter_pattern not in name:
+        return [None]
+    if skip_pattern and skip_pattern in name:
         return [None]
     # sleep for a while to avoid noisy neigbhors.
     # related issue: https://github.com/ray-project/ray/issues/22045

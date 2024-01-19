@@ -1,12 +1,11 @@
 import argparse
-import json
 import os
-from timeit import default_timer as timer
 from typing import Dict
 
 import numpy as np
 import torch
 from diffusers import StableDiffusionImg2ImgPipeline
+from benchmark import Benchmark
 
 import ray
 
@@ -27,8 +26,6 @@ def main(args):
     ray.init()
     ray.data.DataContext.get_current().execution_options.verbose_progress = True
 
-    start_time = timer()
-
     dataset = ray.data.read_parquet(DATA_URI)
 
     if args.smoke_test:
@@ -41,31 +38,12 @@ def main(args):
         batch_size=BATCH_SIZE,
         num_gpus=1,
     )
+    dataset_iter = dataset.iter_batches(batch_format="pyarrow", batch_size=None)
 
-    num_images = 0
-    for batch in dataset.iter_batches(batch_format="pyarrow", batch_size=None):
-        num_images += len(batch)
-
-    end_time = timer()
-
-    total_time = end_time - start_time
-    throughput = num_images / total_time
-
-    # For structured output integration with internal tooling
-    results = {
-        "data_uri": DATA_URI,
-        "perf_metrics": {
-            "total_time_s": total_time,
-            "throughput_images_s": throughput,
-            "num_images": num_images,
-        },
-    }
-
+    benchmark = Benchmark("stable_diffusion_benchmark")
+    benchmark.run_iterate_ds("main", dataset_iter)
     test_output_json = os.environ.get("TEST_OUTPUT_JSON", "release_test_out.json")
-    with open(test_output_json, "wt") as f:
-        json.dump(results, f)
-
-    print(results)
+    benchmark.write_result(test_output_json)
 
 
 class GenerateImage:

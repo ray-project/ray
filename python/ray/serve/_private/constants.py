@@ -36,10 +36,6 @@ SERVE_DEFAULT_APP_NAME = "default"
 #: Max concurrency
 ASYNC_CONCURRENCY = int(1e6)
 
-# Concurrency group used for replica operations that cannot be blocked by user code
-# (e.g., health checks and fetching queue length).
-REPLICA_CONTROL_PLANE_CONCURRENCY_GROUP = "control_plane"
-
 # How often to call the control loop on the controller.
 CONTROL_LOOP_PERIOD_S = 0.1
 
