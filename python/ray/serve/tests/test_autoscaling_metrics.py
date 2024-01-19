@@ -70,6 +70,8 @@ class TestInMemoryMetricsStore:
 
 
 def test_e2e(serve_instance):
+    """Test that request metrics are sent correctly to the controller."""
+
     signal = SignalActor.remote()
 
     @serve.deployment(
@@ -104,16 +106,13 @@ def test_e2e(serve_instance):
         print(data)
         return data
 
-    wait_for_condition(lambda: len(get_data()) > 0)
+    wait_for_condition(lambda: get_data() > 0)
     print("Autoscaling metrics started recording on controller.")
 
     # Many queries should be inflight.
     def last_timestamp_value_high():
-        data = get_data()
-        metrics = list(data.values())
-        assert len(metrics) == 2
-        assert metrics[0] > 0 and metrics[1] > 0
-        assert sum(metrics) > 40
+        metrics = get_data()
+        assert metrics > 40
         return True
 
     wait_for_condition(last_timestamp_value_high)
@@ -133,9 +132,9 @@ def test_e2e(serve_instance):
     wait_for_condition(check_running_replicas, expected=1, timeout=15)
     print("Num replicas dropped to 1.")
 
-    # The metrics stored on controller should only have info on the remaining replica
-    wait_for_condition(lambda: len(get_data()) == 1)
-    print("Metrics stored on the controller reduced to 1 replica.")
+    # Request metrics should drop to 0
+    wait_for_condition(lambda: get_data() == 0)
+    print("Queued and ongoing requests dropped to 0.")
 
 
 if __name__ == "__main__":

@@ -28,9 +28,12 @@ class TestStateMachine(abc.ABC):
     ray_repo = None
     ray_buildkite = None
 
-    def __init__(self, test: Test) -> None:
+    def __init__(
+        self, test: Test, history_length: int = 10, dry_run: bool = False
+    ) -> None:
         self.test = test
-        self.test_results = test.get_test_results()
+        self.test_results = test.get_test_results(limit=history_length)
+        self.dry_run = dry_run
         TestStateMachine._init_ray_repo()
         TestStateMachine._init_ray_buildkite()
 
@@ -59,6 +62,9 @@ class TestStateMachine(abc.ABC):
         from_state = self.test.get_state()
         to_state = self._next_state(from_state)
         self.test.set_state(to_state)
+        if self.dry_run:
+            # Don't perform any action if dry run
+            return
         self._move_hook(from_state, to_state)
         self._state_hook(to_state)
 
@@ -71,6 +77,8 @@ class TestStateMachine(abc.ABC):
                 return TestState.CONSITENTLY_FAILING
             if self._passing_to_failing():
                 return TestState.FAILING
+            if self._passing_to_flaky():
+                return TestState.FLAKY
 
         if current_state == TestState.FAILING:
             if self._failing_to_consistently_failing():
@@ -83,6 +91,14 @@ class TestStateMachine(abc.ABC):
                 return TestState.JAILED
             if self._consistently_failing_to_passing():
                 return TestState.PASSING
+            if self._consistently_failing_to_flaky():
+                return TestState.FLAKY
+
+        if current_state == TestState.FLAKY:
+            if self._flaky_to_passing():
+                return TestState.PASSING
+            if self._flaky_to_jailed():
+                return TestState.JAILED
 
         if current_state == TestState.JAILED:
             if self._jailed_to_passing():
@@ -145,6 +161,22 @@ class TestStateMachine(abc.ABC):
         Condition to jail a test. This is an abstract method since different state
         machine implements this logic differently.
         """
+        pass
+
+    @abc.abstractmethod
+    def _passing_to_flaky(self) -> bool:
+        pass
+
+    @abc.abstractmethod
+    def _consistently_failing_to_flaky(self) -> bool:
+        pass
+
+    @abc.abstractmethod
+    def _flaky_to_passing(self) -> bool:
+        pass
+
+    @abc.abstractmethod
+    def _flaky_to_jailed(self) -> bool:
         pass
 
     """

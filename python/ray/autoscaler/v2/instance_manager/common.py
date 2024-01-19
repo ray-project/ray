@@ -6,10 +6,10 @@ from ray.core.generated.instance_manager_pb2 import Instance
 
 
 @dataclass
-class InvalidInstanceStatusError(ValueError):
+class InvalidInstanceStatusTransitionError(ValueError):
     """Raised when an instance has an invalid status."""
 
-    # The instance id.
+    # The instance manager instance id.
     instance_id: str
     # The current status of the instance.
     cur_status: Instance.InstanceStatus
@@ -77,7 +77,6 @@ class InstanceUtil:
             Instance.REQUESTED,
             Instance.ALLOCATED,
             Instance.RAY_INSTALLING,
-            Instance.ALLOCATION_FAILED,
         ]
 
     @staticmethod
@@ -94,13 +93,13 @@ class InstanceUtil:
             details: The details of the transition.
 
         Raises:
-            InvalidInstanceStatusError if the transition is not allowed.
+            InvalidInstanceStatusTransitionError if the transition is not allowed.
         """
         if (
             new_instance_status
             not in InstanceUtil.get_valid_transitions()[instance.status]
         ):
-            raise InvalidInstanceStatusError(
+            raise InvalidInstanceStatusTransitionError(
                 instance_id=instance.instance_id,
                 cur_status=instance.status,
                 new_status=new_instance_status,
@@ -140,35 +139,38 @@ class InstanceUtil:
             },
             # When in this status, a launch request to the node provider is made.
             Instance.REQUESTED: {
-                # Cloud provider allocated a cloud node for the instance.
-                # This happens when the cloud node first appears in the list of running
-                # cloud nodes from the cloud node provider.
+                # Cloud provider allocated a cloud instance for the instance.
+                # This happens when the cloud instance first appears in the list of
+                # running cloud instances from the cloud instance provider.
                 Instance.ALLOCATED,
+                # Retry the allocation, become queueing again.
+                Instance.QUEUED,
                 # Cloud provider fails to allocate one. Either as a timeout or
                 # the launch request fails immediately.
                 Instance.ALLOCATION_FAILED,
             },
-            # When in this status, the cloud node is allocated and running. This
-            # happens when the cloud node is present in node provider's list of
-            # running cloud nodes.
+            # When in this status, the cloud instance is allocated and running. This
+            # happens when the cloud instance is present in node provider's list of
+            # running cloud instances.
             Instance.ALLOCATED: {
-                # Ray needs to be install and launch on the provisioned cloud node.
-                # This happens when the cloud node is allocated, and the autoscaler
-                # is responsible for installing and launching ray on the cloud node.
+                # Ray needs to be install and launch on the provisioned cloud instance.
+                # This happens when the cloud instance is allocated, and the autoscaler
+                # is responsible for installing and launching ray on the cloud instance.
                 # For node provider that manages the ray installation and launching,
                 # this state is skipped.
                 Instance.RAY_INSTALLING,
-                # Ray is already installed and running on the provisioned cloud node.
-                # This happens when a ray node joins the ray cluster, and the instance
-                # is discovered in the set of running ray nodes from the Ray cluster.
+                # Ray is already installed and running on the provisioned cloud
+                # instance. This happens when a ray node joins the ray cluster,
+                # and the instance is discovered in the set of running ray nodes
+                # from the Ray cluster.
                 Instance.RAY_RUNNING,
                 # Instance is requested to be stopped, e.g. instance leaked: no matching
                 # Instance with the same type is found in the autoscaler's state.
                 Instance.STOPPING,
-                # Cloud node somehow failed.
+                # cloud instance somehow failed.
                 Instance.STOPPED,
             },
-            # Ray process is being installed and started on the cloud node.
+            # Ray process is being installed and started on the cloud instance.
             # This status is skipped for node provider that manages the ray
             # installation and launching. (e.g. Ray-on-Spark)
             Instance.RAY_INSTALLING: {
@@ -177,17 +179,17 @@ class InstanceUtil:
                 # where the ray process is managed by the node provider.
                 Instance.RAY_RUNNING,
                 # Ray installation failed. This happens when the ray process failed to
-                # be installed and started on the cloud node.
+                # be installed and started on the cloud instance.
                 Instance.RAY_INSTALL_FAILED,
                 # Wen the ray node is reported as stopped by the ray cluster.
                 # This could happen that the ray process was stopped quickly after start
                 # such that a ray running node  wasn't discovered and the RAY_RUNNING
                 # transition was skipped.
                 Instance.RAY_STOPPED,
-                # Cloud node somehow failed during the installation process.
+                # cloud instance somehow failed during the installation process.
                 Instance.STOPPED,
             },
-            # Ray process is installed and running on the cloud node. When in this
+            # Ray process is installed and running on the cloud instance. When in this
             # status, a ray node must be present in the ray cluster.
             Instance.RAY_RUNNING: {
                 # Ray is requested to be stopped to the ray cluster,
@@ -195,7 +197,7 @@ class InstanceUtil:
                 Instance.RAY_STOPPING,
                 # Ray is already stopped, as reported by the ray cluster.
                 Instance.RAY_STOPPED,
-                # Cloud node somehow failed.
+                # cloud instance somehow failed.
                 Instance.STOPPED,
             },
             # When in this status, the ray process is requested to be stopped to the
@@ -205,39 +207,36 @@ class InstanceUtil:
                 # Ray is stopped, and the ray node is present in the dead ray node list
                 # reported by the ray cluster.
                 Instance.RAY_STOPPED,
-                # Cloud node somehow failed.
+                # cloud instance somehow failed.
                 Instance.STOPPED,
             },
             # When in this status, the ray process is stopped, and the ray node is
             # present in the dead ray node list reported by the ray cluster.
             Instance.RAY_STOPPED: {
-                # Cloud node is requested to be stopped.
+                # cloud instance is requested to be stopped.
                 Instance.STOPPING,
-                # Cloud node somehow failed.
+                # cloud instance somehow failed.
                 Instance.STOPPED,
             },
-            # When in this status, the cloud node is requested to be stopped to
+            # When in this status, the cloud instance is requested to be stopped to
             # the node provider.
             Instance.STOPPING: {
-                # When a cloud node no longer appears in the list of running cloud nodes
-                # from the node provider.
+                # When a cloud instance no longer appears in the list of running cloud
+                # instances from the node provider.
                 Instance.STOPPED
             },
-            # Whenever a cloud node disappears from the list of running cloud nodes
-            # from the node provider, the instance is marked as stopped. Since
-            # we guarantee 1:1 mapping of a Instance to a cloud node, this is a
+            # Whenever a cloud instance disappears from the list of running cloud
+            # instances from the node provider, the instance is marked as stopped. Since
+            # we guarantee 1:1 mapping of a Instance to a cloud instance, this is a
             # terminal state.
             Instance.STOPPED: set(),  # Terminal state.
-            # When in this status, the cloud node failed to be allocated by the
+            # When in this status, the cloud instance failed to be allocated by the
             # node provider.
-            Instance.ALLOCATION_FAILED: {
-                # Autoscaler might retry to allocate the instance.
-                Instance.QUEUED
-            },
+            Instance.ALLOCATION_FAILED: set(),  # Terminal state.
             Instance.RAY_INSTALL_FAILED: {
                 # Autoscaler requests to shutdown the instance when ray install failed.
                 Instance.STOPPING,
-                # Cloud node somehow failed.
+                # cloud instance somehow failed.
                 Instance.STOPPED,
             },
             # Initial state before the instance is created. Should never be used.
