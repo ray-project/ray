@@ -248,7 +248,9 @@ class ActorReplicaWrapper:
                 num_returns="streaming"
             )
         else:
-            method = self._actor_handle.handle_request
+            method = self._actor_handle.handle_request.options(
+                num_returns="streaming"
+            )
 
         return method.remote(pickle.dumps(query.metadata), *query.args, **query.kwargs)
 
@@ -1044,9 +1046,15 @@ class MagicReplicaScheduler(ReplicaScheduler):
                 ] = system_response.num_ongoing_requests
                 if system_response.accepted:
                     # print("REPLICA ACCEPTED, RETURN GEN!")
-                    return obj_ref_gen
-                # else:
-                # print("REPLICA REJECTED!")
+                    if query.metadata.is_streaming:
+                        return obj_ref_gen
+                    else:
+                        obj_ref = await obj_ref_gen.__anext__()
+                        print("got obj_ref?", obj_ref)
+                        return obj_ref
+                else:
+                    pass
+                    # print("REPLICA REJECTED!")
             except Exception as e:
                 logger.exception(e)
                 raise
