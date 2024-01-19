@@ -61,91 +61,11 @@ if TYPE_CHECKING:
     class ActorClassRemote(Generic[_Method_co]):
         @overload
         def __call__(
-            self: ActorClassRemote[Callable[Concatenate[_T0, ...], _R]],
-            __arg0: RemoteArg[_T0],
-            **kwargs,
-        ) -> Actor[_R]:
-            ...
-
-        @overload
-        def __call__(
-            self: ActorClassRemote[Callable[Concatenate[_T0, _T1, ...], _R]],
-            __arg0: RemoteArg[_T0],
-            __arg1: RemoteArg[_T1],
-            **kwargs,
-        ) -> Actor[_R]:
-            ...
-
-        @overload
-        def __call__(
-            self: ActorClassRemote[Callable[Concatenate[_T0, _T1, _T2, ...], _R]],
-            __arg0: RemoteArg[_T0],
-            __arg1: RemoteArg[_T1],
-            __arg2: RemoteArg[_T2],
-            **kwargs,
-        ) -> Actor[_R]:
-            ...
-
-        @overload
-        def __call__(
-            self: ActorClassRemote[Callable[Concatenate[_T0, _T1, _T2, _T3, ...], _R]],
-            __arg0: RemoteArg[_T0],
-            __arg1: RemoteArg[_T1],
-            __arg2: RemoteArg[_T2],
-            __arg3: RemoteArg[_T3],
-            **kwargs,
-        ) -> Actor[_R]:
-            ...
-
-        @overload
-        def __call__(
             self: ActorClassRemote[
-                Callable[Concatenate[_T0, _T1, _T2, _T3, _T4, ...], _R]
-            ],
-            __arg0: RemoteArg[_T0],
-            __arg1: RemoteArg[_T1],
-            __arg2: RemoteArg[_T2],
-            __arg3: RemoteArg[_T3],
-            __arg4: RemoteArg[_T4],
-            **kwargs,
-        ) -> Actor[_R]:
-            ...
-
-        @overload
-        def __call__(
-            self: ActorClassRemote[
-                Callable[Concatenate[_T0, _T1, _T2, _T3, _T4, _T5, ...], _R]
-            ],
-            __arg0: RemoteArg[_T0],
-            __arg1: RemoteArg[_T1],
-            __arg2: RemoteArg[_T2],
-            __arg3: RemoteArg[_T3],
-            __arg4: RemoteArg[_T4],
-            __arg5: RemoteArg[_T5],
-            **kwargs,
-        ) -> Actor[_R]:
-            ...
-
-        @overload
-        def __call__(
-            self: ActorClassRemote[
-                Callable[Concatenate[_T0, _T1, _T2, _T3, _T4, _T5, _T6, ...], _R]
-            ],
-            __arg0: RemoteArg[_T0],
-            __arg1: RemoteArg[_T1],
-            __arg2: RemoteArg[_T2],
-            __arg3: RemoteArg[_T3],
-            __arg4: RemoteArg[_T4],
-            __arg5: RemoteArg[_T5],
-            __arg6: RemoteArg[_T6],
-            **kwargs,
-        ) -> Actor[_R]:
-            ...
-
-        @overload
-        def __call__(
-            self: ActorClassRemote[
-                Callable[Concatenate[_T0, _T1, _T2, _T3, _T4, _T5, _T6, _T7, ...], _R]
+                Callable[
+                    Concatenate[_T0, _T1, _T2, _T3, _T4, _T5, _T6, _T7, _T8, _T9, ...],
+                    _R,
+                ]
             ],
             __arg0: RemoteArg[_T0],
             __arg1: RemoteArg[_T1],
@@ -155,6 +75,8 @@ if TYPE_CHECKING:
             __arg5: RemoteArg[_T5],
             __arg6: RemoteArg[_T6],
             __arg7: RemoteArg[_T7],
+            __arg8: RemoteArg[_T8],
+            __arg9: RemoteArg[_T9],
             **kwargs,
         ) -> Actor[_R]:
             ...
@@ -182,10 +104,7 @@ if TYPE_CHECKING:
         @overload
         def __call__(
             self: ActorClassRemote[
-                Callable[
-                    Concatenate[_T0, _T1, _T2, _T3, _T4, _T5, _T6, _T7, _T8, _T9, ...],
-                    _R,
-                ]
+                Callable[Concatenate[_T0, _T1, _T2, _T3, _T4, _T5, _T6, _T7, ...], _R]
             ],
             __arg0: RemoteArg[_T0],
             __arg1: RemoteArg[_T1],
@@ -195,8 +114,89 @@ if TYPE_CHECKING:
             __arg5: RemoteArg[_T5],
             __arg6: RemoteArg[_T6],
             __arg7: RemoteArg[_T7],
-            __arg8: RemoteArg[_T8],
-            __arg9: RemoteArg[_T9],
+            **kwargs,
+        ) -> Actor[_R]:
+            ...
+
+        @overload
+        def __call__(
+            self: ActorClassRemote[
+                Callable[Concatenate[_T0, _T1, _T2, _T3, _T4, _T5, _T6, ...], _R]
+            ],
+            __arg0: RemoteArg[_T0],
+            __arg1: RemoteArg[_T1],
+            __arg2: RemoteArg[_T2],
+            __arg3: RemoteArg[_T3],
+            __arg4: RemoteArg[_T4],
+            __arg5: RemoteArg[_T5],
+            __arg6: RemoteArg[_T6],
+            **kwargs,
+        ) -> Actor[_R]:
+            ...
+
+        @overload
+        def __call__(
+            self: ActorClassRemote[
+                Callable[Concatenate[_T0, _T1, _T2, _T3, _T4, _T5, ...], _R]
+            ],
+            __arg0: RemoteArg[_T0],
+            __arg1: RemoteArg[_T1],
+            __arg2: RemoteArg[_T2],
+            __arg3: RemoteArg[_T3],
+            __arg4: RemoteArg[_T4],
+            __arg5: RemoteArg[_T5],
+            **kwargs,
+        ) -> Actor[_R]:
+            ...
+
+        @overload
+        def __call__(
+            self: ActorClassRemote[
+                Callable[Concatenate[_T0, _T1, _T2, _T3, _T4, ...], _R]
+            ],
+            __arg0: RemoteArg[_T0],
+            __arg1: RemoteArg[_T1],
+            __arg2: RemoteArg[_T2],
+            __arg3: RemoteArg[_T3],
+            __arg4: RemoteArg[_T4],
+            **kwargs,
+        ) -> Actor[_R]:
+            ...
+
+        @overload
+        def __call__(
+            self: ActorClassRemote[Callable[Concatenate[_T0, _T1, _T2, _T3, ...], _R]],
+            __arg0: RemoteArg[_T0],
+            __arg1: RemoteArg[_T1],
+            __arg2: RemoteArg[_T2],
+            __arg3: RemoteArg[_T3],
+            **kwargs,
+        ) -> Actor[_R]:
+            ...
+
+        @overload
+        def __call__(
+            self: ActorClassRemote[Callable[Concatenate[_T0, _T1, _T2, ...], _R]],
+            __arg0: RemoteArg[_T0],
+            __arg1: RemoteArg[_T1],
+            __arg2: RemoteArg[_T2],
+            **kwargs,
+        ) -> Actor[_R]:
+            ...
+
+        @overload
+        def __call__(
+            self: ActorClassRemote[Callable[Concatenate[_T0, _T1, ...], _R]],
+            __arg0: RemoteArg[_T0],
+            __arg1: RemoteArg[_T1],
+            **kwargs,
+        ) -> Actor[_R]:
+            ...
+
+        @overload
+        def __call__(
+            self: ActorClassRemote[Callable[Concatenate[_T0, ...], _R]],
+            __arg0: RemoteArg[_T0],
             **kwargs,
         ) -> Actor[_R]:
             ...
@@ -243,100 +243,9 @@ if TYPE_CHECKING:
     class ActorMethodRemote(Generic[_Method_co]):
         @overload
         def __call__(
-            self: ActorMethodRemote[Callable[Concatenate[_T0, ...], RemoteRet[_R]]],
-            __arg0: RemoteArg[_T0],
-            **kwargs,
-        ) -> ray.ObjectRef[_R]:
-            ...
-
-        @overload
-        def __call__(
-            self: ActorMethodRemote[
-                Callable[Concatenate[_T0, _T1, ...], RemoteRet[_R]]
-            ],
-            __arg0: RemoteArg[_T0],
-            __arg1: RemoteArg[_T1],
-            **kwargs,
-        ) -> ray.ObjectRef[_R]:
-            ...
-
-        @overload
-        def __call__(
-            self: ActorMethodRemote[
-                Callable[Concatenate[_T0, _T1, _T2, ...], RemoteRet[_R]]
-            ],
-            __arg0: RemoteArg[_T0],
-            __arg1: RemoteArg[_T1],
-            __arg2: RemoteArg[_T2],
-            **kwargs,
-        ) -> ray.ObjectRef[_R]:
-            ...
-
-        @overload
-        def __call__(
-            self: ActorMethodRemote[
-                Callable[Concatenate[_T0, _T1, _T2, _T3, ...], RemoteRet[_R]]
-            ],
-            __arg0: RemoteArg[_T0],
-            __arg1: RemoteArg[_T1],
-            __arg2: RemoteArg[_T2],
-            __arg3: RemoteArg[_T3],
-            **kwargs,
-        ) -> ray.ObjectRef[_R]:
-            ...
-
-        @overload
-        def __call__(
-            self: ActorMethodRemote[
-                Callable[Concatenate[_T0, _T1, _T2, _T3, _T4, ...], RemoteRet[_R]]
-            ],
-            __arg0: RemoteArg[_T0],
-            __arg1: RemoteArg[_T1],
-            __arg2: RemoteArg[_T2],
-            __arg3: RemoteArg[_T3],
-            __arg4: RemoteArg[_T4],
-            **kwargs,
-        ) -> ray.ObjectRef[_R]:
-            ...
-
-        @overload
-        def __call__(
-            self: ActorMethodRemote[
-                Callable[Concatenate[_T0, _T1, _T2, _T3, _T4, _T5, ...], RemoteRet[_R]]
-            ],
-            __arg0: RemoteArg[_T0],
-            __arg1: RemoteArg[_T1],
-            __arg2: RemoteArg[_T2],
-            __arg3: RemoteArg[_T3],
-            __arg4: RemoteArg[_T4],
-            __arg5: RemoteArg[_T5],
-            **kwargs,
-        ) -> ray.ObjectRef[_R]:
-            ...
-
-        @overload
-        def __call__(
             self: ActorMethodRemote[
                 Callable[
-                    Concatenate[_T0, _T1, _T2, _T3, _T4, _T5, _T6, ...], RemoteRet[_R]
-                ]
-            ],
-            __arg0: RemoteArg[_T0],
-            __arg1: RemoteArg[_T1],
-            __arg2: RemoteArg[_T2],
-            __arg3: RemoteArg[_T3],
-            __arg4: RemoteArg[_T4],
-            __arg5: RemoteArg[_T5],
-            __arg6: RemoteArg[_T6],
-            **kwargs,
-        ) -> ray.ObjectRef[_R]:
-            ...
-
-        @overload
-        def __call__(
-            self: ActorMethodRemote[
-                Callable[
-                    Concatenate[_T0, _T1, _T2, _T3, _T4, _T5, _T6, _T7, ...],
+                    Concatenate[_T0, _T1, _T2, _T3, _T4, _T5, _T6, _T7, _T8, _T9, ...],
                     RemoteRet[_R],
                 ]
             ],
@@ -348,6 +257,8 @@ if TYPE_CHECKING:
             __arg5: RemoteArg[_T5],
             __arg6: RemoteArg[_T6],
             __arg7: RemoteArg[_T7],
+            __arg8: RemoteArg[_T8],
+            __arg9: RemoteArg[_T9],
             **kwargs,
         ) -> ray.ObjectRef[_R]:
             ...
@@ -377,7 +288,7 @@ if TYPE_CHECKING:
         def __call__(
             self: ActorMethodRemote[
                 Callable[
-                    Concatenate[_T0, _T1, _T2, _T3, _T4, _T5, _T6, _T7, _T8, _T9, ...],
+                    Concatenate[_T0, _T1, _T2, _T3, _T4, _T5, _T6, _T7, ...],
                     RemoteRet[_R],
                 ]
             ],
@@ -389,8 +300,97 @@ if TYPE_CHECKING:
             __arg5: RemoteArg[_T5],
             __arg6: RemoteArg[_T6],
             __arg7: RemoteArg[_T7],
-            __arg8: RemoteArg[_T8],
-            __arg9: RemoteArg[_T9],
+            **kwargs,
+        ) -> ray.ObjectRef[_R]:
+            ...
+
+        @overload
+        def __call__(
+            self: ActorMethodRemote[
+                Callable[
+                    Concatenate[_T0, _T1, _T2, _T3, _T4, _T5, _T6, ...], RemoteRet[_R]
+                ]
+            ],
+            __arg0: RemoteArg[_T0],
+            __arg1: RemoteArg[_T1],
+            __arg2: RemoteArg[_T2],
+            __arg3: RemoteArg[_T3],
+            __arg4: RemoteArg[_T4],
+            __arg5: RemoteArg[_T5],
+            __arg6: RemoteArg[_T6],
+            **kwargs,
+        ) -> ray.ObjectRef[_R]:
+            ...
+
+        @overload
+        def __call__(
+            self: ActorMethodRemote[
+                Callable[Concatenate[_T0, _T1, _T2, _T3, _T4, _T5, ...], RemoteRet[_R]]
+            ],
+            __arg0: RemoteArg[_T0],
+            __arg1: RemoteArg[_T1],
+            __arg2: RemoteArg[_T2],
+            __arg3: RemoteArg[_T3],
+            __arg4: RemoteArg[_T4],
+            __arg5: RemoteArg[_T5],
+            **kwargs,
+        ) -> ray.ObjectRef[_R]:
+            ...
+
+        @overload
+        def __call__(
+            self: ActorMethodRemote[
+                Callable[Concatenate[_T0, _T1, _T2, _T3, _T4, ...], RemoteRet[_R]]
+            ],
+            __arg0: RemoteArg[_T0],
+            __arg1: RemoteArg[_T1],
+            __arg2: RemoteArg[_T2],
+            __arg3: RemoteArg[_T3],
+            __arg4: RemoteArg[_T4],
+            **kwargs,
+        ) -> ray.ObjectRef[_R]:
+            ...
+
+        @overload
+        def __call__(
+            self: ActorMethodRemote[
+                Callable[Concatenate[_T0, _T1, _T2, _T3, ...], RemoteRet[_R]]
+            ],
+            __arg0: RemoteArg[_T0],
+            __arg1: RemoteArg[_T1],
+            __arg2: RemoteArg[_T2],
+            __arg3: RemoteArg[_T3],
+            **kwargs,
+        ) -> ray.ObjectRef[_R]:
+            ...
+
+        @overload
+        def __call__(
+            self: ActorMethodRemote[
+                Callable[Concatenate[_T0, _T1, _T2, ...], RemoteRet[_R]]
+            ],
+            __arg0: RemoteArg[_T0],
+            __arg1: RemoteArg[_T1],
+            __arg2: RemoteArg[_T2],
+            **kwargs,
+        ) -> ray.ObjectRef[_R]:
+            ...
+
+        @overload
+        def __call__(
+            self: ActorMethodRemote[
+                Callable[Concatenate[_T0, _T1, ...], RemoteRet[_R]]
+            ],
+            __arg0: RemoteArg[_T0],
+            __arg1: RemoteArg[_T1],
+            **kwargs,
+        ) -> ray.ObjectRef[_R]:
+            ...
+
+        @overload
+        def __call__(
+            self: ActorMethodRemote[Callable[Concatenate[_T0, ...], RemoteRet[_R]]],
+            __arg0: RemoteArg[_T0],
             **kwargs,
         ) -> ray.ObjectRef[_R]:
             ...
