@@ -226,7 +226,7 @@ def test_e2e_scale_up_down_with_0_replica(
         def __call__(self):
             ray.get(signal.wait.remote())
 
-    handle = serve.run(A.bind()).options(use_new_handle_api=True)
+    handle = serve.run(A.bind())
     wait_for_condition(
         lambda: get_deployment_status(controller, "A") == DeploymentStatus.HEALTHY
     )

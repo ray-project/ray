@@ -25,28 +25,16 @@ def test_basic(serve_instance):
         def __init__(self, handle: DeploymentHandle):
             self._handle = handle
             assert isinstance(self._handle, DeploymentHandle)
-            self._old_handle = handle.options(use_new_handle_api=False)
-            assert isinstance(self._old_handle, RayServeHandle)
 
         async def __call__(self):
             response = self._handle.remote()
             assert isinstance(response, DeploymentResponse)
             val = await response
-
-            ref = await self._old_handle.remote()
-            assert isinstance(ref, ray.ObjectRef)
-            old_val = await ref
-
-            assert val == old_val
-
             return val
 
     handle: DeploymentHandle = serve.run(Deployment.bind(downstream.bind()))
     assert isinstance(handle, DeploymentHandle)
     assert handle.remote().result() == "hello"
-    old_handle = handle.options(use_new_handle_api=False)
-    assert isinstance(old_handle, RayServeSyncHandle)
-    assert ray.get(old_handle.remote()) == "hello"
 
 
 def test_result_timeout(serve_instance):
@@ -59,7 +47,7 @@ def test_result_timeout(serve_instance):
             await signal_actor.wait.remote()
             return "hi"
 
-    handle = serve.run(Deployment.bind()).options(use_new_handle_api=True)
+    handle = serve.run(Deployment.bind())
     ref = handle.remote()
     with pytest.raises(TimeoutError):
         ref.result(timeout_s=0.1)
@@ -112,8 +100,8 @@ def test_compose_deployments_in_app(serve_instance):
     @serve.deployment
     class Deployment:
         def __init__(self, handle1: RayServeHandle, handle2: RayServeHandle):
-            self._handle1 = handle1.options(use_new_handle_api=True)
-            self._handle2 = handle2.options(use_new_handle_api=True)
+            self._handle1 = handle1
+            self._handle2 = handle2
 
         async def __call__(self):
             result = await self._handle1.remote(self._handle2.remote("hi"))
@@ -124,7 +112,7 @@ def test_compose_deployments_in_app(serve_instance):
             Downstream.options(name="downstream1").bind("downstream1"),
             Downstream.options(name="downstream2").bind("downstream2"),
         ),
-    ).options(use_new_handle_api=True)
+    )
     assert handle.remote().result() == "driver|downstream1|downstream2|hi"
 
 
@@ -141,10 +129,10 @@ def test_compose_apps(serve_instance):
 
     handle1 = serve.run(
         Deployment.bind("app1"), name="app1", route_prefix="/app1"
-    ).options(use_new_handle_api=True)
+    )
     handle2 = serve.run(
         Deployment.bind("app2"), name="app2", route_prefix="/app2"
-    ).options(use_new_handle_api=True)
+    )
 
     assert handle1.remote(handle2.remote("hi")).result() == "app1|app2|hi"
 
@@ -163,15 +151,13 @@ def test_convert_to_object_ref(serve_instance):
     @serve.deployment
     class Deployment:
         def __init__(self, handle: RayServeHandle):
-            self._handle = handle.options(use_new_handle_api=True)
+            self._handle = handle
 
         async def __call__(self):
             ref = self._handle.remote()
             return await identity_task.remote(await ref._to_object_ref())
 
-    handle = serve.run(Deployment.bind(downstream.bind())).options(
-        use_new_handle_api=True
-    )
+    handle = serve.run(Deployment.bind(downstream.bind()))
 
     ref = handle.remote()
     assert ray.get(identity_task.remote(ref._to_object_ref_sync())) == "hello"
@@ -188,7 +174,7 @@ def test_generators(serve_instance):
     @serve.deployment
     class Deployment:
         def __init__(self, handle: RayServeHandle):
-            self._handle = handle.options(use_new_handle_api=True, stream=True)
+            self._handle = handle.options(stream=True)
 
         async def __call__(self):
             gen = self._handle.remote()
@@ -196,9 +182,7 @@ def test_generators(serve_instance):
             async for i in gen:
                 yield i
 
-    handle = serve.run(Deployment.bind(downstream.bind())).options(
-        use_new_handle_api=True
-    )
+    handle = serve.run(Deployment.bind(downstream.bind()))
 
     gen = handle.options(stream=True).remote()
     assert isinstance(gen, DeploymentResponseGenerator)
@@ -216,7 +200,7 @@ def test_convert_to_object_ref_gen(serve_instance):
     @serve.deployment
     class Deployment:
         def __init__(self, handle: RayServeHandle):
-            self._handle = handle.options(use_new_handle_api=True, stream=True)
+            self._handle = handle.options(stream=True)
 
         async def __call__(self):
             gen = self._handle.remote()
@@ -226,9 +210,7 @@ def test_convert_to_object_ref_gen(serve_instance):
             async for obj_ref in obj_ref_gen:
                 yield await obj_ref
 
-    handle = serve.run(Deployment.bind(downstream.bind())).options(
-        use_new_handle_api=True
-    )
+    handle = serve.run(Deployment.bind(downstream.bind()))
 
     gen = handle.options(stream=True).remote()
     assert isinstance(gen, DeploymentResponseGenerator)
@@ -255,7 +237,7 @@ def test_sync_response_methods_fail_in_deployment(serve_instance, stream: bool):
     @serve.deployment
     class Deployment:
         def __init__(self, handle: RayServeHandle):
-            self._handle = handle.options(use_new_handle_api=True, stream=stream)
+            self._handle = handle.options(stream=stream)
 
         async def __call__(self):
             response = self._handle.remote()
@@ -271,9 +253,7 @@ def test_sync_response_methods_fail_in_deployment(serve_instance, stream: bool):
 
             return "OK"
 
-    handle = serve.run(Deployment.bind(downstream.bind())).options(
-        use_new_handle_api=True
-    )
+    handle = serve.run(Deployment.bind(downstream.bind()))
 
     assert handle.remote().result() == "OK"
 
@@ -291,7 +271,7 @@ def test_handle_eager_execution(serve_instance):
     @serve.deployment
     class Deployment:
         def __init__(self, handle: RayServeHandle):
-            self._handle = handle.options(use_new_handle_api=True)
+            self._handle = handle
 
         async def __call__(self):
             # Send a request without awaiting the response. It should still
@@ -303,9 +283,7 @@ def test_handle_eager_execution(serve_instance):
 
             return await r
 
-    handle = serve.run(Deployment.bind(downstream.bind())).options(
-        use_new_handle_api=True
-    )
+    handle = serve.run(Deployment.bind(downstream.bind()))
 
     # Send a request without awaiting the response. It should still
     # executed (verified via signal actor).

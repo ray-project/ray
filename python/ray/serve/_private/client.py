@@ -474,7 +474,6 @@ class ServeControllerClient:
         app_name: Optional[str] = "default",
         missing_ok: Optional[bool] = False,
         sync: bool = True,
-        use_new_handle_api: bool = RAY_SERVE_ENABLE_NEW_HANDLE_API,
     ) -> Union[DeploymentHandle, RayServeHandle, RayServeSyncHandle]:
         """Construct a handle for the specified deployment.
 
@@ -504,27 +503,10 @@ class ServeControllerClient:
                 "exist."
             )
 
-        if use_new_handle_api:
-            handle = DeploymentHandle(
-                deployment_name,
-                app_name,
-                # Only used when users convert this back to deprecated handle types.
-                sync=sync,
-            )
-        elif sync:
-            handle = RayServeSyncHandle(
-                deployment_name,
-                app_name,
-                # Only used when users convert this back to deprecated handle types.
-                sync=sync,
-            )
-        else:
-            handle = RayServeHandle(
-                deployment_name,
-                app_name,
-                # Only used when users convert this back to deprecated handle types.
-                sync=sync,
-            )
+        handle = DeploymentHandle(
+            deployment_name,
+            app_name,
+        )
 
         self.handle_cache[cache_key] = handle
         if cache_key in self._evicted_handle_keys:

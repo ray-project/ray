@@ -154,9 +154,7 @@ def test_deploy_function_no_params(serve_instance, use_async):
     else:
         expected_output = "sync!"
         deployment_cls = sync_d
-    handle = serve.run(deployment_cls.bind()).options(
-        use_new_handle_api=True,
-    )
+    handle = serve.run(deployment_cls.bind())
 
     assert (
         requests.get(f"http://localhost:8000/{deployment_cls.name}").text
@@ -174,9 +172,7 @@ def test_deploy_function_no_params_call_with_param(serve_instance, use_async):
         expected_output = "sync!"
         deployment_cls = sync_d
 
-    handle = serve.run(deployment_cls.bind()).options(
-        use_new_handle_api=True,
-    )
+    handle = serve.run(deployment_cls.bind())
 
     assert (
         requests.get(f"http://localhost:8000/{deployment_cls.name}").text
@@ -198,9 +194,7 @@ def test_deploy_class_no_params(serve_instance, use_async):
     else:
         deployment_cls = Counter
 
-    handle = serve.run(deployment_cls.bind()).options(
-        use_new_handle_api=True,
-    )
+    handle = serve.run(deployment_cls.bind())
 
     assert requests.get(f"http://127.0.0.1:8000/{deployment_cls.name}").json() == {
         "count": 1
@@ -223,9 +217,7 @@ def test_user_config(serve_instance):
         def reconfigure(self, config):
             self.count = config["count"]
 
-    handle = serve.run(Counter.bind()).options(
-        use_new_handle_api=True,
-    )
+    handle = serve.run(Counter.bind())
 
     def check(val, num_replicas):
         pids_seen = set()
@@ -259,9 +251,7 @@ def test_user_config_empty(serve_instance):
         def reconfigure(self, config):
             self.count += 1
 
-    handle = serve.run(Counter.bind()).options(
-        use_new_handle_api=True,
-    )
+    handle = serve.run(Counter.bind())
     assert handle.remote().result() == 1
 
 
@@ -331,7 +321,7 @@ def test_run_get_ingress_node(serve_instance):
     @serve.deployment
     class Driver:
         def __init__(self, handle):
-            self._h = handle.options(use_new_handle_api=True)
+            self._h = handle
 
         async def __call__(self, *args):
             return await self._h.remote()
@@ -341,9 +331,7 @@ def test_run_get_ingress_node(serve_instance):
         def __call__(self, *args):
             return "got f"
 
-    handle = serve.run(Driver.bind(f.bind())).options(
-        use_new_handle_api=True,
-    )
+    handle = serve.run(Driver.bind(f.bind()))
     assert handle.remote().result() == "got f"
 
 
@@ -443,12 +431,8 @@ def test_delete_application(serve_instance):
     def g():
         return "got g"
 
-    f_handle = serve.run(f.bind(), name="app_f").options(
-        use_new_handle_api=True,
-    )
-    g_handle = serve.run(g.bind(), name="app_g", route_prefix="/app_g").options(
-        use_new_handle_api=True,
-    )
+    f_handle = serve.run(f.bind(), name="app_f")
+    g_handle = serve.run(g.bind(), name="app_g", route_prefix="/app_g")
     assert f_handle.remote().result() == "got f"
     assert requests.get("http://127.0.0.1:8000/").text == "got f"
 
@@ -495,9 +479,7 @@ def test_deploy_application_with_same_name(serve_instance):
         def __call__(self):
             return "got model"
 
-    handle = serve.run(Model.bind(), name="app").options(
-        use_new_handle_api=True,
-    )
+    handle = serve.run(Model.bind(), name="app")
     assert handle.remote().result() == "got model"
     assert requests.get("http://127.0.0.1:8000/").text == "got model"
     deployment_info = ray.get(controller._all_running_replicas.remote())
@@ -509,9 +491,7 @@ def test_deploy_application_with_same_name(serve_instance):
         def __call__(self):
             return "got model1"
 
-    handle = serve.run(Model1.bind(), name="app").options(
-        use_new_handle_api=True,
-    )
+    handle = serve.run(Model1.bind(), name="app")
     assert handle.remote().result() == "got model1"
     assert requests.get("http://127.0.0.1:8000/").text == "got model1"
     deployment_info = ray.get(controller._all_running_replicas.remote())
@@ -535,9 +515,7 @@ def test_deploy_application_with_route_prefix_conflict(serve_instance):
         def __call__(self):
             return "got model"
 
-    handle = serve.run(Model.bind(), name="app").options(
-        use_new_handle_api=True,
-    )
+    handle = serve.run(Model.bind(), name="app")
     assert handle.remote().result() == "got model"
     assert requests.get("http://127.0.0.1:8000/").text == "got model"
 
@@ -551,9 +529,7 @@ def test_deploy_application_with_route_prefix_conflict(serve_instance):
         serve.run(Model1.bind(), name="app1")
 
     # Update the route prefix
-    handle = serve.run(Model1.bind(), name="app1", route_prefix="/model1").options(
-        use_new_handle_api=True,
-    )
+    handle = serve.run(Model1.bind(), name="app1", route_prefix="/model1")
     assert handle.remote().result() == "got model1"
     assert requests.get("http://127.0.0.1:8000/model1").text == "got model1"
 
@@ -838,18 +814,14 @@ def test_status_basic(serve_instance):
     @serve.deployment(ray_actor_options={"num_cpus": 0.1})
     class MyDriver:
         def __init__(self, handle):
-            self._h = handle.options(use_new_handle_api=True)
+            self._h = handle
 
         async def __call__(self):
             return await self._h.remote()
 
-    handle_1 = serve.run(A.bind(), name="plus", route_prefix="/a").options(
-        use_new_handle_api=True,
-    )
+    handle_1 = serve.run(A.bind(), name="plus", route_prefix="/a")
     handle_2 = serve.run(
         MyDriver.bind(f.bind()), name="hello", route_prefix="/b"
-    ).options(
-        use_new_handle_api=True,
     )
 
     assert handle_1.remote(8).result() == 9
@@ -937,7 +909,7 @@ def test_get_app_handle_basic(serve_instance):
     @serve.deployment(ray_actor_options={"num_cpus": 0.1})
     class MyDriver:
         def __init__(self, handle):
-            self._h = handle.options(use_new_handle_api=True)
+            self._h = handle
 
         async def __call__(self):
             return await self._h.remote()
@@ -996,7 +968,7 @@ def test_get_deployment_handle_basic(serve_instance):
     @serve.deployment(ray_actor_options={"num_cpus": 0.1})
     class MyDriver:
         def __init__(self, handle):
-            self._h = handle.options(use_new_handle_api=True)
+            self._h = handle
 
         async def __call__(self):
             return f"{await self._h.remote()}!!"
@@ -1020,7 +992,7 @@ def test_deployment_handle_nested_in_obj(serve_instance):
             self._handle = handle
 
         def get(self) -> DeploymentHandle:
-            return self._handle.options(use_new_handle_api=True)
+            return self._handle
 
     @serve.deployment
     def f() -> str:
@@ -1035,7 +1007,7 @@ def test_deployment_handle_nested_in_obj(serve_instance):
             return await self.handle_wrapper.get().remote()
 
     handle_wrapper = HandleWrapper(f.bind())
-    h = serve.run(MyDriver.bind(handle_wrapper)).options(use_new_handle_api=True)
+    h = serve.run(MyDriver.bind(handle_wrapper))
     assert h.remote().result() == "hi"
 
 

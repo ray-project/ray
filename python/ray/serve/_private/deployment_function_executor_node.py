@@ -58,7 +58,7 @@ class DeploymentFunctionExecutorNode(DAGNode):
         node can directly call upon.
         """
         return (
-            self._deployment_function_handle.options(use_new_handle_api=True)
+            self._deployment_function_handle
             .remote(*self._bound_args, **self._bound_kwargs)
             ._to_object_ref_sync(_allow_running_in_asyncio_loop=True)
         )

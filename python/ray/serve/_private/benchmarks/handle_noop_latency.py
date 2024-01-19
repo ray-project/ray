@@ -22,9 +22,7 @@ class Noop:
 class Caller:
     def __init__(self, noop_handle: RayServeHandle):
         logging.getLogger("ray.serve").setLevel(logging.WARNING)
-        self._noop_handle: DeploymentHandle = noop_handle.options(
-            use_new_handle_api=True
-        )
+        self._noop_handle: DeploymentHandle = noop_handle
 
     async def do_single_request(self):
         return await self._noop_handle.remote()
@@ -42,7 +40,7 @@ class Caller:
 def main(num_replicas: int, num_requests: int):
     h: DeploymentHandle = serve.run(
         Caller.bind(Noop.options(num_replicas=num_replicas).bind())
-    ).options(use_new_handle_api=True)
+    )
 
     latencies = h.run_latency_benchmark.remote(
         num_requests,

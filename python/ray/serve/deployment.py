@@ -258,11 +258,6 @@ class Deployment:
 
         return Application._from_internal_dag_node(dag_node)
 
-    def deploy(self, *init_args, _blocking=True, **init_kwargs):
-        raise ValueError(
-            "This API has been fully deprecated. Please use serve.run() instead."
-        )
-
     def _deploy(self, *init_args, _blocking=True, **init_kwargs):
         """Deploy or update this deployment.
 
@@ -297,48 +292,10 @@ class Deployment:
             _blocking=_blocking,
         )
 
-    def delete(self):
-        raise ValueError(
-            "This API has been fully deprecated. Please use serve.run() and "
-            "serve.delete() instead."
-        )
-
     def _delete(self):
         """Delete this deployment."""
 
         return _get_global_client().delete_deployments([self._name])
-
-    def get_handle(
-        self, sync: Optional[bool] = True
-    ) -> Union[RayServeHandle, RayServeSyncHandle]:
-        raise ValueError(
-            "This API has been fully deprecated. Please use serve.get_app_handle() or "
-            "serve.get_deployment_handle() instead."
-        )
-
-    def _get_handle(
-        self,
-        sync: Optional[bool] = True,
-    ) -> Union[RayServeHandle, RayServeSyncHandle]:
-        """Get a ServeHandle to this deployment to invoke it from Python.
-
-        Args:
-            sync: If true, then Serve will return a ServeHandle that
-                works everywhere. Otherwise, Serve will return an
-                asyncio-optimized ServeHandle that's only usable in an asyncio
-                loop.
-
-        Returns:
-            ServeHandle
-        """
-
-        return _get_global_client().get_handle(
-            self._name,
-            app_name="",
-            missing_ok=True,
-            sync=sync,
-            use_new_handle_api=False,
-        )
 
     def options(
         self,

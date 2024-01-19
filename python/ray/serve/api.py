@@ -795,7 +795,7 @@ def get_app_handle(name: str) -> DeploymentHandle:
     ServeUsageTag.SERVE_GET_APP_HANDLE_API_USED.record("1")
     # Default to async within a deployment and sync outside a deployment.
     sync = _get_internal_replica_context() is None
-    return client.get_handle(ingress, name, sync=sync, use_new_handle_api=True)
+    return client.get_handle(ingress, name, sync=sync)
 
 
 @DeveloperAPI
@@ -857,7 +857,7 @@ def get_deployment_handle(
             @serve.deployment
             class Adder:
                 def __init__(self, handle: DeploymentHandle, increment: int):
-                    self._handle = handle.options(use_new_handle_api=True)
+                    self._handle = handle
                     self._increment = increment
 
                 async def __call__(self, val: int) -> int:
@@ -892,5 +892,5 @@ def get_deployment_handle(
     # Default to async within a deployment and sync outside a deployment.
     sync = internal_replica_context is None
     return client.get_handle(
-        deployment_name, app_name, sync=sync, use_new_handle_api=True
+        deployment_name, app_name, sync=sync
     )

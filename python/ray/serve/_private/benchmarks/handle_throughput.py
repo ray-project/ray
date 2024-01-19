@@ -30,7 +30,7 @@ class Caller:
     ):
         logging.getLogger("ray.serve").setLevel(logging.WARNING)
 
-        self._h: DeploymentHandle = downstream.options(use_new_handle_api=True)
+        self._h: DeploymentHandle = downstream
         self._batch_size = batch_size
         self._num_trials = num_trials
         self._trial_runtime = trial_runtime
@@ -84,9 +84,7 @@ def main(
         num_trials=num_trials,
         trial_runtime=trial_runtime,
     )
-    h = serve.run(app).options(
-        use_new_handle_api=True,
-    )
+    h = serve.run(app)
 
     mean, stddev = h.run_benchmark.remote().result()
     print(

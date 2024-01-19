@@ -33,7 +33,6 @@ class Intermediate:
 
         self._h: DeploymentHandle = downstream.options(
             stream=True,
-            use_new_handle_api=True,
         )
 
     async def stream(self):

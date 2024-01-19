@@ -86,9 +86,7 @@ class Query:
     async def replace_known_types_in_args(self):
         """Uses the `_PyObjScanner` to find and replace known types.
 
-        1) Replaces `asyncio.Task` objects with their results. This is used for the old
-           serve handle API and should be removed once that API is deprecated & removed.
-        2) Replaces `DeploymentResponse` objects with their resolved object refs. This
+        1) Replaces `DeploymentResponse` objects with their resolved object refs. This
            enables composition without explicitly calling `_to_object_ref`.
         """
         from ray.serve.handle import (
@@ -97,17 +95,14 @@ class Query:
             _DeploymentResponseBase,
         )
 
-        scanner = _PyObjScanner(source_type=(asyncio.Task, _DeploymentResponseBase))
+        scanner = _PyObjScanner(source_type=(_DeploymentResponseBase,))
 
         try:
-            tasks = []
             responses = []
             replacement_table = {}
             objs = scanner.find_nodes((self.args, self.kwargs))
             for obj in objs:
-                if isinstance(obj, asyncio.Task):
-                    tasks.append(obj)
-                elif isinstance(obj, DeploymentResponseGenerator):
+                if isinstance(obj, DeploymentResponseGenerator):
                     raise RuntimeError(
                         "Streaming deployment handle results cannot be passed to "
                         "downstream handle calls. If you have a use case requiring "
@@ -115,19 +110,6 @@ class Query:
                     )
                 elif isinstance(obj, DeploymentResponse):
                     responses.append(obj)
-
-            for task in tasks:
-                # NOTE(edoakes): this is a hack to enable the legacy behavior of passing
-                # `asyncio.Task` objects directly to downstream handle calls without
-                # `await`. Because the router now runs on a separate loop, the
-                # `asyncio.Task` can't directly be awaited here. So we use the
-                # thread-safe `concurrent.futures.Future` instead.
-                # This can be removed when `RayServeHandle` is fully deprecated.
-                if hasattr(task, "_ray_serve_object_ref_future"):
-                    future = task._ray_serve_object_ref_future
-                    replacement_table[task] = await asyncio.wrap_future(future)
-                else:
-                    replacement_table[task] = task
 
             # Gather `DeploymentResponse` object refs concurrently.
             if len(responses) > 0:
