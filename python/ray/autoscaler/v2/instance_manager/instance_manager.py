@@ -128,6 +128,7 @@ class InstanceUtil:
             Instance.REQUESTED,
             Instance.ALLOCATED,
             Instance.RAY_INSTALLING,
+            Instance.ALLOCATION_FAILED,
         ]
 
     @staticmethod
@@ -194,10 +195,8 @@ class InstanceUtil:
                 # This happens when the cloud node first appears in the list of running
                 # cloud nodes from the cloud node provider.
                 Instance.ALLOCATED,
-                # Cloud provider failed to allocate a cloud node for the instance, retrying
-                # again while being added back to the launch queue.
-                Instance.QUEUED,
-                # Cloud provider fails to allocate one, no retry would happen anymore.
+                # Cloud provider fails to allocate one. Either as a timeout or
+                # the launch request fails immediately.
                 Instance.ALLOCATION_FAILED,
             },
             # When in this status, the cloud node is allocated and running. This
@@ -282,7 +281,10 @@ class InstanceUtil:
             Instance.STOPPED: set(),  # Terminal state.
             # When in this status, the cloud node failed to be allocated by the
             # node provider.
-            Instance.ALLOCATION_FAILED: set(),  # Terminal state.
+            Instance.ALLOCATION_FAILED: {
+                # Autoscaler might retry to allocate the instance.
+                Instance.QUEUED
+            },
             Instance.RAY_INSTALL_FAILED: {
                 # Autoscaler requests to shutdown the instance when ray install failed.
                 Instance.STOPPING,

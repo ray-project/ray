@@ -76,11 +76,7 @@ class InstanceUtilTest(unittest.TestCase):
         assert g[Instance.QUEUED] == {Instance.REQUESTED}
         all_status.remove(Instance.QUEUED)
 
-        assert g[Instance.REQUESTED] == {
-            Instance.ALLOCATED,
-            Instance.QUEUED,
-            Instance.ALLOCATION_FAILED,
-        }
+        assert g[Instance.REQUESTED] == {Instance.ALLOCATED, Instance.ALLOCATION_FAILED}
         all_status.remove(Instance.REQUESTED)
 
         assert g[Instance.ALLOCATED] == {
@@ -118,7 +114,7 @@ class InstanceUtilTest(unittest.TestCase):
         assert g[Instance.STOPPED] == set()
         all_status.remove(Instance.STOPPED)
 
-        assert g[Instance.ALLOCATION_FAILED] == set()
+        assert g[Instance.ALLOCATION_FAILED] == {Instance.QUEUED}
         all_status.remove(Instance.ALLOCATION_FAILED)
 
         assert g[Instance.RAY_INSTALL_FAILED] == {Instance.STOPPED, Instance.STOPPING}
@@ -147,8 +143,10 @@ class InstanceUtilTest(unittest.TestCase):
         mock_time.return_value = 2
         InstanceUtil.set_status(instance, Instance.REQUESTED)
         mock_time.return_value = 3
+        InstanceUtil.set_status(instance, Instance.ALLOCATION_FAILED)
+        mock_time.return_value = 4
         InstanceUtil.set_status(instance, Instance.QUEUED)
-        assert InstanceUtil.get_status_times_ns(instance, Instance.QUEUED) == [1, 3]
+        assert InstanceUtil.get_status_times_ns(instance, Instance.QUEUED) == [1, 4]
 
     def test_is_cloud_instance_allocated(self):
         all_status = set(Instance.InstanceStatus.values())
@@ -181,6 +179,7 @@ class InstanceUtilTest(unittest.TestCase):
             Instance.REQUESTED,
             Instance.ALLOCATED,
             Instance.RAY_INSTALLING,
+            Instance.ALLOCATION_FAILED,
         }
         for s in positive_status:
             instance.status = s
