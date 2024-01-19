@@ -7,11 +7,6 @@ With this guide, you can:
 * Compose multiple {ref}`deployments <serve-key-concepts-deployment>` containing ML models or business logic into a single {ref}`application <serve-key-concepts-application>`
 * Independently scale and configure each of your ML models and business logic steps
 
-:::{note}
-{mod}`DeploymentHandle <ray.serve.handle.DeploymentHandle>` is now the default handle API.
-You can continue using the legacy `RayServeHandle` and `RayServeSyncHandle` APIs using `handle.options(use_new_handle_api=False)` or `export RAY_SERVE_ENABLE_NEW_HANDLE_API=0`, but this support will be removed in a future version.
-:::
-
 ## Compose deployments using DeploymentHandles
 
 When building an application, you can `.bind()` multiple deployments and pass them to each other's constructors.
