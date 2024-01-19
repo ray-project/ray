@@ -70,7 +70,7 @@ from ray.data._internal.planner.plan_write_op import generate_write_fn
 from ray.data._internal.remote_fn import cached_remote_fn
 from ray.data._internal.sort import SortKey
 from ray.data._internal.split import _get_num_rows, _split_at_indices
-from ray.data._internal.stage_impl import LimitStage, ZipStage
+from ray.data._internal.stage_impl import LimitStage
 from ray.data._internal.stats import DatasetStats, DatasetStatsSummary, StatsManager
 from ray.data._internal.util import (
     AllToAllAPI,
@@ -2379,8 +2379,7 @@ class Dataset:
             concatenated horizontally with the columns of the first dataset,
             with duplicate column names disambiguated with suffixes like ``"_1"``.
         """
-
-        plan = self._plan.with_stage(ZipStage(other))
+        plan = self._plan.copy()
 
         logical_plan = self._logical_plan
         other_logical_plan = other._logical_plan
