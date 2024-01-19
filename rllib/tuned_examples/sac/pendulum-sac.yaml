@@ -9,6 +9,7 @@ pendulum-sac:
     config:
         # Works for both torch and tf.
         framework: torch
+        twin_q: True
         q_model_config:
           fcnet_activation: relu
           fcnet_hiddens: [256, 256]

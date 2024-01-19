@@ -279,6 +279,7 @@ class SACConfig(AlgorithmConfig):
             self.tau = tau
         if initial_alpha is not NotProvided:
             self.initial_alpha = initial_alpha
+            #self.model.update({"initial_alpha": self.initial_alpha})
         if target_entropy is not NotProvided:
             self.target_entropy = target_entropy
         if n_step is not NotProvided:
@@ -361,6 +362,9 @@ class SACConfig(AlgorithmConfig):
                 "When using the new `EnvRunner API` the replay buffer must be of type "
                 "`EpisodeReplayBuffer`."
             )
+        
+        if self.uses_new_env_runners:
+            self.model.update({"initial_alpha": self.initial_alpha})
 
     @override(AlgorithmConfig)
     def get_rollout_fragment_length(self, worker_index: int = 0) -> int:
@@ -494,7 +498,7 @@ class SAC(DQN):
                 )
                 from ray.rllib.policy.sample_batch import SampleBatch
 
-                # TODO (sven): This looks a bit ugly, but we have not the same 
+                # TODO (sven): This looks a bit ugly, but we have not the same
                 # naming in `SingleAgentEpisode` and `SampleBatch`.
                 train_batch = SampleBatch(
                     {
@@ -505,7 +509,7 @@ class SAC(DQN):
                         SampleBatch.TERMINATEDS: train_dict["is_terminated"][:, 0],
                         SampleBatch.TRUNCATEDS: train_dict["is_truncated"][:, 0],
                         "is_first": train_dict["is_first"][:, 0],
-                        "is_last": train_dict["is_last"][:, 0],                        
+                        "is_last": train_dict["is_last"][:, 0],
                     }
                 )
                 train_batch = train_batch.as_multi_agent()

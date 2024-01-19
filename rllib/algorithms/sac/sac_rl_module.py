@@ -46,7 +46,7 @@ class SACRLModule(RLModule, RLModuleWithTargetNetworksInterface):
         self.action_dist_cls = catalog.get_action_dist_cls(framework=self.framework)
 
         # Define the temperature.
-        self.alpha = self.config.initial_alpha
+        self.alpha = self.config.model_config_dict["initial_alpha"]
         # __sphinx_doc_end__
 
     def get_exploration_action_dist_cls(self) -> Type[Distribution]:
@@ -80,12 +80,10 @@ class SACRLModule(RLModule, RLModuleWithTargetNetworksInterface):
 
     @override(RLModule)
     def input_specs_train(self) -> SpecType:
-        # TODO (simon): Define next actions ads a constant.
         return [
             SampleBatch.OBS,
             SampleBatch.ACTIONS,
-            # SampleBatch.NEXT_OBS,
-            # "next_actions",
+            SampleBatch.NEXT_OBS,
         ]
 
     @override(RLModule)

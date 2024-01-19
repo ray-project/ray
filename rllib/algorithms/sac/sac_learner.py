@@ -20,17 +20,18 @@ QF_TARGET_PREDS = "qf_target_preds"
 class SACLearner(Learner):
     @override(Learner)
     def build(self) -> None:
-        super().build()
-
+        
         # Store the current alpha in log form. We need it during optimization
         # in log form.
-        # self.curr_log_alpha: Dict[ModuleID, Scheduler] = LambdaDefaultDict(
-        #     lambda module_id: self._get_tensor_variable(
-        #         # Note, we want to train the temperature parameter.
-        #         np.log(self.config.get_config_for_module(module_id).initial_alpha),
-        #         trainable=True,
-        #     )
-        # )
+        self.curr_log_alpha: Dict[ModuleID, Scheduler] = LambdaDefaultDict(
+            lambda module_id: self._get_tensor_variable(
+                # Note, we want to train the temperature parameter.
+                np.log(self.config.get_config_for_module(module_id).initial_alpha),
+                trainable=True,
+            )
+        )
+
+        super().build()
 
         def get_target_entropy(module_id):
             """Returns the target entropy to use for the loss.

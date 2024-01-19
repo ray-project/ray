@@ -293,6 +293,9 @@ class Learner:
 
         This method should be called before the learner is used. It is responsible for
         setting up the RLModule, optimizers, and (optionally) their lr-schedulers.
+        Note, in inherited classes it is advisable to call the parent's `build()`
+        after setting up all variables because `configure_optimizer_for_module` is 
+        called in this function.
         """
         if self._is_built:
             logger.debug("Learner already built. Skipping build.")

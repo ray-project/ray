@@ -25,7 +25,7 @@ class SACTorchRLModule(TorchRLModule, SACRLModule):
     def setup(self):
 
         super().setup()
-        self.log_alpha = nn.Parameter(torch.Tensor(self.alpha))
+        self.log_alpha = nn.Parameter(torch.Tensor([self.alpha]).log())
 
 
     @override(RLModule)

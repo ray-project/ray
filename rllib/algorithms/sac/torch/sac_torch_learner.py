@@ -13,7 +13,7 @@ from ray.rllib.core.learner.learner import (
     TD_ERROR,
 )
 from ray.rllib.core.learner.torch.torch_learner import TorchLearner
-from ray.rllib.policy.sample_batch import SampleBatch
+from ray.rllib.policy.sample_batch import SampleBatch, DEFAULT_POLICY_ID
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.framework import try_import_torch
 from ray.rllib.utils.nested_dict import NestedDict
@@ -30,6 +30,12 @@ class SACTorchLearner(SACLearner, TorchLearner):
     `self.compute_loss_for_module()` method.
     """
 
+    @override(TorchLearner)
+    def build(self) -> None:
+        super().build()
+        for module_id, curr_alpha_param in self.curr_log_alpha.items():
+            self.curr_log_alpha[module_id] = nn.Parameter(curr_alpha_param)
+
     # TODO (simon): Set different learning rates for optimizers.
     @override(TorchLearner)
     def configure_optimizers_for_module(
@@ -40,11 +46,11 @@ class SACTorchLearner(SACLearner, TorchLearner):
         params_critic = self.get_parameters(module.qf_encoder) + self.get_parameters(
             module.qf
         )
-        optim_critic = torch.optim.Adam(params_critic)
+        optim_critic = torch.optim.Adam(params_critic, eps=1e-7)
 
         self.register_optimizer(
             module_id=module_id,
-            optimizer_name="critic",
+            optimizer_name="qf",
             optimizer=optim_critic,
             params=params_critic,
             lr_or_lr_schedule=self.config.lr,
@@ -54,11 +60,11 @@ class SACTorchLearner(SACLearner, TorchLearner):
         params_actor = self.get_parameters(module.pi_encoder) + self.get_parameters(
             module.pi
         )
-        optim_actor = torch.optim.Adam(params_actor)
+        optim_actor = torch.optim.Adam(params_actor, eps=1e-7)
 
         self.register_optimizer(
             module_id=module_id,
-            optimizer_name="actor",
+            optimizer_name="policy",
             optimizer=optim_actor,
             params=params_actor,
             lr_or_lr_schedule=self.config.lr,
@@ -67,15 +73,37 @@ class SACTorchLearner(SACLearner, TorchLearner):
         # Define the optimizer for the temperature.
         # TODO (Simon): Test, if this works. Otherwise define the alphas
         # in the `TorchLearner` instead.
-        param_alpha = module.curr_log_alpha
-        optim_temperature = torch.optim.Adam(param_alpha)
+        #param_alpha = module.log_alpha
+        param_alpha = self.curr_log_alpha[module_id]
+        optim_temperature = torch.optim.Adam([param_alpha], eps=1e-7)
         self.register_optimizer(
             module_id=module_id,
-            optimizer_name="temperature",
+            optimizer_name="alpha",
             optimizer=optim_temperature,
-            params=param_alpha,
+            params=[param_alpha],
             lr_or_lr_schedule=self.config.lr,
         )
+
+    @override(TorchLearner)
+    def compute_gradients(
+        self, loss_per_module: Dict[str, TensorType], **kwargs
+    ) -> ParamDict:
+        for optim in self._optimizer_parameters:
+            optim.zero_grad(set_to_none=True)
+
+        grads = {}
+        for component in ["qf", "policy", "alpha"]:
+            self._metrics[DEFAULT_POLICY_ID][component + "_loss"].backward()
+            grads.update(
+                {
+                    pid: p.grad
+                    for pid, p in self.filter_param_dict_for_optimizer(
+                        self._params, self.get_optimizer(optimizer_name=component)
+                    ).items()
+                }
+            )
+
+        return grads
 
     @override(TorchLearner)
     def compute_loss_for_module(
@@ -90,18 +118,18 @@ class SACTorchLearner(SACLearner, TorchLearner):
         deterministic = self.config._deterministic_loss
 
         # Receive the current alpha hyperparameter.
-        alpha = torch.exp(self.module[module_id].log_alpha)
+        alpha = torch.exp(self.curr_log_alpha[module_id]) #torch.exp(self.module[module_id].log_alpha)
 
         # Get the train action distribution for the current policy and current state.
         # This is needed for the policy (actor) loss in SAC.
-        action_dist_class_curr = self.module[module_id].get_train_action_dist_cls()
-        action_dist_curr = action_dist_class_curr.from_logits(
+        action_dist_class = self.module[module_id].get_train_action_dist_cls()
+        action_dist_curr = action_dist_class.from_logits(
             fwd_out[SampleBatch.ACTION_DIST_INPUTS]
         )
         # Get the train action distribution for the current policy and next state.
         # For the Q (critic) loss in SAC, we need to sample from the current policy at
         # the next state.
-        action_dist_next = action_dist_class_curr.from_logits(
+        action_dist_next = action_dist_class.from_logits(
             fwd_out["action_dist_inputs_next"]
         )
 
@@ -176,7 +204,8 @@ class SACTorchLearner(SACLearner, TorchLearner):
         # Note further, we use here the Huber loss instead of the mean squared error
         # as it improves training performance.
         critic_loss = torch.mean(
-            # batch[PRIO_WEIGHTS]
+            # TODO (simon): Introduce priority weights when episode buffer is ready.
+            # batch[PRIO_WEIGHTS] *
             torch.nn.HuberLoss(reduction="none", delta=1.0)(
                 q_selected, q_selected_target
             )
@@ -193,7 +222,7 @@ class SACTorchLearner(SACLearner, TorchLearner):
         # TODO (simon): Check, if this is indeed log(alpha), prob. just better
         # to optimize and monotonic function.
         alpha_loss = -torch.mean(
-            self.module[module_id].log_alpha
+            self.curr_log_alpha[module_id] # self.module[module_id].log_alpha
             * (logps_curr.detach() + self.target_entropy[module_id])
         )
 
@@ -202,10 +231,10 @@ class SACTorchLearner(SACLearner, TorchLearner):
         self.register_metrics(
             module_id,
             {
-                POLICY_LOSS_KEY: torch.mean(actor_loss),
-                QF_LOSS_KEY: torch.mean(critic_loss),
+                POLICY_LOSS_KEY: actor_loss,
+                QF_LOSS_KEY: critic_loss,
                 TD_ERROR: td_error,
-                "alpha_loss": torch.mean(alpha_loss),
+                "alpha_loss": alpha_loss,
                 "alpha_value": alpha,
                 # TODO (Sven): Do we really need this? We have alpha.
                 "log_alpha_value": torch.log(alpha),
