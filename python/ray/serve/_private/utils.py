@@ -421,12 +421,16 @@ class MetricsPusher:
     def __init__(
         self,
     ):
-        self.tasks: List[_MetricTask] = []
+        self.tasks: Dict[str, _MetricTask] = dict()
         self.pusher_thread: Union[threading.Thread, None] = None
         self.stop_event = threading.Event()
 
-    def register_task(self, task_func, interval_s, process_func=None):
-        self.tasks.append(_MetricTask(task_func, interval_s, process_func))
+    def register_task(self, name, task_func, interval_s, process_func=None):
+        self.tasks[name] = _MetricTask(task_func, interval_s, process_func)
+
+    def delete_task(self, name):
+        if name in self.tasks:
+            del self.tasks[name]
 
     def start(self):
         """Start a background thread to run the registered tasks in a loop.
@@ -436,49 +440,52 @@ class MetricsPusher:
         fair timeshare to execute and run.
         """
 
-        def send_forever():
-            while True:
-                if self.stop_event.is_set():
-                    return
-
-                start = time.time()
-                for task in self.tasks:
-                    try:
-                        if start - task.last_call_succeeded_time >= task.interval_s:
-                            if task.last_ref:
-                                ready_refs, _ = ray.wait([task.last_ref], timeout=0)
-                                if len(ready_refs) == 0:
-                                    continue
-                            data = task.task_func()
-                            task.last_call_succeeded_time = time.time()
-                            if task.callback_func and ray.is_initialized():
-                                task.last_ref = task.callback_func(
-                                    data, send_timestamp=time.time()
-                                )
-                    except Exception as e:
-                        logger.warning(
-                            f"MetricsPusher thread failed to run metric task: {e}"
-                        )
-
-                # For all tasks, check when the task should be executed
-                # next. Sleep until the next closest time.
-                least_interval_s = math.inf
-                for task in self.tasks:
-                    time_until_next_push = task.interval_s - (
-                        time.time() - task.last_call_succeeded_time
-                    )
-                    least_interval_s = min(least_interval_s, time_until_next_push)
-
-                time.sleep(max(least_interval_s, 0))
-
         if len(self.tasks) == 0:
-            raise ValueError("MetricsPusher has zero tasks registered.")
+            return
 
-        self.pusher_thread = threading.Thread(target=send_forever)
+        if self.pusher_thread and self.pusher_thread.is_alive():
+            return
+
+        self.pusher_thread = threading.Thread(target=self.send_forever)
         # Making this a daemon thread so it doesn't leak upon shutdown, and it
         # doesn't need to block the replica's shutdown.
         self.pusher_thread.setDaemon(True)
         self.pusher_thread.start()
+
+    def send_forever(self):
+        while True:
+            if self.stop_event.is_set():
+                return
+
+            start = time.time()
+            for task in self.tasks.values():
+                try:
+                    if start - task.last_call_succeeded_time >= task.interval_s:
+                        if task.last_ref:
+                            ready_refs, _ = ray.wait([task.last_ref], timeout=0)
+                            if len(ready_refs) == 0:
+                                continue
+                        data = task.task_func()
+                        task.last_call_succeeded_time = time.time()
+                        if task.callback_func and ray.is_initialized():
+                            task.last_ref = task.callback_func(
+                                data, send_timestamp=time.time()
+                            )
+                except Exception as e:
+                    logger.warning(
+                        f"MetricsPusher thread failed to run metric task: {e}"
+                    )
+
+            # For all tasks, check when the task should be executed
+            # next. Sleep until the next closest time.
+            least_interval_s = math.inf
+            for task in self.tasks.values():
+                time_until_next_push = task.interval_s - (
+                    time.time() - task.last_call_succeeded_time
+                )
+                least_interval_s = min(least_interval_s, time_until_next_push)
+
+            time.sleep(max(least_interval_s, 0))
 
     def __del__(self):
         self.shutdown()
@@ -493,6 +500,8 @@ class MetricsPusher:
 
         if self.pusher_thread:
             self.pusher_thread.join()
+
+        self.tasks.clear()
 
 
 def call_function_from_import_path(import_path: str) -> Any:

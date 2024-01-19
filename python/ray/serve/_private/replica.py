@@ -67,6 +67,9 @@ from ray.serve.exceptions import RayServeException
 from ray.serve.schema import LoggingConfig
 
 logger = logging.getLogger(SERVE_LOGGER_NAME)
+PUSH_METRICS_TO_CONTROLLER_TASK_NAME = "push_metrics_to_controller"
+RECORD_METRICS_TASK_NAME = "record_metrics"
+SET_REPLICA_REQUEST_METRIC_GAUGE_TASK_NAME = "set_replica_request_metric_gauge"
 
 
 def _load_deployment_def_from_import_path(import_path: str) -> Callable:
@@ -159,26 +162,12 @@ class ReplicaMetricsManager:
 
         # Set user-facing gauges periodically.
         self._metrics_pusher.register_task(
+            SET_REPLICA_REQUEST_METRIC_GAUGE_TASK_NAME,
             self._set_replica_requests_metrics,
             RAY_SERVE_GAUGE_METRIC_SET_PERIOD_S,
         )
 
-        if self._autoscaling_config:
-            # Push autoscaling metrics to the controller periodically.
-            self._metrics_pusher.register_task(
-                self._collect_autoscaling_metrics,
-                self._autoscaling_config.metrics_interval_s,
-                self._controller_handle.record_autoscaling_metrics.remote,
-            )
-            # Collect autoscaling metrics locally periodically.
-            self._metrics_pusher.register_task(
-                self.get_num_pending_and_running_requests,
-                min(
-                    RAY_SERVE_REPLICA_AUTOSCALING_METRIC_RECORD_PERIOD_S,
-                    self._autoscaling_config.metrics_interval_s,
-                ),
-                self._add_autoscaling_metrics_point,
-            )
+        self.set_autoscaling_config(autoscaling_config)
 
     def start(self):
         """Start periodic background tasks."""
@@ -190,7 +179,27 @@ class ReplicaMetricsManager:
 
     def set_autoscaling_config(self, autoscaling_config: AutoscalingConfig):
         """Dynamically update autoscaling config."""
+
         self._autoscaling_config = autoscaling_config
+
+        if self._autoscaling_config:
+            # Push autoscaling metrics to the controller periodically.
+            self._metrics_pusher.register_task(
+                PUSH_METRICS_TO_CONTROLLER_TASK_NAME,
+                self._collect_autoscaling_metrics,
+                self._autoscaling_config.metrics_interval_s,
+                self._controller_handle.record_autoscaling_metrics.remote,
+            )
+            # Collect autoscaling metrics locally periodically.
+            self._metrics_pusher.register_task(
+                RECORD_METRICS_TASK_NAME,
+                self.get_num_pending_and_running_requests,
+                min(
+                    RAY_SERVE_REPLICA_AUTOSCALING_METRIC_RECORD_PERIOD_S,
+                    self._autoscaling_config.metrics_interval_s,
+                ),
+                self._add_autoscaling_metrics_point,
+            )
 
     def get_num_pending_and_running_requests(self) -> int:
         """Get current total queue length of requests for this replica."""
