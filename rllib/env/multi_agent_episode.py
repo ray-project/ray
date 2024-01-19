@@ -49,7 +49,7 @@ class MultiAgentEpisode:
         render_images: Optional[List[np.ndarray]] = None,
         extra_model_outputs: Optional[List[MultiAgentDict]] = None,
         t_started: Optional[int] = None,
-        len_lookback_buffer: Optional[int] = None,
+        len_lookback_buffer: Union[int, str] = "auto",
     ) -> "MultiAgentEpisode":
         """Initializes a `MultiAgentEpisode`.
 
@@ -101,7 +101,7 @@ class MultiAgentEpisode:
                 of the episode. This is only larger zero, if an ongoing episode is
                 created, for example by slicing an ongoing episode or by calling
                 the `cut()` method on an ongoing episode.
-            len_lookback_buffer: The size of the (optional) lookback buffers to keep in
+            len_lookback_buffer: The size of the lookback buffers to keep in
                 front of this Episode for each type of data (observations, actions,
                 etc..). If larger 0, will interpret the first `len_lookback_buffer`
                 items in each type of data as NOT part of this actual
@@ -112,15 +112,15 @@ class MultiAgentEpisode:
                 operating on a new chunk (continuing from the cut one). Then, for the
                 first 3 items, you would have to be able to look back into the old
                 chunk's data.
-                If `len_lookback_buffer` is None, will interpret all provided data in
-                the constructor as part of the lookback buffers.
+                If `len_lookback_buffer` is "auto" (default), will interpret all
+                provided data in the constructor as part of the lookback buffers.
         """
 
         self.id_: str = id_ or uuid.uuid4().hex
 
-        # Lookback buffer length is not provided. Interpret already given data as
+        # Lookback buffer length is not provided. Interpret all provided data as
         # lookback buffer.
-        if len_lookback_buffer is None:
+        if len_lookback_buffer == "auto":
             len_lookback_buffer = len(rewards or [])
 
         # Agent ids must be provided if data is provided. The Episode cannot
@@ -218,8 +218,9 @@ class MultiAgentEpisode:
 
         # Note that all attributes will be recorded along the global timestep
         # in an multi-agent environment. `SingleAgentEpisodes`
-        self.agent_episodes: MultiAgentDict = {
-            agent_id: self._generate_single_agent_episode(
+        self.agent_episodes: MultiAgentDict = {}
+        for agent_id in self._agent_ids:
+            sa_episode = self._generate_single_agent_episode(
                 agent_id=agent_id,
                 agent_episode_ids=agent_episode_ids,
                 observations=observations,
@@ -231,10 +232,9 @@ class MultiAgentEpisode:
                 extra_model_outputs=extra_model_outputs,
                 len_lookback_buffer=len_lookback_buffer,
             )
-            for agent_id in self._agent_ids
-        }
+            self.agent_episodes[agent_id] = sa_episode
 
-        # RGB uint8 images from rendering the env; the images include the corresponding
+            # RGB uint8 images from rendering the env; the images include the corresponding
         # rewards.
         assert render_images is None or observations is not None
         self.render_images: Union[List[np.ndarray], List[object]] = (
@@ -2099,39 +2099,38 @@ class MultiAgentEpisode:
             #       and added to the next observation.
             # All partial rewards are recorded in `partial_rewards` together
             # with their corresponding timesteps in `partial_rewards_t`.
-            # if agent_rewards and observations:
-            #    partial_agent_rewards_t = InfiniteLookbackTimestepMapping(
-            #        lookback=len_lookback_buffer, t_started=self.t_started,
-            #    )
-            #    partial_agent_rewards = []
-            #    new_agent_rewards = []
-            #    agent_reward = 0.0
-            #    for t, reward in enumerate(rewards):
-            #        if agent_id not in reward:
-            #            continue
+            if agent_rewards and observations:
+                partial_agent_rewards_t = _IndexMapping(
+                    #lookback=len_lookback_buffer, t_started=self.t_started,
+                )
+                partial_agent_rewards = []
+                agent_rewards = []
+                agent_reward = 0.0
+                for t, reward in enumerate(rewards):
+                    if agent_id not in reward:
+                        continue
+                    # Add the rewards
+                    partial_agent_rewards.append(reward[agent_id])
+                    # Then add the reward.
+                    agent_reward += reward[agent_id]
+                    # Note, rewards start at timestep 1 (there are no initial ones).
+                    # TODO (simon): Check, if we need to use here also
+                    # `ts_carriage_return`.
+                    partial_agent_rewards_t.append(t + self.ts_carriage_return + 1)
+                    if (
+                        t + self.ts_carriage_return + 1
+                    ) in self.global_t_to_local_t[agent_id][1:]:
+                        agent_rewards.append(agent_reward)
+                        agent_reward = 0.0
 
-            #        # Add the rewards.
-            #        partial_agent_rewards.append(reward[agent_id])
-            #        # Then add the reward.
-            #        agent_reward += reward[agent_id]
-            #        # Note, rewards start at timestep 1 (there are no initial ones).
-            #        # TODO (simon): Check, if we need to use here also
-            #        # `ts_carriage_return`.
-            #        partial_agent_rewards_t.append(t + self.ts_carriage_return + 1)
-            #        if (t + self.ts_carriage_return + 1) in self.global_t_to_local_t[agent_id][1:]:
-            #            new_agent_rewards.append(agent_reward)
-            #            agent_reward = 0.0
-
-            #    # If the agent reward is not zero, we must have rewards that came
-            #    # after the last observation. Then we buffer this reward.
-            #    self.agent_buffers[agent_id]["rewards"].put_nowait(
-            #        self.agent_buffers[agent_id]["rewards"].get_nowait() + agent_reward
-            #    )
-            #    # Now save away the original rewards and the reward timesteps.
-            #    self.partial_rewards_t[agent_id] = partial_agent_rewards_t
-            #    self.partial_rewards[agent_id] = partial_agent_rewards
-
-            #    agent_rewards = new_agent_rewards
+                # If the agent reward is not zero, we must have rewards that came
+                # after the last observation. Then we buffer this reward.
+                self.agent_buffers[agent_id]["rewards"].put_nowait(
+                    self.agent_buffers[agent_id]["rewards"].get_nowait() + agent_reward
+                )
+                # Now save away the original rewards and the reward timesteps.
+                self.partial_rewards_t[agent_id] = partial_agent_rewards_t
+                self.partial_rewards[agent_id] = partial_agent_rewards
 
             return SingleAgentEpisode(
                 id_=episode_id,
@@ -2141,7 +2140,8 @@ class MultiAgentEpisode:
                 infos=agent_infos,
                 terminated=agent_is_terminated,
                 truncated=agent_is_truncated,
-                extra_model_outputs=agent_extra_model_outputs,
+                extra_model_outputs=dict(agent_extra_model_outputs),
+                len_lookback_buffer=len_lookback_buffer,
             )
         # Otherwise return empty `SingleAgentEpisode`.
         else:

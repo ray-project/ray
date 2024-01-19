@@ -158,7 +158,7 @@ class SingleAgentEpisode:
         extra_model_outputs: Optional[Dict[str, Any]] = None,
         render_images: Optional[List[np.ndarray]] = None,
         t_started: Optional[int] = None,
-        len_lookback_buffer: Optional[int] = None,
+        len_lookback_buffer: Union[int, str] = "auto",
     ) -> "SingleAgentEpisode":
         """Initializes a SingleAgentEpisode instance.
 
@@ -217,14 +217,14 @@ class SingleAgentEpisode:
                 operating on a new chunk (continuing from the cut one). Then, for the
                 first 3 items, you would have to be able to look back into the old
                 chunk's data.
-                If `len_lookback_buffer` is None, will interpret all provided data in
-                the constructor as part of the lookback buffers.
+                If `len_lookback_buffer` is "auto" (default), will interpret all
+                provided data in the constructor as part of the lookback buffers.
         """
         self.id_ = id_ or uuid.uuid4().hex
 
         # Lookback buffer length is not provided. Interpret already given data as
         # lookback buffer lengths for all data types.
-        if len_lookback_buffer is None:
+        if len_lookback_buffer == "auto":
             len_lookback_buffer = len(rewards or [])
 
         infos = infos or [{} for _ in range(len(observations or []))]
@@ -284,7 +284,13 @@ class SingleAgentEpisode:
             if isinstance(v, InfiniteLookbackBuffer):
                 self.extra_model_outputs[k] = v
             else:
-                self.extra_model_outputs[k].data = v
+                # We cannot use the defaultdict's own constructore here as this would
+                # auto-set the lookback buffer to 0 (there is no data passed to that
+                # constructor). Then, when we manually have to set the data property,
+                # the lookback buffer would still be (incorrectly) 0.
+                self.extra_model_outputs[k] = (
+                    InfiniteLookbackBuffer(data=v, lookback=len_lookback_buffer)
+                )
 
         # RGB uint8 images from rendering the env; the images include the corresponding
         # rewards.
@@ -476,16 +482,19 @@ class SingleAgentEpisode:
         if len(self.observations) == 0:
             assert len(self.infos) == len(self.rewards) == len(self.actions) == 0
             for k, v in self.extra_model_outputs.items():
-                assert len(v) == 0
+                assert len(v) == 0, (k, v, v.data, len(v))
         # Make sure we always have one more obs stored than rewards (and actions)
         # due to the reset/last-obs logic of an MDP.
         else:
-            assert (
-                len(self.observations)
-                == len(self.infos)
-                == len(self.rewards) + 1
-                == len(self.actions) + 1
-            )
+            try:
+                assert (
+                    len(self.observations)
+                    == len(self.infos)
+                    == len(self.rewards) + 1
+                    == len(self.actions) + 1
+                ), (len(self.observations), len(self.infos), len(self.rewards), len(self.actions))
+            except Exception as e:
+                raise e#TEST
             for k, v in self.extra_model_outputs.items():
                 assert len(v) == len(self.observations) - 1
 
@@ -641,7 +650,7 @@ class SingleAgentEpisode:
             # Continue with self's current timestep.
             t_started=self.t,
             # Use the length of the provided data as lookback buffer.
-            len_lookback_buffer=None,
+            len_lookback_buffer="auto",
         )
 
     def get_observations(

@@ -22,10 +22,10 @@ class InfiniteLookbackTimestepMapping:
     """
 
     def __init__(self, timesteps: list = None, lookback: int = 0, t_started: int = 0):
-        """Initializes an instance of the class.
+        """Initializes a InfiniteLookbackTimestepMapping instance.
 
         Args:
-            timesteps: Optional. A `list` of time steps from collected multi-agent
+            timesteps: Optional. A list of time steps from collected multi-agent
                 observations.
             lookback: Optional. The required length for the lookback buffer. The
                 lookback is considered a global one, i.e. for the multi-agent
@@ -223,7 +223,7 @@ class InfiniteLookbackTimestepMapping:
         self,
         global_timesteps: slice,
         neg_timesteps_left_of_zero: bool,
-        return_none: bool,
+        #return_none: bool,
         t: int,
         #shift: int = 0,
     ):
@@ -280,13 +280,13 @@ class InfiniteLookbackTimestepMapping:
         local_timesteps = self._get_local_timestep_list(
             global_timesteps,
             neg_timesteps_left_of_zero=neg_timesteps_left_of_zero,
-            return_none=return_none,
+            #return_none=return_none,
             t=t,
             shift=shift,
         )
 
         # Generate a slice from retrieved local timesteps.
-        if local_timesteps and not return_none:
+        if local_timesteps:# and not return_none:
             return slice(local_timesteps[0], local_timesteps[-1] + 1, step)
         # If we need to return `None` for non-existent timesteps we return a `list`.
         else:

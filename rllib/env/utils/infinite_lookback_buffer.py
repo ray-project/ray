@@ -20,7 +20,7 @@ class InfiniteLookbackBuffer:
         space: Optional[gym.Space] = None,
     ):
         self.data = data if data is not None else []
-        self.lookback = lookback
+        self.lookback = min(lookback, len(self.data))
         self.finalized = not isinstance(self.data, list)
         self.space = space
         self.space_struct = get_base_struct_from_space(self.space)

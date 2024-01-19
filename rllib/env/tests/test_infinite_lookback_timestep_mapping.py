@@ -24,13 +24,31 @@ class TestInfiniteLookbackTimestepMapping(unittest.TestCase):
         check(ts_map.lookback, 0)
         check(ts_map.t_started, 0)
         check(len(ts_map), 0)
+        # Make sure no call to `get_local_timestep` returns anything.
+        check(ts_map.get_local_timesteps(1), None)
+        check(ts_map.get_local_timesteps(2), None)
+        check(ts_map.get_local_timesteps(-1), None)
+        check(ts_map.get_local_timesteps(-1, neg_timesteps_left_of_zero=True), None)
+        check(ts_map.get_local_timesteps(1000), None)
+        check(ts_map.get_local_timesteps(slice(0, 40)), [])
+        check(ts_map.get_local_timesteps(slice(-100, 40)), [])
+        check(ts_map.get_local_timesteps(
+            slice(-100, 40), neg_timesteps_left_of_zero=True
+        ), [])
+        check(ts_map.get_local_timesteps([1, 4, 50, 1000, -1]), [])
 
-        # Now initialize with a lookback.
+        # Now initialize with lookbacks.
         timesteps = list(range(10))
         ts_map = InfiniteLookbackTimestepMapping(timesteps, lookback=3, t_started=4)
         check(ts_map.lookback, 3)
         check(ts_map.t_started, 4)
         check(len(ts_map), 7)
+
+        timesteps = list(range(45, 55))
+        ts_map = InfiniteLookbackTimestepMapping(timesteps, lookback=5, t_started=50)
+        check(ts_map.lookback, 5)
+        check(ts_map.t_started, 50)
+        check(len(ts_map), 5)
 
     def test_get_local_timesteps(self):
         # Generate empty mapping.
