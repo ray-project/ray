@@ -1228,10 +1228,9 @@ cdef class StreamingGeneratorExecutionContext:
 
         return self
 
-
 cdef report_streaming_generator_output(
-    output_or_exception: Union[object, Exception],
     StreamingGeneratorExecutionContext context,
+    output_or_exception: Union[object, Exception],
     generator_index: int64_t
 ):
     """Report a given generator output to a caller.
@@ -1242,14 +1241,11 @@ cdef report_streaming_generator_output(
     True otherwise.
 
     Args:
+        context: Streaming generator's execution context.
         output_or_exception: The output yielded from a
             generator or raised as an exception.
-        context: The execution context.
-
-    Returns:
-        True if a generator that produced the output
-            shouldn't resume anymore (i.e., if the
-            generator is done being used). False otherwise.
+        generator_index: index of the output element in the 
+            generated sequence 
     """
     worker = ray._private.worker.global_worker
 
@@ -1310,6 +1306,7 @@ cdef report_streaming_generator_output(
             context.waiter))
 
 
+
 cdef execute_streaming_generator_sync(StreamingGeneratorExecutionContext context):
     """Execute a given generator and streaming-report the
         result to the given caller_address.
@@ -1343,7 +1340,7 @@ cdef execute_streaming_generator_sync(StreamingGeneratorExecutionContext context
         except Exception as e:
             output_or_exception = e
 
-        report_streaming_generator_output(output_or_exception, context, gen_index)
+        report_streaming_generator_output(context, output_or_exception, gen_index)
         gen_index += 1
 
         if isinstance(output_or_exception, Exception):
