@@ -56,21 +56,25 @@ class FakeRef:
         pass
 
 
-class FakeActor:
-    def remote(self, snapshot_ids):
-        return FakeRef()
-
-
 class FakeActorHandler:
     def __init__(self, actor_id):
         self._actor_id = actor_id
 
     @property
     def listen_for_change(self):
-        return FakeActor()
+        class FakeListenForChangeActorMethod:
+            def remote(self, snapshot_ids):
+                return FakeRef()
 
-    def remote(self, *args, **kwargs):
-        return FakeRef()
+        return FakeListenForChangeActorMethod()
+
+    @property
+    def receive_asgi_messages(self):
+        class FakeReceiveASGIMessagesActorMethod:
+            def remote(self, request_id):
+                return FakeRef()
+
+        return FakeReceiveASGIMessagesActorMethod()
 
 
 class FakeGrpcHandle:
@@ -199,7 +203,6 @@ class TestgRPCProxy:
             node_ip_address=node_ip_address,
             proxy_router_class=FakeProxyRouter,
             controller_actor=FakeActorHandler("fake_controller_actor"),
-            proxy_actor=FakeActorHandler("fake_proxy_actor"),
         )
 
     @pytest.mark.asyncio

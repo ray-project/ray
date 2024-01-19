@@ -34,6 +34,8 @@ __all__ = [
     "NVIDIA_TESLA_K80",
     "NVIDIA_TESLA_A10G",
     "NVIDIA_A100",
+    "NVIDIA_A100_40G",
+    "NVIDIA_A100_80G",
     "INTEL_MAX_1550",
     "INTEL_MAX_1100",
     "INTEL_GAUDI",
