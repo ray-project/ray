@@ -1,13 +1,17 @@
-name: "oss-ci-base_gpu-py$PYTHON"
-froms: ["nvidia/cuda:11.8.0-cudnn8-devel-ubuntu20.04"]
-dockerfile: ci/docker/base.gpu.Dockerfile
+# This is a clone and python3.9 version of ci/docker/base.ml.wanda.yaml. The latter one
+# is a multi-py version. This file exists due to the historical reason that Ray CI only
+# supports one python version which is python 3.9.
+#
+# TODO(can-anyscale): migrate all jobs to use the multi-py version
+
+name: "oss-ci-base_ml"
+froms: ["cr.ray.io/rayproject/oss-ci-base_test"]
+dockerfile: ci/docker/base.ml.Dockerfile
 srcs:
   - .bazelrc
-  - .bazeliskrc
   - ci/ci.sh
   - ci/env/install-dependencies.sh
   - ci/env/install-llvm-binaries.sh
-  - ci/env/install-bazel.sh
   - ci/pipeline/determine_tests_to_run.py
   - ci/suppress_output
   - python/requirements.txt
@@ -21,8 +25,5 @@ srcs:
   - python/requirements/ml/tune-test-requirements.txt
   - python/requirements/ml/dl-cpu-requirements.txt
   - python/requirements/ml/core-requirements.txt
-build_args:
-  - REMOTE_CACHE_URL=$BUILDKITE_BAZEL_CACHE_URL
-  - PYTHON
 tags:
-  - cr.ray.io/rayproject/oss-ci-base_gpu-py$PYTHON
+  - cr.ray.io/rayproject/oss-ci-base_ml

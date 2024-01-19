@@ -3022,6 +3022,9 @@ class Dataset:
                 /docs/python/generated/pyarrow.fs.FileSystem.html\
                 #pyarrow.fs.FileSystem.open_output_stream>`_, which is used when
                 opening the file to write to.
+            filename_provider: A :class:`~ray.data.datasource.FilenameProvider`
+                implementation. Use this parameter to customize what your filenames
+                look like.
             ray_remote_args: kwargs passed to :meth:`~ray.remote` in the write tasks.
         """  # noqa: E501
         datasink = _ImageDatasink(
