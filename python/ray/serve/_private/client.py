@@ -19,7 +19,6 @@ from ray.serve._private.constants import (
     CLIENT_CHECK_CREATION_POLLING_INTERVAL_S,
     CLIENT_POLLING_INTERVAL_S,
     MAX_CACHED_HANDLES,
-    RAY_SERVE_ENABLE_NEW_HANDLE_API,
     SERVE_DEFAULT_APP_NAME,
 )
 from ray.serve._private.controller import ServeController

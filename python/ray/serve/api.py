@@ -891,6 +891,4 @@ def get_deployment_handle(
     ServeUsageTag.SERVE_GET_DEPLOYMENT_HANDLE_API_USED.record("1")
     # Default to async within a deployment and sync outside a deployment.
     sync = internal_replica_context is None
-    return client.get_handle(
-        deployment_name, app_name, sync=sync
-    )
+    return client.get_handle(deployment_name, app_name, sync=sync)

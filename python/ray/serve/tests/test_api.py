@@ -820,9 +820,7 @@ def test_status_basic(serve_instance):
             return await self._h.remote()
 
     handle_1 = serve.run(A.bind(), name="plus", route_prefix="/a")
-    handle_2 = serve.run(
-        MyDriver.bind(f.bind()), name="hello", route_prefix="/b"
-    )
+    handle_2 = serve.run(MyDriver.bind(f.bind()), name="hello", route_prefix="/b")
 
     assert handle_1.remote(8).result() == 9
     assert handle_2.remote().result() == "hello world"

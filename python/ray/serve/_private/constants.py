@@ -191,11 +191,6 @@ SERVE_LOG_EXTRA_FIELDS = "ray_serve_extra_fields"
 # Serve HTTP request header key for routing requests.
 SERVE_MULTIPLEXED_MODEL_ID = "serve_multiplexed_model_id"
 
-# Feature flag to enable new handle API.
-RAY_SERVE_ENABLE_NEW_HANDLE_API = (
-    os.environ.get("RAY_SERVE_ENABLE_NEW_HANDLE_API", "1") == "1"
-)
-
 # Feature flag to turn on node locality routing for proxies. Off by default.
 RAY_SERVE_PROXY_PREFER_LOCAL_NODE_ROUTING = (
     os.environ.get("RAY_SERVE_PROXY_PREFER_LOCAL_NODE_ROUTING", "0") == "1"

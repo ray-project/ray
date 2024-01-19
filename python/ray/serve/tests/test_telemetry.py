@@ -348,9 +348,7 @@ def test_lightweight_config_options(
 
 
 @pytest.mark.parametrize("call_in_deployment", [False, True])
-def test_handle_apis_detected(
-    manage_ray_with_telemetry, call_in_deployment
-):
+def test_handle_apis_detected(manage_ray_with_telemetry, call_in_deployment):
     """Check that the various handles are detected correctly by telemetry."""
 
     subprocess.check_output(["ray", "start", "--head"])
@@ -458,9 +456,7 @@ def test_deployment_handle_to_obj_ref_detected(manage_ray_with_telemetry, mode):
     if mode == "http":
         result = requests.get("http://localhost:8000").text
     elif mode == "outside_deployment":
-        result = ray.get(
-            handle.get.remote()._to_object_ref_sync()
-        )
+        result = ray.get(handle.get.remote()._to_object_ref_sync())
     else:
         result = handle.get.remote(call_downstream=True).result()
 

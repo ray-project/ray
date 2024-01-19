@@ -167,15 +167,6 @@ py_test(
 )
 
 py_test(
-    name = "test_new_handle_api_set_via_env_var",
-    size = "medium",
-    srcs = ["test_new_handle_api_set_via_env_var.py"],
-    env = {"RAY_SERVE_ENABLE_NEW_HANDLE_API": "1"},
-    tags = ["exclusive", "team:serve"],
-    deps = ["//python/ray/serve:serve_lib", ":conftest", ":common"],
-)
-
-py_test(
     name = "test_serve_ha",
     srcs = ["test_serve_ha.py"],
     size = "medium",

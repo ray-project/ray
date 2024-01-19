@@ -127,12 +127,8 @@ def test_compose_apps(serve_instance):
         def __call__(self, inp: str):
             return f"{self._msg}|{inp}"
 
-    handle1 = serve.run(
-        Deployment.bind("app1"), name="app1", route_prefix="/app1"
-    )
-    handle2 = serve.run(
-        Deployment.bind("app2"), name="app2", route_prefix="/app2"
-    )
+    handle1 = serve.run(Deployment.bind("app1"), name="app1", route_prefix="/app1")
+    handle2 = serve.run(Deployment.bind("app2"), name="app2", route_prefix="/app2")
 
     assert handle1.remote(handle2.remote("hi")).result() == "app1|app2|hi"
 

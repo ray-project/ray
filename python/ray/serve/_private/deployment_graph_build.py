@@ -7,7 +7,6 @@ from ray.dag.function_node import FunctionNode
 from ray.dag.utils import _DAGNodeNameGenerator
 from ray.experimental.gradio_utils import type_to_string
 from ray.serve._private.constants import (
-    RAY_SERVE_ENABLE_NEW_HANDLE_API,
     SERVE_DEFAULT_APP_NAME,
 )
 from ray.serve._private.deployment_executor_node import DeploymentExecutorNode
@@ -164,10 +163,7 @@ def transform_ray_dag_to_serve_dag(
             if isinstance(node, DeploymentNode) or isinstance(
                 node, DeploymentFunctionNode
             ):
-                if RAY_SERVE_ENABLE_NEW_HANDLE_API:
-                    return DeploymentHandle(node._deployment.name, app_name, sync=False)
-                else:
-                    return RayServeHandle(node._deployment.name, app_name, sync=False)
+                return DeploymentHandle(node._deployment.name, app_name, sync=False)
             elif isinstance(node, DeploymentExecutorNode):
                 return node._deployment_handle
 
