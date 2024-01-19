@@ -519,6 +519,15 @@ SchedulingResult BundleStrictSpreadSchedulingPolicy::Schedule(
 absl::flat_hash_map<scheduling::NodeID, const Node *>
 BundleStrictSpreadSchedulingPolicy::SelectCandidateNodes(
     const SchedulingContext *context) const {
+  // WARNING: HACK: This policy is supposed to schedule bundles from placement groups. But
+  // we also use it to schedule virtual cluster's fixed size nodes. In this case, we pass
+  // nullptr to BundleSchedulingContext's bundle_locations_'s map value type's second
+  // field which is a std::shared_ptr<BundleSpecification>, since we obviously don't have
+  // one. This hack works because it's not used in the scheduling policy. In fact, only
+  // the Node IDs are used here so that's the only relavent property.
+  //
+  // WARNING: if you want to change code to use that field, please update code in
+  // gcs_virtual_cluster_manager.cc accordingly.
   auto bundle_scheduling_context = dynamic_cast<const BundleSchedulingContext *>(context);
 
   absl::flat_hash_set<scheduling::NodeID> nodes_in_use;

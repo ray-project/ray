@@ -87,9 +87,8 @@ class VirtualClusterNodeSpec : public MessageWrapper<rpc::VirtualClusterNode> {
       const ray::ResourceRequest &, VirtualClusterID);
 };
 
-// Represents all vnodes on a parent node.
-// NOTE: now we don't distiguish fixed_size_nodes from each group because maybe the raylet
-// does not need to know that. Maybe later we need to also propagate this knowledge.
+// Represents a set of vnodes on a parent node.
+// May be all vnodes from a set of fixed_size_nodes, or all nodes from a vc.
 struct VirtualClusterNodesSpec {
   VirtualClusterID vc_id;
   std::vector<VirtualClusterNodeSpec> fixed_size_nodes;

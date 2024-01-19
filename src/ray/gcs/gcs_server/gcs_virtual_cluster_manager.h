@@ -3,6 +3,7 @@
 #include <atomic>
 
 #include "ray/common/asio/instrumented_io_context.h"
+#include "ray/common/id.h"
 #include "ray/gcs/gcs_server/gcs_node_manager.h"
 #include "ray/raylet/scheduling/cluster_resource_scheduler.h"
 #include "ray/rpc/gcs_server/gcs_rpc_server.h"
@@ -15,19 +16,21 @@ namespace gcs {
 // A Virtual Cluster has these states:
 // - PENDING. A creation request is received, but not yet processed. We use a queue to do
 // FIFO for creation.
-// - CREATING. Initial creation of a VC: use 2pc to create initial fixed nodes and the
-// flex nodes with the min amount of resources. The VC is not yet available for the users.
+// - CREATING. Initial creation; 2pc sent. The VC is not yet available for the users.
 // - RUNNING. The VC is available for the users. It bears >= min resources. There may
 // still be demands and it may scale up or down the flex nodes.
-// - RECOVERING. The VC is recovering from a node failure. The min resources are not
-// satisfied. Either some fixed nodes are missing, or the flex nodes does not sum up to
-// the min resources. Use 2pc to recover the VC.
+// - UNSATISFIED. The VC is running, but does not bear min resources. There may still be
+// some tasks running.
+// - RECOVERING. Recovering from UNSATISFIED; 2pc sent.
 //
 // State transitions:
-// - (creation) -> PENDING
-// - PENDING -> CREATING -> RUNNING
-// - RUNNING -> RECOVERING -> RUNNING
-// - * -> (deleted)
+// - (creation)     ->                      PENDING
+// - PENDING        -(Tick, send out 2pc)-> CREATING
+// - CREATING       -(2pc done)->           RUNNING | PENDING (if 2pc failed)
+// - RUNNING        -(node failure)->       UNSATISFIED
+// - UNSATISFIED    -(Tick, send out 2pc)-> RECOVERING
+// - RECOVERING     -(2pc done)->           RUNNING | UNSATISFIED (if 2pc failed)
+// - *              -(delete)->             (deleted)
 //
 // Difference of resource allocation between states:
 // - CREATING and RECOVERING uses 2pc.
@@ -40,10 +43,14 @@ namespace gcs {
 // - New VC deletion request. `HandleRemoveVirtualCluster`
 //      - remove the VC from anywhere, releasing the resources.
 // - (TODO) Node failure. `GcsNodeManager::HandleNodeRemoved`
-//      - If the node affects a VC's fixed node, mark the VC as RECOVERING.
-//      - If the node affects a VC's flex node && the VC no longer bears min resources,
-//      mark the VC as RECOVERING.
-//      - Sends 2pc requests for this VC.
+//
+// NOTE: there are edge cases where 2pc succeeded and after which the node fails. To
+// mitigate, we do a TOCTOU check after the 2pc succeeds. If it's not right, the VC ->
+// UNSATISFIED.
+// TODO: to be 100% safe we can do a every 1-min check on all RUNNING VCs against alive
+// nodes. Maybe do it in debug mode?
+// DO NOT SUBMIT: reverse that to mention we now use per Tick check and can change to a
+// TOCTOU check (at 2pc callback edge?).
 //
 // Ticks: Every Tick it drives the VC state machines:
 // - (TODO do we need this?) If there's any RECOVERING VC, early returns. (no concurrent
@@ -56,14 +63,22 @@ namespace gcs {
 
 class GcsVirtualClusterManager;
 
-struct CreatingVirtualCluster {
-  // CREATING itself is a small state machine:
-  // - PREPARE: send out 2pc requests to all nodes.
-  // - COMMIT: send out 2pc requests to all nodes.
-  // Each step can fail due to a node's failure. In that case we return all resources
-  // and call a failure. The manager will cancel this VC, put it back to PENDING, and
-  // retry later.
-  //
+// Maps each physical node to all its assigned fixed nodes.
+using ScheduledNodes = std::unordered_map<NodeID, VirtualClusterNodesSpec>;
+
+// A transaction to create a list of vnodes on multiple physical nodes, using 2pc.
+// This is used in CREATING and RECOVERING virtual clusters.
+// For each node, we specify a list of fixed vnodes, as well as a flex node with desired
+// amounts of resources.
+// The process is a state machine:
+// 1. PrepareAll: send out 2pc requests to all nodes. Waits for all replies.
+// 2. CommitAll: send out 2pc requests to all nodes. Waits for all replies.
+// 3. invoke callback(succ).
+// If any of the reply fails, we call ReturnAll, sending out Return to all nodes, and
+// invoke callback(fail).
+//
+// Precondition: each node must have never seen the VC before.
+struct CreateVnodesTransaction {
   // Call sequence if all good:
   // (start) -> PrepareAll -> [PrepareOneNode] -> AllPrepared -> CommitAll ->
   // [CommitOneNode] -> AllCommitted -> (manager->CreatedVirtualCluster(true))
@@ -71,23 +86,32 @@ struct CreatingVirtualCluster {
   // ... -> (AllPrepared | AllCommitted) -> ReturnAll -> [ReturnOneNode] -> AllReturned ->
   // (manager->CreatedVirtualCluster(false))
   //
-  // Note that ReturnOneNode may also fail; but we chose to CHECK-fail it for simplicity
+  // Note that ReturnOneNode may also fail; but we chose to CHECK-fail it for the demo.
+  // This is NOT production ready since the node can fail before we send the req, and it's
+  // very likely we get a failure in a Return.
   // TODO: maybe we can just ignore such failure and only log a warning.
+
+  // `manager` is used to get lease clients to talk to nodes.
   GcsVirtualClusterManager *manager;
-  VirtualClusterSpecification vc;
-  std::unordered_map<NodeID, VirtualClusterNodesSpec> node_to_vnodes;
+  VirtualClusterID vc_id;
+  // {node_id -> [vnodes]}.
+  ScheduledNodes scheduled_nodes;
+  // TODO: support flex nodes.
+  std::function<void(bool)> finish_callback;
 
   std::atomic<size_t> num_replied_prepares = 0;
   bool has_failed_prepares = false;
   std::atomic<size_t> num_replied_commits = 0;
   bool has_failed_commits = false;
 
-  CreatingVirtualCluster(
-      GcsVirtualClusterManager *manager,
-      VirtualClusterSpecification vc,
-      std::unordered_map<NodeID, VirtualClusterNodesSpec> node_to_vnodes)
-      : manager(manager), vc(vc), node_to_vnodes(node_to_vnodes) {}
-
+  CreateVnodesTransaction(GcsVirtualClusterManager *manager,
+                          VirtualClusterID vc_id,
+                          ScheduledNodes scheduled_nodes,
+                          std::function<void(bool)> finish_callback)
+      : manager(manager),
+        vc_id(vc_id),
+        scheduled_nodes(std::move(scheduled_nodes)),
+        finish_callback(finish_callback) {}
   void PrepareAll();
 
  private:
@@ -100,21 +124,59 @@ struct CreatingVirtualCluster {
   void ReturnAll();
 };
 
-struct RunningVirtualCluster {
-  const VirtualClusterSpecification vc;
-  std::unordered_map<NodeID, VirtualClusterNodesSpec> node_to_allocated_vnodes;
+// We can have multiple fixed_size_nodes in a VC, each with their own scheduling policy,
+// and we need to keep that info for recovery. On the other hand, we only want to send
+// out 1 2pc transaction for each VC, so we need to group the vnodes.
+// From: {fixed_size_nodes (by ID) -> {node -> [vnodes]}} `scheduled_fixed_size_nodes`
+// To: {node -> [vnodes]} `transaction->scheduled_nodes`
+struct CreatingVirtualCluster {
+  // `manager` is used to callback to inform that the VC is created or failed.
+  GcsVirtualClusterManager *manager;
+  VirtualClusterSpecification vc;
+  // Scheduled vnodes, one for each fixed_size_nodes.
+  std::vector<ScheduledNodes> scheduled_fixed_size_nodes;
 
-  RunningVirtualCluster(
-      VirtualClusterSpecification vc,
-      std::unordered_map<NodeID, VirtualClusterNodesSpec> node_to_allocated_vnodes)
-      : vc(vc), node_to_allocated_vnodes(node_to_allocated_vnodes) {}
+  // The transaction to create the vnodes.
+  std::unique_ptr<CreateVnodesTransaction> transaction;
+
+  CreatingVirtualCluster(GcsVirtualClusterManager *manager,
+                         VirtualClusterSpecification vc,
+                         std::vector<ScheduledNodes> scheduled_fixed_size_nodes);
+  void PrepareAll();
 };
 
-// TODO: not used yet.
-struct RecoveringVirtualCluster {
-  VirtualClusterSpecification vc;
+struct RunningVirtualCluster {
+  const VirtualClusterSpecification vc;
+  // For each fixed_size_nodes, the mapping {node -> [vnodes]}.
+  std::vector<ScheduledNodes> allocated_fixed_size_nodes;
 
-  RecoveringVirtualCluster(VirtualClusterSpecification vc) : vc(vc) {}
+  bool IsSatisfied(const std::unordered_set<NodeID> &alive_nodes) const;
+
+  RunningVirtualCluster(VirtualClusterSpecification vc,
+                        std::vector<ScheduledNodes> allocated_fixed_size_nodes)
+      : vc(vc), allocated_fixed_size_nodes(std::move(allocated_fixed_size_nodes)) {}
+};
+
+// A VC that is unsatisfied, and we have scheduled a 2pc recovery, waiting for replies.
+// For each fixed_size_nodes, we have 1 entry in allocated_fixed_size_nodes and 1 entry in
+// recovering_fixed_size_nodes, even if the fixed_size_nodes is empty or is not affected
+// by the failure.
+struct RecoveringVirtualCluster {
+  GcsVirtualClusterManager *manager;
+  // Previously running VC. After recovery we will go back to this state.
+  // If the VC had more than minimum resources, it would be trimmed to the min desired
+  // amount in ctor of this class.
+  std::shared_ptr<RunningVirtualCluster> running_vc;
+  // For each fixed_size_nodes, the mapping {node -> [vnodes]} that are dead and needs a
+  // recovery.
+  std::vector<ScheduledNodes> recovering_fixed_size_nodes;
+  // The transaction to recover the vnodes.
+  std::unique_ptr<CreateVnodesTransaction> transaction;
+
+  RecoveringVirtualCluster(GcsVirtualClusterManager *manager,
+                           std::shared_ptr<RunningVirtualCluster> running_vc,
+                           std::vector<ScheduledNodes> recovering_fixed_size_nodes);
+  void PrepareAll();
 };
 
 class GcsVirtualClusterManager : public rpc::VirtualClusterInfoHandler {
@@ -139,32 +201,61 @@ class GcsVirtualClusterManager : public rpc::VirtualClusterInfoHandler {
 
   // Internal APIs to the VC state machines.
   void CreatedVirtualCluster(VirtualClusterID vc_id, bool success);
+  void RecoveredVirtualCluster(VirtualClusterID vc_id, bool success);
 
   absl::optional<std::shared_ptr<ResourceReserveInterface>> GetLeaseClientFromAliveNode(
       const NodeID &node_id);
 
  private:
-  std::optional<std::unordered_map<NodeID, VirtualClusterNodesSpec>> Schedule(
+  // Schedules a fixed-size-nodes, which may already have some nodes allocated.
+  // TODO: fix recovery.
+  // std::optional<ScheduledNodes> Schedule(
+  //     VirtualClusterID vc_id,
+  //     const rpc::FixedSizeNodes &fixed_size_nodes,
+  //     const std::vector<NodeID> &already_used_nodes);
+
+  std::optional<ScheduledNodes> Schedule(
+      VirtualClusterID vc_id,
+      const std::vector<VirtualClusterNodeSpec> &fixed_size_nodes,
+      rpc::SchedulingPolicy policy,
+      const std::unordered_set<NodeID> &already_used_nodes);
+
+  // Schedules a new VC. If can't schedule, returns nullopt.
+  std::optional<std::unique_ptr<CreatingVirtualCluster>> ScheduleNew(
       const VirtualClusterSpecification &vc);
+
+  // Schedules a VC recovery. If can't schedule, returns nullopt.
+  std::optional<std::unique_ptr<RecoveringVirtualCluster>> ScheduleRecovery(
+      std::shared_ptr<RunningVirtualCluster> running_vc,
+      const std::unordered_set<NodeID> &still_alive_nodes);
 
   std::shared_ptr<ResourceReserveInterface> GetLeaseClientFromNode(
       const std::shared_ptr<rpc::GcsNodeInfo> &node);
 
   void Tick();
   void CreateVirtualClusters();
+  void RecoverVirtualClusters();
 
   instrumented_io_context &io_context_;
   const GcsNodeManager &gcs_node_manager_;
   ClusterResourceScheduler &cluster_resource_scheduler_;
   std::shared_ptr<rpc::NodeManagerClientPool> raylet_client_pool_;
 
-  /// Virtual Clusters.
+  /// Virtual Clusters in 5 states.
   std::deque<VirtualClusterSpecification> pending_virtual_clusters_;
-  // For some reason, clang refuses to compile this without a std::unique_ptr.
   std::unordered_map<VirtualClusterID, std::unique_ptr<CreatingVirtualCluster>>
       creating_virtual_clusters_;
-  std::unordered_map<VirtualClusterID, RunningVirtualCluster> running_virtual_clusters_;
-  std::unordered_map<VirtualClusterID, RecoveringVirtualCluster>
+  std::unordered_map<VirtualClusterID, std::shared_ptr<RunningVirtualCluster>>
+      running_virtual_clusters_;
+  // An unsatisfied VC is a RUNNING VC that does not bear min resources, due to node
+  // failure. In the next Tick we will try to recover by scheduling and sending out 2pc.
+  // If scheduling failed, it lies in this map until the next Tick.
+  //
+  // Note: we don't store the failed nodes here, because in the next Tick that list may
+  // change and we always consult to source-of-truth in Tick.
+  std::unordered_map<VirtualClusterID, std::shared_ptr<RunningVirtualCluster>>
+      unsatisfied_virtual_clusters_;
+  std::unordered_map<VirtualClusterID, std::unique_ptr<RecoveringVirtualCluster>>
       recovering_virtual_clusters_;
 };
 }  // namespace gcs
