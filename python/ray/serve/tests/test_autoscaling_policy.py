@@ -316,7 +316,11 @@ def test_cold_start_time(serve_instance):
     start = time.time()
     result = handle.remote().result()
     cold_start_time = time.time() - start
-    assert cold_start_time < 3
+    if sys.platform == "win32":
+        timeout = 5  # Windows has a longer tail.
+    else:
+        timeout = 3
+    assert cold_start_time < timeout
     print(
         "Time taken for deployment at 0 replicas to serve first request:",
         cold_start_time,
