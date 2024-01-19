@@ -60,6 +60,17 @@ run_timeout() {
 }
 
 pushd "$ROOT_DIR"/..
+
+if [[ ! -d ".git" ]]; then
+  # git is removed, but we need one for the git diff check to work, so create
+  # a dummy one here.
+  git init
+  git config --global user.email "nobody@ray.io"
+  git config --global user.name "nobody"
+  git add .
+  git commit -a -m "capture for diff"
+fi
+
 echo "Build java maven deps."
 bazel build //java:gen_maven_deps
 
