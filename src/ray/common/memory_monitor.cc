@@ -111,9 +111,44 @@ std::tuple<int64_t, int64_t> MemoryMonitor::GetMemoryBytes() {
   return std::tuple(system_used_bytes, system_total_bytes);
 }
 
-int64_t MemoryMonitor::GetCGroupV1MemoryUsedBytes(const char *path) {
+int64_t MemoryMonitor::GetCGroupV1MemoryUsedBytes(const char *stat_path,
+                                                  const char *usage_path) {
+  // Cgroup available memory calculation:
+  //  `memory.usage_in_bytes` - `memory.stat.total_cache`
+  // This value is consistent with values `MemTotal` `MemAvailable` `MemFree` in `/proc/meminfo`
+  //  and they have relationship of:
+  //  - `memory.usage_in_bytes` == `MemTotal` - `MemFree`
+  //  - `memory.stat.total_cache` == `MemAvailable` - `MemFree`
+  //
+  // Explanation: What's this part `MemAvailable` - `MemFree` memory for and why
+  //   we should treat this part memory as "Not-in-used" ?
+  // Linux OS tries to fully use the whole physical memory size, so that in many
+  // cases we can observe that the system has very little `MemFree` size,
+  // but at the same time system might have a large `MemAvailable` size,
+  // then this part `MemAvailable - MemFree` size is borrowed by Linux OS
+  // to cache pages / buffers , BUT, once user process requests to allocate memory,
+  // and there is no sufficient free memory, OS will evict cache data out of this
+  // part memory and allocate them to user proces.
+  //
+  // Explanation 2: Why don't use the formular
+  //  `memory.stat.total_rss` - `memory.stat.inactive_file_bytes` to compute the
+  // in-used memory ?
+  // In my test the calculated number is much less than `MemTotal - MemAvailable`.
+  //  so the formular must miss something (but I haven't figured out which part is missed)
+  // But in my test,
+  //  cgroup `memory.usage_in_bytes` value perfectly matches (`MemTotal` - `MemFree`) value,
+  //  so I am sure that `memory.usage_in_bytes` value is correct.
+  //  and cgroup `memory.stat.total_cache` value also perfectly matches
+  //  (`MemAvailable` - `MemFree`) value,
+  // so that I am confident that this formular must be correct:
+  //   available_mem = `memory.usage_in_bytes` - `memory.stat.total_cache`
   std::ifstream memstat_ifs(path, std::ios::in | std::ios::binary);
   if (!memstat_ifs.is_open()) {
+    RAY_LOG_EVERY_MS(WARNING, kLogIntervalMs) << " file not found: " << path;
+    return kNull;
+  }
+  std::ifstream memusage_ifs(path, std::ios::in | std::ios::binary);
+  if (!memusage_ifs.is_open()) {
     RAY_LOG_EVERY_MS(WARNING, kLogIntervalMs) << " file not found: " << path;
     return kNull;
   }
@@ -122,27 +157,25 @@ int64_t MemoryMonitor::GetCGroupV1MemoryUsedBytes(const char *path) {
   std::string title;
   int64_t value;
 
-  int64_t rss_bytes = kNull;
-  int64_t inactive_file_bytes = kNull;
+  int64_t cgroup_usage_in_bytes;
+  std::getline(memusage_ifs, line);
+  std::istringstream iss(line);
+  iss >> cgroup_usage_in_bytes;
+
+  int64_t total_cache_bytes = kNull;
   while (std::getline(memstat_ifs, line)) {
     std::istringstream iss(line);
     iss >> title >> value;
-    if (title == "total_rss") {
-      rss_bytes = value;
-    } else if (title == "total_inactive_file") {
-      inactive_file_bytes = value;
+    if (title == "total_cache") {
+      total_cache_bytes = value;
     }
   }
-  if (rss_bytes == kNull || inactive_file_bytes == kNull) {
+  if (total_cache_bytes == kNull) {
     RAY_LOG_EVERY_MS(WARNING, kLogIntervalMs)
-        << "Failed to parse cgroup v1 mem stat. rss " << rss_bytes
-        << " inactive " << inactive_file_bytes;
+        << "Failed to parse cgroup v1 mem stat. total cache " << total_cache_bytes;
     return kNull;
   }
-  // Working set, used by cadvisor for cgroup oom killing, is calculcated as (usage -
-  // inactive files)
-  // https://medium.com/@eng.mohamed.m.saeed/memory-working-set-vs-memory-rss-in-kubernetes-which-one-you-should-monitor-8ef77bf0acee
-  int64_t used = rss_bytes - inactive_file_bytes;
+  int64_t used = cgroup_usage_in_bytes - total_cache_bytes;
   return used;
 }
 
@@ -205,7 +238,7 @@ std::tuple<int64_t, int64_t> MemoryMonitor::GetCGroupMemoryBytes() {
     used_bytes =
         GetCGroupV2MemoryUsedBytes(kCgroupsV2MemoryStatPath, kCgroupsV2MemoryUsagePath);
   } else if (std::filesystem::exists(kCgroupsV1MemoryStatPath)) {
-    used_bytes = GetCGroupV1MemoryUsedBytes(kCgroupsV1MemoryStatPath);
+    used_bytes = GetCGroupV1MemoryUsedBytes(kCgroupsV1MemoryStatPath, kCgroupsV1MemoryUsagePath);
   }
 
   /// This can be zero if the memory limit is not set for cgroup v2.

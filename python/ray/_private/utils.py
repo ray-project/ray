@@ -602,22 +602,26 @@ def get_num_cpus(
 
 
 # TODO(clarng): merge code with c++
-def get_cgroupv1_used_memory(filename):
-    with open(filename, "r") as f:
+def get_cgroupv1_used_memory(memory_stat_filename, memory_usage_filename):
+    """
+    The calculation logic is the same with `GetCGroupV1MemoryUsedBytes`
+    in `memory_monitor.cc` file.
+    """
+    total_cache_bytes = -1
+    with open(memory_stat_filename, "r") as f:
         lines = f.readlines()
-        rss_bytes = -1
-        inactive_file_bytes = -1
-        working_set = -1
         for line in lines:
-            if "total_rss " in line:
-                rss_bytes = int(line.split()[1])
-            elif "inactive_file" in line:
-                inactive_file_bytes = int(line.split()[1])
-        if rss_bytes >= 0 and inactive_file_bytes >= 0:
-            working_set = rss_bytes - inactive_file_bytes
-            assert working_set >= 0
-            return working_set
+            if "total_cache " in line:
+                total_cache_bytes = int(line.split()[1])
+
+    with open(memory_usage_filename, "r") as f:
+        lines = f.readlines()
+        cgroup_usage_in_bytes = int(lines[0].strip())
+
+    if total_cache_bytes == -1 or cgroup_usage_in_bytes == -1:
         return None
+
+    return cgroup_usage_in_bytes - total_cache_bytes
 
 
 def get_cgroupv2_used_memory(stat_file, usage_file):
@@ -650,12 +654,16 @@ def get_used_memory():
     # container.
     docker_usage = None
     # For cgroups v1:
-    memory_usage_filename = "/sys/fs/cgroup/memory/memory.stat"
+    memory_usage_filename = "/sys/fs/cgroup/memory/memory.usage_in_bytes"
+    memory_stat_filename = "/sys/fs/cgroup/memory/memory.stat"
     # For cgroups v2:
     memory_usage_filename_v2 = "/sys/fs/cgroup/memory.current"
     memory_stat_filename_v2 = "/sys/fs/cgroup/memory.stat"
     if os.path.exists(memory_usage_filename):
-        docker_usage = get_cgroupv1_used_memory(memory_usage_filename)
+        docker_usage = get_cgroupv1_used_memory(
+            memory_stat_filename,
+            memory_usage_filename,
+        )
     elif os.path.exists(memory_usage_filename_v2) and os.path.exists(
         memory_stat_filename_v2
     ):

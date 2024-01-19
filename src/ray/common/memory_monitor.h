@@ -91,6 +91,7 @@ class MemoryMonitor {
   static constexpr char kCgroupsV1MemoryUsagePath[] =
       "/sys/fs/cgroup/memory/memory.usage_in_bytes";
   static constexpr char kCgroupsV1MemoryStatPath[] = "/sys/fs/cgroup/memory/memory.stat";
+  static constexpr char kCgroupsV1MemoryUsagePath[] = "/sys/fs/cgroup/memory/memory.usage_in_bytes";
   static constexpr char kCgroupsV2MemoryMaxPath[] = "/sys/fs/cgroup/memory.max";
   static constexpr char kCgroupsV2MemoryUsagePath[] = "/sys/fs/cgroup/memory.current";
   static constexpr char kCgroupsV2MemoryStatPath[] = "/sys/fs/cgroup/memory.stat";
