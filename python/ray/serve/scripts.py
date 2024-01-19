@@ -807,16 +807,7 @@ def build(
 @cli.command(
     short_help="TODO.",
     help=(
-        "Runs an application from the specified import path (e.g., my_script:"
-        "app) or application(s) from a YAML config.\n\n"
-        "If passing an import path, it must point to a Serve Application or "
-        "a function that returns one. If a function is used, arguments can be "
-        "passed to it in 'key=val' format after the import path, for example:\n\n"
-        "serve run my_script:app model_path='/path/to/model.pkl' num_replicas=5\n\n"
-        "If passing a YAML config, existing applications with no code changes will not "
-        "be updated.\n\n"
-        "By default, this will block and stream logs to the console. If you "
-        "Ctrl-C the command, it will shut down Serve on the cluster."
+        "TODO."
     ),
 )
 @click.argument("config_or_import_path")
@@ -826,16 +817,14 @@ def build(
     type=str,
     default=None,
     required=False,
-    help="Path to a local YAML file containing a runtime_env definition. "
-    "This will be passed to ray.init() as the default for deployments.",
+    help="Path to a local YAML file containing a runtime_env definition.",
 )
 @click.option(
     "--runtime-env-json",
     type=str,
     default=None,
     required=False,
-    help="JSON-serialized runtime_env dictionary. This will be passed to "
-    "ray.init() as the default for deployments.",
+    help="JSON-serialized runtime_env dictionary.",
 )
 @click.option(
     "--working-dir",
@@ -856,163 +845,76 @@ def build(
     default="TODO",
     type=str,
     help=(
-        "Name of the application. This should only be used "
-        "when running an application specified by import path and "
-        "will be ignored if running a config file."
+        "TODO."
     ),
 )
-def run(
+@click.option(
+    "--image",
+    required=False,
+    default="TODO",
+    type=str,
+    help=(
+        "TODO."
+    ),
+)
+def publish(
     config_or_import_path: str,
     arguments: Tuple[str],
     runtime_env: str,
     runtime_env_json: str,
     working_dir: str,
     name: str,
+    image: str,
 ):
-    if host is not None or port is not None:
-        cli_logger.warning(
-            "Specifying `--host` and `--port` to `serve run` is deprecated and will be "
-            "removed in a future version. To specify custom HTTP options, use the "
-            "`serve start` command."
-        )
-
-    sys.path.insert(0, app_dir)
-    args_dict = convert_args_to_dict(arguments)
     final_runtime_env = parse_runtime_env_args(
         runtime_env=runtime_env,
         runtime_env_json=runtime_env_json,
         working_dir=working_dir,
     )
 
+    config: Optional[ServeDeploySchema] = None
     if pathlib.Path(config_or_import_path).is_file():
-        if len(args_dict) > 0:
+        # TODO: should we use runtime_env at all?
+        if len(arguments) > 0:
             cli_logger.warning(
-                "Application arguments are ignored when running a config file."
+                "Application arguments are ignored a config file is passed."
             )
 
-        is_config = True
         config_path = config_or_import_path
-        cli_logger.print(f"Running config file: '{config_path}'.")
-
+        cli_logger.print(f"Publishing from config file: '{config_path}'.")
         with open(config_path, "r") as config_file:
             config_dict = yaml.safe_load(config_file)
-
             config = ServeDeploySchema.parse_obj(config_dict)
-
-            # If host or port is specified as a CLI argument, they should take
-            # priority over config values.
-            if host is None:
-                if "http_options" in config_dict:
-                    host = config_dict["http_options"].get("host", DEFAULT_HTTP_HOST)
-                else:
-                    host = DEFAULT_HTTP_HOST
-            if port is None:
-                if "http_options" in config_dict:
-                    port = config_dict["http_options"].get("port", DEFAULT_HTTP_PORT)
-                else:
-                    port = DEFAULT_HTTP_PORT
-
     else:
-        is_config = False
-        if host is None:
-            host = DEFAULT_HTTP_HOST
-        if port is None:
-            port = DEFAULT_HTTP_PORT
+        # TODO: should we default to --working-dir="." for this?
         import_path = config_or_import_path
-        cli_logger.print(f"Running import path: '{import_path}'.")
-        app = _private_api.call_app_builder_with_args_if_necessary(
-            import_attr(import_path), args_dict
-        )
+        cli_logger.print(f"Publishing import path: '{import_path}'.")
 
-    # Only initialize ray if it has not happened yet.
-    if not ray.is_initialized():
-        # Setting the runtime_env here will set defaults for the deployments.
-        ray.init(
-            address=address, namespace=SERVE_NAMESPACE, runtime_env=final_runtime_env
+        app = ServeApplicationSchema(
+            import_path=import_path,
+            runtime_env=final_runtime_env,
+            args=convert_args_to_dict(arguments),
         )
-    elif (
-        address is not None
-        and address != "auto"
-        and address != ray.get_runtime_context().gcs_address
-    ):
-        # Warning users the address they passed is different from the existing ray
-        # instance.
-        ray_address = ray.get_runtime_context().gcs_address
-        cli_logger.warning(
-            "An address was passed to `serve run` but the imported module also "
-            f"connected to Ray at a different address: '{ray_address}'. You do not "
-            "need to call `ray.init` in your code when using `serve run`."
-        )
+        config = ServeDeploySchema(applications=[app])
 
-    http_options = {"host": host, "port": port, "location": "EveryNode"}
-    grpc_options = gRPCOptions()
-    # Merge http_options and grpc_options with the ones on ServeDeploySchema. If host
-    # and/or port is passed by cli, those continue to take the priority
-    if is_config and isinstance(config, ServeDeploySchema):
-        config_http_options = config.http_options.dict()
-        http_options = {**config_http_options, **http_options}
-        grpc_options = gRPCOptions(**config.grpc_options.dict())
+def _publish(
+    config: ServeDeploySchema,
+    name: Optional[str] = None,
+    image: Optional[str] = None,
+):
+    from anyscale import AnyscaleSDK
+    from anyscale.sdk.anyscale_client.models import ApplyProductionServiceV2Model
 
-    client = _private_api.serve_start(
-        http_options=http_options,
-        grpc_options=grpc_options,
+    assert image is None, "Not implemented yet."
+
+    sdk = AnyscaleSDK()
+    apply_model = ApplyProductionServiceV2Model(
+        name=name,
+        project_id=service.project_id,
+        compute_config_id=compute_config_id,
+        build_id=build_id,
+        ray_serve_config=config.dict(),
     )
-
-    try:
-        if is_config:
-            client.deploy_apps(config, _blocking=False)
-            cli_logger.success("Submitted deploy config successfully.")
-        else:
-            serve.run(app, name=name, route_prefix=route_prefix, host=host, port=port)
-            cli_logger.success("Deployed Serve app successfully.")
-
-        if reload:
-            if not blocking:
-                raise click.ClickException(
-                    "The --non-blocking option conflicts with the --reload option."
-                )
-            if working_dir:
-                watch_dir = working_dir
-            else:
-                watch_dir = app_dir
-
-            for changes in watchfiles.watch(
-                watch_dir,
-                rust_timeout=10000,
-                yield_on_timeout=True,
-            ):
-                if changes:
-                    cli_logger.info(
-                        f"Detected file change in path {watch_dir}. Redeploying app."
-                    )
-                    # The module needs to be reloaded with `importlib` in order to pick
-                    # up any changes.
-                    app = _private_api.call_app_builder_with_args_if_necessary(
-                        import_attr(import_path, reload_module=True), args_dict
-                    )
-                    serve.run(
-                        app, name=name, route_prefix=route_prefix, host=host, port=port
-                    )
-
-        if blocking:
-            while True:
-                # Block, letting Ray print logs to the terminal.
-                time.sleep(10)
-
-    except KeyboardInterrupt:
-        cli_logger.info("Got KeyboardInterrupt, shutting down...")
-        serve.shutdown()
-        sys.exit()
-
-    except Exception:
-        traceback.print_exc()
-        cli_logger.error(
-            "Received unexpected error, see console logs for more details. Shutting "
-            "down..."
-        )
-        serve.shutdown()
-        sys.exit()
-
 
 class ServeDeploySchemaDumper(yaml.SafeDumper):
     """YAML dumper object with custom formatting for ServeDeploySchema.
