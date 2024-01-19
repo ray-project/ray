@@ -15,18 +15,25 @@ from typing import (
     Sequence,
     Set,
     Tuple,
+    TYPE_CHECKING,
     Union,
 )
 
 import ray
-from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
+from ray.rllib.connectors.learner.learner_connector_pipeline import (
+    LearnerConnectorPipeline,
+)
 from ray.rllib.core.learner.reduce_result_dict_fn import _reduce_mean_results
 from ray.rllib.core.rl_module.marl_module import (
     MultiAgentRLModule,
     MultiAgentRLModuleSpec,
 )
 from ray.rllib.core.rl_module.rl_module import RLModule, SingleAgentRLModuleSpec
-from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID, MultiAgentBatch
+from ray.rllib.policy.sample_batch import (
+    DEFAULT_POLICY_ID,
+    MultiAgentBatch,
+    SampleBatch,
+)
 from ray.rllib.utils.annotations import (
     OverrideToImplementCustomLogic,
     OverrideToImplementCustomLogic_CallToSuperRecommended,
@@ -59,6 +66,9 @@ from ray.rllib.utils.typing import (
     TensorType,
 )
 from ray.util.annotations import PublicAPI
+
+if TYPE_CHECKING:
+    from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
 
 
 torch, _ = try_import_torch()
@@ -205,7 +215,7 @@ class Learner:
     def __init__(
         self,
         *,
-        config: AlgorithmConfig,
+        config: "AlgorithmConfig",
         module_spec: Optional[
             Union[SingleAgentRLModuleSpec, MultiAgentRLModuleSpec]
         ] = None,
@@ -254,6 +264,8 @@ class Learner:
 
         # The actual MARLModule used by this Learner.
         self._module: Optional[MultiAgentRLModule] = None
+        # Our Learner connector pipeline.
+        self._learner_connector: Optional[LearnerConnectorPipeline] = None
         # These are set for properly applying optimizers and adding or removing modules.
         self._optimizer_parameters: Dict[Optimizer, List[ParamRef]] = {}
         self._named_optimizers: Dict[str, Optimizer] = {}
@@ -271,6 +283,40 @@ class Learner:
         # `Learner.update()`. These metrics will be "compiled" automatically into
         # the final results dict in the `self.compile_update_results()` method.
         self._metrics = defaultdict(dict)
+
+    @OverrideToImplementCustomLogic_CallToSuperRecommended
+    def build(self) -> None:
+        """Builds the Learner.
+
+        This method should be called before the learner is used. It is responsible for
+        setting up the RLModule, optimizers, and (optionally) their lr-schedulers.
+        """
+        if self._is_built:
+            logger.debug("Learner already built. Skipping build.")
+            return
+
+        # Build learner connector pipeline used on this Learner worker.
+        # TODO (sven): Support multi-agent cases.
+        if self.config.uses_new_env_runners and not self.config.is_multi_agent():
+            module_spec = self._module_spec.as_multi_agent().module_specs[
+                DEFAULT_POLICY_ID
+            ]
+            self._learner_connector = self.config.build_learner_connector(
+                input_observation_space=module_spec.observation_space,
+                input_action_space=module_spec.action_space,
+            )
+            # Adjust module spec based on connector's (possibly transformed) spaces.
+            module_spec.observation_space = self._learner_connector.observation_space
+            module_spec.action_space = self._learner_connector.action_space
+
+        # Build the module to be trained by this learner.
+        self._module = self._make_module()
+
+        # Configure, construct, and register all optimizers needed to train
+        # `self.module`.
+        self.configure_optimizers()
+
+        self._is_built = True
 
     @property
     def distributed(self) -> bool:
@@ -387,7 +433,7 @@ class Learner:
     @OverrideToImplementCustomLogic
     @abc.abstractmethod
     def configure_optimizers_for_module(
-        self, module_id: ModuleID, config: AlgorithmConfig = None, hps=None
+        self, module_id: ModuleID, config: "AlgorithmConfig" = None, hps=None
     ) -> None:
         """Configures an optimizer for the given module_id.
 
@@ -479,7 +525,7 @@ class Learner:
         self,
         *,
         module_id: ModuleID,
-        config: AlgorithmConfig = None,
+        config: Optional["AlgorithmConfig"] = None,
         module_gradients_dict: ParamDict,
         hps=None,
     ) -> ParamDict:
@@ -823,25 +869,6 @@ class Learner:
 
         self.module.remove_module(module_id)
 
-    @OverrideToImplementCustomLogic_CallToSuperRecommended
-    def build(self) -> None:
-        """Builds the Learner.
-
-        This method should be called before the learner is used. It is responsible for
-        setting up the RLModule, optimizers, and (optionally) their lr-schedulers.
-        """
-        if self._is_built:
-            logger.debug("Learner already built. Skipping build.")
-            return
-        self._is_built = True
-
-        # Build the module to be trained by this learner.
-        self._module = self._make_module()
-
-        # Configure, construct, and register all optimizers needed to train
-        # `self.module`.
-        self.configure_optimizers()
-
     @OverrideToImplementCustomLogic
     def compute_loss(
         self,
@@ -901,7 +928,7 @@ class Learner:
         self,
         *,
         module_id: ModuleID,
-        config: AlgorithmConfig = None,
+        config: Optional["AlgorithmConfig"] = None,
         batch: NestedDict,
         fwd_out: Dict[str, TensorType],
     ) -> TensorType:
@@ -1053,7 +1080,7 @@ class Learner:
         self,
         *,
         module_id: ModuleID,
-        config: AlgorithmConfig = None,
+        config: Optional["AlgorithmConfig"] = None,
         timestep: int,
         hps=None,
         **kwargs,
@@ -1333,12 +1360,23 @@ class Learner:
             # We must do at least one pass on the batch for training.
             raise ValueError("`num_iters` must be >= 1")
 
-        # Call the train data preprocessor.
-        batch, episodes = self._preprocess_train_data(batch=batch, episodes=episodes)
-
-        # TODO (sven): Insert a call to the Learner ConnectorV2 pipeline here, providing
-        #  it both `batch` and `episode` for further custom processing before the
-        #  actual `Learner._update()` call.
+        # Call the learner connector.
+        # TODO (sven): make multi-agent capable.
+        if self._learner_connector is not None:
+            # Call the train data preprocessor.
+            batch, episodes = self._preprocess_train_data(
+                batch=batch, episodes=episodes
+            )
+            batch = self._learner_connector(
+                rl_module=self.module["default_policy"],
+                data=batch,
+                episodes=episodes,
+            )
+            if episodes is not None:
+                batch = MultiAgentBatch(
+                    policy_batches={DEFAULT_POLICY_ID: SampleBatch(batch)},
+                    env_steps=sum(len(e) for e in episodes),
+                )
 
         if minibatch_size:
             batch_iter = MiniBatchCyclicIterator
