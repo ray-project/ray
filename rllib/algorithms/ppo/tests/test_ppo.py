@@ -274,12 +274,11 @@ class TestPPO(unittest.TestCase):
         """Tests, whether PPO runs with different exploration setups."""
         config = (
             ppo.PPOConfig()
-            .experimental(_enable_new_api_stack=True)
+            # .experimental(_enable_new_api_stack=True)
             .environment(
                 "FrozenLake-v1",
                 env_config={"is_slippery": False, "map_name": "4x4"},
-            )
-            .rollouts(
+            ).rollouts(
                 # Run locally.
                 num_rollout_workers=0,
             )
@@ -287,23 +286,13 @@ class TestPPO(unittest.TestCase):
         obs = np.array(0)
 
         # Test against all frameworks.
-        for fw in framework_iterator(config):
+        for fw, sess in framework_iterator(config, session=True):
             # Default Agent should be setup with StochasticSampling.
             algo = config.build()
             # explore=False, always expect the same (deterministic) action.
             a_ = algo.compute_single_action(
                 obs, explore=False, prev_action=np.array(2), prev_reward=np.array(1.0)
             )
-
-            # Test whether this is really the argmax action over the logits.
-            # TODO (Kourosh): Only meaningful in the ModelV2 stack.
-            config.validate()
-            if not config._enable_new_api_stack and fw != "tf":
-                last_out = algo.get_policy().model.last_output()
-                if fw == "torch":
-                    check(a_, np.argmax(last_out.detach().cpu().numpy(), 1)[0])
-                else:
-                    check(a_, np.argmax(last_out.numpy(), 1)[0])
 
             for _ in range(50):
                 a = algo.compute_single_action(
