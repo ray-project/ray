@@ -289,6 +289,14 @@ class NodeProviderAdapter(ICloudInstanceProvider):
         max_concurrent_types_to_launch: int = AUTOSCALER_MAX_CONCURRENT_TYPES_TO_LAUNCH,
         max_concurrent_to_terminate: int = AUTOSCALER_MAX_CONCURRENT_TERMINATING,
     ) -> None:
+        """
+        Args:
+            v1_provider: The v1 node provider to wrap.
+            config_reader: The config reader.
+            max_concurrent_types_to_launch: The max concurrent types to launch.
+            max_concurrent_to_terminate: The max concurrent to terminate.
+        """
+
         super().__init__()
         self._v1_provider = v1_provider
         # Executor to async launching and terminating nodes.
