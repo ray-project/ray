@@ -406,12 +406,13 @@ def add_custom_assets(
     See documentation on Sphinx Core Events for more information:
     https://www.sphinx-doc.org/en/master/extdev/appapi.html#sphinx-core-events
     """
+    if pagename == "index":
+        app.add_css_file("css/index.css")
+        app.add_js_file("js/index.js")
+        return "index.html"  # Use the special index.html template for this page
+
     if pagename == "train/train":
         app.add_css_file("css/ray-train.css")
-    elif pagename == "index":
-        # CSS for HTML part of index.html
-        app.add_css_file("css/splash.css")
-        app.add_js_file("js/splash.js")
     elif pagename == "ray-overview/examples":
         # Example gallery
         app.add_css_file("css/examples.css")

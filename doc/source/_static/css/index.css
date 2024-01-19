@@ -62,7 +62,7 @@
 
 .tab-pane pre {
   margin: 0;
-  padding: 0;
+  padding: 0.5em 1em;
   max-height: 252px;
   overflow-y: auto;
   animation: fadeEffect 1s; /* Fading effect takes 1 second */
