@@ -123,29 +123,26 @@ int64_t MemoryMonitor::GetCGroupV1MemoryUsedBytes(const char *path) {
   int64_t value;
 
   int64_t rss_bytes = kNull;
-  int64_t cache_bytes = kNull;
   int64_t inactive_file_bytes = kNull;
   while (std::getline(memstat_ifs, line)) {
     std::istringstream iss(line);
     iss >> title >> value;
     if (title == "total_rss") {
       rss_bytes = value;
-    } else if (title == "total_cache") {
-      cache_bytes = value;
     } else if (title == "total_inactive_file") {
       inactive_file_bytes = value;
     }
   }
-  if (rss_bytes == kNull || cache_bytes == kNull || inactive_file_bytes == kNull) {
+  if (rss_bytes == kNull || inactive_file_bytes == kNull) {
     RAY_LOG_EVERY_MS(WARNING, kLogIntervalMs)
-        << "Failed to parse cgroup v1 mem stat. rss " << rss_bytes << " cache "
-        << cache_bytes << " inactive " << inactive_file_bytes;
+        << "Failed to parse cgroup v1 mem stat. rss " << rss_bytes
+        << " inactive " << inactive_file_bytes;
     return kNull;
   }
   // Working set, used by cadvisor for cgroup oom killing, is calculcated as (usage -
   // inactive files)
   // https://medium.com/@eng.mohamed.m.saeed/memory-working-set-vs-memory-rss-in-kubernetes-which-one-you-should-monitor-8ef77bf0acee
-  int64_t used = rss_bytes + cache_bytes - inactive_file_bytes;
+  int64_t used = rss_bytes - inactive_file_bytes;
   return used;
 }
 
