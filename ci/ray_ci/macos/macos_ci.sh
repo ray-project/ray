@@ -20,9 +20,44 @@ run_small_test() {
     -- python/ray/tests/...
 }
 
+run_medium_a_j_test() {
+  # shellcheck disable=SC2046
+  bazel test --config=ci $(./ci/run/bazel_export_options) --test_env=CI \
+      --test_tag_filters=-kubernetes,medium_size_python_tests_a_to_j \
+      python/ray/tests/...
+}
+
+run_medium_k_z_test() {
+  # shellcheck disable=SC2046
+  bazel test --config=ci $(./ci/run/bazel_export_options) --test_env=CI \
+      --test_tag_filters=-kubernetes,medium_size_python_tests_k_to_z \
+      python/ray/tests/...
+}
+
+run_large_test() {
+  ./ci/ci.sh test_large
+}
+
+run_core_dashboard_test() {
+  TORCH_VERSION=1.9.0 ./ci/env/install-dependencies.sh
+  # Use --dynamic_mode=off until MacOS CI runs on Big Sur or newer. Otherwise there are problems with running tests
+  # with dynamic linking.
+  # shellcheck disable=SC2046
+  bazel test --config=ci --dynamic_mode=off \
+    --test_env=CI $(./ci/run/bazel_export_options) --build_tests_only \
+    --test_tag_filters=-post_wheel_build -- \
+    //:all python/ray/dashboard/... -python/ray/serve/... -rllib/... -core_worker_test
+}
+
+run_ray_cpp_and_java() {
+  # clang-format is needed by java/test.sh
+  pip install clang-format==12.0.1
+  ./java/test.sh
+  ./ci/ci.sh test_cpp
+}
+
 _prelude() {
   rm -rf /tmp/bazel_event_logs
-  cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/build/upload_build_info.sh; fi }; trap cleanup EXIT
   (which bazel && bazel clean) || true;
   . ./ci/ci.sh init && source ~/.zshenv
   source ~/.zshrc
@@ -31,6 +66,10 @@ _prelude() {
 }
 
 _epilogue() {
+  # Upload test results
+  ./ci/build/upload_build_info.sh
+  # Assign all macos tests to core for now
+  bazel run //ci/ray_ci/automation:test_db_bot -- core /tmp/bazel_event_logs
   # Persist ray logs
   mkdir -p /tmp/artifacts/.ray/
   tar -czf /tmp/artifacts/.ray/logs.tgz /tmp/ray
