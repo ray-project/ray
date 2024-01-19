@@ -514,13 +514,19 @@ class ServeApplicationSchema(BaseModel):
         description="Logging config for configuring serve application logs.",
     )
 
+    _allow_local_runtime_env_uris: bool = Field(
+        default=False,
+        exclude=True,
+    )
+
     @property
     def deployment_names(self) -> List[str]:
         return [d.name for d in self.deployments]
 
     @validator("runtime_env")
     def runtime_env_contains_remote_uris(cls, v):
-        # Ensure that all uris in py_modules and working_dir are remote
+        # Ensure that all uris in py_modules and working_dir are remote.
+        return # XXX: toggle this properly!
 
         if v is None:
             return

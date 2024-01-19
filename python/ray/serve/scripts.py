@@ -846,7 +846,7 @@ def build(
 @click.option(
     "--image",
     required=False,
-    default="TODO",
+    default=None,
     type=str,
     help=("TODO."),
 )
@@ -857,7 +857,7 @@ def publish(
     runtime_env_json: str,
     working_dir: str,
     name: str,
-    image: str,
+    image: Optional[str],
 ):
     final_runtime_env = parse_runtime_env_args(
         runtime_env=runtime_env,
@@ -900,6 +900,7 @@ def _publish_provider(
 ):
     from anyscale import AnyscaleSDK
     from anyscale.sdk.anyscale_client.models import ApplyProductionServiceV2Model
+    from anyscale.controllers.service_controller import ServiceController
 
     # TODO: convert to build_id ?
     assert image is None, "Not implemented yet."
