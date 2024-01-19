@@ -522,7 +522,7 @@ def run(
                     serve.run(
                         app, name=name, route_prefix=route_prefix, host=host, port=port
                     )
-                    cli_logger.success("Re-deployed app successfully.")
+                    cli_logger.success("Redeployed app successfully.")
 
         if blocking:
             while True:
