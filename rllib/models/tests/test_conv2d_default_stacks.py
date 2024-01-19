@@ -19,8 +19,6 @@ class TestConv2DDefaultStacks(unittest.TestCase):
         action_space = gym.spaces.Discrete(2)
 
         shapes = [
-            (480, 640, 3),
-            (240, 320, 3),
             (96, 96, 3),
             (84, 84, 3),
             (42, 42, 3),

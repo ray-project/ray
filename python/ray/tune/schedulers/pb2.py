@@ -227,13 +227,13 @@ def _explore(
 
         new_config = config.copy()
         values = []
+        # Cast types for new hyperparameters.
         for i, col in enumerate(hparams.columns):
-            if isinstance(config[col], int):
-                new_config[col] = int(new[i])
-                values.append(int(new[i]))
-            else:
-                new_config[col] = new[i]
-                values.append(new[i])
+            # Use the type from the old config. Like this types
+            # should be passed on from the first config downwards.
+            type_ = type(config[col])
+            new_config[col] = type_(new[i])
+            values.append(type_(new[i]))
 
         new_T = df[df["Trial"] == str(base)].iloc[-1, :]["Time"]
         new_Reward = df[df["Trial"] == str(base)].iloc[-1, :].Reward
