@@ -91,19 +91,19 @@ def test_serve_basic(podman_docker_cluster):
 
 
 @pytest.mark.skipif(sys.platform != "linux", reason="Only works on Linux.")
+def test_job(podman_docker_cluster):
+
+    container_id = podman_docker_cluster
+    cmd = ["python", "tests/test_job.py", "--image", NESTED_IMAGE_NAME]
+    run_in_container([cmd], container_id)
+
+
+@pytest.mark.skipif(sys.platform != "linux", reason="Only works on Linux.")
 def test_serve_telemetry(podman_docker_cluster):
     """Test Serve deployment telemetry."""
 
     container_id = podman_docker_cluster
     cmd = ["python", "tests/test_serve_telemetry.py", "--image", NESTED_IMAGE_NAME]
-    run_in_container([cmd], container_id)
-
-
-@pytest.mark.skipif(sys.platform != "linux", reason="Only works on Linux.")
-def test_job(podman_docker_cluster):
-
-    container_id = podman_docker_cluster
-    cmd = ["python", "tests/test_job.py", "--image", NESTED_IMAGE_NAME]
     run_in_container([cmd], container_id)
 
 
