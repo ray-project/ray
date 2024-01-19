@@ -203,6 +203,10 @@ class ICloudInstanceProvider(ABC):
         """
         Terminate the cloud instances asynchronously.
 
+        This method is expected to be idempotent, i.e. if the same request id is used
+        to terminate the same cloud instances, this should be a no-op if
+        the cloud instances are already terminated or being terminated.
+
         Args:
             ids: the cloud instance ids to terminate.
             request_id: a unique id that identifies the request.
@@ -284,8 +288,6 @@ class NodeProviderAdapter(ICloudInstanceProvider):
         config_reader: IConfigReader,
         max_concurrent_types_to_launch: int = AUTOSCALER_MAX_CONCURRENT_TYPES_TO_LAUNCH,
         max_concurrent_to_terminate: int = AUTOSCALER_MAX_CONCURRENT_TERMINATING,
-        sync_launch: bool = False,
-        sync_terminate: bool = False,
     ) -> None:
         super().__init__()
         self._v1_provider = v1_provider
@@ -303,10 +305,6 @@ class NodeProviderAdapter(ICloudInstanceProvider):
         )
         self._config_reader = config_reader
 
-        # Whether to sync launch and terminate.
-        self._sync_launch = sync_launch
-        self._sync_terminate = sync_terminate
-
         # Queues to retrieve new errors occur in the multi-thread executors
         # temporarily.
         self._launch_q = Queue()
@@ -314,7 +312,6 @@ class NodeProviderAdapter(ICloudInstanceProvider):
         self._errors_q = Queue()
 
     def get_non_terminated(self) -> Dict[CloudInstanceId, CloudInstance]:
-        # Get the current state of the node provider.
         nodes = {}
 
         cloud_instance_ids = self._v1_non_terminated_nodes({})
@@ -325,9 +322,9 @@ class NodeProviderAdapter(ICloudInstanceProvider):
             node_tags = self._v1_node_tags(cloud_instance_id)
             nodes[cloud_instance_id] = CloudInstance(
                 cloud_instance_id=cloud_instance_id,
-                node_type=node_tags.get(TAG_RAY_USER_NODE_TYPE, None),
+                node_type=node_tags.get(TAG_RAY_USER_NODE_TYPE, ""),
                 is_running=self._v1_is_running(cloud_instance_id),
-                request_id=node_tags.get(TAG_RAY_LAUNCH_REQUEST, None),
+                request_id=node_tags.get(TAG_RAY_LAUNCH_REQUEST, ""),
             )
 
         return nodes
@@ -344,15 +341,11 @@ class NodeProviderAdapter(ICloudInstanceProvider):
         request_id: str,
     ) -> None:
         self._launch_q.put_nowait((shape, request_id))
-        fut = self._main_executor.submit(self._process)
-        if self._sync_launch:
-            fut.result()
+        self._main_executor.submit(self._process)
 
     def terminate(self, ids: List[CloudInstanceId], request_id: str) -> None:
         self._terminate_q.put_nowait((ids, request_id))
-        fut = self._main_executor.submit(self._process)
-        if self._sync_terminate:
-            fut.result()
+        self._main_executor.submit(self._process)
 
     ###########################################
     # Private APIs
@@ -360,7 +353,23 @@ class NodeProviderAdapter(ICloudInstanceProvider):
 
     def _process(self) -> None:
         """
-        Process the launch and terminate requests in the queue.
+        Process the launch and terminate requests in the queue if any.
+
+        If the underlying provider is not safe to scale, this will be a no-op.
+
+        If any of the launch/terminate operation performed on the underlying v1 provider
+        failed, the error will be put into the error queue, and could be retrieved by
+        calling poll_errors().
+
+        If the post process failed, all the launch and terminate requests will be
+        treated as failed.
+
+        This method will block until all the launch and terminate requests are
+        processed. (But it will make the launch and terminate calls to the underlying
+        provider asynchronously.)
+
+        This is called by the main executor.
+
         """
         if not self._v1_safe_to_scale():
             return
@@ -383,6 +392,13 @@ class NodeProviderAdapter(ICloudInstanceProvider):
     ) -> None:
         """
         Wait for the future to finish and handle the errors.
+
+        If the future is done with an error, the error will be put into the error queue,
+        and could be retrieved by calling poll_errors().
+
+        Args:
+            fut: The future to wait for.
+            arg: The argument that is used to launch or terminate the node.
         """
         try:
             fut.result()
@@ -398,6 +414,19 @@ class NodeProviderAdapter(ICloudInstanceProvider):
     ) -> CloudInstanceProviderError:
         """
         Make an error from the exception and the arguments.
+
+        If the exception is already a CloudInstanceProviderError, we will use it as the
+        error. Otherwise, we will wrap the exception into a CloudInstanceProviderError.
+
+        Args:
+            e: The exception.
+            arg: The argument that is used to launch or terminate the node.
+
+        Returns:
+            A CloudInstanceProviderError.
+
+        Raises:
+            e: If the arg type is unknown.
         """
         if isinstance(arg, LaunchArgs):
             launch_error = LaunchNodeError(
@@ -425,15 +454,16 @@ class NodeProviderAdapter(ICloudInstanceProvider):
     ) -> None:
         """
         Post process the provider.
+
+        If post process failed, we will treat all launch and terminate requests
+        as failed. While this may introduce false negatives, we will have the
+        autoscaler IM to reconcile those (e.g. by shutting down the extra nodes
+        that were already launched but thought to be failed, or by terminating
+        a node that was already terminated, which is fine).
         """
         try:
             self._v1_post_process()
         except Exception as e:
-            # If post process failed, we will treat all launch and terminate requests
-            # as failed. While this may introduce false negatives, we will have the
-            # autoscaler IM to reconcile those (e.g. by shutting down the extra nodes
-            # that were already launched but thought to be failed, or by terminating
-            # a node that was already terminated, which is fine).
             for arg in launch_args:
                 self._errors_q.put(self._make_error(e, arg))
             for arg in terminate_args:
@@ -442,6 +472,9 @@ class NodeProviderAdapter(ICloudInstanceProvider):
     def _process_launch(self) -> Dict[Future, LaunchArgs]:
         """
         Process the launch requests in the launch queue.
+
+        Returns:
+            A map from the future to the launch args.
         """
         futs_to_launch_args = {}
         config = self._config_reader.get_autoscaling_config()
@@ -464,6 +497,9 @@ class NodeProviderAdapter(ICloudInstanceProvider):
     def _process_terminate(self) -> Dict[Future, TerminateArgs]:
         """
         Process the terminate requests in the terminate queue.
+
+        Returns:
+            A map from the future to the terminate args.
         """
         futs_to_terminate_args = {}
         while not self._terminate_q.empty():
@@ -486,6 +522,19 @@ class NodeProviderAdapter(ICloudInstanceProvider):
         request_id: str,
         config: AutoscalingConfig,
     ) -> None:
+        """
+        Launch nodes of the given node type.
+
+        Args:
+            node_type: The node type to launch.
+            count: Number of nodes to launch.
+            request_id: A unique id that identifies the request.
+            config: The autoscaling config.
+
+        Raises:
+            ValueError: If the node type is invalid.
+            LaunchNodeError: If the launch failed and raised by the underlying provider.
+        """
         # Check node type is valid.
         if node_type not in config.get_node_type_configs():
             raise ValueError(f"Invalid node type {node_type}")
@@ -508,9 +557,11 @@ class NodeProviderAdapter(ICloudInstanceProvider):
             TAG_RAY_USER_NODE_TYPE: node_type,
         }
 
+        logger.info("Launching {} nodes of type {}.".format(count, node_type))
         self._v1_provider.create_node_with_resources_and_labels(
             launch_config, node_tags, count, resources, labels
         )
+        logger.info("Launched {} nodes of type {}.".format(count, node_type))
 
     ###########################################
     # V1 Legacy APIs

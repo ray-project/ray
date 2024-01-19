@@ -1,14 +1,19 @@
 import logging
 import os
 import sys
+import time
 
 # coding: utf-8
 from collections import defaultdict
-from typing import Literal
+from unittest.mock import MagicMock
 
 import pytest  # noqa
 
 from ray._private.test_utils import get_test_config_path, wait_for_condition
+from ray.autoscaler._private.constants import (
+    AUTOSCALER_MAX_CONCURRENT_TERMINATING,
+    AUTOSCALER_MAX_CONCURRENT_TYPES_TO_LAUNCH,
+)
 from ray.autoscaler.v2.instance_manager.config import FileConfigReader
 from ray.autoscaler.v2.instance_manager.node_provider import (
     LaunchNodeError,
@@ -23,16 +28,46 @@ logger.setLevel(logging.DEBUG)
 
 @pytest.fixture(scope="function")
 def node_providers(request: pytest.FixtureRequest):
-    if hasattr(request, "param") and request.param == "batch":
-        base_provider = MockBatchingProvider()
-    else:
+    if not hasattr(request, "param"):
         base_provider = MockProvider()
+        node_provider = NodeProviderAdapter(
+            base_provider,
+            FileConfigReader(
+                get_test_config_path("test_ray_complex.yaml"), skip_content_hash=True
+            ),
+        )
+        return base_provider, node_provider
+
+    param = request.param
+
+    if param.get("kind") == "batch":
+        base_provider = MockBatchingProvider()
+    elif param.get("kind") == "mock":
+        base_provider = MagicMock()
+    elif param.get("kind") == "sync":
+        base_provider = MockProvider()
+    else:
+        raise ValueError(f"Unknown provider kind {param['kind']}")
+
+    launch_concurrency = param.get(
+        "launch_concurrency", AUTOSCALER_MAX_CONCURRENT_TYPES_TO_LAUNCH
+    )
+    terminate_concurrency = param.get(
+        "terminate_concurrency", AUTOSCALER_MAX_CONCURRENT_TERMINATING
+    )
+
+    print(
+        f"Using provider {param['kind']} with launch_concurrency={launch_concurrency} "
+        f"and terminate_concurrency={terminate_concurrency}"
+    )
+
     node_provider = NodeProviderAdapter(
         base_provider,
         FileConfigReader(
             get_test_config_path("test_ray_complex.yaml"), skip_content_hash=True
         ),
-        sync_launch=True,
+        max_concurrent_types_to_launch=launch_concurrency,
+        max_concurrent_to_terminate=terminate_concurrency,
     )
 
     yield base_provider, node_provider
@@ -40,10 +75,10 @@ def node_providers(request: pytest.FixtureRequest):
 
 @pytest.mark.parametrize(
     "node_providers",
-    ["sync", "batch"],
+    [{"kind": "batch"}, {"kind": "sync"}],
     indirect=True,
 )
-def test_node_providers_basic(node_providers: Literal["sync", "batch"]):
+def test_node_providers_basic(node_providers):
     base_provider, node_provider = node_providers
     # Test launching.
     node_provider.launch(
@@ -100,7 +135,7 @@ def test_node_providers_basic(node_providers: Literal["sync", "batch"]):
 
 @pytest.mark.parametrize(
     "node_providers",
-    ["sync", "batch"],
+    [{"kind": "batch"}, {"kind": "sync"}],
     indirect=True,
 )
 def test_launch_failure(node_providers):
@@ -141,7 +176,7 @@ def test_launch_failure(node_providers):
 
 @pytest.mark.parametrize(
     "node_providers",
-    ["sync", "batch"],
+    [{"kind": "batch"}, {"kind": "sync"}],
     indirect=True,
 )
 def test_terminate_node_failure(node_providers):
@@ -167,6 +202,73 @@ def test_terminate_node_failure(node_providers):
         assert isinstance(errors[0], TerminateNodeError)
         assert errors[0].cloud_instance_id == "0"
         assert errors[0].request_id == "terminate1"
+        return True
+
+    wait_for_condition(verify)
+
+
+@pytest.mark.parametrize(
+    "node_providers",
+    [{"kind": "mock", "launch_concurrency": 1, "terminate_concurrency": 1}],
+    indirect=True,
+)
+def test_launch_terminate_executor_concurrency(node_providers):
+    import threading
+
+    base_provider, node_provider = node_providers
+
+    launch_event = threading.Event()
+
+    def loop(*args, **kwargs):
+        launch_event.wait()
+
+    base_provider.create_node_with_resources_and_labels.side_effect = loop
+
+    node_provider.launch(
+        shape={
+            "worker_nodes": 1,
+            "worker_nodes1": 1,
+        },  # 2 types, but concurrent types to launch is 1.
+        request_id="1",
+    )
+    # Assert called only once.
+    for _ in range(10):
+        assert base_provider.create_node_with_resources_and_labels.call_count <= 1
+        time.sleep(0.1)
+
+    # Finish the call.
+    launch_event.set()
+
+    def verify():
+        assert base_provider.create_node_with_resources_and_labels.call_count == 2
+        return True
+
+    wait_for_condition(verify)
+
+    # Test terminator concurrency when enforced.
+
+    terminate_event = threading.Event()
+
+    def loop(*args, **kwargs):
+        terminate_event.wait()
+
+    base_provider.terminate_node.side_effect = loop
+
+    node_provider.terminate(
+        ids=["0", "1"],
+        request_id="2",
+    )
+
+    # Assert called only once.
+    for _ in range(10):
+        assert base_provider.terminate_node.call_count <= 1
+        time.sleep(0.1)
+
+    # Finish the call.
+    terminate_event.set()
+
+    def verify():
+        assert base_provider.terminate_node.call_count == 2
         return True
 
     wait_for_condition(verify)
