@@ -118,7 +118,7 @@ def s3_fs_with_anonymous_crendential(
 def _s3_fs(aws_credentials, s3_server, s3_path):
     import urllib.parse
 
-    from pkg_resources._vendor.packaging.version import parse as parse_version
+    from packaging.version import parse as parse_version
 
     kwargs = aws_credentials.copy()
 
@@ -458,6 +458,7 @@ def stage_two_block():
         "wall_time": [5, 10],
         "cpu_time": [1.2, 3.4],
         "node_id": ["a1", "b2"],
+        "task_idx": [0, 1],
     }
 
     block_delay = 20
@@ -473,6 +474,7 @@ def stage_two_block():
         block_exec_stats.cpu_time_s = block_params["cpu_time"][i]
         block_exec_stats.node_id = block_params["node_id"][i]
         block_exec_stats.max_rss_bytes = block_params["max_rss_bytes"][i]
+        block_exec_stats.task_idx = block_params["task_idx"][i]
         block_meta_list.append(
             BlockMetadata(
                 num_rows=block_params["num_rows"][i],

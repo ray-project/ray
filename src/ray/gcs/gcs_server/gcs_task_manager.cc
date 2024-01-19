@@ -149,6 +149,20 @@ void GcsTaskManager::GcsTaskManagerStorage::UpdateExistingTaskAttempt(
   // Update the task event.
   existing_task.MergeFrom(task_events);
 
+  // Truncate the profile events if needed.
+  auto max_num_profile_events_per_task =
+      RayConfig::instance().task_events_max_num_profile_events_per_task();
+  if (existing_task.profile_events().events_size() > max_num_profile_events_per_task) {
+    auto to_drop =
+        existing_task.profile_events().events_size() - max_num_profile_events_per_task;
+    existing_task.mutable_profile_events()->mutable_events()->DeleteSubrange(0, to_drop);
+
+    // Update the tracking per job
+    auto job_id = JobID::FromBinary(existing_task.job_id());
+    job_task_summary_[job_id].RecordProfileEventsDropped(to_drop);
+    stats_counter_.Increment(kTotalNumProfileTaskEventsDropped, to_drop);
+  }
+
   // Move the task events around different gc priority list.
   auto target_list_index = gc_policy_->GetTaskListPriority(existing_task);
   auto cur_list_index = loc->GetCurrentListIndex();
@@ -559,28 +573,27 @@ void GcsTaskManager::OnWorkerDead(
 }
 
 void GcsTaskManager::OnJobFinished(const JobID &job_id, int64_t job_finish_time_ms) {
-  RAY_LOG(DEBUG) << "Marking all running tasks of job " << job_id.Hex() << " as failed.";
-
   std::shared_ptr<boost::asio::deadline_timer> timer =
       std::make_shared<boost::asio::deadline_timer>(
           io_service_,
           boost::posix_time::milliseconds(
               RayConfig::instance().gcs_mark_task_failed_on_job_done_delay_ms()));
 
-  timer->async_wait(
-      [this, timer, job_id, job_finish_time_ms](const boost::system::error_code &error) {
-        if (error == boost::asio::error::operation_aborted) {
-          // timer canceled or aborted.
-          return;
-        }
-        // If there are any non-terminated tasks from the job, mark them failed since all
-        // workers associated with the job will be killed.
-        task_event_storage_->MarkTasksFailedOnJobEnds(job_id,
-                                                      job_finish_time_ms * 1000 * 1000);
+  timer->async_wait([this, timer, job_id, job_finish_time_ms](
+                        const boost::system::error_code &error) {
+    if (error == boost::asio::error::operation_aborted) {
+      // timer canceled or aborted.
+      return;
+    }
+    RAY_LOG(INFO) << "Marking all running tasks of job " << job_id.Hex() << " as failed.";
+    // If there are any non-terminated tasks from the job, mark them failed since all
+    // workers associated with the job will be killed.
+    task_event_storage_->MarkTasksFailedOnJobEnds(job_id,
+                                                  job_finish_time_ms * 1000 * 1000);
 
-        // Clear and summarize the job summary info (since it's now finalized).
-        task_event_storage_->UpdateJobSummaryOnJobDone(job_id);
-      });
+    // Clear and summarize the job summary info (since it's now finalized).
+    task_event_storage_->UpdateJobSummaryOnJobDone(job_id);
+  });
 }
 
 void GcsTaskManager::GcsTaskManagerStorage::JobTaskSummary::GcOldDroppedTaskAttempts(

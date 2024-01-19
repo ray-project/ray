@@ -1,5 +1,5 @@
 import sys
-from typing import Dict, List, Optional, Tuple
+from typing import Dict, List, Tuple
 from unittest.mock import Mock, PropertyMock, patch
 
 import pytest
@@ -13,18 +13,17 @@ from ray.serve._private.application_state import (
 from ray.serve._private.common import (
     ApplicationStatus,
     DeploymentID,
-    DeploymentInfo,
     DeploymentStatus,
     DeploymentStatusInfo,
     DeploymentStatusTrigger,
-    TargetCapacityScaleDirection,
 )
 from ray.serve._private.config import DeploymentConfig, ReplicaConfig
 from ray.serve._private.deploy_utils import deploy_args_to_deployment_info
-from ray.serve._private.utils import get_random_letters
+from ray.serve._private.deployment_info import DeploymentInfo
+from ray.serve._private.test_utils import MockKVStore
+from ray.serve._private.utils import get_random_string
 from ray.serve.exceptions import RayServeException
 from ray.serve.schema import DeploymentSchema, ServeApplicationSchema
-from ray.serve.tests.common.utils import MockKVStore
 
 
 class MockEndpointState:
@@ -53,15 +52,18 @@ class MockDeploymentStateManager:
                 (info, deleting) = checkpointed_data
 
                 self.deployment_infos[name] = info
-                self.deployment_statuses[name] = DeploymentStatus.UPDATING
+                self.deployment_statuses[name] = DeploymentStatusInfo(
+                    name=name,
+                    status=DeploymentStatus.UPDATING,
+                    status_trigger=DeploymentStatusTrigger.CONFIG_UPDATE_STARTED,
+                    message="",
+                )
                 self.deleting[name] = deleting
 
     def deploy(
         self,
         deployment_id: DeploymentID,
         deployment_info: DeploymentInfo,
-        target_capacity: Optional[float] = None,
-        target_capacity_scale_direction: Optional[TargetCapacityScaleDirection] = None,
     ):
         existing_info = self.deployment_infos.get(deployment_id)
         self.deleting[deployment_id] = False
@@ -154,7 +156,7 @@ def deployment_params(name: str, route_prefix: str = None, docs_path: str = None
     return {
         "deployment_name": name,
         "deployment_config_proto_bytes": DeploymentConfig(
-            num_replicas=1, user_config={}, version=get_random_letters()
+            num_replicas=1, user_config={}, version=get_random_string()
         ).to_proto_bytes(),
         "replica_config_proto_bytes": ReplicaConfig.create(
             lambda x: x
@@ -914,9 +916,9 @@ class TestOverrideDeploymentInfo:
         updated_info = updated_infos["A"]
         assert updated_info.route_prefix == "/"
         assert updated_info.version == "123"
-        assert updated_info.autoscaling_policy.config.min_replicas == 1
-        assert updated_info.autoscaling_policy.config.initial_replicas == 12
-        assert updated_info.autoscaling_policy.config.max_replicas == 79
+        assert updated_info.autoscaling_policy_manager.config.min_replicas == 1
+        assert updated_info.autoscaling_policy_manager.config.initial_replicas == 12
+        assert updated_info.autoscaling_policy_manager.config.max_replicas == 79
 
     def test_override_route_prefix_1(self, info):
         config = ServeApplicationSchema(

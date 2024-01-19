@@ -245,3 +245,24 @@ RAY_SERVE_ENABLE_CPU_PROFILING = (
 # precision up to 0.0001.
 # This limitation should be lifted in the long term.
 MAX_REPLICAS_PER_NODE_MAX_VALUE = 100
+
+# Argument name for passing in the gRPC context into a replica.
+GRPC_CONTEXT_ARG_NAME = "grpc_context"
+
+# Whether or not to forcefully kill replicas that fail health checks.
+RAY_SERVE_FORCE_STOP_UNHEALTHY_REPLICAS = (
+    os.environ.get("RAY_SERVE_FORCE_STOP_UNHEALTHY_REPLICAS", "0") == "1"
+)
+
+# Initial deadline for queue length responses in the router.
+RAY_SERVE_QUEUE_LENGTH_RESPONSE_DEADLINE_S = float(
+    os.environ.get("RAY_SERVE_QUEUE_LENGTH_RESPONSE_DEADLINE_S", 0.1)
+)
+
+# Maximum deadline for queue length responses in the router (in backoff).
+RAY_SERVE_MAX_QUEUE_LENGTH_RESPONSE_DEADLINE_S = float(
+    os.environ.get("RAY_SERVE_MAX_QUEUE_LENGTH_RESPONSE_DEADLINE_S", 1.0)
+)
+
+# The default autoscaling policy to use if none is specified.
+DEFAULT_AUTOSCALING_POLICY = "ray.serve.autoscaling_policy:default_autoscaling_policy"

@@ -58,7 +58,7 @@ def parse_args():
     parser.add_argument(
         "--skip-train-model",
         default=False,
-        type=bool,
+        action="store_true",
         help="Whether to skip training a model (i.e. only consume data). "
         "Set to True if file_type == 'parquet'.",
     )
@@ -327,7 +327,7 @@ def train_loop_per_worker():
         end_t = time.time()
 
         epoch_accuracy_val = None
-        if run_validation_set:
+        if run_validation_set and not args.skip_train_model:
             print(f"Starting validation set for epoch {epoch+1}")
             num_correct_val = 0
             num_rows_val = 0
@@ -554,6 +554,7 @@ def benchmark_code(
                 ray_dataset = ray.data.read_images(
                     input_paths,
                     mode="RGB",
+                    shuffle="files",
                     partitioning=partitioning,
                 )
 
@@ -630,7 +631,7 @@ def benchmark_code(
     print("Averaged per-epoch throughput:", avg_per_epoch_tput, "img/s")
     data_benchmark_metrics.update(
         {
-            BenchmarkMetric.THROUGHPUT.value: avg_per_epoch_tput,
+            BenchmarkMetric.THROUGHPUT: avg_per_epoch_tput,
         }
     )
 
@@ -642,7 +643,7 @@ def benchmark_code(
         print(f"Final epoch accuracy: {final_epoch_acc * 100:.3f}%")
         data_benchmark_metrics.update(
             {
-                BenchmarkMetric.ACCURACY.value: final_epoch_acc,
+                BenchmarkMetric.ACCURACY: final_epoch_acc,
             }
         )
     return data_benchmark_metrics

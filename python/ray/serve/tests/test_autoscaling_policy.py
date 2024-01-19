@@ -1,13 +1,13 @@
+import asyncio
 import logging
 import os
 import sys
 import tempfile
 import time
 import zipfile
-from typing import Iterable, List
+from typing import Dict, Iterable, List
 from unittest import mock
 
-import numpy as np
 import pytest
 import requests
 
@@ -15,499 +15,21 @@ import ray
 import ray.util.state as state_api
 from ray import serve
 from ray._private.test_utils import SignalActor, wait_for_condition
-from ray.serve._private.autoscaling_policy import (
-    BasicAutoscalingPolicy,
-    calculate_desired_num_replicas,
-)
 from ray.serve._private.common import (
+    ApplicationStatus,
     DeploymentID,
     DeploymentStatus,
     DeploymentStatusInfo,
+    DeploymentStatusTrigger,
     ReplicaState,
 )
-from ray.serve._private.constants import CONTROL_LOOP_PERIOD_S, SERVE_DEFAULT_APP_NAME
+from ray.serve._private.constants import SERVE_DEFAULT_APP_NAME, SERVE_NAMESPACE
 from ray.serve._private.controller import ServeController
 from ray.serve.config import AutoscalingConfig
 from ray.serve.generated.serve_pb2 import (
     DeploymentStatusInfo as DeploymentStatusInfoProto,
 )
 from ray.serve.schema import ServeDeploySchema
-
-
-class TestCalculateDesiredNumReplicas:
-    def test_bounds_checking(self):
-        num_replicas = 10
-        max_replicas = 11
-        min_replicas = 9
-        config = AutoscalingConfig(
-            max_replicas=max_replicas,
-            min_replicas=min_replicas,
-            target_num_ongoing_requests_per_replica=100,
-        )
-
-        desired_num_replicas = calculate_desired_num_replicas(
-            autoscaling_config=config, current_num_ongoing_requests=[150] * num_replicas
-        )
-        assert desired_num_replicas == max_replicas
-
-        desired_num_replicas = calculate_desired_num_replicas(
-            autoscaling_config=config, current_num_ongoing_requests=[50] * num_replicas
-        )
-        assert desired_num_replicas == min_replicas
-
-        for i in range(50, 150):
-            desired_num_replicas = calculate_desired_num_replicas(
-                autoscaling_config=config,
-                current_num_ongoing_requests=[i] * num_replicas,
-            )
-            assert min_replicas <= desired_num_replicas <= max_replicas
-
-    @pytest.mark.parametrize("target_requests", [0.5, 1.0, 1.5])
-    def test_scale_up(self, target_requests):
-        config = AutoscalingConfig(
-            min_replicas=0,
-            max_replicas=100,
-            target_num_ongoing_requests_per_replica=target_requests,
-        )
-        num_replicas = 10
-        num_ongoing_requests = [2 * target_requests] * num_replicas
-        desired_num_replicas = calculate_desired_num_replicas(
-            autoscaling_config=config, current_num_ongoing_requests=num_ongoing_requests
-        )
-        assert 19 <= desired_num_replicas <= 21  # 10 * 2 = 20
-
-    @pytest.mark.parametrize("target_requests", [0.5, 1.0, 1.5])
-    def test_scale_down(self, target_requests):
-        config = AutoscalingConfig(
-            min_replicas=0,
-            max_replicas=100,
-            target_num_ongoing_requests_per_replica=target_requests,
-        )
-        num_replicas = 10
-        num_ongoing_requests = [0.5 * target_requests] * num_replicas
-        desired_num_replicas = calculate_desired_num_replicas(
-            autoscaling_config=config, current_num_ongoing_requests=num_ongoing_requests
-        )
-        assert 4 <= desired_num_replicas <= 6  # 10 * 0.5 = 5
-
-    def test_smoothing_factor(self):
-        config = AutoscalingConfig(
-            min_replicas=0,
-            max_replicas=100,
-            target_num_ongoing_requests_per_replica=1,
-            smoothing_factor=0.5,
-        )
-        num_replicas = 10
-
-        num_ongoing_requests = [4.0] * num_replicas
-        desired_num_replicas = calculate_desired_num_replicas(
-            autoscaling_config=config, current_num_ongoing_requests=num_ongoing_requests
-        )
-        assert 24 <= desired_num_replicas <= 26  # 10 + 0.5 * (40 - 10) = 25
-
-        num_ongoing_requests = [0.25] * num_replicas
-        desired_num_replicas = calculate_desired_num_replicas(
-            autoscaling_config=config, current_num_ongoing_requests=num_ongoing_requests
-        )
-        assert 5 <= desired_num_replicas <= 8  # 10 + 0.5 * (2.5 - 10) = 6.25
-
-    def test_upscale_smoothing_factor(self):
-        config = AutoscalingConfig(
-            min_replicas=0,
-            max_replicas=100,
-            target_num_ongoing_requests_per_replica=1,
-            upscale_smoothing_factor=0.5,
-        )
-        num_replicas = 10
-
-        # Should use upscale smoothing factor of 0.5
-        num_ongoing_requests = [4.0] * num_replicas
-        desired_num_replicas = calculate_desired_num_replicas(
-            autoscaling_config=config, current_num_ongoing_requests=num_ongoing_requests
-        )
-        assert 24 <= desired_num_replicas <= 26  # 10 + 0.5 * (40 - 10) = 25
-
-        # Should use downscale smoothing factor of 1 (default)
-        num_ongoing_requests = [0.25] * num_replicas
-        desired_num_replicas = calculate_desired_num_replicas(
-            autoscaling_config=config, current_num_ongoing_requests=num_ongoing_requests
-        )
-        assert 1 <= desired_num_replicas <= 4  # 10 + (2.5 - 10) = 2.5
-
-    def test_downscale_smoothing_factor(self):
-        config = AutoscalingConfig(
-            min_replicas=0,
-            max_replicas=100,
-            target_num_ongoing_requests_per_replica=1,
-            downscale_smoothing_factor=0.5,
-        )
-        num_replicas = 10
-
-        # Should use upscale smoothing factor of 1 (default)
-        num_ongoing_requests = [4.0] * num_replicas
-        desired_num_replicas = calculate_desired_num_replicas(
-            autoscaling_config=config, current_num_ongoing_requests=num_ongoing_requests
-        )
-        assert 39 <= desired_num_replicas <= 41  # 10 + (40 - 10) = 40
-
-        # Should use downscale smoothing factor of 0.5
-        num_ongoing_requests = [0.25] * num_replicas
-        desired_num_replicas = calculate_desired_num_replicas(
-            autoscaling_config=config, current_num_ongoing_requests=num_ongoing_requests
-        )
-        assert 5 <= desired_num_replicas <= 8  # 10 + 0.5 * (2.5 - 10) = 6.25
-
-
-class TestGetDecisionNumReplicas:
-    def test_smoothing_factor_scale_up_from_0_replicas(self):
-        """Test that the smoothing factor is respected when scaling up
-        from 0 replicas.
-        """
-
-        config = AutoscalingConfig(
-            min_replicas=0,
-            max_replicas=2,
-            smoothing_factor=10,
-        )
-        policy = BasicAutoscalingPolicy(config)
-        new_num_replicas = policy.get_decision_num_replicas(
-            current_num_ongoing_requests=[],
-            curr_target_num_replicas=0,
-            current_handle_queued_queries=1,
-        )
-
-        # 1 * 10
-        assert new_num_replicas == 10
-
-        config.smoothing_factor = 0.5
-        policy = BasicAutoscalingPolicy(config)
-        new_num_replicas = policy.get_decision_num_replicas(
-            current_num_ongoing_requests=[],
-            curr_target_num_replicas=0,
-            current_handle_queued_queries=1,
-        )
-
-        # math.ceil(1 * 0.5)
-        assert new_num_replicas == 1
-
-    def test_smoothing_factor_scale_down_to_0_replicas(self):
-        """Test that a deployment scales down to 0 for non-default smoothing factors."""
-
-        # With smoothing factor > 1, the desired number of replicas should
-        # immediately drop to 0 (while respecting upscale and downscale delay)
-        config = AutoscalingConfig(
-            min_replicas=0,
-            max_replicas=5,
-            smoothing_factor=10,
-            upscale_delay_s=0,
-            downscale_delay_s=0,
-        )
-        policy = BasicAutoscalingPolicy(config)
-        new_num_replicas = policy.get_decision_num_replicas(
-            current_num_ongoing_requests=[0, 0, 0, 0, 0],
-            curr_target_num_replicas=5,
-            current_handle_queued_queries=0,
-        )
-
-        assert new_num_replicas == 0
-
-        # With smoothing factor < 1, the desired number of replicas shouldn't
-        # get stuck at a positive number, and instead should eventually drop
-        # to zero
-        config.smoothing_factor = 0.2
-        policy = BasicAutoscalingPolicy(config)
-        num_replicas = 5
-        for _ in range(5):
-            num_replicas = policy.get_decision_num_replicas(
-                current_num_ongoing_requests=[0] * num_replicas,
-                curr_target_num_replicas=num_replicas,
-                current_handle_queued_queries=0,
-            )
-
-        assert num_replicas == 0
-
-    def test_upscale_downscale_delay(self):
-        """Unit test for upscale_delay_s and downscale_delay_s."""
-
-        upscale_delay_s = 30.0
-        downscale_delay_s = 600.0
-
-        config = AutoscalingConfig(
-            min_replicas=0,
-            max_replicas=2,
-            target_num_ongoing_requests_per_replica=1,
-            upscale_delay_s=30.0,
-            downscale_delay_s=600.0,
-        )
-
-        policy = BasicAutoscalingPolicy(config)
-
-        upscale_wait_periods = int(upscale_delay_s / CONTROL_LOOP_PERIOD_S)
-        downscale_wait_periods = int(downscale_delay_s / CONTROL_LOOP_PERIOD_S)
-
-        overload_requests = [100]
-
-        # Scale up when there are 0 replicas and current_handle_queued_queries > 0
-        new_num_replicas = policy.get_decision_num_replicas(
-            current_num_ongoing_requests=[],
-            curr_target_num_replicas=0,
-            current_handle_queued_queries=1,
-        )
-        assert new_num_replicas == 1
-
-        # We should scale up only after enough consecutive scale-up decisions.
-        for i in range(upscale_wait_periods):
-            new_num_replicas = policy.get_decision_num_replicas(
-                current_num_ongoing_requests=overload_requests,
-                curr_target_num_replicas=1,
-                current_handle_queued_queries=0,
-            )
-            assert new_num_replicas == 1, i
-
-        new_num_replicas = policy.get_decision_num_replicas(
-            current_num_ongoing_requests=overload_requests,
-            curr_target_num_replicas=1,
-            current_handle_queued_queries=0,
-        )
-        assert new_num_replicas == 2
-
-        no_requests = [0, 0]
-
-        # We should scale down only after enough consecutive scale-down decisions.
-        for i in range(downscale_wait_periods):
-            new_num_replicas = policy.get_decision_num_replicas(
-                current_num_ongoing_requests=no_requests,
-                curr_target_num_replicas=2,
-                current_handle_queued_queries=0,
-            )
-            assert new_num_replicas == 2, i
-
-        new_num_replicas = policy.get_decision_num_replicas(
-            current_num_ongoing_requests=no_requests,
-            curr_target_num_replicas=2,
-            current_handle_queued_queries=0,
-        )
-        assert new_num_replicas == 0
-
-        # Get some scale-up decisions, but not enough to trigger a scale up.
-        for i in range(int(upscale_wait_periods / 2)):
-            new_num_replicas = policy.get_decision_num_replicas(
-                current_num_ongoing_requests=overload_requests,
-                curr_target_num_replicas=1,
-                current_handle_queued_queries=0,
-            )
-            assert new_num_replicas == 1, i
-
-        # Interrupt with a scale-down decision.
-        policy.get_decision_num_replicas(
-            current_num_ongoing_requests=[0],
-            curr_target_num_replicas=1,
-            current_handle_queued_queries=0,
-        )
-
-        # The counter should be reset, so it should require `upscale_wait_periods`
-        # more periods before we actually scale up.
-        for i in range(upscale_wait_periods):
-            new_num_replicas = policy.get_decision_num_replicas(
-                current_num_ongoing_requests=overload_requests,
-                curr_target_num_replicas=1,
-                current_handle_queued_queries=0,
-            )
-            assert new_num_replicas == 1, i
-
-        new_num_replicas = policy.get_decision_num_replicas(
-            current_num_ongoing_requests=overload_requests,
-            curr_target_num_replicas=1,
-            current_handle_queued_queries=0,
-        )
-        assert new_num_replicas == 2
-
-        # Get some scale-down decisions, but not enough to trigger a scale down.
-        for i in range(int(downscale_wait_periods / 2)):
-            new_num_replicas = policy.get_decision_num_replicas(
-                current_num_ongoing_requests=no_requests,
-                curr_target_num_replicas=2,
-                current_handle_queued_queries=0,
-            )
-            assert new_num_replicas == 2, i
-
-        # Interrupt with a scale-up decision.
-        policy.get_decision_num_replicas(
-            current_num_ongoing_requests=[100, 100],
-            curr_target_num_replicas=2,
-            current_handle_queued_queries=0,
-        )
-
-        # The counter should be reset so it should require `downscale_wait_periods`
-        # more periods before we actually scale down.
-        for i in range(downscale_wait_periods):
-            new_num_replicas = policy.get_decision_num_replicas(
-                current_num_ongoing_requests=no_requests,
-                curr_target_num_replicas=2,
-                current_handle_queued_queries=0,
-            )
-            assert new_num_replicas == 2, i
-
-        new_num_replicas = policy.get_decision_num_replicas(
-            current_num_ongoing_requests=no_requests,
-            curr_target_num_replicas=2,
-            current_handle_queued_queries=0,
-        )
-        assert new_num_replicas == 0
-
-    def test_replicas_delayed_startup(self):
-        """Unit test simulating replicas taking time to start up."""
-        config = AutoscalingConfig(
-            min_replicas=1,
-            max_replicas=200,
-            target_num_ongoing_requests_per_replica=1,
-            upscale_delay_s=0,
-            downscale_delay_s=100000,
-        )
-
-        policy = BasicAutoscalingPolicy(config)
-
-        new_num_replicas = policy.get_decision_num_replicas(1, [100], 0)
-        assert new_num_replicas == 100
-
-        # New target is 100, but no new replicas finished spinning up during this
-        # timestep.
-        new_num_replicas = policy.get_decision_num_replicas(100, [100], 0)
-        assert new_num_replicas == 100
-
-        # Two new replicas spun up during this timestep.
-        new_num_replicas = policy.get_decision_num_replicas(100, [100, 20, 3], 0)
-        assert new_num_replicas == 123
-
-        # A lot of queries got drained and a lot of replicas started up, but
-        # new_num_replicas should not decrease, because of the downscale delay.
-        new_num_replicas = policy.get_decision_num_replicas(123, [6, 2, 1, 1], 0)
-        assert new_num_replicas == 123
-
-    @pytest.mark.parametrize("delay_s", [30.0, 0.0])
-    def test_fluctuating_ongoing_requests(self, delay_s):
-        """
-        Simulates a workload that switches between too many and too few
-        ongoing requests.
-        """
-
-        config = AutoscalingConfig(
-            min_replicas=1,
-            max_replicas=10,
-            target_num_ongoing_requests_per_replica=50,
-            upscale_delay_s=delay_s,
-            downscale_delay_s=delay_s,
-        )
-
-        policy = BasicAutoscalingPolicy(config)
-
-        if delay_s > 0:
-            wait_periods = int(delay_s / CONTROL_LOOP_PERIOD_S)
-            assert wait_periods > 1
-
-        underload_requests, overload_requests = [20, 20], [100]
-        trials = 1000
-
-        new_num_replicas = None
-        for trial in range(trials):
-            if trial % 2 == 0:
-                new_num_replicas = policy.get_decision_num_replicas(
-                    current_num_ongoing_requests=overload_requests,
-                    curr_target_num_replicas=1,
-                    current_handle_queued_queries=0,
-                )
-                if delay_s > 0:
-                    assert new_num_replicas == 1, trial
-                else:
-                    assert new_num_replicas == 2, trial
-            else:
-                new_num_replicas = policy.get_decision_num_replicas(
-                    current_num_ongoing_requests=underload_requests,
-                    curr_target_num_replicas=2,
-                    current_handle_queued_queries=0,
-                )
-                if delay_s > 0:
-                    assert new_num_replicas == 2, trial
-                else:
-                    assert new_num_replicas == 1, trial
-
-    @pytest.mark.parametrize(
-        "ongoing_requests", [[7, 1, 8, 4], [8, 1, 8, 4], [6, 1, 8, 4], [0, 1, 8, 4]]
-    )
-    def test_imbalanced_replicas(self, ongoing_requests):
-        config = AutoscalingConfig(
-            min_replicas=1,
-            max_replicas=10,
-            target_num_ongoing_requests_per_replica=5,
-            upscale_delay_s=0.0,
-            downscale_delay_s=0.0,
-        )
-
-        policy = BasicAutoscalingPolicy(config)
-
-        # Check that as long as the average number of ongoing requests equals
-        # the target_num_ongoing_requests_per_replica, the number of replicas
-        # stays the same
-        if np.mean(ongoing_requests) == config.target_num_ongoing_requests_per_replica:
-            new_num_replicas = policy.get_decision_num_replicas(
-                current_num_ongoing_requests=ongoing_requests,
-                curr_target_num_replicas=4,
-                current_handle_queued_queries=0,
-            )
-            assert new_num_replicas == 4
-
-        # Check downscaling behavior when average number of requests
-        # is lower than target_num_ongoing_requests_per_replica
-        elif np.mean(ongoing_requests) < config.target_num_ongoing_requests_per_replica:
-            new_num_replicas = policy.get_decision_num_replicas(
-                current_num_ongoing_requests=ongoing_requests,
-                curr_target_num_replicas=4,
-                current_handle_queued_queries=0,
-            )
-
-            if (
-                config.target_num_ongoing_requests_per_replica
-                - np.mean(ongoing_requests)
-                <= 1
-            ):
-                # Autoscaling uses a ceiling operator, which means a slightly low
-                # current_num_ongoing_requests value is insufficient to downscale
-                assert new_num_replicas == 4
-            else:
-                assert new_num_replicas == 3
-
-        # Check upscaling behavior when average number of requests
-        # is higher than target_num_ongoing_requests_per_replica
-        else:
-            new_num_replicas = policy.get_decision_num_replicas(
-                current_num_ongoing_requests=ongoing_requests,
-                curr_target_num_replicas=4,
-                current_handle_queued_queries=0,
-            )
-            assert new_num_replicas == 5
-
-    @pytest.mark.parametrize(
-        "ongoing_requests", [[20, 0, 0, 0], [100, 0, 0, 0], [10, 0, 0, 0]]
-    )
-    def test_single_replica_receives_all_requests(self, ongoing_requests):
-        target_requests = 5
-
-        config = AutoscalingConfig(
-            min_replicas=1,
-            max_replicas=50,
-            target_num_ongoing_requests_per_replica=target_requests,
-            upscale_delay_s=0.0,
-            downscale_delay_s=0.0,
-        )
-
-        policy = BasicAutoscalingPolicy(config)
-
-        new_num_replicas = policy.get_decision_num_replicas(
-            current_num_ongoing_requests=ongoing_requests,
-            curr_target_num_replicas=4,
-            current_handle_queued_queries=0,
-        )
-        assert new_num_replicas == sum(ongoing_requests) / target_requests
 
 
 def get_deployment_status(controller, name) -> DeploymentStatus:
@@ -794,7 +316,11 @@ def test_cold_start_time(serve_instance):
     start = time.time()
     result = handle.remote().result()
     cold_start_time = time.time() - start
-    assert cold_start_time < 3
+    if sys.platform == "win32":
+        timeout = 5  # Windows has a longer tail.
+    else:
+        timeout = 3
+    assert cold_start_time < timeout
     print(
         "Time taken for deployment at 0 replicas to serve first request:",
         cold_start_time,
@@ -1387,6 +913,337 @@ app = g.bind()
     for _ in range(15):
         pids.add(ray.get(send_request.remote()))
     assert existing_pid in pids
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows.")
+def test_autoscaling_status_changes(serve_instance):
+    """Test status changes when autoscaling deployments are deployed.
+
+    This test runs an autoscaling deployment and an actor called the
+    EventManager. During initialization, each replica creates an asyncio.Event
+    in the EventManager, and it waits on the event. Once the event is set, the
+    replica can finish initializing. The test uses this EventManager to control
+    the number of replicas that should be running at a given time.
+
+    The test does the following:
+
+    1.  Starts an EventManager.
+    2.  Deploys an autoscaling deployment with min_replicas 3.
+    3.  Releases 2 replicas via the EventManager.
+    4.  Checks that the deployment remains in the UPDATING status.
+    5.  Redeploys the deployment with min_replicas 4.
+    6.  Releases 1 more replica via the EventManager.
+    7.  Checks that the deployment remains in the UPDATING status.
+    8.  Releases 1 more replica.
+    9.  Checks that the deployment enters HEALTHY status.
+    10. Redeploys the deployment with min_replicas 5.
+    11. Checks that the deployment re-enters and remains in the UPDATING status.
+    12. Releases 1 more replica.
+    13  Checks that the deployment enters HEALTHY status.
+    """
+
+    @ray.remote
+    class EventManager:
+        """Manages events for each deployment replica.
+
+        This actor uses a goal-state architecture. The test sets a max number
+        of replicas to run. Whenever this manager creates or removes an event,
+        it checks how many replicas are running and attempts to match the goal
+        state.
+        """
+
+        def __init__(self):
+            self._max_replicas_to_run = 0
+
+            # This dictionary maps replica names -> asyncio.Event.
+            self._events: Dict[str, asyncio.Event] = dict()
+
+        def get_num_running_replicas(self):
+            running_replicas = [
+                actor_name
+                for actor_name, event in self._events.items()
+                if event.is_set()
+            ]
+            return len(running_replicas)
+
+        def release_replicas(self):
+            """Releases replicas until self._max_replicas_to_run are released."""
+
+            num_replicas_released = 0
+            for _, event in self._events.items():
+                if self.get_num_running_replicas() < self._max_replicas_to_run:
+                    if not event.is_set():
+                        event.set()
+                        num_replicas_released += 1
+                else:
+                    break
+
+            if num_replicas_released > 0:
+                print(
+                    f"Started running {num_replicas_released} replicas. "
+                    f"{self.get_waiter_statuses()}"
+                )
+
+        async def wait(self, actor_name):
+            print(f"Replica {actor_name} started waiting...")
+            event = asyncio.Event()
+            self._events[actor_name] = event
+            self.release_replicas()
+            await event.wait()
+            print(f"Replica {actor_name} finished waiting.")
+
+        async def set_max_replicas_to_run(self, max_num_replicas: int = 1):
+            print(f"Setting _max_replicas_to_run to {max_num_replicas}.")
+            self._max_replicas_to_run = max_num_replicas
+            self.release_replicas()
+
+        async def get_max_replicas_to_run(self) -> int:
+            return self._max_replicas_to_run
+
+        async def num_active_replicas(self) -> int:
+            """The number of replicas that are waiting or running."""
+
+            return len(self._events)
+
+        def get_waiter_statuses(self) -> Dict[str, bool]:
+            return {
+                actor_name: event.is_set() for actor_name, event in self._events.items()
+            }
+
+        async def clear_dead_replicas(self):
+            """Clears dead replicas from internal _events dictionary."""
+
+            actor_names = list(self._events.keys())
+            for name in actor_names:
+                try:
+                    ray.get_actor(name=name, namespace=SERVE_NAMESPACE)
+                except ValueError:
+                    print(f"Actor {name} has died. Removing event.")
+                    self._events.pop(name)
+
+            self.release_replicas()
+
+    print("Starting EventManager actor...")
+
+    event_manager_actor_name = "event_manager_actor"
+    event_manager = EventManager.options(
+        name=event_manager_actor_name, namespace=SERVE_NAMESPACE
+    ).remote()
+
+    print("Starting Serve app...")
+
+    deployment_name = "autoscaling_app"
+    min_replicas = 3
+    max_replicas = 15
+
+    @serve.deployment(
+        name=deployment_name,
+        autoscaling_config=AutoscalingConfig(
+            min_replicas=min_replicas,
+            max_replicas=max_replicas,
+        ),
+        ray_actor_options=dict(num_cpus=0),
+        graceful_shutdown_timeout_s=0,
+    )
+    class AutoscalingDeployment:
+        """Deployment that autoscales."""
+
+        async def __init__(self):
+            self.name = ray.get_runtime_context().get_actor_name()
+            print(f"Replica {self.name} initializing...")
+            event_manager = ray.get_actor(
+                name=event_manager_actor_name, namespace=SERVE_NAMESPACE
+            )
+            await event_manager.wait.remote(self.name)
+            print(f"Replica {self.name} has initialized.")
+
+    app_name = "autoscaling_app"
+    app = AutoscalingDeployment.bind()
+
+    # Start the AutoscalingDeployment.
+    serve.run(app, name=app_name, _blocking=False)
+
+    # Active replicas are replicas that are waiting or running.
+    expected_num_active_replicas: int = min_replicas
+
+    def check_num_active_replicas(expected: int) -> bool:
+        ray.get(event_manager.clear_dead_replicas.remote())
+        assert ray.get(event_manager.num_active_replicas.remote()) == expected
+        return True
+
+    wait_for_condition(check_num_active_replicas, expected=expected_num_active_replicas)
+    print("Replicas have started waiting. Releasing some replicas...")
+
+    ray.get(event_manager.set_max_replicas_to_run.remote(min_replicas - 1))
+
+    # Wait for replicas to start.
+    print("Waiting for replicas to run.")
+
+    def replicas_running(expected_num_running_replicas: int) -> bool:
+        ray.get(event_manager.clear_dead_replicas.remote())
+        status = serve.status()
+        app_status = status.applications[app_name]
+        deployment_status = app_status.deployments[deployment_name]
+        num_running_replicas = deployment_status.replica_states.get(
+            ReplicaState.RUNNING, 0
+        )
+        assert num_running_replicas == expected_num_running_replicas, (
+            f"{app_status}, {ray.available_resources()}, "
+            f"{ray.get(event_manager.get_waiter_statuses.remote())}, "
+            f"{ray.get(event_manager.get_max_replicas_to_run.remote())}"
+        )
+        return True
+
+    wait_for_condition(
+        replicas_running,
+        expected_num_running_replicas=(min_replicas - 1),
+        timeout=15,
+    )
+
+    def check_expected_statuses(
+        expected_app_status: ApplicationStatus,
+        expected_deployment_status: DeploymentStatus,
+        expected_deployment_status_trigger: DeploymentStatusTrigger,
+    ) -> bool:
+        status = serve.status()
+
+        app_status = status.applications[app_name]
+        assert app_status.status == expected_app_status, f"{app_status}"
+
+        deployment_status = app_status.deployments[deployment_name]
+        assert (
+            deployment_status.status == expected_deployment_status
+        ), f"{deployment_status}"
+        assert (
+            deployment_status.status_trigger == expected_deployment_status_trigger
+        ), f"{deployment_status}"
+
+        return True
+
+    check_expected_statuses(
+        ApplicationStatus.DEPLOYING,
+        DeploymentStatus.UPDATING,
+        DeploymentStatusTrigger.CONFIG_UPDATE_STARTED,
+    )
+
+    # Check that these statuses don't change over time.
+    print("Statuses are as expected. Sleeping briefly and checking again...")
+    time.sleep(1.5)
+    check_expected_statuses(
+        ApplicationStatus.DEPLOYING,
+        DeploymentStatus.UPDATING,
+        DeploymentStatusTrigger.CONFIG_UPDATE_STARTED,
+    )
+
+    print("Statuses are still as expected. Redeploying...")
+
+    # Check the status after redeploying the deployment.
+    min_replicas += 1
+    app = AutoscalingDeployment.options(
+        autoscaling_config=AutoscalingConfig(
+            min_replicas=min_replicas,
+            max_replicas=max_replicas,
+        )
+    ).bind()
+    serve.run(app, name=app_name, _blocking=False)
+    expected_num_active_replicas = min_replicas
+
+    wait_for_condition(check_num_active_replicas, expected=expected_num_active_replicas)
+    print("Replicas have started waiting. Releasing some replicas...")
+
+    ray.get(event_manager.set_max_replicas_to_run.remote(min_replicas - 1))
+    wait_for_condition(
+        replicas_running,
+        expected_num_running_replicas=(min_replicas - 1),
+        timeout=20,
+    )
+
+    check_expected_statuses(
+        ApplicationStatus.DEPLOYING,
+        DeploymentStatus.UPDATING,
+        DeploymentStatusTrigger.CONFIG_UPDATE_STARTED,
+    )
+
+    print("Statuses are as expected. Sleeping briefly and checking again...")
+    time.sleep(1.5)
+    check_expected_statuses(
+        ApplicationStatus.DEPLOYING,
+        DeploymentStatus.UPDATING,
+        DeploymentStatusTrigger.CONFIG_UPDATE_STARTED,
+    )
+
+    print(
+        "Statuses are still as expected. "
+        "Releasing some replicas and checking again..."
+    )
+
+    wait_for_condition(check_num_active_replicas, expected=expected_num_active_replicas)
+
+    # Release enough replicas for deployment to enter autoscaling bounds.
+    ray.get(event_manager.set_max_replicas_to_run.remote(min_replicas))
+    wait_for_condition(
+        replicas_running,
+        expected_num_running_replicas=min_replicas,
+        timeout=20,
+    )
+
+    check_expected_statuses(
+        ApplicationStatus.RUNNING,
+        DeploymentStatus.HEALTHY,
+        DeploymentStatusTrigger.CONFIG_UPDATE_COMPLETED,
+    )
+
+    print("Statuses are as expected. Redeploying with higher min_replicas...")
+    min_replicas += 1
+    app = AutoscalingDeployment.options(
+        autoscaling_config=AutoscalingConfig(
+            min_replicas=min_replicas,
+            max_replicas=max_replicas,
+        )
+    ).bind()
+    serve.run(app, name=app_name, _blocking=False)
+    expected_num_active_replicas = min_replicas
+
+    wait_for_condition(check_num_active_replicas, expected=expected_num_active_replicas)
+    print("Replicas have started waiting. Checking statuses...")
+
+    # DeploymentStatus should return to UPDATING because the
+    # autoscaling_config changed.
+    wait_for_condition(
+        check_expected_statuses,
+        expected_app_status=ApplicationStatus.DEPLOYING,
+        expected_deployment_status=DeploymentStatus.UPDATING,
+        expected_deployment_status_trigger=(
+            DeploymentStatusTrigger.CONFIG_UPDATE_STARTED
+        ),
+    )
+
+    print("Statuses are as expected. Sleeping briefly and checking again...")
+    time.sleep(1.5)
+    check_expected_statuses(
+        ApplicationStatus.DEPLOYING,
+        DeploymentStatus.UPDATING,
+        DeploymentStatusTrigger.CONFIG_UPDATE_STARTED,
+    )
+
+    print(
+        "Statuses are still as expected. Releasing some replicas and checking again..."
+    )
+
+    ray.get(event_manager.set_max_replicas_to_run.remote(min_replicas))
+    wait_for_condition(
+        replicas_running,
+        expected_num_running_replicas=min_replicas,
+        timeout=20,
+    )
+
+    check_expected_statuses(
+        ApplicationStatus.RUNNING,
+        DeploymentStatus.HEALTHY,
+        DeploymentStatusTrigger.CONFIG_UPDATE_COMPLETED,
+    )
+
+    print("Statuses are as expected.")
 
 
 if __name__ == "__main__":

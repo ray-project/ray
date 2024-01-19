@@ -59,7 +59,7 @@ def vtrace_tf2(
     discounts: "tf.Tensor",
     rewards: "tf.Tensor",
     values: "tf.Tensor",
-    bootstrap_value: "tf.Tensor",
+    bootstrap_values: "tf.Tensor",
     clip_rho_threshold: Union[float, "tf.Tensor"] = 1.0,
     clip_pg_rho_threshold: Union[float, "tf.Tensor"] = 1.0,
 ):
@@ -97,7 +97,7 @@ def vtrace_tf2(
             following the behaviour policy.
         values: A float32 tensor of shape [T, B] with the value function estimates
             wrt. the target policy.
-        bootstrap_value: A float32 of shape [B] with the value function estimate at
+        bootstrap_values: A float32 of shape [B] with the value function estimate at
             time T.
         clip_rho_threshold: A scalar float32 tensor with the clipping threshold for
             importance weights (rho) when calculating the baseline targets (vs).
@@ -116,7 +116,7 @@ def vtrace_tf2(
     cs = tf.minimum(1.0, rhos, name="cs")
     # Append bootstrapped value to get [v1, ..., v_t+1]
     values_t_plus_1 = tf.concat(
-        [values[1:], tf.expand_dims(bootstrap_value, 0)], axis=0
+        [values[1:], tf.expand_dims(bootstrap_values, 0)], axis=0
     )
 
     deltas = clipped_rhos * (rewards + discounts * values_t_plus_1 - values)
@@ -135,7 +135,7 @@ def vtrace_tf2(
         return delta_t + discount_t * c_t * acc
 
     with tf.device("/cpu:0"):
-        initial_values = tf.zeros_like(bootstrap_value)
+        initial_values = tf.zeros_like(bootstrap_values)
         vs_minus_v_xs = tf.nest.map_structure(
             tf.stop_gradient,
             tf.scan(
@@ -153,7 +153,7 @@ def vtrace_tf2(
     vs = tf.add(vs_minus_v_xs, values)
 
     # Advantage for policy gradient.
-    vs_t_plus_1 = tf.concat([vs[1:], tf.expand_dims(bootstrap_value, 0)], axis=0)
+    vs_t_plus_1 = tf.concat([vs[1:], tf.expand_dims(bootstrap_values, 0)], axis=0)
     if clip_pg_rho_threshold is not None:
         clipped_pg_rhos = tf.minimum(clip_pg_rho_threshold, rhos)
     else:

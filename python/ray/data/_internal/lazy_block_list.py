@@ -126,7 +126,7 @@ class LazyBlockList(BlockList):
         """Create DatasetStats for this LazyBlockList."""
         return DatasetStats(
             # Make a copy of metadata, as the DatasetStats may mutate it in-place.
-            stages={"Read": self.get_metadata(fetch_if_missing=False).copy()},
+            metadata={"Read": self.get_metadata(fetch_if_missing=False).copy()},
             parent=None,
             needs_stats_actor=True,
             stats_uuid=self._stats_uuid,
@@ -544,9 +544,9 @@ class LazyBlockList(BlockList):
         """Submit the task with index task_idx.
 
         NOTE: When dynamic block splitting is enabled, returns
-        Tuple[ObjectRef[ObjectRefGenerator], None] instead of
+        Tuple[ObjectRef[DynamicObjectRefGenerator], None] instead of
         Tuple[ObjectRef[Block], ObjectRef[BlockMetadata]], and the blocks metadata will
-        be fetched as the last element in ObjectRefGenerator.
+        be fetched as the last element in DynamicObjectRefGenerator.
         """
         if self._stats_actor is None:
             self._stats_actor = _get_or_create_stats_actor()

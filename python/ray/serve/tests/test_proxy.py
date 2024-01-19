@@ -24,8 +24,9 @@ from ray.serve._private.proxy import (
 )
 from ray.serve._private.proxy_request_response import ProxyRequest
 from ray.serve._private.proxy_router import ProxyRouter
+from ray.serve._private.test_utils import FakeGrpcContext
 from ray.serve.generated import serve_pb2
-from ray.serve.tests.common.utils import FakeGrpcContext
+from ray.serve.grpc_util import RayServegRPCContext
 
 
 class FakeRef:
@@ -55,27 +56,32 @@ class FakeRef:
         pass
 
 
-class FakeActor:
-    def remote(self, snapshot_ids):
-        return FakeRef()
-
-
 class FakeActorHandler:
     def __init__(self, actor_id):
         self._actor_id = actor_id
 
     @property
     def listen_for_change(self):
-        return FakeActor()
+        class FakeListenForChangeActorMethod:
+            def remote(self, snapshot_ids):
+                return FakeRef()
 
-    def remote(self, *args, **kwargs):
-        return FakeRef()
+        return FakeListenForChangeActorMethod()
+
+    @property
+    def receive_asgi_messages(self):
+        class FakeReceiveASGIMessagesActorMethod:
+            def remote(self, request_id):
+                return FakeRef()
+
+        return FakeReceiveASGIMessagesActorMethod()
 
 
 class FakeGrpcHandle:
-    def __init__(self, streaming: bool):
+    def __init__(self, streaming: bool, grpc_context: RayServegRPCContext):
         self.deployment_id = DeploymentID("fak_deployment_name", "fake_app_name")
         self.streaming = streaming
+        self.grpc_context = grpc_context
 
     async def remote(self, *args, **kwargs):
         def unary_call():
@@ -85,7 +91,10 @@ class FakeGrpcHandle:
             for i in range(10):
                 yield f"hello world: {i}"
 
-        return unary_call() if not self.streaming else streaming_call()
+        return (
+            self.grpc_context,
+            unary_call() if not self.streaming else streaming_call(),
+        )
 
     def options(self, *args, **kwargs):
         return self
@@ -169,7 +178,10 @@ class FakeHttpReceive:
         self.messages = messages or []
 
     async def __call__(self):
-        return self.messages.pop()
+        while True:
+            if self.messages:
+                return self.messages.pop()
+            await asyncio.sleep(0.1)
 
 
 class FakeHttpSend:
@@ -184,16 +196,13 @@ class TestgRPCProxy:
     """Test methods implemented on gRPCProxy"""
 
     def create_grpc_proxy(self):
-        controller_name = "fake-controller_name"
         node_id = "fake-node_id"
         node_ip_address = "fake-node_ip_address"
         return gRPCProxy(
-            controller_name=controller_name,
             node_id=node_id,
             node_ip_address=node_ip_address,
             proxy_router_class=FakeProxyRouter,
             controller_actor=FakeActorHandler("fake_controller_actor"),
-            proxy_actor=FakeActorHandler("fake_proxy_actor"),
         )
 
     @pytest.mark.asyncio
@@ -304,13 +313,17 @@ class TestgRPCProxy:
         # Ensure the unary entry point returns the correct result and sets the
         # code and details on the grpc context object.
         grpc_proxy.proxy_router.route = "route"
-        grpc_proxy.proxy_router.handle = FakeGrpcHandle(streaming=False)
-        grpc_proxy.proxy_router.app_is_cross_language = False
         context = FakeGrpcContext()
+        serve_grpc_context = RayServegRPCContext(context)
+        grpc_proxy.proxy_router.handle = FakeGrpcHandle(
+            streaming=False,
+            grpc_context=serve_grpc_context,
+        )
+        grpc_proxy.proxy_router.app_is_cross_language = False
         result = await unary_entrypoint(request_proto=request_proto, context=context)
         assert result == "hello world"
-        assert context.code == grpc.StatusCode.OK
-        assert context.details == ""
+        assert context.code() == grpc.StatusCode.OK
+        assert context.details() == ""
 
         # Ensure gRPC streaming call uses the correct entry point.
         streaming_entrypoint = grpc_proxy.service_handler_factory(
@@ -321,24 +334,26 @@ class TestgRPCProxy:
         # Ensure the streaming entry point returns the correct result and sets the
         # code and details on the grpc context object.
         grpc_proxy.proxy_router.route = "route"
-        grpc_proxy.proxy_router.handle = FakeGrpcHandle(streaming=True)
-        grpc_proxy.proxy_router.app_is_cross_language = False
         context = FakeGrpcContext()
+        serve_grpc_context = RayServegRPCContext(context)
+        grpc_proxy.proxy_router.handle = FakeGrpcHandle(
+            streaming=True,
+            grpc_context=serve_grpc_context,
+        )
+        grpc_proxy.proxy_router.app_is_cross_language = False
         result = await unary_entrypoint(request_proto=request_proto, context=context)
         assert list(result) == [f"hello world: {i}" for i in range(10)]
-        assert context.code == grpc.StatusCode.OK
-        assert context.details == ""
+        assert context.code() == grpc.StatusCode.OK
+        assert context.details() == ""
 
 
 class TestHTTPProxy:
     """Test methods implemented on HTTPProxy"""
 
     def create_http_proxy(self):
-        controller_name = "fake-controller_name"
         node_id = "fake-node_id"
         node_ip_address = "fake-node_ip_address"
         return HTTPProxy(
-            controller_name=controller_name,
             node_id=node_id,
             node_ip_address=node_ip_address,
             proxy_router_class=FakeProxyRouter,
@@ -537,6 +552,66 @@ class TestHTTPProxy:
         )
 
         queue.close.assert_called_once()
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize(
+        "disconnect",
+        [
+            "client",
+            "server_with_disconnect_message",
+            "server_without_disconnect_message",
+        ],
+    )
+    async def test_websocket_call(self, disconnect: str):
+        """Test HTTPProxy websocket __call__ calls proxy_request."""
+
+        if disconnect == "client":
+            receive = FakeHttpReceive(
+                [{"type": "websocket.disconnect", "code": "1000"}]
+            )
+            expected_messages = [
+                {"type": "websocket.accept"},
+                {"type": "websocket.send"},
+            ]
+        elif disconnect == "server_with_disconnect_message":
+            receive = FakeHttpReceive()
+            expected_messages = [
+                {"type": "websocket.accept"},
+                {"type": "websocket.send"},
+                {"type": "websocket.disconnect", "code": "1000"},
+            ]
+        else:
+            receive = FakeHttpReceive()
+            expected_messages = [
+                {"type": "websocket.accept"},
+                {"type": "websocket.send"},
+            ]
+
+        http_proxy = self.create_http_proxy()
+        http_proxy.proxy_router.route = "route"
+        http_proxy.proxy_router.handle = FakeHTTPHandle(messages=expected_messages)
+        http_proxy.proxy_router.app_is_cross_language = False
+
+        scope = {
+            "type": "websocket",
+            "headers": [
+                (
+                    b"x-request-id",
+                    b"fake_request_id",
+                ),
+            ],
+        }
+        send = FakeHttpSend()
+
+        # Ensure before calling __call__, send.messages should be empty.
+        assert send.messages == []
+        await http_proxy(
+            scope=scope,
+            receive=receive,
+            send=send,
+        )
+        # Ensure after calling __call__, send.messages should be expected messages.
+        assert send.messages == expected_messages
 
 
 class TestTimeoutKeepAliveConfig:

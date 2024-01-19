@@ -1,5 +1,5 @@
 # flake8: noqa
-from pkg_resources import packaging
+import packaging.version
 
 # Pydantic is a dependency of `ray["default"]` but not the minimal installation,
 # so handle the case where it isn't installed.

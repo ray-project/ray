@@ -13,15 +13,15 @@ from ray import serve
 from ray._private.test_utils import SignalActor, wait_for_condition
 from ray.serve._private.constants import DEFAULT_LATENCY_BUCKET_MS
 from ray.serve._private.long_poll import LongPollHost, UpdatedObject
-from ray.serve._private.utils import block_until_http_ready
-from ray.serve.config import gRPCOptions
-from ray.serve.handle import DeploymentHandle
-from ray.serve.metrics import Counter, Gauge, Histogram
-from ray.serve.tests.common.utils import (
+from ray.serve._private.test_utils import (
     ping_fruit_stand,
     ping_grpc_call_method,
     ping_grpc_list_applications,
 )
+from ray.serve._private.utils import block_until_http_ready
+from ray.serve.config import gRPCOptions
+from ray.serve.handle import DeploymentHandle
+from ray.serve.metrics import Counter, Gauge, Histogram
 from ray.serve.tests.test_config_files.grpc_deployment import g, g2
 
 
@@ -1107,6 +1107,11 @@ def test_queued_queries_disconnected(serve_start_shutdown):
         timeout=15,
         metric="ray_serve_num_scheduling_tasks",
         expected=-1,  # -1 means not expected to be present yet.
+        # TODO(zcin): this tag shouldn't be necessary, there shouldn't be a mix of
+        # metrics from new and old sessions.
+        expected_tags={
+            "SessionName": ray._private.worker.global_worker.node.session_name
+        },
     )
     print("ray_serve_num_scheduling_tasks updated successfully.")
     wait_for_condition(
@@ -1114,6 +1119,11 @@ def test_queued_queries_disconnected(serve_start_shutdown):
         timeout=15,
         metric="serve_num_scheduling_tasks_in_backoff",
         expected=-1,  # -1 means not expected to be present yet.
+        # TODO(zcin): this tag shouldn't be necessary, there shouldn't be a mix of
+        # metrics from new and old sessions.
+        expected_tags={
+            "SessionName": ray._private.worker.global_worker.node.session_name
+        },
     )
     print("serve_num_scheduling_tasks_in_backoff updated successfully.")
 

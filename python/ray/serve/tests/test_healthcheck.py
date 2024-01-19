@@ -96,7 +96,7 @@ def test_user_defined_method_fails(serve_instance):
 
 
 def test_user_defined_method_hangs(serve_instance):
-    h = serve.run(Patient.bind())
+    h = serve.run(Patient.options(graceful_shutdown_timeout_s=0).bind())
     actor = h.remote().result()
     h.set_should_hang.remote().result()
 

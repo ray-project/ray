@@ -7,7 +7,7 @@ from typing import Any, AsyncIterator, Dict, Iterator, Optional, Tuple, Union
 
 import ray
 from ray import serve
-from ray._raylet import GcsClient, StreamingObjectRefGenerator
+from ray._raylet import GcsClient, ObjectRefGenerator
 from ray.serve._private.common import DeploymentID, RequestProtocol
 from ray.serve._private.default_impl import create_cluster_node_info_cache
 from ray.serve._private.router import RequestMetadata, Router
@@ -15,7 +15,7 @@ from ray.serve._private.usage import ServeUsageTag
 from ray.serve._private.utils import (
     DEFAULT,
     get_current_actor_id,
-    get_random_letters,
+    get_random_string,
     is_running_in_asyncio_loop,
 )
 from ray.util import metrics
@@ -108,8 +108,9 @@ class _DeploymentHandleBase:
         self._recorded_telemetry = _recorded_telemetry
         self._sync = sync
 
+        self.handle_id = get_random_string()
         self.request_counter = _request_counter or self._create_request_counter(
-            app_name, deployment_name
+            app_name, deployment_name, self.handle_id
         )
 
         self._router: Optional[Router] = _router
@@ -150,6 +151,7 @@ class _DeploymentHandleBase:
             self._router = Router(
                 serve.context._get_global_client()._controller,
                 self.deployment_id,
+                self.handle_id,
                 node_id,
                 get_current_actor_id(),
                 availability_zone,
@@ -168,7 +170,9 @@ class _DeploymentHandleBase:
             return f"{deployment_name}#{handle_id}"
 
     @classmethod
-    def _create_request_counter(cls, app_name, deployment_name):
+    def _create_request_counter(
+        cls, app_name: str, deployment_name: str, handle_id: str
+    ):
         return metrics.Counter(
             "serve_handle_request_counter",
             description=(
@@ -177,10 +181,9 @@ class _DeploymentHandleBase:
             ),
             tag_keys=("handle", "deployment", "route", "application"),
         ).set_default_tags(
-            # TODO(zcin): Separate deployment_id into deployment and application tags
             {
                 "handle": cls._gen_handle_tag(
-                    app_name, deployment_name, handle_id=get_random_letters()
+                    app_name, deployment_name, handle_id=handle_id
                 ),
                 "deployment": deployment_name,
                 "application": app_name,
@@ -265,6 +268,7 @@ class _DeploymentHandleBase:
             multiplexed_model_id=self.handle_options.multiplexed_model_id,
             is_streaming=self.handle_options.stream,
             _request_protocol=self.handle_options._request_protocol,
+            grpc_context=_request_context.grpc_context,
         )
         self.request_counter.inc(
             tags={
@@ -500,14 +504,14 @@ class RayServeDeploymentHandle(RayServeHandle):
 class _DeploymentResponseBase:
     def __init__(self, object_ref_future: concurrent.futures.Future):
         # The result of `object_ref_future` must be an ObjectRef or
-        # StreamingObjectRefGenerator.
+        # ObjectRefGenerator.
         self._object_ref_future = object_ref_future
         self._cancelled = False
 
     async def _to_object_ref_or_gen(
         self,
         _record_telemetry: bool = True,
-    ) -> Union[ray.ObjectRef, StreamingObjectRefGenerator]:
+    ) -> Union[ray.ObjectRef, ObjectRefGenerator]:
         # Record telemetry for using the developer API to convert to an object
         # ref. Recorded here because all of the other codepaths go through this.
         # `_record_telemetry` is used to filter other API calls that go through
@@ -523,7 +527,7 @@ class _DeploymentResponseBase:
         self,
         _record_telemetry: bool = True,
         _allow_running_in_asyncio_loop: bool = False,
-    ) -> Union[ray.ObjectRef, StreamingObjectRefGenerator]:
+    ) -> Union[ray.ObjectRef, ObjectRefGenerator]:
         if not _allow_running_in_asyncio_loop and is_running_in_asyncio_loop():
             raise RuntimeError(
                 "Sync methods should not be called from within an `asyncio` event "
@@ -761,7 +765,7 @@ class DeploymentResponseGenerator(_DeploymentResponseBase):
         object_ref_future: concurrent.futures.Future,
     ):
         super().__init__(object_ref_future)
-        self._obj_ref_gen: Optional[StreamingObjectRefGenerator] = None
+        self._obj_ref_gen: Optional[ObjectRefGenerator] = None
 
     def __await__(self):
         raise TypeError(
@@ -792,8 +796,8 @@ class DeploymentResponseGenerator(_DeploymentResponseBase):
     @DeveloperAPI
     async def _to_object_ref_gen(
         self, _record_telemetry: bool = True
-    ) -> StreamingObjectRefGenerator:
-        """Advanced API to convert the generator to a Ray `StreamingObjectRefGenerator`.
+    ) -> ObjectRefGenerator:
+        """Advanced API to convert the generator to a Ray `ObjectRefGenerator`.
 
         This method is `async def` because it will block until the handle call has been
         assigned to a replica actor. If there are many requests in flight and all
@@ -806,8 +810,8 @@ class DeploymentResponseGenerator(_DeploymentResponseBase):
         self,
         _record_telemetry: bool = True,
         _allow_running_in_asyncio_loop: bool = False,
-    ) -> StreamingObjectRefGenerator:
-        """Advanced API to convert the generator to a Ray `StreamingObjectRefGenerator`.
+    ) -> ObjectRefGenerator:
+        """Advanced API to convert the generator to a Ray `ObjectRefGenerator`.
 
         This method is a *blocking* call because it will block until the handle call has
         been assigned to a replica actor. If there are many requests in flight and all

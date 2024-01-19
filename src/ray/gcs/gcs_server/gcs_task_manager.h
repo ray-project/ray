@@ -256,7 +256,9 @@ class GcsTaskManager : public rpc::TaskInfoHandler {
 
     void UpdateJobSummaryOnJobDone(const JobID &job_id) {
       auto it = job_task_summary_.find(job_id);
-      RAY_CHECK(it != job_task_summary_.end());
+      if (it == job_task_summary_.end()) {
+        return;
+      }
       it->second.OnJobEnds();
     }
 
@@ -541,6 +543,7 @@ class GcsTaskManager : public rpc::TaskInfoHandler {
   FRIEND_TEST(GcsTaskManagerTest, TestTaskDataLossWorker);
   FRIEND_TEST(GcsTaskManagerTest, TestMultipleJobsDataLoss);
   FRIEND_TEST(GcsTaskManagerDroppedTaskAttemptsLimit, TestDroppedTaskAttemptsLimit);
+  FRIEND_TEST(GcsTaskManagerProfileEventsLimitTest, TestProfileEventsNoLeak);
 };
 
 }  // namespace gcs
