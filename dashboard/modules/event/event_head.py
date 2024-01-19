@@ -6,8 +6,7 @@ from typing import Union
 from collections import OrderedDict, defaultdict
 from concurrent.futures import ThreadPoolExecutor
 
-import aiohttp.web
-
+from ray._private.internal_third_party import aiohttp  # noqa: F401
 import ray.dashboard.utils as dashboard_utils
 import ray.dashboard.optional_utils as dashboard_optional_utils
 from ray.dashboard.modules.event.event_utils import (

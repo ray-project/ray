@@ -252,6 +252,7 @@ py_test_module_list(
     "test_minimal_install.py",
     "test_runtime_env_ray_minimal.py",
     "test_utils.py",
+    "test_internal_third_party.py",
   ],
   size = "medium",
   tags = ["exclusive", "minimal", "no_basic_test", "team:core"],

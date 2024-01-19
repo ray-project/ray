@@ -73,7 +73,7 @@ if [[ "$platform" == "linux" ]]; then
     "$PYTHON_EXE" -u -c "import ray; print(ray.__commit__)" | grep "$TRAVIS_COMMIT" || (echo "ray.__commit__ not set properly!" && exit 1)
 
     # Install the dependencies to run the tests.
-    "$PIP_CMD" install -q aiohttp aiosignal frozenlist grpcio 'pytest==7.0.1' requests proxy.py
+    "$PIP_CMD" install -q frozenlist grpcio 'pytest==7.0.1' requests proxy.py
 
     # Run a simple test script to make sure that the wheel works.
     for SCRIPT in "${TEST_SCRIPTS[@]}"; do
@@ -139,7 +139,7 @@ elif [[ "$platform" == "macosx" ]]; then
     "$PIP_CMD" install -q "$PYTHON_WHEEL"
 
     # Install the dependencies to run the tests.
-    "$PIP_CMD" install -q aiohttp aiosignal numpy frozenlist 'pytest==7.0.1' requests proxy.py
+    "$PIP_CMD" install -q numpy frozenlist 'pytest==7.0.1' requests proxy.py
 
     # Run a simple test script to make sure that the wheel works.
     # We set the python path to prefer the directory of the wheel content: https://github.com/ray-project/ray/pull/30090

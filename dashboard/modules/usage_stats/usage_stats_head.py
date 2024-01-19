@@ -38,7 +38,7 @@ class UsageStatsHead(dashboard_utils.DashboardHeadModule):
         self._prometheus_ran_before = False
 
     if ray._private.utils.check_dashboard_dependencies_installed():
-        import aiohttp
+        from ray._private.internal_third_party import aiohttp  # noqa: F401
         import ray.dashboard.optional_utils
 
         routes = ray.dashboard.optional_utils.DashboardHeadRouteTable

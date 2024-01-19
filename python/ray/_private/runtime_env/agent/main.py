@@ -1,33 +1,16 @@
 import sys
-import os
 import argparse
 import logging
 import pathlib
+
 import ray._private.ray_constants as ray_constants
-from ray.core.generated import (
-    runtime_env_agent_pb2,
-)
+import ray._private.runtime_env.agent.runtime_env_consts as runtime_env_consts
+from ray.core.generated import runtime_env_agent_pb2
 from ray._private.utils import open_log
-from ray._private.ray_logging import (
-    configure_log_file,
-)
-from ray._private.utils import (
-    get_or_create_event_loop,
-)
+from ray._private.ray_logging import configure_log_file
+from ray._private.utils import get_or_create_event_loop
 from ray._private.process_watcher import create_check_raylet_task
-
-
-def import_libs():
-    my_dir = os.path.abspath(os.path.dirname(__file__))
-    sys.path.insert(0, os.path.join(my_dir, "thirdparty_files"))  # for aiohttp
-    sys.path.insert(0, my_dir)  # for runtime_env_agent and runtime_env_consts
-
-
-import_libs()
-
-import runtime_env_consts  # noqa: E402
-from runtime_env_agent import RuntimeEnvAgent  # noqa: E402
-from aiohttp import web  # noqa: E402
+from ray._private.runtime_env.agent.runtime_env_agent import RuntimeEnvAgent
 
 
 def open_capture_files(log_dir):
@@ -136,6 +119,9 @@ if __name__ == "__main__":
     # Setup stdout/stderr redirect files
     out_file, err_file = open_capture_files(args.log_dir)
     configure_log_file(out_file, err_file)
+
+    from ray._private.internal_third_party import aiohttp  # noqa F401
+    from aiohttp import web
 
     agent = RuntimeEnvAgent(
         runtime_env_dir=args.runtime_env_dir,

@@ -7,9 +7,9 @@ from ray.dashboard.modules.job.common import JobSubmitRequest
 from ray.dashboard.modules.job.utils import (
     file_tail_iterator,
     strip_keys_with_value_none,
-    parse_and_validate_request,
     redact_url_password,
 )
+from ray.dashboard.modules.job.internal_utils import parse_and_validate_request
 
 
 @pytest.fixture

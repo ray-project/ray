@@ -1,11 +1,10 @@
 from typing import Any, Dict, Optional
 from ray._private.utils import split_address
+from ray._private.internal_third_party import aiohttp  # noqa: F401
 
 try:
-    import aiohttp
     import requests
 except ImportError:
-    aiohttp = None
     requests = None
 
 from ray.dashboard.modules.dashboard_sdk import SubmissionClient

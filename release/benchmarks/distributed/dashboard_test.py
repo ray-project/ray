@@ -14,7 +14,7 @@ from ray._private.test_utils import fetch_prometheus_metrics
 from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
 from pydantic import BaseModel
 from ray.dashboard.consts import DASHBOARD_METRIC_PORT
-from ray.dashboard.utils import get_address_for_submission_client
+from ray.dashboard.modules.job.utils import get_address_for_submission_client
 
 logger = logging.getLogger(__name__)
 

@@ -48,7 +48,7 @@ from ray.dashboard.utils import DashboardHeadModule
 import psutil
 
 try:
-    import aiohttp.web
+    from ray._private.internal_third_party import aiohttp  # noqa: F401
     import ray.dashboard.optional_utils as dashboard_optional_utils
 
     head_routes = dashboard_optional_utils.DashboardHeadRouteTable

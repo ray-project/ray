@@ -1,7 +1,7 @@
 import logging
 import time
 
-import aiohttp.web
+from ray._private.internal_third_party import aiohttp  # noqa F401
 
 import ray.dashboard.modules.tests.test_consts as test_consts
 import ray.dashboard.modules.tests.test_utils as test_utils

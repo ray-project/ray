@@ -1,7 +1,7 @@
 import json
 import os
 from enum import Enum
-import aiohttp
+from ray._private.internal_third_party import aiohttp  # noqa: F401
 from aiohttp.web import Request, Response
 import ray.dashboard.optional_utils as optional_utils
 import ray.dashboard.utils as dashboard_utils

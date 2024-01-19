@@ -5,8 +5,7 @@ import time
 
 from collections import deque
 
-import aiohttp.web
-
+from ray._private.internal_third_party import aiohttp  # noqa: F401
 import ray.dashboard.optional_utils as dashboard_optional_utils
 import ray.dashboard.utils as dashboard_utils
 from ray._private.gcs_pubsub import GcsAioActorSubscriber
