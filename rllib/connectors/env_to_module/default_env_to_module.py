@@ -56,7 +56,7 @@ class DefaultEnvToModule(ConnectorV2):
         # - Add the most recent STATE_OUTs to `data`.
         # - Make all data in `data` have a time rank (T=1).
         if rl_module.is_stateful():
-            self._add_most_recent_states_to_data(
+            self._add_most_recent_states_to_data_and_add_time_rank(
                 data, episodes, rl_module, is_multi_agent
             )
 

@@ -653,6 +653,15 @@ class SingleAgentEpisode:
             len_lookback_buffer="auto",
         )
 
+    # TODO (sven): Distinguish between:
+    #  - global index: This is the absolute, global timestep whose values always
+    #    start from 0 (at the env reset). So doing get_observations(0, global_ts=True)
+    #    should always return the exact 1st observation (reset obs), no matter what. In
+    #    case we are in an episode chunk and `fill` or a sufficient lookback buffer is
+    #    provided, this should yield a result. Otherwise, error.
+    #  - global index=False -> indices are relative to the chunk start. If a chunk has
+    #    t_started=6 and we ask for index=0, then return observation at timestep 6
+    #    (t_started).
     def get_observations(
         self,
         indices: Optional[Union[int, List[int], slice]] = None,

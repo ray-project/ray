@@ -4,7 +4,7 @@ from typing import List, Optional, Union
 class InfiniteLookbackTimestepMapping:
     """Stores and manages mappings from global to local agent timesteps.
 
-    This class stores a list of global timesteps, i.e. environment steps in a
+    This class stores a list of "global" timesteps, i.e. environment steps in a
     multi-agent setup. Each agent in such a multi-agent setup is provided with
     an instance of this class. The list indices are the local timesteps of the
     agent, including the initial observation (i.e. local timestep (agent step)
@@ -57,7 +57,7 @@ class InfiniteLookbackTimestepMapping:
         This is the number of global timesteps the agent stepped without
         the lookback.
         """
-        return len(self.timesteps[self.lookback :])  # - self.lookback
+        return len(self.timesteps) - self.lookback
 
     def __iter__(self):
         return iter(self.timesteps)
@@ -203,16 +203,16 @@ class InfiniteLookbackTimestepMapping:
             if neg_timesteps_left_of_zero:
                 # Translate negative timestep to global timestep.
                 global_timesteps = global_timesteps + self.t_started
-            # User wants to lookback from actual global timesteps `t`.
-            #else:
-            #    # Translate negative timestep to global timestep
-            #    global_timesteps = t + global_timesteps
+            # User wants to look back from the end.
+            else:
+                # Translate negative timestep to global timestep
+                global_timesteps = len(self) + self.lookback + global_timesteps
 
         # Only return if the global timestep is present in `timesteps`.
         # Shift back or forth by `shift`, e.g. for searching for actions.
         #if (global_timesteps + shift) in self.timesteps:
         if global_timesteps in self.timesteps:
-            return self.timesteps.index(global_timesteps)
+            return self.timesteps.index(global_timesteps) + self.t_started - 1
             #return [self.timesteps.index(global_timesteps + shift) - self.lookback]
         #elif return_none:
         #    return None
