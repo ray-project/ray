@@ -2,12 +2,11 @@ import logging
 import pickle
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
-from typing import Any, AsyncIterator, List, Tuple, Union
+from typing import Any, AsyncIterator, Awaitable, Callable, List, Tuple, Union
 
 import grpc
 from starlette.types import Receive, Scope, Send
 
-from ray.actor import ActorHandle
 from ray.serve._private.common import StreamingHTTPRequest, gRPCRequest
 from ray.serve._private.constants import SERVE_LOGGER_NAME
 from ray.serve._private.utils import DEFAULT
@@ -95,10 +94,12 @@ class ASGIProxyRequest(ProxyRequest):
     def set_root_path(self, root_path: str):
         self.scope["root_path"] = root_path
 
-    def request_object(self, proxy_handle) -> StreamingHTTPRequest:
+    def request_object(
+        self, receive_asgi_messages: Callable[[str], Awaitable[bytes]]
+    ) -> StreamingHTTPRequest:
         return StreamingHTTPRequest(
             pickled_asgi_scope=pickle.dumps(self.scope),
-            http_proxy_handle=proxy_handle,
+            receive_asgi_messages=receive_asgi_messages,
         )
 
 
@@ -168,10 +169,9 @@ class gRPCProxyRequest(ProxyRequest):
         # client altogether.
         self.ray_serve_grpc_context.set_trailing_metadata([("request_id", request_id)])
 
-    def request_object(self, proxy_handle: ActorHandle) -> gRPCRequest:
+    def request_object(self) -> gRPCRequest:
         return gRPCRequest(
             grpc_user_request=self.user_request,
-            grpc_proxy_handle=proxy_handle,
         )
 
 
