@@ -47,6 +47,18 @@ class ReleaseTestStateMachine(TestStateMachine):
             for result in self.test_results[:CONTINUOUS_FAILURE_TO_JAIL]
         )
 
+    def _passing_to_flaky(self) -> bool:
+        return False
+
+    def _consistently_failing_to_flaky(self) -> bool:
+        return False
+
+    def _flaky_to_passing(self) -> bool:
+        return False
+
+    def _flaky_to_jailed(self) -> bool:
+        return False
+
     """
     Action hooks performed during state transitions
     """

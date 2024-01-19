@@ -7,6 +7,18 @@ steps:
   - name: doctestbuild
     wanda: ci/docker/doctest.build.wanda.yaml
 
+  - label: ":tapioca: build: pip-compile dependencies"
+    instance_type: small
+    commands:
+      - rm ./python/requirements_compiled.txt
+      - ./ci/ci.sh compile_pip_dependencies
+      - cp -f ./python/requirements_compiled.txt /artifact-mount/
+    soft_fail: true
+    job_env: oss-ci-base_build
+    depends_on:
+      - forge
+      - oss-ci-base_build
+
   # test
   - label: doc tests
     instance_type: large
@@ -67,3 +79,11 @@ steps:
         --test-env=USERPROFILE
     depends_on: windowsbuild
     soft_fail: true
+
+  # bot
+  - label: ":robot_face: CI state machine bot"
+    tags: skip-on-premerge
+    if: build.branch == "master" && build.env("RAYCI_CONTINUOUS_BUILD") == "1"
+    instance_type: small
+    commands:
+      - bazel run //ci/ray_ci/automation:state_machine_bot -- --production

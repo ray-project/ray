@@ -1,7 +1,7 @@
 import json
 from dataclasses import asdict, dataclass, field
 from enum import Enum
-from typing import List, NamedTuple, Optional
+from typing import Awaitable, Callable, List, NamedTuple, Optional
 
 from ray.actor import ActorHandle
 from ray.serve.generated.serve_pb2 import ApplicationStatus as ApplicationStatusProto
@@ -657,7 +657,6 @@ class gRPCRequest:
     """Sent from the GRPC proxy to replicas on both unary and streaming codepaths."""
 
     grpc_user_request: bytes
-    grpc_proxy_handle: ActorHandle
 
 
 @dataclass
@@ -665,7 +664,8 @@ class StreamingHTTPRequest:
     """Sent from the HTTP proxy to replicas on the streaming codepath."""
 
     pickled_asgi_scope: bytes
-    http_proxy_handle: ActorHandle
+    # Takes request_id, returns a pickled list of ASGI messages.
+    receive_asgi_messages: Callable[[str], Awaitable[bytes]]
 
 
 class RequestProtocol(str, Enum):
