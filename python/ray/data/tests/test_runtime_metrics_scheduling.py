@@ -8,7 +8,6 @@ from ray._private.internal_api import memory_summary
 from ray.data._internal.execution.backpressure_policy import (
     ENABLED_BACKPRESSURE_POLICIES_CONFIG_KEY,
     ConcurrencyCapBackpressurePolicy,
-    StreamingOutputBackpressurePolicy,
 )
 
 

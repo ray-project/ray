@@ -712,11 +712,6 @@ def _execution_allowed(
         cpu=global_limits.cpu, gpu=global_limits.gpu
     )
     global_ok_sans_memory = new_usage.satisfies_limit(global_limits_sans_memory)
-    downstream_usage = global_usage.downstream_memory_usage[op]
-    downstream_limit = global_limits.scale(downstream_usage.topology_fraction)
-    downstream_memory_ok = ExecutionResources(
-        object_store_memory=downstream_usage.object_store_memory
-    ).satisfies_limit(downstream_limit)
 
     # If completing a task decreases the overall object store memory usage, allow it
     # even if we're over the global limit.
