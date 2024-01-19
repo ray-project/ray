@@ -47,6 +47,15 @@ logger = logging.getLogger(__name__)
 FRAGMENTS_PER_META_FETCH = 6
 PARALLELIZE_META_FETCH_THRESHOLD = 24
 
+# The `num_cpus` for each metadata prefetching task.
+# Default to 0.5 instead of 1 because it is cheaper than normal read task.
+NUM_CPUS_FOR_META_FETCH_TASK = 0.5
+
+# The application-level exceptions to retry for metadata prefetching task.
+# Default to retry on `OSError` because AWS S3 would throw this transient
+# error when load is too high.
+RETRY_EXCEPTIONS_FOR_META_FETCH_TASK = [OSError]
+
 # The number of rows to read per batch. This is sized to generate 10MiB batches
 # for rows about 1KiB in size.
 PARQUET_READER_ROW_BATCH_SIZE = 10_000
@@ -268,8 +277,22 @@ class ParquetDatasource(Datasource):
 
         try:
             prefetch_remote_args = {}
+            prefetch_remote_args["num_cpus"] = NUM_CPUS_FOR_META_FETCH_TASK
             if self._local_scheduling:
                 prefetch_remote_args["scheduling_strategy"] = self._local_scheduling
+            else:
+                # Use the scheduling strategy ("SPREAD" by default) provided in
+                # `DataContext``, to spread out prefetch tasks in cluster, avoid
+                # AWS S3 throttling error.
+                # Note: this is the same scheduling strategy used by read tasks.
+                prefetch_remote_args[
+                    "scheduling_strategy"
+                ] = DataContext.get_current().scheduling_strategy
+            if RETRY_EXCEPTIONS_FOR_META_FETCH_TASK is not None:
+                prefetch_remote_args[
+                    "retry_exceptions"
+                ] = RETRY_EXCEPTIONS_FOR_META_FETCH_TASK
+
             self._metadata = (
                 meta_provider.prefetch_file_metadata(
                     pq_ds.fragments, **prefetch_remote_args

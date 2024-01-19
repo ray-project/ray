@@ -112,7 +112,7 @@ compile_pip_dependencies() {
   python -c "import torch" 2>/dev/null && HAS_TORCH=1
   pip install --no-cache-dir numpy torch
 
-  pip-compile --resolver=backtracking -q \
+  pip-compile --verbose --resolver=backtracking \
      --pip-args --no-deps --strip-extras --no-header -o \
     "${WORKSPACE_DIR}/python/$TARGET" \
     "${WORKSPACE_DIR}/python/requirements.txt" \

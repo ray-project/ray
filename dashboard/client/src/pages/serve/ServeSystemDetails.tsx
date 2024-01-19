@@ -18,8 +18,8 @@ import { MetadataSection } from "../../components/MetadataSection";
 import { StatusChip, StatusChipProps } from "../../components/StatusChip";
 import { HelpInfo } from "../../components/Tooltip";
 import {
-  ServeApplication,
   ServeApplicationsRsp,
+  ServeDeployment,
   ServeProxy,
 } from "../../type/serve";
 import { useFetchActor } from "../actor/hook/useActorDetail";
@@ -158,13 +158,13 @@ export const ServeSystemDetails = ({
 type ServeSystemPreviewProps = {
   serveDetails: ServeDetails;
   proxies: ServeProxy[];
-  allApplications: ServeApplication[];
+  allDeployments: ServeDeployment[];
 };
 
 export const ServeSystemPreview = ({
   serveDetails,
   proxies,
-  allApplications,
+  allDeployments,
 }: ServeSystemPreviewProps) => {
   const { data: controllerActor } = useFetchActor(
     serveDetails.controller_info.actor_id,
@@ -200,12 +200,12 @@ export const ServeSystemPreview = ({
             ),
           },
           {
-            label: "Application status",
+            label: "Deployments status",
             content: (
               <StatusCountChips
-                elements={allApplications}
+                elements={allDeployments}
                 statusKey="status"
-                type="serveApplication"
+                type="serveDeployment"
               />
             ),
           },

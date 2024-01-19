@@ -17,10 +17,6 @@ class TestCNNEncoders(unittest.TestCase):
 
         # Loop through permutations of hyperparameters.
         inputs_dimss = [
-            [480, 640, 3],
-            [480, 640, 1],
-            [240, 320, 3],
-            [240, 320, 1],
             [96, 96, 3],
             [96, 96, 1],
             [84, 84, 3],

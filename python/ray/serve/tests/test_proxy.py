@@ -56,21 +56,25 @@ class FakeRef:
         pass
 
 
-class FakeActor:
-    def remote(self, snapshot_ids):
-        return FakeRef()
-
-
 class FakeActorHandler:
     def __init__(self, actor_id):
         self._actor_id = actor_id
 
     @property
     def listen_for_change(self):
-        return FakeActor()
+        class FakeListenForChangeActorMethod:
+            def remote(self, snapshot_ids):
+                return FakeRef()
 
-    def remote(self, *args, **kwargs):
-        return FakeRef()
+        return FakeListenForChangeActorMethod()
+
+    @property
+    def receive_asgi_messages(self):
+        class FakeReceiveASGIMessagesActorMethod:
+            def remote(self, request_id):
+                return FakeRef()
+
+        return FakeReceiveASGIMessagesActorMethod()
 
 
 class FakeGrpcHandle:
@@ -174,7 +178,10 @@ class FakeHttpReceive:
         self.messages = messages or []
 
     async def __call__(self):
-        return self.messages.pop()
+        while True:
+            if self.messages:
+                return self.messages.pop()
+            await asyncio.sleep(0.1)
 
 
 class FakeHttpSend:
@@ -196,7 +203,6 @@ class TestgRPCProxy:
             node_ip_address=node_ip_address,
             proxy_router_class=FakeProxyRouter,
             controller_actor=FakeActorHandler("fake_controller_actor"),
-            proxy_actor=FakeActorHandler("fake_proxy_actor"),
         )
 
     @pytest.mark.asyncio
@@ -546,6 +552,66 @@ class TestHTTPProxy:
         )
 
         queue.close.assert_called_once()
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize(
+        "disconnect",
+        [
+            "client",
+            "server_with_disconnect_message",
+            "server_without_disconnect_message",
+        ],
+    )
+    async def test_websocket_call(self, disconnect: str):
+        """Test HTTPProxy websocket __call__ calls proxy_request."""
+
+        if disconnect == "client":
+            receive = FakeHttpReceive(
+                [{"type": "websocket.disconnect", "code": "1000"}]
+            )
+            expected_messages = [
+                {"type": "websocket.accept"},
+                {"type": "websocket.send"},
+            ]
+        elif disconnect == "server_with_disconnect_message":
+            receive = FakeHttpReceive()
+            expected_messages = [
+                {"type": "websocket.accept"},
+                {"type": "websocket.send"},
+                {"type": "websocket.disconnect", "code": "1000"},
+            ]
+        else:
+            receive = FakeHttpReceive()
+            expected_messages = [
+                {"type": "websocket.accept"},
+                {"type": "websocket.send"},
+            ]
+
+        http_proxy = self.create_http_proxy()
+        http_proxy.proxy_router.route = "route"
+        http_proxy.proxy_router.handle = FakeHTTPHandle(messages=expected_messages)
+        http_proxy.proxy_router.app_is_cross_language = False
+
+        scope = {
+            "type": "websocket",
+            "headers": [
+                (
+                    b"x-request-id",
+                    b"fake_request_id",
+                ),
+            ],
+        }
+        send = FakeHttpSend()
+
+        # Ensure before calling __call__, send.messages should be empty.
+        assert send.messages == []
+        await http_proxy(
+            scope=scope,
+            receive=receive,
+            send=send,
+        )
+        # Ensure after calling __call__, send.messages should be expected messages.
+        assert send.messages == expected_messages
 
 
 class TestTimeoutKeepAliveConfig:

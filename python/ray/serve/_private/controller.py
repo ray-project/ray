@@ -54,7 +54,7 @@ from ray.serve._private.utils import (
     get_all_live_placement_group_names,
     get_head_node_id,
 )
-from ray.serve.config import HTTPOptions, gRPCOptions
+from ray.serve.config import HTTPOptions, ProxyLocation, gRPCOptions
 from ray.serve.generated.serve_pb2 import (
     ActorNameList,
     DeploymentArgs,
@@ -65,8 +65,10 @@ from ray.serve.generated.serve_pb2 import EndpointInfo as EndpointInfoProto
 from ray.serve.generated.serve_pb2 import EndpointSet
 from ray.serve.schema import (
     ApplicationDetails,
+    DeploymentDetails,
     HTTPOptionsSchema,
     LoggingConfig,
+    ProxyDetails,
     ServeActorDetails,
     ServeApplicationSchema,
     ServeDeploySchema,
@@ -536,6 +538,47 @@ class ServeController:
 
         return self.deployment_state_manager.get_running_replica_infos()
 
+    def get_actor_details(self) -> ServeActorDetails:
+        """Returns the actor details for this controller.
+
+        Currently used for test only.
+        """
+        return self._actor_details
+
+    def get_proxy_details(self, node_id: str) -> Optional[ProxyDetails]:
+        """Returns the proxy details for the proxy on the given node.
+
+        Currently used for test only. Will return None if the proxy doesn't exist on
+        the given node.
+        """
+        if self.proxy_state_manager is None:
+            return None
+
+        return self.proxy_state_manager.get_proxy_details().get(node_id)
+
+    def get_deployment_timestamps(self, app_name: str) -> float:
+        """Returns the deployment timestamp for the given app.
+
+        Currently used for test only.
+        """
+        for (
+            _app_name,
+            app_status_info,
+        ) in self.application_state_manager.list_app_statuses().items():
+            if app_name == _app_name:
+                return app_status_info.deployment_timestamp
+
+    def get_deployment_details(
+        self, app_name: str, deployment_name: str
+    ) -> DeploymentDetails:
+        """Returns the deployment details for the app and deployment.
+
+        Currently used for test only.
+        """
+        return self.application_state_manager.list_deployment_details(app_name)[
+            deployment_name
+        ]
+
     def get_http_config(self) -> HTTPOptions:
         """Return the HTTP proxy configuration."""
         if self.proxy_state_manager is None:
@@ -932,14 +975,14 @@ class ServeController:
         return ServeInstanceDetails(
             target_capacity=self._target_capacity,
             controller_info=self._actor_details,
-            proxy_location=http_config.location,
+            proxy_location=ProxyLocation._from_deployment_mode(http_config.location),
             http_options=http_options,
             grpc_options=grpc_options,
             proxies=self.proxy_state_manager.get_proxy_details()
             if self.proxy_state_manager
             else None,
             applications=applications,
-        ).dict(exclude_unset=True)
+        )._get_user_facing_json_serializable_dict(exclude_unset=True)
 
     def get_serve_status(self, name: str = SERVE_DEFAULT_APP_NAME) -> bytes:
         """Return application status
