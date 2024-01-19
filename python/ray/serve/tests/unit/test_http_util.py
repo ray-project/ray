@@ -127,14 +127,14 @@ class TestASGIReceiveProxy:
 
     async def test_receive_asgi_messages_raises(self):
         async def receive_asgi_messages(request_id: str) -> bytes:
-            raise RuntimeError("maybe actor crashed!")
+            raise RuntimeError("maybe actor crashed")
 
         loop = get_or_create_event_loop()
         asgi_receive_proxy = ASGIReceiveProxy("", receive_asgi_messages)
         receiver_task = loop.create_task(asgi_receive_proxy.fetch_until_disconnect())
 
         try:
-            with pytest.raises(RuntimeError, match="maybe actor crashed?"):
+            with pytest.raises(RuntimeError, match="maybe actor crashed"):
                 await asgi_receive_proxy()
         finally:
             receiver_task.cancel()

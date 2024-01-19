@@ -712,6 +712,8 @@ class UserCallableWrapper:
         if self._user_code_event_loop_thread is None:
 
             def _run_user_code_event_loop():
+                # Required so that calls to get the current running event loop work
+                # properly in user code.
                 asyncio.set_event_loop(self._user_code_event_loop)
                 self._user_code_event_loop.run_forever()
 
@@ -842,11 +844,14 @@ class UserCallableWrapper:
     async def _call_user_health_check(self):
         await self._call_func_or_gen(self._user_health_check)
 
-    async def call_user_health_check(self):
+    def _raise_if_not_initialized(self, method_name: str):
         if self._callable is None:
             raise RuntimeError(
-                "initialize_callable must be called before health check."
+                "`initialize_callable` must be called before `{method_name}`."
             )
+
+    async def call_user_health_check(self):
+        self._raise_if_not_initialized("call_user_health_check")
 
         # If the user provided a health check, call it on the user code thread. If user
         # code blocks the event loop the health check may time out.
@@ -858,8 +863,7 @@ class UserCallableWrapper:
 
     @_run_on_user_code_event_loop
     async def call_reconfigure(self, user_config: Any):
-        if self._callable is None:
-            raise RuntimeError("initialize_callable must be called before reconfigure.")
+        self._raise_if_not_initialized("call_reconfigure")
 
         # NOTE(edoakes): there is the possibility of a race condition in user code if
         # they don't have any form of concurrency control between `reconfigure` and
@@ -1020,8 +1024,7 @@ class UserCallableWrapper:
         Raises any exception raised by the user code so it can be propagated as a
         `RayTaskError`.
         """
-        if self._callable is None:
-            raise RuntimeError("initialize_callable must be called before user method.")
+        self._raise_if_not_initialized("call_user_method")
 
         logger.info(
             f"Started executing request {request_metadata.request_id}",
@@ -1095,8 +1098,7 @@ class UserCallableWrapper:
         Calling this multiple times has no effect; only the first call will actually
         call the destructor.
         """
-        if self._callable is None:
-            raise RuntimeError("initialize_callable must be called before destructor.")
+        self._raise_if_not_initialized("call_destructor")
 
         # Only run the destructor once. This is safe because there is no `await` between
         # checking the flag here and flipping it to `True` below.
