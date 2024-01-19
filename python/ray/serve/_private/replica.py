@@ -23,6 +23,7 @@ from ray.serve._private.autoscaling_metrics import InMemoryMetricsStore
 from ray.serve._private.common import (
     DeploymentID,
     ReplicaName,
+    ReplicaQueueLengthInfo,
     ReplicaTag,
     ServeComponentType,
     StreamingHTTPRequest,
@@ -473,6 +474,24 @@ class ReplicaActor:
     ) -> AsyncGenerator[Any, None]:
         """Generator that is the entrypoint for all `stream=True` handle calls."""
         request_metadata = pickle.loads(pickled_request_metadata)
+
+        limit = self._deployment_config.max_concurrent_queries
+        num_ongoing = self.get_num_ongoing_requests()
+        if num_ongoing >= limit:
+            logger.warning(
+                f"Replica at capacity of max_concurrent_queries={limit}, "
+                f"rejecting request {request_metadata.request_id}."
+            )
+            yield pickle.dumps(
+                ReplicaQueueLengthInfo(accepted=False, num_ongoing_requests=num_ongoing)
+            )
+            return
+
+        # XXX: maybe put this after kicking off user task for pipelining.
+        yield pickle.dumps(
+            ReplicaQueueLengthInfo(accepted=True, num_ongoing_requests=num_ongoing)
+        )
+
         with self._wrap_user_method_call(request_metadata):
             async for result in self._call_user_generator(
                 request_metadata,

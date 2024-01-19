@@ -26,7 +26,7 @@ def main(num_replicas: int, num_requests: int):
 
     latencies: pd.Series = asyncio.new_event_loop().run_until_complete(
         run_latency_benchmark(
-            lambda: requests.get("http://localhost:8000"),
+            lambda: requests.get("http://localhost:8000").raise_for_status(),
             num_requests=num_requests,
         )
     )
