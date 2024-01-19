@@ -165,4 +165,18 @@ steps:
       - bazel run //ci/ray_ci:test_in_docker -- //... data --run-flaky-tests 
         --test-env RAY_DATA_USE_STREAMING_EXECUTOR=1 --parallelism-per-worker 3
         --build-name data14build
+        --except-tags gpu_only,gpu
     depends_on: data14build
+
+  - label: ":database: data: flaky gpu tests"
+    tags: 
+      - python
+      - data
+      - skip-on-premerge
+    instance_type: gpu-large
+    soft_fail: true
+    commands:
+      - bazel run //ci/ray_ci:test_in_docker -- //... data --run-flaky-tests 
+        --build-name docgpubuild
+        --only-tags gpu,gpu_only
+    depends_on: docgpubuild
