@@ -81,7 +81,7 @@ def basic_sync_generator(n: int, raise_exception: bool = False):
             raise RuntimeError("uh-oh!")
 
 
-def basic_async_generator(n: int, raise_exception: bool = False):
+async def basic_async_generator(n: int, raise_exception: bool = False):
     for i in range(n):
         yield i
 
@@ -447,8 +447,7 @@ async def test_destructor_only_called_once(async_del: bool):
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize("async_del", [False, True])
-async def test_no_user_health_check_not_blocked(async_del: bool):
+async def test_no_user_health_check_not_blocked():
     """
     If there is no user-defined health check, it should not interact with the user code
     event loop at all and therefore still return if the event loop is blocked.
