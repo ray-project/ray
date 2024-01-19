@@ -1244,8 +1244,8 @@ cdef report_streaming_generator_output(
         context: Streaming generator's execution context.
         output_or_exception: The output yielded from a
             generator or raised as an exception.
-        generator_index: index of the output element in the 
-            generated sequence 
+        generator_index: index of the output element in the
+            generated sequence
     """
     worker = ray._private.worker.global_worker
 
@@ -1304,7 +1304,6 @@ cdef report_streaming_generator_output(
             generator_index,
             context.attempt_number,
             context.waiter))
-
 
 
 cdef execute_streaming_generator_sync(StreamingGeneratorExecutionContext context):
