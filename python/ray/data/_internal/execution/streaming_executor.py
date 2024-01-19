@@ -270,7 +270,6 @@ class StreamingExecutor(Executor, threading.Thread):
         self._report_current_usage(cur_usage, limits)
         op = select_operator_to_run(
             topology,
-            cur_usage,
             limits,
             self._backpressure_policies,
             ensure_at_least_one_running=self._consumer_idling(),
@@ -285,10 +284,8 @@ class StreamingExecutor(Executor, threading.Thread):
             if DEBUG_TRACE_SCHEDULING:
                 _debug_dump_topology(topology)
             topology[op].dispatch_next_task()
-            cur_usage = TopologyResourceUsage.of(topology)
             op = select_operator_to_run(
                 topology,
-                cur_usage,
                 limits,
                 self._backpressure_policies,
                 ensure_at_least_one_running=self._consumer_idling(),

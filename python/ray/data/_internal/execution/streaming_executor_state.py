@@ -524,7 +524,6 @@ def update_operator_states(topology: Topology) -> None:
 
 def select_operator_to_run(
     topology: Topology,
-    cur_usage: TopologyResourceUsage,
     limits: ExecutionResources,
     backpressure_policies: List[BackpressurePolicy],
     ensure_at_least_one_running: bool,
@@ -544,11 +543,10 @@ def select_operator_to_run(
     provides backpressure if the consumer is slow. However, once a bundle is returned
     to the user, it is no longer tracked.
     """
-    assert isinstance(cur_usage, TopologyResourceUsage), cur_usage
-
     # Filter to ops that are eligible for execution.
     ops = []
     for op, state in topology.items():
+        cur_usage = TopologyResourceUsage.of(topology)
         under_resource_limits = _execution_allowed(op, cur_usage, limits)
         if (
             op.need_more_inputs()
@@ -730,4 +728,4 @@ def _execution_allowed(
     ):
         return True
 
-    return global_ok_sans_memory and downstream_memory_ok
+    return False
