@@ -1349,8 +1349,9 @@ cdef execute_streaming_generator_sync(StreamingGeneratorExecutionContext context
 
 async def execute_streaming_generator_async(
         context: StreamingGeneratorExecutionContext):
-    """Execute a given generator and streaming-report the
-        result to the given caller_address.
+    """Execute a given generator and report the
+        result to the given caller_address in a streaming (ie as
+        soon as become available) fashion.
 
     This method is same as `execute_streaming_generator_sync`,
     but it should be used inside an async event loop.
@@ -1369,8 +1370,7 @@ async def execute_streaming_generator_async(
         context: The context to execute streaming generator.
     """
     cdef:
-        int64_t gen_index = 0
-        uint8_t is_exception = 0
+        int64_t cur_generator_index = 0
 
     assert context.is_initialized()
     # Generator task should only have 1 return object ref,
@@ -1390,31 +1390,32 @@ async def execute_streaming_generator_async(
             raise
         except Exception as e:
             output_or_exception = e
-            is_exception = 1
 
         loop = asyncio.get_running_loop()
         worker = ray._private.worker.global_worker
 
+        # NOTE: Reporting generator output in a streaming fashion,
+        #       is done in a standalone thread-pool fully *asynchronously*
+        #       to avoid blocking the event-loop and allow it to *concurrently*
+        #       make progress, since serializing and actual RPC I/O is done
+        #       with "nogil".
         futures.append(
-            # Run it in a separate thread to that we can
-            # avoid blocking the event loop when serializing
-            # the output (which has nogil).
             loop.run_in_executor(
                 worker.core_worker.get_thread_pool_for_async_event_loop(),
                 report_streaming_generator_output,
-                output_or_exception,
                 context,
-                gen_index,
+                output_or_exception,
+                cur_generator_index,
             )
         )
-        gen_index += 1
 
-        if is_exception:
+        cur_generator_index += 1
+
+        if isinstance(output_or_exception, Exception):
             break
 
-    # TODO elaborate
+    # Make sure all RPC I/O completes before returning
     await asyncio.gather(*futures)
-    futures.clear()
 
 
 cdef create_generator_return_obj(
