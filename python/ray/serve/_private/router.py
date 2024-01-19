@@ -975,10 +975,10 @@ class MagicReplicaScheduler(ReplicaScheduler):
         new_replica_queues = {}
         for r in replicas:
             new_replicas[r.replica_id] = r
-            new_replica_queues = self._replica_queues.get(r.replica_id, 0)
+            new_replica_queues[r.replica_id] = self._replica_queues.get(r.replica_id, 0)
 
         self._replicas = new_replicas
-        self._new_replica_queues = new_replica_queues
+        self._replica_queues = new_replica_queues
         self._replicas_updated_event.set()
 
     async def choose_replica_for_query(self, query: Query) -> ReplicaWrapper:
@@ -1024,6 +1024,8 @@ class MagicReplicaScheduler(ReplicaScheduler):
             else:
                 chosen_id = choice_2
 
+        # XXX: opportunistically increment.
+        self._replica_queues[chosen_id] += 1
         return self._replicas[chosen_id]
 
     async def assign_replica(

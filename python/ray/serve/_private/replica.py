@@ -409,7 +409,7 @@ class ReplicaActor:
 
         # XXX: maybe put this after kicking off user task for pipelining.
         yield pickle.dumps(
-            ReplicaQueueLengthInfo(accepted=True, num_ongoing_requests=num_ongoing)
+            ReplicaQueueLengthInfo(accepted=True, num_ongoing_requests=num_ongoing+1)
         )
 
         with self._wrap_user_method_call(request_metadata):
@@ -508,7 +508,7 @@ class ReplicaActor:
 
         # XXX: maybe put this after kicking off user task for pipelining.
         yield pickle.dumps(
-            ReplicaQueueLengthInfo(accepted=True, num_ongoing_requests=num_ongoing)
+            ReplicaQueueLengthInfo(accepted=True, num_ongoing_requests=num_ongoing+1)
         )
 
         with self._wrap_user_method_call(request_metadata):
