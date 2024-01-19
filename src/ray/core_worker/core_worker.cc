@@ -3047,22 +3047,20 @@ Status CoreWorker::ReportGeneratorItemReturns(
         }
       });
 
-  // Backpressure if needed. See task_manager.h and search "backpressure" for protocol
-  // details.
-  if (waiter) {
-    return waiter->WaitUntilObjectConsumed(/*check_signals*/ [this]() {
-      if (options_.check_signals) {
-        return options_.check_signals();
-      } else {
-        return Status::OK();
-      }
-    });
-  } else {
+  auto check_signals_callback = [this]() {
     if (options_.check_signals) {
       return options_.check_signals();
     } else {
       return Status::OK();
     }
+  };
+
+  if (waiter) {
+    // Backpressure if needed. See task_manager.h and search "backpressure" for protocol
+    // details.
+    return waiter->WaitUntilObjectConsumed(check_signals_callback);
+  } else {
+    return check_signals_callback();
   }
 }
 
