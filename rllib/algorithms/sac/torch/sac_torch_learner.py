@@ -30,19 +30,17 @@ class SACTorchLearner(SACLearner, TorchLearner):
     `self.compute_loss_for_module()` method.
     """
 
-    @override(TorchLearner)
-    def build(self) -> None:
-        super().build()
-        for module_id, curr_alpha_param in self.curr_log_alpha.items():
-            self.curr_log_alpha[module_id] = nn.Parameter(curr_alpha_param)
-
     # TODO (simon): Set different learning rates for optimizers.
     @override(TorchLearner)
     def configure_optimizers_for_module(
         self, module_id: ModuleID, config: AlgorithmConfig = None, hps=None
     ) -> None:
+        
+        # Receive the module.
         module = self._module[module_id]
+
         # Define the optimizer for the critic.
+        # TODO (sven): Maybe we change here naming to `qf` for unification.
         params_critic = self.get_parameters(module.qf_encoder) + self.get_parameters(
             module.qf
         )
@@ -71,16 +69,13 @@ class SACTorchLearner(SACLearner, TorchLearner):
         )
 
         # Define the optimizer for the temperature.
-        # TODO (Simon): Test, if this works. Otherwise define the alphas
-        # in the `TorchLearner` instead.
-        #param_alpha = module.log_alpha
-        param_alpha = self.curr_log_alpha[module_id]
-        optim_temperature = torch.optim.Adam([param_alpha], eps=1e-7)
+        temperature = self.curr_log_alpha[module_id]
+        optim_temperature = torch.optim.Adam([temperature], eps=1e-7)
         self.register_optimizer(
             module_id=module_id,
             optimizer_name="alpha",
             optimizer=optim_temperature,
-            params=[param_alpha],
+            params=[temperature],
             lr_or_lr_schedule=self.config.lr,
         )
 
@@ -92,8 +87,12 @@ class SACTorchLearner(SACLearner, TorchLearner):
             optim.zero_grad(set_to_none=True)
 
         grads = {}
+
+        # Calculate gradients for each loss by its optimizer.
+        # TODO (sven): Maybe we rename to `actor`, `critic`. We then also
+        # need to either add to or change in the `Learner` constants.
         for component in ["qf", "policy", "alpha"]:
-            self._metrics[DEFAULT_POLICY_ID][component + "_loss"].backward()
+            self._metrics[DEFAULT_POLICY_ID][component + "_loss"].backward(retain_graph=True)
             grads.update(
                 {
                     pid: p.grad
@@ -118,7 +117,9 @@ class SACTorchLearner(SACLearner, TorchLearner):
         deterministic = self.config._deterministic_loss
 
         # Receive the current alpha hyperparameter.
-        alpha = torch.exp(self.curr_log_alpha[module_id]) #torch.exp(self.module[module_id].log_alpha)
+        alpha = torch.exp(
+            self.curr_log_alpha[module_id]
+        )
 
         # Get the train action distribution for the current policy and current state.
         # This is needed for the policy (actor) loss in SAC.
@@ -178,12 +179,12 @@ class SACTorchLearner(SACLearner, TorchLearner):
                 SampleBatch.ACTIONS: actions_next,
             }
         )
-        q_next = self.module[module_id]._qf_target_forward_train(q_batch_next)[QF_PREDS]
+        q_target_next = self.module[module_id]._qf_target_forward_train(q_batch_next)[QF_PREDS]
         # Compute value function for next state (see eq. (3) in Haarnoja et al. (2018)).
         # NOte, we use here the sampled actions in the log probabilities.
-        q_next -= alpha * logps_next
+        q_target_next -= alpha * logps_next
         # Now mask all Q-values with terminate next states in the targets.
-        q_next_masked = (1.0 - batch[SampleBatch.TERMINATEDS].float()) * q_next
+        q_next_masked = (1.0 - batch[SampleBatch.TERMINATEDS].float()) * q_target_next
 
         # Compute the right hand side of the Bellman equation.
         # Detach this node from the computation graph as we do not want to
@@ -222,7 +223,7 @@ class SACTorchLearner(SACLearner, TorchLearner):
         # TODO (simon): Check, if this is indeed log(alpha), prob. just better
         # to optimize and monotonic function.
         alpha_loss = -torch.mean(
-            self.curr_log_alpha[module_id] # self.module[module_id].log_alpha
+            self.curr_log_alpha[module_id]  # self.module[module_id].log_alpha
             * (logps_curr.detach() + self.target_entropy[module_id])
         )
 

@@ -26,7 +26,7 @@ class SACLearner(Learner):
         self.curr_log_alpha: Dict[ModuleID, Scheduler] = LambdaDefaultDict(
             lambda module_id: self._get_tensor_variable(
                 # Note, we want to train the temperature parameter.
-                np.log(self.config.get_config_for_module(module_id).initial_alpha),
+                [np.log(self.config.get_config_for_module(module_id).initial_alpha)],
                 trainable=True,
             )
         )

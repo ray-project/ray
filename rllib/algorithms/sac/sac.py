@@ -12,6 +12,7 @@ from ray.rllib.env.single_agent_episode import SingleAgentEpisode
 from ray.rllib.evaluation.rollout_worker import RolloutWorker
 from ray.rllib.execution.rollout_ops import synchronous_parallel_sample
 from ray.rllib.policy.policy import Policy
+from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils import deep_update
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.deprecation import (
@@ -493,10 +494,10 @@ class SAC(DQN):
                 train_dict = self.local_replay_buffer.sample(
                     num_items=self.config.train_batch_size,
                     # TODO (simon): Implement for n-step adjustment.
-                    # batch_length_T=self.config.n_step,
+                    # batch_length_T=self.config.n_step + 1,
                     batch_length_T=2,
                 )
-                from ray.rllib.policy.sample_batch import SampleBatch
+                
 
                 # TODO (sven): This looks a bit ugly, but we have not the same
                 # naming in `SingleAgentEpisode` and `SampleBatch`.
@@ -549,7 +550,6 @@ class SAC(DQN):
             # same time, updating weights after all training iteration should be faster.
             # Update weights and global_vars - after learning on the local worker -
             # on all remote workers.
-
             with self._timers[SYNCH_WORKER_WEIGHTS_TIMER]:
                 if self.workers.num_remote_workers() > 0:
                     # NOTE: the new API stack does not use global vars.

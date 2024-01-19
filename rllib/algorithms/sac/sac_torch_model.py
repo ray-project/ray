@@ -188,7 +188,6 @@ class SACTorchModel(TorchModelV2, nn.Module):
                 self.concat_obs_and_actions = True
             else:
                 input_space = gym.spaces.Tuple([orig_space, action_space])
-
         model = ModelCatalog.get_model_v2(
             input_space,
             action_space,

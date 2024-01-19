@@ -431,7 +431,7 @@ class TorchLearner(Learner):
     def _get_tensor_variable(
         self, value, dtype=None, trainable=False
     ) -> "torch.Tensor":
-        return torch.tensor(
+        tensor = torch.tensor(
             value,
             requires_grad=trainable,
             device=self._device,
@@ -446,6 +446,7 @@ class TorchLearner(Learner):
                 )
             ),
         )
+        return nn.Parameter(tensor) if trainable else tensor
 
     @staticmethod
     @override(Learner)

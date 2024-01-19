@@ -21,13 +21,6 @@ torch, nn = try_import_torch()
 class SACTorchRLModule(TorchRLModule, SACRLModule):
     framework: str = "torch"
 
-    @override(SACRLModule)
-    def setup(self):
-
-        super().setup()
-        self.log_alpha = nn.Parameter(torch.Tensor([self.alpha]).log())
-
-
     @override(RLModule)
     def _forward_inference(self, batch: NestedDict) -> Dict[str, Any]:
         output = {}
