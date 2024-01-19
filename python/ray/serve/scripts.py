@@ -806,9 +806,7 @@ def build(
 
 @cli.command(
     short_help="TODO.",
-    help=(
-        "TODO."
-    ),
+    help=("TODO."),
 )
 @click.argument("config_or_import_path")
 @click.argument("arguments", nargs=-1, required=False)
@@ -835,8 +833,7 @@ def build(
         "Directory containing files that your application(s) will run in. Can be a "
         "local directory or a remote URI to a .zip file (S3, GS, HTTP). "
         "This overrides the working_dir in --runtime-env if both are "
-        "specified. This will be passed to ray.init() as the default for "
-        "deployments."
+        "specified."
     ),
 )
 @click.option(
@@ -844,18 +841,14 @@ def build(
     required=False,
     default="TODO",
     type=str,
-    help=(
-        "TODO."
-    ),
+    help=("TODO."),
 )
 @click.option(
     "--image",
     required=False,
     default="TODO",
     type=str,
-    help=(
-        "TODO."
-    ),
+    help=("TODO."),
 )
 def publish(
     config_or_import_path: str,
@@ -897,7 +890,10 @@ def publish(
         )
         config = ServeDeploySchema(applications=[app])
 
-def _publish(
+    _publish_provider(config, name=name, image=image)
+
+
+def _publish_provider(
     config: ServeDeploySchema,
     name: Optional[str] = None,
     image: Optional[str] = None,
@@ -905,16 +901,19 @@ def _publish(
     from anyscale import AnyscaleSDK
     from anyscale.sdk.anyscale_client.models import ApplyProductionServiceV2Model
 
+    # TODO: convert to build_id ?
     assert image is None, "Not implemented yet."
 
     sdk = AnyscaleSDK()
     apply_model = ApplyProductionServiceV2Model(
         name=name,
-        project_id=service.project_id,
-        compute_config_id=compute_config_id,
-        build_id=build_id,
         ray_serve_config=config.dict(),
     )
+
+    # TODO: log some stuff?
+    service = sdk.rollout_service_v2(apply_model).result
+    assert service is not None
+
 
 class ServeDeploySchemaDumper(yaml.SafeDumper):
     """YAML dumper object with custom formatting for ServeDeploySchema.
