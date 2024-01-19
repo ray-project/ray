@@ -924,6 +924,7 @@ class Router:
         self,
         controller_handle: ActorHandle,
         deployment_id: DeploymentID,
+        handle_id: str,
         self_node_id: str,
         self_actor_id: str,
         self_availability_zone: Optional[str],
@@ -938,6 +939,7 @@ class Router:
         """
         self._event_loop = event_loop
         self.deployment_id = deployment_id
+        self.handle_id = handle_id
 
         if _router_cls:
             self._replica_scheduler = load_class(_router_cls)(
@@ -1017,7 +1019,7 @@ class Router:
                 and self.num_queued_queries
             ):
                 self.push_metrics_to_controller(
-                    {self.deployment_id: self.num_queued_queries}, time.time()
+                    self._collect_handle_queue_metrics(), time.time()
                 )
 
             self.metrics_pusher = MetricsPusher()
@@ -1034,7 +1036,7 @@ class Router:
                 self.metrics_pusher.shutdown()
 
     def _collect_handle_queue_metrics(self) -> Dict[str, int]:
-        return {self.deployment_id: self.num_queued_queries}
+        return (self.deployment_id, self.handle_id), self.num_queued_queries
 
     async def assign_request(
         self,
@@ -1060,7 +1062,9 @@ class Router:
             and len(self._replica_scheduler.curr_replicas) == 0
             and self.num_queued_queries == 1
         ):
-            self.push_metrics_to_controller({self.deployment_id: 1}, time.time())
+            self.push_metrics_to_controller(
+                self._collect_handle_queue_metrics(), time.time()
+            )
 
         try:
             query = Query(
