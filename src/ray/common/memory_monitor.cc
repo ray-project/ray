@@ -113,24 +113,29 @@ std::tuple<int64_t, int64_t> MemoryMonitor::GetMemoryBytes() {
 
 int64_t MemoryMonitor::GetCGroupV1MemoryUsedBytes(const char *stat_path,
                                                   const char *usage_path) {
-  // Formula to calculate in-used memory from cgroup memory info file:
-  //  used_memory = `memory.usage_in_bytes` - (`memory.stat.total_cache - memory.stat.total_shmem`)
+  // How does this function calculate in-used memory from cgroup memory info file?
+  // It reads 2 cgroup files:
+  //  mem stat file: /sys/fs/cgroup/memory/memory.stat
+  //  mem usage file: /sys/fs/cgroup/memory/memory.usage_in_bytes
+  // Formula:
+  //  OS_managed_cache_and_buffer = `memory.stat.total_cache - memory.stat.total_shmem`
+  //  used_memory = `memory.usage_in_bytes` - OS_managed_cache_and_buffer
   //
   // This value is consistent with values `MemTotal` `MemAvailable` `MemFree` in `/proc/meminfo`
   //  and they have relationship of:
   //  - `memory.usage_in_bytes` == `MemTotal` - `MemFree`
   //  - `memory.stat.total_cache` == `MemAvailable` - `MemFree`
-  //  - `memory.stat.total_cache` == OS_managed_cache_and_buffer + `shmem`
+  //  - OS_managed_cache_and_buffer = `memory.stat.total_cache` - `shmem`
   //
   // Explanation: What's this part `OS_managed_cache_and_buffer` memory for and why
   //   we should treat this part memory as "Not-in-used" ?
-  // Linux OS tries to fully use the whole physical memory size, so that in many
-  // cases we can observe that the system has very little `MemFree` size,
-  // but at the same time system might have a large `MemAvailable` size,
-  // then this part `MemAvailable - MemFree` size is borrowed by Linux OS
-  // to cache pages / buffers , BUT, once user process requests to allocate memory,
-  // and there is no sufficient free memory, OS will evict cache data out of this
-  // part memory and allocate them to user proces.
+  //   Linux OS tries to fully use the whole physical memory size, so that in many
+  //   cases we can observe that the system has very little `MemFree` size,
+  //   but at the same time system might have a large `MemAvailable` size,
+  //   then this part `MemAvailable - MemFree` size is borrowed by Linux OS
+  //   to cache pages / buffers , BUT, once user process requests to allocate memory,
+  //   and there is no sufficient free memory, OS will evict cache data out of this
+  //   part memory and allocate them to user proces.
   //
   // Explanation: What's the part of `shmem` and why we should treat it as "in-used" ?
   //   `shmem` overview: https://man7.org/linux/man-pages/man7/shm_overview.7.html
@@ -141,22 +146,35 @@ int64_t MemoryMonitor::GetCGroupV1MemoryUsedBytes(const char *stat_path,
   //   We can read `shmem` value from /proc/meminfo `Shmem` item or from
   //   /sys/fs/cgroup/memory/memory.stat `total_shmem` item.
   //
-  // Explanation: Why don't use
+  // Explanation: Why don't use cgroup
   //  `memory.stat.total_rss` and `memory.stat.inactive_file_bytes` to compute the
   // in-used memory ?
-  // In my test using these values can't calculate out correct used memory number,
-  // But in my test,
-  //  cgroup `memory.usage_in_bytes` value perfectly matches (`MemTotal` - `MemFree`) value,
-  //  so I am sure that `memory.usage_in_bytes` value is correct.
-  //  and cgroup `memory.stat.total_cache` value also perfectly matches
-  //  (`MemAvailable` - `MemFree`) value,
+  //   In my test using these values can't calculate out correct used memory number,
+  //   cgroup official doc is fuzzy when describing these values.
+  //   But in my test,
+  //   cgroup `memory.usage_in_bytes` value perfectly matches (`MemTotal` - `MemFree`) value,
+  //   so I am sure that `memory.usage_in_bytes` value is correct.
+  //   and cgroup `memory.stat.total_cache` value also perfectly matches
+  //   (`MemAvailable` - `MemFree`) value,
   //
-  // Testing criteria:
-  //  - If we use dd command to write a large file to disk, after dd  completes, the available memory
-  //    value should keep nearly the same with the value before dd execution.
+  // Correctness testing criteria:
+  //  - Ensuring the calculated value is consistent with values computed from /proc/meminfo
+  //    Note that cgroup mem file is consistent with /proc/meminfo file unless
+  //    there is bug in cgroup, i.e. we can read MemTotal / MemAvailable / Shmem
+  //    from /proc/meminfo file, then the calculated value by this function
+  //    should equals to `MemTotal` - (`MemAvailable` - `Shmem`)
+  //
+  //  - Prepare an idle OS environment that has a large number of `free` memory.
+  //    Use dd command to write a large file to disk, after dd  completes,
+  //    the calculated used_memory value should keep nearly the same with the value
+  //    before dd execution.
+  //    But note that free memory will decrease significantly because OS
+  //    cached the file data as part of "OS_managed_cache_and_buffer" I mentioned above.
+  //
   //  - If we use dd command to write a large file to /dev/shm,
-  //    if the /dev/shm data is not swapped to disk, after dd completes,
-  //    the available memory  value should be nearly previous_available_memory_bytes - bytes_of_written_file
+  //    and no swapping occurs (you can use `free -h` to check whether swap size increases),
+  //    after dd completes, the calculated used-memory value should be nearly
+  //    previous_in_used_memory_bytes + bytes_of_written_file
   std::ifstream memstat_ifs(path, std::ios::in | std::ios::binary);
   if (!memstat_ifs.is_open()) {
     RAY_LOG_EVERY_MS(WARNING, kLogIntervalMs) << " file not found: " << path;
