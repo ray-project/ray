@@ -49,6 +49,10 @@ class InstanceLauncher(InstanceUpdatedSubscriber):
             fut = self._executor.submit(self._may_launch_new_instances)
             fut.add_done_callback(self._launch_callback)
 
+    ############################
+    # Private functions
+    ############################
+
     @staticmethod
     def _default_launch_callback(fut):
         """
