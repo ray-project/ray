@@ -158,23 +158,36 @@ int64_t MemoryMonitor::GetCGroupV1MemoryUsedBytes(const char *stat_path,
   //   (`MemAvailable` - `MemFree`) value,
   //
   // Correctness testing criteria:
-  //  - Ensuring the calculated value is consistent with values computed from /proc/meminfo
+  //  - [Check cgroup memory.stat value consistency with /proc/meminfo]
+  //    Ensuring the calculated value is consistent with values computed from /proc/meminfo
   //    Note that cgroup mem file is consistent with /proc/meminfo file unless
   //    there is bug in cgroup, i.e. we can read MemTotal / MemAvailable / Shmem
   //    from /proc/meminfo file, then the calculated value by this function
   //    should equals to `MemTotal` - (`MemAvailable` - `Shmem`)
   //
-  //  - Prepare an idle OS environment that has a large number of `free` memory.
+  //  - [OS_managed_cache_and_buffer test]
+  //    Prepare an idle OS environment that has a large number of `free` memory.
   //    Use dd command to write a large file to disk, after dd  completes,
   //    the calculated used_memory value should keep nearly the same with the value
   //    before dd execution.
   //    But note that free memory will decrease significantly because OS
   //    cached the file data as part of "OS_managed_cache_and_buffer" I mentioned above.
   //
-  //  - If we use dd command to write a large file to /dev/shm,
+  //  - [/dev/shm test]
+  //    If we use dd command to write a large file to /dev/shm,
   //    and no swapping occurs (you can use `free -h` to check whether swap size increases),
   //    after dd completes, the calculated used-memory value should be nearly
   //    previous_in_used_memory_bytes + bytes_of_written_file
+  //
+  //  - [Host OS SIGKILL signal test]:
+  //    1. get current "used_memory" by running this `GetCGroupV1MemoryUsedBytes` function.
+  //    2. get "swap_space_size" by running `free` command
+  //    3. read "swapped_data_size" value by reading "total_swap" item from /sys/fs/cgroup/memory/memory.stat
+  //    4. Create a program that gradually requests to allocate memory,
+  //       record that after the number "oom_size" memory it get allocated,
+  //       the process is killed by OS SIGKILL signal.
+  //    The "oom_size" recorded in step-(4) should approximately satisfy the following formula:
+  //    oom_size ~== (total_memory + swap_space_size) - used_memory - swapped_data_size
   std::ifstream memstat_ifs(stat_path, std::ios::in | std::ios::binary);
   if (!memstat_ifs.is_open()) {
     RAY_LOG_EVERY_MS(WARNING, kLogIntervalMs) << " file not found: " << stat_path;
