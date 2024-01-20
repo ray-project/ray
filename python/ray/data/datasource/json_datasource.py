@@ -45,10 +45,12 @@ class JSONDatasource(FileBasedDatasource):
         # When reading large files, the default block size configured in PyArrow can be
         # too small, resulting in the following error: `pyarrow.lib.ArrowInvalid:
         # straddling object straddles two block boundaries (try to increase block
-        # size?)`. The read will be retried with geometrically increasing block size
-        # until the size reaches `DataContext.get_current().target_max_block_size`.
-        # The initial block size will start at the PyArrow default block size or it can
-        # be manually set through the `read_options` parameter as follows.
+        # size?)`. More information on this issue can be found here:
+        # https://github.com/apache/arrow/issues/25674 The read will be retried with
+        # geometrically increasing block size until the size reaches
+        # `DataContext.get_current().target_max_block_size`. The initial block size
+        # will start at the PyArrow default block size or it can be manually set
+        # through the `read_options` parameter as follows.
         #
         # >>> import pyarrow.json as pajson
         # >>> block_size = 10 << 20 # Set block size to 10MB
@@ -70,10 +72,10 @@ class JSONDatasource(FileBasedDatasource):
                 self.read_options.block_size = init_block_size
                 break
             except ArrowInvalid as e:
-                if isinstance(e, ArrowInvalid) and "straddling" in str(e):
+                if "straddling object straddles two block boundaries" in str(e):
                     if self.read_options.block_size < max_block_size:
                         # Increase the block size in case it was too small.
-                        logger.get_logger(log_to_stdout=False).info(
+                        logger.get_logger(log_to_stdout=True).info(
                             f"JSONDatasource read failed with "
                             f"block_size={self.read_options.block_size}. Retrying with "
                             f"block_size={self.read_options.block_size * 2}."
@@ -82,7 +84,7 @@ class JSONDatasource(FileBasedDatasource):
                     else:
                         raise ArrowInvalid(
                             f"{e} - Auto-increasing block size to "
-                            f"{self.read_options.block_size}B failed. "
+                            f"{self.read_options.block_size} bytes failed. "
                             f"More information on this issue can be found here: "
                             f"https://github.com/apache/arrow/issues/25674"
                         )
