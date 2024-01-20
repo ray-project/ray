@@ -182,12 +182,12 @@ int64_t MemoryMonitor::GetCGroupV1MemoryUsedBytes(const char *stat_path,
   //  - [Host OS SIGKILL signal test]:
   //    1. get current "used_memory" by running this `GetCGroupV1MemoryUsedBytes` function.
   //    2. get "swap_space_size" by running `free` command
-  //    3. read "swapped_data_size" value by reading "total_swap" item from /sys/fs/cgroup/memory/memory.stat
+  //    3. read "used_swap_size" value by reading "total_swap" item from /sys/fs/cgroup/memory/memory.stat
   //    4. Create a program that gradually requests to allocate memory,
-  //       record that after the number "oom_size" memory it get allocated,
+  //       record that after it gets allocated memory of "oom_size" bytes,
   //       the process is killed by OS SIGKILL signal.
   //    The "oom_size" recorded in step-(4) should approximately satisfy the following formula:
-  //    oom_size ~== (total_memory + swap_space_size) - used_memory - swapped_data_size
+  //    oom_size ~== (total_physical_memory + swap_space_size) - used_memory - used_swap_size
   std::ifstream memstat_ifs(stat_path, std::ios::in | std::ios::binary);
   if (!memstat_ifs.is_open()) {
     RAY_LOG_EVERY_MS(WARNING, kLogIntervalMs) << " file not found: " << stat_path;
