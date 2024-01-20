@@ -113,14 +113,15 @@ std::tuple<int64_t, int64_t> MemoryMonitor::GetMemoryBytes() {
 
 int64_t MemoryMonitor::GetCGroupV1MemoryUsedBytes(const char *stat_path,
                                                   const char *usage_path) {
-  // Cgroup available memory calculation:
-  //  `memory.usage_in_bytes` - `memory.stat.total_cache`
+  // Used memory calculation from cgroup info:
+  //  used_memory = `memory.usage_in_bytes` - `memory.stat.total_cache - memory.stat.shmem`
   // This value is consistent with values `MemTotal` `MemAvailable` `MemFree` in `/proc/meminfo`
   //  and they have relationship of:
   //  - `memory.usage_in_bytes` == `MemTotal` - `MemFree`
   //  - `memory.stat.total_cache` == `MemAvailable` - `MemFree`
+  //  - `memory.stat.total_cache` == OS_managed_cache_and_buffer + `/dev/shm_usage`
   //
-  // Explanation: What's this part `MemAvailable` - `MemFree` memory for and why
+  // Explanation: What's this part `OS_managed_cache_and_buffer` memory for and why
   //   we should treat this part memory as "Not-in-used" ?
   // Linux OS tries to fully use the whole physical memory size, so that in many
   // cases we can observe that the system has very little `MemFree` size,
@@ -130,18 +131,21 @@ int64_t MemoryMonitor::GetCGroupV1MemoryUsedBytes(const char *stat_path,
   // and there is no sufficient free memory, OS will evict cache data out of this
   // part memory and allocate them to user proces.
   //
-  // Explanation 2: Why don't use the formular
-  //  `memory.stat.total_rss` - `memory.stat.inactive_file_bytes` to compute the
+  // Explanation 2: Why don't use
+  //  `memory.stat.total_rss` and `memory.stat.inactive_file_bytes` to compute the
   // in-used memory ?
-  // In my test the calculated number is much less than `MemTotal - MemAvailable`.
-  //  so the formular must miss something (but I haven't figured out which part is missed)
+  // In my test using these values can't calculate out correct used memory number,
   // But in my test,
   //  cgroup `memory.usage_in_bytes` value perfectly matches (`MemTotal` - `MemFree`) value,
   //  so I am sure that `memory.usage_in_bytes` value is correct.
   //  and cgroup `memory.stat.total_cache` value also perfectly matches
   //  (`MemAvailable` - `MemFree`) value,
-  // so that I am confident that this formular must be correct:
-  //   available_mem = `memory.usage_in_bytes` - `memory.stat.total_cache`
+  //
+  // Testing criteria:
+  //  - If we use dd command to write a large file to disk, after dd  completes, the available memory
+  //    value should keep nearly the same with the value before dd execution.
+  //  - If we use dd command to write a large file to /dev/shm, after dd  completes,
+  //    the available memory  value should be nearly previous_available_memory_bytes - bytes_of_written_file
   std::ifstream memstat_ifs(path, std::ios::in | std::ios::binary);
   if (!memstat_ifs.is_open()) {
     RAY_LOG_EVERY_MS(WARNING, kLogIntervalMs) << " file not found: " << path;
@@ -163,11 +167,14 @@ int64_t MemoryMonitor::GetCGroupV1MemoryUsedBytes(const char *stat_path,
   iss >> cgroup_usage_in_bytes;
 
   int64_t total_cache_bytes = kNull;
+  int64_t shmem_used_bytes = kNull;
   while (std::getline(memstat_ifs, line)) {
     std::istringstream iss(line);
     iss >> title >> value;
     if (title == "total_cache") {
       total_cache_bytes = value;
+    } else if (title == "total_shmem") {
+      shmem_used_bytes = value;
     }
   }
   if (total_cache_bytes == kNull) {
@@ -175,7 +182,7 @@ int64_t MemoryMonitor::GetCGroupV1MemoryUsedBytes(const char *stat_path,
         << "Failed to parse cgroup v1 mem stat. total cache " << total_cache_bytes;
     return kNull;
   }
-  int64_t used = cgroup_usage_in_bytes - total_cache_bytes;
+  int64_t used = cgroup_usage_in_bytes - (total_cache_bytes - shmem_used_bytes);
   return used;
 }
 

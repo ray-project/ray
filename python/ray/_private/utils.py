@@ -608,20 +608,23 @@ def get_cgroupv1_used_memory(memory_stat_filename, memory_usage_filename):
     in `memory_monitor.cc` file.
     """
     total_cache_bytes = -1
+    shmem_used_bytes = -1
     with open(memory_stat_filename, "r") as f:
         lines = f.readlines()
         for line in lines:
             if "total_cache " in line:
                 total_cache_bytes = int(line.split()[1])
+            elif "total_shmem " in line:
+                shmem_used_bytes = int(line.split()[1])
 
     with open(memory_usage_filename, "r") as f:
         lines = f.readlines()
         cgroup_usage_in_bytes = int(lines[0].strip())
 
-    if total_cache_bytes == -1 or cgroup_usage_in_bytes == -1:
+    if total_cache_bytes == -1 or cgroup_usage_in_bytes == -1 or shmem_used_bytes == -1:
         return None
 
-    return cgroup_usage_in_bytes - total_cache_bytes
+    return cgroup_usage_in_bytes - (total_cache_bytes - shmem_used_bytes)
 
 
 def get_cgroupv2_used_memory(stat_file, usage_file):
