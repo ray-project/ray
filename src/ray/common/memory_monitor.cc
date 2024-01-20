@@ -113,13 +113,14 @@ std::tuple<int64_t, int64_t> MemoryMonitor::GetMemoryBytes() {
 
 int64_t MemoryMonitor::GetCGroupV1MemoryUsedBytes(const char *stat_path,
                                                   const char *usage_path) {
-  // Used memory calculation from cgroup info:
-  //  used_memory = `memory.usage_in_bytes` - `memory.stat.total_cache - memory.stat.shmem`
+  // Formula to calculate in-used memory from cgroup memory info file:
+  //  used_memory = `memory.usage_in_bytes` - `memory.stat.total_cache - memory.stat.total_shmem`
+  //
   // This value is consistent with values `MemTotal` `MemAvailable` `MemFree` in `/proc/meminfo`
   //  and they have relationship of:
   //  - `memory.usage_in_bytes` == `MemTotal` - `MemFree`
   //  - `memory.stat.total_cache` == `MemAvailable` - `MemFree`
-  //  - `memory.stat.total_cache` == OS_managed_cache_and_buffer + `/dev/shm_usage`
+  //  - `memory.stat.total_cache` == OS_managed_cache_and_buffer + `shmem`
   //
   // Explanation: What's this part `OS_managed_cache_and_buffer` memory for and why
   //   we should treat this part memory as "Not-in-used" ?
@@ -131,7 +132,16 @@ int64_t MemoryMonitor::GetCGroupV1MemoryUsedBytes(const char *stat_path,
   // and there is no sufficient free memory, OS will evict cache data out of this
   // part memory and allocate them to user proces.
   //
-  // Explanation 2: Why don't use
+  // Explanation: What's the part of `shmem` and why we should treat it as "in-used" ?
+  //   `shmem` overview: https://man7.org/linux/man-pages/man7/shm_overview.7.html
+  //   Ray object store use `/dev/shm`, which is a `tmpfs` file system,
+  //   In linux, `tmpfs` file system uses `shmem` memory.
+  //   Note that `tmpfs` file system might swap data to disk (when option noswap=False)
+  //   but `shmem` value always means the `tmpfs` data size in physical memory.
+  //   We can read `shmem` value from /proc/meminfo `Shmem` item or from
+  //   /sys/fs/cgroup/memory/memory.stat `total_shmem` item.
+  //
+  // Explanation: Why don't use
   //  `memory.stat.total_rss` and `memory.stat.inactive_file_bytes` to compute the
   // in-used memory ?
   // In my test using these values can't calculate out correct used memory number,
@@ -144,7 +154,8 @@ int64_t MemoryMonitor::GetCGroupV1MemoryUsedBytes(const char *stat_path,
   // Testing criteria:
   //  - If we use dd command to write a large file to disk, after dd  completes, the available memory
   //    value should keep nearly the same with the value before dd execution.
-  //  - If we use dd command to write a large file to /dev/shm, after dd  completes,
+  //  - If we use dd command to write a large file to /dev/shm,
+  //    if the /dev/shm data is not swapped to disk, after dd completes,
   //    the available memory  value should be nearly previous_available_memory_bytes - bytes_of_written_file
   std::ifstream memstat_ifs(path, std::ios::in | std::ios::binary);
   if (!memstat_ifs.is_open()) {
