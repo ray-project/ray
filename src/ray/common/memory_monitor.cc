@@ -114,7 +114,7 @@ std::tuple<int64_t, int64_t> MemoryMonitor::GetMemoryBytes() {
 int64_t MemoryMonitor::GetCGroupV1MemoryUsedBytes(const char *stat_path,
                                                   const char *usage_path) {
   // Formula to calculate in-used memory from cgroup memory info file:
-  //  used_memory = `memory.usage_in_bytes` - `memory.stat.total_cache - memory.stat.total_shmem`
+  //  used_memory = `memory.usage_in_bytes` - (`memory.stat.total_cache - memory.stat.total_shmem`)
   //
   // This value is consistent with values `MemTotal` `MemAvailable` `MemFree` in `/proc/meminfo`
   //  and they have relationship of:
