@@ -39,24 +39,25 @@ export type MultiTabLogViewerProps = {
    * want all multi-tab log viewers in the actor detail page to share one memory, they should have
    * the same string value here.
    */
-  tabMemoryContextKey?: string;
+  contextKey?: string;
 } & ClassNameProps;
 
 export const MultiTabLogViewer = ({
   tabs,
   otherLogsLink,
-  tabMemoryContextKey,
+  contextKey,
   className,
 }: MultiTabLogViewerProps) => {
   const classes = useStyles();
 
-  const [rememberedTab, setRememberedTab] = useLocalStorage(
-    `MultiTabLogViewer-tabMemory-${tabMemoryContextKey}`,
+  // DO NOT use `cachedTab` or `setCachedTab` when `contextKey` is undefined!
+  const [cachedTab, setCachedTab] = useLocalStorage(
+    `MultiTabLogViewer-tabMemory-${contextKey}`,
     null,
   );
 
   const [value, setValue] = useState(
-    tabMemoryContextKey && rememberedTab ? rememberedTab : tabs[0]?.title,
+    contextKey && cachedTab ? cachedTab : tabs[0]?.title,
   );
   const [expanded, setExpanded] = useState(false);
 
@@ -92,8 +93,8 @@ export const MultiTabLogViewer = ({
               className={classes.tabs}
               value={value}
               onChange={(_, newValue) => {
-                if (tabMemoryContextKey) {
-                  setRememberedTab(newValue);
+                if (contextKey) {
+                  setCachedTab(newValue);
                 }
                 setValue(newValue);
               }}

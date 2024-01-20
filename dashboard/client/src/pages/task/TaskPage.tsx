@@ -330,7 +330,7 @@ const TaskLogs = ({
     <MultiTabLogViewer
       tabs={tabs}
       otherLogsLink={otherLogsLink}
-      tabMemoryContextKey="tasks-page"
+      contextKey="tasks-page"
     />
   );
 };

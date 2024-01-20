@@ -34,5 +34,5 @@ export const ActorLogs = ({
       filename: `python-core-worker-${workerId}_${pid}.log`,
     },
   ];
-  return <MultiTabLogViewer tabs={tabs} tabMemoryContextKey="actors-page" />;
+  return <MultiTabLogViewer tabs={tabs} contextKey="actors-page" />;
 };

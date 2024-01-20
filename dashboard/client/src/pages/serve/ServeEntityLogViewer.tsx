@@ -15,6 +15,11 @@ import {
 } from "../../common/MultiTabLogViewer";
 import { Section } from "../../common/Section";
 import { ServeDeployment, ServeSystemActor } from "../../type/serve";
+import { LOG_CONTEXT_KEY_SERVE_DEPLOYMENTS } from "./ServeReplicaDetailPage";
+import {
+  LOG_CONTEXT_KEY_SERVE_CONTROLLER,
+  LOG_CONTEXT_KEY_SERVE_PROXY,
+} from "./ServeSystemActorDetailPage";
 
 const useStyles = makeStyles((theme) =>
   createStyles({
@@ -154,6 +159,13 @@ export const ServeEntityLogViewer = ({
         ]
       : [];
 
+  const contextKey =
+    selectedEntityGroupName === "controller"
+      ? LOG_CONTEXT_KEY_SERVE_CONTROLLER
+      : selectedEntityGroupName === "proxies"
+      ? LOG_CONTEXT_KEY_SERVE_PROXY
+      : LOG_CONTEXT_KEY_SERVE_DEPLOYMENTS;
+
   return (
     <div>
       <Box
@@ -276,10 +288,7 @@ export const ServeEntityLogViewer = ({
       </Box>
       <Box marginTop={2}>
         <Section noTopPadding>
-          <MultiTabLogViewer
-            tabs={tabs}
-            tabMemoryContextKey="serve-system-detail"
-          />
+          <MultiTabLogViewer tabs={tabs} contextKey={contextKey} />
         </Section>
       </Box>
     </div>

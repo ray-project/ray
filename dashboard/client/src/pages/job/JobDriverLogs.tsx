@@ -62,7 +62,7 @@ export const JobDriverLogs = ({ job }: JobDriverLogsProps) => {
             },
       ]}
       otherLogsLink={link}
-      tabMemoryContextKey="job-driver"
+      contextKey="job-driver"
     />
   );
 };
