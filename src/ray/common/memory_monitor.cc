@@ -177,12 +177,12 @@ int64_t MemoryMonitor::GetCGroupV1MemoryUsedBytes(const char *stat_path,
   //    previous_in_used_memory_bytes + bytes_of_written_file
   std::ifstream memstat_ifs(stat_path, std::ios::in | std::ios::binary);
   if (!memstat_ifs.is_open()) {
-    RAY_LOG_EVERY_MS(WARNING, kLogIntervalMs) << " file not found: " << path;
+    RAY_LOG_EVERY_MS(WARNING, kLogIntervalMs) << " file not found: " << stat_path;
     return kNull;
   }
   std::ifstream memusage_ifs(usage_path, std::ios::in | std::ios::binary);
   if (!memusage_ifs.is_open()) {
-    RAY_LOG_EVERY_MS(WARNING, kLogIntervalMs) << " file not found: " << path;
+    RAY_LOG_EVERY_MS(WARNING, kLogIntervalMs) << " file not found: " << usage_path;
     return kNull;
   }
 
