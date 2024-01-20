@@ -1,103 +1,214 @@
 # coding: utf-8
 import os
 import sys
-import unittest
+from typing import Dict
 
 import pytest  # noqa
 
-from ray._private.test_utils import load_test_config
-from ray.autoscaler._private.event_summarizer import EventSummarizer
-from ray.autoscaler._private.node_launcher import BaseNodeLauncher
-from ray.autoscaler._private.node_provider_availability_tracker import (
-    NodeProviderAvailabilityTracker,
-)
-from ray.autoscaler.v2.instance_manager.config import AutoscalingConfig
+from mock import MagicMock
+
+from ray._private.test_utils import wait_for_condition
+from ray.autoscaler.v2.instance_manager.instance_manager import InstanceUtil
 from ray.autoscaler.v2.instance_manager.instance_storage import InstanceStorage
-from ray.autoscaler.v2.instance_manager.node_provider import NodeProviderAdapter
 from ray.autoscaler.v2.instance_manager.storage import InMemoryStorage
 from ray.autoscaler.v2.instance_manager.subscribers.instance_launcher import (
     InstanceLauncher,
+    logger,
 )
-from ray.autoscaler.v2.tests.util import FakeCounter, create_instance
-from ray.core.generated.instance_manager_pb2 import Instance
-from ray.tests.autoscaler_test_utils import MockProvider
+from ray.autoscaler.v2.tests.util import create_instance
+from ray.core.generated.instance_manager_pb2 import Instance, InstanceUpdateEvent
+
+logger.setLevel("DEBUG")
 
 
-class InstanceLauncherTest(unittest.TestCase):
-    def setUp(self):
-        self.base_provider = MockProvider()
-        self.availability_tracker = NodeProviderAvailabilityTracker()
-        self.node_launcher = BaseNodeLauncher(
-            self.base_provider,
-            FakeCounter(),
-            EventSummarizer(),
-            self.availability_tracker,
-        )
-        self.config = AutoscalingConfig(load_test_config("test_ray_complex.yaml"))
-        self.node_provider = NodeProviderAdapter(
-            self.base_provider, self.node_launcher, self.config
-        )
-        self.instance_storage = InstanceStorage(
-            cluster_id="test_cluster_id",
-            storage=InMemoryStorage(),
-        )
-        self.instance_launcher = InstanceLauncher(
-            instance_storage=self.instance_storage,
-            node_provider=self.node_provider,
-            max_concurrent_requests=1,
-            max_instances_per_request=1,
-        )
+def add_instances(storage, instances):
+    success, version = storage.batch_upsert_instances(instances)
+    assert success
+    for instance in instances:
+        instance.version = version
+    return instances
 
-    def test_launch_new_instance_by_type(self):
-        instance = create_instance("1")
-        success, verison = self.instance_storage.upsert_instance(instance)
-        assert success
-        instance.version = verison
-        assert 1 == self.instance_launcher._launch_new_instances_by_type(
-            "worker_nodes1", [instance]
-        )
-        instances, _ = self.instance_storage.get_instances()
-        assert len(instances) == 1
-        assert instances["1"].status == Instance.ALLOCATED
-        assert instances["1"].cloud_instance_id == "0"
 
-    def test_launch_failed(self):
-        # launch failed: instance is not in storage
-        instance = create_instance("1")
-        assert 0 == self.instance_launcher._launch_new_instances_by_type(
-            "worker_nodes1", [instance]
-        )
-        instances, _ = self.instance_storage.get_instances()
-        assert len(instances) == 0
+def notify(launcher, instance_id, new_status):
+    event = InstanceUpdateEvent(
+        instance_id=instance_id,
+        new_instance_status=new_status,
+    )
+    launcher.notify([event])
 
-        # launch failed: instance version mismatch
-        instance = create_instance("1")
-        self.instance_storage.upsert_instance(instance)
-        instance.version = 2
-        assert 0 == self.instance_launcher._launch_new_instances_by_type(
-            "worker_nodes1", [instance]
-        )
-        instances, _ = self.instance_storage.get_instances()
-        assert len(instances) == 1
-        assert instances["1"].status == Instance.UNKNOWN
 
-    def test_launch_partial_success(self):
-        self.base_provider.partical_success_count = 1
-        instance1 = create_instance("1")
-        instance2 = create_instance("2")
-        success, version = self.instance_storage.batch_upsert_instances(
-            [instance1, instance2]
-        )
-        assert success
-        instance1.version = version
-        instance2.version = version
-        self.instance_launcher._launch_new_instances_by_type(
-            "worker_nodes1", [instance1, instance2]
-        )
-        instances, _ = self.instance_storage.get_instances()
-        assert len(instances) == 2
-        assert instances["1"].status == Instance.ALLOCATION_FAILED
-        assert instances["2"].status == Instance.ALLOCATED
+def get_launch_requests(node_provider_mock) -> Dict[str, Dict[str, int]]:
+    return {
+        call.kwargs["request_id"]: call.kwargs["shape"]
+        for call in node_provider_mock.launch.call_args_list
+    }
+
+
+def update_instance(storage, instance, new_status) -> Instance:
+    InstanceUtil.set_status(instance, new_status)
+    success, version = storage.batch_upsert_instances([instance])
+    assert success
+    instance.version = version
+    return instance
+
+
+def test_launch_basic():
+    instance_storage = InstanceStorage(cluster_id="test", storage=InMemoryStorage())
+    node_provider = MagicMock()
+    launcher = InstanceLauncher(
+        instance_storage=instance_storage,
+        node_provider=node_provider,
+        upscaling_speed=1,
+        max_launch_per_type=10,
+    )
+
+    instance = create_instance("1", status=Instance.QUEUED, instance_type="type-1")
+    instance2 = create_instance("2", status=Instance.QUEUED, instance_type="type-2")
+    add_instances(instance_storage, [instance, instance2])
+    notify(launcher, "1", Instance.QUEUED)
+
+    def verify():
+        launch_requests = get_launch_requests(node_provider)
+        assert len(launch_requests) == 1
+        assert list(launch_requests.values())[0] == {"type-1": 1, "type-2": 1}
+        instance = instance_storage.get_instances()[0]["1"]
+        assert launch_requests.keys() == {instance.launch_request_id}
+
+        return True
+
+    wait_for_condition(verify)
+
+
+@pytest.mark.parametrize(
+    "upscaling_speed,max_launch_per_type", [(0, 10), (1, 10), (10, 10), (100, 10)]
+)
+def test_launch_upscaling_limited(upscaling_speed, max_launch_per_type):
+    instance_storage = InstanceStorage(cluster_id="test", storage=InMemoryStorage())
+    node_provider = MagicMock()
+    launcher = InstanceLauncher(
+        instance_storage=instance_storage,
+        node_provider=node_provider,
+        upscaling_speed=upscaling_speed,
+        max_launch_per_type=max_launch_per_type,
+    )
+
+    # Start with a 2 instance cluster
+    instance1 = create_instance(
+        "999", status=Instance.ALLOCATED, instance_type="type-1"
+    )
+    instance2 = create_instance(
+        "1000", status=Instance.REQUESTED, instance_type="type-1"
+    )
+    add_instances(instance_storage, [instance1, instance2])
+
+    expected_launch_num = min(max(upscaling_speed * 2, 1), max_launch_per_type)
+
+    queued_instances = [
+        create_instance(str(i), status=Instance.QUEUED, instance_type="type-1")
+        for i in range(100)
+    ]
+    add_instances(instance_storage, queued_instances)
+    notify(launcher, "1", Instance.QUEUED)
+
+    def verify():
+        launch_requests = get_launch_requests(node_provider)
+        assert len(launch_requests) == 1
+        assert list(launch_requests.values())[0] == {"type-1": expected_launch_num}
+
+        return True
+
+    wait_for_condition(verify)
+
+
+def test_launch_same_request_id():
+    instance_storage = InstanceStorage(cluster_id="test", storage=InMemoryStorage())
+    node_provider = MagicMock()
+    launcher = InstanceLauncher(
+        instance_storage=instance_storage,
+        node_provider=node_provider,
+        upscaling_speed=1,
+    )
+
+    instance = create_instance("1", status=Instance.QUEUED, instance_type="type-1")
+    add_instances(instance_storage, [instance])
+    notify(launcher, "1", Instance.QUEUED)
+
+    def verify():
+        launch_requests = get_launch_requests(node_provider)
+        assert len(launch_requests) == 1
+        assert list(launch_requests.values())[0] == {"type-1": 1}
+        instance = instance_storage.get_instances()[0]["1"]
+        assert launch_requests.keys() == {instance.launch_request_id}
+
+        return True
+
+    wait_for_condition(verify)
+
+    # Add a new instance to be queued.
+    instance2 = create_instance("2", status=Instance.QUEUED, instance_type="type-1")
+    add_instances(instance_storage, [instance2])
+    # Update the instance to be queued again.
+    instance1 = instance_storage.get_instances()[0]["1"]
+    update_instance(instance_storage, instance1, Instance.ALLOCATION_FAILED)
+    update_instance(instance_storage, instance1, Instance.QUEUED)
+
+    notify(launcher, "1", Instance.QUEUED)
+
+    def verify():
+        # We should launch with the same request id for "1", but new request id
+        # for "2".
+        launch_requests = get_launch_requests(node_provider)
+        assert len(launch_requests) == 2
+        instance = instance_storage.get_instances()[0]["1"]
+        assert launch_requests[instance.launch_request_id] == {"type-1": 1}
+        instance = instance_storage.get_instances()[0]["2"]
+        assert launch_requests[instance.launch_request_id] == {"type-1": 1}
+
+        return True
+
+    wait_for_condition(verify)
+
+
+def test_launch_failed():
+    """
+    Launch failure when:
+        1. version changed during the update.
+    """
+    node_provider = MagicMock()
+    instance_storage = MagicMock()
+
+    check = {"success": False, "result": None}
+
+    def launch_callback_failed(fut):
+        result = fut.result()
+        check["success"] = result is None
+        check["result"] = result
+
+    launcher = InstanceLauncher(
+        instance_storage=instance_storage,
+        node_provider=node_provider,
+        upscaling_speed=1,
+        launch_callback=launch_callback_failed,
+    )
+
+    instance = create_instance("1", status=Instance.QUEUED, instance_type="type-1")
+
+    instance_storage.batch_upsert_instances.return_value = True, 1
+    add_instances(instance_storage, [instance])
+
+    # TEST 1: instance update fail with version mismatch
+    instance_storage.get_instances.return_value = {
+        "1": instance,
+    }
+    # instance update fail with version mismatch
+    instance_storage.batch_upsert_instances.return_value = False, 2
+    notify(launcher, "1", Instance.QUEUED)
+
+    def verify():
+        assert check["success"] is False, check["result"]
+        return True
+
+    wait_for_condition(verify)
 
 
 if __name__ == "__main__":

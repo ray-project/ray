@@ -108,7 +108,7 @@ message Instance {
   // where the instance manager is trying to launch the instance.
   // This could also be used as idempotency key for the launch request to the
   // cloud provider.
-  string launch_request_id = 11;
+  optional string launch_request_id = 11;
   // The instance STOPPED details.
   string exit_details = 12;
 }
