@@ -1,13 +1,14 @@
 from typing import Any, Dict
 
 from ray.rllib.policy.sample_batch import SampleBatch
-from ray.rllib.algorithms.appo.appo_learner import (
-    AppoLearner,
-    AppoLearnerHyperparameters,
+from ray.rllib.algorithms.appo.appo import (
+    APPOConfig,
     LEARNER_RESULTS_CURR_KL_COEFF_KEY,
     LEARNER_RESULTS_KL_KEY,
     OLD_ACTION_DIST_LOGITS_KEY,
 )
+from ray.rllib.algorithms.appo.appo_learner import AppoLearner
+from ray.rllib.algorithms.impala.torch.impala_torch_learner import ImpalaTorchLearner
 from ray.rllib.algorithms.impala.torch.vtrace_torch_v2 import (
     make_time_major,
     vtrace_torch,
@@ -30,15 +31,15 @@ from ray.rllib.utils.typing import ModuleID, TensorType
 torch, nn = try_import_torch()
 
 
-class APPOTorchLearner(AppoLearner, TorchLearner):
+class APPOTorchLearner(AppoLearner, ImpalaTorchLearner):
     """Implements APPO loss / update logic on top of ImpalaTorchLearner."""
 
-    @override(TorchLearner)
+    @override(ImpalaTorchLearner)
     def compute_loss_for_module(
         self,
         *,
         module_id: ModuleID,
-        hps: AppoLearnerHyperparameters,
+        config: APPOConfig,
         batch: NestedDict,
         fwd_out: Dict[str, TensorType],
     ) -> TensorType:
@@ -58,38 +59,43 @@ class APPOTorchLearner(AppoLearner, TorchLearner):
         )
         behaviour_actions_logp = batch[SampleBatch.ACTION_LOGP]
         target_actions_logp = target_policy_dist.logp(batch[SampleBatch.ACTIONS])
+        rollout_frag_or_episode_len = config.get_rollout_fragment_length()
+        recurrent_seq_len = None
 
         behaviour_actions_logp_time_major = make_time_major(
             behaviour_actions_logp,
-            trajectory_len=hps.rollout_frag_or_episode_len,
-            recurrent_seq_len=hps.recurrent_seq_len,
+            trajectory_len=rollout_frag_or_episode_len,
+            recurrent_seq_len=recurrent_seq_len,
         )
         target_actions_logp_time_major = make_time_major(
             target_actions_logp,
-            trajectory_len=hps.rollout_frag_or_episode_len,
-            recurrent_seq_len=hps.recurrent_seq_len,
+            trajectory_len=rollout_frag_or_episode_len,
+            recurrent_seq_len=recurrent_seq_len,
         )
         old_actions_logp_time_major = make_time_major(
             old_target_policy_actions_logp,
-            trajectory_len=hps.rollout_frag_or_episode_len,
-            recurrent_seq_len=hps.recurrent_seq_len,
+            trajectory_len=rollout_frag_or_episode_len,
+            recurrent_seq_len=recurrent_seq_len,
         )
         rewards_time_major = make_time_major(
             batch[SampleBatch.REWARDS],
-            trajectory_len=hps.rollout_frag_or_episode_len,
-            recurrent_seq_len=hps.recurrent_seq_len,
+            trajectory_len=rollout_frag_or_episode_len,
+            recurrent_seq_len=recurrent_seq_len,
         )
         values_time_major = make_time_major(
             values,
-            trajectory_len=hps.rollout_frag_or_episode_len,
-            recurrent_seq_len=hps.recurrent_seq_len,
+            trajectory_len=rollout_frag_or_episode_len,
+            recurrent_seq_len=recurrent_seq_len,
         )
-        bootstrap_values_time_major = make_time_major(
-            batch[SampleBatch.VALUES_BOOTSTRAPPED],
-            trajectory_len=hps.rollout_frag_or_episode_len,
-            recurrent_seq_len=hps.recurrent_seq_len,
-        )
-        bootstrap_value = bootstrap_values_time_major[-1]
+        if self.config.uses_new_env_runners:
+            bootstrap_values = batch[SampleBatch.VALUES_BOOTSTRAPPED]
+        else:
+            bootstrap_values_time_major = make_time_major(
+                batch[SampleBatch.VALUES_BOOTSTRAPPED],
+                trajectory_len=rollout_frag_or_episode_len,
+                recurrent_seq_len=recurrent_seq_len,
+            )
+            bootstrap_values = bootstrap_values_time_major[-1]
 
         # The discount factor that is used should be gamma except for timesteps where
         # the episode is terminated. In that case, the discount factor should be 0.
@@ -97,10 +103,10 @@ class APPOTorchLearner(AppoLearner, TorchLearner):
             1.0
             - make_time_major(
                 batch[SampleBatch.TERMINATEDS],
-                trajectory_len=hps.rollout_frag_or_episode_len,
-                recurrent_seq_len=hps.recurrent_seq_len,
+                trajectory_len=rollout_frag_or_episode_len,
+                recurrent_seq_len=recurrent_seq_len,
             ).float()
-        ) * hps.discount_factor
+        ) * config.gamma
 
         # Note that vtrace will compute the main loop on the CPU for better performance.
         vtrace_adjusted_target_values, pg_advantages = vtrace_torch(
@@ -109,9 +115,9 @@ class APPOTorchLearner(AppoLearner, TorchLearner):
             discounts=discounts_time_major,
             rewards=rewards_time_major,
             values=values_time_major,
-            bootstrap_value=bootstrap_value,
-            clip_pg_rho_threshold=hps.vtrace_clip_pg_rho_threshold,
-            clip_rho_threshold=hps.vtrace_clip_rho_threshold,
+            bootstrap_values=bootstrap_values,
+            clip_pg_rho_threshold=config.vtrace_clip_pg_rho_threshold,
+            clip_rho_threshold=config.vtrace_clip_rho_threshold,
         )
 
         # The policy gradients loss.
@@ -127,10 +133,10 @@ class APPOTorchLearner(AppoLearner, TorchLearner):
         surrogate_loss = torch.minimum(
             pg_advantages * logp_ratio,
             pg_advantages
-            * torch.clip(logp_ratio, 1 - hps.clip_param, 1 + hps.clip_param),
+            * torch.clip(logp_ratio, 1 - config.clip_param, 1 + config.clip_param),
         )
 
-        if hps.use_kl_loss:
+        if config.use_kl_loss:
             action_kl = old_target_policy_dist.kl(target_policy_dist)
             mean_kl_loss = torch.mean(action_kl)
         else:
@@ -147,7 +153,7 @@ class APPOTorchLearner(AppoLearner, TorchLearner):
         # The summed weighted loss.
         total_loss = (
             mean_pi_loss
-            + (mean_vf_loss * hps.vf_loss_coeff)
+            + (mean_vf_loss * config.vf_loss_coeff)
             + (
                 mean_entropy_loss
                 * self.entropy_coeff_schedulers_per_module[
@@ -209,7 +215,7 @@ class APPOTorchLearner(AppoLearner, TorchLearner):
 
     @override(AppoLearner)
     def _update_module_target_networks(
-        self, module_id: ModuleID, hps: AppoLearnerHyperparameters
+        self, module_id: ModuleID, config: APPOConfig
     ) -> None:
         module = self.module[module_id]
 
@@ -217,24 +223,24 @@ class APPOTorchLearner(AppoLearner, TorchLearner):
         for target_network, current_network in target_current_network_pairs:
             current_state_dict = current_network.state_dict()
             new_state_dict = {
-                k: hps.tau * current_state_dict[k] + (1 - hps.tau) * v
+                k: config.tau * current_state_dict[k] + (1 - config.tau) * v
                 for k, v in target_network.state_dict().items()
             }
             target_network.load_state_dict(new_state_dict)
 
     @override(AppoLearner)
     def _update_module_kl_coeff(
-        self, module_id: ModuleID, hps: AppoLearnerHyperparameters, sampled_kl: float
+        self, module_id: ModuleID, config: APPOConfig, sampled_kl: float
     ) -> Dict[str, Any]:
         # Update the current KL value based on the recently measured value.
         # Increase.
         kl_coeff_var = self.curr_kl_coeffs_per_module[module_id]
 
-        if sampled_kl > 2.0 * hps.kl_target:
+        if sampled_kl > 2.0 * config.kl_target:
             # TODO (Kourosh) why not *2.0?
             kl_coeff_var.data *= 1.5
         # Decrease.
-        elif sampled_kl < 0.5 * hps.kl_target:
+        elif sampled_kl < 0.5 * config.kl_target:
             kl_coeff_var.data *= 0.5
 
         return {LEARNER_RESULTS_CURR_KL_COEFF_KEY: kl_coeff_var.item()}

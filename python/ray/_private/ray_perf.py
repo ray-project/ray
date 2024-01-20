@@ -79,6 +79,12 @@ def create_object_containing_ref():
     return obj_refs
 
 
+@ray.remote
+class DAGActor:
+    def echo(self, x):
+        return x
+
+
 def check_optimized_build():
     if not ray._raylet.OPTIMIZED:
         msg = (
@@ -294,7 +300,6 @@ def main(results=None):
     #################################################
     # Perf tests for channels, used in compiled DAGs.
     #################################################
-
     ray.init()
 
     def put_channel_small(chans, do_get=False, do_release=False):
@@ -318,11 +323,11 @@ def main(results=None):
 
     chans = [ray_channel.Channel(1000)]
     results += timeit(
-        "local put, single channel calls",
+        "[unstable] local put, single channel calls",
         lambda: put_channel_small(chans, do_release=True),
     )
     results += timeit(
-        "local put:local get, single channel calls",
+        "[unstable] local put:local get, single channel calls",
         lambda: put_channel_small(chans, do_get=True, do_release=True),
     )
 
@@ -331,7 +336,8 @@ def main(results=None):
     ray.get(reader.ready.remote())
     reader.read.remote(chans)
     results += timeit(
-        "local put:1 remote get, single channel calls", lambda: put_channel_small(chans)
+        "[unstable] local put:1 remote get, single channel calls",
+        lambda: put_channel_small(chans),
     )
     ray.kill(reader)
 
@@ -344,7 +350,7 @@ def main(results=None):
     for reader in readers:
         reader.read.remote(chans)
     results += timeit(
-        "local put:n remote get, single channel calls",
+        "[unstable] local put:n remote get, single channel calls",
         lambda: put_channel_small(chans),
     )
     for reader in readers:
@@ -355,7 +361,8 @@ def main(results=None):
     ray.get(reader.ready.remote())
     reader.read.remote(chans)
     results += timeit(
-        "local put:1 remote get, n channels calls", lambda: put_channel_small(chans)
+        "[unstable] local put:1 remote get, n channels calls",
+        lambda: put_channel_small(chans),
     )
     ray.kill(reader)
 
@@ -365,7 +372,8 @@ def main(results=None):
     for chan, reader in zip(chans, readers):
         reader.read.remote([chan])
     results += timeit(
-        "local put:n remote get, n channels calls", lambda: put_channel_small(chans)
+        "[unstable] local put:n remote get, n channels calls",
+        lambda: put_channel_small(chans),
     )
     for reader in readers:
         ray.kill(reader)
@@ -384,43 +392,44 @@ def main(results=None):
         for output_channel in output_channels:
             output_channel.end_read()
 
-    @ray.remote
-    class Actor:
-        def echo(self, x):
-            return x
-
-    a = Actor.remote()
+    a = DAGActor.remote()
     with InputNode() as inp:
         dag = a.echo.bind(inp)
 
-    results += timeit("single-actor DAG calls", lambda: ray.get(dag.execute(b"x")))
+    results += timeit(
+        "[unstable] single-actor DAG calls", lambda: ray.get(dag.execute(b"x"))
+    )
     dag = dag.experimental_compile()
-    results += timeit("compiled single-actor DAG calls", lambda: _exec(dag))
+    results += timeit("[unstable] compiled single-actor DAG calls", lambda: _exec(dag))
 
     del a
     n_cpu = multiprocessing.cpu_count() // 2
-    actors = [Actor.remote() for _ in range(n_cpu)]
+    actors = [DAGActor.remote() for _ in range(n_cpu)]
     with InputNode() as inp:
         dag = MultiOutputNode([a.echo.bind(inp) for a in actors])
     results += timeit(
-        "scatter-gather DAG calls, n={n_cpu} actors", lambda: ray.get(dag.execute(b"x"))
+        "[unstable] scatter-gather DAG calls, n={n_cpu} actors",
+        lambda: ray.get(dag.execute(b"x")),
     )
     dag = dag.experimental_compile()
     results += timeit(
-        f"compiled scatter-gather DAG calls, n={n_cpu} actors",
+        f"[unstable] compiled scatter-gather DAG calls, n={n_cpu} actors",
         lambda: _exec_multi_output(dag),
     )
 
-    actors = [Actor.remote() for _ in range(n_cpu)]
+    actors = [DAGActor.remote() for _ in range(n_cpu)]
     with InputNode() as inp:
         dag = inp
         for a in actors:
             dag = a.echo.bind(dag)
     results += timeit(
-        f"chain DAG calls, n={n_cpu} actors", lambda: ray.get(dag.execute(b"x"))
+        f"[unstable] chain DAG calls, n={n_cpu} actors",
+        lambda: ray.get(dag.execute(b"x")),
     )
     dag = dag.experimental_compile()
-    results += timeit(f"compiled chain DAG calls, n={n_cpu} actors", lambda: _exec(dag))
+    results += timeit(
+        f"[unstable] compiled chain DAG calls, n={n_cpu} actors", lambda: _exec(dag)
+    )
 
     ray.shutdown()
 

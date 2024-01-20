@@ -1,13 +1,13 @@
 from typing import Dict
 
-from ray.rllib.algorithms.impala.impala_learner import (
-    ImpalaLearner,
-    ImpalaLearnerHyperparameters,
-)
+import tree
+from ray.rllib.algorithms.impala.impala import ImpalaConfig
+from ray.rllib.algorithms.impala.impala_learner import ImpalaLearner
 from ray.rllib.algorithms.impala.tf.vtrace_tf_v2 import make_time_major, vtrace_tf2
 from ray.rllib.core.learner.learner import ENTROPY_KEY
 from ray.rllib.core.learner.tf.tf_learner import TfLearner
-from ray.rllib.policy.sample_batch import SampleBatch
+from ray.rllib.core.models.base import CRITIC, ENCODER_OUT
+from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID, SampleBatch
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.framework import try_import_tf
 from ray.rllib.utils.nested_dict import NestedDict
@@ -24,7 +24,7 @@ class ImpalaTfLearner(ImpalaLearner, TfLearner):
         self,
         *,
         module_id: ModuleID,
-        hps: ImpalaLearnerHyperparameters,
+        config: ImpalaConfig,
         batch: NestedDict,
         fwd_out: Dict[str, TensorType],
     ) -> TensorType:
@@ -36,33 +36,38 @@ class ImpalaTfLearner(ImpalaLearner, TfLearner):
 
         behaviour_actions_logp = batch[SampleBatch.ACTION_LOGP]
         target_actions_logp = target_policy_dist.logp(batch[SampleBatch.ACTIONS])
+        rollout_frag_or_episode_len = config.get_rollout_fragment_length()
+        recurrent_seq_len = None
 
         behaviour_actions_logp_time_major = make_time_major(
             behaviour_actions_logp,
-            trajectory_len=hps.rollout_frag_or_episode_len,
-            recurrent_seq_len=hps.recurrent_seq_len,
+            trajectory_len=rollout_frag_or_episode_len,
+            recurrent_seq_len=recurrent_seq_len,
         )
         target_actions_logp_time_major = make_time_major(
             target_actions_logp,
-            trajectory_len=hps.rollout_frag_or_episode_len,
-            recurrent_seq_len=hps.recurrent_seq_len,
+            trajectory_len=rollout_frag_or_episode_len,
+            recurrent_seq_len=recurrent_seq_len,
         )
         rewards_time_major = make_time_major(
             batch[SampleBatch.REWARDS],
-            trajectory_len=hps.rollout_frag_or_episode_len,
-            recurrent_seq_len=hps.recurrent_seq_len,
+            trajectory_len=rollout_frag_or_episode_len,
+            recurrent_seq_len=recurrent_seq_len,
         )
         values_time_major = make_time_major(
             values,
-            trajectory_len=hps.rollout_frag_or_episode_len,
-            recurrent_seq_len=hps.recurrent_seq_len,
+            trajectory_len=rollout_frag_or_episode_len,
+            recurrent_seq_len=recurrent_seq_len,
         )
-        bootstrap_values_time_major = make_time_major(
-            batch[SampleBatch.VALUES_BOOTSTRAPPED],
-            trajectory_len=hps.rollout_frag_or_episode_len,
-            recurrent_seq_len=hps.recurrent_seq_len,
-        )
-        bootstrap_value = bootstrap_values_time_major[-1]
+        if self.config.uses_new_env_runners:
+            bootstrap_values = batch[SampleBatch.VALUES_BOOTSTRAPPED]
+        else:
+            bootstrap_values_time_major = make_time_major(
+                batch[SampleBatch.VALUES_BOOTSTRAPPED],
+                trajectory_len=rollout_frag_or_episode_len,
+                recurrent_seq_len=recurrent_seq_len,
+            )
+            bootstrap_values = bootstrap_values_time_major[-1]
 
         # the discount factor that is used should be gamma except for timesteps where
         # the episode is terminated. In that case, the discount factor should be 0.
@@ -71,12 +76,12 @@ class ImpalaTfLearner(ImpalaLearner, TfLearner):
             - tf.cast(
                 make_time_major(
                     batch[SampleBatch.TERMINATEDS],
-                    trajectory_len=hps.rollout_frag_or_episode_len,
-                    recurrent_seq_len=hps.recurrent_seq_len,
+                    trajectory_len=rollout_frag_or_episode_len,
+                    recurrent_seq_len=recurrent_seq_len,
                 ),
                 dtype=tf.float32,
             )
-        ) * hps.discount_factor
+        ) * config.gamma
 
         # Note that vtrace will compute the main loop on the CPU for better performance.
         vtrace_adjusted_target_values, pg_advantages = vtrace_tf2(
@@ -85,9 +90,9 @@ class ImpalaTfLearner(ImpalaLearner, TfLearner):
             discounts=discounts_time_major,
             rewards=rewards_time_major,
             values=values_time_major,
-            bootstrap_value=bootstrap_value,
-            clip_pg_rho_threshold=hps.vtrace_clip_pg_rho_threshold,
-            clip_rho_threshold=hps.vtrace_clip_rho_threshold,
+            bootstrap_values=bootstrap_values,
+            clip_pg_rho_threshold=config.vtrace_clip_pg_rho_threshold,
+            clip_rho_threshold=config.vtrace_clip_rho_threshold,
         )
 
         # Sample size is T x B, where T is the trajectory length and B is the batch size
@@ -108,7 +113,7 @@ class ImpalaTfLearner(ImpalaLearner, TfLearner):
         # The summed weighted loss.
         total_loss = (
             pi_loss
-            + vf_loss * hps.vf_loss_coeff
+            + vf_loss * config.vf_loss_coeff
             + (
                 mean_entropy_loss
                 * self.entropy_coeff_schedulers_per_module[
@@ -128,3 +133,20 @@ class ImpalaTfLearner(ImpalaLearner, TfLearner):
         )
         # Return the total loss.
         return total_loss
+
+    @override(ImpalaLearner)
+    def _compute_values(self, batch):
+        infos = batch.pop(SampleBatch.INFOS, None)
+        batch = tree.map_structure(lambda s: tf.convert_to_tensor(s), batch)
+        if infos is not None:
+            batch[SampleBatch.INFOS] = infos
+
+        # TODO (sven): Make multi-agent capable.
+        module = self.module[DEFAULT_POLICY_ID].unwrapped()
+
+        # Shared encoder.
+        encoder_outs = module.encoder(batch)
+        # Value head.
+        vf_out = module.vf(encoder_outs[ENCODER_OUT][CRITIC])
+        # Squeeze out last dimension (single node value head).
+        return tf.squeeze(vf_out, -1)

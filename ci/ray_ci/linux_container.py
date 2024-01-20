@@ -1,18 +1,10 @@
 import os
 import subprocess
 import sys
-from typing import List, Optional
+from typing import List, Tuple, Optional
 
 from ci.ray_ci.container import Container
 
-_DOCKER_ENV = [
-    "BUILDKITE_BUILD_URL",
-    "BUILDKITE_BRANCH",
-    "BUILDKITE_COMMIT",
-    "BUILDKITE_JOB_ID",
-    "BUILDKITE_LABEL",
-    "BUILDKITE_PIPELINE_ID",
-]
 _DOCKER_CAP_ADD = [
     "SYS_PTRACE",
     "SYS_ADMIN",
@@ -26,11 +18,15 @@ class LinuxContainer(Container):
         docker_tag: str,
         volumes: Optional[List[str]] = None,
         envs: Optional[List[str]] = None,
+        tmp_filesystem: Optional[str] = None,
     ) -> None:
-        super().__init__(docker_tag)
+        super().__init__(docker_tag, envs)
         self.volumes = volumes or []
-        self.envs = envs or []
-        self.envs += _DOCKER_ENV
+
+        if tmp_filesystem is not None:
+            if tmp_filesystem != "tmpfs":
+                raise ValueError("Only tmpfs is supported for tmp filesystem")
+        self.tmp_filesystem = tmp_filesystem
 
     def install_ray(self, build_type: Optional[str] = None) -> List[str]:
         env = os.environ.copy()
@@ -40,10 +36,13 @@ class LinuxContainer(Container):
                 "docker",
                 "build",
                 "--pull",
+                "--progress=plain",
                 "--build-arg",
                 f"BASE_IMAGE={self._get_docker_image()}",
                 "--build-arg",
                 f"BUILD_TYPE={build_type or ''}",
+                "--build-arg",
+                f"BUILDKITE_PIPELINE_ID={env.get('BUILDKITE_PIPELINE_ID')}",
                 "-t",
                 self._get_docker_image(),
                 "-f",
@@ -65,15 +64,16 @@ class LinuxContainer(Container):
         extra_args = [
             "--env",
             "NVIDIA_DISABLE_REQUIRE=1",
-            "--volume",
-            "/tmp/artifacts:/artifact-mount",
             "--add-host",
             "rayci.localhost:host-gateway",
         ]
+        if self.tmp_filesystem:
+            extra_args += [
+                "--mount",
+                f"type={self.tmp_filesystem},destination=/tmp",
+            ]
         for volume in self.volumes:
             extra_args += ["--volume", volume]
-        for env in self.envs:
-            extra_args += ["--env", env]
         for cap in _DOCKER_CAP_ADD:
             extra_args += ["--cap-add", cap]
         if gpu_ids:
@@ -85,3 +85,6 @@ class LinuxContainer(Container):
         ]
 
         return extra_args
+
+    def get_artifact_mount(self) -> Tuple[str, str]:
+        return ("/tmp/artifacts", "/artifact-mount")

@@ -3,7 +3,7 @@ import os
 import subprocess
 import sys
 
-from typing import List, Optional
+from typing import List, Tuple, Optional
 
 _DOCKER_ECR_REPO = os.environ.get(
     "RAYCI_WORK_REPO",
@@ -13,6 +13,15 @@ _DOCKER_GCP_REGISTRY = os.environ.get(
     "RAYCI_GCP_REGISTRY",
     "us-west1-docker.pkg.dev/anyscale-oss-ci",
 )
+_DOCKER_ENV = [
+    "BUILDKITE",
+    "BUILDKITE_BUILD_URL",
+    "BUILDKITE_BRANCH",
+    "BUILDKITE_COMMIT",
+    "BUILDKITE_JOB_ID",
+    "BUILDKITE_LABEL",
+    "BUILDKITE_PIPELINE_ID",
+]
 _RAYCI_BUILD_ID = os.environ.get("RAYCI_BUILD_ID", "unknown")
 
 
@@ -21,8 +30,10 @@ class Container(abc.ABC):
     A wrapper for running commands in ray ci docker container
     """
 
-    def __init__(self, docker_tag: str) -> None:
+    def __init__(self, docker_tag: str, envs: Optional[List[str]] = None) -> None:
         self.docker_tag = docker_tag
+        self.envs = envs or []
+        self.envs += _DOCKER_ENV
 
     def run_script_with_output(self, script: List[str]) -> bytes:
         """
@@ -57,20 +68,32 @@ class Container(abc.ABC):
     def get_run_command(
         self,
         script: List[str],
+        network: Optional[str] = None,
         gpu_ids: Optional[List[int]] = None,
+        volumes: Optional[List[str]] = None,
     ) -> List[str]:
         """
         Get docker run command
         :param script: script to run in container
         :param gpu_ids: ids of gpus on the host machine
         """
+        artifact_mount_host, artifact_mount_container = self.get_artifact_mount()
+        command = [
+            "docker",
+            "run",
+            "-i",
+            "--rm",
+            "--volume",
+            f"{artifact_mount_host}:{artifact_mount_container}",
+        ]
+        for env in self.envs:
+            command += ["--env", env]
+        if network:
+            command += ["--network", network]
+        for volume in volumes or []:
+            command += ["--volume", volume]
         return (
-            [
-                "docker",
-                "run",
-                "-i",
-                "--rm",
-            ]
+            command
             + self.get_run_command_extra_args(gpu_ids)
             + [self._get_docker_image()]
             + self.get_run_command_shell()
@@ -86,4 +109,11 @@ class Container(abc.ABC):
         self,
         gpu_ids: Optional[List[int]] = None,
     ) -> List[str]:
+        pass
+
+    @abc.abstractmethod
+    def get_artifact_mount(self) -> Tuple[str, str]:
+        """
+        Get artifact mount path on host and container
+        """
         pass

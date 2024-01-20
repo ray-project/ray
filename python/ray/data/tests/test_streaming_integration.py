@@ -81,6 +81,10 @@ def test_autoshutdown_dangling_executors(ray_start_10_cpus_shared):
     initial = streaming_executor._num_shutdown
     for _ in range(num_runs):
         executor = StreamingExecutor(ExecutionOptions())
+        o = InputDataBuffer([])
+        # Start the executor. Because non-started executors don't
+        # need to be shut down.
+        executor.execute(o)
         del executor
     assert streaming_executor._num_shutdown - initial == num_runs
 
@@ -387,7 +391,7 @@ def test_backpressure_from_output(ray_start_10_cpus_shared, restore_data_context
     assert num_finished < 20, num_finished
     # Check intermediate stats reporting.
     stats = ds.stats()
-    assert "100/100 blocks executed" not in stats, stats
+    assert "100 tasks executed" not in stats, stats
 
     # Check we can get the rest.
     for rest in it:
@@ -395,7 +399,7 @@ def test_backpressure_from_output(ray_start_10_cpus_shared, restore_data_context
     assert ray.get(counter.get.remote()) == 100
     # Check final stats reporting.
     stats = ds.stats()
-    assert "100/100 blocks executed" in stats, stats
+    assert "100 tasks executed" in stats, stats
 
 
 def test_e2e_liveness_with_output_backpressure_edge_case(
