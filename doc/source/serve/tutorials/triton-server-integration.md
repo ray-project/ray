@@ -6,7 +6,7 @@ This guide shows how to build an application with stable diffusion model using [
 ## Preparation
 
 ### Build Model
-For this application, encoder are exported to ONNX format and stable diffusion are exported to be TensorRT engine format which is being compatible with Triton Server.
+For this application, the encoder are exported to ONNX format and the stable diffusion model are exported to be TensorRT engine format which is being compatible with Triton Server.
 Here is the example to exporting models to be ONNX format.([source](https://github.com/triton-inference-server/tutorials/blob/main/Triton_Inference_Server_Python_API/scripts/stable_diffusion/export.py))
 
 ```python
@@ -60,13 +60,13 @@ torch.onnx.export(
 
 From the script, the outputs are `vae.onnx` and `encoder.onnx`.
 
-After the model exported, converting the ONNX model to TensorRT engine serialized file. ([Details](https://github.com/NVIDIA/TensorRT/blob/release/9.2/samples/trtexec/README.md?plain=1#L22) about trtexec cli)
+After the ONNX model exported, converting the ONNX model to the TensorRT engine serialized file. ([Details](https://github.com/NVIDIA/TensorRT/blob/release/9.2/samples/trtexec/README.md?plain=1#L22) about trtexec cli)
 ```bash
 trtexec --onnx=vae.onnx --saveEngine=vae.plan --minShapes=latent_sample:1x4x64x64 --optShapes=latent_sample:4x4x64x64 --maxShapes=latent_sample:8x4x64x64 --fp16
 ```
 
 ### Prepare Model Repository
-Triton Server requires a [model repository](https://github.com/triton-inference-server/server/blob/main/docs/user_guide/model_repository.md) to store the models, which is a local directory or blob store path (e.g. AWS S3) containing the model configuration and the model files.
+Triton Server requires a [model repository](https://github.com/triton-inference-server/server/blob/main/docs/user_guide/model_repository.md) to store the models, which is a local directory or remote blob store (e.g. AWS S3) containing the model configuration and the model files.
 In our example, we will use a local directory as the model repository to save all the model files.
 
 ```bash
@@ -85,13 +85,13 @@ model_repo/
     └── config.pbtxt
 ```
 
-The model repository contains three models: `stable_diffusion`, `text_encoder` and `vae`. Each model has a `config.pbtxt` file and a model file. The `config.pbtxt` file contains the model configuration, which is used to describe the model and how to load the model. The model file is the actual model file, which is used to do the inference. (You can learn more about model config file [here](https://github.com/triton-inference-server/server/blob/main/docs/user_guide/model_configuration.md)). To get config files for our example, you can download them from [here](https://github.com/triton-inference-server/tutorials/tree/main/Conceptual_Guide/Part_6-building_complex_pipelines/model_repository)
+The model repository contains three models: `stable_diffusion`, `text_encoder` and `vae`. Each model has a `config.pbtxt` file and a model file. The `config.pbtxt` file contains the model configuration, which is used to describe the model type and input/output formats. (You can learn more about model config file [here](https://github.com/triton-inference-server/server/blob/main/docs/user_guide/model_configuration.md)). To get config files for our example, you can download them from [here](https://github.com/triton-inference-server/tutorials/tree/main/Conceptual_Guide/Part_6-building_complex_pipelines/model_repository). We use `1` as the version of each model. The model files are saved in the version directory.
 
 
-## Start Ray Serve with Triton Server
-Triton Server provides python API to start the triton server instance. You can use the `nvcr.io/nvidia/tritonserver:23.12-py3` image which already contains the triton server python API library.
+## Start Ray Serve with the Triton Server
+Triton Server provides python API to start the Triton Server instance. You can use the `nvcr.io/nvidia/tritonserver:23.12-py3` image which already have the Triton Server python API library installed.
 
-In each serve replica, there is a triton server instance running. The API takes the model repository path as the parameter, and the triton serve instance is started during the replica initialization. The models can be loaded during the inference requests, and the loaded models are cached in the triton server instance.
+In each serve replica, there is a single Triton Server instance running. The API takes the model repository path as the parameter, and the Triton Serve instance is started during the replica initialization. The models can be loaded during the inference requests, and the loaded models are cached in the Triton Server instance.
 
 Here is the inference code example for serving a model with Triton Server.([source](https://github.com/triton-inference-server/tutorials/blob/main/Triton_Inference_Server_Python_API/examples/rayserve/tritonserver_deployment.py))
 
@@ -112,9 +112,7 @@ class TritonDeployment:
     def __init__(self):
         self._triton_server = tritonserver
 
-        model_repository = [
-            "/workspace/models",
-        ]
+        model_repository = ["/workspace/models"]
 
         self._triton_server = tritonserver.Server(
             model_repository=model_repository,
@@ -163,7 +161,7 @@ Save the above code to a file named e.g. `triton_serve.py`, then run `python tri
 
 
 :::{note}
-You can also use remote model repository, such as AWS S3, to store the model files. To use remote model repository, you need to set the `model_repository` parameter to the remote model repository path.  For example `model_repository == s3://<bucket_name>/<model_repository_path>`.
+You can also use remote model repository, such as AWS S3, to store the model files. To use remote model repository, you need to set the `model_repository` variable to the remote model repository path.  For example `model_repository = s3://<bucket_name>/<model_repository_path>`.
 :::
 
 If you find any bugs or have any suggestions, please let us know by [filing an issue](https://github.com/ray-project/ray/issues) on GitHub.
