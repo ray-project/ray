@@ -1,12 +1,12 @@
 (serve-triton-server-integration)=
 
-# Serving a Resenet model with Triton Server
-This guide shows how to serve a stable diffusion model with [NVIDIA Triton Server](https://github.com/triton-inference-server/server) using Ray Serve.
+# Serving model with Triton Server in Ray Serve
+This guide shows how to build an application with stable diffusion model using [NVIDIA Triton Server](https://github.com/triton-inference-server/server) in Ray Serve.
 
 ## Preparation
 
 ### Build Model
-You need to build your model compatible with Triton Server.
+You need to build your model being compatible with Triton Server.
 Here is an example of exporting ONNX stable diffusion model.([source](https://github.com/triton-inference-server/tutorials/blob/main/Triton_Inference_Server_Python_API/scripts/stable_diffusion/export.py))
 
 ```python
@@ -91,6 +91,8 @@ The model repository contains three models: `stable_diffusion`, `text_encoder` a
 ## Start Ray Serve with Triton Server
 Triton Server provides python API to start the triton server instance. You can use the `nvcr.io/nvidia/tritonserver:23.12-py3` image which already contains the triton server python API library.
 
+In each serve replica, there is a triton server instance running. The API takes the model repository path as the parameter, and the triton serve instance is started during the replica initialization. The models can be loaded during the inference requests, and the loaded models are cached in the triton server instance.
+
 Here is the inference code example for serving a model with Triton Server.([source](https://github.com/triton-inference-server/tutorials/blob/main/Triton_Inference_Server_Python_API/examples/rayserve/tritonserver_deployment.py))
 
 ```python
@@ -127,7 +129,6 @@ class TritonDeployment:
             try:
                 self._triton_server.load("text_encoder")
                 self._triton_server.load("vae")
-
                 self._stable_diffusion = self._triton_server.load("stable_diffusion")
                 if not self._stable_diffusion.ready():
                     raise Exception("Model not ready")
