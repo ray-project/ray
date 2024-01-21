@@ -59,7 +59,6 @@ def test_launch_basic():
         instance_storage=instance_storage,
         node_provider=node_provider,
         upscaling_speed=1,
-        max_launch_per_type=10,
     )
 
     instance = create_instance("1", status=Instance.QUEUED, instance_type="type-1")
@@ -80,16 +79,16 @@ def test_launch_basic():
 
 
 @pytest.mark.parametrize(
-    "upscaling_speed,max_launch_per_type", [(0, 10), (1, 10), (10, 10), (100, 10)]
+    "upscaling_speed,max_concurrent_launches", [(0, 10), (1, 10), (10, 10), (100, 10)]
 )
-def test_launch_upscaling_limited(upscaling_speed, max_launch_per_type):
+def test_launch_upscaling_limited(upscaling_speed, max_concurrent_launches):
     instance_storage = InstanceStorage(cluster_id="test", storage=InMemoryStorage())
     node_provider = MagicMock()
     launcher = InstanceLauncher(
         instance_storage=instance_storage,
         node_provider=node_provider,
         upscaling_speed=upscaling_speed,
-        max_launch_per_type=max_launch_per_type,
+        max_concurrent_launches=max_concurrent_launches,
     )
 
     # Start with a 2 instance cluster
@@ -101,7 +100,7 @@ def test_launch_upscaling_limited(upscaling_speed, max_launch_per_type):
     )
     add_instances(instance_storage, [instance1, instance2])
 
-    expected_launch_num = min(max(upscaling_speed * 2, 1), max_launch_per_type)
+    expected_launch_num = min(max(upscaling_speed * 2, 1), max_concurrent_launches - 1)
 
     queued_instances = [
         create_instance(str(i), status=Instance.QUEUED, instance_type="type-1")
@@ -112,8 +111,74 @@ def test_launch_upscaling_limited(upscaling_speed, max_launch_per_type):
 
     def verify():
         launch_requests = get_launch_requests(node_provider)
-        assert len(launch_requests) == 1
-        assert list(launch_requests.values())[0] == {"type-1": expected_launch_num}
+        assert len(launch_requests) == 1 if expected_launch_num > 0 else 0
+        if expected_launch_num > 0:
+            assert list(launch_requests.values())[0] == {"type-1": expected_launch_num}
+
+        return True
+
+    wait_for_condition(verify)
+
+
+@pytest.mark.parametrize(
+    "max_concurrent_launches,num_allocated,num_requested",
+    [(1, 0, 0), (10, 0, 0), (1, 0, 1), (1, 1, 0), (10, 1, 0), (10, 0, 1), (10, 5, 5)],
+)
+def test_max_concurrent_launches(
+    max_concurrent_launches,
+    num_allocated,
+    num_requested,
+):
+    instance_storage = InstanceStorage(cluster_id="test", storage=InMemoryStorage())
+    node_provider = MagicMock()
+    upscaling_speed = 100000  # large values to maximize per type upscaling
+    launcher = InstanceLauncher(
+        instance_storage=instance_storage,
+        node_provider=node_provider,
+        upscaling_speed=upscaling_speed,
+        max_concurrent_launches=max_concurrent_launches,
+    )
+    next_id = 0
+
+    # Add some allocated instances.
+    for _ in range(num_allocated):
+        instance = create_instance(
+            str(next_id), status=Instance.ALLOCATED, instance_type="type-1"
+        )
+        add_instances(instance_storage, [instance])
+        next_id += 1
+
+    # Add some requested instances.
+    for _ in range(num_requested):
+        instance = create_instance(
+            str(next_id), status=Instance.REQUESTED, instance_type="type-1"
+        )
+        add_instances(instance_storage, [instance])
+        next_id += 1
+
+    # Add many queued instances.
+    queued_instances = [
+        create_instance(
+            str(i + next_id), status=Instance.QUEUED, instance_type="type-1"
+        )
+        for i in range(1000)
+    ]
+    add_instances(instance_storage, queued_instances)
+
+    # Trigger the launch.
+    notify(launcher, str(next_id), Instance.QUEUED)
+
+    num_desired_upscale = max(1, upscaling_speed * (num_requested + num_allocated))
+    expected_launch_num = min(
+        num_desired_upscale,
+        max(0, max_concurrent_launches - num_requested),  # global limit
+    )
+
+    def verify():
+        launch_requests = get_launch_requests(node_provider)
+        assert len(launch_requests) == (1 if expected_launch_num > 0 else 0)
+        if expected_launch_num > 0:
+            assert list(launch_requests.values())[0] == {"type-1": expected_launch_num}
 
         return True
 

@@ -4,7 +4,7 @@ from collections import defaultdict
 from concurrent.futures import ThreadPoolExecutor
 from typing import Callable, Dict, List, Optional
 
-from ray.autoscaler._private.constants import AUTOSCALER_MAX_LAUNCH_PER_TYPE
+from ray.autoscaler._private.constants import AUTOSCALER_MAX_CONCURRENT_LAUNCHES
 from ray.autoscaler.v2.instance_manager.instance_manager import InstanceUtil
 from ray.autoscaler.v2.instance_manager.instance_storage import (
     InstanceStorage,
@@ -29,14 +29,14 @@ class InstanceLauncher(InstanceUpdatedSubscriber):
         instance_storage: InstanceStorage,
         node_provider: ICloudInstanceProvider,
         upscaling_speed: float,
-        max_launch_per_type: int = AUTOSCALER_MAX_LAUNCH_PER_TYPE,
+        max_concurrent_launches: int = AUTOSCALER_MAX_CONCURRENT_LAUNCHES,
         launch_callback: Optional[Callable] = None,
     ) -> None:
         self._instance_storage = instance_storage
         self._node_provider = node_provider
         self._executor = ThreadPoolExecutor(max_workers=1)
         self._upscaling_speed = upscaling_speed
-        self._max_launch_per_type = max_launch_per_type
+        self._max_concurrent_launches = max_concurrent_launches
         self._launch_callback = launch_callback or self._default_launch_callback
         self._request_prefix = "instance_launcher"
 
@@ -75,16 +75,6 @@ class InstanceLauncher(InstanceUpdatedSubscriber):
         """
         Launches new instances if there are new instances in QUEUED status.
 
-        In order to avoid launching too many instances at the same time, we
-        limit the number of REQUESTED per node type as follows:
-        - Limit the total number of REQUESTED instances to be
-            max(self._max_launch_per_type, self._upscaling_speed * num_requested_or_allocated) # noqa
-
-        where,
-            - upscaling_speed is a user config from the autoscaling config.
-            - requested_or_allocated[node_type] is the number of nodes of
-            the same type where are requested for launch or already allocated.
-
         Returns:
             A dict of request_id to the number of instances to launch.
 
@@ -104,13 +94,20 @@ class InstanceLauncher(InstanceUpdatedSubscriber):
         queued_instances = []
         # Instances that are already requested for launch, or have
         # already been allocated .
-        requested_or_allocated_instances = []
+        requested_instances = []
+        allocated_instances = []
 
         for instance in target_instances.values():
             if instance.status == Instance.QUEUED:
                 queued_instances.append(instance)
+            elif instance.status == Instance.REQUESTED:
+                requested_instances.append(instance)
             else:
-                requested_or_allocated_instances.append(instance)
+                assert InstanceUtil.is_cloud_instance_allocated(instance), (
+                    f"Instance {instance.instance_id} has status "
+                    f"{instance.status} but is not allocated."
+                )
+                allocated_instances.append(instance)
 
         if not queued_instances:
             # This could happen if instances are changed to non-queued status
@@ -119,19 +116,8 @@ class InstanceLauncher(InstanceUpdatedSubscriber):
             logger.debug("No queued instances to launch.")
             return None
 
-        def _group_by_type(instances):
-            instances_by_type = defaultdict(list)
-            for instance in instances:
-                instances_by_type[instance.instance_type].append(instance)
-            return instances_by_type
-
-        queued_instances_by_type = _group_by_type(queued_instances)
-        requested_or_allocated_instances_by_type = _group_by_type(
-            requested_or_allocated_instances
-        )
-
         to_launch = self._get_to_launch(
-            queued_instances_by_type, requested_or_allocated_instances_by_type
+            queued_instances, requested_instances, allocated_instances
         )
 
         # Update the instances to REQUESTED status.
@@ -178,70 +164,128 @@ class InstanceLauncher(InstanceUpdatedSubscriber):
 
     def _get_to_launch(
         self,
-        queued_instances_by_type: Dict[str, List[Instance]],
-        requested_or_allocated_instances_by_type: Dict[NodeType, List[Instance]],
+        queued_instances: List[Instance],
+        requested_instances: List[Instance],
+        allocated_instances: List[Instance],
     ) -> Dict[NodeType, List[Instance]]:
         """Returns the number of instances to request for each node type.
 
         Args:
-            queued_instances_by_type: a dict of instances to launch grouped by
-                instance type.
-            requested_or_allocated_instances_by_type: a dict of instances
-                requested or allocated grouped by instance type.
+            queued_instances: the queued instances.
+            requested_instances: the requested instances.
+            allocated_instances: instances with a cloud instance already
+                allocated.
+
         Returns:
             a dict of instances to request grouped by instance type.
         """
-        all_to_launch = {}
-        for instance_type, instances in queued_instances_by_type.items():
-            requested_or_allocated = requested_or_allocated_instances_by_type.get(
-                instance_type, []
-            )
-            to_launch = self._get_to_launch_for_type(
-                instances, len(requested_or_allocated)
-            )
-            all_to_launch[instance_type] = to_launch
 
-            logger.debug(
-                f"Launching {len(to_launch)} instances of {instance_type} with "
-                f"{len(requested_or_allocated)} already requested for launch "
-                "or allocated."
-            )
-
-        return all_to_launch
-
-    def _get_to_launch_for_type(
-        self,
-        queued: List[Instance],
-        num_requested_or_allocated: int,
-    ) -> List[Instance]:
-        """Get the instances to request for launch.
-
-        Args:
-            instance_type: the instance type to launch.
-            queued: the queued instances of the given type.
-            num_requested_or_allocated: the number of instances of the given type
-                that are already requested or allocated.
-
-        Returns:
-            a list of instances to launch.
-        """
-
-        # Limit the number of instances to launch at a time.
-        max_to_launch = min(
-            len(queued),  # Cap num to launch to number of queued.
-            min(
-                self._max_launch_per_type,  # Cap num to launch to max per type.
-                max(math.ceil(self._upscaling_speed * num_requested_or_allocated), 1),
-            ),
-        )
-        assert max_to_launch > 0 and max_to_launch <= len(queued), (
-            f"max_to_launch={max_to_launch} must be between 0 and "
-            f"{len(queued)} (number of queued instances)"
-        )
+        def _group_by_type(instances):
+            instances_by_type = defaultdict(list)
+            for instance in instances:
+                instances_by_type[instance.instance_type].append(instance)
+            return instances_by_type
 
         # Sort the instances by the time they were queued.
         def _sort_by_earliest_queued(instance: Instance) -> List[int]:
             queue_times = InstanceUtil.get_status_times_ns(instance, Instance.QUEUED)
             return sorted(queue_times)
 
-        return sorted(queued, key=_sort_by_earliest_queued)[:max_to_launch]
+        queued_instances_by_type = _group_by_type(queued_instances)
+        requested_instances_by_type = _group_by_type(requested_instances)
+        allocated_instances_by_type = _group_by_type(allocated_instances)
+
+        total_num_requested_to_launch = len(requested_instances)
+        all_to_launch = {}
+
+        for (
+            instance_type,
+            queued_instances_for_type,
+        ) in queued_instances_by_type.items():
+            requested_instances_for_type = requested_instances_by_type.get(
+                instance_type, []
+            )
+            allocated_instances_for_type = allocated_instances_by_type.get(
+                instance_type, []
+            )
+
+            num_to_launch = self._compute_num_to_launch_for_type(
+                instance_type,
+                len(queued_instances_for_type),
+                len(requested_instances_for_type),
+                len(allocated_instances_for_type),
+                total_num_requested_to_launch,
+            )
+
+            to_launch = sorted(queued_instances_for_type, key=_sort_by_earliest_queued)[
+                :num_to_launch
+            ]
+
+            all_to_launch[instance_type] = to_launch
+            total_num_requested_to_launch += num_to_launch
+
+        return all_to_launch
+
+    def _compute_num_to_launch_for_type(
+        self,
+        node_type: NodeType,
+        num_queued_for_type: int,
+        num_requested_for_type: int,
+        num_allocated_for_type: int,
+        num_requested_to_launch_for_all: int,
+    ) -> int:
+        """Compute the number of instances to request for launch.
+
+        This calculates the number of instances to request for launch for a
+        specific node type by:
+            1. Get the ideal num to launch based on current cluster instances
+            for the type.
+            2. Cap the number of instances to launch based on the global limit.
+
+        Args:
+            node_type: the node type.
+            num_queued_for_type: the number of instances that are queued for
+                this node type.
+            num_requested_for_type: the number of instances that are requested
+                for launch for this node type.
+            num_allocated_for_type: the number of instances that are already
+                allocated for this node type.
+            num_requested_to_launch_for_all: the number of instances that are
+                requested for launch for all node types.
+
+        Returns:
+            the number of instances to request for launch.
+
+        """
+
+        # Compute the desired upscaling for the node type based on current
+        # cluster instances.
+        num_desired_to_upscale = max(
+            1,
+            math.ceil(
+                self._upscaling_speed
+                * (num_requested_for_type + num_allocated_for_type)
+            ),
+        )
+
+        # Enforce global limit.
+        num_to_launch = min(
+            self._max_concurrent_launches - num_requested_to_launch_for_all,
+            num_desired_to_upscale,
+        )
+
+        # Cap both ends 0 <= num_to_launch <= num_queued
+        num_to_launch = max(0, num_to_launch)
+        num_to_launch = min(num_queued_for_type, num_to_launch)
+
+        logger.debug(
+            f"Computed {num_to_launch} instances to launch for node type "
+            f"{node_type}. num_queued_for_type={num_queued_for_type}, "
+            f"num_requested_for_type={num_requested_for_type}, "
+            f"num_allocated_for_type={num_allocated_for_type}, "
+            f"num_requested_to_launch_for_all={num_requested_to_launch_for_all},"
+            f"max_concurrent_launches={self._max_concurrent_launches}, "
+            f"num_desired_to_upscale={num_desired_to_upscale}"
+        )
+
+        return num_to_launch
