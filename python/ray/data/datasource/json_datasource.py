@@ -1,10 +1,13 @@
 from typing import TYPE_CHECKING, Any, Dict, List, Optional, Union
 
+from ray.data._internal.dataset_logger import DatasetLogger
 from ray.data.datasource.file_based_datasource import FileBasedDatasource
 from ray.util.annotations import PublicAPI
 
 if TYPE_CHECKING:
     import pyarrow
+
+logger = DatasetLogger(__name__)
 
 
 @PublicAPI
@@ -34,6 +37,25 @@ class JSONDatasource(FileBasedDatasource):
 
     # TODO(ekl) The PyArrow JSON reader doesn't support streaming reads.
     def _read_stream(self, f: "pyarrow.NativeFile", path: str):
-        from pyarrow import json
+        from io import BytesIO
 
-        yield json.read_json(f, read_options=self.read_options, **self.arrow_json_args)
+        import pyarrow as pa
+
+        buffer = f.read_buffer()
+
+        try:
+            yield pa.json.read_json(
+                BytesIO(buffer),
+                read_options=self.read_options,
+                **self.arrow_json_args,
+            )
+        except pa.ArrowInvalid as e:
+            logger.get_logger().warning(
+                f"Error reading with pyarrow.json.read_json(). "
+                f"Falling back to native json.load(), which may be slower. "
+                f"PyArrow error was:\n{e}"
+            )
+            import json
+
+            parsed_json = json.load(BytesIO(buffer))
+            yield pa.Table.from_pylist(parsed_json)

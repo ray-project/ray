@@ -19,7 +19,6 @@ from ray.data.datasource import (
 )
 from ray.data.datasource.path_util import _unwrap_protocol
 from ray.data.tests.conftest import *  # noqa
-from ray.data.tests.mock_http_server import *  # noqa
 from ray.data.tests.test_partitioning import PathPartitionEncoder
 from ray.data.tests.util import Counter
 from ray.tests.conftest import *  # noqa
@@ -255,6 +254,26 @@ def test_zipped_json_read(ray_start_regular_shared, tmp_path):
     dsdf = ds.to_pandas()
     assert df.equals(dsdf)
     shutil.rmtree(dir_path)
+
+
+def test_read_json_fallback_from_pyarrow_failure(ray_start_regular_shared, local_path):
+    # Try to read this with read_json() to trigger fallback logic
+    # to read bytes with json.load().
+    data = [{"one": [1]}, {"one": [1, 2]}]
+    path1 = os.path.join(local_path, "test1.json")
+    with open(path1, "w") as f:
+        json.dump(data, f)
+
+    # pyarrow.json cannot read JSONs containing arrays of different lengths.
+    from pyarrow import ArrowInvalid
+
+    with pytest.raises(ArrowInvalid):
+        pajson.read_json(path1)
+
+    # Ray Data successfully reads this in by
+    # falling back to json.load() when pyarrow fails.
+    ds = ray.data.read_json(path1)
+    assert ds.take_all() == data
 
 
 @pytest.mark.parametrize(
