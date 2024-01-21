@@ -6,8 +6,8 @@ This guide shows how to build an application with stable diffusion model using [
 ## Preparation
 
 ### Build Model
-You need to build your model being compatible with Triton Server.
-Here is an example of exporting ONNX stable diffusion model.([source](https://github.com/triton-inference-server/tutorials/blob/main/Triton_Inference_Server_Python_API/scripts/stable_diffusion/export.py))
+For this application, encoder are exported to ONNX format and stable diffusion are exported to be TensorRT engine format which is being compatible with Triton Server.
+Here is the example to exporting models to be ONNX format.([source](https://github.com/triton-inference-server/tutorials/blob/main/Triton_Inference_Server_Python_API/scripts/stable_diffusion/export.py))
 
 ```python
 import torch
@@ -60,7 +60,7 @@ torch.onnx.export(
 
 From the script, the outputs are `vae.onnx` and `encoder.onnx`.
 
-Converting the ONNX model to TensorRT plan file. ([Details](https://github.com/NVIDIA/TensorRT/blob/release/9.2/samples/trtexec/README.md?plain=1#L22) about trtexec cli)
+After the model exported, converting the ONNX model to TensorRT engine serialized file. ([Details](https://github.com/NVIDIA/TensorRT/blob/release/9.2/samples/trtexec/README.md?plain=1#L22) about trtexec cli)
 ```bash
 trtexec --onnx=vae.onnx --saveEngine=vae.plan --minShapes=latent_sample:1x4x64x64 --optShapes=latent_sample:4x4x64x64 --maxShapes=latent_sample:8x4x64x64 --fp16
 ```
