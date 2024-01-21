@@ -39,14 +39,18 @@ class InstanceLauncher(InstanceUpdatedSubscriber):
             upscaling_speed: the upscaling speed.
             max_concurrent_launches: the maximum number of concurrent launches.
             launch_callback: the callback to call when launching instances are
-                done in the background.
+                done in the background. This should not block since it shares
+                the same thread pool as the instance launcher main executor.
         """
         self._instance_storage = instance_storage
         self._node_provider = node_provider
         self._executor = ThreadPoolExecutor(max_workers=1)
         self._upscaling_speed = upscaling_speed
         self._max_concurrent_launches = max_concurrent_launches
+        # This is the callback to call when launching instances are done in the
+        # background.
         self._launch_callback = launch_callback or self._default_launch_callback
+        # This is the prefix of the launch request id.
         self._request_prefix = "instance_launcher"
 
     def notify(self, events: List[InstanceUpdateEvent]) -> None:
