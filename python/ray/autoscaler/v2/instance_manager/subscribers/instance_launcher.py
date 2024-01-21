@@ -32,6 +32,15 @@ class InstanceLauncher(InstanceUpdatedSubscriber):
         max_concurrent_launches: int = AUTOSCALER_MAX_CONCURRENT_LAUNCHES,
         launch_callback: Optional[Callable] = None,
     ) -> None:
+        """
+        Args:
+            instance_storage: the instance storage.
+            node_provider: the node provider.
+            upscaling_speed: the upscaling speed.
+            max_concurrent_launches: the maximum number of concurrent launches.
+            launch_callback: the callback to call when launching instances are
+                done in the background.
+        """
         self._instance_storage = instance_storage
         self._node_provider = node_provider
         self._executor = ThreadPoolExecutor(max_workers=1)
@@ -74,6 +83,9 @@ class InstanceLauncher(InstanceUpdatedSubscriber):
     def _may_launch_new_instances(self) -> Optional[Dict[str, Dict[str, int]]]:
         """
         Launches new instances if there are new instances in QUEUED status.
+
+        This method will update the instance storage, and also launch the
+        instances with the node provider.
 
         Returns:
             A dict of request_id to the number of instances to launch.
