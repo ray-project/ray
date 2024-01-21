@@ -242,16 +242,6 @@ def ray_deps_setup():
     )
 
     http_archive(
-        name = "openssl",
-        strip_prefix = "openssl-1.1.1f",
-        sha256 = "186c6bfe6ecfba7a5b48c47f8a1673d0f3b0e5ba2e25602dd23b629975da3f35",
-        urls = [
-            "https://www.openssl.org/source/openssl-1.1.1f.tar.gz",
-        ],
-        build_file = "@rules_foreign_cc_thirdparty//openssl:BUILD.openssl.bazel",
-    )
-
-    http_archive(
         name = "rules_foreign_cc",
         sha256 = "2a4d07cd64b0719b39a7c12218a3e507672b82a97b98c6a89d38565894cf7c51",
         strip_prefix = "rules_foreign_cc-0.9.0",
