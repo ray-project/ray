@@ -1,72 +1,168 @@
 (serve-triton-server-integration)=
 
 # Serving a Resenet model with Triton Server
-This guide shows how to serve models with [NVIDIA Triton Server](https://github.com/triton-inference-server/server) using Ray Serve.
+This guide shows how to serve a stable diffusion model with [NVIDIA Triton Server](https://github.com/triton-inference-server/server) using Ray Serve.
 
-## Installation
-Here is the Dockerfile example for installing Triton Server with Ray Serve.
+## Preparation
 
-## Inference Code
-Before starting the triton serve to do the inference, you need to place your model into the model repository (e.g. `/tmp/models`). So that the triton serve can get access to your models.
-You can follow the [guide][https://github.com/triton-inference-server/server/blob/main/docs/user_guide/model_repository.md#model-repository] to setup the model repo.
+### Build Model
+You need to build your model compatible with Triton Server.
+Here is an example of exporting ONNX stable diffusion model.([source](https://github.com/triton-inference-server/tutorials/blob/main/Triton_Inference_Server_Python_API/scripts/stable_diffusion/export.py))
 
-In the example, the model repo is under `/tmp/models` and the model name is `resnet50_libtorch`.
+```python
+import torch
+from diffusers import AutoencoderKL
+from transformers import CLIPTextModel, CLIPTokenizer
 
-```bash
-ray@ip-10-0-60-123:~/default/tutorials/RayServe/models_test$ ls /tmp/models/resnet50_libtorch/
-1  config.pbtxt  resnet50_labels.txt
+prompt = "Draw a dog"
+vae = AutoencoderKL.from_pretrained(
+    "CompVis/stable-diffusion-v1-4", subfolder="vae", use_auth_token=True
+)
+
+tokenizer = CLIPTokenizer.from_pretrained("openai/clip-vit-large-patch14")
+text_encoder = CLIPTextModel.from_pretrained("openai/clip-vit-large-patch14")
+
+vae.forward = vae.decode
+torch.onnx.export(
+    vae,
+    (torch.randn(1, 4, 64, 64), False),
+    "vae.onnx",
+    input_names=["latent_sample", "return_dict"],
+    output_names=["sample"],
+    dynamic_axes={
+        "latent_sample": {0: "batch", 1: "channels", 2: "height", 3: "width"},
+    },
+    do_constant_folding=True,
+    opset_version=14,
+)
+
+text_input = tokenizer(
+    prompt,
+    padding="max_length",
+    max_length=tokenizer.model_max_length,
+    truncation=True,
+    return_tensors="pt",
+)
+
+torch.onnx.export(
+    text_encoder,
+    (text_input.input_ids.to(torch.int32)),
+    "encoder.onnx",
+    input_names=["input_ids"],
+    output_names=["last_hidden_state", "pooler_output"],
+    dynamic_axes={
+        "input_ids": {0: "batch", 1: "sequence"},
+    },
+    opset_version=14,
+    do_constant_folding=True,
+)
 ```
 
-Here is the inference code example for serving a model with Triton Server.
+From the script, the outputs are `vae.onnx` and `encoder.onnx`.
+
+Converting the ONNX model to TensorRT plan file. ([Details](https://github.com/NVIDIA/TensorRT/blob/release/9.2/samples/trtexec/README.md?plain=1#L22) about trtexec cli)
+```bash
+trtexec --onnx=vae.onnx --saveEngine=vae.plan --minShapes=latent_sample:1x4x64x64 --optShapes=latent_sample:4x4x64x64 --maxShapes=latent_sample:8x4x64x64 --fp16
+```
+
+### Prepare Model Repository
+Triton Server requires a [model repository](https://github.com/triton-inference-server/server/blob/main/docs/user_guide/model_repository.md) to store the models, which is a local directory or blob store path (e.g. AWS S3) containing the model configuration and the model files.
+In our example, we will use a local directory as the model repository to save all the model files.
+
+```bash
+model_repo/
+├── stable_diffusion
+│   ├── 1
+│   │   └── model.py
+│   └── config.pbtxt
+├── text_encoder
+│   ├── 1
+│   │   └── model.onnx
+│   └── config.pbtxt
+└── vae
+    ├── 1
+    │   └── model.plan
+    └── config.pbtxt
+```
+
+The model repository contains three models: `stable_diffusion`, `text_encoder` and `vae`. Each model has a `config.pbtxt` file and a model file. The `config.pbtxt` file contains the model configuration, which is used to describe the model and how to load the model. The model file is the actual model file, which is used to do the inference. (You can learn more about model config file [here](https://github.com/triton-inference-server/server/blob/main/docs/user_guide/model_configuration.md)). To get config files for our example, you can download them from [here](https://github.com/triton-inference-server/tutorials/tree/main/Conceptual_Guide/Part_6-building_complex_pipelines/model_repository)
+
+
+## Start Ray Serve with Triton Server
+Triton Server provides python API to start the triton server instance. You can use the `nvcr.io/nvidia/tritonserver:23.12-py3` image which already contains the triton server python API library.
+
+Here is the inference code example for serving a model with Triton Server.([source](https://github.com/triton-inference-server/tutorials/blob/main/Triton_Inference_Server_Python_API/examples/rayserve/tritonserver_deployment.py))
 
 ```python
 import numpy
 import requests
+import tritonserver
 from fastapi import FastAPI
+from PIL import Image
 from ray import serve
-from tritonserver_api import TritonServer
 
 
-# 1: Define a FastAPI app and wrap it in a deployment with a route handler.
 app = FastAPI()
 
-
-@serve.deployment(route_prefix="/", ray_actor_options={"num_gpus": 1}, autoscaling_config={"min_replicas": 0, "max_replicas": 2})
+@serve.deployment(ray_actor_options={"num_gpus": 1})
 @serve.ingress(app)
 class TritonDeployment:
     def __init__(self):
-        # Construct the triton server
-        server_options = TritonServer.Options("<model_repo_path>")
-        self._triton_server = TritonServer(server_options)
-        self._triton_server.start()
+        self._triton_server = tritonserver
 
-    @app.get("/classify")
-    def classify(self) -> float:
-        model = self._triton_server.model("resnet50_libtorch")
+        model_repository = [
+            "/workspace/models",
+        ]
 
-        input_ = numpy.random.rand(1, 3, 224, 224).astype(numpy.float32)
+        self._triton_server = tritonserver.Server(
+            model_repository=model_repository,
+            model_control_mode=tritonserver.ModelControlMode.EXPLICIT,
+            log_info=False,
+        )
+        self._triton_server.start(wait_until_ready=True)
 
-        responses = model.infer_async(inputs={"INPUT__0": input_})
-        for response in responses:
-            output_ = response.outputs["OUTPUT__0"]
-            max_ = numpy.argmax(output_[0])
-        return max_
+    @app.get("/generate")
+    def generate(self, prompt: str, filename: str = "generated_image.jpg") -> None:
+        if not self._triton_server.model("stable_diffusion").ready():
+            try:
+                self._triton_server.load("text_encoder")
+                self._triton_server.load("vae")
 
+                self._stable_diffusion = self._triton_server.load("stable_diffusion")
+                if not self._stable_diffusion.ready():
+                    raise Exception("Model not ready")
+            except Exception as error:
+                print(f"Error can't load stable diffusion model, {error}")
+                return
 
-def do_request():
-    requests.get(
-        "http://localhost:8000/classify",
-    ).raise_for_status()
+        for response in self._stable_diffusion.infer(inputs={"prompt": [[prompt]]}):
+            generated_image = (
+                numpy.from_dlpack(response.outputs["generated_image"])
+                .squeeze()
+                .astype(numpy.uint8)
+            )
+
+            image_ = Image.fromarray(generated_image)
+            image_.save(filename)
+
 
 if __name__ == "__main__":
-    # 2: Deploy the deployment.
+    # Deploy the deployment.
     serve.run(TritonDeployment.bind())
-    [do_request() for _ in range(10)]
 
-else:
-    app = TritonDeployment.bind()
+    # Query the deployment.
+    requests.get(
+        "http://localhost:8000/generate",
+        params={"prompt": "dogs in new york, realistic, 4k, photograph"},
+    )
 ```
 
-Save the above code to a file named e.g. `triton_serve.py`, then run `python triton_serve.py` to start the server and send classify requests. 
+Save the above code to a file named e.g. `triton_serve.py`, then run `python triton_serve.py` to start the server and send classify requests. After you run the above code, you should see the image generated `generated_image.jpg`. Check it out!
+![image](https://raw.githubusercontent.com/ray-project/images/master/docs/serve/triton_server_stable_diffusion.jpg)
+
+
+:::{note}
+You can also use remote model repository, such as AWS S3, to store the model files. To use remote model repository, you need to set the `model_repository` parameter to the remote model repository path.  For example `model_repository == s3://<bucket_name>/<model_repository_path>`.
+:::
 
 If you find any bugs or have any suggestions, please let us know by [filing an issue](https://github.com/ray-project/ray/issues) on GitHub.
