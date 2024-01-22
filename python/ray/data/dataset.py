@@ -3541,10 +3541,10 @@ class Dataset:
             ray_remote_args["max_retries"] = 0
 
         datasink = _BigQueryDatasink(
-            project_id=project_id, 
-            dataset=dataset, 
-            max_retry_cnt=max_retry_cnt, 
-            overwrite_table=overwrite_table
+            project_id=project_id,
+            dataset=dataset,
+            max_retry_cnt=max_retry_cnt,
+            overwrite_table=overwrite_table,
         )
         self.write_datasink(datasink, ray_remote_args=ray_remote_args)
 
