@@ -1,4 +1,4 @@
-import { fireEvent, render, within, screen } from "@testing-library/react";
+import { fireEvent, render, screen, within } from "@testing-library/react";
 import React from "react";
 import { MemoryRouter } from "react-router-dom";
 import { Actor } from "../type/actor";
@@ -29,10 +29,10 @@ const MOCK_ACTORS: { [actorId: string]: Actor } = {
     actorId: "ACTOR_2",
     jobId: "01000000",
     address: {
-      rayletId: "426854e68e4225b3941deaf03c8dcfcb1daacc69a92711d370dbb0e2",
+      rayletId: "426854e68e4225b3941deaf03c8dcfcb1daacc69a92711d370dbb0e1",
       ipAddress: "172.31.11.178",
       port: 10003,
-      workerId: "b8b276a03612644098ed7a929c3b0e50f5bde894eb0d8cab288fbb6e",
+      workerId: "b8b276a03612644098ed7a929c3b0e50f5bde894eb0d8cab288fbb6d",
     },
     state: "DEAD",
     numRestarts: "0",
@@ -49,9 +49,22 @@ const MOCK_ACTORS: { [actorId: string]: Actor } = {
 };
 describe("ActorTable", () => {
   it("renders a table of actors filtered by node ID", async() => {
+    const RUNNING_ACTORS = {
+      ...MOCK_ACTORS,
+      ACTOR_2: {
+        ...MOCK_ACTORS.ACTOR_2,
+        address: {
+          rayletId: "426854e68e4225b3941deaf03c8dcfcb1daacc69a92711d370dbb0e2",
+          ipAddress: "172.31.11.178",
+          port: 10003,
+          workerId: "b8b276a03612644098ed7a929c3b0e50f5bde894eb0d8cab288fbb6e",
+        },
+      },
+    };
+
     const { getByTestId } = render(
       <MemoryRouter>
-        <ActorTable actors={MOCK_ACTORS} />
+        <ActorTable actors={RUNNING_ACTORS} />
       </MemoryRouter>,
     );
 
