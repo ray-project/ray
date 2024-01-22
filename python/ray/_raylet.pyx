@@ -4722,26 +4722,6 @@ cdef class CoreWorker:
 
         return ref_counts
 
-    def get_actor_call_stats(self):
-        cdef:
-            unordered_map[c_string, c_vector[int64_t]] c_tasks_count
-
-        c_tasks_count = (
-            CCoreWorkerProcess.GetCoreWorker().GetActorCallStats())
-        it = c_tasks_count.begin()
-
-        tasks_count = dict()
-        while it != c_tasks_count.end():
-            func_name = <unicode>dereference(it).first
-            counters = dereference(it).second
-            tasks_count[func_name] = {
-                "pending": counters[0],
-                "running": counters[1],
-                "finished": counters[2],
-            }
-            postincrement(it)
-        return tasks_count
-
     def set_get_async_callback(self, ObjectRef object_ref, user_callback: Callable):
         # NOTE: we need to manually increment the Python reference count to avoid the
         # callback object being garbage collected before it's called by the core worker.
