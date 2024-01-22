@@ -1620,8 +1620,6 @@ class DeploymentState:
             num_running_replicas=len(self.get_running_replica_infos()),
             target_capacity=self._target_state.info.target_capacity,
             target_capacity_direction=self._target_state.info.target_capacity_direction,
-            app_name=self.app_name,
-            deployment_name=self.deployment_name,
         )
 
         if (
