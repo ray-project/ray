@@ -17,6 +17,8 @@ class DeploymentInfo:
         replica_config: ReplicaConfig,
         start_time_ms: int,
         deployer_job_id: str,
+        app_name: str,
+        deployment_name: str,
         actor_name: Optional[str] = None,
         version: Optional[str] = None,
         end_time_ms: Optional[int] = None,
@@ -46,8 +48,12 @@ class DeploymentInfo:
         self.target_capacity = target_capacity
         self.target_capacity_direction = target_capacity_direction
 
+        self.app_name = app_name
+        self.deployment_name = deployment_name
         self.autoscaling_policy_manager = AutoscalingPolicyManager(
-            config=deployment_config.autoscaling_config
+            config=deployment_config.autoscaling_config,
+            app_name=self.app_name,
+            deployment_name=self.deployment_name,
         )
 
     def __getstate__(self) -> Dict[Any, Any]:
@@ -71,6 +77,8 @@ class DeploymentInfo:
             replica_config=replica_config or self.replica_config,
             start_time_ms=self.start_time_ms,
             deployer_job_id=self.deployer_job_id,
+            app_name=self.app_name,
+            deployment_name=self.deployment_name,
             actor_name=self.actor_name,
             version=version or self.version,
             end_time_ms=self.end_time_ms,

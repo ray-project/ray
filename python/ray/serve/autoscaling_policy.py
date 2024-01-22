@@ -85,14 +85,17 @@ def _calculate_desired_num_replicas(
     return desired_num_replicas
 
 
-@dataclass
 @PublicAPI(stability="alpha")
-<<<<<<< HEAD
+@dataclass
 class AutoscalingContext:
     """The context for an autoscaling policy call."""
 
     # The AutoscalingConfig which the deployment started with.
     config: AutoscalingConfig
+    # The name of the application.
+    app_name: str
+    # The name of the deployment.
+    deployment_name: str
     # The number of replicas that the deployment is currently trying to scale to.
     current_target_num_replicas: int = 0
     # Total number of ongoing requests in the deployment.
@@ -105,12 +108,10 @@ class AutoscalingContext:
     capacity_adjusted_max_replicas: Optional[int] = None
     # State of the policy to be used during the call
     policy_state: Dict[str, Any] = field(default_factory=dict)
-    # The timestamp of last scaled time. Will be None If the deployment have not scaled.
-    last_scale_time: Optional[float] = None
-    # The name of the application.
-    app_name: Optional[str] = None
-    # The name of the deployment.
-    deployment_name: Optional[str] = None
+
+    def __post_init__(self):
+        # populate the policy state with the last scale time
+        self.policy_state = {"last_scale_time": None}
 
 
 @PublicAPI(stability="alpha")

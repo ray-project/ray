@@ -101,6 +101,8 @@ def deploy_args_to_deployment_info(
         route_prefix=route_prefix,
         docs_path=docs_path,
         ingress=ingress,
+        app_name=app_name,
+        deployment_name=deployment_name,
     )
 
 

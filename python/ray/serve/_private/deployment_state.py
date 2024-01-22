@@ -1269,11 +1269,11 @@ class DeploymentState:
     def autoscaling_policy_manager(self) -> AutoscalingPolicyManager:
         return self._target_state.info.autoscaling_policy_manager
 
-    def is_autoscaling_policy_enabled(self) -> bool:
+    def is_policy_enabled(self) -> bool:
         """
         Check if the deployment is under autoscaling
         """
-        return self.autoscaling_policy_manager.is_autoscaling_policy_enabled()
+        return self.autoscaling_policy_manager.is_policy_enabled()
 
     def get_autoscale_metric_lookback_period(self) -> float:
         """
@@ -1521,7 +1521,7 @@ class DeploymentState:
 
         # Decide new target num_replicas.
         autoscaling_policy_manager = deployment_info.autoscaling_policy_manager
-        if autoscaling_policy_manager.is_autoscaling_policy_enabled():
+        if autoscaling_policy_manager.is_policy_enabled():
             initial_replicas = autoscaling_policy_manager.config.initial_replicas
             if deployment_settings_changed and initial_replicas is not None:
                 target_num_replicas = get_capacity_adjusted_num_replicas(
@@ -2656,7 +2656,7 @@ class DeploymentStateManager:
         downscales = {}
 
         for deployment_id, deployment_state in self._deployment_states.items():
-            if deployment_state.is_autoscaling_policy_enabled():
+            if deployment_state.is_policy_enabled():
                 deployment_state.autoscale()
 
             deployment_state_update_result = deployment_state.update()

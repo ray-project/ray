@@ -1,6 +1,7 @@
 import logging
+import time
 from dataclasses import replace
-from typing import List, Optional
+from typing import Optional
 
 from ray.serve._private.common import TargetCapacityDirection
 from ray.serve._private.constants import SERVE_LOGGER_NAME
@@ -14,10 +15,16 @@ logger = logging.getLogger(SERVE_LOGGER_NAME)
 class AutoscalingPolicyManager:
     """Managing autoscaling policies and the lifecycle of the scaling function calls."""
 
-    def __init__(self, config: Optional[AutoscalingConfig]):
+    def __init__(
+        self, config: Optional[AutoscalingConfig], app_name: str, deployment_name: str
+    ):
         self.config = config
         self.policy = None
-        self.context = AutoscalingContext(config=config)
+        self.context = AutoscalingContext(
+            config=config,
+            app_name=app_name,
+            deployment_name=deployment_name,
+        )
         self.policy_state = {}
         self._create_policy()
 
@@ -26,7 +33,7 @@ class AutoscalingPolicyManager:
         if self.config:
             self.policy = self.config.get_policy()
 
-    def is_autoscaling_policy_enabled(self) -> bool:
+    def is_policy_enabled(self) -> bool:
         """Returns whether autoscaling should be performed."""
         return self.policy is not None
 
@@ -37,8 +44,6 @@ class AutoscalingPolicyManager:
         num_running_replicas: int,
         target_capacity: Optional[float] = None,
         target_capacity_direction: Optional[TargetCapacityDirection] = None,
-        app_name: Optional[str] = None,
-        deployment_name: Optional[str] = None,
         _skip_bound_check: bool = False,
     ) -> Optional[int]:
         """Interface with the autoscaling policy to get a decision to scale replicas.
@@ -62,19 +67,20 @@ class AutoscalingPolicyManager:
             num_running_replicas=num_running_replicas,
             capacity_adjusted_min_replicas=capacity_adjusted_min_replicas,
             capacity_adjusted_max_replicas=capacity_adjusted_max_replicas,
-            app_name=app_name,
-            deployment_name=deployment_name,
         )
         decision_num_replicas = self.policy(self.context)
 
-        if _skip_bound_check:
-            return decision_num_replicas
+        if decision_num_replicas is not None:
+            self.context.policy_state["last_scale_time"] = time.time()
 
-        return self.apply_bounds(
-            current_target_num_replicas=decision_num_replicas,
-            target_capacity=target_capacity,
-            target_capacity_direction=target_capacity_direction,
-        )
+            if _skip_bound_check:
+                return decision_num_replicas
+
+            return self.apply_bounds(
+                current_target_num_replicas=decision_num_replicas,
+                target_capacity=target_capacity,
+                target_capacity_direction=target_capacity_direction,
+            )
 
     def get_current_lower_bound(
         self,

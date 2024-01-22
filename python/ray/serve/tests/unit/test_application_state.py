@@ -101,6 +101,8 @@ class MockDeploymentStateManager:
                 replica_config=ReplicaConfig.create(lambda x: x),
                 start_time_ms=0,
                 deployer_job_id="",
+                app_name=deployment_id.app,
+                deployment_name=deployment_id.name,
             )
 
     def get_deployments_in_application(self, app_name: str):
@@ -865,6 +867,8 @@ class TestOverrideDeploymentInfo:
             replica_config=ReplicaConfig.create(lambda x: x),
             start_time_ms=0,
             deployer_job_id="",
+            app_name="default",
+            deployment_name="A",
         )
 
     def test_override_deployment_config(self, info):
@@ -1045,6 +1049,8 @@ class TestOverrideDeploymentInfo:
             ),
             start_time_ms=0,
             deployer_job_id="",
+            app_name="default",
+            deployment_name="A",
         )
         config = ServeApplicationSchema(
             name="default",
@@ -1083,6 +1089,8 @@ class TestOverrideDeploymentInfo:
             ),
             start_time_ms=0,
             deployer_job_id="",
+            app_name="default",
+            deployment_name="A",
         )
         config = ServeApplicationSchema(
             name="default",
