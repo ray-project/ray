@@ -133,3 +133,70 @@ def split_and_pad_single_record(
     # Send everything through `split_and_pad` to perform the actual splitting into
     # sub-chunks of max len=T and zero-padding.
     return split_and_pad(episodes_data, T)
+
+
+def unpad_data_if_necessary(episode_lens, data):
+    """Removes right-side zero-padding from data based on `episode_lens`.
+
+    ..testcode::
+
+        from ray.rllib.algorithms.ppo.ppo_learner import PPOLearner
+        import numpy as np
+
+        unpadded = PPOLearner._unpad_data_if_necessary(
+            episode_lens=[4, 2],
+            data=np.array([
+                [2, 4, 5, 3, 0, 0, 0, 0],
+                [-1, 3, 0, 0, 0, 0, 0, 0],
+            ]),
+        )
+        assert (unpadded == [2, 4, 5, 3, -1, 3]).all()
+
+        unpadded = PPOLearner._unpad_data_if_necessary(
+            episode_lens=[1, 5],
+            data=np.array([
+                [2, 0, 0, 0, 0],
+                [-1, -2, -3, -4, -5],
+            ]),
+        )
+        assert (unpadded == [2, -1, -2, -3, -4, -5]).all()
+
+    Args:
+        episode_lens: A list of actual episode lengths.
+        data: A 2D np.ndarray with right-side zero-padded rows.
+
+    Returns:
+        A 1D np.ndarray resulting from concatenation of the un-padded
+        input data along the 0-axis.
+    """
+    # If data des NOT have time dimension, return right away.
+    if len(data.shape) == 1:
+        return data
+
+    # Assert we only have B and T dimensions (meaning this function only operates
+    # on single-float data, such as value function predictions).
+    assert len(data.shape) == 2
+
+    new_data = []
+    row_idx = 0
+
+    T = data.shape[1]
+    for len_ in episode_lens:
+        # Calculate how many full rows this array occupies and how many elements are
+        # in the last, potentially partial row.
+        num_rows, col_idx = divmod(len_, T)
+
+        # If the array spans multiple full rows, fully include these rows.
+        for i in range(num_rows):
+            new_data.append(data[row_idx])
+            row_idx += 1
+
+        # If there are elements in the last, potentially partial row, add this
+        # partial row as well.
+        if col_idx > 0:
+            new_data.append(data[row_idx, :col_idx])
+
+            # Move to the next row for the next array (skip the zero-padding zone).
+            row_idx += 1
+
+    return np.concatenate(new_data)

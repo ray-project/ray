@@ -43,6 +43,23 @@ steps:
         --workers "$${BUILDKITE_PARALLEL_JOB_COUNT}" --worker-id "$${BUILDKITE_PARALLEL_JOB}" --parallelism-per-worker 3
         --except-tags debug_tests,asan_tests,post_wheel_build,ha_integration,mem_pressure,tmpfs,container,manual
 
+  - label: ":ray: core: python {{matrix.python}} tests ({{matrix.worker_id}})"
+    if: build.env("RAYCI_CONTINUOUS_BUILD") == "1" || build.pull_request.labels includes "continuous-build"
+    tags: 
+      - python
+      - dashboard
+    instance_type: large
+    commands:
+      - bazel run //ci/ray_ci:test_in_docker -- //python/ray/tests/... //python/ray/dag/... python/ray/autoscaler/v2/... core
+        --workers 4 --worker-id {{matrix.worker_id}} --parallelism-per-worker 3
+        --except-tags debug_tests,asan_tests,post_wheel_build,ha_integration,mem_pressure,tmpfs,container,manual
+        --python-version {{matrix.python}}
+    depends_on: corebuild-multipy
+    matrix:
+      setup:
+        python: ["3.8"]
+        worker_id: ["0", "1", "2", "3"]
+
   - label: ":ray: core: redis tests"
     tags: python
     instance_type: large
@@ -326,8 +343,11 @@ steps:
 
   - label: ":ray: core: cpp worker tests"
     tags: core_cpp
-    instance_type: small
+    instance_type: medium
     commands:
+      - if [[ "$${BUILDKITE_PIPELINE_ID}" == "0189942e-0876-4b8f-80a4-617f988ec59b" ]]; then
+          echo "build --remote_upload_local_results=false" >> ~/.bazelrc;
+        fi
       - ci/ci.sh build
       - ci/ci.sh test_cpp
     depends_on: oss-ci-base_build
