@@ -164,11 +164,11 @@ class TestGetDecisionNumReplicas:
             max_replicas=2,
             smoothing_factor=10,
         )
-        policy_manager = AutoscalingPolicyManager(config)
+        policy_manager = AutoscalingPolicyManager(config, "app", "deployment")
         new_num_replicas = policy_manager.get_decision_num_replicas(
             total_num_requests=1,
             num_running_replicas=0,
-            current_handle_queued_queries=0,
+            current_target_num_replicas=0,
             _skip_bound_check=True,
         )
 
@@ -176,11 +176,11 @@ class TestGetDecisionNumReplicas:
         assert new_num_replicas == 10
 
         config.smoothing_factor = 0.5
-        policy_manager = AutoscalingPolicyManager(config)
+        policy_manager = AutoscalingPolicyManager(config, "app", "deployment")
         new_num_replicas = policy_manager.get_decision_num_replicas(
             total_num_requests=1,
             num_running_replicas=0,
-            current_handle_queued_queries=0,
+            current_target_num_replicas=0,
             _skip_bound_check=True,
         )
 
@@ -199,11 +199,11 @@ class TestGetDecisionNumReplicas:
             upscale_delay_s=0,
             downscale_delay_s=0,
         )
-        policy_manager = AutoscalingPolicyManager(config)
+        policy_manager = AutoscalingPolicyManager(config, "app", "deployment")
         new_num_replicas = policy_manager.get_decision_num_replicas(
             total_num_requests=0,
             num_running_replicas=5,
-            current_handle_queued_queries=5,
+            current_target_num_replicas=5,
         )
 
         assert new_num_replicas == 0
@@ -212,13 +212,13 @@ class TestGetDecisionNumReplicas:
         # get stuck at a positive number, and instead should eventually drop
         # to zero
         config.smoothing_factor = 0.2
-        policy_manager = AutoscalingPolicyManager(config)
+        policy_manager = AutoscalingPolicyManager(config, "app", "deployment")
         num_replicas = 5
         for _ in range(5):
             num_replicas = policy_manager.get_decision_num_replicas(
                 total_num_requests=0,
                 num_running_replicas=num_replicas,
-                current_handle_queued_queries=num_replicas,
+                current_target_num_replicas=num_replicas,
             )
 
         assert num_replicas == 0
@@ -237,18 +237,18 @@ class TestGetDecisionNumReplicas:
             downscale_delay_s=600.0,
         )
 
-        policy_manager = AutoscalingPolicyManager(config)
+        policy_manager = AutoscalingPolicyManager(config, "app", "deployment")
 
         upscale_wait_periods = int(upscale_delay_s / CONTROL_LOOP_PERIOD_S)
         downscale_wait_periods = int(downscale_delay_s / CONTROL_LOOP_PERIOD_S)
 
         overload_requests = 100
 
-        # Scale up when there are 0 replicas and current_handle_queued_queries > 0
+        # Scale up when there are 0 replicas and current_target_num_replicas > 0
         new_num_replicas = policy_manager.get_decision_num_replicas(
             total_num_requests=1,
             num_running_replicas=0,
-            current_handle_queued_queries=0,
+            current_target_num_replicas=0,
         )
         assert new_num_replicas == 1
 
@@ -257,14 +257,14 @@ class TestGetDecisionNumReplicas:
             new_num_replicas = policy_manager.get_decision_num_replicas(
                 total_num_requests=overload_requests,
                 num_running_replicas=1,
-                current_handle_queued_queries=1,
+                current_target_num_replicas=1,
             )
             assert new_num_replicas == 1, i
 
         new_num_replicas = policy_manager.get_decision_num_replicas(
             total_num_requests=overload_requests,
             num_running_replicas=1,
-            current_handle_queued_queries=1,
+            current_target_num_replicas=1,
         )
         assert new_num_replicas == 2
 
@@ -275,14 +275,14 @@ class TestGetDecisionNumReplicas:
             new_num_replicas = policy_manager.get_decision_num_replicas(
                 total_num_requests=no_requests,
                 num_running_replicas=2,
-                current_handle_queued_queries=2,
+                current_target_num_replicas=2,
             )
             assert new_num_replicas == 2, i
 
         new_num_replicas = policy_manager.get_decision_num_replicas(
             total_num_requests=no_requests,
             num_running_replicas=2,
-            current_handle_queued_queries=2,
+            current_target_num_replicas=2,
         )
         assert new_num_replicas == 0
 
@@ -291,7 +291,7 @@ class TestGetDecisionNumReplicas:
             new_num_replicas = policy_manager.get_decision_num_replicas(
                 total_num_requests=overload_requests,
                 num_running_replicas=1,
-                current_handle_queued_queries=1,
+                current_target_num_replicas=1,
             )
             assert new_num_replicas == 1, i
 
@@ -299,7 +299,7 @@ class TestGetDecisionNumReplicas:
         policy_manager.get_decision_num_replicas(
             total_num_requests=0,
             num_running_replicas=1,
-            current_handle_queued_queries=1,
+            current_target_num_replicas=1,
         )
 
         # The counter should be reset, so it should require `upscale_wait_periods`
@@ -308,14 +308,14 @@ class TestGetDecisionNumReplicas:
             new_num_replicas = policy_manager.get_decision_num_replicas(
                 total_num_requests=overload_requests,
                 num_running_replicas=1,
-                current_handle_queued_queries=1,
+                current_target_num_replicas=1,
             )
             assert new_num_replicas == 1, i
 
         new_num_replicas = policy_manager.get_decision_num_replicas(
             total_num_requests=overload_requests,
             num_running_replicas=1,
-            current_handle_queued_queries=1,
+            current_target_num_replicas=1,
         )
         assert new_num_replicas == 2
 
@@ -324,7 +324,7 @@ class TestGetDecisionNumReplicas:
             new_num_replicas = policy_manager.get_decision_num_replicas(
                 total_num_requests=no_requests,
                 num_running_replicas=2,
-                current_handle_queued_queries=2,
+                current_target_num_replicas=2,
             )
             assert new_num_replicas == 2, i
 
@@ -332,7 +332,7 @@ class TestGetDecisionNumReplicas:
         policy_manager.get_decision_num_replicas(
             total_num_requests=200,
             num_running_replicas=2,
-            current_handle_queued_queries=2,
+            current_target_num_replicas=2,
         )
 
         # The counter should be reset so it should require `downscale_wait_periods`
@@ -341,14 +341,14 @@ class TestGetDecisionNumReplicas:
             new_num_replicas = policy_manager.get_decision_num_replicas(
                 total_num_requests=no_requests,
                 num_running_replicas=2,
-                current_handle_queued_queries=2,
+                current_target_num_replicas=2,
             )
             assert new_num_replicas == 2, i
 
         new_num_replicas = policy_manager.get_decision_num_replicas(
             total_num_requests=no_requests,
             num_running_replicas=2,
-            current_handle_queued_queries=2,
+            current_target_num_replicas=2,
         )
         assert new_num_replicas == 0
 
@@ -362,7 +362,7 @@ class TestGetDecisionNumReplicas:
             downscale_delay_s=100000,
         )
 
-        policy_manager = AutoscalingPolicyManager(config)
+        policy_manager = AutoscalingPolicyManager(config, "app", "deployment")
 
         new_num_replicas = policy_manager.get_decision_num_replicas(1, 100, 1)
         assert new_num_replicas == 100
@@ -400,7 +400,7 @@ class TestGetDecisionNumReplicas:
             downscale_delay_s=delay_s,
         )
 
-        policy_manager = AutoscalingPolicyManager(config)
+        policy_manager = AutoscalingPolicyManager(config, "app", "deployment")
 
         if delay_s > 0:
             wait_periods = int(delay_s / CONTROL_LOOP_PERIOD_S)
@@ -415,7 +415,7 @@ class TestGetDecisionNumReplicas:
                 new_num_replicas = policy_manager.get_decision_num_replicas(
                     total_num_requests=overload_requests,
                     num_running_replicas=1,
-                    current_handle_queued_queries=1,
+                    current_target_num_replicas=1,
                 )
                 if delay_s > 0:
                     assert new_num_replicas == 1, trial
@@ -425,7 +425,7 @@ class TestGetDecisionNumReplicas:
                 new_num_replicas = policy_manager.get_decision_num_replicas(
                     total_num_requests=underload_requests,
                     num_running_replicas=2,
-                    current_handle_queued_queries=2,
+                    current_target_num_replicas=2,
                 )
                 if delay_s > 0:
                     assert new_num_replicas == 2, trial
@@ -444,12 +444,12 @@ class TestGetDecisionNumReplicas:
             downscale_delay_s=0.0,
         )
 
-        policy_manager = AutoscalingPolicyManager(config)
+        policy_manager = AutoscalingPolicyManager(config, "app", "deployment")
 
         new_num_replicas = policy_manager.get_decision_num_replicas(
             total_num_requests=ongoing_requests,
             num_running_replicas=4,
-            current_handle_queued_queries=4,
+            current_target_num_replicas=4,
         )
         assert new_num_replicas == ongoing_requests / target_requests
 

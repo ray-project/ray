@@ -58,6 +58,8 @@ def test_deployment_info_serialization(
         replica_config=ReplicaConfig.create(lambda x: x),
         start_time_ms=0,
         deployer_job_id="",
+        app_name="default",
+        deployment_name="foo",
     )
 
     # Check that serialization works correctly when the DeploymentInfo is

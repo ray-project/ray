@@ -324,6 +324,8 @@ def deployment_info(
         ),
         replica_config=ReplicaConfig.create(lambda x: x),
         deployer_job_id="",
+        app_name="default",
+        deployment_name="foo",
     )
 
     if version is not None:

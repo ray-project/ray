@@ -150,6 +150,8 @@ class DeploymentInfo:
             "deployer_job_id": ray.get_runtime_context().get_job_id(),
             "target_capacity": target_capacity,
             "target_capacity_direction": target_capacity_direction,
+            "app_name": proto.app_name,
+            "deployment_name": proto.deployment_name,
         }
 
         return cls(**data)
@@ -160,6 +162,8 @@ class DeploymentInfo:
             "actor_name": self.actor_name,
             "version": self.version,
             "end_time_ms": self.end_time_ms,
+            "app_name": self.app_name,
+            "deployment_name": self.deployment_name,
         }
         if self.deployment_config:
             data["deployment_config"] = self.deployment_config.to_proto()
