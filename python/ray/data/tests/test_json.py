@@ -615,6 +615,75 @@ def test_json_write_block_path_provider(
     assert df.equals(ds_df)
 
 
+@pytest.mark.parametrize(
+    "fs,data_path,endpoint_url",
+    [
+        (None, lazy_fixture("local_path"), None),
+        (lazy_fixture("local_fs"), lazy_fixture("local_path"), None),
+        (lazy_fixture("s3_fs"), lazy_fixture("s3_path"), lazy_fixture("s3_server")),
+    ],
+)
+def test_json_read_across_blocks(ray_start_regular_shared, fs, data_path, endpoint_url):
+    if endpoint_url is None:
+        storage_options = {}
+    else:
+        storage_options = dict(client_kwargs=dict(endpoint_url=endpoint_url))
+
+    # Single small file, unit block_size
+    df1 = pd.DataFrame({"one": [1, 2, 3], "two": ["a", "b", "c"]})
+    path1 = os.path.join(data_path, "test1.json")
+    df1.to_json(path1, orient="records", lines=True, storage_options=storage_options)
+    ds = ray.data.read_json(
+        path1, filesystem=fs, read_options=pajson.ReadOptions(block_size=1)
+    )
+    dsdf = ds.to_pandas()
+    assert df1.equals(dsdf)
+    # Test metadata ops.
+    assert ds.count() == 3
+    assert ds.input_files() == [_unwrap_protocol(path1)]
+    assert "{one: int64, two: string}" in str(ds), ds
+
+    # Single large file, default block_size
+    num_chars = 2500000
+    num_rows = 3
+    df2 = pd.DataFrame(
+        {
+            "one": ["a" * num_chars for _ in range(num_rows)],
+            "two": ["b" * num_chars for _ in range(num_rows)],
+        }
+    )
+    path2 = os.path.join(data_path, "test2.json")
+    df2.to_json(path2, orient="records", lines=True, storage_options=storage_options)
+    ds = ray.data.read_json(path2, filesystem=fs)
+    dsdf = ds.to_pandas()
+    assert df2.equals(dsdf)
+    # Test metadata ops.
+    assert ds.count() == num_rows
+    assert ds.input_files() == [_unwrap_protocol(path2)]
+    assert "{one: string, two: string}" in str(ds), ds
+
+    # Single file, negative and zero block_size (expect failure)
+    df3 = pd.DataFrame({"one": [1, 2, 3], "two": ["a", "b", "c"]})
+    path3 = os.path.join(data_path, "test3.json")
+    df3.to_json(path3, orient="records", lines=True, storage_options=storage_options)
+    try:
+        # Negative Buffer Size
+        ds = ray.data.read_json(
+            path3, filesystem=fs, read_options=pajson.ReadOptions(block_size=-1)
+        )
+        dsdf = ds.to_pandas()
+    except pa.ArrowInvalid as e:
+        assert "Negative buffer resize" in str(e.cause)
+    try:
+        # Zero Buffer Size
+        ds = ray.data.read_json(
+            path3, filesystem=fs, read_options=pajson.ReadOptions(block_size=0)
+        )
+        dsdf = ds.to_pandas()
+    except pa.ArrowInvalid as e:
+        assert "Empty JSON file" in str(e.cause)
+
+
 if __name__ == "__main__":
     import sys
 

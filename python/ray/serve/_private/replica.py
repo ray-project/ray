@@ -3,9 +3,11 @@ import inspect
 import logging
 import os
 import pickle
+import threading
 import time
 import traceback
 from contextlib import contextmanager
+from functools import wraps
 from importlib import import_module
 from typing import Any, AsyncGenerator, Callable, Dict, Optional, Tuple, Union
 
@@ -34,7 +36,6 @@ from ray.serve._private.constants import (
     RAY_SERVE_GAUGE_METRIC_SET_PERIOD_S,
     RAY_SERVE_REPLICA_AUTOSCALING_METRIC_RECORD_PERIOD_S,
     RECONFIGURE_METHOD,
-    REPLICA_CONTROL_PLANE_CONCURRENCY_GROUP,
     SERVE_CONTROLLER_NAME,
     SERVE_LOGGER_NAME,
     SERVE_NAMESPACE,
@@ -54,12 +55,7 @@ from ray.serve._private.logging_utils import (
     get_component_logger_file_path,
 )
 from ray.serve._private.router import RequestMetadata
-from ray.serve._private.utils import (
-    MetricsPusher,
-    merge_dict,
-    parse_import_path,
-    wrap_to_ray_error,
-)
+from ray.serve._private.utils import MetricsPusher, parse_import_path, wrap_to_ray_error
 from ray.serve._private.version import DeploymentVersion
 from ray.serve.config import AutoscalingConfig
 from ray.serve.deployment import Deployment
@@ -113,6 +109,7 @@ class ReplicaMetricsManager:
         self._controller_handle = ray.get_actor(
             SERVE_CONTROLLER_NAME, namespace=SERVE_NAMESPACE
         )
+        self._num_ongoing_requests = 0
 
         # Request counter (only set on replica startup).
         self._restart_counter = metrics.Counter(
@@ -172,7 +169,7 @@ class ReplicaMetricsManager:
             )
             # Collect autoscaling metrics locally periodically.
             self._metrics_pusher.register_task(
-                self.get_num_pending_and_running_requests,
+                self.get_num_ongoing_requests,
                 min(
                     RAY_SERVE_REPLICA_AUTOSCALING_METRIC_RECORD_PERIOD_S,
                     self._autoscaling_config.metrics_interval_s,
@@ -192,10 +189,17 @@ class ReplicaMetricsManager:
         """Dynamically update autoscaling config."""
         self._autoscaling_config = autoscaling_config
 
-    def get_num_pending_and_running_requests(self) -> int:
+    def inc_num_ongoing_requests(self) -> int:
+        """Increment the current total queue length of requests for this replica."""
+        self._num_ongoing_requests += 1
+
+    def dec_num_ongoing_requests(self) -> int:
+        """Decrement the current total queue length of requests for this replica."""
+        self._num_ongoing_requests -= 1
+
+    def get_num_ongoing_requests(self) -> int:
         """Get current total queue length of requests for this replica."""
-        stats = self._get_handle_request_stats() or {}
-        return stats.get("pending", 0) + stats.get("running", 0)
+        return self._num_ongoing_requests
 
     def record_request_metrics(
         self, *, route: str, status_str: str, latency_ms: float, was_error: bool
@@ -220,30 +224,7 @@ class ReplicaMetricsManager:
         )
 
     def _set_replica_requests_metrics(self):
-        self._num_processing_items.set(self._get_num_running_requests())
-        self._num_pending_items.set(self._get_num_pending_requests())
-
-    def _get_num_running_requests(self) -> int:
-        stats = self._get_handle_request_stats() or {}
-        return stats.get("running", 0)
-
-    def _get_num_pending_requests(self) -> int:
-        stats = self._get_handle_request_stats() or {}
-        return stats.get("pending", 0)
-
-    def _get_handle_request_stats(self) -> Optional[Dict[str, int]]:
-        replica_actor_name = self._deployment_id.to_replica_actor_class_name()
-        actor_stats = ray.runtime_context.get_runtime_context()._get_actor_call_stats()
-        method_stats = actor_stats.get(f"{replica_actor_name}.handle_request")
-        streaming_method_stats = actor_stats.get(
-            f"{replica_actor_name}.handle_request_streaming"
-        )
-        method_stats_java = actor_stats.get(
-            f"{replica_actor_name}.handle_request_from_java"
-        )
-        return merge_dict(
-            merge_dict(method_stats, streaming_method_stats), method_stats_java
-        )
+        self._num_processing_items.set(self.get_num_ongoing_requests())
 
 
 class ReplicaActor:
@@ -284,7 +265,6 @@ class ReplicaActor:
             cloudpickle.loads(serialized_init_args),
             cloudpickle.loads(serialized_init_kwargs),
             deployment_id=deployment_id,
-            event_loop=self._event_loop,
         )
 
         # Guards against calling the user's callable constructor multiple times.
@@ -340,14 +320,13 @@ class ReplicaActor:
             component_id=component_id,
         )
 
-    @ray.method(concurrency_group=REPLICA_CONTROL_PLANE_CONCURRENCY_GROUP)
     def get_num_ongoing_requests(self) -> int:
         """Fetch the number of ongoing requests at this replica (queue length).
 
         This runs on a separate thread (using a Ray concurrency group) so it will
         not be blocked by user code.
         """
-        return self._metrics_manager.get_num_pending_and_running_requests()
+        return self._metrics_manager.get_num_ongoing_requests()
 
     @contextmanager
     def _wrap_user_method_call(self, request_metadata: RequestMetadata):
@@ -370,12 +349,15 @@ class ReplicaActor:
         start_time = time.time()
         user_exception = None
         try:
+            self._metrics_manager.inc_num_ongoing_requests()
             yield
         except Exception as e:
             user_exception = e
             logger.error(f"Request failed:\n{e}")
             if ray.util.pdb._is_ray_debugger_enabled():
                 ray.util.pdb._post_mortem()
+        finally:
+            self._metrics_manager.dec_num_ongoing_requests()
 
         latency_ms = (time.time() - start_time) * 1000
         if user_exception is None:
@@ -427,19 +409,21 @@ class ReplicaActor:
         The user method is called in an asyncio `Task` and places its results on a
         `result_queue`. This method pulls and yields from the `result_queue`.
         """
-        call_user_method_task = None
+        call_user_method_future = None
         wait_for_message_task = None
         try:
-            # Handle the request in a background asyncio.Task. It's expected that
-            # this task will use the result queue to send its response messages.
             result_queue = MessageQueue()
-            call_user_method_task = self._event_loop.create_task(
-                self._user_callable_wrapper.call_user_method(
-                    request_metadata,
-                    request_args,
-                    request_kwargs,
-                    generator_result_callback=result_queue,
-                )
+
+            # `asyncio.Event`s are not thread safe, so `call_soon_threadsafe` must be
+            # used to interact with the result queue from the user callable thread.
+            async def _enqueue_thread_safe(item: Any):
+                self._event_loop.call_soon_threadsafe(result_queue.put_nowait, item)
+
+            call_user_method_future = self._user_callable_wrapper.call_user_method(
+                request_metadata,
+                request_args,
+                request_kwargs,
+                generator_result_callback=_enqueue_thread_safe,
             )
 
             while True:
@@ -447,7 +431,7 @@ class ReplicaActor:
                     result_queue.wait_for_message()
                 )
                 done, _ = await asyncio.wait(
-                    [call_user_method_task, wait_for_message_task],
+                    [call_user_method_future, wait_for_message_task],
                     return_when=asyncio.FIRST_COMPLETED,
                 )
 
@@ -465,15 +449,18 @@ class ReplicaActor:
 
                 # Exit once `call_user_method` has finished. In this case, all
                 # messages must have already been sent.
-                if call_user_method_task in done:
+                if call_user_method_future in done:
                     break
 
-            e = call_user_method_task.exception()
+            e = call_user_method_future.exception()
             if e is not None:
                 raise e from None
         finally:
-            if call_user_method_task is not None and not call_user_method_task.done():
-                call_user_method_task.cancel()
+            if (
+                call_user_method_future is not None
+                and not call_user_method_future.done()
+            ):
+                call_user_method_future.cancel()
 
             if wait_for_message_task is not None and not wait_for_message_task.done():
                 wait_for_message_task.cancel()
@@ -641,9 +628,7 @@ class ReplicaActor:
         while True:
             await asyncio.sleep(wait_loop_period_s)
 
-            num_ongoing_requests = (
-                self._metrics_manager.get_num_pending_and_running_requests()
-            )
+            num_ongoing_requests = self._metrics_manager.get_num_ongoing_requests()
             if num_ongoing_requests > 0:
                 logger.info(
                     f"Waiting for an additional {wait_loop_period_s}s to shut down "
@@ -665,13 +650,20 @@ class ReplicaActor:
 
         self._metrics_manager.shutdown()
 
-    @ray.method(concurrency_group=REPLICA_CONTROL_PLANE_CONCURRENCY_GROUP)
     async def check_health(self):
         await self._user_callable_wrapper.call_user_health_check()
 
 
 class UserCallableWrapper:
     """Wraps a user-provided callable that is used to handle requests to a replica."""
+
+    # All interactions with user code run on this loop to avoid blocking the replica's
+    # main event loop.
+    # NOTE(edoakes): this is a class variable rather than an instance variable to
+    # enable writing the `_run_on_user_code_event_loop` decorator method (the decorator
+    # doesn't have access to `self` at class definition time).
+    _user_code_event_loop: asyncio.AbstractEventLoop = asyncio.new_event_loop()
+    _user_code_event_loop_thread: Optional[threading.Thread] = None
 
     def __init__(
         self,
@@ -680,7 +672,6 @@ class UserCallableWrapper:
         init_kwargs: Dict,
         *,
         deployment_id: DeploymentID,
-        event_loop: asyncio.AbstractEventLoop,
     ):
         if not (inspect.isfunction(deployment_def) or inspect.isclass(deployment_def)):
             raise TypeError(
@@ -693,11 +684,46 @@ class UserCallableWrapper:
         self._init_kwargs = init_kwargs
         self._is_function = inspect.isfunction(deployment_def)
         self._deployment_id = deployment_id
-        self._event_loop = event_loop
-        self._delete_lock = asyncio.Lock()
+        self._destructor_called = False
 
         # Will be populated in `initialize_callable`.
         self._callable = None
+
+        # Start the `_user_code_event_loop_thread` singleton if needed.
+        if self._user_code_event_loop_thread is None:
+
+            def _run_user_code_event_loop():
+                # Required so that calls to get the current running event loop work
+                # properly in user code.
+                asyncio.set_event_loop(self._user_code_event_loop)
+                self._user_code_event_loop.run_forever()
+
+            self._user_code_event_loop_thread = threading.Thread(
+                daemon=True,
+                target=_run_user_code_event_loop,
+            )
+            self._user_code_event_loop_thread.start()
+
+    def _run_on_user_code_event_loop(f: Callable):
+        """Decorator to run a coroutine method on the user code event loop.
+
+        The method will be modified to be a sync function that returns an
+        `asyncio.Future`.
+        """
+        assert inspect.iscoroutinefunction(
+            f
+        ), "_run_on_user_code_event_loop can only be used on coroutine functions."
+
+        @wraps(f)
+        def wrapper(*args, **kwargs) -> asyncio.Future:
+            return asyncio.wrap_future(
+                asyncio.run_coroutine_threadsafe(
+                    f(*args, **kwargs),
+                    UserCallableWrapper._user_code_event_loop,
+                )
+            )
+
+        return wrapper
 
     def _get_user_callable_method(self, method_name: str) -> Callable:
         if self._is_function:
@@ -755,7 +781,11 @@ class UserCallableWrapper:
     def user_callable(self) -> Optional[Callable]:
         return self._callable
 
+    @_run_on_user_code_event_loop
     async def initialize_callable(self):
+        if self._callable is not None:
+            raise RuntimeError("initialize_callable should only be called once.")
+
         # This closure initializes user code and finalizes replica
         # startup. By splitting the initialization step like this,
         # we can already access this actor before the user code
@@ -784,17 +814,38 @@ class UserCallableWrapper:
             if isinstance(self._callable, ASGIAppReplicaWrapper):
                 await self._callable._run_asgi_lifespan_startup()
 
+        self._user_health_check = getattr(self._callable, HEALTH_CHECK_METHOD, None)
+
         logger.info(
             "Finished initializing replica.",
             extra={"log_to_stderr": False},
         )
 
-    async def call_user_health_check(self):
-        user_health_check = getattr(self._callable, HEALTH_CHECK_METHOD, None)
-        if callable(user_health_check):
-            await self._call_func_or_gen(user_health_check)
+    @_run_on_user_code_event_loop
+    async def _call_user_health_check(self):
+        await self._call_func_or_gen(self._user_health_check)
 
+    def _raise_if_not_initialized(self, method_name: str):
+        if self._callable is None:
+            raise RuntimeError(
+                "`initialize_callable` must be called before `{method_name}`."
+            )
+
+    async def call_user_health_check(self):
+        self._raise_if_not_initialized("call_user_health_check")
+
+        # If the user provided a health check, call it on the user code thread. If user
+        # code blocks the event loop the health check may time out.
+        #
+        # To avoid this issue for basic cases without a user-defined health check, skip
+        # interacting with the user callable entirely.
+        if self._user_health_check is not None:
+            return await self._call_user_health_check()
+
+    @_run_on_user_code_event_loop
     async def call_reconfigure(self, user_config: Any):
+        self._raise_if_not_initialized("call_reconfigure")
+
         # NOTE(edoakes): there is the possibility of a race condition in user code if
         # they don't have any form of concurrency control between `reconfigure` and
         # other methods. See https://github.com/ray-project/ray/pull/42159.
@@ -831,9 +882,11 @@ class UserCallableWrapper:
         """
         receive = ASGIReceiveProxy(
             request_metadata.request_id,
-            request.http_proxy_handle,
+            request.receive_asgi_messages,
         )
-        receive_task = self._event_loop.create_task(receive.fetch_until_disconnect())
+        receive_task = self._user_code_event_loop.create_task(
+            receive.fetch_until_disconnect()
+        )
         asgi_args = ASGIArgs(
             scope=pickle.loads(request.pickled_asgi_scope),
             receive=receive,
@@ -935,6 +988,7 @@ class UserCallableWrapper:
 
         return result
 
+    @_run_on_user_code_event_loop
     async def call_user_method(
         self,
         request_metadata: RequestMetadata,
@@ -951,6 +1005,8 @@ class UserCallableWrapper:
         Raises any exception raised by the user code so it can be propagated as a
         `RayTaskError`.
         """
+        self._raise_if_not_initialized("call_user_method")
+
         logger.info(
             f"Started executing request {request_metadata.request_id}",
             extra={"log_to_stderr": False, "serve_access_log": True},
@@ -1016,29 +1072,28 @@ class UserCallableWrapper:
 
         return result
 
+    @_run_on_user_code_event_loop
     async def call_destructor(self):
         """Explicitly call the `__del__` method of the user callable.
 
-        We set the del method to noop after successfully calling it so the
-        destructor is called only once.
+        Calling this multiple times has no effect; only the first call will actually
+        call the destructor.
         """
-        async with self._delete_lock:
-            if not hasattr(self, "_callable"):
-                return
+        self._raise_if_not_initialized("call_destructor")
 
-            try:
-                if hasattr(self._callable, "__del__"):
-                    # Make sure to accept `async def __del__(self)` as well.
-                    await self._call_func_or_gen(self._callable.__del__)
-                    setattr(self._callable, "__del__", lambda _: None)
+        # Only run the destructor once. This is safe because there is no `await` between
+        # checking the flag here and flipping it to `True` below.
+        if self._destructor_called:
+            return
 
-                if hasattr(self._callable, "__serve_multiplex_wrapper"):
-                    await getattr(
-                        self._callable, "__serve_multiplex_wrapper"
-                    ).shutdown()
+        self._destructor_called = True
+        try:
+            if hasattr(self._callable, "__del__"):
+                # Make sure to accept `async def __del__(self)` as well.
+                await self._call_func_or_gen(self._callable.__del__)
 
-            except Exception as e:
-                logger.exception(f"Exception during graceful shutdown of replica: {e}")
-            finally:
-                if hasattr(self._callable, "__del__"):
-                    del self._callable
+            if hasattr(self._callable, "__serve_multiplex_wrapper"):
+                await getattr(self._callable, "__serve_multiplex_wrapper").shutdown()
+
+        except Exception as e:
+            logger.exception(f"Exception during graceful shutdown of replica: {e}")

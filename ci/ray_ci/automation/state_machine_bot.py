@@ -8,7 +8,7 @@ from ray_release.configs.global_config import init_global_config
 from ray_release.bazel import bazel_runfile
 
 
-ALL_TEST_PREFIXES = ["linux:", "windows:", "macos:"]
+ALL_TEST_PREFIXES = ["linux:", "windows:", "darwin:"]
 
 
 @click.command()

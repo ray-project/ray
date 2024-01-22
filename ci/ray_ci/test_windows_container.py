@@ -15,7 +15,13 @@ def test_install_ray() -> None:
 
     with mock.patch(
         "subprocess.check_call", side_effect=_mock_subprocess
-    ), mock.patch.dict("os.environ", {"BUILDKITE_BAZEL_CACHE_URL": "http://hi.com"}):
+    ), mock.patch.dict(
+        "os.environ",
+        {
+            "BUILDKITE_BAZEL_CACHE_URL": "http://hi.com",
+            "BUILDKITE_PIPELINE_ID": "w00t",
+        },
+    ):
         WindowsContainer("hi").install_ray()
         image = (
             "029272617770.dkr.ecr.us-west-2.amazonaws.com/rayproject/citemp:unknown-hi"
@@ -27,6 +33,8 @@ def test_install_ray() -> None:
             f"BASE_IMAGE={image}",
             "--build-arg",
             "BUILDKITE_BAZEL_CACHE_URL=http://hi.com",
+            "--build-arg",
+            "BUILDKITE_PIPELINE_ID=w00t",
             "-t",
             image,
             "-f",
