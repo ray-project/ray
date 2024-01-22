@@ -41,6 +41,8 @@ class LinuxContainer(Container):
                 f"BASE_IMAGE={self._get_docker_image()}",
                 "--build-arg",
                 f"BUILD_TYPE={build_type or ''}",
+                "--build-arg",
+                f"BUILDKITE_PIPELINE_ID={env.get('BUILDKITE_PIPELINE_ID')}",
                 "-t",
                 self._get_docker_image(),
                 "-f",
