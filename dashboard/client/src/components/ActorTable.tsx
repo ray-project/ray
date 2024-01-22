@@ -1,6 +1,7 @@
 import {
   Box,
   InputAdornment,
+  Link,
   Table,
   TableBody,
   TableCell,
@@ -17,8 +18,9 @@ import Autocomplete from "@material-ui/lab/Autocomplete";
 import Pagination from "@material-ui/lab/Pagination";
 import _ from "lodash";
 import React, { useMemo, useState } from "react";
+import { Link as RouterLink } from "react-router-dom";
 import { DurationText } from "../common/DurationText";
-import { ActorLink } from "../common/links";
+import { ActorLink, generateNodeLink } from "../common/links";
 import {
   CpuProfilingLink,
   CpuStackTraceLink,
@@ -182,6 +184,7 @@ const ActorTable = ({
     { label: "Job ID" },
     { label: "PID" },
     { label: "IP" },
+    { label: "Node ID" },
     {
       label: "Restarted",
       helpInfo: (
@@ -267,6 +270,19 @@ const ActorTable = ({
             <TextField {...params} label="IP" />
           )}
         />
+        <Autocomplete
+          data-testid={"nodeIdFilter"}
+          style={{ margin: 8, width: 150 }}
+          options={Array.from(
+            new Set(Object.values(actors).map((e) => e.address?.rayletId)),
+          )}
+          onInputChange={(_: any, value: string) => {
+            changeFilter("address.rayletId", value.trim());
+          }}
+          renderInput={(params: TextFieldProps) => (
+            <TextField {...params} label="Node ID" />
+          )}
+        />
         <TextField
           style={{ margin: 8, width: 120 }}
           label="PID"
@@ -289,6 +305,36 @@ const ActorTable = ({
           InputProps={{
             onChange: ({ target: { value } }) => {
               changeFilter("name", value.trim());
+            },
+            endAdornment: (
+              <InputAdornment position="end">
+                <SearchOutlined />
+              </InputAdornment>
+            ),
+          }}
+        />
+        <TextField
+          style={{ margin: 8, width: 120 }}
+          label="Class"
+          size="small"
+          InputProps={{
+            onChange: ({ target: { value } }) => {
+              changeFilter("actorClass", value.trim());
+            },
+            endAdornment: (
+              <InputAdornment position="end">
+                <SearchOutlined />
+              </InputAdornment>
+            ),
+          }}
+        />
+        <TextField
+          style={{ margin: 8, width: 120 }}
+          label="Repr"
+          size="small"
+          InputProps={{
+            onChange: ({ target: { value } }) => {
+              changeFilter("reprName", value.trim());
             },
             endAdornment: (
               <InputAdornment position="end">
@@ -470,6 +516,26 @@ const ActorTable = ({
                   <TableCell align="center">{pid ? pid : "-"}</TableCell>
                   <TableCell align="center">
                     {address?.ipAddress ? address?.ipAddress : "-"}
+                  </TableCell>
+                  <TableCell align="center">
+                    { address?.rayletId ? <Tooltip
+                      className={classes.idCol}
+                      title={address?.rayletId}
+                      arrow
+                      interactive
+                    >
+                      <div>
+                        <Link
+                          component={RouterLink}
+                          to={
+                            generateNodeLink(address.rayletId)
+                          }
+                        >
+                          {address?.rayletId }
+                        </Link>
+                      </div>
+                    </Tooltip> : "-"
+                    }
                   </TableCell>
                   <TableCell
                     align="center"
