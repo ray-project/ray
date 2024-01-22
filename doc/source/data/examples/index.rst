@@ -16,35 +16,22 @@ Ray Data Examples
 
 .. _data-recipes:
 
-Batch inference
----------------
+Below are examples for using Ray Data for batch inference workloads with a variety of frameworks and use cases.
 
-.. grid:: 1 2 2 3
-    :gutter: 1
-    :class-container: container pb-4
+Beginner
+--------
 
-    .. grid-item-card::
+.. list-table::
+  :widths: 1 5
+  :header-rows: 1
 
-       .. button-ref:: huggingface_vit_batch_prediction
-
-            Image Classification Batch Inference with Huggingface Vision Transformer
-
-
-    .. grid-item-card::
-
-       .. button-ref:: pytorch_resnet_batch_prediction
-
-            Image Classification Batch Inference with PyTorch ResNet152
-
-
-    .. grid-item-card::
-
-        .. button-ref:: batch_inference_object_detection
-
-            Object Detection Batch Inference with PyTorch FasterRCNN_ResNet50
-
-    .. grid-item-card::
-
-        .. button-ref:: xgboost-example-ref
-
-            Tabular Data Training and Batch Inference with XGBoost
+  * - Framework
+    - Example
+  * - PyTorch
+    - :doc:`Image Classification Batch Inference with PyTorch ResNet152 <pytorch_resnet_batch_prediction>`
+  * - PyTorch
+    - :doc:`Object Detection Batch Inference with PyTorch FasterRCNN_ResNet50 <batch_inference_object_detection>`
+  * - Transformers
+    - :doc:`Image Classification Batch Inference with Hugging Face Vision Transformer <huggingface_vit_batch_prediction>`
+  * - XGBoost
+    - :ref:`Tabular Data Training and Batch Inference with XGBoost <xgboost-example-ref>`
