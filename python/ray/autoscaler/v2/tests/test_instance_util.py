@@ -121,14 +121,20 @@ class InstanceUtilTest(unittest.TestCase):
         mock_time.return_value = 1
         instance = InstanceUtil.new_instance("i-123", "type_1", "rq-1")
         # OK
-        assert InstanceUtil.get_status_times_ns(instance, Instance.QUEUED)[0] == 1
+        assert (
+            InstanceUtil.get_status_transition_times_ns(instance, Instance.QUEUED)[0]
+            == 1
+        )
         # No filter.
-        assert InstanceUtil.get_status_times_ns(
+        assert InstanceUtil.get_status_transition_times_ns(
             instance,
         ) == [1]
 
         # Missing status returns empty list
-        assert InstanceUtil.get_status_times_ns(instance, Instance.REQUESTED) == []
+        assert (
+            InstanceUtil.get_status_transition_times_ns(instance, Instance.REQUESTED)
+            == []
+        )
 
         # Multiple status.
         mock_time.return_value = 2
@@ -137,7 +143,9 @@ class InstanceUtilTest(unittest.TestCase):
         InstanceUtil.set_status(instance, Instance.QUEUED)
         mock_time.return_value = 4
         InstanceUtil.set_status(instance, Instance.REQUESTED)
-        assert InstanceUtil.get_status_times_ns(instance, Instance.QUEUED) == [1, 3]
+        assert InstanceUtil.get_status_transition_times_ns(
+            instance, Instance.QUEUED
+        ) == [1, 3]
 
     def test_is_cloud_instance_allocated(self):
         all_status = set(Instance.InstanceStatus.values())

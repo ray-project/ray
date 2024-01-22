@@ -244,7 +244,7 @@ class InstanceUtil:
         }
 
     @staticmethod
-    def get_status_times_ns(
+    def get_status_transition_times_ns(
         instance: Instance,
         select_instance_status: Optional["Instance.InstanceStatus"] = None,
     ) -> List[int]:
