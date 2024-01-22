@@ -1,6 +1,7 @@
 import {
   Box,
   InputAdornment,
+  Link,
   Table,
   TableBody,
   TableCell,
@@ -11,6 +12,7 @@ import {
   Tooltip,
   Typography,
 } from "@material-ui/core";
+import { Link as RouterLink } from "react-router-dom";
 import { orange } from "@material-ui/core/colors";
 import { SearchOutlined } from "@material-ui/icons";
 import Autocomplete from "@material-ui/lab/Autocomplete";
@@ -18,7 +20,7 @@ import Pagination from "@material-ui/lab/Pagination";
 import _ from "lodash";
 import React, { useMemo, useState } from "react";
 import { DurationText } from "../common/DurationText";
-import { ActorLink } from "../common/links";
+import { ActorLink, generateNodeLink } from "../common/links";
 import {
   CpuProfilingLink,
   CpuStackTraceLink,
@@ -182,6 +184,7 @@ const ActorTable = ({
     { label: "Job ID" },
     { label: "PID" },
     { label: "IP" },
+    { label: "Node Id" },
     {
       label: "Restarted",
       helpInfo: (
@@ -500,6 +503,26 @@ const ActorTable = ({
                   <TableCell align="center">{pid ? pid : "-"}</TableCell>
                   <TableCell align="center">
                     {address?.ipAddress ? address?.ipAddress : "-"}
+                  </TableCell>
+                  <TableCell align="center">
+                    { address?.rayletId ? <Tooltip
+                      className={classes.idCol}
+                      title={address?.rayletId}
+                      arrow
+                      interactive
+                    >
+                      <div>
+                        <Link
+                          component={RouterLink}
+                          to={
+                            generateNodeLink(address.rayletId)
+                          }
+                        >
+                          {address?.rayletId }
+                        </Link>
+                      </div>
+                    </Tooltip> : "-"
+                    }
                   </TableCell>
                   <TableCell
                     align="center"
