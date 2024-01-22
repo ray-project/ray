@@ -1,4 +1,7 @@
+from typing import List
+
 import click
+import github
 
 from ci.ray_ci.utils import logger
 from ray_release.test_automation.state_machine import TestStateMachine
