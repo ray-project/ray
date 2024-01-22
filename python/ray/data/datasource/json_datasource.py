@@ -38,7 +38,7 @@ class JSONDatasource(FileBasedDatasource):
         self.arrow_json_args = arrow_json_args
 
     def _read_with_pyarrow_read_json(self, buffer: "pyarrow.lib.Buffer"):
-        """Read with PyArrow JSON reader, trying to auto-increase the 
+        """Read with PyArrow JSON reader, trying to auto-increase the
         read block size in the case of the read object
         straddling block boundaries."""
         import pyarrow as pa
