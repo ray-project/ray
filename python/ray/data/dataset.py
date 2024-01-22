@@ -339,7 +339,7 @@ class Dataset:
                 worker pool of size ``n``, specify ``concurrency=n``. For an autoscaling
                 worker pool from ``m`` to ``n`` workers, specify ``concurrency=(m, n)``.
             ray_remote_args: Additional resource requirements to request from
-                ray for each map worker.
+                Ray for each map worker.
 
         .. seealso::
 
@@ -1029,7 +1029,7 @@ class Dataset:
                 For an autoscaling worker pool from ``m`` to ``n`` workers, specify
                 ``concurrency=(m, n)``.
             ray_remote_args: Additional resource requirements to request from
-                ray for each map worker.
+                ray (e.g., num_gpus=1 to request GPUs for the map tasks).
         """
         compute = get_compute_strategy(
             fn,
