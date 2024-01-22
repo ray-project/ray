@@ -4,15 +4,14 @@ import time
 from abc import ABC, abstractmethod
 from collections import defaultdict
 from dataclasses import dataclass, field
-from enum import Enum, IntEnum
-from typing import Callable, Dict, List, Optional, Tuple
+from enum import Enum
+from typing import Dict, List, Optional, Tuple
 
 from google.protobuf.json_format import MessageToDict
 
 from ray.autoscaler._private.resource_demand_scheduler import UtilizationScore
 from ray.autoscaler.v2.instance_manager.common import InstanceUtil
 from ray.autoscaler.v2.instance_manager.config import NodeTypeConfig
-from ray.autoscaler.v2.instance_manager.common import InstanceUtil
 from ray.autoscaler.v2.schema import AutoscalerInstance, NodeType
 from ray.autoscaler.v2.utils import resource_requests_by_count
 from ray.core.generated.autoscaler_pb2 import (
@@ -351,7 +350,8 @@ class ResourceDemandScheduler(IResourceScheduler):
                         # Configs might have been updated, and no more
                         # node_type_configs for this node type.
                         logger.info(
-                            "Skipping instance {} since no node config found for {}".format(
+                            "Skipping instance {} since no node config found for "
+                            "{}".format(
                                 instance.im_instance.instance_id,
                                 instance.im_instance.instance_type,
                             )
@@ -408,23 +408,14 @@ class ResourceDemandScheduler(IResourceScheduler):
 
             return node_type_available
 
-        def get_nodes(
-            self, filter_fn: Optional[Callable] = None
-        ) -> List[SchedulingNode]:
+        def get_nodes(self) -> List[SchedulingNode]:
             """
             Get the current nodes with filter.
-
-            Args:
-                filter_fn: The filter function. If None, no filter will be applied.
-                    only instance that matches the filter (returns True) will be
-                    returned.
 
             Returns:
                 A list of nodes.
             """
             nodes = copy.deepcopy(self._nodes)
-            if filter_fn is not None:
-                return list(filter(filter_fn, nodes))
             return nodes
 
         def get_cluster_shape(self) -> Dict[NodeType, int]:
@@ -495,10 +486,13 @@ class ResourceDemandScheduler(IResourceScheduler):
         self._init_context(request)
 
         # Enforce the minimal count of nodes for each worker node type.
-        self._enforce_min_workers()
+        self._enforce_min_workers_per_type()
 
         # Enforce the max worker nodes count.
-        self._enforce_max_workers()
+        self._enforce_max_workers_per_type()
+
+        # Enforce the max worker nodes count globally.
+        self._enforce_max_workers_global()
 
         # Enforce the cluster resource constraints.
         infeasible_constraints = self._enforce_resource_constraints(
@@ -531,7 +525,7 @@ class ResourceDemandScheduler(IResourceScheduler):
     def _init_context(self, request: SchedulingRequest) -> None:
         self._ctx = self.ScheduleContext.from_schedule_request(request)
 
-    def _enforce_max_workers(self) -> None:
+    def _enforce_max_workers_per_type(self) -> None:
         """
         Enforce the max number of workers for the entire cluster.
 
@@ -541,90 +535,116 @@ class ResourceDemandScheduler(IResourceScheduler):
         """
 
         # Get all the nodes by type
-        nodes = self._ctx.get_nodes(
-            filter_fn=lambda n: n.status != SchedulingNodeStatus.TO_TERMINATE
-        )
-        num_nodes_total = len(nodes)
+        all_nodes = self._ctx.get_nodes()
 
-        nodes_by_type = defaultdict(list)
-        for node in nodes:
-            nodes_by_type[node.node_type].append(node)
+        non_terminating_nodes_by_type = defaultdict(list)
+        terminating_nodes = []
+        for node in all_nodes:
+            if node.status == SchedulingNodeStatus.TO_TERMINATE:
+                terminating_nodes.append(node)
+            else:
+                non_terminating_nodes_by_type[node.node_type].append(node)
 
-        all_terminated_nodes = []
+        terminating_nodes = []
         # Step 1. Enforce the max number of workers for each node type.
-        for node_type in nodes_by_type.keys():
-            nodes = nodes_by_type[node_type]
+        for node_type in non_terminating_nodes_by_type.keys():
+            non_terminate_nodes_of_type = non_terminating_nodes_by_type[node_type]
             node_config = self._ctx.get_node_type_configs().get(node_type, None)
             num_max_nodes_per_type = node_config.max_worker_nodes if node_config else 0
-            num_extra_nodes = len(nodes) - num_max_nodes_per_type
+            num_extra_nodes = len(non_terminate_nodes_of_type) - num_max_nodes_per_type
 
             if num_extra_nodes <= 0:
                 # No extra nodes for this type, continue.
                 continue
 
             # Sort the instances for termination.
-            nodes.sort(key=self._sort_nodes_for_termination)
+            non_terminate_nodes_of_type.sort(key=self._sort_nodes_for_termination)
 
             # Terminate the nodes
-            terminated_nodes, remained_nodes = self._terminate_nodes(
-                nodes,
+            to_terminate, remained_nodes = self._terminate_nodes(
+                non_terminate_nodes_of_type,
                 num_extra_nodes,
                 TerminationRequest.Cause.MAX_NUM_NODE_PER_TYPE,
                 max_num_nodes_per_type=num_max_nodes_per_type,
             )
 
-            nodes_by_type[node_type] = remained_nodes
-            all_terminated_nodes.extend(terminated_nodes)
+            non_terminating_nodes_by_type[node_type] = remained_nodes
+            terminating_nodes.extend(to_terminate)
+
+        non_terminating_nodes = []
+        for nodes in non_terminating_nodes_by_type.values():
+            non_terminating_nodes.extend(nodes)
+
+        # Update the context
+        assert len(all_nodes) == len(
+            terminating_nodes + non_terminating_nodes
+        ), "The number of nodes should be the same after enforcing max nodes per type."
+
+        self._ctx.update(terminating_nodes + non_terminating_nodes)
 
         logger.debug(
-            f"Enforced max nodes per type: terminating {len(all_terminated_nodes)} "
+            f"Enforced max nodes per type: terminating {len(terminating_nodes)} "
             "for per node type max num node's constraints."
         )
 
-        # Step 2. Enforce the max number of workers for the entire cluster.
-        remained_nodes = []
-        for nodes in nodes_by_type.values():
-            remained_nodes.extend(nodes)
+    def _enforce_max_workers_global(self) -> None:
+        # Enforce the max number of workers for the entire cluster.
+        all_nodes = self._ctx.get_nodes()
+
+        terminating_nodes = []
+        non_terminating_nodes = []
+
+        for node in all_nodes:
+            if node.status == SchedulingNodeStatus.TO_TERMINATE:
+                terminating_nodes.append(node)
+            else:
+                non_terminating_nodes.append(node)
 
         num_max_nodes = self._ctx.get_max_num_nodes()
 
         num_to_terminate = (
-            max(len(remained_nodes) - num_max_nodes, 0) if num_max_nodes else 0
+            max(len(non_terminating_nodes) - num_max_nodes, 0) if num_max_nodes else 0
         )
 
         if num_to_terminate <= 0:
             # No extra nodes needed to terminate.
             return
 
-        remained_nodes.sort(key=self._sort_nodes_for_termination)
+        non_terminating_nodes.sort(key=self._sort_nodes_for_termination)
         # Terminate the nodes
-        terminated_nodes_global_max, remained_nodes = self._terminate_nodes(
-            remained_nodes,
+        to_terminate_nodes, non_terminating_nodes = self._terminate_nodes(
+            non_terminating_nodes,
             num_to_terminate,
             TerminationRequest.Cause.MAX_NUM_NODES,
             max_num_nodes=num_max_nodes,
         )
 
         logger.debug(
-            f"Enforced max nodes: terminating {len(terminated_nodes_global_max)} "
+            f"Enforced max nodes: terminating {len(to_terminate_nodes)} "
             f" for global max num node's constraints({num_max_nodes})"
         )
 
-        all_terminated_nodes.extend(terminated_nodes_global_max)
-        if len(terminated_nodes) < num_to_terminate:
+        if len(to_terminate_nodes) < num_to_terminate:
             logger.warning(
-                "Failed to terminate {} nodes to satisfy max_num_nodes={}".format(
-                    num_to_terminate - len(terminated_nodes), num_max_nodes
+                "Terminating {} nodes, failed to terminate {} nodes to "
+                "satisfy max_num_nodes={}".format(
+                    len(to_terminate_nodes),
+                    num_to_terminate - len(to_terminate_nodes),
+                    num_max_nodes,
                 )
             )
 
         # Update the context
-        all_nodes = all_terminated_nodes + remained_nodes
-        assert (
-            len(all_nodes) == num_nodes_total
+        terminating_nodes.extend(to_terminate_nodes)
+        assert len(all_nodes) == len(
+            terminating_nodes + non_terminating_nodes
         ), "The number of nodes should be the same after enforcing max nodes."
+
+        all_nodes = terminating_nodes + non_terminating_nodes
         self._ctx.update(all_nodes)
-        logger.debug("After enforced max nodes: {}".format(self._ctx))
+        logger.debug(
+            "After enforced max nodes for global num nodes limit : {}".format(self._ctx)
+        )
 
     @staticmethod
     def _terminate_nodes(
@@ -714,7 +734,7 @@ class ResourceDemandScheduler(IResourceScheduler):
 
         return (running_ray, idle_dur, avg_util)
 
-    def _enforce_min_workers(self) -> None:
+    def _enforce_min_workers_per_type(self) -> None:
         """
         Enforce the minimal count of nodes for each worker node type.
         """

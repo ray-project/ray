@@ -18,7 +18,6 @@ from ray.core.generated.autoscaler_pb2 import (
     ClusterResourceConstraint,
     GangResourceRequest,
     NodeState,
-    NodeStatus,
     ResourceRequestByCount,
 )
 from ray.core.generated.instance_manager_pb2 import Instance, TerminationRequest
