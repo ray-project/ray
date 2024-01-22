@@ -672,7 +672,7 @@ def read_parquet(
         shuffle: If setting to "files", randomly shuffle input files order before read.
             Defaults to not shuffle with ``None``.
         arrow_parquet_args: Other parquet read options to pass to PyArrow. For the full
-            set of arguments, see the`PyArrow API <https://arrow.apache.org/docs/\
+            set of arguments, see the `PyArrow API <https://arrow.apache.org/docs/\
                 python/generated/pyarrow.dataset.Scanner.html\
                     #pyarrow.dataset.Scanner.from_fragment>`_
         include_paths: If ``True``, include the path to each file. File paths are
@@ -1041,20 +1041,6 @@ def read_json(
         >>> ds = ray.data.read_json("s3://anonymous@ray-example-data/year=2022/month=09/sales.json")
         >>> ds.take(1)
         [{'order_number': 10107, 'quantity': 30, 'year': '2022', 'month': '09'}]
-
-        When reading large files, the default block size configured in PyArrow can be too small,
-        resulting in the following error:
-        ``pyarrow.lib.ArrowInvalid: straddling object straddles two block boundaries
-        (try to increase block size?)``.
-
-        To resolve this, use the ``read_options`` parameter to set a larger block size:
-
-        >>> import pyarrow.json as pajson
-        >>> block_size = 10 << 20 # Set block size to 10MB
-        >>> ray.data.read_json(  # doctest: +SKIP
-        ...     "s3://anonymous@ray-example-data/log.json",
-        ...     read_options=pajson.ReadOptions(block_size=block_size)
-        ... )
 
     Args:
         paths: A single file or directory, or a list of file or directory paths.
