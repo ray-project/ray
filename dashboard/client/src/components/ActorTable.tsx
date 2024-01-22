@@ -184,7 +184,7 @@ const ActorTable = ({
     { label: "Job ID" },
     { label: "PID" },
     { label: "IP" },
-    { label: "Node Id" },
+    { label: "Node ID" },
     {
       label: "Restarted",
       helpInfo: (
@@ -268,6 +268,18 @@ const ActorTable = ({
           }}
           renderInput={(params: TextFieldProps) => (
             <TextField {...params} label="IP" />
+          )}
+        />
+        <Autocomplete
+          style={{ margin: 8, width: 150 }}
+          options={Array.from(
+            new Set(Object.values(actors).map((e) => e.address?.rayletId)),
+          )}
+          onInputChange={(_: any, value: string) => {
+            changeFilter("address.rayletId", value.trim());
+          }}
+          renderInput={(params: TextFieldProps) => (
+            <TextField {...params} label="Node ID" />
           )}
         />
         <TextField
