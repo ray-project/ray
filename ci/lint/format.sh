@@ -157,6 +157,7 @@ BLACK_EXCLUDES=(
     `'python/ray/thirdparty_files/*|'`
     `'python/ray/_private/thirdparty/*|'`
     `'python/ray/serve/tests/test_config_files/syntax_error\.py|'`
+    `'python/ray/serve/_private/benchmarks/streaming/_grpc/test_server_pb2_grpc\.py|'`
     `'doc/external/*'
 )
 

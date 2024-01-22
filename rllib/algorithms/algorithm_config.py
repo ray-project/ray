@@ -1310,9 +1310,8 @@ class AlgorithmConfig(_Config):
                 via `tune.register_env([name], lambda env_ctx: [env object])`,
                 or a string specifier of an RLlib supported type. In the latter case,
                 RLlib will try to interpret the specifier as either an Farama-Foundation
-                gymnasium env, a PyBullet env, a ViZDoomGym env, or a fully qualified
-                classpath to an Env class, e.g.
-                "ray.rllib.examples.env.random_env.RandomEnv".
+                gymnasium env, a PyBullet env, or a fully qualified classpath to an Env
+                class, e.g. "ray.rllib.examples.env.random_env.RandomEnv".
             env_config: Arguments dict passed to the env creator as an EnvContext
                 object (which is a dict plus the properties: num_rollout_workers,
                 worker_index, vector_index, and remote).
@@ -1338,7 +1337,11 @@ class AlgorithmConfig(_Config):
             normalize_actions: If True, RLlib will learn entirely inside a normalized
                 action space (0.0 centered with small stddev; only affecting Box
                 components). RLlib will unsquash actions (and clip, just in case) to the
+                components). RLlib will unsquash actions (and clip, just in case) to the
                 bounds of the env's action space before sending actions back to the env.
+            clip_actions: If True, the RLlib default ModuleToEnv connector will clip
+                actions according to the env's bounds (before sending them into the
+                `env.step()` call).
             clip_actions: If True, the RLlib default ModuleToEnv connector will clip
                 actions according to the env's bounds (before sending them into the
                 `env.step()` call).
@@ -1409,6 +1412,7 @@ class AlgorithmConfig(_Config):
             Callable[[EnvType, "RLModule"], "ConnectorV2"]
         ] = NotProvided,
         episode_lookback_horizon: Optional[int] = NotProvided,
+        episode_lookback_horizon: Optional[int] = NotProvided,
         use_worker_filter_stats: Optional[bool] = NotProvided,
         update_worker_filter_stats: Optional[bool] = NotProvided,
         rollout_fragment_length: Optional[Union[int, str]] = NotProvided,
@@ -1459,6 +1463,13 @@ class AlgorithmConfig(_Config):
             module_to_env_connector: A callable taking an Env and an RLModule as input
                 args and returning a module-to-env ConnectorV2 (might be a pipeline)
                 object.
+            episode_lookback_horizon: The amount of data (in timesteps) to keep from the
+                preceeding episode chunk when a new chunk (for the same episode) is
+                generated to continue sampling at a later time. The larger this value,
+                the more an env-to-module connector will be able to look back in time
+                and compile RLModule input data from this information. For example, if
+                your custom env-to-module connector (and your custom RLModule) requires
+                the previous 10 rewards as inputs, you must set this to at least 10.
             episode_lookback_horizon: The amount of data (in timesteps) to keep from the
                 preceeding episode chunk when a new chunk (for the same episode) is
                 generated to continue sampling at a later time. The larger this value,
@@ -1561,6 +1572,8 @@ class AlgorithmConfig(_Config):
             self._env_to_module_connector = env_to_module_connector
         if module_to_env_connector is not NotProvided:
             self._module_to_env_connector = module_to_env_connector
+        if episode_lookback_horizon is not NotProvided:
+            self.episode_lookback_horizon = episode_lookback_horizon
         if episode_lookback_horizon is not NotProvided:
             self.episode_lookback_horizon = episode_lookback_horizon
         if use_worker_filter_stats is not NotProvided:
@@ -1683,6 +1696,7 @@ class AlgorithmConfig(_Config):
         grad_clip_by: Optional[str] = NotProvided,
         train_batch_size: Optional[int] = NotProvided,
         train_batch_size_per_learner: Optional[int] = NotProvided,
+        train_batch_size_per_learner: Optional[int] = NotProvided,
         model: Optional[dict] = NotProvided,
         optimizer: Optional[dict] = NotProvided,
         max_requests_in_flight_per_sampler_worker: Optional[int] = NotProvided,
@@ -1733,11 +1747,14 @@ class AlgorithmConfig(_Config):
                 clipping. Allowed values are `value`, `norm`, and `global_norm`.
             train_batch_size_per_learner: Train batch size per individual Learner
                 worker. This setting only applies to the new API stack. The number
-                of Learner workers can be set via
-                `config.resources(num_learner_workers=...)`.
+                of Learner workers can be set via `config.resources(
+                num_learner_workers=...)`. The total effective batch size is then
+                `num_learner_workers` x `train_batch_size_per_learner` and can
+                be accessed via the property `AlgorithmConfig.total_train_batch_size`.
             train_batch_size: Training batch size, if applicable. When on the new API
-                stack, this setting should no longer be used and instead
-                `train_batch_size_per_worker` should be used.
+                stack, this setting should no longer be used. Instead, use
+                `train_batch_size_per_learner` (in combination with
+                `num_learner_workers`).
             model: Arguments passed into the policy model. See models/catalog.py for a
                 full list of the available model options.
                 TODO: Provide ModelConfig objects instead of dicts.
@@ -1777,6 +1794,8 @@ class AlgorithmConfig(_Config):
                     "or 'global_norm'!"
                 )
             self.grad_clip_by = grad_clip_by
+        if train_batch_size_per_learner is not NotProvided:
+            self.train_batch_size_per_learner = train_batch_size_per_learner
         if train_batch_size_per_learner is not NotProvided:
             self.train_batch_size_per_learner = train_batch_size_per_learner
         if train_batch_size is not NotProvided:
@@ -2742,16 +2761,16 @@ class AlgorithmConfig(_Config):
         """Automatically infers a proper rollout_fragment_length setting if "auto".
 
         Uses the simple formula:
-        `rollout_fragment_length` = `train_batch_size` /
+        `rollout_fragment_length` = `total_train_batch_size` /
         (`num_envs_per_worker` * `num_rollout_workers`)
 
         If result is a fraction AND `worker_index` is provided, will make
         those workers add additional timesteps, such that the overall batch size (across
-        the workers) will add up to exactly the `train_batch_size`.
+        the workers) will add up to exactly the `total_train_batch_size`.
 
         Returns:
             The user-provided `rollout_fragment_length` or a computed one (if user
-            provided value is "auto"), making sure `train_batch_size` is reached
+            provided value is "auto"), making sure `total_train_batch_size` is reached
             exactly in each iteration.
         """
         if self.rollout_fragment_length == "auto":
@@ -3117,7 +3136,7 @@ class AlgorithmConfig(_Config):
 
         Raises:
             ValueError: If there is a mismatch between user provided
-            `rollout_fragment_length` and `train_batch_size`.
+            `rollout_fragment_length` and `total_train_batch_size`.
         """
         if (
             self.rollout_fragment_length != "auto"
@@ -3132,16 +3151,18 @@ class AlgorithmConfig(_Config):
             batch_size = min_batch_size
             while batch_size < self.total_train_batch_size:
                 batch_size += min_batch_size
-            if (
-                batch_size - train_batch_size > 0.1 * self.total_train_batch_size
-                or batch_size - min_batch_size - self.total_train_batch_size
-                > (0.1 * train_batch_size)
+            if batch_size - self.total_train_batch_size > (
+                0.1 * self.total_train_batch_size
+            ) or batch_size - min_batch_size - self.total_train_batch_size > (
+                0.1 * self.total_train_batch_size
             ):
                 suggested_rollout_fragment_length = self.total_train_batch_size // (
                     self.num_envs_per_worker * (self.num_rollout_workers or 1)
                 )
                 raise ValueError(
-                    f"Your desired `train_batch_size` ({self.total_train_batch_size}) "
+                    "Your desired `total_train_batch_size` "
+                    f"({self.total_train_batch_size}={self.num_learner_workers} "
+                    f"learners x {self.train_batch_size_per_learner}) "
                     "or a value 10% off of that cannot be achieved with your other "
                     f"settings (num_rollout_workers={self.num_rollout_workers}; "
                     f"num_envs_per_worker={self.num_envs_per_worker}; "
@@ -3602,8 +3623,7 @@ class AlgorithmConfig(_Config):
         """Checks, whether evaluation related settings make sense."""
         if (
             self.evaluation_interval
-            and self.env_runner_cls is not None
-            and not issubclass(self.env_runner_cls, RolloutWorker)
+            and self.uses_new_env_runners
             and not self.enable_async_evaluation
         ):
             raise ValueError(

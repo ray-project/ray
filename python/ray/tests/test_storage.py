@@ -1,4 +1,5 @@
 import os
+import sys
 import subprocess
 import urllib
 from pathlib import Path
@@ -62,6 +63,24 @@ def test_get_filesystem_s3(shutdown_only):
         fs, prefix = storage.get_filesystem()
         assert path_eq(prefix, root), prefix
         assert isinstance(fs, pyarrow.fs.S3FileSystem), fs
+
+
+@pytest.mark.skipif(
+    sys.platform == "win32", reason="The issue is not fixed for windows yet"
+)
+def test_escape_storage_uri_with_runtime_env(shutdown_only):
+    # https://github.com/ray-project/ray/issues/41568
+    # Test to make sure we can successfully start worker process
+    # when storage uri contains ? and we use runtime env.
+    with simulate_storage("s3") as s3_uri:
+        assert "?" in s3_uri
+        ray.init(storage=s3_uri, runtime_env={"env_vars": {"TEST_ENV": "1"}})
+
+        @ray.remote
+        def f():
+            return 1
+
+        assert ray.get(f.remote()) == 1
 
 
 def test_get_filesystem_invalid(shutdown_only, tmp_path):

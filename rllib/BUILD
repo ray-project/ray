@@ -151,16 +151,6 @@ py_test(
 
 # APPO
 py_test(
-    name = "learning_tests_cartpole_appo_no_vtrace",
-    main = "tests/run_regression_tests.py",
-    tags = ["team:rllib", "exclusive", "learning_tests", "learning_tests_cartpole", "learning_tests_discrete"],
-    size = "medium", # bazel may complain about it being too long sometimes - medium is on purpose as some frameworks take longer
-    srcs = ["tests/run_regression_tests.py"],
-    data = ["tuned_examples/appo/cartpole-appo.yaml"],
-    args = ["--dir=tuned_examples/appo"]
-)
-
-py_test(
     name = "learning_tests_cartpole_appo_w_rl_modules_and_learner",
     main = "tests/run_regression_tests.py",
     tags = ["team:rllib", "exclusive", "learning_tests", "learning_tests_cartpole", "learning_tests_discrete", "no_tf_static_graph"],
@@ -177,7 +167,7 @@ py_test(
     size = "medium",
     srcs = ["tests/run_regression_tests.py"],
     data = [
-        "tuned_examples/appo/cartpole-appo-vtrace-separate-losses.py"
+        "tuned_examples/appo/cartpole-appo-separate-losses.py"
     ],
     args = ["--dir=tuned_examples/appo"]
 )
@@ -208,17 +198,17 @@ py_test(
     tags = ["team:rllib", "exclusive", "learning_tests", "learning_tests_cartpole", "learning_tests_discrete", "fake_gpus"],
     size = "medium",
     srcs = ["tests/run_regression_tests.py"],
-    data = ["tuned_examples/appo/cartpole-appo-vtrace-fake-gpus.yaml"],
+    data = ["tuned_examples/appo/cartpole-appo-fake-gpus.yaml"],
     args = ["--dir=tuned_examples/appo"]
 )
 
 py_test(
-    name = "learning_tests_stateless_cartpole_appo_vtrace",
+    name = "learning_tests_stateless_cartpole_appo",
     main = "tests/run_regression_tests.py",
     tags = ["team:rllib", "exclusive", "learning_tests", "learning_tests_cartpole", "learning_tests_discrete"],
     size = "enormous",
     srcs = ["tests/run_regression_tests.py"],
-    data = ["tuned_examples/appo/stateless-cartpole-appo-vtrace.py"],
+    data = ["tuned_examples/appo/stateless_cartpole_appo.py"],
     args = ["--dir=tuned_examples/appo"]
 )
 
@@ -1454,6 +1444,13 @@ py_test(
 )
 
 py_test(
+    name = "test_value_predictions",
+    tags = ["team:rllib", "utils"],
+    size = "small",
+    srcs = ["utils/postprocessing/tests/test_value_predictions.py"]
+)
+
+py_test(
     name = "test_random_encoder",
     tags = ["team:rllib", "utils"],
     size = "large",
@@ -1461,7 +1458,7 @@ py_test(
 )
 
 py_test(
-    name = "utils/tests/test_torch_utils",
+    name = "test_torch_utils",
     tags = ["team:rllib", "utils", "gpu"],
     size = "medium",
     srcs = ["utils/tests/test_torch_utils.py"]
