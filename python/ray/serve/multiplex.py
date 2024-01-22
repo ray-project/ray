@@ -17,7 +17,6 @@ from ray.serve._private.utils import MetricsPusher
 from ray.serve.context import _get_global_client, _get_internal_replica_context
 
 logger = logging.getLogger(SERVE_LOGGER_NAME)
-PUSH_MULTIPLEXED_MODEL_IDS_TASK_NAME = "push_multiplexed_model_ids"
 
 
 class _ModelMultiplexWrapper:
@@ -34,6 +33,8 @@ class _ModelMultiplexWrapper:
     model's __del__ attribute if it exists to clean up the model resources eagerly.
 
     """
+
+    _PUSH_MULTIPLEXED_MODEL_IDS_TASK_NAME = "push_multiplexed_model_ids"
 
     def __init__(
         self,
@@ -113,6 +114,7 @@ class _ModelMultiplexWrapper:
 
         self.metrics_pusher = MetricsPusher()
         self.metrics_pusher.register_task(
+            self._PUSH_MULTIPLEXED_MODEL_IDS_TASK_NAME,
             PUSH_MULTIPLEXED_MODEL_IDS_INTERVAL_S,
             self._push_model_ids_info,
             PUSH_MULTIPLEXED_MODEL_IDS_INTERVAL_S,
