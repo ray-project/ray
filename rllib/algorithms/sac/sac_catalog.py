@@ -41,31 +41,6 @@ class SACCatalog(Catalog):
             model_config_dict=model_config_dict,
         )
 
-        # Define the encoder for the Q-network.
-        # if (
-        #     isinstance(self.observation_space, gym.spaces.Box)
-        #     and len(self.observation_space.shape) == 1
-        # ):
-        #     input_space = gym.spaces.Box(
-        #         -np.inf,
-        #         np.inf,
-        #         (self.observation_space.shape[0] + self.action_space.shape[0],),
-        #         dtype=np.float32,
-        #     )
-        # else:
-        #     raise ValueError(f"The observation space is not supported by RLlib's SAC.")
-
-        # self.qf_encoder_hiddens = self._model_config_dict["fcnet_hiddens"]
-        # self.qf_encoder_activation = self._model_config_dict["fcnet_activation"]
-
-        # self.qf_encoder_config = MLPEncoderConfig(
-        #     input_dims=input_space.shape,
-        #     hidden_layer_dims=self.qf_encoder_hiddens,
-        #     hidden_layer_activation=self.qf_encoder_activation,
-        #     output_layer_dim=self.latent_dims[0],
-        #     output_layer_activation=self.qf_encoder_activation,
-        # )
-
         # Define the heads.
         self.pi_and_qf_head_hiddens = self._model_config_dict["post_fcnet_hiddens"]
         self.pi_and_qf_head_activation = self._model_config_dict[
@@ -106,9 +81,13 @@ class SACCatalog(Catalog):
         Returns:
             The encoder for the Q-network.
         """
-        
+
+        # Compute the required dimension for the action space.
         required_action_dim = self.action_space.shape[0]
 
+        # Encoder input for the Q-network contains state and action. We
+        # need to infer the shape for the input from the state and action
+        # spaces
         if (
             isinstance(self.observation_space, gym.spaces.Box)
             and len(self.observation_space.shape) == 1
@@ -120,7 +99,7 @@ class SACCatalog(Catalog):
                 dtype=np.float32,
             )
         else:
-            raise ValueError(f"The observation space is not supported by RLlib's SAC.")
+            raise ValueError("The observation space is not supported by RLlib's SAC.")
 
         if self._model_config_dict["encoder_latent_dim"]:
             self.qf_encoder_hiddens = self._model_config_dict["fcnet_hiddens"]
@@ -185,7 +164,7 @@ class SACCatalog(Catalog):
         """Build the Q function head."""
 
         return self.qf_head_config.build(framework=framework)
-    
+
     @override(Catalog)
     def get_action_dist_cls(self, framework: str) -> "TorchSquashedGaussian":
         assert framework == "torch"

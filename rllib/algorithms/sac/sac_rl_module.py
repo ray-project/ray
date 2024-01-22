@@ -1,7 +1,8 @@
 from typing import Type
 from ray.rllib.algorithms.sac.sac_catalog import SACCatalog
-from ray.rllib.algorithms.sac.sac_learner import QF_PREDS, QF_TARGET_PREDS
-from ray.rllib.core.models.base import ACTOR, CRITIC
+
+# from ray.rllib.algorithms.sac.sac_learner import QF_PREDS
+# from ray.rllib.core.models.base import ACTOR, CRITIC
 from ray.rllib.core.models.specs.typing import SpecType
 from ray.rllib.core.rl_module.rl_module import RLModule
 from ray.rllib.core.rl_module.rl_module_with_target_networks_interface import (
@@ -12,12 +13,14 @@ from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils.annotations import ExperimentalAPI, override
 
 CRITIC_TARGET = "critic_target"
+QF_PREDS = "qf_preds"
+
 
 @ExperimentalAPI
 class SACRLModule(RLModule, RLModuleWithTargetNetworksInterface):
     def setup(self):
         # __sphinx_doc_begin__
-        #super().setup()
+        # super().setup()
         catalog: SACCatalog = self.config.get_catalog()
 
         # Build the encoder for the policy.

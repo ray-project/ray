@@ -1,6 +1,6 @@
 from typing import Any, Dict, List, Tuple
 
-from ray.rllib.algorithms.sac.sac_learner import QF_PREDS, QF_TARGET_PREDS
+from ray.rllib.algorithms.sac.sac_rl_module import QF_PREDS
 from ray.rllib.algorithms.sac.sac_rl_module import SACRLModule
 from ray.rllib.core.models.base import ENCODER_OUT
 from ray.rllib.core.rl_module.torch.torch_rl_module import TorchRLModule
