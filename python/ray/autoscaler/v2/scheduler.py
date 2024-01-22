@@ -527,11 +527,7 @@ class ResourceDemandScheduler(IResourceScheduler):
 
     def _enforce_max_workers_per_type(self) -> None:
         """
-        Enforce the max number of workers for the entire cluster.
-
-        This method enforces the below 2 constraints:
-            1. The max number of workers for each node type.
-            2. The max number of workers for the entire cluster.
+        Enforce the max number of workers for each node type.
         """
 
         # Get all the nodes by type
@@ -588,7 +584,9 @@ class ResourceDemandScheduler(IResourceScheduler):
         )
 
     def _enforce_max_workers_global(self) -> None:
-        # Enforce the max number of workers for the entire cluster.
+        """
+        Enforce the max number of workers for the entire cluster.
+        """
         all_nodes = self._ctx.get_nodes()
 
         terminating_nodes = []
