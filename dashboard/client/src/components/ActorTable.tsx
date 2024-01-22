@@ -298,6 +298,36 @@ const ActorTable = ({
           }}
         />
         <TextField
+          style={{ margin: 8, width: 120 }}
+          label="Class"
+          size="small"
+          InputProps={{
+            onChange: ({ target: { value } }) => {
+              changeFilter("actorClass", value.trim());
+            },
+            endAdornment: (
+              <InputAdornment position="end">
+                <SearchOutlined />
+              </InputAdornment>
+            ),
+          }}
+        />
+        <TextField
+          style={{ margin: 8, width: 120 }}
+          label="Repr"
+          size="small"
+          InputProps={{
+            onChange: ({ target: { value } }) => {
+              changeFilter("reprName", value.trim());
+            },
+            endAdornment: (
+              <InputAdornment position="end">
+                <SearchOutlined />
+              </InputAdornment>
+            ),
+          }}
+        />
+        <TextField
           value={filterToActorId ?? actorIdFilterValue}
           style={{ margin: 8, width: 120 }}
           label="Actor ID"

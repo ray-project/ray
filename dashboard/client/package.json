@@ -152,5 +152,5 @@
       "last 1 safari version"
     ]
   },
-  "proxy": "http://localhost:8265"
+  "proxy": "http://127.0.0.1:8265"
 }
