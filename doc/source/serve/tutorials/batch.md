@@ -38,7 +38,7 @@ These calls will be batched and executed together, but return an individual resu
 they were a normal function call:
 
 ```python
-class MyBackend:
+class BatchingDeployment:
     @serve.batch
     async def my_batch_handler(self, requests: List):
         results = []
@@ -47,7 +47,7 @@ class MyBackend:
         return results
 
     async def __call__(self, request):
-        await self.my_batch_handler(request)
+        return await self.my_batch_handler(request)
 ```
 
 :::{note}

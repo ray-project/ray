@@ -25,6 +25,7 @@ from typing import (
     Set,
     Tuple,
     Type,
+    TYPE_CHECKING,
     Union,
 )
 
@@ -46,7 +47,6 @@ from ray.rllib.evaluation.metrics import (
     collect_metrics,
     summarize_episodes,
 )
-from ray.rllib.evaluation.postprocessing_v2 import postprocess_episodes_to_sample_batch
 from ray.rllib.evaluation.worker_set import WorkerSet
 from ray.rllib.execution.rollout_ops import synchronous_parallel_sample
 from ray.rllib.execution.train_ops import multi_gpu_train_one_step, train_one_step
@@ -129,6 +129,8 @@ from ray.util import log_once
 from ray.util.timer import _Timer
 from ray.tune.registry import get_trainable_cls
 
+if TYPE_CHECKING:
+    from ray.rllib.core.learner.learner_group import LearnerGroup
 
 try:
     from ray.rllib.extensions import AlgorithmBase
@@ -448,6 +450,9 @@ class Algorithm(Trainable, AlgorithmBase):
 
         # Placeholder for a local replay buffer instance.
         self.local_replay_buffer = None
+
+        # Placeholder for our LearnerGroup responsible for updating the RLModule(s).
+        self.learner_group: Optional["LearnerGroup"] = None
 
         # Create a default logger creator if no logger_creator is specified
         if logger_creator is None:
@@ -1410,7 +1415,12 @@ class Algorithm(Trainable, AlgorithmBase):
             worker.set_weights(
                 weights=ray.get(weights_ref), weights_seq_no=weights_seq_no
             )
-            episodes = worker.sample(explore=False)
+            # By episode: Run always only one episode per remote call.
+            # By timesteps: By default EnvRunner runs for the configured number of
+            # timesteps (based on `rollout_fragment_length` and `num_envs_per_worker`).
+            episodes = worker.sample(
+                explore=False, num_episodes=1 if unit == "episodes" else None
+            )
             metrics = worker.get_metrics()
             return episodes, metrics, weights_seq_no
 
@@ -1449,11 +1459,13 @@ class Algorithm(Trainable, AlgorithmBase):
                     rollout_metrics.extend(metrics)
                 i += 1
 
-            # Convert our list of Episodes to a single SampleBatch.
-            batch = postprocess_episodes_to_sample_batch(episodes)
             # Collect steps stats.
-            _agent_steps = batch.agent_steps()
-            _env_steps = batch.env_steps()
+            # TODO (sven): Solve for proper multi-agent env/agent steps counting.
+            #  Once we have multi-agent support on EnvRunner stack, we can simply do:
+            #  `len(episode)` for env steps and `episode.num_agent_steps()` for agent
+            #  steps.
+            _agent_steps = sum(len(e) for e in episodes)
+            _env_steps = sum(len(e) for e in episodes)
 
             # Only complete episodes done by eval workers.
             if unit == "episodes":
@@ -1467,6 +1479,7 @@ class Algorithm(Trainable, AlgorithmBase):
                 )
 
             if self.reward_estimators:
+                batch = concat_samples([e.get_sample_batch() for e in episodes])
                 all_batches.append(batch)
 
             agent_steps_this_iter += _agent_steps
