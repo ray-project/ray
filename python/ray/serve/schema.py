@@ -526,7 +526,7 @@ class ServeApplicationSchema(BaseModel):
     @validator("runtime_env")
     def runtime_env_contains_remote_uris(cls, v):
         # Ensure that all uris in py_modules and working_dir are remote.
-        return # XXX: toggle this properly!
+        return v # XXX: toggle this properly!
 
         if v is None:
             return

@@ -6,7 +6,8 @@ import sys
 import time
 import traceback
 from dataclasses import asdict
-from typing import Dict, List, Optional, Tuple
+from tempfile import NamedTemporaryFile
+from typing import Any, Dict, List, Optional, Tuple
 
 import click
 import watchfiles
@@ -804,6 +805,60 @@ def build(
         f.write(config_str)
 
 
+
+def _generate_config_from_file_or_import_path(
+    config_or_import_path: str,
+    *,
+    arguments: Dict[str, str],
+    runtime_env: Optional[Dict[str, Any]],
+) -> Tuple[ServeDeploySchema, str]:
+    """Generates a deployable config schema and name for the passed applications(s).
+
+    NOTE: name must not contain any "." or ":" characters.
+    """
+    if pathlib.Path(config_or_import_path).is_file():
+        config_path = config_or_import_path
+        cli_logger.print(f"Publishing from config file: '{config_path}'.")
+        if len(arguments) > 0:
+            raise click.ClickException(
+                "Application arguments cannot be specified for a config file."
+            )
+
+        # TODO(edoakes): should we enable overriding here?
+        if runtime_env is not None:
+            raise click.ClickException(
+                "runtime_env arguments cannot be specified for a config file."
+            )
+
+
+        with open(config_path, "r") as config_file:
+            config_dict = yaml.safe_load(config_file)
+            config = ServeDeploySchema.parse_obj(config_dict)
+
+            # XXX: better validation?
+            name = os.path.basename(config_file).split(".")[0]
+    else:
+        # TODO(edoakes): should we default to --working-dir="." for this?
+        import_path = config_or_import_path
+        cli_logger.print(f"Publishing import path: '{import_path}'.")
+
+        if import_path.count(":") != 1:
+            raise click.ClickException(
+                f"Import path must be of the form 'module.submodule:app_or_builder', got: '{import_path}'."
+            )
+        name = import_path.split(":")[1]
+
+        app = ServeApplicationSchema(
+            import_path=import_path,
+            runtime_env=runtime_env,
+            args=arguments,
+        )
+        config = ServeDeploySchema(applications=[app])
+
+    assert isinstance(config, ServeDeploySchema)
+    assert isinstance(name, str) and name
+    return config, name
+
 @cli.command(
     short_help="TODO.",
     help=("TODO."),
@@ -839,7 +894,7 @@ def build(
 @click.option(
     "--name",
     required=False,
-    default="TODO",
+    default=None,
     type=str,
     help=("TODO."),
 )
@@ -856,7 +911,7 @@ def publish(
     runtime_env: str,
     runtime_env_json: str,
     working_dir: str,
-    name: str,
+    name: Optional[str],
     image: Optional[str],
 ):
     final_runtime_env = parse_runtime_env_args(
@@ -865,55 +920,39 @@ def publish(
         working_dir=working_dir,
     )
 
-    config: Optional[ServeDeploySchema] = None
-    if pathlib.Path(config_or_import_path).is_file():
-        # TODO: should we use runtime_env at all?
-        if len(arguments) > 0:
-            cli_logger.warning(
-                "Application arguments are ignored a config file is passed."
-            )
-
-        config_path = config_or_import_path
-        cli_logger.print(f"Publishing from config file: '{config_path}'.")
-        with open(config_path, "r") as config_file:
-            config_dict = yaml.safe_load(config_file)
-            config = ServeDeploySchema.parse_obj(config_dict)
-    else:
-        # TODO: should we default to --working-dir="." for this?
-        import_path = config_or_import_path
-        cli_logger.print(f"Publishing import path: '{import_path}'.")
-
-        app = ServeApplicationSchema(
-            import_path=import_path,
-            runtime_env=final_runtime_env,
-            args=convert_args_to_dict(arguments),
-        )
-        config = ServeDeploySchema(applications=[app])
+    config, default_name = _generate_config_from_file_or_import_path(
+        config_or_import_path,
+        arguments=convert_args_to_dict(arguments),
+        runtime_env=final_runtime_env,
+    )
+    if name is None:
+        name = default_name
 
     _publish_provider(config, name=name, image=image)
 
 
 def _publish_provider(
     config: ServeDeploySchema,
-    name: Optional[str] = None,
+    *,
+    name: str,
     image: Optional[str] = None,
 ):
-    from anyscale import AnyscaleSDK
-    from anyscale.sdk.anyscale_client.models import ApplyProductionServiceV2Model
     from anyscale.controllers.service_controller import ServiceController
+    sc = ServiceController()
 
-    # TODO: convert to build_id ?
-    assert image is None, "Not implemented yet."
+    service_config = {
+        "cloud": "anyscale_v2_default_cloud",
+        "name": name,
+        "ray_serve_config": config.dict(exclude_unset=True),
+    }
+    if image is not None:
+        service_config["cluster_env"] = image
 
-    sdk = AnyscaleSDK()
-    apply_model = ApplyProductionServiceV2Model(
-        name=name,
-        ray_serve_config=config.dict(),
-    )
+    with NamedTemporaryFile(mode="w") as f:
+        yaml.dump(service_config, f, default_flow_style=False)
+        # TODO: this is not a stable API. subprocess to CLI for now?
+        sc.rollout(f.name, auto_complete_rollout=True)
 
-    # TODO: log some stuff?
-    service = sdk.rollout_service_v2(apply_model).result
-    assert service is not None
 
 
 class ServeDeploySchemaDumper(yaml.SafeDumper):
