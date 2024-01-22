@@ -7,7 +7,6 @@ from ray.data._internal.delegating_block_builder import DelegatingBlockBuilder
 from ray.data._internal.execution.interfaces import TaskContext
 from ray.data._internal.logical.interfaces import LogicalPlan
 from ray.data._internal.logical.operators.all_to_all_operator import Aggregate
-from ray.data._internal.plan import AllToAllStage
 from ray.data._internal.push_based_shuffle import PushBasedShufflePlan
 from ray.data._internal.shuffle import ShuffleOp, SimpleShufflePlan
 from ray.data._internal.sort import SortKey
@@ -205,14 +204,7 @@ class GroupedData:
                 ctx=task_ctx,
             )
 
-        plan = self._dataset._plan.with_stage(
-            AllToAllStage(
-                "Aggregate",
-                None,
-                do_agg,
-                sub_stage_names=["SortSample", "ShuffleMap", "ShuffleReduce"],
-            )
-        )
+        plan = self._dataset._plan.copy()
 
         logical_plan = self._dataset._logical_plan
         if logical_plan is not None:
