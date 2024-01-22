@@ -543,10 +543,11 @@ def select_operator_to_run(
     provides backpressure if the consumer is slow. However, once a bundle is returned
     to the user, it is no longer tracked.
     """
+    cur_usage = TopologyResourceUsage.of(topology)
+
     # Filter to ops that are eligible for execution.
     ops = []
     for op, state in topology.items():
-        cur_usage = TopologyResourceUsage.of(topology)
         under_resource_limits = _execution_allowed(op, cur_usage, limits)
         if (
             op.need_more_inputs()
@@ -712,6 +713,17 @@ def _execution_allowed(
         cpu=global_limits.cpu, gpu=global_limits.gpu
     )
     global_ok_sans_memory = new_usage.satisfies_limit(global_limits_sans_memory)
+    downstream_usage = global_usage.downstream_memory_usage[op]
+    downstream_memory = downstream_usage.object_store_memory
+    if (
+        DataContext.get_current().use_runtime_metrics_scheduling
+        and inc.object_store_memory
+    ):
+        downstream_memory += inc.object_store_memory
+    downstream_limit = global_limits.scale(downstream_usage.topology_fraction)
+    downstream_memory_ok = ExecutionResources(
+        object_store_memory=downstream_memory
+    ).satisfies_limit(downstream_limit)
 
     # If completing a task decreases the overall object store memory usage, allow it
     # even if we're over the global limit.
@@ -723,4 +735,4 @@ def _execution_allowed(
     ):
         return True
 
-    return False
+    return global_ok_sans_memory and downstream_memory_ok

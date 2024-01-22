@@ -24,10 +24,9 @@ def test_spam(shutdown_only, restore_data_context):
 
     def f(batch):
         time.sleep(0.1)
-        return {"data": np.zeros(20 * 1024**2, dtype=np.uint8)}
+        return {"data": np.zeros(25 * 1024**2, dtype=np.uint8)}
 
-    ds = ray.data.range(10).repartition(10).materialize()
-    ds = ds.map_batches(f, batch_size=None)
+    ds = ray.data.range(3, parallelism=3).map_batches(f, batch_size=None)
 
     for _ in ds.iter_batches(batch_size=None, batch_format="pyarrow"):
         pass
