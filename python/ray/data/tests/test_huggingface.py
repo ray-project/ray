@@ -1,6 +1,7 @@
 import datasets
 import pyarrow
 import pytest
+from packaging.version import Version
 
 import ray
 from ray.tests.conftest import *  # noqa
@@ -47,7 +48,7 @@ def test_from_huggingface(ray_start_regular_shared):
     reason="IterableDataset.iter() added in 2.8.0",
 )
 @pytest.mark.skipif(
-    datasets.Version(pyarrow.__version__) < datasets.Version("8.0.0"),
+    Version(pyarrow.__version__) < Version("8.0.0"),
     reason="pyarrow.Table.to_reader() added in 8.0.0",
 )
 # Note, pandas is excluded here because IterableDatasets do not support pandas format.

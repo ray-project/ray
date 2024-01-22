@@ -3,7 +3,7 @@
 set -ex
 
 export CI="true"
-export PYTHON="3.9"
+export PYTHON="3.8"
 export RAY_USE_RANDOM_PORTS="1"
 export RAY_DEFAULT_BUILD="1"
 export LC_ALL="en_US.UTF-8"
@@ -58,7 +58,6 @@ run_ray_cpp_and_java() {
 
 _prelude() {
   rm -rf /tmp/bazel_event_logs
-  cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/build/upload_build_info.sh; fi }; trap cleanup EXIT
   (which bazel && bazel clean) || true;
   . ./ci/ci.sh init && source ~/.zshenv
   source ~/.zshrc
@@ -67,6 +66,10 @@ _prelude() {
 }
 
 _epilogue() {
+  # Upload test results
+  ./ci/build/upload_build_info.sh
+  # Assign all macos tests to core for now
+  bazel run //ci/ray_ci/automation:test_db_bot -- core /tmp/bazel_event_logs
   # Persist ray logs
   mkdir -p /tmp/artifacts/.ray/
   tar -czf /tmp/artifacts/.ray/logs.tgz /tmp/ray

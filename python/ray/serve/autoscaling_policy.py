@@ -1,7 +1,7 @@
 import logging
 import math
 from dataclasses import dataclass, field
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, Optional
 
 from ray.serve._private.constants import CONTROL_LOOP_PERIOD_S, SERVE_LOGGER_NAME
 from ray.serve.config import AutoscalingConfig
@@ -12,7 +12,8 @@ logger = logging.getLogger(SERVE_LOGGER_NAME)
 
 def _calculate_desired_num_replicas(
     autoscaling_config: AutoscalingConfig,
-    current_num_ongoing_requests: List[float],
+    total_num_requests: int,
+    num_running_replicas: int,
     override_min_replicas: Optional[float] = None,
     override_max_replicas: Optional[float] = None,
 ) -> int:
@@ -34,21 +35,16 @@ def _calculate_desired_num_replicas(
             on the input metrics and the current number of replicas.
 
     """
-    current_num_replicas = len(current_num_ongoing_requests)
-    if current_num_replicas == 0:
+    if num_running_replicas == 0:
         raise ValueError("Number of replicas cannot be zero")
-
-    # The number of ongoing requests per replica, averaged over all replicas.
-    num_ongoing_requests_per_replica: float = sum(current_num_ongoing_requests) / len(
-        current_num_ongoing_requests
-    )
 
     # Example: if error_ratio == 2.0, we have two times too many ongoing
     # requests per replica, so we desire twice as many replicas.
-    error_ratio: float = (
-        num_ongoing_requests_per_replica
-        / autoscaling_config.target_num_ongoing_requests_per_replica
+    target_num_requests = (
+        autoscaling_config.target_num_ongoing_requests_per_replica
+        * num_running_replicas
     )
+    error_ratio: float = total_num_requests / target_num_requests
 
     # If error ratio >= 1, then the number of ongoing requests per
     # replica exceeds the target and we will make an upscale decision,
@@ -63,7 +59,7 @@ def _calculate_desired_num_replicas(
 
     # Multiply the distance to 1 by the smoothing ("gain") factor (default=1).
     smoothed_error_ratio = 1 + ((error_ratio - 1) * smoothing_factor)
-    desired_num_replicas = math.ceil(current_num_replicas * smoothed_error_ratio)
+    desired_num_replicas = math.ceil(num_running_replicas * smoothed_error_ratio)
 
     # If error_ratio = 0, meaning there is no more traffic, and desired
     # num replicas is stuck at a positive number due to the math.ceil
@@ -71,7 +67,7 @@ def _calculate_desired_num_replicas(
     # can eventually scale to 0.
     if (
         error_ratio == 0
-        and desired_num_replicas == current_num_replicas
+        and desired_num_replicas == num_running_replicas
         and desired_num_replicas >= 1
     ):
         desired_num_replicas -= 1
@@ -91,6 +87,7 @@ def _calculate_desired_num_replicas(
 
 @dataclass
 @PublicAPI(stability="alpha")
+<<<<<<< HEAD
 class AutoscalingContext:
     """The context for an autoscaling policy call."""
 
@@ -98,11 +95,10 @@ class AutoscalingContext:
     config: AutoscalingConfig
     # The number of replicas that the deployment is currently trying to scale to.
     current_target_num_replicas: int = 0
-    # List of number of ongoing requests for each replica.
-    current_num_ongoing_requests: List[int] = field(default_factory=list)
-    # The number of handle queued queries, if there are multiple handles, the max
-    # number of queries at a single handle will be passed.
-    current_handle_queued_queries: float = 0.0
+    # Total number of ongoing requests in the deployment.
+    total_num_requests: int = 0
+    # Total number of running replicas for the deployment.
+    num_running_replicas: int = 0
     # The min_replica of the deployment adjusted by the target capacity.
     capacity_adjusted_min_replicas: Optional[int] = None
     # The max_replica of the deployment adjusted by the target capacity.
@@ -129,9 +125,9 @@ def replica_queue_length_autoscaling_policy(context: AutoscalingContext) -> int:
     seconds.
     """
     decision_counter = context.policy_state.get("decision_counter", 0)
-    if len(context.current_num_ongoing_requests) == 0:
+    if context.num_running_replicas == 0:
         # When 0 replicas and queries are queued, scale up the replicas
-        if context.current_handle_queued_queries > 0:
+        if context.total_num_requests > 0:
             return max(
                 math.ceil(1 * context.config.get_upscale_smoothing_factor()),
                 context.current_target_num_replicas,
@@ -142,7 +138,8 @@ def replica_queue_length_autoscaling_policy(context: AutoscalingContext) -> int:
 
     desired_num_replicas = _calculate_desired_num_replicas(
         autoscaling_config=context.config,
-        current_num_ongoing_requests=context.current_num_ongoing_requests,
+        total_num_requests=context.total_num_requests,
+        num_running_replicas=context.num_running_replicas,
         override_min_replicas=context.capacity_adjusted_min_replicas,
         override_max_replicas=context.capacity_adjusted_max_replicas,
     )

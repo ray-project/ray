@@ -33,8 +33,8 @@ class AutoscalingPolicyManager:
     def get_decision_num_replicas(
         self,
         current_target_num_replicas: int,
-        current_num_ongoing_requests: List[float],
-        current_handle_queued_queries: float,
+        total_num_requests: int,
+        num_running_replicas: int,
         target_capacity: Optional[float] = None,
         target_capacity_direction: Optional[TargetCapacityDirection] = None,
         app_name: Optional[str] = None,
@@ -58,8 +58,8 @@ class AutoscalingPolicyManager:
         self.context = replace(
             self.context,
             current_target_num_replicas=current_target_num_replicas,
-            current_num_ongoing_requests=current_num_ongoing_requests,
-            current_handle_queued_queries=current_handle_queued_queries,
+            total_num_requests=total_num_requests,
+            num_running_replicas=num_running_replicas,
             capacity_adjusted_min_replicas=capacity_adjusted_min_replicas,
             capacity_adjusted_max_replicas=capacity_adjusted_max_replicas,
             app_name=app_name,
