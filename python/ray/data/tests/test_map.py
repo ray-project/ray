@@ -217,8 +217,12 @@ def test_transform_failure(shutdown_only):
         ds.map(mapper).materialize()
 
 
-def test_actor_task_failure(shutdown_only):
+def test_actor_task_failure(shutdown_only, restore_data_context):
     ray.init(num_cpus=2)
+
+    ctx = DataContext.get_current()
+    ctx.actor_task_retry_on_errors = [ValueError]
+
     ds = ray.data.from_items([0, 10], parallelism=2)
 
     class Mapper:
@@ -231,9 +235,7 @@ def test_actor_task_failure(shutdown_only):
                 raise ValueError("oops")
             return x
 
-    ds.map_batches(
-        Mapper, concurrency=1, ray_actor_task_remote_args={"retry_exceptions": True}
-    ).materialize()
+    ds.map_batches(Mapper, concurrency=1).materialize()
 
 
 def test_concurrency(shutdown_only):
