@@ -38,6 +38,9 @@ class JSONDatasource(FileBasedDatasource):
         self.arrow_json_args = arrow_json_args
 
     def _read_with_pyarrow_read_json(self, buffer: "pyarrow.lib.Buffer"):
+        """Read with PyArrow JSON reader, trying to auto-increase the 
+        read block size in the case of the read object
+        straddling block boundaries."""
         import pyarrow as pa
 
         # When reading large files, the default block size configured in PyArrow can be
@@ -88,6 +91,29 @@ class JSONDatasource(FileBasedDatasource):
                     # unrelated error, simply reraise
                     raise e
 
+    def _read_with_python_json(self, buffer: "pyarrow.lib.Buffer"):
+        """Fallback method to read JSON files with Python's native json.load(),
+        in case the default pyarrow json reader fails."""
+        import json
+
+        import pyarrow as pa
+
+        parsed_json = json.load(BytesIO(buffer))
+        try:
+            yield pa.Table.from_pylist(parsed_json)
+        except AttributeError as e:
+            # For PyArrow < 7.0.0, `pa.Table.from_pylist()` is not available.
+            # Construct a dict from the list and call
+            # `pa.Table.from_pydict()` instead.
+            assert "no attribute 'from_pylist'" in str(e), str(e)
+            from collections import defaultdict
+
+            dct = defaultdict(list)
+            for row in parsed_json:
+                for k, v in row.items():
+                    dct[k].append(v)
+            yield pa.Table.from_pydict(dct)
+
     # TODO(ekl) The PyArrow JSON reader doesn't support streaming reads.
     def _read_stream(self, f: "pyarrow.NativeFile", path: str):
         import pyarrow as pa
@@ -103,20 +129,4 @@ class JSONDatasource(FileBasedDatasource):
                 f"Falling back to native json.load(), which may be slower. "
                 f"PyArrow error was:\n{e}"
             )
-            import json
-
-            parsed_json = json.load(BytesIO(buffer))
-            try:
-                yield pa.Table.from_pylist(parsed_json)
-            except AttributeError as e:
-                # For PyArrow < 7.0.0, `pa.Table.from_pylist()` is not available.
-                # Construct a dict from the list and call
-                # `pa.Table.from_pydict()` instead.
-                assert "no attribute 'from_pylist'" in str(e), str(e)
-                from collections import defaultdict
-
-                dct = defaultdict(list)
-                for row in parsed_json:
-                    for k, v in row.items():
-                        dct[k].append(v)
-                yield pa.Table.from_pydict(dct)
+            yield from self._read_with_python_json(buffer)
