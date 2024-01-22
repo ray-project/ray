@@ -560,13 +560,22 @@ def build(build_python, build_java, build_cpp):
             FutureWarning,
         )
 
-    if not is_automated_build:
-        bazel_precmd_flags = []
     if is_automated_build:
-        root_dir = os.path.join(
-            os.path.abspath(os.environ["SRC_DIR"]), "..", "bazel-root"
-        )
-        out_dir = os.path.join(os.path.abspath(os.environ["SRC_DIR"]), "..", "b-o")
+        if is_native_windows_or_msys():
+            root_dir = os.path.join(
+                os.path.splitdrive(os.environ["SRC_DIR"])[0], "bazel-root"
+            )
+            out_dir = os.path.join(
+                os.path.splitdrive(os.environ["SRC_DIR"])[0], "b-o"
+            )
+            bazel_flags.append("--enable_runfiles=false")
+        else:
+            root_dir = os.path.join(
+                os.path.abspath(os.environ["SRC_DIR"]), "..", "bazel-root"
+            )
+            out_dir = os.path.join(
+                os.path.abspath(os.environ["SRC_DIR"]), "..", "b-o"
+            )
 
         for d in (root_dir, out_dir):
             if not os.path.exists(d):
@@ -576,9 +585,8 @@ def build(build_python, build_java, build_cpp):
             "--output_user_root=" + root_dir,
             "--output_base=" + out_dir,
         ]
-
-        if is_native_windows_or_msys():
-            bazel_flags.append("--enable_runfiles=false")
+    else:
+        bazel_precmd_flags = []
 
     bazel_targets = []
     bazel_targets += ["//:ray_pkg"] if build_python else []
