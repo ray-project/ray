@@ -2225,9 +2225,13 @@ class DeploymentState:
             else:
                 self._replicas.add(replica.actor_details.state, replica)
 
-    def _check_and_update_draining_nodes(self):
+    def _check_and_update_draining_nodes(self) -> int:
         """Check draining nodes and stop replicas on draining nodes if
-        conditions are met."""
+        conditions are met.
+
+        Returns: The number of extra replicas needed to terminate replicas on the
+        draining nodes.
+        """
         draining_nodes = self._cluster_node_info_cache.get_draining_node_ids()
         num_extra_running_replicas = (
             len(self._replicas.get(states=[ReplicaState.RUNNING]))
@@ -2235,22 +2239,23 @@ class DeploymentState:
         )
         num_extra_replicas_needed = 0
         for replica in self._replicas.pop(states=[ReplicaState.RUNNING]):
-            if replica.actor_node_id in draining_nodes:
+            if replica.actor_node_id in draining_nodes and num_extra_running_replicas > 0:
                 # Only terminate replica when there is a extra replica which
                 # is already running.
-                if num_extra_running_replicas > 0:
-                    logger.info(
-                        f"Stopping replica {replica.replica_tag} of deployment "
-                        f"'{self.deployment_name}' in application '{self.app_name}' on "
-                        f"draining node {replica.actor_node_id}."
-                    )
-                    num_extra_running_replicas -= 1
-                    self._stop_replica(replica, graceful_stop=True)
-                else:
-                    num_extra_replicas_needed += 1
-                    self._replicas.add(replica.actor_details.state, replica)
+                logger.info(
+                    f"Stopping replica {replica.replica_tag} of deployment "
+                    f"'{self.deployment_name}' in application '{self.app_name}' on "
+                    f"draining node {replica.actor_node_id}."
+                )
+                num_extra_running_replicas -= 1
+                self._stop_replica(replica, graceful_stop=True)
             else:
+                if replica.actor_node_id in draining_nodes:
+                    # If there is no extra replica running, count it as a extra 
+                    # replica needed.
+                    num_extra_replicas_needed += 1
                 self._replicas.add(replica.actor_details.state, replica)
+
         return num_extra_replicas_needed
 
     def update(self) -> DeploymentStateUpdateResult:
