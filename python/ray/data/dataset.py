@@ -3491,6 +3491,7 @@ class Dataset:
         project_id: str,
         dataset: str,
         max_retry_cnt: int = 10,
+        overwrite_table: Optional[bool] = True,
         ray_remote_args: Dict[str, Any] = None,
     ) -> None:
         """Write the dataset to a BigQuery dataset table.
@@ -3510,6 +3511,7 @@ class Dataset:
                 ds.write_bigquery(
                     project_id="my_project_id",
                     dataset="my_dataset_table",
+                    overwrite_table=True
                 )
 
         Args:
@@ -3538,7 +3540,12 @@ class Dataset:
         else:
             ray_remote_args["max_retries"] = 0
 
-        datasink = _BigQueryDatasink(project_id, dataset, max_retry_cnt=max_retry_cnt)
+        datasink = _BigQueryDatasink(
+            project_id=project_id, 
+            dataset=dataset, 
+            max_retry_cnt=max_retry_cnt, 
+            overwrite_table=overwrite_table
+        )
         self.write_datasink(datasink, ray_remote_args=ray_remote_args)
 
     @Deprecated
