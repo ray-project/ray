@@ -4,6 +4,7 @@ from typing import TYPE_CHECKING, Iterable, List, Optional, Union
 from ray.data._internal.dataset_logger import DatasetLogger
 from ray.data._internal.util import _check_pyarrow_version
 from ray.data.block import Block, BlockAccessor, BlockMetadata
+from ray.data.dataset import Dataset
 from ray.data.datasource import Datasource, ReadTask
 from ray.util.annotations import DeveloperAPI
 
@@ -70,6 +71,18 @@ class HuggingFaceDatasource(Datasource):
 
         self._dataset = dataset
         self._batch_size = batch_size
+
+    @classmethod
+    def list_parquet_urls_from_dataset(cls, dataset: Union["datasets.Dataset", "datasets.IterableDataset"]) -> Dataset:
+        import requests
+        public_url = f"https://datasets-server.huggingface.co/parquet?dataset={dataset.info.dataset_name}"
+        resp = requests.get(public_url)
+        if resp.status_code == requests.codes["ok"]:
+            # dataset corresponds to a public dataset, return list of parquet_files
+            return [f["url"] for f in resp.json()["parquet_files"]]
+        else:
+            return []
+
 
     def estimate_inmemory_data_size(self) -> Optional[int]:
         return self._dataset.dataset_size

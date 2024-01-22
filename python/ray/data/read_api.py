@@ -2358,7 +2358,7 @@ def from_spark(
 
 @PublicAPI
 def from_huggingface(
-    dataset: Union["datasets.Dataset", "datasets.IterableDataset"],
+    dataset: Union["datasets.Dataset", "datasets.IterableDataset"], parallelism=-1
 ) -> Union[MaterializedDataset, Dataset]:
     """Create a :class:`~ray.data.MaterializedDataset` from a
     `Hugging Face Datasets Dataset <https://huggingface.co/docs/datasets/package_reference/main_classes#datasets.Dataset/>`_
@@ -2408,12 +2408,14 @@ def from_huggingface(
         A :class:`~ray.data.Dataset` holding rows from the `Hugging Face Datasets Dataset`_.
     """  # noqa: E501
     import datasets
+    from ray.data.datasource.huggingface_datasource import HuggingFaceDatasource
+
+    if isinstance(dataset, (datasets.IterableDataset, datasets.Dataset)):
+        file_urls = HuggingFaceDatasource.list_parquet_urls_from_dataset(dataset)
+        if len(file_urls) > 0:
+            return read_parquet(file_urls, parallelism=parallelism)
 
     if isinstance(dataset, datasets.IterableDataset):
-        # HuggingFaceDatasource should not be imported at top level, because
-        # we only want the Hugging Face datasets package to be imported
-        # if Hugging Face Datasets are used.
-        from ray.data.datasource.huggingface_datasource import HuggingFaceDatasource
 
         # For an IterableDataset, we can use a streaming implementation to read data.
         return read_datasource(HuggingFaceDatasource(dataset=dataset))
