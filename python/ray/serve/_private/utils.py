@@ -437,7 +437,7 @@ class MetricsPusher:
         """
 
         if len(self.tasks) == 0:
-            return
+            raise ValueError("MetricsPusher has zero tasks registered.")
 
         if self.pusher_thread and self.pusher_thread.is_alive():
             return

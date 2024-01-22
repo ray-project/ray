@@ -480,7 +480,7 @@ def test_metrics_pusher_basic():
                 res["val"] = c["val"]
 
         metrics_pusher = MetricsPusher()
-        metrics_pusher.register_task(lambda: task(counter, result), 0.5)
+        metrics_pusher.register_task("basic_task", lambda: task(counter, result), 0.5)
 
         metrics_pusher.start()
         # This busy wait loop should run for at most a few hundred milliseconds
@@ -516,9 +516,15 @@ def test_metrics_pusher_multiple_tasks():
 
         metrics_pusher = MetricsPusher()
         # Each task interval is different, and they don't divide each other.
-        metrics_pusher.register_task(lambda: task("A", counter, result), 0.2)
-        metrics_pusher.register_task(lambda: task("B", counter, result), 0.5)
-        metrics_pusher.register_task(lambda: task("C", counter, result), 0.7)
+        metrics_pusher.register_task(
+            "increment_A", lambda: task("A", counter, result), 0.2
+        )
+        metrics_pusher.register_task(
+            "increment_B", lambda: task("B", counter, result), 0.5
+        )
+        metrics_pusher.register_task(
+            "increment_C", lambda: task("C", counter, result), 0.7
+        )
         metrics_pusher.start()
 
         # Check there are three results set and all are expected.
