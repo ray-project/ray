@@ -40,19 +40,15 @@ class JSONDatasource(FileBasedDatasource):
     def _read_with_pyarrow_read_json(self, buffer: "pyarrow.lib.Buffer"):
         import pyarrow as pa
 
-        assert isinstance(buffer, pa.lib.Buffer), type(buffer)
-
         # When reading large files, the default block size configured in PyArrow can be
         # too small, resulting in the following error: `pyarrow.lib.ArrowInvalid:
         # straddling object straddles two block boundaries (try to increase block
         # size?)`. More information on this issue can be found here:
         # https://github.com/apache/arrow/issues/25674
-
         # The read will be retried with geometrically increasing block size
         # until the size reaches `DataContext.get_current().target_max_block_size`.
         # The initial block size will start at the PyArrow default block size
         # or it can be manually set through the `read_options` parameter as follows.
-
         # >>> import pyarrow.json as pajson
         # >>> block_size = 10 << 20 # Set block size to 10MB
         # >>> ray.data.read_json(  # doctest: +SKIP
@@ -108,7 +104,19 @@ class JSONDatasource(FileBasedDatasource):
                 f"PyArrow error was:\n{e}"
             )
             import json
-            from io import BytesIO
 
             parsed_json = json.load(BytesIO(buffer))
-            yield pa.Table.from_pylist(parsed_json)
+            try:
+                yield pa.Table.from_pylist(parsed_json)
+            except AttributeError as e:
+                # For PyArrow < 7.0.0, `pa.Table.from_pylist()` is not available.
+                # Construct a dict from the list and call
+                # `pa.Table.from_pydict()` instead.
+                assert "no attribute 'from_pylist'" in str(e), str(e)
+                from collections import defaultdict
+
+                dct = defaultdict(list)
+                for row in parsed_json:
+                    for k, v in row.items():
+                        dct[k].append(v)
+                yield pa.Table.from_pydict(dct)
