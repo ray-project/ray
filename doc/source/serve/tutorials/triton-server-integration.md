@@ -5,6 +5,9 @@ This guide shows how to build an application with stable diffusion model using [
 
 ## Preparation
 
+### Installation
+It is recommended to use the `nvcr.io/nvidia/tritonserver:23.12-py3` image which already have the Triton Server python API library installed, and install the ray serve lib by `pip install "ray[serve]"` inside the image.
+
 ### Build Model
 For this application, the encoder are exported to ONNX format and the stable diffusion model are exported to be TensorRT engine format which is being compatible with Triton Server.
 Here is the example to exporting models to be ONNX format.([source](https://github.com/triton-inference-server/tutorials/blob/main/Triton_Inference_Server_Python_API/scripts/stable_diffusion/export.py))
@@ -89,8 +92,6 @@ The model repository contains three models: `stable_diffusion`, `text_encoder` a
 
 
 ## Start Ray Serve with the Triton Server
-Triton Server provides python API to start the Triton Server instance. You can use the `nvcr.io/nvidia/tritonserver:23.12-py3` image which already have the Triton Server python API library installed.
-
 In each serve replica, there is a single Triton Server instance running. The API takes the model repository path as the parameter, and the Triton Serve instance is started during the replica initialization. The models can be loaded during the inference requests, and the loaded models are cached in the Triton Server instance.
 
 Here is the inference code example for serving a model with Triton Server.([source](https://github.com/triton-inference-server/tutorials/blob/main/Triton_Inference_Server_Python_API/examples/rayserve/tritonserver_deployment.py))
