@@ -266,3 +266,8 @@ RAY_SERVE_MAX_QUEUE_LENGTH_RESPONSE_DEADLINE_S = float(
 
 # The default autoscaling policy to use if none is specified.
 DEFAULT_AUTOSCALING_POLICY = "ray.serve.autoscaling_policy:default_autoscaling_policy"
+
+# The behavior of draining replicas when scaling down.
+RAY_SERVE_DRAINING_START_REPLICA_BEFORE_STOP = (
+    os.environ.get("RAY_SERVE_DRAINING_START_REPLICA_BEFORE_STOP", "0") == "1"
+)

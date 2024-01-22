@@ -35,6 +35,7 @@ from ray.serve._private.common import (
 from ray.serve._private.config import DeploymentConfig
 from ray.serve._private.constants import (
     MAX_DEPLOYMENT_CONSTRUCTOR_RETRY_COUNT,
+    RAY_SERVE_DRAINING_START_REPLICA_BEFORE_STOP,
     RAY_SERVE_FORCE_STOP_UNHEALTHY_REPLICAS,
     REPLICA_HEALTH_CHECK_UNHEALTHY_THRESHOLD,
     SERVE_LOGGER_NAME,
@@ -1813,6 +1814,7 @@ class DeploymentState:
 
     def _scale_deployment_replicas(
         self,
+        num_extra_replicas: int = 0,
     ) -> Tuple[List[ReplicaSchedulingRequest], DeploymentDownscaleRequest]:
         """Scale the given deployment to the number of replicas."""
 
@@ -1832,6 +1834,7 @@ class DeploymentState:
 
         delta_replicas = (
             self._target_state.target_num_replicas
+            + num_extra_replicas
             - current_replicas
             - recovering_replicas
         )
@@ -2222,6 +2225,34 @@ class DeploymentState:
             else:
                 self._replicas.add(replica.actor_details.state, replica)
 
+    def _check_and_update_draining_nodes(self):
+        """Check draining nodes and stop replicas on draining nodes if
+        conditions are met."""
+        draining_nodes = self._cluster_node_info_cache.get_draining_node_ids()
+        num_extra_running_replicas = (
+            len(self._replicas.get(states=[ReplicaState.RUNNING]))
+            - self._target_state.target_num_replicas
+        )
+        num_extra_replicas_needed = 0
+        for replica in self._replicas.pop(states=[ReplicaState.RUNNING]):
+            if replica.actor_node_id in draining_nodes:
+                # Only terminate replica when there is a extra replica which
+                # is already running.
+                if num_extra_running_replicas > 0:
+                    logger.info(
+                        f"Stopping replica {replica.replica_tag} of deployment "
+                        f"'{self.deployment_name}' in application '{self.app_name}' on "
+                        f"draining node {replica.actor_node_id}."
+                    )
+                    num_extra_running_replicas -= 1
+                    self._stop_replica(replica, graceful_stop=True)
+                else:
+                    num_extra_replicas_needed += 1
+                    self._replicas.add(replica.actor_details.state, replica)
+            else:
+                self._replicas.add(replica.actor_details.state, replica)
+        return num_extra_replicas_needed
+
     def update(self) -> DeploymentStateUpdateResult:
         """Attempts to reconcile this deployment to match its goal state.
 
@@ -2242,9 +2273,12 @@ class DeploymentState:
             # Check the state of existing replicas and transition if necessary.
             self._check_and_update_replicas()
 
-            self._stop_replicas_on_draining_nodes()
-
-            upscale, downscale = self._scale_deployment_replicas()
+            if RAY_SERVE_DRAINING_START_REPLICA_BEFORE_STOP:
+                num_extra_replicas = self._check_and_update_draining_nodes()
+                upscale, downscale = self._scale_deployment_replicas(num_extra_replicas)
+            else:
+                self._stop_replicas_on_draining_nodes()
+                upscale, downscale = self._scale_deployment_replicas()
 
             deleted, any_replicas_recovering = self._check_curr_status()
         except Exception:

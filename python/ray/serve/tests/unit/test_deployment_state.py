@@ -6,6 +6,7 @@ from unittest.mock import Mock, patch
 
 import pytest
 
+import ray
 from ray.serve._private.common import (
     DeploymentID,
     DeploymentStatus,
@@ -386,6 +387,16 @@ def mock_deployment_state() -> Tuple[DeploymentState, Mock, Mock]:
         yield deployment_state, timer, cluster_node_info_cache
 
         dead_replicas_context.clear()
+
+
+@pytest.fixture
+def replica_start_and_stop_when_draining(request):
+    deployment_state_lib = ray.serve._private.deployment_state
+    if request.param:
+        deployment_state_lib.RAY_SERVE_DRAINING_START_REPLICA_BEFORE_STOP = True
+
+    yield deployment_state_lib.RAY_SERVE_DRAINING_START_REPLICA_BEFORE_STOP
+    deployment_state_lib.RAY_SERVE_DRAINING_START_REPLICA_BEFORE_STOP = False
 
 
 def replica(version: Optional[DeploymentVersion] = None) -> VersionedReplica:
@@ -1446,7 +1457,10 @@ def test_deploy_new_config_new_version(mock_deployment_state):
     )
 
 
-def test_stop_replicas_on_draining_nodes(mock_deployment_state):
+@pytest.mark.parametrize("replica_start_and_stop_when_draining", [True], indirect=True)
+def test_stop_replicas_on_draining_nodes(
+    replica_start_and_stop_when_draining, mock_deployment_state
+):
     deployment_state, timer, cluster_node_info_cache = mock_deployment_state
     cluster_node_info_cache.alive_node_ids = {"node-1", "node-2"}
 
@@ -1478,32 +1492,65 @@ def test_stop_replicas_on_draining_nodes(mock_deployment_state):
     deployment_state._replicas.get()[1]._actor.set_ready()
     deployment_state._replicas.get()[1]._actor.set_node_id("node-2")
 
-    # The replica running on node-2 will be drained.
-    deployment_state.update()
-    check_counts(
-        deployment_state,
-        total=2,
-        by_state=[(ReplicaState.RUNNING, 1), (ReplicaState.STOPPING, 1)],
-    )
+    if replica_start_and_stop_when_draining is False:
+        # The replica running on node-2 will be drained.
+        deployment_state.update()
+        check_counts(
+            deployment_state,
+            total=2,
+            by_state=[(ReplicaState.RUNNING, 1), (ReplicaState.STOPPING, 1)],
+        )
 
-    # A new node is started.
-    cluster_node_info_cache.alive_node_ids = {
-        "node-1",
-        "node-2",
-        "node-3",
-    }
+        # A new node is started.
+        cluster_node_info_cache.alive_node_ids = {
+            "node-1",
+            "node-2",
+            "node-3",
+        }
 
-    # The draining replica is stopped and a new one will be started.
-    deployment_state._replicas.get()[1]._actor.set_done_stopping()
-    deployment_state_update_result = deployment_state.update()
-    deployment_state._deployment_scheduler.schedule(
-        {deployment_state._id: deployment_state_update_result.upscale}, {}
-    )
-    check_counts(
-        deployment_state,
-        total=2,
-        by_state=[(ReplicaState.STARTING, 1), (ReplicaState.RUNNING, 1)],
-    )
+        # The draining replica is stopped and a new one will be started.
+        deployment_state._replicas.get()[1]._actor.set_done_stopping()
+        deployment_state_update_result = deployment_state.update()
+        deployment_state._deployment_scheduler.schedule(
+            {deployment_state._id: deployment_state_update_result.upscale}, {}
+        )
+        check_counts(
+            deployment_state,
+            total=2,
+            by_state=[(ReplicaState.STARTING, 1), (ReplicaState.RUNNING, 1)],
+        )
+    else:
+        # A new node is started.
+        cluster_node_info_cache.alive_node_ids = {
+            "node-1",
+            "node-2",
+            "node-3",
+        }
+        # New replica will be started before the replica on draining node is stopped.
+        deployment_state_update_result = deployment_state.update()
+        deployment_state._deployment_scheduler.schedule(
+            {deployment_state._id: deployment_state_update_result.upscale}, {}
+        )
+        check_counts(
+            deployment_state,
+            total=3,
+            by_state=[(ReplicaState.RUNNING, 2), (ReplicaState.STARTING, 1)],
+        )
+
+        # Set the new replica is ready and old replica on draining node is stopped.
+        deployment_state._replicas.get(states=[ReplicaState.STARTING])[
+            0
+        ]._actor.set_ready()
+        deployment_state._replicas.get(states=[ReplicaState.STARTING])[
+            0
+        ]._actor.set_node_id("node-3")
+        deployment_state.update()
+        # The replica on draining node is stopped.
+        check_counts(
+            deployment_state,
+            total=3,
+            by_state=[(ReplicaState.RUNNING, 2), (ReplicaState.STOPPING, 1)],
+        )
 
 
 def test_initial_deploy_no_throttling(mock_deployment_state):
