@@ -22,6 +22,7 @@ py_test_module_list(
     "test_constructor_failure.py",
     "test_controller.py",
     "test_proxy_router.py",
+    "test_proxy_actor_wrapper.py",
     "test_deployment_scheduler.py",
     "test_deployment_version.py",
     "test_kv_store.py",

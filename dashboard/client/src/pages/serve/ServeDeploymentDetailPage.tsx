@@ -27,6 +27,7 @@ import { HelpInfo } from "../../components/Tooltip";
 import { MainNavPageInfo } from "../layout/mainNavContext";
 import { useServeDeploymentDetails } from "./hook/useServeApplications";
 import { ServeReplicaRow } from "./ServeDeploymentRow";
+import { ServeEntityLogViewer } from "./ServeEntityLogViewer";
 
 const useStyles = makeStyles((theme) =>
   createStyles({
@@ -38,6 +39,9 @@ const useStyles = makeStyles((theme) =>
     },
     helpInfo: {
       marginLeft: theme.spacing(1),
+    },
+    logSection: {
+      marginTop: theme.spacing(4),
     },
   }),
 );
@@ -236,6 +240,13 @@ export const ServeDeploymentDetailPage = () => {
             </TableBody>
           </Table>
         </TableContainer>
+      </CollapsibleSection>
+      <CollapsibleSection
+        title="Logs"
+        startExpanded
+        className={classes.logSection}
+      >
+        <ServeEntityLogViewer deployments={[deployment]} />
       </CollapsibleSection>
     </div>
   );
