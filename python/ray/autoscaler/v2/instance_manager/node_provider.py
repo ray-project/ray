@@ -241,7 +241,7 @@ class ICloudInstanceProvider(ABC):
 
 
 @dataclass(frozen=True)
-class LaunchArgs:
+class CloudInstanceLaunchRequest:
     """
     The arguments to launch a node.
     """
@@ -255,7 +255,7 @@ class LaunchArgs:
 
 
 @dataclass(frozen=True)
-class TerminateArgs:
+class CloudInstanceTerminateRequest:
     """
     The arguments to terminate a node.
     """
@@ -315,9 +315,9 @@ class NodeProviderAdapter(ICloudInstanceProvider):
 
         # Queues to retrieve new errors occur in the multi-thread executors
         # temporarily.
-        self._launch_q = Queue()
-        self._terminate_q = Queue()
-        self._errors_q = Queue()
+        self._launch_queue = Queue()
+        self._terminate_queue = Queue()
+        self._errors_queue = Queue()
 
     def get_non_terminated(self) -> Dict[CloudInstanceId, CloudInstance]:
         nodes = {}
@@ -339,8 +339,8 @@ class NodeProviderAdapter(ICloudInstanceProvider):
 
     def poll_errors(self) -> List[CloudInstanceProviderError]:
         errors = []
-        while not self._errors_q.empty():
-            errors.append(self._errors_q.get_nowait())
+        while not self._errors_queue.empty():
+            errors.append(self._errors_queue.get_nowait())
         return errors
 
     def launch(
@@ -348,11 +348,11 @@ class NodeProviderAdapter(ICloudInstanceProvider):
         shape: Dict[NodeType, int],
         request_id: str,
     ) -> None:
-        self._launch_q.put_nowait((shape, request_id))
+        self._launch_queue.put_nowait((shape, request_id))
         self._main_executor.submit(self._process)
 
     def terminate(self, ids: List[CloudInstanceId], request_id: str) -> None:
-        self._terminate_q.put_nowait((ids, request_id))
+        self._terminate_queue.put_nowait((ids, request_id))
         self._main_executor.submit(self._process)
 
     ###########################################
@@ -396,7 +396,9 @@ class NodeProviderAdapter(ICloudInstanceProvider):
         )
 
     def _wait_for_future(
-        self, fut: Future, arg: Union[LaunchArgs, TerminateArgs]
+        self,
+        fut: Future,
+        arg: Union[CloudInstanceLaunchRequest, CloudInstanceTerminateRequest],
     ) -> None:
         """
         Wait for the future to finish and handle the errors.
@@ -411,14 +413,15 @@ class NodeProviderAdapter(ICloudInstanceProvider):
         try:
             fut.result()
         except (TerminateNodeError, LaunchNodeError) as e:
-            self._errors_q.put(e)
+            self._errors_queue.put(e)
         except Exception as e:
             error = self._make_error(e, arg)
-            self._errors_q.put(error)
+            self._errors_queue.put(error)
 
     @staticmethod
     def _make_error(
-        e: Exception, arg: Union[LaunchArgs, TerminateArgs]
+        e: Exception,
+        arg: Union[CloudInstanceLaunchRequest, CloudInstanceTerminateRequest],
     ) -> CloudInstanceProviderError:
         """
         Make an error from the exception and the arguments.
@@ -436,7 +439,7 @@ class NodeProviderAdapter(ICloudInstanceProvider):
         Raises:
             e: If the arg type is unknown.
         """
-        if isinstance(arg, LaunchArgs):
+        if isinstance(arg, CloudInstanceLaunchRequest):
             launch_error = LaunchNodeError(
                 node_type=arg.node_type,
                 count=arg.count,
@@ -445,7 +448,7 @@ class NodeProviderAdapter(ICloudInstanceProvider):
             )
             launch_error.__cause__ = e
             return launch_error
-        elif isinstance(arg, TerminateArgs):
+        elif isinstance(arg, CloudInstanceTerminateRequest):
             terminate_error = TerminateNodeError(
                 cloud_instance_id=arg.cloud_instance_id,
                 request_id=arg.request_id,
@@ -458,7 +461,9 @@ class NodeProviderAdapter(ICloudInstanceProvider):
             raise e
 
     def _post_process(
-        self, launch_args: List[LaunchArgs], terminate_args: List[TerminateArgs]
+        self,
+        launch_args: List[CloudInstanceLaunchRequest],
+        terminate_args: List[CloudInstanceTerminateRequest],
     ) -> None:
         """
         Post process the provider.
@@ -473,11 +478,11 @@ class NodeProviderAdapter(ICloudInstanceProvider):
             self._v1_post_process()
         except Exception as e:
             for arg in launch_args:
-                self._errors_q.put(self._make_error(e, arg))
+                self._errors_queue.put(self._make_error(e, arg))
             for arg in terminate_args:
-                self._errors_q.put(self._make_error(e, arg))
+                self._errors_queue.put(self._make_error(e, arg))
 
-    def _process_launch(self) -> Dict[Future, LaunchArgs]:
+    def _process_launch(self) -> Dict[Future, CloudInstanceLaunchRequest]:
         """
         Process the launch requests in the launch queue.
 
@@ -486,8 +491,8 @@ class NodeProviderAdapter(ICloudInstanceProvider):
         """
         futs_to_launch_args = {}
         config = self._config_reader.get_autoscaling_config()
-        while not self._launch_q.empty():
-            to_launch_shape, request_id = self._launch_q.get()
+        while not self._launch_queue.empty():
+            to_launch_shape, request_id = self._launch_queue.get()
             # Submit to the launch pool.
             for node_type, count in to_launch_shape.items():
                 futs_to_launch_args[
@@ -498,11 +503,11 @@ class NodeProviderAdapter(ICloudInstanceProvider):
                         request_id,
                         config,
                     )
-                ] = LaunchArgs(node_type, count, request_id)
+                ] = CloudInstanceLaunchRequest(node_type, count, request_id)
 
         return futs_to_launch_args
 
-    def _process_terminate(self) -> Dict[Future, TerminateArgs]:
+    def _process_terminate(self) -> Dict[Future, CloudInstanceTerminateRequest]:
         """
         Process the terminate requests in the terminate queue.
 
@@ -510,8 +515,8 @@ class NodeProviderAdapter(ICloudInstanceProvider):
             A map from the future to the terminate args.
         """
         futs_to_terminate_args = {}
-        while not self._terminate_q.empty():
-            to_terminate_ids, request_id = self._terminate_q.get()
+        while not self._terminate_queue.empty():
+            to_terminate_ids, request_id = self._terminate_queue.get()
             # Submit to the terminate pool.
             for cloud_instance_id in to_terminate_ids:
                 futs_to_terminate_args[
@@ -519,7 +524,7 @@ class NodeProviderAdapter(ICloudInstanceProvider):
                         self._v1_terminate_node,
                         cloud_instance_id,
                     )
-                ] = TerminateArgs(cloud_instance_id, request_id)
+                ] = CloudInstanceTerminateRequest(cloud_instance_id, request_id)
 
         return futs_to_terminate_args
 
