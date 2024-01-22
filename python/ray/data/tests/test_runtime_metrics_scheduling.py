@@ -21,12 +21,15 @@ def test_spam(shutdown_only, restore_data_context):
     ray.data.DataContext.get_current().set_config(
         ConcurrencyCapBackpressurePolicy.INIT_CAP_CONFIG_KEY, 1
     )
+    ray.data.DataContext.get_current().set_config(
+        ConcurrencyCapBackpressurePolicy.CAP_MULTIPLIER_CONFIG_KEY, 4
+    )
 
     def f(batch):
         time.sleep(0.1)
-        return {"data": np.zeros(25 * 1024**2, dtype=np.uint8)}
+        return {"data": np.zeros(24 * 1024**2, dtype=np.uint8)}
 
-    ds = ray.data.range(3, parallelism=3).map_batches(f, batch_size=None)
+    ds = ray.data.range(5, parallelism=5).map_batches(f, batch_size=None)
 
     for _ in ds.iter_batches(batch_size=None, batch_format="pyarrow"):
         pass
