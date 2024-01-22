@@ -115,7 +115,6 @@ class _ModelMultiplexWrapper:
         self.metrics_pusher = MetricsPusher()
         self.metrics_pusher.register_task(
             self._PUSH_MULTIPLEXED_MODEL_IDS_TASK_NAME,
-            PUSH_MULTIPLEXED_MODEL_IDS_INTERVAL_S,
             self._push_model_ids_info,
             PUSH_MULTIPLEXED_MODEL_IDS_INTERVAL_S,
         )
