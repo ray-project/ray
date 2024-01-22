@@ -107,14 +107,6 @@ class SACCatalog(Catalog):
             The encoder for the Q-network.
         """
         
-        # action_distribution_cls = self.get_action_dist_cls(framework=framework)
-        # if self._model_config_dict["free_log_std"]:
-        #     _check_if_diag_gaussian(
-        #         action_distribution_cls=action_distribution_cls, framework=framework
-        #     )
-        # required_action_dim = action_distribution_cls.required_input_dim(
-        #     space=self.action_space, model_config=self._model_config_dict
-        # )
         required_action_dim = self.action_space.shape[0]
 
         if (
@@ -130,7 +122,11 @@ class SACCatalog(Catalog):
         else:
             raise ValueError(f"The observation space is not supported by RLlib's SAC.")
 
-        self.qf_encoder_hiddens = self._model_config_dict["fcnet_hiddens"]
+        if self._model_config_dict["encoder_latent_dim"]:
+            self.qf_encoder_hiddens = self._model_config_dict["fcnet_hiddens"]
+        else:
+            self.qf_encoder_hiddens = self._model_config_dict["fcnet_hiddens"][:-1]
+
         self.qf_encoder_activation = self._model_config_dict["fcnet_activation"]
 
         self.qf_encoder_config = MLPEncoderConfig(

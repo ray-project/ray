@@ -501,12 +501,17 @@ class SAC(DQN):
 
                 # TODO (sven): This looks a bit ugly, but we have not the same
                 # naming in `SingleAgentEpisode` and `SampleBatch`.
+                # Note, the `SingleAgentEpisode` stores obs_t. action_(t-1),
+                # reward_t, infos_t, while the replay buffer's `sample()`
+                # returns obs_t, action_t, reward_(t-1). So, we take the 
+                # reward from the subsequent experience in the episode to 
+                # calculate the Q-values. 
                 train_batch = SampleBatch(
                     {
                         SampleBatch.OBS: train_dict[SampleBatch.OBS][:, 0],
                         SampleBatch.NEXT_OBS: train_dict[SampleBatch.OBS][:, 1],
                         SampleBatch.ACTIONS: train_dict[SampleBatch.ACTIONS][:, 0],
-                        SampleBatch.REWARDS: train_dict[SampleBatch.REWARDS][:, 0],
+                        SampleBatch.REWARDS: train_dict[SampleBatch.REWARDS][:, 1],
                         SampleBatch.TERMINATEDS: train_dict["is_terminated"][:, 0],
                         SampleBatch.TRUNCATEDS: train_dict["is_truncated"][:, 0],
                         "is_first": train_dict["is_first"][:, 0],
@@ -514,12 +519,6 @@ class SAC(DQN):
                     }
                 )
                 train_batch = train_batch.as_multi_agent()
-                # Sample training batch (MultiAgentBatch) from replay buffer.
-                # train_batch = sample_min_n_steps_from_buffer(
-                #     self.local_replay_buffer,
-                #     self.config.train_batch_size,
-                #     count_by_agent_steps=self.config.count_steps_by == "agent_steps",
-                # )
 
                 # Training on batch.
                 train_results = self.learner_group.update(
@@ -537,6 +536,8 @@ class SAC(DQN):
                 )
 
                 # Update the target networks if necessary.
+                # TODO (sven): We have to get rid of the policies here and 
+                # refer to modules.
                 policies_to_update = set(train_results.keys()) - {ALL_MODULES}
                 additional_results = self.learner_group.additional_update(
                     module_ids_to_update=policies_to_update,

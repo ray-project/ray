@@ -35,7 +35,6 @@ class SACTorchLearner(SACLearner, TorchLearner):
     def configure_optimizers_for_module(
         self, module_id: ModuleID, config: AlgorithmConfig = None, hps=None
     ) -> None:
-        
         # Receive the module.
         module = self._module[module_id]
 
@@ -92,7 +91,9 @@ class SACTorchLearner(SACLearner, TorchLearner):
         # TODO (sven): Maybe we rename to `actor`, `critic`. We then also
         # need to either add to or change in the `Learner` constants.
         for component in ["qf", "policy", "alpha"]:
-            self._metrics[DEFAULT_POLICY_ID][component + "_loss"].backward(retain_graph=True)
+            self._metrics[DEFAULT_POLICY_ID][component + "_loss"].backward(
+                retain_graph=True
+            )
             grads.update(
                 {
                     pid: p.grad
@@ -117,9 +118,7 @@ class SACTorchLearner(SACLearner, TorchLearner):
         deterministic = self.config._deterministic_loss
 
         # Receive the current alpha hyperparameter.
-        alpha = torch.exp(
-            self.curr_log_alpha[module_id]
-        )
+        alpha = torch.exp(self.curr_log_alpha[module_id])
 
         # Get the train action distribution for the current policy and current state.
         # This is needed for the policy (actor) loss in SAC.
@@ -179,12 +178,22 @@ class SACTorchLearner(SACLearner, TorchLearner):
                 SampleBatch.ACTIONS: actions_next,
             }
         )
-        q_target_next = self.module[module_id]._qf_target_forward_train(q_batch_next)[QF_PREDS]
+        q_target_next = self.module[module_id]._qf_target_forward_train(q_batch_next)[
+            QF_PREDS
+        ]
         # Compute value function for next state (see eq. (3) in Haarnoja et al. (2018)).
-        # NOte, we use here the sampled actions in the log probabilities.
+        # Note, we use here the sampled actions in the log probabilities.
         q_target_next -= alpha * logps_next
         # Now mask all Q-values with terminate next states in the targets.
-        q_next_masked = (1.0 - batch[SampleBatch.TERMINATEDS].float()) * q_target_next
+        q_next_masked = (
+            (1.0 - batch[SampleBatch.TERMINATEDS].float())
+            # If the current experience is the last in the episode we neglect it as
+            # otherwise the next value would be from a new episode's reset observation.
+            # See for more information the `EpisodeReplayBuffer.sample()` with 
+            # `batch_length_T > 0`.
+            * (1.0 - batch["is_last"].float())
+            * q_target_next
+        )
 
         # Compute the right hand side of the Bellman equation.
         # Detach this node from the computation graph as we do not want to
