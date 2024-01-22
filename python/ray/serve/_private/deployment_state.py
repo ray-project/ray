@@ -2510,6 +2510,7 @@ class DeploymentStateManager:
 
         for deployment_state in self._deployment_states.values():
             deployment_state.delete()
+            deployment_state.autoscaling_policy_manager.cleanup(self._kv_store)
 
         # TODO(jiaodong): This might not be 100% safe since we deleted
         # everything without ensuring all shutdown goals are completed

@@ -4,6 +4,7 @@ from dataclasses import dataclass, field
 from typing import Any, Dict, Optional
 
 from ray.serve._private.constants import CONTROL_LOOP_PERIOD_S, SERVE_LOGGER_NAME
+from ray.serve._private.storage.kv_store import KVStoreBase
 from ray.serve.config import AutoscalingConfig
 from ray.util.annotations import PublicAPI
 
@@ -109,9 +110,37 @@ class AutoscalingContext:
     # State of the policy to be used during the call
     policy_state: Dict[str, Any] = field(default_factory=dict)
 
-    def __post_init__(self):
-        # populate the policy state with the last scale time
-        self.policy_state = {"last_scale_time": None}
+    def _update(self, **kwargs):
+        """Updates the context with the given kwargs in place."""
+        for k, v in kwargs.items():
+            setattr(self, k, v)
+
+    def _policy_state_checkpoint_key(self) -> str:
+        """Returns the checkpoint key for the policy state."""
+        return f"{self.app_name}-{self.deployment_name}-policy-state"
+
+    def _restore_policy_state(self, kv_store: Optional[KVStoreBase] = None):
+        """Restores the policy state from the kv store."""
+        if not kv_store:
+            return
+
+        policy_state = kv_store.get(self._policy_state_checkpoint_key())
+        if policy_state:
+            self.policy_state = policy_state
+
+    def _save_policy_state(self, kv_store: Optional[KVStoreBase] = None):
+        """Saves the policy state to the kv store."""
+        if not kv_store:
+            return
+
+        kv_store.put(
+            self._policy_state_checkpoint_key(),
+            self.policy_state,
+        )
+
+    def _cleanup(self, kv_store: KVStoreBase):
+        """Deletes the policy state from the kv store."""
+        kv_store.delete(self._policy_state_checkpoint_key())
 
 
 @PublicAPI(stability="alpha")

@@ -1,10 +1,10 @@
 import logging
 import time
-from dataclasses import replace
 from typing import Optional
 
 from ray.serve._private.common import TargetCapacityDirection
 from ray.serve._private.constants import SERVE_LOGGER_NAME
+from ray.serve._private.storage.kv_store import KVStoreBase
 from ray.serve._private.utils import get_capacity_adjusted_num_replicas
 from ray.serve.autoscaling_policy import AutoscalingContext
 from ray.serve.config import AutoscalingConfig
@@ -25,6 +25,8 @@ class AutoscalingPolicyManager:
             app_name=app_name,
             deployment_name=deployment_name,
         )
+        # Prepopulate the last scale time to be None.
+        self.context.policy_state["last_scale_time"] = None
         self.policy_state = {}
         self._create_policy()
 
@@ -45,6 +47,7 @@ class AutoscalingPolicyManager:
         target_capacity: Optional[float] = None,
         target_capacity_direction: Optional[TargetCapacityDirection] = None,
         _skip_bound_check: bool = False,
+        kv_store: Optional[KVStoreBase] = None,
     ) -> Optional[int]:
         """Interface with the autoscaling policy to get a decision to scale replicas.
 
@@ -60,18 +63,21 @@ class AutoscalingPolicyManager:
             self.config.max_replicas,
             target_capacity,
         )
-        self.context = replace(
-            self.context,
+        self.context._update(
             current_target_num_replicas=current_target_num_replicas,
             total_num_requests=total_num_requests,
             num_running_replicas=num_running_replicas,
             capacity_adjusted_min_replicas=capacity_adjusted_min_replicas,
             capacity_adjusted_max_replicas=capacity_adjusted_max_replicas,
         )
+        self.context._restore_policy_state(kv_store)
+
         decision_num_replicas = self.policy(self.context)
+        self.context._save_policy_state(kv_store)
 
         if decision_num_replicas is not None:
             self.context.policy_state["last_scale_time"] = time.time()
+            self.context._save_policy_state(kv_store)
 
             if _skip_bound_check:
                 return decision_num_replicas
@@ -123,3 +129,7 @@ class AutoscalingPolicyManager:
             target_capacity_direction,
         )
         return max(lower_bound, min(upper_bound, current_target_num_replicas))
+
+    def cleanup(self, kv_store: KVStoreBase):
+        """Cleanup autoscaling related states."""
+        self.context._cleanup(kv_store)
