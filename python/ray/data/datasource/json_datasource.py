@@ -75,7 +75,7 @@ class JSONDatasource(FileBasedDatasource):
                 if "straddling object straddles two block boundaries" in str(e):
                     if self.read_options.block_size < max_block_size:
                         # Increase the block size in case it was too small.
-                        logger.get_logger(log_to_stdout=True).info(
+                        logger.get_logger(log_to_stdout=False).info(
                             f"JSONDatasource read failed with "
                             f"block_size={self.read_options.block_size}. Retrying with "
                             f"block_size={self.read_options.block_size * 2}."
