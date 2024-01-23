@@ -84,6 +84,18 @@ def parse_args():
         help="Batch size to use.",
     )
     parser.add_argument(
+        "--prefetch-batches",
+        default=1,
+        type=int,
+        help="prefetch_batches for iter_torch_batches()",
+    )
+    parser.add_argument(
+        "--local-shuffle-buffer-size",
+        default=None,
+        type=int,
+        help="local_shuffle_buffer_size for iter_torch_batches()",
+    )
+    parser.add_argument(
         "--num-epochs",
         # Use 5 epochs and report the avg per-epoch throughput
         # (excluding first epoch in case there is warmup).
@@ -93,9 +105,9 @@ def parse_args():
     )
     parser.add_argument(
         "--num-retries",
-        default=3,
+        default=1,
         type=int,
-        help="Number of retries for the Traine before exiting the benchmark.",
+        help="Number of retries for the Trainer before exiting the benchmark.",
     )
     parser.add_argument(
         "--num-workers",
@@ -203,9 +215,10 @@ def _get_ray_data_batch_iterator(args, worker_rank):
         it = train.get_dataset_shard(f"train_{worker_rank}")
     else:
         it = train.get_dataset_shard("train")
-    return it.iter_torch_batches(
+    return it, it.iter_torch_batches(
         batch_size=args.batch_size,
-        local_shuffle_buffer_size=args.batch_size / 2,
+        prefetch_batches=args.prefetch_batches,
+        local_shuffle_buffer_size=args.local_shuffle_buffer_size,
     )
 
 
@@ -262,13 +275,15 @@ def train_loop_per_worker():
     validation_accuracy_per_epoch = []
     # Validation loop with non-random cropped dataset
     # is only supported for image dataset.
-    run_validation_set = args.use_ray_data and args.file_type == "image"
+    run_validation_set = (
+        args.use_ray_data and not args.skip_train_model and args.file_type == "image"
+    )
 
     # Begin training over the configured number of epochs.
     for epoch in range(args.num_epochs):
         # Ray Data needs to call iter_torch_batches on each epoch.
         if args.use_ray_data:
-            batch_iter = _get_ray_data_batch_iterator(args, worker_rank)
+            ds_shard, batch_iter = _get_ray_data_batch_iterator(args, worker_rank)
             if run_validation_set:
                 val_ds = train.get_dataset_shard("val")
                 batch_iter_val = val_ds.iter_torch_batches(batch_size=args.batch_size)
@@ -327,7 +342,7 @@ def train_loop_per_worker():
         end_t = time.time()
 
         epoch_accuracy_val = None
-        if run_validation_set and not args.skip_train_model:
+        if run_validation_set:
             print(f"Starting validation set for epoch {epoch+1}")
             num_correct_val = 0
             num_rows_val = 0
@@ -379,6 +394,10 @@ def train_loop_per_worker():
             f"validation accuracy: "
             f"{epoch_accuracy_val * 100 if epoch_accuracy_val else 0:.3f}%"
         )
+        if args.use_ray_data:
+            print(f"iter stats: {ds_shard.stats()}")
+            if run_validation_set:
+                print(f"val iter stats: {val_ds.stats()}")
     # Similar reporting for aggregating number of rows across workers
     all_num_rows = [
         torch.zeros((1), dtype=torch.int32, device=device) for _ in range(world_size)
@@ -593,6 +612,7 @@ def benchmark_code(
 
     # 3) Train TorchTrainer on processed data
     options = DataConfig.default_ingest_options()
+    options.locality_with_output = False
     options.preserve_order = args.preserve_order
 
     torch_trainer = TorchTrainer(
