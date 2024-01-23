@@ -26,9 +26,9 @@ class SACRLModule(RLModule, RLModuleWithTargetNetworksInterface):
         # Build the encoder for the policy.
         self.pi_encoder = catalog.build_encoder(framework=self.framework)
 
-        # SAC needs next to the pi network also a Q network with encoder.
-        # Note, as the Q network uses next to the observations, actions as
-        # input we need an additional encoder for this.
+        # SAC needs a separate Q network encoder (besides the pi network).
+        # This is because the Q network also takes the action as input
+        # (concatenated with the observations).
         self.qf_encoder = catalog.build_qf_encoder(framework=self.framework)
 
         # Build the target Q encoder as an exact copy of the Q encoder.
