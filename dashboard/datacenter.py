@@ -238,4 +238,5 @@ class DataOrganizer:
 
         actor["gpus"] = actor_process_gpu_stats
         actor["processStats"] = actor_process_stats
+        actor["mem"] = node_physical_stats.get("mem", [])
         return actor
