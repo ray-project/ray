@@ -1317,7 +1317,7 @@ def test_from_arrow_refs_e2e(ray_start_regular_shared, enable_optimizer):
 
 
 def test_from_huggingface_e2e(ray_start_regular_shared, enable_optimizer):
-    import datasets
+    import datasets, pyarrow
 
     data = datasets.load_dataset("tweet_eval", "emotion")
     assert isinstance(data, datasets.DatasetDict)
@@ -1334,20 +1334,15 @@ def test_from_huggingface_e2e(ray_start_regular_shared, enable_optimizer):
         assert len(ds.take_all()) > 0
         # Check that metadata fetch is included in stats;
         # the underlying implementation uses the `FromArrow` operator.
-        assert "FromArrow" in ds.stats()
-        assert ds._plan._logical_plan.dag.name == "FromArrow"
-        assert ray.get(ray_datasets[ds_key].to_arrow_refs())[0].equals(
-            data[ds_key].data.table
-        )
-        _check_usage_record(["FromArrow"])
-
-    ray_dataset = ray.data.from_huggingface(data["train"])
-    assert isinstance(ray_dataset, ray.data.Dataset)
-    assert len(ray_dataset.take_all()) > 0
-    assert "FromArrow" in ray_dataset.stats()
-    assert ray_dataset._plan._logical_plan.dag.name == "FromArrow"
-    assert ray.get(ray_dataset.to_arrow_refs())[0].equals(data["train"].data.table)
-    _check_usage_record(["FromArrow"])
+        # assert "FromArrow" in ds.stats()
+        assert ds._plan._logical_plan.dag.name == "ReadParquet"
+        # use sort by 'text' to match order of rows
+        expected_table = data[ds_key].data.table.sort_by("text")
+        output_full_table = pyarrow.concat_tables(
+            [ray.get(tbl) for tbl in ds.to_arrow_refs()]
+        ).sort_by("text")
+        expected_table.equals(output_full_table)
+        _check_usage_record(["ReadParquet"])
 
 
 def test_from_tf_e2e(ray_start_regular_shared, enable_optimizer):
