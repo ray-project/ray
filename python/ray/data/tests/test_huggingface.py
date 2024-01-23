@@ -20,24 +20,26 @@ def test_from_huggingface(ray_start_regular_shared):
     ):
         ray.data.from_huggingface(data)
 
-    ray_datasets = {
-        "train": ray.data.from_huggingface(data["train"]),
-        "validation": ray.data.from_huggingface(data["validation"]),
-        "test": ray.data.from_huggingface(data["test"]),
-    }
+    for num_par in [1, 4]:
+        ray_datasets = {
+            "train": ray.data.from_huggingface(data["train"], parallelism=num_par),
+            "validation": ray.data.from_huggingface(
+                data["validation"], parallelism=num_par
+            ),
+            "test": ray.data.from_huggingface(data["test"], parallelism=num_par),
+        }
 
-    # use sort by 'text' to match order of rows
-    expected_table = data["train"].data.table.sort_by("text")
-    output_full_table = pyarrow.concat_tables(
-        [ray.get(tbl) for tbl in ray_datasets["train"].to_arrow_refs()]
-    ).sort_by("text")
+        assert isinstance(ray_datasets["train"], ray.data.Dataset)
 
-    assert expected_table.equals(output_full_table)
-    assert ray_datasets["train"].count() == data["train"].num_rows
-    assert ray_datasets["test"].count() == data["test"].num_rows
+        # use sort by 'text' to match order of rows
+        expected_table = data["train"].data.table.sort_by("text")
+        output_full_table = pyarrow.concat_tables(
+            [ray.get(tbl) for tbl in ray_datasets["train"].to_arrow_refs()]
+        ).sort_by("text")
 
-    ray_dataset = ray.data.from_huggingface(data["train"])
-    assert isinstance(ray_dataset, ray.data.Dataset)
+        assert expected_table.equals(output_full_table)
+        assert ray_datasets["train"].count() == data["train"].num_rows
+        assert ray_datasets["test"].count() == data["test"].num_rows
 
     # Test reading in a split Hugging Face dataset yields correct individual datasets
     base_hf_dataset = data["train"]
