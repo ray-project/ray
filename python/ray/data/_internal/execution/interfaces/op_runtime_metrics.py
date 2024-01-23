@@ -2,6 +2,10 @@ from dataclasses import dataclass, field, fields
 from typing import TYPE_CHECKING, Any, Dict, Optional
 
 import ray
+from ray.data._internal.execution.backpressure_policy import (
+    ENABLED_BACKPRESSURE_POLICIES_CONFIG_KEY,
+    StreamingOutputBackpressurePolicy,
+)
 from ray.data._internal.execution.interfaces.ref_bundle import RefBundle
 from ray.data._internal.memory_tracing import trace_allocation
 
@@ -91,12 +95,10 @@ class OpRuntimeMetrics:
     obj_store_mem_freed: int = field(
         default=0, metadata={"map_only": True, "export_metric": True}
     )
-
-    # Current memory size in the object store from inputs.
-    obj_store_mem_inputs: int = field(default=0, metadata={"map_only": True})
-    # Current memory size in the object store from outputs.
-    obj_store_mem_outputs: int = field(default=0, metadata={"map_only": True})
-
+    # Current memory size in the object store.
+    obj_store_mem_cur: int = field(
+        default=0, metadata={"map_only": True, "export_metric": True}
+    )
     # Peak memory size in the object store.
     obj_store_mem_peak: int = field(default=0, metadata={"map_only": True})
     # Spilled memory size in the object store.
@@ -164,6 +166,39 @@ class OpRuntimeMetrics:
             return self.num_outputs_of_finished_tasks / self.num_tasks_finished
 
     @property
+    def average_bytes_per_output(self) -> Optional[float]:
+        """Average size in bytes of output blocks."""
+        if self.num_outputs_generated == 0:
+            return None
+        else:
+            return self.bytes_outputs_generated / self.num_outputs_generated
+
+    @property
+    def obj_store_mem_pending(self) -> Optional[float]:
+        """Estimated size in bytes of output blocks in Ray generator buffers.
+
+        If an estimate isn't available, this property returns ``None``.
+        """
+        backpressure_policies = ray.data.DataContext.get_current().get_config(
+            ENABLED_BACKPRESSURE_POLICIES_CONFIG_KEY
+        )
+        if StreamingOutputBackpressurePolicy not in backpressure_policies:
+            return None
+
+        estimated_bytes_per_output = (
+            self.average_bytes_per_output
+            or ray.data.DataContext.get_current().target_max_block_size
+        )
+        max_num_outputs_in_streaming_gen_buffer = (
+            StreamingOutputBackpressurePolicy.get_max_num_blocks_in_streaming_gen_buffer()
+        )
+        return (
+            self.num_tasks_running
+            * estimated_bytes_per_output
+            * max_num_outputs_in_streaming_gen_buffer
+        )
+
+    @property
     def average_bytes_inputs_per_task(self) -> Optional[float]:
         """Average size in bytes of ref bundles passed to tasks, or ``None`` if no
         tasks have been submitted."""
@@ -203,27 +238,13 @@ class OpRuntimeMetrics:
         """Size in bytes of output blocks that are not taken by the downstream yet."""
         return self.bytes_outputs_generated - self.bytes_outputs_taken
 
-    @property
-    def obj_store_mem_cur(self) -> int:
-        return self.obj_store_mem_inputs + self.obj_store_mem_outputs
-
-    @property
-    def obj_store_mem_cur_upper_bound(self) -> int:
-        if self.average_bytes_outputs_per_task is not None:
-            return self.obj_store_mem_inputs + max(
-                self.obj_store_mem_outputs,
-                self.num_tasks_running * self.average_bytes_outputs_per_task,
-            )
-        else:
-            return self.obj_store_mem_inputs + self.obj_store_mem_outputs
-
     def on_input_received(self, input: RefBundle):
         """Callback when the operator receives a new input."""
         self.num_inputs_received += 1
         input_size = input.size_bytes()
         self.bytes_inputs_received += input_size
         # Update object store metrics.
-        self.obj_store_mem_inputs += input_size
+        self.obj_store_mem_cur += input_size
         if self.obj_store_mem_cur > self.obj_store_mem_peak:
             self.obj_store_mem_peak = self.obj_store_mem_cur
 
@@ -232,7 +253,7 @@ class OpRuntimeMetrics:
         output_bytes = output.size_bytes()
         self.num_outputs_taken += 1
         self.bytes_outputs_taken += output_bytes
-        self.obj_store_mem_outputs -= output_bytes
+        self.obj_store_mem_cur -= output_bytes
 
     def on_task_submitted(self, task_index: int, inputs: RefBundle):
         """Callback when the operator submits a task."""
@@ -257,7 +278,7 @@ class OpRuntimeMetrics:
 
         # Update object store metrics.
         self.obj_store_mem_alloc += output_bytes
-        self.obj_store_mem_outputs += output_bytes
+        self.obj_store_mem_cur += output_bytes
         if self.obj_store_mem_cur > self.obj_store_mem_peak:
             self.obj_store_mem_peak = self.obj_store_mem_cur
 
@@ -295,7 +316,7 @@ class OpRuntimeMetrics:
                     self.obj_store_mem_spilled += meta.size_bytes
 
         self.obj_store_mem_freed += total_input_size
-        self.obj_store_mem_inputs -= total_input_size
+        self.obj_store_mem_cur -= total_input_size
 
         inputs.destroy_if_owned()
         del self._running_tasks[task_index]
