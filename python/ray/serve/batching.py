@@ -1,6 +1,7 @@
 import asyncio
-import time
+import io
 import logging
+import time
 from dataclasses import dataclass
 from functools import wraps
 from inspect import isasyncgenfunction, iscoroutinefunction
@@ -96,6 +97,9 @@ class _BatchQueue:
         self.max_batch_size = max_batch_size
         self.batch_wait_timeout_s = batch_wait_timeout_s
         self.queue_put_event = asyncio.Event()
+
+        # Used for observability.
+        self.curr_iteration_start_time = time.time()
 
         self._handle_batch_task = None
         if handle_batch_func is not None:
@@ -212,6 +216,7 @@ class _BatchQueue:
 
         while True:
             try:
+                self.curr_iteration_start_time = time.time()
                 batch: List[_SingleRequest] = await self.wait_for_batch()
                 assert len(batch) > 0
                 self_arg = batch[0].self_arg
@@ -315,6 +320,45 @@ class _LazyBatchQueueWrapper:
 
     def get_batch_wait_timeout_s(self) -> float:
         return self.batch_wait_timeout_s
+    
+    def _get_curr_iteration_start_time(self) -> float:
+        """Gets current iteration's start time on default _BatchQueue implementation.
+        
+        Returns -1 if the batch handler doesn't use a default _BatchQueue.
+        """
+
+        if hasattr(self.queue, "curr_iteration_start_time"):
+            return self.queue.curr_iteration_start_time
+        else:
+            return -1
+    
+    async def _is_batching_task_alive(self) -> bool:
+        """Gets whether default _BatchQueue's background task is alive.
+        
+        Returns False if the batch handler doesn't use a default _BatchQueue.
+        """
+
+        if hasattr(self.queue, "_handle_batch_task"):
+            if self.queue._handle_batch_task is None:
+                return False
+            else:
+                _, pending = await asyncio.wait([self.queue._handle_batch_task], timeout=0)
+                return len(pending) == 1
+        else:
+            return False
+    
+    async def _get_batching_stack(self) -> str:
+        """Gets the stack for the default _BatchQueue's background task.
+        
+        Returns empty string if the batch handler doesn't use a default _BatchQueue.
+        """
+
+        if hasattr(self.queue, "_handle_batch_task"):
+            str_buffer = io.StringIO()
+            self.queue._handle_batch_task.print_stack(file=str_buffer)
+            return str_buffer.getvalue()
+        else:
+            return ""
 
 
 def _validate_max_batch_size(max_batch_size):
@@ -524,6 +568,11 @@ def batch(
         wrapper.set_batch_wait_timeout_s = (
             lazy_batch_queue_wrapper.set_batch_wait_timeout_s
         )
+
+        # Store debugging methods in the lazy_batch_queue wrapper
+        wrapper._get_curr_iteration_start_time = lazy_batch_queue_wrapper._get_curr_iteration_start_time
+        wrapper._is_batching_task_alive = lazy_batch_queue_wrapper._is_batching_task_alive
+        wrapper._get_batching_stack = lazy_batch_queue_wrapper._get_batching_stack
 
         return wrapper
 
