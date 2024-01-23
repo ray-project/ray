@@ -69,7 +69,7 @@ Note that in production scenarios, you will want to use larger Ray pods. In fact
 
 ## Step 4: Run an application on a RayCluster
 
-Now, let's interact with the RayCluster we've deployed. 
+Now, let's interact with the RayCluster we've deployed.
 
 ### Method 1: Execute a Ray job in the head Pod
 
@@ -86,7 +86,7 @@ kubectl exec -it $HEAD_POD -- python -c "import ray; ray.init(); print(ray.clust
 
 # 2023-04-07 10:57:46,472 INFO worker.py:1243 -- Using address 127.0.0.1:6379 set in the environment variable RAY_ADDRESS
 # 2023-04-07 10:57:46,472 INFO worker.py:1364 -- Connecting to existing Ray cluster at address: 10.244.0.6:6379...
-# 2023-04-07 10:57:46,482 INFO worker.py:1550 -- Connected to Ray cluster. View the dashboard at http://10.244.0.6:8265 
+# 2023-04-07 10:57:46,482 INFO worker.py:1550 -- Connected to Ray cluster. View the dashboard at http://10.244.0.6:8265
 # {'object_store_memory': 802572287.0, 'memory': 3000000000.0, 'node:10.244.0.6': 1.0, 'CPU': 2.0, 'node:10.244.0.7': 1.0}
 ```
 
@@ -112,7 +112,7 @@ kubectl port-forward --address 0.0.0.0 service/raycluster-kuberay-head-svc 8265:
 # Visit ${YOUR_IP}:8265 in your browser for the Dashboard (e.g. 127.0.0.1:8265)
 ```
 
-Note: We use port-forwarding in this guide as a simple way to experiment with a RayCluster's services. For production use-cases, you would typically either 
+Note: We use port-forwarding in this guide as a simple way to experiment with a RayCluster's services. For production use-cases, you would typically either
 - Access the service from within the Kubernetes cluster or
 - Use an ingress controller to expose the service outside the cluster.
 

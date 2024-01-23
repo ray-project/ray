@@ -49,7 +49,7 @@ Memory Profiling
 If you want to run memory profiling on Ray core components, you can use Jemalloc (https://github.com/jemalloc/jemalloc).
 Ray supports environment variables to override LD_PRELOAD on core components.
 
-You can find the component name from `ray_constants.py`. For example, if you'd like to profile gcs_server, 
+You can find the component name from `ray_constants.py`. For example, if you'd like to profile gcs_server,
 search `PROCESS_TYPE_GCS_SERVER` in `ray_constants.py`. You can see the value is `gcs_server`.
 
 Users are supposed to provide 3 env vars for memory profiling.
@@ -61,10 +61,10 @@ Users are supposed to provide 3 env vars for memory profiling.
 .. code-block:: bash
 
   # Install jemalloc
-  wget https://github.com/jemalloc/jemalloc/releases/download/5.2.1/jemalloc-5.2.1.tar.bz2 
-  tar -xf jemalloc-5.2.1.tar.bz2 
-  cd jemalloc-5.2.1 
-  ./configure --enable-prof --enable-prof-libunwind 
+  wget https://github.com/jemalloc/jemalloc/releases/download/5.2.1/jemalloc-5.2.1.tar.bz2
+  tar -xf jemalloc-5.2.1.tar.bz2
+  cd jemalloc-5.2.1
+  ./configure --enable-prof --enable-prof-libunwind
   make
 
   # set jemalloc configs through MALLOC_CONF env variable

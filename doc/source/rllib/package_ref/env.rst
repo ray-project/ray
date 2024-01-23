@@ -49,4 +49,3 @@ Environment API Reference
    env/multi_agent_env.rst
    env/vector_env.rst
    env/external_env.rst
-

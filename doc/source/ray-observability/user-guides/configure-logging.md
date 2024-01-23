@@ -129,7 +129,7 @@ ray.get([task.remote() for _ in range(100)])
 The output is as follows:
 
 ```bash
-2023-03-27 15:08:34,195	INFO worker.py:1603 -- Started a local Ray instance. View the dashboard at http://127.0.0.1:8265 
+2023-03-27 15:08:34,195	INFO worker.py:1603 -- Started a local Ray instance. View the dashboard at http://127.0.0.1:8265
 (task pid=534172) Hello there, I am a task 0.20583517821231412
 (task pid=534174) Hello there, I am a task 0.17536720316370757 [repeated 99x across cluster] (Ray deduplicates logs by default. Set RAY_DEDUP_LOGS=0 to disable log deduplication)
 ```
@@ -200,7 +200,7 @@ ray_tune_logger.addHandler(logging.FileHandler("extra_ray_tune_log.log"))
 Implement structured logging to enable downstream users and applications to consume the logs efficiently.
 
 ### Application logs
-A Ray applications include both driver and worker processes. For Python applications, use Python loggers to format and structure your logs. 
+A Ray applications include both driver and worker processes. For Python applications, use Python loggers to format and structure your logs.
 As a result, Python loggers need to be set up for both driver and worker processes.
 
 ::::{tab-set}

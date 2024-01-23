@@ -15,7 +15,7 @@ kernelspec:
 # Creating an Example
 
 This is an example template file for writing Jupyter Notebooks in markdown, using MyST.
-For more information on MyST notebooks, see the 
+For more information on MyST notebooks, see the
 [MyST-NB documentation](https://myst-nb.readthedocs.io/en/latest/index.html).
 If you want to learn more about the MyST parser, see the
 [MyST documentation](https://myst-parser.readthedocs.io/en/latest/).

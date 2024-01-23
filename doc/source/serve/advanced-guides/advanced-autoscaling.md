@@ -16,7 +16,7 @@ To define what the steady state of your deployments should be, set values for `t
 
 #### **target_num_ongoing_requests_per_replica [default=1]**
 Serve scales the number of replicas for a deployment up or down based on the average number of ongoing requests per replica. Specifically, Serve compares the *actual* number of ongoing requests per replica with the target value you set in the autoscaling config and makes upscale or downscale decisions from that. The target value is set by `target_num_ongoing_requests_per_replica`, and Serve tries to make sure that each replica has roughly that number
-of requests being processed and waiting in the queue. 
+of requests being processed and waiting in the queue.
 
 It is always recommended to load test your workloads. For example, if the use case is latency sensitive, you can lower the `target_num_ongoing_requests_per_replica` number to maintain high performance. We recommend you benchmark your application code and set this number based on an end-to-end latency objective.
 

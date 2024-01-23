@@ -36,7 +36,7 @@ Here are a few modifications to the `dreambooth_run.sh` script that you may want
     - Depending on the batch size and number of data-parallel workers, one epoch will run for a certain number of steps. The run will terminate when one of these values (epoch vs. total number of steps) is reached.
 5. `generate.py` is used to generate stable diffusion images after loading the model from a checkpoint. You should modify the prompt at the end to be something more interesting, rather than just a photo of your subject.
 6. If you want to launch another fine-tuning run, you may want to run *only* the `python train.py ...` command. Running the bash script will start from the beginning (generating another regularization dataset).
-7. Use the following command for LoRA fine-tuning. 
+7. Use the following command for LoRA fine-tuning.
 ```bash
 python train.py \
   --model_dir=$ORIG_MODEL_PATH \

@@ -351,5 +351,3 @@ MultiAgent batch API
     MultiAgentBatch
     MultiAgentBatch.env_steps
     MultiAgentBatch.agent_steps
-
-

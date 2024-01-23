@@ -119,4 +119,3 @@ The non-relevant metrics (like timing stats) can be disabled on the left to show
 relevant ones (like accuracy, loss, etc.).
 
 .. image:: ../images/ray-tune-viskit.png
-

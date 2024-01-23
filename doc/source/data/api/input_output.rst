@@ -298,5 +298,3 @@ MetadataProvider API
    datasource.DefaultFileMetadataProvider
    datasource.DefaultParquetMetadataProvider
    datasource.FastFileMetadataProvider
-
-   

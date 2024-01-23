@@ -162,4 +162,3 @@ be updated whenever a workflow is resumed.
     # make sure resume updated running metrics
     assert workflow_metadata_resumed["stats"]["start_time"] > workflow_metadata_failed["stats"]["start_time"]
     assert workflow_metadata_resumed["stats"]["end_time"] > workflow_metadata_failed["stats"]["end_time"]
-

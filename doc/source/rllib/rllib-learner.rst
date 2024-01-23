@@ -12,7 +12,7 @@
 Learner (Alpha)
 ===============
 
-:py:class:`~ray.rllib.core.learner.learner.Learner` allows you to abstract the training 
+:py:class:`~ray.rllib.core.learner.learner.Learner` allows you to abstract the training
 logic of RLModules. It supports both gradient-based and non-gradient-based updates (e.g.
 polyak averaging, etc.) The API enables you to distribute the Learner using data-
 distributed parallel (DDP). The Learner achieves the following:
@@ -24,24 +24,24 @@ distributed parallel (DDP). The Learner achieves the following:
 (4) Checkpoints the modules and optimizer states for durable training.
 
 The :py:class:`~ray.rllib.core.learner.learner.Learner` class supports data-distributed-
-parallel style training using the 
-:py:class:`~ray.rllib.core.learner.learner_group.LearnerGroup` API. Under this paradigm, 
-the :py:class:`~ray.rllib.core.learner.learner_group.LearnerGroup` maintains multiple 
-copies of the same :py:class:`~ray.rllib.core.learner.learner.Learner` with identical 
+parallel style training using the
+:py:class:`~ray.rllib.core.learner.learner_group.LearnerGroup` API. Under this paradigm,
+the :py:class:`~ray.rllib.core.learner.learner_group.LearnerGroup` maintains multiple
+copies of the same :py:class:`~ray.rllib.core.learner.learner.Learner` with identical
 parameters and hyperparameters. Each of these
 :py:class:`~ray.rllib.core.learner.learner.Learner` instances computes the loss and gradients on a
-shard of a sample batch and then accumulates the gradients across the 
-:py:class:`~ray.rllib.core.learner.learner.Learner` instances. Learn more about data-distributed 
-parallel learning in 
+shard of a sample batch and then accumulates the gradients across the
+:py:class:`~ray.rllib.core.learner.learner.Learner` instances. Learn more about data-distributed
+parallel learning in
 `this article. <https://pytorch.org/tutorials/intermediate/ddp_tutorial.html>`_
 
-:py:class:`~ray.rllib.core.learner.learner_group.LearnerGroup` also allows for 
+:py:class:`~ray.rllib.core.learner.learner_group.LearnerGroup` also allows for
 asynchronous training and (distributed) checkpointing for durability during training.
 
 Enabling Learner API in RLlib experiments
 =========================================
 
-Adjust the amount of resources for training using the 
+Adjust the amount of resources for training using the
 `num_gpus_per_learner_worker`, `num_cpus_per_learner_worker`, and `num_learner_workers`
 arguments in the :py:class:`~ray.rllib.algorithms.algorithm_config.AlgorithmConfig`.
 
@@ -71,8 +71,8 @@ arguments in the :py:class:`~ray.rllib.algorithms.algorithm_config.AlgorithmConf
 
 
 .. note::
-    
-    This features is in alpha. If you migrate to this algorithm, enable the feature by 
+
+    This features is in alpha. If you migrate to this algorithm, enable the feature by
     via `AlgorithmConfig.experimental(_enable_new_api_stack=True)`.
 
     The following algorithms support :py:class:`~ray.rllib.core.learner.learner.Learner` out of the box. Implement
@@ -95,7 +95,7 @@ arguments in the :py:class:`~ray.rllib.algorithms.algorithm_config.AlgorithmConf
 Basic usage
 ===========
 
-Use the :py:class:`~ray.rllib.core.learner.learner_group.LearnerGroup` utility to interact with multiple learners. 
+Use the :py:class:`~ray.rllib.core.learner.learner_group.LearnerGroup` utility to interact with multiple learners.
 
 Construction
 ------------
@@ -117,7 +117,7 @@ and :py:class:`~ray.rllib.core.learner.learner.Learner` APIs via the :py:class:`
 
 
 .. tab-set::
-    
+
     .. tab-item:: Contstructing a LearnerGroup
 
 
@@ -224,7 +224,7 @@ Updates
 
 
 .. tab-set::
-        
+
     .. tab-item:: Updating a LearnerGroup
 
         .. testcode::
@@ -268,13 +268,13 @@ Updates
 
         When updating a :py:class:`~ray.rllib.core.learner.learner.Learner` you can only perform blocking updates on batches of data.
         You can perform non-gradient based updates using :py:meth:`~ray.rllib.core.learner.learner.Learner.additional_update`.
-    
+
 
 Getting and setting state
 -------------------------
 
 .. tab-set::
-    
+
     .. tab-item:: Getting and Setting State for a LearnerGroup
 
         .. testcode::
@@ -287,16 +287,16 @@ Getting and setting state
             weights = learner_group.get_weights()
             learner_group.set_weights(weights)
 
-        Set/get the state dict of all learners through learner_group via 
-        :py:meth:`~ray.rllib.core.learner.learner_group.LearnerGroup.set_state` or 
-        :py:meth:`~ray.rllib.core.learner.learner_group.LearnerGroup.get_state`. 
-        This includes all states including both neural network weights, 
-        and optimizer states on each learner. You can set and get the weights of 
-        the RLModule of all learners through learner_group via 
+        Set/get the state dict of all learners through learner_group via
+        :py:meth:`~ray.rllib.core.learner.learner_group.LearnerGroup.set_state` or
+        :py:meth:`~ray.rllib.core.learner.learner_group.LearnerGroup.get_state`.
+        This includes all states including both neural network weights,
+        and optimizer states on each learner. You can set and get the weights of
+        the RLModule of all learners through learner_group via
         :py:meth:`~ray.rllib.core.learner.learner_group.LearnerGroup.set_weights` or
-        :py:meth:`~ray.rllib.core.learner.learner_group.LearnerGroup.get_weights`. 
+        :py:meth:`~ray.rllib.core.learner.learner_group.LearnerGroup.get_weights`.
         This does not include optimizer states.
-    
+
     .. tab-item:: Getting and Setting State for a Learner
 
         .. testcode::
@@ -309,11 +309,11 @@ Getting and setting state
             module_state = learner.get_module_state()
             learner.module.set_state(module_state)
 
-        You can set and get the weights of a :py:class:`~ray.rllib.core.learner.learner.Learner` 
-        using :py:meth:`~ray.rllib.core.learner.learner.Learner.set_state` 
+        You can set and get the weights of a :py:class:`~ray.rllib.core.learner.learner.Learner`
+        using :py:meth:`~ray.rllib.core.learner.learner.Learner.set_state`
         and :py:meth:`~ray.rllib.core.learner.learner.Learner.get_state` .
-        For setting or getting only RLModule weights (without optimizer states), use 
-        :py:meth:`~ray.rllib.core.learner.learner.Learner.set_module_state` 
+        For setting or getting only RLModule weights (without optimizer states), use
+        :py:meth:`~ray.rllib.core.learner.learner.Learner.set_module_state`
         or :py:meth:`~ray.rllib.core.learner.learner.Learner.get_module_state` API.
 
 
@@ -330,14 +330,14 @@ Checkpointing
 -------------
 
 .. tab-set::
-    
+
     .. tab-item:: Checkpointing a LearnerGroup
 
         .. testcode::
 
             learner_group.save_state(LEARNER_GROUP_CKPT_DIR)
             learner_group.load_state(LEARNER_GROUP_CKPT_DIR)
-        
+
         Checkpoint the state of all learners in the :py:class:`~ray.rllib.core.learner.learner_group.LearnerGroup` via :py:meth:`~ray.rllib.core.learner.learner_group.LearnerGroup.save_state` and
         :py:meth:`~ray.rllib.core.learner.learner_group.LearnerGroup.load_state`. This includes all states including neural network weights and any
         optimizer states. Note that since the state of all of the :py:class:`~ray.rllib.core.learner.learner.Learner` instances is identical,
@@ -350,9 +350,9 @@ Checkpointing
             learner.save_state(LEARNER_CKPT_DIR)
             learner.load_state(LEARNER_CKPT_DIR)
 
-        Checkpoint the state of a :py:class:`~ray.rllib.core.learner.learner.Learner` 
-        via :py:meth:`~ray.rllib.core.learner.learner.Learner.save_state` and 
-        :py:meth:`~ray.rllib.core.learner.learner.Learner.load_state`. This 
+        Checkpoint the state of a :py:class:`~ray.rllib.core.learner.learner.Learner`
+        via :py:meth:`~ray.rllib.core.learner.learner.Learner.save_state` and
+        :py:meth:`~ray.rllib.core.learner.learner.Learner.load_state`. This
         includes all states including neural network weights and any optimizer states.
 
 
@@ -374,7 +374,7 @@ Implementation
      - do any non gradient based updates to a RLModule, e.g. target network updates.
    * - :py:meth:`~ray.rllib.core.learner.learner.Learner.compile_results()`
      - compute training statistics and format them for downstream use.
-     
+
 Starter Example
 ---------------
 
@@ -408,7 +408,7 @@ A :py:class:`~ray.rllib.core.learner.learner.Learner` that implements behavior c
             fwd_out: Dict[str, TensorType],
         ) -> TensorType:
 
-            # standard behavior cloning loss 
+            # standard behavior cloning loss
             action_dist_inputs = fwd_out[SampleBatch.ACTION_DIST_INPUTS]
             action_dist_class = self._module[module_id].get_train_action_dist_cls()
             action_dist = action_dist_class.from_logits(action_dist_inputs)
@@ -432,7 +432,7 @@ A :py:class:`~ray.rllib.core.learner.learner.Learner` that implements behavior c
                 loss_per_module=loss_per_module,
                 metrics_per_module=metrics_per_module,
             )
-            # report the mean weight of each 
+            # report the mean weight of each
             mean_ws = {}
             for module_id in self.module.keys():
                 m = self.module[module_id]
@@ -441,5 +441,3 @@ A :py:class:`~ray.rllib.core.learner.learner.Learner` that implements behavior c
                 results[module_id]["mean_weight"] = mean_ws[module_id]
 
             return results
-
-

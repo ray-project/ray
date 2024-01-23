@@ -15,7 +15,7 @@ You can continue using the legacy `RayServeHandle` and `RayServeSyncHandle` APIs
 ## Compose deployments using DeploymentHandles
 
 When building an application, you can `.bind()` multiple deployments and pass them to each other's constructors.
-At runtime, inside the deployment code Ray Serve substitutes the bound deployments with 
+At runtime, inside the deployment code Ray Serve substitutes the bound deployments with
 {ref}`DeploymentHandles <serve-key-concepts-deployment-handle>` that you can use to call methods of other deployments.
 This capability lets you divide your application's steps, such as preprocessing, model inference, and post-processing, into independent deployments that you can independently scale and configure.
 

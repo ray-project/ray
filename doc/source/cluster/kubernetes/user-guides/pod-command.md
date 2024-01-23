@@ -52,7 +52,7 @@ Note that this environment variable doesn't include the `ulimit` command.
   ```sh
   # Example of the environment variable `KUBERAY_GEN_RAY_START_CMD` in the head Pod.
   ray start --head  --dashboard-host=0.0.0.0  --num-cpus=1  --block  --metrics-export-port=8080  --memory=2147483648
-  ``` 
+  ```
 
 The head Pod's `command`/`args` looks like the following:
 

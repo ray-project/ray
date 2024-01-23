@@ -1,7 +1,7 @@
 (profiling)=
 # Profiling
 Profiling is one of the most important debugging tools to diagnose performance, out of memory, hanging, or other application issues.
-Here is a list of common profiling tools you may use when debugging Ray applications. 
+Here is a list of common profiling tools you may use when debugging Ray applications.
 - CPU profiling
     - py-spy
 - Memory profiling
@@ -27,7 +27,7 @@ Profile the CPU usage for Driver and Worker processes. This helps you understand
 :::{note}
 You may run into permission errors when using py-spy in the docker containers. To fix the issue:
 
-- if you start Ray manually in a Docker container, follow the `py-spy documentation`_ to resolve it. 
+- if you start Ray manually in a Docker container, follow the `py-spy documentation`_ to resolve it.
 - if you are a KubeRay user, follow the {ref}`guide to configure KubeRay <kuberay-pyspy-integration>` and resolve it.
 :::
 
@@ -64,7 +64,7 @@ Additionally, you can specify the following profiling Memray parameters from the
 
 (profiling-gpu)=
 ## GPU profiling
-GPU and GRAM profiling for your GPU workloads like distributed training. This helps you analyze performance and debug memory issues. 
+GPU and GRAM profiling for your GPU workloads like distributed training. This helps you analyze performance and debug memory issues.
 - PyTorch profiler is supported out of box when used with Ray Train
 - NVIDIA Nsight System is natively supported on Ray.
 
@@ -79,7 +79,7 @@ Here are the {ref}`steps to use PyTorch Profiler with Ray Train or Ray Data <per
 
 #### Installation
 
-First, install the Nsight System CLI by following the [Nsight User Guide](https://docs.nvidia.com/nsight-systems/InstallationGuide/index.html). 
+First, install the Nsight System CLI by following the [Nsight User Guide](https://docs.nvidia.com/nsight-systems/InstallationGuide/index.html).
 
 Confirm that you installed Nsight correctly:
 
@@ -127,7 +127,7 @@ import ray
 ray.init()
 
 @ray.remote(
-num_gpus=1, 
+num_gpus=1,
 runtime_env={ "nsight": {
     "t": "cuda,cudnn,cublas",
     "cuda-memory-usage": "true",
@@ -159,7 +159,7 @@ Find profiling results under the `/tmp/ray/session_*/logs/{profiler_name}` direc
 
 To visualize the results, install the [Nsight System GUI](https://developer.nvidia.com/nsight-systems/get-started#latest-Platforms) on your laptop, which becomes the host. Transfer the .nsys-rep file to your host and open it using the GUI. You can now view the visual profiling info.
 
-**Note**: The Nsight System Profiler output (-o, --output) option allows you to set the path to a filename. Ray uses the logs directory as the base and appends the output option to it. For example: 
+**Note**: The Nsight System Profiler output (-o, --output) option allows you to set the path to a filename. Ray uses the logs directory as the base and appends the output option to it. For example:
 ```
 --output job_name/ray_worker -> /tmp/ray/session_*/logs/nsight/job_name/ray_worker
 

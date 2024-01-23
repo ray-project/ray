@@ -7,7 +7,7 @@ In this guide, we will show you how to train models from various machine learnin
 
 Please see the [Key Concepts](serve-key-concepts) to learn more general information about Ray Serve.
 
-:::::{tab-set} 
+:::::{tab-set}
 
 ::::{tab-item} Keras and Tensorflow
 

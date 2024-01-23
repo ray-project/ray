@@ -48,7 +48,7 @@ curl -LO https://raw.githubusercontent.com/ray-project/kuberay/v1.0.0/ray-operat
 kubectl apply -f ray-cluster.external-redis.yaml
 ```
 
-### Step 4: Verify the Kubernetes cluster status 
+### Step 4: Verify the Kubernetes cluster status
 
 ```sh
 # Step 4.1: List all Pods in the `default` namespace.

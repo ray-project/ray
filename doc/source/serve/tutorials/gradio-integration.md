@@ -24,7 +24,7 @@ This section shows you an easy way to deploy your app onto Ray Serve. First, cre
 ```
 
 Then, we write a builder function that constructs the Gradio app `io`. This application takes in text and uses the [T5 Small](https://huggingface.co/t5-small) text summarization model loaded using [HuggingFace's Pipelines](https://huggingface.co/docs/transformers/main_classes/pipelines) to summarize that text.
-:::{note} 
+:::{note}
 Remember you can substitute this with your own Gradio app if you want to try scaling up your own Gradio app!
 :::
 ```{literalinclude} ../doc_code/gradio-integration.py
@@ -33,18 +33,18 @@ Remember you can substitute this with your own Gradio app if you want to try sca
 ```
 
 ### Deploying Gradio Server
-In order to deploy your Gradio app onto Ray Serve, you need to wrap your Gradio app in a Serve [deployment](serve-key-concepts-deployment). `GradioServer` acts as that wrapper. It serves your Gradio app remotely on Ray Serve so that it can process and respond to HTTP requests. 
+In order to deploy your Gradio app onto Ray Serve, you need to wrap your Gradio app in a Serve [deployment](serve-key-concepts-deployment). `GradioServer` acts as that wrapper. It serves your Gradio app remotely on Ray Serve so that it can process and respond to HTTP requests.
 
 By wrapping your application in `GradioServer`, you can increase the number of CPUs and/or GPUs available to the application.
 :::{note}
 Currently, there is no support for routing requests properly to multiple replicas of `GradioServer`, so we recommend only having a single replica.
 :::
 
-:::{note} 
+:::{note}
 `GradioServer` is simply `GradioIngress` but wrapped in a Serve deployment. You can use `GradioServer` for the simple wrap-and-deploy use case, but as you will see in the next section, you can use `GradioIngress` to define your own Gradio Server for more customized use cases.
 :::
 
-:::{note} 
+:::{note}
 Ray can’t pickle Gradio. Instead, pass a builder function that constructs the Gradio interface.
 :::
 
@@ -117,7 +117,7 @@ Lastly, we link everything together:
 :end-before: __doc_app_end__
 ```
 
-:::{note} 
+:::{note}
 This will bind your two text generation models (wrapped in Serve deployments) to `MyGradioServer._d1` and `MyGradioServer._d2`, forming a [model composition](serve-model-composition). Thus, we have built our Gradio Interface `io` such that it calls `MyGradioServer.fanout()`, which simply sends requests to your two text generation models that are deployed on Ray Serve.
 :::
 

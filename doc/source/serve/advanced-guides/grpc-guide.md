@@ -7,7 +7,7 @@ This section helps you understand how to:
 - Deploy gRPC applications
 - Send gRPC requests to Serve deployments
 - Check proxy health
-- Work with gRPC metadata 
+- Work with gRPC metadata
 - Use streaming and model composition
 - Handle errors
 - Use gRPC context
@@ -121,7 +121,7 @@ with the predefined RPC methods. For example, if we want to deploy `UserDefinedS
 with `__call__` method, the method name needs to be `__call__`, the input type needs to
 be `UserDefinedMessage`, and the output type needs to be `UserDefinedResponse`. Serve
 passes the protobuf object into the method and expects the protobuf object back
-from the method. 
+from the method.
 
 Example deployment:
 ```{literalinclude} ../doc_code/grpc_proxy/grpc_guide.py
@@ -163,9 +163,9 @@ Read more about gRPC clients in Python: [https://grpc.io/docs/languages/python/b
 (serve-grpc-proxy-health-checks)=
 ## Check proxy health
 Similar to HTTP `/-/routes` and `/-/healthz` endpoints, Serve also provides gRPC
-service method to be used in health check. 
+service method to be used in health check.
 - `/ray.serve.RayServeAPIService/ListApplications` is used to list all applications
-  deployed in Serve. 
+  deployed in Serve.
 - `/ray.serve.RayServeAPIService/Healthz` is used to check the health of the proxy.
   It returns `OK` status and "success" message if the proxy is healthy.
 
@@ -219,7 +219,7 @@ List of Serve returned trailing metadata keys:
 
 Example of using metadata:
 ```{literalinclude} ../doc_code/grpc_proxy/grpc_guide.py
-:start-after: __begin_metadata__   
+:start-after: __begin_metadata__
 :end-before: __end_metadata__
 :language: python
 ```
@@ -233,7 +233,7 @@ gRPC proxy for getting streaming response as well as doing model composition.
 The `Steaming` method is deployed with the app named "app1" above. The following code
 gets a streaming response.
 ```{literalinclude} ../doc_code/grpc_proxy/grpc_guide.py
-:start-after: __begin_streaming__   
+:start-after: __begin_streaming__
 :end-before: __end_streaming__
 :language: python
 ```
@@ -246,21 +246,21 @@ The `ImageClassifier` deployment initializes the model, calls both
 classes and probabilities of the given image.
 
 ```{literalinclude} ../doc_code/grpc_proxy/grpc_guide.py
-:start-after: __begin_model_composition_deployment__   
+:start-after: __begin_model_composition_deployment__
 :end-before: __end_model_composition_deployment__
 :language: python
 ```
 
 We can deploy the application with the following code:
 ```{literalinclude} ../doc_code/grpc_proxy/grpc_guide.py
-:start-after: __begin_model_composition_deploy__   
+:start-after: __begin_model_composition_deploy__
 :end-before: __end_model_composition_deploy__
 :language: python
 ```
 
 The client code to call the application looks like the following:
 ```{literalinclude} ../doc_code/grpc_proxy/grpc_guide.py
-:start-after: __begin_model_composition_client__   
+:start-after: __begin_model_composition_client__
 :end-before: __end_model_composition_client__
 :language: python
 ```
@@ -278,7 +278,7 @@ Similar to any other gRPC server, request throws a `grpc.RpcError` when the resp
 code is not "OK". Put your request code in a try-except block and handle
 the error accordingly.
 ```{literalinclude} ../doc_code/grpc_proxy/grpc_guide.py
-:start-after: __begin_error_handle__   
+:start-after: __begin_error_handle__
 :end-before: __end_error_handle__
 :language: python
 ```

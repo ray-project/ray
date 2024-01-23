@@ -179,7 +179,7 @@ Run the following command to create a ConfigMap named `cluster-info` with the cl
 
 ```shell
 ClusterName=fluent-bit-demo
-RegionName=us-west-2  
+RegionName=us-west-2
 FluentBitHttpPort='2020'
 FluentBitReadFromHead='Off'
 [[ ${FluentBitReadFromHead} = 'On' ]] && FluentBitReadFromTail='Off'|| FluentBitReadFromTail='On'
@@ -293,6 +293,3 @@ Follow the steps below to set the environment variable ``RAY_LOG_TO_STDERR=1`` o
 
 
   ::::
-
-
-

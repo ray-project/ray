@@ -21,4 +21,4 @@ See also
 
 * :ref:`Ray Train Examples <train-examples>` for more use cases.
 
-* :ref:`Get Started with DeepSpeed <train-deepspeed>` for a tutorial.    
+* :ref:`Get Started with DeepSpeed <train-deepspeed>` for a tutorial.

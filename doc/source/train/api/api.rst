@@ -142,7 +142,7 @@ Ray Train Utilities
 .. autosummary::
     :nosignatures:
     :toctree: doc/
-    
+
     ~train.get_checkpoint
     ~train.get_context
     ~train.get_dataset_shard

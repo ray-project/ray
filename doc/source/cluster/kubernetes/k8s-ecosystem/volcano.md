@@ -34,7 +34,7 @@ batchScheduler:
 
 * Pass the `--set batchScheduler.enabled=true` flag when running on the command line:
 ```shell
-# Install the Helm chart with --enable-batch-scheduler flag set to true 
+# Install the Helm chart with --enable-batch-scheduler flag set to true
 helm install kuberay-operator kuberay/kuberay-operator --version 1.0.0 --set batchScheduler.enabled=true
 ```
 
@@ -79,7 +79,7 @@ For guidance, see [examples](https://github.com/volcano-sh/volcano/tree/master/e
 
 ## Example
 
-Before going through the example, remove any running Ray Clusters to ensure a successful run through of the example below. 
+Before going through the example, remove any running Ray Clusters to ensure a successful run through of the example below.
 ```shell
 kubectl delete raycluster --all
 ```

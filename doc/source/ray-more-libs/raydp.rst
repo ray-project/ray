@@ -66,7 +66,7 @@ Training a Spark DataFrame with TensorFlow
   df = df.withColumn("x", col("id")*2)\
     .withColumn("y", col("id") + 200)\
     .withColumn("z", col("x") + 2*col("y") + 1000)
-  
+
   from raydp.utils import random_split
   train_df, test_df = random_split(df, [0.7, 0.3])
 
@@ -119,11 +119,11 @@ PyTorch.
   df = df.withColumn("x", col("id")*2)\
     .withColumn("y", col("id") + 200)\
     .withColumn("z", col("x") + 2*col("y") + 1000)
-  
+
   from raydp.utils import random_split
   train_df, test_df = random_split(df, [0.7, 0.3])
 
-  # PyTorch Code 
+  # PyTorch Code
   import torch
   class LinearModel(torch.nn.Module):
       def __init__(self):
@@ -161,4 +161,3 @@ PyTorch.
   pytorch_model = estimator.get_model()
 
   estimator.shutdown()
-  

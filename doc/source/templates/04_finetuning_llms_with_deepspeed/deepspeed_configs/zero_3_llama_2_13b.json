@@ -1,4 +1,4 @@
-{   
+{
     "fp16": {
         "enabled": "auto"
     },

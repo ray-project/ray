@@ -4,7 +4,7 @@ General Debugging
 =======================
 
 Distributed applications are more powerful yet complicated than non-distributed ones. Some of Ray's behavior might catch
-users off guard while there may be sound arguments for these design choices. 
+users off guard while there may be sound arguments for these design choices.
 
 This page lists some common issues users may run into. In particular, users think of Ray as running on their local machine, and
 while this is sometimes true, this leads to a lot of issues.

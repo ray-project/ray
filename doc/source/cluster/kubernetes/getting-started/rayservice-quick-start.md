@@ -46,7 +46,7 @@ curl -LO https://raw.githubusercontent.com/ray-project/kuberay/v1.0.0/ray-operat
 kubectl apply -f ray_v1alpha1_rayservice.yaml
 ```
 
-## Step 4: Verify the Kubernetes cluster status 
+## Step 4: Verify the Kubernetes cluster status
 
 ```sh
 # Step 4.1: List all RayService custom resources in the `default` namespace.

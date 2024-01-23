@@ -15,6 +15,6 @@ Code example
 See also
 --------
 
-* :ref:`Get Started with PyTorch <train-pytorch>` for a tutorial on using Ray Train and PyTorch 
+* :ref:`Get Started with PyTorch <train-pytorch>` for a tutorial on using Ray Train and PyTorch
 
 * :ref:`Ray Train Examples <train-examples>` for more use cases

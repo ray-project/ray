@@ -4,10 +4,10 @@
 Serve supports deploying multiple independent Serve applications. This user guide walks through how to generate a multi-application config file and deploy it using the Serve CLI, and monitor your applications using the CLI and the Ray Serve dashboard.
 
 ## Context
-### Background 
-With the introduction of multi-application Serve, we walk you through the new concept of applications and when you should choose to deploy a single application versus multiple applications per cluster. 
+### Background
+With the introduction of multi-application Serve, we walk you through the new concept of applications and when you should choose to deploy a single application versus multiple applications per cluster.
 
-An application consists of one or more deployments. The deployments in an application are tied into a direct acyclic graph through [model composition](serve-model-composition). An application can be called via HTTP at the specified route prefix, and the ingress deployment handles all such inbound traffic. Due to the dependence between deployments in an application, one application is a unit of upgrade. 
+An application consists of one or more deployments. The deployments in an application are tied into a direct acyclic graph through [model composition](serve-model-composition). An application can be called via HTTP at the specified route prefix, and the ingress deployment handles all such inbound traffic. Due to the dependence between deployments in an application, one application is a unit of upgrade.
 
 ### When to use multiple applications
 You can solve many use cases by using either model composition or multi-application. However, both have their own individual benefits and can be used together.
@@ -70,7 +70,7 @@ applications:
   - name: Translator
 ```
 
-:::{note} 
+:::{note}
 The names for each application are auto-generated as `app1`, `app2`, etc. To give custom names to the applications, modify the config file before moving on to the next step.
 :::
 
@@ -97,7 +97,7 @@ Query the applications at their respective endpoints, `/classify` and `/translat
 ```
 
 #### Development workflow with `serve run`
-You can also use the CLI command `serve run` to run and test your application easily, either locally or on a remote cluster. 
+You can also use the CLI command `serve run` to run and test your application easily, either locally or on a remote cluster.
 ```console
 $ serve run config.yaml
 > 2023-04-04 11:00:05,901 INFO scripts.py:327 -- Deploying from config file: "config.yaml".
@@ -203,6 +203,6 @@ Migrating the single-application config `ServeApplicationSchema` to the multi-ap
 
 For more details on the multi-application config format, see the documentation for [`ServeDeploySchema`](serve-rest-api-config-schema).
 
-:::{note} 
+:::{note}
 You must remove `host` and `port` from the application entry. In a multi-application config, specifying cluster-level options within an individual application isn't applicable, and is not supported.
 :::

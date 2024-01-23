@@ -1,4 +1,5 @@
-#train-logo > #train-logo-icon > path, #train-logo > #train-logo-icon > circle {
+#train-logo > #train-logo-icon > path,
+#train-logo > #train-logo-icon > circle {
   stroke: var(--ray-blue);
   stroke-width: 10;
   fill: transparent;

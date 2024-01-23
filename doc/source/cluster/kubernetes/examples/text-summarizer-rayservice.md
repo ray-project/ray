@@ -54,7 +54,7 @@ Note that the RayService's Kubernetes service will be created after the Serve ap
 ## Step 5: Send a request to the text_summarizer model
 
 ```sh
-# Step 5.1: Download `text_summarizer_req.py` 
+# Step 5.1: Download `text_summarizer_req.py`
 curl -LO https://raw.githubusercontent.com/ray-project/serve_config_examples/master/text_summarizer/text_summarizer_req.py
 
 # Step 5.2: Send a request to the Summarizer model.

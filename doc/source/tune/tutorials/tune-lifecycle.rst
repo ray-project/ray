@@ -16,8 +16,8 @@ When calling the following:
 
     space = {"x": tune.uniform(0, 1)}
     tuner = tune.Tuner(
-        my_trainable, 
-        param_space=space, 
+        my_trainable,
+        param_space=space,
         tune_config=tune.TuneConfig(num_samples=10),
     )
     results = tuner.fit()

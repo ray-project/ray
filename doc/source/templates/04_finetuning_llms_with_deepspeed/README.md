@@ -21,9 +21,9 @@ And launch the following script to fine-tune LLaMA 2 7B:
 ./run_llama_ft.sh --size=7b --as-test
 ```
 
-The flag `--as-test` is for demo / testing purposes as it runs through only one forward and backward pass of the model. The model loading, and remote checkpointing would still run. 
+The flag `--as-test` is for demo / testing purposes as it runs through only one forward and backward pass of the model. The model loading, and remote checkpointing would still run.
 
-Similarly for 13B you need a different compute config. 
+Similarly for 13B you need a different compute config.
 
 |            | num | instance type | GPU per node | GPU Memory | CPU Memory |
 |------------|-----|---------------|--------------|------------|------------|
@@ -36,9 +36,9 @@ Similarly for 13B you need a different compute config.
 
 ## What is happening under the hood?
 
-### Downloading the pre-trained checkpoint on to all GPU nodes. 
+### Downloading the pre-trained checkpoint on to all GPU nodes.
 
-The pre-trained models for these models is quite large (12.8G for 7B model and 128G for 70B model). In order to make loading these models faster, we have mirrored the weights on to an AWS S3 bucket which can result in up 10GB/s download speed if the aws configs are setup correctly. 
+The pre-trained models for these models is quite large (12.8G for 7B model and 128G for 70B model). In order to make loading these models faster, we have mirrored the weights on to an AWS S3 bucket which can result in up 10GB/s download speed if the aws configs are setup correctly.
 
 ### Cloud storage
 
@@ -70,7 +70,7 @@ After training we can use [Aviary](https://github.com/ray-project/aviary) to dep
 
 ### Creating the dataset
 
-The main fine-tuning script is written in a general format that would require you to provide a `jsonl` file for train and test datasets in addition to a `json` file listing the special tokens used in your dataset. 
+The main fine-tuning script is written in a general format that would require you to provide a `jsonl` file for train and test datasets in addition to a `json` file listing the special tokens used in your dataset.
 
 For example each row in your dataset might be formated like the following:
 
@@ -84,7 +84,7 @@ And the special tokens can be:
 {"tokens": ["<ASSISTANT>", "</ASSISTANT>", "<USER>", "</USER>"]}
 ```
 
-Depending on the dataset you want to fine-tune on, the tokenization and dataset pre-processing will likely need to be adjusted. The current code is configured to train on the Grade School Math 8k (GSM8K) dataset. By running the code below we create three files that are needed to launch the training script with. 
+Depending on the dataset you want to fine-tune on, the tokenization and dataset pre-processing will likely need to be adjusted. The current code is configured to train on the Grade School Math 8k (GSM8K) dataset. By running the code below we create three files that are needed to launch the training script with.
 
 ```
 python create_dataset.py
@@ -98,7 +98,7 @@ This dataset is trained with a context length of 512 which includes excessive pa
 
 ### Launching fine-tuning
 
-The script is written using Ray Train + Deepspeed integration via accelerate API. The script is general enough that it can be used to fine-tune all released sizes of Llama-2 models. 
+The script is written using Ray Train + Deepspeed integration via accelerate API. The script is general enough that it can be used to fine-tune all released sizes of Llama-2 models.
 
 The command for seeing all the options is:
 
@@ -106,7 +106,7 @@ The command for seeing all the options is:
 python finetune_hf_llm.py --help
 ```
 
-This script was tested across three model sizes on the following cluster configurations on Anyscale platform. 
+This script was tested across three model sizes on the following cluster configurations on Anyscale platform.
 
 
 | Model Size | Base HF Model ID             | Batch size per device | GPUs           | Time per epoch (min.) |
@@ -135,8 +135,8 @@ Fine-tuning a model with LoRA results in a checkpoint containing only the fine-t
 As an example, the default Llama 2 LoRA configuration should yield a 42/64/202MB checkpoint for 7B/13B/70B models.
 If we want to evaluate the model after training, we can merge the model weights with the original (non-fine-tuned) model.
 We provide a script to merge the fine-tuned weights with the original weights to produce a full-parameter checkpoint.
-The script has high CPU memory requirements because it requires us to load all parameters into memory at the same time, 
-13GB/24GB/152GB for 7B/13B/70B models. Downloading and loading the original weights should take ~1min/~2min/~10min each 
+The script has high CPU memory requirements because it requires us to load all parameters into memory at the same time,
+13GB/24GB/152GB for 7B/13B/70B models. Downloading and loading the original weights should take ~1min/~2min/~10min each
 on a p4de.24xlarge instance. You can run the script as follows:
 
 ```
@@ -199,21 +199,21 @@ There are two things that you should consider when choosint the cluster configur
 
 1. CPU RAM requirement for optimizer state and parameter offloading
 
-Deepspeed offers [Zero-offload](https://www.deepspeed.ai/tutorials/zero-offload/) which allows offloading the optimizer or parameter states to the CPU memory for more memory efficient training. We have enabled this by default in our deepspeed configs used for this workspace template. 
+Deepspeed offers [Zero-offload](https://www.deepspeed.ai/tutorials/zero-offload/) which allows offloading the optimizer or parameter states to the CPU memory for more memory efficient training. We have enabled this by default in our deepspeed configs used for this workspace template.
 
-This method creates extra CPU RAM requirements on the machines. A rule of thumb for this implementation is that it needs O(18M/N*K) CPU RAM where M is the model size, N is the number shards, and K is the number of GPUs on a single machine. 
+This method creates extra CPU RAM requirements on the machines. A rule of thumb for this implementation is that it needs O(18M/N*K) CPU RAM where M is the model size, N is the number shards, and K is the number of GPUs on a single machine.
 
 For example, for 70B model, on an 8xA100 machine with 8-way sharding you would need `18 * (70 / 8) * 8 = 1.26 TB` of CPU RAM. This is not available on a single machine of 8xA100s. But if we use two 8xA100 machines instead, with 16-way sharding we would need `18 * (70 / 16) * 8 = 630 GB` of CPU RAM which is accessible.
 
-Another example: For 70B model, on an 4xA10G machine with 32-way sharding you would need `18 * (70 / 32) * 4 = 158 GB` of CPU RAM on each machine. If you use 8xA10G machines instead you would need `18 * (70 / 32) * 8 = 316 GB` of CPU RAM on each machine. 
+Another example: For 70B model, on an 4xA10G machine with 32-way sharding you would need `18 * (70 / 32) * 4 = 158 GB` of CPU RAM on each machine. If you use 8xA10G machines instead you would need `18 * (70 / 32) * 8 = 316 GB` of CPU RAM on each machine.
 
 So availability of enough CPU RAM is very important when using optimizer state offloading.
 
 2. CPU RAM requirement during checkpointing
 
-During checkpointing in the middle of training, we have to aggregate the weights from all the shards back to rank 0 so that it can save the model. We can also save the weights of each shard indepedently and aggregate the weights later offline. The extra CPU memory requirement would not get solved tho. 
+During checkpointing in the middle of training, we have to aggregate the weights from all the shards back to rank 0 so that it can save the model. We can also save the weights of each shard indepedently and aggregate the weights later offline. The extra CPU memory requirement would not get solved tho.
 
-Emprically the implementation that `accelerate` provides needs `O(4M)` CPU RAM on rank 0 machine where M is the model size. This would mean that for 70B we need 280GB of CPU on top of what we needed before (e.g. due to CPU offloading). This requirement is only for rank 0 though and not any other machine. So it's important to schedule this process on a machine with this much of RAM while the other processes can get scheduled on machines with lower RAM requirements. 
+Emprically the implementation that `accelerate` provides needs `O(4M)` CPU RAM on rank 0 machine where M is the model size. This would mean that for 70B we need 280GB of CPU on top of what we needed before (e.g. due to CPU offloading). This requirement is only for rank 0 though and not any other machine. So it's important to schedule this process on a machine with this much of RAM while the other processes can get scheduled on machines with lower RAM requirements.
 
 For example, for 70B model, with 32-way sharding on a machine with 8xA10Gs (g5.48xlarge), you need 280G (because of checkpointing) and 315 GB (because of optimizer state offloading) making the total memory requirement ~595 GB.
 
@@ -237,7 +237,7 @@ You can easily submit a production job using the following command:
 python create_job_yaml.py --size=7b --output-path=./job.yaml
 ```
 
-This will create a job yaml file that you can use to submit a production job on Anyscale platform. 
+This will create a job yaml file that you can use to submit a production job on Anyscale platform.
 
 ```
 anyscale job submit job.yaml

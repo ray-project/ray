@@ -87,7 +87,7 @@ case $SIZE in
     ;;
 esac
 
-# Model related variables 
+# Model related variables
 MODEL_ID="meta-llama/Llama-2-${SIZE}-hf"
 CONFIG_DIR="./deepspeed_configs/zero_3_llama_2_${SIZE}.json"
 

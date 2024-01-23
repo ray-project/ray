@@ -227,4 +227,3 @@ There are a few options for restoring an experiment:
 ``resume_unfinished``, ``resume_errored`` and ``restart_errored``.
 Please see the documentation of
 :meth:`Tuner.restore() <ray.tune.tuner.Tuner.restore>` for more details.
-

@@ -101,4 +101,3 @@ At the end of these guides you will often find links to even more examples.
         .. button-ref:: tune_train_torch_example
 
             End-to-end Example for Tuning a PyTorch Model with PBT
-

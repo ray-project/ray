@@ -194,4 +194,3 @@ Multi Agent
 
     ~Algorithm.add_policy
     ~Algorithm.remove_policy
-

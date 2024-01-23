@@ -1,14 +1,14 @@
 /* Kapa Ask AI button */
 #kapa-widget-container figure {
-    padding: 0 !important;
-  }
+  padding: 0 !important;
+}
 
-  .mantine-Modal-root figure {
-    padding: 0 !important;
-  }
+.mantine-Modal-root figure {
+  padding: 0 !important;
+}
 
 .container-xl.blurred {
-    filter: blur(5px);
+  filter: blur(5px);
 }
 
 .chat-widget {
@@ -37,11 +37,11 @@
 }
 
 .chatFooter {
-    position: absolute;
-    bottom: 0;
-    right: 0;
-    width: 100%;
-    background-color: var(--pst-color-surface);
+  position: absolute;
+  bottom: 0;
+  right: 0;
+  width: 100%;
+  background-color: var(--pst-color-surface);
 }
 
 #openChatBtn {
@@ -57,14 +57,14 @@
 }
 
 #closeChatBtn {
-    border: none;
-    background-color: transparent;
-    color: var(--pst-color-text-base);
-    font-size: 1.2em;
+  border: none;
+  background-color: transparent;
+  color: var(--pst-color-text-base);
+  font-size: 1.2em;
 }
 
 #closeChatBtn:hover {
-    color: var(--pst-color-link-hover);
+  color: var(--pst-color-link-hover);
 }
 
 #searchBar {
@@ -79,7 +79,7 @@
   display: flex;
   justify-content: space-between;
   align-items: center;
-  padding: .5rem;
+  padding: 0.5rem;
 }
 
 .chatHeader > .header-wrapper {
@@ -88,22 +88,22 @@
 }
 
 .chatContentContainer {
-    padding: 15px;
-    max-height: calc(100% - 100px);
-    overflow-y: auto;
+  padding: 15px;
+  max-height: calc(100% - 100px);
+  overflow-y: auto;
 }
 
 .chatContentContainer input {
-    margin-top: 10px;
-    margin-bottom: 10px;
+  margin-top: 10px;
+  margin-bottom: 10px;
 }
 
 hr {
   border: none;
   height: 1px;
   /* Set the hr color */
-  color: #333;  /* old IE */
-  background-color: #333;  /* Modern Browsers */
+  color: #333; /* old IE */
+  background-color: #333; /* Modern Browsers */
 }
 
 #result * {
@@ -115,7 +115,7 @@ hr {
   height: 1px;
 }
 
-#result{
+#result {
   padding: 15px;
   border-radius: 10px;
   margin-top: 10px;
@@ -138,8 +138,8 @@ hr {
 }
 
 .input-group {
-    display: flex;
-    align-items: stretch;
+  display: flex;
+  align-items: stretch;
 }
 
 #blurDiv {

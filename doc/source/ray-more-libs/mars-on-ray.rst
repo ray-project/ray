@@ -7,8 +7,8 @@ Using Mars on Ray
 
 
 `Mars`_ is a tensor-based unified framework for large-scale data computation which scales Numpy, Pandas and Scikit-learn.
-Mars on Ray makes it easy to scale your programs with a Ray cluster. Currently Mars on Ray supports both Ray actors 
-and tasks as execution backend. The task will be scheduled by mars scheduler if Ray actors is used. This mode can reuse 
+Mars on Ray makes it easy to scale your programs with a Ray cluster. Currently Mars on Ray supports both Ray actors
+and tasks as execution backend. The task will be scheduled by mars scheduler if Ray actors is used. This mode can reuse
 all mars scheduler optimizations. If ray tasks mode is used, all tasks will be scheduled by ray, which can reuse failover and
 pipeline capabilities provided by ray futures.
 

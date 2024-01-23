@@ -87,7 +87,7 @@ Use `ray list actors --detail` from :ref:`State API <state-api-overview-ref>` to
       serialized_runtime_env: '{}'
       required_resources: {}
       death_cause:
-          actor_died_error_context: # <---- You could see the error message w.r.t why the actor exits. 
+          actor_died_error_context: # <---- You could see the error message w.r.t why the actor exits.
               error_message: The actor is dead because `ray.kill` killed it.
               owner_id: 01000000ffffffffffffffffffffffffffffffffffffffffffffffff
               owner_ip_address: 127.0.0.1
@@ -153,7 +153,7 @@ Note that this method of termination waits until any previously submitted
 tasks finish executing and then exits the process gracefully with sys.exit.
 
 
-    
+
 You could see the actor is dead as a result of the user's `exit_actor()` call:
 
 .. code-block:: bash

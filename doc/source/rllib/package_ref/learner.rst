@@ -141,7 +141,7 @@ Saving, Loading, Checkpointing, and Restoring States
     Learner.get_optimizer_state
     Learner.set_optimizer_state
     Learner._get_metadata
-    
+
 Adding and Removing Modules
 ---------------------------
 

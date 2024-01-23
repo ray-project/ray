@@ -28,7 +28,7 @@ Finally, deploy the resulting application using `serve.run` (or the equivalent `
 An application is the unit of upgrade in a Ray Serve cluster. An application consists of one or more deployments. One of these deployments is considered the [“ingress” deployment](serve-key-concepts-ingress-deployment), which handles all inbound traffic.
 
 Applications can be called via HTTP at the specified `route_prefix` or in Python using a `DeploymentHandle`.
- 
+
 (serve-key-concepts-deployment-handle)=
 
 ## DeploymentHandle (composing deployments)
