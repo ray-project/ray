@@ -1050,8 +1050,20 @@ def _setup_ray_cluster_internal(
         using_stage_scheduling = False
         res_profile = None
 
-        num_cpus_worker_node = num_spark_task_cpus
-        num_gpus_worker_node = num_spark_task_gpus
+        def _get_spark_worker_cpu_gpu_number(_):
+            from ray.util.spark.utils import _get_cpu_cores, _get_num_physical_gpus
+            num_cpus_spark_worker = _get_cpu_cores()
+            if num_spark_task_gpus == 0:
+                num_gpus_spark_worker = 0
+            else:
+                num_gpus_spark_worker = _get_num_physical_gpus()
+            return num_cpus_spark_worker, num_gpus_spark_worker
+
+        (num_cpus_worker_node, num_gpus_worker_node) = (
+            spark.sparkContext.parallelize([1], 1).map(
+                _get_spark_worker_cpu_gpu_number
+            ).collect()[0]
+        )
 
     (
         ray_worker_node_heap_mem_bytes,
