@@ -190,7 +190,7 @@ class OpRuntimeMetrics:
             or ray.data.DataContext.get_current().target_max_block_size
         )
         max_num_outputs_in_streaming_gen_buffer = (
-            StreamingOutputBackpressurePolicy.get_max_num_blocks_in_streaming_gen_buffer()
+            StreamingOutputBackpressurePolicy.get_max_num_blocks_in_streaming_gen_buffer()  # noqa: E501
         )
         return (
             self.num_tasks_running
