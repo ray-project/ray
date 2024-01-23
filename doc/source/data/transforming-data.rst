@@ -359,6 +359,15 @@ size during iteration. See more details in
     network transfer. This option can be used together with shuffling ordering of
     files.
 
+.. tip::
+
+    You may experience reduced throughput when using ``local_shuffle_buffer_size``;
+    one way to diagnose this is to check the total time spent in batch creation by
+    examining the ``ds.stats()`` output (``In batch formatting`` under
+    ``Batch iteration time breakdown``). If this time is significantly larger than the
+    time spent in other steps, one way to improve performance is to decrease
+    ``local_shuffle_buffer_size`` or disable the local shuffle buffer altogether.
+
 Shuffle all rows
 ~~~~~~~~~~~~~~~~
 
