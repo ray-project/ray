@@ -1,6 +1,6 @@
 (serve-java-tutorial)=
 
-# Java Tutorial
+# Serve a Java App
 
 To use Java Ray Serve, you need the following dependency in your pom.xml.
 

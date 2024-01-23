@@ -45,5 +45,5 @@ Advanced
 --------
 
 ```{list-table}
-  * - [Java and Ray Serve](java)
+  * - [Serve a Java App](java)
 ```

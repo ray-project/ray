@@ -2,7 +2,7 @@
 
 # Serve a Text Generator with Request Batching
 
-This guide deploys a simple text generator that takes in
+This example deploys a simple text generator that takes in
 a batch of queries and processes them at once. In particular, it shows:
 
 - How to implement and deploy a Ray Serve deployment that accepts batches.

@@ -2,7 +2,7 @@
 
 # Serve a Chatbot with Request and Response Streaming
 
-This guide deploys a chatbot that streams output back to the
+This example deploys a chatbot that streams output back to the
 user. It shows:
 
 * How to stream outputs from a Serve application
@@ -150,7 +150,7 @@ Create a Python file called `batchbot.py`. First add the imports:
 Hugging Face's support for `Streamers` is still under development and may change in the future. `RawQueue` is compatible with the `Streamers` interface in Transformers 4.30.2. However, the `Streamers` interface may change, making the `RawQueue` incompatible with Hugging Face models in the future.
 :::
 
-Similarly to `Textbot` and `Chatbot`, the `Batchbot` needs a streamer to stream outputs from batched requests, but Hugging Face `Streamers` don't support batched requests. Add this custom `RawStreamer` to process batches of tokens:
+Similar to `Textbot` and `Chatbot`, the `Batchbot` needs a streamer to stream outputs from batched requests, but Hugging Face `Streamers` don't support batched requests. Add this custom `RawStreamer` to process batches of tokens:
 
 ```{literalinclude} ../doc_code/streaming_tutorial.py
 :language: python
