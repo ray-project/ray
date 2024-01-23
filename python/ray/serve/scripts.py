@@ -6,7 +6,6 @@ import sys
 import time
 import traceback
 from dataclasses import asdict
-from tempfile import NamedTemporaryFile
 from typing import Any, Dict, List, Optional, Tuple
 
 import click
@@ -31,6 +30,7 @@ from ray.serve._private.deployment_graph_build import build as pipeline_build
 from ray.serve._private.deployment_graph_build import (
     get_and_validate_ingress_deployment,
 )
+from ray.serve._private.publish_provider import get_publish_provider
 from ray.serve.config import DeploymentMode, ProxyLocation, gRPCOptions
 from ray.serve.deployment import Application, deployment_to_schema
 from ray.serve.schema import (
@@ -38,6 +38,7 @@ from ray.serve.schema import (
     ServeApplicationSchema,
     ServeDeploySchema,
     ServeInstanceDetails,
+    _skip_validating_runtime_env_uris,
 )
 
 APP_DIR_HELP_STR = (
@@ -805,7 +806,6 @@ def build(
         f.write(config_str)
 
 
-
 def _generate_config_from_file_or_import_path(
     config_or_import_path: str,
     *,
@@ -814,7 +814,7 @@ def _generate_config_from_file_or_import_path(
 ) -> Tuple[ServeDeploySchema, str]:
     """Generates a deployable config schema and name for the passed applications(s).
 
-    NOTE: name must not contain any "." or ":" characters.
+    NOTE: the returned name must not contain any "." or ":" characters.
     """
     if pathlib.Path(config_or_import_path).is_file():
         config_path = config_or_import_path
@@ -830,12 +830,9 @@ def _generate_config_from_file_or_import_path(
                 "runtime_env arguments cannot be specified for a config file."
             )
 
-
         with open(config_path, "r") as config_file:
             config_dict = yaml.safe_load(config_file)
             config = ServeDeploySchema.parse_obj(config_dict)
-
-            # XXX: better validation?
             name = os.path.basename(config_file).split(".")[0]
     else:
         # TODO(edoakes): should we default to --working-dir="." for this?
@@ -844,10 +841,10 @@ def _generate_config_from_file_or_import_path(
 
         if import_path.count(":") != 1:
             raise click.ClickException(
-                f"Import path must be of the form 'module.submodule:app_or_builder', got: '{import_path}'."
+                "Import path must be of the form 'module.submodule:app_or_builder', "
+                f"got: '{import_path}'."
             )
         name = import_path.split(":")[1]
-
         app = ServeApplicationSchema(
             import_path=import_path,
             runtime_env=runtime_env,
@@ -859,9 +856,12 @@ def _generate_config_from_file_or_import_path(
     assert isinstance(name, str) and name
     return config, name
 
+
 @cli.command(
-    short_help="TODO.",
+    short_help="Publish an application to a remote provider.",
     help=("TODO."),
+    # TODO(edoakes): un-hide this at some point.
+    hidden=True,
 )
 @click.argument("config_or_import_path")
 @click.argument("arguments", nargs=-1, required=False)
@@ -896,14 +896,21 @@ def _generate_config_from_file_or_import_path(
     required=False,
     default=None,
     type=str,
-    help=("TODO."),
+    help="Optional custom name for the application.",
 )
 @click.option(
-    "--image",
+    "--base-image",
     required=False,
     default=None,
     type=str,
-    help=("TODO."),
+    help="Optional container image to use for the application.",
+)
+@click.option(
+    "--provider",
+    required=False,
+    default="anyscale",
+    type=str,
+    help="Publish provider to use. Defaults to anyscale.",
 )
 def publish(
     config_or_import_path: str,
@@ -912,47 +919,39 @@ def publish(
     runtime_env_json: str,
     working_dir: str,
     name: Optional[str],
-    image: Optional[str],
+    base_image: Optional[str],
+    provider: str,
 ):
+    args_dict = convert_args_to_dict(arguments)
     final_runtime_env = parse_runtime_env_args(
         runtime_env=runtime_env,
         runtime_env_json=runtime_env_json,
         working_dir=working_dir,
     )
 
-    config, default_name = _generate_config_from_file_or_import_path(
-        config_or_import_path,
-        arguments=convert_args_to_dict(arguments),
-        runtime_env=final_runtime_env,
-    )
+    # Skip validating runtime_env URIs so publishers can enable local URI usage.
+    with _skip_validating_runtime_env_uris():
+        config, default_name = _generate_config_from_file_or_import_path(
+            config_or_import_path,
+            arguments=args_dict,
+            runtime_env=final_runtime_env,
+        )
+
     if name is None:
         name = default_name
 
-    _publish_provider(config, name=name, image=image)
-
-
-def _publish_provider(
-    config: ServeDeploySchema,
-    *,
-    name: str,
-    image: Optional[str] = None,
-):
-    from anyscale.controllers.service_controller import ServiceController
-    sc = ServiceController()
-
-    service_config = {
-        "cloud": "anyscale_v2_default_cloud",
-        "name": name,
-        "ray_serve_config": config.dict(exclude_unset=True),
-    }
-    if image is not None:
-        service_config["cluster_env"] = image
-
-    with NamedTemporaryFile(mode="w") as f:
-        yaml.dump(service_config, f, default_flow_style=False)
-        # TODO: this is not a stable API. subprocess to CLI for now?
-        sc.rollout(f.name, auto_complete_rollout=True)
-
+    publish_provider = get_publish_provider(provider)
+    try:
+        publish_provider.publish(
+            config.dict(exclude_unset=True),
+            name=name,
+            ray_version=ray.__version__,
+            base_image=base_image,
+        )
+    except Exception as e:
+        # Providers are expected to log their own error messages. This prevents.
+        # the output from being too noisy.
+        raise click.ClickException("Failed to publish app.")
 
 
 class ServeDeploySchemaDumper(yaml.SafeDumper):
