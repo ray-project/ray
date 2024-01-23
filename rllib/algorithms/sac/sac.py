@@ -8,7 +8,6 @@ from ray.rllib.algorithms.sac.sac_tf_policy import SACTFPolicy
 from ray.rllib.core.learner import Learner
 from ray.rllib.core.rl_module.rl_module import SingleAgentRLModuleSpec
 from ray.rllib.env.single_agent_episode import SingleAgentEpisode
-from ray.rllib.evaluation.rollout_worker import RolloutWorker
 from ray.rllib.policy.policy import Policy
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils import deep_update
@@ -276,7 +275,6 @@ class SACConfig(AlgorithmConfig):
             self.tau = tau
         if initial_alpha is not NotProvided:
             self.initial_alpha = initial_alpha
-            # self.model.update({"initial_alpha": self.initial_alpha})
         if target_entropy is not NotProvided:
             self.target_entropy = target_entropy
         if n_step is not NotProvided:
@@ -351,6 +349,8 @@ class SACConfig(AlgorithmConfig):
             )
             try_import_tfp(error=True)
 
+        # Validate that we use the corresponding `EpisodeReplayBuffer` when using
+        # episodes.
         if (
             self.uses_new_env_runners
             and self.replay_buffer_config["type"] != "EpisodeReplayBuffer"
@@ -359,9 +359,6 @@ class SACConfig(AlgorithmConfig):
                 "When using the new `EnvRunner API` the replay buffer must be of type "
                 "`EpisodeReplayBuffer`."
             )
-
-        if self.uses_new_env_runners:
-            self.model.update({"initial_alpha": self.initial_alpha})
 
     @override(AlgorithmConfig)
     def get_rollout_fragment_length(self, worker_index: int = 0) -> int:
@@ -433,14 +430,9 @@ class SAC(DQN):
 
     @override(DQN)
     def training_step(self) -> ResultDict:
-        # Check, if we use `RolloutWorker` or `EnvRunner`.
-        use_rollout_worker = self.config.env_runner_cls is None or issubclass(
-            self.config.env_runner_cls, RolloutWorker
-        )
-
-        # If `RolloutWorker` is used and the old stack, then use as before
-        # the training step of the DQN algorithm.
-        if use_rollout_worker or not self.config._enable_new_api_stack:
+        # If `RolloutWorker` is used, then use as the old stack `training step`
+        # of `DQN`.
+        if not self.config.uses_new_env_runners:
             return super().training_step()
 
         # Alternate between storing and sampling and training.
@@ -483,15 +475,14 @@ class SAC(DQN):
         ]
 
         # If enough experiences have been sampled start training.
-        if current_ts > self.config.num_steps_sampled_before_learning_starts:
+        if current_ts >= self.config.num_steps_sampled_before_learning_starts:
             # Run multiple training iterations.
             for _ in range(sample_and_train_weight):
                 # Sample training batch from replay_buffer.
                 train_dict = self.local_replay_buffer.sample(
                     num_items=self.config.train_batch_size,
                     # TODO (simon): Implement for n-step adjustment.
-                    # batch_length_T=self.config.n_step + 1,
-                    batch_length_T=2,
+                    batch_length_T=self.config.n_step + 1,
                 )
 
                 # TODO (sven): This looks a bit ugly, but we have not the same
@@ -504,11 +495,19 @@ class SAC(DQN):
                 train_batch = SampleBatch(
                     {
                         SampleBatch.OBS: train_dict[SampleBatch.OBS][:, 0],
-                        SampleBatch.NEXT_OBS: train_dict[SampleBatch.OBS][:, 1],
+                        SampleBatch.NEXT_OBS: train_dict[SampleBatch.OBS][
+                            :, self.config.n_step
+                        ],
                         SampleBatch.ACTIONS: train_dict[SampleBatch.ACTIONS][:, 0],
-                        SampleBatch.REWARDS: train_dict[SampleBatch.REWARDS][:, 1],
-                        SampleBatch.TERMINATEDS: train_dict["is_terminated"][:, 0],
-                        SampleBatch.TRUNCATEDS: train_dict["is_truncated"][:, 0],
+                        SampleBatch.REWARDS: train_dict[SampleBatch.REWARDS][:, 1:].sum(
+                            dim=-1
+                        ),
+                        SampleBatch.TERMINATEDS: train_dict["is_terminated"][
+                            :, self.config.n_step
+                        ],
+                        SampleBatch.TRUNCATEDS: train_dict["is_truncated"][
+                            :, self.config.n_step
+                        ],
                         "is_first": train_dict["is_first"][:, 0],
                         "is_last": train_dict["is_last"][:, 0],
                     }
@@ -516,10 +515,8 @@ class SAC(DQN):
                 train_batch = train_batch.as_multi_agent()
 
                 # Training on batch.
-                train_results = self.learner_group.update(
-                    batch=train_batch,
-                    minibatch_size=self.config.train_batch_size,
-                    num_iters=1,
+                train_results = self.learner_group.update_from_batch(
+                    train_batch,
                 )
 
                 # Update replay buffer priorities.
@@ -531,11 +528,9 @@ class SAC(DQN):
                 )
 
                 # Update the target networks if necessary.
-                # TODO (sven): We have to get rid of the policies here and
-                # refer to modules.
-                policies_to_update = set(train_results.keys()) - {ALL_MODULES}
+                modules_to_update = set(train_results.keys()) - {ALL_MODULES}
                 additional_results = self.learner_group.additional_update(
-                    module_ids_to_update=policies_to_update,
+                    module_ids_to_update=modules_to_update,
                     timestep=self._counters[NUM_AGENT_STEPS_SAMPLED],
                     last_update=self._counters[LAST_TARGET_UPDATE_TS],
                 )
@@ -551,7 +546,7 @@ class SAC(DQN):
                     # NOTE: the new API stack does not use global vars.
                     self.workers.sync_weights(
                         from_worker_or_learner_group=self.learner_group,
-                        policies=policies_to_update,
+                        policies=modules_to_update,
                         global_vars=None,
                     )
                 # Then we must have a local worker.
