@@ -366,7 +366,7 @@ size during iteration. See more details in
     examining the ``ds.stats()`` output (``In batch formatting`` under
     ``Batch iteration time breakdown``). If this time is significantly larger than the
     time spent in other steps, one way to improve performance is to decrease
-    ``local_shuffle_buffer_size`` or disable the local shuffle buffer altogether.
+    ``local_shuffle_buffer_size`` or turn off the local shuffle buffer altogether.
 
 Shuffle all rows
 ~~~~~~~~~~~~~~~~
