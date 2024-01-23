@@ -146,4 +146,4 @@ class StreamingOutputBackpressurePolicy(BackpressurePolicy):
             " `DataContext.get_current().execution_options.exclude_resources`."
             " This message will only print once."
         )
-        logger.get_logger().warning(msg)
+        logger.get_logger(log_to_stdout=False).warning(msg)
