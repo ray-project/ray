@@ -165,10 +165,6 @@ class TaskManagerTest : public ::testing::Test {
       auto data = GenerateRandomBuffer();
       return_object->set_data(data->Data(), data->Size());
     }
-    for (int64_t i = 0; i < num_streaming_generator_returns; i++) {
-      auto return_id_proto = reply.add_streaming_generator_return_ids();
-      return_id_proto->set_object_id(spec.ReturnId(i + 1).Binary());
-    }
     manager_.CompletePendingTask(spec.TaskId(), reply, caller_address, false);
   }
 

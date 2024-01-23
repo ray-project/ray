@@ -44,7 +44,6 @@ struct CoreWorkerOptions {
       const std::string &serialized_retry_exception_allowlist,
       std::vector<std::pair<ObjectID, std::shared_ptr<RayObject>>> *returns,
       std::vector<std::pair<ObjectID, std::shared_ptr<RayObject>>> *dynamic_returns,
-      std::vector<std::pair<ObjectID, bool>> *streaming_generator_returns,
       std::shared_ptr<LocalMemoryBuffer> &creation_task_exception_pb_bytes,
       bool *is_retryable_error,
       // Application error string, empty if no error.

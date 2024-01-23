@@ -28,13 +28,14 @@ GeneratorBackpressureWaiter::GeneratorBackpressureWaiter(
 
 Status GeneratorBackpressureWaiter::WaitUntilObjectConsumed(
     std::function<Status()> check_signals) {
-  absl::MutexLock lock(&mutex_);
   if (backpressure_threshold_ < 0) {
     RAY_CHECK_EQ(backpressure_threshold_, -1);
     // Backpressure disabled if backpressure_threshold_ == -1.
     return Status::OK();
   }
   RAY_CHECK(check_signals != nullptr);
+
+  absl::MutexLock lock(&mutex_);
 
   auto return_status = Status::OK();
   auto total_object_unconsumed = total_objects_generated_ - total_objects_consumed_;

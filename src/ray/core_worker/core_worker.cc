@@ -142,8 +142,7 @@ CoreWorker::CoreWorker(const CoreWorkerOptions &options, const WorkerID &worker_
                                   std::placeholders::_4,
                                   std::placeholders::_5,
                                   std::placeholders::_6,
-                                  std::placeholders::_7,
-                                  std::placeholders::_8);
+                                  std::placeholders::_7);
     direct_task_receiver_ = std::make_unique<CoreWorkerDirectTaskReceiver>(
         worker_context_, task_execution_service_, execute_task, [this] {
           return local_raylet_client_->ActorCreationTaskDone();
@@ -2656,7 +2655,6 @@ Status CoreWorker::ExecuteTask(
     const std::shared_ptr<ResourceMappingType> &resource_ids,
     std::vector<std::pair<ObjectID, std::shared_ptr<RayObject>>> *return_objects,
     std::vector<std::pair<ObjectID, std::shared_ptr<RayObject>>> *dynamic_return_objects,
-    std::vector<std::pair<ObjectID, bool>> *streaming_generator_returns,
     ReferenceCounter::ReferenceTableProto *borrowed_refs,
     bool *is_retryable_error,
     std::string *application_error) {
@@ -2788,7 +2786,6 @@ Status CoreWorker::ExecuteTask(
       task_spec.GetSerializedRetryExceptionAllowlist(),
       return_objects,
       dynamic_return_objects,
-      streaming_generator_returns,
       creation_task_exception_pb_bytes,
       is_retryable_error,
       application_error,
@@ -3016,7 +3013,10 @@ Status CoreWorker::ReportGeneratorItemReturns(
   RAY_LOG(DEBUG) << "Write the object ref stream, index: " << item_index
                  << ", id: " << dynamic_return_object.first;
 
-  waiter->IncrementObjectGenerated();
+  if (waiter) {
+    waiter->IncrementObjectGenerated();
+  }
+
   client->ReportGeneratorItemReturns(
       request,
       [waiter, generator_id, item_index](
@@ -3024,32 +3024,43 @@ Status CoreWorker::ReportGeneratorItemReturns(
         RAY_LOG(DEBUG) << "ReportGeneratorItemReturns replied. " << generator_id
                        << "index: " << item_index << ". total_consumed_reported: "
                        << reply.total_num_object_consumed();
-        RAY_CHECK(waiter != nullptr);
-        RAY_LOG(DEBUG) << "Total object consumed: " << waiter->TotalObjectConsumed()
-                       << ". Total object generated: " << waiter->TotalObjectGenerated();
-        if (status.ok()) {
-          /// Since unary gRPC requests are not ordered, it is possible the stale
-          /// total value can be replied. Since total object consumed only can
-          /// increment, we always choose the larger value here.
-          waiter->UpdateTotalObjectConsumed(
-              std::max(waiter->TotalObjectConsumed(), reply.total_num_object_consumed()));
-        } else {
-          // TODO(sang): Handle network error more gracefully.
-          // If the request fails, we should just resume until task finishes without
-          // backpressure.
-          waiter->UpdateTotalObjectConsumed(waiter->TotalObjectGenerated());
-          RAY_LOG(WARNING) << "Failed to send the object ref.";
+        if (waiter) {
+          RAY_LOG(DEBUG) << "Total object consumed: " << waiter->TotalObjectConsumed()
+                         << ". Total object generated: "
+                         << waiter->TotalObjectGenerated();
+          if (status.ok()) {
+            /// Since unary gRPC requests are not ordered, it is possible the stale
+            /// total value can be replied. Since total object consumed only can
+            /// increment, we always choose the larger value here.
+            waiter->UpdateTotalObjectConsumed(std::max(
+                waiter->TotalObjectConsumed(), reply.total_num_object_consumed()));
+          } else {
+            // TODO(sang): Handle network error more gracefully.
+            // If the request fails, we should just resume until task finishes without
+            // backpressure.
+            waiter->UpdateTotalObjectConsumed(waiter->TotalObjectGenerated());
+            RAY_LOG(WARNING) << "Failed to send the object ref.";
+          }
         }
       });
+
   // Backpressure if needed. See task_manager.h and search "backpressure" for protocol
   // details.
-  return waiter->WaitUntilObjectConsumed(/*check_signals*/ [this]() {
+  if (waiter) {
+    return waiter->WaitUntilObjectConsumed(/*check_signals*/ [this]() {
+      if (options_.check_signals) {
+        return options_.check_signals();
+      } else {
+        return Status::OK();
+      }
+    });
+  } else {
     if (options_.check_signals) {
       return options_.check_signals();
     } else {
       return Status::OK();
     }
-  });
+  }
 }
 
 void CoreWorker::HandleReportGeneratorItemReturns(
@@ -3108,12 +3119,10 @@ std::vector<rpc::ObjectReference> CoreWorker::ExecuteTaskLocalMode(
   std::string application_error = "";
   // TODO(swang): Support DynamicObjectRefGenerators in local mode?
   std::vector<std::pair<ObjectID, std::shared_ptr<RayObject>>> dynamic_return_objects;
-  std::vector<std::pair<ObjectID, bool>> streaming_generator_returns;
   RAY_UNUSED(ExecuteTask(task_spec,
                          resource_ids,
                          &return_objects,
                          &dynamic_return_objects,
-                         &streaming_generator_returns,
                          &borrowed_refs,
                          &is_retryable_error,
                          &application_error));
