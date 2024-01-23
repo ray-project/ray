@@ -530,7 +530,7 @@ class PandasBlockAccessor(TableBlockAccessor):
             if key is not None:
                 # Extract a tuple of selected columns from the row
                 # print("keys ->>", key)
-                selected_columns = r._row.columns[:len(keys)]
+                selected_columns = r._row.columns[: len(keys)]
                 return tuple(r[selected_columns])
             else:
                 # If key is None, always return a tuple containing the single element 0

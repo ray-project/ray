@@ -382,7 +382,7 @@ def _insert_doc_at_pattern(
                 break
             elif not insert_after:
                 # Move past the found pattern, since we're skipping it.
-                tail = tail[i - offset + len(pattern):]
+                tail = tail[i - offset + len(pattern) :]
             i = tail.find(pattern)
         else:
             raise ValueError(
@@ -518,7 +518,7 @@ def _split_list(arr: List[Any], num_splits: int) -> List[List[Any]]:
     assert num_splits > 0
     q, r = divmod(len(arr), num_splits)
     splits = [
-        arr[i * q + min(i, r): (i + 1) * q + min(i + 1, r)] for i in range(num_splits)
+        arr[i * q + min(i, r) : (i + 1) * q + min(i + 1, r)] for i in range(num_splits)
     ]
     return splits
 
@@ -741,20 +741,20 @@ def find_partition_index(
             left = prevleft + (
                 len(col_vals)
                 - np.searchsorted(
-                col_vals,
-                desired_val,
-                side="right",
-                sorter=np.arange(len(col_vals) - 1, -1, -1),
-            )
+                    col_vals,
+                    desired_val,
+                    side="right",
+                    sorter=np.arange(len(col_vals) - 1, -1, -1),
+                )
             )
             right = prevleft + (
                 len(col_vals)
                 - np.searchsorted(
-                col_vals,
-                desired_val,
-                side="left",
-                sorter=np.arange(len(col_vals) - 1, -1, -1),
-            )
+                    col_vals,
+                    desired_val,
+                    side="left",
+                    sorter=np.arange(len(col_vals) - 1, -1, -1),
+                )
             )
         else:
             left = prevleft + np.searchsorted(col_vals, desired_val, side="left")
