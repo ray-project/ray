@@ -45,13 +45,13 @@ class SACRLModule(RLModule, RLModuleWithTargetNetworksInterface):
     ---
     If `twin_q=True`:
     [obs, action] -> [qf_target_twin_encoder] -> [qf_target_twin_head]
-    -> [1-target_twin-value]
+    -> [q-target-twin-value]
     """
 
     @override(RLModule)
     def setup(self):
         # __sphinx_doc_begin__
-        # super().setup()
+        # Get the SAC catalog.
         catalog: SACCatalog = self.config.get_catalog()
 
         # Build the encoder for the policy.
@@ -77,6 +77,7 @@ class SACRLModule(RLModule, RLModuleWithTargetNetworksInterface):
         self.qf_target_encoder.trainable = False
         self.qf_target.trainable = False
 
+        # Get the action distribution class.
         self.action_dist_cls = catalog.get_action_dist_cls(framework=self.framework)
         # __sphinx_doc_end__
 
