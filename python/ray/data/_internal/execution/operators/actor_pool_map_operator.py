@@ -83,7 +83,7 @@ class ActorPoolMapOperator(MapOperator):
         self._ray_remote_args = self._apply_default_remote_args(self._ray_remote_args)
         self._ray_actor_task_remote_args = {}
         actor_task_errors = DataContext.get_current().actor_task_retry_on_errors
-        if len(actor_task_errors) > 0:
+        if actor_task_errors:
             self._ray_actor_task_remote_args["retry_exceptions"] = actor_task_errors
         self._min_rows_per_bundle = min_rows_per_bundle
 

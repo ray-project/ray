@@ -1,6 +1,6 @@
 import os
 import threading
-from typing import TYPE_CHECKING, Any, Dict, List, Optional
+from typing import TYPE_CHECKING, Any, Dict, List, Optional, Union
 
 import ray
 from ray._private.ray_constants import env_integer
@@ -160,8 +160,10 @@ DEFAULT_WRITE_FILE_RETRY_ON_ERRORS = [
 ]
 
 # The application-level errors that actor task would retry.
-# Default to empty list to not retry on any errors.
-DEFAULT_ACTOR_TASK_RETRY_ON_ERRORS = []
+# Default to `False` to not retry on any errors.
+# Set to `True` to retry all errors, or set to a list of errors to retry.
+# This follows same format as `retry_exceptions` in Ray Core.
+DEFAULT_ACTOR_TASK_RETRY_ON_ERRORS = False
 
 
 @DeveloperAPI
@@ -205,7 +207,7 @@ class DataContext:
         enable_get_object_locations_for_metrics: bool,
         use_runtime_metrics_scheduling: bool,
         write_file_retry_on_errors: List[str],
-        actor_task_retry_on_errors: List[str],
+        actor_task_retry_on_errors: Union[bool, List[BaseException]],
     ):
         """Private constructor (use get_current() instead)."""
         self.target_max_block_size = target_max_block_size
