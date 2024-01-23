@@ -32,6 +32,7 @@ from .utils import (
     gen_cmd_exec_failure_msg,
     calc_mem_ray_head_node,
     _wait_service_up,
+    _get_spark_worker_ray_node_slots,
 )
 from .start_hook_base import RayOnSparkStartHook
 from .databricks_hook import DefaultDatabricksRayOnSparkStartHook
@@ -1025,6 +1026,27 @@ def _setup_ray_cluster_internal(
     if num_gpus_worker_node is not None and num_gpus_worker_node < 0:
         raise ValueError("Argument `num_gpus_worker_node` value must be >= 0.")
 
+    def _get_spark_worker_resources(_):
+        from ray.util.spark.utils import (
+            _get_cpu_cores,
+            _get_num_physical_gpus,
+            _get_spark_worker_total_physical_memory,
+        )
+
+        num_cpus_spark_worker = _get_cpu_cores()
+        if num_spark_task_gpus == 0:
+            num_gpus_spark_worker = 0
+        else:
+            num_gpus_spark_worker = _get_num_physical_gpus()
+        total_mem_bytes = _get_spark_worker_total_physical_memory()
+        return num_cpus_spark_worker, num_gpus_spark_worker, total_mem_bytes
+
+    (num_cpus_spark_worker, num_gpus_spark_worker, spark_worker_mem_bytes) = (
+        spark.sparkContext.parallelize([1], 1).map(
+            _get_spark_worker_resources
+        ).collect()[0]
+    )
+
     if num_cpus_worker_node is not None or num_gpus_worker_node is not None:
         if support_stage_scheduling:
             num_cpus_worker_node = num_cpus_worker_node or num_spark_task_cpus
@@ -1050,20 +1072,12 @@ def _setup_ray_cluster_internal(
         using_stage_scheduling = False
         res_profile = None
 
-        def _get_spark_worker_cpu_gpu_number(_):
-            from ray.util.spark.utils import _get_cpu_cores, _get_num_physical_gpus
-            num_cpus_spark_worker = _get_cpu_cores()
-            if num_spark_task_gpus == 0:
-                num_gpus_spark_worker = 0
-            else:
-                num_gpus_spark_worker = _get_num_physical_gpus()
-            return num_cpus_spark_worker, num_gpus_spark_worker
+        num_cpus_worker_node = num_cpus_spark_worker
+        num_gpus_worker_node = num_gpus_spark_worker
 
-        (num_cpus_worker_node, num_gpus_worker_node) = (
-            spark.sparkContext.parallelize([1], 1).map(
-                _get_spark_worker_cpu_gpu_number
-            ).collect()[0]
-        )
+    spark_worker_ray_node_slots = _get_spark_worker_ray_node_slots(
+        num_cpus_worker_node, num_gpus_worker_node
+    )
 
     (
         ray_worker_node_heap_mem_bytes,

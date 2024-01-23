@@ -287,14 +287,6 @@ def _calc_mem_per_ray_node(
         heap_mem_bytes = available_physical_mem_per_node - object_store_bytes
     else:
         heap_mem_bytes = configured_heap_memory_bytes
-        if heap_mem_bytes > available_physical_mem_per_node - object_store_bytes:
-            heap_mem_bytes = available_physical_mem_per_node - object_store_bytes
-            warning_msg = (
-                "heap_memory_per_node + object_store_memory_per_node exceeds "
-                "available memory per node, so heap_memory_per_node is capped "
-                "by 'available_memory_per_node - object_store_memory_per_node' "
-                f"({heap_mem_bytes}) bytes."
-            )
 
     return heap_mem_bytes, object_store_bytes, warning_msg
 
@@ -353,6 +345,32 @@ def _get_num_physical_gpus():
     return len(completed_proc.stdout.strip().split("\n"))
 
 
+def _get_spark_worker_ray_node_slots(num_cpus_per_node, num_gpus_per_node):
+    num_cpus = _get_cpu_cores()
+
+    if num_cpus_per_node > num_cpus:
+        raise ValueError(
+            "cpu number per Ray worker node should be <= spark worker node CPU cores, "
+            f"you set cpu number per Ray worker node to {num_cpus_per_node} but "
+            f"spark worker node CPU core number is {num_cpus}."
+        )
+    num_ray_node_slots = num_cpus // num_cpus_per_node
+
+    if num_gpus_per_node > 0:
+        num_gpus = _get_num_physical_gpus()
+        if num_gpus_per_node > num_gpus:
+            raise ValueError(
+                "gpu number per Ray worker node should be <= spark worker node "
+                "GPU number, you set cpu number per Ray worker node to "
+                f"{num_cpus_per_node} but spark worker node CPU core number "
+                f"is {num_cpus}."
+            )
+        if num_ray_node_slots > num_gpus // num_gpus_per_node:
+            num_ray_node_slots = num_gpus // num_gpus_per_node
+
+    return num_ray_node_slots
+
+
 def _get_avail_mem_per_ray_worker_node(
     num_cpus_per_node,
     num_gpus_per_node,
@@ -367,28 +385,9 @@ def _get_avail_mem_per_ray_worker_node(
         warning_message,
     )
     """
-
-    num_cpus = _get_cpu_cores()
-
-    if num_cpus_per_node > num_cpus:
-        raise ValueError(
-            "cpu number per Ray worker node should be <= spark worker node CPU cores, "
-            f"you set cpu number per Ray worker node to {num_cpus_per_node} but "
-            f"spark worker node CPU core number is {num_cpus}."
-        )
-    num_task_slots = num_cpus // num_cpus_per_node
-
-    if num_gpus_per_node > 0:
-        num_gpus = _get_num_physical_gpus()
-        if num_gpus_per_node > num_gpus:
-            raise ValueError(
-                "gpu number per Ray worker node should be <= spark worker node "
-                "GPU number, you set cpu number per Ray worker node to "
-                f"{num_cpus_per_node} but spark worker node CPU core number "
-                f"is {num_cpus}."
-            )
-        if num_task_slots > num_gpus // num_gpus_per_node:
-            num_task_slots = num_gpus // num_gpus_per_node
+    num_ray_node_slots = _get_spark_worker_ray_node_slots(
+        num_cpus_per_node, num_gpus_per_node
+    )
 
     physical_mem_bytes = _get_spark_worker_total_physical_memory()
     shared_mem_bytes = _get_spark_worker_total_shared_memory()
@@ -398,7 +397,7 @@ def _get_avail_mem_per_ray_worker_node(
         ray_worker_node_object_store_bytes,
         warning_msg,
     ) = _calc_mem_per_ray_worker_node(
-        num_task_slots,
+        num_ray_node_slots,
         physical_mem_bytes,
         shared_mem_bytes,
         heap_memory_per_node,
