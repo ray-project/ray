@@ -54,13 +54,13 @@ class _BigQueryDatasink(Datasink):
 
         # Delete table if overwrite_table is True
         if self.overwrite_table:
-            print(
+            logger.info(
                 f"Attempting to delete table {self.dataset}"
                 + " if it already exists since kwarg overwrite_table = True."
             )
             client.delete_table(f"{self.project_id}.{self.dataset}", not_found_ok=True)
         else:
-            print(
+            logger.info(
                 f"The write will append to table {self.dataset}"
                 + " if it already exists since kwarg overwrite_table = False."
             )
