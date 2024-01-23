@@ -2116,7 +2116,7 @@ tensorboard==2.15.1
     # via tensorflow
 tensorboard-data-server==0.7.2
     # via tensorboard
-tensorboardx==2.6
+tensorboardx==2.6.2.2
     # via
     #   -r /home/ubuntu/ray/ci/../python/requirements.txt
     #   -r /home/ubuntu/ray/ci/../python/requirements/test-requirements.txt

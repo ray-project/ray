@@ -49,7 +49,7 @@ scikit-image==0.21.0
 prometheus_client>=0.7.1
 requests
 pandas
-tensorboardX
+tensorboardX==2.6.2.2
 aiohttp>=3.7,<3.9
 starlette
 typer
