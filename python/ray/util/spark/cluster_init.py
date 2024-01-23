@@ -1221,6 +1221,8 @@ def setup_ray_cluster(
     num_cpus_head_node: Optional[int] = None,
     num_gpus_worker_node: Optional[int] = None,
     num_gpus_head_node: Optional[int] = None,
+    heap_memory_worker_node: Optional[int] = None,
+    heap_memory_head_node: Optional[int] = None,
     object_store_memory_worker_node: Optional[int] = None,
     object_store_memory_head_node: Optional[int] = None,
     head_node_options: Optional[Dict] = None,
@@ -1278,6 +1280,10 @@ def setup_ray_cluster(
             use 0 instead.
             This argument is only available on spark cluster which spark driver node
             has GPUs.
+        heap_memory_worker_node: Optional[int]:
+            Heap memory available to per-ray worker node.
+        heap_memory_head_node: Optional[int]:
+            Heap memory available to per-ray head node.
         object_store_memory_worker_node: Object store memory available to per-ray worker
             node, but it is capped by
             "dev_shm_available_size * 0.8 / num_tasks_per_spark_worker".
@@ -1348,6 +1354,8 @@ def setup_ray_cluster(
         num_cpus_head_node=num_cpus_head_node,
         num_gpus_worker_node=num_gpus_worker_node,
         num_gpus_head_node=num_gpus_head_node,
+        heap_memory_worker_node=heap_memory_worker_node,
+        heap_memory_head_node=heap_memory_head_node,
         object_store_memory_worker_node=object_store_memory_worker_node,
         object_store_memory_head_node=object_store_memory_head_node,
         head_node_options=head_node_options,
@@ -1371,6 +1379,8 @@ def setup_global_ray_cluster(
     num_cpus_head_node: Optional[int] = None,
     num_gpus_worker_node: Optional[int] = None,
     num_gpus_head_node: Optional[int] = None,
+    heap_memory_worker_node: Optional[int] = None,
+    heap_memory_head_node: Optional[int] = None,
     object_store_memory_worker_node: Optional[int] = None,
     object_store_memory_head_node: Optional[int] = None,
     head_node_options: Optional[Dict] = None,
@@ -1416,6 +1426,8 @@ def setup_global_ray_cluster(
         num_cpus_head_node=num_cpus_head_node,
         num_gpus_worker_node=num_gpus_worker_node,
         num_gpus_head_node=num_gpus_head_node,
+        heap_memory_worker_node=heap_memory_worker_node,
+        heap_memory_head_node=heap_memory_head_node,
         object_store_memory_worker_node=object_store_memory_worker_node,
         object_store_memory_head_node=object_store_memory_head_node,
         head_node_options=head_node_options,
