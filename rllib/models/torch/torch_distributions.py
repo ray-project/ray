@@ -235,7 +235,7 @@ class TorchSquashedGaussian(TorchDistribution):
     def __init__(
         self,
         loc: Union[float, torch.Tensor],
-        scale: Optional[Union[float, torch.Tensor]],
+        scale: Optional[Union[float, torch.Tensor]] = 1.0,
         low: float = -1.0,
         high: float = 1.0,
     ):

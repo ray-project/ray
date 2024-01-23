@@ -14,10 +14,41 @@ from ray.rllib.utils.annotations import ExperimentalAPI, override
 
 CRITIC_TARGET = "critic_target"
 QF_PREDS = "qf_preds"
+ACTION_DIST_INPUTS_NEXT = "action_dist_inputs_next"
 
 
 @ExperimentalAPI
 class SACRLModule(RLModule, RLModuleWithTargetNetworksInterface):
+    """`RLModule` for the Soft-Actor-Critic (SAC) algorithm.
+
+    It consists of several architectures, each in turn composed of
+    two networks: an encoder and a head.
+
+    The policy (actor) contains a state encoder (`pi_encoder`) and
+    a head (`pi_head`) that feeds into an action distribution (a
+    squashed Gaussian, i.e. outputs defione the location and the log
+    scale parameters).
+
+    In addition, two (or three in case `twin_q=True`) Q networks are
+    defined, the second one (and third, if `twin_q=True`) of them the
+    Q target network(s). All of these in turn are - similar to the
+    policy network - composed of an encoder and a head network. Each of
+    the encoders forms a state-action encoding that feeds into the
+    corresponding value heads to result in an estimation of the soft
+    action-value of SAC.
+
+    The following graphics show the forward passes through this module:
+    [obs] -> [pi_encoder] -> [pi_head] -> [action_dist_inputs]
+    [obs, action] -> [qf_encoder] -> [qf_head] -> [q-value]
+    [obs, action] -> [qf_target_encoder] -> [qf_target_head]
+    -> [q-target-value]
+    ---
+    If `twin_q=True`:
+    [obs, action] -> [qf_target_twin_encoder] -> [qf_target_twin_head]
+    -> [1-target_twin-value]
+    """
+
+    @override(RLModule)
     def setup(self):
         # __sphinx_doc_begin__
         # super().setup()
@@ -47,20 +78,21 @@ class SACRLModule(RLModule, RLModuleWithTargetNetworksInterface):
         self.qf_target.trainable = False
 
         self.action_dist_cls = catalog.get_action_dist_cls(framework=self.framework)
-
-        # Define the temperature.
-        self.alpha = self.config.model_config_dict["initial_alpha"]
         # __sphinx_doc_end__
 
+    @override(RLModule)
     def get_exploration_action_dist_cls(self) -> Type[Distribution]:
         return self.action_dist_cls
 
+    @override(RLModule)
     def get_inference_action_dist_cls(self) -> Type[Distribution]:
         return self.action_dist_cls
 
+    @override(RLModule)
     def get_train_action_dist_cls(self) -> Type[Distribution]:
         return self.action_dist_cls
 
+    # TODO (simon): SAC does not support RNNs, yet.
     @override(RLModule)
     def get_initial_state(self) -> dict:
         # if hasattr(self.pi_encoder, "get_initial_state"):
@@ -102,5 +134,5 @@ class SACRLModule(RLModule, RLModuleWithTargetNetworksInterface):
         return [
             QF_PREDS,
             SampleBatch.ACTION_DIST_INPUTS,
-            "action_dist_inputs_next",
+            ACTION_DIST_INPUTS_NEXT,
         ]
