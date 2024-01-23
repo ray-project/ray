@@ -103,7 +103,10 @@ class HuggingFaceDatasource(Datasource):
 
         import requests
 
-        public_url = f"https://huggingface.co/api/datasets/{dataset_name}/parquet/{config_name}/{split_name}"
+        public_url = (
+            f"https://huggingface.co/api/datasets/{dataset_name}"
+            f"/parquet/{config_name}/{split_name}"
+        )
         resp = requests.get(public_url)
         if resp.status_code == requests.codes["ok"]:
             # dataset corresponds to a public dataset, return list of parquet_files

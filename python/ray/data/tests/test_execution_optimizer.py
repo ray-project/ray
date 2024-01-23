@@ -1317,7 +1317,8 @@ def test_from_arrow_refs_e2e(ray_start_regular_shared, enable_optimizer):
 
 
 def test_from_huggingface_e2e(ray_start_regular_shared, enable_optimizer):
-    import datasets, pyarrow
+    import datasets
+    import pyarrow
 
     data = datasets.load_dataset("tweet_eval", "emotion")
     assert isinstance(data, datasets.DatasetDict)
