@@ -6,20 +6,22 @@ from typing import List, Optional, Tuple
 
 import ray
 from ray.rllib.env.multi_agent_env import MultiAgentEnv
-from ray.rllib.env.multi_agent_episode import MultiAgentEpisode
+from ray.rllib.env.multi_agent_episode_v2 import MultiAgentEpisodeV2 as MultiAgentEpisode
+from ray.rllib.utils.test_utils import check
 from ray.rllib.utils.typing import MultiAgentDict
 
 
 class MultiAgentTestEnv(MultiAgentEnv):
     def __init__(self, truncate=True):
+        super().__init__()
         self.t = 0
         self._agent_ids = {"agent_" + str(i) for i in range(10)}
-        self.observation_space = {
+        self.observation_space = gym.spaces.Dict({
             agent_id: gym.spaces.Discrete(201) for agent_id in self._agent_ids
-        }
-        self.action_space = {
+        })
+        self.action_space = gym.spaces.Dict({
             agent_id: gym.spaces.Discrete(200) for agent_id in self._agent_ids
-        }
+        })
 
         self._agents_alive = set(self._agent_ids)
         self.truncate = truncate
@@ -31,15 +33,15 @@ class MultiAgentTestEnv(MultiAgentEnv):
         options: Optional[dict] = None,
     ) -> Tuple[MultiAgentDict, MultiAgentDict]:
         # Call the super's reset function.
-        super().reset(seed=seed if seed else 0, options=options)
+        super().reset(seed=seed, options=options)
 
         # Set the timestep back to zero.
         self.t = 0
         # The number of agents that are ready at this timestep.
         # Note, if we want to use an RNG, we need to use the one from the
-        # `gym.Env` otherwise results are not reproducable. This RNG is
+        # `gym.Env` otherwise results are not reproducible. This RNG is
         # stored to `self._np_random`.
-        num_agents_step = self._np_random.integers(1, len(self._agent_ids))
+        num_agents_step = self._np_random.integers(1, len(self._agent_ids) + 1)
         # The agents that are ready.
         agents_step = self._np_random.choice(
             np.array(sorted(self._agent_ids)), num_agents_step, replace=False
@@ -61,7 +63,7 @@ class MultiAgentTestEnv(MultiAgentEnv):
         # Increase the timestep by one.
         self.t += 1
         # The number of agents that are ready at this timestep.
-        num_agents_step = self._np_random.integers(1, len(self._agents_alive))
+        num_agents_step = self._np_random.integers(1, len(self._agents_alive) + 1)
         # The agents that are ready.
         agents_step = self._np_random.choice(
             np.array(sorted(self._agents_alive)), num_agents_step, replace=False
@@ -75,7 +77,7 @@ class MultiAgentTestEnv(MultiAgentEnv):
             {
                 agent_id: 1.0
                 for agent_id in self._np_random.choice(
-                    np.array(sorted(self._agents_alive)), 8, replace=False
+                    np.array(sorted(self._agents_alive)), num_agents_step, replace=False
                 )
                 if agent_id not in reward
             }
@@ -137,11 +139,11 @@ class TestMultiAgentEpisode(unittest.TestCase):
         # Create an empty episode.
         episode = MultiAgentEpisode()
         # Empty episode should have a start point and count of zero.
-        self.assertTrue(episode.t_started == episode.t == 0)
+        self.assertTrue(episode.env_t_started == episode.env_t == 0)
 
         # Create an episode with a specific starting point, but no data.
-        episode = MultiAgentEpisode(t_started=10)
-        self.assertTrue(episode.t == episode.t_started == 10)
+        episode = MultiAgentEpisode(env_t_started=10)
+        self.assertTrue(episode.env_t == episode.env_t_started == 10)
 
         # Sample 100 values and initialize the episode with observations.
         env = MultiAgentTestEnv()
@@ -187,12 +189,12 @@ class TestMultiAgentEpisode(unittest.TestCase):
             terminateds=terminateds,
             truncateds=truncateds,
             extra_model_outputs=extra_model_outputs,
-            t_started=len(rewards),
+            env_t_started=len(rewards),
             len_lookback_buffer="auto",  # default
         )
 
         # The starting point and count should now be at `len(observations) - 1`.+
-        self.assertTrue(episode.t == episode.t_started == len(rewards))
+        self.assertTrue(episode.env_t == episode.env_t_started == len(rewards))
         # Assert that agent 1 and agent 5 are both terminated.
         self.assertTrue(episode.agent_episodes["agent_1"].is_terminated)
         self.assertTrue(episode.agent_episodes["agent_5"].is_terminated)
@@ -200,13 +202,6 @@ class TestMultiAgentEpisode(unittest.TestCase):
         for agent_id in env.get_agent_ids():
             if agent_id != "agent_1" and agent_id != "agent_5":
                 self.assertFalse(episode.agent_episodes[agent_id].is_done)
-        # Ensure that all global reward lists match in length the global reward
-        # timestep mappings.
-        # for agent_id in episode._agent_ids:
-        #    self.assertEqual(
-        #        len(episode.partial_rewards[agent_id]),
-        #        len(episode.partial_rewards_t[agent_id]),
-        #    )
 
         # Test now intializing an episode and setting the starting timestep at once.
         episode = MultiAgentEpisode(
@@ -218,22 +213,22 @@ class TestMultiAgentEpisode(unittest.TestCase):
             terminateds=terminateds,
             truncateds=truncateds,
             extra_model_outputs=extra_model_outputs[-10:],
-            t_started=100,
+            env_t_started=100,
         )
 
         # Assert that the episode starts indeed at 100.
-        self.assertEqual(episode.t, episode.t_started, 100)
-        # Assert that the highest index in the timestep mapping is indeed 10.
-        highest_index = max(
-            [
-                max(timesteps)
-                for timesteps in episode.global_t_to_local_t.values()
-                if len(timesteps.timesteps) > 0
-            ]
+        check(episode.env_t, episode.env_t_started, 100)
+        # Assert single-agent episode correctness within ma episode.
+        check(len(episode.agent_episodes["agent_5"]), 4)
+        check(len(episode.agent_episodes["agent_5"].observations), 5)
+        check(len(episode.agent_episodes["agent_5"].rewards), 4)
+        check(episode.agent_episodes["agent_5"].is_terminated, True)
+        check(episode.agent_episodes["agent_5"].is_truncated, False)
+        check(
+            episode.env_t_to_agent_t["agent_5"].data,
+            [0, 1, 2, "S", "S", "S", "S", "S", 3, "S", 4],
         )
-        self.assertGreaterEqual(10, highest_index)
-        # Assert that agent 5 is terminated.
-        self.assertTrue(episode.agent_episodes["agent_5"].is_terminated)
+        check(episode.agent_episodes["agent_5"].is_finalized, False)
 
         # Now test, if agents that have never stepped are handled correctly.
         # agent 5 will be the agent that never stepped.
@@ -248,7 +243,7 @@ class TestMultiAgentEpisode(unittest.TestCase):
 
         # Create the episode from the mock data.
         episode = MultiAgentEpisode(
-            agent_ids=["agent_1", "agent_2", "agent_3", "agent_4", "agent_5"],
+            #agent_ids=["agent_1", "agent_2", "agent_3", "agent_4", "agent_5"],
             observations=observations,
             actions=actions,
             rewards=rewards,
@@ -259,11 +254,11 @@ class TestMultiAgentEpisode(unittest.TestCase):
         )
 
         # Assert that the length of `SingleAgentEpisode`s are all correct.
-        self.assertEqual(len(episode.agent_episodes["agent_1"]), 1)
-        self.assertEqual(len(episode.agent_episodes["agent_2"]), 1)
-        self.assertEqual(len(episode.agent_episodes["agent_3"]), 1)
-        self.assertEqual(len(episode.agent_episodes["agent_4"]), 1)
-        self.assertEqual(len(episode.agent_episodes["agent_5"]), 0)
+        check(len(episode.agent_episodes["agent_1"]), 1)
+        check(len(episode.agent_episodes["agent_2"]), 1)
+        check(len(episode.agent_episodes["agent_3"]), 1)
+        check(len(episode.agent_episodes["agent_4"]), 1)
+        #check(len(episode.agent_episodes["agent_5"]), 0)
 
         # TODO (simon): Also test the other structs inside the MAE for agent 5 and
         #  the other agents.
@@ -273,7 +268,11 @@ class TestMultiAgentEpisode(unittest.TestCase):
         env = MultiAgentTestEnv()
         # Generate an empty multi-agent episode. Note. we have to provide the
         # agent ids.
-        episode = MultiAgentEpisode(agent_ids=env.get_agent_ids())
+        episode = MultiAgentEpisode(
+            agent_ids=env.get_agent_ids(),
+            observation_space=env.observation_space,
+            action_space=env.action_space,
+        )
 
         # Generate initial observations and infos and add them to the episode.
         obs, infos = env.reset(seed=0)
@@ -283,25 +282,25 @@ class TestMultiAgentEpisode(unittest.TestCase):
         )
 
         # Assert that timestep is at zero.
-        self.assertTrue(episode.t == episode.t_started == 0)
+        self.assertTrue(episode.env_t == episode.env_t_started == 0)
         # Assert that the agents with initial observations have their single-agent
         # episodes in place.
         for agent_id in obs:
             self.assertGreater(len(episode.agent_episodes[agent_id].observations), 0)
             self.assertGreater(len(episode.agent_episodes[agent_id].infos), 0)
-            # Furthermore, esnure that all agents have an entry in the global timestep
-            # mapping.
-            self.assertEqual(len(episode.global_t_to_local_t[agent_id]), 1)
-            self.assertEqual(episode.global_t_to_local_t[agent_id][0], 0)
+            # Furthermore, ensure that all agents have no entries yet in their env-
+            # to agent-timestep mappings (because they have NOT stepped yet).
+            check(len(episode.env_t_to_agent_t[agent_id]), 0)
 
         # TODO (simon): Test the buffers and reward storage.
 
     def test_add_env_step(self):
-        # Create an environment and add the initial observations, infos, and states.
+        # Create an environment and add the initial observations and infos.
         env = MultiAgentTestEnv()
         episode = MultiAgentEpisode(agent_ids=env.get_agent_ids())
 
-        obs, infos = env.reset(seed=0)
+        obs, infos = env.reset(seed=10)
+        print("reset obs", obs)
         episode.add_env_reset(
             observations=obs,
             infos=infos,
@@ -313,6 +312,8 @@ class TestMultiAgentEpisode(unittest.TestCase):
                 agent_id: i + 1 for agent_id in obs if agent_id in env._agents_alive
             }
             obs, reward, terminated, truncated, info = env.step(action)
+            print("action", action)
+            print("-> obs", obs)
 
             episode.add_env_step(
                 observations=obs,
@@ -325,7 +326,7 @@ class TestMultiAgentEpisode(unittest.TestCase):
             )
 
         # Assert that the timestep is at 100.
-        self.assertEqual(episode.t, 100)
+        check(episode.env_t, 100)
         # Ensure that the episode is not done yet.
         self.assertFalse(episode.is_done)
         # Ensure that agent 1 and agent 5 are indeed done.
@@ -333,15 +334,13 @@ class TestMultiAgentEpisode(unittest.TestCase):
         self.assertTrue(episode.agent_episodes["agent_5"].is_done)
         # Also ensure that their buffers are all empty:
         for agent_id in ["agent_1", "agent_5"]:
-            self.assertTrue(episode.agent_buffers[agent_id]["actions"].empty())
-            self.assertTrue(episode.agent_buffers[agent_id]["rewards"].empty())
-            self.assertTrue(
-                episode.agent_buffers[agent_id]["extra_model_outputs"].empty()
-            )
+            self.assertTrue(agent_id not in episode._agent_buffered_actions)
+            self.assertTrue(agent_id not in episode._agent_buffered_rewards)
+            self.assertTrue(agent_id not in episode._agent_buffered_extra_model_outputs)
         # Ensure that the maximum timestep in the global timestep mapping
         # is 100.
         highest_timestep = max(
-            [max(timesteps) for timesteps in episode.global_t_to_local_t.values()]
+            [max(timesteps) for timesteps in episode.env_t_to_agent_t.values()]
         )
         self.assertGreaterEqual(100, highest_timestep)
 
@@ -415,8 +414,8 @@ class TestMultiAgentEpisode(unittest.TestCase):
         # Note also, all other buffers are always full, due to their defaults.
         self.assertTrue(episode.agent_buffers["agent_4"]["actions"].full())
         # Assert that the reward buffers of agents 3 and 5 are at 1.0.
-        self.assertEquals(episode.agent_buffers["agent_3"]["rewards"].get_nowait(), 1.0)
-        self.assertEquals(episode.agent_buffers["agent_5"]["rewards"].get_nowait(), 1.0)
+        check(episode.agent_buffers["agent_3"]["rewards"].get_nowait(), 1.0)
+        check(episode.agent_buffers["agent_5"]["rewards"].get_nowait(), 1.0)
         # Now, refill the buffers.
         episode.agent_buffers["agent_3"]["rewards"].put_nowait(1.0)
         episode.agent_buffers["agent_5"]["rewards"].put_nowait(1.0)
@@ -426,31 +425,31 @@ class TestMultiAgentEpisode(unittest.TestCase):
         episode_1, _ = self._mock_multi_agent_records_from_env(size=100)
 
         # Assert that the episode has 100 timesteps.
-        self.assertEqual(episode_1.t, 100)
+        check(episode_1.t, 100)
 
         # Create a successor.
         episode_2 = episode_1.cut()
         # Assert that it has the same id.
-        self.assertEqual(episode_1.id_, episode_2.id_)
+        check(episode_1.id_, episode_2.id_)
         # Assert that all `SingleAgentEpisode`s have identical ids.
         for agent_id, agent_eps in episode_1.agent_episodes.items():
-            self.assertEqual(agent_eps.id_, episode_2.agent_episodes[agent_id].id_)
+            check(agent_eps.id_, episode_2.agent_episodes[agent_id].id_)
         # Assert that the timestep starts at the end of the last episode.
-        self.assertEqual(episode_1.t, episode_2.t_started)
+        check(episode_1.t, episode_2.t_started)
         # Assert that the last observation and info of `episode_1` are the first
         # observation and info of `episode_2`.
         for agent_id, agent_eps in episode_1.agent_episodes.items():
             # If agents are done only ensure that the `SingleAgentEpisode` is empty.
             if agent_eps.is_done:
-                self.assertEqual(
+                check(
                     len(episode_2.agent_episodes[agent_id].observations), 0
                 )
             else:
-                self.assertEqual(
+                check(
                     agent_eps.observations[-1],
                     episode_2.agent_episodes[agent_id].observations[0],
                 )
-                self.assertEqual(
+                check(
                     agent_eps.infos[-1],
                     episode_2.agent_episodes[agent_id].infos[0],
                 )
@@ -458,13 +457,13 @@ class TestMultiAgentEpisode(unittest.TestCase):
         # Now test the buffers.
         for agent_id, agent_buffer in episode_1.agent_buffers.items():
             # Make sure the action buffers are either both full or both empty.
-            self.assertEqual(
+            check(
                 agent_buffer["actions"].full(),
                 episode_2.agent_buffers[agent_id]["actions"].full(),
             )
             # If the action buffers are full they should share the same value.
             if agent_buffer["actions"].full():
-                self.assertEqual(
+                check(
                     agent_buffer["actions"].queue[0],
                     episode_2.agent_buffers[agent_id]["actions"].queue[0],
                 )
@@ -472,12 +471,12 @@ class TestMultiAgentEpisode(unittest.TestCase):
             if not episode_1.agent_episodes[agent_id].is_done:
                 # The other buffers have default values, if the agent is not done.
                 # Note, reward buffers could be full of partial rewards.
-                self.assertEqual(
+                check(
                     agent_buffer["rewards"].queue[0],
                     episode_2.agent_buffers[agent_id]["rewards"].queue[0],
                 )
                 # Here we want to know, if they are both different from `None`.
-                self.assertEqual(
+                check(
                     agent_buffer["extra_model_outputs"].queue[0],
                     episode_2.agent_buffers[agent_id]["extra_model_outputs"].queue[0],
                 )
@@ -496,12 +495,12 @@ class TestMultiAgentEpisode(unittest.TestCase):
             # If an agent is not done, we write over the timestep from its last
             # observation.
             if not episode_2.agent_episodes[agent_id].is_done:
-                self.assertEqual(
+                check(
                     agent_global_ts[0], episode_1.global_t_to_local_t[agent_id][-1]
                 )
             # In the other case this mapping should be empty.
             else:
-                self.assertEqual(len(agent_global_ts), 0)
+                check(len(agent_global_ts), 0)
 
         # Assert that the global action timestep mappings match.
         for agent_id, agent_global_ts in episode_2.global_actions_t.items():
@@ -511,7 +510,7 @@ class TestMultiAgentEpisode(unittest.TestCase):
                 # If a timestep mapping for actions was copied over the last timestep
                 # of the üredecessor and the first of the successor must match.
                 if agent_global_ts:
-                    self.assertEqual(
+                    check(
                         agent_global_ts[0], episode_1.global_actions_t[agent_id][-1]
                     )
                 # If no action timestep mapping was copied over the last action must
@@ -523,12 +522,12 @@ class TestMultiAgentEpisode(unittest.TestCase):
                     )
             # In the other case this mapping should be empty.
             else:
-                self.assertEqual(len(agent_global_ts), 0)
+                check(len(agent_global_ts), 0)
 
         # Assert that the partial reward mappings and histories match.
         for agent_id, agent_global_ts in episode_2.partial_rewards_t.items():
             # Ensure that timestep mapping and history have the same length.
-            self.assertEqual(
+            check(
                 len(agent_global_ts), len(episode_2.partial_rewards[agent_id])
             )
             # If an agent is not done, we write over the timestep from its last
@@ -549,7 +548,7 @@ class TestMultiAgentEpisode(unittest.TestCase):
                             indices_after_last_obs,
                         )
                     )
-                    self.assertEqual(
+                    check(
                         sum(episode_2.partial_rewards[agent_id]),
                         sum(episode_1_partial_rewards),
                     )
@@ -566,10 +565,10 @@ class TestMultiAgentEpisode(unittest.TestCase):
                     )
                 # In the other case this mapping should be empty.
                 else:
-                    self.assertEqual(len(agent_global_ts), 0)
+                    check(len(agent_global_ts), 0)
             # In the other case this mapping should be empty.
             else:
-                self.assertEqual(len(agent_global_ts), 0)
+                check(len(agent_global_ts), 0)
 
         # Now test, if the specific values in the buffers are correct.
         (
@@ -594,7 +593,7 @@ class TestMultiAgentEpisode(unittest.TestCase):
 
         # Assert that agents 1 and 3's buffers are indeed full.
         for agent_id in ["agent_1", "agent_3"]:
-            self.assertEqual(
+            check(
                 actions[1][agent_id],
                 episode_1.agent_buffers[agent_id]["actions"].queue[0],
             )
@@ -626,26 +625,26 @@ class TestMultiAgentEpisode(unittest.TestCase):
         )
 
         # Check that the partial reward history is correct.
-        self.assertEqual(len(episode_1.partial_rewards_t["agent_5"]), 1)
-        self.assertEqual(len(episode_1.partial_rewards["agent_5"]), 1)
-        self.assertEqual(len(episode_1.partial_rewards_t["agent_3"]), 2)
-        self.assertEqual(len(episode_1.partial_rewards["agent_3"]), 2)
-        self.assertEqual(len(episode_1.partial_rewards_t["agent_2"]), 2)
-        self.assertEqual(len(episode_1.partial_rewards_t["agent_2"]), 2)
+        check(len(episode_1.partial_rewards_t["agent_5"]), 1)
+        check(len(episode_1.partial_rewards["agent_5"]), 1)
+        check(len(episode_1.partial_rewards_t["agent_3"]), 2)
+        check(len(episode_1.partial_rewards["agent_3"]), 2)
+        check(len(episode_1.partial_rewards_t["agent_2"]), 2)
+        check(len(episode_1.partial_rewards_t["agent_2"]), 2)
         self.assertListEqual(episode_1.partial_rewards["agent_3"], [0.5, 2.0])
         self.assertListEqual(episode_1.partial_rewards_t["agent_3"], [1, 3])
         self.assertListEqual(episode_1.partial_rewards["agent_2"], [1.0, 2.0])
         self.assertListEqual(episode_1.partial_rewards_t["agent_2"], [2, 3])
-        self.assertEqual(len(episode_1.partial_rewards["agent_4"]), 2)
+        check(len(episode_1.partial_rewards["agent_4"]), 2)
         self.assertListEqual(episode_1.partial_rewards["agent_4"], [0.5, 1.0])
         self.assertListEqual(episode_1.partial_rewards_t["agent_4"], [1, 2])
 
         # Now check that the reward buffers are full.
         for agent_id in ["agent_3", "agent_5"]:
-            self.assertEqual(episode_1.agent_buffers[agent_id]["rewards"].queue[0], 2.0)
+            check(episode_1.agent_buffers[agent_id]["rewards"].queue[0], 2.0)
             # Check that the reward history is correctly recorded.
-            self.assertEqual(episode_1.partial_rewards_t[agent_id][-1], episode_1.t)
-            self.assertEqual(episode_1.partial_rewards[agent_id][-1], 2.0)
+            check(episode_1.partial_rewards_t[agent_id][-1], episode_1.t)
+            check(episode_1.partial_rewards[agent_id][-1], 2.0)
 
         # Now create the successor.
         episode_2 = episode_1.cut()
@@ -653,13 +652,13 @@ class TestMultiAgentEpisode(unittest.TestCase):
         for agent_id, agent_eps in episode_2.agent_episodes.items():
             if len(agent_eps.observations) > 0:
                 # The successor's first observations should be the predecessor's last.
-                self.assertEqual(
+                check(
                     agent_eps.observations[0],
                     episode_1.agent_episodes[agent_id].observations[-1],
                 )
                 # The successor's first entry in the timestep mapping should be the
                 # predecessor's last.
-                self.assertEqual(
+                check(
                     episode_2.global_t_to_local_t[agent_id][
                         -1
                     ],  # + episode_2.t_started,
@@ -667,9 +666,9 @@ class TestMultiAgentEpisode(unittest.TestCase):
                 )
         # Now test that the partial rewards fit.
         for agent_id in ["agent_3", "agent_5"]:
-            self.assertEqual(len(episode_2.partial_rewards_t[agent_id]), 1)
-            self.assertEqual(episode_2.partial_rewards_t[agent_id][-1], 3)
-            self.assertEqual(episode_2.agent_buffers[agent_id]["rewards"].queue[0], 2.0)
+            check(len(episode_2.partial_rewards_t[agent_id]), 1)
+            check(episode_2.partial_rewards_t[agent_id][-1], 3)
+            check(episode_2.agent_buffers[agent_id]["rewards"].queue[0], 2.0)
 
         # Assert that agent 3's and 4's action buffers are full.
         self.assertTrue(episode_2.agent_buffers["agent_4"]["actions"].full())
@@ -679,9 +678,6 @@ class TestMultiAgentEpisode(unittest.TestCase):
         self.assertTrue(episode_2.agent_buffers["agent_1"]["actions"].empty())
 
     def test_getters(self):
-        # TODO (simon): Revisit this test and the MultiAgentEpisode.get_... APIs.
-        return
-
         # Generate simple records for a multi agent environment.
         (
             observations,
@@ -719,47 +715,47 @@ class TestMultiAgentEpisode(unittest.TestCase):
         last_observation = episode.get_observations(indices=-1, global_ts=False)
         # Assert that this observation is correct.
         for agent_id, agent_obs in last_observation.items():
-            self.assertEqual(agent_obs[0], observations[-1][agent_id])
+            check(agent_obs[0], observations[-1][agent_id])
 
         last_observations = episode.get_observations(indices=[-1, -2])
         # Assert that the observations are correct.
-        self.assertEqual(last_observations["agent_1"][0], observations[-2]["agent_1"])
-        self.assertEqual(last_observations["agent_2"][0], observations[-1]["agent_2"])
-        self.assertEqual(last_observations["agent_3"][0], observations[-2]["agent_3"])
+        check(last_observations["agent_1"][0], observations[-2]["agent_1"])
+        check(last_observations["agent_2"][0], observations[-1]["agent_2"])
+        check(last_observations["agent_3"][0], observations[-2]["agent_3"])
         # Note, agent 4 has two observations in the last two ones.
         # Note, `get_observations()` returns in the order of the `indices` parameter.
-        self.assertEqual(last_observations["agent_4"][1], observations[-2]["agent_4"])
-        self.assertEqual(last_observations["agent_4"][0], observations[-1]["agent_4"])
+        check(last_observations["agent_4"][1], observations[-2]["agent_4"])
+        check(last_observations["agent_4"][0], observations[-1]["agent_4"])
 
         # Now, test the same when returning a list.
         last_observation = episode.get_observations(as_list=True)
         # Assert that these observations are correct.
         for agent_id, agent_obs in last_observation[0].items():
-            self.assertEqual(agent_obs, observations[-1][agent_id])
+            check(agent_obs, observations[-1][agent_id])
 
         last_observations = episode.get_observations(indices=[-1, -2], as_list=True)
         # Assert that the observations are correct.
-        self.assertEqual(last_observations[1]["agent_1"], observations[-2]["agent_1"])
-        self.assertEqual(last_observations[0]["agent_2"], observations[-1]["agent_2"])
-        self.assertEqual(last_observations[1]["agent_3"], observations[-2]["agent_3"])
+        check(last_observations[1]["agent_1"], observations[-2]["agent_1"])
+        check(last_observations[0]["agent_2"], observations[-1]["agent_2"])
+        check(last_observations[1]["agent_3"], observations[-2]["agent_3"])
         # Note, agent 4 has two observations in the last two ones.
         # Note, `get_observations()` returns in the order of the `indices` parameter.
-        self.assertEqual(last_observations[1]["agent_4"], observations[-2]["agent_4"])
-        self.assertEqual(last_observations[0]["agent_4"], observations[-1]["agent_4"])
+        check(last_observations[1]["agent_4"], observations[-2]["agent_4"])
+        check(last_observations[0]["agent_4"], observations[-1]["agent_4"])
 
         # Now, test if for the local setting the results fit as well.
         last_local_observation = episode.get_observations(global_ts=False)
         # Assert that the observations are correct.
-        self.assertEqual(
+        check(
             last_local_observation["agent_1"][0], observations[-2]["agent_1"]
         )
-        self.assertEqual(
+        check(
             last_local_observation["agent_2"][0], observations[-1]["agent_2"]
         )
-        self.assertEqual(
+        check(
             last_local_observation["agent_3"][0], observations[-2]["agent_3"]
         )
-        self.assertEqual(
+        check(
             last_local_observation["agent_4"][0], observations[-1]["agent_4"]
         )
 
@@ -768,28 +764,28 @@ class TestMultiAgentEpisode(unittest.TestCase):
             indices=[-1, -2], global_ts=False
         )
         # Assert that the observations are correct.
-        self.assertEqual(
+        check(
             last_local_observations["agent_1"][0], observations[-2]["agent_1"]
         )
-        self.assertEqual(
+        check(
             last_local_observations["agent_1"][1], observations[-3]["agent_1"]
         )
-        self.assertEqual(
+        check(
             last_local_observations["agent_2"][0], observations[-1]["agent_2"]
         )
-        self.assertEqual(
+        check(
             last_local_observations["agent_2"][1], observations[-3]["agent_2"]
         )
-        self.assertEqual(
+        check(
             last_local_observations["agent_3"][0], observations[-2]["agent_3"]
         )
-        self.assertEqual(
+        check(
             last_local_observations["agent_3"][1], observations[-3]["agent_3"]
         )
-        self.assertEqual(
+        check(
             last_local_observations["agent_4"][0], observations[-1]["agent_4"]
         )
-        self.assertEqual(
+        check(
             last_local_observations["agent_4"][1], observations[-2]["agent_4"]
         )
 
@@ -802,66 +798,66 @@ class TestMultiAgentEpisode(unittest.TestCase):
         # Get the last observation for agents and assert that its correct.
         last_observation = episode_init_only.get_observations()
         for agent_id, agent_obs in observations[0].items():
-            self.assertEqual(last_observation[agent_id][0], agent_obs)
+            check(last_observation[agent_id][0], agent_obs)
         # Now the same as list.
         last_observation = episode_init_only.get_observations(as_list=True)
         for agent_id, agent_obs in observations[0].items():
-            self.assertEqual(last_observation[0][agent_id], agent_obs)
+            check(last_observation[0][agent_id], agent_obs)
         # Now locally.
         last_local_observation = episode_init_only.get_observations(global_ts=False)
         for agent_id, agent_obs in observations[0].items():
-            self.assertEqual(last_local_observation[agent_id][0], agent_obs)
+            check(last_local_observation[agent_id][0], agent_obs)
 
         # --- actions ---
         last_actions = episode.get_actions()
-        self.assertEqual(last_actions["agent_1"][0], actions[-1]["agent_1"])
-        self.assertEqual(last_actions["agent_3"][0], actions[-1]["agent_3"])
-        self.assertEqual(last_actions["agent_4"][0], actions[-1]["agent_4"])
+        check(last_actions["agent_1"][0], actions[-1]["agent_1"])
+        check(last_actions["agent_3"][0], actions[-1]["agent_3"])
+        check(last_actions["agent_4"][0], actions[-1]["agent_4"])
 
         last_actions = episode.get_actions(indices=[-1, -2])
-        self.assertEqual(last_actions["agent_1"][0], actions[-1]["agent_1"])
-        self.assertEqual(last_actions["agent_3"][0], actions[-1]["agent_3"])
-        self.assertEqual(last_actions["agent_4"][0], actions[-1]["agent_4"])
-        self.assertEqual(last_actions["agent_1"][1], actions[-2]["agent_1"])
-        self.assertEqual(last_actions["agent_2"][0], actions[-2]["agent_2"])
-        self.assertEqual(last_actions["agent_3"][1], actions[-2]["agent_3"])
+        check(last_actions["agent_1"][0], actions[-1]["agent_1"])
+        check(last_actions["agent_3"][0], actions[-1]["agent_3"])
+        check(last_actions["agent_4"][0], actions[-1]["agent_4"])
+        check(last_actions["agent_1"][1], actions[-2]["agent_1"])
+        check(last_actions["agent_2"][0], actions[-2]["agent_2"])
+        check(last_actions["agent_3"][1], actions[-2]["agent_3"])
 
         # Now request lists.
         last_actions = episode.get_actions(as_list=True)
-        self.assertEqual(last_actions[0]["agent_1"], actions[-1]["agent_1"])
-        self.assertEqual(last_actions[0]["agent_3"], actions[-1]["agent_3"])
-        self.assertEqual(last_actions[0]["agent_4"], actions[-1]["agent_4"])
+        check(last_actions[0]["agent_1"], actions[-1]["agent_1"])
+        check(last_actions[0]["agent_3"], actions[-1]["agent_3"])
+        check(last_actions[0]["agent_4"], actions[-1]["agent_4"])
 
         # Request the last two actions and return as a list.
         last_actions = episode.get_actions([-1, -2], as_list=True)
-        self.assertEqual(last_actions[0]["agent_1"], actions[-1]["agent_1"])
-        self.assertEqual(last_actions[0]["agent_3"], actions[-1]["agent_3"])
-        self.assertEqual(last_actions[0]["agent_4"], actions[-1]["agent_4"])
-        self.assertEqual(last_actions[1]["agent_1"], actions[-2]["agent_1"])
-        self.assertEqual(last_actions[1]["agent_2"], actions[-2]["agent_2"])
-        self.assertEqual(last_actions[1]["agent_3"], actions[-2]["agent_3"])
+        check(last_actions[0]["agent_1"], actions[-1]["agent_1"])
+        check(last_actions[0]["agent_3"], actions[-1]["agent_3"])
+        check(last_actions[0]["agent_4"], actions[-1]["agent_4"])
+        check(last_actions[1]["agent_1"], actions[-2]["agent_1"])
+        check(last_actions[1]["agent_2"], actions[-2]["agent_2"])
+        check(last_actions[1]["agent_3"], actions[-2]["agent_3"])
 
         # Now request the last actions at the local timesteps, i.e. for each agent
         # its last two actions.
         last_actions = episode.get_actions([-1, -2], global_ts=False)
-        self.assertEqual(last_actions["agent_1"][0], actions[-1]["agent_1"])
-        self.assertEqual(last_actions["agent_3"][0], actions[-1]["agent_3"])
-        self.assertEqual(last_actions["agent_4"][0], actions[-1]["agent_4"])
-        self.assertEqual(last_actions["agent_1"][1], actions[-2]["agent_1"])
-        self.assertEqual(last_actions["agent_2"][0], actions[-2]["agent_2"])
-        self.assertEqual(last_actions["agent_3"][1], actions[-2]["agent_3"])
+        check(last_actions["agent_1"][0], actions[-1]["agent_1"])
+        check(last_actions["agent_3"][0], actions[-1]["agent_3"])
+        check(last_actions["agent_4"][0], actions[-1]["agent_4"])
+        check(last_actions["agent_1"][1], actions[-2]["agent_1"])
+        check(last_actions["agent_2"][0], actions[-2]["agent_2"])
+        check(last_actions["agent_3"][1], actions[-2]["agent_3"])
 
         # --- extra_model_outputs ---
         last_extra_model_outputs = episode.get_extra_model_outputs("extra")
-        self.assertEqual(
+        check(
             last_extra_model_outputs["agent_1"][0],
             extra_model_outputs[-1]["agent_1"]["extra"],
         )
-        self.assertEqual(
+        check(
             last_extra_model_outputs["agent_3"][0],
             extra_model_outputs[-1]["agent_3"]["extra"],
         )
-        self.assertEqual(
+        check(
             last_extra_model_outputs["agent_4"][0],
             extra_model_outputs[-1]["agent_4"]["extra"],
         )
@@ -870,27 +866,27 @@ class TestMultiAgentEpisode(unittest.TestCase):
         last_extra_model_outputs = episode.get_extra_model_outputs(
             "extra", indices=[-1, -2]
         )
-        self.assertEqual(
+        check(
             last_extra_model_outputs["agent_1"][0],
             extra_model_outputs[-1]["agent_1"]["extra"],
         )
-        self.assertEqual(
+        check(
             last_extra_model_outputs["agent_3"][0],
             extra_model_outputs[-1]["agent_3"]["extra"],
         )
-        self.assertEqual(
+        check(
             last_extra_model_outputs["agent_4"][0],
             extra_model_outputs[-1]["agent_4"]["extra"],
         )
-        self.assertEqual(
+        check(
             last_extra_model_outputs["agent_1"][1],
             extra_model_outputs[-2]["agent_1"]["extra"],
         )
-        self.assertEqual(
+        check(
             last_extra_model_outputs["agent_2"][0],
             extra_model_outputs[-2]["agent_2"]["extra"],
         )
-        self.assertEqual(
+        check(
             last_extra_model_outputs["agent_3"][1],
             extra_model_outputs[-2]["agent_3"]["extra"],
         )
@@ -899,15 +895,15 @@ class TestMultiAgentEpisode(unittest.TestCase):
         last_extra_model_outputs = episode.get_extra_model_outputs(
             "extra", as_list=True
         )
-        self.assertEqual(
+        check(
             last_extra_model_outputs[0]["agent_1"],
             extra_model_outputs[-1]["agent_1"]["extra"],
         )
-        self.assertEqual(
+        check(
             last_extra_model_outputs[0]["agent_3"],
             extra_model_outputs[-1]["agent_3"]["extra"],
         )
-        self.assertEqual(
+        check(
             last_extra_model_outputs[0]["agent_4"],
             extra_model_outputs[-1]["agent_4"]["extra"],
         )
@@ -915,27 +911,27 @@ class TestMultiAgentEpisode(unittest.TestCase):
         last_extra_model_outputs = episode.get_extra_model_outputs(
             "extra", [-1, -2], as_list=True
         )
-        self.assertEqual(
+        check(
             last_extra_model_outputs[0]["agent_1"],
             extra_model_outputs[-1]["agent_1"]["extra"],
         )
-        self.assertEqual(
+        check(
             last_extra_model_outputs[0]["agent_3"],
             extra_model_outputs[-1]["agent_3"]["extra"],
         )
-        self.assertEqual(
+        check(
             last_extra_model_outputs[0]["agent_4"],
             extra_model_outputs[-1]["agent_4"]["extra"],
         )
-        self.assertEqual(
+        check(
             last_extra_model_outputs[1]["agent_1"],
             extra_model_outputs[-2]["agent_1"]["extra"],
         )
-        self.assertEqual(
+        check(
             last_extra_model_outputs[1]["agent_2"],
             extra_model_outputs[-2]["agent_2"]["extra"],
         )
-        self.assertEqual(
+        check(
             last_extra_model_outputs[1]["agent_3"],
             extra_model_outputs[-2]["agent_3"]["extra"],
         )
@@ -945,27 +941,27 @@ class TestMultiAgentEpisode(unittest.TestCase):
         last_extra_model_outputs = episode.get_extra_model_outputs(
             "extra", [-1, -2], global_ts=False
         )
-        self.assertEqual(
+        check(
             last_extra_model_outputs["agent_1"][0],
             extra_model_outputs[-1]["agent_1"]["extra"],
         )
-        self.assertEqual(
+        check(
             last_extra_model_outputs["agent_3"][0],
             extra_model_outputs[-1]["agent_3"]["extra"],
         )
-        self.assertEqual(
+        check(
             last_extra_model_outputs["agent_4"][0],
             extra_model_outputs[-1]["agent_4"]["extra"],
         )
-        self.assertEqual(
+        check(
             last_extra_model_outputs["agent_1"][1],
             extra_model_outputs[-2]["agent_1"]["extra"],
         )
-        self.assertEqual(
+        check(
             last_extra_model_outputs["agent_2"][0],
             extra_model_outputs[-2]["agent_2"]["extra"],
         )
-        self.assertEqual(
+        check(
             last_extra_model_outputs["agent_3"][1],
             extra_model_outputs[-2]["agent_3"]["extra"],
         )
@@ -1038,34 +1034,34 @@ class TestMultiAgentEpisode(unittest.TestCase):
         # First, receive the last rewards without considering buffered values.
         last_rewards = episode_1.get_rewards(partial=False, consider_buffer=False)
         self.assertIn("agent_9", last_rewards)
-        self.assertEqual(episode_1.global_t_to_local_t["agent_9"][-1], 100)
-        self.assertEqual(episode_1.agent_episodes["agent_9"].rewards[-1], 1.0)
-        self.assertEqual(last_rewards["agent_9"][0], 1.0)
+        check(episode_1.global_t_to_local_t["agent_9"][-1], 100)
+        check(episode_1.agent_episodes["agent_9"].rewards[-1], 1.0)
+        check(last_rewards["agent_9"][0], 1.0)
         self.assertIn("agent_0", last_rewards)
-        self.assertEqual(episode_1.global_t_to_local_t["agent_0"][-1], 100)
-        self.assertEqual(episode_1.agent_episodes["agent_0"].rewards[-1], 1.0)
-        self.assertEqual(last_rewards["agent_0"][0], 1.0)
+        check(episode_1.global_t_to_local_t["agent_0"][-1], 100)
+        check(episode_1.agent_episodes["agent_0"].rewards[-1], 1.0)
+        check(last_rewards["agent_0"][0], 1.0)
         self.assertIn("agent_2", last_rewards)
-        self.assertEqual(episode_1.global_t_to_local_t["agent_2"][-1], 100)
-        self.assertEqual(episode_1.agent_episodes["agent_2"].rewards[-1], 1.0)
-        self.assertEqual(last_rewards["agent_2"][0], 1.0)
+        check(episode_1.global_t_to_local_t["agent_2"][-1], 100)
+        check(episode_1.agent_episodes["agent_2"].rewards[-1], 1.0)
+        check(last_rewards["agent_2"][0], 1.0)
         self.assertIn("agent_5", last_rewards)
-        self.assertEqual(episode_1.global_t_to_local_t["agent_5"][-1], 100)
-        self.assertEqual(episode_1.agent_episodes["agent_5"].rewards[-1], 1.0)
-        self.assertEqual(last_rewards["agent_5"][0], 1.0)
+        check(episode_1.global_t_to_local_t["agent_5"][-1], 100)
+        check(episode_1.agent_episodes["agent_5"].rewards[-1], 1.0)
+        check(last_rewards["agent_5"][0], 1.0)
         self.assertIn("agent_8", last_rewards)
-        self.assertEqual(episode_1.global_t_to_local_t["agent_8"][-1], 100)
-        self.assertEqual(episode_1.agent_episodes["agent_8"].rewards[-1], 1.0)
-        self.assertEqual(last_rewards["agent_8"][0], 1.0)
+        check(episode_1.global_t_to_local_t["agent_8"][-1], 100)
+        check(episode_1.agent_episodes["agent_8"].rewards[-1], 1.0)
+        check(last_rewards["agent_8"][0], 1.0)
         self.assertIn("agent_4", last_rewards)
-        self.assertEqual(episode_1.global_t_to_local_t["agent_4"][-1], 100)
-        self.assertEqual(episode_1.agent_episodes["agent_4"].rewards[-1], 1.0)
-        self.assertEqual(last_rewards["agent_4"][0], 1.0)
+        check(episode_1.global_t_to_local_t["agent_4"][-1], 100)
+        check(episode_1.agent_episodes["agent_4"].rewards[-1], 1.0)
+        check(last_rewards["agent_4"][0], 1.0)
         self.assertIn("agent_3", last_rewards)
-        self.assertEqual(episode_1.global_t_to_local_t["agent_3"][-1], 100)
+        check(episode_1.global_t_to_local_t["agent_3"][-1], 100)
         # Agent 3 had a partial reward before the last recorded observation.
-        self.assertEqual(episode_1.agent_episodes["agent_3"].rewards[-1], 2.0)
-        self.assertEqual(last_rewards["agent_3"][0], 2.0)
+        check(episode_1.agent_episodes["agent_3"].rewards[-1], 2.0)
+        check(last_rewards["agent_3"][0], 2.0)
         # Assert that all the other agents are not in the returned rewards.
         self.assertNotIn("agent_1", last_rewards)
         self.assertNotIn("agent_6", last_rewards)
@@ -1076,19 +1072,19 @@ class TestMultiAgentEpisode(unittest.TestCase):
             partial=False, consider_buffer=False, as_list=True
         )
         self.assertIn("agent_9", last_rewards[0])
-        self.assertEqual(last_rewards[0]["agent_9"], 1.0)
+        check(last_rewards[0]["agent_9"], 1.0)
         self.assertIn("agent_0", last_rewards[0])
-        self.assertEqual(last_rewards[0]["agent_0"], 1.0)
+        check(last_rewards[0]["agent_0"], 1.0)
         self.assertIn("agent_2", last_rewards[0])
-        self.assertEqual(last_rewards[0]["agent_2"], 1.0)
+        check(last_rewards[0]["agent_2"], 1.0)
         self.assertIn("agent_5", last_rewards[0])
-        self.assertEqual(last_rewards[0]["agent_5"], 1.0)
+        check(last_rewards[0]["agent_5"], 1.0)
         self.assertIn("agent_8", last_rewards[0])
-        self.assertEqual(last_rewards[0]["agent_8"], 1.0)
+        check(last_rewards[0]["agent_8"], 1.0)
         self.assertIn("agent_4", last_rewards[0])
-        self.assertEqual(last_rewards[0]["agent_4"], 1.0)
+        check(last_rewards[0]["agent_4"], 1.0)
         self.assertIn("agent_3", last_rewards[0])
-        self.assertEqual(last_rewards[0]["agent_3"], 2.0)
+        check(last_rewards[0]["agent_3"], 2.0)
         # Assert that all the other agents are not in the returned rewards.
         self.assertNotIn("agent_1", last_rewards)
         self.assertNotIn("agent_6", last_rewards)
@@ -1126,7 +1122,7 @@ class TestMultiAgentEpisode(unittest.TestCase):
         self.assertIn("agent_3", last_rewards)
         # Agent 3 had no observation at `ts=99`.
         self.assertListEqual(episode_1.global_t_to_local_t["agent_3"][-2:], [98, 100])
-        self.assertEqual(
+        check(
             episode_1.agent_episodes["agent_3"].rewards[-1], last_rewards["agent_3"][0]
         )
         # Ensure that there was a partial reward at `ts=99`.
@@ -1147,7 +1143,7 @@ class TestMultiAgentEpisode(unittest.TestCase):
         self.assertIn("agent_7", last_rewards)
         # Agent 7 has no observation at `ts=100`, but at `ts=98`.
         self.assertListEqual(episode_1.global_t_to_local_t["agent_7"][-2:], [98, 99])
-        self.assertEqual(
+        check(
             episode_1.agent_episodes["agent_7"].rewards[-1], last_rewards["agent_7"][0]
         )
         self.assertIn("agent_0", last_rewards)
@@ -1164,58 +1160,58 @@ class TestMultiAgentEpisode(unittest.TestCase):
         )
         self.assertIn("agent_9", last_rewards[0])
         self.assertIn("agent_9", last_rewards[1])
-        self.assertEqual(
+        check(
             episode_1.agent_episodes["agent_9"].rewards[-1], last_rewards[0]["agent_9"]
         )
-        self.assertEqual(
+        check(
             episode_1.agent_episodes["agent_9"].rewards[-2], last_rewards[1]["agent_9"]
         )
         self.assertIn("agent_5", last_rewards[0])
         self.assertIn("agent_5", last_rewards[1])
-        self.assertEqual(
+        check(
             episode_1.agent_episodes["agent_5"].rewards[-1], last_rewards[0]["agent_5"]
         )
-        self.assertEqual(
+        check(
             episode_1.agent_episodes["agent_5"].rewards[-2], last_rewards[1]["agent_5"]
         )
         self.assertIn("agent_2", last_rewards[0])
         self.assertIn("agent_2", last_rewards[1])
-        self.assertEqual(
+        check(
             episode_1.agent_episodes["agent_2"].rewards[-1], last_rewards[0]["agent_2"]
         )
-        self.assertEqual(3.0, last_rewards[1]["agent_2"])
+        check(3.0, last_rewards[1]["agent_2"])
         # Agent 3 has only recorded rewards at `ts=100`.
         self.assertIn("agent_3", last_rewards[0])
-        self.assertEqual(
+        check(
             episode_1.agent_episodes["agent_3"].rewards[-1], last_rewards[0]["agent_3"]
         )
         self.assertIn("agent_4", last_rewards[0])
         self.assertIn("agent_4", last_rewards[1])
-        self.assertEqual(
+        check(
             episode_1.agent_episodes["agent_4"].rewards[-1], last_rewards[0]["agent_4"]
         )
-        self.assertEqual(
+        check(
             episode_1.agent_episodes["agent_4"].rewards[-2], last_rewards[1]["agent_4"]
         )
         self.assertIn("agent_8", last_rewards[0])
         self.assertIn("agent_8", last_rewards[1])
-        self.assertEqual(
+        check(
             episode_1.agent_episodes["agent_8"].rewards[-1], last_rewards[0]["agent_8"]
         )
-        self.assertEqual(
+        check(
             episode_1.agent_episodes["agent_8"].rewards[-2], last_rewards[1]["agent_8"]
         )
         # Agent 7 has no observation at `ts=100`.
         self.assertIn("agent_7", last_rewards[1])
-        self.assertEqual(
+        check(
             episode_1.agent_episodes["agent_7"].rewards[-1], last_rewards[1]["agent_7"]
         )
         self.assertIn("agent_0", last_rewards[0])
         self.assertIn("agent_0", last_rewards[1])
-        self.assertEqual(
+        check(
             episode_1.agent_episodes["agent_0"].rewards[-1], last_rewards[0]["agent_0"]
         )
-        self.assertEqual(
+        check(
             episode_1.agent_episodes["agent_0"].rewards[-2], last_rewards[1]["agent_0"]
         )
         self.assertNotIn("agent_1", last_rewards[0])
@@ -1228,39 +1224,39 @@ class TestMultiAgentEpisode(unittest.TestCase):
         # `consider_buffer` to `True`.
         last_rewards = episode_1.get_rewards(partial=False, consider_buffer=True)
         self.assertIn("agent_9", last_rewards)
-        self.assertEqual(
+        check(
             episode_1.agent_episodes["agent_9"].rewards[-1], last_rewards["agent_9"][0]
         )
         self.assertIn("agent_0", last_rewards)
-        self.assertEqual(
+        check(
             episode_1.agent_episodes["agent_0"].rewards[-1], last_rewards["agent_0"][0]
         )
         self.assertIn("agent_2", last_rewards)
-        self.assertEqual(
+        check(
             episode_1.agent_episodes["agent_2"].rewards[-1], last_rewards["agent_2"][0]
         )
         self.assertIn("agent_5", last_rewards)
-        self.assertEqual(
+        check(
             episode_1.agent_episodes["agent_5"].rewards[-1], last_rewards["agent_5"][0]
         )
         self.assertIn("agent_8", last_rewards)
-        self.assertEqual(
+        check(
             episode_1.agent_episodes["agent_8"].rewards[-1], last_rewards["agent_8"][0]
         )
         self.assertIn("agent_4", last_rewards)
-        self.assertEqual(
+        check(
             episode_1.agent_episodes["agent_4"].rewards[-1], last_rewards["agent_4"][0]
         )
         self.assertIn("agent_3", last_rewards)
         # Agent 3 had a partial reward before the last recorded observation.
-        self.assertEqual(
+        check(
             episode_1.agent_episodes["agent_3"].rewards[-1], last_rewards["agent_3"][0]
         )
         # Agent 7 has a partial reward at `ts=100` after its last observation at
         # `ts=99`.
         self.assertIn("agent_7", last_rewards)
-        self.assertEqual(episode_1.partial_rewards_t["agent_7"][-1], 100)
-        self.assertEqual(
+        check(episode_1.partial_rewards_t["agent_7"][-1], 100)
+        check(
             episode_1.partial_rewards["agent_7"][-1], last_rewards["agent_7"][0]
         )
         # Assert that all the other agents are not in the returned rewards.
@@ -1272,38 +1268,38 @@ class TestMultiAgentEpisode(unittest.TestCase):
             partial=False, consider_buffer=True, as_list=True
         )
         self.assertIn("agent_9", last_rewards[0])
-        self.assertEqual(
+        check(
             episode_1.agent_episodes["agent_9"].rewards[-1], last_rewards[0]["agent_9"]
         )
         self.assertIn("agent_0", last_rewards[0])
-        self.assertEqual(
+        check(
             episode_1.agent_episodes["agent_0"].rewards[-1], last_rewards[0]["agent_0"]
         )
         self.assertIn("agent_2", last_rewards[0])
-        self.assertEqual(
+        check(
             episode_1.agent_episodes["agent_2"].rewards[-1], last_rewards[0]["agent_2"]
         )
         self.assertIn("agent_5", last_rewards[0])
-        self.assertEqual(
+        check(
             episode_1.agent_episodes["agent_5"].rewards[-1], last_rewards[0]["agent_5"]
         )
         self.assertIn("agent_8", last_rewards[0])
-        self.assertEqual(
+        check(
             episode_1.agent_episodes["agent_8"].rewards[-1], last_rewards[0]["agent_8"]
         )
         self.assertIn("agent_4", last_rewards[0])
-        self.assertEqual(
+        check(
             episode_1.agent_episodes["agent_4"].rewards[-1], last_rewards[0]["agent_4"]
         )
         self.assertIn("agent_3", last_rewards[0])
         # Agent 3 had a partial reward before the last recorded observation.
-        self.assertEqual(
+        check(
             episode_1.agent_episodes["agent_3"].rewards[-1], last_rewards[0]["agent_3"]
         )
         # Agent 7 has a partial reward at `ts=100` after its last observation at
         # `ts=99`.
         self.assertIn("agent_7", last_rewards[0])
-        self.assertEqual(
+        check(
             episode_1.partial_rewards["agent_7"][-1], last_rewards[0]["agent_7"]
         )
         # Assert that all the other agents are not in the returned rewards.
@@ -1349,7 +1345,7 @@ class TestMultiAgentEpisode(unittest.TestCase):
         # Nothing changes for agent 3 as it has an observation at the last requested
         # timestep 100, but not at `ts=99`.
         self.assertIn("agent_3", last_rewards)
-        self.assertEqual(
+        check(
             episode_1.agent_episodes["agent_3"].rewards[-1], last_rewards["agent_3"][0]
         )
         # The entries for agent 6 have changed now b/c it has partial rewards during the
@@ -1365,10 +1361,10 @@ class TestMultiAgentEpisode(unittest.TestCase):
         self.assertIn("agent_7", last_rewards)
         self.assertListEqual(episode_1.global_t_to_local_t["agent_7"][-2:], [98, 99])
         self.assertListEqual(episode_1.partial_rewards_t["agent_7"][-2:], [99, 100])
-        self.assertEqual(
+        check(
             episode_1.partial_rewards["agent_7"][-1], last_rewards["agent_7"][0]
         )
-        self.assertEqual(
+        check(
             episode_1.agent_episodes["agent_7"].rewards[-1], last_rewards["agent_7"][1]
         )
         # Assert that all the other agents are not in the returned rewards.
@@ -1381,77 +1377,77 @@ class TestMultiAgentEpisode(unittest.TestCase):
         )
         self.assertIn("agent_9", last_rewards[0])
         self.assertIn("agent_9", last_rewards[1])
-        self.assertEqual(
+        check(
             episode_1.agent_episodes["agent_9"].rewards[-1], last_rewards[0]["agent_9"]
         )
-        self.assertEqual(
+        check(
             episode_1.agent_episodes["agent_9"].rewards[-2], last_rewards[1]["agent_9"]
         )
         self.assertIn("agent_0", last_rewards[0])
         self.assertIn("agent_0", last_rewards[1])
-        self.assertEqual(
+        check(
             episode_1.agent_episodes["agent_0"].rewards[-1], last_rewards[0]["agent_0"]
         )
-        self.assertEqual(
+        check(
             episode_1.agent_episodes["agent_0"].rewards[-2], last_rewards[1]["agent_0"]
         )
         self.assertIn("agent_2", last_rewards[0])
         self.assertIn("agent_2", last_rewards[1])
-        self.assertEqual(
+        check(
             episode_1.agent_episodes["agent_2"].rewards[-1], last_rewards[0]["agent_2"]
         )
-        self.assertEqual(
+        check(
             episode_1.agent_episodes["agent_2"].rewards[-2], last_rewards[1]["agent_2"]
         )
         self.assertIn("agent_5", last_rewards[0])
         self.assertIn("agent_5", last_rewards[1])
-        self.assertEqual(
+        check(
             episode_1.agent_episodes["agent_5"].rewards[-1], last_rewards[0]["agent_5"]
         )
-        self.assertEqual(
+        check(
             episode_1.agent_episodes["agent_5"].rewards[-2], last_rewards[1]["agent_5"]
         )
         self.assertIn("agent_8", last_rewards[0])
         self.assertIn("agent_8", last_rewards[1])
-        self.assertEqual(
+        check(
             episode_1.agent_episodes["agent_8"].rewards[-1], last_rewards[0]["agent_8"]
         )
-        self.assertEqual(
+        check(
             episode_1.agent_episodes["agent_8"].rewards[-2], last_rewards[1]["agent_8"]
         )
         self.assertIn("agent_4", last_rewards[0])
         self.assertIn("agent_4", last_rewards[1])
-        self.assertEqual(
+        check(
             episode_1.agent_episodes["agent_4"].rewards[-1], last_rewards[0]["agent_4"]
         )
-        self.assertEqual(
+        check(
             episode_1.agent_episodes["agent_4"].rewards[-2], last_rewards[1]["agent_4"]
         )
         # Nothing changes for agent 3 as it has an observation at the last requested
         # timestep 100.
         self.assertIn("agent_3", last_rewards[0])
         self.assertNotIn("agent_3", last_rewards[1])
-        self.assertEqual(
+        check(
             episode_1.agent_episodes["agent_3"].rewards[-1], last_rewards[0]["agent_3"]
         )
         # The entries for agent 6 have changed now b/c it has partial rewards during the
         # requested timesteps 100 and 99.
         self.assertIn("agent_6", last_rewards[0])
         self.assertIn("agent_6", last_rewards[1])
-        self.assertEqual(
+        check(
             episode_1.partial_rewards["agent_6"][-1], last_rewards[0]["agent_6"]
         )
-        self.assertEqual(
+        check(
             episode_1.partial_rewards["agent_6"][-2], last_rewards[1]["agent_6"]
         )
         # Entries for agent 7 also change b/c this agent has a partial reward at
         # `ts=100` while it has no observation recorded at this timestep.
         self.assertIn("agent_7", last_rewards[0])
         self.assertIn("agent_7", last_rewards[1])
-        self.assertEqual(
+        check(
             episode_1.partial_rewards["agent_7"][-1], last_rewards[0]["agent_7"]
         )
-        self.assertEqual(
+        check(
             episode_1.agent_episodes["agent_7"].rewards[-1], last_rewards[1]["agent_7"]
         )
         # Assert that all the other agents are not in the returned rewards.
@@ -1462,43 +1458,43 @@ class TestMultiAgentEpisode(unittest.TestCase):
         # added up.
         last_rewards = episode_1.get_rewards(partial=True, consider_buffer=False)
         self.assertIn("agent_9", last_rewards)
-        self.assertEqual(episode_1.partial_rewards_t["agent_9"][-1], 100)
-        self.assertEqual(
+        check(episode_1.partial_rewards_t["agent_9"][-1], 100)
+        check(
             episode_1.partial_rewards["agent_9"][-1], last_rewards["agent_9"][-1]
         )
         self.assertIn("agent_0", last_rewards)
-        self.assertEqual(episode_1.partial_rewards_t["agent_0"][-1], 100)
-        self.assertEqual(
+        check(episode_1.partial_rewards_t["agent_0"][-1], 100)
+        check(
             episode_1.partial_rewards["agent_0"][-1], last_rewards["agent_0"][-1]
         )
         self.assertIn("agent_2", last_rewards)
-        self.assertEqual(episode_1.partial_rewards_t["agent_2"][-1], 100)
-        self.assertEqual(
+        check(episode_1.partial_rewards_t["agent_2"][-1], 100)
+        check(
             episode_1.partial_rewards["agent_2"][-1], last_rewards["agent_2"][-1]
         )
         self.assertIn("agent_8", last_rewards)
-        self.assertEqual(episode_1.partial_rewards_t["agent_8"][-1], 100)
-        self.assertEqual(
+        check(episode_1.partial_rewards_t["agent_8"][-1], 100)
+        check(
             episode_1.partial_rewards["agent_8"][-1], last_rewards["agent_8"][-1]
         )
         self.assertIn("agent_4", last_rewards)
-        self.assertEqual(episode_1.partial_rewards_t["agent_4"][-1], 100)
-        self.assertEqual(
+        check(episode_1.partial_rewards_t["agent_4"][-1], 100)
+        check(
             episode_1.partial_rewards["agent_4"][-1], last_rewards["agent_4"][-1]
         )
         self.assertIn("agent_3", last_rewards)
-        self.assertEqual(episode_1.partial_rewards_t["agent_3"][-1], 100)
-        self.assertEqual(
+        check(episode_1.partial_rewards_t["agent_3"][-1], 100)
+        check(
             episode_1.partial_rewards["agent_3"][-1], last_rewards["agent_3"][-1]
         )
         self.assertIn("agent_6", last_rewards)
-        self.assertEqual(episode_1.partial_rewards_t["agent_6"][-1], 100)
-        self.assertEqual(
+        check(episode_1.partial_rewards_t["agent_6"][-1], 100)
+        check(
             episode_1.partial_rewards["agent_6"][-1], last_rewards["agent_6"][-1]
         )
         self.assertIn("agent_7", last_rewards)
-        self.assertEqual(episode_1.partial_rewards_t["agent_7"][-1], 100)
-        self.assertEqual(
+        check(episode_1.partial_rewards_t["agent_7"][-1], 100)
+        check(
             episode_1.partial_rewards["agent_7"][-1], last_rewards["agent_7"][-1]
         )
         # Assert that all the other agents are not in the returned rewards.
@@ -1510,35 +1506,35 @@ class TestMultiAgentEpisode(unittest.TestCase):
             partial=True, consider_buffer=False, as_list=True
         )
         self.assertIn("agent_9", last_rewards[0])
-        self.assertEqual(
+        check(
             episode_1.partial_rewards["agent_9"][-1], last_rewards[0]["agent_9"]
         )
         self.assertIn("agent_0", last_rewards[0])
-        self.assertEqual(
+        check(
             episode_1.partial_rewards["agent_0"][-1], last_rewards[0]["agent_0"]
         )
         self.assertIn("agent_2", last_rewards[0])
-        self.assertEqual(
+        check(
             episode_1.partial_rewards["agent_2"][-1], last_rewards[0]["agent_2"]
         )
         self.assertIn("agent_8", last_rewards[0])
-        self.assertEqual(
+        check(
             episode_1.partial_rewards["agent_8"][-1], last_rewards[0]["agent_8"]
         )
         self.assertIn("agent_4", last_rewards[0])
-        self.assertEqual(
+        check(
             episode_1.partial_rewards["agent_4"][-1], last_rewards[0]["agent_4"]
         )
         self.assertIn("agent_3", last_rewards[0])
-        self.assertEqual(
+        check(
             episode_1.partial_rewards["agent_3"][-1], last_rewards[0]["agent_3"]
         )
         self.assertIn("agent_6", last_rewards[0])
-        self.assertEqual(
+        check(
             episode_1.partial_rewards["agent_6"][-1], last_rewards[0]["agent_6"]
         )
         self.assertIn("agent_7", last_rewards[0])
-        self.assertEqual(
+        check(
             episode_1.partial_rewards["agent_7"][-1], last_rewards[0]["agent_7"]
         )
         # Assert that all the other agents are not in the returned rewards.
@@ -1550,42 +1546,42 @@ class TestMultiAgentEpisode(unittest.TestCase):
         )
         self.assertIn("agent_9", last_rewards)
         self.assertListEqual(episode_1.partial_rewards_t["agent_9"][-2:], [99, 100])
-        self.assertEqual(
+        check(
             episode_1.partial_rewards["agent_9"][-1:-3:-1], last_rewards["agent_9"]
         )
         self.assertIn("agent_0", last_rewards)
         self.assertListEqual(episode_1.partial_rewards_t["agent_0"][-2:], [99, 100])
-        self.assertEqual(
+        check(
             episode_1.partial_rewards["agent_0"][-1:-3:-1], last_rewards["agent_0"]
         )
         self.assertIn("agent_2", last_rewards)
         self.assertListEqual(episode_1.partial_rewards_t["agent_2"][-2:], [99, 100])
-        self.assertEqual(
+        check(
             episode_1.partial_rewards["agent_2"][-1:-3:-1], last_rewards["agent_2"]
         )
         self.assertIn("agent_8", last_rewards)
         self.assertListEqual(episode_1.partial_rewards_t["agent_8"][-2:], [99, 100])
-        self.assertEqual(
+        check(
             episode_1.partial_rewards["agent_8"][-1:-3:-1], last_rewards["agent_8"]
         )
         self.assertIn("agent_4", last_rewards)
         self.assertListEqual(episode_1.partial_rewards_t["agent_4"][-2:], [99, 100])
-        self.assertEqual(
+        check(
             episode_1.partial_rewards["agent_4"][-1:-3:-1], last_rewards["agent_4"]
         )
         self.assertIn("agent_3", last_rewards)
         self.assertListEqual(episode_1.partial_rewards_t["agent_3"][-2:], [99, 100])
-        self.assertEqual(
+        check(
             episode_1.partial_rewards["agent_3"][-1:-3:-1], last_rewards["agent_3"]
         )
         self.assertIn("agent_6", last_rewards)
         self.assertListEqual(episode_1.partial_rewards_t["agent_6"][-2:], [99, 100])
-        self.assertEqual(
+        check(
             episode_1.partial_rewards["agent_6"][-1:-3:-1], last_rewards["agent_6"]
         )
         self.assertIn("agent_7", last_rewards)
         self.assertListEqual(episode_1.partial_rewards_t["agent_7"][-2:], [99, 100])
-        self.assertEqual(
+        check(
             episode_1.partial_rewards["agent_7"][-1:-3:-1], last_rewards["agent_7"]
         )
         # Assert that all the other agents are not in the returned rewards.
@@ -1598,66 +1594,66 @@ class TestMultiAgentEpisode(unittest.TestCase):
         )
         self.assertIn("agent_9", last_rewards[0])
         self.assertIn("agent_9", last_rewards[1])
-        self.assertEqual(
+        check(
             episode_1.partial_rewards["agent_9"][-1], last_rewards[0]["agent_9"]
         )
-        self.assertEqual(
+        check(
             episode_1.partial_rewards["agent_9"][-2], last_rewards[1]["agent_9"]
         )
         self.assertIn("agent_0", last_rewards[0])
         self.assertIn("agent_0", last_rewards[1])
-        self.assertEqual(
+        check(
             episode_1.partial_rewards["agent_0"][-1], last_rewards[0]["agent_0"]
         )
-        self.assertEqual(
+        check(
             episode_1.partial_rewards["agent_0"][-2], last_rewards[1]["agent_0"]
         )
         self.assertIn("agent_2", last_rewards[0])
         self.assertIn("agent_2", last_rewards[1])
-        self.assertEqual(
+        check(
             episode_1.partial_rewards["agent_2"][-1], last_rewards[0]["agent_2"]
         )
-        self.assertEqual(
+        check(
             episode_1.partial_rewards["agent_2"][-2], last_rewards[1]["agent_2"]
         )
         self.assertIn("agent_8", last_rewards[0])
         self.assertIn("agent_8", last_rewards[1])
-        self.assertEqual(
+        check(
             episode_1.partial_rewards["agent_8"][-1], last_rewards[0]["agent_8"]
         )
-        self.assertEqual(
+        check(
             episode_1.partial_rewards["agent_8"][-2], last_rewards[1]["agent_8"]
         )
         self.assertIn("agent_4", last_rewards[0])
         self.assertIn("agent_4", last_rewards[1])
-        self.assertEqual(
+        check(
             episode_1.partial_rewards["agent_4"][-1], last_rewards[0]["agent_4"]
         )
-        self.assertEqual(
+        check(
             episode_1.partial_rewards["agent_4"][-2], last_rewards[1]["agent_4"]
         )
         self.assertIn("agent_3", last_rewards[0])
         self.assertIn("agent_3", last_rewards[1])
-        self.assertEqual(
+        check(
             episode_1.partial_rewards["agent_3"][-1], last_rewards[0]["agent_3"]
         )
-        self.assertEqual(
+        check(
             episode_1.partial_rewards["agent_3"][-2], last_rewards[1]["agent_3"]
         )
         self.assertIn("agent_6", last_rewards[0])
         self.assertIn("agent_6", last_rewards[1])
-        self.assertEqual(
+        check(
             episode_1.partial_rewards["agent_6"][-1], last_rewards[0]["agent_6"]
         )
-        self.assertEqual(
+        check(
             episode_1.partial_rewards["agent_6"][-2], last_rewards[1]["agent_6"]
         )
         self.assertIn("agent_7", last_rewards[0])
         self.assertIn("agent_7", last_rewards[1])
-        self.assertEqual(
+        check(
             episode_1.partial_rewards["agent_7"][-1], last_rewards[0]["agent_7"]
         )
-        self.assertEqual(
+        check(
             episode_1.partial_rewards["agent_7"][-2], last_rewards[1]["agent_7"]
         )
         # Assert that all the other agents are not in the returned rewards.
@@ -1670,7 +1666,7 @@ class TestMultiAgentEpisode(unittest.TestCase):
         # --- is_terminated, is_truncated ---
 
     def test_concat_episode(self):
-        # TODO (simon): Revisit this test and the MultiAgentEpisode.episode_concat API.
+        # TODO (sven): Revisit this test and the MultiAgentEpisode.episode_concat API.
         return
 
         # Generate a multi-agent episode and environment and sample 100 steps.
@@ -1692,8 +1688,8 @@ class TestMultiAgentEpisode(unittest.TestCase):
         # Assert that episode 1 has now 200 timesteps.
         self.assertTrue(episode_1.t, 200)
         # Ensure that `episode_1` is done if `episode_2` is.
-        self.assertEqual(episode_1.is_terminated, episode_2.is_terminated)
-        self.assertEqual(episode_1.is_truncated, episode_2.is_truncated)
+        check(episode_1.is_terminated, episode_2.is_terminated)
+        check(episode_1.is_truncated, episode_2.is_truncated)
         # Assert that for all agents the last observation is at the correct timestep
         # and of correct value.
         for agent_id, agent_eps in episode_1.agent_episodes.items():
@@ -1701,27 +1697,27 @@ class TestMultiAgentEpisode(unittest.TestCase):
             # Note, for done agents there was only an empty timestep mapping in
             # `episode_2`.
             if not agent_eps.is_done:
-                self.assertEqual(
+                check(
                     episode_1.global_t_to_local_t[agent_id][-1],
                     episode_2.global_t_to_local_t[agent_id][-1],
                 )
-                self.assertEqual(
+                check(
                     agent_eps.observations[-1],
                     episode_2.agent_episodes[agent_id].observations[-1],
                 )
-                self.assertEqual(
+                check(
                     agent_eps.actions[-1],
                     episode_2.agent_episodes[agent_id].actions[-1],
                 )
-                self.assertEqual(
+                check(
                     agent_eps.rewards[-1],
                     episode_2.agent_episodes[agent_id].rewards[-1],
                 )
-                self.assertEqual(
+                check(
                     agent_eps.infos[-1], episode_2.agent_episodes[agent_id].infos[-1]
                 )
                 # Note, our test environment produces always these extra model outputs.
-                self.assertEqual(
+                check(
                     agent_eps.extra_model_outputs["extra"][-1],
                     episode_2.agent_episodes[agent_id].extra_model_outputs["extra"][-1],
                 )
@@ -1729,32 +1725,32 @@ class TestMultiAgentEpisode(unittest.TestCase):
         # Ensure that all global timestep mappings have no duplicates after
         # concatenation and matches the observation lengths.
         for agent_id, agent_map in episode_1.global_t_to_local_t.items():
-            self.assertEqual(len(agent_map), len(set(agent_map)))
-            self.assertEqual(
+            check(len(agent_map), len(set(agent_map)))
+            check(
                 len(agent_map), len(episode_1.agent_episodes[agent_id].observations)
             )
 
         # Now assert that all buffers remained the same.
         for agent_id, agent_buffer in episode_1.agent_buffers.items():
             # Make sure the actions buffers are either both full or both empty.
-            self.assertEqual(
+            check(
                 agent_buffer["actions"].full(),
                 episode_2.agent_buffers[agent_id]["actions"].full(),
             )
 
             # If the buffer is full ensure `episode_2`'s buffer is identical in value.
             if agent_buffer["actions"].full():
-                self.assertEqual(
+                check(
                     agent_buffer["actions"].queue[0],
                     episode_2.agent_buffers[agent_id]["actions"].queue[0],
                 )
             # If the agent is not done, the buffers should be equal in value.
             if not episode_1.agent_episodes[agent_id].is_done:
-                self.assertEqual(
+                check(
                     agent_buffer["rewards"].queue[0],
                     episode_2.agent_buffers[agent_id]["rewards"].queue[0],
                 )
-                self.assertEqual(
+                check(
                     agent_buffer["extra_model_outputs"].queue[0],
                     episode_2.agent_buffers[agent_id]["extra_model_outputs"].queue[0],
                 )
@@ -1771,7 +1767,7 @@ class TestMultiAgentEpisode(unittest.TestCase):
 
         # Ensure that all global action timestep mappings do not contain duplicates.
         for agent_id, agent_action_ts_map in episode_1.global_actions_t.items():
-            self.assertEqual(len(agent_action_ts_map), len(set(agent_action_ts_map)))
+            check(len(agent_action_ts_map), len(set(agent_action_ts_map)))
             # Also ensure that the timestep mapping are at least as long as action
             # history.
             self.assertGreaterEqual(
@@ -1781,7 +1777,7 @@ class TestMultiAgentEpisode(unittest.TestCase):
             # Done agents might not have these lists in `episode_2`.
             if not episode_1.agent_episodes[agent_id].is_done:
                 # Ensure for agents that are not done that the last entry matches.
-                self.assertEqual(
+                check(
                     agent_action_ts_map[-1],
                     episode_2.global_actions_t[agent_id][-1],
                 )
@@ -1789,23 +1785,23 @@ class TestMultiAgentEpisode(unittest.TestCase):
         # Ensure that partial reward timestep mapping have no duplicates and that
         # partial rewards match.
         for agent_id, agent_partial_rewards_t in episode_1.partial_rewards_t.items():
-            self.assertEqual(
+            check(
                 len(agent_partial_rewards_t), len(set(agent_partial_rewards_t))
             )
             # Done agents might not have these lists in `episode_2`.
             if not episode_1.agent_episodes[agent_id].is_done:
                 # Ensure for agents that are not done that the last entries match.
-                self.assertEqual(
+                check(
                     agent_partial_rewards_t[-1],
                     episode_2.partial_rewards_t[agent_id][-1],
                 )
-                self.assertEqual(
+                check(
                     episode_1.partial_rewards[agent_id][-1],
                     episode_2.partial_rewards[agent_id][-1],
                 )
             # Partial reward timestep mappings and partial reward list should have
             # identical length.
-            self.assertEqual(
+            check(
                 len(agent_partial_rewards_t), len(episode_1.partial_rewards[agent_id])
             )
 
@@ -1814,10 +1810,10 @@ class TestMultiAgentEpisode(unittest.TestCase):
         # Ensure that the last observation is indeed the test environment's
         # one at that timestep (200).
         for agent_id, agent_obs in last_observation.items():
-            self.assertEqual(episode_2.t, agent_obs[0])
+            check(episode_2.t, agent_obs[0])
             # Assert that the timestep mapping did record the last timestep for this
             # observation.
-            self.assertEqual(episode_2.t, episode_1.global_t_to_local_t[agent_id][-1])
+            check(episode_2.t, episode_1.global_t_to_local_t[agent_id][-1])
 
         # Ensure that the last action is recorded and extracted correctly.
         last_action = episode_1.get_actions()
@@ -1829,7 +1825,7 @@ class TestMultiAgentEpisode(unittest.TestCase):
                 episode_1.agent_buffers[agent_id]["actions"].full()
                 and episode_1.global_actions_t[agent_id][-1] == episode_1.t
             ):
-                self.assertEqual(
+                check(
                     episode_1.agent_buffers[agent_id]["actions"].queue[0],
                     agent_action[0],
                 )
@@ -1837,20 +1833,20 @@ class TestMultiAgentEpisode(unittest.TestCase):
             # of this agent.
             else:
                 # Make sure that the correct timestep is recorded.
-                self.assertEqual(episode_1.global_actions_t[agent_id][-1], episode_1.t)
+                check(episode_1.global_actions_t[agent_id][-1], episode_1.t)
                 # Ensure that the correct action is recorded.
-                self.assertEqual(
+                check(
                     episode_1.agent_episodes[agent_id].actions[-1], agent_action[0]
                 )
             # For any action the value
-            self.assertEqual(episode_1.global_actions_t[agent_id][-1], agent_action[0])
+            check(episode_1.global_actions_t[agent_id][-1], agent_action[0])
 
         # Get the last reward. Use only the recorded ones from the
         # `SingleAgentEpisode`s.
         last_reward = episode_1.get_rewards(partial=False, consider_buffer=False)
         for agent_id, agent_reward in last_reward.items():
             # Ensure that the last recorded reward is the one in the getter result.
-            self.assertEqual(
+            check(
                 episode_1.agent_episodes[agent_id].rewards[-1], agent_reward[0]
             )
         # Assert also that the partial rewards are correctly extracted.
@@ -1860,9 +1856,9 @@ class TestMultiAgentEpisode(unittest.TestCase):
         last_reward = episode_1.get_rewards(partial=True)
         for agent_id, agent_reward in last_reward.items():
             # Ensure that the reward is the last in the global history.
-            self.assertEqual(episode_1.partial_rewards[agent_id][-1], agent_reward[0])
+            check(episode_1.partial_rewards[agent_id][-1], agent_reward[0])
             # Assert also that the correct timestep was recorded.
-            self.assertEqual(episode_1.partial_rewards_t[agent_id][-1], episode_2.t)
+            check(episode_1.partial_rewards_t[agent_id][-1], episode_2.t)
         # Now get all recorded rewards from the `SingleAgentEpisode`s plus
         # anything after the last record therein, i.e. from the buffer.
         # Note, this could also include partial rewards for agents that never
@@ -1873,7 +1869,7 @@ class TestMultiAgentEpisode(unittest.TestCase):
             # Make sure that if the buffer is full the returned reward equals the
             # buffer.
             if episode_1.agent_buffers[agent_id]["actions"].full():
-                self.assertEqual(
+                check(
                     episode_1.agent_buffers[agent_id]["rewards"].queue[0],
                     agent_reward[0],
                 )
@@ -1881,7 +1877,7 @@ class TestMultiAgentEpisode(unittest.TestCase):
             # SingleAgentEpisode`'s reward history. Ensure that these two values
             # are identical.
             else:
-                self.assertEqual(
+                check(
                     episode_1.agent_episodes[agent_id].rewards[-1], agent_reward[0]
                 )
 
@@ -1891,7 +1887,7 @@ class TestMultiAgentEpisode(unittest.TestCase):
         self.assertNotEqual(
             episode_2.agent_buffers["agent_4"]["actions"].queue[0], buffered_action
         )
-        self.assertEqual(
+        check(
             episode_1.agent_buffers["agent_4"]["actions"].queue[0], buffered_action
         )
 
@@ -1933,7 +1929,7 @@ class TestMultiAgentEpisode(unittest.TestCase):
         # Create an episode and environment and sample 100 timesteps.
         episode, env = self._mock_multi_agent_records_from_env()
         # Assert that the length is indeed 100.
-        self.assertEqual(len(episode), 100)
+        check(len(episode), 100)
         # Now, build a successor.
         successor = episode.cut()
         # Sample another 100 timesteps.
@@ -1960,14 +1956,14 @@ class TestMultiAgentEpisode(unittest.TestCase):
 
         # Assert that the timestep in the `MultiAgentBatch` is identical
         # to the episode timestep.
-        self.assertEqual(len(batch), len(episode))
+        check(len(batch), len(episode))
         # Assert that all agents are present in the multi-agent batch.
         # Note, all agents have collected samples.
         for agent_id in episode._agent_ids:
             self.assertTrue(agent_id in batch.policy_batches)
         # Assert that the recorded history length is correct.
         for agent_id, agent_eps in episode.agent_episodes.items():
-            self.assertEqual(len(agent_eps), len(batch[agent_id]))
+            check(len(agent_eps), len(batch[agent_id]))
         # Assert that terminated agents are terminated in the sample batch.
         for agent_id in ["agent_1", "agent_5"]:
             self.assertTrue(batch[agent_id]["terminateds"][-1])
@@ -1983,7 +1979,7 @@ class TestMultiAgentEpisode(unittest.TestCase):
         batch = successor.get_sample_batch()
         # Assert that the number of timesteps match between episode and batch.
         # Note, the successor starts at `ts=100`.
-        self.assertEqual(len(batch), len(successor))
+        check(len(batch), len(successor))
         # Assert that all agents that were not done, yet, are present in the batch.
         for agent_id in env._agents_alive:
             self.assertTrue(agent_id in batch.policy_batches)
@@ -1991,7 +1987,7 @@ class TestMultiAgentEpisode(unittest.TestCase):
         for agent_id, agent_eps in successor.agent_episodes.items():
             # Note, we take over agent_ids
             if not agent_eps.is_done:
-                self.assertEqual(len(agent_eps), len(batch[agent_id]))
+                check(len(agent_eps), len(batch[agent_id]))
         # Assert that now all agents are truncated b/c the environment truncated
         # them.
         for agent_id in batch.policy_batches:
@@ -2005,7 +2001,7 @@ class TestMultiAgentEpisode(unittest.TestCase):
         # Convert the concatenated episode to a sample batch now.
         batch = episode.get_sample_batch()
         # Assert that the length of episode and batch match.
-        self.assertEqual(len(batch), len(episode))
+        check(len(batch), len(episode))
         # Assert that all agents are present in the multi-agent batch.
         # Note, in the concatenated episode - in contrast to the successor
         # - we have all agents stepped.
@@ -2013,7 +2009,7 @@ class TestMultiAgentEpisode(unittest.TestCase):
             self.assertTrue(agent_id in batch.policy_batches)
         # Assert that the recorded history length is correct.
         for agent_id, agent_eps in episode.agent_episodes.items():
-            self.assertEqual(len(agent_eps), len(batch[agent_id]))
+            check(len(agent_eps), len(batch[agent_id]))
         # Assert that terminated agents are terminated in the sample batch.
         for agent_id in ["agent_1", "agent_5"]:
             self.assertTrue(batch[agent_id]["terminateds"][-1])
@@ -2026,7 +2022,7 @@ class TestMultiAgentEpisode(unittest.TestCase):
         # Convert now to sample batch.
         batch = episode.get_sample_batch()
         # Ensure that this batch is empty.
-        self.assertEqual(len(batch), 0)
+        check(len(batch), 0)
 
     def _mock_multi_agent_records_from_env(
         self,

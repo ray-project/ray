@@ -61,7 +61,8 @@ class InfiniteLookbackBuffer:
     def finalize(self):
         """Finalizes this buffer by converting internal data lists into numpy arrays.
 
-        Thereby, if the individual items in the list are complex (nested 2)
+        Thereby, if the individual items in the list are nested structures, the
+        resulting buffer content will be a nested struct of np.ndarrays (leafs).
         """
         if not self.finalized:
             self.data = batch(self.data)

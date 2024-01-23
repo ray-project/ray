@@ -3,13 +3,13 @@ import unittest
 
 from ray.rllib.env.multi_agent_episode import MultiAgentEpisode
 from ray.rllib.env.tests.test_multi_agent_episode import MultiAgentTestEnv
-from ray.rllib.env.utils.infinite_lookback_timestep_mapping import (
-    InfiniteLookbackTimestepMapping
+from ray.rllib.env.utils.infinite_lookback_env_to_agent_ts_mapping import (
+    InfiniteLookbackEnvToAgentTsMapping
 )
 from ray.rllib.utils.test_utils import check
 
 
-class TestInfiniteLookbackTimestepMapping(unittest.TestCase):
+class TestInfiniteLookbackEnvToAgentTsMapping(unittest.TestCase):
     @classmethod
     def setUpClass(cls) -> None:
         ray.init()
@@ -20,61 +20,61 @@ class TestInfiniteLookbackTimestepMapping(unittest.TestCase):
 
     def test_init(self):
         # Generate empty mapping.
-        ts_map = InfiniteLookbackTimestepMapping()
+        ts_map = InfiniteLookbackEnvToAgentTsMapping()
         check(ts_map.lookback, 0)
         check(ts_map.t_started, 0)
         check(len(ts_map), 0)
         # Make sure any call to `get_local_timestep` returns nothing.
-        check(ts_map.get_local_timesteps(1), None)
-        check(ts_map.get_local_timesteps(2), None)
-        check(ts_map.get_local_timesteps(-1), None)
-        check(ts_map.get_local_timesteps(-1, neg_timesteps_left_of_zero=True), None)
-        check(ts_map.get_local_timesteps(1000), None)
-        check(ts_map.get_local_timesteps(slice(0, 40)), [])
-        check(ts_map.get_local_timesteps(slice(-100, 40)), [])
-        check(ts_map.get_local_timesteps(
+        check(ts_map.get_agent_timesteps(1), None)
+        check(ts_map.get_agent_timesteps(2), None)
+        check(ts_map.get_agent_timesteps(-1), None)
+        check(ts_map.get_agent_timesteps(-1, neg_timesteps_left_of_zero=True), None)
+        check(ts_map.get_agent_timesteps(1000), None)
+        check(ts_map.get_agent_timesteps(slice(0, 40)), [])
+        check(ts_map.get_agent_timesteps(slice(-100, 40)), [])
+        check(ts_map.get_agent_timesteps(
             slice(-100, 40), neg_timesteps_left_of_zero=True
         ), [])
-        check(ts_map.get_local_timesteps([1, 4, 50, 1000, -1]), [])
+        check(ts_map.get_agent_timesteps([1, 4, 50, 1000, -1]), [])
 
         # Test lookback functionality.
         timesteps = list(range(10))
-        ts_map = InfiniteLookbackTimestepMapping(timesteps, lookback=3, t_started=4)
+        ts_map = InfiniteLookbackEnvToAgentTsMapping(timesteps, lookback=3, t_started=4)
         check(ts_map.lookback, 3)
         check(ts_map.t_started, 4)
         check(len(ts_map), 7)
-        check(ts_map.get_local_timesteps(0), 3)
-        check(ts_map.get_local_timesteps(1), 4)
-        check(ts_map.get_local_timesteps(3), 6)
-        check(ts_map.get_local_timesteps(-1), 9)
-        check(ts_map.get_local_timesteps(-2), 8)
-        check(ts_map.get_local_timesteps(-1, neg_timesteps_left_of_zero=True), 2)
-        check(ts_map.get_local_timesteps(-2, neg_timesteps_left_of_zero=True), 1)
+        check(ts_map.get_agent_timesteps(0), 3)
+        check(ts_map.get_agent_timesteps(1), 4)
+        check(ts_map.get_agent_timesteps(3), 6)
+        check(ts_map.get_agent_timesteps(-1), 9)
+        check(ts_map.get_agent_timesteps(-2), 8)
+        check(ts_map.get_agent_timesteps(-1, neg_timesteps_left_of_zero=True), 2)
+        check(ts_map.get_agent_timesteps(-2, neg_timesteps_left_of_zero=True), 1)
 
         timesteps = list(range(45, 55))
-        ts_map = InfiniteLookbackTimestepMapping(timesteps, lookback=5, t_started=50)
+        ts_map = InfiniteLookbackEnvToAgentTsMapping(timesteps, lookback=5, t_started=50)
         check(ts_map.lookback, 5)
         check(ts_map.t_started, 50)
         check(len(ts_map), 5)
 
-    def test_get_local_timesteps(self):
+    def test_get_agent_timesteps(self):
         # Generate empty mapping.
-        ts_map = InfiniteLookbackTimestepMapping()
-        check(ts_map.get_local_timesteps(), [])
-        check(ts_map.get_local_timesteps(slice(-10, None)), [])
-        check(ts_map.get_local_timesteps([-100, -200, -10000]), [])
+        ts_map = InfiniteLookbackEnvToAgentTsMapping()
+        check(ts_map.get_agent_timesteps(), [])
+        check(ts_map.get_agent_timesteps(slice(-10, None)), [])
+        check(ts_map.get_agent_timesteps([-100, -200, -10000]), [])
 
         # local ts:  0  1  2  3  4  5  6  7  8   9
         #           [0, 1, 2, 3, 4, 5, 6, 7, 8, (9)]
         timesteps = list(range(10))
-        ts_map = InfiniteLookbackTimestepMapping(timesteps, lookback=9, t_started=9)
-        check(ts_map.get_local_timesteps(0), 9)
-        check(ts_map.get_local_timesteps(-1), 9)
-        check(ts_map.get_local_timesteps(-1, neg_timesteps_left_of_zero=True), 8)
-        check(ts_map.get_local_timesteps(-2, neg_timesteps_left_of_zero=True), 7)
-        check(ts_map.get_local_timesteps(1), None)
+        ts_map = InfiniteLookbackEnvToAgentTsMapping(timesteps, lookback=9, t_started=9)
+        check(ts_map.get_agent_timesteps(0), 9)
+        check(ts_map.get_agent_timesteps(-1), 9)
+        check(ts_map.get_agent_timesteps(-1, neg_timesteps_left_of_zero=True), 8)
+        check(ts_map.get_agent_timesteps(-2, neg_timesteps_left_of_zero=True), 7)
+        check(ts_map.get_agent_timesteps(1), None)
 
-        local_ts = ts_map.get_local_timesteps(slice(-10, None), t=9)
+        local_ts = ts_map.get_agent_timesteps(slice(-10, None), t=9)
 
     def test_with_sae(self):
         # Create a multi-agent test environment.
@@ -118,7 +118,7 @@ class TestInfiniteLookbackTimestepMapping(unittest.TestCase):
         # This errors out. Check "agent_6" with index 65.
         # The latter comes from
         # `episode.global_t_to_local_t["agent_6"].
-        # get_local_timesteps(-1, t=episode.t, shift=-1)`
+        # get_agent_timesteps(-1, t=episode.t, shift=-1)`
         # Get actions.
         actions = episode.get_actions(-1)
 

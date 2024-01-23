@@ -147,19 +147,19 @@ class SingleAgentEpisode:
         *,
         observations: Optional[Union[List[ObsType], InfiniteLookbackBuffer]] = None,
         observation_space: Optional[gym.Space] = None,
+        infos: Optional[Union[List[Dict], InfiniteLookbackBuffer]] = None,
         actions: Optional[Union[List[ActType], InfiniteLookbackBuffer]] = None,
         action_space: Optional[gym.Space] = None,
         rewards: Optional[
             Union[List[SupportsFloat], InfiniteLookbackBuffer]
         ] = None,
-        infos: Optional[Union[List[Dict], InfiniteLookbackBuffer]] = None,
         terminated: bool = False,
         truncated: bool = False,
         extra_model_outputs: Optional[Dict[str, Any]] = None,
         render_images: Optional[List[np.ndarray]] = None,
         t_started: Optional[int] = None,
         len_lookback_buffer: Union[int, str] = "auto",
-    ) -> "SingleAgentEpisode":
+    ):
         """Initializes a SingleAgentEpisode instance.
 
         This constructor can be called with or without already sampled data, part of
@@ -173,28 +173,28 @@ class SingleAgentEpisode:
                 with observation data in it). If a list, will construct the buffer
                 automatically (given the data and the `len_lookback_buffer` argument).
             observation_space: An optional gym.Space, which all individual observations
-                should abide to. If data is appended or set in this SingleAgentEpisode
-                and a space has been provided during construction, any new observation
+                should abide to. If not None and this SingleAgentEpisode is finalized
+                (via the `self.finalize()` method), and data is appended or set, the new
                 data will be checked for correctness.
+            infos: Either a list of individual info dicts from a sampling or
+                an already instantiated `InfiniteLookbackBuffer` object (possibly
+                with info dicts in it). If a list, will construct the buffer
+                automatically (given the data and the `len_lookback_buffer` argument).
             actions: Either a list of individual info dicts from a sampling or
                 an already instantiated `InfiniteLookbackBuffer` object (possibly
                 with info dict] data in it). If a list, will construct the buffer
                 automatically (given the data and the `len_lookback_buffer` argument).
-            actions: Either a list of individual actions from a sampling or
-                an already instantiated `InfiniteLookbackBuffer` object (possibly
-                with action data in it). If a list, will construct the buffer
-                automatically (given the data and the `len_lookback_buffer` argument).
             action_space: An optional gym.Space, which all individual actions
-                should abide to. If data is appended or set in this SingleAgentEpisode
-                and a space has been provided during construction, any new action
+                should abide to. If not None and this SingleAgentEpisode is finalized
+                (via the `self.finalize()` method), and data is appended or set, the new
                 data will be checked for correctness.
             rewards: Either a list of individual rewards from a sampling or
                 an already instantiated `InfiniteLookbackBuffer` object (possibly
                 with reward data in it). If a list, will construct the buffer
                 automatically (given the data and the `len_lookback_buffer` argument).
-            actions: A dict mapping string keys to either lists of individual extra
-                model output tensors (e.g. `action_logp` or state outs) from a
-                sampling or to an already instantiated `InfiniteLookbackBuffer`
+            extra_model_outputs: A dict mapping string keys to either lists of
+                individual extra model output tensors (e.g. `action_logp` or state outs)
+                from a sampling or to an already instantiated `InfiniteLookbackBuffer`
                 object (possibly with extra model output data in it). If mapping is to
                 a list, will construct the buffer automatically (given the data and
                 the `len_lookback_buffer` argument).
@@ -454,10 +454,8 @@ class SingleAgentEpisode:
         self.is_terminated = terminated
         self.is_truncated = truncated
 
-        # Validate our data.
-        self.validate()
-        # Only check spaces every n timesteps.
-        if self.t % 50:
+        # Only check spaces if finalized AND every n timesteps.
+        if self.is_finalized and self.t % 50:
             if self.observation_space is not None:
                 assert self.observation_space.contains(observation), (
                     f"`observation` {observation} does NOT fit SingleAgentEpisode's "
@@ -465,11 +463,17 @@ class SingleAgentEpisode:
                 )
             # TODO: This check will fail unless we add action clipping to
             #  default module-to-env connector piece.
-            # if self.action_space is not None:
-            #    assert self.action_space.contains(action), (
-            #        f"`action` {action} does NOT fit SingleAgentEpisode's "
-            #        f"action_space: {self.action_space}!"
-            #    )
+            if self.action_space is not None:
+                assert self.action_space.contains(action), (
+                    f"`action` {action} does NOT fit SingleAgentEpisode's "
+                    f"action_space: {self.action_space}!"
+                )
+
+        # Validate our data.
+        try:#TODO
+            self.validate()
+        except Exception as e:
+            raise e
 
     def validate(self) -> None:
         """Validates the episode's data.
