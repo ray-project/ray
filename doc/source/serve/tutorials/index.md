@@ -18,4 +18,5 @@ gradio-integration
 batch
 streaming
 java
+triton-server-integration
 ```
