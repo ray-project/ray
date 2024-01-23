@@ -84,6 +84,10 @@ class JSONDatasource(FileBasedDatasource):
                         raise pa.ArrowInvalid(
                             f"{e} - Auto-increasing block size to "
                             f"{self.read_options.block_size} bytes failed. "
+                            f"Please try manually increasing the block size through "
+                            f"the `read_options` parameter to a larger size. "
+                            f"For example: `read_json(..., read_options="
+                            f"pyarrow.json.ReadOptions(block_size=10 << 25))`"
                             f"More information on this issue can be found here: "
                             f"https://github.com/apache/arrow/issues/25674"
                         )
