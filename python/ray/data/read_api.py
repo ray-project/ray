@@ -2408,15 +2408,18 @@ def from_huggingface(
         A :class:`~ray.data.Dataset` holding rows from the `Hugging Face Datasets Dataset`_.
     """  # noqa: E501
     import datasets
+
     from ray.data.datasource.huggingface_datasource import HuggingFaceDatasource
 
     if isinstance(dataset, (datasets.IterableDataset, datasets.Dataset)):
+        # Attempt to read data via Hugging Face Hub parquet files. If the
+        # returned list of files is empty, attempt read via other methods.
         file_urls = HuggingFaceDatasource.list_parquet_urls_from_dataset(dataset)
         if len(file_urls) > 0:
+            # If file urls are returned, the parquet files are available via API
             return read_parquet(file_urls, parallelism=parallelism)
 
     if isinstance(dataset, datasets.IterableDataset):
-
         # For an IterableDataset, we can use a streaming implementation to read data.
         return read_datasource(HuggingFaceDatasource(dataset=dataset))
     if isinstance(dataset, datasets.Dataset):

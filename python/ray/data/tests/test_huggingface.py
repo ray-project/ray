@@ -8,7 +8,9 @@ from ray.tests.conftest import *  # noqa
 
 
 def test_from_huggingface(ray_start_regular_shared):
-    data = datasets.load_dataset("tweet_eval", "emotion")
+    data = datasets.load_dataset(
+        "tweet_eval", "emotion", download_mode="force_redownload"
+    )
 
     # Check that DatasetDict is not directly supported.
     assert isinstance(data, datasets.DatasetDict)
@@ -24,15 +26,18 @@ def test_from_huggingface(ray_start_regular_shared):
         "test": ray.data.from_huggingface(data["test"]),
     }
 
-    assert ray.get(ray_datasets["train"].to_arrow_refs())[0].equals(
-        data["train"].data.table
-    )
+    # use sort by 'text' to match order of rows
+    expected_table = data["train"].data.table.sort_by("text")
+    output_full_table = pyarrow.concat_tables(
+        [ray.get(tbl) for tbl in ray_datasets["train"].to_arrow_refs()]
+    ).sort_by("text")
+
+    assert expected_table.equals(output_full_table)
     assert ray_datasets["train"].count() == data["train"].num_rows
     assert ray_datasets["test"].count() == data["test"].num_rows
 
     ray_dataset = ray.data.from_huggingface(data["train"])
     assert isinstance(ray_dataset, ray.data.Dataset)
-    assert ray.get(ray_dataset.to_arrow_refs())[0].equals(data["train"].data.table)
 
     # Test reading in a split Hugging Face dataset yields correct individual datasets
     base_hf_dataset = data["train"]
