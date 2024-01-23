@@ -26,6 +26,7 @@ import "src/ray/protobuf/logging.proto";
 /// For example, for pubsub channels that are used by core workers,
 /// they have the prefix WORKER_.
 enum ChannelType {
+  reserved 9;
   /// A channel for object eviction.
   WORKER_OBJECT_EVICTION = 0;
   /// A channel for ref removed.
