@@ -184,7 +184,10 @@ _RAY_ON_SPARK_MAX_OBJECT_STORE_MEMORY_PROPORTION = 0.8
 _RAY_ON_SPARK_NODE_MEMORY_BUFFER_OFFSET = 0.8
 
 
-def calc_mem_ray_head_node(configured_object_store_bytes):
+def calc_mem_ray_head_node(
+    configured_heap_memory_bytes,
+    configured_object_store_bytes
+):
     import psutil
 
     if RAY_ON_SPARK_DRIVER_PHYSICAL_MEMORY_BYTES in os.environ:
@@ -194,13 +197,22 @@ def calc_mem_ray_head_node(configured_object_store_bytes):
     else:
         available_physical_mem = psutil.virtual_memory().total
 
+    available_physical_mem = (
+        available_physical_mem * _RAY_ON_SPARK_NODE_MEMORY_BUFFER_OFFSET
+    )
+
     if RAY_ON_SPARK_DRIVER_SHARED_MEMORY_BYTES in os.environ:
         available_shared_mem = int(os.environ[RAY_ON_SPARK_DRIVER_SHARED_MEMORY_BYTES])
     else:
         available_shared_mem = psutil.virtual_memory().total
 
+    available_shared_mem = (
+        available_shared_mem * _RAY_ON_SPARK_NODE_MEMORY_BUFFER_OFFSET
+    )
+
     heap_mem_bytes, object_store_bytes, warning_msg = _calc_mem_per_ray_node(
-        available_physical_mem, available_shared_mem, configured_object_store_bytes
+        available_physical_mem, available_shared_mem,
+        configured_heap_memory_bytes, configured_object_store_bytes
     )
 
     if warning_msg is not None:
@@ -210,7 +222,8 @@ def calc_mem_ray_head_node(configured_object_store_bytes):
 
 
 def _calc_mem_per_ray_worker_node(
-    num_task_slots, physical_mem_bytes, shared_mem_bytes, configured_object_store_bytes
+    num_task_slots, physical_mem_bytes, shared_mem_bytes,
+    configured_heap_memory_bytes, configured_object_store_bytes
 ):
     available_physical_mem_per_node = int(
         physical_mem_bytes / num_task_slots * _RAY_ON_SPARK_NODE_MEMORY_BUFFER_OFFSET
@@ -221,6 +234,7 @@ def _calc_mem_per_ray_worker_node(
     return _calc_mem_per_ray_node(
         available_physical_mem_per_node,
         available_shared_mem_per_node,
+        configured_heap_memory_bytes,
         configured_object_store_bytes,
     )
 
@@ -228,6 +242,7 @@ def _calc_mem_per_ray_worker_node(
 def _calc_mem_per_ray_node(
     available_physical_mem_per_node,
     available_shared_mem_per_node,
+    configured_heap_memory_bytes,
     configured_object_store_bytes,
 ):
     from ray._private.ray_constants import (
@@ -268,7 +283,19 @@ def _calc_mem_per_ray_node(
 
     object_store_bytes = int(object_store_bytes)
 
-    heap_mem_bytes = available_physical_mem_per_node - object_store_bytes
+    if configured_heap_memory_bytes is None:
+        heap_mem_bytes = available_physical_mem_per_node - object_store_bytes
+    else:
+        heap_mem_bytes = configured_heap_memory_bytes
+        if heap_mem_bytes > available_physical_mem_per_node - object_store_bytes:
+            heap_mem_bytes = available_physical_mem_per_node - object_store_bytes
+            warning_msg = (
+                "heap_memory_per_node + object_store_memory_per_node exceeds "
+                "available memory per node, so heap_memory_per_node is capped "
+                "by 'available_memory_per_node - object_store_memory_per_node' "
+                f"({heap_mem_bytes}) bytes."
+            )
+
     return heap_mem_bytes, object_store_bytes, warning_msg
 
 
@@ -329,8 +356,18 @@ def _get_num_physical_gpus():
 def _get_avail_mem_per_ray_worker_node(
     num_cpus_per_node,
     num_gpus_per_node,
+    heap_memory_per_node,
     object_store_memory_per_node,
 ):
+    """
+    Returns tuple of (
+        ray_worker_node_heap_mem_bytes,
+        ray_worker_node_object_store_bytes,
+        error_message, # always None
+        warning_message,
+    )
+    """
+
     num_cpus = _get_cpu_cores()
 
     if num_cpus_per_node > num_cpus:
@@ -364,6 +401,7 @@ def _get_avail_mem_per_ray_worker_node(
         num_task_slots,
         physical_mem_bytes,
         shared_mem_bytes,
+        heap_memory_per_node,
         object_store_memory_per_node,
     )
     return (
@@ -376,6 +414,7 @@ def _get_avail_mem_per_ray_worker_node(
 
 def get_avail_mem_per_ray_worker_node(
     spark,
+    heap_memory_per_node,
     object_store_memory_per_node,
     num_cpus_per_node,
     num_gpus_per_node,
@@ -394,6 +433,7 @@ def get_avail_mem_per_ray_worker_node(
             return _get_avail_mem_per_ray_worker_node(
                 num_cpus_per_node,
                 num_gpus_per_node,
+                heap_memory_per_node,
                 object_store_memory_per_node,
             )
         except Exception as e:

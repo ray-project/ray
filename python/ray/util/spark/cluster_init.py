@@ -895,6 +895,8 @@ def _setup_ray_cluster_internal(
     num_cpus_head_node: Optional[int],
     num_gpus_worker_node: Optional[int],
     num_gpus_head_node: Optional[int],
+    heap_memory_worker_node: Optional[int],
+    heap_memory_head_node: Optional[int],
     object_store_memory_worker_node: Optional[int],
     object_store_memory_head_node: Optional[int],
     head_node_options: Optional[Dict],
@@ -1056,6 +1058,7 @@ def _setup_ray_cluster_internal(
         ray_worker_node_object_store_mem_bytes,
     ) = get_avail_mem_per_ray_worker_node(
         spark,
+        heap_memory_worker_node,
         object_store_memory_worker_node,
         num_cpus_worker_node,
         num_gpus_worker_node,
@@ -1173,7 +1176,7 @@ def _setup_ray_cluster_internal(
         object_store_memory_head_node = 1024 * 1024 * 1024
     else:
         heap_memory_head_node, object_store_memory_head_node = calc_mem_ray_head_node(
-            object_store_memory_head_node
+            heap_memory_head_node, object_store_memory_head_node
         )
 
     with _active_ray_cluster_rwlock:
