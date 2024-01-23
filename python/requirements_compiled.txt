@@ -1006,15 +1006,6 @@ markupsafe==2.1.4
     #   mako
     #   moto
     #   nbconvert
-matplotlib==3.8.2
-    # via
-    #   -r /ray/ci/../python/requirements/ml/tune-test-requirements.txt
-    #   catboost
-    #   gradio
-    #   minigrid
-    #   mlflow
-    #   pymoo
-    #   zoopt
 matplotlib-inline==0.1.6
     # via
     #   ipykernel
