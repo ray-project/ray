@@ -48,7 +48,7 @@ const MOCK_ACTORS: { [actorId: string]: Actor } = {
   },
 };
 describe("ActorTable", () => {
-  it("renders a table of actors filtered by node ID", async() => {
+  it("renders a table of actors filtered by node ID", async () => {
     const RUNNING_ACTORS = {
       ...MOCK_ACTORS,
       ACTOR_2: {
@@ -68,10 +68,14 @@ describe("ActorTable", () => {
       </MemoryRouter>,
     );
 
-    const nodeIdFilter = getByTestId('nodeIdFilter');
-    const input = within(nodeIdFilter).getByRole('textbox')
+    const nodeIdFilter = getByTestId("nodeIdFilter");
+    const input = within(nodeIdFilter).getByRole("textbox");
     // Filter by node ID of ACTOR_2
-    fireEvent.change(input, { target: { value: '426854e68e4225b3941deaf03c8dcfcb1daacc69a92711d370dbb0e2' } })
+    fireEvent.change(input, {
+      target: {
+        value: "426854e68e4225b3941deaf03c8dcfcb1daacc69a92711d370dbb0e2",
+      },
+    });
     await screen.findByText("Actor ID");
 
     expect(screen.queryByText("ACTOR_1")).not.toBeInTheDocument();
