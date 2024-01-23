@@ -47,6 +47,7 @@ steps:
   - label: ":windows: wheel {{matrix}}"
     # we have linux/mac wheels tag, but do not have a windows wheels tag..
     # so using python and core_cpp here, to make sure at least it builds
+    if: build.env("RAYCI_CONTINUOUS_BUILD") == "1" || build.pull_request.labels includes "continuous-build"
     tags:
       - oss
       - python
