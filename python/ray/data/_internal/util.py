@@ -51,10 +51,8 @@ _VERSION_VALIDATED = False
 _LOCAL_SCHEME = "local"
 _EXAMPLE_SCHEME = "example"
 
-
 LazyModule = Union[None, bool, ModuleType]
 _pyarrow_dataset: LazyModule = None
-
 
 cached_cluster_resources = {}
 cluster_resources_last_fetch_time = 0
@@ -384,7 +382,7 @@ def _insert_doc_at_pattern(
                 break
             elif not insert_after:
                 # Move past the found pattern, since we're skipping it.
-                tail = tail[i - offset + len(pattern) :]
+                tail = tail[i - offset + len(pattern):]
             i = tail.find(pattern)
         else:
             raise ValueError(
@@ -520,7 +518,7 @@ def _split_list(arr: List[Any], num_splits: int) -> List[List[Any]]:
     assert num_splits > 0
     q, r = divmod(len(arr), num_splits)
     splits = [
-        arr[i * q + min(i, r) : (i + 1) * q + min(i + 1, r)] for i in range(num_splits)
+        arr[i * q + min(i, r): (i + 1) * q + min(i + 1, r)] for i in range(num_splits)
     ]
     return splits
 
@@ -735,6 +733,7 @@ def find_partition_index(
             return right
         col_name = columns[i]
         col_vals = table[col_name].to_numpy()[left:right]
+        col_vals = [x for x in col_vals if x is not None]
         desired_val = desired[i]
 
         prevleft = left
@@ -742,20 +741,20 @@ def find_partition_index(
             left = prevleft + (
                 len(col_vals)
                 - np.searchsorted(
-                    col_vals,
-                    desired_val,
-                    side="right",
-                    sorter=np.arange(len(col_vals) - 1, -1, -1),
-                )
+                col_vals,
+                desired_val,
+                side="right",
+                sorter=np.arange(len(col_vals) - 1, -1, -1),
+            )
             )
             right = prevleft + (
                 len(col_vals)
                 - np.searchsorted(
-                    col_vals,
-                    desired_val,
-                    side="left",
-                    sorter=np.arange(len(col_vals) - 1, -1, -1),
-                )
+                col_vals,
+                desired_val,
+                side="left",
+                sorter=np.arange(len(col_vals) - 1, -1, -1),
+            )
             )
         else:
             left = prevleft + np.searchsorted(col_vals, desired_val, side="left")
@@ -990,7 +989,7 @@ def call_with_retry(
                 # Retry with binary expoential backoff with random jitter.
                 backoff = min((2 ** (i + 1)) * random.random(), max_backoff_s)
                 logger.debug(
-                    f"Retrying {i+1} attempts to {description} after {backoff} seconds."
+                    f"Retrying {i + 1} attempts to {description} after {backoff} seconds."
                 )
                 time.sleep(backoff)
             else:

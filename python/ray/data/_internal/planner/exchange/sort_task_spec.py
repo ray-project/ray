@@ -105,6 +105,11 @@ class SortTaskSpec(ExchangeTaskSpec):
         samples = builder.build()
 
         sample_dict = BlockAccessor.for_block(samples).to_numpy(columns=columns)
+        for k, v in sample_dict.items():
+            if v.dtype == object:
+                sample_dict[k] = np.array([i for i in v if i is not None], dtype=object)
+
+        print("sample_dict ->>>: ", sample_dict)
         # Compute sorted indices of the samples. In np.lexsort last key is the
         # primary key hence have to reverse the order.
         indices = np.lexsort(list(reversed(list(sample_dict.values()))))

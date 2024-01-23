@@ -520,11 +520,21 @@ class PandasBlockAccessor(TableBlockAccessor):
 
         stats = BlockExecStats.builder()
         keys = key if isinstance(key, list) else [key]
-        key_fn = (
-            (lambda r: tuple(r[r._row.columns[: len(keys)]]))
-            if key is not None
-            else (lambda r: (0,))
-        )
+        # key_fn = (
+        #     (lambda r: tuple(r[r._row.columns[: len(keys)]]))
+        #     if key is not None
+        #     else (lambda r: (0,))
+        # )
+
+        def key_fn(r):
+            if key is not None:
+                # Extract a tuple of selected columns from the row
+                # print("keys ->>", key)
+                selected_columns = r._row.columns[:len(keys)]
+                return tuple(r[selected_columns])
+            else:
+                # If key is None, always return a tuple containing the single element 0
+                return (0,)
 
         iter = heapq.merge(
             *[
@@ -539,6 +549,7 @@ class PandasBlockAccessor(TableBlockAccessor):
             try:
                 if next_row is None:
                     next_row = next(iter)
+
                 next_keys = key_fn(next_row)
                 next_key_names = (
                     next_row._row.columns[: len(keys)] if key is not None else None
