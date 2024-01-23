@@ -2417,7 +2417,10 @@ def from_huggingface(
         file_urls = HuggingFaceDatasource.list_parquet_urls_from_dataset(dataset)
         if len(file_urls) > 0:
             # If file urls are returned, the parquet files are available via API
-            return read_parquet(file_urls, parallelism=parallelism)
+            import fsspec.implementations.http
+
+            http = fsspec.implementations.http.HTTPFileSystem()
+            return read_parquet(file_urls, parallelism=parallelism, filesystem=http)
 
     if isinstance(dataset, datasets.IterableDataset):
         # For an IterableDataset, we can use a streaming implementation to read data.
