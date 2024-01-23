@@ -19,52 +19,31 @@ streaming
 java
 ```
 
-Below are tutorials for using exploring Ray Serve capabilities and how to integrate different modeling frameworks.
+Below are tutorials for exploring Ray Serve capabilities and learning how to integrate different modeling frameworks.
 
 Beginner
 --------
 
 ```{list-table}
-  :widths: 1 5
-  :header-rows: 1
-  * - Framework
-    - Example
-  * - PyTorch, Tensorflow, Scikit-Learn, Others
-    - [Serving ML Models](serve-ml-models)
-  * - PyTorch, Transformers
-    - [Serving a Stable Diffusion Model](stable-diffusion)
-  * - Transformers
-    - [Serving a Distilbert Model](text-classification)
-  * - PyTorch
-    - [Serving an Object Detection Model](object-detection)
+  * - [Serve ML Models](serve-ml-models)
+  * - [Serve a Stable Diffusion Model](stable-diffusion)
+  * - [Serve a Text Classification Model](text-classification)
+  * - [Serve an Object Detection Model](object-detection)
 ```
 
 Intermediate
 ------------
 
 ```{list-table}
-  :widths: 1 5
-  :header-rows: 1
-  * - Framework
-    - Example
-  * - PyTorch, Transformers
-    - [Serving an inference model on AWS NeuronCores using FastAPI](aws-neuron-core-inference)
-  * - Transformers
-    - [Scaling your Gradio app with Ray Serve](gradio-integration)
-  * - Transformers
-    - [Batching with Ray Serve](batch.md)
-  * - Transformers
-    - [Streaming with Ray Serve](streaming)
+  * - [Serve an Inference Model on AWS NeuronCores Using FastAPI](aws-neuron-core-inference)
+  * - [Scale a Gradio App with Ray Serve](gradio-integration)
+  * - [Serve a Text Generator with Request Batching](batch.md)
+  * - [Serve a Chatbot with Request and Response Streaming](streaming)
 ```
 
 Advanced
 --------
 
 ```{list-table}
-  :widths: 1 5
-  :header-rows: 1
-  * - Framework
-    - Example
-  * - ???
-    - [Java and Ray Serve](java)
+  * - [Java and Ray Serve](java)
 ```
