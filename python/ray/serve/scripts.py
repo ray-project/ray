@@ -859,7 +859,6 @@ def _generate_config_from_file_or_import_path(
 
 @cli.command(
     short_help="Publish an application to a remote provider.",
-    help=("TODO."),
     # TODO(edoakes): un-hide this at some point.
     hidden=True,
 )
@@ -941,17 +940,12 @@ def publish(
         name = default_name
 
     publish_provider = get_publish_provider(provider)
-    try:
-        publish_provider.publish(
-            config.dict(exclude_unset=True),
-            name=name,
-            ray_version=ray.__version__,
-            base_image=base_image,
-        )
-    except Exception as e:
-        # Providers are expected to log their own error messages. This prevents.
-        # the output from being too noisy.
-        raise click.ClickException("Failed to publish app.")
+    publish_provider.publish(
+        config.dict(exclude_unset=True),
+        name=name,
+        ray_version=ray.__version__,
+        base_image=base_image,
+    )
 
 
 class ServeDeploySchemaDumper(yaml.SafeDumper):

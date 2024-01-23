@@ -1,12 +1,14 @@
-import yaml
-from abc import abstractmethod, ABC
+from abc import ABC, abstractmethod
+from subprocess import CalledProcessError, check_output
 from tempfile import NamedTemporaryFile
 from typing import Dict, Optional
-from subprocess import check_output
+
+import click
+import yaml
 
 from ray._private.utils import import_attr
-from ray.serve.schema import ServeDeploySchema
 
+# Method that dynamically imported modules must implement to return a `PublishProvider`.
 PUBLISH_PROVIDER_FACTORY_METHOD = "get_ray_serve_publish_provider"
 
 
@@ -22,15 +24,22 @@ class PublishProvider(ABC):
     ):
         pass
 
+
 def get_publish_provider(provider_name: str) -> PublishProvider:
     publish_provider = {
         "anyscale": AnyscalePublishProvider,
     }.get(provider_name, None)
 
     if publish_provider is None:
-        publish_provider_factory = import_attr(
-            f"{provider_name}.{PUBLISH_PROVIDER_FACTORY_METHOD}"
-        )
+        try:
+            publish_provider_factory = import_attr(
+                f"{provider_name}.{PUBLISH_PROVIDER_FACTORY_METHOD}"
+            )
+        except (ModuleNotFoundError, AttributeError):
+            raise ModuleNotFoundError(
+                f"Failed to import '{PUBLISH_PROVIDER_FACTORY_METHOD}' "
+                f"from publish provider module '{provider_name}'."
+            )
         publish_provider = publish_provider_factory()
 
     return publish_provider
@@ -58,4 +67,7 @@ class AnyscalePublishProvider(PublishProvider):
             yaml.dump(service_config, f, default_flow_style=False)
             f.flush()
 
-            check_output(["anyscale", "service", "rollout", "-f", f.name])
+            try:
+                check_output(["anyscale", "service", "rollout", "-f", f.name])
+            except CalledProcessError:
+                raise click.ClickException("Failed to deploy service.")
