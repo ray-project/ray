@@ -5,7 +5,7 @@ aim==3.17.5
 gpy==1.10.0
 
 jupyterlab==3.6.1
-matplotlib!=3.4.3
+matplotlib!=3.4.3,<3.8 #3.8 requires python 3.9. TODO: remove this line when we upgrade to python 3.9.
 
 pytest-remotedata==0.3.2
 pytorch-lightning==1.6.5
