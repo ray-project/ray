@@ -1,5 +1,6 @@
 import asyncio
 import time
+import logging
 from dataclasses import dataclass
 from functools import wraps
 from inspect import isasyncgenfunction, iscoroutinefunction
@@ -19,9 +20,13 @@ from typing import (
 
 from ray._private.signature import extract_signature, flatten_args, recover_args
 from ray._private.utils import get_or_create_event_loop
+from ray.serve._private.constants import SERVE_LOGGER_NAME
 from ray.serve._private.utils import extract_self_if_method_call
 from ray.serve.exceptions import RayServeException
 from ray.util.annotations import PublicAPI
+
+
+logger = logging.getLogger(SERVE_LOGGER_NAME)
 
 
 @dataclass
@@ -206,35 +211,42 @@ class _BatchQueue:
         """Loops infinitely and processes queued request batches."""
 
         while True:
-            batch: List[_SingleRequest] = await self.wait_for_batch()
-            assert len(batch) > 0
-            self_arg = batch[0].self_arg
-            args, kwargs = _batch_args_kwargs([item.flattened_args for item in batch])
-            futures = [item.future for item in batch]
+            try:
+                batch: List[_SingleRequest] = await self.wait_for_batch()
+                assert len(batch) > 0
+                self_arg = batch[0].self_arg
+                args, kwargs = _batch_args_kwargs([item.flattened_args for item in batch])
+                futures = [item.future for item in batch]
 
-            # Method call.
-            if self_arg is not None:
-                func_future_or_generator = func(self_arg, *args, **kwargs)
-            # Normal function call.
-            else:
-                func_future_or_generator = func(*args, **kwargs)
+                # Method call.
+                if self_arg is not None:
+                    func_future_or_generator = func(self_arg, *args, **kwargs)
+                # Normal function call.
+                else:
+                    func_future_or_generator = func(*args, **kwargs)
 
-            if isasyncgenfunction(func):
-                func_generator = func_future_or_generator
-                await self._consume_func_generator(func_generator, futures, len(batch))
-            else:
-                try:
-                    func_future = func_future_or_generator
-                    results = await func_future
-                    self._validate_results(results, len(batch))
-                    for result, future in zip(results, futures):
-                        # If the client has disconnected, the future is canceled.
-                        # We should only set result when the connection is still live.
-                        if not future.cancelled():
-                            future.set_result(result)
-                except Exception as e:
-                    for future in futures:
-                        future.set_exception(e)
+                if isasyncgenfunction(func):
+                    func_generator = func_future_or_generator
+                    await self._consume_func_generator(func_generator, futures, len(batch))
+                else:
+                    try:
+                        func_future = func_future_or_generator
+                        results = await func_future
+                        self._validate_results(results, len(batch))
+                        for result, future in zip(results, futures):
+                            # If the client has disconnected, the future is canceled.
+                            # We should only set result when the connection is still live.
+                            if not future.cancelled():
+                                future.set_result(result)
+                    except Exception as e:
+                        for future in futures:
+                            future.set_exception(e)
+            except Exception as e:
+                logger.exception(
+                    "_process_batches asyncio task ran into an unexpected "
+                    "exception. Please file an issue on GitHub with the "
+                    "traceback."
+                )
 
     def __del__(self):
         if (
