@@ -782,16 +782,11 @@ def _generate_config_from_file_or_import_path(
                 "Application arguments cannot be specified for a config file."
             )
 
-        # TODO(edoakes): should we enable overriding here?
-        if runtime_env is not None:
-            raise click.ClickException(
-                "runtime_env arguments cannot be specified for a config file."
-            )
-
+        # TODO(edoakes): runtime_env is silently ignored -- should we enable overriding?
+        name = os.path.basename(config_path).split(".")[0]
         with open(config_path, "r") as config_file:
             config_dict = yaml.safe_load(config_file)
             config = ServeDeploySchema.parse_obj(config_dict)
-            name = os.path.basename(config_file).split(".")[0]
     else:
         # TODO(edoakes): should we default to --working-dir="." for this?
         import_path = config_or_import_path
