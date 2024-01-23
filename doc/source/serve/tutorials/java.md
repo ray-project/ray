@@ -13,7 +13,7 @@ To use Java Ray Serve, you need the following dependency in your pom.xml.
 </dependency>
 ```
 
-> NOTE: After installing Ray with Python, the local environment includes the Java jar of Ray Serve. The `provided` scope could ensure that you can compile the Java code using Ray Serve without version conflicts when you deploy on the cluster.
+> NOTE: After installing Ray with Python, the local environment includes the Java jar of Ray Serve. The `provided` scope ensures that you can compile the Java code using Ray Serve without version conflicts when you deploy on the cluster.
 
 ## Example model
 
@@ -98,7 +98,7 @@ Another way to test or call a deployment is through the HTTP request. However, t
 
 - The `call` method can only have one input parameter, and the type of the input parameter and the returned value can only be `String`.
 
-If you want to call the `strategy` deployment with HTTP, the you can rewrite the class like this code:
+If you want to call the `strategy` deployment with HTTP, then you can rewrite the class like this code:
 
 ```{literalinclude} ../../../../java/serve/src/test/java/io/ray/serve/docdemo/HttpStrategyOnRayServe.java
 :end-before: docs-strategy-end
@@ -106,7 +106,7 @@ If you want to call the `strategy` deployment with HTTP, the you can rewrite the
 :start-after: docs-strategy-start
 ```
 
-After deploying this deployment, you can access it through `curl` command:
+After deploying this deployment, you can access it with the `curl` command:
 
 ```shell
 curl -d '{"time":1641038674, "bank":"test_bank", "indicator":"test_indicator"}' http://127.0.0.1:8000/strategy

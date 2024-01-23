@@ -38,7 +38,7 @@ Next, train a simple MNIST model using Keras.
 :end-before: __doc_train_model_end__
 ```
 
-Next, define a `TFMnistModel` class that accepts HTTP requests and runs the MNIST model that you trained. The `@serve.deployment` decorator makes it a deployment object that you can deploy onto Ray Serve. Note that Ray Serve exposes the deployment over an HTTP route. By default, when the deployment receives a request over HTTP, it invokes the `__call__` method.
+Next, define a `TFMnistModel` class that accepts HTTP requests and runs the MNIST model that you trained. The `@serve.deployment` decorator makes it a deployment object that you can deploy onto Ray Serve. Note that Ray Serve exposes the deployment over an HTTP route. By default, when the deployment receives a request over HTTP, Ray Serve invokes the `__call__` method.
 
 ```{literalinclude} ../doc_code/tutorial_tensorflow.py
 :start-after: __doc_define_servable_begin__
@@ -46,7 +46,7 @@ Next, define a `TFMnistModel` class that accepts HTTP requests and runs the MNIS
 ```
 
 :::{note}
-When you deploy and instantiate the `TFMnistModel` class, it loads the TensorFlow model from your file system so that it can be ready to run inference on the model and serve requests later.
+When you deploy and instantiate the `TFMnistModel` class, Ray Serve loads the TensorFlow model from your file system so that it can be ready to run inference on the model and serve requests later.
 :::
 
 Now that you've defined the Serve deployment, prepare it so that you can deploy it.
@@ -57,7 +57,7 @@ Now that you've defined the Serve deployment, prepare it so that you can deploy 
 ```
 
 :::{note}
-`TFMnistModel.bind(TRAINED_MODEL_PATH)` binds the argument `TRAINED_MODEL_PATH` to the deployment and returns a `DeploymentNode` object, a wrapping of the `TFMnistModel` deployment object, that it can then use to connect with other `DeploymentNodes` to form a more complex [deployment graph](serve-model-composition).
+`TFMnistModel.bind(TRAINED_MODEL_PATH)` binds the argument `TRAINED_MODEL_PATH` to the deployment and returns a `DeploymentNode` object, a wrapping of the `TFMnistModel` deployment object, that you can then use to connect with other `DeploymentNodes` to form a more complex [deployment graph](serve-model-composition).
 :::
 
 Finally, deploy the model to Ray Serve through the terminal.
@@ -137,7 +137,7 @@ Open a new Python file called `tutorial_pytorch.py`. First, import Ray Serve and
 :end-before: __doc_import_end__
 ```
 
-Define a class `ImageModel` that parses the input data, transforms the images, and runs the ResNet18 model loaded from `torchvision`. The `@serve.deployment` decorator makes it a deployment object that you can deploy onto Ray Serve.  Note that Ray Serve exposes the deployment over an HTTP route. By default, when the deployment receives a request over HTTP, it invokes the `__call__` method.
+Define a class `ImageModel` that parses the input data, transforms the images, and runs the ResNet18 model loaded from `torchvision`. The `@serve.deployment` decorator makes it a deployment object that you can deploy onto Ray Serve.  Note that Ray Serve exposes the deployment over an HTTP route. By default, when the deployment receives a request over HTTP, Ray Serve invokes the `__call__` method.
 
 ```{literalinclude} ../doc_code/tutorial_pytorch.py
 :start-after: __doc_define_servable_begin__
@@ -190,10 +190,10 @@ You should get an output like the following, although the exact number may vary:
 This example trains and deploys a simple scikit-learn classifier.
 In particular, it shows:
 
-- How to load the scikit-Learn model from file system in your Ray Serve definition.
+- How to load the scikit-learn model from file system in your Ray Serve definition.
 - How to parse the JSON request and make a prediction.
 
-Ray Serve is framework-agnostic. You can use any version of sklearn. Youalso need `requests` to send HTTP requests to your model deployment. If you haven't already, install scikit-learn and requests by running:
+Ray Serve is framework-agnostic. You can use any version of sklearn. You also need `requests` to send HTTP requests to your model deployment. If you haven't already, install scikit-learn and requests by running:
 
 ```console
 $ pip install scikit-learn requests
@@ -225,7 +225,7 @@ Next, load the Iris dataset and split the data into training and validation sets
 :end-before: __doc_data_end__
 ```
 
-Then, train the model and save it to file.
+Then, train the model and save it to a file.
 
 ```{literalinclude} ../doc_code/tutorial_sklearn.py
 :start-after: __doc_train_model_begin__
@@ -236,7 +236,7 @@ Then, train the model and save it to file.
 
 Finally, you're ready to deploy the classifier using Ray Serve.
 
-Define a class `BoostingModel` that runs inference on the `GradientBoosingClassifier` model you trained and returns the resulting label. It's decorated with `@serve.deployment` to make it a deployment object so you can deploy it onto Ray Serve. Note that Ray Serve exposes the deployment over an HTTP route. By default, when the deployment receives a request over HTTP, it invokes the `__call__` method.
+Define a `BoostingModel` class that runs inference on the `GradientBoosingClassifier` model you trained and returns the resulting label. It's decorated with `@serve.deployment` to make it a deployment object so you can deploy it onto Ray Serve. Note that Ray Serve exposes the deployment over an HTTP route. By default, when the deployment receives a request over HTTP, Ray Serve invokes the `__call__` method.
 
 ```{literalinclude} ../doc_code/tutorial_sklearn.py
 :start-after: __doc_define_servable_begin__

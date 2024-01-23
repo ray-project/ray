@@ -113,7 +113,7 @@ print("Result returned:", results)
 ```
 
 You should get an output like the following. The first batch has a 
-batch size of 1, and the subsequent queries have a batch size of 4. Even though Ray Serve issues each 
+batch size of 1, and the subsequent queries have a batch size of 4. Even though the client script issues each 
 query independently, Ray Serve evaluates them in batches.
 ```python
 (pid=...) Our input array has length: 1

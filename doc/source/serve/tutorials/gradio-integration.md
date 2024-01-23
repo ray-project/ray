@@ -48,7 +48,7 @@ Ray Serve doesn't support routing requests properly to multiple replicas of `Gra
 Ray can’t pickle Gradio. Instead, pass a builder function that constructs the Gradio interface.
 :::
 
-Using either Gradio app `io` constructed by the builder function above or providing your own application of type `Interface`, `Block`, `Parallel`, etc., wrap the app in your Gradio Server. Pass the builder function as input to your Gradio Server. Ray Serves uses the builder function to construct your Gradio app on the Ray cluster.
+Using either the Gradio app `io`, which the builder function constructed, or your own Gradio app of type `Interface`, `Block`, `Parallel`, etc., wrap the app in your Gradio Server. Pass the builder function as input to your Gradio Server. Ray Serves uses the builder function to construct your Gradio app on the Ray cluster.
 
 ```{literalinclude} ../doc_code/gradio-integration.py
 :start-after: __doc_app_begin__

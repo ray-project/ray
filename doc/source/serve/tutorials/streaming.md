@@ -147,7 +147,7 @@ Create a Python file called `batchbot.py`. First add the imports:
 ```
 
 :::{warning}
-Hugging Face's support for `Streamers` is still under development and may change in the future. `RawQueue` is compatible with the `Streamers` interface in Transformers 4.30.2. However, the `Streamers` interface may change, making the `RawQueue` incompatible with Hugging Face models in the future.
+Hugging Face's support for `Streamers` is still under development and may change in the future. `RawQueue` is compatible with the `Streamers` interface in Hugging Face 4.30.2. However, the `Streamers` interface may change, making the `RawQueue` incompatible with Hugging Face models in the future.
 :::
 
 Similar to `Textbot` and `Chatbot`, the `Batchbot` needs a streamer to stream outputs from batched requests, but Hugging Face `Streamers` don't support batched requests. Add this custom `RawStreamer` to process batches of tokens:
@@ -167,7 +167,7 @@ constructor:
 :end-before: __batchbot_constructor_end__
 ```
 
-Unlike `Textbot` and `Chatbot`, the `Batchbot` constructor also sets a `pad_token`. You need to set this token needs to batch prompts with different lengths.
+Unlike `Textbot` and `Chatbot`, the `Batchbot` constructor also sets a `pad_token`. You need to set this token to batch prompts with different lengths.
 
 Add the following logic to handle requests sent to the `Batchbot`:
 
