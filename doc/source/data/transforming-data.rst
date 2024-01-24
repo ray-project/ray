@@ -370,9 +370,7 @@ size during iteration. See more details in
     
     If this time is significantly larger than the
     time spent in other steps, one way to improve performance is to decrease
-    ``local_shuffle_buffer_size`` or turn off the local shuffle buffer altogether.
-    You can instead only :ref:`shuffle the ordering of files <shuffling_file_order>`
-    for a computationally cheaper approach.
+    ``local_shuffle_buffer_size`` or turn off the local shuffle buffer altogether and only :ref:`shuffle the ordering of files <shuffling_file_order>`.
 
 Shuffle all rows
 ~~~~~~~~~~~~~~~~
