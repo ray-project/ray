@@ -339,6 +339,7 @@ class HttpRuntimeEnvAgentClient : public RuntimeEnvAgentClient {
   // POST /get_or_create_runtime_env
   // Body = proto rpc::GetOrCreateRuntimeEnvRequest
   void GetOrCreateRuntimeEnv(const JobID &job_id,
+                             const WorkerID &worker_id,
                              const std::string &serialized_runtime_env,
                              const rpc::RuntimeEnvConfig &runtime_env_config,
                              const std::string &serialized_allocated_resource_instances,
@@ -347,6 +348,7 @@ class HttpRuntimeEnvAgentClient : public RuntimeEnvAgentClient {
         [=](SuccCallback<rpc::GetOrCreateRuntimeEnvReply> succ_callback,
             FailCallback fail_callback) {
           return TryGetOrCreateRuntimeEnv(job_id,
+                                          worker_id,
                                           serialized_runtime_env,
                                           runtime_env_config,
                                           serialized_allocated_resource_instances,
@@ -393,6 +395,7 @@ class HttpRuntimeEnvAgentClient : public RuntimeEnvAgentClient {
   // or invokes `fail_callback` on network error or protobuf deserialization error.
   void TryGetOrCreateRuntimeEnv(
       const JobID &job_id,
+      const WorkerID &worker_id,
       const std::string &serialized_runtime_env,
       const rpc::RuntimeEnvConfig &runtime_env_config,
       const std::string &serialized_allocated_resource_instances,
@@ -400,6 +403,9 @@ class HttpRuntimeEnvAgentClient : public RuntimeEnvAgentClient {
       std::function<void(ray::Status)> fail_callback) {
     rpc::GetOrCreateRuntimeEnvRequest request;
     request.set_job_id(job_id.Hex());
+    if (!worker_id.IsNil()) {
+      request.set_worker_id(worker_id.Hex());
+    }
     request.set_serialized_runtime_env(serialized_runtime_env);
     request.mutable_runtime_env_config()->CopyFrom(runtime_env_config);
     request.set_serialized_allocated_resource_instances(
@@ -429,12 +435,13 @@ class HttpRuntimeEnvAgentClient : public RuntimeEnvAgentClient {
   // POST /delete_runtime_env_if_possible
   // Body = proto rpc::DeleteRuntimeEnvIfPossibleRequest
   void DeleteRuntimeEnvIfPossible(const std::string &serialized_runtime_env,
+                                  const WorkerID &worker_id,
                                   DeleteRuntimeEnvIfPossibleCallback callback) override {
     RetryInvokeOnNotFoundWithDeadline<rpc::DeleteRuntimeEnvIfPossibleReply>(
         [=](SuccCallback<rpc::DeleteRuntimeEnvIfPossibleReply> succ_callback,
             FailCallback fail_callback) {
           return TryDeleteRuntimeEnvIfPossible(
-              serialized_runtime_env, succ_callback, fail_callback);
+              serialized_runtime_env, worker_id, succ_callback, fail_callback);
         },
         /*succ_callback=*/
         [=](rpc::DeleteRuntimeEnvIfPossibleReply reply) {
@@ -465,11 +472,15 @@ class HttpRuntimeEnvAgentClient : public RuntimeEnvAgentClient {
   // or invokes `fail_callback` on network error or protobuf deserialization error.
   void TryDeleteRuntimeEnvIfPossible(
       const std::string &serialized_runtime_env,
+      const WorkerID &worker_id,
       std::function<void(rpc::DeleteRuntimeEnvIfPossibleReply)> succ_callback,
       std::function<void(ray::Status)> fail_callback) {
     rpc::DeleteRuntimeEnvIfPossibleRequest request;
     request.set_serialized_runtime_env(serialized_runtime_env);
     request.set_source_process("raylet");
+    if (!worker_id.IsNil()) {
+      request.set_worker_id(worker_id.Hex());
+    }
     std::string payload = request.SerializeAsString();
 
     auto session = Session::Create(

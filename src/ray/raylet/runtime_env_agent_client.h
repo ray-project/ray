@@ -61,6 +61,7 @@ class RuntimeEnvAgentClient {
   /// Request agent to increase the runtime env reference. This API is not idempotent. The
   /// client automatically retries on network errors.
   /// \param[in] job_id The job id which the runtime env belongs to.
+  /// \param[in] worker_id The worker id which the runtime env is created for.
   /// \param[in] serialized_runtime_env The runtime
   /// environment serialized in JSON as from `RuntimeEnv::Serialize` method.
   /// \param[in] serialized_allocated_resource_instances The serialized allocated resource
@@ -68,6 +69,7 @@ class RuntimeEnvAgentClient {
   /// \param[in] callback The callback function.
   virtual void GetOrCreateRuntimeEnv(
       const JobID &job_id,
+      const WorkerID &worker_id,
       const std::string &serialized_runtime_env,
       const rpc::RuntimeEnvConfig &runtime_env_config,
       const std::string &serialized_allocated_resource_instances,
@@ -77,9 +79,11 @@ class RuntimeEnvAgentClient {
   /// client automatically retries on network errors.
   /// \param[in] serialized_runtime_env The runtime environment serialized in JSON as from
   /// `RuntimeEnv::Serialize` method.
+  /// \param[in] worker_id The worker id which the runtime env is created for.
   /// \param[in] callback The callback function.
   virtual void DeleteRuntimeEnvIfPossible(
       const std::string &serialized_runtime_env,
+      const WorkerID &worker_id,
       DeleteRuntimeEnvIfPossibleCallback callback) = 0;
 
   // NOTE: The service has another method `GetRuntimeEnvsInfo` but nobody in raylet uses
