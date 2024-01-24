@@ -3402,6 +3402,7 @@ class Dataset:
         project_id: str,
         dataset: str,
         max_retry_cnt: int = 10,
+        overwrite_table: Optional[bool] = True,
         ray_remote_args: Dict[str, Any] = None,
     ) -> None:
         """Write the dataset to a BigQuery dataset table.
@@ -3421,6 +3422,7 @@ class Dataset:
                 ds.write_bigquery(
                     project_id="my_project_id",
                     dataset="my_dataset_table",
+                    overwrite_table=True
                 )
 
         Args:
@@ -3428,12 +3430,14 @@ class Dataset:
                 the dataset to read. For more information, see details in
                 `Creating and managing projects <https://cloud.google.com/resource-manager/docs/creating-managing-projects>`.
             dataset: The name of the dataset in the format of ``dataset_id.table_id``.
-                The dataset is created if it doesn't already exist. The table_id is
-                overwritten if it exists.
+                The dataset is created if it doesn't already exist.
             max_retry_cnt: The maximum number of retries that an individual block write
                 is retried due to BigQuery rate limiting errors. This isn't
                 related to Ray fault tolerance retries. The default number of retries
                 is 10.
+            overwrite_table: Whether the write will overwrite the table if it already
+                exists. The default behavior is to overwrite the table.
+                ``overwrite_table=False`` will append to the table if it exists.
             ray_remote_args: Kwargs passed to ray.remote in the write tasks.
         """  # noqa: E501
         if ray_remote_args is None:
@@ -3449,7 +3453,12 @@ class Dataset:
         else:
             ray_remote_args["max_retries"] = 0
 
-        datasink = _BigQueryDatasink(project_id, dataset, max_retry_cnt=max_retry_cnt)
+        datasink = _BigQueryDatasink(
+            project_id=project_id,
+            dataset=dataset,
+            max_retry_cnt=max_retry_cnt,
+            overwrite_table=overwrite_table,
+        )
         self.write_datasink(datasink, ray_remote_args=ray_remote_args)
 
     @Deprecated
