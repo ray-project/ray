@@ -210,13 +210,13 @@ class _BatchQueue:
                     _set_exception_if_not_done(future, e)
 
     async def _assign_func_results(
-        self, func_future: asyncio.Future, futures: List[asyncio.Future]
+        self, func_future: asyncio.Future, futures: List[asyncio.Future], input_batch_length: int,
     ):
         """Assigns func's results to the list of futures."""
 
         try:
             results = await func_future
-            self._validate_results(results, len(batch))
+            self._validate_results(results, input_batch_length)
             for result, future in zip(results, futures):
                 _set_result_if_not_done(future, result)
         except Exception as e:
@@ -233,8 +233,7 @@ class _BatchQueue:
             except Exception:
                 logger.exception(
                     "_process_batches asyncio task ran into an "
-                    "unexpected exception. Please file an issue on GitHub "
-                    "with the traceback."
+                    "unexpected exception."
                 )
 
     async def _process_batch(self, func: Callable) -> None:
@@ -263,13 +262,10 @@ class _BatchQueue:
                 await self._consume_func_generator(func_generator, futures, len(batch))
             else:
                 func_future = func_future_or_generator
-                await self._assign_func_results(func_future, futures)
+                await self._assign_func_results(func_future, futures, len(batch))
 
         except Exception as e:
-            logger.exception(
-                "_process_batch ran into an unexpected exception. Please "
-                "file an issue on GitHub with the traceback."
-            )
+            logger.exception("_process_batch ran into an unexpected exception.")
 
             for future in futures:
                 _set_exception_if_not_done(future, e)
