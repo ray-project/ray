@@ -26,7 +26,6 @@ from ray.serve._private.utils import extract_self_if_method_call
 from ray.serve.exceptions import RayServeException
 from ray.util.annotations import PublicAPI
 
-
 logger = logging.getLogger(SERVE_LOGGER_NAME)
 
 
@@ -220,7 +219,9 @@ class _BatchQueue:
                 batch: List[_SingleRequest] = await self.wait_for_batch()
                 assert len(batch) > 0
                 self_arg = batch[0].self_arg
-                args, kwargs = _batch_args_kwargs([item.flattened_args for item in batch])
+                args, kwargs = _batch_args_kwargs(
+                    [item.flattened_args for item in batch]
+                )
                 futures = [item.future for item in batch]
 
                 # Method call.
@@ -232,21 +233,24 @@ class _BatchQueue:
 
                 if isasyncgenfunction(func):
                     func_generator = func_future_or_generator
-                    await self._consume_func_generator(func_generator, futures, len(batch))
+                    await self._consume_func_generator(
+                        func_generator, futures, len(batch)
+                    )
                 else:
                     try:
                         func_future = func_future_or_generator
                         results = await func_future
                         self._validate_results(results, len(batch))
                         for result, future in zip(results, futures):
-                            # If the client has disconnected, the future is canceled.
-                            # We should only set result when the connection is still live.
+                            # If the client has disconnected, the future is
+                            # canceled. We only set result when the connection
+                            # is still live.
                             if not future.cancelled():
                                 future.set_result(result)
                     except Exception as e:
                         for future in futures:
                             future.set_exception(e)
-            except Exception as e:
+            except Exception:
                 logger.exception(
                     "_process_batches asyncio task ran into an unexpected "
                     "exception. Please file an issue on GitHub with the "
@@ -320,10 +324,10 @@ class _LazyBatchQueueWrapper:
 
     def get_batch_wait_timeout_s(self) -> float:
         return self.batch_wait_timeout_s
-    
+
     def _get_curr_iteration_start_time(self) -> float:
         """Gets current iteration's start time on default _BatchQueue implementation.
-        
+
         Returns -1 if the batch handler doesn't use a default _BatchQueue.
         """
 
@@ -331,10 +335,10 @@ class _LazyBatchQueueWrapper:
             return self.queue.curr_iteration_start_time
         else:
             return -1
-    
+
     async def _is_batching_task_alive(self) -> bool:
         """Gets whether default _BatchQueue's background task is alive.
-        
+
         Returns False if the batch handler doesn't use a default _BatchQueue.
         """
 
@@ -342,14 +346,16 @@ class _LazyBatchQueueWrapper:
             if self.queue._handle_batch_task is None:
                 return False
             else:
-                _, pending = await asyncio.wait([self.queue._handle_batch_task], timeout=0)
+                _, pending = await asyncio.wait(
+                    [self.queue._handle_batch_task], timeout=0
+                )
                 return len(pending) == 1
         else:
             return False
-    
+
     async def _get_batching_stack(self) -> str:
         """Gets the stack for the default _BatchQueue's background task.
-        
+
         Returns empty string if the batch handler doesn't use a default _BatchQueue.
         """
 
@@ -570,8 +576,12 @@ def batch(
         )
 
         # Store debugging methods in the lazy_batch_queue wrapper
-        wrapper._get_curr_iteration_start_time = lazy_batch_queue_wrapper._get_curr_iteration_start_time
-        wrapper._is_batching_task_alive = lazy_batch_queue_wrapper._is_batching_task_alive
+        wrapper._get_curr_iteration_start_time = (
+            lazy_batch_queue_wrapper._get_curr_iteration_start_time
+        )
+        wrapper._is_batching_task_alive = (
+            lazy_batch_queue_wrapper._is_batching_task_alive
+        )
         wrapper._get_batching_stack = lazy_batch_queue_wrapper._get_batching_stack
 
         return wrapper

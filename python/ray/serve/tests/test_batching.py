@@ -158,7 +158,7 @@ def test_batching_client_dropped_streaming(serve_instance):
 def test_observability_helpers():
     """Checks observability helper methods that are used for batching.
 
-    Tests two observability helper methods:
+    Tests three observability helper methods:
         * _get_curr_iteration_start_time: gets the current iteration's start
             time.
         * _is_batching_task_alive: returns whether the batch-handler task is
@@ -174,16 +174,16 @@ def test_observability_helpers():
 
         async def __call__(self, request):
             return await self.handle_batch(request)
-        
+
         async def _get_curr_iteration_start_time(self) -> float:
             return self.handle_batch._get_curr_iteration_start_time()
-        
+
         async def _is_batching_task_alive(self) -> bool:
             return await self.handle_batch._is_batching_task_alive()
-        
+
         async def _get_batching_stack(self) -> str:
             return await self.handle_batch._get_batching_stack()
-    
+
     serve.run(target=Batcher.bind(), name="app_name")
     handle = serve.get_deployment_handle(deployment_name="batcher", app_name="app_name")
 
