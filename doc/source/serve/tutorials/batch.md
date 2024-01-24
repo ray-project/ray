@@ -52,9 +52,9 @@ class MyBackend:
 
 :::{note}
 By default, Ray Serve performs *opportunistic batching*. This means that as
-soon as it calls the batch handler, it executes the method without
-waiting for a full batch. If more queries available after this call
-finishes, it may execute a larger batch. You can tune this behavior using the
+soon as the batch handler is called, the method executes without
+waiting for a full batch. If more queries are available after this call
+finishes, the batch handler may execute a larger batch. You can tune this behavior using the
 `batch_wait_timeout_s` option to `@serve.batch` (defaults to 0). Increasing this
 timeout may improve throughput at the cost of latency under low load.
 :::
@@ -68,7 +68,7 @@ vectorized text generation on the inputs.
 ```
 
 Next, prepare to deploy the deployment. Note that in the `@serve.batch` decorator, you
-are specifying the maximum batch size via `max_batch_size=4`. This option limits
+are specifying the maximum batch size with `max_batch_size=4`. This option limits
 the maximum possible batch size that Ray Serve executes at once.
 
 ```{literalinclude} ../doc_code/tutorial_batch.py

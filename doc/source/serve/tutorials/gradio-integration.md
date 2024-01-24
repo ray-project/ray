@@ -37,7 +37,7 @@ In order to deploy your Gradio app onto Ray Serve, you need to wrap your Gradio 
 
 By wrapping your application in `GradioServer`, you can increase the number of CPUs and/or GPUs available to the application.
 :::{note}
-Ray Serve doesn't support routing requests properly to multiple replicas of `GradioServer`, so you should only have a single replica.
+Ray Serve doesn't support routing requests to multiple replicas of `GradioServer`, so you should only have a single replica.
 :::
 
 :::{note} 
