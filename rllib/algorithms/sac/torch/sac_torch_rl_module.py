@@ -161,13 +161,11 @@ class SACTorchRLModule(TorchRLModule, SACRLModule):
         output = {}
 
         # Construct batch. Note, we need to feed observations and actions.
-        qf_batch = NestedDict(
-            {
-                SampleBatch.OBS: torch.concat(
-                    (batch[SampleBatch.OBS], batch[SampleBatch.ACTIONS]), dim=-1
-                )
-            }
-        )
+        qf_batch = {
+            SampleBatch.OBS: torch.concat(
+                (batch[SampleBatch.OBS], batch[SampleBatch.ACTIONS]), dim=-1
+            )
+        }
         # Encoder forward pass.
         qf_encoder_outs = encoder(qf_batch)
 
