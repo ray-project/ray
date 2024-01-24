@@ -339,13 +339,7 @@ class _LazyBatchQueueWrapper:
         """
 
         if hasattr(self.queue, "_handle_batch_task"):
-            if self.queue._handle_batch_task is None:
-                return False
-            else:
-                _, pending = await asyncio.wait(
-                    [self.queue._handle_batch_task], timeout=0
-                )
-                return len(pending) == 1
+            return not self.queue._handle_batch_task.done()
         else:
             return False
 
