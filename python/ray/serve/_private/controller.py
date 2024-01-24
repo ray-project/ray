@@ -943,6 +943,7 @@ class ServeController:
             there is a value set for every field at all schema levels, except for the
             route_prefix in the deployment_config for each deployment.
         """
+        print("getting metadataaa")
 
         http_config = self.get_http_config()
         grpc_config = self.get_grpc_config()
