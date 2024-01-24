@@ -125,7 +125,6 @@ from ray.includes.common cimport (
     CChannelType,
     RAY_ERROR_INFO_CHANNEL,
     RAY_LOG_CHANNEL,
-    RAY_PYTHON_FUNCTION_CHANNEL,
     GCS_ACTOR_CHANNEL,
     PythonGetLogBatchLines,
     WORKER_EXIT_TYPE_USER_ERROR,
@@ -2948,15 +2947,6 @@ cdef class GcsPublisher:
         c_job_id = job_id.encode() if job_id else b""
         with nogil:
             check_status(self.inner.get().PublishLogs(c_job_id, log_batch))
-
-    def publish_function_key(self, key: bytes):
-        cdef:
-            CPythonFunction python_function
-
-        python_function.set_key(key)
-
-        with nogil:
-            check_status(self.inner.get().PublishFunctionKey(python_function))
 
 
 cdef class _GcsSubscriber:

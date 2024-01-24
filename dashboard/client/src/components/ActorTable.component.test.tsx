@@ -1,4 +1,4 @@
-import { render, within } from "@testing-library/react";
+import { fireEvent, render, screen, within } from "@testing-library/react";
 import React from "react";
 import { MemoryRouter } from "react-router-dom";
 import { ActorDetail } from "../type/actor";
@@ -102,6 +102,40 @@ const MOCK_ACTORS: { [actorId: string]: ActorDetail } = {
   },
 };
 describe("ActorTable", () => {
+  it("renders a table of actors filtered by node ID", async () => {
+    const RUNNING_ACTORS = {
+      ...MOCK_ACTORS,
+      ACTOR_2: {
+        ...MOCK_ACTORS.ACTOR_2,
+        address: {
+          rayletId: "426854e68e4225b3941deaf03c8dcfcb1daacc69a92711d370dbb0e2",
+          ipAddress: "172.31.11.178",
+          port: 10003,
+          workerId: "b8b276a03612644098ed7a929c3b0e50f5bde894eb0d8cab288fbb6e",
+        },
+      },
+    };
+
+    const { getByTestId } = render(
+      <MemoryRouter>
+        <ActorTable actors={RUNNING_ACTORS} />
+      </MemoryRouter>,
+    );
+
+    const nodeIdFilter = getByTestId("nodeIdFilter");
+    const input = within(nodeIdFilter).getByRole("textbox");
+    // Filter by node ID of ACTOR_2
+    fireEvent.change(input, {
+      target: {
+        value: "426854e68e4225b3941deaf03c8dcfcb1daacc69a92711d370dbb0e2",
+      },
+    });
+    await screen.findByText("Actor ID");
+
+    expect(screen.queryByText("ACTOR_1")).not.toBeInTheDocument();
+    expect(screen.queryByText("ACTOR_2")).toBeInTheDocument();
+  });
+
   it("renders a table of actors sorted by state", () => {
     const { getByRole } = render(
       <MemoryRouter>
