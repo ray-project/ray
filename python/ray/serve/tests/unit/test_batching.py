@@ -289,7 +289,7 @@ async def test_batch_size_multiple_long_timeout(use_class):
 @pytest.mark.asyncio
 @pytest.mark.parametrize("mode", ["args", "kwargs", "mixed", "out-of-order"])
 @pytest.mark.parametrize("use_class", [True, False])
-async def test_batch_cancellation(mode, use_class):
+async def test_batch_args_kwargs(mode, use_class):
     if use_class:
 
         class MultipleArgs:
@@ -332,13 +332,13 @@ async def test_batch_cancellation(use_class, use_gen):
             await asyncio.sleep(0.01)
         request_was_cancelled = False
         return [(key1[i], key2[i]) for i in range(len(key1))]
-    
+
     async def streaming_implementation(key1, key2):
         nonlocal block_requests, request_was_cancelled
         while block_requests:
             await asyncio.sleep(0.01)
         request_was_cancelled = False
-        yield[(key1[i], key2[i]) for i in range(len(key1))]
+        yield [(key1[i], key2[i]) for i in range(len(key1))]
 
     if use_class:
 
@@ -369,12 +369,12 @@ async def test_batch_cancellation(use_class, use_gen):
         async def streaming_func(key1, key2):
             async for value in streaming_implementation(key1, key2):
                 yield value
-        
+
         if use_gen:
             func = streaming_func
         else:
             func = unary_func
-    
+
     if use_gen:
         gens = [func("hi1", "hi2"), func("hi3", "hi4")]
         coros = [gen.__anext__() for gen in gens]

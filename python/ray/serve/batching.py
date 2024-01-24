@@ -210,7 +210,10 @@ class _BatchQueue:
                     _set_exception_if_not_done(future, e)
 
     async def _assign_func_results(
-        self, func_future: asyncio.Future, futures: List[asyncio.Future], input_batch_length: int,
+        self,
+        func_future: asyncio.Future,
+        futures: List[asyncio.Future],
+        input_batch_length: int,
     ):
         """Assigns func's results to the list of futures."""
 
@@ -232,8 +235,7 @@ class _BatchQueue:
                 await self._process_batch(func)
             except Exception:
                 logger.exception(
-                    "_process_batches asyncio task ran into an "
-                    "unexpected exception."
+                    "_process_batches asyncio task ran into an " "unexpected exception."
                 )
 
     async def _process_batch(self, func: Callable) -> None:
