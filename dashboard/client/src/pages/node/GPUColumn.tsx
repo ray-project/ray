@@ -59,35 +59,6 @@ export const NodeGPUView = ({ node }: { node: NodeDetail }) => {
 };
 
 export const WorkerGpuRow = ({
-  worker,
-  node,
-}: {
-  worker: Worker;
-  node: NodeDetail;
-}) => {
-  const classes = useStyles();
-  const workerGPUEntries = (node.gpus ?? [])
-    .map((gpu, i) => {
-      const process = gpu.processes?.find(
-        (process) => process.pid === worker.pid,
-      );
-      if (!process) {
-        return undefined;
-      }
-      return <NodeGPUEntry key={gpu.uuid} gpu={gpu} slot={gpu.index} />;
-    })
-    .filter((entry) => entry !== undefined);
-
-  return workerGPUEntries.length === 0 ? (
-    <Typography color="textSecondary" component="span" variant="inherit">
-      N/A
-    </Typography>
-  ) : (
-    <div className={classes.gpuColumn}>{workerGPUEntries}</div>
-  );
-};
-
-export const ActorGpuRow = ({
   workerPID,
   gpus,
 }: {

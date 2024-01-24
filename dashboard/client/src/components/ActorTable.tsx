@@ -35,7 +35,7 @@ import RayletWorkerTable, { ExpandableTableRow } from "./WorkerTable";
 import { WorkerGRAM } from "../pages/node/GRAMColumn";
 import PercentageBar from "./PercentageBar";
 import { memoryConverter } from "../util/converter";
-import { ActorGpuRow } from "../pages/node/GPUColumn";
+import { WorkerGpuRow } from "../pages/node/GPUColumn";
 
 export type ActorTableProps = {
   actors: { [actorId: string]: ActorDetail };
@@ -545,7 +545,7 @@ const ActorTable = ({
                     )}
                   </TableCell>
                   <TableCell>
-                    <ActorGpuRow workerPID={pid} gpus={gpus} />
+                    <WorkerGpuRow workerPID={pid} gpus={gpus} />
                   </TableCell>
                   <TableCell>
                     <WorkerGRAM workerPID={pid} gpus={gpus} />
