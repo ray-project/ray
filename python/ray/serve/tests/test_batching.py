@@ -1,7 +1,7 @@
 import asyncio
 from concurrent.futures.thread import ThreadPoolExecutor
 from functools import partial
-from typing import List
+from typing import List, Optional
 
 import pytest
 import requests
@@ -181,7 +181,7 @@ def test_observability_helpers():
         async def _is_batching_task_alive(self) -> bool:
             return await self.handle_batch._is_batching_task_alive()
 
-        async def _get_batching_stack(self) -> str:
+        async def _get_batching_stack(self) -> Optional[str]:
             return await self.handle_batch._get_batching_stack()
 
     serve.run(target=Batcher.bind(), name="app_name")
@@ -191,7 +191,7 @@ def test_observability_helpers():
 
     requests.get("http://localhost:8000/")
 
-    assert len(handle._get_batching_stack.remote().result()) != ""
+    assert len(handle._get_batching_stack.remote().result()) is not None
     assert handle._is_batching_task_alive.remote().result()
 
     curr_iteration_start_time = handle._get_curr_iteration_start_time.remote().result()
@@ -202,7 +202,7 @@ def test_observability_helpers():
     new_iteration_start_time = handle._get_curr_iteration_start_time.remote().result()
 
     assert new_iteration_start_time > curr_iteration_start_time
-    assert len(handle._get_batching_stack.remote().result()) != ""
+    assert len(handle._get_batching_stack.remote().result()) is not None
     assert handle._is_batching_task_alive.remote().result()
 
 

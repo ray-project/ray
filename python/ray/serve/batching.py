@@ -343,7 +343,7 @@ class _LazyBatchQueueWrapper:
         else:
             return False
 
-    async def _get_batching_stack(self) -> str:
+    async def _get_batching_stack(self) -> Optional[str]:
         """Gets the stack for the default _BatchQueue's background task.
 
         Returns empty string if the batch handler doesn't use a default _BatchQueue.
@@ -354,7 +354,7 @@ class _LazyBatchQueueWrapper:
             self.queue._handle_batch_task.print_stack(file=str_buffer)
             return str_buffer.getvalue()
         else:
-            return ""
+            return None
 
 
 def _validate_max_batch_size(max_batch_size):
