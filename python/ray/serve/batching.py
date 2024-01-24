@@ -248,14 +248,23 @@ class _BatchQueue:
                 func_generator = func_future_or_generator
                 await self._consume_func_generator(func_generator, futures, len(batch))
             else:
-                func_future = func_future_or_generator
-                results = await func_future
-                self._validate_results(results, len(batch))
-                for result, future in zip(results, futures):
-                    _set_result_if_not_done(future, result)
+                try:
+                    func_future = func_future_or_generator
+                    results = await func_future
+                    self._validate_results(results, len(batch))
+                    for result, future in zip(results, futures):
+                        _set_result_if_not_done(future, result)
+                except Exception as e:
+                    for future in futures:
+                        _set_exception_if_not_done(future, e)
         except Exception as e:
             for future in futures:
                 _set_exception_if_not_done(future, e)
+
+            logger.exception(
+                "_process_batches ran into an unexpected exception. Please "
+                "file an issue on GitHub with the traceback."
+            )
 
     def __del__(self):
         if (
