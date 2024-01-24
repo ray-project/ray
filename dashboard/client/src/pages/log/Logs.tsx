@@ -10,6 +10,7 @@ import {
   Paper,
   Typography,
 } from "@material-ui/core";
+import { grey } from "@material-ui/core/colors";
 import React, { useMemo, useState } from "react";
 import { RiDownload2Line } from "react-icons/ri";
 import { Outlet, Link as RouterLink, useSearchParams } from "react-router-dom";
@@ -140,6 +141,7 @@ const useStateApiLogsFilesListStyles = makeStyles((theme) =>
   createStyles({
     iconButton: {
       verticalAlign: "baseline",
+      color: grey[700],
     },
   }),
 );
