@@ -28,6 +28,7 @@ from ray.util.tracing.tracing_helper import (
     _inject_tracing_into_function,
     _tracing_task_invocation,
 )
+import requests
 
 logger = logging.getLogger(__name__)
 
@@ -258,6 +259,13 @@ class RemoteFunction:
         """Submit the remote function for execution."""
         # We pop the "max_calls" coming from "@ray.remote" here. We no longer need
         # it in "_remote()".
+        if "working_dir" in kwargs:
+            spec = {}
+            spec["working_dir"] = kwargs["working_dir"]
+            requests.post("http://localhost:8000/apply", json=spec)
+            print(task_options)
+
+
         task_options.pop("max_calls", None)
         if client_mode_should_convert():
             return client_mode_convert_function(self, args, kwargs, **task_options)

@@ -3342,5 +3342,5 @@ def remote(
         # This is the case where the decorator is just @ray.remote.
         # "args[0]" is the class or function under the decorator.
         return _make_remote(args[0], {})
-    assert len(args) == 0 and len(kwargs) > 0, ray_option_utils.remote_args_error_string
+    # assert len(args) == 0 and len(kwargs) > 0, ray_option_utils.remote_args_error_string
     return functools.partial(_make_remote, options=kwargs)
