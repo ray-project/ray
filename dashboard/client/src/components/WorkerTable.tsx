@@ -20,7 +20,7 @@ import React, {
 import { Link } from "react-router-dom";
 import { GlobalContext } from "../App";
 import { formatDateFromTimeMs } from "../common/formatUtils";
-import { Actor, ActorDetail } from "../type/actor";
+import { ActorDetail } from "../type/actor";
 import { CoreWorkerStats, Worker } from "../type/worker";
 import { memoryConverter } from "../util/converter";
 import { longTextCut } from "../util/func";

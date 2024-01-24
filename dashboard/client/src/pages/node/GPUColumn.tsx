@@ -3,7 +3,6 @@ import React from "react";
 import { RightPaddedTypography } from "../../common/CustomTypography";
 import UsageBar from "../../common/UsageBar";
 import { GPUStats, NodeDetail } from "../../type/node";
-import { Worker } from "../../type/worker";
 
 const useStyles = makeStyles((theme) => ({
   gpuColumn: {

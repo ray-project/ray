@@ -1,6 +1,6 @@
 import React from "react";
 import ActorTable, { ActorTableProps } from "../../components/ActorTable";
-import { Actor, ActorDetail } from "../../type/actor";
+import { ActorDetail } from "../../type/actor";
 import { useActorList } from "./hook/useActorList";
 
 /**

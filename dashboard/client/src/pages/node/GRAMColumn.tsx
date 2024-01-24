@@ -3,7 +3,6 @@ import React from "react";
 import { RightPaddedTypography } from "../../common/CustomTypography";
 import PercentageBar from "../../components/PercentageBar";
 import { GPUStats, NodeDetail } from "../../type/node";
-import { Worker } from "../../type/worker";
 
 const GRAM_COL_WIDTH = 120;
 

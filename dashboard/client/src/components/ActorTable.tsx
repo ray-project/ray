@@ -25,17 +25,17 @@ import {
   MemoryProfilingButton,
 } from "../common/ProfilingLink";
 import rowStyles from "../common/RowStyles";
-import { Actor, ActorDetail, ActorEnum } from "../type/actor";
+import { WorkerGpuRow } from "../pages/node/GPUColumn";
+import { WorkerGRAM } from "../pages/node/GRAMColumn";
+import { ActorDetail, ActorEnum } from "../type/actor";
 import { Worker } from "../type/worker";
+import { memoryConverter } from "../util/converter";
 import { useFilter } from "../util/hook";
+import PercentageBar from "./PercentageBar";
 import StateCounter from "./StatesCounter";
 import { StatusChip } from "./StatusChip";
 import { HelpInfo } from "./Tooltip";
 import RayletWorkerTable, { ExpandableTableRow } from "./WorkerTable";
-import { WorkerGRAM } from "../pages/node/GRAMColumn";
-import PercentageBar from "./PercentageBar";
-import { memoryConverter } from "../util/converter";
-import { WorkerGpuRow } from "../pages/node/GPUColumn";
 
 export type ActorTableProps = {
   actors: { [actorId: string]: ActorDetail };

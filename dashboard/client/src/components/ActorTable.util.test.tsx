@@ -1,4 +1,4 @@
-import { Actor, ActorDetail, ActorEnum } from "../type/actor";
+import { ActorDetail, ActorEnum } from "../type/actor";
 // eslint-disable-next-line @typescript-eslint/no-unused-vars
 import ActorTable, { sortActors } from "./ActorTable";
 
@@ -40,7 +40,7 @@ describe("sortActors", () => {
         system: 0,
         childrenUser: 0,
         childrenUystem: 0,
-        iowait: 0
+        iowait: 0,
       },
       createTime: 0,
       memoryInfo: {
@@ -49,8 +49,8 @@ describe("sortActors", () => {
         pfaults: 0,
         pageins: 0,
       },
-      pid: 25321
-    }
+      pid: 25321,
+    },
   };
   const actor2: ActorDetail = {
     actorId: "2a77333eac321119fae2f60601000000",
@@ -88,7 +88,7 @@ describe("sortActors", () => {
         system: 0,
         childrenUser: 0,
         childrenUystem: 0,
-        iowait: 0
+        iowait: 0,
       },
       createTime: 0,
       memoryInfo: {
@@ -97,8 +97,8 @@ describe("sortActors", () => {
         pfaults: 0,
         pageins: 0,
       },
-      pid: 25322
-    }
+      pid: 25322,
+    },
   };
   const actorList: ActorDetail[] = [actor1, actor2];
 

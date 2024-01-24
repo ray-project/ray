@@ -1,7 +1,7 @@
 import { render, within } from "@testing-library/react";
 import React from "react";
 import { MemoryRouter } from "react-router-dom";
-import { Actor, ActorDetail } from "../type/actor";
+import { ActorDetail } from "../type/actor";
 import ActorTable from "./ActorTable";
 const MOCK_ACTORS: { [actorId: string]: ActorDetail } = {
   ACTOR_1: {
@@ -40,7 +40,7 @@ const MOCK_ACTORS: { [actorId: string]: ActorDetail } = {
         system: 0,
         childrenUser: 0,
         childrenUystem: 0,
-        iowait: 0
+        iowait: 0,
       },
       createTime: 0,
       memoryInfo: {
@@ -49,8 +49,8 @@ const MOCK_ACTORS: { [actorId: string]: ActorDetail } = {
         pfaults: 0,
         pageins: 0,
       },
-      pid: 25321
-    }
+      pid: 25321,
+    },
   },
   ACTOR_2: {
     actorId: "ACTOR_2",
@@ -88,7 +88,7 @@ const MOCK_ACTORS: { [actorId: string]: ActorDetail } = {
         system: 0,
         childrenUser: 0,
         childrenUystem: 0,
-        iowait: 0
+        iowait: 0,
       },
       createTime: 0,
       memoryInfo: {
@@ -97,8 +97,8 @@ const MOCK_ACTORS: { [actorId: string]: ActorDetail } = {
         pfaults: 0,
         pageins: 0,
       },
-      pid: 25322
-    }
+      pid: 25322,
+    },
   },
 };
 describe("ActorTable", () => {
