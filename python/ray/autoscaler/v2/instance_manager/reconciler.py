@@ -1,6 +1,6 @@
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
-from typing import Dict, List, Optional
+from typing import Dict, List
 from ray.autoscaler.v2.instance_manager.node_provider import (
     CloudInstance,
     CloudInstanceId,
@@ -25,11 +25,15 @@ class IReconciler(ABC):
         It should yield a list of instance update events that will be applied to the
         instance storage by the IM.
 
+        There should not be any other side effects other than producing the instance
+        update events. This method is expected to be idempotent and deterministic.
+
         Args:
             instances: The list of IM instances to reconcile.
 
         Returns:
             A dict of instance id to instance update event.
+
         """
         pass
 
