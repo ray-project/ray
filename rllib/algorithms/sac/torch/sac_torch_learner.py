@@ -3,16 +3,20 @@ from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
 
 # from ray.rllib.algorithms.dqn.dqn_tf_policy import PRIO_WEIGHTS
 from ray.rllib.algorithms.sac.sac import SACConfig
-from ray.rllib.algorithms.sac.sac_learner import QF_PREDS, QF_TWIN_PREDS, SACLearner
-from ray.rllib.core.learner.learner import (
+from ray.rllib.algorithms.sac.sac_learner import (
     LOGPS_KEY,
-    POLICY_LOSS_KEY,
     QF_LOSS_KEY,
-    QF_TWIN_LOSS_KEY,
     QF_MEAN_KEY,
     QF_MAX_KEY,
     QF_MIN_KEY,
     TD_ERROR_KEY,
+    QF_PREDS,
+    QF_TWIN_LOSS_KEY,
+    QF_TWIN_PREDS,
+    SACLearner,
+)
+from ray.rllib.core.learner.learner import (
+    POLICY_LOSS_KEY,
 )
 from ray.rllib.core.learner.torch.torch_learner import TorchLearner
 from ray.rllib.policy.sample_batch import SampleBatch, DEFAULT_POLICY_ID

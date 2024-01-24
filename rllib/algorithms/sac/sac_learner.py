@@ -8,23 +8,28 @@ from ray.rllib.core.learner.learner import Learner
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.lambda_defaultdict import LambdaDefaultDict
 from ray.rllib.utils.metrics import LAST_TARGET_UPDATE_TS, NUM_TARGET_UPDATES
-from ray.rllib.utils.schedules.scheduler import Scheduler
-from ray.rllib.utils.typing import ModuleID
+from ray.rllib.utils.typing import ModuleID, TensorType
 
 # Now, this is double defined: In `SACRLModule` and here. I would keep it here
 # or push it into the `Learner` as these are recurring keys in RL.
+LOGPS_KEY = "logps"
+QF_LOSS_KEY = "qf_loss"
+QF_MEAN_KEY = "qf_mean"
+QF_MAX_KEY = "qf_max"
+QF_MIN_KEY = "qf_min"
 QF_PREDS = "qf_preds"
 QF_TARGET_PREDS = "qf_target_preds"
+QF_TWIN_LOSS_KEY = "qf_twin_loss"
 QF_TWIN_PREDS = "qf_twin_preds"
+TD_ERROR_KEY = "td_error"
 
 
-# TODO (simon): Add and remove variables, if module is added or removed.
 class SACLearner(Learner):
     @override(Learner)
     def build(self) -> None:
         # Store the current alpha in log form. We need it during optimization
         # in log form.
-        self.curr_log_alpha: Dict[ModuleID, Scheduler] = LambdaDefaultDict(
+        self.curr_log_alpha: Dict[ModuleID, TensorType] = LambdaDefaultDict(
             lambda module_id: self._get_tensor_variable(
                 # Note, we want to train the temperature parameter.
                 [np.log(self.config.get_config_for_module(module_id).initial_alpha)],
@@ -54,7 +59,7 @@ class SACLearner(Learner):
                 )
             return target_entropy
 
-        self.target_entropy: Dict[ModuleID, Scheduler] = LambdaDefaultDict(
+        self.target_entropy: Dict[ModuleID, TensorType] = LambdaDefaultDict(
             lambda module_id: self._get_tensor_variable(get_target_entropy(module_id))
         )
 

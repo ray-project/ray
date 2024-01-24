@@ -82,13 +82,6 @@ DEFAULT_OPTIMIZER = "default_optimizer"
 POLICY_LOSS_KEY = "policy_loss"
 VF_LOSS_KEY = "vf_loss"
 ENTROPY_KEY = "entropy"
-LOGPS_KEY = "logps"
-QF_LOSS_KEY = "qf_loss"
-QF_MEAN_KEY = "qf_mean"
-QF_MAX_KEY = "qf_max"
-QF_MIN_KEY = "qf_min"
-QF_TWIN_LOSS_KEY = "qf_twin_loss"
-TD_ERROR_KEY = "td_error"
 
 # Additional update keys
 LEARNER_RESULTS_CURR_LR_KEY = "curr_lr"
