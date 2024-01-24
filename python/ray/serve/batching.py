@@ -228,30 +228,34 @@ class _BatchQueue:
 
         batch: List[_SingleRequest] = await self.wait_for_batch()
         assert len(batch) > 0
-        self_arg = batch[0].self_arg
-        args, kwargs = _batch_args_kwargs([item.flattened_args for item in batch])
         futures = [item.future for item in batch]
 
-        # Method call.
-        if self_arg is not None:
-            func_future_or_generator = func(self_arg, *args, **kwargs)
-        # Normal function call.
-        else:
-            func_future_or_generator = func(*args, **kwargs)
+        # Most of the logic in the function should be wrapped in this try-
+        # except block, so the futures' exceptions can be set if an exception
+        # occurs. Otherwise, the futures' requests may hang indefinitely.
+        try:
+            self_arg = batch[0].self_arg
+            args, kwargs = _batch_args_kwargs([item.flattened_args for item in batch])
 
-        if isasyncgenfunction(func):
-            func_generator = func_future_or_generator
-            await self._consume_func_generator(func_generator, futures, len(batch))
-        else:
-            try:
+            # Method call.
+            if self_arg is not None:
+                func_future_or_generator = func(self_arg, *args, **kwargs)
+            # Normal function call.
+            else:
+                func_future_or_generator = func(*args, **kwargs)
+
+            if isasyncgenfunction(func):
+                func_generator = func_future_or_generator
+                await self._consume_func_generator(func_generator, futures, len(batch))
+            else:
                 func_future = func_future_or_generator
                 results = await func_future
                 self._validate_results(results, len(batch))
                 for result, future in zip(results, futures):
                     _set_result_if_not_done(future, result)
-            except Exception as e:
-                for future in futures:
-                    _set_exception_if_not_done(future, e)
+        except Exception as e:
+            for future in futures:
+                _set_exception_if_not_done(future, e)
 
     def __del__(self):
         if (
