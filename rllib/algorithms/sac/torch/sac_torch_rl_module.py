@@ -47,7 +47,7 @@ class SACTorchRLModule(TorchRLModule, SACRLModule):
 
         # SAC needs also Q function values and action logits for next observations.
         # TODO (simon): Check, if we need to override the Encoder input_sp
-        batch_curr = NestedDict({SampleBatch.OBS: batch[SampleBatch.OBS]})
+        batch_curr = {SampleBatch.OBS: batch[SampleBatch.OBS]}
         batch_next = {SampleBatch.OBS: batch[SampleBatch.NEXT_OBS]}
 
         # Encoder forward passes.
