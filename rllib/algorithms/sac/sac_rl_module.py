@@ -57,7 +57,6 @@ class SACRLModule(RLModule, RLModuleWithTargetNetworksInterface):
 
     @override(RLModule)
     def setup(self):
-        # __sphinx_doc_begin__
         # Get the SAC catalog.
         catalog: SACCatalog = self.config.get_catalog()
 
