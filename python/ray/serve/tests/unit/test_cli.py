@@ -98,6 +98,7 @@ class TestPublish:
         assert publish_provider.published_ray_version == ray.__version__
         assert publish_provider.published_base_image is None
 
+    @pytest.mark.skipif(sys.platform == "win32", reason="Tempfile not working.")
     @pytest.mark.parametrize(
         "runtime_env",
         [
