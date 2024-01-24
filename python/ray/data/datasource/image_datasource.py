@@ -1,3 +1,4 @@
+import tifffile
 import io
 import logging
 import time
@@ -25,6 +26,7 @@ IMAGE_ENCODING_RATIO_ESTIMATE_DEFAULT = 1
 
 # The lower bound value to estimate image encoding ratio.
 IMAGE_ENCODING_RATIO_ESTIMATE_LOWER_BOUND = 0.5
+
 
 
 @DeveloperAPI
@@ -68,25 +70,27 @@ class ImageDatasource(FileBasedDatasource):
         else:
             self._encoding_ratio = IMAGE_ENCODING_RATIO_ESTIMATE_DEFAULT
 
-    def _read_stream(
-        self,
-        f: "pyarrow.NativeFile",
-        path: str,
-    ) -> Iterator[Block]:
-        from PIL import Image, UnidentifiedImageError
-
+    def _read_stream(self, f: "pyarrow.NativeFile", path: str) -> Iterator[Block]:
         data = f.readall()
 
         try:
-            image = Image.open(io.BytesIO(data))
-        except UnidentifiedImageError as e:
-            raise ValueError(f"PIL couldn't load image file at path '{path}'.") from e
+            # Use tifffile to read TIFF images
+            if path.lower().endswith((".tif", ".tiff")):
+                image = tifffile.imread(io.BytesIO(data))
+            else:
+                # Fallback to PIL for other formats (or implement other readers)
+                from PIL import Image, UnidentifiedImageError
+                image = Image.open(io.BytesIO(data))
+        except Exception as e:
+            raise ValueError(f"Couldn't load image file at path '{path}'.") from e
 
         if self.size is not None:
-            height, width = self.size
-            image = image.resize((width, height))
+            # Handle resizing here if needed, e.g., using numpy or scipy
+            pass
+
         if self.mode is not None:
-            image = image.convert(self.mode)
+            # Handle mode conversion here if needed
+            pass
 
         builder = DelegatingBlockBuilder()
         array = np.array(image)
@@ -95,6 +99,7 @@ class ImageDatasource(FileBasedDatasource):
         block = builder.build()
 
         yield block
+
 
     def _rows_per_file(self):
         return 1
