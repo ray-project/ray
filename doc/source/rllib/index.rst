@@ -69,7 +69,7 @@ PyTorch (or both, as shown below):
 .. note::
 
     For installation on computers running Apple Silicon (such as M1), please follow instructions
-    `here. <https://docs.ray.io/en/latest/installation.html#m1-mac-apple-silicon-support>`_
+    `here. <https://docs.ray.io/en/latest/ray-overview/installation.html#m1-mac-apple-silicon-support>`_
     To be able to run our Atari examples, you should also install
     `pip install "gym[atari]" "gym[accept-rom-license]" atari_py`.
 
