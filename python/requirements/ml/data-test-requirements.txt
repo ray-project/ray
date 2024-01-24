@@ -3,6 +3,7 @@
 
 python-snappy
 tensorflow-datasets
+tensorflow-io
 datasets
 pytest-repeat
 soundfile

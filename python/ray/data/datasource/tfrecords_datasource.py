@@ -4,6 +4,7 @@ from typing import TYPE_CHECKING, Dict, Iterable, Iterator, List, Optional, Unio
 import numpy as np
 import pyarrow
 
+from ray.data._internal.dataset_logger import DatasetLogger
 from ray.data.aggregate import AggregateFn
 from ray.data.block import Block
 from ray.data.datasource.file_based_datasource import FileBasedDatasource
@@ -18,6 +19,8 @@ if TYPE_CHECKING:
 
 
 DEFAULT_BATCH_SIZE = 2048
+
+logger = DatasetLogger(__name__)
 
 
 @PublicAPI(stability="alpha")
@@ -89,6 +92,7 @@ class TFRecordDatasource(FileBasedDatasource):
             ).batch(self._batch_size):
                 yield pyarrow.Table.from_batches([decoder.DecodeBatch(record.numpy())])
         except Exception as error:
+            logger.get_logger().exception(f"Failed to read TFRecord file {full_path}")
             exception_thrown = error
 
         # we need to do this hack were we raise an exception outside of the
@@ -96,10 +100,7 @@ class TFRecordDatasource(FileBasedDatasource):
         # even if we raise a runtime error, ray keeps information about the
         # original error, which makes it unpickable still.
         if exception_thrown:
-            raise RuntimeError(
-                f"Failed to read TFRecord file {full_path}. Please ensure that the "
-                f"TFRecord file has correct format."
-            )
+            raise RuntimeError(f"Failed to read TFRecord file {full_path}.")
 
     def _resolve_full_path(self, relative_path):
         if isinstance(self._filesystem, pyarrow.fs.S3FileSystem):
