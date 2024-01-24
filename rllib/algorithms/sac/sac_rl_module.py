@@ -1,8 +1,9 @@
-from typing import Type
+from abc import abstractmethod
+from typing import Any, Dict, Type
 from ray.rllib.algorithms.sac.sac_catalog import SACCatalog
 
 # from ray.rllib.algorithms.sac.sac_learner import QF_PREDS
-# from ray.rllib.core.models.base import ACTOR, CRITIC
+from ray.rllib.core.models.base import Encoder, Model
 from ray.rllib.core.models.specs.typing import SpecType
 from ray.rllib.core.rl_module.rl_module import RLModule
 from ray.rllib.core.rl_module.rl_module_with_target_networks_interface import (
@@ -10,10 +11,16 @@ from ray.rllib.core.rl_module.rl_module_with_target_networks_interface import (
 )
 from ray.rllib.models.distributions import Distribution
 from ray.rllib.policy.sample_batch import SampleBatch
-from ray.rllib.utils.annotations import ExperimentalAPI, override
+from ray.rllib.utils.annotations import (
+    ExperimentalAPI,
+    override,
+    OverrideToImplementCustomLogic,
+)
+from ray.rllib.utils.nested_dict import NestedDict
 
 CRITIC_TARGET = "critic_target"
 QF_PREDS = "qf_preds"
+QF_TWIN_PREDS = "qf_twin_preds"
 ACTION_DIST_INPUTS_NEXT = "action_dist_inputs_next"
 
 
@@ -66,16 +73,29 @@ class SACRLModule(RLModule, RLModuleWithTargetNetworksInterface):
         # TODO (simon): Maybe merging encoders together for target and qf
         # and keep only the heads differently?
         self.qf_target_encoder = catalog.build_qf_encoder(framework=self.framework)
+        # If necessary, build also a twin Q encoders.
+        if self.config.twin_q:
+            self.qf_twin_encoder = catalog.build_qf_encoder(framework=self.framework)
+            self.qf_target_twin_encoder = catalog.build_qf_encoder(
+                framework=self.framework
+            )
 
         # Build heads.
         self.pi = catalog.build_pi_head(framework=self.framework)
         self.qf = catalog.build_qf_head(framework=self.framework)
         # The Q target network head is an identical copy of the Q network head.
         self.qf_target = catalog.build_qf_head(framework=self.framework)
+        # If necessary build also a twin Q heads.
+        if self.config.twin_q:
+            self.qf_twin = catalog.build_qf_head(framework=self.framework)
+            self.qf_target_twin = catalog.build_qf_head(framework=self.framework)
 
         # We do not want to train the target network.
         self.qf_target_encoder.trainable = False
         self.qf_target.trainable = False
+        if self.config.twin_q:
+            self.qf_target_twin_encoder.trainable = False
+            self.qf_target_twin.trainable = False
 
         # Get the action distribution class.
         self.action_dist_cls = catalog.get_action_dist_cls(framework=self.framework)
@@ -132,8 +152,62 @@ class SACRLModule(RLModule, RLModuleWithTargetNetworksInterface):
 
     @override(RLModule)
     def output_specs_train(self) -> SpecType:
-        return [
-            QF_PREDS,
-            SampleBatch.ACTION_DIST_INPUTS,
-            ACTION_DIST_INPUTS_NEXT,
-        ]
+        return (
+            [
+                QF_PREDS,
+                SampleBatch.ACTION_DIST_INPUTS,
+                ACTION_DIST_INPUTS_NEXT,
+            ]
+            + [QF_TWIN_PREDS]
+            if self.config.twin_q
+            else []
+        )
+
+    @abstractmethod
+    @OverrideToImplementCustomLogic
+    def _qf_forward_train(self, batch: NestedDict) -> Dict[str, Any]:
+        """Forward pass through Q network.
+
+        Note, this is only used in training.
+        """
+
+    @abstractmethod
+    @OverrideToImplementCustomLogic
+    def _qf_twin_forward_train(self, batch: NestedDict) -> Dict[str, Any]:
+        """Forward pass through twin Q network.
+
+        Note, this is only used in training and only if `twin_q=True`.
+        """
+
+    @abstractmethod
+    @OverrideToImplementCustomLogic
+    def _qf_target_forward_train(self, batch: NestedDict) -> Dict[str, Any]:
+        """Forward pass through target Q network.
+
+        Note, this is only used in training.
+        """
+
+    @abstractmethod
+    @OverrideToImplementCustomLogic
+    def _qf_target_twin_forward_train(self, batch: NestedDict) -> Dict[str, Any]:
+        """Forward pass through twin target Q network.
+
+        Note, this is only used in training and only if `twin_q=True`.
+        """
+
+    @abstractmethod
+    @OverrideToImplementCustomLogic
+    def _qf_forward_train_helper(
+        self, batch: NestedDict, encoder: Encoder, head: Model
+    ) -> Dict[str, Any]:
+        """Executes the forward pass for Q networks.
+
+        Args:
+            batch: NestedDict containing a concatencated tensor with observations
+                and actions under the key `SampleBatch.OBS`.
+            encoder: An `Encoder` model for the Q state-action encoder.
+            head: A `Model` for the Q head.
+
+        Returns:
+            A `dict` cotnaining the estimated Q-values in the key `QF_PREDS`.
+        """
