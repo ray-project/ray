@@ -34,8 +34,9 @@ class PullBasedShuffleTaskScheduler(ExchangeTaskScheduler):
         task_ctx: TaskContext,
         map_ray_remote_args: Optional[Dict[str, Any]] = None,
         reduce_ray_remote_args: Optional[Dict[str, Any]] = None,
-        _debug_limit_execution_to_num_blocks: int = None,
+        _debug_limit_execution_to_num_blocks: Optional[int] = None,
     ) -> Tuple[List[RefBundle], StatsDict]:
+
         # TODO: eagerly delete the input and map output block references in order to
         # eagerly release the blocks' memory.
         input_blocks_list = []
@@ -48,7 +49,7 @@ class PullBasedShuffleTaskScheduler(ExchangeTaskScheduler):
         caller_memory_usage = (
             input_num_blocks * output_num_blocks * CALLER_MEMORY_USAGE_PER_OBJECT_REF
         )
-        task_ctx.warn_on_driver_memory_usage(
+        self.warn_on_driver_memory_usage(
             caller_memory_usage,
             "Execution is estimated to use at least "
             f"{convert_bytes_to_human_readable_str(caller_memory_usage)} "
@@ -103,7 +104,7 @@ class PullBasedShuffleTaskScheduler(ExchangeTaskScheduler):
 
         shuffle_map_metadata = map_bar.fetch_until_complete(shuffle_map_metadata)
 
-        task_ctx.warn_on_high_local_memory_store_usage()
+        self.warn_on_high_local_memory_store_usage()
 
         bar_name = ExchangeTaskSpec.REDUCE_SUB_PROGRESS_BAR_NAME
         assert bar_name in sub_progress_bar_dict, sub_progress_bar_dict
@@ -130,7 +131,7 @@ class PullBasedShuffleTaskScheduler(ExchangeTaskScheduler):
             new_blocks, new_metadata = zip(*shuffle_reduce_out)
         new_metadata = reduce_bar.fetch_until_complete(list(new_metadata))
 
-        task_ctx.warn_on_high_local_memory_store_usage()
+        self.warn_on_high_local_memory_store_usage()
 
         output = []
         for block, meta in zip(new_blocks, new_metadata):

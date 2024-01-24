@@ -483,7 +483,7 @@ class PushBasedShuffleTaskScheduler(ExchangeTaskScheduler):
         caller_memory_usage = (
             stage.get_estimated_num_refs() * CALLER_MEMORY_USAGE_PER_OBJECT_REF
         )
-        task_ctx.warn_on_driver_memory_usage(
+        self.warn_on_driver_memory_usage(
             caller_memory_usage,
             "Execution is estimated to use at least "
             f"{convert_bytes_to_human_readable_str(caller_memory_usage)}"
@@ -561,7 +561,7 @@ class PushBasedShuffleTaskScheduler(ExchangeTaskScheduler):
                 merge_done = True
                 break
 
-            task_ctx.warn_on_high_local_memory_store_usage()
+            self.warn_on_high_local_memory_store_usage()
 
         all_merge_results = merge_stage_iter.pop_merge_results()
 
@@ -610,7 +610,7 @@ class PushBasedShuffleTaskScheduler(ExchangeTaskScheduler):
             except StopIteration:
                 break
 
-            task_ctx.warn_on_high_local_memory_store_usage()
+            self.warn_on_high_local_memory_store_usage()
 
         new_blocks = reduce_stage_iter.pop_reduce_results()
         sorted_blocks = [
