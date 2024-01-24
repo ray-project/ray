@@ -1,18 +1,19 @@
 import {
   Button,
+  Link,
   List,
   ListItem,
   makeStyles,
   Paper,
   Typography,
 } from "@material-ui/core";
-import React, { useState } from "react";
-import { Link, Outlet, useSearchParams } from "react-router-dom";
+import React, { useMemo, useState } from "react";
+import { Outlet, Link as RouterLink, useSearchParams } from "react-router-dom";
 import useSWR from "swr";
 import { StateApiLogViewer } from "../../common/MultiTabLogViewer";
 import { SearchInput } from "../../components/SearchComponent";
 import TitleCard from "../../components/TitleCard";
-import { listStateApiLogs } from "../../service/log";
+import { getStateApiDownloadLogUrl, listStateApiLogs } from "../../service/log";
 import { getNodeList } from "../../service/node";
 import { MainNavPageInfo } from "../layout/mainNavContext";
 
@@ -68,7 +69,7 @@ export const StateApiLogsListPage = () => {
           {nodeId && (
             <div>
               <Button
-                component={Link}
+                component={RouterLink}
                 variant="contained"
                 to={backHref}
                 className={classes.search}
@@ -120,7 +121,7 @@ export const StateApiLogsNodesList = () => {
         <List>
           {nodes?.map(({ raylet: { nodeId }, ip }) => (
             <ListItem key={nodeId}>
-              <Link to={`?nodeId=${nodeId}`}>
+              <Link component={RouterLink} to={`?nodeId=${nodeId}`}>
                 Node ID: {nodeId} (IP: {ip})
               </Link>
             </ListItem>
@@ -161,12 +162,51 @@ export const StateApiLogsFilesList = ({
   );
 
   const isLoading = fileGroups === undefined && error === undefined;
-  const files =
-    fileGroups !== undefined
-      ? Object.values(fileGroups)
-          .flatMap((e) => e)
-          .sort()
-      : [];
+
+  const files = useMemo(
+    () =>
+      (fileGroups !== undefined
+        ? Object.values(fileGroups)
+            .flatMap((e) => e)
+            .sort()
+        : []
+      ).map((fileName) => {
+        const isDir = fileName.endsWith("/");
+        const fileNameWithoutEndingSlash = fileName.substring(
+          0,
+          fileName.length - 1,
+        );
+        const parentFolder = folder ? `${folder}/` : "";
+        const fileNameWithoutParent = fileName.startsWith(parentFolder)
+          ? fileName.substring(parentFolder.length)
+          : fileName;
+
+        const linkPath = isDir
+          ? `?nodeId=${encodeURIComponent(nodeId)}&folder=${encodeURIComponent(
+              fileNameWithoutEndingSlash,
+            )}`
+          : `viewer?nodeId=${encodeURIComponent(
+              nodeId,
+            )}&fileName=${encodeURIComponent(fileName)}`;
+
+        const downloadUrl = isDir
+          ? undefined
+          : getStateApiDownloadLogUrl({
+              nodeId,
+              filename: fileName,
+              maxLines: -1,
+            });
+
+        return {
+          fileName,
+          name: fileNameWithoutParent,
+          linkPath,
+          isDir,
+          downloadUrl,
+        };
+      }),
+    [fileGroups, folder, nodeId],
+  );
 
   return (
     <React.Fragment>
@@ -177,34 +217,20 @@ export const StateApiLogsFilesList = ({
       )}
       {files && (
         <List>
-          {files.map((fileName) => {
-            const isDir = fileName.endsWith("/");
-            const fileNameWithoutEndingSlash = fileName.substring(
-              0,
-              fileName.length - 1,
-            );
-            const parentFolder = folder ? `${folder}/` : "";
-            const fileNameWithoutParent = fileName.startsWith(parentFolder)
-              ? fileName.substring(parentFolder.length)
-              : fileName;
-
+          {files.map(({ fileName, name, downloadUrl, linkPath }) => {
             return (
               <ListItem key={fileName}>
-                <Link
-                  to={
-                    isDir
-                      ? `?nodeId=${encodeURIComponent(
-                          nodeId,
-                        )}&folder=${encodeURIComponent(
-                          fileNameWithoutEndingSlash,
-                        )}`
-                      : `viewer?nodeId=${encodeURIComponent(
-                          nodeId,
-                        )}&fileName=${encodeURIComponent(fileName)}`
-                  }
-                >
-                  {fileNameWithoutParent}
+                <Link component={RouterLink} to={linkPath}>
+                  {name}
                 </Link>
+                {downloadUrl && (
+                  <React.Fragment>
+                    &nbsp;
+                    <Link href={downloadUrl} download={fileName}>
+                      (download)
+                    </Link>
+                  </React.Fragment>
+                )}
               </ListItem>
             );
           })}
@@ -244,7 +270,7 @@ export const StateApiLogViewerPage = () => {
           {nodeId && (
             <div>
               <Button
-                component={Link}
+                component={RouterLink}
                 variant="contained"
                 to={backHref}
                 className={classes.search}
