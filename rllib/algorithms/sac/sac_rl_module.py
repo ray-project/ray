@@ -51,6 +51,7 @@ class SACRLModule(RLModule, RLModuleWithTargetNetworksInterface):
     -> [q-target-value]
     ---
     If `twin_q=True`:
+    [obs, action] -> [qf_twin_encoder] -> [qf_twin_head] -> [q-twin-value]
     [obs, action] -> [qf_target_twin_encoder] -> [qf_target_twin_head]
     -> [q-target-twin-value]
     """
