@@ -11,3 +11,9 @@ py_binary(
     srcs = ["test_db_bot.py"],
     deps = ["//ci/ray_ci:ray_ci_lib"],
 )
+
+py_binary(
+    name = "weekly_green_metric",
+    srcs = ["weekly_green_metric.py"],
+    deps = ["//ci/ray_ci:ray_ci_lib"],
+)
