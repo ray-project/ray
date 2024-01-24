@@ -72,7 +72,7 @@ def method(*args, **kwargs):
     valid_kwargs = [
         "num_returns",
         "concurrency_group",
-        "_max_retries",
+        "max_task_retries",
         "retry_exceptions",
         "_generator_backpressure_num_objects",
     ]
@@ -92,8 +92,8 @@ def method(*args, **kwargs):
     def annotate_method(method):
         if "num_returns" in kwargs:
             method.__ray_num_returns__ = kwargs["num_returns"]
-        if "_max_retries" in kwargs:
-            method.__ray_max_retries__ = kwargs["_max_retries"]
+        if "max_task_retries" in kwargs:
+            method.__ray_max_task_retries__ = kwargs["max_task_retries"]
         if "retry_exceptions" in kwargs:
             method.__ray_retry_exceptions__ = kwargs["retry_exceptions"]
         if "concurrency_group" in kwargs:
@@ -123,7 +123,7 @@ class ActorMethod:
             invocation should return. If None is given, it uses
             DEFAULT_ACTOR_METHOD_NUM_RETURN_VALS for a normal actor task
             and "streaming" for a generator task (when `is_generator` is True).
-        _max_retries: [Internal] Number of retries on method failure.
+        _max_task_retries: Number of retries on method failure.
         _retry_exceptions: Boolean of whether you want to retry all user-raised
             exceptions, or a list of allowlist exceptions to retry.
         _is_generator: True if a given method is a Python generator.
@@ -144,7 +144,7 @@ class ActorMethod:
         actor,
         method_name,
         num_returns: Optional[Union[int, str]],
-        _max_retries: int,
+        max_task_retries: int,
         retry_exceptions: Union[bool, list, tuple],
         is_generator: bool,
         generator_backpressure_num_objects: int,
@@ -162,7 +162,7 @@ class ActorMethod:
             else:
                 self._num_returns = ray_constants.DEFAULT_ACTOR_METHOD_NUM_RETURN_VALS
 
-        self._max_retries = _max_retries
+        self._max_task_retries = max_task_retries
         self._retry_exceptions = retry_exceptions
         self._is_generator = is_generator
         self._generator_backpressure_num_objects = generator_backpressure_num_objects
@@ -271,18 +271,17 @@ class ActorMethod:
         kwargs=None,
         name="",
         num_returns=None,
-        _max_retries=None,
+        max_task_retries=None,
         retry_exceptions=None,
         concurrency_group=None,
         _generator_backpressure_num_objects=None,
     ):
         if num_returns is None:
             num_returns = self._num_returns
-        max_retries = _max_retries
-        if max_retries is None:
-            max_retries = self._max_retries
-        if max_retries is None:
-            max_retries = 0
+        if max_task_retries is None:
+            max_task_retries = self._max_task_retries
+        if max_task_retries is None:
+            max_task_retries = 0
         if retry_exceptions is None:
             retry_exceptions = self._retry_exceptions
         if _generator_backpressure_num_objects is None:
@@ -302,7 +301,7 @@ class ActorMethod:
                 kwargs=kwargs,
                 name=name,
                 num_returns=num_returns,
-                max_retries=max_retries,
+                max_task_retries=max_task_retries,
                 retry_exceptions=retry_exceptions,
                 concurrency_group_name=concurrency_group,
                 generator_backpressure_num_objects=(
@@ -321,7 +320,7 @@ class ActorMethod:
             "actor": self._actor_ref(),
             "method_name": self._method_name,
             "num_returns": self._num_returns,
-            "max_retries": self._max_retries,
+            "max_task_retries": self._max_task_retries,
             "retry_exceptions": self._retry_exceptions,
             "decorator": self._decorator,
             "is_generator": self._is_generator,
@@ -333,7 +332,7 @@ class ActorMethod:
             state["actor"],
             state["method_name"],
             state["num_returns"],
-            state["max_retries"],
+            state["max_task_retries"],
             state["retry_exceptions"],
             state["is_generator"],
             state["generator_backpressure_num_objects"],
@@ -354,7 +353,7 @@ class _ActorClassMethodMetadata(object):
         signatures: The signatures of the methods.
         num_returns: The default number of return values for
             each actor method.
-        max_retries: Number of retries on method failure.
+        max_task_retries: Number of retries on method failure.
         retry_exceptions: Boolean of whether you want to retry all user-raised
             exceptions, or a list of allowlist exceptions to retry, for each method.
     """
@@ -392,7 +391,7 @@ class _ActorClassMethodMetadata(object):
         self.decorators = {}
         self.signatures = {}
         self.num_returns = {}
-        self.max_retries = {}
+        self.max_task_retries = {}
         self.retry_exceptions = {}
         self.method_is_generator = {}
         self.generator_backpressure_num_objects = {}
@@ -420,12 +419,13 @@ class _ActorClassMethodMetadata(object):
             else:
                 self.num_returns[method_name] = None
 
-            # Only contains entries from `@ray.method(_max_retries=...)`
+            # Only contains entries from `@ray.method(max_task_retries=...)`
             # Ray may not populate the others with max_task_retries here because you may
-            # have set in `actor.method.options(_max_retries=...)`. So Ray always stores
-            # both max_retries and max_task_retries, and favors the former.
-            if hasattr(method, "__ray_max_retries__"):
-                self.max_retries[method_name] = method.__ray_max_retries__
+            # have set in `actor.method.options(max_task_retries=...)`. So Ray always
+            # stores max_task_retries both from the method and from the actor, and
+            # favors the former.
+            if hasattr(method, "__ray_max_task_retries__"):
+                self.max_task_retries[method_name] = method.__ray_max_task_retries__
 
             if hasattr(method, "__ray_retry_exceptions__"):
                 self.retry_exceptions[method_name] = method.__ray_retry_exceptions__
@@ -722,16 +722,17 @@ class ActorClass:
                 A value of -1 indicates that an actor should be restarted
                 indefinitely.
             max_task_retries: How many times to
-                retry an actor task if the task fails due to a system error,
+                retry an actor task if the task fails due to a runtime error,
                 e.g., the actor has died. If set to -1, the system will
                 retry the failed task until the task succeeds, or the actor
                 has reached its max_restarts limit. If set to `n > 0`, the
                 system will retry the failed task up to n times, after which the
                 task will throw a `RayActorError` exception upon :obj:`ray.get`.
-                Note that Python exceptions are not considered system errors
-                and don't trigger retries. [Internal use: You can override this number
-                with the method's "_max_retries" option at @ray.method decorator or
-                at .option() time.]
+                Note that Python exceptions may trigger retries *only if*
+                `retry_exceptions` is set for the method, in that case when
+                `max_task_retries` runs out the task will rethrow the exception from
+                the task. You can override this number with the method's
+                `max_task_retries` option in `@ray.method` decorator or in `.option()`.
             max_pending_calls: Set the max number of pending calls
                 allowed on the actor handle. When this value is exceeded,
                 PendingCallsLimitExceeded will be raised for further tasks.
@@ -1164,7 +1165,7 @@ class ActorClass:
             meta.method_meta.decorators,
             meta.method_meta.signatures,
             meta.method_meta.num_returns,
-            meta.method_meta.max_retries,
+            meta.method_meta.max_task_retries,
             meta.method_meta.retry_exceptions,
             meta.method_meta.generator_backpressure_num_objects,
             actor_method_cpu,
@@ -1210,7 +1211,7 @@ class ActorHandle:
             invocation side, whereas a regular decorator can be used to change
             the behavior on the execution side.
         _ray_method_signatures: The signatures of the actor methods.
-        _ray_method_max_retries: Max number of retries on method failure.
+        _ray_method_max_task_retries: Max number of retries on method failure.
         _ray_method_num_returns: The default number of return values for
             each method.
         _ray_method_retry_exceptions: The default value of boolean of whether you want
@@ -1237,7 +1238,7 @@ class ActorHandle:
         method_decorators,
         method_signatures,
         method_num_returns: Dict[str, int],
-        method_max_retries: Dict[str, int],
+        method_max_task_retries: Dict[str, int],
         method_retry_exceptions: Dict[str, Union[bool, list, tuple]],
         method_generator_backpressure_num_objects: Dict[str, int],
         actor_method_cpus: int,
@@ -1253,7 +1254,7 @@ class ActorHandle:
         self._ray_method_decorators = method_decorators
         self._ray_method_signatures = method_signatures
         self._ray_method_num_returns = method_num_returns
-        self._ray_method_max_retries = method_max_retries
+        self._ray_method_max_task_retries = method_max_task_retries
         self._ray_method_retry_exceptions = method_retry_exceptions
         self._ray_method_generator_backpressure_num_objects = (
             method_generator_backpressure_num_objects
@@ -1281,7 +1282,7 @@ class ActorHandle:
                     self,
                     method_name,
                     self._ray_method_num_returns[method_name],
-                    self._ray_method_max_retries.get(
+                    self._ray_method_max_task_retries.get(
                         method_name, self._ray_max_task_retries
                     )
                     or 0,  # never None
@@ -1315,7 +1316,7 @@ class ActorHandle:
         kwargs: Dict[str, Any] = None,
         name: str = "",
         num_returns: Optional[int] = None,
-        max_retries: int = None,
+        max_task_retries: int = None,
         retry_exceptions: Union[bool, list, tuple] = None,
         concurrency_group_name: Optional[str] = None,
         generator_backpressure_num_objects: Optional[int] = None,
@@ -1333,7 +1334,7 @@ class ActorHandle:
             kwargs: A dictionary of keyword arguments for the actor method.
             name: The name to give the actor method call task.
             num_returns: The number of return values for the method.
-            max_retries: Number of retries when method fails.
+            max_task_retries: Number of retries when method fails.
             retry_exceptions: Boolean of whether you want to retry all user-raised
                 exceptions, or a list of allowlist exceptions to retry.
 
@@ -1397,7 +1398,7 @@ class ActorHandle:
             list_args,
             name,
             num_returns,
-            max_retries,
+            max_task_retries,
             retry_exceptions,
             retry_exception_allowlist,
             self._ray_actor_method_cpus,
@@ -1445,7 +1446,7 @@ class ActorHandle:
             self,  # actor
             item,  # method_name
             ray_constants.DEFAULT_ACTOR_METHOD_NUM_RETURN_VALS,
-            0,  # max_retries
+            0,  # max_task_retries
             False,  # retry_exceptions
             False,  # is_generator
             self._ray_method_generator_backpressure_num_objects.get(item, -1),
@@ -1497,7 +1498,7 @@ class ActorHandle:
                     "method_decorators": self._ray_method_decorators,
                     "method_signatures": self._ray_method_signatures,
                     "method_num_returns": self._ray_method_num_returns,
-                    "method_max_retries": self._ray_method_max_retries,
+                    "method_max_task_retries": self._ray_method_max_task_retries,
                     "method_retry_exceptions": self._ray_method_retry_exceptions,
                     "method_generator_backpressure_num_objects": (
                         self._ray_method_generator_backpressure_num_objects
@@ -1541,7 +1542,7 @@ class ActorHandle:
                 state["method_decorators"],
                 state["method_signatures"],
                 state["method_num_returns"],
-                state["method_max_retries"],
+                state["method_max_task_retries"],
                 state["method_retry_exceptions"],
                 state["method_generator_backpressure_num_objects"],
                 state["actor_method_cpus"],
