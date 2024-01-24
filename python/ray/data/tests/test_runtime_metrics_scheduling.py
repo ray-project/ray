@@ -26,6 +26,8 @@ def test_scheduler_accounts_for_in_flight_tasks(shutdown_only, restore_data_cont
         time.sleep(0.1)
         return {"data": np.zeros(24 * 1024**2, dtype=np.uint8)}
 
+    # If the executor doesn't account for the potential output of in flight tasks, it
+    # will launch all 8 tasks at once, producing 8 * 24MiB = 192MiB > 100MiB of data.
     ds = ray.data.range(8, parallelism=8).map_batches(f, batch_size=None)
 
     for _ in ds.iter_batches(batch_size=None, batch_format="pyarrow"):
