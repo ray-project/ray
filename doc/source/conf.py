@@ -238,6 +238,7 @@ if os.environ.get("LINKCHECK_ALL"):
         r"http://localhost[:/].*",  # Ignore localhost links
         r"^http:/$",  # Ignore incomplete links
         # 403 Client Error: Forbidden for url.
+        "https://madewithml.com/#course",
         # They ratelimit bots.
         "https://www.datanami.com/2018/02/01/rays-new-library-targets-high-speed-reinforcement-learning/",
         # 403 Client Error: Forbidden for url.
