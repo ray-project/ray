@@ -47,8 +47,8 @@ class SACTorchRLModule(TorchRLModule, SACRLModule):
 
         # SAC needs also Q function values and action logits for next observations.
         # TODO (simon): Check, if we need to override the Encoder input_sp
-        batch_curr = NestedDict({SampleBatch.OBS: batch[SampleBatch.OBS]})
-        batch_next = NestedDict({SampleBatch.OBS: batch[SampleBatch.NEXT_OBS]})
+        batch_curr = {SampleBatch.OBS: batch[SampleBatch.OBS]}
+        batch_next = {SampleBatch.OBS: batch[SampleBatch.NEXT_OBS]}
 
         # Encoder forward passes.
         pi_encoder_outs = self.pi_encoder(batch_curr)
@@ -161,13 +161,11 @@ class SACTorchRLModule(TorchRLModule, SACRLModule):
         output = {}
 
         # Construct batch. Note, we need to feed observations and actions.
-        qf_batch = NestedDict(
-            {
-                SampleBatch.OBS: torch.concat(
-                    (batch[SampleBatch.OBS], batch[SampleBatch.ACTIONS]), dim=-1
-                )
-            }
-        )
+        qf_batch = {
+            SampleBatch.OBS: torch.concat(
+                (batch[SampleBatch.OBS], batch[SampleBatch.ACTIONS]), dim=-1
+            )
+        }
         # Encoder forward pass.
         qf_encoder_outs = encoder(qf_batch)
 
