@@ -334,6 +334,8 @@ input files to workers for reading.
     option doesn't shuffle the actual rows inside files, so the randomness might be
     poor if each file has many rows.
 
+.. _local_shuffle_buffer:
+
 Local shuffle when iterating over batches
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
@@ -358,22 +360,19 @@ size during iteration. See more details in
 .. tip::
 
     This is slower than shuffling ordering of files, and shuffles rows locally without
-    network transfer. This option can be used together with shuffling ordering of
-    files.
+    network transfer. This local shuffle buffer can be used together with shuffling
+    ordering of files; see :ref:`Shuffle the ordering of files <shuffling_file_order>`.
 
-.. tip::
-
-    You may experience reduced throughput when using ``local_shuffle_buffer_size``;
+    If you observe reduced throughput when using ``local_shuffle_buffer_size``;
     one way to diagnose this is to check the total time spent in batch creation by
     examining the ``ds.stats()`` output (``In batch formatting``, under
     ``Batch iteration time breakdown``).
-
+    
     If this time is significantly larger than the
     time spent in other steps, one way to improve performance is to decrease
     ``local_shuffle_buffer_size`` or turn off the local shuffle buffer altogether.
-    Another computationally cheaper alternative is to use input file-level shuffling
-    for supported read methods; see
-    :ref:`Shuffle the ordering of files <shuffling_file_order>`.
+    You can instead only :ref:`shuffle the ordering of files <shuffling_file_order>`
+    for a computationally cheaper approach.
 
 Shuffle all rows
 ~~~~~~~~~~~~~~~~
