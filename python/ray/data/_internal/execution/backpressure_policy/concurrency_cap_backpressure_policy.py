@@ -1,5 +1,5 @@
 import logging
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Optional
 
 import ray
 from .backpressure_policy import BackpressurePolicy
@@ -20,7 +20,8 @@ class ConcurrencyCapBackpressurePolicy(BackpressurePolicy):
     It will be set to an intial value, and will ramp up exponentially.
 
     The concrete stategy is as follows:
-    - Each PhysicalOperator is assigned an initial concurrency cap.
+    - Each PhysicalOperator is assigned an initial concurrency cap, and maximal
+      concurrency cap (optional).
     - An PhysicalOperator can run new tasks if the number of running tasks is less
       than the cap.
     - When the number of finished tasks reaches a threshold, the concurrency cap will
@@ -44,13 +45,22 @@ class ConcurrencyCapBackpressurePolicy(BackpressurePolicy):
     CAP_MULTIPLIER = 2.0
     CAP_MULTIPLIER_CONFIG_KEY = "backpressure_policies.concurrency_cap.cap_multiplier"
 
-    def __init__(self, topology: "Topology"):
+    def __init__(
+        self,
+        topology: "Topology",
+        min_cap: Optional[int] = None,
+        max_cap: Optional[int] = None,
+    ):
         self._concurrency_caps: dict["PhysicalOperator", float] = {}
 
         data_context = ray.data.DataContext.get_current()
-        self._init_cap = data_context.get_config(
-            self.INIT_CAP_CONFIG_KEY, self.INIT_CAP
-        )
+        if min_cap:
+            self._init_cap = min_cap
+        else:
+            self._init_cap = data_context.get_config(
+                self.INIT_CAP_CONFIG_KEY, self.INIT_CAP
+            )
+        self._max_cap = max_cap
         self._cap_multiplier = data_context.get_config(
             self.CAP_MULTIPLIER_CONFIG_KEY, self.CAP_MULTIPLIER
         )
@@ -59,12 +69,15 @@ class ConcurrencyCapBackpressurePolicy(BackpressurePolicy):
         )
 
         assert self._init_cap > 0
+        assert self._max_cap is None or self._max_cap >= self._init_cap
         assert 0 < self._cap_multiply_threshold <= 1
         assert self._cap_multiplier >= 1
 
         logger.debug(
             "ConcurrencyCapBackpressurePolicy initialized with config: "
-            f"{self._init_cap}, {self._cap_multiply_threshold}, {self._cap_multiplier}"
+            f"init_cap: {self._init_cap}, max_cap: {self._max_cap}, "
+            f"cap_multiply_threshold: {self._cap_multiply_threshold}, "
+            f"cap_multiplier: {self._cap_multiplier}"
         )
 
         for op, _ in topology.items():
@@ -76,6 +89,9 @@ class ConcurrencyCapBackpressurePolicy(BackpressurePolicy):
             self._concurrency_caps[op] * self._cap_multiply_threshold
         ):
             self._concurrency_caps[op] *= self._cap_multiplier
+            if self._max_cap and self._concurrency_caps[op] >= self._max_cap:
+                self._concurrency_caps[op] = self._max_cap
+                break
             logger.debug(
                 f"Concurrency cap for {op} increased to {self._concurrency_caps[op]}"
             )

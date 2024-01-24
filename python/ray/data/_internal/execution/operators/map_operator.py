@@ -13,6 +13,12 @@ from ray.data._internal.compute import (
     ComputeStrategy,
     TaskPoolStrategy,
 )
+from ray.data._internal.execution.backpressure_policy.backpressure_policy import (
+    BackpressurePolicy,
+)
+from ray.data._internal.execution.backpressure_policy.concurrency_cap_backpressure_policy import (
+    ConcurrencyCapBackpressurePolicy,
+)
 from ray.data._internal.execution.interfaces import (
     ExecutionOptions,
     ExecutionResources,
@@ -62,6 +68,9 @@ class MapOperator(OneToOneOperator, ABC):
         self._ray_remote_args = _canonicalize_ray_remote_args(ray_remote_args or {})
         self._ray_remote_args_factory = None
         self._remote_args_for_metrics = copy.deepcopy(self._ray_remote_args)
+
+        # Initialize the back pressure policies to be empty list.
+        self._backpressure_policies = []
 
         # Bundles block references up to the min_rows_per_bundle target.
         self._block_ref_bundler = _BlockRefBundler(min_rows_per_bundle)
@@ -146,7 +155,7 @@ class MapOperator(OneToOneOperator, ABC):
                 TaskPoolMapOperator,
             )
 
-            return TaskPoolMapOperator(
+            op = TaskPoolMapOperator(
                 map_transformer,
                 input_op,
                 name=name,
@@ -154,6 +163,13 @@ class MapOperator(OneToOneOperator, ABC):
                 min_rows_per_bundle=min_rows_per_bundle,
                 ray_remote_args=ray_remote_args,
             )
+            if compute_strategy.min_size is not None and compute_strategy.max_size is not None:
+                concurrency_policy = ConcurrencyCapBackpressurePolicy(
+                    topology={op: None},
+                    min_cap=compute_strategy.min_size,
+                    max_cap=compute_strategy.max_size,
+                )
+                op.set_backpressure_polices([concurrency_policy])
         elif isinstance(compute_strategy, ActorPoolStrategy):
             from ray.data._internal.execution.operators.actor_pool_map_operator import (
                 ActorPoolMapOperator,
@@ -363,6 +379,12 @@ class MapOperator(OneToOneOperator, ABC):
         for _, meta in bundle.blocks:
             self._output_metadata.append(meta)
         return bundle
+
+    def set_backpressure_polices(self, policies: List[BackpressurePolicy]):
+        self._backpressure_policies = policies
+
+    def get_backpressure_polices(self) -> List[BackpressurePolicy]:
+        return self._backpressure_policies
 
     @abstractmethod
     def progress_str(self) -> str:
