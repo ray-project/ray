@@ -258,13 +258,13 @@ class _BatchQueue:
                     for future in futures:
                         _set_exception_if_not_done(future, e)
         except Exception as e:
-            for future in futures:
-                _set_exception_if_not_done(future, e)
-
             logger.exception(
                 "_process_batch ran into an unexpected exception. Please "
                 "file an issue on GitHub with the traceback."
             )
+
+            for future in futures:
+                _set_exception_if_not_done(future, e)
 
     def __del__(self):
         if (
