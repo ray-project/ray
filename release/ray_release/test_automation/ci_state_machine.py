@@ -1,13 +1,14 @@
 from ray_release.test_automation.state_machine import (
     TestStateMachine,
     DEFAULT_ISSUE_OWNER,
+    WEEKLY_RELEASE_BLOCKER_TAG,
 )
 
 from ray_release.test import Test, TestState
 
 
 CONTINUOUS_FAILURE_TO_FLAKY = 10  # Number of continuous failures before flaky
-CONTINUOUS_PASSING_TO_PASSING = 10  # Number of continuous passing before passing
+CONTINUOUS_PASSING_TO_PASSING = 20  # Number of continuous passing before passing
 FLAKY_PERCENTAGE_THRESHOLD = 5  # Percentage threshold to be considered as flaky
 FAILING_TO_FLAKY_MESSAGE = (
     "This test is now considered as flaky because it has been "
@@ -64,6 +65,7 @@ class CITestStateMachine(TestStateMachine):
             "flaky-tracker",
             "triage",
             self.test.get_oncall(),
+            WEEKLY_RELEASE_BLOCKER_TAG,
         ]
         recent_failures = [
             result for result in self.test_results if result.is_failing()

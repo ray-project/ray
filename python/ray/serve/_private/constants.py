@@ -100,7 +100,9 @@ DEFAULT_HEALTH_CHECK_TIMEOUT_S = 30
 DEFAULT_MAX_CONCURRENT_QUERIES = 100
 
 # HTTP Proxy health check configs
-PROXY_HEALTH_CHECK_TIMEOUT_S = 10
+PROXY_HEALTH_CHECK_TIMEOUT_S = (
+    float(os.environ.get("RAY_SERVE_PROXY_HEALTH_CHECK_TIMEOUT_S", "10")) or 10
+)
 PROXY_HEALTH_CHECK_PERIOD_S = (
     float(os.environ.get("RAY_SERVE_PROXY_HEALTH_CHECK_PERIOD_S", "10")) or 10
 )
@@ -108,8 +110,8 @@ PROXY_READY_CHECK_TIMEOUT_S = (
     float(os.environ.get("RAY_SERVE_PROXY_READY_CHECK_TIMEOUT_S", "5")) or 5
 )
 
-#: Number of times in a row that a HTTP proxy must fail the health check before
-#: being marked unhealthy.
+# Number of times in a row that a HTTP proxy must fail the health check before
+# being marked unhealthy.
 PROXY_HEALTH_CHECK_UNHEALTHY_THRESHOLD = 3
 
 # The minimum drain period for a HTTP proxy.
