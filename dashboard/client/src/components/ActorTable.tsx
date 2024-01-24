@@ -71,7 +71,7 @@ const isActorEnum = (state: unknown): state is ActorEnum => {
 // We sort the actorsList so that the "Alive" actors appear at first and "Dead" actors appear in the end.
 export const sortActors = (actorList: ActorDetail[]) => {
   const sortedActors = [...actorList];
-  return _.sortBy(sortedActors, (actor) => {
+  return _.sortBy(sortedActors, actor => {
     const actorOrder = isActorEnum(actor.state) ? stateOrder[actor.state] : 0;
     const actorTime = actor.startTime || 0;
     return [actorOrder, actorTime];
@@ -229,7 +229,7 @@ const ActorTable = ({
         </Typography>
       ),
     },
-    { 
+    {
       label: "CPU",
       helpInfo: (
         <Typography>
@@ -237,43 +237,44 @@ const ActorTable = ({
           <br />
           <br />
           Node’s CPU usage is calculated against all CPU cores. Worker Process’s
-          CPU usage is calculated against 1 CPU core. As a result, the sum of CPU
-          usage from all Worker Processes is not equal to the Node’s CPU usage.
+          CPU usage is calculated against 1 CPU core. As a result, the sum of
+          CPU usage from all Worker Processes is not equal to the Node’s CPU
+          usage.
         </Typography>
       ),
     },
-    { 
+    {
       label: "Memory",
       helpInfo: (
         <Typography>
           Actor's RAM usage (from Worker Process). <br />
         </Typography>
-      ), 
+      ),
     },
-    { 
+    {
       label: "GPU",
       helpInfo: (
         <Typography>
           Usage of each GPU device. If no GPU usage is detected, here are the
           potential root causes:
           <br />
-          1. non-GPU Ray image is used on this node. Switch to a GPU Ray image and
-          try again. <br />
-          2. Non Nvidia GPUs are being used. Non Nvidia GPUs' utilizations are not
-          currently supported.
+          1. non-GPU Ray image is used on this node. Switch to a GPU Ray image
+          and try again. <br />
+          2. Non Nvidia GPUs are being used. Non Nvidia GPUs' utilizations are
+          not currently supported.
           <br />
           3. pynvml module raises an exception.
         </Typography>
       ),
     },
-    { 
+    {
       label: "GRAM",
       helpInfo: (
         <Typography>
           Actor's GRAM usage (from Worker Process). <br />
         </Typography>
       ),
-     },
+    },
   ];
 
   return (
@@ -281,9 +282,7 @@ const ActorTable = ({
       <div style={{ flex: 1, display: "flex", alignItems: "center" }}>
         <Autocomplete
           style={{ margin: 8, width: 120 }}
-          options={Array.from(
-            new Set(Object.values(actors).map((e) => e.state)),
-          )}
+          options={Array.from(new Set(Object.values(actors).map(e => e.state)))}
           onInputChange={(_: any, value: string) => {
             changeFilter("state", value.trim());
           }}
@@ -294,9 +293,7 @@ const ActorTable = ({
         <Autocomplete
           style={{ margin: 8, width: 150 }}
           defaultValue={filterToActorId === undefined ? jobId : undefined}
-          options={Array.from(
-            new Set(Object.values(actors).map((e) => e.jobId)),
-          )}
+          options={Array.from(new Set(Object.values(actors).map(e => e.jobId)))}
           onInputChange={(_: any, value: string) => {
             changeFilter("jobId", value.trim());
           }}
@@ -307,7 +304,7 @@ const ActorTable = ({
         <Autocomplete
           style={{ margin: 8, width: 150 }}
           options={Array.from(
-            new Set(Object.values(actors).map((e) => e.address?.ipAddress)),
+            new Set(Object.values(actors).map(e => e.address?.ipAddress)),
           )}
           onInputChange={(_: any, value: string) => {
             changeFilter("address.ipAddress", value.trim());
@@ -435,7 +432,7 @@ const ActorTable = ({
                 <ExpandableTableRow
                   length={
                     workers.filter(
-                      (e) =>
+                      e =>
                         e.pid === pid &&
                         address.ipAddress === e.coreWorkerStats[0].ipAddress,
                     ).length
@@ -444,7 +441,7 @@ const ActorTable = ({
                     <RayletWorkerTable
                       actorMap={{}}
                       workers={workers.filter(
-                        (e) =>
+                        e =>
                           e.pid === pid &&
                           address.ipAddress === e.coreWorkerStats[0].ipAddress,
                       )}
@@ -572,15 +569,24 @@ const ActorTable = ({
                     </Tooltip>
                   </TableCell>
                   <TableCell>
-                    <PercentageBar num={Number(processStats.cpuPercent)} total={100}>
+                    <PercentageBar
+                      num={Number(processStats.cpuPercent)}
+                      total={100}
+                    >
                       {processStats.cpuPercent}
                     </PercentageBar>
                   </TableCell>
                   <TableCell>
                     {mem && (
-                      <PercentageBar num={processStats.memoryInfo.rss} total={mem[0]}>
-                        {memoryConverter(processStats.memoryInfo.rss)}/{memoryConverter(mem[0])}(
-                        {((processStats.memoryInfo.rss / mem[0]) * 100).toFixed(1)}
+                      <PercentageBar
+                        num={processStats.memoryInfo.rss}
+                        total={mem[0]}
+                      >
+                        {memoryConverter(processStats.memoryInfo.rss)}/
+                        {memoryConverter(mem[0])}(
+                        {((processStats.memoryInfo.rss / mem[0]) * 100).toFixed(
+                          1,
+                        )}
                         %)
                       </PercentageBar>
                     )}
