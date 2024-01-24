@@ -4289,11 +4289,6 @@ bool CoreWorker::IsExiting() const {
   return exiting_detail_.has_value();
 }
 
-std::unordered_map<std::string, std::vector<int64_t>> CoreWorker::GetActorCallStats()
-    const {
-  return task_counter_.AsMap();
-}
-
 Status CoreWorker::WaitForActorRegistered(const std::vector<ObjectID> &ids) {
   std::vector<ActorID> actor_ids;
   for (const auto &id : ids) {

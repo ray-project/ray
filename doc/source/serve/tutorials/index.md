@@ -17,6 +17,7 @@ gradio-integration
 batch
 streaming
 java
+triton-server-integration
 ```
 
 Below are tutorials for exploring Ray Serve capabilities and learning how to integrate different modeling frameworks.
