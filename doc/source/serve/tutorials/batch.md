@@ -23,8 +23,8 @@ Open a new Python file called `tutorial_batch.py`. First, import Ray Serve and s
 ```
 
 You can use the `@serve.batch` decorator to annotate a function or a method.
-This annotation automatically causes Ray Serve to batch calls to the function together.
-The function must handle a list of objects and Ray Serve calls it with a single object.
+This annotation automatically causes calls to the function to be batched together.
+The function must handle a list of objects and is called with a single object.
 This function must also be `async def` so that you can handle multiple queries concurrently:
 
 ```python
@@ -33,9 +33,9 @@ async def my_batch_handler(self, requests: List):
     pass
 ```
 
-Ray Serve can then call the batch handler from another `async def` method in your deployment.
-Ray Serve batches and executes these calls together, but returns an individual result as if
-they were a single function call:
+The batch handler can then be called from another `async def` method in your deployment.
+These calls together are batched and executed together, but return an individual result as if
+they were a normal function call:
 
 ```python
 class MyBackend:
@@ -52,9 +52,9 @@ class MyBackend:
 
 :::{note}
 By default, Ray Serve performs *opportunistic batching*. This means that as
-soon as the batch handler is called, the method executes without
-waiting for a full batch. If more queries are available after this call
-finishes, the batch handler may execute a larger batch. You can tune this behavior using the
+soon as the batch handler is called, the method is executed without
+waiting for a full batch. If there are more queries available after this call
+finishes, the larger batch may be executed. You can tune this behavior using the
 `batch_wait_timeout_s` option to `@serve.batch` (defaults to 0). Increasing this
 timeout may improve throughput at the cost of latency under low load.
 :::
