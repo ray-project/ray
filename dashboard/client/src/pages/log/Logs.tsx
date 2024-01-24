@@ -1,5 +1,8 @@
 import {
+  Box,
   Button,
+  createStyles,
+  IconButton,
   Link,
   List,
   ListItem,
@@ -8,6 +11,7 @@ import {
   Typography,
 } from "@material-ui/core";
 import React, { useMemo, useState } from "react";
+import { RiDownload2Line } from "react-icons/ri";
 import { Outlet, Link as RouterLink, useSearchParams } from "react-router-dom";
 import useSWR from "swr";
 import { StateApiLogViewer } from "../../common/MultiTabLogViewer";
@@ -132,6 +136,14 @@ export const StateApiLogsNodesList = () => {
   );
 };
 
+const useStateApiLogsFilesListStyles = makeStyles((theme) =>
+  createStyles({
+    iconButton: {
+      verticalAlign: "baseline",
+    },
+  }),
+);
+
 type StateApiLogsFilesListProps = {
   nodeId: string;
   folder: string | null;
@@ -143,6 +155,8 @@ export const StateApiLogsFilesList = ({
   folder,
   fileName,
 }: StateApiLogsFilesListProps) => {
+  const classes = useStateApiLogsFilesListStyles();
+
   // We want to do a partial search for file name.
   const fileNameGlob = fileName ? `*${fileName}*` : undefined;
   const glob = fileNameGlob
@@ -224,12 +238,17 @@ export const StateApiLogsFilesList = ({
                   {name}
                 </Link>
                 {downloadUrl && (
-                  <React.Fragment>
-                    &nbsp;
-                    <Link href={downloadUrl} download={fileName}>
-                      (download)
-                    </Link>
-                  </React.Fragment>
+                  <Box paddingLeft={0.5}>
+                    <IconButton
+                      component="a"
+                      href={downloadUrl}
+                      download={fileName}
+                      size="small"
+                      className={classes.iconButton}
+                    >
+                      <RiDownload2Line size={16} />
+                    </IconButton>
+                  </Box>
                 )}
               </ListItem>
             );
