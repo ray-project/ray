@@ -2,7 +2,7 @@ import { Box, Tooltip, Typography } from "@material-ui/core";
 import React from "react";
 import { RightPaddedTypography } from "../../common/CustomTypography";
 import PercentageBar from "../../components/PercentageBar";
-import { NodeDetail } from "../../type/node";
+import { GPUStats, NodeDetail } from "../../type/node";
 import { Worker } from "../../type/worker";
 
 const GRAM_COL_WIDTH = 120;
@@ -42,6 +42,41 @@ export const WorkerGRAM = ({
     .map((gpu, i) => {
       const process = gpu.processes?.find(
         (process) => process.pid === worker.pid,
+      );
+      if (!process) {
+        return undefined;
+      }
+      const props = {
+        key: gpu.uuid,
+        gpuName: gpu.name,
+        total: gpu.memoryTotal,
+        utilization: process.gpuMemoryUsage,
+        slot: gpu.index,
+      };
+      return <GRAMEntry {...props} />;
+    })
+    .filter((entry) => entry !== undefined);
+
+  return workerGRAMEntries.length === 0 ? (
+    <Typography color="textSecondary" component="span" variant="inherit">
+      N/A
+    </Typography>
+  ) : (
+    <div style={{ minWidth: GRAM_COL_WIDTH }}>{workerGRAMEntries}</div>
+  );
+};
+
+export const ActorGRAM = ({
+  workerPID,
+  gpus,
+}: {
+  workerPID: number | null;
+  gpus?: GPUStats[];
+}) => {
+  const workerGRAMEntries = (gpus ?? [])
+    .map((gpu, i) => {
+      const process = gpu.processes?.find(
+        (process) => workerPID && process.pid === workerPID,
       );
       if (!process) {
         return undefined;

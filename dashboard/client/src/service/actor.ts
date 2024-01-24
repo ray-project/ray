@@ -7,7 +7,7 @@ export const getActors = () => {
     message: string;
     data: {
       actors: {
-        [actorId: string]: Actor;
+        [actorId: string]: ActorDetail;
       };
     };
   }>("logical/actors");

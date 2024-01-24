@@ -25,16 +25,20 @@ import {
   MemoryProfilingButton,
 } from "../common/ProfilingLink";
 import rowStyles from "../common/RowStyles";
-import { Actor, ActorEnum } from "../type/actor";
+import { Actor, ActorDetail, ActorEnum } from "../type/actor";
 import { Worker } from "../type/worker";
 import { useFilter } from "../util/hook";
 import StateCounter from "./StatesCounter";
 import { StatusChip } from "./StatusChip";
 import { HelpInfo } from "./Tooltip";
 import RayletWorkerTable, { ExpandableTableRow } from "./WorkerTable";
+import { ActorGRAM } from "../pages/node/GRAMColumn";
+import PercentageBar from "./PercentageBar";
+import { memoryConverter } from "../util/converter";
+import { ActorGpuRow } from "../pages/node/GPUColumn";
 
 export type ActorTableProps = {
-  actors: { [actorId: string]: Actor };
+  actors: { [actorId: string]: ActorDetail };
   workers?: Worker[];
   jobId?: string | null;
   filterToActorId?: string;
@@ -65,7 +69,7 @@ const isActorEnum = (state: unknown): state is ActorEnum => {
 };
 
 // We sort the actorsList so that the "Alive" actors appear at first and "Dead" actors appear in the end.
-export const sortActors = (actorList: Actor[]) => {
+export const sortActors = (actorList: ActorDetail[]) => {
   const sortedActors = [...actorList];
   return _.sortBy(sortedActors, (actor) => {
     const actorOrder = isActorEnum(actor.state) ? stateOrder[actor.state] : 0;
@@ -225,6 +229,10 @@ const ActorTable = ({
         </Typography>
       ),
     },
+    { label: "CPU" },
+    { label: "Memory" },
+    { label: "GPU" },
+    { label: "GRAM" },
   ];
 
   return (
@@ -379,6 +387,9 @@ const ActorTable = ({
                 endTime,
                 exitDetail,
                 requiredResources,
+                gpus,
+                processStats,
+                mem,
               }) => (
                 <ExpandableTableRow
                   length={
@@ -518,6 +529,26 @@ const ActorTable = ({
                     >
                       <div>{exitDetail}</div>
                     </Tooltip>
+                  </TableCell>
+                  <TableCell>
+                    <PercentageBar num={Number(processStats.cpuPercent)} total={100}>
+                      {processStats.cpuPercent}
+                    </PercentageBar>
+                  </TableCell>
+                  <TableCell>
+                    {mem && (
+                      <PercentageBar num={processStats.memoryInfo.rss} total={mem[0]}>
+                        {memoryConverter(processStats.memoryInfo.rss)}/{memoryConverter(mem[0])}(
+                        {((processStats.memoryInfo.rss / mem[0]) * 100).toFixed(1)}
+                        %)
+                      </PercentageBar>
+                    )}
+                  </TableCell>
+                  <TableCell>
+                    <ActorGpuRow workerPID={pid} gpus={gpus} />
+                  </TableCell>
+                  <TableCell>
+                    <ActorGRAM workerPID={pid} gpus={gpus} />
                   </TableCell>
                 </ExpandableTableRow>
               ),
