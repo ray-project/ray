@@ -71,7 +71,7 @@ const isActorEnum = (state: unknown): state is ActorEnum => {
 // We sort the actorsList so that the "Alive" actors appear at first and "Dead" actors appear in the end.
 export const sortActors = (actorList: ActorDetail[]) => {
   const sortedActors = [...actorList];
-  return _.sortBy(sortedActors, actor => {
+  return _.sortBy(sortedActors, (actor) => {
     const actorOrder = isActorEnum(actor.state) ? stateOrder[actor.state] : 0;
     const actorTime = actor.startTime || 0;
     return [actorOrder, actorTime];
@@ -282,7 +282,9 @@ const ActorTable = ({
       <div style={{ flex: 1, display: "flex", alignItems: "center" }}>
         <Autocomplete
           style={{ margin: 8, width: 120 }}
-          options={Array.from(new Set(Object.values(actors).map(e => e.state)))}
+          options={Array.from(
+            new Set(Object.values(actors).map((e) => e.state)),
+          )}
           onInputChange={(_: any, value: string) => {
             changeFilter("state", value.trim());
           }}
@@ -293,7 +295,9 @@ const ActorTable = ({
         <Autocomplete
           style={{ margin: 8, width: 150 }}
           defaultValue={filterToActorId === undefined ? jobId : undefined}
-          options={Array.from(new Set(Object.values(actors).map(e => e.jobId)))}
+          options={Array.from(
+            new Set(Object.values(actors).map((e) => e.jobId)),
+          )}
           onInputChange={(_: any, value: string) => {
             changeFilter("jobId", value.trim());
           }}
@@ -304,7 +308,7 @@ const ActorTable = ({
         <Autocomplete
           style={{ margin: 8, width: 150 }}
           options={Array.from(
-            new Set(Object.values(actors).map(e => e.address?.ipAddress)),
+            new Set(Object.values(actors).map((e) => e.address?.ipAddress)),
           )}
           onInputChange={(_: any, value: string) => {
             changeFilter("address.ipAddress", value.trim());
@@ -432,7 +436,7 @@ const ActorTable = ({
                 <ExpandableTableRow
                   length={
                     workers.filter(
-                      e =>
+                      (e) =>
                         e.pid === pid &&
                         address.ipAddress === e.coreWorkerStats[0].ipAddress,
                     ).length
@@ -441,7 +445,7 @@ const ActorTable = ({
                     <RayletWorkerTable
                       actorMap={{}}
                       workers={workers.filter(
-                        e =>
+                        (e) =>
                           e.pid === pid &&
                           address.ipAddress === e.coreWorkerStats[0].ipAddress,
                       )}
