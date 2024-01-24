@@ -32,7 +32,7 @@ import StateCounter from "./StatesCounter";
 import { StatusChip } from "./StatusChip";
 import { HelpInfo } from "./Tooltip";
 import RayletWorkerTable, { ExpandableTableRow } from "./WorkerTable";
-import { ActorGRAM } from "../pages/node/GRAMColumn";
+import { WorkerGRAM } from "../pages/node/GRAMColumn";
 import PercentageBar from "./PercentageBar";
 import { memoryConverter } from "../util/converter";
 import { ActorGpuRow } from "../pages/node/GPUColumn";
@@ -548,7 +548,7 @@ const ActorTable = ({
                     <ActorGpuRow workerPID={pid} gpus={gpus} />
                   </TableCell>
                   <TableCell>
-                    <ActorGRAM workerPID={pid} gpus={gpus} />
+                    <WorkerGRAM workerPID={pid} gpus={gpus} />
                   </TableCell>
                 </ExpandableTableRow>
               ),
