@@ -40,6 +40,11 @@ class PPOTorchRLModule(TorchRLModule, PPORLModule):
         the policy distribution to be used for computing KL divergence between the old
         policy and the new policy during training.
         """
+        # TODO (sven): Make this the only bahevior once PPO has been migrated
+        #  to new API stack (including EnvRunners!).
+        if self.config.model_config_dict.get("uses_new_env_runners"):
+            return self._forward_inference(batch)
+
         output = {}
 
         # Shared encoder
