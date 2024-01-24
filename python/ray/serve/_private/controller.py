@@ -778,6 +778,7 @@ class ServeController:
 
         If `deployment_time` is not provided, `time.time()` is used.
         """
+        print("deployyyying")
         ServeUsageTag.API_VERSION.record("v2")
         if not deployment_time:
             deployment_time = time.time()
