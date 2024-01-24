@@ -310,6 +310,8 @@ To transform groups, call :meth:`~ray.data.Dataset.groupby` to group rows. Then,
 Shuffling data
 ==============
 
+.. _shuffling_file_order:
+
 Shuffle the ordering of files
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
@@ -363,10 +365,15 @@ size during iteration. See more details in
 
     You may experience reduced throughput when using ``local_shuffle_buffer_size``;
     one way to diagnose this is to check the total time spent in batch creation by
-    examining the ``ds.stats()`` output (``In batch formatting`` under
-    ``Batch iteration time breakdown``). If this time is significantly larger than the
+    examining the ``ds.stats()`` output (``In batch formatting``, under
+    ``Batch iteration time breakdown``).
+
+    If this time is significantly larger than the
     time spent in other steps, one way to improve performance is to decrease
     ``local_shuffle_buffer_size`` or turn off the local shuffle buffer altogether.
+    Another computationally cheaper alternative is to use input file-level shuffling
+    for supported read methods; see
+    :ref:`Shuffle the ordering of files <shuffling_file_order>`.
 
 Shuffle all rows
 ~~~~~~~~~~~~~~~~
