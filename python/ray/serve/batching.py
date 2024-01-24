@@ -191,7 +191,8 @@ class _BatchQueue:
                     elif result in [StopIteration, StopAsyncIteration]:
                         # User's code returned sentinel. No values left
                         # for caller. Terminate iteration for caller.
-                        future.set_exception(StopAsyncIteration)
+                        if not future.cancelled():
+                            future.set_exception(StopAsyncIteration)
                         next_futures.append(FINISHED_TOKEN)
                     else:
                         next_future = get_or_create_event_loop().create_future()
@@ -203,11 +204,11 @@ class _BatchQueue:
                 futures = next_futures
 
             for future in futures:
-                if future is not FINISHED_TOKEN:
+                if future is not FINISHED_TOKEN and not future.cancelled():
                     future.set_exception(StopAsyncIteration)
         except Exception as e:
             for future in futures:
-                if future is not FINISHED_TOKEN:
+                if future is not FINISHED_TOKEN and not future.cancelled():
                     future.set_exception(e)
 
     async def _process_batches(self, func: Callable) -> None:
@@ -249,7 +250,8 @@ class _BatchQueue:
                                 future.set_result(result)
                     except Exception as e:
                         for future in futures:
-                            future.set_exception(e)
+                            if not future.cancelled():
+                                future.set_exception(e)
             except Exception:
                 logger.exception(
                     "_process_batches asyncio task ran into an unexpected "
