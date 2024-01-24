@@ -321,16 +321,16 @@ class _LazyBatchQueueWrapper:
     def get_batch_wait_timeout_s(self) -> float:
         return self.batch_wait_timeout_s
 
-    def _get_curr_iteration_start_time(self) -> float:
+    def _get_curr_iteration_start_time(self) -> Optional[float]:
         """Gets current iteration's start time on default _BatchQueue implementation.
 
-        Returns -1 if the batch handler doesn't use a default _BatchQueue.
+        Returns None if the batch handler doesn't use a default _BatchQueue.
         """
 
         if hasattr(self.queue, "curr_iteration_start_time"):
             return self.queue.curr_iteration_start_time
         else:
-            return -1
+            return None
 
     async def _is_batching_task_alive(self) -> bool:
         """Gets whether default _BatchQueue's background task is alive.

@@ -175,7 +175,7 @@ def test_observability_helpers():
         async def __call__(self, request):
             return await self.handle_batch(request)
 
-        async def _get_curr_iteration_start_time(self) -> float:
+        async def _get_curr_iteration_start_time(self) -> Optional[float]:
             return self.handle_batch._get_curr_iteration_start_time()
 
         async def _is_batching_task_alive(self) -> bool:
