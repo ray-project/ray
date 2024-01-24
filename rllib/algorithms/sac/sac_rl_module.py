@@ -99,7 +99,6 @@ class SACRLModule(RLModule, RLModuleWithTargetNetworksInterface):
 
         # Get the action distribution class.
         self.action_dist_cls = catalog.get_action_dist_cls(framework=self.framework)
-        # __sphinx_doc_end__
 
     @override(RLModule)
     def get_exploration_action_dist_cls(self) -> Type[Distribution]:
