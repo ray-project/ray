@@ -187,49 +187,6 @@ const ActorTable = ({
     { label: "PID" },
     { label: "IP" },
     {
-      label: "Restarted",
-      helpInfo: (
-        <Typography>
-          The total number of the count this actor has been restarted.
-        </Typography>
-      ),
-    },
-    {
-      label: "Placement group ID",
-      helpInfo: (
-        <Typography>
-          The ID of the placement group this actor is scheduled to.
-          <br />
-        </Typography>
-      ),
-    },
-    {
-      label: "Required resources",
-      helpInfo: (
-        <Typography>
-          The required Ray resources to start an actor.
-          <br />
-          For example, this actor has GPU:1 required resources.
-          <br />
-          <br />
-          @ray.remote(num_gpus=1)
-          <br />
-          class Actor:
-          <br />
-          &emsp;pass
-          <br />
-        </Typography>
-      ),
-    },
-    {
-      label: "Exit detail",
-      helpInfo: (
-        <Typography>
-          The detail of an actor exit. Only available when an actor is dead.
-        </Typography>
-      ),
-    },
-    {
       label: "CPU",
       helpInfo: (
         <Typography>
@@ -272,6 +229,49 @@ const ActorTable = ({
       helpInfo: (
         <Typography>
           Actor's GRAM usage (from Worker Process). <br />
+        </Typography>
+      ),
+    },
+    {
+      label: "Restarted",
+      helpInfo: (
+        <Typography>
+          The total number of the count this actor has been restarted.
+        </Typography>
+      ),
+    },
+    {
+      label: "Placement group ID",
+      helpInfo: (
+        <Typography>
+          The ID of the placement group this actor is scheduled to.
+          <br />
+        </Typography>
+      ),
+    },
+    {
+      label: "Required resources",
+      helpInfo: (
+        <Typography>
+          The required Ray resources to start an actor.
+          <br />
+          For example, this actor has GPU:1 required resources.
+          <br />
+          <br />
+          @ray.remote(num_gpus=1)
+          <br />
+          class Actor:
+          <br />
+          &emsp;pass
+          <br />
+        </Typography>
+      ),
+    },
+    {
+      label: "Exit detail",
+      helpInfo: (
+        <Typography>
+          The detail of an actor exit. Only available when an actor is dead.
         </Typography>
       ),
     },
@@ -524,6 +524,35 @@ const ActorTable = ({
                   <TableCell align="center">
                     {address?.ipAddress ? address?.ipAddress : "-"}
                   </TableCell>
+                  <TableCell>
+                    <PercentageBar
+                      num={Number(processStats.cpuPercent)}
+                      total={100}
+                    >
+                      {processStats.cpuPercent}
+                    </PercentageBar>
+                  </TableCell>
+                  <TableCell>
+                    {mem && (
+                      <PercentageBar
+                        num={processStats.memoryInfo.rss}
+                        total={mem[0]}
+                      >
+                        {memoryConverter(processStats.memoryInfo.rss)}/
+                        {memoryConverter(mem[0])}(
+                        {((processStats.memoryInfo.rss / mem[0]) * 100).toFixed(
+                          1,
+                        )}
+                        %)
+                      </PercentageBar>
+                    )}
+                  </TableCell>
+                  <TableCell>
+                    <WorkerGpuRow workerPID={pid} gpus={gpus} />
+                  </TableCell>
+                  <TableCell>
+                    <WorkerGRAM workerPID={pid} gpus={gpus} />
+                  </TableCell>
                   <TableCell
                     align="center"
                     style={{
@@ -571,35 +600,6 @@ const ActorTable = ({
                     >
                       <div>{exitDetail}</div>
                     </Tooltip>
-                  </TableCell>
-                  <TableCell>
-                    <PercentageBar
-                      num={Number(processStats.cpuPercent)}
-                      total={100}
-                    >
-                      {processStats.cpuPercent}
-                    </PercentageBar>
-                  </TableCell>
-                  <TableCell>
-                    {mem && (
-                      <PercentageBar
-                        num={processStats.memoryInfo.rss}
-                        total={mem[0]}
-                      >
-                        {memoryConverter(processStats.memoryInfo.rss)}/
-                        {memoryConverter(mem[0])}(
-                        {((processStats.memoryInfo.rss / mem[0]) * 100).toFixed(
-                          1,
-                        )}
-                        %)
-                      </PercentageBar>
-                    )}
-                  </TableCell>
-                  <TableCell>
-                    <WorkerGpuRow workerPID={pid} gpus={gpus} />
-                  </TableCell>
-                  <TableCell>
-                    <WorkerGRAM workerPID={pid} gpus={gpus} />
                   </TableCell>
                 </ExpandableTableRow>
               ),
