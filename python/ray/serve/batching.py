@@ -103,7 +103,7 @@ class _BatchQueue:
         self._handle_batch_task = None
         if handle_batch_func is not None:
             self._handle_batch_task = get_or_create_event_loop().create_task(
-                self._process_batches(handle_batch_func)
+                self._process_batches_forever(handle_batch_func)
             )
 
     def put(self, request: Tuple[_SingleRequest, asyncio.Future]) -> None:
@@ -195,7 +195,9 @@ class _BatchQueue:
                         next_futures.append(FINISHED_TOKEN)
                     else:
                         next_future = get_or_create_event_loop().create_future()
-                        _set_result_if_not_done(future, _GeneratorResult(result, next_future))
+                        _set_result_if_not_done(
+                            future, _GeneratorResult(result, next_future)
+                        )
                         next_futures.append(next_future)
                 futures = next_futures
 
@@ -207,48 +209,49 @@ class _BatchQueue:
                 if future is not FINISHED_TOKEN:
                     _set_exception_if_not_done(future, e)
 
-    async def _process_batches(self, func: Callable) -> None:
+    async def _process_batches_forever(self, func: Callable) -> None:
         """Loops infinitely and processes queued request batches."""
 
         while True:
             try:
                 self.curr_iteration_start_time = time.time()
-                batch: List[_SingleRequest] = await self.wait_for_batch()
-                assert len(batch) > 0
-                self_arg = batch[0].self_arg
-                args, kwargs = _batch_args_kwargs(
-                    [item.flattened_args for item in batch]
-                )
-                futures = [item.future for item in batch]
-
-                # Method call.
-                if self_arg is not None:
-                    func_future_or_generator = func(self_arg, *args, **kwargs)
-                # Normal function call.
-                else:
-                    func_future_or_generator = func(*args, **kwargs)
-
-                if isasyncgenfunction(func):
-                    func_generator = func_future_or_generator
-                    await self._consume_func_generator(
-                        func_generator, futures, len(batch)
-                    )
-                else:
-                    try:
-                        func_future = func_future_or_generator
-                        results = await func_future
-                        self._validate_results(results, len(batch))
-                        for result, future in zip(results, futures):
-                            _set_result_if_not_done(future, result)
-                    except Exception as e:
-                        for future in futures:
-                            _set_exception_if_not_done(future, e)
+                await self._process_batch(func)
             except Exception:
                 logger.exception(
-                    "_process_batches asyncio task ran into an unexpected "
-                    "exception. Please file an issue on GitHub with the "
-                    "traceback."
+                    "_process_batches_forever asyncio task ran into an "
+                    "unexpected exception. Please file an issue on GitHub "
+                    "with the traceback."
                 )
+
+    async def _process_batch(self, func: Callable) -> None:
+        """Processes queued request batch."""
+
+        batch: List[_SingleRequest] = await self.wait_for_batch()
+        assert len(batch) > 0
+        self_arg = batch[0].self_arg
+        args, kwargs = _batch_args_kwargs([item.flattened_args for item in batch])
+        futures = [item.future for item in batch]
+
+        # Method call.
+        if self_arg is not None:
+            func_future_or_generator = func(self_arg, *args, **kwargs)
+        # Normal function call.
+        else:
+            func_future_or_generator = func(*args, **kwargs)
+
+        if isasyncgenfunction(func):
+            func_generator = func_future_or_generator
+            await self._consume_func_generator(func_generator, futures, len(batch))
+        else:
+            try:
+                func_future = func_future_or_generator
+                results = await func_future
+                self._validate_results(results, len(batch))
+                for result, future in zip(results, futures):
+                    _set_result_if_not_done(future, result)
+            except Exception as e:
+                for future in futures:
+                    _set_exception_if_not_done(future, e)
 
     def __del__(self):
         if (
