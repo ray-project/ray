@@ -11,7 +11,6 @@ export const useFetchActor = (actorId: string | null) => {
     async ([_, actorId]) => {
       const actor_resp = await getActor(actorId);
       const data: ActorResp = actor_resp?.data;
-      console.log("DEBUG useFetchActor", data)
       const { data: rspData } = data;
 
       if (rspData.detail) {
@@ -31,7 +30,6 @@ export const useActorDetail = () => {
     async ([_, actorId]) => {
       const actor_resp = await getActor(actorId);
       const data: ActorResp = actor_resp?.data;
-      console.log("DEBUG useActorDetail", data)
       const { data: rspData, msg, result } = data;
       if (msg) {
         setMsg(msg);

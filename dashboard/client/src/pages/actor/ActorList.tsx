@@ -16,7 +16,6 @@ const ActorList = ({
 } & Pick<ActorTableProps, "filterToActorId" | "onFilterChange">) => {
   const data: { [actorId: string]: ActorDetail } | undefined = useActorList();
   const actors: { [actorId: string]: ActorDetail } = data ? data : {};
-  console.log("ActorDetails", actors)
 
   return (
     <div>
