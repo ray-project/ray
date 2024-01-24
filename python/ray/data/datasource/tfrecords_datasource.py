@@ -2,6 +2,7 @@ import struct
 from typing import TYPE_CHECKING, Dict, Iterable, Iterator, List, Optional, Union
 
 import numpy as np
+import pyarrow
 
 from ray.data.aggregate import AggregateFn
 from ray.data.block import Block
@@ -10,7 +11,6 @@ from ray.util.annotations import PublicAPI
 
 if TYPE_CHECKING:
     import pandas as pd
-    import pyarrow
     import tensorflow as tf
     from tensorflow_metadata.proto.v0 import schema_pb2
 
@@ -67,9 +67,10 @@ class TFRecordDatasource(FileBasedDatasource):
             )
 
     def _fast_read_stream(self, f: "pyarrow.NativeFile", path: str) -> Iterator[Block]:
-        import pyarrow as pa
         import tensorflow as tf
         from tfx_bsl.cc.tfx_bsl_extension.coders import ExamplesToRecordBatchDecoder
+
+        full_path = self._resolve_full_path(path)
 
         compression = (self._open_stream_args or {}).get("compression", None)
 
@@ -84,9 +85,9 @@ class TFRecordDatasource(FileBasedDatasource):
         exception_thrown = None
         try:
             for record in tf.data.TFRecordDataset(
-                path, compression_type=compression
+                full_path, compression_type=compression
             ).batch(self._batch_size):
-                yield pa.Table.from_batches([decoder.DecodeBatch(record.numpy())])
+                yield pyarrow.Table.from_batches([decoder.DecodeBatch(record.numpy())])
         except Exception as error:
             exception_thrown = error
 
@@ -96,15 +97,32 @@ class TFRecordDatasource(FileBasedDatasource):
         # original error, which makes it unpickable still.
         if exception_thrown:
             raise RuntimeError(
-                f"Failed to read TFRecord file {path}. Please ensure that the "
+                f"Failed to read TFRecord file {full_path}. Please ensure that the "
                 f"TFRecord file has correct format."
             )
+
+    def _resolve_full_path(self, relative_path):
+        if isinstance(self._filesystem, pyarrow.fs.S3FileSystem):
+            return f"s3://{relative_path}"
+        if isinstance(self._filesystem, pyarrow.fs.GcsFileSystem):
+            return f"gs://{relative_path}"
+        if isinstance(self._filesystem, pyarrow.fs.HadoopFileSystem):
+            return f"hdfs:///{relative_path}"
+        if isinstance(self._filesystem, pyarrow.fs.PyFileSystem):
+            protocol = self._filesystem.handler.fs.protocol
+            if isinstance(protocol, list) or isinstance(protocol, tuple):
+                protocol = protocol[0]
+            if protocol == "gcs":
+                protocol = "gs"
+            return f"{protocol}://{relative_path}"
+
+        return relative_path
 
 
 def _convert_example_to_dict(
     example: "tf.train.Example",
     tf_schema: Optional["schema_pb2.Schema"],
-) -> Dict[str, "pyarrow.Array"]:
+) -> Dict[str, pyarrow.Array]:
     record = {}
     schema_dict = {}
     # Convert user-specified schema into dict for convenient mapping
@@ -124,7 +142,7 @@ def _convert_example_to_dict(
 
 
 def _convert_arrow_table_to_examples(
-    arrow_table: "pyarrow.Table",
+    arrow_table: pyarrow.Table,
     tf_schema: Optional["schema_pb2.Schema"] = None,
 ) -> Iterable["tf.train.Example"]:
     import tensorflow as tf
@@ -169,7 +187,7 @@ def _get_single_true_type(dct) -> str:
 def _get_feature_value(
     feature: "tf.train.Feature",
     schema_feature_type: Optional["schema_pb2.FeatureType"] = None,
-) -> "pyarrow.Array":
+) -> pyarrow.Array:
     import pyarrow as pa
 
     underlying_feature_type = {
@@ -426,7 +444,9 @@ def _unwrap_single_value_lists(
 ):
     for col in col_lengths:
         if col_lengths[col] == 1:
-            batch[col] = batch[col][0]
+            batch[col] = np.array(
+                [x[0] if isinstance(x, np.ndarray) else x for x in batch[col]]
+            )
 
     return batch
 
