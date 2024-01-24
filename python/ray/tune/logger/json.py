@@ -61,6 +61,7 @@ class JsonLogger(Logger):
 
     def update_config(self, config: Dict):
         from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
+
         self.config = (
             config.to_dict() if isinstance(config, AlgorithmConfig) else config
         )
@@ -119,6 +120,7 @@ class JsonLoggerCallback(LoggerCallback):
 
     def update_config(self, trial: "Trial", config: Dict):
         from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
+
         self._trial_configs[trial] = (
             config.to_dict() if isinstance(config, AlgorithmConfig) else config
         )
