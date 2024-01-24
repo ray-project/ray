@@ -538,11 +538,6 @@ class ServeApplicationSchema(BaseModel):
         description="Logging config for configuring serve application logs.",
     )
 
-    _allow_local_runtime_env_uris: bool = Field(
-        default=False,
-        exclude=True,
-    )
-
     @property
     def deployment_names(self) -> List[str]:
         return [d.name for d in self.deployments]

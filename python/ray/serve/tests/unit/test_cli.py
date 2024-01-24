@@ -21,7 +21,6 @@ class TestPublish:
         runner = CliRunner()
         result = runner.invoke(publish, [TEST_PROVIDER_ARG, "my_module:my_app"])
         assert result.exit_code == 0, result.output
-        print(result.output)
 
         assert publish_provider.published_config["applications"] == [
             {
@@ -42,7 +41,6 @@ class TestPublish:
             publish, [TEST_PROVIDER_ARG, "my_module:my_app", "--name", "test-name"]
         )
         assert result.exit_code == 0, result.output
-        print(result.output)
 
         assert publish_provider.published_config["applications"] == [
             {
@@ -64,7 +62,6 @@ class TestPublish:
             [TEST_PROVIDER_ARG, "my_module:my_app", "--base-image", "test-image"],
         )
         assert result.exit_code == 0, result.output
-        print(result.output)
 
         assert publish_provider.published_config["applications"] == [
             {
@@ -85,7 +82,6 @@ class TestPublish:
             publish, [TEST_PROVIDER_ARG, "my_module:my_app", "arg1=val1", "arg2=val2"]
         )
         assert result.exit_code == 0, result.output
-        print(result.output)
 
         assert publish_provider.published_config["applications"] == [
             {
@@ -132,7 +128,6 @@ class TestPublish:
             )
 
         assert result.exit_code == 0, result.output
-        print(result.output)
 
         if override_working_dir:
             runtime_env["working_dir"] = "./override"
