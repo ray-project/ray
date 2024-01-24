@@ -296,6 +296,7 @@ steps:
     depends_on: [ "mllightning2gpubuild", "forge" ]
 
   - label: ":train: ml: :windows: tests"
+    if: build.env("RAYCI_CONTINUOUS_BUILD") == "1" || build.pull_request.labels includes "continuous-build"
     tags:
       - train
     job_env: WINDOWS

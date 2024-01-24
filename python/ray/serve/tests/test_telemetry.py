@@ -117,7 +117,6 @@ def test_rest_api(manage_ray_with_telemetry, tmp_dir):
 
     serve.run(
         receiver_app,
-        host="0.0.0.0",
         name="telemetry",
         route_prefix=TELEMETRY_ROUTE_PREFIX,
     )
@@ -258,7 +257,6 @@ def test_lightweight_config_options(
 
     serve.run(
         receiver_app,
-        host="0.0.0.0",
         name="telemetry",
         route_prefix=TELEMETRY_ROUTE_PREFIX,
     )
