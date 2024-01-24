@@ -44,6 +44,12 @@ PROMETHEUS_CONFIG_INPUT_PATH = os.path.join(
     METRICS_INPUT_ROOT, "prometheus", "prometheus.yml"
 )
 PROMETHEUS_HEALTHCHECK_PATH = "-/healthy"
+# Allows for different flavors of Prometheus as metrics backend
+PROMETHEUS_HEALTHCHECK_RESPONSES = (
+    "Prometheus",
+    "VictoriaMetrics",
+    "OK",  # Thanos
+)
 
 DEFAULT_GRAFANA_HOST = "http://localhost:3000"
 GRAFANA_HOST_ENV_VAR = "RAY_GRAFANA_HOST"
@@ -166,7 +172,7 @@ class MetricsHead(dashboard_utils.DashboardHeadModule):
                 text = await resp.text()
                 # Basic sanity check of prometheus health check schema
                 # Different flavors of Prometheus may use different health check strings
-                if "Prometheus" not in text or "VictoriaMetrics" not in text:
+                if all(check not in text for check in PROMETHEUS_HEALTHCHECK_RESPONSES):
                     return dashboard_optional_utils.rest_response(
                         success=False,
                         message="prometheus healthcheck failed.",
