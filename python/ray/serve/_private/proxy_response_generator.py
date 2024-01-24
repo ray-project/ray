@@ -82,6 +82,11 @@ class ProxyResponseGenerator(_ProxyResponseGeneratorBase):
     def cancelled(self) -> bool:
         return self._response.cancelled()
 
+    def cancel(self):
+        if not self._response.cancelled():
+            self._response.cancel()
+            self._done = True
+
     async def __anext__(self):
         if self._done:
             raise StopAsyncIteration
@@ -95,17 +100,6 @@ class ProxyResponseGenerator(_ProxyResponseGeneratorBase):
 
             if self._result_callback is not None:
                 result = self._result_callback(result)
-        except asyncio.CancelledError as e:
-            # This is specifically for gRPC. The cancellation can happen from client
-            # dropped connection before the request is completed. If self._response is
-            # not already cancelled, we want to explicitly cancel the task, so it
-            # doesn't waste cluster resource in this case and can be terminated
-            # gracefully.
-            if not self._response.cancelled():
-                self._response.cancel()
-                self._done = True
-
-            raise e from None
         except Exception as e:
             self._done = True
             raise e from None

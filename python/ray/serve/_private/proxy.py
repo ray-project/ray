@@ -735,13 +735,17 @@ class gRPCProxy(GenericProxy):
                 message=message,
             )
         except asyncio.CancelledError:
-            message = f"Client for request {request_id} disconnected."
-            logger.info(message)
-            yield ResponseStatus(
-                code=grpc.StatusCode.CANCELLED,
-                is_error=True,
-                message=message,
+            logger.info(
+                f"Client for request {request_id} disconnected, cancelling request."
             )
+            # The cancellation can happen from client dropped connection before the
+            # request is completed. We do a best effort to try to cancel the generator
+            # if not already cancelled, so it doesn't waste cluster resource in this
+            # case and terminates gracefully.
+            response_generator.cancel()
+            # NOTE: We need to re-raise to make sure we adhere to asyncio cancellation
+            #       protocol
+            raise
         except Exception as e:
             if isinstance(e, (RayActorError, RayTaskError)):
                 logger.warning(f"Request failed: {e}", extra={"log_to_stderr": False})
@@ -1032,13 +1036,17 @@ class HTTPProxy(GenericProxy):
                 async for message in self.timeout_response(proxy_request, request_id):
                     yield message
         except asyncio.CancelledError:
-            status = ResponseStatus(
-                code=DISCONNECT_ERROR_CODE,
-                is_error=True,
-            )
             logger.info(
                 f"Client for request {request_id} disconnected, cancelling request."
             )
+            # The cancellation can happen from client dropped connection before the
+            # request is completed. We do a best effort to try to cancel the generator
+            # if not already cancelled, so it doesn't waste cluster resource in this
+            # case and terminates gracefully.
+            response_generator.cancel()
+            # NOTE: We need to re-raise to make sure we adhere to asyncio cancellation
+            #       protocol
+            raise
         except Exception as e:
             if isinstance(e, (RayActorError, RayTaskError)):
                 logger.warning(f"Request failed: {e}", extra={"log_to_stderr": False})
