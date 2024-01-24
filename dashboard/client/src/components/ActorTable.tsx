@@ -271,7 +271,7 @@ const ActorTable = ({
           )}
         />
         <Autocomplete
-          data-testid={"nodeIdFilter"}
+          data-testid="nodeIdFilter"
           style={{ margin: 8, width: 150 }}
           options={Array.from(
             new Set(Object.values(actors).map((e) => e.address?.rayletId)),
@@ -330,7 +330,7 @@ const ActorTable = ({
         />
         <TextField
           style={{ margin: 8, width: 120 }}
-          label="Repr"
+          label="repr"
           size="small"
           InputProps={{
             onChange: ({ target: { value } }) => {
