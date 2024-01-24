@@ -125,7 +125,6 @@ from ray.includes.common cimport (
     CChannelType,
     RAY_ERROR_INFO_CHANNEL,
     RAY_LOG_CHANNEL,
-    RAY_PYTHON_FUNCTION_CHANNEL,
     GCS_ACTOR_CHANNEL,
     PythonGetLogBatchLines,
     WORKER_EXIT_TYPE_USER_ERROR,
@@ -2949,15 +2948,6 @@ cdef class GcsPublisher:
         with nogil:
             check_status(self.inner.get().PublishLogs(c_job_id, log_batch))
 
-    def publish_function_key(self, key: bytes):
-        cdef:
-            CPythonFunction python_function
-
-        python_function.set_key(key)
-
-        with nogil:
-            check_status(self.inner.get().PublishFunctionKey(python_function))
-
 
 cdef class _GcsSubscriber:
     """Cython wrapper class of C++ `ray::gcs::PythonGcsSubscriber`."""
@@ -4190,7 +4180,7 @@ cdef class CoreWorker:
                                          method_meta.decorators,
                                          method_meta.signatures,
                                          method_meta.num_returns,
-                                         method_meta.max_retries,
+                                         method_meta.max_task_retries,
                                          method_meta.retry_exceptions,
                                          method_meta.generator_backpressure_num_objects, # noqa
                                          actor_method_cpu,
@@ -4203,7 +4193,7 @@ cdef class CoreWorker:
                                          {},  # method decorators
                                          {},  # method signatures
                                          {},  # method num_returns
-                                         {},  # method max_retries
+                                         {},  # method max_task_retries
                                          {},  # method retry_exceptions
                                          {},  # generator_backpressure_num_objects
                                          0,  # actor method cpu

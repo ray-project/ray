@@ -1,6 +1,6 @@
 import os
 import threading
-from typing import TYPE_CHECKING, Any, Dict, List, Optional
+from typing import TYPE_CHECKING, Any, Dict, List, Optional, Union
 
 import ray
 from ray._private.ray_constants import env_integer
@@ -164,6 +164,12 @@ DEFAULT_WRITE_FILE_RETRY_ON_ERRORS = [
     "AWS Error SLOW_DOWN",
 ]
 
+# The application-level errors that actor task would retry.
+# Default to `False` to not retry on any errors.
+# Set to `True` to retry all errors, or set to a list of errors to retry.
+# This follows same format as `retry_exceptions` in Ray Core.
+DEFAULT_ACTOR_TASK_RETRY_ON_ERRORS = False
+
 
 @DeveloperAPI
 class DataContext:
@@ -207,6 +213,7 @@ class DataContext:
         use_runtime_metrics_scheduling: bool,
         write_file_retry_on_errors: List[str],
         warn_on_driver_memory_usage_bytes: int,
+        actor_task_retry_on_errors: Union[bool, List[BaseException]],
     ):
         """Private constructor (use get_current() instead)."""
         self.target_max_block_size = target_max_block_size
@@ -246,6 +253,7 @@ class DataContext:
         self.use_runtime_metrics_scheduling = use_runtime_metrics_scheduling
         self.write_file_retry_on_errors = write_file_retry_on_errors
         self.warn_on_driver_memory_usage_bytes = warn_on_driver_memory_usage_bytes
+        self.actor_task_retry_on_errors = actor_task_retry_on_errors
         # The additonal ray remote args that should be added to
         # the task-pool-based data tasks.
         self._task_pool_data_task_remote_args: Dict[str, Any] = {}
@@ -319,6 +327,7 @@ class DataContext:
                     warn_on_driver_memory_usage_bytes=(
                         DEFAULT_WARN_ON_DRIVER_MEMORY_USAGE_BYTES
                     ),
+                    actor_task_retry_on_errors=DEFAULT_ACTOR_TASK_RETRY_ON_ERRORS,
                 )
 
             return _default_context
