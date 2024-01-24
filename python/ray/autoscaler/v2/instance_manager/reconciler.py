@@ -20,89 +20,16 @@ class IReconciler(ABC):
     def reconcile(
         self, instances: List[IMInstance]
     ) -> Dict[str, IMInstanceUpdateEvent]:
-        pass
-
-
-class CloudProviderReconciler(IReconciler):
-    def __init__(self, provider: ICloudInstanceProvider) -> None:
-        self._provider = provider
-        super().__init__()
-
-    def reconcile(
-        self, instances: List[IMInstance]
-    ) -> Dict[str, IMInstanceUpdateEvent]:
         """
-        Reconcile the instance storage with the node provider.
-        This is responsible for transitioning the instance status of:
-        1. to ALLOCATED: when a REQUESTED instance could be assigned to an unassigned
-            cloud instance.
-        2. to STOPPED: when an ALLOCATED instance no longer has the assigned cloud
-            instance found in node provider.
-        3. to ALLOCATION_FAILED: when a REQUESTED instance failed to be assigned to
-            an unassigned cloud instance.
-        4. to STOPPING: when an instance being terminated fails to be terminated
-            for some reasons, we will retry the termination.
-        """
-        pass
+        Reconcile the status of Instance Manager(IM) instances to a valid state.
+        It should yield a list of instance update events that will be applied to the
+        instance storage by the IM.
 
-    def _reconcile_allocated(
-        self, non_terminated_cloud_nodes: Dict[CloudInstanceId, CloudInstance]
-    ) -> Dict[str, IMInstanceUpdateEvent]:
+        Args:
+            instances: The list of IM instances to reconcile.
 
-        """
-        For any REQUESTED instances, if there's any unassigned non-terminated
-        cloud instance that matches the instance type from the same request,
-        assign it and transition it to ALLOCATED.
-
-        """
-
-        # Find all requested instances, by launch request id.
-
-        # Find all non_terminated cloud_nodes by launch request id.
-
-        # For the same request, find any unassigned non-terminated cloud instance
-        # that matches the instance type. Assign them to REQUESTED instances
-        # and transition them to ALLOCATED.
-        pass
-
-    def _reconcile_failed_to_allocate(
-        self, cloud_provider_errors: List[CloudInstanceProviderError]
-    ) -> Dict[str, IMInstanceUpdateEvent]:
-        """
-        For any REQUESTED instances, if there's errors in allocating the cloud instance,
-        transition the instance to ALLOCATION_FAILED.
-        """
-
-        # Find all requested instances, by launch request id.
-
-        # Find all launch errors by launch request id.
-
-        # For the same request, transition the instance to ALLOCATION_FAILED.
-        # TODO(rickyx): we don't differentiate transient errors (which might be retryable)
-        # and permanent errors (which are not retryable).
-        pass
-
-    def _reconcile_stopped(
-        self, non_terminated_cloud_nodes: Dict[CloudInstanceId, CloudInstance]
-    ) -> Dict[str, IMInstanceUpdateEvent]:
-        """
-        For any IM (instance manager) instance with a cloud node id, if the mapped
-        cloud instance is no longer running, transition the instance to STOPPED.
-        """
-
-        # Find all instances with cloud instance id, by cloud instance id.
-
-        # Check if any matched cloud instance is still running.
-        # If not, transition the instance to STOPPED. (The instance will have the cloud
-        # instance id removed, and GCed later.)
-        pass
-
-    def _reconcile_failed_to_terminate(
-        self, cloud_provider_errors: List[CloudInstanceProviderError]
-    ) -> Dict[str, IMInstanceUpdateEvent]:
-        """
-        For any STOPPING instances, if there's errors in terminating the cloud instance,
-        we will retry the termination by setting it to STOPPING again.
+        Returns:
+            A dict of instance id to instance update event.
         """
         pass
 
@@ -202,5 +129,89 @@ class RayStateReconciler(IReconciler):
         2. Newly dead ray nodes -> RAY_STOPPED status change.
             When an instance not in RAY_STOPPED is no longer running the ray node, we
             will transition the instance to RAY_STOPPED.
+        """
+        pass
+
+
+class CloudProviderReconciler(IReconciler):
+    def __init__(self, provider: ICloudInstanceProvider) -> None:
+        self._provider = provider
+        super().__init__()
+
+    def reconcile(
+        self, instances: List[IMInstance]
+    ) -> Dict[str, IMInstanceUpdateEvent]:
+        """
+        Reconcile the instance storage with the node provider.
+        This is responsible for transitioning the instance status of:
+        1. to ALLOCATED: when a REQUESTED instance could be assigned to an unassigned
+            cloud instance.
+        2. to STOPPED: when an ALLOCATED instance no longer has the assigned cloud
+            instance found in node provider.
+        3. to ALLOCATION_FAILED: when a REQUESTED instance failed to be assigned to
+            an unassigned cloud instance.
+        4. to STOPPING: when an instance being terminated fails to be terminated
+            for some reasons, we will retry the termination.
+        """
+        pass
+
+    def _reconcile_allocated(
+        self, non_terminated_cloud_nodes: Dict[CloudInstanceId, CloudInstance]
+    ) -> Dict[str, IMInstanceUpdateEvent]:
+
+        """
+        For any REQUESTED instances, if there's any unassigned non-terminated
+        cloud instance that matches the instance type from the same request,
+        assign it and transition it to ALLOCATED.
+
+        """
+
+        # Find all requested instances, by launch request id.
+
+        # Find all non_terminated cloud_nodes by launch request id.
+
+        # For the same request, find any unassigned non-terminated cloud instance
+        # that matches the instance type. Assign them to REQUESTED instances
+        # and transition them to ALLOCATED.
+        pass
+
+    def _reconcile_failed_to_allocate(
+        self, cloud_provider_errors: List[CloudInstanceProviderError]
+    ) -> Dict[str, IMInstanceUpdateEvent]:
+        """
+        For any REQUESTED instances, if there's errors in allocating the cloud instance,
+        transition the instance to ALLOCATION_FAILED.
+        """
+
+        # Find all requested instances, by launch request id.
+
+        # Find all launch errors by launch request id.
+
+        # For the same request, transition the instance to ALLOCATION_FAILED.
+        # TODO(rickyx): we don't differentiate transient errors (which might be retryable)
+        # and permanent errors (which are not retryable).
+        pass
+
+    def _reconcile_stopped(
+        self, non_terminated_cloud_nodes: Dict[CloudInstanceId, CloudInstance]
+    ) -> Dict[str, IMInstanceUpdateEvent]:
+        """
+        For any IM (instance manager) instance with a cloud node id, if the mapped
+        cloud instance is no longer running, transition the instance to STOPPED.
+        """
+
+        # Find all instances with cloud instance id, by cloud instance id.
+
+        # Check if any matched cloud instance is still running.
+        # If not, transition the instance to STOPPED. (The instance will have the cloud
+        # instance id removed, and GCed later.)
+        pass
+
+    def _reconcile_failed_to_terminate(
+        self, cloud_provider_errors: List[CloudInstanceProviderError]
+    ) -> Dict[str, IMInstanceUpdateEvent]:
+        """
+        For any STOPPING instances, if there's errors in terminating the cloud instance,
+        we will retry the termination by setting it to STOPPING again.
         """
         pass
