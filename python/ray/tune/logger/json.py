@@ -60,10 +60,10 @@ class JsonLogger(Logger):
         self.local_out.close()
 
     def update_config(self, config: Dict):
-        from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
+        from ray.tune.tune import _Config
 
         self.config = (
-            config.to_dict() if isinstance(config, AlgorithmConfig) else config
+            config.to_dict() if isinstance(config, _Config) else config
         )
         config_out = os.path.join(self.logdir, EXPR_PARAM_FILE)
         with open(config_out, "w") as f:
@@ -119,10 +119,10 @@ class JsonLoggerCallback(LoggerCallback):
         del self._trial_files[trial]
 
     def update_config(self, trial: "Trial", config: Dict):
-        from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
+        from ray.tune.tune import _Config
 
         self._trial_configs[trial] = (
-            config.to_dict() if isinstance(config, AlgorithmConfig) else config
+            config.to_dict() if isinstance(config, _Config) else config
         )
 
         config_out = os.path.join(trial.local_path, EXPR_PARAM_FILE)
