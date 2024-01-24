@@ -3,15 +3,16 @@ from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
 
 # from ray.rllib.algorithms.dqn.dqn_tf_policy import PRIO_WEIGHTS
 from ray.rllib.algorithms.sac.sac import SACConfig
-from ray.rllib.algorithms.sac.sac_learner import QF_PREDS, SACLearner
+from ray.rllib.algorithms.sac.sac_learner import QF_PREDS, QF_TWIN_PREDS, SACLearner
 from ray.rllib.core.learner.learner import (
     LOGPS_KEY,
     POLICY_LOSS_KEY,
     QF_LOSS_KEY,
+    QF_TWIN_LOSS_KEY,
     QF_MEAN_KEY,
     QF_MAX_KEY,
     QF_MIN_KEY,
-    TD_ERROR,
+    TD_ERROR_KEY,
 )
 from ray.rllib.core.learner.torch.torch_learner import TorchLearner
 from ray.rllib.policy.sample_batch import SampleBatch, DEFAULT_POLICY_ID
@@ -53,6 +54,20 @@ class SACTorchLearner(SACLearner, TorchLearner):
             params=params_critic,
             lr_or_lr_schedule=self.config.lr,
         )
+        # If necessary register also an optimizer for a twin Q network.
+        if self.config.twin_q:
+            params_twin_critic = self.get_parameters(
+                module.qf_twin_encoder
+            ) + self.get_parameters(module.qf_twin)
+            optim_twin_critic = torch.optim.Adam(params_twin_critic, eps=1e-7)
+
+            self.register_optimizer(
+                module_id=module_id,
+                optimizer_name="qf",
+                optimizer=optim_twin_critic,
+                params=params_twin_critic,
+                lr_or_lr_schedule=self.config.lr,
+            )
 
         # Define the optimizer for the actor.
         params_actor = self.get_parameters(module.pi_encoder) + self.get_parameters(
@@ -91,7 +106,9 @@ class SACTorchLearner(SACLearner, TorchLearner):
         # Calculate gradients for each loss by its optimizer.
         # TODO (sven): Maybe we rename to `actor`, `critic`. We then also
         # need to either add to or change in the `Learner` constants.
-        for component in ["qf", "policy", "alpha"]:
+        for component in (
+            ["qf", "policy", "alpha"] + ["qf_twin"] if self.config.twin_q else []
+        ):
             self._metrics[DEFAULT_POLICY_ID][component + "_loss"].backward(
                 retain_graph=True
             )
@@ -158,6 +175,8 @@ class SACTorchLearner(SACLearner, TorchLearner):
         # Get Q-values for the actually selected actions during rollout.
         # In the critic loss we use these as predictions.
         q_selected = fwd_out[QF_PREDS]
+        if self.config.twin_q:
+            q_twin_selected = fwd_out[QF_TWIN_PREDS]
 
         # TODO (simon): Implement twin Q.
 
@@ -170,6 +189,13 @@ class SACTorchLearner(SACLearner, TorchLearner):
             }
         )
         q_curr = self.module[module_id]._qf_forward_train(q_batch_curr)[QF_PREDS]
+        # If a twin Q network should be used, calculate twin Q-values and use the
+        # minimum.
+        if self.config.twin_q:
+            q_twin_curr = self.module[module_id]._qf_twin_forward_train(q_batch_curr)[
+                QF_PREDS
+            ]
+            q_curr = torch.min(q_curr, q_twin_curr, dim=-1)
 
         # Compute Q-values from the target Q network for the next state with the
         # sampled actions for the next state.
@@ -182,10 +208,18 @@ class SACTorchLearner(SACLearner, TorchLearner):
         q_target_next = self.module[module_id]._qf_target_forward_train(q_batch_next)[
             QF_PREDS
         ]
+        # If a twin Q network should be used, calculate twin Q-values and use the
+        # minimum.
+        if self.config.twin_q:
+            q_target_twin_next = self.module[module_id]._qf_target_twin_forward_train(
+                q_batch_next
+            )
+            q_target_next = torch.min(q_target_next, q_target_twin_next, dim=-1)
+
         # Compute value function for next state (see eq. (3) in Haarnoja et al. (2018)).
         # Note, we use here the sampled actions in the log probabilities.
         q_target_next -= alpha * logps_next
-        # Now mask all Q-values with terminate next states in the targets.
+        # Now mask all Q-values with terminated next states in the targets.
         q_next_masked = (
             (1.0 - batch[SampleBatch.TERMINATEDS].float())
             # If the current experience is the last in the episode we neglect it as
@@ -209,6 +243,11 @@ class SACTorchLearner(SACLearner, TorchLearner):
         # Calculate the TD-error. Note, this is needed for the priority weights in
         # the replay buffer.
         td_error = torch.abs(q_selected - q_selected_target)
+        # If a twin Q network should be used, add the TD error of the twin Q network.
+        if self.config.twin_q:
+            td_error += torch.abs(q_twin_selected, q_selected_target)
+            # Rescale the TD error.
+            td_error *= 0.5
 
         # MSBE loss for the critic(s) (i.e. Q, see eqs. (7-8) Haarnoja et al. (2018)).
         # Note, this needs a sample from the current policy given the next state.
@@ -221,6 +260,15 @@ class SACTorchLearner(SACLearner, TorchLearner):
                 q_selected, q_selected_target
             )
         )
+        # If a twin Q network should be used, add the critic loss of the twin Q network.
+        if self.config.twin_q:
+            critic_twin_loss = torch.mean(
+                # TODO (simon): Introduce priority weights when episode buffer is ready.
+                # batch[PRIO_WEIGHTS] *
+                torch.nn.HuberLoss(reduction="none", delta=1.0)(
+                    q_twin_selected, q_selected_target
+                )
+            )
 
         # For the actor (policy) loss we need sampled actions from the current policy
         # evaluated at the current state.
@@ -238,13 +286,16 @@ class SACTorchLearner(SACLearner, TorchLearner):
         )
 
         total_loss = actor_loss + critic_loss + alpha_loss
+        # If twin Q networks should be used, add the critic loss of the twin Q network.
+        if self.config.twin_q:
+            total_loss += critic_twin_loss
 
         self.register_metrics(
             module_id,
             {
                 POLICY_LOSS_KEY: actor_loss,
                 QF_LOSS_KEY: critic_loss,
-                TD_ERROR: td_error,
+                TD_ERROR_KEY: td_error,
                 "alpha_loss": alpha_loss,
                 "alpha_value": alpha,
                 # TODO (Sven): Do we really need this? We have alpha.
@@ -257,6 +308,15 @@ class SACTorchLearner(SACLearner, TorchLearner):
                 QF_MIN_KEY: torch.min(q_curr),
             },
         )
+        # If twin Q networks should be used add a critic loss for the twin Q network.
+        # Note, we need this in the `self.compute_gradients()` to optimize.
+        if self.config.twin_q:
+            self.register_metrics(
+                module_id,
+                {
+                    QF_TWIN_LOSS_KEY: critic_twin_loss,
+                },
+            )
 
         return total_loss
 

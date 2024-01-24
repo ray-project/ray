@@ -11,8 +11,11 @@ from ray.rllib.utils.metrics import LAST_TARGET_UPDATE_TS, NUM_TARGET_UPDATES
 from ray.rllib.utils.schedules.scheduler import Scheduler
 from ray.rllib.utils.typing import ModuleID
 
+# Now, this is double defined: In `SACRLModule` and here. I would keep it here
+# or push it into the `Learner` as these are recurring keys in RL.
 QF_PREDS = "qf_preds"
 QF_TARGET_PREDS = "qf_target_preds"
+QF_TWIN_PREDS = "qf_twin_preds"
 
 
 # TODO (simon): Add and remove variables, if module is added or removed.
@@ -29,6 +32,8 @@ class SACLearner(Learner):
             )
         )
 
+        # We need to call the `super()`'s `build()` method here to have the variables
+        # for the alpha already defined.
         super().build()
 
         def get_target_entropy(module_id):
@@ -43,12 +48,12 @@ class SACLearner(Learner):
             """
             target_entropy = self.config.get_config_for_module(module_id).target_entropy
             if target_entropy is None or target_entropy == "auto":
+                # TODO (sven): Do we always have the `config.action_space` here?
                 target_entropy = -np.prod(
                     self._module_spec.module_specs[module_id].action_space.shape
                 )
             return target_entropy
 
-        # TODO (sven): Do we always have the `config.action_space` here?
         self.target_entropy: Dict[ModuleID, Scheduler] = LambdaDefaultDict(
             lambda module_id: self._get_tensor_variable(get_target_entropy(module_id))
         )
@@ -87,7 +92,18 @@ class SACLearner(Learner):
 
         return results
 
-    @abc.abstractclassmethod
+    @override(Learner)
+    def remove_module(self, module_id: ModuleID) -> None:
+        """Removes the temperature and target entropy.
+
+        Note, this means that we also need to remove the corresponding
+        temperature optimizer.
+        """
+        super().remove_module(module_id)
+        self.curr_log_alpha.pop(module_id, None)
+        self.target_entropy.pop(module_id, None)
+
+    @abc.abstractmethod
     def _update_module_target_networks(
         self, module_id: ModuleID, config: SACConfig
     ) -> None:
