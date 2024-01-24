@@ -62,9 +62,7 @@ class JsonLogger(Logger):
     def update_config(self, config: Dict):
         from ray.tune.tune import _Config
 
-        self.config = (
-            config.to_dict() if isinstance(config, _Config) else config
-        )
+        self.config = config.to_dict() if isinstance(config, _Config) else config
         config_out = os.path.join(self.logdir, EXPR_PARAM_FILE)
         with open(config_out, "w") as f:
             json.dump(self.config, f, indent=2, sort_keys=True, cls=SafeFallbackEncoder)
