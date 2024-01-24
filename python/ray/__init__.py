@@ -8,6 +8,10 @@ log.generate_logging_config()
 logger = logging.getLogger(__name__)
 
 
+def pinterest_hello_world():
+    print ("hi I am a commit from pinterest")
+
+
 def _configure_system():
     import os
     import platform
