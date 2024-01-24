@@ -19,7 +19,6 @@ QF_TARGET_PREDS = "qf_target_preds"
 class SACLearner(Learner):
     @override(Learner)
     def build(self) -> None:
-
         # Store the current alpha in log form. We need it during optimization
         # in log form.
         self.curr_log_alpha: Dict[ModuleID, Scheduler] = LambdaDefaultDict(
@@ -43,9 +42,10 @@ class SACLearner(Learner):
                 Target entropy.
             """
             target_entropy = self.config.get_config_for_module(module_id).target_entropy
-            action_space = self._module_spec.module_specs[module_id].action_space.shape
             if target_entropy is None or target_entropy == "auto":
-                target_entropy = -np.prod(action_space)
+                target_entropy = -np.prod(
+                    self._module_spec.module_specs[module_id].action_space.shape
+                )
             return target_entropy
 
         # TODO (sven): Do we always have the `config.action_space` here?
