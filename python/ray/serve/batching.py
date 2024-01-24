@@ -145,7 +145,11 @@ class _BatchQueue:
             # Add all new arrivals to the batch.
             while len(batch) < max_batch_size and not self.queue.empty():
                 batch.append(self.queue.get_nowait())
-            self.queue_put_event.clear()
+
+            # Only clear the put event if the queue is empty. If it's not empty
+            # we can start construcing a new batch immediately in the next loop.
+            if self.queue.empty():
+                self.queue_put_event.clear()
 
             if (
                 time.time() - batch_start_time >= batch_wait_timeout_s
