@@ -103,7 +103,7 @@ class _BatchQueue:
         self._handle_batch_task = None
         if handle_batch_func is not None:
             self._handle_batch_task = get_or_create_event_loop().create_task(
-                self._process_batches_forever(handle_batch_func)
+                self._process_batches(handle_batch_func)
             )
 
     def put(self, request: Tuple[_SingleRequest, asyncio.Future]) -> None:
@@ -209,7 +209,7 @@ class _BatchQueue:
                 if future is not FINISHED_TOKEN:
                     _set_exception_if_not_done(future, e)
 
-    async def _process_batches_forever(self, func: Callable) -> None:
+    async def _process_batches(self, func: Callable) -> None:
         """Loops infinitely and processes queued request batches."""
 
         while True:
@@ -218,7 +218,7 @@ class _BatchQueue:
                 await self._process_batch(func)
             except Exception:
                 logger.exception(
-                    "_process_batches_forever asyncio task ran into an "
+                    "_process_batches asyncio task ran into an "
                     "unexpected exception. Please file an issue on GitHub "
                     "with the traceback."
                 )
@@ -262,7 +262,7 @@ class _BatchQueue:
                 _set_exception_if_not_done(future, e)
 
             logger.exception(
-                "_process_batches ran into an unexpected exception. Please "
+                "_process_batch ran into an unexpected exception. Please "
                 "file an issue on GitHub with the traceback."
             )
 
