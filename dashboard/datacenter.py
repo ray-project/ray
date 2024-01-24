@@ -150,7 +150,9 @@ class DataOrganizer:
 
         if not get_summary:
             # Merge actors to node physical stats
-            node_info["actors"] = await DataOrganizer._get_all_actors(DataSource.node_actors.get(node_id, {}))
+            node_info["actors"] = await DataOrganizer._get_all_actors(
+                DataSource.node_actors.get(node_id, {})
+            )
             # Update workers to node physical stats
             node_info["workers"] = DataSource.node_workers.get(node_id, [])
 

@@ -16,7 +16,6 @@ from ray.core.generated import (
 )
 from ray.dashboard.datacenter import DataSource, DataOrganizer
 from ray.dashboard.modules.actor import actor_consts
-from ray.dashboard.optional_utils import rest_response
 
 logger = logging.getLogger(__name__)
 routes = dashboard_optional_utils.DashboardHeadRouteTable
