@@ -58,7 +58,6 @@ class CITestStateMachine(TestStateMachine):
 
     def _create_github_issue(self) -> None:
         labels = [
-            "P0",
             "bug",
             "ci-test",
             "ray-test-bot",
