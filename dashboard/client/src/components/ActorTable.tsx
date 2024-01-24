@@ -229,10 +229,51 @@ const ActorTable = ({
         </Typography>
       ),
     },
-    { label: "CPU" },
-    { label: "Memory" },
-    { label: "GPU" },
-    { label: "GRAM" },
+    { 
+      label: "CPU",
+      helpInfo: (
+        <Typography>
+          Hardware CPU usage of this Actor (from Worker Process).
+          <br />
+          <br />
+          Node’s CPU usage is calculated against all CPU cores. Worker Process’s
+          CPU usage is calculated against 1 CPU core. As a result, the sum of CPU
+          usage from all Worker Processes is not equal to the Node’s CPU usage.
+        </Typography>
+      ),
+    },
+    { 
+      label: "Memory",
+      helpInfo: (
+        <Typography>
+          Actor's RAM usage (from Worker Process). <br />
+        </Typography>
+      ), 
+    },
+    { 
+      label: "GPU",
+      helpInfo: (
+        <Typography>
+          Usage of each GPU device. If no GPU usage is detected, here are the
+          potential root causes:
+          <br />
+          1. non-GPU Ray image is used on this node. Switch to a GPU Ray image and
+          try again. <br />
+          2. Non Nvidia GPUs are being used. Non Nvidia GPUs' utilizations are not
+          currently supported.
+          <br />
+          3. pynvml module raises an exception.
+        </Typography>
+      ),
+    },
+    { 
+      label: "GRAM",
+      helpInfo: (
+        <Typography>
+          Actor's GRAM usage (from Worker Process). <br />
+        </Typography>
+      ),
+     },
   ];
 
   return (

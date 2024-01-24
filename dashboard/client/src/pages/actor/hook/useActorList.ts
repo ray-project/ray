@@ -7,6 +7,7 @@ export const useActorList = () => {
     "useActorList",
     async () => {
       const rsp = await getActors();
+
       if (rsp?.data?.data?.actors) {
         return rsp.data.data.actors;
       } else {
