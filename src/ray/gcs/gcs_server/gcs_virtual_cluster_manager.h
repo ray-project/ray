@@ -44,13 +44,10 @@ namespace gcs {
 //      - remove the VC from anywhere, releasing the resources.
 // - (TODO) Node failure. `GcsNodeManager::HandleNodeRemoved`
 //
-// NOTE: there are edge cases where 2pc succeeded and after which the node fails. To
-// mitigate, we do a TOCTOU check after the 2pc succeeds. If it's not right, the VC ->
-// UNSATISFIED.
-// TODO: to be 100% safe we can do a every 1-min check on all RUNNING VCs against alive
-// nodes. Maybe do it in debug mode?
-// DO NOT SUBMIT: reverse that to mention we now use per Tick check and can change to a
-// TOCTOU check (at 2pc callback edge?).
+// NOTE: there are edge cases where 2pc succeeded and after which the node fails. Those
+// VCs will make it in RUNNING for a while, and then go to UNSATISFIED in the next Tick.
+// TODO: If we move out the RUNNING -> UNSATISFIED check from the Tick to the NodeRemoved
+// event callback, we need to be careful about this "missed event" problem.
 //
 // Ticks: Every Tick it drives the VC state machines:
 // - (TODO do we need this?) If there's any RECOVERING VC, early returns. (no concurrent
@@ -208,12 +205,7 @@ class GcsVirtualClusterManager : public rpc::VirtualClusterInfoHandler {
 
  private:
   // Schedules a fixed-size-nodes, which may already have some nodes allocated.
-  // TODO: fix recovery.
-  // std::optional<ScheduledNodes> Schedule(
-  //     VirtualClusterID vc_id,
-  //     const rpc::FixedSizeNodes &fixed_size_nodes,
-  //     const std::vector<NodeID> &already_used_nodes);
-
+  // This is internal; Use ScheduleNew or ScheduleRecovery instead.
   std::optional<ScheduledNodes> Schedule(
       VirtualClusterID vc_id,
       const std::vector<VirtualClusterNodeSpec> &fixed_size_nodes,
