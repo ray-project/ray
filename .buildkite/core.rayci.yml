@@ -71,6 +71,7 @@ steps:
         --except-tags debug_tests,asan_tests,post_wheel_build,ha_integration,mem_pressure,tmpfs,container,manual
 
   - label: ":ray: core: :windows: python tests"
+    if: build.env("RAYCI_CONTINUOUS_BUILD") == "1" || build.pull_request.labels includes "continuous-build"
     tags: python
     job_env: WINDOWS
     mount_windows_artifacts: true
@@ -307,6 +308,7 @@ steps:
         --parallelism-per-worker 2
 
   - label: ":ray: core: :windows: cpp tests"
+    if: build.env("RAYCI_CONTINUOUS_BUILD") == "1" || build.pull_request.labels includes "continuous-build"
     tags: core_cpp
     job_env: WINDOWS
     mount_windows_artifacts: true
