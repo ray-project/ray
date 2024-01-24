@@ -209,6 +209,20 @@ class _BatchQueue:
                 if future is not FINISHED_TOKEN:
                     _set_exception_if_not_done(future, e)
 
+    async def _assign_func_results(
+        self, func_future: asyncio.Future, futures: List[asyncio.Future]
+    ):
+        """Assigns func's results to the list of futures."""
+
+        try:
+            results = await func_future
+            self._validate_results(results, len(batch))
+            for result, future in zip(results, futures):
+                _set_result_if_not_done(future, result)
+        except Exception as e:
+            for future in futures:
+                _set_exception_if_not_done(future, e)
+
     async def _process_batches(self, func: Callable) -> None:
         """Loops infinitely and processes queued request batches."""
 
@@ -248,15 +262,9 @@ class _BatchQueue:
                 func_generator = func_future_or_generator
                 await self._consume_func_generator(func_generator, futures, len(batch))
             else:
-                try:
-                    func_future = func_future_or_generator
-                    results = await func_future
-                    self._validate_results(results, len(batch))
-                    for result, future in zip(results, futures):
-                        _set_result_if_not_done(future, result)
-                except Exception as e:
-                    for future in futures:
-                        _set_exception_if_not_done(future, e)
+                func_future = func_future_or_generator
+                await self._assign_func_results(func_future, futures)
+
         except Exception as e:
             logger.exception(
                 "_process_batch ran into an unexpected exception. Please "
@@ -585,7 +593,9 @@ def batch(
         wrapper._is_batching_task_alive = (
             lazy_batch_queue_wrapper._is_batching_task_alive
         )
-        wrapper._get_handling_task_stack = lazy_batch_queue_wrapper._get_handling_task_stack
+        wrapper._get_handling_task_stack = (
+            lazy_batch_queue_wrapper._get_handling_task_stack
+        )
 
         return wrapper
 
