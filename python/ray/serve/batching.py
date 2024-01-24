@@ -191,25 +191,21 @@ class _BatchQueue:
                     elif result in [StopIteration, StopAsyncIteration]:
                         # User's code returned sentinel. No values left
                         # for caller. Terminate iteration for caller.
-                        if not future.cancelled():
-                            future.set_exception(StopAsyncIteration)
+                        _set_exception_safe(future, StopAsyncIteration)
                         next_futures.append(FINISHED_TOKEN)
                     else:
                         next_future = get_or_create_event_loop().create_future()
-                        # If the client has disconnected, the future is canceled.
-                        # We should only set result when the connection is still live.
-                        if not future.cancelled():
-                            future.set_result(_GeneratorResult(result, next_future))
+                        _set_result_safe(future, _GeneratorResult(result, next_future))
                         next_futures.append(next_future)
                 futures = next_futures
 
             for future in futures:
-                if future is not FINISHED_TOKEN and not future.cancelled():
-                    future.set_exception(StopAsyncIteration)
+                if future is not FINISHED_TOKEN:
+                    _set_exception_safe(future, StopAsyncIteration)
         except Exception as e:
             for future in futures:
-                if future is not FINISHED_TOKEN and not future.cancelled():
-                    future.set_exception(e)
+                if future is not FINISHED_TOKEN:
+                    _set_exception_safe(future, e)
 
     async def _process_batches(self, func: Callable) -> None:
         """Loops infinitely and processes queued request batches."""
@@ -243,15 +239,10 @@ class _BatchQueue:
                         results = await func_future
                         self._validate_results(results, len(batch))
                         for result, future in zip(results, futures):
-                            # If the client has disconnected, the future is
-                            # canceled. We only set result when the connection
-                            # is still live.
-                            if not future.cancelled():
-                                future.set_result(result)
+                            _set_result_safe(future, result)
                     except Exception as e:
                         for future in futures:
-                            if not future.cancelled():
-                                future.set_exception(e)
+                            _set_exception_safe(future, e)
             except Exception:
                 logger.exception(
                     "_process_batches asyncio task ran into an unexpected "
@@ -596,3 +587,17 @@ def batch(
     # with the underlying function as the sole argument (i.e., it must be a
     # "decorator factory.").
     return _batch_decorator(_func) if callable(_func) else _batch_decorator
+
+
+def _set_result_safe(future: asyncio.Future, result: Any):
+    """Sets the future's result if the future is not done."""
+
+    if not future.done():
+        future.set_result(result)
+
+
+def _set_exception_safe(future: asyncio.Future, exception: Any):
+    """Sets the future's exception if the future is not done."""
+
+    if not future.done():
+        future.set_exception(exception)
