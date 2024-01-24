@@ -9,10 +9,9 @@ enable_auto_connect = os.environ.get("RAY_ENABLE_AUTO_CONNECT", "") != "0"
 
 def auto_init_ray():
     if enable_auto_connect and not ray.is_initialized():
-        auto_init_lock.acquire()
-        if not ray.is_initialized():
-            ray.init()
-        auto_init_lock.release()
+        with auto_init_lock:
+            if not ray.is_initialized():
+                ray.init()
 
 
 def wrap_auto_init(fn):

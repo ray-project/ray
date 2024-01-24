@@ -155,6 +155,15 @@ class FileBasedDatasource(Datasource):
         file_extensions: Optional[List[str]] = None,
     ):
         _check_pyarrow_version()
+
+        self._supports_distributed_reads = not _is_local_scheme(paths)
+        if not self._supports_distributed_reads and ray.util.client.ray.is_connected():
+            raise ValueError(
+                "Because you're using Ray Client, read tasks scheduled on the Ray "
+                "cluster can't access your local files. To fix this issue, store "
+                "files in cloud storage or a distributed filesystem like NFS."
+            )
+
         self._schema = schema
         self._open_stream_args = open_stream_args
         self._meta_provider = meta_provider
@@ -179,14 +188,6 @@ class FileBasedDatasource(Datasource):
             raise ValueError(
                 "None of the provided paths exist. "
                 "The 'ignore_missing_paths' field is set to True."
-            )
-
-        self._supports_distributed_reads = not _is_local_scheme(paths)
-        if not self._supports_distributed_reads and ray.util.client.ray.is_connected():
-            raise ValueError(
-                "Because you're using Ray Client, read tasks scheduled on the Ray "
-                "cluster can't access your local files. To fix this issue, store "
-                "files in cloud storage or a distributed filesystem like NFS."
             )
 
         if self._partition_filter is not None:

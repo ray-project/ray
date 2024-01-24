@@ -251,9 +251,6 @@ def test_healthcheck_timeout(serve_instance):
         graceful_shutdown_timeout_s=0,
     )
     class A:
-        def check_health(self):
-            return True
-
         def __call__(self):
             ray.get(signal.wait.remote())
 
