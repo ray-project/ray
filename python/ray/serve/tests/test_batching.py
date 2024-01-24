@@ -163,7 +163,7 @@ def test_observability_helpers():
             time.
         * _is_batching_task_alive: returns whether the batch-handler task is
             alive.
-        * _get_batching_stack: returns the stack for the batch-handler task.
+        * _get_handling_task_stack: returns the stack for the batch-handler task.
     """
 
     @serve.deployment(name="batcher")
@@ -181,8 +181,8 @@ def test_observability_helpers():
         async def _is_batching_task_alive(self) -> bool:
             return await self.handle_batch._is_batching_task_alive()
 
-        async def _get_batching_stack(self) -> Optional[str]:
-            return await self.handle_batch._get_batching_stack()
+        async def _get_handling_task_stack(self) -> Optional[str]:
+            return await self.handle_batch._get_handling_task_stack()
 
     serve.run(target=Batcher.bind(), name="app_name")
     handle = serve.get_deployment_handle(deployment_name="batcher", app_name="app_name")
@@ -191,7 +191,7 @@ def test_observability_helpers():
 
     requests.get("http://localhost:8000/")
 
-    assert len(handle._get_batching_stack.remote().result()) is not None
+    assert len(handle._get_handling_task_stack.remote().result()) is not None
     assert handle._is_batching_task_alive.remote().result()
 
     curr_iteration_start_time = handle._get_curr_iteration_start_time.remote().result()
@@ -202,7 +202,7 @@ def test_observability_helpers():
     new_iteration_start_time = handle._get_curr_iteration_start_time.remote().result()
 
     assert new_iteration_start_time > curr_iteration_start_time
-    assert len(handle._get_batching_stack.remote().result()) is not None
+    assert len(handle._get_handling_task_stack.remote().result()) is not None
     assert handle._is_batching_task_alive.remote().result()
 
 

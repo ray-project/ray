@@ -356,7 +356,7 @@ class _LazyBatchQueueWrapper:
         else:
             return False
 
-    async def _get_batching_stack(self) -> Optional[str]:
+    async def _get_handling_task_stack(self) -> Optional[str]:
         """Gets the stack for the default _BatchQueue's background task.
 
         Returns empty string if the batch handler doesn't use a default _BatchQueue.
@@ -585,7 +585,7 @@ def batch(
         wrapper._is_batching_task_alive = (
             lazy_batch_queue_wrapper._is_batching_task_alive
         )
-        wrapper._get_batching_stack = lazy_batch_queue_wrapper._get_batching_stack
+        wrapper._get_handling_task_stack = lazy_batch_queue_wrapper._get_handling_task_stack
 
         return wrapper
 
