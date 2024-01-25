@@ -1088,7 +1088,7 @@ Ray Examples
         Logging Tune Runs to Comet ML.
 
     .. grid-item-card:: :bdg-success:`Tutorial`
-        :class-item: gallery-item serve
+        :class-item: gallery-item serving
         :link: /serve/tutorials/streaming
         :link-type: doc
 
