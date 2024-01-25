@@ -232,7 +232,7 @@ The specified local directory will automatically be pushed to the cluster nodes 
 
 You can also specify files via a remote cloud storage URI; see :ref:`remote-uris` for details.
 
-If a `working_dir` is specified, it's always the first to be prepared, and it presents in the creation of other runtime envs in environment variable `${RAY_RUNTIME_ENV_CREATE_WORKING_DIR}`. This allows `pip` and `conda` to reference local files in the working_dir, e.g. `requirements.txt` or `environment.yml`.
+If you specify a `working_dir`, Ray always prepares it first, and it's present in the creation of other runtime environments in the `${RAY_RUNTIME_ENV_CREATE_WORKING_DIR}` environment variable. This sequencing allows `pip` and `conda` to reference local files in the `working_dir` like `requirements.txt` or `environment.yml`.
 
 Using ``conda`` or ``pip`` packages
 """""""""""""""""""""""""""""""""""
