@@ -42,7 +42,10 @@ from pandas._typing import Dtype
 from pandas.compat import set_function_name
 from pandas.core.dtypes.generic import ABCDataFrame, ABCSeries
 from pandas.core.indexers import check_array_indexer, validate_indices
-from pandas.io.formats.format import ExtensionArrayFormatter
+if Version(pd.__version__) <= Version("2.1.4"):
+    from pandas.io.formats.format import ExtensionArrayFormatter
+else:
+    from pandas.io.formats.format import _ExtensionArrayFormatter as ExtensionArrayFormatter
 
 from ray.air.util.tensor_extensions.utils import (
     _create_possibly_ragged_ndarray,
