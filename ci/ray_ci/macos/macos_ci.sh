@@ -48,6 +48,7 @@ query_large_test() {
   bazel query 'attr(tags, "large_size_python_tests_shard_'${BUILDKITE_PARALLEL_JOB}'", tests(//python/ray/tests/...))' > ci/ray_ci/macos/large_test_targets.txt
 }
 
+
 run_large_test() {
   # shellcheck disable=SC2046
   query_large_test
