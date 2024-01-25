@@ -10,6 +10,7 @@ from abc import ABC, abstractmethod
 from typing import Any, Callable, Dict, Generator, List, Optional, Tuple, Type
 
 import grpc
+import starlette
 import starlette.routing
 import uvicorn
 from starlette.datastructures import MutableHeaders
@@ -1211,7 +1212,7 @@ class ProxyActor:
         self.wrapped_http_proxy = self.http_proxy
 
         for middleware in http_middlewares:
-            if hasattr(middleware, "options"):
+            if starlette.__version__ <= "0.34.0":
                 self.wrapped_http_proxy = middleware.cls(
                     self.wrapped_http_proxy, **middleware.options
                 )

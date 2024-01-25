@@ -265,8 +265,8 @@ if setup_spec.type == SetupType.RAY:
         "serve": [
             "uvicorn[standard]",
             "requests",
+            "starlette",
             # Tracking issue: https://github.com/tiangolo/fastapi/discussions/10948
-            "starlette < 0.33.0",
             "fastapi <= 0.108.0",
             "watchfiles",
         ],
