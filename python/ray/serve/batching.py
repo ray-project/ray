@@ -217,7 +217,9 @@ class _BatchQueue:
                         )
                         futures.append(next_future)
 
-                    # Remove processed future.
+                    # Remove processed future. We remove the future at the very
+                    # end of the loop to ensure that if an exception occurs,
+                    # all pending futures will get set in the `except` block.
                     futures.popleft()
 
             for future in futures:
