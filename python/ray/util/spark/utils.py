@@ -24,6 +24,19 @@ def gen_cmd_exec_failure_msg(cmd, return_code, tail_output_deque):
     )
 
 
+def get_configured_spark_executor_memory_bytes(spark):
+    value_str = spark.conf.get("spark.executor.memory", "1g").lower()
+    value_num = int(value_str[:-1])
+    value_unit = value_str[-1]
+    unit_map = {
+        "k": 1024,
+        "m": 1024 * 1024,
+        "g": 1024 * 1024 * 1024,
+        "t": 1024 * 1024 * 1024 * 1024,
+    }
+    return value_num * unit_map[value_unit]
+
+
 def exec_cmd(
     cmd,
     *,

@@ -136,6 +136,7 @@ class RayOnSparkGPUClusterTestBase(RayOnSparkCPUClusterTestBase, ABC):
                 num_task_slots=num_ray_task_slots,
                 physical_mem_bytes=_RAY_ON_SPARK_WORKER_PHYSICAL_MEMORY_BYTES,
                 shared_mem_bytes=_RAY_ON_SPARK_WORKER_SHARED_MEMORY_BYTES,
+                configured_heap_memory_bytes=None,
                 configured_object_store_bytes=None,
             )
 

@@ -33,6 +33,7 @@ from .utils import (
     calc_mem_ray_head_node,
     _wait_service_up,
     _get_spark_worker_ray_node_slots,
+    get_configured_spark_executor_memory_bytes,
 )
 from .start_hook_base import RayOnSparkStartHook
 from .databricks_hook import DefaultDatabricksRayOnSparkStartHook
@@ -1039,9 +1040,23 @@ def _setup_ray_cluster_internal(
         else:
             num_gpus_spark_worker = _get_num_physical_gpus()
         total_mem_bytes = _get_spark_worker_total_physical_memory()
-        return num_cpus_spark_worker, num_gpus_spark_worker, total_mem_bytes
+        spark_worker_ray_node_slots = _get_spark_worker_ray_node_slots(
+            num_cpus_worker_node, num_gpus_worker_node
+        )
 
-    (num_cpus_spark_worker, num_gpus_spark_worker, spark_worker_mem_bytes) = (
+        return (
+            num_cpus_spark_worker,
+            num_gpus_spark_worker,
+            total_mem_bytes,
+            spark_worker_ray_node_slots,
+        )
+
+    (
+        num_cpus_spark_worker,
+        num_gpus_spark_worker,
+        spark_worker_mem_bytes,
+        spark_worker_ray_node_slots,
+    ) = (
         spark.sparkContext.parallelize([1], 1).map(
             _get_spark_worker_resources
         ).collect()[0]
@@ -1075,10 +1090,6 @@ def _setup_ray_cluster_internal(
         num_cpus_worker_node = num_cpus_spark_worker
         num_gpus_worker_node = num_gpus_spark_worker
 
-    spark_worker_ray_node_slots = _get_spark_worker_ray_node_slots(
-        num_cpus_worker_node, num_gpus_worker_node
-    )
-
     (
         ray_worker_node_heap_mem_bytes,
         ray_worker_node_object_store_mem_bytes,
@@ -1089,6 +1100,29 @@ def _setup_ray_cluster_internal(
         num_cpus_worker_node,
         num_gpus_worker_node,
     )
+
+    spark_executor_memory_bytes = get_configured_spark_executor_memory_bytes(spark)
+    spark_worker_node_required_mem_bytes = (
+        spark_executor_memory_bytes + spark_worker_ray_node_slots * (
+            ray_worker_node_heap_mem_bytes + ray_worker_node_object_store_mem_bytes
+        )
+    )
+    if spark_worker_node_required_mem_bytes > 0.8 * spark_worker_mem_bytes:
+        warn_msg = (
+            "In each spark worker node, we recommend the sum of "
+            "'spark_executor_memory + Ray_worker_nodes_heap_memory + "
+            "Ray_worker_nodes_object_store_memory' to be less than "
+            "'spark_worker_node_physical_memory * 0.8', otherwise it might lead to "
+            "spark worker node physical memory exhausted and Ray task OOM errors."
+        )
+
+        if is_in_databricks_runtime():
+            from ray.util.spark.databricks_hook import get_databricks_function
+            get_databricks_function("displayHTML")(
+                f"<b style='background-color:Cyan;'>{warn_msg}</b>"
+            )
+        else:
+            _logger.warning(warn_msg)
 
     if "num_worker_nodes" in kwargs:
         raise ValueError(
