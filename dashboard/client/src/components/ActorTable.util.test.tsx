@@ -1,10 +1,10 @@
-import { Actor, ActorEnum } from "../type/actor";
+import { ActorDetail, ActorEnum } from "../type/actor";
 // eslint-disable-next-line @typescript-eslint/no-unused-vars
 import ActorTable, { sortActors } from "./ActorTable";
 
 // check the state and startTime as the sort criteria
 describe("sortActors", () => {
-  const actor1: Actor = {
+  const actor1: ActorDetail = {
     actorId: "1a77333eac321119fae2f60601000000",
     jobId: "01000000",
     address: {
@@ -24,8 +24,35 @@ describe("sortActors", () => {
     requiredResources: {},
     placementGroupId: "123",
     reprName: "repr1",
+    workerId: "b8b276a03612644098ed7a929c3b0e50f5bde894eb0d8cab288fbb6d",
+    numPendingTasks: 0,
+    taskQueueLength: 0,
+    numExecutedTasks: 0,
+    numInPlasma: 0,
+    numLocalObjects: 0,
+    numObjectRefsInScope: 0,
+    gpus: [],
+    processStats: {
+      cmdline: [],
+      cpuPercent: 0,
+      cpuTimes: {
+        user: 0,
+        system: 0,
+        childrenUser: 0,
+        childrenUystem: 0,
+        iowait: 0,
+      },
+      createTime: 0,
+      memoryInfo: {
+        rss: 0,
+        vms: 0,
+        pfaults: 0,
+        pageins: 0,
+      },
+      pid: 25321,
+    },
   };
-  const actor2: Actor = {
+  const actor2: ActorDetail = {
     actorId: "2a77333eac321119fae2f60601000000",
     jobId: "01000000",
     address: {
@@ -45,8 +72,35 @@ describe("sortActors", () => {
     requiredResources: {},
     placementGroupId: "123",
     reprName: "repr2",
+    workerId: "b8b276a03612644098ed7a929c3b0e50f5bde894eb0d8cab288fbb6d",
+    numPendingTasks: 0,
+    taskQueueLength: 0,
+    numExecutedTasks: 0,
+    numInPlasma: 0,
+    numLocalObjects: 0,
+    numObjectRefsInScope: 0,
+    gpus: [],
+    processStats: {
+      cmdline: [],
+      cpuPercent: 0,
+      cpuTimes: {
+        user: 0,
+        system: 0,
+        childrenUser: 0,
+        childrenUystem: 0,
+        iowait: 0,
+      },
+      createTime: 0,
+      memoryInfo: {
+        rss: 0,
+        vms: 0,
+        pfaults: 0,
+        pageins: 0,
+      },
+      pid: 25322,
+    },
   };
-  const actorList: Actor[] = [actor1, actor2];
+  const actorList: ActorDetail[] = [actor1, actor2];
 
   it.each([
     [

@@ -329,20 +329,6 @@ def deploy(config_file_name: str, address: str):
     help=RAY_INIT_ADDRESS_HELP_STR,
 )
 @click.option(
-    "--host",
-    "-h",
-    required=False,
-    type=str,
-    help=f"Host for HTTP server to listen on. Defaults to {DEFAULT_HTTP_HOST}.",
-)
-@click.option(
-    "--port",
-    "-p",
-    required=False,
-    type=int,
-    help=f"Port for HTTP proxies to listen on. Defaults to {DEFAULT_HTTP_PORT}.",
-)
-@click.option(
     "--blocking/--non-blocking",
     default=True,
     help=(
@@ -391,20 +377,11 @@ def run(
     working_dir: str,
     app_dir: str,
     address: str,
-    host: str,
-    port: int,
     blocking: bool,
     reload: bool,
     route_prefix: str,
     name: str,
 ):
-    if host is not None or port is not None:
-        cli_logger.warning(
-            "Specifying `--host` and `--port` to `serve run` is deprecated and will be "
-            "removed in a future version. To specify custom HTTP options, use the "
-            "`serve start` command."
-        )
-
     sys.path.insert(0, app_dir)
     args_dict = convert_args_to_dict(arguments)
     final_runtime_env = parse_runtime_env_args(
@@ -428,25 +405,8 @@ def run(
 
             config = ServeDeploySchema.parse_obj(config_dict)
 
-            # If host or port is specified as a CLI argument, they should take
-            # priority over config values.
-            if host is None:
-                if "http_options" in config_dict:
-                    host = config_dict["http_options"].get("host", DEFAULT_HTTP_HOST)
-                else:
-                    host = DEFAULT_HTTP_HOST
-            if port is None:
-                if "http_options" in config_dict:
-                    port = config_dict["http_options"].get("port", DEFAULT_HTTP_PORT)
-                else:
-                    port = DEFAULT_HTTP_PORT
-
     else:
         is_config = False
-        if host is None:
-            host = DEFAULT_HTTP_HOST
-        if port is None:
-            port = DEFAULT_HTTP_PORT
         import_path = config_or_import_path
         cli_logger.print(f"Running import path: '{import_path}'.")
         app = _private_api.call_app_builder_with_args_if_necessary(
@@ -473,10 +433,9 @@ def run(
             "need to call `ray.init` in your code when using `serve run`."
         )
 
-    http_options = {"host": host, "port": port, "location": "EveryNode"}
+    http_options = {"location": "EveryNode"}
     grpc_options = gRPCOptions()
-    # Merge http_options and grpc_options with the ones on ServeDeploySchema. If host
-    # and/or port is passed by cli, those continue to take the priority
+    # Merge http_options and grpc_options with the ones on ServeDeploySchema.
     if is_config and isinstance(config, ServeDeploySchema):
         config_http_options = config.http_options.dict()
         http_options = {**config_http_options, **http_options}
@@ -492,7 +451,7 @@ def run(
             client.deploy_apps(config, _blocking=False)
             cli_logger.success("Submitted deploy config successfully.")
         else:
-            serve.run(app, name=name, route_prefix=route_prefix, host=host, port=port)
+            serve.run(app, name=name, route_prefix=route_prefix)
             cli_logger.success("Deployed app successfully.")
 
         if reload:
@@ -519,9 +478,7 @@ def run(
                     app = _private_api.call_app_builder_with_args_if_necessary(
                         import_attr(import_path, reload_module=True), args_dict
                     )
-                    serve.run(
-                        app, name=name, route_prefix=route_prefix, host=host, port=port
-                    )
+                    serve.run(app, name=name, route_prefix=route_prefix)
                     cli_logger.success("Redeployed app successfully.")
 
         if blocking:

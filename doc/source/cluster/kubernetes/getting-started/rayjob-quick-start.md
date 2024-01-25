@@ -150,6 +150,6 @@ kind delete cluster
 
 ## Advanced Usage
 
-The Pod template for the Kubernetes Job that runs `ray job submit` can be customized by setting the `submitterPodTemplate` field in the RayJob custom resource.  See <https://raw.githubusercontent.com/ray-project/kuberay/master/ray-operator/config/samples/ray_v1alpha1_rayjob.yaml> for an example (commented out in this file).
+The Pod template for the Kubernetes Job that runs `ray job submit` can be customized by setting the `submitterPodTemplate` field in the RayJob custom resource.  See <https://raw.githubusercontent.com/ray-project/kuberay/f6546651ff37140211913214642ce7a1d8cf20e2/ray-operator/config/samples/ray_v1alpha1_rayjob.yaml> for an example (commented out in this file).
 
 If `submitterPodTemplate` is unspecified, the Pod will consist of a container named `ray-job-submitter` with image matching that of the Ray head, resource requests of 500m CPU and 200MiB memory, and limits of 1 CPU and 1GiB memory.
