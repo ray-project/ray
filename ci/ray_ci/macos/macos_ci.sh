@@ -11,8 +11,19 @@ export LANG="en_US.UTF-8"
 export BUILD="1"
 export DL="1"
 
+_prelude() {
+  rm -rf /tmp/bazel_event_logs
+  (which bazel && bazel clean) || true;
+  . ./ci/ci.sh init && source ~/.zshenv
+  source ~/.zshrc
+  ./ci/ci.sh build
+  ./ci/env/env_info.sh
+}
+
 query_flaky_test() {
   # shellcheck disable=SC2046
+  _prelude
+  
   flaky_test_json_array=$(bazel run $(./ci/run/bazel_export_options) --config=ci \
       ci/ray_ci/automation:query_flaky_macos_test)
 
@@ -36,6 +47,9 @@ query_flaky_test() {
 }
 
 run_flaky_test() {
+  if [ -z "$include_flaky_test_command" ]; then
+    query_flaky_test
+  fi
   # shellcheck disable=SC2046
   bazel test $(./ci/run/bazel_export_options) --config=ci \
     --test_env=CONDA_EXE --test_env=CONDA_PYTHON_EXE --test_env=CONDA_SHLVL --test_env=CONDA_PREFIX \
@@ -96,15 +110,6 @@ run_ray_cpp_and_java() {
   ./ci/ci.sh test_cpp
 }
 
-_prelude() {
-  rm -rf /tmp/bazel_event_logs
-  (which bazel && bazel clean) || true;
-  . ./ci/ci.sh init && source ~/.zshenv
-  source ~/.zshrc
-  ./ci/ci.sh build
-  ./ci/env/env_info.sh
-}
-
 _epilogue() {
   # Upload test results
   ./ci/build/upload_build_info.sh
@@ -118,7 +123,6 @@ _epilogue() {
   # Cleanup local caches - this should not clean up global disk cache
   bazel clean
 }
-query_flaky_test
 trap _epilogue EXIT
 
 _prelude
