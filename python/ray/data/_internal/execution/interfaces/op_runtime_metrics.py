@@ -179,23 +179,17 @@ class OpRuntimeMetrics:
 
         If an estimate isn't available, this property returns ``None``.
         """
-        backpressure_policies = ray.data.DataContext.get_current().get_config(
-            ENABLED_BACKPRESSURE_POLICIES_CONFIG_KEY
-        )
-        if StreamingOutputBackpressurePolicy not in backpressure_policies:
+        context = ray.data.DataContext.get_current()
+        if context._max_num_blocks_in_streaming_gen_buffer is None:
             return None
 
         estimated_bytes_per_output = (
-            self.average_bytes_per_output
-            or ray.data.DataContext.get_current().target_max_block_size
-        )
-        max_num_outputs_in_streaming_gen_buffer = (
-            StreamingOutputBackpressurePolicy.get_max_num_blocks_in_streaming_gen_buffer()  # noqa: E501
+            self.average_bytes_per_output or context.target_max_block_size
         )
         return (
             self.num_tasks_running
             * estimated_bytes_per_output
-            * max_num_outputs_in_streaming_gen_buffer
+            * context._max_num_blocks_in_streaming_gen_buffer
         )
 
     @property

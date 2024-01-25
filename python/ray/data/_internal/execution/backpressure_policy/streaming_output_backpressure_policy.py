@@ -51,17 +51,12 @@ class StreamingOutputBackpressurePolicy(BackpressurePolicy):
     MAX_OUTPUT_IDLE_SECONDS = 10
 
     def __init__(self, topology: "Topology"):
-        self._max_num_blocks_in_streaming_gen_buffer = (
-            self.get_max_num_blocks_in_streaming_gen_buffer()
-        )
-
         data_context = ray.data.DataContext.get_current()
-        # The `_generator_backpressure_num_objects` parameter should be
-        # `2 * self._max_num_blocks_in_streaming_gen_buffer` because we yield
-        # 2 objects for each block: the block and the block metadata.
-        data_context._task_pool_data_task_remote_args[
-            "_generator_backpressure_num_objects"
-        ] = (2 * self._max_num_blocks_in_streaming_gen_buffer)
+        data_context._max_num_blocks_in_streaming_gen_buffer = data_context.get_config(
+            self.MAX_BLOCKS_IN_GENERATOR_BUFFER_CONFIG_KEY,
+            self.DEFAULT_MAX_BLOCKS_IN_GENERATOR_BUFFER,
+        )
+        assert data_context._max_num_blocks_in_streaming_gen_buffer > 0
 
         self._max_num_blocks_in_op_output_queue = data_context.get_config(
             self.MAX_BLOCKS_IN_OP_OUTPUT_QUEUE_CONFIG_KEY,
@@ -129,16 +124,6 @@ class StreamingOutputBackpressurePolicy(BackpressurePolicy):
                         downstream_idle = True
                         self._print_warning(state.op, cur_time - last_time)
         return max_blocks_to_read_per_op
-
-    @classmethod
-    def get_max_num_blocks_in_streaming_gen_buffer(cls):
-        data_context = ray.data.DataContext.get_current()
-        value = data_context.get_config(
-            cls.MAX_BLOCKS_IN_GENERATOR_BUFFER_CONFIG_KEY,
-            cls.DEFAULT_MAX_BLOCKS_IN_GENERATOR_BUFFER,
-        )
-        assert value > 0
-        return value
 
     def _print_warning(self, op: "PhysicalOperator", idle_time: float):
         if self._warning_printed:
