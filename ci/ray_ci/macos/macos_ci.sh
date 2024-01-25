@@ -11,29 +11,31 @@ export LANG="en_US.UTF-8"
 export BUILD="1"
 export DL="1"
 
-flaky_test_json_array=$(bazel run $(./ci/run/bazel_export_options) --config=ci \
-    ci/ray_ci/automation:query_flaky_macos_test)
+query_flaky_test() {
+  flaky_test_json_array=$(bazel run $(./ci/run/bazel_export_options) --config=ci \
+      ci/ray_ci/automation:query_flaky_macos_test)
 
-echo "Flaky tests: $flaky_test_json_array"
+  echo "Flaky tests: $flaky_test_json_array"
 
-flaky_tests=()
+  flaky_tests=()
 
-# parse json array inot bash array
-while IFS= read -r line; do
-    flaky_tests+=("$line")
-done < <(echo "$flaky_test_json_array" | jq -r '.[]')
+  # parse json array inot bash array
+  while IFS= read -r line; do
+      flaky_tests+=("$line")
+  done < <(echo "$flaky_test_json_array" | jq -r '.[]')
 
-# convert list of flaky tests into command to include/exclude from bazel test
-exclude_flaky_test_command=""
-include_flaky_test_command=""
-for item in "${flaky_tests[@]}"; do
-    exclude_flaky_test_command+="-${item} "
-    include_flaky_test_command+="${item} "
-done
+  # convert list of flaky tests into command to include/exclude from bazel test
+  exclude_flaky_test_command=""
+  include_flaky_test_command=""
+  for item in "${flaky_tests[@]}"; do
+      exclude_flaky_test_command+="-${item} "
+      include_flaky_test_command+="${item} "
+  done
 
-# strip newline char from the 
-exclude_flaky_test_command=${exclude_flaky_test_command%$'\n'}
-include_flaky_test_command=${include_flaky_test_command%$'\n'}
+  # strip newline char from the 
+  exclude_flaky_test_command=${exclude_flaky_test_command%$'\n'}
+  include_flaky_test_command=${include_flaky_test_command%$'\n'}
+}
 
 run_flaky_test() {
   # shellcheck disable=SC2046
@@ -118,6 +120,7 @@ _epilogue() {
   # Cleanup local caches - this should not clean up global disk cache
   bazel clean
 }
+query_flaky_test
 trap _epilogue EXIT
 
 _prelude
