@@ -29,6 +29,11 @@ from ray.util.annotations import PublicAPI
 logger = logging.getLogger(SERVE_LOGGER_NAME)
 
 
+# The user can return these values in their streaming batch handler function to
+# indicate that a request is finished, so Serve can terminate the request.
+USER_CODE_STREAMING_SENTINELS = [StopIteration, StopAsyncIteration]
+
+
 @dataclass
 class _SingleRequest:
     self_arg: Any
@@ -192,7 +197,7 @@ class _BatchQueue:
                     if future is FINISHED_TOKEN:
                         # This caller has already terminated.
                         next_futures.append(FINISHED_TOKEN)
-                    elif result in [StopIteration, StopAsyncIteration]:
+                    elif result in USER_CODE_STREAMING_SENTINELS:
                         # User's code returned sentinel. No values left
                         # for caller. Terminate iteration for caller.
                         _set_exception_if_not_done(future, StopAsyncIteration)
