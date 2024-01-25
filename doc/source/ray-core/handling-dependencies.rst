@@ -232,7 +232,7 @@ The specified local directory will automatically be pushed to the cluster nodes 
 
 You can also specify files via a remote cloud storage URI; see :ref:`remote-uris` for details.
 
-If you specify a `working_dir`, Ray always prepares it first, and it's present in the creation of other runtime environments in the `${RAY_RUNTIME_ENV_CREATE_WORKING_DIR}` environment variable. This sequencing allows `pip` and `conda` to reference local files in the `working_dir` like `requirements.txt` or `environment.yml`.
+If you specify a `working_dir`, Ray always prepares it first, and it's present in the creation of other runtime environments in the `${RAY_RUNTIME_ENV_CREATE_WORKING_DIR}` environment variable. This sequencing allows `pip` and `conda` to reference local files in the `working_dir` like `requirements.txt` or `environment.yml`. See `pip` and `conda` sections in :ref:`runtime-environments-api-ref` for more details.
 
 Using ``conda`` or ``pip`` packages
 """""""""""""""""""""""""""""""""""
@@ -407,7 +407,7 @@ The ``runtime_env`` is a Python dictionary or a Python class :class:`ray.runtime
   - Example: ``"pytorch_p36"``
 
   When specifying a path to a ``environment.yml`` file, the file must be present on your local machine and it must be a valid absolute path or a relative filepath relative to your local current working directory, *not* relative to the `working_dir` specified in the `runtime_env`.
-  Furthermore, referencing local files *within* a `environment.yml` file isn't directly supported. Instead, use the `${RAY_RUNTIME_ENV_CREATE_WORKING_DIR}`environment variable in the creation process.
+  Furthermore, referencing local files *within* a `environment.yml` file isn't directly supported (e.g., ``-r ./my-laptop/more-requirements.txt``, ``./my-pkg.whl``). Instead, use the `${RAY_RUNTIME_ENV_CREATE_WORKING_DIR}` environment variable in the creation process. For example, use `-r ${RAY_RUNTIME_ENV_CREATE_WORKING_DIR}/my-laptop/more-requirements.txt` or `${RAY_RUNTIME_ENV_CREATE_WORKING_DIR}/my-pkg.whl` to reference local files, while ensuring they're in the `working_dir`.
 
 - ``env_vars`` (Dict[str, str]): Environment variables to set.  Environment variables already set on the cluster will still be visible to the Ray workers; so there is
   no need to include ``os.environ`` or similar in the ``env_vars`` field.
