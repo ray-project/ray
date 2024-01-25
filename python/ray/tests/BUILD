@@ -180,6 +180,7 @@ py_test_module_list(
     "test_streaming_generator_backpressure.py",
     "test_scheduling_performance.py",
     "test_implicit_resource.py",
+    "test_virtual_cluster.py",
   ],
   size = "medium",
   tags = ["exclusive", "medium_size_python_tests_k_to_z", "team:core"],
