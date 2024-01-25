@@ -1577,9 +1577,9 @@ def read_tfrecords(
     except ModuleNotFoundError:
         if platform.processor() == "arm":
             logger.warning(
-                "The fast strategy of this function depends on tfx-bsl, which is currently not supported"
-                " on devices with Apple silicon (e.g. M1) and requires an"
-                " environment with x86 CPU architecture."
+                "The fast strategy of this function depends on tfx-bsl, which is "
+                "currently not supported on devices with Apple silicon "
+                "(e.g. M1) and requires an environment with x86 CPU architecture."
             )
         else:
             logger.warning(
