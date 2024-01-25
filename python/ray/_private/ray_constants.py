@@ -86,7 +86,7 @@ RAY_RUNTIME_ENV_ENVIRONMENT_VARIABLE = "RAY_RUNTIME_ENV"
 RAY_RUNTIME_ENV_URI_PIN_EXPIRATION_S_ENV_VAR = (
     "RAY_RUNTIME_ENV_TEMPORARY_REFERENCE_EXPIRATION_S"
 )
-# This env var is populated to the working dir in the creation of a runtime env.
+# Ray populates this env var to the working dir in the creation of a runtime env.
 # e.g. `pip` and `conda` users can use this to find their requirements.txt.
 RAY_RUNTIME_ENV_CREATE_WORKING_DIR_ENV_VAR = "RAY_RUNTIME_ENV_CREATE_WORKING_DIR"
 # Defaults to 10 minutes. This should be longer than the total time it takes for
