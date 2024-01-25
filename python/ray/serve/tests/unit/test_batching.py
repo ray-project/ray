@@ -323,20 +323,18 @@ async def test_batch_args_kwargs(mode, use_class):
 @pytest.mark.parametrize("use_class", [True, False])
 @pytest.mark.parametrize("use_gen", [True, False])
 async def test_batch_cancellation(use_class, use_gen):
-    block_requests = True
+    block_requests = asyncio.Event()
     request_was_cancelled = True
 
     async def unary_implementation(key1, key2):
         nonlocal block_requests, request_was_cancelled
-        while block_requests:
-            await asyncio.sleep(0.01)
+        await block_requests.wait()
         request_was_cancelled = False
         return [(key1[i], key2[i]) for i in range(len(key1))]
 
     async def streaming_implementation(key1, key2):
         nonlocal block_requests, request_was_cancelled
-        while block_requests:
-            await asyncio.sleep(0.01)
+        await block_requests.wait()
         request_was_cancelled = False
         yield [(key1[i], key2[i]) for i in range(len(key1))]
 
@@ -411,7 +409,7 @@ async def test_batch_cancellation(use_class, use_gen):
     assert request_was_cancelled
 
     # Unblock requests. The requests should succeed.
-    block_requests = False
+    block_requests.set()
 
     if use_gen:
         gens = [func("hi1", "hi2"), func("hi3", "hi4")]
