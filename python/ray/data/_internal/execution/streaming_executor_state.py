@@ -107,7 +107,9 @@ class DownstreamMemoryInfo:
 
 
 class OpBufferQueue:
-    """A FIFO queue to buffer RefBundles between upstream and downstream operators."""
+    """A FIFO queue to buffer RefBundles between upstream and downstream operators.
+    This class is thread-safe.
+    """
 
     def __init__(self):
         self._memory_usage = 0
@@ -153,6 +155,8 @@ class OpBufferQueue:
             except IndexError:
                 pass
         else:
+            # TODO(hchen): Index the queue by output_split_idx to
+            # avoid linear scan.
             for i in range(len(self._queue)):
                 ref = self._queue[i]
                 if ref.output_split_idx == output_split_idx:
