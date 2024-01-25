@@ -130,6 +130,74 @@ def get_deployment_start_time(controller: ServeController, name: str):
     return deployment_info.start_time_ms
 
 
+def test_autoscaling_metrics(serve_instance):
+    """Test that request metrics are sent correctly to the controller."""
+
+    signal = SignalActor.remote()
+
+    @serve.deployment(
+        autoscaling_config={
+            "metrics_interval_s": 0.1,
+            "min_replicas": 1,
+            "max_replicas": 2,
+            "target_num_ongoing_requests_per_replica": 1,
+            "upscale_delay_s": 0,
+            "downscale_delay_s": 0,
+            "look_back_period_s": 1,
+        },
+        # We will send over a lot of queries. This will make sure replicas are
+        # killed quickly during cleanup.
+        graceful_shutdown_timeout_s=1,
+        max_concurrent_queries=25,
+        version="v1",
+    )
+    class A:
+        def __call__(self):
+            ray.get(signal.wait.remote())
+
+    handle = serve.run(A.bind())
+    dep_id = DeploymentID("A", "default")
+    [handle.remote()._to_object_ref_sync() for _ in range(50)]
+
+    # Wait for metrics to propagate
+    def get_data():
+        data = ray.get(
+            serve_instance._controller._dump_autoscaling_metrics_for_testing.remote()
+        )[dep_id]
+        print(data)
+        return data
+
+    wait_for_condition(lambda: get_data() > 0)
+    print("Autoscaling metrics started recording on controller.")
+
+    # Many queries should be inflight.
+    def last_timestamp_value_high():
+        metrics = get_data()
+        assert metrics > 40
+        return True
+
+    wait_for_condition(last_timestamp_value_high)
+    print("Confirmed there are metrics from 2 replicas, and many queries are inflight.")
+    print("Releasing signal.")
+    signal.send.remote()
+
+    def check_running_replicas(expected):
+        replicas = ray.get(
+            serve_instance._controller._dump_replica_states_for_testing.remote(dep_id)
+        )
+        running_replicas = replicas.get([ReplicaState.RUNNING])
+        assert len(running_replicas) == expected
+        return True
+
+    # After traffic stops, num replica should drop to 1
+    wait_for_condition(check_running_replicas, expected=1, timeout=15)
+    print("Num replicas dropped to 1.")
+
+    # Request metrics should drop to 0
+    wait_for_condition(lambda: get_data() == 0)
+    print("Queued and ongoing requests dropped to 0.")
+
+
 @pytest.mark.parametrize("min_replicas", [1, 2])
 def test_e2e_scale_up_down_basic(min_replicas, serve_instance):
     """Send 100 requests and check that we autoscale up, and then back down."""
@@ -478,6 +546,67 @@ def test_e2e_intermediate_downscaling(serve_instance):
 
     # Make sure start time did not change for the deployment
     assert get_deployment_start_time(controller, "A") == start_time
+
+
+@pytest.mark.parametrize("initial_replicas", [2, 3])
+def test_downscaling_with_fractional_smoothing_factor(
+    serve_instance, initial_replicas: int
+):
+    controller = serve_instance._controller
+
+    signal = SignalActor.options(name="signal123").remote()
+    signal.send.remote(clear=True)
+
+    app_config = {
+        "import_path": "ray.serve.tests.test_config_files.get_signal.app",
+        "deployments": [
+            {
+                "name": "A",
+                "autoscaling_config": {
+                    "metrics_interval_s": 0.1,
+                    "min_replicas": 0,
+                    "max_replicas": 5,
+                    "initial_replicas": initial_replicas,
+                    "downscale_smoothing_factor": 0.5,
+                    "look_back_period_s": 0.2,
+                    "downscale_delay_s": 5,
+                },
+                "graceful_shutdown_timeout_s": 1,
+                "max_concurrent_queries": 1000,
+            }
+        ],
+    }
+
+    # Deploy with initial replicas = 2+, smoothing factor = 0.5
+    serve_instance.deploy_apps(ServeDeploySchema(**{"applications": [app_config]}))
+    wait_for_condition(
+        lambda: get_deployment_status(controller, "A") == DeploymentStatus.HEALTHY
+    )
+
+    # Send a blocked request to one of two replicas.
+    # Deployment should still have the initial number of replicas since
+    # downscale delay = 5
+    h = serve.get_app_handle(SERVE_DEFAULT_APP_NAME)
+    h.remote()
+    check_autoscale_num_replicas_eq(controller, "A", initial_replicas)
+
+    # There is 1 ongoing (blocked) request and 2+ replicas. The
+    # deployment should autoscale down to 1 replica despite the
+    # smoothing factor
+    current_num_replicas = initial_replicas
+    while current_num_replicas > 1:
+        wait_for_condition(
+            check_autoscale_num_replicas_eq,
+            controller=controller,
+            name="A",
+            target=current_num_replicas - 1,
+        )
+        current_num_replicas -= 1
+        print(f"Deployment has downscaled to {current_num_replicas} replicas.")
+
+    # Release signal so we don't get an ugly error message from the
+    # replica when the signal actor goes out of scope and gets killed
+    ray.get(signal.send.remote())
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows.")
