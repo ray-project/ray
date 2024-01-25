@@ -678,7 +678,7 @@ def report(metrics: Dict, *, checkpoint: Optional[Checkpoint] = None) -> None:
 
         All workers must call `ray.train.report` the same number of times
         so that Ray Train can properly synchronize the training state across
-        workers.
+        workers. Otherwise, your training will hang.
 
     .. warning::
 
