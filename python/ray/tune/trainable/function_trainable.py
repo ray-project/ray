@@ -209,7 +209,7 @@ class FunctionTrainable(Trainable):
 
 @DeveloperAPI
 def wrap_function(
-    train_func: Callable[[Any], Any], warn: bool = True, name: Optional[str] = None
+    train_func: Callable[[Any], Any], name: Optional[str] = None
 ) -> Type["FunctionTrainable"]:
     inherit_from = (FunctionTrainable,)
 
