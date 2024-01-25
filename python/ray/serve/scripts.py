@@ -6,7 +6,7 @@ import sys
 import time
 import traceback
 from dataclasses import asdict
-from typing import Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 
 import click
 import watchfiles
@@ -30,6 +30,7 @@ from ray.serve._private.deployment_graph_build import build as pipeline_build
 from ray.serve._private.deployment_graph_build import (
     get_and_validate_ingress_deployment,
 )
+from ray.serve._private.publish_provider import get_publish_provider
 from ray.serve.config import DeploymentMode, ProxyLocation, gRPCOptions
 from ray.serve.deployment import Application, deployment_to_schema
 from ray.serve.schema import (
@@ -37,6 +38,7 @@ from ray.serve.schema import (
     ServeApplicationSchema,
     ServeDeploySchema,
     ServeInstanceDetails,
+    _skip_validating_runtime_env_uris,
 )
 
 APP_DIR_HELP_STR = (
@@ -760,6 +762,143 @@ def build(
 
     with open(output_path, "w") if output_path else sys.stdout as f:
         f.write(config_str)
+
+
+def _generate_config_from_file_or_import_path(
+    config_or_import_path: str,
+    *,
+    arguments: Dict[str, str],
+    runtime_env: Optional[Dict[str, Any]],
+) -> Tuple[ServeDeploySchema, str]:
+    """Generates a deployable config schema and name for the passed applications(s).
+
+    NOTE: the returned name must not contain any "." or ":" characters.
+    """
+    if pathlib.Path(config_or_import_path).is_file():
+        config_path = config_or_import_path
+        cli_logger.print(f"Publishing from config file: '{config_path}'.")
+        if len(arguments) > 0:
+            raise click.ClickException(
+                "Application arguments cannot be specified for a config file."
+            )
+
+        # TODO(edoakes): runtime_env is silently ignored -- should we enable overriding?
+        name = os.path.basename(config_path).split(".")[0]
+        with open(config_path, "r") as config_file:
+            config_dict = yaml.safe_load(config_file)
+            config = ServeDeploySchema.parse_obj(config_dict)
+    else:
+        # TODO(edoakes): should we default to --working-dir="." for this?
+        import_path = config_or_import_path
+        cli_logger.print(f"Publishing import path: '{import_path}'.")
+
+        if import_path.count(":") != 1:
+            raise click.ClickException(
+                "Import path must be of the form 'module.submodule:app_or_builder', "
+                f"got: '{import_path}'."
+            )
+        name = import_path.split(":")[1]
+        app = ServeApplicationSchema(
+            import_path=import_path,
+            runtime_env=runtime_env,
+            args=arguments,
+        )
+        config = ServeDeploySchema(applications=[app])
+
+    assert isinstance(config, ServeDeploySchema)
+    assert isinstance(name, str) and name
+    return config, name
+
+
+@cli.command(
+    short_help="Publish an application to a remote provider.",
+    # TODO(edoakes): un-hide this at some point.
+    hidden=True,
+)
+@click.argument("config_or_import_path")
+@click.argument("arguments", nargs=-1, required=False)
+@click.option(
+    "--runtime-env",
+    type=str,
+    default=None,
+    required=False,
+    help="Path to a local YAML file containing a runtime_env definition.",
+)
+@click.option(
+    "--runtime-env-json",
+    type=str,
+    default=None,
+    required=False,
+    help="JSON-serialized runtime_env dictionary.",
+)
+@click.option(
+    "--working-dir",
+    type=str,
+    default=None,
+    required=False,
+    help=(
+        "Directory containing files that your application(s) will run in. Can be a "
+        "local directory or a remote URI to a .zip file (S3, GS, HTTP). "
+        "This overrides the working_dir in --runtime-env if both are "
+        "specified."
+    ),
+)
+@click.option(
+    "--name",
+    required=False,
+    default=None,
+    type=str,
+    help="Optional custom name for the application.",
+)
+@click.option(
+    "--base-image",
+    required=False,
+    default=None,
+    type=str,
+    help="Optional container image to use for the application.",
+)
+@click.option(
+    "--provider",
+    required=False,
+    default="anyscale",
+    type=str,
+    help="Publish provider to use. Defaults to anyscale.",
+)
+def publish(
+    config_or_import_path: str,
+    arguments: Tuple[str],
+    runtime_env: str,
+    runtime_env_json: str,
+    working_dir: str,
+    name: Optional[str],
+    base_image: Optional[str],
+    provider: str,
+):
+    args_dict = convert_args_to_dict(arguments)
+    final_runtime_env = parse_runtime_env_args(
+        runtime_env=runtime_env,
+        runtime_env_json=runtime_env_json,
+        working_dir=working_dir,
+    )
+
+    # Skip validating runtime_env URIs so publishers can enable local URI usage.
+    with _skip_validating_runtime_env_uris():
+        config, default_name = _generate_config_from_file_or_import_path(
+            config_or_import_path,
+            arguments=args_dict,
+            runtime_env=final_runtime_env,
+        )
+
+    if name is None:
+        name = default_name
+
+    publish_provider = get_publish_provider(provider)
+    publish_provider.publish(
+        config.dict(exclude_unset=True),
+        name=name,
+        ray_version=ray.__version__,
+        base_image=base_image,
+    )
 
 
 class ServeDeploySchemaDumper(yaml.SafeDumper):
