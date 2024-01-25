@@ -122,7 +122,7 @@ class _FileDatasink(Datasink):
             logger.get_logger().warning(f"Skipped writing empty block to {self.path}")
             return "skip"
 
-        self.write_block(block, 0, ctx)
+        self.write_block(block_accessor, 0, ctx)
         # TODO: decide if we want to return richer object when the task
         # succeeds.
         return "ok"
