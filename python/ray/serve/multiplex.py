@@ -12,8 +12,8 @@ from ray.serve._private.constants import (
     PUSH_MULTIPLEXED_MODEL_IDS_INTERVAL_S,
     SERVE_LOGGER_NAME,
 )
+from ray.serve._private.metrics_utils import MetricsPusher
 from ray.serve._private.usage import ServeUsageTag
-from ray.serve._private.utils import MetricsPusher
 from ray.serve.context import _get_global_client, _get_internal_replica_context
 
 logger = logging.getLogger(SERVE_LOGGER_NAME)
@@ -33,6 +33,8 @@ class _ModelMultiplexWrapper:
     model's __del__ attribute if it exists to clean up the model resources eagerly.
 
     """
+
+    _PUSH_MULTIPLEXED_MODEL_IDS_TASK_NAME = "push_multiplexed_model_ids"
 
     def __init__(
         self,
@@ -111,7 +113,8 @@ class _ModelMultiplexWrapper:
         self._model_load_tasks: Set[str] = set()
 
         self.metrics_pusher = MetricsPusher()
-        self.metrics_pusher.register_task(
+        self.metrics_pusher.register_or_update_task(
+            self._PUSH_MULTIPLEXED_MODEL_IDS_TASK_NAME,
             self._push_model_ids_info,
             PUSH_MULTIPLEXED_MODEL_IDS_INTERVAL_S,
         )

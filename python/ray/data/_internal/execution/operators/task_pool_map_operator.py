@@ -59,7 +59,14 @@ class TaskPoolMapOperator(MapOperator):
         data_context = DataContext.get_current()
         ray_remote_args = self._get_runtime_ray_remote_args(input_bundle=bundle)
         ray_remote_args["name"] = self.name
-        ray_remote_args.update(data_context._task_pool_data_task_remote_args)
+
+        if data_context._max_num_blocks_in_streaming_gen_buffer is not None:
+            # The `_generator_backpressure_num_objects` parameter should be
+            # `2 * _max_num_blocks_in_streaming_gen_buffer` because we yield
+            # 2 objects for each block: the block and the block metadata.
+            ray_remote_args["_generator_backpressure_num_objects"] = (
+                2 * data_context._max_num_blocks_in_streaming_gen_buffer
+            )
 
         gen = map_task.options(**ray_remote_args).remote(
             self._map_transformer_ref,
@@ -92,10 +99,13 @@ class TaskPoolMapOperator(MapOperator):
 
     def current_resource_usage(self) -> ExecutionResources:
         num_active_workers = self.num_active_tasks()
+        object_store_memory = self.metrics.obj_store_mem_cur
+        if self.metrics.obj_store_mem_pending is not None:
+            object_store_memory += self.metrics.obj_store_mem_pending
         return ExecutionResources(
             cpu=self._ray_remote_args.get("num_cpus", 0) * num_active_workers,
             gpu=self._ray_remote_args.get("num_gpus", 0) * num_active_workers,
-            object_store_memory=self.metrics.obj_store_mem_cur,
+            object_store_memory=object_store_memory,
         )
 
     def incremental_resource_usage(self) -> ExecutionResources:
