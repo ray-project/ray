@@ -67,7 +67,7 @@ def _make_mock_pydantic_modules(pydantic_version: str) -> Dict:
     return mock_modules
 
 
-@pytest.mark.parametrize("pydantic_version", ["1.8.0", "1.10.0", "2.0.0"])
+@pytest.mark.parametrize("pydantic_version", ["1.8.0", "1.9.0", "2.0.0"])
 @pytest.mark.skipif(
     os.environ.get("RAY_MINIMAL", "0") != "1",
     reason="Skip unless running in a minimal install.",
