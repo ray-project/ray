@@ -238,6 +238,26 @@ async def test_batch_timeout_empty_queue():
 
 
 @pytest.mark.asyncio
+async def test_batch_wait_queue_exceeds_batch_size_race_condition():
+    """Check that the wait queue can exceed the batch size.
+
+    This test was added to guard against a race condition documented in
+    https://github.com/ray-project/ray/pull/42705#discussion_r1466653910.
+    """
+
+    @serve.batch(max_batch_size=2, batch_wait_timeout_s=10000)
+    async def no_op(requests):
+        return ["No-op"] * len(requests)
+
+    tasks = [get_or_create_event_loop().create_task(no_op(None)) for _ in range(10)]
+
+    # All the tasks should finish.
+    done, pending = await asyncio.wait(tasks, timeout=0.5)
+    assert len(done) == len(tasks)
+    assert len(pending) == 0
+
+
+@pytest.mark.asyncio
 @pytest.mark.parametrize("use_class", [True, False])
 async def test_batch_size_multiple_long_timeout(use_class):
     @serve.batch(max_batch_size=3, batch_wait_timeout_s=1000)
