@@ -17,7 +17,6 @@ py_library(
 py_test_module_list(
   files = [
     "test_advanced.py",
-    "test_autoscaling_metrics.py",
     "test_batching.py",
     "test_constructor_failure.py",
     "test_controller.py",
