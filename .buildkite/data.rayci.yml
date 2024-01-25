@@ -24,6 +24,9 @@ steps:
   - name: datamongobuild
     wanda: ci/docker/datamongo.build.wanda.yaml
 
+  - name: datatfxbslbuild
+    wanda: ci/docker/datatfxbsl.build.wanda.yaml
+
   # tests
   - label: ":database: data: arrow 6 tests"
     tags: 
