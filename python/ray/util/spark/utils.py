@@ -189,6 +189,7 @@ def calc_mem_ray_head_node(
     configured_object_store_bytes
 ):
     import psutil
+    import shutil
 
     if RAY_ON_SPARK_DRIVER_PHYSICAL_MEMORY_BYTES in os.environ:
         available_physical_mem = int(
@@ -204,7 +205,7 @@ def calc_mem_ray_head_node(
     if RAY_ON_SPARK_DRIVER_SHARED_MEMORY_BYTES in os.environ:
         available_shared_mem = int(os.environ[RAY_ON_SPARK_DRIVER_SHARED_MEMORY_BYTES])
     else:
-        available_shared_mem = psutil.virtual_memory().total
+        available_shared_mem = shutil.disk_usage("/dev/shm").total
 
     available_shared_mem = (
         available_shared_mem * _RAY_ON_SPARK_NODE_MEMORY_BUFFER_OFFSET
@@ -284,9 +285,9 @@ def _calc_mem_per_ray_node(
     object_store_bytes = int(object_store_bytes)
 
     if configured_heap_memory_bytes is None:
-        heap_mem_bytes = available_physical_mem_per_node - object_store_bytes
+        heap_mem_bytes = int(available_physical_mem_per_node - object_store_bytes)
     else:
-        heap_mem_bytes = configured_heap_memory_bytes
+        heap_mem_bytes = int(configured_heap_memory_bytes)
 
     return heap_mem_bytes, object_store_bytes, warning_msg
 

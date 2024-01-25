@@ -144,6 +144,7 @@ class RayOnSparkCPUClusterTestBase(ABC):
             shutil.rmtree(collect_log_to_path, ignore_errors=True)
             setup_ray_cluster(
                 max_worker_nodes=MAX_NUM_WORKER_NODES,
+                num_cpus_worker_node=1,
                 collect_log_to_path=collect_log_to_path,
                 ray_temp_root_dir=ray_temp_root_dir,
                 head_node_options={"include_dashboard": True},
@@ -191,7 +192,10 @@ class RayOnSparkCPUClusterTestBase(ABC):
             shutil.rmtree(collect_log_to_path, ignore_errors=True)
 
     def test_ray_cluster_shutdown(self):
-        with _setup_ray_cluster(max_worker_nodes=self.max_spark_tasks) as cluster:
+        with _setup_ray_cluster(
+            max_worker_nodes=self.max_spark_tasks,
+            num_cpus_worker_node=1,
+        ) as cluster:
             ray.init()
             assert len(self.get_ray_worker_resources_list()) == self.max_spark_tasks
 
@@ -207,7 +211,10 @@ class RayOnSparkCPUClusterTestBase(ABC):
         assert not is_port_in_use(hostname, int(port))
 
     def test_background_spark_job_exit_trigger_ray_head_exit(self):
-        with _setup_ray_cluster(max_worker_nodes=self.max_spark_tasks) as cluster:
+        with _setup_ray_cluster(
+            max_worker_nodes=self.max_spark_tasks,
+            num_cpus_worker_node=1,
+        ) as cluster:
             ray.init()
             # Mimic the case the job failed unexpectedly.
             cluster._cancel_background_spark_job()
@@ -319,6 +326,7 @@ class TestSparkLocalCluster:
     def test_basic(self):
         local_addr, remote_addr = setup_ray_cluster(
             max_worker_nodes=2,
+            num_cpus_worker_node=1,
             head_node_options={"include_dashboard": False},
             collect_log_to_path="/tmp/ray_log_collect",
         )
@@ -347,6 +355,7 @@ class TestSparkLocalCluster:
             object_store_memory_head_node=256 * 1024 * 1024,
             head_node_options={"include_dashboard": False},
             min_worker_nodes=(0 if autoscale else 1),
+            num_cpus_worker_node=1,
         )
 
         ray.init()
@@ -376,6 +385,7 @@ class TestSparkLocalCluster:
                         setup_global_ray_cluster(
                             max_worker_nodes=1,
                             min_worker_nodes=(0 if autoscale else 1),
+                            num_cpus_worker_node=1,
                         )
                 except BaseException:
                     # For debugging testing failure.
@@ -418,6 +428,7 @@ class TestSparkLocalCluster:
                 setup_global_ray_cluster(
                     max_worker_nodes=1,
                     min_worker_nodes=(0 if autoscale else 1),
+                    num_cpus_worker_node=1,
                 )
 
         # shut down the cluster
