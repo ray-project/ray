@@ -7,7 +7,7 @@ from ray.autoscaler._private.node_launcher import BaseNodeLauncher
 from ray.autoscaler.node_provider import NodeProvider as NodeProviderV1
 from ray.autoscaler.tags import TAG_RAY_USER_NODE_TYPE
 from ray.autoscaler.v2.instance_manager.config import AutoscalingConfig
-from ray.autoscaler.v2.schema import NodeType
+from ray.autoscaler.v2.schema import NodeKind, NodeStatus, NodeType
 from ray.core.generated.instance_manager_pb2 import Instance
 
 logger = logging.getLogger(__name__)
@@ -34,10 +34,16 @@ class CloudInstance:
     cloud_instance_id: CloudInstanceId
     # The node type of the cloud instance.
     node_type: NodeType
+    # The node kind, i.e head or worker.
+    node_kind: NodeKind
+    # Status of the cloud instance.
+    status: NodeStatus
     # Update request id from which the cloud instance is launched.
-    request_id: str
-    # If the cloud instance is running.
-    is_running: bool
+    # None if cloud instance provider unable to associate the cloud instance
+    # with any update request. This could happen for example when the cloud instance
+    # is created outside of the cluster, or the cloud instance provider is unable to
+    # associate the cloud instance with an update request like Kuberay.
+    request_id: Optional[str] = None
 
 
 @dataclass
