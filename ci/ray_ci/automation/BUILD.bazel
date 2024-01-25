@@ -17,3 +17,9 @@ py_binary(
     srcs = ["weekly_green_metric.py"],
     deps = ["//ci/ray_ci:ray_ci_lib"],
 )
+
+py_binary(
+    name = "query_flaky_macos_test",
+    srcs = ["query_flaky_macos_test.py"],
+    deps = ["//ci/ray_ci:ray_ci_lib"],
+)
