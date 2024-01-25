@@ -32,34 +32,6 @@ INHERITABLE_REMOTE_ARGS = ["scheduling_strategy"]
 logger = DatasetLogger(__name__)
 
 
-class Stage:
-    """Represents a Dataset transform stage (e.g., map or shuffle)."""
-
-    def __init__(self, name: str, num_blocks: Optional[int]):
-        self.name = name
-        self.num_blocks = num_blocks
-
-    def __call__(
-        self, blocks: BlockList, clear_input_blocks: bool
-    ) -> Tuple[BlockList, dict]:
-        """Execute this stage against the given blocks."""
-        raise NotImplementedError
-
-    def can_fuse(self, other: "Stage") -> bool:
-        """Return whether this can be fused with another stage."""
-        raise NotImplementedError
-
-    def fuse(self, other: "Stage") -> "Stage":
-        """Fuse this stage with a compatible stage."""
-        raise NotImplementedError
-
-    def __repr__(self):
-        return f'{type(self).__name__}("{self.name}")'
-
-    def __str__(self):
-        return repr(self)
-
-
 class ExecutionPlan:
     """A lazy execution plan for a Dataset."""
 
@@ -292,18 +264,6 @@ class ExecutionPlan:
         else:
             plan_str += f"{INDENT_STR * (plan_max_depth - 1)}+- {dataset_str}"
         return plan_str
-
-    def with_stage(self, stage: "Stage") -> "ExecutionPlan":
-        """Return a copy of this plan with the given stage appended.
-
-        Args:
-            stage: The stage to append.
-
-        Returns:
-            A new ExecutionPlan with this stage appended.
-        """
-        copy = self.copy()
-        return copy
 
     def link_logical_plan(self, logical_plan: "LogicalPlan"):
         """Link the logical plan into this execution plan.
