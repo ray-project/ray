@@ -342,6 +342,108 @@ async def test_batch_args_kwargs(mode, use_class):
 @pytest.mark.asyncio
 @pytest.mark.parametrize("use_class", [True, False])
 @pytest.mark.parametrize("use_gen", [True, False])
+async def test_batch_cancellation(use_class, use_gen):
+    block_requests = asyncio.Event()
+    request_was_cancelled = True
+
+    async def unary_implementation(key1, key2):
+        nonlocal block_requests, request_was_cancelled
+        await block_requests.wait()
+        request_was_cancelled = False
+        return [(key1[i], key2[i]) for i in range(len(key1))]
+
+    async def streaming_implementation(key1, key2):
+        nonlocal block_requests, request_was_cancelled
+        await block_requests.wait()
+        request_was_cancelled = False
+        yield [(key1[i], key2[i]) for i in range(len(key1))]
+
+    if use_class:
+
+        class MultipleArgs:
+            @serve.batch(max_batch_size=2, batch_wait_timeout_s=1000)
+            async def unary_method(self, key1, key2):
+                return await unary_implementation(key1, key2)
+
+            @serve.batch(max_batch_size=2, batch_wait_timeout_s=1000)
+            async def streaming_method(self, key1, key2):
+                async for value in streaming_implementation(key1, key2):
+                    yield value
+
+        instance = MultipleArgs()
+
+        if use_gen:
+            func = instance.streaming_method
+        else:
+            func = instance.unary_method
+
+    else:
+
+        @serve.batch(max_batch_size=2, batch_wait_timeout_s=1000)
+        async def unary_func(key1, key2):
+            return await unary_implementation(key1, key2)
+
+        @serve.batch(max_batch_size=2, batch_wait_timeout_s=1000)
+        async def streaming_func(key1, key2):
+            async for value in streaming_implementation(key1, key2):
+                yield value
+
+        if use_gen:
+            func = streaming_func
+        else:
+            func = unary_func
+
+    if use_gen:
+        gens = [func("hi1", "hi2"), func("hi3", "hi4")]
+        coros = [gen.__anext__() for gen in gens]
+    else:
+        coros = [func("hi1", "hi2"), func("hi3", "hi4")]
+
+    print("Submitted requests.")
+
+    # The requests should be blocked on the long request_timeout
+    done, pending = await asyncio.wait(coros, timeout=0.01)
+    assert len(done) == 0
+    assert len(pending) == 2
+
+    print("Requests are blocked, as expected.")
+
+    # Cancel the first request. The second request should still be blocked on
+    # the long request_timeout
+    coros[0].close()
+    pending, done = await asyncio.wait(coros, timeout=0.01)
+    assert len(done) == 1
+    assert len(pending) == 1
+
+    print("Cancelled first request.")
+
+    # Cancel the second request. Both requests should be done.
+    coros[1].close()
+    done, pending = await asyncio.wait(coros, timeout=0.01)
+    assert len(done) == 2
+    assert len(pending) == 0
+
+    print("Cancelled second request. Sending new requests with no timeout.")
+
+    # Sanity check that the request was actually cancelled.
+    assert request_was_cancelled
+
+    # Unblock requests. The requests should succeed.
+    block_requests.set()
+
+    if use_gen:
+        gens = [func("hi1", "hi2"), func("hi3", "hi4")]
+        coros = [gen.__anext__() for gen in gens]
+    else:
+        coros = [func("hi1", "hi2"), func("hi3", "hi4")]
+
+    result = await asyncio.gather(*coros)
+    assert result == [("hi1", "hi2"), ("hi3", "hi4")]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("use_class", [True, False])
+@pytest.mark.parametrize("use_gen", [True, False])
 async def test_cancellation_after_error(use_class, use_gen):
     """Cancelling a request after it errors should be supported."""
 

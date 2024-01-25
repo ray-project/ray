@@ -165,6 +165,21 @@ class ReplicaMetricsManager:
             RAY_SERVE_GAUGE_METRIC_SET_PERIOD_S,
         )
 
+        self.set_autoscaling_config(autoscaling_config)
+
+    def start(self):
+        """Start periodic background tasks."""
+        self._metrics_pusher.start()
+
+    def shutdown(self):
+        """Stop periodic background tasks."""
+        self._metrics_pusher.shutdown()
+
+    def set_autoscaling_config(self, autoscaling_config: Optional[AutoscalingConfig]):
+        """Dynamically update autoscaling config."""
+
+        self._autoscaling_config = autoscaling_config
+
         if self._autoscaling_config:
             # Push autoscaling metrics to the controller periodically.
             self._metrics_pusher.register_or_update_task(
@@ -183,18 +198,6 @@ class ReplicaMetricsManager:
                 ),
                 self._add_autoscaling_metrics_point,
             )
-
-    def start(self):
-        """Start periodic background tasks."""
-        self._metrics_pusher.start()
-
-    def shutdown(self):
-        """Stop periodic background tasks."""
-        self._metrics_pusher.shutdown()
-
-    def set_autoscaling_config(self, autoscaling_config: AutoscalingConfig):
-        """Dynamically update autoscaling config."""
-        self._autoscaling_config = autoscaling_config
 
     def inc_num_ongoing_requests(self) -> int:
         """Increment the current total queue length of requests for this replica."""
