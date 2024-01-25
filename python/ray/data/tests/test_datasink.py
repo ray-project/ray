@@ -17,4 +17,4 @@ def test_num_rows_per_block(tmp_path, ray_start_regular_shared, num_rows_per_wri
     ds = ray.data.range(100).write_datasink(
         MockDatasink(), num_rows_per_write=num_rows_per_write
     )
-    assert False
+    assert ds
