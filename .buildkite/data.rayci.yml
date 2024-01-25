@@ -99,7 +99,6 @@ steps:
     instance_type: medium
     commands:
       - bazel run //ci/ray_ci:test_in_docker -- //python/ray/data/...
-        --workers "$${BUILDKITE_PARALLEL_JOB_COUNT}" 
         --worker-id "$${BUILDKITE_PARALLEL_JOB}" --parallelism-per-worker 3
         --build-name datatfxbslbuild
         --test-env RAY_DATA_USE_STREAMING_EXECUTOR=1
