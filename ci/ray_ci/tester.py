@@ -369,7 +369,7 @@ def _get_flaky_test_targets(
         # load flaky tests from yaml
         yaml_flaky_tests = set(yaml.safe_load(f)["flaky_tests"])
         # load flaky tests from DB
-        if os.environ.get("RAYCI_DISABLE_TEST_DB") == "1":
+        if os.environ.get("RAYCI_DISABLE_TEST_DB") == "true":
             s3_flaky_tests = set()
         else:
             s3_flaky_tests = {

@@ -12,7 +12,6 @@ from typing import (
     Dict,
     Generic,
     Iterable,
-    Iterator,
     List,
     Literal,
     Mapping,
@@ -30,7 +29,7 @@ from ray._private.thirdparty.tabulate.tabulate import tabulate
 from ray._private.usage import usage_lib
 from ray.air.util.tensor_extensions.utils import _create_possibly_ragged_ndarray
 from ray.data._internal.block_list import BlockList
-from ray.data._internal.compute import ComputeStrategy, TaskPoolStrategy
+from ray.data._internal.compute import ComputeStrategy
 from ray.data._internal.delegating_block_builder import DelegatingBlockBuilder
 from ray.data._internal.equalize import _equalize
 from ray.data._internal.execution.interfaces import RefBundle
@@ -59,25 +58,10 @@ from ray.data._internal.logical.operators.one_to_one_operator import Limit
 from ray.data._internal.logical.operators.write_operator import Write
 from ray.data._internal.logical.optimizers import LogicalPlan
 from ray.data._internal.pandas_block import PandasBlockSchema
-from ray.data._internal.plan import ExecutionPlan, OneToOneStage
-from ray.data._internal.planner.plan_udf_map_op import (
-    generate_filter_fn,
-    generate_flat_map_fn,
-    generate_map_batches_fn,
-    generate_map_rows_fn,
-)
-from ray.data._internal.planner.plan_write_op import generate_write_fn
+from ray.data._internal.plan import ExecutionPlan
 from ray.data._internal.remote_fn import cached_remote_fn
 from ray.data._internal.sort import SortKey
 from ray.data._internal.split import _get_num_rows, _split_at_indices
-from ray.data._internal.stage_impl import (
-    LimitStage,
-    RandomizeBlocksStage,
-    RandomShuffleStage,
-    RepartitionStage,
-    SortStage,
-    ZipStage,
-)
 from ray.data._internal.stats import DatasetStats, DatasetStatsSummary, StatsManager
 from ray.data._internal.util import (
     AllToAllAPI,
@@ -228,7 +212,7 @@ class Dataset:
     def __init__(
         self,
         plan: ExecutionPlan,
-        logical_plan: Optional[LogicalPlan] = None,
+        logical_plan: LogicalPlan,
     ):
         """Construct a Dataset (internal API).
 
@@ -240,8 +224,7 @@ class Dataset:
 
         self._plan = plan
         self._logical_plan = logical_plan
-        if logical_plan is not None:
-            self._plan.link_logical_plan(logical_plan)
+        self._plan.link_logical_plan(logical_plan)
 
         # Handle to currently running executor for this dataset.
         self._current_executor: Optional["Executor"] = None
@@ -358,43 +341,24 @@ class Dataset:
             concurrency=concurrency,
         )
 
-        transform_fn = generate_map_rows_fn(
-            DataContext.get_current().target_max_block_size
-        )
-
         if num_cpus is not None:
             ray_remote_args["num_cpus"] = num_cpus
 
         if num_gpus is not None:
             ray_remote_args["num_gpus"] = num_gpus
 
-        plan = self._plan.with_stage(
-            OneToOneStage(
-                "Map",
-                transform_fn,
-                compute,
-                ray_remote_args,
-                fn=fn,
-                fn_args=fn_args,
-                fn_kwargs=fn_kwargs,
-                fn_constructor_args=fn_constructor_args,
-                fn_constructor_kwargs=fn_constructor_kwargs,
-            )
+        plan = self._plan.copy()
+        map_op = MapRows(
+            self._logical_plan.dag,
+            fn,
+            fn_args=fn_args,
+            fn_kwargs=fn_kwargs,
+            fn_constructor_args=fn_constructor_args,
+            fn_constructor_kwargs=fn_constructor_kwargs,
+            compute=compute,
+            ray_remote_args=ray_remote_args,
         )
-
-        logical_plan = self._logical_plan
-        if logical_plan is not None:
-            map_op = MapRows(
-                logical_plan.dag,
-                fn,
-                fn_args=fn_args,
-                fn_kwargs=fn_kwargs,
-                fn_constructor_args=fn_constructor_args,
-                fn_constructor_kwargs=fn_constructor_kwargs,
-                compute=compute,
-                ray_remote_args=ray_remote_args,
-            )
-            logical_plan = LogicalPlan(map_op)
+        logical_plan = LogicalPlan(map_op)
         return Dataset(plan, logical_plan)
 
     def _set_name(self, name: Optional[str]):
@@ -619,55 +583,22 @@ class Dataset:
                 f"{batch_format}"
             )
 
-        ctx = DataContext.get_current()
-        transform_fn = generate_map_batches_fn(
-            target_max_block_size=ctx.target_max_block_size,
+        plan = self._plan.copy()
+        map_batches_op = MapBatches(
+            self._logical_plan.dag,
+            fn,
             batch_size=batch_size,
             batch_format=batch_format,
             zero_copy_batch=zero_copy_batch,
-        )
-
-        # TODO(chengsu): pass function name to MapBatches logical operator.
-        if hasattr(fn, "__self__") and isinstance(
-            fn.__self__, ray.data.preprocessor.Preprocessor
-        ):
-            stage_name = fn.__self__.__class__.__name__
-        else:
-            stage_name = f'MapBatches({getattr(fn, "__name__", type(fn))})'
-
-        stage = OneToOneStage(
-            stage_name,
-            transform_fn,
-            compute,
-            ray_remote_args,
-            # TODO(Clark): Add a strict cap here.
             min_rows_per_block=min_rows_per_block,
-            fn=fn,
             fn_args=fn_args,
             fn_kwargs=fn_kwargs,
             fn_constructor_args=fn_constructor_args,
             fn_constructor_kwargs=fn_constructor_kwargs,
+            compute=compute,
+            ray_remote_args=ray_remote_args,
         )
-        plan = self._plan.with_stage(stage)
-
-        logical_plan = self._logical_plan
-        if logical_plan is not None:
-            map_batches_op = MapBatches(
-                logical_plan.dag,
-                fn,
-                batch_size=batch_size,
-                batch_format=batch_format,
-                zero_copy_batch=zero_copy_batch,
-                min_rows_per_block=min_rows_per_block,
-                fn_args=fn_args,
-                fn_kwargs=fn_kwargs,
-                fn_constructor_args=fn_constructor_args,
-                fn_constructor_kwargs=fn_constructor_kwargs,
-                compute=compute,
-                ray_remote_args=ray_remote_args,
-            )
-            logical_plan = LogicalPlan(map_batches_op)
-
+        logical_plan = LogicalPlan(map_batches_op)
         return Dataset(plan, logical_plan)
 
     def add_column(
@@ -952,43 +883,24 @@ class Dataset:
             concurrency=concurrency,
         )
 
-        transform_fn = generate_flat_map_fn(
-            DataContext.get_current().target_max_block_size
-        )
-
         if num_cpus is not None:
             ray_remote_args["num_cpus"] = num_cpus
 
         if num_gpus is not None:
             ray_remote_args["num_gpus"] = num_gpus
 
-        plan = self._plan.with_stage(
-            OneToOneStage(
-                "FlatMap",
-                transform_fn,
-                compute,
-                ray_remote_args,
-                fn=fn,
-                fn_args=fn_args,
-                fn_kwargs=fn_kwargs,
-                fn_constructor_args=fn_constructor_args,
-                fn_constructor_kwargs=fn_constructor_kwargs,
-            )
+        plan = self._plan.copy()
+        op = FlatMap(
+            input_op=self._logical_plan.dag,
+            fn=fn,
+            fn_args=fn_args,
+            fn_kwargs=fn_kwargs,
+            fn_constructor_args=fn_constructor_args,
+            fn_constructor_kwargs=fn_constructor_kwargs,
+            compute=compute,
+            ray_remote_args=ray_remote_args,
         )
-
-        logical_plan = self._logical_plan
-        if logical_plan is not None:
-            op = FlatMap(
-                input_op=logical_plan.dag,
-                fn=fn,
-                fn_args=fn_args,
-                fn_kwargs=fn_kwargs,
-                fn_constructor_args=fn_constructor_args,
-                fn_constructor_kwargs=fn_constructor_kwargs,
-                compute=compute,
-                ray_remote_args=ray_remote_args,
-            )
-            logical_plan = LogicalPlan(op)
+        logical_plan = LogicalPlan(op)
         return Dataset(plan, logical_plan)
 
     def filter(
@@ -1037,24 +949,14 @@ class Dataset:
             concurrency=concurrency,
         )
 
-        transform_fn = generate_filter_fn(
-            DataContext.get_current().target_max_block_size
+        plan = self._plan.copy()
+        op = Filter(
+            input_op=self._logical_plan.dag,
+            fn=fn,
+            compute=compute,
+            ray_remote_args=ray_remote_args,
         )
-
-        plan = self._plan.with_stage(
-            OneToOneStage("Filter", transform_fn, compute, ray_remote_args, fn=fn)
-        )
-
-        logical_plan = self._logical_plan
-        if logical_plan is not None:
-            op = Filter(
-                input_op=logical_plan.dag,
-                fn=fn,
-                compute=compute,
-                ray_remote_args=ray_remote_args,
-            )
-            logical_plan = LogicalPlan(op)
-
+        logical_plan = LogicalPlan(op)
         return Dataset(plan, logical_plan)
 
     @AllToAllAPI
@@ -1105,17 +1007,13 @@ class Dataset:
         Returns:
             The repartitioned :class:`Dataset`.
         """  # noqa: E501
-
-        plan = self._plan.with_stage(RepartitionStage(num_blocks, shuffle))
-
-        logical_plan = self._logical_plan
-        if logical_plan is not None:
-            op = Repartition(
-                logical_plan.dag,
-                num_outputs=num_blocks,
-                shuffle=shuffle,
-            )
-            logical_plan = LogicalPlan(op)
+        plan = self._plan.copy()
+        op = Repartition(
+            self._logical_plan.dag,
+            num_outputs=num_blocks,
+            shuffle=shuffle,
+        )
+        logical_plan = LogicalPlan(op)
         return Dataset(plan, logical_plan)
 
     @AllToAllAPI
@@ -1159,19 +1057,13 @@ class Dataset:
                 "repartition() instead.",  # noqa: E501
                 DeprecationWarning,
             )
-
-        plan = self._plan.with_stage(
-            RandomShuffleStage(seed, num_blocks, ray_remote_args)
+        plan = self._plan.copy()
+        op = RandomShuffle(
+            self._logical_plan.dag,
+            seed=seed,
+            ray_remote_args=ray_remote_args,
         )
-
-        logical_plan = self._logical_plan
-        if logical_plan is not None:
-            op = RandomShuffle(
-                logical_plan.dag,
-                seed=seed,
-                ray_remote_args=ray_remote_args,
-            )
-            logical_plan = LogicalPlan(op)
+        logical_plan = LogicalPlan(op)
         return Dataset(plan, logical_plan)
 
     @AllToAllAPI
@@ -1202,15 +1094,12 @@ class Dataset:
             The block-shuffled :class:`Dataset`.
         """  # noqa: E501
 
-        plan = self._plan.with_stage(RandomizeBlocksStage(seed))
-
-        logical_plan = self._logical_plan
-        if logical_plan is not None:
-            op = RandomizeBlocks(
-                logical_plan.dag,
-                seed=seed,
-            )
-            logical_plan = LogicalPlan(op)
+        plan = self._plan.copy()
+        op = RandomizeBlocks(
+            self._logical_plan.dag,
+            seed=seed,
+        )
+        logical_plan = LogicalPlan(op)
         return Dataset(plan, logical_plan)
 
     def random_sample(
@@ -1455,10 +1344,8 @@ class Dataset:
                 block_list = BlockList(
                     b.tolist(), m.tolist(), owned_by_consumer=owned_by_consumer
                 )
-                logical_plan = self._plan._logical_plan
-                if logical_plan is not None:
-                    ref_bundles = _block_list_to_bundles(block_list, owned_by_consumer)
-                    logical_plan = LogicalPlan(InputData(input_data=ref_bundles))
+                ref_bundles = _block_list_to_bundles(block_list, owned_by_consumer)
+                logical_plan = LogicalPlan(InputData(input_data=ref_bundles))
                 split_datasets.append(
                     MaterializedDataset(
                         ExecutionPlan(
@@ -1580,10 +1467,8 @@ class Dataset:
 
         split_datasets = []
         for block_split in per_split_block_lists:
-            logical_plan = self._plan._logical_plan
-            if logical_plan is not None:
-                ref_bundles = _block_list_to_bundles(block_split, owned_by_consumer)
-                logical_plan = LogicalPlan(InputData(input_data=ref_bundles))
+            ref_bundles = _block_list_to_bundles(block_split, owned_by_consumer)
+            logical_plan = LogicalPlan(InputData(input_data=ref_bundles))
             split_datasets.append(
                 MaterializedDataset(
                     ExecutionPlan(
@@ -1661,12 +1546,10 @@ class Dataset:
             split_block_list = BlockList(
                 bs, ms, owned_by_consumer=block_list._owned_by_consumer
             )
-            logical_plan = self._plan._logical_plan
-            if logical_plan is not None:
-                ref_bundles = _block_list_to_bundles(
-                    split_block_list, block_list._owned_by_consumer
-                )
-                logical_plan = LogicalPlan(InputData(input_data=ref_bundles))
+            ref_bundles = _block_list_to_bundles(
+                split_block_list, block_list._owned_by_consumer
+            )
+            logical_plan = LogicalPlan(InputData(input_data=ref_bundles))
 
             splits.append(
                 MaterializedDataset(
@@ -1870,18 +1753,13 @@ class Dataset:
                 else:
                     assert isinstance(bl, BlockList), type(bl)
                     bs, ms = bl._blocks, bl._metadata
-                op_logical_plan = getattr(datasets[idx]._plan, "_logical_plan", None)
-                if isinstance(op_logical_plan, LogicalPlan):
-                    ops_to_union.append(op_logical_plan.dag)
-                else:
-                    ops_to_union.append(None)
+                op_logical_plan = datasets[idx]._plan._logical_plan
+                ops_to_union.append(op_logical_plan.dag)
                 blocks.extend(bs)
                 metadata.extend(ms)
             blocklist = BlockList(blocks, metadata, owned_by_consumer=owned_by_consumer)
 
-            logical_plan = None
-            if all(ops_to_union):
-                logical_plan = LogicalPlan(UnionLogicalOperator(*ops_to_union))
+            logical_plan = LogicalPlan(UnionLogicalOperator(*ops_to_union))
         else:
             tasks: List[ReadTask] = []
             block_partition_refs: List[ObjectRef[BlockPartition]] = []
@@ -1910,14 +1788,11 @@ class Dataset:
             )
 
             logical_plan = self._logical_plan
-            logical_plans = [
-                getattr(union_ds, "_logical_plan", None) for union_ds in datasets
-            ]
-            if all(logical_plans):
-                op = UnionLogicalOperator(
-                    *[plan.dag for plan in logical_plans],
-                )
-                logical_plan = LogicalPlan(op)
+            logical_plans = [union_ds._plan._logical_plan for union_ds in datasets]
+            op = UnionLogicalOperator(
+                *[plan.dag for plan in logical_plans],
+            )
+            logical_plan = LogicalPlan(op)
 
         stats = DatasetStats(
             metadata={"Union": []},
@@ -2347,15 +2222,12 @@ class Dataset:
             A new, sorted :class:`Dataset`.
         """
         sort_key = SortKey(key, descending, boundaries)
-        plan = self._plan.with_stage(SortStage(self, sort_key))
-
-        logical_plan = self._logical_plan
-        if logical_plan is not None:
-            op = Sort(
-                logical_plan.dag,
-                sort_key=sort_key,
-            )
-            logical_plan = LogicalPlan(op)
+        plan = self._plan.copy()
+        op = Sort(
+            self._logical_plan.dag,
+            sort_key=sort_key,
+        )
+        logical_plan = LogicalPlan(op)
         return Dataset(plan, logical_plan)
 
     def zip(self, other: "Dataset") -> "Dataset":
@@ -2390,14 +2262,9 @@ class Dataset:
             concatenated horizontally with the columns of the first dataset,
             with duplicate column names disambiguated with suffixes like ``"_1"``.
         """
-
-        plan = self._plan.with_stage(ZipStage(other))
-
-        logical_plan = self._logical_plan
-        other_logical_plan = other._logical_plan
-        if logical_plan is not None and other_logical_plan is not None:
-            op = Zip(logical_plan.dag, other_logical_plan.dag)
-            logical_plan = LogicalPlan(op)
+        plan = self._plan.copy()
+        op = Zip(self._logical_plan.dag, other._logical_plan.dag)
+        logical_plan = LogicalPlan(op)
         return Dataset(plan, logical_plan)
 
     def limit(self, limit: int) -> "Dataset":
@@ -2421,11 +2288,9 @@ class Dataset:
         Returns:
             The truncated dataset.
         """
-        plan = self._plan.with_stage(LimitStage(limit))
-        logical_plan = self._logical_plan
-        if logical_plan is not None:
-            op = Limit(logical_plan.dag, limit=limit)
-            logical_plan = LogicalPlan(op)
+        plan = self._plan.copy()
+        op = Limit(self._logical_plan.dag, limit=limit)
+        logical_plan = LogicalPlan(op)
         return Dataset(plan, logical_plan)
 
     @ConsumptionAPI
@@ -3491,6 +3356,7 @@ class Dataset:
         project_id: str,
         dataset: str,
         max_retry_cnt: int = 10,
+        overwrite_table: Optional[bool] = True,
         ray_remote_args: Dict[str, Any] = None,
     ) -> None:
         """Write the dataset to a BigQuery dataset table.
@@ -3510,6 +3376,7 @@ class Dataset:
                 ds.write_bigquery(
                     project_id="my_project_id",
                     dataset="my_dataset_table",
+                    overwrite_table=True
                 )
 
         Args:
@@ -3517,12 +3384,14 @@ class Dataset:
                 the dataset to read. For more information, see details in
                 `Creating and managing projects <https://cloud.google.com/resource-manager/docs/creating-managing-projects>`.
             dataset: The name of the dataset in the format of ``dataset_id.table_id``.
-                The dataset is created if it doesn't already exist. The table_id is
-                overwritten if it exists.
+                The dataset is created if it doesn't already exist.
             max_retry_cnt: The maximum number of retries that an individual block write
                 is retried due to BigQuery rate limiting errors. This isn't
                 related to Ray fault tolerance retries. The default number of retries
                 is 10.
+            overwrite_table: Whether the write will overwrite the table if it already
+                exists. The default behavior is to overwrite the table.
+                ``overwrite_table=False`` will append to the table if it exists.
             ray_remote_args: Kwargs passed to ray.remote in the write tasks.
         """  # noqa: E501
         if ray_remote_args is None:
@@ -3538,7 +3407,12 @@ class Dataset:
         else:
             ray_remote_args["max_retries"] = 0
 
-        datasink = _BigQueryDatasink(project_id, dataset, max_retry_cnt=max_retry_cnt)
+        datasink = _BigQueryDatasink(
+            project_id=project_id,
+            dataset=dataset,
+            max_retry_cnt=max_retry_cnt,
+            overwrite_table=overwrite_table,
+        )
         self.write_datasink(datasink, ray_remote_args=ray_remote_args)
 
     @Deprecated
@@ -3579,30 +3453,15 @@ class Dataset:
                 soft=False,
             )
 
-        write_fn = generate_write_fn(datasource, **write_args)
+        plan = self._plan.copy()
 
-        def write_fn_wrapper(blocks: Iterator[Block], ctx, fn) -> Iterator[Block]:
-            return write_fn(blocks, ctx)
-
-        plan = self._plan.with_stage(
-            OneToOneStage(
-                "Write",
-                write_fn_wrapper,
-                TaskPoolStrategy(),
-                ray_remote_args,
-                fn=lambda x: x,
-            )
+        write_op = Write(
+            self._logical_plan.dag,
+            datasource,
+            ray_remote_args=ray_remote_args,
+            **write_args,
         )
-
-        logical_plan = self._logical_plan
-        if logical_plan is not None:
-            write_op = Write(
-                logical_plan.dag,
-                datasource,
-                ray_remote_args=ray_remote_args,
-                **write_args,
-            )
-            logical_plan = LogicalPlan(write_op)
+        logical_plan = LogicalPlan(write_op)
 
         try:
             import pandas as pd
@@ -3648,29 +3507,13 @@ class Dataset:
                 soft=False,
             )
 
-        write_fn = generate_write_fn(datasink)
-
-        def write_fn_wrapper(blocks: Iterator[Block], ctx, fn) -> Iterator[Block]:
-            return write_fn(blocks, ctx)
-
-        plan = self._plan.with_stage(
-            OneToOneStage(
-                "Write",
-                write_fn_wrapper,
-                TaskPoolStrategy(),
-                ray_remote_args,
-                fn=lambda x: x,
-            )
+        plan = self._plan.copy()
+        write_op = Write(
+            self._logical_plan.dag,
+            datasink,
+            ray_remote_args=ray_remote_args,
         )
-
-        logical_plan = self._logical_plan
-        if logical_plan is not None:
-            write_op = Write(
-                logical_plan.dag,
-                datasink,
-                ray_remote_args=ray_remote_args,
-            )
-            logical_plan = LogicalPlan(write_op)
+        logical_plan = LogicalPlan(write_op)
 
         try:
             import pandas as pd

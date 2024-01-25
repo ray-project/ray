@@ -1,13 +1,25 @@
 import abc
 import operator
 from abc import abstractmethod
-from typing import Dict, List
+from typing import Dict, List, Optional
 
 import ray
-from ray.autoscaler.v2.schema import ClusterStatus, ResourceUsage
+from ray.autoscaler.v2.schema import AutoscalerInstance, ClusterStatus, ResourceUsage
 from ray.autoscaler.v2.sdk import get_cluster_status
 from ray.core.generated import autoscaler_pb2
 from ray.core.generated.instance_manager_pb2 import Instance
+
+
+def make_autoscaler_instance(
+    im_instance: Optional[Instance] = None,
+    ray_node: Optional[autoscaler_pb2.NodeState] = None,
+    cloud_instance_id: Optional[str] = None,
+) -> AutoscalerInstance:
+    return AutoscalerInstance(
+        im_instance=im_instance,
+        ray_node=ray_node,
+        cloud_instance_id=cloud_instance_id,
+    )
 
 
 def get_cluster_resource_state(stub) -> autoscaler_pb2.ClusterResourceState:

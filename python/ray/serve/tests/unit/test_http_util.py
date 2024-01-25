@@ -1,20 +1,11 @@
 import asyncio
 import pickle
-from typing import Generator, Tuple, Union
+from typing import Generator, Tuple
 
 import pytest
-from starlette.types import Message
 
-import ray
 from ray._private.utils import get_or_create_event_loop
-from ray.actor import ActorHandle
 from ray.serve._private.http_util import ASGIReceiveProxy, MessageQueue
-
-
-@pytest.fixture(scope="session")
-def shared_ray_instance(request):
-    yield ray.init(num_cpus=16)
-    ray.shutdown()
 
 
 @pytest.mark.asyncio
@@ -74,36 +65,25 @@ async def test_message_queue():
 
 @pytest.fixture
 @pytest.mark.asyncio
-def setup_receive_proxy(
-    shared_ray_instance,
-) -> Generator[Tuple[ASGIReceiveProxy, ActorHandle], None, None]:
-    @ray.remote
-    class ASGIReceive:
-        def __init__(self):
-            self._message_queue = MessageQueue()
+def setup_receive_proxy() -> Generator[
+    Tuple[ASGIReceiveProxy, MessageQueue], None, None
+]:
+    queue = MessageQueue()
 
-        def ready(self):
-            pass
+    async def receive_asgi_messages(request_id: str) -> bytes:
+        await queue.wait_for_message()
+        messages = queue.get_messages_nowait()
+        for message in messages:
+            if isinstance(message, Exception):
+                raise message
 
-        async def put(self, message: Union[Exception, Message]):
-            await self._message_queue(message)
+        return pickle.dumps(messages)
 
-        async def receive_asgi_messages(self, request_id: str) -> bytes:
-            await self._message_queue.wait_for_message()
-            messages = self._message_queue.get_messages_nowait()
-            for message in messages:
-                if isinstance(message, Exception):
-                    raise message
-
-            return pickle.dumps(messages)
-
-    actor = ASGIReceive.remote()
-    ray.get(actor.ready.remote())
     loop = get_or_create_event_loop()
-    asgi_receive_proxy = ASGIReceiveProxy("", actor)
+    asgi_receive_proxy = ASGIReceiveProxy("", receive_asgi_messages)
     receiver_task = loop.create_task(asgi_receive_proxy.fetch_until_disconnect())
     try:
-        yield asgi_receive_proxy, actor
+        yield asgi_receive_proxy, queue
     except Exception:
         receiver_task.cancel()
 
@@ -111,53 +91,53 @@ def setup_receive_proxy(
 @pytest.mark.asyncio
 class TestASGIReceiveProxy:
     async def test_basic(
-        self, setup_receive_proxy: Tuple[ASGIReceiveProxy, ActorHandle]
+        self, setup_receive_proxy: Tuple[ASGIReceiveProxy, MessageQueue]
     ):
-        asgi_receive_proxy, actor = setup_receive_proxy
+        asgi_receive_proxy, queue = setup_receive_proxy
 
-        await actor.put.remote({"type": "foo"})
-        await actor.put.remote({"type": "bar"})
+        queue.put_nowait({"type": "foo"})
+        queue.put_nowait({"type": "bar"})
         assert await asgi_receive_proxy() == {"type": "foo"}
         assert await asgi_receive_proxy() == {"type": "bar"}
 
         assert asgi_receive_proxy._queue.empty()
 
         # Once disconnect is received, it should be returned repeatedly.
-        await actor.put.remote({"type": "http.disconnect"})
+        queue.put_nowait({"type": "http.disconnect"})
         for _ in range(100):
             assert await asgi_receive_proxy() == {"type": "http.disconnect"}
 
         # Subsequent messages should be ignored.
-        await actor.put.remote({"type": "baz"})
+        queue.put_nowait({"type": "baz"})
         assert await asgi_receive_proxy() == {"type": "http.disconnect"}
 
-    async def test_actor_raises_exception(
-        self, setup_receive_proxy: Tuple[ASGIReceiveProxy, ActorHandle]
+    async def test_raises_exception(
+        self, setup_receive_proxy: Tuple[ASGIReceiveProxy, MessageQueue]
     ):
-        asgi_receive_proxy, actor = setup_receive_proxy
+        asgi_receive_proxy, queue = setup_receive_proxy
 
-        await actor.put.remote({"type": "foo"})
-        await actor.put.remote({"type": "bar"})
-        await actor.put.remote(RuntimeError("oopsies"))
+        queue.put_nowait({"type": "foo"})
+        queue.put_nowait({"type": "bar"})
         assert await asgi_receive_proxy() == {"type": "foo"}
         assert await asgi_receive_proxy() == {"type": "bar"}
 
+        queue.put_nowait(RuntimeError("oopsies"))
         with pytest.raises(RuntimeError, match="oopsies"):
             await asgi_receive_proxy()
 
-    async def test_actor_crashes(
-        self, setup_receive_proxy: Tuple[ASGIReceiveProxy, ActorHandle]
-    ):
-        asgi_receive_proxy, actor = setup_receive_proxy
+    async def test_receive_asgi_messages_raises(self):
+        async def receive_asgi_messages(request_id: str) -> bytes:
+            raise RuntimeError("maybe actor crashed")
 
-        await actor.put.remote({"type": "foo"})
-        await actor.put.remote({"type": "bar"})
-        assert await asgi_receive_proxy() == {"type": "foo"}
-        assert await asgi_receive_proxy() == {"type": "bar"}
+        loop = get_or_create_event_loop()
+        asgi_receive_proxy = ASGIReceiveProxy("", receive_asgi_messages)
+        receiver_task = loop.create_task(asgi_receive_proxy.fetch_until_disconnect())
 
-        ray.kill(actor)
-        with pytest.raises(ray.exceptions.RayActorError):
-            await asgi_receive_proxy()
+        try:
+            with pytest.raises(RuntimeError, match="maybe actor crashed"):
+                await asgi_receive_proxy()
+        finally:
+            receiver_task.cancel()
 
 
 if __name__ == "__main__":
