@@ -2232,9 +2232,13 @@ class AutoscalingTest(unittest.TestCase):
 
         # Sleep to make sure updates will be eventually triggered.
         autoscaler.update()
+        time.sleep(3)
         autoscaler.update()
+        time.sleep(3)
         self.waitForNodes(2)
+        time.sleep(3)
         self.provider.finish_starting_nodes()
+        time.sleep(3)
         autoscaler.update()
         time.sleep(3)
         self.waitForNodes(2, tag_filters={TAG_RAY_NODE_STATUS: STATUS_UP_TO_DATE})
@@ -2322,7 +2326,9 @@ class AutoscalingTest(unittest.TestCase):
         autoscaler.update()
         autoscaler.update()
         self.waitForNodes(2)
+        time.sleep(3)
         self.provider.finish_starting_nodes()
+        time.sleep(3)
         autoscaler.update()
         time.sleep(3)
         self.waitForNodes(2, tag_filters={TAG_RAY_NODE_STATUS: STATUS_UP_TO_DATE})
@@ -2330,7 +2336,9 @@ class AutoscalingTest(unittest.TestCase):
         new_config = copy.deepcopy(SMALL_CLUSTER)
         new_config["worker_setup_commands"] = ["cmdX", "cmdY"]
         self.write_config(new_config)
+        time.sleep(3)
         autoscaler.update()
+        time.sleep(3)
         autoscaler.update()
         time.sleep(3)
         self.waitFor(lambda: len(runner.calls) > 0)
