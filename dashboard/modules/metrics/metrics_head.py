@@ -309,6 +309,9 @@ class MetricsHead(dashboard_utils.DashboardHeadModule):
         if os.path.exists(prometheus_config_output_path):
             os.remove(prometheus_config_output_path)
         os.makedirs(os.path.dirname(prometheus_config_output_path), exist_ok=True)
+        # Currently Ray directly copies this file without modifying it at runtime.
+        # If Ray ever modifies this file at runtime, please ensure start_prometheus
+        # in install_and_start_prometheus.py is updated to reload the config file.
         shutil.copy(PROMETHEUS_CONFIG_INPUT_PATH, prometheus_config_output_path)
 
     @dashboard_utils.async_loop_forever(METRICS_RECORD_INTERVAL_S)

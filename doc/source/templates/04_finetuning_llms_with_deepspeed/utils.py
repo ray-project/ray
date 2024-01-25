@@ -53,7 +53,7 @@ def get_download_path(model_id: str):
     return path
 
 
-def download_model(
+def xdownload_model(
     model_id: str,
     bucket_uri: str,
     s3_sync_args: Optional[List[str]] = None,

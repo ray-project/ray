@@ -74,6 +74,12 @@ def install_prometheus(file_path):
 
 def start_prometheus(prometheus_dir):
 
+    # Currently, Ray never modifies this config file, so we can just use the
+    # hardcoded path. (It just copies it to a more user-friendly location, in
+    # MetricsHead._create_default_prometheus_configs.)
+    # However, if in the future Ray ever modifies this file at runtime, we'll
+    # need to use the user-friendly location instead, and reload the config
+    # file after it's updated by Ray.
     config_file = Path(PROMETHEUS_CONFIG_INPUT_PATH)
 
     if not config_file.exists():
