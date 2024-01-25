@@ -35,13 +35,13 @@ class StreamingOutputBackpressurePolicy(BackpressurePolicy):
 
     # The max number of blocks that can be buffered at the streaming generator
     # of each `DataOpTask`.
-    DEFAULT_MAX_BLOCKS_IN_GENERATOR_BUFFER = 4
+    MAX_BLOCKS_IN_GENERATOR_BUFFER = 4
     MAX_BLOCKS_IN_GENERATOR_BUFFER_CONFIG_KEY = (
         "backpressure_policies.streaming_output.max_blocks_in_generator_buffer"
     )
     # The max number of blocks that can be buffered at the operator output queue
     # (`OpState.outqueue`).
-    DEFAULT_MAX_BLOCKS_IN_OP_OUTPUT_QUEUE = 20
+    MAX_BLOCKS_IN_OP_OUTPUT_QUEUE = 20
     MAX_BLOCKS_IN_OP_OUTPUT_QUEUE_CONFIG_KEY = (
         "backpressure_policies.streaming_output.max_blocks_in_op_output_queue"
     )
@@ -54,13 +54,13 @@ class StreamingOutputBackpressurePolicy(BackpressurePolicy):
         data_context = ray.data.DataContext.get_current()
         data_context._max_num_blocks_in_streaming_gen_buffer = data_context.get_config(
             self.MAX_BLOCKS_IN_GENERATOR_BUFFER_CONFIG_KEY,
-            self.DEFAULT_MAX_BLOCKS_IN_GENERATOR_BUFFER,
+            self.MAX_BLOCKS_IN_GENERATOR_BUFFER,
         )
         assert data_context._max_num_blocks_in_streaming_gen_buffer > 0
 
         self._max_num_blocks_in_op_output_queue = data_context.get_config(
             self.MAX_BLOCKS_IN_OP_OUTPUT_QUEUE_CONFIG_KEY,
-            self.DEFAULT_MAX_BLOCKS_IN_OP_OUTPUT_QUEUE,
+            self.MAX_BLOCKS_IN_OP_OUTPUT_QUEUE,
         )
         assert self._max_num_blocks_in_op_output_queue > 0
 
