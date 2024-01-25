@@ -41,6 +41,7 @@ class MockBaseModel:
     def __init_subclass__(self, *args, **kwargs):
         pass
 
+
 def _make_mock_pydantic_modules(pydantic_version: str) -> Dict:
     """Make a mock for the `pydantic` module.
 
@@ -60,9 +61,7 @@ def _make_mock_pydantic_modules(pydantic_version: str) -> Dict:
     if packaging.version.parse(pydantic_version) >= packaging.version.parse("1.9.0"):
         mock_modules["pydantic"].__version__ = pydantic_version
 
-    if packaging.version.parse(
-        pydantic_version
-    ) >= packaging.version.parse("2.0.0"):
+    if packaging.version.parse(pydantic_version) >= packaging.version.parse("2.0.0"):
         mock_modules["pydantic.v1"] = mock_modules["pydantic"]
 
     return mock_modules
