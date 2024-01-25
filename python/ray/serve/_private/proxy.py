@@ -13,6 +13,7 @@ import grpc
 import starlette
 import starlette.routing
 import uvicorn
+from packaging import version
 from starlette.datastructures import MutableHeaders
 from starlette.middleware import Middleware
 from starlette.types import Receive
@@ -1212,7 +1213,7 @@ class ProxyActor:
         self.wrapped_http_proxy = self.http_proxy
 
         for middleware in http_middlewares:
-            if starlette.__version__ <= "0.34.0":
+            if version.parse(starlette.__version__) <= version.parse("0.34.0"):
                 self.wrapped_http_proxy = middleware.cls(
                     self.wrapped_http_proxy, **middleware.options
                 )
