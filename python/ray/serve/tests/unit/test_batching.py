@@ -321,6 +321,88 @@ async def test_batch_args_kwargs(mode, use_class):
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize("use_class", [True, False])
+@pytest.mark.parametrize("use_gen", [True, False])
+async def test_cancellation_after_error(use_class, use_gen):
+    """Cancelling a request after it errors should be supported."""
+
+    raise_error = True
+
+    async def unary_implementation(key1, key2):
+        if raise_error:
+            raise ValueError()
+        return [(key1[i], key2[i]) for i in range(len(key1))]
+
+    async def streaming_implementation(key1, key2):
+        if raise_error:
+            raise ValueError()
+        yield [(key1[i], key2[i]) for i in range(len(key1))]
+
+    if use_class:
+
+        class MultipleArgs:
+            @serve.batch(max_batch_size=2, batch_wait_timeout_s=1000)
+            async def unary_method(self, key1, key2):
+                return await unary_implementation(key1, key2)
+
+            @serve.batch(max_batch_size=2, batch_wait_timeout_s=1000)
+            async def streaming_method(self, key1, key2):
+                async for value in streaming_implementation(key1, key2):
+                    yield value
+
+        instance = MultipleArgs()
+
+        if use_gen:
+            func = instance.streaming_method
+        else:
+            func = instance.unary_method
+
+    else:
+
+        @serve.batch(max_batch_size=2, batch_wait_timeout_s=1000)
+        async def unary_func(key1, key2):
+            return await unary_implementation(key1, key2)
+
+        @serve.batch(max_batch_size=2, batch_wait_timeout_s=1000)
+        async def streaming_func(key1, key2):
+            async for value in streaming_implementation(key1, key2):
+                yield value
+
+        if use_gen:
+            func = streaming_func
+        else:
+            func = unary_func
+
+    # Submit requests and then cancel them.
+    if use_gen:
+        gens = [func("hi1", "hi2"), func("hi3", "hi4")]
+        coros = [gen.__anext__() for gen in gens]
+    else:
+        coros = [func("hi1", "hi2"), func("hi3", "hi4")]
+
+    print("Submitted initial batch of requests.")
+
+    for coro in coros:
+        coro.close()
+
+    print("Closed initial batch of requests.")
+
+    raise_error = False
+
+    # Submit requests and check that they still work.
+    if use_gen:
+        gens = [func("hi1", "hi2"), func("hi3", "hi4")]
+        coros = [gen.__anext__() for gen in gens]
+    else:
+        coros = [func("hi1", "hi2"), func("hi3", "hi4")]
+
+    print("Submitted new batch of requests.")
+
+    result = await asyncio.gather(*coros)
+    assert result == [("hi1", "hi2"), ("hi3", "hi4")]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("use_class", [True, False])
 async def test_batch_setters(use_class):
     if use_class:
 
