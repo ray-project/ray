@@ -30,6 +30,19 @@ class TestReadImages:
         assert isinstance(column_type, ArrowTensorType)
         assert all(record["image"].shape == (32, 32, 3) for record in ds.take())
 
+
+    def test_tiff_reading(self, ray_start_regular_shared):
+        # "simple" contains three 32x32 RGB images.
+        ds = ray.data.read_images("example://image-datasets/tiff_files")
+        assert ds.schema().names == ["image"]
+        column_type = ds.schema().types[0]
+        assert isinstance(column_type, ArrowTensorType)
+        assert sorted(record["image"].shape for record in ds.take()) == [
+            (3, 100, 100),
+            (5, 100, 100)
+        ]
+            
+
     @pytest.mark.parametrize("num_threads", [-1, 0, 1, 2, 4])
     def test_multi_threading(self, ray_start_regular_shared, num_threads, monkeypatch):
         monkeypatch.setattr(
@@ -93,7 +106,7 @@ class TestReadImages:
     def test_filtering(self, ray_start_regular_shared):
         # "different-extensions" contains three images and two non-images.
         ds = ray.data.read_images("example://image-datasets/different-extensions")
-        assert ds.count() == 3
+        assert ds.count() == 4
 
     def test_size(self, ray_start_regular_shared):
         # "different-sizes" contains RGB images with different heights and widths.
