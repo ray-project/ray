@@ -88,6 +88,20 @@ steps:
         --test-env RAY_DATA_USE_STREAMING_EXECUTOR=1
         --except-tags data_integration,doctest
     depends_on: datanbuild
+  
+  - label: ":database: data: TFRecords (tfx-bsl) tests"
+    tags: 
+      - python
+      - data
+    instance_type: medium
+    commands:
+      - bazel run //ci/ray_ci:test_in_docker -- //python/ray/data/...
+        --workers "$${BUILDKITE_PARALLEL_JOB_COUNT}" 
+        --worker-id "$${BUILDKITE_PARALLEL_JOB}" --parallelism-per-worker 3
+        --build-name datatfxbslbuild
+        --test-env RAY_DATA_USE_STREAMING_EXECUTOR=1
+        --only-tags tfxbsl
+    depends_on: 
 
   - label: ":database: data: doc tests"
     tags: 

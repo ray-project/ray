@@ -1,0 +1,10 @@
+# Used by CI for testing the fast path of ray.data.read_tfrecords(),
+# which uses the tfx-bsl library. When installing this package via
+# data-test-requirements.txt, there are multiple other dependency conflicts
+# (e.g. grcpio-tools, cython, etc.) which are incompatible with the 
+# other packages used in the CI tests. Therefore, we separate out
+# the tests requiring this package into a separate CI job.
+# See: https://github.com/ray-project/ray/pull/42277#discussion_r1465556625
+
+tfx-bsl==1.14.0
+tensorflow-io

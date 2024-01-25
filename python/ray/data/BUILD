@@ -309,7 +309,7 @@ py_test(
     name = "test_tfrecords",
     size = "small",
     srcs = ["tests/test_tfrecords.py"],
-    tags = ["team:data", "exclusive"],
+    tags = ["team:data", "exclusive", "tfxbsl"],
     deps = ["//:ray_lib", ":conftest"],
 )
 

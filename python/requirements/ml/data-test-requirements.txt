@@ -3,11 +3,8 @@
 
 python-snappy
 tensorflow-datasets
-tensorflow-io
 datasets
 pytest-repeat
 soundfile
 google-cloud-bigquery
 google-cloud-bigquery-storage
-tfx-bsl
-Cython
