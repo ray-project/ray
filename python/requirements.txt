@@ -19,6 +19,7 @@ frozenlist
 requests
 watchfiles
 
+
 # Python version-specific requirements
 grpcio == 1.54.2; sys_platform == "darwin"
 grpcio >= 1.54.2; sys_platform != "darwin"
@@ -54,6 +55,7 @@ pandas
 tensorboardX<=2.6.0,>=1.9  # >=2.6.1 uses protobuf>=4, and conflicts with other packages.
 aiohttp>=3.7,<3.9
 starlette
+tiffile
 typer
 fsspec
 pandas>=1.3
