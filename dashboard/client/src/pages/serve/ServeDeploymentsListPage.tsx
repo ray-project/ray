@@ -16,17 +16,11 @@ import {
 import { Alert, Autocomplete, Pagination } from "@material-ui/lab";
 import React, { ReactElement } from "react";
 import { CollapsibleSection } from "../../common/CollapsibleSection";
-import {
-  MultiTabLogViewer,
-  MultiTabLogViewerTabDetails,
-} from "../../common/MultiTabLogViewer";
-import { Section } from "../../common/Section";
 import Loading from "../../components/Loading";
 import { HelpInfo } from "../../components/Tooltip";
-import { ServeSystemActor } from "../../type/serve";
-import { useFetchActor } from "../actor/hook/useActorDetail";
 import { useServeDeployments } from "./hook/useServeApplications";
 import { ServeDeploymentRow } from "./ServeDeploymentRow";
+import { ServeEntityLogViewer } from "./ServeEntityLogViewer";
 import { ServeMetricsSection } from "./ServeMetricsSection";
 import { ServeSystemPreview } from "./ServeSystemDetails";
 
@@ -218,50 +212,15 @@ export const ServeDeploymentsListPage = () => {
             startExpanded
             className={classes.section}
           >
-            <Section noTopPadding>
-              <ServeControllerLogs controller={serveDetails.controller_info} />
-            </Section>
+            <ServeEntityLogViewer
+              controller={serveDetails.controller_info}
+              proxies={proxies}
+              deployments={allServeDeployments}
+            />
           </CollapsibleSection>
         </React.Fragment>
       )}
       <ServeMetricsSection className={classes.section} />
     </div>
   );
-};
-
-type ServeControllerLogsProps = {
-  controller: ServeSystemActor;
-};
-
-const ServeControllerLogs = ({
-  controller: { actor_id, log_file_path },
-}: ServeControllerLogsProps) => {
-  const { data: fetchedActor } = useFetchActor(actor_id);
-
-  if (!fetchedActor || !log_file_path) {
-    return <Loading loading={true} />;
-  }
-
-  const tabs: MultiTabLogViewerTabDetails[] = [
-    {
-      title: "Controller logs",
-      nodeId: fetchedActor.address.rayletId,
-      filename: log_file_path.startsWith("/")
-        ? log_file_path.substring(1)
-        : log_file_path,
-    },
-    {
-      title: "Other logs",
-      contents:
-        "Replica logs contain the application logs emitted by each Serve Replica.\n" +
-        "To view replica logs, please click into a Serve application from " +
-        "the table above to enter the Application details page.\nThen, click " +
-        "into a Serve Replica in the Deployments table.\n\n" +
-        "Proxy logs contains HTTP and gRPC access logs for each Proxy.\n" +
-        "To view Proxy logs, click into a Proxy from the Serve System " +
-        "Details page.\nThis page can be accessed via the left tab menu or by " +
-        'clicking "View system status and configuration" link above.',
-    },
-  ];
-  return <MultiTabLogViewer tabs={tabs} />;
 };

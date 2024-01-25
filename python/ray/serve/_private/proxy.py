@@ -142,7 +142,6 @@ class GenericProxy(ABC):
         proxy_router_class: Type[ProxyRouter],
         request_timeout_s: Optional[float] = None,
         controller_actor: Optional[ActorHandle] = None,
-        proxy_actor: Optional[ActorHandle] = None,
     ):
         self.request_timeout_s = request_timeout_s
         if self.request_timeout_s is not None and self.request_timeout_s < 0:
@@ -152,9 +151,6 @@ class GenericProxy(ABC):
 
         # Used only for displaying the route table.
         self.route_info: Dict[str, EndpointTag] = dict()
-
-        self.self_actor_handle = proxy_actor or ray.get_runtime_context().current_actor
-        self.asgi_receive_queues: Dict[str, MessageQueue] = dict()
 
         self.proxy_router = proxy_router_class(
             serve.get_deployment_handle, self.protocol
@@ -718,7 +714,7 @@ class gRPCProxy(GenericProxy):
         proxy_request: ProxyRequest,
         app_is_cross_language: bool = False,
     ) -> ResponseGenerator:
-        handle_arg = proxy_request.request_object(proxy_handle=self.self_actor_handle)
+        handle_arg = proxy_request.request_object()
         response_generator = ProxyResponseGenerator(
             handle.remote(handle_arg),
             timeout_s=self.request_timeout_s,
@@ -760,6 +756,25 @@ class gRPCProxy(GenericProxy):
 
 class HTTPProxy(GenericProxy):
     """This class is meant to be instantiated and run by an ASGI HTTP server."""
+
+    def __init__(
+        self,
+        node_id: NodeId,
+        node_ip_address: str,
+        proxy_router_class: Type[ProxyRouter],
+        request_timeout_s: Optional[float] = None,
+        controller_actor: Optional[ActorHandle] = None,
+        proxy_actor: Optional[ActorHandle] = None,
+    ):
+        super().__init__(
+            node_id,
+            node_ip_address,
+            proxy_router_class,
+            request_timeout_s=request_timeout_s,
+            controller_actor=controller_actor,
+        )
+        self.self_actor_handle = proxy_actor or ray.get_runtime_context().current_actor
+        self.asgi_receive_queues: Dict[str, MessageQueue] = dict()
 
     @property
     def protocol(self) -> RequestProtocol:
@@ -934,8 +949,9 @@ class HTTPProxy(GenericProxy):
             # Response is returned as raw bytes, convert it to ASGI messages.
             result_callback = convert_object_to_asgi_messages
         else:
+            self_actor_handle = self.self_actor_handle
             handle_arg = proxy_request.request_object(
-                proxy_handle=self.self_actor_handle
+                receive_asgi_messages=self_actor_handle.receive_asgi_messages.remote
             )
             # Messages are returned as pickled dictionaries.
             result_callback = pickle.loads

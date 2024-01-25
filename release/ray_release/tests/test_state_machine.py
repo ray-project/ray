@@ -21,7 +21,11 @@ from ray_release.test_automation.ci_state_machine import (
     JAILED_TAG,
     JAILED_MESSAGE,
 )
-from ray_release.test_automation.state_machine import TestStateMachine
+from ray_release.test_automation.state_machine import (
+    TestStateMachine,
+    WEEKLY_RELEASE_BLOCKER_TAG,
+    NO_TEAM,
+)
 
 
 class MockLabel:
@@ -61,6 +65,19 @@ class MockIssueDB:
     issue_db = {}
 
 
+class MockUser:
+    def get_issues(self, state: str, labels: List[MockLabel]) -> List[MockIssue]:
+        issues = []
+        for issue in MockIssueDB.issue_db.values():
+            if issue.state != state:
+                continue
+            issue_labels = [label.name for label in issue.labels]
+            if all(label.name in issue_labels for label in labels):
+                issues.append(issue)
+
+        return issues
+
+
 class MockRepo:
     def create_issue(self, labels: List[str], title: str, *args, **kwargs):
         label_objs = [MockLabel(label) for label in labels]
@@ -71,6 +88,9 @@ class MockRepo:
 
     def get_issue(self, number: int):
         return MockIssueDB.issue_db[number]
+
+    def get_label(self, name: str):
+        return MockLabel(name)
 
 
 class MockBuildkiteBuild:
@@ -97,6 +117,7 @@ class MockBuildkite:
         return MockBuildkiteJob()
 
 
+TestStateMachine.ray_user = MockUser()
 TestStateMachine.ray_repo = MockRepo()
 TestStateMachine.ray_buildkite = MockBuildkite()
 
@@ -289,6 +310,25 @@ def test_release_move_from_failing_to_jailed():
     assert test.get_state() == TestState.PASSING
     assert test.get(Test.KEY_GITHUB_ISSUE_NUMBER) is None
     assert issue.state == "closed"
+
+
+def test_get_release_blockers() -> None:
+    MockIssueDB.issue_id = 1
+    MockIssueDB.issue_db = {}
+    TestStateMachine.ray_repo.create_issue(labels=["non-blocker"], title="non-blocker")
+    TestStateMachine.ray_repo.create_issue(
+        labels=[WEEKLY_RELEASE_BLOCKER_TAG], title="blocker"
+    )
+    issues = TestStateMachine.get_release_blockers()
+    assert len(issues) == 1
+    assert issues[0].title == "blocker"
+
+
+def test_get_issue_owner() -> None:
+    issue = TestStateMachine.ray_repo.create_issue(labels=["core"], title="hi")
+    assert TestStateMachine.get_issue_owner(issue) == "core"
+    issue = TestStateMachine.ray_repo.create_issue(labels=["w00t"], title="bye")
+    assert TestStateMachine.get_issue_owner(issue) == NO_TEAM
 
 
 if __name__ == "__main__":

@@ -120,7 +120,9 @@ describe("ServeDeploymentDetailPage", () => {
     ).toHaveTextContent("2");
 
     // First replica
-    expect(screen.getByText("test-replica-1")).toBeVisible();
+    // First instance of text is the Replica row
+    // Second instance of text is the Replica selection in the dropdown
+    expect(screen.getAllByText("test-replica-1")[0]).toBeVisible();
     expect(screen.getByText("STARTING")).toBeVisible();
 
     // Second replica
