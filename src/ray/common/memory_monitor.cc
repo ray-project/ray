@@ -219,9 +219,10 @@ int64_t MemoryMonitor::GetCGroupV1MemoryUsedBytes(const char *stat_path,
       shmem_used_bytes = value;
     }
   }
-  if (total_cache_bytes == kNull) {
+  if (total_cache_bytes == kNull || shmem_used_bytes == kNull) {
     RAY_LOG_EVERY_MS(WARNING, kLogIntervalMs)
-        << "Failed to parse cgroup v1 mem stat. total cache " << total_cache_bytes;
+        << "Failed to parse cgroup v1 mem stat. total cache " << total_cache_bytes
+        << " total_shmem " << shmem_used_bytes;
     return kNull;
   }
   int64_t used = cgroup_usage_in_bytes - (total_cache_bytes - shmem_used_bytes);
