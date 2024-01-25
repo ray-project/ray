@@ -480,6 +480,67 @@ def test_e2e_intermediate_downscaling(serve_instance):
     assert get_deployment_start_time(controller, "A") == start_time
 
 
+@pytest.mark.parametrize("initial_replicas", [2, 3])
+def test_downscaling_with_fractional_smoothing_factor(
+    serve_instance, initial_replicas: int
+):
+    controller = serve_instance._controller
+
+    signal = SignalActor.options(name="signal123").remote()
+    signal.send.remote(clear=True)
+
+    app_config = {
+        "import_path": "ray.serve.tests.test_config_files.get_signal.app",
+        "deployments": [
+            {
+                "name": "A",
+                "autoscaling_config": {
+                    "metrics_interval_s": 0.1,
+                    "min_replicas": 0,
+                    "max_replicas": 5,
+                    "initial_replicas": initial_replicas,
+                    "downscale_smoothing_factor": 0.5,
+                    "look_back_period_s": 0.2,
+                    "downscale_delay_s": 5,
+                },
+                "graceful_shutdown_timeout_s": 1,
+                "max_concurrent_queries": 1000,
+            }
+        ],
+    }
+
+    # Deploy with initial replicas = 2+, smoothing factor = 0.5
+    serve_instance.deploy_apps(ServeDeploySchema(**{"applications": [app_config]}))
+    wait_for_condition(
+        lambda: get_deployment_status(controller, "A") == DeploymentStatus.HEALTHY
+    )
+
+    # Send a blocked request to one of two replicas.
+    # Deployment should still have the initial number of replicas since
+    # downscale delay = 5
+    h = serve.get_app_handle(SERVE_DEFAULT_APP_NAME)
+    h.remote()
+    check_autoscale_num_replicas_eq(controller, "A", initial_replicas)
+
+    # There is 1 ongoing (blocked) request and 2+ replicas. The
+    # deployment should autoscale down to 1 replica despite the
+    # smoothing factor
+    current_num_replicas = initial_replicas
+    while current_num_replicas > 1:
+        wait_for_condition(
+            check_autoscale_num_replicas_eq,
+            controller=controller,
+            name="A",
+            target=current_num_replicas - 1,
+        )
+        current_num_replicas -= 1
+        print(f"Deployment has downscaled to {current_num_replicas} replicas.")
+
+    # Release signal so we don't get an ugly error message from the
+    # replica when the signal actor goes out of scope and gets killed
+    ray.get(signal.send.remote())
+
+
 @pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows.")
 @pytest.mark.skip(reason="Currently failing with undefined behavior")
 def test_e2e_update_autoscaling_deployment(serve_instance):
