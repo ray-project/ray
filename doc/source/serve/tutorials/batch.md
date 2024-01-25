@@ -186,30 +186,3 @@ $ python tutorial_batch.py
 ```
 
 You should get an output similar to the previous example.
-
-## Troubleshooting
-
-You may see the following error:
-
-```console
-TypeError: Descriptors cannot not be created directly.
-    If this call came from a _pb2.py file, your generated code is out of date and must be regenerated with protoc >= 3.19.0.
-    If you cannot immediately regenerate your protos, some other possible workarounds are:   
-     1. Downgrade the protobuf package to 3.20.x or lower.
-     2. Set PROTOCOL_BUFFERS_PYTHON_IMPLEMENTATION=python (but this will use pure-Python parsing and will be much slower).
-```
-
-In this case, downgrade the protobuf package to 3.20.x or lower in your Docker image, or tell Ray to do it at runtime by specifying a [runtime environment](runtime-environments):
-
-Open a new YAML file called `batch_env.yaml` for runtime environment.
-
-```yaml
-pip:
- - protobuf==3.20.3
-```
-
-Then, run the following command to deploy the model with the runtime environment.
-
-```console
-$ serve run --runtime-env batch_env.yaml tutorial_batch:generator
-```
