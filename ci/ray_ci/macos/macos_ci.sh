@@ -21,9 +21,9 @@ _prelude() {
 }
 
 query_flaky_test() {
-  # shellcheck disable=SC2046
   _prelude
   
+  # shellcheck disable=SC2046
   flaky_test_json_array=$(bazel run $(./ci/run/bazel_export_options) --config=ci \
       ci/ray_ci/automation:query_flaky_macos_test)
 
@@ -50,7 +50,7 @@ run_flaky_test() {
   if [ -z "$include_flaky_test_command" ]; then
     query_flaky_test
   fi
-  # shellcheck disable=SC2046
+  # shellcheck disable=SC2046,SC2086
   bazel test $(./ci/run/bazel_export_options) --config=ci \
     --test_env=CONDA_EXE --test_env=CONDA_PYTHON_EXE --test_env=CONDA_SHLVL --test_env=CONDA_PREFIX \
     --test_env=CONDA_DEFAULT_ENV --test_env=CONDA_PROMPT_MODIFIER --test_env=CI \
@@ -58,7 +58,7 @@ run_flaky_test() {
 }
 
 run_small_test() {
-  # shellcheck disable=SC2046
+  # shellcheck disable=SC2046,SC2086
   bazel test $(./ci/run/bazel_export_options) --config=ci \
     --test_env=CONDA_EXE --test_env=CONDA_PYTHON_EXE --test_env=CONDA_SHLVL --test_env=CONDA_PREFIX \
     --test_env=CONDA_DEFAULT_ENV --test_env=CONDA_PROMPT_MODIFIER --test_env=CI \
@@ -68,7 +68,7 @@ run_small_test() {
 }
 
 run_medium_a_j_test() {
-  # shellcheck disable=SC2046
+  # shellcheck disable=SC2046,SC2086
   bazel test --config=ci $(./ci/run/bazel_export_options) --test_env=CI \
       --test_tag_filters=-kubernetes,medium_size_python_tests_a_to_j \
       -- python/ray/tests/... \
@@ -76,7 +76,7 @@ run_medium_a_j_test() {
 }
 
 run_medium_k_z_test() {
-  # shellcheck disable=SC2046
+  # shellcheck disable=SC2046,SC2086
   bazel test --config=ci $(./ci/run/bazel_export_options) --test_env=CI \
       --test_tag_filters=-kubernetes,medium_size_python_tests_k_to_z \
       -- python/ray/tests/... \
@@ -84,7 +84,7 @@ run_medium_k_z_test() {
 }
 
 run_large_test() {
-  # shellcheck disable=SC2046
+  # shellcheck disable=SC2046,SC2086
   bazel test --config=ci $(./ci/run/bazel_export_options) --test_env=CONDA_EXE --test_env=CONDA_PYTHON_EXE \
       --test_env=CONDA_SHLVL --test_env=CONDA_PREFIX --test_env=CONDA_DEFAULT_ENV --test_env=CONDA_PROMPT_MODIFIER \
       --test_env=CI --test_tag_filters="large_size_python_tests_shard_${BUILDKITE_PARALLEL_JOB}"  "$@" \
