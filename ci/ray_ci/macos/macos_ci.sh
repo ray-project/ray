@@ -12,13 +12,11 @@ export BUILD="1"
 export DL="1"
 
 query_flaky_test() {
+  # shellcheck disable=SC2046
   flaky_test_json_array=$(bazel run $(./ci/run/bazel_export_options) --config=ci \
       ci/ray_ci/automation:query_flaky_macos_test)
 
-  echo "Flaky tests: $flaky_test_json_array"
-
   flaky_tests=()
-
   # parse json array inot bash array
   while IFS= read -r line; do
       flaky_tests+=("$line")
