@@ -21,7 +21,6 @@ from ray._private.utils import get_or_create_event_loop
 from ray.actor import ActorClass, ActorHandle
 from ray.remote_function import RemoteFunction
 from ray.serve import metrics
-from ray.serve._private.autoscaling_metrics import InMemoryMetricsStore
 from ray.serve._private.common import (
     DeploymentID,
     ReplicaName,
@@ -55,9 +54,9 @@ from ray.serve._private.logging_utils import (
     configure_component_memory_profiler,
     get_component_logger_file_path,
 )
+from ray.serve._private.metrics_utils import InMemoryMetricsStore, MetricsPusher
 from ray.serve._private.router import RequestMetadata
 from ray.serve._private.utils import (
-    MetricsPusher,
     merge_dict,
     parse_import_path,
     wrap_to_ray_error,
@@ -510,6 +509,10 @@ def create_replica_wrapper(actor_class_name: str):
 class RayServeReplica:
     """Handles requests with the provided callable."""
 
+    PUSH_METRICS_TO_CONTROLLER_TASK_NAME = "push_metrics_to_controller"
+    RECORD_METRICS_TASK_NAME = "record_metrics"
+    SET_REPLICA_REQUEST_METRIC_GAUGE_TASK_NAME = "set_replica_request_metric_gauge"
+
     def __init__(
         self,
         _callable: Callable,
@@ -585,12 +588,14 @@ class RayServeReplica:
         if autoscaling_config:
             process_remote_func = controller_handle.record_autoscaling_metrics.remote
             config = autoscaling_config
-            self.metrics_pusher.register_task(
+            self.metrics_pusher.register_or_update_task(
+                "push_metrics_to_controller",
                 self.collect_autoscaling_metrics,
                 config.metrics_interval_s,
                 process_remote_func,
             )
-            self.metrics_pusher.register_task(
+            self.metrics_pusher.register_or_update_task(
+                "record_metrics",
                 lambda: {self.replica_tag: self.get_num_pending_and_running_requests()},
                 min(
                     RAY_SERVE_REPLICA_AUTOSCALING_METRIC_RECORD_PERIOD_S,
@@ -599,7 +604,8 @@ class RayServeReplica:
                 self._add_autoscaling_metrics_point,
             )
 
-        self.metrics_pusher.register_task(
+        self.metrics_pusher.register_or_update_task(
+            "set_replica_request_metric_gauge",
             self._set_replica_requests_metrics,
             RAY_SERVE_GAUGE_METRIC_SET_PERIOD_S,
         )
