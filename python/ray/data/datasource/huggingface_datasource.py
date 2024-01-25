@@ -79,6 +79,8 @@ class HuggingFaceDatasource(Datasource):
         """Return list of Hugging Face hosted parquet file URLs if they
         exist for the data (i.e. if the dataset is a public dataset that
         has not been transformed) else return an empty list."""
+        import datasets
+
         # We can use the dataset name, config name, and split name to load
         # public hugging face datasets from the Hugging Face Hub. More info
         # here: https://huggingface.co/docs/datasets-server/parquet
