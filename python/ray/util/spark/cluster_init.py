@@ -32,7 +32,7 @@ from .utils import (
     gen_cmd_exec_failure_msg,
     calc_mem_ray_head_node,
     _wait_service_up,
-    _get_spark_worker_ray_node_slots,
+    _get_local_ray_node_slots,
     get_configured_spark_executor_memory_bytes,
 )
 from .start_hook_base import RayOnSparkStartHook
@@ -1040,22 +1040,17 @@ def _setup_ray_cluster_internal(
         else:
             num_gpus_spark_worker = _get_num_physical_gpus()
         total_mem_bytes = _get_spark_worker_total_physical_memory()
-        spark_worker_ray_node_slots = _get_spark_worker_ray_node_slots(
-            num_cpus_worker_node, num_gpus_worker_node
-        )
 
         return (
             num_cpus_spark_worker,
             num_gpus_spark_worker,
             total_mem_bytes,
-            spark_worker_ray_node_slots,
         )
 
     (
         num_cpus_spark_worker,
         num_gpus_spark_worker,
         spark_worker_mem_bytes,
-        spark_worker_ray_node_slots,
     ) = (
         spark.sparkContext.parallelize([1], 1).map(
             _get_spark_worker_resources
@@ -1064,8 +1059,8 @@ def _setup_ray_cluster_internal(
 
     if num_cpus_worker_node is not None or num_gpus_worker_node is not None:
         if support_stage_scheduling:
-            num_cpus_worker_node = num_cpus_worker_node or num_spark_task_cpus
-            num_gpus_worker_node = num_gpus_worker_node or num_spark_task_gpus
+            num_cpus_worker_node = num_cpus_worker_node or num_cpus_spark_worker
+            num_gpus_worker_node = num_gpus_worker_node or num_gpus_spark_worker
 
             using_stage_scheduling = True
             res_profile = _create_resource_profile(
@@ -1087,8 +1082,8 @@ def _setup_ray_cluster_internal(
         using_stage_scheduling = False
         res_profile = None
 
-        num_cpus_worker_node = num_cpus_spark_worker
-        num_gpus_worker_node = num_gpus_spark_worker
+        num_cpus_worker_node = num_spark_task_cpus
+        num_gpus_worker_node = num_spark_task_gpus
 
     (
         ray_worker_node_heap_mem_bytes,
@@ -1097,6 +1092,13 @@ def _setup_ray_cluster_internal(
         spark,
         heap_memory_worker_node,
         object_store_memory_worker_node,
+        num_cpus_worker_node,
+        num_gpus_worker_node,
+    )
+
+    spark_worker_ray_node_slots = _get_local_ray_node_slots(
+        num_cpus_spark_worker,
+        num_gpus_spark_worker,
         num_cpus_worker_node,
         num_gpus_worker_node,
     )

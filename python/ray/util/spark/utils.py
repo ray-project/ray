@@ -359,9 +359,12 @@ def _get_num_physical_gpus():
     return len(completed_proc.stdout.strip().split("\n"))
 
 
-def _get_spark_worker_ray_node_slots(num_cpus_per_node, num_gpus_per_node):
-    num_cpus = _get_cpu_cores()
-
+def _get_local_ray_node_slots(
+    num_cpus,
+    num_gpus,
+    num_cpus_per_node,
+    num_gpus_per_node,
+):
     if num_cpus_per_node > num_cpus:
         raise ValueError(
             "cpu number per Ray worker node should be <= spark worker node CPU cores, "
@@ -371,7 +374,6 @@ def _get_spark_worker_ray_node_slots(num_cpus_per_node, num_gpus_per_node):
     num_ray_node_slots = num_cpus // num_cpus_per_node
 
     if num_gpus_per_node > 0:
-        num_gpus = _get_num_physical_gpus()
         if num_gpus_per_node > num_gpus:
             raise ValueError(
                 "gpu number per Ray worker node should be <= spark worker node "
@@ -399,7 +401,14 @@ def _get_avail_mem_per_ray_worker_node(
         warning_message,
     )
     """
-    num_ray_node_slots = _get_spark_worker_ray_node_slots(
+    num_cpus = _get_cpu_cores()
+    if num_gpus_per_node > 0:
+        num_gpus = _get_num_physical_gpus()
+    else:
+        num_gpus = 0
+
+    num_ray_node_slots = _get_local_ray_node_slots(
+        num_cpus, num_gpus,
         num_cpus_per_node, num_gpus_per_node
     )
 
