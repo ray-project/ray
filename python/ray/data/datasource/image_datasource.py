@@ -1,3 +1,4 @@
+import tifffile
 import io
 import logging
 import time
@@ -16,7 +17,7 @@ if TYPE_CHECKING:
     import pyarrow
 
 
-logger = logging.getLogger(__name__)
+logger = logging.getLogger('ray')
 
 # The default size multiplier for reading image data source.
 # This essentially is using image on-disk file size to estimate
@@ -46,7 +47,8 @@ class ImageDatasource(FileBasedDatasource):
         super().__init__(paths, **file_based_datasource_kwargs)
 
         _check_import(self, module="PIL", package="Pillow")
-
+        _check_import(self, module="tifffile", package="tifffile")# imageio supports both tiff and Pillow.
+        
         if size is not None and len(size) != 2:
             raise ValueError(
                 "Expected `size` to contain two integers for height and width, "
@@ -68,25 +70,23 @@ class ImageDatasource(FileBasedDatasource):
         else:
             self._encoding_ratio = IMAGE_ENCODING_RATIO_ESTIMATE_DEFAULT
 
-    def _read_stream(
-        self,
-        f: "pyarrow.NativeFile",
-        path: str,
-    ) -> Iterator[Block]:
+    def _read_stream(self, f: "pyarrow.NativeFile", path: str) -> Iterator[Block]:
         from PIL import Image, UnidentifiedImageError
-
+        print(path)
         data = f.readall()
+        if path.lower().endswith((".tif", ".tiff")):
+            image = tifffile.imread(io.BytesIO(data))
+        else:
+            try:
+                image = Image.open(io.BytesIO(data))
+            except UnidentifiedImageError as e:
+                raise ValueError(f"PIL couldn't load image file at path '{path}'.") from e
 
-        try:
-            image = Image.open(io.BytesIO(data))
-        except UnidentifiedImageError as e:
-            raise ValueError(f"PIL couldn't load image file at path '{path}'.") from e
-
-        if self.size is not None:
-            height, width = self.size
-            image = image.resize((width, height))
-        if self.mode is not None:
-            image = image.convert(self.mode)
+            if self.size is not None:
+                height, width = self.size
+                image = image.resize((width, height))
+            if self.mode is not None:
+                image = image.convert(self.mode)
 
         builder = DelegatingBlockBuilder()
         array = np.array(image)
@@ -95,6 +95,7 @@ class ImageDatasource(FileBasedDatasource):
         block = builder.build()
 
         yield block
+
 
     def _rows_per_file(self):
         return 1
