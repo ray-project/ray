@@ -124,6 +124,7 @@ class RayOnSparkCPUClusterTestBase(ABC):
             with _setup_ray_cluster(
                 max_worker_nodes=max_worker_nodes_arg,
                 num_cpus_worker_node=num_cpus_worker_node,
+                num_gpus_worker_node=0,
                 head_node_options={"include_dashboard": False},
             ):
                 ray.init()
@@ -146,6 +147,7 @@ class RayOnSparkCPUClusterTestBase(ABC):
             setup_ray_cluster(
                 max_worker_nodes=MAX_NUM_WORKER_NODES,
                 num_cpus_worker_node=1,
+                num_gpus_worker_node=0,
                 collect_log_to_path=collect_log_to_path,
                 ray_temp_root_dir=ray_temp_root_dir,
                 head_node_options={"include_dashboard": True},
@@ -196,6 +198,7 @@ class RayOnSparkCPUClusterTestBase(ABC):
         with _setup_ray_cluster(
             max_worker_nodes=self.max_spark_tasks,
             num_cpus_worker_node=1,
+            num_gpus_worker_node=0,
         ) as cluster:
             ray.init()
             assert len(self.get_ray_worker_resources_list()) == self.max_spark_tasks
@@ -215,6 +218,7 @@ class RayOnSparkCPUClusterTestBase(ABC):
         with _setup_ray_cluster(
             max_worker_nodes=self.max_spark_tasks,
             num_cpus_worker_node=1,
+            num_gpus_worker_node=0,
         ) as cluster:
             ray.init()
             # Mimic the case the job failed unexpectedly.
@@ -251,6 +255,7 @@ class RayOnSparkCPUClusterTestBase(ABC):
                 max_worker_nodes=max_worker_nodes,
                 min_worker_nodes=min_worker_nodes,
                 num_cpus_worker_node=num_cpus_worker_node,
+                num_gpus_worker_node=0,
                 head_node_options={"include_dashboard": False},
                 autoscale_idle_timeout_minutes=0.1,
             ):
@@ -356,7 +361,6 @@ class TestSparkLocalCluster:
             object_store_memory_head_node=256 * 1024 * 1024,
             head_node_options={"include_dashboard": False},
             min_worker_nodes=(0 if autoscale else 1),
-            num_cpus_worker_node=1,
         )
 
         ray.init()
@@ -428,7 +432,6 @@ class TestSparkLocalCluster:
                 setup_global_ray_cluster(
                     max_worker_nodes=1,
                     min_worker_nodes=(0 if autoscale else 1),
-                    num_cpus_worker_node=1,
                 )
 
         # shut down the cluster
