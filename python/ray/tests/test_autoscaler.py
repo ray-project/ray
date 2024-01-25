@@ -1611,6 +1611,7 @@ class AutoscalingTest(unittest.TestCase):
         new_config["max_workers"] = 10
         self.write_config(new_config)
         autoscaler.update()
+        time.sleep(3)
         # Because one worker already started, the scheduler waits for its
         # resources to be updated before it launches the remaining min_workers.
         worker_ip = self.provider.non_terminated_node_ips(
@@ -1619,6 +1620,7 @@ class AutoscalingTest(unittest.TestCase):
         lm.update(worker_ip, mock_raylet_id(), {"CPU": 1}, {"CPU": 1})
 
         autoscaler.update()
+        time.sleep(3)
         if foreground_node_launcher:
             # If we launched in the foreground, shouldn't need to wait for nodes
             # to be available. (Node creation should block.)
