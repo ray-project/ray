@@ -1211,9 +1211,17 @@ class ProxyActor:
         self.wrapped_http_proxy = self.http_proxy
 
         for middleware in http_middlewares:
-            self.wrapped_http_proxy = middleware.cls(
-                self.wrapped_http_proxy, **middleware.options
-            )
+            if hasattr(middleware, "options"):
+                self.wrapped_http_proxy = middleware.cls(
+                    self.wrapped_http_proxy, **middleware.options
+                )
+            else:
+                # Starlette >= 0.35.0
+                self.wrapped_http_proxy = middleware.cls(
+                    self.wrapped_http_proxy,
+                    *middleware.args,
+                    **middleware.kwargs,
+                )
 
         # Start running the HTTP server on the event loop.
         # This task should be running forever. We track it in case of failure.
