@@ -2324,7 +2324,9 @@ class AutoscalingTest(unittest.TestCase):
             update_interval_s=0,
         )
         autoscaler.update()
+        time.sleep(3)
         autoscaler.update()
+        time.sleep(3)
         self.waitForNodes(2)
         time.sleep(3)
         self.provider.finish_starting_nodes()
