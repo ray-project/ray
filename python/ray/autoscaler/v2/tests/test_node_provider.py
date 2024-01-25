@@ -8,13 +8,13 @@ import pytest  # noqa
 
 from ray._private.test_utils import load_test_config
 from ray.autoscaler._private.event_summarizer import EventSummarizer
+from ray.autoscaler._private.kuberay.node_provider import IKubernetesHttpApiClient
 from ray.autoscaler._private.node_launcher import BaseNodeLauncher
 from ray.autoscaler._private.node_provider_availability_tracker import (
     NodeProviderAvailabilityTracker,
 )
 from ray.autoscaler.node_launch_exception import NodeLaunchException
-from ray.autoscaler.v2.instance_manager.cloud_providers.kuberay import (
-    IKubernetesHttpApiClient,
+from ray.autoscaler.v2.instance_manager.cloud_providers.kuberay.cloud_provider import (
     KuberayProvider,
 )
 from ray.autoscaler.v2.instance_manager.config import AutoscalingConfig

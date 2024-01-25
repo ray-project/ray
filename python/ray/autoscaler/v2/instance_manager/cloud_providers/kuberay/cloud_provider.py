@@ -1,31 +1,27 @@
 import copy
-import json
 import logging
-import os
-import threading
 import time
-from abc import ABC, ABCMeta, abstractmethod
 from collections import defaultdict
 from dataclasses import dataclass, field
 from typing import Any, Dict, List, Optional, Set, Tuple
 
 import requests
 
+# TODO(rickyx): We should eventually remove these imports
+# when we deprecate the v1 kuberay node provider.
 from ray.autoscaler._private.kuberay.node_provider import (
     KUBERAY_KIND_HEAD,
     KUBERAY_LABEL_KEY_KIND,
     KUBERAY_LABEL_KEY_TYPE,
     KUBERAY_TYPE_HEAD,
+    RAY_HEAD_POD_NAME,
     IKubernetesHttpApiClient,
     _worker_group_index,
     _worker_group_max_replicas,
     _worker_group_replicas,
-    load_k8s_secrets,
     worker_delete_patch,
     worker_replica_patch,
 )
-from ray.autoscaler.tags import NODE_KIND_HEAD, NODE_KIND_WORKER
-from ray.autoscaler.v2.instance_manager.config import IConfigReader
 from ray.autoscaler.v2.instance_manager.node_provider import (
     CloudInstance,
     CloudInstanceId,
@@ -36,10 +32,6 @@ from ray.autoscaler.v2.instance_manager.node_provider import (
 )
 from ray.autoscaler.v2.schema import NodeKind, NodeStatus, NodeType
 
-# TODO(rickyx):
-# Is this the right way to get the pod name?
-RAY_HEAD_POD_NAME = os.getenv("RAY_HEAD_POD_NAME")
-
 logger = logging.getLogger(__name__)
 
 
@@ -48,9 +40,12 @@ class ScaleRequest:
     """Stores desired scale computed by the autoscaler.
 
     Attributes:
-        desired_num_workers: Map of worker NodeType to desired number of workers of
-            that type.
-        workers_to_delete: List of ids of nodes that should be removed.
+        desired_num_workers: The desired number of workers for each node type.
+        workers_to_delete: The workers to delete for each node type.
+        worker_groups_to_clear_delete: The worker groups to clear the workersToDelete
+            field.
+        worker_groups_with_pending_deletes: The worker groups that still have workers
+            to be deleted.
     """
 
     desired_num_workers: Dict[NodeType, int] = field(default_factory=dict)
@@ -68,12 +63,19 @@ class KuberayProvider(ICloudInstanceProvider):
         namespace: str,
         k8s_api_client: IKubernetesHttpApiClient,
     ):
+        """
+        Args:
+            cluster_name: The name of the RayCluster resource.
+            namespace: The namespace of the RayCluster resource.
+            k8s_api_client: The client to the Kuberay API server.
+        """
         self._cluster_name = cluster_name
         self._namespace = namespace
-        self._requests = set()
 
         self._k8s_api_client = k8s_api_client
 
+        # Below are states that are cached locally.
+        self._requests = set()
         self._launch_errors_queue = []
         self._terminate_errors_queue = []
 
@@ -82,8 +84,15 @@ class KuberayProvider(ICloudInstanceProvider):
         self._cached_instances: Dict[CloudInstanceId, CloudInstance]
 
     def get_non_terminated(self) -> Dict[CloudInstanceId, CloudInstance]:
+        """Returns the non-terminated instances in the cluster."""
         self._sync_with_api_server()
-        return copy.deepcopy(self._cached_instances)
+        return copy.deepcopy(
+            {
+                id: instance
+                for id, instance in self._cached_instances.items()
+                if instance.status != NodeStatus.TERMINATED
+            }
+        )
 
     def terminate(self, ids: List[CloudInstanceId], request_id: str) -> None:
         """Terminates the specified instances."""
