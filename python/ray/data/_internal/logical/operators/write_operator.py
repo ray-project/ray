@@ -14,17 +14,18 @@ class Write(AbstractMap):
         self,
         input_op: LogicalOperator,
         datasink_or_legacy_datasource: Union[Datasink, Datasource],
+        num_rows_per_write: Optional[int] = None,
         ray_remote_args: Optional[Dict[str, Any]] = None,
         **write_args,
     ):
         super().__init__(
             "Write",
             input_op,
+            min_rows_per_block=num_rows_per_write,
             ray_remote_args=ray_remote_args,
         )
         self._datasink_or_legacy_datasource = datasink_or_legacy_datasource
         self._write_args = write_args
         # Always use task to write.
         self._compute = TaskPoolStrategy()
-        # Take the input blocks unchanged while writing.
-        self._min_rows_per_block = float("inf")
+        self._num_rows_per_write = num_rows_per_write

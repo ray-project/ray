@@ -4,6 +4,7 @@ from typing import TYPE_CHECKING, Any, Dict, Iterable, List, Optional
 
 from ray._private.utils import _add_creatable_buckets_param_if_s3_uri
 from ray.data._internal.dataset_logger import DatasetLogger
+from ray.data._internal.delegating_block_builder import DelegatingBlockBuilder
 from ray.data._internal.execution.interfaces import TaskContext
 from ray.data._internal.util import _is_local_scheme, call_with_retry
 from ray.data.block import Block, BlockAccessor
@@ -39,6 +40,7 @@ class _FileDatasink(Datasink):
         block_path_provider: Optional[BlockWritePathProvider] = None,
         dataset_uuid: Optional[str] = None,
         file_format: Optional[str] = None,
+        num_rows_per_file: Optional[int] = None,
     ):
         """Initialize this datasink.
 
@@ -54,6 +56,8 @@ class _FileDatasink(Datasink):
                 included in the filename.
             file_format: The file extension. If specified, files are written with this
                 extension.
+            num_rows_per_block: The maximum number of rows to write per file. If
+                ``None``, write a system-chosen number of rows per file.
         """
         if open_stream_args is None:
             open_stream_args = {}
@@ -108,26 +112,17 @@ class _FileDatasink(Datasink):
         blocks: Iterable[Block],
         ctx: TaskContext,
     ) -> Any:
-        num_rows_written = 0
-
-        block_index = 0
+        builder = DelegatingBlockBuilder()
         for block in blocks:
-            block = BlockAccessor.for_block(block)
-            if block.num_rows() == 0:
-                continue
+            builder.add_block(block)
+        block = builder.build()
+        block_accessor = BlockAccessor.for_block(block)
 
-            self.write_block(block, block_index, ctx)
-
-            num_rows_written += block.num_rows()
-            block_index += 1
-
-        if num_rows_written == 0:
-            logger.get_logger().warning(
-                f"Skipped writing empty dataset with UUID {self.dataset_uuid} at "
-                f"{self.path}.",
-            )
+        if block_accessor.num_rows() == 0:
+            logger.get_logger().warning(f"Skipped writing empty block to {self.path}")
             return "skip"
 
+        self.write_block(block, 0, ctx)
         # TODO: decide if we want to return richer object when the task
         # succeeds.
         return "ok"
