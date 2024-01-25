@@ -1,7 +1,7 @@
 (serve-text-classification-tutorial)=
 
-# Serving a Distilbert Model
-This example builds an IMDB review classification application with Ray Serve.
+# Serve a Text Classification Model
+This example uses a DistilBERT model to build an IMDB review classification application with Ray Serve.
 
 To run this example, install the following:
 
@@ -18,10 +18,10 @@ Use the following Serve code:
 :end-before: __example_code_end__
 ```
 
-Use `serve run distilbert_app:entrypoint` to start the serve application.
+Use `serve run distilbert_app:entrypoint` to start the Serve application.
 
 :::{note}
-The autoscaling config sets `min_replicas` to 0, which means the deployment starts with no `ObjectDetection` replicas. These replicas spawn only when a request arrives. When no requests arrive after a certain period, Serve downscales `ObjectDetection` back to 0 replica to save GPU resources.
+The autoscaling config sets `min_replicas` to 0, which means the deployment starts with no `ObjectDetection` replicas. These replicas spawn only when a request arrives. When no requests arrive after a certain period of time, Serve downscales `ObjectDetection` back to 0 replica to save GPU resources.
 :::
 
 You should see the following messages in the logs:
@@ -43,7 +43,7 @@ input = "%20".join(prompt.split(" "))
 resp = requests.get(f"http://127.0.0.1:8000/classify?sentence={prompt}")
 print(resp.status_code, resp.json())
 ```
-The output of the client code is the response status code, the label (positive in this example), and the label's score.
+The output of the client code is the response status code, the label, which is positive in this example, and the label's score.
 ```text
 200 [{'label': 'LABEL_1', 'score': 0.9994940757751465}]
 ```
