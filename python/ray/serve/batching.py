@@ -2,6 +2,7 @@ import asyncio
 import io
 import logging
 import time
+from collections import deque
 from dataclasses import dataclass
 from functools import wraps
 from inspect import isasyncgenfunction, iscoroutinefunction
@@ -189,26 +190,31 @@ class _BatchQueue:
         FINISHED_TOKEN = None
 
         try:
-            futures = initial_futures
+            futures = deque(initial_futures)
+            assert len(futures) == input_batch_length
+
             async for results in func_generator:
                 self._validate_results(results, input_batch_length)
-                next_futures = []
-                for result, future in zip(results, futures):
+                for idx in range(input_batch_length):
+                    result, future = results[idx], futures[0]
+
                     if future is FINISHED_TOKEN:
                         # This caller has already terminated.
-                        next_futures.append(FINISHED_TOKEN)
+                        futures.append(FINISHED_TOKEN)
                     elif result in USER_CODE_STREAMING_SENTINELS:
                         # User's code returned sentinel. No values left
                         # for caller. Terminate iteration for caller.
                         _set_exception_if_not_done(future, StopAsyncIteration)
-                        next_futures.append(FINISHED_TOKEN)
+                        futures.append(FINISHED_TOKEN)
                     else:
                         next_future = get_or_create_event_loop().create_future()
                         _set_result_if_not_done(
                             future, _GeneratorResult(result, next_future)
                         )
-                        next_futures.append(next_future)
-                futures = next_futures
+                        futures.append(next_future)
+
+                    # Remove processed future.
+                    futures.popleft()
 
             for future in futures:
                 if future is not FINISHED_TOKEN:
