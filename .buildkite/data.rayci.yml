@@ -101,7 +101,7 @@ steps:
         --build-name datatfxbslbuild
         --test-env RAY_DATA_USE_STREAMING_EXECUTOR=1
         --only-tags tfxbsl
-    depends_on: 
+    depends_on: datatfxbslbuild
 
   - label: ":database: data: doc tests"
     tags: 
