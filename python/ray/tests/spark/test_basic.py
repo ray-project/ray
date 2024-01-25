@@ -118,6 +118,7 @@ class RayOnSparkCPUClusterTestBase(ABC):
                 num_task_slots=num_ray_task_slots,
                 physical_mem_bytes=_RAY_ON_SPARK_WORKER_PHYSICAL_MEMORY_BYTES,
                 shared_mem_bytes=_RAY_ON_SPARK_WORKER_SHARED_MEMORY_BYTES,
+                configured_heap_memory_bytes=None,
                 configured_object_store_bytes=None,
             )
             with _setup_ray_cluster(
@@ -242,6 +243,7 @@ class RayOnSparkCPUClusterTestBase(ABC):
                 num_task_slots=num_ray_task_slots,
                 physical_mem_bytes=_RAY_ON_SPARK_WORKER_PHYSICAL_MEMORY_BYTES,
                 shared_mem_bytes=_RAY_ON_SPARK_WORKER_SHARED_MEMORY_BYTES,
+                configured_heap_memory_bytes=None,
                 configured_object_store_bytes=None,
             )
 
@@ -326,7 +328,6 @@ class TestSparkLocalCluster:
     def test_basic(self):
         local_addr, remote_addr = setup_ray_cluster(
             max_worker_nodes=2,
-            num_cpus_worker_node=1,
             head_node_options={"include_dashboard": False},
             collect_log_to_path="/tmp/ray_log_collect",
         )
@@ -385,7 +386,6 @@ class TestSparkLocalCluster:
                         setup_global_ray_cluster(
                             max_worker_nodes=1,
                             min_worker_nodes=(0 if autoscale else 1),
-                            num_cpus_worker_node=1,
                         )
                 except BaseException:
                     # For debugging testing failure.

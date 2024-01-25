@@ -1289,14 +1289,18 @@ def setup_ray_cluster(
             and Ray cluster is launched with fixed number "max_worker_nodes" of
             Ray worker nodes, otherwise autoscaling is enabled.
         num_cpus_worker_node: Number of cpus available to per-ray worker node, if not
-            provided, use spark application configuration 'spark.task.cpus' instead.
+            provided, if spark stage scheduling is supported, 'num_cpus_head_node'
+            value equals to number of cpu cores per spark worker node, otherwise
+            it uses spark application configuration 'spark.task.cpus' instead.
             **Limitation** Only spark version >= 3.4 or Databricks Runtime 12.x
             supports setting this argument.
         num_cpus_head_node: Number of cpus available to Ray head node, if not provide,
             use 0 instead. Number 0 means tasks requiring CPU resources are not
             scheduled to Ray head node.
         num_gpus_worker_node: Number of gpus available to per-ray worker node, if not
-            provided, use spark application configuration
+            provided, if spark stage scheduling is supported, 'num_gpus_worker_node'
+            value equals to number of GPUs per spark worker node, otherwise
+            it uses spark application configuration
             'spark.task.resource.gpu.amount' instead.
             This argument is only available on spark cluster that is configured with
             'gpu' resources.
