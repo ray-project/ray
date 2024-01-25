@@ -1,4 +1,12 @@
-{% extends "!pydata_sphinx_theme/layout.html" %} {% block body %}
+{% extends "!layout.html" %}
+
+<!-- prettier-ignore -->
+{%- block extrahead -%}
+{% include 'extrahead.html' %}
+{{ super() }}
+{% endblock %}
+
+{% block body %}
 <title>Welcome to Ray!</title>
 
 <div class="container remove-mobile">
