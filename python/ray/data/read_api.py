@@ -1577,7 +1577,7 @@ def read_tfrecords(
     except ModuleNotFoundError:
         if platform.processor() == "arm":
             logger.warning(
-                "This function depends on tfx-bsl which is currently not supported"
+                "The fast strategy of this function depends on tfx-bsl, which is currently not supported"
                 " on devices with Apple silicon (e.g. M1) and requires an"
                 " environment with x86 CPU architecture."
             )
@@ -1587,7 +1587,7 @@ def read_tfrecords(
                 " tfx-bsl package with pip install tfx_bsl --no-dependencies`."
             )
         logger.info(
-            "Falling back to slower strategy for reading tf.records. This"
+            "Falling back to slower strategy for reading tf.records. This "
             "reading strategy should be avoided when reading large datasets."
         )
 
