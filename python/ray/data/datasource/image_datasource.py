@@ -17,7 +17,7 @@ if TYPE_CHECKING:
     import pyarrow
 
 
-logger = logging.getLogger('ray')
+logger = logging.getLogger(__name__)
 
 # The default size multiplier for reading image data source.
 # This essentially is using image on-disk file size to estimate
