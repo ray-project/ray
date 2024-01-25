@@ -106,8 +106,8 @@ class DownstreamMemoryInfo:
     object_store_memory: float
 
 
-class RefBundleDeque:
-    """Thread-safe wrapper around collections.deque that stores current stats."""
+class OpBufferQueue:
+    """A FIFO queue to buffer RefBundles between upstream and downstream operators."""
 
     def __init__(self):
         self._memory_usage = 0
@@ -130,7 +130,7 @@ class RefBundleDeque:
     def __len__(self):
         return self.num_blocks
 
-    def has_next(self, output_split_idx: Optional[int]=None) -> bool:
+    def has_next(self, output_split_idx: Optional[int] = None) -> bool:
         if output_split_idx is None:
             return len(self._queue) > 0
         else:
@@ -168,6 +168,13 @@ class RefBundleDeque:
                 self._num_per_split[ret.output_split_idx] -= 1
         return ret
 
+    def clear(self):
+        with self._lock:
+            self._queue.clear()
+            self._memory_usage = 0
+            self._num_blocks = 0
+            self._num_per_split.clear()
+
 
 class OpState:
     """The execution state tracked for each PhysicalOperator.
@@ -179,17 +186,17 @@ class OpState:
     operator queues to be shared across threads.
     """
 
-    def __init__(self, op: PhysicalOperator, inqueues: List[RefBundleDeque]):
+    def __init__(self, op: PhysicalOperator, inqueues: List[OpBufferQueue]):
         # Each inqueue is connected to another operator's outqueue.
         assert len(inqueues) == len(op.input_dependencies), (op, inqueues)
-        self.inqueues: List[RefBundleDeque] = inqueues
+        self.inqueues: List[OpBufferQueue] = inqueues
         # The outqueue is connected to another operator's inqueue (they physically
         # share the same Python list reference).
         #
         # Note: this queue is also accessed concurrently from the consumer thread.
         # (in addition to the streaming executor thread). Hence, it must be a
         # thread-safe type such as `deque`.
-        self.outqueue: RefBundleDeque = RefBundleDeque()
+        self.outqueue: OpBufferQueue = OpBufferQueue()
         self.op = op
         self.progress_bar = None
         self.num_completed_tasks = 0
