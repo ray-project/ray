@@ -2365,6 +2365,11 @@ def from_huggingface(
     or a :class:`~ray.data.Dataset` from a `Hugging Face Datasets IterableDataset <https://huggingface.co/docs/datasets/package_reference/main_classes#datasets.IterableDataset/>`_.
     For an `IterableDataset`, we use a streaming implementation to read data.
 
+    If the dataset is a public Hugging Face Dataset that is hosted on the Hugging Face Hub and
+    no transformations have been applied, then the `hosted parquet files <https://huggingface.co/docs/datasets-server/parquet#list-parquet-files>`_
+    will be passed :meth:`~ray.data.read_parquet` to to allow for a distributed read. All
+    other cases will be done with a single node read.
+
     Example:
 
         ..
@@ -2403,6 +2408,14 @@ def from_huggingface(
             `DatasetDict <https://huggingface.co/docs/datasets/package_reference/main_classes#datasets.DatasetDict/>`_
             and `IterableDatasetDict <https://huggingface.co/docs/datasets/package_reference/main_classes#datasets.IterableDatasetDict/>`_
             are not supported.
+        parallelism: The amount of parallelism to use for the dataset if applicable (e.g.
+            if the dataset is a public Hugging Face Dataset without transforms applied).
+            Defaults to -1, which automatically determines the optimal parallelism for your
+            configuration. You should not need to manually set this value in most cases.
+            For details on how the parallelism is automatically determined and guidance
+            on how to tune it, see :ref:`Tuning read parallelism
+            <read_parallelism>`. Parallelism is upper bounded by the total number of
+            records in all the parquet files.
 
     Returns:
         A :class:`~ray.data.Dataset` holding rows from the `Hugging Face Datasets Dataset`_.
@@ -2417,6 +2430,8 @@ def from_huggingface(
         file_urls = HuggingFaceDatasource.list_parquet_urls_from_dataset(dataset)
         if len(file_urls) > 0:
             # If file urls are returned, the parquet files are available via API
+            # TODO: Add support for reading from http filesystem in FileBasedDatasource
+            # GH Issue: https://github.com/ray-project/ray/issues/42706
             import fsspec.implementations.http
 
             http = fsspec.implementations.http.HTTPFileSystem()

@@ -1334,8 +1334,9 @@ def test_from_huggingface_e2e(ray_start_regular_shared, enable_optimizer):
         # needed for checking operator usage below.
         assert len(ds.take_all()) > 0
         # Check that metadata fetch is included in stats;
-        # the underlying implementation uses the `FromArrow` operator.
-        # assert "FromArrow" in ds.stats()
+        # the underlying implementation uses the `ReadParquet` operator
+        # as this is an un-transformed public dataset.
+        assert "ReadParquet" in ds.stats()
         assert ds._plan._logical_plan.dag.name == "ReadParquet"
         # use sort by 'text' to match order of rows
         expected_table = data[ds_key].data.table.sort_by("text")
@@ -1344,6 +1345,26 @@ def test_from_huggingface_e2e(ray_start_regular_shared, enable_optimizer):
         ).sort_by("text")
         expected_table.equals(output_full_table)
         _check_usage_record(["ReadParquet"])
+
+    # test transformed public dataset for fallback behavior
+    base_hf_dataset = data["train"]
+    hf_dataset_split = base_hf_dataset.train_test_split(test_size=0.2)
+    ray_dataset_split_train = ray.data.from_huggingface(hf_dataset_split["train"])
+    assert isinstance(ray_dataset_split_train, ray.data.Dataset)
+    # `ds.take_all()` triggers execution with new backend, which is
+    # needed for checking operator usage below.
+    assert len(ray_dataset_split_train.take_all()) > 0
+    # Check that metadata fetch is included in stats;
+    # the underlying implementation uses the `FromArrow` operator.
+    assert "FromArrow" in ray_dataset_split_train.stats()
+    assert ray_dataset_split_train._plan._logical_plan.dag.name == "FromArrow"
+    # use sort by 'text' to match order of rows
+    expected_table = hf_dataset_split["train"].data.table.sort_by("text")
+    output_full_table = pyarrow.concat_tables(
+        [ray.get(tbl) for tbl in ray_dataset_split_train.to_arrow_refs()]
+    ).sort_by("text")
+    expected_table.equals(output_full_table)
+    _check_usage_record(["FromArrow"])
 
 
 def test_from_tf_e2e(ray_start_regular_shared, enable_optimizer):

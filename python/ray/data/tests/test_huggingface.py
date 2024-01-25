@@ -7,10 +7,9 @@ import ray
 from ray.tests.conftest import *  # noqa
 
 
-def test_from_huggingface(ray_start_regular_shared):
-    data = datasets.load_dataset(
-        "tweet_eval", "emotion", download_mode="force_redownload"
-    )
+@pytest.mark.parametrize("num_par", [1, 4])
+def test_from_huggingface(ray_start_regular_shared, num_par):
+    data = datasets.load_dataset("tweet_eval", "emotion")
 
     # Check that DatasetDict is not directly supported.
     assert isinstance(data, datasets.DatasetDict)
@@ -20,26 +19,25 @@ def test_from_huggingface(ray_start_regular_shared):
     ):
         ray.data.from_huggingface(data)
 
-    for num_par in [1, 4]:
-        ray_datasets = {
-            "train": ray.data.from_huggingface(data["train"], parallelism=num_par),
-            "validation": ray.data.from_huggingface(
-                data["validation"], parallelism=num_par
-            ),
-            "test": ray.data.from_huggingface(data["test"], parallelism=num_par),
-        }
+    ray_datasets = {
+        "train": ray.data.from_huggingface(data["train"], parallelism=num_par),
+        "validation": ray.data.from_huggingface(
+            data["validation"], parallelism=num_par
+        ),
+        "test": ray.data.from_huggingface(data["test"], parallelism=num_par),
+    }
 
-        assert isinstance(ray_datasets["train"], ray.data.Dataset)
+    assert isinstance(ray_datasets["train"], ray.data.Dataset)
 
-        # use sort by 'text' to match order of rows
-        expected_table = data["train"].data.table.sort_by("text")
-        output_full_table = pyarrow.concat_tables(
-            [ray.get(tbl) for tbl in ray_datasets["train"].to_arrow_refs()]
-        ).sort_by("text")
+    # use sort by 'text' to match order of rows
+    expected_table = data["train"].data.table.sort_by("text")
+    output_full_table = pyarrow.concat_tables(
+        [ray.get(tbl) for tbl in ray_datasets["train"].to_arrow_refs()]
+    ).sort_by("text")
 
-        assert expected_table.equals(output_full_table)
-        assert ray_datasets["train"].count() == data["train"].num_rows
-        assert ray_datasets["test"].count() == data["test"].num_rows
+    assert expected_table.equals(output_full_table)
+    assert ray_datasets["train"].count() == data["train"].num_rows
+    assert ray_datasets["test"].count() == data["test"].num_rows
 
     # Test reading in a split Hugging Face dataset yields correct individual datasets
     base_hf_dataset = data["train"]

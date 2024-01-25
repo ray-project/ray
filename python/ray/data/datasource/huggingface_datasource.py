@@ -76,6 +76,9 @@ class HuggingFaceDatasource(Datasource):
     def list_parquet_urls_from_dataset(
         cls, dataset: Union["datasets.Dataset", "datasets.IterableDataset"]
     ) -> Dataset:
+        """Return list of Hugging Face hosted parquet file URLs if they
+        exist for the data (i.e. if the dataset is a public dataset that
+        has not been transformed) else return an empty list."""
         # We can use the dataset name, config name, and split name to load
         # public hugging face datasets from the Hugging Face Hub. More info
         # here: https://huggingface.co/docs/datasets-server/parquet
