@@ -1,10 +1,10 @@
-import tifffile
 import io
 import logging
 import time
 from typing import TYPE_CHECKING, Iterator, List, Optional, Tuple, Union
 
 import numpy as np
+import tifffile
 
 from ray.data._internal.delegating_block_builder import DelegatingBlockBuilder
 from ray.data._internal.util import _check_import
@@ -47,8 +47,10 @@ class ImageDatasource(FileBasedDatasource):
         super().__init__(paths, **file_based_datasource_kwargs)
 
         _check_import(self, module="PIL", package="Pillow")
-        _check_import(self, module="tifffile", package="tifffile")# imageio supports both tiff and Pillow.
-        
+        _check_import(
+            self, module="tifffile", package="tifffile"
+        )  # imageio supports both tiff and Pillow.
+
         if size is not None and len(size) != 2:
             raise ValueError(
                 "Expected `size` to contain two integers for height and width, "
@@ -72,6 +74,7 @@ class ImageDatasource(FileBasedDatasource):
 
     def _read_stream(self, f: "pyarrow.NativeFile", path: str) -> Iterator[Block]:
         from PIL import Image, UnidentifiedImageError
+
         print(path)
         data = f.readall()
         if path.lower().endswith((".tif", ".tiff")):
@@ -80,7 +83,9 @@ class ImageDatasource(FileBasedDatasource):
             try:
                 image = Image.open(io.BytesIO(data))
             except UnidentifiedImageError as e:
-                raise ValueError(f"PIL couldn't load image file at path '{path}'.") from e
+                raise ValueError(
+                    f"PIL couldn't load image file at path '{path}'."
+                ) from e
 
             if self.size is not None:
                 height, width = self.size
@@ -95,7 +100,6 @@ class ImageDatasource(FileBasedDatasource):
         block = builder.build()
 
         yield block
-
 
     def _rows_per_file(self):
         return 1
