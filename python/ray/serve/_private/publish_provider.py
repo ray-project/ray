@@ -54,7 +54,6 @@ class AnyscalePublishProvider(PublishProvider):
         base_image: Optional[str] = None,
     ):
         service_config = {
-            "cloud": "anyscale_v2_default_cloud",
             "name": name,
             "ray_serve_config": config,
         }
