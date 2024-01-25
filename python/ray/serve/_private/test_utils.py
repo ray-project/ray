@@ -1,4 +1,5 @@
 import asyncio
+import threading
 import time
 from typing import Any, Dict
 
@@ -22,6 +23,8 @@ STORAGE_ACTOR_NAME = "storage"
 
 class MockTimer(TimerBase):
     def __init__(self, start_time=None):
+        self._lock = threading.Lock()
+
         if start_time is None:
             start_time = time.time()
         self._curr = start_time
@@ -30,10 +33,12 @@ class MockTimer(TimerBase):
         return self._curr
 
     def advance(self, by):
-        self._curr += by
+        with self._lock:
+            self._curr += by
 
     def realistic_sleep(self, amt):
-        self._curr += amt + 0.001
+        with self._lock:
+            self._curr += amt + 0.001
 
 
 class MockKVStore:
