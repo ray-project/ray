@@ -2408,7 +2408,7 @@ def from_huggingface(
             `DatasetDict <https://huggingface.co/docs/datasets/package_reference/main_classes#datasets.DatasetDict/>`_
             and `IterableDatasetDict <https://huggingface.co/docs/datasets/package_reference/main_classes#datasets.IterableDatasetDict/>`_
             are not supported.
-        parallelism: The amount of parallelism to use for the dataset if applicable (e.g.
+        parallelism: The amount of parallelism to use for the dataset if applicable (i.e.
             if the dataset is a public Hugging Face Dataset without transforms applied).
             Defaults to -1, which automatically determines the optimal parallelism for your
             configuration. You should not need to manually set this value in most cases.
