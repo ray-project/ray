@@ -2367,7 +2367,7 @@ def from_huggingface(
 
     If the dataset is a public Hugging Face Dataset that is hosted on the Hugging Face Hub and
     no transformations have been applied, then the `hosted parquet files <https://huggingface.co/docs/datasets-server/parquet#list-parquet-files>`_
-    will be passed :meth:`~ray.data.read_parquet` to to allow for a distributed read. All
+    will be passed to :meth:`~ray.data.read_parquet` to perform a distributed read. All
     other cases will be done with a single node read.
 
     Example:
