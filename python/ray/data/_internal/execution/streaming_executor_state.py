@@ -112,7 +112,8 @@ class RefBundleDeque:
     def __init__(self):
         self._memory_usage = 0
         self._num_blocks = 0
-        self._queues = defaultdict(lambda: deque())
+        self._queue = deque()
+        self._num_per_split = defaultdict(int)
         self._lock = threading.Lock()
         super().__init__()
 
@@ -130,22 +131,42 @@ class RefBundleDeque:
         return self.num_blocks
 
     def has_next(self, output_split_idx: Optional[int]=None) -> bool:
-        with self._lock:
-            return len(self._queues[output_split_idx]) > 0
+        if output_split_idx is None:
+            return len(self._queue) > 0
+        else:
+            with self._lock:
+                return self._num_per_split[output_split_idx] > 0
 
     def append(self, ref: RefBundle):
+        self._queue.append(ref)
         with self._lock:
             self._memory_usage += ref.size_bytes()
             self._num_blocks += len(ref.blocks)
-            idx = ref.output_split_idx
-            self._queues[idx].append(ref)
+            if ref.output_split_idx is not None:
+                self._num_per_split[ref.output_split_idx] += 1
 
-    def pop(self, output_split_idx=None) -> RefBundle:
-        ref = self._queues[output_split_idx].popleft()
+    def pop(self, output_split_idx=None) -> Optional[RefBundle]:
+        ret = None
+        if output_split_idx is None:
+            try:
+                ret = self._queue.popleft()
+            except IndexError:
+                pass
+        else:
+            for i in range(len(self._queue)):
+                ref = self._queue[i]
+                if ref.output_split_idx == output_split_idx:
+                    ret = ref
+                    del self._queue[i]
+                    break
+        if ret is None:
+            return None
         with self._lock:
-            self._memory_usage -= ref.size_bytes()
-            self._num_blocks -= len(ref.blocks)
-        return ref
+            self._memory_usage -= ret.size_bytes()
+            self._num_blocks -= len(ret.blocks)
+            if ret.output_split_idx is not None:
+                self._num_per_split[ret.output_split_idx] -= 1
+        return ret
 
 
 class OpState:
@@ -250,8 +271,9 @@ class OpState:
     def dispatch_next_task(self) -> None:
         """Move a bundle from the operator inqueue to the operator itself."""
         for i, inqueue in enumerate(self.inqueues):
-            if inqueue:
-                self.op.add_input(inqueue.pop(), input_index=i)
+            ref = inqueue.pop()
+            if ref is not None:
+                self.op.add_input(ref, input_index=i)
                 return
         assert False, "Nothing to dispatch"
 
@@ -271,10 +293,9 @@ class OpState:
                 raise self._exception
             elif self._finished and not self.outqueue.has_next(output_split_idx):
                 raise StopIteration()
-            try:
-                return self.outqueue.pop(output_split_idx)
-            except IndexError:
-                pass
+            ref = self.outqueue.pop(output_split_idx)
+            if ref is not None:
+                return ref
             time.sleep(0.01)
 
     def inqueue_memory_usage(self) -> int:
