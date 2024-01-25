@@ -12,7 +12,6 @@ from typing import (
     Dict,
     Generic,
     Iterable,
-    Iterator,
     List,
     Literal,
     Mapping,
@@ -30,7 +29,7 @@ from ray._private.thirdparty.tabulate.tabulate import tabulate
 from ray._private.usage import usage_lib
 from ray.air.util.tensor_extensions.utils import _create_possibly_ragged_ndarray
 from ray.data._internal.block_list import BlockList
-from ray.data._internal.compute import ComputeStrategy, TaskPoolStrategy
+from ray.data._internal.compute import ComputeStrategy
 from ray.data._internal.delegating_block_builder import DelegatingBlockBuilder
 from ray.data._internal.equalize import _equalize
 from ray.data._internal.execution.interfaces import RefBundle
@@ -59,25 +58,10 @@ from ray.data._internal.logical.operators.one_to_one_operator import Limit
 from ray.data._internal.logical.operators.write_operator import Write
 from ray.data._internal.logical.optimizers import LogicalPlan
 from ray.data._internal.pandas_block import PandasBlockSchema
-from ray.data._internal.plan import ExecutionPlan, OneToOneStage
-from ray.data._internal.planner.plan_udf_map_op import (
-    generate_filter_fn,
-    generate_flat_map_fn,
-    generate_map_batches_fn,
-    generate_map_rows_fn,
-)
-from ray.data._internal.planner.plan_write_op import generate_write_fn
+from ray.data._internal.plan import ExecutionPlan
 from ray.data._internal.remote_fn import cached_remote_fn
 from ray.data._internal.sort import SortKey
 from ray.data._internal.split import _get_num_rows, _split_at_indices
-from ray.data._internal.stage_impl import (
-    LimitStage,
-    RandomizeBlocksStage,
-    RandomShuffleStage,
-    RepartitionStage,
-    SortStage,
-    ZipStage,
-)
 from ray.data._internal.stats import DatasetStats, DatasetStatsSummary, StatsManager
 from ray.data._internal.util import (
     AllToAllAPI,
@@ -358,30 +342,13 @@ class Dataset:
             concurrency=concurrency,
         )
 
-        transform_fn = generate_map_rows_fn(
-            DataContext.get_current().target_max_block_size
-        )
-
         if num_cpus is not None:
             ray_remote_args["num_cpus"] = num_cpus
 
         if num_gpus is not None:
             ray_remote_args["num_gpus"] = num_gpus
 
-        plan = self._plan.with_stage(
-            OneToOneStage(
-                "Map",
-                transform_fn,
-                compute,
-                ray_remote_args,
-                fn=fn,
-                fn_args=fn_args,
-                fn_kwargs=fn_kwargs,
-                fn_constructor_args=fn_constructor_args,
-                fn_constructor_kwargs=fn_constructor_kwargs,
-            )
-        )
-
+        plan = self._plan.copy()
         logical_plan = self._logical_plan
         if logical_plan is not None:
             map_op = MapRows(
@@ -619,36 +586,7 @@ class Dataset:
                 f"{batch_format}"
             )
 
-        ctx = DataContext.get_current()
-        transform_fn = generate_map_batches_fn(
-            target_max_block_size=ctx.target_max_block_size,
-            batch_size=batch_size,
-            batch_format=batch_format,
-            zero_copy_batch=zero_copy_batch,
-        )
-
-        # TODO(chengsu): pass function name to MapBatches logical operator.
-        if hasattr(fn, "__self__") and isinstance(
-            fn.__self__, ray.data.preprocessor.Preprocessor
-        ):
-            stage_name = fn.__self__.__class__.__name__
-        else:
-            stage_name = f'MapBatches({getattr(fn, "__name__", type(fn))})'
-
-        stage = OneToOneStage(
-            stage_name,
-            transform_fn,
-            compute,
-            ray_remote_args,
-            # TODO(Clark): Add a strict cap here.
-            min_rows_per_block=min_rows_per_block,
-            fn=fn,
-            fn_args=fn_args,
-            fn_kwargs=fn_kwargs,
-            fn_constructor_args=fn_constructor_args,
-            fn_constructor_kwargs=fn_constructor_kwargs,
-        )
-        plan = self._plan.with_stage(stage)
+        plan = self._plan.copy()
 
         logical_plan = self._logical_plan
         if logical_plan is not None:
@@ -952,29 +890,13 @@ class Dataset:
             concurrency=concurrency,
         )
 
-        transform_fn = generate_flat_map_fn(
-            DataContext.get_current().target_max_block_size
-        )
-
         if num_cpus is not None:
             ray_remote_args["num_cpus"] = num_cpus
 
         if num_gpus is not None:
             ray_remote_args["num_gpus"] = num_gpus
 
-        plan = self._plan.with_stage(
-            OneToOneStage(
-                "FlatMap",
-                transform_fn,
-                compute,
-                ray_remote_args,
-                fn=fn,
-                fn_args=fn_args,
-                fn_kwargs=fn_kwargs,
-                fn_constructor_args=fn_constructor_args,
-                fn_constructor_kwargs=fn_constructor_kwargs,
-            )
-        )
+        plan = self._plan.copy()
 
         logical_plan = self._logical_plan
         if logical_plan is not None:
@@ -1037,13 +959,7 @@ class Dataset:
             concurrency=concurrency,
         )
 
-        transform_fn = generate_filter_fn(
-            DataContext.get_current().target_max_block_size
-        )
-
-        plan = self._plan.with_stage(
-            OneToOneStage("Filter", transform_fn, compute, ray_remote_args, fn=fn)
-        )
+        plan = self._plan.copy()
 
         logical_plan = self._logical_plan
         if logical_plan is not None:
@@ -1105,8 +1021,7 @@ class Dataset:
         Returns:
             The repartitioned :class:`Dataset`.
         """  # noqa: E501
-
-        plan = self._plan.with_stage(RepartitionStage(num_blocks, shuffle))
+        plan = self._plan.copy()
 
         logical_plan = self._logical_plan
         if logical_plan is not None:
@@ -1159,10 +1074,7 @@ class Dataset:
                 "repartition() instead.",  # noqa: E501
                 DeprecationWarning,
             )
-
-        plan = self._plan.with_stage(
-            RandomShuffleStage(seed, num_blocks, ray_remote_args)
-        )
+        plan = self._plan.copy()
 
         logical_plan = self._logical_plan
         if logical_plan is not None:
@@ -1202,7 +1114,7 @@ class Dataset:
             The block-shuffled :class:`Dataset`.
         """  # noqa: E501
 
-        plan = self._plan.with_stage(RandomizeBlocksStage(seed))
+        plan = self._plan.copy()
 
         logical_plan = self._logical_plan
         if logical_plan is not None:
@@ -2347,7 +2259,7 @@ class Dataset:
             A new, sorted :class:`Dataset`.
         """
         sort_key = SortKey(key, descending, boundaries)
-        plan = self._plan.with_stage(SortStage(self, sort_key))
+        plan = self._plan.copy()
 
         logical_plan = self._logical_plan
         if logical_plan is not None:
@@ -2390,8 +2302,7 @@ class Dataset:
             concatenated horizontally with the columns of the first dataset,
             with duplicate column names disambiguated with suffixes like ``"_1"``.
         """
-
-        plan = self._plan.with_stage(ZipStage(other))
+        plan = self._plan.copy()
 
         logical_plan = self._logical_plan
         other_logical_plan = other._logical_plan
@@ -2421,7 +2332,7 @@ class Dataset:
         Returns:
             The truncated dataset.
         """
-        plan = self._plan.with_stage(LimitStage(limit))
+        plan = self._plan.copy()
         logical_plan = self._logical_plan
         if logical_plan is not None:
             op = Limit(logical_plan.dag, limit=limit)
@@ -3022,6 +2933,9 @@ class Dataset:
                 /docs/python/generated/pyarrow.fs.FileSystem.html\
                 #pyarrow.fs.FileSystem.open_output_stream>`_, which is used when
                 opening the file to write to.
+            filename_provider: A :class:`~ray.data.datasource.FilenameProvider`
+                implementation. Use this parameter to customize what your filenames
+                look like.
             ray_remote_args: kwargs passed to :meth:`~ray.remote` in the write tasks.
         """  # noqa: E501
         datasink = _ImageDatasink(
@@ -3488,6 +3402,7 @@ class Dataset:
         project_id: str,
         dataset: str,
         max_retry_cnt: int = 10,
+        overwrite_table: Optional[bool] = True,
         ray_remote_args: Dict[str, Any] = None,
     ) -> None:
         """Write the dataset to a BigQuery dataset table.
@@ -3507,6 +3422,7 @@ class Dataset:
                 ds.write_bigquery(
                     project_id="my_project_id",
                     dataset="my_dataset_table",
+                    overwrite_table=True
                 )
 
         Args:
@@ -3514,12 +3430,14 @@ class Dataset:
                 the dataset to read. For more information, see details in
                 `Creating and managing projects <https://cloud.google.com/resource-manager/docs/creating-managing-projects>`.
             dataset: The name of the dataset in the format of ``dataset_id.table_id``.
-                The dataset is created if it doesn't already exist. The table_id is
-                overwritten if it exists.
+                The dataset is created if it doesn't already exist.
             max_retry_cnt: The maximum number of retries that an individual block write
                 is retried due to BigQuery rate limiting errors. This isn't
                 related to Ray fault tolerance retries. The default number of retries
                 is 10.
+            overwrite_table: Whether the write will overwrite the table if it already
+                exists. The default behavior is to overwrite the table.
+                ``overwrite_table=False`` will append to the table if it exists.
             ray_remote_args: Kwargs passed to ray.remote in the write tasks.
         """  # noqa: E501
         if ray_remote_args is None:
@@ -3535,7 +3453,12 @@ class Dataset:
         else:
             ray_remote_args["max_retries"] = 0
 
-        datasink = _BigQueryDatasink(project_id, dataset, max_retry_cnt=max_retry_cnt)
+        datasink = _BigQueryDatasink(
+            project_id=project_id,
+            dataset=dataset,
+            max_retry_cnt=max_retry_cnt,
+            overwrite_table=overwrite_table,
+        )
         self.write_datasink(datasink, ray_remote_args=ray_remote_args)
 
     @Deprecated
@@ -3576,20 +3499,7 @@ class Dataset:
                 soft=False,
             )
 
-        write_fn = generate_write_fn(datasource, **write_args)
-
-        def write_fn_wrapper(blocks: Iterator[Block], ctx, fn) -> Iterator[Block]:
-            return write_fn(blocks, ctx)
-
-        plan = self._plan.with_stage(
-            OneToOneStage(
-                "Write",
-                write_fn_wrapper,
-                TaskPoolStrategy(),
-                ray_remote_args,
-                fn=lambda x: x,
-            )
-        )
+        plan = self._plan.copy()
 
         logical_plan = self._logical_plan
         if logical_plan is not None:
@@ -3645,20 +3555,7 @@ class Dataset:
                 soft=False,
             )
 
-        write_fn = generate_write_fn(datasink)
-
-        def write_fn_wrapper(blocks: Iterator[Block], ctx, fn) -> Iterator[Block]:
-            return write_fn(blocks, ctx)
-
-        plan = self._plan.with_stage(
-            OneToOneStage(
-                "Write",
-                write_fn_wrapper,
-                TaskPoolStrategy(),
-                ray_remote_args,
-                fn=lambda x: x,
-            )
-        )
+        plan = self._plan.copy()
 
         logical_plan = self._logical_plan
         if logical_plan is not None:
