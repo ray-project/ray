@@ -345,15 +345,15 @@ async def test_batch_args_kwargs(mode, use_class):
 async def test_cancellation_after_error(use_class, use_gen):
     """Cancelling a request after it errors should be supported."""
 
-    raise_error = True
+    raise_error = asyncio.Event()
 
     async def unary_implementation(key1, key2):
-        if raise_error:
+        if not raise_error.is_set():
             raise ValueError()
         return [(key1[i], key2[i]) for i in range(len(key1))]
 
     async def streaming_implementation(key1, key2):
-        if raise_error:
+        if not raise_error.is_set():
             raise ValueError()
         yield [(key1[i], key2[i]) for i in range(len(key1))]
 
@@ -406,7 +406,7 @@ async def test_cancellation_after_error(use_class, use_gen):
 
     print("Closed initial batch of requests.")
 
-    raise_error = False
+    raise_error.set()
 
     # Submit requests and check that they still work.
     if use_gen:
