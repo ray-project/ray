@@ -121,18 +121,26 @@ class OpBufferQueue:
 
     @property
     def memory_usage(self) -> int:
+        """The total memory usage of the queue in bytes."""
         with self._lock:
             return self._memory_usage
 
     @property
     def num_blocks(self) -> int:
+        """The total number of blocks in the queue."""
         with self._lock:
             return self._num_blocks
 
     def __len__(self):
-        return self.num_blocks
+        return len(self._queue)
 
     def has_next(self, output_split_idx: Optional[int] = None) -> bool:
+        """Whether next RefBundle is available.
+
+        Args:
+            output_split_idx (int): If specified, only check ref bundles with the
+                given output split.
+        """
         if output_split_idx is None:
             return len(self._queue) > 0
         else:
@@ -140,6 +148,7 @@ class OpBufferQueue:
                 return self._num_per_split[output_split_idx] > 0
 
     def append(self, ref: RefBundle):
+        """Append a RefBundle to the queue."""
         self._queue.append(ref)
         with self._lock:
             self._memory_usage += ref.size_bytes()
@@ -147,7 +156,14 @@ class OpBufferQueue:
             if ref.output_split_idx is not None:
                 self._num_per_split[ref.output_split_idx] += 1
 
-    def pop(self, output_split_idx=None) -> Optional[RefBundle]:
+    def pop(self, output_split_idx: Optional[int] = None) -> Optional[RefBundle]:
+        """Pop a RefBundle from the queue.
+        Args:
+            output_split_idx (int): If specified, only pop a RefBundle
+                with the given output split.
+        Returns:
+            A RefBundle if available, otherwise None.
+        """
         ret = None
         if output_split_idx is None:
             try:
