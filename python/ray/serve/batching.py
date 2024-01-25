@@ -139,7 +139,7 @@ class _BatchQueue:
                 batch.append(self.queue.get_nowait())
             
             # Only clear the put event if the queue is empty. If it's not empty
-            # we can start construcing a new batch immediately in the next loop.
+            # we can start constructing a new batch immediately in the next loop.
             # The code that puts items into the queue runs on the same event loop
             # as this code, so there's no race condition between the time we
             # get objects in the queue (and clear the event) and when objects
