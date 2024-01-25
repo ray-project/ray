@@ -36,12 +36,14 @@ from ray.serve._private.constants import (
     SERVE_LOGGER_NAME,
 )
 from ray.serve._private.long_poll import LongPollClient, LongPollNamespace
-from ray.serve._private.utils import JavaActorHandleProxy, MetricsPusher
+from ray.serve._private.metrics_utils import MetricsPusher
+from ray.serve._private.utils import JavaActorHandleProxy
 from ray.serve.generated.serve_pb2 import RequestMetadata as RequestMetadataProto
 from ray.serve.grpc_util import RayServegRPCContext
 from ray.util import metrics
 
 logger = logging.getLogger(SERVE_LOGGER_NAME)
+PUSH_METRICS_TO_CONTROLLER_TASK_NAME = "push_metrics_to_controller"
 
 
 @dataclass
@@ -999,8 +1001,8 @@ class Router:
             call_in_event_loop=event_loop,
         )
 
-        self.metrics_pusher = None
-        self.autoscaling_enabled = False
+        self.metrics_pusher = MetricsPusher()
+        self.autoscaling_config = None
         self.push_metrics_to_controller = controller_handle.record_handle_metrics.remote
 
     def update_autoscaling_config(self, autoscaling_config):
@@ -1008,8 +1010,6 @@ class Router:
 
         # Start the metrics pusher if autoscaling is enabled.
         if self.autoscaling_config:
-            self.autoscaling_enabled = True
-
             # Optimization for autoscaling cold start time. If there are
             # currently 0 replicas for the deployment, and there is at
             # least one queued query on this router, then immediately
@@ -1022,8 +1022,8 @@ class Router:
                     self._collect_handle_queue_metrics(), time.time()
                 )
 
-            self.metrics_pusher = MetricsPusher()
-            self.metrics_pusher.register_task(
+            self.metrics_pusher.register_or_update_task(
+                PUSH_METRICS_TO_CONTROLLER_TASK_NAME,
                 self._collect_handle_queue_metrics,
                 HANDLE_METRIC_PUSH_INTERVAL_S,
                 self.push_metrics_to_controller,
@@ -1031,7 +1031,6 @@ class Router:
 
             self.metrics_pusher.start()
         else:
-            self.autoscaling_enabled = False
             if self.metrics_pusher:
                 self.metrics_pusher.shutdown()
 
@@ -1058,7 +1057,7 @@ class Router:
         # you need to yield the event loop above this conditional, you
         # will need to remove the check "self.num_queued_queries == 1"
         if (
-            self.autoscaling_enabled
+            self.autoscaling_config
             and len(self._replica_scheduler.curr_replicas) == 0
             and self.num_queued_queries == 1
         ):
