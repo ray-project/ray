@@ -3409,7 +3409,8 @@ class AlgorithmConfig(_Config):
                         "is passed in nor in the default module spec used in "
                         "the algorithm."
                     )
-
+            # TODO (sven): Find a good way to pack module specific parameters from
+            # the algorithms into the `model_config_dict`.
             if module_spec.observation_space is None:
                 module_spec.observation_space = policy_spec.observation_space
             if module_spec.action_space is None:
