@@ -115,7 +115,8 @@ def test_working_dir_applies_for_pip_creation_files(start_cluster, tmp_working_d
     """
     Different from test_working_dir_applies_for_pip_creation, this test uses a file
     in `pip`. This file is read by the driver and hence has no relative path to the
-    more_requirements.txt file, so you need to add a ${RAY_RUNTIME_ENV_CREATE_WORKING_DIR}
+    more_requirements.txt file, so you need to add a
+    ${RAY_RUNTIME_ENV_CREATE_WORKING_DIR} in the referenced path.
     """
     cluster, address = start_cluster
 
@@ -128,8 +129,7 @@ def test_working_dir_applies_for_pip_creation_files(start_cluster, tmp_working_d
     ray.init(
         address, runtime_env={"working_dir": tmp_working_dir, "pip": "requirements.txt"}
     )
-    # Note: {"pip": "requirements.txt"} does not work because the file is directly read
-    # by the driver. If you insist you can
+
     @ray.remote
     def test_import():
         import pip_install_test
