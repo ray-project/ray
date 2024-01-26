@@ -156,7 +156,7 @@ class Test(dict):
         for test_prefix in test_prefixes:
             tests.extend(Test.gen_from_s3(test_prefix))
         return tests
-    
+
     @classmethod
     def filter_tests_by_state(cls, tests: List["Test"], state: TestState):
         """
