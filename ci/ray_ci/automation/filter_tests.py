@@ -16,9 +16,7 @@ def main():
 
     # Process arguments
     test_targets_file_path = None
-    if len(sys.argv) == 2:
-        test_targets_file_path = sys.argv[1]
-    elif len(sys.argv) == 3:
+    if len(sys.argv) == 3:
         test_targets_file_path = sys.argv[1]
         test_state = sys.argv[2]
     else:
