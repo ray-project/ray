@@ -782,7 +782,11 @@ class ServeController:
         if not deployment_time:
             deployment_time = time.time()
 
-        logger.info(f"Received config: {config}")
+        config_str = config.json(exclude_unset=True, indent=4, encoder=str)
+        logger.info(
+            f"Received config:\n{config_str}",
+            extra={"log_to_stderr": False},
+        )
 
         new_config_checkpoint = {}
 
