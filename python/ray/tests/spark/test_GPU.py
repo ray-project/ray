@@ -188,6 +188,7 @@ class RayOnSparkGPUClusterTestBase(RayOnSparkCPUClusterTestBase, ABC):
             max_worker_nodes=1,
             head_node_options={"include_dashboard": False},
         ):
+            ray.init()
             worker_res_list = self.get_ray_worker_resources_list()
             assert worker_res_list[0]["CPU"] == self.num_total_gpus
             assert worker_res_list[0]["GPU"] == self.num_total_cpus
