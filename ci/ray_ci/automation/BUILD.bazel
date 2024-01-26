@@ -28,6 +28,9 @@ py_test(
     name = "test_filter_tests",
     size = "small",
     srcs = ["tests/test_filter_tests.py"],
+    tags = [
+        "team:ci",
+    ]
     deps = [
         "//ci/ray_ci/automation:filter_tests",
     ],
