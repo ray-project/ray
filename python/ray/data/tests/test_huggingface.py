@@ -32,7 +32,7 @@ def hfds_assert_equals(hfds: datasets.Dataset, ds: Dataset):
 
 @pytest.mark.parametrize("num_par", [1, 4])
 def test_from_huggingface(ray_start_regular_shared, num_par):
-    data = datasets.load_dataset("tweet_eval", "emotion")
+    data = datasets.load_dataset("tweet_eval", "stance_climate")
 
     # Check that DatasetDict is not directly supported.
     assert isinstance(data, datasets.DatasetDict)
