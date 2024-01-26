@@ -7,4 +7,4 @@
 # See: https://github.com/ray-project/ray/pull/42277#discussion_r1465556625
 
 tfx-bsl==1.14.0
-tensorflow-io
+pandas>=1.0,<2
