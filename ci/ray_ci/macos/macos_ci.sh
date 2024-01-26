@@ -11,17 +11,25 @@ export LANG="en_US.UTF-8"
 export BUILD="1"
 export DL="1"
 
+filter_flaky_tests() {
+  test_targets_file="$1"
+  temp_path="$(bazel info bazel-genfiles)/temp_file.txt"
+  cp "$test_targets_file" "$temp_path"
+  bazel run ci/ray_ci/automation:filter_tests -- "$temp_path" "flaky"
+}
 query_small_test_targets() {
   bazel query 'attr(tags, "client_tests|small_size_python_tests", tests(//python/ray/tests/...))' > ci/ray_ci/macos/small_test_targets.txt
 }
+
 run_small_test() {
   # shellcheck disable=SC2046
   query_small_test_targets
+  filter_flaky_tests ci/ray_ci/macos/small_test_targets.txt
   cat ci/ray_ci/macos/small_test_targets.txt | xargs bazel test $(./ci/run/bazel_export_options) --config=ci \
     --test_env=CONDA_EXE --test_env=CONDA_PYTHON_EXE --test_env=CONDA_SHLVL --test_env=CONDA_PREFIX \
     --test_env=CONDA_DEFAULT_ENV --test_env=CONDA_PROMPT_MODIFIER --test_env=CI
 }
-
+run_small_test
 query_medium_a_j_test_targets() {
   bazel query 'attr(tags, "kubernetes|medium_size_python_tests_a_to_j", tests(//python/ray/tests/...))' > ci/ray_ci/macos/medium_a_j_test_targets.txt
 }

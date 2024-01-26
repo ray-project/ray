@@ -145,6 +145,25 @@ class Test(dict):
             for file in files
         ]
 
+    @classmethod
+    def get_tests(cls, test_prefixes: List[str]):
+        """
+        Obtain all tests with the input prefixes.
+        Input:
+        test_prefixes: List of strings representing prefixes.
+        """
+        tests = []
+        for test_prefix in test_prefixes:
+            tests.extend(Test.gen_from_s3(test_prefix))
+        return tests
+    
+    @classmethod
+    def filter_tests_by_state(cls, tests: List["Test"], state: TestState):
+        """
+        Filter tests by state
+        """
+        return [test for test in tests if test.get_state() == state]
+
     def is_jailed_with_open_issue(self, ray_github: Repository) -> bool:
         """
         Returns whether this test is jailed with open issue.
