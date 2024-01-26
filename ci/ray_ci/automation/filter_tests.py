@@ -76,7 +76,7 @@ def obtain_existing_test_names_by_state(
         return filtered_test_names
     else:
         no_prefix_filtered_test_names = [
-            test.removeprefix(prefix)
+            test.replace(prefix, '')
             for test in filtered_test_names
             for prefix in TEST_PREFIXES
             if test.startswith(prefix)
