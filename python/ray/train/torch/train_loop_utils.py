@@ -42,7 +42,7 @@ logger = logging.getLogger(__name__)
 def get_device() -> torch.device:
     """Gets the correct torch device configured for this process.
 
-    Returns the torch device for the current worker. If more than 1 GPU is 
+    Returns the torch device for the current worker. If more than 1 GPU is
     requested per worker, returns the device with the minimal device index.
 
     .. note::

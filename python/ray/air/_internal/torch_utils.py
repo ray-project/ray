@@ -13,7 +13,7 @@ from ray.air.util.data_batch_conversion import _unwrap_ndarray_object_type_if_ne
 def get_devices() -> List[torch.device]:
     """Gets the correct torch device configured for this process.
 
-    Returns a list of torch CUDA devices allocated for the current worker. 
+    Returns a list of torch CUDA devices allocated for the current worker.
     If no GPUs are assigned, then it returns a list with a single CPU device.
 
     Assumes that `CUDA_VISIBLE_DEVICES` is set and is a
