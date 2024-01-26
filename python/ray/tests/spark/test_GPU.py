@@ -183,6 +183,15 @@ class RayOnSparkGPUClusterTestBase(RayOnSparkCPUClusterTestBase, ABC):
                     retry_interval_ms=1000,
                 )
 
+    def test_default_resource_allocation(self):
+        with _setup_ray_cluster(
+            max_worker_nodes=1,
+            head_node_options={"include_dashboard": False},
+        ):
+            worker_res_list = self.get_ray_worker_resources_list()
+            assert worker_res_list[0]["CPU"] == self.num_total_gpus
+            assert worker_res_list[0]["GPU"] == self.num_total_cpus
+
 
 class TestBasicSparkGPUCluster(RayOnSparkGPUClusterTestBase):
     @classmethod

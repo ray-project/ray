@@ -49,6 +49,9 @@ def _setup_ray_on_spark_envs():
     os.environ["RAY_ON_SPARK_WORKER_PHYSICAL_MEMORY_BYTES"] = str(
         _RAY_ON_SPARK_WORKER_PHYSICAL_MEMORY_BYTES
     )
+    os.environ["RAY_ON_SPARK_BACKGROUND_JOB_STARTUP_WAIT"] = "1"
+    os.environ["RAY_ON_SPARK_RAY_WORKER_NODE_STARTUP_INTERVAL"] = "5"
+    os.environ["RAY_ON_SPARK_BACKGROUND_JOB_STARTUP_WAIT"] = "15"
 
 
 def setup_module():
@@ -70,7 +73,9 @@ _logger = logging.getLogger(__name__)
 class RayOnSparkCPUClusterTestBase(ABC):
     spark = None
     num_total_cpus = None
+    num_total_gpus = None
     num_cpus_per_spark_task = None
+    num_gpus_per_spark_task = None
     max_spark_tasks = None
 
     @classmethod

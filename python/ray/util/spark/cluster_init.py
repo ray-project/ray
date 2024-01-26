@@ -1128,8 +1128,10 @@ def _setup_ray_cluster_internal(
         )
 
         if is_in_databricks_runtime():
-            from ray.util.spark.databricks_hook import get_databricks_function
-            get_databricks_function("displayHTML")(
+            from ray.util.spark.databricks_hook import (
+                get_databricks_display_html_function,
+            )
+            get_databricks_display_html_function()(
                 f"<b style='background-color:Cyan;'>{warn_msg}</b>"
             )
         else:

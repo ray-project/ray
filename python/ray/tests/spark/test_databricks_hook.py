@@ -56,8 +56,8 @@ class TestDatabricksHook:
             "ray.util.spark.databricks_hook.get_db_entry_point", lambda: db_api_entry
         )
         monkeypatch.setattr(
-            "ray.util.spark.databricks_hook.get_databricks_function",
-            lambda *args, **kwargs: None,
+            "ray.util.spark.databricks_hook.get_databricks_display_html_function",
+            lambda x: print(x),
         )
         try:
             setup_ray_cluster(
