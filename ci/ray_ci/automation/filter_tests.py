@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-from ray_release.test import Test, TestState
+from ci.ray_ci.utils import query_all_test_names_by_state
 from ray_release.configs.global_config import init_global_config
 from ray_release.bazel import bazel_runfile
 import sys
@@ -9,7 +9,12 @@ def main():
     """
     Filter tests based on test targets and test state.
     Read list of test targets from file path.
-    Modify the file path to filter tests based on test state.
+    Write back into the same file path with flaky tests removed.
+
+    Args:
+        test_targets_file_path: Path to file containing list of test targets.
+        test_state: Test state to filter by.
+            Use string representation from ray_release.test.TestState class.
     """
     # Initialize global config
     init_global_config(bazel_runfile("release/ray_release/configs/oss_config.yaml"))
@@ -32,8 +37,8 @@ def main():
         test_targets = f.read().splitlines()
 
     # Obtain all existing flaky tests
-    flaky_test_names = obtain_existing_test_names_by_state(
-        prefix_on=False, test_state=test_state
+    flaky_test_names = query_all_test_names_by_state(
+        test_state=test_state, prefix_on=False
     )
     # Eliminate flaky test from list of test targets
     non_flaky_test_targets = [
@@ -43,45 +48,6 @@ def main():
     # Write non-flaky test targets to file
     with open(test_targets_file_path, "w") as f:
         f.write("\n".join(non_flaky_test_targets))
-
-
-def obtain_existing_test_names_by_state(
-    prefix_on: bool = False, test_state: str = "flaky"
-):
-    """
-    Obtain all existing flaky test names.
-
-    Args:
-        prefix_on: Whether to include prefix in test name.
-
-    Returns:
-        List[str]: List of test names.
-    """
-    TEST_PREFIXES = ["darwin:"]
-
-    # Convert test_state string into TestState enum
-    test_state_enum = next(
-        (state for state in TestState if state.value == test_state), None
-    )
-    if test_state_enum is None:
-        raise ValueError("Invalid test state.")
-
-    # Obtain all existing tests
-    tests = Test.get_tests(TEST_PREFIXES)
-
-    # Filter tests by test state
-    filtered_tests = Test.filter_tests_by_state(tests, test_state_enum)
-    filtered_test_names = [test.get_name() for test in filtered_tests]
-    if prefix_on:
-        return filtered_test_names
-    else:
-        no_prefix_filtered_test_names = [
-            test.replace(prefix, '')
-            for test in filtered_test_names
-            for prefix in TEST_PREFIXES
-            if test.startswith(prefix)
-        ]
-        return no_prefix_filtered_test_names
 
 
 if __name__ == "__main__":

@@ -7,6 +7,7 @@ import tempfile
 import boto3
 from typing import List
 from math import ceil
+from ray_release.test import Test, TestState
 
 import ci.ray_ci.bazel_sharding as bazel_sharding
 
@@ -75,6 +76,45 @@ def docker_pull(image: str) -> None:
         stderr=sys.stderr,
         check=True,
     )
+
+
+def query_all_test_names_by_state(test_state: str = "flaky", prefix_on: bool = False):
+    """
+    Query all existing test names by the test state.
+
+    Args:
+        test_state: Test state to filter by.
+            Use string representation from ray_release.test.TestState class.
+        prefix_on: Whether to include test prefix in test name.
+
+    Returns:
+        List[str]: List of test names.
+    """
+    TEST_PREFIXES = ["darwin:"]
+
+    # Convert test_state string into TestState enum
+    test_state_enum = next(
+        (state for state in TestState if state.value == test_state), None
+    )
+    if test_state_enum is None:
+        raise ValueError("Invalid test state.")
+
+    # Obtain all existing tests
+    tests = Test.get_tests(TEST_PREFIXES)
+
+    # Filter tests by test state
+    filtered_tests = Test.filter_tests_by_state(tests, test_state_enum)
+    filtered_test_names = [test.get_name() for test in filtered_tests]
+    if prefix_on:
+        return filtered_test_names
+    else:
+        no_prefix_filtered_test_names = [
+            test.replace(prefix, "")
+            for test in filtered_test_names
+            for prefix in TEST_PREFIXES
+            if test.startswith(prefix)
+        ]
+        return no_prefix_filtered_test_names
 
 
 logger = logging.getLogger()
