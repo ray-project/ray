@@ -12,4 +12,4 @@ srcs:
 build_args:
   - ARROW_VERSION=14.*
 tags:
-  - cr.ray.io/rayproject/data14build
+  - cr.ray.io/rayproject/datatfxbslbuild
