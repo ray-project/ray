@@ -49,8 +49,6 @@ def _setup_ray_on_spark_envs():
     os.environ["RAY_ON_SPARK_WORKER_PHYSICAL_MEMORY_BYTES"] = str(
         _RAY_ON_SPARK_WORKER_PHYSICAL_MEMORY_BYTES
     )
-    os.environ["RAY_ON_SPARK_BACKGROUND_JOB_STARTUP_WAIT"] = "1"
-    os.environ["RAY_ON_SPARK_RAY_WORKER_NODE_STARTUP_INTERVAL"] = "5"
 
 
 def setup_module():
