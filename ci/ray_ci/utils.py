@@ -101,7 +101,6 @@ def query_all_test_names_by_state(test_state: str = "flaky", prefix_on: bool = F
 
     # Obtain all existing tests
     tests = Test.get_tests(TEST_PREFIXES)
-
     # Filter tests by test state
     filtered_tests = Test.filter_tests_by_state(tests, test_state_enum)
     filtered_test_names = [test.get_name() for test in filtered_tests]
@@ -115,6 +114,31 @@ def query_all_test_names_by_state(test_state: str = "flaky", prefix_on: bool = F
             if test.startswith(prefix)
         ]
         return no_prefix_filtered_test_names
+
+
+def omit_tests_by_state(
+    test_targets: List[str], test_state: str = "flaky"
+) -> List[str]:
+    """
+    Omit tests from list of tests by test state.
+
+    Args:
+        test_targets: List of test targets.
+        test_state: Test state to filter by.
+            Use string representation from ray_release.test.TestState class.
+
+    Returns:
+        List[str]: List of test targets with tests of specified state removed.
+    """
+    # Obtain all existing tests with specified test state
+    state_test_names = query_all_test_names_by_state(
+        test_state=test_state, prefix_on=False
+    )
+    # Eliminate these test from list of test targets
+    test_targets_filtered = [
+        test for test in test_targets if test not in state_test_names
+    ]
+    return test_targets_filtered
 
 
 logger = logging.getLogger()

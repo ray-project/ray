@@ -12,49 +12,40 @@ export BUILD="1"
 export DL="1"
 
 filter_flaky_tests() {
-  # This function takes in a test targets list file, filters out flaky tests and
-  # overwrites the original test targets list file with the filtered list.
-
-  test_targets_file="$1"
-  # temp file is needed because python script runs in bazel sandbox
-  temp_path="$(bazel info bazel-genfiles)/temp_file.txt"
-  # copy test target file content to temp file
-  cp "$test_targets_file" "$temp_path"
-  bazel run ci/ray_ci/automation:filter_tests -- "$temp_path" "flaky"
-  # copy temp file content back to test target file
-  cp "$temp_path" "$test_targets_file"
+  test_targets=""
+  while read -r line; do
+    test_targets+="$line\n"
+  done
+  # shellcheck disable=SC2086
+  echo $test_targets | bazel run ci/ray_ci/automation:filter_tests -- "flaky"
 }
 
 run_small_test() {
-  bazel query 'attr(tags, "client_tests|small_size_python_tests", tests(//python/ray/tests/...))' > ci/ray_ci/macos/small_test_targets.txt
-  filter_flaky_tests ci/ray_ci/macos/small_test_targets.txt
-  # shellcheck disable=SC2046,SC2002
-  cat ci/ray_ci/macos/small_test_targets.txt | xargs bazel test $(./ci/run/bazel_export_options) --config=ci \
+  filtered_test_targets=$(bazel query 'attr(tags, "client_tests|small_size_python_tests", tests(//python/ray/tests/...))' | filter_flaky_tests)
+  # shellcheck disable=SC2046,SC2086
+  bazel test $filtered_test_targets $(./ci/run/bazel_export_options) --config=ci \
     --test_env=CONDA_EXE --test_env=CONDA_PYTHON_EXE --test_env=CONDA_SHLVL --test_env=CONDA_PREFIX \
     --test_env=CONDA_DEFAULT_ENV --test_env=CONDA_PROMPT_MODIFIER --test_env=CI
 }
-
+run_small_test
 run_medium_a_j_test() {
-  bazel query 'attr(tags, "kubernetes|medium_size_python_tests_a_to_j", tests(//python/ray/tests/...))' > ci/ray_ci/macos/medium_a_j_test_targets.txt
-  filter_flaky_tests ci/ray_ci/macos/medium_a_j_test_targets.txt
-  # shellcheck disable=SC2046,SC2002
-  cat ci/ray_ci/macos/medium_a_j_test_targets.txt | xargs bazel test --config=ci $(./ci/run/bazel_export_options) \
+  filtered_test_targets=$(bazel query 'attr(tags, "kubernetes|medium_size_python_tests_a_to_j", tests(//python/ray/tests/...))' | filter_flaky_tests)
+  # shellcheck disable=SC2046,SC2086
+  bazel test $filtered_test_targets --config=ci $(./ci/run/bazel_export_options) \
     --test_env=CI
 }
 
 run_medium_k_z_test() {
-  bazel query 'attr(tags, "kubernetes|medium_size_python_tests_k_to_z", tests(//python/ray/tests/...))' > ci/ray_ci/macos/medium_k_z_test_targets.txt
-  filter_flaky_tests ci/ray_ci/macos/medium_k_z_test_targets.txt
-  # shellcheck disable=SC2046,SC2002
-  cat ci/ray_ci/macos/medium_k_z_test_targets.txt | xargs bazel test --config=ci $(./ci/run/bazel_export_options) \
+  filtered_test_targets=$(bazel query 'attr(tags, "kubernetes|medium_size_python_tests_k_to_z", tests(//python/ray/tests/...))' | filter_flaky_tests)
+  # shellcheck disable=SC2046,SC2086
+  bazel test $filtered_test_targets --config=ci $(./ci/run/bazel_export_options) \
     --test_env=CI
 }
 
 run_large_test() {
-  bazel query 'attr(tags, "large_size_python_tests_shard_'"${BUILDKITE_PARALLEL_JOB}"'", tests(//python/ray/tests/...))' > ci/ray_ci/macos/large_test_targets.txt
-  filter_flaky_tests ci/ray_ci/macos/large_test_targets.txt
-  # shellcheck disable=SC2046,SC2002
-  cat ci/ray_ci/macos/large_test_targets.txt | xargs bazel test --config=ci $(./ci/run/bazel_export_options) \
+  filtered_test_targets=$(bazel query 'attr(tags, "large_size_python_tests_shard_'"${BUILDKITE_PARALLEL_JOB}"'", tests(//python/ray/tests/...))' | filter_flaky_tests)
+  # shellcheck disable=SC2046,SC2086
+  bazel test $filtered_test_targets --config=ci $(./ci/run/bazel_export_options) \
     --test_env=CONDA_EXE --test_env=CONDA_PYTHON_EXE --test_env=CONDA_SHLVL --test_env=CONDA_PREFIX --test_env=CONDA_DEFAULT_ENV \
     --test_env=CONDA_PROMPT_MODIFIER --test_env=CI "$@"
 }
