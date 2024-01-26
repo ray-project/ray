@@ -113,6 +113,3 @@ numexpr==2.8.4
 
 # For `serve run --reload` CLI.
 watchfiles==0.19.0
-
-# For test_runtime_env_complicated.py::test_pip_with_env_vars
-distlib==0.3.7
