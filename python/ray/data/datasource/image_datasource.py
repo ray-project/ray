@@ -26,11 +26,14 @@ IMAGE_ENCODING_RATIO_ESTIMATE_DEFAULT = 1
 # The lower bound value to estimate image encoding ratio.
 IMAGE_ENCODING_RATIO_ESTIMATE_LOWER_BOUND = 0.5
 
+
 @DeveloperAPI
 def _tiff_to_np(tiff_path: bytes):
-    """Helper function to read in multi-frame TIFF files and convert them to NumPy arrays.
+    """Helper function to read in multi-frame TIFF files, convert them to NumPy.
 
-    This function reads a multi-frame TIFF file from the given path and converts each frame into a NumPy array. It then stacks these arrays along a new axis (axis=0), effectively creating a 3D NumPy array where each 2D array represents a frame from the TIFF file.
+    This function reads a multi-frame TIFF  and converts into a NumPy array.
+    It then stacks these arrays along a new axis (axis=0),
+    Creating a NumPy array, each array represents a frame from the TIFF.
 
     Examples:
 
@@ -44,10 +47,11 @@ def _tiff_to_np(tiff_path: bytes):
         <class 'numpy.ndarray'>
 
     Args:
-        tiff_path: The file path to the multi-frame TIFF file. The path should be provided as a byte string.
+        tiff_path: The file path to the multi-frame TIFF file.
+        The path should be provided as a byte string.
 
     Returns:
-        A 3D NumPy array where each 2D array along axis 0 represents a frame from the TIFF file.
+        A  NumPy array, each array represents a frame from the TIFF.
     """
     from PIL import Image
 
