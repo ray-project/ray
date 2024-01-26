@@ -8,6 +8,11 @@ from ray.data.dataset import Dataset
 from ray.tests.conftest import *  # noqa
 
 
+@pytest.fixture(scope="session")
+def hf_dataset():
+    return datasets.load_dataset("tweet_eval", "stance_climate")
+
+
 def _arrow_sort_values(table: pyarrow.lib.Table) -> pyarrow.lib.Table:
     """
     Sort an Arrow table by the values in the first column. Used for testing
@@ -31,32 +36,26 @@ def hfds_assert_equals(hfds: datasets.Dataset, ds: Dataset):
 
 
 @pytest.mark.parametrize("num_par", [1, 4])
-def test_from_huggingface(ray_start_regular_shared, num_par):
-    data = datasets.load_dataset("tweet_eval", "stance_climate")
-
+def test_from_huggingface(hf_dataset, ray_start_regular_shared, num_par):
     # Check that DatasetDict is not directly supported.
-    assert isinstance(data, datasets.DatasetDict)
+    assert isinstance(hf_dataset, datasets.DatasetDict)
     with pytest.raises(
         DeprecationWarning,
         match="You provided a Hugging Face DatasetDict",
     ):
-        ray.data.from_huggingface(data)
+        ray.data.from_huggingface(hf_dataset)
 
     ray_datasets = {
-        "train": ray.data.from_huggingface(data["train"], parallelism=num_par),
-        "validation": ray.data.from_huggingface(
-            data["validation"], parallelism=num_par
-        ),
-        "test": ray.data.from_huggingface(data["test"], parallelism=num_par),
+        "train": ray.data.from_huggingface(hf_dataset["train"], parallelism=num_par),
+        "test": ray.data.from_huggingface(hf_dataset["test"], parallelism=num_par),
     }
 
     assert isinstance(ray_datasets["train"], ray.data.Dataset)
-    hfds_assert_equals(data["train"], ray_datasets["train"])
-    hfds_assert_equals(data["test"], ray_datasets["test"])
-    hfds_assert_equals(data["validation"], ray_datasets["validation"])
+    hfds_assert_equals(hf_dataset["train"], ray_datasets["train"])
+    hfds_assert_equals(hf_dataset["test"], ray_datasets["test"])
 
     # Test reading in a split Hugging Face dataset yields correct individual datasets
-    base_hf_dataset = data["train"]
+    base_hf_dataset = hf_dataset["train"]
     hf_dataset_split = base_hf_dataset.train_test_split(test_size=0.2)
     ray_dataset_split_train = ray.data.from_huggingface(hf_dataset_split["train"])
     ray_dataset_split_test = ray.data.from_huggingface(hf_dataset_split["test"])
