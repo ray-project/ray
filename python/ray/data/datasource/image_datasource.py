@@ -35,16 +35,6 @@ def _tiff_to_np(tiff_path: bytes):
     It then stacks these arrays along a new axis (axis=0),
     Creating a NumPy array, each array represents a frame from the TIFF.
 
-    Examples:
-
-        >>> from PIL import Image
-        >>> import numpy as np
-        >>> tiff_path = b'/home/ubuntu/ray/python/ray/data/examples/data/image-datasets/tiff_files/image3.tiff'
-        >>> np_stack = _tiff_to_np(tiff_path)
-        >>> np_stack.shape
-        (3, 100, 100)
-        >>> type(np_stack)
-        <class 'numpy.ndarray'>
 
     Args:
         tiff_path: The file path to the multi-frame TIFF file.
