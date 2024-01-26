@@ -76,9 +76,6 @@ class ImageDatasource(FileBasedDatasource):
         super().__init__(paths, **file_based_datasource_kwargs)
 
         _check_import(self, module="PIL", package="Pillow")
-        _check_import(
-            self, module="tifffile", package="tifffile"
-        )  # imageio supports both tiff and Pillow.
 
         if size is not None and len(size) != 2:
             raise ValueError(
