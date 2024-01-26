@@ -834,12 +834,12 @@ py_test(
     srcs = ["env/tests/test_multi_agent_env.py"]
 )
 
-# py_test(
-#    name = "env/tests/test_multi_agent_env_runner",
-#    tags = ["team:rllib", "env"],
-#    size = "medium",
-#    srcs = ["env/tests/test_multi_agent_env_runner.py"]
-# )
+py_test(
+    name = "env/tests/test_multi_agent_env_runner",
+    tags = ["team:rllib", "env"],
+    size = "medium",
+    srcs = ["env/tests/test_multi_agent_env_runner.py"]
+)
 
 py_test(
     name = "env/tests/test_multi_agent_episode",
