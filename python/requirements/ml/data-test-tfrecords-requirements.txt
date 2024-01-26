@@ -6,5 +6,5 @@
 # the tests requiring this package into a separate CI job.
 # See: https://github.com/ray-project/ray/pull/42277#discussion_r1465556625
 
+pandas==1.5.3
 tfx-bsl==1.14.0
-pandas>=1.0,<2
