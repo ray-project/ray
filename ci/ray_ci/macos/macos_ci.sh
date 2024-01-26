@@ -30,9 +30,9 @@ query_small_test_targets() {
 }
 
 run_small_test() {
-  # shellcheck disable=SC2046
   query_small_test_targets
   filter_flaky_tests ci/ray_ci/macos/small_test_targets.txt
+  # shellcheck disable=SC2046,SC2002
   cat ci/ray_ci/macos/small_test_targets.txt | xargs bazel test $(./ci/run/bazel_export_options) --config=ci \
     --test_env=CONDA_EXE --test_env=CONDA_PYTHON_EXE --test_env=CONDA_SHLVL --test_env=CONDA_PREFIX \
     --test_env=CONDA_DEFAULT_ENV --test_env=CONDA_PROMPT_MODIFIER --test_env=CI
@@ -43,9 +43,9 @@ query_medium_a_j_test_targets() {
 }
 
 run_medium_a_j_test() {
-  # shellcheck disable=SC2046
   query_medium_a_j_test_targets
   filter_flaky_tests ci/ray_ci/macos/medium_a_j_test_targets.txt
+  # shellcheck disable=SC2046,SC2002
   cat ci/ray_ci/macos/medium_a_j_test_targets.txt | xargs bazel test --config=ci $(./ci/run/bazel_export_options) \
     --test_env=CI
 }
@@ -55,22 +55,21 @@ query_medium_k_z_test_targets() {
 }
 
 run_medium_k_z_test() {
-  # shellcheck disable=SC2046
   query_medium_k_z_test_targets
   filter_flaky_tests ci/ray_ci/macos/medium_k_z_test_targets.txt
+  # shellcheck disable=SC2046,SC2002
   cat ci/ray_ci/macos/medium_k_z_test_targets.txt | xargs bazel test --config=ci $(./ci/run/bazel_export_options) \
     --test_env=CI
 }
 
 query_large_test() {
-  bazel query 'attr(tags, "large_size_python_tests_shard_'${BUILDKITE_PARALLEL_JOB}'", tests(//python/ray/tests/...))' > ci/ray_ci/macos/large_test_targets.txt
+  bazel query 'attr(tags, "large_size_python_tests_shard_'"${BUILDKITE_PARALLEL_JOB}"'", tests(//python/ray/tests/...))' > ci/ray_ci/macos/large_test_targets.txt
 }
 
-
 run_large_test() {
-  # shellcheck disable=SC2046
   query_large_test
   filter_flaky_tests ci/ray_ci/macos/large_test_targets.txt
+  # shellcheck disable=SC2046,SC2002
   cat ci/ray_ci/macos/large_test_targets.txt | xargs bazel test --config=ci $(./ci/run/bazel_export_options) \
     --test_env=CONDA_EXE --test_env=CONDA_PYTHON_EXE --test_env=CONDA_SHLVL --test_env=CONDA_PREFIX --test_env=CONDA_DEFAULT_ENV \
     --test_env=CONDA_PROMPT_MODIFIER --test_env=CI "$@"
