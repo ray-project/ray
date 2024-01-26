@@ -1611,6 +1611,8 @@ class AutoscalingTest(unittest.TestCase):
         new_config["max_workers"] = 10
         self.write_config(new_config)
         autoscaler.update()
+        # TODO(rickyx): This is a hack to avoid running into race conditions
+        # within v1 autoscaler. These should no longer be relevant in v2.
         time.sleep(3)
         # Because one worker already started, the scheduler waits for its
         # resources to be updated before it launches the remaining min_workers.
@@ -1620,13 +1622,14 @@ class AutoscalingTest(unittest.TestCase):
         lm.update(worker_ip, mock_raylet_id(), {"CPU": 1}, {"CPU": 1})
 
         autoscaler.update()
+        # TODO(rickyx): This is a hack to avoid running into race conditions
+        # within v1 autoscaler. These should no longer be relevant in v2.
         time.sleep(3)
         if foreground_node_launcher:
             # If we launched in the foreground, shouldn't need to wait for nodes
             # to be available. (Node creation should block.)
             assert self.num_nodes(tag_filters=WORKER_FILTER) == 10
         else:
-            time.sleep(3)
             self.waitForNodes(10, tag_filters=WORKER_FILTER)
 
         # Awkward and unecessary to repeat the following check for BatchingNodeProvider.
@@ -2232,12 +2235,11 @@ class AutoscalingTest(unittest.TestCase):
 
         # Sleep to make sure updates will be eventually triggered.
         autoscaler.update()
-        time.sleep(3)
         autoscaler.update()
-        time.sleep(3)
         self.waitForNodes(2)
-        time.sleep(3)
         self.provider.finish_starting_nodes()
+        # TODO(rickyx): This is a hack to avoid running into race conditions
+        # within v1 autoscaler. These should no longer be relevant in v2.
         time.sleep(3)
         autoscaler.update()
         time.sleep(3)
@@ -2324,12 +2326,11 @@ class AutoscalingTest(unittest.TestCase):
             update_interval_s=0,
         )
         autoscaler.update()
-        time.sleep(3)
         autoscaler.update()
-        time.sleep(3)
         self.waitForNodes(2)
-        time.sleep(3)
         self.provider.finish_starting_nodes()
+        # TODO(rickyx): This is a hack to avoid running into race conditions
+        # within v1 autoscaler. These should no longer be relevant in v2.
         time.sleep(3)
         autoscaler.update()
         time.sleep(3)
@@ -2338,11 +2339,8 @@ class AutoscalingTest(unittest.TestCase):
         new_config = copy.deepcopy(SMALL_CLUSTER)
         new_config["worker_setup_commands"] = ["cmdX", "cmdY"]
         self.write_config(new_config)
-        time.sleep(3)
         autoscaler.update()
-        time.sleep(3)
         autoscaler.update()
-        time.sleep(3)
         self.waitFor(lambda: len(runner.calls) > 0)
 
     def testScaleDownMaxWorkers(self):
