@@ -3,8 +3,8 @@ import sys
 import pytest
 from unittest import mock
 from typing import List
-
-from ci.ray_ci.utils import chunk_into_n, docker_login
+from ray_release.test import Test, TestState
+from ci.ray_ci.utils import chunk_into_n, docker_login, query_all_test_names_by_state
 
 
 def test_chunk_into_n() -> None:
@@ -32,6 +32,32 @@ def test_docker_login(mock_client) -> None:
 
     with mock.patch("subprocess.run", side_effect=_mock_subprocess_run):
         docker_login("docker_ecr")
+
+
+@mock.patch("ray_release.test.Test.get_tests")
+def test_query_test_names_by_state(mock_get_tests):
+    mock_get_tests.side_effect = (
+        [
+            Test(
+                {
+                    "name": "darwin://test_1",
+                    "team": "core",
+                    "state": TestState.FLAKY,
+                }
+            ),
+            Test(
+                {
+                    "name": "darwin://test_2",
+                    "team": "ci",
+                    "state": TestState.FLAKY,
+                }
+            ),
+        ],
+    )
+    flaky_test_names = query_all_test_names_by_state(
+        prefix_on=False, test_state="flaky"
+    )
+    assert flaky_test_names == ["//test_1", "//test_2"]
 
 
 if __name__ == "__main__":
