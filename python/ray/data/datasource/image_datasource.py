@@ -4,7 +4,6 @@ import time
 from typing import TYPE_CHECKING, Iterator, List, Optional, Tuple, Union
 
 import numpy as np
-import tifffile
 
 from ray.data._internal.delegating_block_builder import DelegatingBlockBuilder
 from ray.data._internal.util import _check_import
@@ -26,6 +25,22 @@ IMAGE_ENCODING_RATIO_ESTIMATE_DEFAULT = 1
 
 # The lower bound value to estimate image encoding ratio.
 IMAGE_ENCODING_RATIO_ESTIMATE_LOWER_BOUND = 0.5
+
+
+def _tiff_to_np(tiff_path: bytes):
+    """helper function to read in multitiffs"""
+    from PIL import Image
+
+    with Image.open(tiff_path) as img:
+        np_arrays = []
+
+        for i in range(img.n_frames):
+            img.seek(i)
+
+            np_arrays.append(np.array(img))
+        np_stack = np.stack(np_arrays, axis=0)
+
+    return np_stack
 
 
 @DeveloperAPI
@@ -78,7 +93,7 @@ class ImageDatasource(FileBasedDatasource):
         print(path)
         data = f.readall()
         if path.lower().endswith((".tif", ".tiff")):
-            image = tifffile.imread(io.BytesIO(data))
+            image = _tiff_to_np(io.BytesIO(data))
         else:
             try:
                 image = Image.open(io.BytesIO(data))
