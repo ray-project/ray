@@ -653,16 +653,39 @@ def _warn_session_misuse(default_value: Any = None):
 def report(metrics: Dict, *, checkpoint: Optional[Checkpoint] = None) -> None:
     """Report metrics and optionally save a checkpoint.
 
-    Each invocation of this method will automatically increment the underlying
-    ``training_iteration`` number. The physical meaning of this "iteration" is
-    defined by user depending on how often they call ``report``.
-    It does not necessarily map to one epoch.
-
-    This method acts as a synchronous barrier for all distributed training workers.
-    All workers must call `ray.train.report` the same number of times.
-
     If a checkpoint is provided, it will be
     :ref:`persisted to storage <persistent-storage-guide>`.
+
+    If this is called in multiple distributed training workers:
+
+    - Only the metrics reported by the rank 0 worker will be tracked by Ray Train.
+      See :ref:`the metrics logging guide <train-monitoring-and-logging>`.
+    - A checkpoint will be registered as long as one or more workers reports
+      checkpoint that is not None.
+      See the :ref:`checkpointing guide <train-dl-saving-checkpoints>`.
+    - Checkpoints from multiple workers will be merged into one directory
+      in persistent storage.
+      See :ref:`the distributed checkpointing guide <train-distributed-checkpointing>`.
+
+    .. note::
+
+        Each invocation of this method will automatically increment the underlying
+        ``training_iteration`` number. The physical meaning of this "iteration" is
+        defined by user depending on how often they call ``report``.
+        It does not necessarily map to one epoch.
+
+    .. warning::
+
+        All workers must call `ray.train.report` the same number of times
+        so that Ray Train can properly synchronize the training state across
+        workers. Otherwise, your training will hang.
+
+    .. warning::
+
+        This method does NOT act as a barrier for distributed training workers.
+        Workers will upload their checkpoint, then continue training immediately.
+        If you need to synchronize workers, you can use a framework-native barrier
+        such as `torch.distributed.barrier()`.
 
     Example:
 
@@ -690,9 +713,15 @@ def report(metrics: Dict, *, checkpoint: Optional[Checkpoint] = None) -> None:
 
                     with tempfile.TemporaryDirectory() as temp_checkpoint_dir:
                        # Save the checkpoint...
+                       # torch.save(...)
 
                         checkpoint = Checkpoint.from_directory(temp_checkpoint_dir)
-                        train.report(metrics, checkpoint=checkpoint)
+
+                        # Example: Only the rank 0 worker uploads the checkpoint.
+                        if ray.train.get_context().get_world_rank() == 0:
+                            train.report(metrics, checkpoint=checkpoint)
+                        else:
+                            train.report(metrics, checkpoint=None)
 
             trainer = TorchTrainer(
                 train_func, scaling_config=train.ScalingConfig(num_workers=2)

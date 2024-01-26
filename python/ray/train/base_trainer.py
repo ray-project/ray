@@ -733,7 +733,7 @@ class BaseTrainer(abc.ABC):
         # stdout messages and the results directory.
         train_func.__name__ = trainer_cls.__name__
 
-        trainable_cls = wrap_function(train_func, warn=False)
+        trainable_cls = wrap_function(train_func)
         has_base_dataset = bool(self.datasets)
         if has_base_dataset:
             from ray.data.context import DataContext
