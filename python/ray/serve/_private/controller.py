@@ -781,6 +781,8 @@ class ServeController:
         ServeUsageTag.API_VERSION.record("v2")
         if not deployment_time:
             deployment_time = time.time()
+        
+        logger.info(f"Received config: {config}")
 
         new_config_checkpoint = {}
 
