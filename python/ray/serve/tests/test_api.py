@@ -3,6 +3,7 @@ import os
 import sys
 from typing import Dict, Optional
 
+import fastapi
 import pytest
 import requests
 import starlette.responses
@@ -429,7 +430,9 @@ def test_deploy_application_basic(serve_instance):
 
     # Test FastAPI
     serve.run(MyFastAPIDeployment.bind(), name="FastAPI")
-    assert requests.get("http://127.0.0.1:8000/hello").text == '"Hello, world!"'
+    assert (
+        requests.get("http://127.0.0.1:8000/hello").text == '"Hello, world!"'
+    ), fastapi.__version__
 
 
 def test_delete_application(serve_instance):
