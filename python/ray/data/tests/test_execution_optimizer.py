@@ -1318,7 +1318,8 @@ def test_from_arrow_refs_e2e(ray_start_regular_shared, enable_optimizer):
 
 def test_from_huggingface_e2e(ray_start_regular_shared, enable_optimizer):
     import datasets
-    import pyarrow
+
+    from ray.data.tests.test_huggingface import hfds_assert_equals
 
     data = datasets.load_dataset("tweet_eval", "emotion")
     assert isinstance(data, datasets.DatasetDict)
@@ -1339,11 +1340,7 @@ def test_from_huggingface_e2e(ray_start_regular_shared, enable_optimizer):
         assert "ReadParquet" in ds.stats()
         assert ds._plan._logical_plan.dag.name == "ReadParquet"
         # use sort by 'text' to match order of rows
-        expected_table = data[ds_key].data.table.sort_by("text")
-        output_full_table = pyarrow.concat_tables(
-            [ray.get(tbl) for tbl in ds.to_arrow_refs()]
-        ).sort_by("text")
-        expected_table.equals(output_full_table)
+        hfds_assert_equals(data[ds_key], ds)
         _check_usage_record(["ReadParquet"])
 
     # test transformed public dataset for fallback behavior
@@ -1358,12 +1355,7 @@ def test_from_huggingface_e2e(ray_start_regular_shared, enable_optimizer):
     # the underlying implementation uses the `FromArrow` operator.
     assert "FromArrow" in ray_dataset_split_train.stats()
     assert ray_dataset_split_train._plan._logical_plan.dag.name == "FromArrow"
-    # use sort by 'text' to match order of rows
-    expected_table = hf_dataset_split["train"].data.table.sort_by("text")
-    output_full_table = pyarrow.concat_tables(
-        [ray.get(tbl) for tbl in ray_dataset_split_train.to_arrow_refs()]
-    ).sort_by("text")
-    expected_table.equals(output_full_table)
+    assert ray_dataset_split_train.count() == hf_dataset_split["train"].num_rows
     _check_usage_record(["FromArrow"])
 
 

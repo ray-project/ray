@@ -4,7 +4,30 @@ import pytest
 from packaging.version import Version
 
 import ray
+from ray.data.dataset import Dataset
 from ray.tests.conftest import *  # noqa
+
+
+def _arrow_sort_values(table: pyarrow.lib.Table) -> pyarrow.lib.Table:
+    """
+    Sort an Arrow table by the values in the first column. Used for testing
+    compatibility with pyarrow 6 where `sort_by` does not exist. Inspired by:
+    https://stackoverflow.com/questions/70893521/how-to-sort-a-pyarrow-table
+    """
+    by = [table.schema.names[0]]  # grab first col_name
+    table_sorted_indexes = pyarrow.compute.bottom_k_unstable(
+        table, sort_keys=by, k=len(table)
+    )
+    table_sorted = table.take(table_sorted_indexes)
+    return table_sorted
+
+
+def hfds_assert_equals(hfds: datasets.Dataset, ds: Dataset):
+    hfds_table = _arrow_sort_values(hfds.data.table)
+    ds_table = _arrow_sort_values(
+        pyarrow.concat_tables([ray.get(tbl) for tbl in ds.to_arrow_refs()])
+    )
+    assert hfds_table.equals(ds_table)
 
 
 @pytest.mark.parametrize("num_par", [1, 4])
@@ -28,16 +51,9 @@ def test_from_huggingface(ray_start_regular_shared, num_par):
     }
 
     assert isinstance(ray_datasets["train"], ray.data.Dataset)
-
-    # use sort by 'text' to match order of rows
-    expected_table = data["train"].data.table.sort_by("text")
-    output_full_table = pyarrow.concat_tables(
-        [ray.get(tbl) for tbl in ray_datasets["train"].to_arrow_refs()]
-    ).sort_by("text")
-
-    assert expected_table.equals(output_full_table)
-    assert ray_datasets["train"].count() == data["train"].num_rows
-    assert ray_datasets["test"].count() == data["test"].num_rows
+    hfds_assert_equals(data["train"], ray_datasets["train"])
+    hfds_assert_equals(data["test"], ray_datasets["test"])
+    hfds_assert_equals(data["validation"], ray_datasets["validation"])
 
     # Test reading in a split Hugging Face dataset yields correct individual datasets
     base_hf_dataset = data["train"]
@@ -63,11 +79,11 @@ def test_from_huggingface(ray_start_regular_shared, num_par):
 )
 def test_from_huggingface_streaming(batch_format, ray_start_regular_shared):
     hfds = datasets.load_dataset(
-        "tweet_eval", "emotion", streaming=True, split="train"
+        "tweet_eval", "stance_climate", streaming=True, split="train"
     ).with_format(batch_format)
     assert isinstance(hfds, datasets.IterableDataset)
     ds = ray.data.from_huggingface(hfds)
-    assert ds.count() == 3257
+    assert ds.count() == 355
 
 
 if __name__ == "__main__":
