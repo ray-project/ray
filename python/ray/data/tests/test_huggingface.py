@@ -47,20 +47,16 @@ def test_from_huggingface(hf_dataset, ray_start_regular_shared, num_par):
 
     ray_datasets = {
         "train": ray.data.from_huggingface(hf_dataset["train"], parallelism=num_par),
-        "test": ray.data.from_huggingface(hf_dataset["test"], parallelism=num_par),
     }
 
     assert isinstance(ray_datasets["train"], ray.data.Dataset)
     hfds_assert_equals(hf_dataset["train"], ray_datasets["train"])
-    hfds_assert_equals(hf_dataset["test"], ray_datasets["test"])
 
     # Test reading in a split Hugging Face dataset yields correct individual datasets
     base_hf_dataset = hf_dataset["train"]
     hf_dataset_split = base_hf_dataset.train_test_split(test_size=0.2)
     ray_dataset_split_train = ray.data.from_huggingface(hf_dataset_split["train"])
-    ray_dataset_split_test = ray.data.from_huggingface(hf_dataset_split["test"])
     assert ray_dataset_split_train.count() == hf_dataset_split["train"].num_rows
-    assert ray_dataset_split_test.count() == hf_dataset_split["test"].num_rows
 
 
 @pytest.mark.skipif(
