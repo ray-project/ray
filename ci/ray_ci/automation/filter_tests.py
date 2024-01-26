@@ -10,10 +10,6 @@ def main():
     Filter tests based on test targets and test state.
     Read list of test targets from file path.
     Modify the file path to filter tests based on test state.
-
-    Args:
-        test_targets_file_path (str): Path to test targets file.
-        test_state (TestState): Test state.
     """
     # Initialize global config
     init_global_config(bazel_runfile("release/ray_release/configs/oss_config.yaml"))
@@ -37,10 +33,10 @@ def main():
     with open(test_targets_file_path, "r") as f:
         test_targets = f.read().splitlines()
 
-    TEST_PREFIXES = ["darwin:"]
-
     # Obtain all existing flaky tests
-    flaky_test_names = obtain_existing_test_names_by_state(prefix_on=False, test_state=test_state)
+    flaky_test_names = obtain_existing_test_names_by_state(
+        prefix_on=False, test_state=test_state
+    )
     # Eliminate flaky test from list of test targets
     non_flaky_test_targets = [
         test for test in test_targets if test not in flaky_test_names
@@ -51,12 +47,14 @@ def main():
         f.write("\n".join(non_flaky_test_targets))
 
 
-def obtain_existing_test_names_by_state(prefix_on: bool = False, test_state: str = "flaky"):
+def obtain_existing_test_names_by_state(
+    prefix_on: bool = False, test_state: str = "flaky"
+):
     """
     Obtain all existing flaky test names.
 
     Args:
-        prefix_on (bool): Whether to include prefix in test name.
+        prefix_on: Whether to include prefix in test name.
 
     Returns:
         List[str]: List of test names.
@@ -64,7 +62,9 @@ def obtain_existing_test_names_by_state(prefix_on: bool = False, test_state: str
     TEST_PREFIXES = ["darwin:"]
 
     # Convert test_state string into TestState enum
-    test_state_enum = next((state for state in TestState if state.value == test_state), None)
+    test_state_enum = next(
+        (state for state in TestState if state.value == test_state), None
+    )
     if test_state_enum is None:
         raise ValueError("Invalid test state.")
 
