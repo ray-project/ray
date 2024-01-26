@@ -290,6 +290,9 @@ class TorchLearner(Learner):
         flags, so that `_make_module()` can place the created module on the correct
         device. After running super() it will wrap the module in a TorchDDPRLModule
         if `_distributed` is True.
+        Note, in inherited classes it is advisable to call the parent's `build()`
+        after setting up all variables because `configure_optimizer_for_module` is
+        called in this `Learner.build()`.
         """
         # TODO (Kourosh): How do we handle model parallelism?
         # TODO (Kourosh): Instead of using _TorchAccelerator, we should use the public
@@ -428,7 +431,7 @@ class TorchLearner(Learner):
     def _get_tensor_variable(
         self, value, dtype=None, trainable=False
     ) -> "torch.Tensor":
-        return torch.tensor(
+        tensor = torch.tensor(
             value,
             requires_grad=trainable,
             device=self._device,
@@ -443,6 +446,7 @@ class TorchLearner(Learner):
                 )
             ),
         )
+        return nn.Parameter(tensor) if trainable else tensor
 
     @staticmethod
     @override(Learner)

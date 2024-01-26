@@ -129,14 +129,31 @@ def test_num_replicas():
 
 def test_autoscaling_config():
     v1 = DeploymentVersion(
-        "1", DeploymentConfig(autoscaling_config={"max_replicas": 2}), {}
+        "1",
+        DeploymentConfig(
+            autoscaling_config={"max_replicas": 2, "metrics_interval_s": 10}
+        ),
+        {},
     )
     v2 = DeploymentVersion(
-        "1", DeploymentConfig(autoscaling_config={"max_replicas": 5}), {}
+        "1",
+        DeploymentConfig(
+            autoscaling_config={"max_replicas": 5, "metrics_interval_s": 10}
+        ),
+        {},
+    )
+    v3 = DeploymentVersion(
+        "1",
+        DeploymentConfig(
+            autoscaling_config={"max_replicas": 2, "metrics_interval_s": 3}
+        ),
+        {},
     )
 
     assert v1 == v2
     assert hash(v1) == hash(v2)
+    assert v1 != v3
+    assert hash(v1) != hash(v3)
 
 
 def test_max_concurrent_queries():

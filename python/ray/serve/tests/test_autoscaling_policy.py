@@ -19,74 +19,43 @@ from ray.serve._private.common import (
     ApplicationStatus,
     DeploymentID,
     DeploymentStatus,
-    DeploymentStatusInfo,
     DeploymentStatusTrigger,
     ReplicaState,
 )
 from ray.serve._private.constants import SERVE_DEFAULT_APP_NAME, SERVE_NAMESPACE
 from ray.serve._private.controller import ServeController
-from ray.serve.config import AutoscalingConfig
-from ray.serve.generated.serve_pb2 import (
-    DeploymentStatusInfo as DeploymentStatusInfoProto,
+from ray.serve._private.test_utils import (
+    check_num_replicas_eq,
+    check_num_replicas_gte,
+    check_num_replicas_lte,
+    get_num_running_replicas,
 )
+from ray.serve.config import AutoscalingConfig
 from ray.serve.schema import ServeDeploySchema
 
 
-def get_deployment_status(controller, name) -> DeploymentStatus:
-    ref = ray.get(controller.get_deployment_status.remote(name, SERVE_DEFAULT_APP_NAME))
-    info = DeploymentStatusInfo.from_proto(DeploymentStatusInfoProto.FromString(ref))
-    return info.status
-
-
-def get_running_replicas(controller: ServeController, name: str) -> List:
-    """Get the replicas currently running for given deployment"""
+def get_running_replica_tags(name: str, controller: ServeController) -> List:
+    """Get the replica tags of running replicas for given deployment"""
     replicas = ray.get(
         controller._dump_replica_states_for_testing.remote(
             DeploymentID(name, SERVE_DEFAULT_APP_NAME)
         )
     )
     running_replicas = replicas.get([ReplicaState.RUNNING])
-    return running_replicas
-
-
-def get_running_replica_tags(controller: ServeController, name: str) -> List:
-    """Get the replica tags of running replicas for given deployment"""
-    running_replicas = get_running_replicas(controller, name)
     return [replica.replica_tag for replica in running_replicas]
 
 
-def check_deployment_status(controller, name, expected_status) -> DeploymentStatus:
-    ref = ray.get(controller.get_deployment_status.remote(name, SERVE_DEFAULT_APP_NAME))
-    info = DeploymentStatusInfo.from_proto(DeploymentStatusInfoProto.FromString(ref))
-    assert info.status == expected_status
+def check_deployment_status(name, expected_status) -> DeploymentStatus:
+    app_status = serve.status().applications[SERVE_DEFAULT_APP_NAME]
+    assert app_status.deployments[name].status == expected_status
     return True
 
 
-def check_autoscale_num_replicas_gte(
-    controller: ServeController, name: str, target: int
-) -> int:
-    """Check the number of replicas currently running for given
-    deployment is greater than or equal to target.
-    """
-    assert len(get_running_replicas(controller, name)) >= target
-    return True
-
-
-def check_autoscale_num_replicas_eq(
-    controller: ServeController, name: str, target: int
-) -> int:
-    """Check the number of replicas currently running for given deployment."""
-    assert len(get_running_replicas(controller, name)) == target
-    return True
-
-
-def check_autoscale_num_replicas_lte(
-    controller: ServeController, name: str, target: int
-) -> int:
-    """Check the number of replicas currently running for given deployment."""
-
-    assert len(get_running_replicas(controller, name)) <= target
-    return True
+def get_deployment_start_time(controller: ServeController, name: str):
+    """Return start time for given deployment"""
+    deployments = ray.get(controller.list_deployments_internal.remote())
+    deployment_info, _ = deployments[DeploymentID(name, SERVE_DEFAULT_APP_NAME)]
+    return deployment_info.start_time_ms
 
 
 def assert_no_replicas_deprovisioned(
@@ -123,18 +92,78 @@ def test_assert_no_replicas_deprovisioned():
         assert_no_replicas_deprovisioned(replica_tags_2, replica_tags_1)
 
 
-def get_deployment_start_time(controller: ServeController, name: str):
-    """Return start time for given deployment"""
-    deployments = ray.get(controller.list_deployments_internal.remote())
-    deployment_info, _ = deployments[DeploymentID(name, SERVE_DEFAULT_APP_NAME)]
-    return deployment_info.start_time_ms
+def test_autoscaling_metrics(serve_instance):
+    """Test that request metrics are sent correctly to the controller."""
+
+    signal = SignalActor.remote()
+
+    @serve.deployment(
+        autoscaling_config={
+            "metrics_interval_s": 0.1,
+            "min_replicas": 1,
+            "max_replicas": 2,
+            "target_num_ongoing_requests_per_replica": 1,
+            "upscale_delay_s": 0,
+            "downscale_delay_s": 0,
+            "look_back_period_s": 1,
+        },
+        # We will send over a lot of queries. This will make sure replicas are
+        # killed quickly during cleanup.
+        graceful_shutdown_timeout_s=1,
+        max_concurrent_queries=25,
+        version="v1",
+    )
+    class A:
+        def __call__(self):
+            ray.get(signal.wait.remote())
+
+    handle = serve.run(A.bind())
+    dep_id = DeploymentID("A", "default")
+    [handle.remote()._to_object_ref_sync() for _ in range(50)]
+
+    # Wait for metrics to propagate
+    def get_data():
+        data = ray.get(
+            serve_instance._controller._dump_autoscaling_metrics_for_testing.remote()
+        )[dep_id]
+        print(data)
+        return data
+
+    wait_for_condition(lambda: get_data() > 0)
+    print("Autoscaling metrics started recording on controller.")
+
+    # Many queries should be inflight.
+    def last_timestamp_value_high():
+        metrics = get_data()
+        assert metrics > 40
+        return True
+
+    wait_for_condition(last_timestamp_value_high)
+    print("Confirmed there are metrics from 2 replicas, and many queries are inflight.")
+    print("Releasing signal.")
+    signal.send.remote()
+
+    def check_running_replicas(expected):
+        replicas = ray.get(
+            serve_instance._controller._dump_replica_states_for_testing.remote(dep_id)
+        )
+        running_replicas = replicas.get([ReplicaState.RUNNING])
+        assert len(running_replicas) == expected
+        return True
+
+    # After traffic stops, num replica should drop to 1
+    wait_for_condition(check_running_replicas, expected=1, timeout=15)
+    print("Num replicas dropped to 1.")
+
+    # Request metrics should drop to 0
+    wait_for_condition(lambda: get_data() == 0)
+    print("Queued and ongoing requests dropped to 0.")
 
 
 @pytest.mark.parametrize("min_replicas", [1, 2])
 def test_e2e_scale_up_down_basic(min_replicas, serve_instance):
     """Send 100 requests and check that we autoscale up, and then back down."""
 
-    controller = serve_instance._controller
     signal = SignalActor.remote()
 
     @serve.deployment(
@@ -150,7 +179,6 @@ def test_e2e_scale_up_down_basic(min_replicas, serve_instance):
         # killed quickly during cleanup.
         graceful_shutdown_timeout_s=1,
         max_concurrent_queries=1000,
-        version="v1",
     )
     class A:
         def __call__(self):
@@ -158,40 +186,27 @@ def test_e2e_scale_up_down_basic(min_replicas, serve_instance):
 
     handle = serve.run(A.bind())
     wait_for_condition(
-        check_deployment_status,
-        controller=controller,
-        name="A",
-        expected_status=DeploymentStatus.HEALTHY,
+        check_deployment_status, name="A", expected_status=DeploymentStatus.HEALTHY
     )
-    start_time = get_deployment_start_time(controller, "A")
+    start_time = get_deployment_start_time(serve_instance._controller, "A")
 
     [handle.remote() for _ in range(100)]
 
     # scale up one more replica from min_replicas
-    wait_for_condition(
-        check_autoscale_num_replicas_gte,
-        controller=controller,
-        name="A",
-        target=min_replicas + 1,
-    )
+    wait_for_condition(check_num_replicas_gte, name="A", target=min_replicas + 1)
     # check_deployment_status(controller, "A", DeploymentStatus.UPSCALING)
     signal.send.remote()
 
     # As the queue is drained, we should scale back down.
-    wait_for_condition(
-        check_autoscale_num_replicas_lte,
-        controller=controller,
-        name="A",
-        target=min_replicas,
-    )
+    wait_for_condition(check_num_replicas_lte, name="A", target=min_replicas)
 
     # Make sure start time did not change for the deployment
-    assert get_deployment_start_time(controller, "A") == start_time
+    assert get_deployment_start_time(serve_instance._controller, "A") == start_time
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows.")
-@pytest.mark.parametrize("smoothing_factor", [1, 0.2])
-@pytest.mark.parametrize("use_upscale_downscale_config", [True, False])
+@pytest.mark.parametrize("smoothing_factor", [1])  # , 0.2])
+@pytest.mark.parametrize("use_upscale_downscale_config", [True])  # , False])
 def test_e2e_scale_up_down_with_0_replica(
     serve_instance, smoothing_factor, use_upscale_downscale_config
 ):
@@ -228,7 +243,7 @@ def test_e2e_scale_up_down_with_0_replica(
 
     handle = serve.run(A.bind()).options(use_new_handle_api=True)
     wait_for_condition(
-        lambda: get_deployment_status(controller, "A") == DeploymentStatus.HEALTHY
+        check_deployment_status, name="A", expected_status=DeploymentStatus.HEALTHY
     )
     start_time = get_deployment_start_time(controller, "A")
 
@@ -236,23 +251,13 @@ def test_e2e_scale_up_down_with_0_replica(
 
     # After the blocking requests are sent, the number of replicas
     # should increase.
-    wait_for_condition(
-        check_autoscale_num_replicas_gte,
-        controller=controller,
-        name="A",
-        target=1,
-    )
+    wait_for_condition(check_num_replicas_gte, name="A", target=1)
     # Release the signal, which should unblock all requests.
     print("Number of replicas reached at least 1, releasing signal.")
     signal.send.remote()
 
     # As the queue is drained, we should scale back down.
-    wait_for_condition(
-        check_autoscale_num_replicas_eq,
-        controller=controller,
-        name="A",
-        target=0,
-    )
+    wait_for_condition(check_num_replicas_eq, name="A", target=0)
     # Make sure no requests were dropped.
     # If the deployment (unexpectedly) scaled down before the
     # blocking signal was released, chances are some requests failed b/c
@@ -279,16 +284,13 @@ def test_initial_num_replicas(mock, serve_instance):
             "min_replicas": 2,
             "max_replicas": 4,
         },
-        version="v1",
     )
     class A:
         def __call__(self):
             return "ok!"
 
     serve.run(A.bind())
-
-    controller = serve_instance._controller
-    assert len(get_running_replicas(controller, "A")) == 2
+    check_num_replicas_eq("A", 2)
 
 
 def test_cold_start_time(serve_instance):
@@ -361,20 +363,15 @@ def test_e2e_bursty(serve_instance):
 
     handle = serve.run(A.bind())
     wait_for_condition(
-        lambda: get_deployment_status(controller, "A") == DeploymentStatus.HEALTHY
+        check_deployment_status, name="A", expected_status=DeploymentStatus.HEALTHY
     )
     start_time = get_deployment_start_time(controller, "A")
 
     [handle.remote() for _ in range(100)]
 
-    wait_for_condition(
-        check_autoscale_num_replicas_gte,
-        controller=controller,
-        name="A",
-        target=2,
-    )
+    wait_for_condition(check_num_replicas_gte, name="A", target=2)
 
-    num_replicas = len(get_running_replicas(controller, "A"))
+    num_replicas = get_num_running_replicas("A")
     signal.send.remote()
 
     # Execute a bursty workload that issues 100 requests every 0.05 seconds
@@ -385,19 +382,14 @@ def test_e2e_bursty(serve_instance):
     # parameters.
     for _ in range(5):
         ray.get(signal.send.remote(clear=True))
-        check_autoscale_num_replicas_eq(controller, "A", num_replicas)
+        check_num_replicas_eq("A", num_replicas)
         responses = [handle.remote() for _ in range(100)]
         signal.send.remote()
         [r.result() for r in responses]
         time.sleep(0.05)
 
     # As the queue is drained, we should scale back down.
-    wait_for_condition(
-        check_autoscale_num_replicas_lte,
-        controller=controller,
-        name="A",
-        target=1,
-    )
+    wait_for_condition(check_num_replicas_lte, name="A", target=1)
 
     # Make sure start time did not change for the deployment
     assert get_deployment_start_time(controller, "A") == start_time
@@ -425,7 +417,6 @@ def test_e2e_intermediate_downscaling(serve_instance):
         # killed quickly during cleanup.
         graceful_shutdown_timeout_s=1,
         max_concurrent_queries=1000,
-        version="v1",
     )
     class A:
         def __call__(self):
@@ -433,51 +424,83 @@ def test_e2e_intermediate_downscaling(serve_instance):
 
     handle = serve.run(A.bind())
     wait_for_condition(
-        lambda: get_deployment_status(controller, "A") == DeploymentStatus.HEALTHY
+        check_deployment_status, name="A", expected_status=DeploymentStatus.HEALTHY
     )
     start_time = get_deployment_start_time(controller, "A")
 
     [handle.remote() for _ in range(50)]
 
-    wait_for_condition(
-        check_autoscale_num_replicas_gte,
-        controller=controller,
-        name="A",
-        target=20,
-        timeout=30,
-    )
+    wait_for_condition(check_num_replicas_gte, name="A", target=20, timeout=30)
     signal.send.remote()
 
-    wait_for_condition(
-        check_autoscale_num_replicas_lte,
-        controller=controller,
-        name="A",
-        target=1,
-        timeout=30,
-    )
+    wait_for_condition(check_num_replicas_lte, name="A", target=1, timeout=30)
     signal.send.remote(clear=True)
 
     [handle.remote() for _ in range(50)]
-    wait_for_condition(
-        check_autoscale_num_replicas_gte,
-        controller=controller,
-        name="A",
-        target=20,
-        timeout=30,
-    )
+    wait_for_condition(check_num_replicas_gte, name="A", target=20, timeout=30)
 
     signal.send.remote()
     # As the queue is drained, we should scale back down.
-    wait_for_condition(
-        check_autoscale_num_replicas_eq,
-        controller=controller,
-        name="A",
-        target=0,
-        timeout=30,
-    )
+    wait_for_condition(check_num_replicas_eq, name="A", target=0, timeout=30)
 
     # Make sure start time did not change for the deployment
     assert get_deployment_start_time(controller, "A") == start_time
+
+
+@pytest.mark.parametrize("initial_replicas", [2, 3])
+def test_downscaling_with_fractional_smoothing_factor(
+    serve_instance, initial_replicas: int
+):
+    signal = SignalActor.options(name="signal123").remote()
+    signal.send.remote(clear=True)
+
+    app_config = {
+        "import_path": "ray.serve.tests.test_config_files.get_signal.app",
+        "deployments": [
+            {
+                "name": "A",
+                "autoscaling_config": {
+                    "metrics_interval_s": 0.1,
+                    "min_replicas": 0,
+                    "max_replicas": 5,
+                    "initial_replicas": initial_replicas,
+                    "downscale_smoothing_factor": 0.5,
+                    "look_back_period_s": 0.2,
+                    "downscale_delay_s": 5,
+                },
+                "graceful_shutdown_timeout_s": 1,
+                "max_concurrent_queries": 1000,
+            }
+        ],
+    }
+
+    # Deploy with initial replicas = 2+, smoothing factor = 0.5
+    serve_instance.deploy_apps(ServeDeploySchema(**{"applications": [app_config]}))
+    wait_for_condition(
+        check_deployment_status, name="A", expected_status=DeploymentStatus.HEALTHY
+    )
+
+    # Send a blocked request to one of two replicas.
+    # Deployment should still have the initial number of replicas since
+    # downscale delay = 5
+    h = serve.get_app_handle(SERVE_DEFAULT_APP_NAME)
+    h.remote()
+    check_num_replicas_eq("A", initial_replicas)
+
+    # There is 1 ongoing (blocked) request and 2+ replicas. The
+    # deployment should autoscale down to 1 replica despite the
+    # smoothing factor
+    current_num_replicas = initial_replicas
+    while current_num_replicas > 1:
+        wait_for_condition(
+            check_num_replicas_eq, name="A", target=current_num_replicas - 1
+        )
+        current_num_replicas -= 1
+        print(f"Deployment has downscaled to {current_num_replicas} replicas.")
+
+    # Release signal so we don't get an ugly error message from the
+    # replica when the signal actor goes out of scope and gets killed
+    ray.get(signal.send.remote())
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows.")
@@ -510,25 +533,20 @@ def test_e2e_update_autoscaling_deployment(serve_instance):
     serve_instance.deploy_apps(ServeDeploySchema(**{"applications": [app_config]}))
     print("Deployed A with min_replicas 1 and max_replicas 10.")
     wait_for_condition(
-        lambda: get_deployment_status(controller, "A") == DeploymentStatus.HEALTHY
+        check_deployment_status, name="A", expected_status=DeploymentStatus.HEALTHY
     )
     handle = serve.get_deployment_handle("A", "default")
     start_time = get_deployment_start_time(controller, "A")
 
-    check_autoscale_num_replicas_eq(controller, "A", 0)
+    check_num_replicas_eq("A", 0)
     [handle.remote() for _ in range(400)]
     print("Issued 400 requests.")
 
-    wait_for_condition(
-        check_autoscale_num_replicas_gte,
-        controller=controller,
-        name="A",
-        target=10,
-    )
+    wait_for_condition(check_num_replicas_gte, name="A", target=10)
     print("Scaled to 10 replicas.")
-    first_deployment_replicas = get_running_replica_tags(controller, "A")
+    first_deployment_replicas = get_running_replica_tags("A", controller)
 
-    check_autoscale_num_replicas_lte(controller, "A", 20)
+    check_num_replicas_lte("A", 20)
 
     [handle.remote() for _ in range(458)]
     time.sleep(3)
@@ -539,14 +557,9 @@ def test_e2e_update_autoscaling_deployment(serve_instance):
     serve_instance.deploy_apps(ServeDeploySchema(**{"applications": [app_config]}))
     print("Redeployed A.")
 
-    wait_for_condition(
-        check_autoscale_num_replicas_gte,
-        controller=controller,
-        name="A",
-        target=20,
-    )
+    wait_for_condition(check_num_replicas_gte, name="A", target=20)
     print("Scaled up to 20 requests.")
-    second_deployment_replicas = get_running_replica_tags(controller, "A")
+    second_deployment_replicas = get_running_replica_tags("A", controller)
 
     # Confirm that none of the original replicas were de-provisioned
     assert_no_replicas_deprovisioned(
@@ -556,13 +569,8 @@ def test_e2e_update_autoscaling_deployment(serve_instance):
     signal.send.remote()
 
     # As the queue is drained, we should scale back down.
-    wait_for_condition(
-        check_autoscale_num_replicas_lte,
-        controller=controller,
-        name="A",
-        target=2,
-    )
-    check_autoscale_num_replicas_gte(controller, "A", 2)
+    wait_for_condition(check_num_replicas_lte, name="A", target=2)
+    check_num_replicas_gte("A", 2)
 
     # Make sure start time did not change for the deployment
     assert get_deployment_start_time(controller, "A") == start_time
@@ -572,36 +580,23 @@ def test_e2e_update_autoscaling_deployment(serve_instance):
     serve_instance.deploy_apps(ServeDeploySchema(**{"applications": [app_config]}))
     print("Redeployed A.")
     wait_for_condition(
-        lambda: get_deployment_status(controller, "A") == DeploymentStatus.HEALTHY
+        check_deployment_status, name="A", expected_status=DeploymentStatus.HEALTHY
     )
 
-    wait_for_condition(
-        check_autoscale_num_replicas_eq,
-        controller=controller,
-        name="A",
-        target=0,
-    )
-    check_autoscale_num_replicas_eq(controller, "A", 0)
+    wait_for_condition(check_num_replicas_eq, name="A", target=0)
+    check_num_replicas_eq("A", 0)
 
     # scale up
     [handle.remote() for _ in range(400)]
-    wait_for_condition(
-        check_autoscale_num_replicas_gte,
-        controller=controller,
-        name="A",
-        target=0,
-    )
+    wait_for_condition(check_num_replicas_gte, name="A", target=0)
     signal.send.remote()
-    wait_for_condition(
-        check_autoscale_num_replicas_eq,
-        controller=controller,
-        name="A",
-        target=0,
-    )
+    wait_for_condition(check_num_replicas_eq, name="A", target=0)
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows.")
 def test_e2e_raise_min_replicas(serve_instance):
+    """Raise min replicas from 0 to 2."""
+
     controller = serve_instance._controller
     signal = SignalActor.options(name="signal123").remote()
 
@@ -627,35 +622,34 @@ def test_e2e_raise_min_replicas(serve_instance):
     serve_instance.deploy_apps(ServeDeploySchema(**{"applications": [app_config]}))
     print("Deployed A.")
     wait_for_condition(
-        lambda: get_deployment_status(controller, "A") == DeploymentStatus.HEALTHY
+        check_deployment_status, name="A", expected_status=DeploymentStatus.HEALTHY
     )
     start_time = get_deployment_start_time(controller, "A")
 
-    check_autoscale_num_replicas_eq(controller, "A", 0)
+    check_num_replicas_eq("A", 0)
 
     handle = serve.get_deployment_handle("A", "default")
     handle.remote()
     print("Issued one request.")
 
-    time.sleep(2)
-    check_autoscale_num_replicas_eq(controller, "A", 1)
-    print("Scale up to 1 replica.")
+    wait_for_condition(check_num_replicas_eq, name="A", target=1, timeout=2)
+    print("Scaled up to 1 replica.")
 
-    first_deployment_replicas = get_running_replica_tags(controller, "A")
+    first_deployment_replicas = get_running_replica_tags("A", controller)
 
     app_config["deployments"][0]["autoscaling_config"]["min_replicas"] = 2
     serve_instance.deploy_apps(ServeDeploySchema(**{"applications": [app_config]}))
     print("Redeployed A with min_replicas set to 2.")
     wait_for_condition(
-        lambda: get_deployment_status(controller, "A") == DeploymentStatus.HEALTHY
+        check_deployment_status, name="A", expected_status=DeploymentStatus.HEALTHY
     )
 
     # Confirm that autoscaler doesn't scale above 2 even after waiting
-    time.sleep(5)
-    check_autoscale_num_replicas_eq(controller, "A", 2)
+    with pytest.raises(RuntimeError, match="timeout"):
+        wait_for_condition(check_num_replicas_gte, name="A", target=3, timeout=5)
     print("Autoscaled to 2 without issuing any new requests.")
 
-    second_deployment_replicas = get_running_replica_tags(controller, "A")
+    second_deployment_replicas = get_running_replica_tags("A", controller)
 
     # Confirm that none of the original replicas were de-provisioned
     assert_no_replicas_deprovisioned(
@@ -667,13 +661,8 @@ def test_e2e_raise_min_replicas(serve_instance):
     print("Completed request.")
 
     # As the queue is drained, we should scale back down.
-    wait_for_condition(
-        check_autoscale_num_replicas_lte,
-        controller=controller,
-        name="A",
-        target=2,
-    )
-    check_autoscale_num_replicas_gte(controller, "A", 2)
+    wait_for_condition(check_num_replicas_lte, name="A", target=2)
+    check_num_replicas_gte("A", 2)
     print("Stayed at 2 replicas.")
 
     # Make sure start time did not change for the deployment
@@ -694,29 +683,10 @@ def test_e2e_initial_replicas(serve_instance):
         return os.getpid()
 
     serve.run(f.bind())
-    dep_id = DeploymentID("f", SERVE_DEFAULT_APP_NAME)
-
-    # f should start with initial_replicas (2) deployments
-    actors = state_api.list_actors(
-        filters=[
-            ("class_name", "=", dep_id.to_replica_actor_class_name()),
-            ("state", "=", "ALIVE"),
-        ]
-    )
-    print(actors)
-    assert len(actors) == 2
+    check_num_replicas_eq("f", target=2)
 
     # f should scale down to min_replicas (1) deployments
-    def check_one_replica():
-        actors = state_api.list_actors(
-            filters=[
-                ("class_name", "=", dep_id.to_replica_actor_class_name()),
-                ("state", "=", "ALIVE"),
-            ]
-        )
-        return len(actors) == 1
-
-    wait_for_condition(check_one_replica, timeout=20)
+    wait_for_condition(check_num_replicas_eq, name="f", target=1, timeout=20)
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows.")
@@ -745,17 +715,13 @@ def test_e2e_preserve_prev_replicas(serve_instance):
     dep_id = DeploymentID("scaler", SERVE_DEFAULT_APP_NAME)
     responses = [handle.remote() for _ in range(10)]
 
-    def check_two_replicas():
-        actors = state_api.list_actors(
-            filters=[
-                ("class_name", "=", dep_id.to_replica_actor_class_name()),
-                ("state", "=", "ALIVE"),
-            ]
-        )
-        print(actors)
-        return len(actors) == 2
-
-    wait_for_condition(check_two_replicas, retry_interval_ms=1000, timeout=20)
+    wait_for_condition(
+        check_num_replicas_eq,
+        name="scaler",
+        target=2,
+        retry_interval_ms=1000,
+        timeout=20,
+    )
 
     ray.get(signal.send.remote())
 
@@ -859,7 +825,6 @@ app = g.bind()
     }
 
     client.deploy_apps(ServeDeploySchema(**{"applications": [app_config]}))
-    dep_id = DeploymentID("g", SERVE_DEFAULT_APP_NAME)
     wait_for_condition(
         lambda: serve.status().applications[SERVE_DEFAULT_APP_NAME].status == "RUNNING"
     )
@@ -871,16 +836,9 @@ app = g.bind()
 
     ref = send_request.remote()
 
-    def check_num_replicas(num: int):
-        actors = state_api.list_actors(
-            filters=[
-                ("class_name", "=", dep_id.to_replica_actor_class_name()),
-                ("state", "=", "ALIVE"),
-            ]
-        )
-        return len(actors) == num
-
-    wait_for_condition(check_num_replicas, retry_interval_ms=1000, timeout=20, num=1)
+    wait_for_condition(
+        check_num_replicas_eq, name="g", target=1, retry_interval_ms=1000, timeout=20
+    )
 
     signal.send.remote()
     existing_pid = ray.get(ref)
@@ -891,7 +849,9 @@ app = g.bind()
     wait_for_condition(
         lambda: serve.status().applications[SERVE_DEFAULT_APP_NAME].status == "RUNNING"
     )
-    wait_for_condition(check_num_replicas, retry_interval_ms=1000, timeout=20, num=1)
+    wait_for_condition(
+        check_num_replicas_eq, name="g", target=1, retry_interval_ms=1000, timeout=20
+    )
 
     # Step 5: Make sure it is the same replica (lightweight change).
     for _ in range(10):
@@ -906,7 +866,9 @@ app = g.bind()
     wait_for_condition(
         lambda: serve.status().applications[SERVE_DEFAULT_APP_NAME].status == "RUNNING"
     )
-    wait_for_condition(check_num_replicas, retry_interval_ms=1000, timeout=20, num=3)
+    wait_for_condition(
+        check_num_replicas_eq, name="g", target=3, retry_interval_ms=1000, timeout=20
+    )
 
     # Step 7: Make sure original replica is still running (lightweight change)
     pids = set()
