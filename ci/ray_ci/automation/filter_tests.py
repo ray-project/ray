@@ -1,12 +1,9 @@
 #!/usr/bin/env python3
 from ray_release.test import Test, TestState
-from ci.ray_ci.utils import logger
-from typing import List
 from ray_release.configs.global_config import init_global_config
 from ray_release.bazel import bazel_runfile
-import json
 import sys
-import os
+
 
 def main():
     """
@@ -43,15 +40,18 @@ def main():
     TEST_PREFIXES = ["darwin:"]
 
     # Obtain all existing flaky tests
-    flaky_test_names = obtain_existing_flaky_test_names(prefix_on=False)
+    flaky_test_names = obtain_existing_test_names_by_state(prefix_on=False, test_state=test_state)
     # Eliminate flaky test from list of test targets
-    non_flaky_test_targets = [test for test in test_targets if test not in flaky_test_names]
+    non_flaky_test_targets = [
+        test for test in test_targets if test not in flaky_test_names
+    ]
 
     # Write non-flaky test targets to file
     with open(test_targets_file_path, "w") as f:
         f.write("\n".join(non_flaky_test_targets))
 
-def obtain_existing_flaky_test_names(prefix_on: bool = False):
+
+def obtain_existing_test_names_by_state(prefix_on: bool = False, test_state: str = "flaky"):
     """
     Obtain all existing flaky test names.
 
@@ -63,15 +63,28 @@ def obtain_existing_flaky_test_names(prefix_on: bool = False):
     """
     TEST_PREFIXES = ["darwin:"]
 
-    # Obtain all existing flaky tests
+    # Convert test_state string into TestState enum
+    test_state_enum = next((state for state in TestState if state.value == test_state), None)
+    if test_state_enum is None:
+        raise ValueError("Invalid test state.")
+
+    # Obtain all existing tests
     tests = Test.get_tests(TEST_PREFIXES)
-    flaky_tests = Test.filter_tests_by_state(tests, TestState.FLAKY)
-    flaky_test_names = [test.get_name() for test in flaky_tests]
+
+    # Filter tests by test state
+    filtered_tests = Test.filter_tests_by_state(tests, test_state_enum)
+    filtered_test_names = [test.get_name() for test in filtered_tests]
     if prefix_on:
-        return flaky_test_names
+        return filtered_test_names
     else:
-        no_prefix_flaky_test_names = [test.get_name().removeprefix(prefix) for test in flaky_tests for prefix in TEST_PREFIXES if test.get_name().startswith(prefix)]
-        return no_prefix_flaky_test_names
+        no_prefix_filtered_test_names = [
+            test.removeprefix(prefix)
+            for test in filtered_test_names
+            for prefix in TEST_PREFIXES
+            if test.startswith(prefix)
+        ]
+        return no_prefix_filtered_test_names
+
 
 if __name__ == "__main__":
     main()
