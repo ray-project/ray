@@ -63,9 +63,6 @@ class MapOperator(OneToOneOperator, ABC):
         self._ray_remote_args_factory = None
         self._remote_args_for_metrics = copy.deepcopy(self._ray_remote_args)
 
-        # Initialize the back pressure policies to be empty list.
-        self._backpressure_policies = []
-
         # Bundles block references up to the min_rows_per_bundle target.
         self._block_ref_bundler = _BlockRefBundler(min_rows_per_bundle)
 

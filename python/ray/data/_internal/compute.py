@@ -162,8 +162,9 @@ class TaskPoolStrategy(ComputeStrategy):
         )
 
     def __eq__(self, other: Any) -> bool:
-        return (isinstance(other, TaskPoolStrategy) and self.size == other.size)\
-            or (other == "tasks" and self.size is None)
+        return (isinstance(other, TaskPoolStrategy) and self.size == other.size) or (
+            other == "tasks" and self.size is None
+        )
 
 
 @PublicAPI
