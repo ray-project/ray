@@ -715,9 +715,15 @@ def _execution_allowed(
     )
     global_ok_sans_memory = new_usage.satisfies_limit(global_limits_sans_memory)
     downstream_usage = global_usage.downstream_memory_usage[op]
+    downstream_memory = downstream_usage.object_store_memory
+    if (
+        DataContext.get_current().use_runtime_metrics_scheduling
+        and inc.object_store_memory
+    ):
+        downstream_memory += inc.object_store_memory
     downstream_limit = global_limits.scale(downstream_usage.topology_fraction)
     downstream_memory_ok = ExecutionResources(
-        object_store_memory=downstream_usage.object_store_memory
+        object_store_memory=downstream_memory
     ).satisfies_limit(downstream_limit)
 
     # If completing a task decreases the overall object store memory usage, allow it

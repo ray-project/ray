@@ -6,7 +6,7 @@ import sys
 import time
 import traceback
 from dataclasses import asdict
-from typing import Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 
 import click
 import watchfiles
@@ -30,6 +30,7 @@ from ray.serve._private.deployment_graph_build import build as pipeline_build
 from ray.serve._private.deployment_graph_build import (
     get_and_validate_ingress_deployment,
 )
+from ray.serve._private.publish_provider import get_publish_provider
 from ray.serve.config import DeploymentMode, ProxyLocation, gRPCOptions
 from ray.serve.deployment import Application, deployment_to_schema
 from ray.serve.schema import (
@@ -37,6 +38,7 @@ from ray.serve.schema import (
     ServeApplicationSchema,
     ServeDeploySchema,
     ServeInstanceDetails,
+    _skip_validating_runtime_env_uris,
 )
 
 APP_DIR_HELP_STR = (
@@ -329,20 +331,6 @@ def deploy(config_file_name: str, address: str):
     help=RAY_INIT_ADDRESS_HELP_STR,
 )
 @click.option(
-    "--host",
-    "-h",
-    required=False,
-    type=str,
-    help=f"Host for HTTP server to listen on. Defaults to {DEFAULT_HTTP_HOST}.",
-)
-@click.option(
-    "--port",
-    "-p",
-    required=False,
-    type=int,
-    help=f"Port for HTTP proxies to listen on. Defaults to {DEFAULT_HTTP_PORT}.",
-)
-@click.option(
     "--blocking/--non-blocking",
     default=True,
     help=(
@@ -391,20 +379,11 @@ def run(
     working_dir: str,
     app_dir: str,
     address: str,
-    host: str,
-    port: int,
     blocking: bool,
     reload: bool,
     route_prefix: str,
     name: str,
 ):
-    if host is not None or port is not None:
-        cli_logger.warning(
-            "Specifying `--host` and `--port` to `serve run` is deprecated and will be "
-            "removed in a future version. To specify custom HTTP options, use the "
-            "`serve start` command."
-        )
-
     sys.path.insert(0, app_dir)
     args_dict = convert_args_to_dict(arguments)
     final_runtime_env = parse_runtime_env_args(
@@ -428,25 +407,8 @@ def run(
 
             config = ServeDeploySchema.parse_obj(config_dict)
 
-            # If host or port is specified as a CLI argument, they should take
-            # priority over config values.
-            if host is None:
-                if "http_options" in config_dict:
-                    host = config_dict["http_options"].get("host", DEFAULT_HTTP_HOST)
-                else:
-                    host = DEFAULT_HTTP_HOST
-            if port is None:
-                if "http_options" in config_dict:
-                    port = config_dict["http_options"].get("port", DEFAULT_HTTP_PORT)
-                else:
-                    port = DEFAULT_HTTP_PORT
-
     else:
         is_config = False
-        if host is None:
-            host = DEFAULT_HTTP_HOST
-        if port is None:
-            port = DEFAULT_HTTP_PORT
         import_path = config_or_import_path
         cli_logger.print(f"Running import path: '{import_path}'.")
         app = _private_api.call_app_builder_with_args_if_necessary(
@@ -473,10 +435,9 @@ def run(
             "need to call `ray.init` in your code when using `serve run`."
         )
 
-    http_options = {"host": host, "port": port, "location": "EveryNode"}
+    http_options = {"location": "EveryNode"}
     grpc_options = gRPCOptions()
-    # Merge http_options and grpc_options with the ones on ServeDeploySchema. If host
-    # and/or port is passed by cli, those continue to take the priority
+    # Merge http_options and grpc_options with the ones on ServeDeploySchema.
     if is_config and isinstance(config, ServeDeploySchema):
         config_http_options = config.http_options.dict()
         http_options = {**config_http_options, **http_options}
@@ -492,8 +453,8 @@ def run(
             client.deploy_apps(config, _blocking=False)
             cli_logger.success("Submitted deploy config successfully.")
         else:
-            serve.run(app, name=name, route_prefix=route_prefix, host=host, port=port)
-            cli_logger.success("Deployed Serve app successfully.")
+            serve.run(app, name=name, route_prefix=route_prefix)
+            cli_logger.success("Deployed app successfully.")
 
         if reload:
             if not blocking:
@@ -519,9 +480,8 @@ def run(
                     app = _private_api.call_app_builder_with_args_if_necessary(
                         import_attr(import_path, reload_module=True), args_dict
                     )
-                    serve.run(
-                        app, name=name, route_prefix=route_prefix, host=host, port=port
-                    )
+                    serve.run(app, name=name, route_prefix=route_prefix)
+                    cli_logger.success("Redeployed app successfully.")
 
         if blocking:
             while True:
@@ -802,6 +762,143 @@ def build(
 
     with open(output_path, "w") if output_path else sys.stdout as f:
         f.write(config_str)
+
+
+def _generate_config_from_file_or_import_path(
+    config_or_import_path: str,
+    *,
+    arguments: Dict[str, str],
+    runtime_env: Optional[Dict[str, Any]],
+) -> Tuple[ServeDeploySchema, str]:
+    """Generates a deployable config schema and name for the passed applications(s).
+
+    NOTE: the returned name must not contain any "." or ":" characters.
+    """
+    if pathlib.Path(config_or_import_path).is_file():
+        config_path = config_or_import_path
+        cli_logger.print(f"Publishing from config file: '{config_path}'.")
+        if len(arguments) > 0:
+            raise click.ClickException(
+                "Application arguments cannot be specified for a config file."
+            )
+
+        # TODO(edoakes): runtime_env is silently ignored -- should we enable overriding?
+        name = os.path.basename(config_path).split(".")[0]
+        with open(config_path, "r") as config_file:
+            config_dict = yaml.safe_load(config_file)
+            config = ServeDeploySchema.parse_obj(config_dict)
+    else:
+        # TODO(edoakes): should we default to --working-dir="." for this?
+        import_path = config_or_import_path
+        cli_logger.print(f"Publishing import path: '{import_path}'.")
+
+        if import_path.count(":") != 1:
+            raise click.ClickException(
+                "Import path must be of the form 'module.submodule:app_or_builder', "
+                f"got: '{import_path}'."
+            )
+        name = import_path.split(":")[1]
+        app = ServeApplicationSchema(
+            import_path=import_path,
+            runtime_env=runtime_env,
+            args=arguments,
+        )
+        config = ServeDeploySchema(applications=[app])
+
+    assert isinstance(config, ServeDeploySchema)
+    assert isinstance(name, str) and name
+    return config, name
+
+
+@cli.command(
+    short_help="Publish an application to a remote provider.",
+    # TODO(edoakes): un-hide this at some point.
+    hidden=True,
+)
+@click.argument("config_or_import_path")
+@click.argument("arguments", nargs=-1, required=False)
+@click.option(
+    "--runtime-env",
+    type=str,
+    default=None,
+    required=False,
+    help="Path to a local YAML file containing a runtime_env definition.",
+)
+@click.option(
+    "--runtime-env-json",
+    type=str,
+    default=None,
+    required=False,
+    help="JSON-serialized runtime_env dictionary.",
+)
+@click.option(
+    "--working-dir",
+    type=str,
+    default=None,
+    required=False,
+    help=(
+        "Directory containing files that your application(s) will run in. Can be a "
+        "local directory or a remote URI to a .zip file (S3, GS, HTTP). "
+        "This overrides the working_dir in --runtime-env if both are "
+        "specified."
+    ),
+)
+@click.option(
+    "--name",
+    required=False,
+    default=None,
+    type=str,
+    help="Optional custom name for the application.",
+)
+@click.option(
+    "--base-image",
+    required=False,
+    default=None,
+    type=str,
+    help="Optional container image to use for the application.",
+)
+@click.option(
+    "--provider",
+    required=False,
+    default="anyscale",
+    type=str,
+    help="Publish provider to use. Defaults to anyscale.",
+)
+def publish(
+    config_or_import_path: str,
+    arguments: Tuple[str],
+    runtime_env: str,
+    runtime_env_json: str,
+    working_dir: str,
+    name: Optional[str],
+    base_image: Optional[str],
+    provider: str,
+):
+    args_dict = convert_args_to_dict(arguments)
+    final_runtime_env = parse_runtime_env_args(
+        runtime_env=runtime_env,
+        runtime_env_json=runtime_env_json,
+        working_dir=working_dir,
+    )
+
+    # Skip validating runtime_env URIs so publishers can enable local URI usage.
+    with _skip_validating_runtime_env_uris():
+        config, default_name = _generate_config_from_file_or_import_path(
+            config_or_import_path,
+            arguments=args_dict,
+            runtime_env=final_runtime_env,
+        )
+
+    if name is None:
+        name = default_name
+
+    publish_provider = get_publish_provider(provider)
+    publish_provider.publish(
+        config.dict(exclude_unset=True),
+        name=name,
+        ray_version=ray.__version__,
+        base_image=base_image,
+    )
 
 
 class ServeDeploySchemaDumper(yaml.SafeDumper):
