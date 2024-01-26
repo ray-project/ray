@@ -98,7 +98,7 @@ steps:
       - data
     instance_type: medium
     commands:
-      - bazel run //ci/ray_ci:test_in_docker -- //python/ray/data/...
+      - bazel run //ci/ray_ci:test_in_docker -- //python/ray/data/... data
         --parallelism-per-worker 3
         --build-name datatfxbslbuild
         --test-env RAY_DATA_USE_STREAMING_EXECUTOR=1
