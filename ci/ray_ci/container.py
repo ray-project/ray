@@ -38,11 +38,17 @@ class Container:
         docker_tag: str,
         volumes: Optional[List[str]] = None,
         envs: Optional[List[str]] = None,
+        tmp_filesystem: Optional[str] = None,
     ) -> None:
         self.docker_tag = docker_tag
         self.volumes = volumes or []
         self.envs = envs or []
         self.envs += _DOCKER_ENV
+
+        if tmp_filesystem is not None:
+            if tmp_filesystem != "tmpfs":
+                raise ValueError("Only tmpfs is supported for tmp filesystem")
+        self.tmp_filesystem = tmp_filesystem
 
     def run_script_with_output(self, script: List[str]) -> bytes:
         """
@@ -108,6 +114,11 @@ class Container:
             command += ["--cap-add", cap]
         if gpu_ids:
             command += ["--gpus", f'"device={",".join(map(str, gpu_ids))}"']
+        if self.tmp_filesystem:
+            command += [
+                "--mount",
+                f"type={self.tmp_filesystem},destination=/tmp",
+            ]
         command += [
             "--workdir",
             "/rayci",
