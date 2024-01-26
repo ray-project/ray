@@ -23,3 +23,12 @@ py_binary(
     srcs = ["filter_tests.py"],
     deps = ["//ci/ray_ci:ray_ci_lib"],
 )
+
+py_test(
+    name = "test_filter_tests",
+    size = "small",
+    srcs = ["tests/test_filter_tests.py"],
+    deps = [
+        "//ci/ray_ci/automation:filter_tests",
+    ],
+)
