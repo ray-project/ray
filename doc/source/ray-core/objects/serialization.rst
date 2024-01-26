@@ -26,11 +26,9 @@ Each node has its own object store. When data is put into the object store, it d
 Object Refs
 ~~~~~~~~~~~~~~~~~~~
 
-Ray object refs can be serialized using `ray.cloudpickle`. When serialized, the object refs' objects remain pinned in Ray's shared memory, even if the object ref goes out of scope.
+Ray object refs can be serialized using `ray.cloudpickle`. The object ref can then be deserialized and accessed with `ray.get()`. Note that `ray.cloudpickle` must be used; other pickle tools are not guaranteed to work.
 
-The object ref can then be deserialized and used with `ray.get()` to obtain its object. However, the object will remain pinned in memory even after deserialization.
-
-The object must be explicitly freed by calling `ray._private.internal_api.free(obj_ref)`.
+When serialized, the `ObjectRef`'s value will remain pinned in Ray's shared memory object store. The object must be explicitly freed by the user by calling `ray._private.internal_api.free(obj_ref)`.
 
 .. warning::
   
