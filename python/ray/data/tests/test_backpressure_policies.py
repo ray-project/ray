@@ -1,4 +1,5 @@
 import functools
+import math
 import time
 import unittest
 from collections import defaultdict
@@ -61,13 +62,17 @@ class TestConcurrencyCapBackpressurePolicy(unittest.TestCase):
         )
         map_op.metrics.num_tasks_running = 0
         map_op.metrics.num_tasks_finished = 0
-        topology = {map_op: MagicMock()}
+        topology = {
+            map_op: MagicMock(),
+            input_op: MagicMock(),
+            map_op_no_concurrency: MagicMock(),
+        }
 
         policy = ConcurrencyCapBackpressurePolicy(topology)
 
         self.assertEqual(policy._concurrency_caps[map_op], concurrency)
-        self.assertTrue(input_op not in policy._concurrency_caps)
-        self.assertTrue(map_op_no_concurrency not in policy._concurrency_caps)
+        self.assertTrue(math.isinf(policy._concurrency_caps[input_op]))
+        self.assertTrue(math.isinf(policy._concurrency_caps[map_op_no_concurrency]))
 
         # Gradually increase num_tasks_running to the cap.
         for i in range(1, concurrency + 1):
