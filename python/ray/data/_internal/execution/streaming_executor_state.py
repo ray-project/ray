@@ -32,7 +32,6 @@ from ray.data._internal.execution.operators.base_physical_operator import (
     AllToAllOperator,
 )
 from ray.data._internal.execution.operators.input_data_buffer import InputDataBuffer
-from ray.data._internal.execution.operators.map_operator import MapOperator
 from ray.data._internal.execution.util import memory_string
 from ray.data._internal.progress_bar import ProgressBar
 from ray.data.context import DataContext
@@ -571,17 +570,13 @@ def select_operator_to_run(
     ops = []
     for op, state in topology.items():
         under_resource_limits = _execution_allowed(op, cur_usage, limits)
-        policies_per_op = []
-        if isinstance(op, MapOperator):
-            policies_per_op += op.get_backpressure_polices
-
         if (
             op.need_more_inputs()
             and state.num_queued() > 0
             and op.should_add_input()
             and under_resource_limits
             and not op.completed()
-            and all(p.can_add_input(op) for p in (backpressure_policies + policies_per_op))
+            and all(p.can_add_input(op) for p in backpressure_policies)
         ):
             ops.append(op)
         # Update the op in all cases to enable internal autoscaling, etc.

@@ -598,8 +598,10 @@ def get_compute_strategy(
                         min_size=concurrency[0], max_size=concurrency[1]
                     )
                 else:
-                    return TaskPoolStrategy(
-                        min_size=concurrency[0], max_size=concurrency[1]
+                    raise ValueError(
+                        "``concurrency`` is set as a tuple of integers, but ``fn`` "
+                        f"is not a callable class: {fn}. Use ``concurrency=n`` to "
+                        "control maximal number of workers to use."
                     )
             else:
                 raise ValueError(

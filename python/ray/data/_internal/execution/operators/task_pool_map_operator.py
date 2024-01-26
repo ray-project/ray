@@ -23,6 +23,7 @@ class TaskPoolMapOperator(MapOperator):
         target_max_block_size: Optional[int],
         name: str = "TaskPoolMap",
         min_rows_per_bundle: Optional[int] = None,
+        concurrency: Optional[int] = None,
         ray_remote_args: Optional[Dict[str, Any]] = None,
     ):
         """Create an TaskPoolMapOperator instance.
@@ -37,8 +38,11 @@ class TaskPoolMapOperator(MapOperator):
                 transform_fn, or None to use the block size. Setting the batch size is
                 important for the performance of GPU-accelerated transform functions.
                 The actual rows passed may be less if the dataset is small.
+            concurrency: The maximum number of Ray tasks to use concurrently,
+                or None to use as many tasks as possible.
             ray_remote_args: Customize the ray remote args for this op's tasks.
         """
+        self._concurrency = concurrency
         super().__init__(
             map_transformer,
             input_op,
@@ -114,3 +118,6 @@ class TaskPoolMapOperator(MapOperator):
             gpu=self._ray_remote_args.get("num_gpus", 0),
             object_store_memory=self._metrics.average_bytes_outputs_per_task,
         )
+
+    def get_concurrency(self) -> Optional[int]:
+        return self._concurrency

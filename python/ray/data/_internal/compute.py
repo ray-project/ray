@@ -59,38 +59,16 @@ class TaskPoolStrategy(ComputeStrategy):
     def __init__(
         self,
         size: Optional[int] = None,
-        min_size: Optional[int] = None,
-        max_size: Optional[int] = None,
     ):
         """Construct TaskPoolStrategy for a Dataset transform.
 
         Args:
-            size: Specify a fixed size task pool of this size. It is an error to
-                specify both `size` and `min_size` or `max_size`.
-            min_size: The minimize size of the task pool.
-            max_size: The maximum size of the task pool.
+            size: Specify the maximum size of the task pool.
         """
 
-        if size:
-            if size < 1:
-                raise ValueError("`size` must be >= 1", size)
-            if max_size is not None or min_size is not None:
-                raise ValueError(
-                    "`min_size` and `max_size` cannot be set at the same time as `size`"
-                )
-            min_size = size
-            max_size = size
-        elif max_size is not None and min_size is not None:
-            if min_size < 1:
-                raise ValueError("`min_size` must be >= 1", min_size)
-            if min_size > max_size:
-                raise ValueError("`min_size` must be <= `max_size`", min_size, max_size)
-        else:
-            # Legacy code path to support `TaskPoolStrategy()`
-            min_size = None
-            max_size = None
-        self.min_size = min_size
-        self.max_size = max_size
+        if size is not None and size < 1:
+            raise ValueError("`size` must be >= 1", size)
+        self.size = size
 
     def _apply(
         self,
@@ -184,10 +162,8 @@ class TaskPoolStrategy(ComputeStrategy):
         )
 
     def __eq__(self, other: Any) -> bool:
-        if isinstance(other, TaskPoolStrategy) or other == "tasks":
-            return self.min_size == other.min_size and self.max_size == other.max_size
-        else:
-            return False
+        return (isinstance(other, TaskPoolStrategy) and self.size == other.size)\
+            or (other == "tasks" and self.size is None)
 
 
 @PublicAPI

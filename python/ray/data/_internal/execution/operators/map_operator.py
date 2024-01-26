@@ -13,12 +13,6 @@ from ray.data._internal.compute import (
     ComputeStrategy,
     TaskPoolStrategy,
 )
-from ray.data._internal.execution.backpressure_policy.backpressure_policy import (
-    BackpressurePolicy,
-)
-from ray.data._internal.execution.backpressure_policy.concurrency_cap_backpressure_policy import (
-    ConcurrencyCapBackpressurePolicy,
-)
 from ray.data._internal.execution.interfaces import (
     ExecutionOptions,
     ExecutionResources,
@@ -155,21 +149,15 @@ class MapOperator(OneToOneOperator, ABC):
                 TaskPoolMapOperator,
             )
 
-            op = TaskPoolMapOperator(
+            return TaskPoolMapOperator(
                 map_transformer,
                 input_op,
                 name=name,
                 target_max_block_size=target_max_block_size,
                 min_rows_per_bundle=min_rows_per_bundle,
+                concurrency=compute_strategy.size,
                 ray_remote_args=ray_remote_args,
             )
-            if compute_strategy.min_size is not None and compute_strategy.max_size is not None:
-                concurrency_policy = ConcurrencyCapBackpressurePolicy(
-                    topology={op: None},
-                    min_cap=compute_strategy.min_size,
-                    max_cap=compute_strategy.max_size,
-                )
-                op.set_backpressure_polices([concurrency_policy])
         elif isinstance(compute_strategy, ActorPoolStrategy):
             from ray.data._internal.execution.operators.actor_pool_map_operator import (
                 ActorPoolMapOperator,
@@ -379,12 +367,6 @@ class MapOperator(OneToOneOperator, ABC):
         for _, meta in bundle.blocks:
             self._output_metadata.append(meta)
         return bundle
-
-    def set_backpressure_polices(self, policies: List[BackpressurePolicy]):
-        self._backpressure_policies = policies
-
-    def get_backpressure_polices(self) -> List[BackpressurePolicy]:
-        return self._backpressure_policies
 
     @abstractmethod
     def progress_str(self) -> str:
