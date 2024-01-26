@@ -42,8 +42,8 @@ logger = logging.getLogger(__name__)
 def get_device() -> torch.device:
     """Gets the correct torch device configured for this process.
 
-    Returns the torch device for the current worker. If more than
-    1 GPU is requested per worker, returns the first device.
+    Returns the torch device for the current worker. If more than 1 GPU is 
+    requested per worker, returns the device with the minimal device index.
 
     .. note::
 
@@ -69,6 +69,13 @@ def get_device() -> torch.device:
         >>> # ray.get_gpu_ids() == [4,5]
         >>> # torch.cuda.is_available() == True
         >>> # get_device() == torch.device("cuda:4")
+
+
+        >>> # You can move model to device by:
+        >>> # model.to(ray.train.torch.get_device())
+        >>> #
+        >>> # instead of manually checking the device type:
+        >>> # model.to("cuda" if torch.cuda.is_available() else "cpu")
     """
     from ray.air._internal import torch_utils
 
@@ -102,7 +109,7 @@ def get_devices() -> List[torch.device]:
 
     from ray.air._internal import torch_utils
 
-    record_extra_usage_tag(TagKey.TRAIN_TORCH_GET_DEVICES, "1")
+    record_extra_usage_tag(TagKey.TRAIN_TORCH_GET_DEVICE, "1")
     return torch_utils.get_devices()
 
 
