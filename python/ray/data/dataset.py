@@ -4,6 +4,7 @@ import html
 import itertools
 import logging
 import time
+import warnings
 from typing import (
     TYPE_CHECKING,
     Any,
@@ -11,7 +12,6 @@ from typing import (
     Dict,
     Generic,
     Iterable,
-    Iterator,
     List,
     Literal,
     Mapping,
@@ -29,12 +29,7 @@ from ray._private.thirdparty.tabulate.tabulate import tabulate
 from ray._private.usage import usage_lib
 from ray.air.util.tensor_extensions.utils import _create_possibly_ragged_ndarray
 from ray.data._internal.block_list import BlockList
-from ray.data._internal.compute import (
-    ActorPoolStrategy,
-    CallableClass,
-    ComputeStrategy,
-    TaskPoolStrategy,
-)
+from ray.data._internal.compute import ComputeStrategy
 from ray.data._internal.delegating_block_builder import DelegatingBlockBuilder
 from ray.data._internal.equalize import _equalize
 from ray.data._internal.execution.interfaces import RefBundle
@@ -63,31 +58,17 @@ from ray.data._internal.logical.operators.one_to_one_operator import Limit
 from ray.data._internal.logical.operators.write_operator import Write
 from ray.data._internal.logical.optimizers import LogicalPlan
 from ray.data._internal.pandas_block import PandasBlockSchema
-from ray.data._internal.plan import ExecutionPlan, OneToOneStage
-from ray.data._internal.planner.plan_udf_map_op import (
-    generate_filter_fn,
-    generate_flat_map_fn,
-    generate_map_batches_fn,
-    generate_map_rows_fn,
-)
-from ray.data._internal.planner.plan_write_op import generate_write_fn
+from ray.data._internal.plan import ExecutionPlan
 from ray.data._internal.remote_fn import cached_remote_fn
 from ray.data._internal.sort import SortKey
 from ray.data._internal.split import _get_num_rows, _split_at_indices
-from ray.data._internal.stage_impl import (
-    LimitStage,
-    RandomizeBlocksStage,
-    RandomShuffleStage,
-    RepartitionStage,
-    SortStage,
-    ZipStage,
+from ray.data._internal.stats import DatasetStats, DatasetStatsSummary, StatsManager
+from ray.data._internal.util import (
+    AllToAllAPI,
+    ConsumptionAPI,
+    _is_local_scheme,
+    get_compute_strategy,
 )
-from ray.data._internal.stats import (
-    DatasetStats,
-    DatasetStatsSummary,
-    get_dataset_id_from_stats_actor,
-)
-from ray.data._internal.util import ConsumptionAPI, _is_local_scheme, validate_compute
 from ray.data.aggregate import AggregateFn, Max, Mean, Min, Std, Sum
 from ray.data.block import (
     VALID_BATCH_FORMATS,
@@ -104,19 +85,22 @@ from ray.data.block import (
 )
 from ray.data.context import DataContext
 from ray.data.datasource import (
-    BigQueryDatasource,
     BlockWritePathProvider,
     Connection,
-    CSVDatasource,
+    Datasink,
     Datasource,
     FilenameProvider,
-    ImageDatasource,
-    JSONDatasource,
-    NumpyDatasource,
-    ParquetDatasource,
     ReadTask,
-    SQLDatasource,
-    TFRecordDatasource,
+    _BigQueryDatasink,
+    _CSVDatasink,
+    _ImageDatasink,
+    _JSONDatasink,
+    _MongoDatasink,
+    _NumpyDatasink,
+    _ParquetDatasink,
+    _SQLDatasink,
+    _TFRecordDatasink,
+    _WebDatasetDatasink,
 )
 from ray.data.iterator import DataIterator
 from ray.data.random_access_dataset import RandomAccessDataset
@@ -228,7 +212,7 @@ class Dataset:
     def __init__(
         self,
         plan: ExecutionPlan,
-        logical_plan: Optional[LogicalPlan] = None,
+        logical_plan: LogicalPlan,
     ):
         """Construct a Dataset (internal API).
 
@@ -240,14 +224,13 @@ class Dataset:
 
         self._plan = plan
         self._logical_plan = logical_plan
-        if logical_plan is not None:
-            self._plan.link_logical_plan(logical_plan)
+        self._plan.link_logical_plan(logical_plan)
 
         # Handle to currently running executor for this dataset.
         self._current_executor: Optional["Executor"] = None
         self._write_ds = None
 
-        self._set_uuid(get_dataset_id_from_stats_actor())
+        self._set_uuid(StatsManager.get_dataset_id_from_stats_actor())
 
     @staticmethod
     def copy(
@@ -271,12 +254,18 @@ class Dataset:
         fn_constructor_kwargs: Optional[Dict[str, Any]] = None,
         num_cpus: Optional[float] = None,
         num_gpus: Optional[float] = None,
+        concurrency: Optional[Union[int, Tuple[int, int]]] = None,
         **ray_remote_args,
     ) -> "Dataset":
         """Apply the given function to each row of this dataset.
 
         Use this method to transform your data. To learn more, see
         :ref:`Transforming rows <transforming_rows>`.
+
+        You can use either a function or a callable class to perform the transformation.
+        For functions, Ray Data uses stateless Ray tasks. For classes, Ray Data uses
+        stateful Ray actors. For more information, see
+        :ref:`Stateful Transforms <stateful_transforms>`.
 
         .. tip::
 
@@ -313,12 +302,8 @@ class Dataset:
 
         Args:
             fn: The function to apply to each row, or a class type
-                that can be instantiated to create such a callable. Callable classes are
-                only supported for the actor compute strategy.
-            compute: The compute strategy, either None (default) to use Ray
-                tasks, ``ray.data.ActorPoolStrategy(size=n)`` to use a fixed-size actor
-                pool, or ``ray.data.ActorPoolStrategy(min_size=m, max_size=n)`` for an
-                autoscaling actor pool.
+                that can be instantiated to create such a callable.
+            compute: This argument is deprecated. Use ``concurrency`` argument.
             fn_args: Positional arguments to pass to ``fn`` after the first argument.
                 These arguments are top-level arguments to the underlying Ray task.
             fn_kwargs: Keyword arguments to pass to ``fn``. These arguments are
@@ -333,6 +318,9 @@ class Dataset:
             num_gpus: The number of GPUs to reserve for each parallel map worker. For
                 example, specify `num_gpus=1` to request 1 GPU for each parallel map
                 worker.
+            concurrency: The number of Ray workers to use concurrently. For a fixed-sized
+                worker pool of size ``n``, specify ``concurrency=n``. For an autoscaling
+                worker pool from ``m`` to ``n`` workers, specify ``concurrency=(m, n)``.
             ray_remote_args: Additional resource requirements to request from
                 Ray for each map worker.
 
@@ -346,10 +334,11 @@ class Dataset:
             :meth:`~Dataset.map_batches`
                 Call this method to transform batches of data.
         """  # noqa: E501
-        validate_compute(fn, compute, fn_constructor_args)
-
-        transform_fn = generate_map_rows_fn(
-            DataContext.get_current().target_max_block_size
+        compute = get_compute_strategy(
+            fn,
+            fn_constructor_args=fn_constructor_args,
+            compute=compute,
+            concurrency=concurrency,
         )
 
         if num_cpus is not None:
@@ -358,33 +347,18 @@ class Dataset:
         if num_gpus is not None:
             ray_remote_args["num_gpus"] = num_gpus
 
-        plan = self._plan.with_stage(
-            OneToOneStage(
-                "Map",
-                transform_fn,
-                compute,
-                ray_remote_args,
-                fn=fn,
-                fn_args=fn_args,
-                fn_kwargs=fn_kwargs,
-                fn_constructor_args=fn_constructor_args,
-                fn_constructor_kwargs=fn_constructor_kwargs,
-            )
+        plan = self._plan.copy()
+        map_op = MapRows(
+            self._logical_plan.dag,
+            fn,
+            fn_args=fn_args,
+            fn_kwargs=fn_kwargs,
+            fn_constructor_args=fn_constructor_args,
+            fn_constructor_kwargs=fn_constructor_kwargs,
+            compute=compute,
+            ray_remote_args=ray_remote_args,
         )
-
-        logical_plan = self._logical_plan
-        if logical_plan is not None:
-            map_op = MapRows(
-                logical_plan.dag,
-                fn,
-                fn_args=fn_args,
-                fn_kwargs=fn_kwargs,
-                fn_constructor_args=fn_constructor_args,
-                fn_constructor_kwargs=fn_constructor_kwargs,
-                compute=compute,
-                ray_remote_args=ray_remote_args,
-            )
-            logical_plan = LogicalPlan(map_op)
+        logical_plan = LogicalPlan(map_op)
         return Dataset(plan, logical_plan)
 
     def _set_name(self, name: Optional[str]):
@@ -413,6 +387,7 @@ class Dataset:
         fn_constructor_kwargs: Optional[Dict[str, Any]] = None,
         num_cpus: Optional[float] = None,
         num_gpus: Optional[float] = None,
+        concurrency: Optional[Union[int, Tuple[int, int]]] = None,
         **ray_remote_args,
     ) -> "Dataset":
         """Apply the given function to batches of data.
@@ -420,9 +395,10 @@ class Dataset:
         This method is useful for preprocessing data and performing inference. To learn
         more, see :ref:`Transforming batches <transforming_batches>`.
 
-        You can use either Ray Tasks or Ray Actors to perform the transformation. By
-        default, Ray Data uses Tasks. To use Actors, see
-        :ref:`Transforming batches with actors <transforming_data_actors>`.
+        You can use either a function or a callable class to perform the transformation.
+        For functions, Ray Data uses stateless Ray tasks. For classes, Ray Data uses
+        stateful Ray actors. For more information, see
+        :ref:`Stateful Transforms <stateful_transforms>`.
 
         .. tip::
             If ``fn`` doesn't mutate its input, set ``zero_copy_batch=True`` to improve
@@ -475,22 +451,53 @@ class Dataset:
                     .map_batches(map_fn_with_large_output)
                 )
 
-            You can also use :meth:`~Dataset.map_batches` to perform offline inference.
+            If you require stateful transfomation,
+            use Python callable class. Here is an example showing how to use stateful transforms to create model inference workers, without having to reload the model on each call.
+
+            .. testcode::
+
+                from typing import Dict
+                import numpy as np
+                import torch
+                import ray
+
+                class TorchPredictor:
+
+                    def __init__(self):
+                        self.model = torch.nn.Identity().cuda()
+                        self.model.eval()
+
+                    def __call__(self, batch: Dict[str, np.ndarray]) -> Dict[str, np.ndarray]:
+                        inputs = torch.as_tensor(batch["data"], dtype=torch.float32).cuda()
+                        with torch.inference_mode():
+                            batch["output"] = self.model(inputs).detach().cpu().numpy()
+                        return batch
+
+                ds = (
+                    ray.data.from_numpy(np.ones((32, 100)))
+                    .map_batches(
+                        TorchPredictor,
+                        # Two workers with one GPU each
+                        concurrency=2,
+                        # Batch size is required if you're using GPUs.
+                        batch_size=4,
+                        num_gpus=1
+                    )
+                )
+
             To learn more, see
             :ref:`End-to-end: Offline Batch Inference <batch_inference_home>`.
 
         Args:
             fn: The function or generator to apply to a record batch, or a class type
-                that can be instantiated to create such a callable. Callable classes are
-                only supported for the actor compute strategy. Note ``fn`` must be
+                that can be instantiated to create such a callable. Note ``fn`` must be
                 pickle-able.
             batch_size: The desired number of rows in each batch, or ``None`` to use
                 entire blocks as batches (blocks may contain different numbers of rows).
                 The actual size of the batch provided to ``fn`` may be smaller than
                 ``batch_size`` if ``batch_size`` doesn't evenly divide the block(s) sent
                 to a given map task. Default batch_size is 1024 with "default".
-            compute: Either "tasks" (default) to use Ray Tasks or an
-                :class:`~ray.data.ActorPoolStrategy` to use an autoscaling actor pool.
+            compute: This argument is deprecated. Use ``concurrency`` argument.
             batch_format: If ``"default"`` or ``"numpy"``, batches are
                 ``Dict[str, numpy.ndarray]``. If ``"pandas"``, batches are
                 ``pandas.DataFrame``.
@@ -516,6 +523,9 @@ class Dataset:
             num_cpus: The number of CPUs to reserve for each parallel map worker.
             num_gpus: The number of GPUs to reserve for each parallel map worker. For
                 example, specify `num_gpus=1` to request 1 GPU for each parallel map worker.
+            concurrency: The number of Ray workers to use concurrently. For a fixed-sized
+                worker pool of size ``n``, specify ``concurrency=n``. For an autoscaling
+                worker pool from ``m`` to ``n`` workers, specify ``concurrency=(m, n)``.
             ray_remote_args: Additional resource requirements to request from
                 ray for each map worker.
 
@@ -539,6 +549,12 @@ class Dataset:
                 Call this method to transform one record at time.
 
         """  # noqa: E501
+        compute = get_compute_strategy(
+            fn,
+            fn_constructor_args=fn_constructor_args,
+            compute=compute,
+            concurrency=concurrency,
+        )
 
         if num_cpus is not None:
             ray_remote_args["num_cpus"] = num_cpus
@@ -567,71 +583,22 @@ class Dataset:
                 f"{batch_format}"
             )
 
-        validate_compute(fn, compute, fn_constructor_args)
-
-        if fn_constructor_kwargs is not None:
-            if compute is None or (
-                compute != "actors" and not isinstance(compute, ActorPoolStrategy)
-            ):
-                raise ValueError(
-                    "fn_constructor_kwargs can only be specified if using the actor "
-                    f"pool compute strategy, but got: {compute}"
-                )
-            if not isinstance(fn, CallableClass):
-                raise ValueError(
-                    "fn_constructor_kwargs can only be specified if providing a "
-                    f"CallableClass instance for fn, but got: {fn}"
-                )
-
-        ctx = DataContext.get_current()
-        transform_fn = generate_map_batches_fn(
-            target_max_block_size=ctx.target_max_block_size,
+        plan = self._plan.copy()
+        map_batches_op = MapBatches(
+            self._logical_plan.dag,
+            fn,
             batch_size=batch_size,
             batch_format=batch_format,
             zero_copy_batch=zero_copy_batch,
-        )
-
-        # TODO(chengsu): pass function name to MapBatches logical operator.
-        if hasattr(fn, "__self__") and isinstance(
-            fn.__self__, ray.data.preprocessor.Preprocessor
-        ):
-            stage_name = fn.__self__.__class__.__name__
-        else:
-            stage_name = f'MapBatches({getattr(fn, "__name__", type(fn))})'
-
-        stage = OneToOneStage(
-            stage_name,
-            transform_fn,
-            compute,
-            ray_remote_args,
-            # TODO(Clark): Add a strict cap here.
             min_rows_per_block=min_rows_per_block,
-            fn=fn,
             fn_args=fn_args,
             fn_kwargs=fn_kwargs,
             fn_constructor_args=fn_constructor_args,
             fn_constructor_kwargs=fn_constructor_kwargs,
+            compute=compute,
+            ray_remote_args=ray_remote_args,
         )
-        plan = self._plan.with_stage(stage)
-
-        logical_plan = self._logical_plan
-        if logical_plan is not None:
-            map_batches_op = MapBatches(
-                logical_plan.dag,
-                fn,
-                batch_size=batch_size,
-                batch_format=batch_format,
-                zero_copy_batch=zero_copy_batch,
-                min_rows_per_block=min_rows_per_block,
-                fn_args=fn_args,
-                fn_kwargs=fn_kwargs,
-                fn_constructor_args=fn_constructor_args,
-                fn_constructor_kwargs=fn_constructor_kwargs,
-                compute=compute,
-                ray_remote_args=ray_remote_args,
-            )
-            logical_plan = LogicalPlan(map_batches_op)
-
+        logical_plan = LogicalPlan(map_batches_op)
         return Dataset(plan, logical_plan)
 
     def add_column(
@@ -640,6 +607,7 @@ class Dataset:
         fn: Callable[["pandas.DataFrame"], "pandas.Series"],
         *,
         compute: Optional[str] = None,
+        concurrency: Optional[Union[int, Tuple[int, int]]] = None,
         **ray_remote_args,
     ) -> "Dataset":
         """Add the given column to the dataset.
@@ -677,13 +645,19 @@ class Dataset:
                 column is overwritten.
             fn: Map function generating the column values given a batch of
                 records in pandas format.
-            compute: The compute strategy, either "tasks" (default) to use Ray
-                tasks, ``ray.data.ActorPoolStrategy(size=n)`` to use a fixed-size actor
-                pool, or ``ray.data.ActorPoolStrategy(min_size=m, max_size=n)`` for an
-                autoscaling actor pool.
+            compute: This argument is deprecated. Use ``concurrency`` argument.
+            concurrency: The number of Ray workers to use concurrently. For a
+                fixed-sized worker pool of size ``n``, specify ``concurrency=n``. For
+                an autoscaling worker pool from ``m`` to ``n`` workers, specify
+                ``concurrency=(m, n)``.
             ray_remote_args: Additional resource requirements to request from
                 ray (e.g., num_gpus=1 to request GPUs for the map tasks).
         """
+        compute = get_compute_strategy(
+            fn,
+            compute=compute,
+            concurrency=concurrency,
+        )
 
         def process_batch(batch: "pandas.DataFrame") -> "pandas.DataFrame":
             batch.loc[:, col] = fn(batch)
@@ -705,6 +679,7 @@ class Dataset:
         cols: List[str],
         *,
         compute: Optional[str] = None,
+        concurrency: Optional[Union[int, Tuple[int, int]]] = None,
         **ray_remote_args,
     ) -> "Dataset":
         """Drop one or more columns from the dataset.
@@ -734,16 +709,24 @@ class Dataset:
         Args:
             cols: Names of the columns to drop. If any name does not exist,
                 an exception is raised.
-            compute: The compute strategy, either "tasks" (default) to use Ray
-                tasks, ``ray.data.ActorPoolStrategy(size=n)`` to use a fixed-size actor
-                pool, or ``ray.data.ActorPoolStrategy(min_size=m, max_size=n)`` for an
-                autoscaling actor pool.
+            compute: This argument is deprecated. Use ``concurrency`` argument.
+            concurrency: The number of Ray workers to use concurrently. For a fixed-sized
+                worker pool of size ``n``, specify ``concurrency=n``. For an autoscaling
+                worker pool from ``m`` to ``n`` workers, specify ``concurrency=(m, n)``.
             ray_remote_args: Additional resource requirements to request from
                 ray (e.g., num_gpus=1 to request GPUs for the map tasks).
         """  # noqa: E501
 
+        def fn(batch):
+            return batch.drop(columns=cols)
+
+        compute = get_compute_strategy(
+            fn,
+            compute=compute,
+            concurrency=concurrency,
+        )
         return self.map_batches(
-            lambda batch: batch.drop(columns=cols),
+            fn,
             batch_format="pandas",
             zero_copy_batch=True,
             compute=compute,
@@ -755,6 +738,7 @@ class Dataset:
         cols: List[str],
         *,
         compute: Union[str, ComputeStrategy] = None,
+        concurrency: Optional[Union[int, Tuple[int, int]]] = None,
         **ray_remote_args,
     ) -> "Dataset":
         """Select one or more columns from the dataset.
@@ -784,15 +768,24 @@ class Dataset:
         Args:
             cols: Names of the columns to select. If a name isn't in the
                 dataset schema, an exception is raised.
-            compute: The compute strategy, either "tasks" (default) to use Ray
-                tasks, ``ray.data.ActorPoolStrategy(size=n)`` to use a fixed-size actor
-                pool, or ``ray.data.ActorPoolStrategy(min_size=m, max_size=n)`` for an
-                autoscaling actor pool.
+            compute: This argument is deprecated. Use ``concurrency`` argument.
+            concurrency: The number of Ray workers to use concurrently. For a fixed-sized
+                worker pool of size ``n``, specify ``concurrency=n``. For an autoscaling
+                worker pool from ``m`` to ``n`` workers, specify ``concurrency=(m, n)``.
             ray_remote_args: Additional resource requirements to request from
                 ray (e.g., num_gpus=1 to request GPUs for the map tasks).
         """  # noqa: E501
+
+        def fn(batch):
+            return BlockAccessor.for_block(batch).select(columns=cols)
+
+        compute = get_compute_strategy(
+            fn,
+            compute=compute,
+            concurrency=concurrency,
+        )
         return self.map_batches(
-            lambda batch: BlockAccessor.for_block(batch).select(columns=cols),
+            fn,
             batch_format="pandas",
             zero_copy_batch=True,
             compute=compute,
@@ -810,12 +803,18 @@ class Dataset:
         fn_constructor_kwargs: Optional[Dict[str, Any]] = None,
         num_cpus: Optional[float] = None,
         num_gpus: Optional[float] = None,
+        concurrency: Optional[Union[int, Tuple[int, int]]] = None,
         **ray_remote_args,
     ) -> "Dataset":
         """Apply the given function to each row and then flatten results.
 
         Use this method if your transformation returns multiple rows for each input
         row.
+
+        You can use either a function or a callable class to perform the transformation.
+        For functions, Ray Data uses stateless Ray tasks. For classes, Ray Data uses
+        stateful Ray actors. For more information, see
+        :ref:`Stateful Transforms <stateful_transforms>`.
 
         .. tip::
             :meth:`~Dataset.map_batches` can also modify the number of rows. If your
@@ -846,12 +845,8 @@ class Dataset:
 
         Args:
             fn: The function or generator to apply to each record, or a class type
-                that can be instantiated to create such a callable. Callable classes are
-                only supported for the actor compute strategy.
-            compute: The compute strategy, either "tasks" (default) to use Ray
-                tasks, ``ray.data.ActorPoolStrategy(size=n)`` to use a fixed-size actor
-                pool, or ``ray.data.ActorPoolStrategy(min_size=m, max_size=n)`` for an
-                autoscaling actor pool.
+                that can be instantiated to create such a callable.
+            compute: This argument is deprecated. Use ``concurrency`` argument.
             fn_args: Positional arguments to pass to ``fn`` after the first argument.
                 These arguments are top-level arguments to the underlying Ray task.
             fn_kwargs: Keyword arguments to pass to ``fn``. These arguments are
@@ -866,6 +861,10 @@ class Dataset:
             num_gpus: The number of GPUs to reserve for each parallel map worker. For
                 example, specify `num_gpus=1` to request 1 GPU for each parallel map
                 worker.
+            concurrency: The number of Ray workers to use concurrently. For a
+                fixed-sized worker pool of size ``n``, specify ``concurrency=n``.
+                For an autoscaling worker pool from ``m`` to ``n`` workers, specify
+                ``concurrency=(m, n)``.
             ray_remote_args: Additional resource requirements to request from
                 ray for each map worker.
 
@@ -877,10 +876,11 @@ class Dataset:
             :meth:`~Dataset.map`
                 Call this method to transform one row at time.
         """
-        validate_compute(fn, compute, fn_constructor_args)
-
-        transform_fn = generate_flat_map_fn(
-            DataContext.get_current().target_max_block_size
+        compute = get_compute_strategy(
+            fn,
+            fn_constructor_args=fn_constructor_args,
+            compute=compute,
+            concurrency=concurrency,
         )
 
         if num_cpus is not None:
@@ -889,33 +889,18 @@ class Dataset:
         if num_gpus is not None:
             ray_remote_args["num_gpus"] = num_gpus
 
-        plan = self._plan.with_stage(
-            OneToOneStage(
-                "FlatMap",
-                transform_fn,
-                compute,
-                ray_remote_args,
-                fn=fn,
-                fn_args=fn_args,
-                fn_kwargs=fn_kwargs,
-                fn_constructor_args=fn_constructor_args,
-                fn_constructor_kwargs=fn_constructor_kwargs,
-            )
+        plan = self._plan.copy()
+        op = FlatMap(
+            input_op=self._logical_plan.dag,
+            fn=fn,
+            fn_args=fn_args,
+            fn_kwargs=fn_kwargs,
+            fn_constructor_args=fn_constructor_args,
+            fn_constructor_kwargs=fn_constructor_kwargs,
+            compute=compute,
+            ray_remote_args=ray_remote_args,
         )
-
-        logical_plan = self._logical_plan
-        if logical_plan is not None:
-            op = FlatMap(
-                input_op=logical_plan.dag,
-                fn=fn,
-                fn_args=fn_args,
-                fn_kwargs=fn_kwargs,
-                fn_constructor_args=fn_constructor_args,
-                fn_constructor_kwargs=fn_constructor_kwargs,
-                compute=compute,
-                ray_remote_args=ray_remote_args,
-            )
-            logical_plan = LogicalPlan(op)
+        logical_plan = LogicalPlan(op)
         return Dataset(plan, logical_plan)
 
     def filter(
@@ -923,9 +908,15 @@ class Dataset:
         fn: UserDefinedFunction[Dict[str, Any], bool],
         *,
         compute: Union[str, ComputeStrategy] = None,
+        concurrency: Optional[Union[int, Tuple[int, int]]] = None,
         **ray_remote_args,
     ) -> "Dataset":
         """Filter out rows that don't satisfy the given predicate.
+
+        You can use either a function or a callable class to perform the transformation.
+        For functions, Ray Data uses stateless Ray tasks. For classes, Ray Data uses
+        stateful Ray actors. For more information, see
+        :ref:`Stateful Transforms <stateful_transforms>`.
 
         .. tip::
             If you can represent your predicate with NumPy or pandas operations,
@@ -943,38 +934,38 @@ class Dataset:
 
         Args:
             fn: The predicate to apply to each row, or a class type
-                that can be instantiated to create such a callable. Callable classes are
-                only supported for the actor compute strategy.
-            compute: The compute strategy, either "tasks" (default) to use Ray
-                tasks, ``ray.data.ActorPoolStrategy(size=n)`` to use a fixed-size actor
-                pool, or ``ray.data.ActorPoolStrategy(min_size=m, max_size=n)`` for an
-                autoscaling actor pool.
+                that can be instantiated to create such a callable.
+            compute: This argument is deprecated. Use ``concurrency`` argument.
+            concurrency: The number of Ray workers to use concurrently. For a
+                fixed-sized worker pool of size ``n``, specify ``concurrency=n``.
+                For an autoscaling worker pool from ``m`` to ``n`` workers, specify
+                ``concurrency=(m, n)``.
             ray_remote_args: Additional resource requirements to request from
                 ray (e.g., num_gpus=1 to request GPUs for the map tasks).
         """
-        validate_compute(fn, compute)
-
-        transform_fn = generate_filter_fn(
-            DataContext.get_current().target_max_block_size
+        compute = get_compute_strategy(
+            fn,
+            compute=compute,
+            concurrency=concurrency,
         )
 
-        plan = self._plan.with_stage(
-            OneToOneStage("Filter", transform_fn, compute, ray_remote_args, fn=fn)
+        plan = self._plan.copy()
+        op = Filter(
+            input_op=self._logical_plan.dag,
+            fn=fn,
+            compute=compute,
+            ray_remote_args=ray_remote_args,
         )
-
-        logical_plan = self._logical_plan
-        if logical_plan is not None:
-            op = Filter(
-                input_op=logical_plan.dag,
-                fn=fn,
-                compute=compute,
-                ray_remote_args=ray_remote_args,
-            )
-            logical_plan = LogicalPlan(op)
-
+        logical_plan = LogicalPlan(op)
         return Dataset(plan, logical_plan)
 
-    def repartition(self, num_blocks: int, *, shuffle: bool = False) -> "Dataset":
+    @AllToAllAPI
+    def repartition(
+        self,
+        num_blocks: int,
+        *,
+        shuffle: bool = False,
+    ) -> "Dataset":
         """Repartition the :class:`Dataset` into exactly this number of :ref:`blocks <dataset_concept>`.
 
         This method can be useful to tune the performance of your pipeline. To learn
@@ -1016,19 +1007,16 @@ class Dataset:
         Returns:
             The repartitioned :class:`Dataset`.
         """  # noqa: E501
-
-        plan = self._plan.with_stage(RepartitionStage(num_blocks, shuffle))
-
-        logical_plan = self._logical_plan
-        if logical_plan is not None:
-            op = Repartition(
-                logical_plan.dag,
-                num_outputs=num_blocks,
-                shuffle=shuffle,
-            )
-            logical_plan = LogicalPlan(op)
+        plan = self._plan.copy()
+        op = Repartition(
+            self._logical_plan.dag,
+            num_outputs=num_blocks,
+            shuffle=shuffle,
+        )
+        logical_plan = LogicalPlan(op)
         return Dataset(plan, logical_plan)
 
+    @AllToAllAPI
     def random_shuffle(
         self,
         *,
@@ -1057,28 +1045,28 @@ class Dataset:
         Args:
             seed: Fix the random seed to use, otherwise one is chosen
                 based on system randomness.
-            num_blocks: The number of output blocks after the shuffle, or ``None``
-                to retain the number of blocks.
 
         Returns:
             The shuffled :class:`Dataset`.
         """  # noqa: E501
 
-        plan = self._plan.with_stage(
-            RandomShuffleStage(seed, num_blocks, ray_remote_args)
-        )
-
-        logical_plan = self._logical_plan
-        if logical_plan is not None:
-            op = RandomShuffle(
-                logical_plan.dag,
-                seed=seed,
-                num_outputs=num_blocks,
-                ray_remote_args=ray_remote_args,
+        if num_blocks is not None:
+            warnings.warn(
+                "`num_blocks` parameter is deprecated in Ray 2.9. random_shuffle() "
+                "does not support to change the number of output blocks. Use "
+                "repartition() instead.",  # noqa: E501
+                DeprecationWarning,
             )
-            logical_plan = LogicalPlan(op)
+        plan = self._plan.copy()
+        op = RandomShuffle(
+            self._logical_plan.dag,
+            seed=seed,
+            ray_remote_args=ray_remote_args,
+        )
+        logical_plan = LogicalPlan(op)
         return Dataset(plan, logical_plan)
 
+    @AllToAllAPI
     def randomize_block_order(
         self,
         *,
@@ -1104,17 +1092,14 @@ class Dataset:
 
         Returns:
             The block-shuffled :class:`Dataset`.
-        """
+        """  # noqa: E501
 
-        plan = self._plan.with_stage(RandomizeBlocksStage(seed))
-
-        logical_plan = self._logical_plan
-        if logical_plan is not None:
-            op = RandomizeBlocks(
-                logical_plan.dag,
-                seed=seed,
-            )
-            logical_plan = LogicalPlan(op)
+        plan = self._plan.copy()
+        op = RandomizeBlocks(
+            self._logical_plan.dag,
+            seed=seed,
+        )
+        logical_plan = LogicalPlan(op)
         return Dataset(plan, logical_plan)
 
     def random_sample(
@@ -1359,10 +1344,8 @@ class Dataset:
                 block_list = BlockList(
                     b.tolist(), m.tolist(), owned_by_consumer=owned_by_consumer
                 )
-                logical_plan = self._plan._logical_plan
-                if logical_plan is not None:
-                    ref_bundles = _block_list_to_bundles(block_list, owned_by_consumer)
-                    logical_plan = LogicalPlan(InputData(input_data=ref_bundles))
+                ref_bundles = _block_list_to_bundles(block_list, owned_by_consumer)
+                logical_plan = LogicalPlan(InputData(input_data=ref_bundles))
                 split_datasets.append(
                     MaterializedDataset(
                         ExecutionPlan(
@@ -1484,10 +1467,8 @@ class Dataset:
 
         split_datasets = []
         for block_split in per_split_block_lists:
-            logical_plan = self._plan._logical_plan
-            if logical_plan is not None:
-                ref_bundles = _block_list_to_bundles(block_split, owned_by_consumer)
-                logical_plan = LogicalPlan(InputData(input_data=ref_bundles))
+            ref_bundles = _block_list_to_bundles(block_split, owned_by_consumer)
+            logical_plan = LogicalPlan(InputData(input_data=ref_bundles))
             split_datasets.append(
                 MaterializedDataset(
                     ExecutionPlan(
@@ -1559,18 +1540,16 @@ class Dataset:
         splits = []
 
         for bs, ms in zip(blocks, metadata):
-            stats = DatasetStats(stages={"Split": ms}, parent=parent_stats)
+            stats = DatasetStats(metadata={"Split": ms}, parent=parent_stats)
             stats.time_total_s = split_duration
 
             split_block_list = BlockList(
                 bs, ms, owned_by_consumer=block_list._owned_by_consumer
             )
-            logical_plan = self._plan._logical_plan
-            if logical_plan is not None:
-                ref_bundles = _block_list_to_bundles(
-                    split_block_list, block_list._owned_by_consumer
-                )
-                logical_plan = LogicalPlan(InputData(input_data=ref_bundles))
+            ref_bundles = _block_list_to_bundles(
+                split_block_list, block_list._owned_by_consumer
+            )
+            logical_plan = LogicalPlan(InputData(input_data=ref_bundles))
 
             splits.append(
                 MaterializedDataset(
@@ -1774,18 +1753,13 @@ class Dataset:
                 else:
                     assert isinstance(bl, BlockList), type(bl)
                     bs, ms = bl._blocks, bl._metadata
-                op_logical_plan = getattr(datasets[idx]._plan, "_logical_plan", None)
-                if isinstance(op_logical_plan, LogicalPlan):
-                    ops_to_union.append(op_logical_plan.dag)
-                else:
-                    ops_to_union.append(None)
+                op_logical_plan = datasets[idx]._plan._logical_plan
+                ops_to_union.append(op_logical_plan.dag)
                 blocks.extend(bs)
                 metadata.extend(ms)
             blocklist = BlockList(blocks, metadata, owned_by_consumer=owned_by_consumer)
 
-            logical_plan = None
-            if all(ops_to_union):
-                logical_plan = LogicalPlan(UnionLogicalOperator(*ops_to_union))
+            logical_plan = LogicalPlan(UnionLogicalOperator(*ops_to_union))
         else:
             tasks: List[ReadTask] = []
             block_partition_refs: List[ObjectRef[BlockPartition]] = []
@@ -1814,17 +1788,14 @@ class Dataset:
             )
 
             logical_plan = self._logical_plan
-            logical_plans = [
-                getattr(union_ds, "_logical_plan", None) for union_ds in datasets
-            ]
-            if all(logical_plans):
-                op = UnionLogicalOperator(
-                    *[plan.dag for plan in logical_plans],
-                )
-                logical_plan = LogicalPlan(op)
+            logical_plans = [union_ds._plan._logical_plan for union_ds in datasets]
+            op = UnionLogicalOperator(
+                *[plan.dag for plan in logical_plans],
+            )
+            logical_plan = LogicalPlan(op)
 
         stats = DatasetStats(
-            stages={"Union": []},
+            metadata={"Union": []},
             parent=[d._plan.stats() for d in datasets],
         )
         stats.time_total_s = time.perf_counter() - start_time
@@ -1833,7 +1804,11 @@ class Dataset:
             logical_plan,
         )
 
-    def groupby(self, key: Union[str, List[str], None]) -> "GroupedData":
+    @AllToAllAPI
+    def groupby(
+        self,
+        key: Union[str, List[str], None],
+    ) -> "GroupedData":
         """Group rows of a :class:`Dataset` according to a column.
 
         Use this method to transform data based on a
@@ -1880,6 +1855,7 @@ class Dataset:
 
         return GroupedData(self, key)
 
+    @AllToAllAPI
     def unique(self, column: str) -> List[Any]:
         """List the unique elements in a given column.
 
@@ -1921,6 +1897,7 @@ class Dataset:
         ds = self.select_columns([column]).groupby(column).count()
         return [item[column] for item in ds.take_all()]
 
+    @AllToAllAPI
     @ConsumptionAPI
     def aggregate(self, *aggs: AggregateFn) -> Union[Any, Dict[str, Any]]:
         """Aggregate values using one or more functions.
@@ -1958,6 +1935,7 @@ class Dataset:
         ret = self.groupby(None).aggregate(*aggs).take(1)
         return ret[0] if len(ret) > 0 else None
 
+    @AllToAllAPI
     @ConsumptionAPI
     def sum(
         self, on: Optional[Union[str, List[str]]] = None, ignore_nulls: bool = True
@@ -2000,6 +1978,7 @@ class Dataset:
         ret = self._aggregate_on(Sum, on, ignore_nulls)
         return self._aggregate_result(ret)
 
+    @AllToAllAPI
     @ConsumptionAPI
     def min(
         self, on: Optional[Union[str, List[str]]] = None, ignore_nulls: bool = True
@@ -2042,6 +2021,7 @@ class Dataset:
         ret = self._aggregate_on(Min, on, ignore_nulls)
         return self._aggregate_result(ret)
 
+    @AllToAllAPI
     @ConsumptionAPI
     def max(
         self, on: Optional[Union[str, List[str]]] = None, ignore_nulls: bool = True
@@ -2084,6 +2064,7 @@ class Dataset:
         ret = self._aggregate_on(Max, on, ignore_nulls)
         return self._aggregate_result(ret)
 
+    @AllToAllAPI
     @ConsumptionAPI
     def mean(
         self, on: Optional[Union[str, List[str]]] = None, ignore_nulls: bool = True
@@ -2126,6 +2107,7 @@ class Dataset:
         ret = self._aggregate_on(Mean, on, ignore_nulls)
         return self._aggregate_result(ret)
 
+    @AllToAllAPI
     @ConsumptionAPI
     def std(
         self,
@@ -2182,10 +2164,12 @@ class Dataset:
         ret = self._aggregate_on(Std, on, ignore_nulls, ddof=ddof)
         return self._aggregate_result(ret)
 
+    @AllToAllAPI
     def sort(
         self,
         key: Union[str, List[str], None] = None,
         descending: Union[bool, List[bool]] = False,
+        boundaries: List[Union[int, float]] = None,
     ) -> "Dataset":
         """Sort the dataset by the specified key column or key function.
 
@@ -2196,9 +2180,28 @@ class Dataset:
 
         Examples:
             >>> import ray
-            >>> ds = ray.data.range(100)
-            >>> ds.sort("id", descending=True).take(3)
-            [{'id': 99}, {'id': 98}, {'id': 97}]
+            >>> ds = ray.data.range(15)
+            >>> ds = ds.sort("id", descending=False, boundaries=[5, 10])
+            >>> for df in ray.get(ds.to_pandas_refs()):
+            ...     print(df)
+               id
+            0   0
+            1   1
+            2   2
+            3   3
+            4   4
+               id
+            0   5
+            1   6
+            2   7
+            3   8
+            4   9
+               id
+            0  10
+            1  11
+            2  12
+            3  13
+            4  14
 
         Time complexity: O(dataset size * log(dataset size / parallelism))
 
@@ -2206,21 +2209,25 @@ class Dataset:
             key: The column or a list of columns to sort by.
             descending: Whether to sort in descending order. Must be a boolean or a list
                 of booleans matching the number of the columns.
+            boundaries: The list of values based on which to repartition the dataset.
+                For example, if the input boundary is [10,20], rows with values less
+                than 10 will be divided into the first block, rows with values greater
+                than or equal to 10 and less than 20 will be divided into the
+                second block, and rows with values greater than or equal to 20
+                will be divided into the third block. If not provided, the
+                boundaries will be sampled from the input blocks. This feature
+                only supports numeric columns right now.
 
         Returns:
             A new, sorted :class:`Dataset`.
         """
-
-        sort_key = SortKey(key, descending)
-        plan = self._plan.with_stage(SortStage(self, sort_key))
-
-        logical_plan = self._logical_plan
-        if logical_plan is not None:
-            op = Sort(
-                logical_plan.dag,
-                sort_key=sort_key,
-            )
-            logical_plan = LogicalPlan(op)
+        sort_key = SortKey(key, descending, boundaries)
+        plan = self._plan.copy()
+        op = Sort(
+            self._logical_plan.dag,
+            sort_key=sort_key,
+        )
+        logical_plan = LogicalPlan(op)
         return Dataset(plan, logical_plan)
 
     def zip(self, other: "Dataset") -> "Dataset":
@@ -2255,14 +2262,9 @@ class Dataset:
             concatenated horizontally with the columns of the first dataset,
             with duplicate column names disambiguated with suffixes like ``"_1"``.
         """
-
-        plan = self._plan.with_stage(ZipStage(other))
-
-        logical_plan = self._logical_plan
-        other_logical_plan = other._logical_plan
-        if logical_plan is not None and other_logical_plan is not None:
-            op = Zip(logical_plan.dag, other_logical_plan.dag)
-            logical_plan = LogicalPlan(op)
+        plan = self._plan.copy()
+        op = Zip(self._logical_plan.dag, other._logical_plan.dag)
+        logical_plan = LogicalPlan(op)
         return Dataset(plan, logical_plan)
 
     def limit(self, limit: int) -> "Dataset":
@@ -2286,11 +2288,9 @@ class Dataset:
         Returns:
             The truncated dataset.
         """
-        plan = self._plan.with_stage(LimitStage(limit))
-        logical_plan = self._logical_plan
-        if logical_plan is not None:
-            op = Limit(logical_plan.dag, limit=limit)
-            logical_plan = LogicalPlan(op)
+        plan = self._plan.copy()
+        op = Limit(self._logical_plan.dag, limit=limit)
+        logical_plan = LogicalPlan(op)
         return Dataset(plan, logical_plan)
 
     @ConsumptionAPI
@@ -2543,10 +2543,19 @@ class Dataset:
         if not fetch_if_missing:
             return None
 
-        # Lazily execute only the first block to minimize computation.
-        # We achieve this by appending a Limit[1] operation to a copy
-        # of this Dataset, which we then execute to get its schema.
-        base_schema = self.limit(1)._plan.schema(fetch_if_missing=fetch_if_missing)
+        if self._plan.is_read_only():
+            # For read-only plans, there is special logic for fetching the
+            # schema from already known metadata
+            # (see `get_legacy_lazy_block_list_read_only()`). This requires
+            # the underlying logical plan to be read-only, so we skip appending
+            # the Limit[1] operation as we do in the else case below. There is
+            # no downside in this case, since it doesn't execute any read tasks.
+            base_schema = self._plan.schema(fetch_if_missing=fetch_if_missing)
+        else:
+            # Lazily execute only the first block to minimize computation.
+            # We achieve this by appending a Limit[1] operation to a copy
+            # of this Dataset, which we then execute to get its schema.
+            base_schema = self.limit(1)._plan.schema(fetch_if_missing=fetch_if_missing)
         if base_schema:
             self._plan.cache_schema(base_schema)
             return Schema(base_schema)
@@ -2722,20 +2731,19 @@ class Dataset:
                     /generated/pyarrow.parquet.write_table.html\
                         #pyarrow.parquet.write_table>`_, which is used to write out each
                 block to a file.
-        """
-        self.write_datasource(
-            ParquetDatasource(),
-            ray_remote_args=ray_remote_args,
-            path=path,
-            dataset_uuid=self._uuid,
+        """  # noqa: E501
+        datasink = _ParquetDatasink(
+            path,
+            arrow_parquet_args_fn=arrow_parquet_args_fn,
+            arrow_parquet_args=arrow_parquet_args,
             filesystem=filesystem,
             try_create_dir=try_create_dir,
             open_stream_args=arrow_open_stream_args,
             filename_provider=filename_provider,
             block_path_provider=block_path_provider,
-            write_args_fn=arrow_parquet_args_fn,
-            **arrow_parquet_args,
+            dataset_uuid=self._uuid,
         )
+        self.write_datasink(datasink, ray_remote_args=ray_remote_args)
 
     @ConsumptionAPI
     def write_json(
@@ -2820,19 +2828,18 @@ class Dataset:
                 :class:`~ray.data.Dataset` block. These
                 are dict(orient="records", lines=True) by default.
         """
-        self.write_datasource(
-            JSONDatasource(),
-            ray_remote_args=ray_remote_args,
-            path=path,
-            dataset_uuid=self._uuid,
+        datasink = _JSONDatasink(
+            path,
+            pandas_json_args_fn=pandas_json_args_fn,
+            pandas_json_args=pandas_json_args,
             filesystem=filesystem,
             try_create_dir=try_create_dir,
             open_stream_args=arrow_open_stream_args,
             filename_provider=filename_provider,
             block_path_provider=block_path_provider,
-            write_args_fn=pandas_json_args_fn,
-            **pandas_json_args,
+            dataset_uuid=self._uuid,
         )
+        self.write_datasink(datasink, ray_remote_args=ray_remote_args)
 
     @PublicAPI(stability="alpha")
     @ConsumptionAPI
@@ -2880,20 +2887,22 @@ class Dataset:
                 /docs/python/generated/pyarrow.fs.FileSystem.html\
                 #pyarrow.fs.FileSystem.open_output_stream>`_, which is used when
                 opening the file to write to.
+            filename_provider: A :class:`~ray.data.datasource.FilenameProvider`
+                implementation. Use this parameter to customize what your filenames
+                look like.
             ray_remote_args: kwargs passed to :meth:`~ray.remote` in the write tasks.
         """  # noqa: E501
-        self.write_datasource(
-            ImageDatasource(),
-            ray_remote_args=ray_remote_args,
-            path=path,
-            dataset_uuid=self._uuid,
+        datasink = _ImageDatasink(
+            path,
+            column,
+            file_format,
             filesystem=filesystem,
             try_create_dir=try_create_dir,
             open_stream_args=arrow_open_stream_args,
             filename_provider=filename_provider,
-            column=column,
-            file_format=file_format,
+            dataset_uuid=self._uuid,
         )
+        self.write_datasink(datasink, ray_remote_args=ray_remote_args)
 
     @ConsumptionAPI
     def write_csv(
@@ -2975,19 +2984,18 @@ class Dataset:
                     #pyarrow.csv.write_csv>`_
                 when writing each block to a file.
         """
-        self.write_datasource(
-            CSVDatasource(),
-            ray_remote_args=ray_remote_args,
-            path=path,
-            dataset_uuid=self._uuid,
+        datasink = _CSVDatasink(
+            path,
+            arrow_csv_args_fn=arrow_csv_args_fn,
+            arrow_csv_args=arrow_csv_args,
             filesystem=filesystem,
             try_create_dir=try_create_dir,
             open_stream_args=arrow_open_stream_args,
             filename_provider=filename_provider,
             block_path_provider=block_path_provider,
-            write_args_fn=arrow_csv_args_fn,
-            **arrow_csv_args,
+            dataset_uuid=self._uuid,
         )
+        self.write_datasink(datasink, ray_remote_args=ray_remote_args)
 
     @ConsumptionAPI
     def write_tfrecords(
@@ -3060,19 +3068,17 @@ class Dataset:
             ray_remote_args: kwargs passed to :meth:`~ray.remote` in the write tasks.
 
         """
-
-        self.write_datasource(
-            TFRecordDatasource(),
-            ray_remote_args=ray_remote_args,
+        datasink = _TFRecordDatasink(
             path=path,
-            dataset_uuid=self._uuid,
+            tf_schema=tf_schema,
             filesystem=filesystem,
             try_create_dir=try_create_dir,
             open_stream_args=arrow_open_stream_args,
             filename_provider=filename_provider,
             block_path_provider=block_path_provider,
-            tf_schema=tf_schema,
+            dataset_uuid=self._uuid,
         )
+        self.write_datasink(datasink, ray_remote_args=ray_remote_args)
 
     @PublicAPI(stability="alpha")
     @ConsumptionAPI
@@ -3133,21 +3139,17 @@ class Dataset:
             ray_remote_args: Kwargs passed to ``ray.remote`` in the write tasks.
 
         """
-
-        from ray.data.datasource.webdataset_datasource import WebDatasetDatasource
-
-        self.write_datasource(
-            WebDatasetDatasource(),
-            ray_remote_args=ray_remote_args,
-            path=path,
-            dataset_uuid=self._uuid,
+        datasink = _WebDatasetDatasink(
+            path,
+            encoder=encoder,
             filesystem=filesystem,
             try_create_dir=try_create_dir,
             open_stream_args=arrow_open_stream_args,
             filename_provider=filename_provider,
             block_path_provider=block_path_provider,
-            encoder=encoder,
+            dataset_uuid=self._uuid,
         )
+        self.write_datasink(datasink, ray_remote_args=ray_remote_args)
 
     @ConsumptionAPI
     def write_numpy(
@@ -3211,18 +3213,17 @@ class Dataset:
             ray_remote_args: kwargs passed to :meth:`~ray.remote` in the write tasks.
         """
 
-        self.write_datasource(
-            NumpyDatasource(),
-            ray_remote_args=ray_remote_args,
-            path=path,
-            dataset_uuid=self._uuid,
-            column=column,
+        datasink = _NumpyDatasink(
+            path,
+            column,
             filesystem=filesystem,
             try_create_dir=try_create_dir,
             open_stream_args=arrow_open_stream_args,
             filename_provider=filename_provider,
             block_path_provider=block_path_provider,
+            dataset_uuid=self._uuid,
         )
+        self.write_datasink(datasink, ray_remote_args=ray_remote_args)
 
     @ConsumptionAPI
     def write_sql(
@@ -3280,11 +3281,8 @@ class Dataset:
             ray_remote_args: Keyword arguments passed to :meth:`~ray.remote` in the
                 write tasks.
         """  # noqa: E501
-        self.write_datasource(
-            SQLDatasource(connection_factory),
-            ray_remote_args=ray_remote_args,
-            sql=sql,
-        )
+        datasink = _SQLDatasink(sql=sql, connection_factory=connection_factory)
+        self.write_datasink(datasink, ray_remote_args=ray_remote_args)
 
     @PublicAPI(stability="alpha")
     @ConsumptionAPI
@@ -3345,21 +3343,20 @@ class Dataset:
             ValueError: if ``database`` doesn't exist.
             ValueError: if ``collection`` doesn't exist.
         """
-        from ray.data.datasource import MongoDatasource
-
-        self.write_datasource(
-            MongoDatasource(),
-            ray_remote_args=ray_remote_args,
+        datasink = _MongoDatasink(
             uri=uri,
             database=database,
             collection=collection,
         )
+        self.write_datasink(datasink, ray_remote_args=ray_remote_args)
 
     @ConsumptionAPI
     def write_bigquery(
         self,
         project_id: str,
         dataset: str,
+        max_retry_cnt: int = 10,
+        overwrite_table: Optional[bool] = True,
         ray_remote_args: Dict[str, Any] = None,
     ) -> None:
         """Write the dataset to a BigQuery dataset table.
@@ -3377,28 +3374,48 @@ class Dataset:
                 docs = [{"title": "BigQuery Datasource test"} for key in range(4)]
                 ds = ray.data.from_pandas(pd.DataFrame(docs))
                 ds.write_bigquery(
-                    BigQueryDatasource(),
                     project_id="my_project_id",
                     dataset="my_dataset_table",
+                    overwrite_table=True
                 )
 
         Args:
             project_id: The name of the associated Google Cloud Project that hosts
                 the dataset to read. For more information, see details in
-                `Creating and managing projects <https://cloud.google.com/resource-manager/docs/creating-managing-projects>`. # noqa: E501
+                `Creating and managing projects <https://cloud.google.com/resource-manager/docs/creating-managing-projects>`.
             dataset: The name of the dataset in the format of ``dataset_id.table_id``.
-                The dataset is created if it doesn't already exist. The table_id is
-                overwritten if it exists.
+                The dataset is created if it doesn't already exist.
+            max_retry_cnt: The maximum number of retries that an individual block write
+                is retried due to BigQuery rate limiting errors. This isn't
+                related to Ray fault tolerance retries. The default number of retries
+                is 10.
+            overwrite_table: Whether the write will overwrite the table if it already
+                exists. The default behavior is to overwrite the table.
+                ``overwrite_table=False`` will append to the table if it exists.
             ray_remote_args: Kwargs passed to ray.remote in the write tasks.
-        """
+        """  # noqa: E501
+        if ray_remote_args is None:
+            ray_remote_args = {}
 
-        self.write_datasource(
-            BigQueryDatasource(),
-            ray_remote_args=ray_remote_args,
-            dataset=dataset,
+        # Each write task will launch individual remote tasks to write each block
+        # To avoid duplicate block writes, the write task should not be retried
+        if ray_remote_args.get("max_retries", 0) != 0:
+            warnings.warn(
+                "The max_retries of a BigQuery Write Task should be set to 0"
+                " to avoid duplicate writes."
+            )
+        else:
+            ray_remote_args["max_retries"] = 0
+
+        datasink = _BigQueryDatasink(
             project_id=project_id,
+            dataset=dataset,
+            max_retry_cnt=max_retry_cnt,
+            overwrite_table=overwrite_table,
         )
+        self.write_datasink(datasink, ray_remote_args=ray_remote_args)
 
+    @Deprecated
     @ConsumptionAPI(pattern="Time complexity:")
     def write_datasource(
         self,
@@ -3416,6 +3433,13 @@ class Dataset:
             ray_remote_args: Kwargs passed to ``ray.remote`` in the write tasks.
             write_args: Additional write args to pass to the :class:`~ray.data.Datasource`.
         """  # noqa: E501
+        warnings.warn(
+            "`write_datasource` is deprecated in Ray 2.9. Create a `Datasink` and use "
+            "`write_datasink` instead. For more information, see "
+            "https://docs.ray.io/en/master/data/api/doc/ray.data.Datasource.html.",  # noqa: E501
+            DeprecationWarning,
+        )
+
         if ray_remote_args is None:
             ray_remote_args = {}
         path = write_args.get("path", None)
@@ -3429,30 +3453,15 @@ class Dataset:
                 soft=False,
             )
 
-        write_fn = generate_write_fn(datasource, **write_args)
+        plan = self._plan.copy()
 
-        def write_fn_wrapper(blocks: Iterator[Block], ctx, fn) -> Iterator[Block]:
-            return write_fn(blocks, ctx)
-
-        plan = self._plan.with_stage(
-            OneToOneStage(
-                "Write",
-                write_fn_wrapper,
-                TaskPoolStrategy(),
-                ray_remote_args,
-                fn=lambda x: x,
-            )
+        write_op = Write(
+            self._logical_plan.dag,
+            datasource,
+            ray_remote_args=ray_remote_args,
+            **write_args,
         )
-
-        logical_plan = self._logical_plan
-        if logical_plan is not None:
-            write_op = Write(
-                logical_plan.dag,
-                datasource,
-                ray_remote_args=ray_remote_args,
-                **write_args,
-            )
-            logical_plan = LogicalPlan(write_op)
+        logical_plan = LogicalPlan(write_op)
 
         try:
             import pandas as pd
@@ -3467,6 +3476,60 @@ class Dataset:
             datasource.on_write_complete(write_results, **write_args)
         except Exception as e:
             datasource.on_write_failed([], e)
+            raise
+
+    @ConsumptionAPI(pattern="Time complexity:")
+    def write_datasink(
+        self,
+        datasink: Datasink,
+        *,
+        ray_remote_args: Dict[str, Any] = None,
+    ) -> None:
+        """Writes the dataset to a custom :class:`~ray.data.Datasink`.
+
+        Time complexity: O(dataset size / parallelism)
+
+        Args:
+            datasink: The :class:`~ray.data.Datasink` to write to.
+            ray_remote_args: Kwargs passed to ``ray.remote`` in the write tasks.
+        """  # noqa: E501
+        if ray_remote_args is None:
+            ray_remote_args = {}
+
+        if not datasink.supports_distributed_writes:
+            if ray.util.client.ray.is_connected():
+                raise ValueError(
+                    "If you're using Ray Client, Ray Data won't schedule write tasks "
+                    "on the driver's node."
+                )
+            ray_remote_args["scheduling_strategy"] = NodeAffinitySchedulingStrategy(
+                ray.get_runtime_context().get_node_id(),
+                soft=False,
+            )
+
+        plan = self._plan.copy()
+        write_op = Write(
+            self._logical_plan.dag,
+            datasink,
+            ray_remote_args=ray_remote_args,
+        )
+        logical_plan = LogicalPlan(write_op)
+
+        try:
+            import pandas as pd
+
+            datasink.on_write_start()
+
+            self._write_ds = Dataset(plan, logical_plan).materialize()
+            blocks = ray.get(self._write_ds._plan.execute().get_blocks())
+            assert all(
+                isinstance(block, pd.DataFrame) and len(block) == 1 for block in blocks
+            )
+            write_results = [block["write_result"][0] for block in blocks]
+
+            datasink.on_write_complete(write_results)
+        except Exception as e:
+            datasink.on_write_failed(e)
             raise
 
     @ConsumptionAPI(
@@ -4556,7 +4619,7 @@ class Dataset:
         .. testoutput::
             :options: +MOCK
 
-            Stage 0 Read: 20/20 blocks executed in 0.3s
+            Operator 0 Read: 1 tasks executed, 5 blocks produced in 0s
             * Remote wall time: 16.29us min, 7.29ms max, 1.21ms mean, 24.17ms total
             * Remote cpu time: 16.0us min, 2.54ms max, 810.45us mean, 16.21ms total
             * Peak heap memory usage (MiB): 137968.75 min, 142734.38 max, 139846 mean
@@ -4645,7 +4708,7 @@ class Dataset:
             .. testoutput::
 
                 Dataset(
-                   num_blocks=16,
+                   num_blocks=...,
                    num_rows=150,
                    schema={
                       sepal length (cm): double,
@@ -4728,7 +4791,7 @@ class Dataset:
             .. testoutput::
 
                 Dataset(
-                   num_blocks=16,
+                   num_blocks=...,
                    num_rows=150,
                    schema={
                       sepal length (cm): double,

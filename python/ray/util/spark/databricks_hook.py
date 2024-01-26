@@ -9,25 +9,24 @@ import time
 _logger = logging.getLogger(__name__)
 
 
-class _NoDbutilsError(Exception):
-    pass
+def get_databricks_function(func_name):
+    import IPython
+
+    ip_shell = IPython.get_ipython()
+    if ip_shell is None:
+        raise RuntimeError("No IPython environment.")
+    return ip_shell.ns_table["user_global"][func_name]
 
 
-def get_dbutils():
+def get_db_entry_point():
     """
-    Get databricks runtime dbutils module.
+    Return databricks entry_point instance, it is for calling some
+    internal API in databricks runtime
     """
-    try:
-        import IPython
+    from dbruntime import UserNamespaceInitializer
 
-        ip_shell = IPython.get_ipython()
-        if ip_shell is None:
-            raise _NoDbutilsError
-        return ip_shell.ns_table["user_global"]["dbutils"]
-    except ImportError:
-        raise _NoDbutilsError
-    except KeyError:
-        raise _NoDbutilsError
+    user_namespace_initializer = UserNamespaceInitializer.getOrCreate()
+    return user_namespace_initializer.get_spark_entry_point()
 
 
 def display_databricks_driver_proxy_url(spark_context, port, title):
@@ -67,19 +66,12 @@ DATABRICKS_RAY_ON_SPARK_AUTOSHUTDOWN_MINUTES = (
 )
 
 
-def _get_db_api_entry():
-    """
-    Get databricks API entry point.
-    """
-    return get_dbutils().entry_point
-
-
-_DATABRICKS_DEFAULT_TMP_DIR = "/local_disk0/tmp"
+_DATABRICKS_DEFAULT_TMP_ROOT_DIR = "/local_disk0/tmp"
 
 
 class DefaultDatabricksRayOnSparkStartHook(RayOnSparkStartHook):
-    def get_default_temp_dir(self):
-        return _DATABRICKS_DEFAULT_TMP_DIR
+    def get_default_temp_root_dir(self):
+        return _DATABRICKS_DEFAULT_TMP_ROOT_DIR
 
     def on_ray_dashboard_created(self, port):
         display_databricks_driver_proxy_url(
@@ -87,22 +79,27 @@ class DefaultDatabricksRayOnSparkStartHook(RayOnSparkStartHook):
         )
 
     def on_cluster_created(self, ray_cluster_handler):
-        db_api_entry = _get_db_api_entry()
+        db_api_entry = get_db_entry_point()
+
         try:
-            db_api_entry.registerBackgroundSparkJobGroup(
-                ray_cluster_handler.spark_job_group_id
+            get_databricks_function("displayHTML")(
+                "<b style='background-color:yellow;'>When you are using Ray on Spark "
+                "cluster, you only pay for Spark cluster usage.</b>"
             )
         except Exception:
-            _logger.warning(
-                "Registering Ray cluster spark job as background job failed. "
-                "You need to manually call `ray.util.spark.shutdown_ray_cluster()` "
-                "before detaching your Databricks notebook."
-            )
+            pass
 
-        if ray_cluster_handler.autoscale:
-            # Disable auto shutdown if autoscaling enabled.
-            # because in autoscaling mode, background spark job will be killed
-            # automatically when ray cluster is idle.
+        if ray_cluster_handler.autoscale or self.is_global:
+            # Disable auto shutdown if
+            # 1) autoscaling enabled
+            #  because in autoscaling mode, background spark job will be killed
+            #  automatically when ray cluster is idle.
+            # 2) global mode cluster
+            #  Because global mode cluster is designed to keep running until
+            #  user request to shut down it, and global mode cluster is shared
+            #  by other users, the code here cannot track usage from other users
+            #  so that we don't know whether it is safe to shut down the global
+            #  cluster automatically.
             auto_shutdown_minutes = 0
         else:
             auto_shutdown_minutes = float(
@@ -166,3 +163,17 @@ class DefaultDatabricksRayOnSparkStartHook(RayOnSparkStartHook):
                 time.sleep(DATABRICKS_AUTO_SHUTDOWN_POLL_INTERVAL_SECONDS)
 
         threading.Thread(target=auto_shutdown_watcher, daemon=True).start()
+
+    def on_spark_job_created(self, job_group_id):
+        db_api_entry = get_db_entry_point()
+        db_api_entry.registerBackgroundSparkJobGroup(job_group_id)
+
+    def custom_environment_variables(self):
+        """Hardcode `GLOO_SOCKET_IFNAME` to `eth0` for Databricks runtime.
+
+        Torch on DBR does not reliably detect the correct interface to use,
+        and ends up selecting the loopback interface, breaking cross-node
+        commnication."""
+        return {
+            "GLOO_SOCKET_IFNAME": "eth0",
+        }

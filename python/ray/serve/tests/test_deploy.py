@@ -2,6 +2,7 @@ import os
 import sys
 import time
 from collections import defaultdict
+from typing import Callable
 
 import pytest
 import requests
@@ -10,7 +11,7 @@ import ray
 from ray import serve
 from ray._private.pydantic_compat import ValidationError
 from ray._private.test_utils import SignalActor
-from ray.serve._private.utils import get_random_letters
+from ray.serve._private.utils import get_random_string
 from ray.serve.exceptions import RayServeException
 
 
@@ -69,10 +70,10 @@ def test_empty_decorator(serve_instance):
     assert func.name == "func"
     assert Class.name == "Class"
     func_handle = serve.run(func.bind())
-    assert ray.get(func_handle.remote()) == "hi"
+    assert func_handle.remote().result() == "hi"
 
     class_handle = serve.run(Class.bind())
-    assert ray.get(class_handle.ping.remote()) == "pong"
+    assert class_handle.ping.remote().result() == "pong"
 
 
 def test_reconfigure_with_exception(serve_instance):
@@ -114,7 +115,7 @@ def test_redeploy_single_replica(serve_instance, use_handle):
 
         return ret.split("|")[0], ret.split("|")[1]
 
-    signal_name = f"signal-{get_random_letters()}"
+    signal_name = f"signal-{get_random_string()}"
     signal = SignalActor.options(name=signal_name).remote()
 
     @serve.deployment(name=name, version="1")
@@ -205,7 +206,7 @@ def test_redeploy_multiple_replicas(serve_instance, use_handle):
 
         return ret.split("|")[0], ret.split("|")[1]
 
-    signal_name = f"signal-{get_random_letters()}"
+    signal_name = f"signal-{get_random_string()}"
     signal = SignalActor.options(name=signal_name).remote()
 
     @serve.deployment(name=name, version="1", num_replicas=2)
@@ -299,7 +300,7 @@ def test_reconfigure_multiple_replicas(serve_instance, use_handle):
 
         return ret.split("|")[0], ret.split("|")[1]
 
-    signal_name = f"signal-{get_random_letters()}"
+    signal_name = f"signal-{get_random_string()}"
     signal = SignalActor.options(name=signal_name).remote()
 
     @serve.deployment(name=name, version="1", num_replicas=2)
@@ -377,9 +378,7 @@ def test_reconfigure_with_queries(serve_instance):
             return self.state["a"]
 
     handle = serve.run(A.options(version="1", user_config={"a": 1}).bind())
-    refs = []
-    for _ in range(30):
-        refs.append(handle.remote())
+    responses = [handle.remote() for _ in range(30)]
 
     @ray.remote(num_cpus=0)
     def reconfigure():
@@ -388,9 +387,9 @@ def test_reconfigure_with_queries(serve_instance):
     reconfigure_ref = reconfigure.remote()
     signal.send.remote()
     ray.get(reconfigure_ref)
-    for ref in refs:
-        assert ray.get(ref) == 1
-    assert ray.get(handle.remote()) == 2
+
+    assert all([r.result() == 1 for r in responses])
+    assert handle.remote().result() == 2
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows.")
@@ -495,7 +494,7 @@ def test_redeploy_scale_up(serve_instance, use_handle):
     assert all(pid not in pids1 for pid in responses2["2"])
 
 
-def test_deploy_handle_validation(serve_instance):
+def test_handle_method_name_validation(serve_instance):
     @serve.deployment
     class A:
         def b(self, *args):
@@ -503,12 +502,18 @@ def test_deploy_handle_validation(serve_instance):
 
     handle = serve.run(A.bind(), name="app")
 
-    # Legacy code path
-    assert ray.get(handle.options(method_name="b").remote()) == "hello"
-    # New code path
-    assert ray.get(handle.b.remote()) == "hello"
+    # Specify method via `.options`.
+    assert handle.options(method_name="b").remote().result() == "hello"
+
+    # Specify method via attribute.
+    assert handle.b.remote().result() == "hello"
+
+    # Unknown method.
     with pytest.raises(RayServeException):
-        ray.get(handle.c.remote())
+        handle.options(method_name="c").remote().result()
+
+    with pytest.raises(RayServeException):
+        handle.c.remote().result()
 
 
 def test_deploy_with_init_args(serve_instance):
@@ -540,14 +545,14 @@ def test_deploy_with_init_kwargs(serve_instance):
 def test_init_args_with_closure(serve_instance):
     @serve.deployment
     class Evaluator:
-        def __init__(self, func):
-            self.func = func
+        def __init__(self, func: Callable):
+            self._func = func
 
-        def __call__(self, inp):
-            return self.func(inp)
+        def __call__(self, inp: int) -> int:
+            return self._func(inp)
 
     handle = serve.run(Evaluator.bind(lambda a: a + 1))
-    assert ray.get(handle.remote(41)) == 42
+    assert handle.remote(41).result() == 42
 
 
 def test_input_validation():

@@ -1473,7 +1473,6 @@ def check_supported_spaces(
         "continuous": Box(-1.0, 1.0, (5,), dtype=np.float32),
         "vector2d": Box(-1.0, 1.0, (5, 5), dtype=np.float32),
         "image": Box(-1.0, 1.0, (84, 84, 1), dtype=np.float32),
-        "vizdoomgym": Box(-1.0, 1.0, (240, 320, 3), dtype=np.float32),
         "tuple": GymTuple([Discrete(10), Box(-1.0, 1.0, (5,), dtype=np.float32)]),
         "dict": GymDict(
             {
@@ -1489,7 +1488,6 @@ def check_supported_spaces(
         "discrete",
         "continuous",
         "image",
-        "vizdoomgym",
         "tuple",
         "dict",
     ]
@@ -1505,7 +1503,6 @@ def check_supported_spaces(
     config["env"] = RandomEnv
 
     def _do_check(alg, config, a_name, o_name):
-
         # We need to copy here so that this validation does not affect the actual
         # validation method call further down the line.
         config_copy = config.copy()
@@ -1560,7 +1557,7 @@ def check_supported_spaces(
         except UnsupportedSpaceException:
             stat = "unsupported"
         else:
-            if alg not in ["DDPG", "ES", "ARS", "SAC", "PPO"]:
+            if alg not in ["SAC", "PPO"]:
                 # 2D (image) input: Expect VisionNet.
                 if o_name in ["atari", "image"]:
                     if fw == "torch":

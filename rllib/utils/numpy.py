@@ -7,11 +7,7 @@ from typing import List, Optional
 
 
 from ray.rllib.utils.annotations import PublicAPI
-from ray.rllib.utils.deprecation import (
-    DEPRECATED_VALUE,
-    deprecation_warning,
-    Deprecated,
-)
+from ray.rllib.utils.deprecation import Deprecated
 from ray.rllib.utils.framework import try_import_tf, try_import_torch
 from ray.rllib.utils.typing import SpaceStruct, TensorType, TensorStructType, Union
 
@@ -122,9 +118,7 @@ def concat_aligned(
 
 
 @PublicAPI
-def convert_to_numpy(
-    x: TensorStructType, reduce_type: bool = True, reduce_floats=DEPRECATED_VALUE
-):
+def convert_to_numpy(x: TensorStructType, reduce_type: bool = True) -> TensorStructType:
     """Converts values in `stats` to non-Tensor numpy or python types.
 
     Args:
@@ -138,10 +132,6 @@ def convert_to_numpy(
         A new struct with the same structure as `x`, but with all
         values converted to numpy arrays (on CPU).
     """
-
-    if reduce_floats != DEPRECATED_VALUE:
-        deprecation_warning(old="reduce_floats", new="reduce_types", error=True)
-        reduce_type = reduce_floats
 
     # The mapping function used to numpyize torch/tf Tensors (and move them
     # to the CPU beforehand).
@@ -235,7 +225,8 @@ def flatten_inputs_to_1d_tensor(
 
     Args:
         inputs: The inputs to be flattened.
-        spaces_struct: The structure of the spaces that behind the input
+        spaces_struct: The (possibly nested) structure of the spaces that `inputs`
+            belongs to.
         time_axis: Whether all inputs have a time-axis (after the batch axis).
             If True, will keep not only the batch axis (0th), but the time axis
             (1st) as-is and flatten everything from the 2nd axis up.
@@ -501,10 +492,7 @@ def one_hot(
     )
     shape = x.shape
 
-    # Python 2.7 compatibility, (*shape, depth) is not allowed.
-    shape_list = list(shape[:])
-    shape_list.append(depth)
-    out = np.ones(shape_list) * off_value
+    out = np.ones(shape=(*shape, depth)) * off_value
     indices = []
     for i in range(x.ndim):
         tiles = [1] * x.ndim
@@ -518,6 +506,22 @@ def one_hot(
     indices.append(x)
     out[tuple(indices)] = on_value
     return out.astype(dtype)
+
+
+@PublicAPI
+def one_hot_multidiscrete(x, depths=List[int]):
+    # Handle torch arrays properly.
+    if torch and isinstance(x, torch.Tensor):
+        x = x.numpy()
+
+    shape = x.shape
+    return np.concatenate(
+        [
+            one_hot(x[i] if len(shape) == 1 else x[:, i], depth=n).astype(np.float32)
+            for i, n in enumerate(depths)
+        ],
+        axis=-1,
+    )
 
 
 @PublicAPI

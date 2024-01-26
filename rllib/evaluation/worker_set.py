@@ -19,13 +19,12 @@ from typing import (
 import ray
 from ray.actor import ActorHandle
 from ray.exceptions import RayActorError
-from ray.rllib.core.learner import LearnerGroup
 from ray.rllib.core.rl_module.rl_module import SingleAgentRLModuleSpec
-from ray.rllib.env.env_runner import EnvRunner
 from ray.rllib.evaluation.rollout_worker import RolloutWorker
 from ray.rllib.utils.actor_manager import RemoteCallResults
 from ray.rllib.env.base_env import BaseEnv
 from ray.rllib.env.env_context import EnvContext
+from ray.rllib.env.env_runner import EnvRunner
 from ray.rllib.offline import get_dataset_and_shards
 from ray.rllib.policy.policy import Policy, PolicyState
 from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID
@@ -51,6 +50,7 @@ from ray.rllib.utils.typing import (
 
 if TYPE_CHECKING:
     from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
+    from ray.rllib.core.learner import LearnerGroup
 
 tf1, tf, tfv = try_import_tf()
 
@@ -365,7 +365,7 @@ class WorkerSet:
     def sync_weights(
         self,
         policies: Optional[List[PolicyID]] = None,
-        from_worker_or_learner_group: Optional[Union[EnvRunner, LearnerGroup]] = None,
+        from_worker_or_learner_group: Optional[Union[EnvRunner, "LearnerGroup"]] = None,
         to_worker_indices: Optional[List[int]] = None,
         global_vars: Optional[Dict[str, TensorType]] = None,
         timeout_seconds: Optional[int] = 0,
@@ -689,6 +689,9 @@ class WorkerSet:
         local_result = []
         if local_worker and self.local_worker() is not None:
             local_result = [func(self.local_worker())]
+
+        if not self.__worker_manager.actor_ids():
+            return local_result
 
         remote_results = self.__worker_manager.foreach_actor(
             func,

@@ -83,6 +83,18 @@ class PlasmaStore {
   /// Return the plasma object bytes that are consumed by core workers.
   int64_t GetConsumedBytes();
 
+  /// Return the number of plasma objects that have been created.
+  int64_t GetCumulativeCreatedObjects() const {
+    absl::MutexLock lock(&mutex_);
+    return object_lifecycle_mgr_.GetNumObjectsCreatedTotal();
+  }
+
+  /// Return the plasma object bytes that have been created.
+  int64_t GetCumulativeCreatedBytes() const {
+    absl::MutexLock lock(&mutex_);
+    return object_lifecycle_mgr_.GetNumBytesCreatedTotal();
+  }
+
   /// Get the available memory for new objects to be created. This includes
   /// memory that is currently being used for created but unsealed objects.
   size_t GetAvailableMemory() const ABSL_LOCKS_EXCLUDED(mutex_) {

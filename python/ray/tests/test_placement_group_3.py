@@ -705,7 +705,6 @@ def test_placement_group_local_resource_view(monkeypatch, ray_start_cluster):
         # Increase broadcasting interval so that node resource will arrive
         # at raylet after local resource all being allocated.
         m.setenv("RAY_raylet_report_resources_period_milliseconds", "2000")
-        m.setenv("RAY_grpc_based_resource_broadcast", "true")
         cluster = ray_start_cluster
 
         cluster.add_node(num_cpus=16, object_store_memory=1e9)

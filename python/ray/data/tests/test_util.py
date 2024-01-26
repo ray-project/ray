@@ -1,4 +1,6 @@
+import time
 from typing import Any, Dict, Optional
+from unittest.mock import patch
 
 import numpy as np
 import pytest
@@ -95,8 +97,7 @@ def get_parquet_read_logical_op(
     ray_remote_args: Optional[Dict[str, Any]] = None,
     **read_kwargs,
 ) -> Read:
-    datasource = ParquetDatasource()
-    reader = datasource.create_reader(paths="example://iris.parquet")
+    datasource = ParquetDatasource(paths="example://iris.parquet")
     if "parallelism" not in read_kwargs:
         read_kwargs["parallelism"] = 10
     mem_size = None
@@ -104,12 +105,38 @@ def get_parquet_read_logical_op(
         mem_size = read_kwargs.pop("mem_size")
     read_op = Read(
         datasource=datasource,
-        reader=reader,
+        datasource_or_legacy_reader=datasource,
         mem_size=mem_size,
         ray_remote_args=ray_remote_args,
         **read_kwargs,
     )
     return read_op
+
+
+def test_cluster_resources():
+    """Test ray.data._internal.util.cluster_resources()."""
+    resources = {"CPU": 4, "GPU": 1}
+    cache_interval_s = 0.1
+    with patch.object(
+        ray.data._internal.util,
+        "CLUSTER_RESOURCES_FETCH_INTERVAL_SECONDS",
+        cache_interval_s,
+    ):
+        with patch(
+            "ray.cluster_resources",
+            return_value=resources,
+        ) as ray_cluster_resources:
+            # The first call should call ray.cluster_resources().
+            assert ray.data._internal.util.cluster_resources() == resources
+            assert ray_cluster_resources.call_count == 1
+            # The second call should return the cached value.
+            assert ray.data._internal.util.cluster_resources() == resources
+            assert ray_cluster_resources.call_count == 1
+            time.sleep(cache_interval_s)
+            # After the cache interval, the third call should call
+            # ray.cluster_resources() again.
+            assert ray.data._internal.util.cluster_resources() == resources
+            assert ray_cluster_resources.call_count == 2
 
 
 if __name__ == "__main__":

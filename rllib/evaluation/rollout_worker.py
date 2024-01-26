@@ -39,7 +39,7 @@ from ray.rllib.env.external_multi_agent_env import ExternalMultiAgentEnv
 from ray.rllib.env.multi_agent_env import MultiAgentEnv
 from ray.rllib.env.wrappers.atari_wrappers import is_atari, wrap_deepmind
 from ray.rllib.evaluation.metrics import RolloutMetrics
-from ray.rllib.evaluation.sampler import AsyncSampler, SyncSampler
+from ray.rllib.evaluation.sampler import SyncSampler
 from ray.rllib.models import ModelCatalog
 from ray.rllib.models.preprocessors import Preprocessor
 from ray.rllib.offline import (
@@ -172,10 +172,10 @@ class RolloutWorker(ParallelIteratorWorker, EnvRunner):
         # Create a rollout worker and using it to collect experiences.
         import gymnasium as gym
         from ray.rllib.evaluation.rollout_worker import RolloutWorker
-        from ray.rllib.algorithms.pg.pg_tf_policy import PGTF1Policy
+        from ray.rllib.algorithms.ppo.ppo_tf_policy import PPOTF1Policy
         worker = RolloutWorker(
           env_creator=lambda _: gym.make("CartPole-v1"),
-          default_policy_class=PGTF1Policy)
+          default_policy_class=PPOTF1Policy)
         print(worker.sample())
 
         # Creating a multi-agent rollout worker
@@ -608,23 +608,6 @@ class RolloutWorker(ParallelIteratorWorker, EnvRunner):
 
         if self.env is None:
             self.sampler = None
-        elif self.config.sample_async:
-            self.sampler = AsyncSampler(
-                worker=self,
-                env=self.async_env,
-                clip_rewards=clip_rewards,
-                rollout_fragment_length=rollout_fragment_length_for_sampler,
-                count_steps_by=self.config.count_steps_by,
-                callbacks=self.callbacks,
-                multiple_episodes_in_batch=pack,
-                normalize_actions=self.config.normalize_actions,
-                clip_actions=self.config.clip_actions,
-                observation_fn=self.config.observation_fn,
-                sample_collector_class=self.config.sample_collector,
-                render=render,
-            )
-            # Start the Sampler thread.
-            self.sampler.start()
         else:
             self.sampler = SyncSampler(
                 worker=self,
@@ -680,10 +663,10 @@ class RolloutWorker(ParallelIteratorWorker, EnvRunner):
 
             import gymnasium as gym
             from ray.rllib.evaluation.rollout_worker import RolloutWorker
-            from ray.rllib.algorithms.pg.pg_tf_policy import PGTF1Policy
+            from ray.rllib.algorithms.ppo.ppo_tf_policy import PPOTF1Policy
             worker = RolloutWorker(
               env_creator=lambda _: gym.make("CartPole-v1"),
-              default_policy_class=PGTF1Policy,
+              default_policy_class=PPOTF1Policy,
               config=AlgorithmConfig(),
             )
             print(worker.sample())
@@ -767,10 +750,10 @@ class RolloutWorker(ParallelIteratorWorker, EnvRunner):
 
             import gymnasium as gym
             from ray.rllib.evaluation.rollout_worker import RolloutWorker
-            from ray.rllib.algorithms.pg.pg_tf_policy import PGTF1Policy
+            from ray.rllib.algorithms.ppo.ppo_tf_policy import PPOTF1Policy
             worker = RolloutWorker(
               env_creator=lambda _: gym.make("CartPole-v1"),
-              default_policy_class=PGTFPolicy)
+              default_policy_class=PPOTFPolicy)
             print(worker.sample_with_count())
 
         .. testoutput::
@@ -797,10 +780,10 @@ class RolloutWorker(ParallelIteratorWorker, EnvRunner):
 
             import gymnasium as gym
             from ray.rllib.evaluation.rollout_worker import RolloutWorker
-            from ray.rllib.algorithms.pg.pg_tf_policy import PGTF1Policy
+            from ray.rllib.algorithms.ppo.ppo_tf_policy import PPOTF1Policy
             worker = RolloutWorker(
               env_creator=lambda _: gym.make("CartPole-v1"),
-              default_policy_class=PGTF1Policy)
+              default_policy_class=PPOTF1Policy)
             batch = worker.sample()
             info = worker.learn_on_batch(samples)
         """
@@ -921,10 +904,10 @@ class RolloutWorker(ParallelIteratorWorker, EnvRunner):
 
             import gymnasium as gym
             from ray.rllib.evaluation.rollout_worker import RolloutWorker
-            from ray.rllib.algorithms.pg.pg_tf_policy import PGTF1Policy
+            from ray.rllib.algorithms.ppo.ppo_tf_policy import PPOTF1Policy
             worker = RolloutWorker(
               env_creator=lambda _: gym.make("CartPole-v1"),
-              default_policy_class=PGTF1Policy)
+              default_policy_class=PPOTF1Policy)
             batch = worker.sample()
             grads, info = worker.compute_gradients(samples)
         """
@@ -992,10 +975,10 @@ class RolloutWorker(ParallelIteratorWorker, EnvRunner):
 
             import gymnasium as gym
             from ray.rllib.evaluation.rollout_worker import RolloutWorker
-            from ray.rllib.algorithms.pg.pg_tf_policy import PGTF1Policy
+            from ray.rllib.algorithms.ppo.ppo_tf_policy import PPOTF1Policy
             worker = RolloutWorker(
               env_creator=lambda _: gym.make("CartPole-v1"),
-              default_policy_class=PGTF1Policy)
+              default_policy_class=PPOTF1Policy)
             samples = worker.sample()
             grads, info = worker.compute_gradients(samples)
             worker.apply_gradients(grads)
@@ -1648,10 +1631,6 @@ class RolloutWorker(ParallelIteratorWorker, EnvRunner):
         if self.env is not None:
             self.async_env.stop()
 
-        # In case we have-an AsyncSampler, kill its sampling thread.
-        if hasattr(self, "sampler") and isinstance(self.sampler, AsyncSampler):
-            self.sampler.shutdown = True
-
         # Close all policies' sessions (if tf static graph).
         for policy in self.policy_map.cache.values():
             sess = policy.get_session()
@@ -1971,8 +1950,7 @@ class RolloutWorker(ParallelIteratorWorker, EnvRunner):
         # A callable returning an InputReader object to use.
         if isinstance(self.config.input_, FunctionType):
             return self.config.input_
-        # Use RLlib's Sampler classes (SyncSampler or AsynchSampler, depending
-        # on `config.sample_async` setting).
+        # Use RLlib's Sampler classes (SyncSampler).
         elif self.config.input_ == "sampler":
             return lambda ioctx: ioctx.default_sampler_input()
         # Ray Dataset input -> Use `config.input_config` to construct DatasetReader.

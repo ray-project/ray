@@ -32,7 +32,7 @@ Upgrading the KubeRay version is the best strategy if you have any issues with K
 * Based on [the Helm documentation](https://helm.sh/docs/chart_best_practices/custom_resource_definitions/#some-caveats-and-explanations), there is no support at this time for upgrading or deleting CRDs using Helm.
   * If you want to install the latest KubeRay release's CRD, you may need to delete the old CRD first.
   * Note that deleting the CRD causes a cascading deletion of custom resources. See the [Helm documentation](https://github.com/helm/community/blob/main/hips/hip-0011.md#deleting-crds) for more details.
-  * Example 1: Upgrade KubeRay from v0.6.0 to v1.0.0-rc.1 without deleting the old CRD.
+  * Example 1: Upgrade KubeRay from v0.6.0 to v1.0.0 without deleting the old CRD.
     ```shell
     # Install KubeRay v0.6.0 and CRD v1alpha1
     helm install kuberay-operator kuberay/kuberay-operator --version 0.6.0
@@ -40,21 +40,21 @@ Upgrading the KubeRay version is the best strategy if you have any issues with K
     # The following instruction uninstalls only KubeRay v0.6.0. It does not uninstall CRD v1alpha1.
     helm uninstall kuberay-operator
 
-    # Install KubeRay v1.0.0-rc.1. Because the CRD already exists, the Helm instruction does not install the new CRD.
-    helm install kuberay-operator kuberay/kuberay-operator --version 1.0.0-rc.1
+    # Install KubeRay v1.0.0. Because the CRD already exists, the Helm instruction does not install the new CRD.
+    helm install kuberay-operator kuberay/kuberay-operator --version 1.0.0
 
     # Check CRD
     kubectl describe crd rayclusters.ray.io | grep v1
     # You can only see "Name: v1alpha1", and cannot see "Name: v1".
 
-    # Install RayCluster v1.0.0-rc.1 which uses CRD v1.
-    helm install raycluster kuberay/ray-cluster --version 1.0.0-rc.1
+    # Install RayCluster v1.0.0 which uses CRD v1.
+    helm install raycluster kuberay/ray-cluster --version 1.0.0
     # Error: INSTALLATION FAILED: unable to build kubernetes objects from release manifest:
     # resource mapping not found for name: "raycluster-kuberay" namespace: "" from "": no
     # matches for kind "RayCluster" in version "ray.io/v1"
     # ensure CRDs are installed first
     ```
-  * Example 2: Upgrade KubeRay from v0.6.0 to v1.0.0-rc.1 with deleting the old CRD.
+  * Example 2: Upgrade KubeRay from v0.6.0 to v1.0.0 with deleting the old CRD.
     ```shell
     # Install KubeRay v0.6.0 and CRD v1alpha1
     helm install kuberay-operator kuberay/kuberay-operator --version 0.6.0
@@ -67,13 +67,13 @@ Upgrading the KubeRay version is the best strategy if you have any issues with K
     kubectl delete crd rayjobs.ray.io
     kubectl delete crd rayservices.ray.io
 
-    # Install KubeRay v1.0.0-rc.1 and new CRD including v1.
-    helm install kuberay-operator kuberay/kuberay-operator --version 1.0.0-rc.1
+    # Install KubeRay v1.0.0 and new CRD including v1.
+    helm install kuberay-operator kuberay/kuberay-operator --version 1.0.0
 
     # Check CRD
     kubectl describe crd rayclusters.ray.io | grep v1
     # You can see both "Name: v1alpha1" and "Name: v1".
 
-    # Install RayCluster v1.0.0-rc.1 which uses CRD v1.
-    helm install raycluster kuberay/ray-cluster --version 1.0.0-rc.1
+    # Install RayCluster v1.0.0 which uses CRD v1.
+    helm install raycluster kuberay/ray-cluster --version 1.0.0
     ```

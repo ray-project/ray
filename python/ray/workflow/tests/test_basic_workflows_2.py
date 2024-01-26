@@ -4,6 +4,7 @@ from filelock import FileLock
 from ray._private.test_utils import SignalActor
 from ray import workflow
 from ray.tests.conftest import *  # noqa
+from ray._private.test_utils import skip_flaky_core_test_premerge
 
 
 @pytest.mark.parametrize(
@@ -155,6 +156,7 @@ def test_get_output_5(workflow_start_regular, tmp_path):
     assert ray.get(outputs) == [314] * len(outputs)
 
 
+@skip_flaky_core_test_premerge("https://github.com/ray-project/ray/issues/41511")
 def test_output_with_name(workflow_start_regular):
     @ray.remote
     def double(v):

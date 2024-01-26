@@ -24,7 +24,7 @@ enum MessageType:int {
   SubmitTask = 1,
   // Notify the raylet that a task has finished. This is sent from a
   // worker to a raylet.
-  TaskDone,
+  ActorCreationTaskDone,
   // Log a message to the event table. This is sent from a worker to a raylet.
   EventLogMessage,
   // Send an initial connection message to the raylet. This is sent
@@ -170,9 +170,6 @@ table FetchOrReconstruct {
   owner_addresses: [Address];
   // Do we only want to fetch the objects or also reconstruct them?
   fetch_only: bool;
-  // False for direct call tasks. Blocking for those tasks is handled via the
-  // NotifyDirectCallTaskBlocked/Unblocked IPCs.
-  mark_worker_blocked: bool;
   // The current task ID.
   task_id: string;
 }
@@ -198,9 +195,6 @@ table WaitRequest {
   num_ready_objects: int;
   // timeout
   timeout: long;
-  // False for direct call tasks. Blocking for those tasks is handled via the
-  // NotifyDirectCallTaskBlocked/Unblocked IPCs.
-  mark_worker_blocked: bool;
   // The current task ID.
   task_id: string;
 }

@@ -1,6 +1,6 @@
 import os
 import threading
-from typing import TYPE_CHECKING, Any, Dict, Optional
+from typing import TYPE_CHECKING, Any, Dict, List, Optional, Union
 
 import ray
 from ray._private.ray_constants import env_integer
@@ -32,6 +32,11 @@ DEFAULT_TARGET_MAX_BLOCK_SIZE = 128 * 1024 * 1024
 # excessive number of partitions.
 # We choose 1GiB as 4x less than the typical memory:core ratio (4:1).
 DEFAULT_SHUFFLE_TARGET_MAX_BLOCK_SIZE = 1024 * 1024 * 1024
+
+# We will attempt to slice blocks whose size exceeds this factor *
+# target_max_block_size. We will warn the user if slicing fails and we produce
+# blocks larger than this threshold.
+MAX_SAFE_BLOCK_SIZE_FACTOR = 1.5
 
 # Dataset will avoid creating blocks smaller than this size in bytes on read.
 # This takes precedence over DEFAULT_MIN_PARALLELISM.
@@ -97,6 +102,11 @@ DEFAULT_USE_STREAMING_EXECUTOR = bool(
     int(os.environ.get("RAY_DATA_USE_STREAMING_EXECUTOR", "1"))
 )
 
+# Whether to use the runtime object store memory metrics for scheduling.
+DEFAULT_USE_RUNTIME_METRICS_SCHEDULING = bool(
+    int(os.environ.get("DEFAULT_USE_RUNTIME_METRICS_SCHEDULING", "0"))
+)
+
 # Whether to eagerly free memory (new backend only).
 DEFAULT_EAGER_FREE = bool(int(os.environ.get("RAY_DATA_EAGER_FREE", "1")))
 
@@ -143,6 +153,18 @@ DEFAULT_ENABLE_PROGRESS_BARS = not bool(
 # Whether to enable get_object_locations for metric
 DEFAULT_ENABLE_GET_OBJECT_LOCATIONS_FOR_METRICS = False
 
+DEFAULT_WRITE_FILE_RETRY_ON_ERRORS = [
+    "AWS Error INTERNAL_FAILURE",
+    "AWS Error NETWORK_CONNECTION",
+    "AWS Error SLOW_DOWN",
+]
+
+# The application-level errors that actor task would retry.
+# Default to `False` to not retry on any errors.
+# Set to `True` to retry all errors, or set to a list of errors to retry.
+# This follows same format as `retry_exceptions` in Ray Core.
+DEFAULT_ACTOR_TASK_RETRY_ON_ERRORS = False
+
 
 @DeveloperAPI
 class DataContext:
@@ -183,6 +205,9 @@ class DataContext:
         use_ray_tqdm: bool,
         enable_progress_bars: bool,
         enable_get_object_locations_for_metrics: bool,
+        use_runtime_metrics_scheduling: bool,
+        write_file_retry_on_errors: List[str],
+        actor_task_retry_on_errors: Union[bool, List[BaseException]],
     ):
         """Private constructor (use get_current() instead)."""
         self.target_max_block_size = target_max_block_size
@@ -219,9 +244,20 @@ class DataContext:
         self.enable_get_object_locations_for_metrics = (
             enable_get_object_locations_for_metrics
         )
+        self.use_runtime_metrics_scheduling = use_runtime_metrics_scheduling
+        self.write_file_retry_on_errors = write_file_retry_on_errors
+        self.actor_task_retry_on_errors = actor_task_retry_on_errors
         # The additonal ray remote args that should be added to
         # the task-pool-based data tasks.
         self._task_pool_data_task_remote_args: Dict[str, Any] = {}
+        # Max number of blocks that are allowed to have errors, unlimited if negative.
+        # This option allows application-level exceptions in block processing tasks.
+        # These exceptions may be caused by UDFs (e.g., due to corrupted data samples)
+        # or IO errors.
+        # Data in the failed blocks will be dropped.
+        # This option can be useful to prevent a long-running job from failing due to
+        # a small number of bad blocks.
+        self.max_errored_blocks = 0
         # The extra key-value style configs.
         # These configs are managed by individual components or plugins via
         # `set_config`, `get_config` and `remove_config`.
@@ -229,6 +265,9 @@ class DataContext:
         # the DataContext from the plugin implementations, as well as to avoid
         # circular dependencies.
         self._kv_configs: Dict[str, Any] = {}
+        # The max number of blocks that can be buffered at the streaming generator of
+        # each `DataOpTask`.
+        self._max_num_blocks_in_streaming_gen_buffer = None
 
     @staticmethod
     def get_current() -> "DataContext":
@@ -279,6 +318,9 @@ class DataContext:
                     use_ray_tqdm=DEFAULT_USE_RAY_TQDM,
                     enable_progress_bars=DEFAULT_ENABLE_PROGRESS_BARS,
                     enable_get_object_locations_for_metrics=DEFAULT_ENABLE_GET_OBJECT_LOCATIONS_FOR_METRICS,  # noqa E501
+                    use_runtime_metrics_scheduling=DEFAULT_USE_RUNTIME_METRICS_SCHEDULING,  # noqa: E501
+                    write_file_retry_on_errors=DEFAULT_WRITE_FILE_RETRY_ON_ERRORS,
+                    actor_task_retry_on_errors=DEFAULT_ACTOR_TASK_RETRY_ON_ERRORS,
                 )
 
             return _default_context

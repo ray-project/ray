@@ -350,12 +350,6 @@ class GcsRpcClient {
                              node_info_grpc_client_,
                              /*method_timeout_ms*/ -1, )
 
-  /// Get node's resources from GCS Service.
-  VOID_GCS_RPC_CLIENT_METHOD(NodeResourceInfoGcsService,
-                             GetResources,
-                             node_resource_info_grpc_client_,
-                             /*method_timeout_ms*/ -1, )
-
   /// Get available resources of all nodes from the GCS Service.
   VOID_GCS_RPC_CLIENT_METHOD(NodeResourceInfoGcsService,
                              GetAllAvailableResources,
@@ -406,6 +400,18 @@ class GcsRpcClient {
   /// Add worker information to GCS Service.
   VOID_GCS_RPC_CLIENT_METHOD(WorkerInfoGcsService,
                              AddWorkerInfo,
+                             worker_info_grpc_client_,
+                             /*method_timeout_ms*/ -1, )
+
+  /// Add worker debugger port
+  VOID_GCS_RPC_CLIENT_METHOD(WorkerInfoGcsService,
+                             UpdateWorkerDebuggerPort,
+                             worker_info_grpc_client_,
+                             /*method_timeout_ms*/ -1, )
+
+  /// Update the worker number of paused threads delta
+  VOID_GCS_RPC_CLIENT_METHOD(WorkerInfoGcsService,
+                             UpdateWorkerNumPausedThreads,
                              worker_info_grpc_client_,
                              /*method_timeout_ms*/ -1, )
 
@@ -518,9 +524,11 @@ class GcsRpcClient {
     auto status = channel_->GetState(false);
     // https://grpc.github.io/grpc/core/md_doc_connectivity-semantics-and-api.html
     // https://grpc.github.io/grpc/core/connectivity__state_8h_source.html
-    RAY_LOG(DEBUG) << "GCS channel status: " << status;
+    if (status != GRPC_CHANNEL_READY) {
+      RAY_LOG(DEBUG) << "GCS channel status: " << status;
+    }
 
-    // We need to cleanup all the pending requets which are timeout.
+    // We need to cleanup all the pending requests which are timeout.
     auto now = absl::Now();
     while (!pending_requests_.empty()) {
       auto iter = pending_requests_.begin();

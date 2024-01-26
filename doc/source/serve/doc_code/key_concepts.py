@@ -16,9 +16,7 @@ class MyFirstDeployment:
 
 
 my_first_deployment = MyFirstDeployment.bind("Hello world!")
-handle: DeploymentHandle = serve.run(my_first_deployment).options(
-    use_new_handle_api=True,
-)
+handle: DeploymentHandle = serve.run(my_first_deployment)
 assert handle.remote().result() == "Hello world!"
 # __end_my_first_deployment__
 
@@ -41,13 +39,9 @@ class World:
 
 @serve.deployment
 class Ingress:
-    def __init__(self, hello_handle, world_handle):
-        self._hello_handle = hello_handle.options(
-            use_new_handle_api=True,
-        )
-        self._world_handle = world_handle.options(
-            use_new_handle_api=True,
-        )
+    def __init__(self, hello_handle: DeploymentHandle, world_handle: DeploymentHandle):
+        self._hello_handle = hello_handle
+        self._world_handle = world_handle
 
     async def __call__(self) -> str:
         hello_response = self._hello_handle.remote()
@@ -62,9 +56,7 @@ world = World.bind()
 app = Ingress.bind(hello, world)
 
 # Deploys Hello, World, and Ingress.
-handle: DeploymentHandle = serve.run(app).options(
-    use_new_handle_api=True,
-)
+handle: DeploymentHandle = serve.run(app)
 
 # `DeploymentHandle`s can also be used to call the ingress deployment of an application.
 assert handle.remote().result() == "Hello world!"

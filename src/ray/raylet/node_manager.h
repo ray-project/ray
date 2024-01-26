@@ -294,10 +294,12 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
 
   /// Handler for a resource usage notification from the GCS.
   ///
-  /// \param id The ID of the node manager that sent the resources data.
-  /// \param data The resources data including load information.
+  /// \param id The ID of the node manager that sent the resource usage.
+  /// \param resource_view_sync_message The resource usage data.
   /// \return Whether the node resource usage is updated.
-  bool UpdateResourceUsage(const NodeID &id, const rpc::ResourcesData &data);
+  bool UpdateResourceUsage(
+      const NodeID &id,
+      const syncer::ResourceViewSyncMessage &resource_view_sync_message);
 
   /// Handle a worker finishing its assigned task.
   ///
@@ -322,14 +324,11 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
   /// \param required_object_refs The objects that the client is blocked waiting for.
   /// \param current_task_id The task that is blocked.
   /// \param ray_get Whether the task is blocked in a `ray.get` call.
-  /// \param mark_worker_blocked Whether to mark the worker as blocked. This
-  ///                            should be False for direct calls.
   /// \return Void.
   void AsyncResolveObjects(const std::shared_ptr<ClientConnection> &client,
                            const std::vector<rpc::ObjectReference> &required_object_refs,
                            const TaskID &current_task_id,
-                           bool ray_get,
-                           bool mark_worker_blocked);
+                           bool ray_get);
 
   /// Handle end of a blocking object get. This could be a task assigned to a
   /// worker, an out-of-band task (e.g., a thread created by the application),
@@ -339,12 +338,9 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
   ///
   /// \param client The client that is executing the unblocked task.
   /// \param current_task_id The task that is unblocked.
-  /// \param worker_was_blocked Whether we previously marked the worker as
-  ///                           blocked in AsyncResolveObjects().
   /// \return Void.
   void AsyncResolveObjectsFinish(const std::shared_ptr<ClientConnection> &client,
-                                 const TaskID &current_task_id,
-                                 bool was_blocked);
+                                 const TaskID &current_task_id);
 
   /// Handle a direct call task that is blocked. Note that this callback may
   /// arrive after the worker lease has been returned to the node manager.
@@ -442,12 +438,6 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
   /// \return Void.
   void ProcessAnnounceWorkerPortMessage(const std::shared_ptr<ClientConnection> &client,
                                         const uint8_t *message_data);
-
-  /// Handle the case that a worker is available.
-  ///
-  /// \param client The connection for the worker.
-  /// \return Void.
-  void HandleWorkerAvailable(const std::shared_ptr<ClientConnection> &client);
 
   /// Handle the case that a worker is available.
   ///

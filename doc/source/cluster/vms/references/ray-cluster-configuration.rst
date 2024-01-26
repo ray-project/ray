@@ -181,6 +181,8 @@ vSphere Config
                 :ref:`vSphere Credentials <cluster-configuration-vsphere-credentials-type>`
             :ref:`frozen_vm <cluster-configuration-vsphere-frozen-vm>`:
                 :ref:`vSphere Frozen VM Configs <cluster-configuration-vsphere-frozen-vm-configs>`
+            :ref:`gpu_config <cluster-configuration-vsphere-gpu-config>`:
+                :ref:`vSphere GPU Configs <cluster-configuration-vsphere-gpu-configs>`
 
 .. _cluster-configuration-vsphere-credentials-type:
 
@@ -214,8 +216,20 @@ vSphere Frozen VM Configs
             :ref:`cluster <cluster-configuration-vsphere-frozen-vm-cluster>`: str
             :ref:`datastore <cluster-configuration-vsphere-frozen-vm-datastore>`: str
 
-.. _cluster-configuration-node-types-type:
+.. _cluster-configuration-vsphere-gpu-configs:
 
+vSphere GPU Configs
+~~~~~~~~~~~~~~~~~~~
+
+.. tab-set::
+
+    .. tab-item:: vSphere
+
+        .. parsed-literal::
+
+            :ref:`dynamic_pci_passthrough <cluster-configuration-vsphere-gpu-config-pci-passthrough>`: bool
+
+.. _cluster-configuration-node-types-type:
 
 Node types
 ~~~~~~~~~~
@@ -815,7 +829,7 @@ The user that Ray will authenticate with when launching new nodes.
 
     .. tab-item:: vSphere
 
-        Not available. The vSphere provider expects the key to be located at a fixed path ``~/ray-bootstrap-key.pem`` and will automatically generate one if not found.
+        Not available. The vSphere provider expects the key to be located at a fixed path ``~/ray-bootstrap-key.pem``.
 
 .. _cluster-configuration-ssh-public-key:
 
@@ -1334,6 +1348,26 @@ Will take effect only when ``library_item`` is set. If ``resource_pool`` is also
 * **Required:** No
 * **Importance:** Low
 * **Type:** String
+
+.. _cluster-configuration-vsphere-gpu-config:
+
+``vsphere_config.gpu_config``
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. _cluster-configuration-vsphere-gpu-config-pci-passthrough:
+
+``vsphere_config.gpu_config.dynamic_pci_passthrough``
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+The switch controlling the way for binding the GPU from ESXi host to the Ray node VM.
+The default value is False, which indicates regular PCI Passthrough.
+If set to True, the Dynamic PCI passthrough (https://docs.vmware.com/en/VMware-vSphere/8.0/vsphere-esxi-host-client/GUID-2B6D43A6-9598-47C4-A2E7-5924E3367BB6.html) will be enabled for the GPU.
+The VM with Dynamic PCI passthrough GPU can still support vSphere DRS (https://www.vmware.com/products/vsphere/drs-dpm.html).
+
+* **Required:** No
+* **Importance:** Low
+* **Type:** Boolean
+
 
 .. _cluster-configuration-node-config:
 

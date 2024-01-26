@@ -317,7 +317,7 @@ def test_handle_prefers_replicas_on_same_node(ray_cluster):
             return ray.get_runtime_context().get_node_id()
 
         async def call_inner(self, block_on_signal: bool = False) -> str:
-            return await (await self._h.remote(block_on_signal))
+            return await self._h.remote(block_on_signal)
 
     # The inner deployment's two replicas will be spread across the two nodes and
     # the outer deployment's single replica will be placed on one of them.
@@ -325,22 +325,22 @@ def test_handle_prefers_replicas_on_same_node(ray_cluster):
 
     # When sending requests sequentially, all requests to the inner deployment should
     # go to the replica on the same node as the outer deployment replica.
-    outer_node_id = ray.get(h.get_node_id.remote())
+    outer_node_id = h.get_node_id.remote().result()
     for _ in range(10):
-        assert ray.get(h.call_inner.remote()) == outer_node_id
+        assert h.call_inner.remote().result() == outer_node_id
 
     # Make a blocking request to the inner deployment replica on the same node.
-    blocked_ref = h.call_inner.remote(block_on_signal=True)
+    blocked_response = h.call_inner.remote(block_on_signal=True)
     with pytest.raises(TimeoutError):
-        ray.get(blocked_ref, timeout=1)
+        blocked_response.result(timeout_s=1)
 
     # Because there's a blocking request and `max_concurrent_queries` is set to 1, all
     # requests should now spill to the other node.
     for _ in range(10):
-        assert ray.get(h.call_inner.remote()) != outer_node_id
+        assert h.call_inner.remote().result() != outer_node_id
 
     ray.get(signal.send.remote())
-    assert ray.get(blocked_ref) == outer_node_id
+    assert blocked_response.result() == outer_node_id
 
 
 @pytest.mark.parametrize("set_flag", [True, False])

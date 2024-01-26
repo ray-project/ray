@@ -8,7 +8,7 @@ from ray._private.accelerators import HPUAcceleratorManager
 from ray._private.accelerators import hpu
 
 
-def test_user_configured_more_than_visible(monkeypatch, shutdown_only):
+def test_user_configured_more_than_visible(monkeypatch, call_ray_stop_only):
     # Test more hpus are configured than visible.
     monkeypatch.setenv("HABANA_VISIBLE_MODULES", "0,1,2")
     with pytest.raises(ValueError):

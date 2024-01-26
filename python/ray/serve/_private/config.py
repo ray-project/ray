@@ -2,7 +2,8 @@ import inspect
 import json
 from typing import Any, Callable, Dict, List, Optional, Set, Tuple, Union
 
-from google.protobuf.json_format import MessageToDict
+from google.protobuf.descriptor import FieldDescriptor
+from google.protobuf.message import Message
 
 from ray import cloudpickle
 from ray._private import ray_option_utils
@@ -29,6 +30,8 @@ from ray.serve.config import AutoscalingConfig
 from ray.serve.generated.serve_pb2 import AutoscalingConfig as AutoscalingConfigProto
 from ray.serve.generated.serve_pb2 import DeploymentConfig as DeploymentConfigProto
 from ray.serve.generated.serve_pb2 import DeploymentLanguage
+from ray.serve.generated.serve_pb2 import EncodingType as EncodingTypeProto
+from ray.serve.generated.serve_pb2 import LoggingConfig as LoggingConfigProto
 from ray.serve.generated.serve_pb2 import ReplicaConfig as ReplicaConfigProto
 from ray.util.placement_group import VALID_PLACEMENT_GROUP_STRATEGIES
 
@@ -44,6 +47,34 @@ def _needs_pickle(deployment_language: DeploymentLanguage, is_cross_language: bo
         return True
     else:
         return False
+
+
+def _proto_to_dict(proto: Message) -> Dict:
+    """Recursively convert a protobuf into a Python dictionary.
+
+    This is an alternative to protobuf's `MessageToDict`. Unlike
+    `MessageToDict`, this function doesn't add an extra base64
+    encoding to bytes when constructing a json response.
+    """
+    data = {}
+    # Fill data with non-empty fields.
+    for field, value in proto.ListFields():
+        # Recursively call if the field is another protobuf.
+        if field.type == FieldDescriptor.TYPE_MESSAGE:
+            data[field.name] = _proto_to_dict(value)
+        else:
+            data[field.name] = value
+
+    # Fill data default values.
+    for field in proto.DESCRIPTOR.fields:
+        if (
+            field.name not in data  # skip the fields that are already set
+            and field.type != FieldDescriptor.TYPE_MESSAGE  # skip nested messages
+            and not field.containing_oneof  # skip optional fields
+        ):
+            data[field.name] = field.default_value
+
+    return data
 
 
 class DeploymentConfig(BaseModel):
@@ -102,7 +133,7 @@ class DeploymentConfig(BaseModel):
     )
 
     autoscaling_config: Optional[AutoscalingConfig] = Field(
-        default=None, update_type=DeploymentOptionUpdateType.LightWeight
+        default=None, update_type=DeploymentOptionUpdateType.NeedsActorReconfigure
     )
 
     # This flag is used to let replica know they are deployed from
@@ -116,6 +147,11 @@ class DeploymentConfig(BaseModel):
     version: Optional[str] = Field(
         default=None,
         update_type=DeploymentOptionUpdateType.HeavyWeight,
+    )
+
+    logging_config: Optional[dict] = Field(
+        default=None,
+        update_type=DeploymentOptionUpdateType.NeedsActorReconfigure,
     )
 
     # Contains the names of deployment options manually set by the user
@@ -147,6 +183,22 @@ class DeploymentConfig(BaseModel):
 
         return v
 
+    @validator("logging_config", always=True)
+    def logging_config_valid(cls, v):
+        if v is None:
+            return v
+        if not isinstance(v, dict):
+            raise TypeError(
+                f"Got invalid type '{type(v)}' for logging_config. "
+                "Expected a dictionary."
+            )
+        # Handle default value
+        from ray.serve.schema import LoggingConfig
+
+        v = LoggingConfig(**v).dict()
+
+        return v
+
     def needs_pickle(self):
         return _needs_pickle(self.deployment_language, self.is_cross_language)
 
@@ -159,6 +211,13 @@ class DeploymentConfig(BaseModel):
             data["autoscaling_config"] = AutoscalingConfigProto(
                 **data["autoscaling_config"]
             )
+        if data.get("logging_config"):
+            if "encoding" in data["logging_config"]:
+                data["logging_config"]["encoding"] = EncodingTypeProto.Value(
+                    data["logging_config"]["encoding"]
+                )
+
+            data["logging_config"] = LoggingConfigProto(**data["logging_config"])
         data["user_configured_option_names"] = list(
             data["user_configured_option_names"]
         )
@@ -169,14 +228,9 @@ class DeploymentConfig(BaseModel):
 
     @classmethod
     def from_proto(cls, proto: DeploymentConfigProto):
-        data = MessageToDict(
-            proto,
-            including_default_value_fields=True,
-            preserving_proto_field_name=True,
-            use_integers_for_enums=True,
-        )
+        data = _proto_to_dict(proto)
         if "user_config" in data:
-            if data["user_config"] != "":
+            if data["user_config"] != b"":
                 deployment_language = (
                     data["deployment_language"]
                     if "deployment_language" in data
@@ -189,7 +243,6 @@ class DeploymentConfig(BaseModel):
                 if needs_pickle:
                     data["user_config"] = cloudpickle.loads(proto.user_config)
                 else:
-                    # after MessageToDict, bytes data has been deal with base64
                     data["user_config"] = proto.user_config
             else:
                 data["user_config"] = None
@@ -206,6 +259,12 @@ class DeploymentConfig(BaseModel):
             data["user_configured_option_names"] = set(
                 data["user_configured_option_names"]
             )
+        if "logging_config" in data:
+            if "encoding" in data["logging_config"]:
+                data["logging_config"]["encoding"] = EncodingTypeProto.Name(
+                    data["logging_config"]["encoding"]
+                )
+
         return cls(**data)
 
     @classmethod

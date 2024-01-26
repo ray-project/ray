@@ -52,7 +52,7 @@ import uuid
 from dataclasses import asdict, dataclass
 from enum import Enum, auto
 from pathlib import Path
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, Set
 
 import requests
 import yaml
@@ -146,6 +146,8 @@ class UsageStatsToReport:
     total_num_running_jobs: Optional[int]
     #: The libc version in the OS.
     libc_version: Optional[str]
+    #: The hardwares that are used (e.g. Intel Xeon).
+    hardware_usages: Optional[List[str]]
 
 
 @dataclass(init=True)
@@ -175,16 +177,41 @@ _recorded_extra_usage_tags = dict()
 _recorded_extra_usage_tags_lock = threading.Lock()
 
 
-def _put_library_usage(library_usage: str):
+def _add_to_usage_set(set_name: str, value: str):
     assert _internal_kv_initialized()
     try:
         _internal_kv_put(
-            f"{usage_constant.LIBRARY_USAGE_PREFIX}{library_usage}".encode(),
+            f"{set_name}{value}".encode(),
             b"",
             namespace=usage_constant.USAGE_STATS_NAMESPACE.encode(),
         )
     except Exception as e:
-        logger.debug(f"Failed to put library usage, {e}")
+        logger.debug(f"Failed to add {value} to usage set {set_name}, {e}")
+
+
+def _get_usage_set(gcs_client, set_name: str) -> Set[str]:
+    try:
+        result = set()
+        usages = gcs_client.internal_kv_keys(
+            set_name.encode(),
+            namespace=usage_constant.USAGE_STATS_NAMESPACE.encode(),
+        )
+        for usage in usages:
+            usage = usage.decode("utf-8")
+            result.add(usage[len(set_name) :])
+
+        return result
+    except Exception as e:
+        logger.debug(f"Failed to get usage set {set_name}, {e}")
+        return set()
+
+
+def _put_library_usage(library_usage: str):
+    _add_to_usage_set(usage_constant.LIBRARY_USAGE_SET_NAME, library_usage)
+
+
+def _put_hardware_usage(hardware_usage: str):
+    _add_to_usage_set(usage_constant.HARDWARE_USAGE_SET_NAME, hardware_usage)
 
 
 def record_extra_usage_tag(key: TagKey, value: str):
@@ -219,6 +246,12 @@ def _put_extra_usage_tag(key: str, value: str):
         )
     except Exception as e:
         logger.debug(f"Failed to put extra usage tag, {e}")
+
+
+def record_hardware_usage(hardware_usage: str):
+    """Record hardware usage (e.g. which CPU model is used)"""
+    assert _internal_kv_initialized()
+    _put_hardware_usage(hardware_usage)
 
 
 def record_library_usage(library_usage: str):
@@ -513,20 +546,11 @@ def get_total_num_nodes_to_report(gcs_client, timeout=None) -> Optional[int]:
 
 
 def get_library_usages_to_report(gcs_client) -> List[str]:
-    try:
-        result = []
-        library_usages = gcs_client.internal_kv_keys(
-            usage_constant.LIBRARY_USAGE_PREFIX.encode(),
-            namespace=usage_constant.USAGE_STATS_NAMESPACE.encode(),
-        )
-        for library_usage in library_usages:
-            library_usage = library_usage.decode("utf-8")
-            result.append(library_usage[len(usage_constant.LIBRARY_USAGE_PREFIX) :])
+    return list(_get_usage_set(gcs_client, usage_constant.LIBRARY_USAGE_SET_NAME))
 
-        return result
-    except Exception as e:
-        logger.info(f"Failed to get library usages to report {e}")
-        return []
+
+def get_hardware_usages_to_report(gcs_client) -> List[str]:
+    return list(_get_usage_set(gcs_client, usage_constant.HARDWARE_USAGE_SET_NAME))
 
 
 def get_extra_usage_tags_to_report(gcs_client) -> Dict[str, str]:
@@ -569,6 +593,40 @@ def get_extra_usage_tags_to_report(gcs_client) -> Dict[str, str]:
     return extra_usage_tags
 
 
+def _get_cluster_status_to_report_v2(gcs_client) -> ClusterStatusToReport:
+    """
+    Get the current status of this cluster. A temporary proxy for the
+    autoscaler v2 API.
+
+    It is a blocking API.
+
+    Params:
+        gcs_client: The GCS client.
+
+    Returns:
+        The current cluster status or empty ClusterStatusToReport
+        if it fails to get that information.
+    """
+    from ray.autoscaler.v2.sdk import get_cluster_status
+
+    result = ClusterStatusToReport()
+    try:
+        cluster_status = get_cluster_status(gcs_client.address)
+        total_resources = cluster_status.total_resources()
+        result.total_num_cpus = total_resources.get("CPU", 0)
+        result.total_num_gpus = total_resources.get("GPU", 0)
+
+        to_GiB = 1 / 2**30
+        result.total_memory_gb = total_resources.get("memory", 0) * to_GiB
+        result.total_object_store_memory_gb = (
+            total_resources.get("object_store_memory", 0) * to_GiB
+        )
+    except Exception as e:
+        logger.info(f"Failed to get cluster status to report {e}")
+    finally:
+        return result
+
+
 def get_cluster_status_to_report(gcs_client) -> ClusterStatusToReport:
     """Get the current status of this cluster.
 
@@ -581,6 +639,12 @@ def get_cluster_status_to_report(gcs_client) -> ClusterStatusToReport:
         The current cluster status or empty if it fails to get that information.
     """
     try:
+
+        from ray.autoscaler.v2.utils import is_autoscaler_v2
+
+        if is_autoscaler_v2():
+            return _get_cluster_status_to_report_v2(gcs_client)
+
         cluster_status = gcs_client.internal_kv_get(
             ray._private.ray_constants.DEBUG_AUTOSCALING_STATUS.encode(),
             namespace=None,
@@ -778,6 +842,7 @@ def generate_report_data(
         total_num_nodes=get_total_num_nodes_to_report(gcs_client),
         total_num_running_jobs=get_total_num_running_jobs_to_report(gcs_client),
         libc_version=cluster_metadata.get("libc_version"),
+        hardware_usages=get_hardware_usages_to_report(gcs_client),
     )
     return data
 

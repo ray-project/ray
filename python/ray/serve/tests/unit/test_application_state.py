@@ -13,16 +13,17 @@ from ray.serve._private.application_state import (
 from ray.serve._private.common import (
     ApplicationStatus,
     DeploymentID,
-    DeploymentInfo,
     DeploymentStatus,
     DeploymentStatusInfo,
+    DeploymentStatusTrigger,
 )
 from ray.serve._private.config import DeploymentConfig, ReplicaConfig
 from ray.serve._private.deploy_utils import deploy_args_to_deployment_info
-from ray.serve._private.utils import get_random_letters
+from ray.serve._private.deployment_info import DeploymentInfo
+from ray.serve._private.test_utils import MockKVStore
+from ray.serve._private.utils import get_random_string
 from ray.serve.exceptions import RayServeException
 from ray.serve.schema import DeploymentSchema, ServeApplicationSchema
-from ray.serve.tests.common.utils import MockKVStore
 
 
 class MockEndpointState:
@@ -51,10 +52,19 @@ class MockDeploymentStateManager:
                 (info, deleting) = checkpointed_data
 
                 self.deployment_infos[name] = info
-                self.deployment_statuses[name] = DeploymentStatus.UPDATING
+                self.deployment_statuses[name] = DeploymentStatusInfo(
+                    name=name,
+                    status=DeploymentStatus.UPDATING,
+                    status_trigger=DeploymentStatusTrigger.CONFIG_UPDATE_STARTED,
+                    message="",
+                )
                 self.deleting[name] = deleting
 
-    def deploy(self, deployment_id: DeploymentID, deployment_info: DeploymentInfo):
+    def deploy(
+        self,
+        deployment_id: DeploymentID,
+        deployment_info: DeploymentInfo,
+    ):
         existing_info = self.deployment_infos.get(deployment_id)
         self.deleting[deployment_id] = False
         self.deployment_infos[deployment_id] = deployment_info
@@ -62,6 +72,7 @@ class MockDeploymentStateManager:
             self.deployment_statuses[deployment_id] = DeploymentStatusInfo(
                 name=deployment_id.name,
                 status=DeploymentStatus.UPDATING,
+                status_trigger=DeploymentStatusTrigger.CONFIG_UPDATE_STARTED,
                 message="",
             )
 
@@ -145,7 +156,7 @@ def deployment_params(name: str, route_prefix: str = None, docs_path: str = None
     return {
         "deployment_name": name,
         "deployment_config_proto_bytes": DeploymentConfig(
-            num_replicas=1, user_config={}, version=get_random_letters()
+            num_replicas=1, user_config={}, version=get_random_string()
         ).to_proto_bytes(),
         "replica_config_proto_bytes": ReplicaConfig.create(
             lambda x: x
@@ -184,9 +195,21 @@ class TestDetermineAppStatus:
     def test_running(self, get_deployments_statuses, mocked_application_state):
         app_state, _ = mocked_application_state
         get_deployments_statuses.return_value = [
-            DeploymentStatusInfo("a", DeploymentStatus.HEALTHY),
-            DeploymentStatusInfo("b", DeploymentStatus.HEALTHY),
-            DeploymentStatusInfo("c", DeploymentStatus.HEALTHY),
+            DeploymentStatusInfo(
+                "a",
+                DeploymentStatus.HEALTHY,
+                DeploymentStatusTrigger.CONFIG_UPDATE_STARTED,
+            ),
+            DeploymentStatusInfo(
+                "b",
+                DeploymentStatus.HEALTHY,
+                DeploymentStatusTrigger.CONFIG_UPDATE_STARTED,
+            ),
+            DeploymentStatusInfo(
+                "c",
+                DeploymentStatus.HEALTHY,
+                DeploymentStatusTrigger.CONFIG_UPDATE_STARTED,
+            ),
         ]
         assert app_state._determine_app_status() == (ApplicationStatus.RUNNING, "")
 
@@ -195,9 +218,21 @@ class TestDetermineAppStatus:
         app_state, _ = mocked_application_state
         app_state._status = ApplicationStatus.RUNNING
         get_deployments_statuses.return_value = [
-            DeploymentStatusInfo("a", DeploymentStatus.HEALTHY),
-            DeploymentStatusInfo("b", DeploymentStatus.HEALTHY),
-            DeploymentStatusInfo("c", DeploymentStatus.HEALTHY),
+            DeploymentStatusInfo(
+                "a",
+                DeploymentStatus.HEALTHY,
+                DeploymentStatusTrigger.CONFIG_UPDATE_STARTED,
+            ),
+            DeploymentStatusInfo(
+                "b",
+                DeploymentStatus.HEALTHY,
+                DeploymentStatusTrigger.CONFIG_UPDATE_STARTED,
+            ),
+            DeploymentStatusInfo(
+                "c",
+                DeploymentStatus.HEALTHY,
+                DeploymentStatusTrigger.CONFIG_UPDATE_STARTED,
+            ),
         ]
         assert app_state._determine_app_status() == (ApplicationStatus.RUNNING, "")
 
@@ -205,9 +240,21 @@ class TestDetermineAppStatus:
     def test_deploying(self, get_deployments_statuses, mocked_application_state):
         app_state, _ = mocked_application_state
         get_deployments_statuses.return_value = [
-            DeploymentStatusInfo("a", DeploymentStatus.UPDATING),
-            DeploymentStatusInfo("b", DeploymentStatus.HEALTHY),
-            DeploymentStatusInfo("c", DeploymentStatus.HEALTHY),
+            DeploymentStatusInfo(
+                "a",
+                DeploymentStatus.UPDATING,
+                DeploymentStatusTrigger.CONFIG_UPDATE_STARTED,
+            ),
+            DeploymentStatusInfo(
+                "b",
+                DeploymentStatus.HEALTHY,
+                DeploymentStatusTrigger.CONFIG_UPDATE_STARTED,
+            ),
+            DeploymentStatusInfo(
+                "c",
+                DeploymentStatus.HEALTHY,
+                DeploymentStatusTrigger.CONFIG_UPDATE_STARTED,
+            ),
         ]
         assert app_state._determine_app_status() == (ApplicationStatus.DEPLOYING, "")
 
@@ -215,9 +262,21 @@ class TestDetermineAppStatus:
     def test_deploy_failed(self, get_deployments_statuses, mocked_application_state):
         app_state, _ = mocked_application_state
         get_deployments_statuses.return_value = [
-            DeploymentStatusInfo("a", DeploymentStatus.UPDATING),
-            DeploymentStatusInfo("b", DeploymentStatus.HEALTHY),
-            DeploymentStatusInfo("c", DeploymentStatus.UNHEALTHY),
+            DeploymentStatusInfo(
+                "a",
+                DeploymentStatus.UPDATING,
+                DeploymentStatusTrigger.CONFIG_UPDATE_STARTED,
+            ),
+            DeploymentStatusInfo(
+                "b",
+                DeploymentStatus.HEALTHY,
+                DeploymentStatusTrigger.CONFIG_UPDATE_STARTED,
+            ),
+            DeploymentStatusInfo(
+                "c",
+                DeploymentStatus.UNHEALTHY,
+                DeploymentStatusTrigger.CONFIG_UPDATE_STARTED,
+            ),
         ]
         status, error_msg = app_state._determine_app_status()
         assert status == ApplicationStatus.DEPLOY_FAILED
@@ -228,13 +287,71 @@ class TestDetermineAppStatus:
         app_state, _ = mocked_application_state
         app_state._status = ApplicationStatus.RUNNING
         get_deployments_statuses.return_value = [
-            DeploymentStatusInfo("a", DeploymentStatus.HEALTHY),
-            DeploymentStatusInfo("b", DeploymentStatus.HEALTHY),
-            DeploymentStatusInfo("c", DeploymentStatus.UNHEALTHY),
+            DeploymentStatusInfo(
+                "a",
+                DeploymentStatus.HEALTHY,
+                DeploymentStatusTrigger.CONFIG_UPDATE_STARTED,
+            ),
+            DeploymentStatusInfo(
+                "b",
+                DeploymentStatus.HEALTHY,
+                DeploymentStatusTrigger.CONFIG_UPDATE_STARTED,
+            ),
+            DeploymentStatusInfo(
+                "c",
+                DeploymentStatus.UNHEALTHY,
+                DeploymentStatusTrigger.CONFIG_UPDATE_STARTED,
+            ),
         ]
         status, error_msg = app_state._determine_app_status()
         assert status == ApplicationStatus.UNHEALTHY
         assert error_msg
+
+    @patch.object(ApplicationState, "get_deployments_statuses")
+    def test_autoscaling(self, get_deployments_statuses, mocked_application_state):
+        app_state, _ = mocked_application_state
+        app_state._status = ApplicationStatus.RUNNING
+        get_deployments_statuses.return_value = [
+            DeploymentStatusInfo(
+                "a",
+                DeploymentStatus.HEALTHY,
+                DeploymentStatusTrigger.CONFIG_UPDATE_STARTED,
+            ),
+            DeploymentStatusInfo(
+                "b", DeploymentStatus.UPSCALING, DeploymentStatusTrigger.AUTOSCALING
+            ),
+            DeploymentStatusInfo(
+                "c", DeploymentStatus.DOWNSCALING, DeploymentStatusTrigger.AUTOSCALING
+            ),
+        ]
+        status, error_msg = app_state._determine_app_status()
+        assert status == ApplicationStatus.RUNNING
+
+    @patch.object(ApplicationState, "get_deployments_statuses")
+    def test_manual_scale_num_replicas(
+        self, get_deployments_statuses, mocked_application_state
+    ):
+        app_state, _ = mocked_application_state
+        app_state._status = ApplicationStatus.RUNNING
+        get_deployments_statuses.return_value = [
+            DeploymentStatusInfo(
+                "a",
+                DeploymentStatus.HEALTHY,
+                DeploymentStatusTrigger.CONFIG_UPDATE_STARTED,
+            ),
+            DeploymentStatusInfo(
+                "b",
+                DeploymentStatus.UPSCALING,
+                DeploymentStatusTrigger.CONFIG_UPDATE_STARTED,
+            ),
+            DeploymentStatusInfo(
+                "c",
+                DeploymentStatus.DOWNSCALING,
+                DeploymentStatusTrigger.CONFIG_UPDATE_STARTED,
+            ),
+        ]
+        status, error_msg = app_state._determine_app_status()
+        assert status == ApplicationStatus.DEPLOYING
 
 
 def test_deploy_and_delete_app(mocked_application_state):
@@ -799,9 +916,9 @@ class TestOverrideDeploymentInfo:
         updated_info = updated_infos["A"]
         assert updated_info.route_prefix == "/"
         assert updated_info.version == "123"
-        assert updated_info.autoscaling_policy.config.min_replicas == 1
-        assert updated_info.autoscaling_policy.config.initial_replicas == 12
-        assert updated_info.autoscaling_policy.config.max_replicas == 79
+        assert updated_info.autoscaling_policy_manager.config.min_replicas == 1
+        assert updated_info.autoscaling_policy_manager.config.initial_replicas == 12
+        assert updated_info.autoscaling_policy_manager.config.max_replicas == 79
 
     def test_override_route_prefix_1(self, info):
         config = ServeApplicationSchema(

@@ -1,7 +1,6 @@
 import collections
 import inspect
 import logging
-import warnings
 from functools import wraps
 from typing import Any, Callable, Dict, List, Optional, Union
 
@@ -12,11 +11,7 @@ from ray import cloudpickle
 from ray._private.serialization import pickle_dumps
 from ray.dag import DAGNode
 from ray.serve._private.config import DeploymentConfig, ReplicaConfig
-from ray.serve._private.constants import (
-    DEFAULT_HTTP_HOST,
-    DEFAULT_HTTP_PORT,
-    SERVE_DEFAULT_APP_NAME,
-)
+from ray.serve._private.constants import SERVE_DEFAULT_APP_NAME
 from ray.serve._private.deployment_graph_build import build as pipeline_build
 from ray.serve._private.deployment_graph_build import (
     get_and_validate_ingress_deployment,
@@ -31,7 +26,7 @@ from ray.serve._private.utils import (
     Default,
     ensure_serialization_context,
     extract_self_if_method_call,
-    get_random_letters,
+    get_random_string,
 )
 from ray.serve.config import (
     AutoscalingConfig,
@@ -48,9 +43,9 @@ from ray.serve.context import (
 )
 from ray.serve.deployment import Application, Deployment
 from ray.serve.exceptions import RayServeException
-from ray.serve.handle import DeploymentHandle, RayServeSyncHandle
+from ray.serve.handle import DeploymentHandle
 from ray.serve.multiplex import _ModelMultiplexWrapper
-from ray.serve.schema import ServeInstanceDetails, ServeStatus
+from ray.serve.schema import LoggingConfig, ServeInstanceDetails, ServeStatus
 from ray.util.annotations import Deprecated, DeveloperAPI, PublicAPI
 
 from ray.serve._private import api as _private_api  # isort:skip
@@ -60,11 +55,10 @@ logger = logging.getLogger(__file__)
 
 @PublicAPI(stability="stable")
 def start(
-    detached: bool = True,
     proxy_location: Union[None, str, ProxyLocation] = None,
     http_options: Union[None, dict, HTTPOptions] = None,
-    dedicated_cpu: bool = False,
     grpc_options: Union[None, dict, gRPCOptions] = None,
+    logging_config: Union[None, dict, LoggingConfig] = None,
     **kwargs,
 ):
     """Start Serve on the cluster.
@@ -88,20 +82,9 @@ def start(
         grpc_options: [EXPERIMENTAL] gRPC config options for the proxies. These can
           be passed as an unstructured dictionary or the structured `gRPCOptions`
           class See `gRPCOptions` for supported options.
+        logging_config: logging config options for the serve component (
+            controller & proxy).
     """
-
-    if detached is not True:
-        raise ValueError(
-            "`detached=False` is no longer supported. "
-            "In a future release, it will be removed altogether."
-        )
-
-    if dedicated_cpu is not False:
-        raise ValueError(
-            "`dedicated_cpu=True` is no longer supported. "
-            "In a future release, it will be removed altogether."
-        )
-
     if proxy_location is None:
         if http_options is None:
             http_options = HTTPOptions(location=DeploymentMode.EveryNode)
@@ -119,6 +102,7 @@ def start(
     _private_api.serve_start(
         http_options=http_options,
         grpc_options=grpc_options,
+        global_logging_config=logging_config,
         **kwargs,
     )
 
@@ -240,7 +224,10 @@ def ingress(app: Union["FastAPI", "APIRouter", Callable]) -> Callable:
 
                 # Call user-defined destructor if defined.
                 if hasattr(cls, "__del__"):
-                    cls.__del__(self)
+                    if inspect.iscoroutinefunction(cls.__del__):
+                        await cls.__del__(self)
+                    else:
+                        cls.__del__(self)
 
         ASGIIngressWrapper.__name__ = cls.__name__
         if hasattr(frozen_app, "docs_url"):
@@ -269,6 +256,7 @@ def deployment(
     graceful_shutdown_timeout_s: Default[float] = DEFAULT.VALUE,
     health_check_period_s: Default[float] = DEFAULT.VALUE,
     health_check_timeout_s: Default[float] = DEFAULT.VALUE,
+    logging_config: Default[Union[Dict, LoggingConfig, None]] = DEFAULT.VALUE,
 ) -> Callable[[Callable], Deployment]:
     """Decorator that converts a Python class to a `Deployment`.
 
@@ -292,7 +280,7 @@ def deployment(
         autoscaling_config: Parameters to configure autoscaling behavior. If this
             is set, `num_replicas` cannot be set.
         route_prefix: [DEPRECATED] Route prefix should be set per-application
-            through `serve.run()`.
+            through `serve.run()` or the config file.
         ray_actor_options: Options to pass to the Ray Actor decorator, such as
             resource requirements. Valid options are: `accelerator_type`, `memory`,
             `num_cpus`, `num_gpus`, `object_store_memory`, `resources`,
@@ -366,6 +354,8 @@ def deployment(
             "deprecated. To specify a route prefix for an application, pass it into "
             "`serve.run` instead."
         )
+    if isinstance(logging_config, LoggingConfig):
+        logging_config = logging_config.dict()
 
     deployment_config = DeploymentConfig.from_default(
         num_replicas=num_replicas if num_replicas is not None else 1,
@@ -376,6 +366,7 @@ def deployment(
         graceful_shutdown_timeout_s=graceful_shutdown_timeout_s,
         health_check_period_s=health_check_period_s,
         health_check_timeout_s=health_check_timeout_s,
+        logging_config=logging_config,
     )
     deployment_config.user_configured_option_names = set(user_configured_option_names)
 
@@ -438,11 +429,10 @@ def list_deployments() -> Dict[str, Deployment]:
 def run(
     target: Application,
     _blocking: bool = True,
-    host: str = DEFAULT_HTTP_HOST,
-    port: int = DEFAULT_HTTP_PORT,
     name: str = SERVE_DEFAULT_APP_NAME,
     route_prefix: str = DEFAULT.VALUE,
-) -> Optional[RayServeSyncHandle]:
+    logging_config: Optional[Union[Dict, LoggingConfig]] = None,
+) -> DeploymentHandle:
     """Run an application and return a handle to its ingress deployment.
 
     The application is returned by `Deployment.bind()`. Example:
@@ -455,34 +445,23 @@ def run(
     Args:
         target:
             A Serve application returned by `Deployment.bind()`.
-        host: [DEPRECATED: use `serve.start` to set HTTP options]
-            Host for HTTP servers to listen on. Defaults to
-            "127.0.0.1". To expose Serve publicly, you probably want to set
-            this to "0.0.0.0".
-        port: [DEPRECATED: use `serve.start` to set HTTP options]
-            Port for HTTP server. Defaults to 8000.
         name: Application name. If not provided, this will be the only
             application running on the cluster (it will delete all others).
         route_prefix: Route prefix for HTTP requests. If not provided, it will use
             route_prefix of the ingress deployment. If specified neither as an argument
             nor in the ingress deployment, the route prefix will default to '/'.
+        logging_config: Application logging config. If provided, the config will
+            be applied to all deployments which doesn't have logging config.
 
     Returns:
-        RayServeSyncHandle: A handle that can be used to call the application.
+        DeploymentHandle: A handle that can be used to call the application.
     """
 
     if len(name) == 0:
         raise RayServeException("Application name must a non-empty string.")
 
-    if host != DEFAULT_HTTP_HOST or port != DEFAULT_HTTP_PORT:
-        warnings.warn(
-            "Specifying host and port in `serve.run` is deprecated and will be "
-            "removed in a future version. To specify custom HTTP options, use "
-            "`serve.start`."
-        )
-
     client = _private_api.serve_start(
-        http_options={"host": host, "port": port, "location": "EveryNode"},
+        http_options={"location": "EveryNode"},
     )
 
     # Record after Ray has been started.
@@ -511,11 +490,15 @@ def run(
                 )
 
             deployment._route_prefix = route_prefix
+        if deployment.logging_config is None and logging_config:
+            if isinstance(logging_config, dict):
+                logging_config = LoggingConfig(**logging_config)
+            deployment.set_logging_config(logging_config.dict())
         deployment_parameters = {
             "name": deployment._name,
             "replica_config": deployment._replica_config,
             "deployment_config": deployment._deployment_config,
-            "version": deployment._version or get_random_letters(),
+            "version": deployment._version or get_random_string(),
             "route_prefix": deployment.route_prefix,
             "url": deployment.url,
             "docs_path": deployment._docs_path,

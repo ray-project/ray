@@ -922,6 +922,35 @@ def test_map_estimated_output_blocks():
     assert op._estimated_output_blocks == 50
 
 
+def test_map_estimated_blocks_split():
+    # Test read output splitting
+    def yield_five(block_iter: Iterable[Block], ctx) -> Iterable[Block]:
+        for i in range(5):
+            yield pd.DataFrame({"id": [i]})
+
+    min_rows_per_bundle = 10
+    input_op = InputDataBuffer(make_ref_bundles([[i] for i in range(100)]))
+    op = MapOperator.create(
+        create_map_transformer_from_block_fn(yield_five),
+        input_op=input_op,
+        name="TestEstimatedNumBlocksSplit",
+        min_rows_per_bundle=min_rows_per_bundle,
+    )
+    op.set_additional_split_factor(2)
+
+    op.start(ExecutionOptions())
+    while input_op.has_next():
+        op.add_input(input_op.get_next(), 0)
+        if op.metrics.num_inputs_received % min_rows_per_bundle == 0:
+            # enough inputs for a task bundle
+            run_op_tasks_sync(op)
+            assert op._estimated_output_blocks == 100
+
+    op.all_inputs_done()
+    # Each output block is split in 2, so the number of blocks double.
+    assert op._estimated_output_blocks == 100
+
+
 def test_limit_estimated_output_blocks():
     # Test limit operator estimation
     input_op = InputDataBuffer(make_ref_bundles([[i, i] for i in range(100)]))

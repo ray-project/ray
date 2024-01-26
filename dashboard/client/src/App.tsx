@@ -17,7 +17,11 @@ import { JobDetailInfoPage } from "./pages/job/JobDetailInfoPage";
 import { JobDetailLayout, JobPage } from "./pages/job/JobDetailLayout";
 import { MainNavLayout } from "./pages/layout/MainNavLayout";
 import { SideTabPage } from "./pages/layout/SideTabLayout";
-import { LogsLayout } from "./pages/log/Logs";
+import {
+  LogsLayout,
+  StateApiLogsListPage,
+  StateApiLogViewerPage,
+} from "./pages/log/Logs";
 import { Metrics } from "./pages/metrics";
 import { DashboardUids, getMetricsInfo } from "./pages/metrics/utils";
 import Nodes, { ClusterMainPageLayout } from "./pages/node";
@@ -29,7 +33,11 @@ import {
   ServeApplicationDetailLayout,
   ServeApplicationDetailPage,
 } from "./pages/serve/ServeApplicationDetailPage";
-import { ServeApplicationsListPage } from "./pages/serve/ServeApplicationsListPage";
+import {
+  ServeDeploymentDetailLayout,
+  ServeDeploymentDetailPage,
+} from "./pages/serve/ServeDeploymentDetailPage";
+import { ServeDeploymentsListPage } from "./pages/serve/ServeDeploymentsListPage";
 import { ServeLayout, ServeSideTabLayout } from "./pages/serve/ServeLayout";
 import { ServeReplicaDetailLayout } from "./pages/serve/ServeReplicaDetailLayout";
 import { ServeReplicaDetailPage } from "./pages/serve/ServeReplicaDetailPage";
@@ -50,13 +58,11 @@ dayjs.extend(duration);
 // lazy loading fro prevent loading too much code at once
 const Actors = React.lazy(() => import("./pages/actor"));
 const CMDResult = React.lazy(() => import("./pages/cmd/CMDResult"));
-const Logs = React.lazy(() => import("./pages/log/Logs"));
 
 // a global map for relations
 export type GlobalContextType = {
   nodeMap: { [key: string]: string };
   nodeMapByIp: { [key: string]: string };
-  ipLogMap: { [key: string]: string };
   namespaceMap: { [key: string]: string[] };
   /**
    * Whether the initial metrics context has been fetched or not.
@@ -89,7 +95,6 @@ export type GlobalContextType = {
 export const GlobalContext = React.createContext<GlobalContextType>({
   nodeMap: {},
   nodeMapByIp: {},
-  ipLogMap: {},
   namespaceMap: {},
   metricsContextLoaded: false,
   grafanaHost: undefined,
@@ -103,7 +108,6 @@ const App = () => {
   const [context, setContext] = useState<GlobalContextType>({
     nodeMap: {},
     nodeMapByIp: {},
-    ipLogMap: {},
     namespaceMap: {},
     metricsContextLoaded: false,
     grafanaHost: undefined,
@@ -117,17 +121,14 @@ const App = () => {
       if (res?.data?.data?.summary) {
         const nodeMap = {} as { [key: string]: string };
         const nodeMapByIp = {} as { [key: string]: string };
-        const ipLogMap = {} as { [key: string]: string };
-        res.data.data.summary.forEach(({ hostname, raylet, ip, logUrl }) => {
+        res.data.data.summary.forEach(({ hostname, raylet, ip }) => {
           nodeMap[hostname] = raylet.nodeId;
           nodeMapByIp[ip] = raylet.nodeId;
-          ipLogMap[ip] = logUrl;
         });
         setContext((existingContext) => ({
           ...existingContext,
           nodeMap,
           nodeMapByIp,
-          ipLogMap,
           namespaceMap: {},
         }));
       }
@@ -253,8 +254,8 @@ const App = () => {
                     />
                     <Route
                       element={
-                        <SideTabPage tabId="applications">
-                          <ServeApplicationsListPage />
+                        <SideTabPage tabId="deployments">
+                          <ServeDeploymentsListPage />
                         </SideTabPage>
                       }
                       path=""
@@ -276,21 +277,23 @@ const App = () => {
                   >
                     <Route element={<ServeApplicationDetailPage />} path="" />
                     <Route
-                      element={<ServeReplicaDetailLayout />}
-                      path=":deploymentName/:replicaId"
+                      element={<ServeDeploymentDetailLayout />}
+                      path=":deploymentName"
                     >
-                      <Route element={<ServeReplicaDetailPage />} path="" />
-                      <Route path="tasks/:taskId" element={<TaskPage />} />
+                      <Route element={<ServeDeploymentDetailPage />} path="" />
+                      <Route
+                        element={<ServeReplicaDetailLayout />}
+                        path=":replicaId"
+                      >
+                        <Route element={<ServeReplicaDetailPage />} path="" />
+                        <Route path="tasks/:taskId" element={<TaskPage />} />
+                      </Route>
                     </Route>
                   </Route>
                 </Route>
                 <Route element={<LogsLayout />} path="logs">
-                  {/* TODO(aguo): Refactor Logs component to use optional query
-                        params since react-router 6 doesn't support optional path params... */}
-                  <Route element={<Logs />} path="" />
-                  <Route element={<Logs />} path=":host">
-                    <Route element={<Logs />} path=":path" />
-                  </Route>
+                  <Route element={<StateApiLogsListPage />} path="" />
+                  <Route element={<StateApiLogViewerPage />} path="viewer" />
                 </Route>
               </Route>
               <Route element={<CMDResult />} path="/cmd/:cmd/:ip/:pid" />

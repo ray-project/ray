@@ -71,11 +71,11 @@ class DeploymentFunctionNode(DAGNode):
 
         if RAY_SERVE_ENABLE_NEW_HANDLE_API:
             self._deployment_handle = DeploymentHandle(
-                self._deployment.name, self._app_name
+                self._deployment.name, self._app_name, sync=False
             )
         else:
             self._deployment_handle = RayServeHandle(
-                self._deployment.name, self._app_name
+                self._deployment.name, self._app_name, sync=False
             )
 
     def _copy_impl(

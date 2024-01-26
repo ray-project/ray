@@ -16,7 +16,12 @@ import pandas as pd
 
 class BenchmarkMetric(Enum):
     RUNTIME = "time"
+    NUM_ROWS = "num_rows"
     THROUGHPUT = "tput"
+    ACCURACY = "accuracy"
+
+    # Extra metrics not matching the above categories/keys, stored as a Dict[str, Any].
+    EXTRA_METRICS = "extra_metrics"
 
 
 class Benchmark:
@@ -39,7 +44,7 @@ class Benchmark:
 
     # Writes a JSON with metrics of the form:
     # {"case-1": {...}, "case-2": {...}, "case-3": {...}}
-    benchmark.write_result("output.json")
+    benchmark.write_result()
 
     See example usage in ``aggregate_benchmark.py``.
     """
@@ -69,9 +74,11 @@ class Benchmark:
         duration = time.perf_counter() - start_time
 
         # TODO(chengsu): Record more metrics based on dataset stats.
+        num_rows = output_ds.count()
         self.result[name] = {
             BenchmarkMetric.RUNTIME.value: duration,
-            BenchmarkMetric.THROUGHPUT.value: output_ds.count() / duration,
+            BenchmarkMetric.NUM_ROWS.value: num_rows,
+            BenchmarkMetric.THROUGHPUT.value: num_rows / duration,
         }
         print(f"Result of case {name}: {self.result[name]}")
 
@@ -108,10 +115,8 @@ class Benchmark:
             if isinstance(batch, dict):
                 feature_lengths = {k: len(batch[k]) for k in batch}
                 batch_size = max(feature_lengths.values())
-                continue
             elif isinstance(batch, (pa.Table, pd.DataFrame)):
                 batch_size = len(batch)
-                continue
             elif isinstance(batch, torch.Tensor):
                 batch_size = batch.size(dim=0)
             elif isinstance(batch, tf.Tensor):
@@ -123,6 +128,7 @@ class Benchmark:
         duration = time.perf_counter() - start_time
         self.result[name] = {
             BenchmarkMetric.RUNTIME.value: duration,
+            BenchmarkMetric.NUM_ROWS.value: record_count,
             BenchmarkMetric.THROUGHPUT.value: record_count / duration,
         }
         print(f"Result of case {name}: {self.result[name]}")
@@ -149,12 +155,13 @@ class Benchmark:
             BenchmarkMetric.RUNTIME.value: duration,
         }
         if isinstance(fn_output, dict):
-            # Filter out metrics which are not in BenchmarkMetric,
-            # to ensure proper format of outputs.
-            for m in BenchmarkMetric:
-                metric_value = fn_output.get(m.value)
-                if metric_value:
-                    curr_case_metrics[m.value] = metric_value
+            extra_metrics = {}
+            for metric_key, metric_val in fn_output.items():
+                if isinstance(metric_key, BenchmarkMetric):
+                    curr_case_metrics[metric_key.value] = metric_val
+                else:
+                    extra_metrics[metric_key] = metric_val
+            curr_case_metrics[BenchmarkMetric.EXTRA_METRICS.value] = extra_metrics
 
         self.result[name] = curr_case_metrics
         print(f"Result of case {name}: {curr_case_metrics}")

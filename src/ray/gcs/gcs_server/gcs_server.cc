@@ -115,7 +115,6 @@ GcsServer::GcsServer(const ray::gcs::GcsServerConfig &config,
           rpc::ChannelType::GCS_WORKER_DELTA_CHANNEL,
           rpc::ChannelType::RAY_ERROR_INFO_CHANNEL,
           rpc::ChannelType::RAY_LOG_CHANNEL,
-          rpc::ChannelType::RAY_PYTHON_FUNCTION_CHANNEL,
           rpc::ChannelType::RAY_NODE_RESOURCE_USAGE_CHANNEL,
       },
       /*periodical_runner=*/&pubsub_periodical_runner_,
@@ -133,7 +132,6 @@ RedisClientOptions GcsServer::GetRedisClientOptions() const {
   return RedisClientOptions(config_.redis_address,
                             config_.redis_port,
                             config_.redis_password,
-                            config_.enable_sharding_conn,
                             config_.enable_redis_ssl);
 }
 
@@ -227,9 +225,6 @@ void GcsServer::DoStart(const GcsInitData &gcs_init_data) {
   // Init GCS task manager.
   InitGcsTaskManager();
 
-  // Init Monitor service.
-  InitMonitorServer();
-
   // Install event listeners.
   InstallEventListeners();
 
@@ -316,7 +311,7 @@ void GcsServer::InitGcsHealthCheckManager(const GcsInitData &gcs_init_data) {
   RAY_CHECK(gcs_node_manager_);
   auto node_death_callback = [this](const NodeID &node_id) {
     main_service_.post(
-        [this, node_id] { return gcs_node_manager_->OnNodeFailure(node_id); },
+        [this, node_id] { return gcs_node_manager_->OnNodeFailure(node_id, nullptr); },
         "GcsServer.NodeDeathCallback");
   };
 
@@ -678,6 +673,7 @@ void GcsServer::InitGcsAutoscalerStateManager(const GcsInitData &gcs_init_data) 
   gcs_autoscaler_state_manager_ =
       std::make_unique<GcsAutoscalerStateManager>(config_.session_name,
                                                   *gcs_node_manager_,
+                                                  *gcs_actor_manager_,
                                                   *gcs_placement_group_manager_,
                                                   raylet_client_pool_);
   gcs_autoscaler_state_manager_->Initialize(gcs_init_data);
@@ -694,17 +690,6 @@ void GcsServer::InitGcsTaskManager() {
   task_info_service_.reset(new rpc::TaskInfoGrpcService(gcs_task_manager_->GetIoContext(),
                                                         *gcs_task_manager_));
   rpc_server_.RegisterService(*task_info_service_);
-}
-
-void GcsServer::InitMonitorServer() {
-  monitor_server_ = std::make_unique<GcsMonitorServer>(
-      *gcs_node_manager_,
-      cluster_resource_scheduler_->GetClusterResourceManager(),
-      gcs_resource_manager_,
-      gcs_placement_group_manager_);
-  monitor_grpc_service_.reset(
-      new rpc::MonitorGrpcService(main_service_, *monitor_server_));
-  rpc_server_.RegisterService(*monitor_grpc_service_);
 }
 
 void GcsServer::InstallEventListeners() {
@@ -740,7 +725,7 @@ void GcsServer::InstallEventListeners() {
         // node is removed from the GCS.
         gcs_resource_manager_->OnNodeDead(node_id);
         gcs_placement_group_manager_->OnNodeDead(node_id);
-        gcs_actor_manager_->OnNodeDead(node_id, node_ip_address);
+        gcs_actor_manager_->OnNodeDead(node, node_ip_address);
         gcs_job_manager_->OnNodeDead(node_id);
         raylet_client_pool_->Disconnect(node_id);
         gcs_healthcheck_manager_->RemoveNode(node_id);
@@ -872,15 +857,15 @@ void GcsServer::TryGlobalGC() {
   // detections and under throttling are sent out (similar to
   // `NodeManager::WarnResourceDeadlock()`).
   if (task_pending_schedule_detected_++ > 0 && global_gc_throttler_->AbleToRun()) {
-    rpc::ResourcesData resources_data;
-    resources_data.set_should_global_gc(true);
+    syncer::CommandsSyncMessage commands_sync_message;
+    commands_sync_message.set_should_global_gc(true);
 
     auto msg = std::make_shared<syncer::RaySyncMessage>();
     msg->set_version(absl::GetCurrentTimeNanos());
     msg->set_node_id(kGCSNodeID.Binary());
     msg->set_message_type(syncer::MessageType::COMMANDS);
     std::string serialized_msg;
-    RAY_CHECK(resources_data.SerializeToString(&serialized_msg));
+    RAY_CHECK(commands_sync_message.SerializeToString(&serialized_msg));
     msg->set_sync_message(std::move(serialized_msg));
     ray_syncer_->BroadcastRaySyncMessage(std::move(msg));
     global_gc_throttler_->RunNow();

@@ -53,8 +53,7 @@ def build_app(
             logging.getLogger("ray.serve").setLevel(logging.WARNING)
 
         async def __call__(self, req: Request):
-            obj_ref = await self._handle.remote(await req.body())
-            return await obj_ref
+            return await self._handle.remote(await req.body())
 
     @serve.deployment(
         num_replicas=num_replicas,

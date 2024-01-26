@@ -3,7 +3,7 @@
 ARG DOCKER_IMAGE_BASE_BUILD=cr.ray.io/rayproject/oss-ci-base_ml
 FROM $DOCKER_IMAGE_BASE_BUILD
 
-ARG ARROW_VERSION=
+ARG ARROW_VERSION=14.*
 ARG ARROW_MONGO_VERSION=
 ARG RAY_CI_JAVA_BUILD=
 
@@ -22,7 +22,6 @@ RUN <<EOF
 
 DATA_PROCESSING_TESTING=1 ARROW_VERSION=$ARROW_VERSION \
   ARROW_MONGO_VERSION=$ARROW_MONGO_VERSION ./ci/env/install-dependencies.sh
-pip install "datasets==2.14.0"
 
 # Install MongoDB
 sudo apt-get purge -y mongodb*

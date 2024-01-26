@@ -1,6 +1,7 @@
 import {
   Box,
   InputAdornment,
+  Link,
   Table,
   TableBody,
   TableCell,
@@ -16,22 +17,30 @@ import { SearchOutlined } from "@material-ui/icons";
 import Autocomplete from "@material-ui/lab/Autocomplete";
 import Pagination from "@material-ui/lab/Pagination";
 import _ from "lodash";
-import React, { useContext, useMemo, useState } from "react";
-import { GlobalContext } from "../App";
+import React, { useMemo, useState } from "react";
+import { Link as RouterLink } from "react-router-dom";
 import { DurationText } from "../common/DurationText";
-import { ActorLink } from "../common/links";
-import { CpuProfilingLink, CpuStackTraceLink } from "../common/ProfilingLink";
+import { ActorLink, generateNodeLink } from "../common/links";
+import {
+  CpuProfilingLink,
+  CpuStackTraceLink,
+  MemoryProfilingButton,
+} from "../common/ProfilingLink";
 import rowStyles from "../common/RowStyles";
-import { Actor, ActorEnum } from "../type/actor";
+import { WorkerGpuRow } from "../pages/node/GPUColumn";
+import { WorkerGRAM } from "../pages/node/GRAMColumn";
+import { ActorDetail, ActorEnum } from "../type/actor";
 import { Worker } from "../type/worker";
+import { memoryConverter } from "../util/converter";
 import { useFilter } from "../util/hook";
+import PercentageBar from "./PercentageBar";
 import StateCounter from "./StatesCounter";
 import { StatusChip } from "./StatusChip";
 import { HelpInfo } from "./Tooltip";
 import RayletWorkerTable, { ExpandableTableRow } from "./WorkerTable";
 
 export type ActorTableProps = {
-  actors: { [actorId: string]: Actor };
+  actors: { [actorId: string]: ActorDetail };
   workers?: Worker[];
   jobId?: string | null;
   filterToActorId?: string;
@@ -62,7 +71,7 @@ const isActorEnum = (state: unknown): state is ActorEnum => {
 };
 
 // We sort the actorsList so that the "Alive" actors appear at first and "Dead" actors appear in the end.
-export const sortActors = (actorList: Actor[]) => {
+export const sortActors = (actorList: ActorDetail[]) => {
   const sortedActors = [...actorList];
   return _.sortBy(sortedActors, (actor) => {
     const actorOrder = isActorEnum(actor.state) ? stateOrder[actor.state] : 0;
@@ -89,7 +98,6 @@ const ActorTable = ({
   });
   const [actorIdFilterValue, setActorIdFilterValue] = useState(filterToActorId);
   const [pageSize, setPageSize] = useState(10);
-  const { ipLogMap } = useContext(GlobalContext);
 
   //We get a filtered and sorted actor list to render from prop actors
   const sortedActors = useMemo(() => {
@@ -180,6 +188,53 @@ const ActorTable = ({
     { label: "Job ID" },
     { label: "PID" },
     { label: "IP" },
+    { label: "Node ID" },
+    {
+      label: "CPU",
+      helpInfo: (
+        <Typography>
+          Hardware CPU usage of this Actor (from Worker Process).
+          <br />
+          <br />
+          Node’s CPU usage is calculated against all CPU cores. Worker Process’s
+          CPU usage is calculated against 1 CPU core. As a result, the sum of
+          CPU usage from all Worker Processes is not equal to the Node’s CPU
+          usage.
+        </Typography>
+      ),
+    },
+    {
+      label: "Memory",
+      helpInfo: (
+        <Typography>
+          Actor's RAM usage (from Worker Process). <br />
+        </Typography>
+      ),
+    },
+    {
+      label: "GPU",
+      helpInfo: (
+        <Typography>
+          Usage of each GPU device. If no GPU usage is detected, here are the
+          potential root causes:
+          <br />
+          1. non-GPU Ray image is used on this node. Switch to a GPU Ray image
+          and try again. <br />
+          2. Non Nvidia GPUs are being used. Non Nvidia GPUs' utilizations are
+          not currently supported.
+          <br />
+          3. pynvml module raises an exception.
+        </Typography>
+      ),
+    },
+    {
+      label: "GRAM",
+      helpInfo: (
+        <Typography>
+          Actor's GRAM usage (from Worker Process). <br />
+        </Typography>
+      ),
+    },
     {
       label: "Restarted",
       helpInfo: (
@@ -265,6 +320,19 @@ const ActorTable = ({
             <TextField {...params} label="IP" />
           )}
         />
+        <Autocomplete
+          data-testid="nodeIdFilter"
+          style={{ margin: 8, width: 150 }}
+          options={Array.from(
+            new Set(Object.values(actors).map((e) => e.address?.rayletId)),
+          )}
+          onInputChange={(_: any, value: string) => {
+            changeFilter("address.rayletId", value.trim());
+          }}
+          renderInput={(params: TextFieldProps) => (
+            <TextField {...params} label="Node ID" />
+          )}
+        />
         <TextField
           style={{ margin: 8, width: 120 }}
           label="PID"
@@ -287,6 +355,36 @@ const ActorTable = ({
           InputProps={{
             onChange: ({ target: { value } }) => {
               changeFilter("name", value.trim());
+            },
+            endAdornment: (
+              <InputAdornment position="end">
+                <SearchOutlined />
+              </InputAdornment>
+            ),
+          }}
+        />
+        <TextField
+          style={{ margin: 8, width: 120 }}
+          label="Class"
+          size="small"
+          InputProps={{
+            onChange: ({ target: { value } }) => {
+              changeFilter("actorClass", value.trim());
+            },
+            endAdornment: (
+              <InputAdornment position="end">
+                <SearchOutlined />
+              </InputAdornment>
+            ),
+          }}
+        />
+        <TextField
+          style={{ margin: 8, width: 120 }}
+          label="repr"
+          size="small"
+          InputProps={{
+            onChange: ({ target: { value } }) => {
+              changeFilter("reprName", value.trim());
             },
             endAdornment: (
               <InputAdornment position="end">
@@ -377,6 +475,9 @@ const ActorTable = ({
                 endTime,
                 exitDetail,
                 requiredResources,
+                gpus,
+                processStats,
+                mem,
               }) => (
                 <ExpandableTableRow
                   length={
@@ -427,32 +528,35 @@ const ActorTable = ({
                     <StatusChip type="actor" status={state} />
                   </TableCell>
                   <TableCell align="center">
-                    {ipLogMap[address?.ipAddress] && (
-                      <React.Fragment>
-                        <ActorLink
-                          actorId={actorId}
-                          to={
-                            detailPathPrefix
-                              ? `${detailPathPrefix}/${actorId}`
-                              : actorId
-                          }
-                        >
-                          Log
-                        </ActorLink>
-                        <br />
-                        <CpuProfilingLink
-                          pid={pid}
-                          ip={address?.ipAddress}
-                          type=""
-                        />
-                        <br />
-                        <CpuStackTraceLink
-                          pid={pid}
-                          ip={address?.ipAddress}
-                          type=""
-                        />
-                      </React.Fragment>
-                    )}
+                    <React.Fragment>
+                      <ActorLink
+                        actorId={actorId}
+                        to={
+                          detailPathPrefix
+                            ? `${detailPathPrefix}/${actorId}`
+                            : actorId
+                        }
+                      >
+                        Log
+                      </ActorLink>
+                      <br />
+                      <CpuProfilingLink
+                        pid={pid}
+                        ip={address?.ipAddress}
+                        type=""
+                      />
+                      <br />
+                      <CpuStackTraceLink
+                        pid={pid}
+                        ip={address?.ipAddress}
+                        type=""
+                      />
+                      <br />
+                      <MemoryProfilingButton
+                        pid={pid}
+                        ip={address?.ipAddress}
+                      />
+                    </React.Fragment>
                   </TableCell>
                   <TableCell align="center">
                     {startTime && startTime > 0 ? (
@@ -465,6 +569,56 @@ const ActorTable = ({
                   <TableCell align="center">{pid ? pid : "-"}</TableCell>
                   <TableCell align="center">
                     {address?.ipAddress ? address?.ipAddress : "-"}
+                  </TableCell>
+                  <TableCell align="center">
+                    {address?.rayletId ? (
+                      <Tooltip
+                        className={classes.idCol}
+                        title={address?.rayletId}
+                        arrow
+                        interactive
+                      >
+                        <div>
+                          <Link
+                            component={RouterLink}
+                            to={generateNodeLink(address.rayletId)}
+                          >
+                            {address?.rayletId}
+                          </Link>
+                        </div>
+                      </Tooltip>
+                    ) : (
+                      "-"
+                    )}
+                  </TableCell>
+                  <TableCell>
+                    <PercentageBar
+                      num={Number(processStats.cpuPercent)}
+                      total={100}
+                    >
+                      {processStats.cpuPercent}
+                    </PercentageBar>
+                  </TableCell>
+                  <TableCell>
+                    {mem && (
+                      <PercentageBar
+                        num={processStats.memoryInfo.rss}
+                        total={mem[0]}
+                      >
+                        {memoryConverter(processStats.memoryInfo.rss)}/
+                        {memoryConverter(mem[0])}(
+                        {((processStats.memoryInfo.rss / mem[0]) * 100).toFixed(
+                          1,
+                        )}
+                        %)
+                      </PercentageBar>
+                    )}
+                  </TableCell>
+                  <TableCell>
+                    <WorkerGpuRow workerPID={pid} gpus={gpus} />
+                  </TableCell>
+                  <TableCell>
+                    <WorkerGRAM workerPID={pid} gpus={gpus} />
                   </TableCell>
                   <TableCell
                     align="center"

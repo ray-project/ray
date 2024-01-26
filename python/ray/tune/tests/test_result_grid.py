@@ -116,14 +116,14 @@ def test_result_grid_repr(tmp_path):
         Result(
             metrics={"loss": 1.0},
             checkpoint=Checkpoint("/tmp/ckpt1"),
-            _local_path="log_1",
+            path="log_1",
             error=None,
             metrics_dataframe=None,
         ),
         Result(
             metrics={"loss": 2.0},
             checkpoint=Checkpoint("/tmp/ckpt2"),
-            _local_path="log_2",
+            path="log_2",
             error=RuntimeError(),
             metrics_dataframe=None,
             best_checkpoints=None,

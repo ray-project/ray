@@ -1,6 +1,19 @@
 More Ray ML Libraries
 =====================
 
+.. toctree::
+    :hidden:
+
+    joblib
+    multiprocessing
+    ray-collective
+    dask-on-ray
+    raydp
+    mars-on-ray
+    modin/index
+    Ray Workflows (Alpha) <../workflows/index>
+
+
 .. TODO: we added the three Ray Core examples below, since they don't really belong there.
     Going forward, make sure that all "Ray Lightning" and XGBoost topics are in one document or group,
     and not next to each other.

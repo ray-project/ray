@@ -304,6 +304,10 @@ int main(int argc, char *argv[]) {
 
         object_manager_config.rpc_service_threads_number =
             std::min(std::max(2, num_cpus / 4), 8);
+        if (RayConfig::instance().object_manager_rpc_threads_num() != 0) {
+          object_manager_config.rpc_service_threads_number =
+              RayConfig::instance().object_manager_rpc_threads_num();
+        }
         object_manager_config.object_chunk_size =
             RayConfig::instance().object_manager_default_chunk_size();
 

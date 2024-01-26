@@ -173,10 +173,6 @@ namespace gcs {
 class MockNodeResourceInfoAccessor : public NodeResourceInfoAccessor {
  public:
   MOCK_METHOD(Status,
-              AsyncGetResources,
-              (const NodeID &node_id, const OptionalItemCallback<ResourceMap> &callback),
-              (override));
-  MOCK_METHOD(Status,
               AsyncGetAllAvailableResources,
               (const MultiItemCallback<rpc::AvailableResources> &callback),
               (override));

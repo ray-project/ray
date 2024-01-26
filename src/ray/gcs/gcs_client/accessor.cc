@@ -683,26 +683,6 @@ Status NodeInfoAccessor::AsyncGetInternalConfig(
 NodeResourceInfoAccessor::NodeResourceInfoAccessor(GcsClient *client_impl)
     : client_impl_(client_impl) {}
 
-Status NodeResourceInfoAccessor::AsyncGetResources(
-    const NodeID &node_id, const OptionalItemCallback<ResourceMap> &callback) {
-  RAY_LOG(DEBUG) << "Getting node resources, node id = " << node_id;
-  rpc::GetResourcesRequest request;
-  request.set_node_id(node_id.Binary());
-  client_impl_->GetGcsRpcClient().GetResources(
-      request,
-      [node_id, callback](const Status &status, const rpc::GetResourcesReply &reply) {
-        ResourceMap resource_map;
-        for (const auto &resource : reply.resources()) {
-          resource_map[resource.first] =
-              std::make_shared<rpc::ResourceTableData>(resource.second);
-        }
-        callback(status, resource_map);
-        RAY_LOG(DEBUG) << "Finished getting node resources, status = " << status
-                       << ", node id = " << node_id;
-      });
-  return Status::OK();
-}
-
 Status NodeResourceInfoAccessor::AsyncGetAllAvailableResources(
     const MultiItemCallback<rpc::AvailableResources> &callback) {
   rpc::GetAllAvailableResourcesRequest request;
@@ -882,6 +862,44 @@ Status WorkerInfoAccessor::AsyncAdd(const std::shared_ptr<rpc::WorkerTableData> 
   request.mutable_worker_data()->CopyFrom(*data_ptr);
   client_impl_->GetGcsRpcClient().AddWorkerInfo(
       request, [callback](const Status &status, const rpc::AddWorkerInfoReply &reply) {
+        if (callback) {
+          callback(status);
+        }
+      });
+  return Status::OK();
+}
+
+Status WorkerInfoAccessor::AsyncUpdateDebuggerPort(const WorkerID &worker_id,
+                                                   uint32_t debugger_port,
+                                                   const StatusCallback &callback) {
+  rpc::UpdateWorkerDebuggerPortRequest request;
+  request.set_worker_id(worker_id.Binary());
+  request.set_debugger_port(debugger_port);
+  RAY_LOG(DEBUG) << "Updating the worker debugger port, worker id = " << worker_id
+                 << ", port = " << debugger_port << ".";
+  client_impl_->GetGcsRpcClient().UpdateWorkerDebuggerPort(
+      request,
+      [callback](const Status &status, const rpc::UpdateWorkerDebuggerPortReply &reply) {
+        if (callback) {
+          callback(status);
+        }
+      });
+  return Status::OK();
+}
+
+Status WorkerInfoAccessor::AsyncUpdateWorkerNumPausedThreads(
+    const WorkerID &worker_id,
+    const int num_paused_threads_delta,
+    const StatusCallback &callback) {
+  rpc::UpdateWorkerNumPausedThreadsRequest request;
+  request.set_worker_id(worker_id.Binary());
+  request.set_num_paused_threads_delta(num_paused_threads_delta);
+  RAY_LOG(DEBUG) << "Update the num paused threads on worker id = " << worker_id
+                 << " by delta = " << num_paused_threads_delta << ".";
+  client_impl_->GetGcsRpcClient().UpdateWorkerNumPausedThreads(
+      request,
+      [callback](const Status &status,
+                 const rpc::UpdateWorkerNumPausedThreadsReply &reply) {
         if (callback) {
           callback(status);
         }

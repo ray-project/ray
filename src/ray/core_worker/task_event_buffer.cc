@@ -102,6 +102,10 @@ void TaskStatusEvent::ToRpcTaskEvents(rpc::TaskEvents *rpc_task_events) {
   if (state_update_->pid_.has_value()) {
     dst_state_update->set_worker_pid(state_update_->pid_.value());
   }
+
+  if (state_update_->is_debugger_paused_.has_value()) {
+    dst_state_update->set_is_debugger_paused(state_update_->is_debugger_paused_.value());
+  }
 }
 
 void TaskProfileEvent::ToRpcTaskEvents(rpc::TaskEvents *rpc_task_events) {

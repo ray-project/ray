@@ -279,13 +279,6 @@ struct GcsServerMocker {
     void GetSystemConfig(const ray::rpc::ClientCallback<ray::rpc::GetSystemConfigReply>
                              &callback) override {}
 
-    /// ResourceUsageInterface
-    void UpdateResourceUsage(
-        std::string &address,
-        const rpc::ClientCallback<rpc::UpdateResourceUsageReply> &callback) override {
-      RAY_CHECK(false) << "Unused";
-    };
-
     /// ShutdownRaylet
     void ShutdownRaylet(
         const NodeID &node_id,

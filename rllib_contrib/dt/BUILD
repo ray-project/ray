@@ -9,6 +9,14 @@ py_test(
     args = ["--run-as-test"]
 )
 
+py_test(
+    name = "policy_inference_after_training_with_dt_torch",
+    main = "policy_inference_after_training_with_dt.py",
+    tags = ["team:rllib", "examples", "ray_data"],
+    size = "medium",
+    srcs = ["examples/policy_inference_after_training_with_dt.py"],
+)
+
 # Learning Tests
 
 # py_test(

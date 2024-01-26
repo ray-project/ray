@@ -1,14 +1,16 @@
 import json
 import logging
+import os
 import time
 from typing import List, Optional
-from urllib.parse import urlencode, urljoin
+from urllib.parse import urljoin
 
+import numpy as np
 import pyarrow
 import requests
 
 from ray.data.block import BlockMetadata
-from ray.data.datasource.datasource import Datasource, Reader, ReadTask
+from ray.data.datasource.datasource import Datasource, ReadTask
 from ray.util.annotations import PublicAPI
 
 logger = logging.getLogger(__name__)
@@ -17,7 +19,8 @@ logger = logging.getLogger(__name__)
 _STATEMENT_EXEC_POLL_TIME_S = 1
 
 
-class _DatabricksUCReader(Reader):
+@PublicAPI(stability="alpha")
+class DatabricksUCDatasource(Datasource):
     def __init__(
         self,
         host: str,
@@ -96,8 +99,8 @@ class _DatabricksUCReader(Reader):
 
         if is_truncated:
             logger.warning(
-                f"The result dataset of '{query!r}' exceeding 100GiB and it is "
-                "truncated."
+                f"The resulting size of the dataset of '{query!r}' exceeds "
+                "100GiB and it is truncated."
             )
 
         chunks = manifest["chunks"]
@@ -109,8 +112,10 @@ class _DatabricksUCReader(Reader):
         self._estimate_inmemory_data_size = sum(chunk["byte_count"] for chunk in chunks)
 
         def get_read_task(task_index, parallelism):
-            # 0 <= task_index < parallelism
-            chunk_index_list = list(range(task_index, parallelism, num_chunks))
+            # get chunk list to be read in this task and preserve original chunk order
+            chunk_index_list = list(
+                np.array_split(range(num_chunks), parallelism)[task_index]
+            )
 
             num_rows = sum(
                 chunks[chunk_index]["row_count"] for chunk_index in chunk_index_list
@@ -127,16 +132,10 @@ class _DatabricksUCReader(Reader):
                 exec_stats=None,
             )
 
-            def read_fn():
+            def _read_fn():
                 for chunk_index in chunk_index_list:
-                    chunk_info = chunks[chunk_index]
-                    row_offset_param = urlencode(
-                        {"row_offset": chunk_info["row_offset"]}
-                    )
                     resolve_external_link_url = urljoin(
-                        url_base,
-                        f"{statement_id}/result/chunks/{chunk_index}?"
-                        f"{row_offset_param}",
+                        url_base, f"{statement_id}/result/chunks/{chunk_index}"
                     )
 
                     resolve_response = requests.get(
@@ -150,10 +149,24 @@ class _DatabricksUCReader(Reader):
                     raw_response = requests.get(external_url, auth=None, headers=None)
                     raw_response.raise_for_status()
 
-                    arrow_table = pyarrow.ipc.open_stream(
-                        raw_response.content
-                    ).read_all()
+                    with pyarrow.ipc.open_stream(raw_response.content) as reader:
+                        arrow_table = reader.read_all()
+
                     yield arrow_table
+
+            def read_fn():
+                if mock_setup_fn_path := os.environ.get(
+                    "RAY_DATABRICKS_UC_DATASOURCE_READ_FN_MOCK_TEST_SETUP_FN_PATH"
+                ):
+                    import ray.cloudpickle as pickle
+
+                    # This is for testing.
+                    with open(mock_setup_fn_path, "rb") as f:
+                        mock_setup = pickle.load(f)
+                    with mock_setup():
+                        yield from _read_fn()
+                else:
+                    yield from _read_fn()
 
             return ReadTask(read_fn=read_fn, metadata=metadata)
 
@@ -167,27 +180,9 @@ class _DatabricksUCReader(Reader):
 
         if parallelism > self.num_chunks:
             parallelism = self.num_chunks
+            logger.info(
+                "The parallelism is reduced to chunk number due to "
+                "insufficient chunk parallelism."
+            )
 
         return [self._get_read_task(index, parallelism) for index in range(parallelism)]
-
-
-@PublicAPI(stability="alpha")
-class DatabricksUCDatasource(Datasource):
-    def create_reader(
-        self,
-        *,
-        host: str,
-        token: str,
-        warehouse_id: str,
-        catalog: Optional[str],
-        schema: Optional[str],
-        query: str,
-    ) -> "Reader":
-        return _DatabricksUCReader(
-            host=host,
-            token=token,
-            warehouse_id=warehouse_id,
-            catalog=catalog,
-            schema=schema,
-            query=query,
-        )

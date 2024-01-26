@@ -7,6 +7,7 @@ from ray.data._internal.dataset_logger import DatasetLogger
 from ray.data._internal.delegating_block_builder import DelegatingBlockBuilder
 from ray.data._internal.planner.exchange.interfaces import ExchangeTaskSpec
 from ray.data.block import Block, BlockAccessor, BlockExecStats, BlockMetadata
+from ray.data.context import MAX_SAFE_BLOCK_SIZE_FACTOR
 
 logger = DatasetLogger(__name__)
 
@@ -62,7 +63,10 @@ class ShuffleTaskSpec(ExchangeTaskSpec):
             del mapped_block
             block = builder.build()
         block = BlockAccessor.for_block(block)
-        if block.size_bytes() >= 1.5 * target_shuffle_max_block_size:
+        if (
+            block.size_bytes()
+            > MAX_SAFE_BLOCK_SIZE_FACTOR * target_shuffle_max_block_size
+        ):
             logger.get_logger().warn(
                 "Input block to map task has size "
                 f"{block.size_bytes() // (1024 * 1024)}MiB, which exceeds "
@@ -80,6 +84,9 @@ class ShuffleTaskSpec(ExchangeTaskSpec):
             block = block.random_shuffle(seed_i)
             block = BlockAccessor.for_block(block)
 
+        # Build a list of slices to return. It's okay to put the results in a
+        # list instead of yielding them as a generator because slicing the
+        # ArrowBlock is zero-copy.
         slice_sz = max(1, math.ceil(block.num_rows() / output_num_blocks))
         slices = []
         for i in range(output_num_blocks):

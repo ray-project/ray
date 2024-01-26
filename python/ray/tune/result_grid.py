@@ -281,13 +281,8 @@ class ResultGrid:
             checkpoint=checkpoint,
             metrics=trial.last_result.copy(),
             error=self._populate_exception(trial),
-            _local_path=trial.local_path,
-            _remote_path=trial.path,
-            _storage_filesystem=(
-                self._experiment_analysis._fs
-                if isinstance(self._experiment_analysis, ExperimentAnalysis)
-                else None
-            ),
+            path=trial.path,
+            _storage_filesystem=self._experiment_analysis._fs,
             metrics_dataframe=metrics_df,
             best_checkpoints=best_checkpoints,
         )

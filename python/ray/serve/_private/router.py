@@ -26,25 +26,24 @@ from ray._private.utils import load_class
 from ray.actor import ActorHandle
 from ray.dag.py_obj_scanner import _PyObjScanner
 from ray.exceptions import RayActorError
-from ray.serve._private.common import (
-    DeploymentID,
-    DeploymentInfo,
-    RequestProtocol,
-    RunningReplicaInfo,
-)
+from ray.serve._private.common import DeploymentID, RequestProtocol, RunningReplicaInfo
 from ray.serve._private.constants import (
     HANDLE_METRIC_PUSH_INTERVAL_S,
+    RAY_SERVE_MAX_QUEUE_LENGTH_RESPONSE_DEADLINE_S,
     RAY_SERVE_MULTIPLEXED_MODEL_ID_MATCHING_TIMEOUT_S,
     RAY_SERVE_PROXY_PREFER_LOCAL_AZ_ROUTING,
+    RAY_SERVE_QUEUE_LENGTH_RESPONSE_DEADLINE_S,
     SERVE_LOGGER_NAME,
 )
 from ray.serve._private.long_poll import LongPollClient, LongPollNamespace
-from ray.serve._private.utils import JavaActorHandleProxy, MetricsPusher
-from ray.serve.generated.serve_pb2 import DeploymentRoute
+from ray.serve._private.metrics_utils import MetricsPusher
+from ray.serve._private.utils import JavaActorHandleProxy
 from ray.serve.generated.serve_pb2 import RequestMetadata as RequestMetadataProto
+from ray.serve.grpc_util import RayServegRPCContext
 from ray.util import metrics
 
 logger = logging.getLogger(SERVE_LOGGER_NAME)
+PUSH_METRICS_TO_CONTROLLER_TASK_NAME = "push_metrics_to_controller"
 
 
 @dataclass
@@ -67,6 +66,9 @@ class RequestMetadata:
 
     # The protocol to serve this request
     _request_protocol: RequestProtocol = RequestProtocol.UNDEFINED
+
+    # Serve's gRPC context associated with this request for getting and setting metadata
+    grpc_context: Optional[RayServegRPCContext] = None
 
     @property
     def is_http_request(self) -> bool:
@@ -158,13 +160,16 @@ class ReplicaWrapper(ABC):
         """Set of model IDs on this replica."""
         pass
 
-    async def get_queue_state(self) -> Tuple[int, bool]:
-        """Returns tuple of (queue_len, accepted)."""
+    async def get_queue_state(self, *, deadline_s: float) -> Tuple[int, bool]:
+        """Returns tuple of (queue_len, accepted).
+
+        `deadline_s` is passed to verify backoff for testing.
+        """
         pass
 
     def send_query(
         self, query: Query
-    ) -> Union[ray.ObjectRef, "ray._raylet.StreamingObjectRefGenerator"]:
+    ) -> Union[ray.ObjectRef, "ray._raylet.ObjectRefGenerator"]:
         """Send query to this replica."""
         pass
 
@@ -195,7 +200,7 @@ class ActorReplicaWrapper:
     def multiplexed_model_ids(self) -> Set[str]:
         return self._multiplexed_model_ids
 
-    async def get_queue_state(self) -> Tuple[int, bool]:
+    async def get_queue_state(self, *, deadline_s: float) -> Tuple[int, bool]:
         # NOTE(edoakes): the `get_num_ongoing_requests` method name is shared by
         # the Python and Java replica implementations. If you change it, you need to
         # change both (or introduce a branch here).
@@ -233,7 +238,7 @@ class ActorReplicaWrapper:
 
     def _send_query_python(
         self, query: Query
-    ) -> Union[ray.ObjectRef, "ray._raylet.StreamingObjectRefGenerator"]:
+    ) -> Union[ray.ObjectRef, "ray._raylet.ObjectRefGenerator"]:
         """Send the query to a Python replica."""
         if query.metadata.is_streaming:
             method = self._actor_handle.handle_request_streaming.options(
@@ -246,7 +251,7 @@ class ActorReplicaWrapper:
 
     def send_query(
         self, query: Query
-    ) -> Union[ray.ObjectRef, "ray._raylet.StreamingObjectRefGenerator"]:
+    ) -> Union[ray.ObjectRef, "ray._raylet.ObjectRefGenerator"]:
         if self._replica_info.is_cross_language:
             return self._send_query_java(query)
         else:
@@ -259,7 +264,7 @@ class ReplicaScheduler(ABC):
     @abstractmethod
     async def assign_replica(
         self, query: Query
-    ) -> Union[ray.ObjectRef, "ray._raylet.StreamingObjectRefGenerator"]:
+    ) -> Union[ray.ObjectRef, "ray._raylet.ObjectRefGenerator"]:
         pass
 
     @abstractmethod
@@ -316,7 +321,10 @@ class PowerOfTwoChoicesReplicaScheduler(ReplicaScheduler):
 
     # Deadline for replicas to respond with their queue length. If the response isn't
     # received within this deadline, the replica will not be considered.
-    queue_len_response_deadline_s = 0.1
+    # If this deadline is repeatedly missed, it will be exponentially increased up to
+    # the maximum configured here.
+    queue_len_response_deadline_s = RAY_SERVE_QUEUE_LENGTH_RESPONSE_DEADLINE_S
+    max_queue_len_response_deadline_s = RAY_SERVE_MAX_QUEUE_LENGTH_RESPONSE_DEADLINE_S
 
     # Hard limit on the maximum number of scheduling tasks to run. Having too many of
     # these tasks can cause stability issue due to too much load on the local process
@@ -690,35 +698,53 @@ class PowerOfTwoChoicesReplicaScheduler(ReplicaScheduler):
                 )
 
     async def select_from_candidate_replicas(
-        self, candidates: List[ReplicaWrapper]
+        self,
+        candidates: List[ReplicaWrapper],
+        backoff_index: int,
     ) -> Optional[ReplicaWrapper]:
         """Chooses the best replica from the list of candidates.
 
         If none of the replicas can be scheduled, returns `None`.
 
         The queue length at each replica is queried directly from it. The time waited
-        for these queries is capped by `self.queue_len_response_deadline_s`; if a
-        replica doesn't respond within the deadline it is not considered.
+        for these queries is capped by a response deadline; if a replica doesn't
+        doesn't respond within the deadline it is not considered. The deadline will be
+        increased exponentially in backoff.
 
         Among replicas that respond within the deadline and accept the request (don't
         have full queues), the one with the lowest queue length is chosen.
         """
+        # Ensure the max deadline is always >= the initial deadline.
+        max_queue_len_response_deadline_s = max(
+            self.queue_len_response_deadline_s,
+            self.max_queue_len_response_deadline_s,
+        )
+        queue_len_response_deadline_s = min(
+            self.queue_len_response_deadline_s * (2**backoff_index),
+            max_queue_len_response_deadline_s,
+        )
+
         get_queue_state_tasks = []
         for c in candidates:
-            t = self._loop.create_task(c.get_queue_state())
+            t = self._loop.create_task(
+                c.get_queue_state(deadline_s=queue_len_response_deadline_s)
+            )
             t.replica_id = c.replica_id
             get_queue_state_tasks.append(t)
 
         done, pending = await asyncio.wait(
             get_queue_state_tasks,
-            timeout=self.queue_len_response_deadline_s,
+            timeout=queue_len_response_deadline_s,
             return_when=asyncio.ALL_COMPLETED,
         )
         for t in pending:
             t.cancel()
             logger.warning(
                 f"Failed to get queue length from replica {t.replica_id} "
-                f"within {self.queue_len_response_deadline_s}s."
+                f"within {queue_len_response_deadline_s}s. If this happens repeatedly "
+                "it's likely caused by high network latency in the cluster. You can "
+                "configure the deadline using the "
+                "`RAY_SERVE_QUEUE_LENGTH_RESPONSE_DEADLINE_S` environment variable."
             )
 
         chosen_replica_id = None
@@ -820,14 +846,19 @@ class PowerOfTwoChoicesReplicaScheduler(ReplicaScheduler):
         """
         try:
             while len(self._scheduling_tasks) <= self.target_num_scheduling_tasks:
+                backoff_index = 0
                 request_metadata = self._get_next_pending_request_metadata_to_schedule()
                 async for candidates in self.choose_two_replicas_with_backoff(
                     request_metadata
                 ):
-                    replica = await self.select_from_candidate_replicas(candidates)
+                    replica = await self.select_from_candidate_replicas(
+                        candidates, backoff_index
+                    )
                     if replica is not None:
                         self.fulfill_next_pending_request(replica, request_metadata)
                         break
+
+                    backoff_index += 1
 
         except Exception:
             logger.exception("Unexpected error in fulfill_pending_requests.")
@@ -880,7 +911,7 @@ class PowerOfTwoChoicesReplicaScheduler(ReplicaScheduler):
 
     async def assign_replica(
         self, query: Query
-    ) -> Union[ray.ObjectRef, "ray._raylet.StreamingObjectRefGenerator"]:
+    ) -> Union[ray.ObjectRef, "ray._raylet.ObjectRefGenerator"]:
         """Choose a replica for the request and send it.
 
         This will block indefinitely if no replicas are available to handle the
@@ -895,6 +926,7 @@ class Router:
         self,
         controller_handle: ActorHandle,
         deployment_id: DeploymentID,
+        handle_id: str,
         self_node_id: str,
         self_actor_id: str,
         self_availability_zone: Optional[str],
@@ -909,6 +941,7 @@ class Router:
         """
         self._event_loop = event_loop
         self.deployment_id = deployment_id
+        self.handle_id = handle_id
 
         if _router_cls:
             self._replica_scheduler = load_class(_router_cls)(
@@ -936,7 +969,6 @@ class Router:
             description="The number of requests processed by the router.",
             tag_keys=("deployment", "route", "application"),
         )
-        # TODO(zcin): use deployment name and application name instead of deployment id
         self.num_router_requests.set_default_tags(
             {"deployment": deployment_id.name, "application": deployment_id.app}
         )
@@ -950,7 +982,6 @@ class Router:
             ),
             tag_keys=("deployment", "application"),
         )
-        # TODO(zcin): use deployment name and application name instead of deployment id
         self.num_queued_queries_gauge.set_default_tags(
             {"deployment": deployment_id.name, "application": deployment_id.app}
         )
@@ -962,23 +993,37 @@ class Router:
                     LongPollNamespace.RUNNING_REPLICAS,
                     deployment_id,
                 ): self._replica_scheduler.update_running_replicas,
+                (
+                    LongPollNamespace.AUTOSCALING_CONFIG,
+                    deployment_id,
+                ): self.update_autoscaling_config,
             },
             call_in_event_loop=event_loop,
         )
 
+        self.metrics_pusher = MetricsPusher()
+        self.autoscaling_config = None
+        self.push_metrics_to_controller = controller_handle.record_handle_metrics.remote
+
+    def update_autoscaling_config(self, autoscaling_config):
+        self.autoscaling_config = autoscaling_config
+
         # Start the metrics pusher if autoscaling is enabled.
-        deployment_route = DeploymentRoute.FromString(
-            ray.get(controller_handle.get_deployment_info.remote(*deployment_id))
-        )
-        deployment_info = DeploymentInfo.from_proto(deployment_route.deployment_info)
-        self.metrics_pusher = None
-        if deployment_info.deployment_config.autoscaling_config:
-            self.autoscaling_enabled = True
-            self.push_metrics_to_controller = (
-                controller_handle.record_handle_metrics.remote
-            )
-            self.metrics_pusher = MetricsPusher()
-            self.metrics_pusher.register_task(
+        if self.autoscaling_config:
+            # Optimization for autoscaling cold start time. If there are
+            # currently 0 replicas for the deployment, and there is at
+            # least one queued query on this router, then immediately
+            # push handle metric to the controller.
+            if (
+                len(self._replica_scheduler.curr_replicas) == 0
+                and self.num_queued_queries
+            ):
+                self.push_metrics_to_controller(
+                    self._collect_handle_queue_metrics(), time.time()
+                )
+
+            self.metrics_pusher.register_or_update_task(
+                PUSH_METRICS_TO_CONTROLLER_TASK_NAME,
                 self._collect_handle_queue_metrics,
                 HANDLE_METRIC_PUSH_INTERVAL_S,
                 self.push_metrics_to_controller,
@@ -986,17 +1031,18 @@ class Router:
 
             self.metrics_pusher.start()
         else:
-            self.autoscaling_enabled = False
+            if self.metrics_pusher:
+                self.metrics_pusher.shutdown()
 
     def _collect_handle_queue_metrics(self) -> Dict[str, int]:
-        return {self.deployment_id: self.num_queued_queries}
+        return (self.deployment_id, self.handle_id), self.num_queued_queries
 
     async def assign_request(
         self,
         request_meta: RequestMetadata,
         *request_args,
         **request_kwargs,
-    ) -> Union[ray.ObjectRef, "ray._raylet.StreamingObjectRefGenerator"]:
+    ) -> Union[ray.ObjectRef, "ray._raylet.ObjectRefGenerator"]:
         """Assign a query to a replica and return the resulting object_ref."""
 
         self.num_router_requests.inc(tags={"route": request_meta.route})
@@ -1006,12 +1052,18 @@ class Router:
         # Optimization: if there are currently zero replicas for a deployment,
         # push handle metric to controller to allow for fast cold start time.
         # Only do it for the first query to arrive on the router.
+        # NOTE(zcin): this is making the assumption that this method DOES
+        # NOT give up the async event loop above this conditional. If
+        # you need to yield the event loop above this conditional, you
+        # will need to remove the check "self.num_queued_queries == 1"
         if (
-            self.autoscaling_enabled
+            self.autoscaling_config
             and len(self._replica_scheduler.curr_replicas) == 0
             and self.num_queued_queries == 1
         ):
-            self.push_metrics_to_controller({self.deployment_id: 1}, time.time())
+            self.push_metrics_to_controller(
+                self._collect_handle_queue_metrics(), time.time()
+            )
 
         try:
             query = Query(

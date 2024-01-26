@@ -678,7 +678,7 @@ def test_serialization_before_init(shutdown_only):
     ray.get(ray.put(A(1)))  # success!
 
 
-def test_serialization_pydantic(ray_start_regular):
+def test_serialization_pydantic_runtime_env(ray_start_regular):
     @ray.remote
     def test(pydantic_model):
         return pydantic_model.x

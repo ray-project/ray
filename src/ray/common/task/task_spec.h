@@ -238,6 +238,9 @@ static inline rpc::ObjectReference GetReferenceForActorDummyObject(
   return ref;
 };
 
+/// Task attempt is a task with a specific attempt number.
+using TaskAttempt = std::pair<TaskID, int32_t>;
+
 /// Wrapper class of protobuf `TaskSpec`, see `common.proto` for details.
 /// TODO(ekl) we should consider passing around std::unique_ptr<TaskSpecification>
 /// instead `const TaskSpecification`, since this class is actually mutable.
