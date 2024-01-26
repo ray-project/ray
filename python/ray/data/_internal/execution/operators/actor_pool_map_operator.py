@@ -81,6 +81,10 @@ class ActorPoolMapOperator(MapOperator):
             ray_remote_args,
         )
         self._ray_remote_args = self._apply_default_remote_args(self._ray_remote_args)
+        self._ray_actor_task_remote_args = {}
+        actor_task_errors = DataContext.get_current().actor_task_retry_on_errors
+        if actor_task_errors:
+            self._ray_actor_task_remote_args["retry_exceptions"] = actor_task_errors
         self._min_rows_per_bundle = min_rows_per_bundle
 
         # Create autoscaling policy from compute strategy.
@@ -194,9 +198,11 @@ class ActorPoolMapOperator(MapOperator):
                 task_idx=self._next_data_task_idx,
                 target_max_block_size=self.actual_target_max_block_size,
             )
-            gen = actor.submit.options(num_returns="streaming", name=self.name).remote(
-                DataContext.get_current(), ctx, *input_blocks
-            )
+            gen = actor.submit.options(
+                num_returns="streaming",
+                name=self.name,
+                **self._ray_actor_task_remote_args,
+            ).remote(DataContext.get_current(), ctx, *input_blocks)
 
             def _task_done_callback(actor_to_return):
                 # Return the actor that was running the task to the pool.
@@ -305,10 +311,13 @@ class ActorPoolMapOperator(MapOperator):
     def current_resource_usage(self) -> ExecutionResources:
         # Both pending and running actors count towards our current resource usage.
         num_active_workers = self._actor_pool.num_total_actors()
+        object_store_memory = self.metrics.obj_store_mem_cur
+        if self.metrics.obj_store_mem_pending is not None:
+            object_store_memory += self.metrics.obj_store_mem_pending
         return ExecutionResources(
             cpu=self._ray_remote_args.get("num_cpus", 0) * num_active_workers,
             gpu=self._ray_remote_args.get("num_gpus", 0) * num_active_workers,
-            object_store_memory=self.metrics.obj_store_mem_cur,
+            object_store_memory=object_store_memory,
         )
 
     def incremental_resource_usage(self) -> ExecutionResources:
