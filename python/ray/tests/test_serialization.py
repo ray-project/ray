@@ -714,8 +714,7 @@ def test_usage_with_dataclass(ray_start_regular):
 
     @ray.remote
     def test(x, expect):
-
-        assert dataclasses.asdict(x) == expect
+        assert dataclasses.asdict(x) == expect, dataclasses.asdict(x)
         return x
 
     expect_dict = {"v": "x"}
