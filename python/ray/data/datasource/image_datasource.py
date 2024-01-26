@@ -39,10 +39,10 @@ def _tiff_to_np(tiff_path: bytes):
 
         >>> from PIL import Image
         >>> import numpy as np
-        >>> tiff_path = b'path/to/multiframe.tiff'
+        >>> tiff_path = b'/home/ubuntu/ray/python/ray/data/examples/data/image-datasets/tiff_files/image3.tiff'
         >>> np_stack = _tiff_to_np(tiff_path)
         >>> np_stack.shape
-        (num_frames, height, width)
+        (3, 100, 100)
         >>> type(np_stack)
         <class 'numpy.ndarray'>
 
@@ -55,7 +55,7 @@ def _tiff_to_np(tiff_path: bytes):
     """
     from PIL import Image
 
-    with Image.open(tiff_path) as img:
+    with Image.open(tiff_path) as img   :
         np_arrays = []
 
         for i in range(img.n_frames):
