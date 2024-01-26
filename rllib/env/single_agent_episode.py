@@ -226,6 +226,8 @@ class SingleAgentEpisode:
         # lookback buffer lengths for all data types.
         if len_lookback_buffer == "auto":
             len_lookback_buffer = len(rewards or [])
+        elif len_lookback_buffer > len(rewards or []):
+            len_lookback_buffer = len(rewards or [])
 
         infos = infos or [{} for _ in range(len(observations or []))]
 
@@ -301,11 +303,7 @@ class SingleAgentEpisode:
         # excluding a possible lookback buffer.
         self.t_started = t_started or 0
         # The current (global) timestep in the episode (possibly an episode chunk).
-        self.t = (
-            (len(rewards) if rewards is not None else 0)
-            - len_lookback_buffer
-            + self.t_started
-        )
+        self.t = len(self.rewards) + self.t_started
 
         # Validate the episode data thus far.
         self.validate()
@@ -490,15 +488,12 @@ class SingleAgentEpisode:
         # Make sure we always have one more obs stored than rewards (and actions)
         # due to the reset/last-obs logic of an MDP.
         else:
-            try:
-                assert (
-                    len(self.observations)
-                    == len(self.infos)
-                    == len(self.rewards) + 1
-                    == len(self.actions) + 1
-                ), (len(self.observations), len(self.infos), len(self.rewards), len(self.actions))
-            except Exception as e:
-                raise e#TEST
+            assert (
+                len(self.observations)
+                == len(self.infos)
+                == len(self.rewards) + 1
+                == len(self.actions) + 1
+            ), (len(self.observations), len(self.infos), len(self.rewards), len(self.actions))
             for k, v in self.extra_model_outputs.items():
                 assert len(v) == len(self.observations) - 1
 
@@ -671,7 +666,7 @@ class SingleAgentEpisode:
         indices: Optional[Union[int, List[int], slice]] = None,
         *,
         neg_indices_left_of_zero: bool = False,
-        fill: Optional[float] = None,
+        fill: Optional[Any] = None,
         one_hot_discrete: bool = False,
     ) -> Any:
         """Returns individual observations or batched ranges thereof from this episode.
@@ -695,7 +690,7 @@ class SingleAgentEpisode:
                 with `6` and to
                 `get_observations(slice(-2, 1), neg_indices_left_of_zero=True)` with
                 `[5, 6,  7]`.
-            fill: An optional float value to use for filling up the returned results at
+            fill: An optional value to use for filling up the returned results at
                 the boundaries. This filling only happens if the requested index range's
                 start/stop boundaries exceed the episode's boundaries (including the
                 lookback buffer on the left side). This comes in very handy, if users
@@ -768,7 +763,7 @@ class SingleAgentEpisode:
         neg_indices_left_of_zero: bool = False,
         fill: Optional[Any] = None,
     ) -> Any:
-        """Returns individual info dicts or batched ranges thereof from this episode.
+        """Returns individual info dicts or list (ranges) thereof from this episode.
 
         Args:
             indices: A single int is interpreted as an index, from which to return the
@@ -800,8 +795,6 @@ class SingleAgentEpisode:
                 size of 2 (meaning infos {"l":10}, {"l":11} are part of the lookback
                 buffer) will respond to `get_infos(slice(-7, -2), fill={"o": 0.0})`
                 with `[{"o":0.0}, {"o":0.0}, {"l":10}, {"l":11}, {"a":12}]`.
-                TODO (sven): This would require a space being provided. Maybe we can
-                 skip this check for infos, which don't have a space anyways.
 
         Examples:
 
@@ -844,7 +837,7 @@ class SingleAgentEpisode:
         indices: Optional[Union[int, List[int], slice]] = None,
         *,
         neg_indices_left_of_zero: bool = False,
-        fill: Optional[float] = None,
+        fill: Optional[Any] = None,
         one_hot_discrete: bool = False,
     ) -> Any:
         """Returns individual actions or batched ranges thereof from this episode.
@@ -867,7 +860,7 @@ class SingleAgentEpisode:
                 to `get_actions(-1, neg_indices_left_of_zero=True)` with `6` and
                 to `get_actions(slice(-2, 1), neg_indices_left_of_zero=True)` with
                 `[5, 6,  7]`.
-            fill: An optional float value to use for filling up the returned results at
+            fill: An optional value to use for filling up the returned results at
                 the boundaries. This filling only happens if the requested index range's
                 start/stop boundaries exceed the episode's boundaries (including the
                 lookback buffer on the left side). This comes in very handy, if users
@@ -938,7 +931,7 @@ class SingleAgentEpisode:
         indices: Optional[Union[int, List[int], slice]] = None,
         *,
         neg_indices_left_of_zero: bool = False,
-        fill: Optional[Any] = None,
+        fill: Optional[float] = None,
     ) -> Any:
         """Returns individual rewards or batched ranges thereof from this episode.
 
@@ -1033,7 +1026,7 @@ class SingleAgentEpisode:
                 `get_extra_model_outputs("a", -1, neg_indices_left_of_zero=True)` with
                 `6` and to `get_extra_model_outputs("a", slice(-2, 1),
                 neg_indices_left_of_zero=True)` with `[5, 6,  7]`.
-            fill: An optional float value to use for filling up the returned results at
+            fill: An optional value to use for filling up the returned results at
                 the boundaries. This filling only happens if the requested index range's
                 start/stop boundaries exceed the episode's boundaries (including the
                 lookback buffer on the left side). This comes in very handy, if users
