@@ -1,25 +1,26 @@
+import logging
 from abc import ABC, abstractmethod
-from dataclasses import dataclass
 from typing import Dict, List
+
 from ray.autoscaler.v2.instance_manager.node_provider import (
     CloudInstance,
     CloudInstanceId,
     CloudInstanceProviderError,
     ICloudInstanceProvider,
 )
-
+from ray.core.generated.autoscaler_pb2 import ClusterResourceState
+from ray.core.generated.instance_manager_pb2 import Instance as IMInstance
 from ray.core.generated.instance_manager_pb2 import (
     InstanceUpdateEvent as IMInstanceUpdateEvent,
-    Instance as IMInstance,
 )
-from ray.core.generated.autoscaler_pb2 import ClusterResourceState
+
+logger = logging.getLogger(__name__)
 
 
 class IReconciler(ABC):
+    @staticmethod
     @abstractmethod
-    def reconcile(
-        self, instances: List[IMInstance]
-    ) -> Dict[str, IMInstanceUpdateEvent]:
+    def reconcile(*args, **kwargs) -> Dict[str, IMInstanceUpdateEvent]:
         """
         Reconcile the status of Instance Manager(IM) instances to a valid state.
         It should yield a list of instance update events that will be applied to the
@@ -27,9 +28,6 @@ class IReconciler(ABC):
 
         There should not be any other side effects other than producing the instance
         update events. This method is expected to be idempotent and deterministic.
-
-        Args:
-            instances: The list of IM instances to reconcile.
 
         Returns:
             A dict of instance id to instance update event.
@@ -39,7 +37,10 @@ class IReconciler(ABC):
 
 
 class StuckInstanceReconciler(IReconciler):
-    def reconcile(self, *args, **kwargs) -> Dict[str, IMInstanceUpdateEvent]:
+    @staticmethod
+    def reconcile(
+        instances: List[IMInstance],
+    ) -> Dict[str, IMInstanceUpdateEvent]:
         """
         ***********************
         **STUCK STATES
@@ -67,29 +68,13 @@ class StuckInstanceReconciler(IReconciler):
             ACTION: We will fail the installation and terminate the instance after a
                 timeout, transitioning to RAY_INSTALL_FAILED.
 
+        # TODO(rickyx): Maybe we should add a TO_STOP status so we could do retry
+        # stopping better
         - STOPPING -> STOPPING
             WHEN: the cloud node provider taking long or failed to terminate the cloud
                 instance.
             ACTION: We will retry the termination by setting it to STOPPING, triggering
                 another termination request to the cloud instance provider.
-
-        ***********************
-        **LONG LASTING STATES
-        ***********************
-        These states are expected to be long lasting. So we will not take any actions.
-
-        - RAY_RUNNING:
-            Normal state - unlimited time.
-        - STOPPED:
-            Normal state - terminal, and unlimited time.
-        - ALLOCATION_FAILED:
-            Normal state - terminal, and unlimited time.
-        - QUEUED
-            WHEN: if there's many instances queued to be launched, and we limit the
-                number of concurrent instance launches, the instance might be stuck
-                in QUEUED state for a long time.
-            ACTION: No actions, print warnings if needed (or adjust the scaling-up
-                configs)
 
         ***********************
         **TRANSIENT STATES
@@ -98,6 +83,8 @@ class StuckInstanceReconciler(IReconciler):
         a bug in the instance manager or the cloud instance provider as the process loop
         which is none-blocking is now somehow not making progress.
 
+        # TODO(rickyx): When we added the timeout for draining, we should also add
+        # timeout for the RAY_STOPPING states.
         - RAY_STOPPING:
             WHEN: this state should be transient, instances in this state are being
                 drained through the drain protocol (and the drain request should
@@ -110,17 +97,34 @@ class StuckInstanceReconciler(IReconciler):
                 or terminated soon. This could happen if the subscribers for the status
                 transition failed to act upon the status update.
             ACTION: Print errors if stuck for too long - this is a bug.
+
+        - QUEUED
+            WHEN: if there's many instances queued to be launched, and we limit the
+                number of concurrent instance launches, the instance might be stuck
+                in QUEUED state for a long time.
+            ACTION: No actions, print warnings if needed (or adjust the scaling-up
+                configs)
+
+        ***********************
+        **LONG LASTING STATES
+        ***********************
+        These states are expected to be long lasting. So we will not take any actions.
+
+        - RAY_RUNNING:
+            Normal state - unlimited time.
+        - STOPPED:
+            Normal state - terminal, and unlimited time.
+        - ALLOCATION_FAILED:
+            Normal state - terminal, and unlimited time.
+
         """
         pass
 
 
 class RayStateReconciler(IReconciler):
-    def __init__(self, ray_cluster_resource_state: ClusterResourceState) -> None:
-        self._ray_cluster_resource_state = ray_cluster_resource_state
-        super().__init__()
-
+    @staticmethod
     def reconcile(
-        self, instances: List[IMInstance]
+        ray_cluster_resource_state: ClusterResourceState, instances: List[IMInstance]
     ) -> Dict[str, IMInstanceUpdateEvent]:
         """
         Reconcile the instances states for Ray node state changes.
@@ -138,12 +142,9 @@ class RayStateReconciler(IReconciler):
 
 
 class CloudProviderReconciler(IReconciler):
-    def __init__(self, provider: ICloudInstanceProvider) -> None:
-        self._provider = provider
-        super().__init__()
-
+    @staticmethod
     def reconcile(
-        self, instances: List[IMInstance]
+        provider: ICloudInstanceProvider, instances: List[IMInstance]
     ) -> Dict[str, IMInstanceUpdateEvent]:
         """
         Reconcile the instance storage with the node provider.
@@ -159,8 +160,9 @@ class CloudProviderReconciler(IReconciler):
         """
         pass
 
+    @staticmethod
     def _reconcile_allocated(
-        self, non_terminated_cloud_nodes: Dict[CloudInstanceId, CloudInstance]
+        non_terminated_cloud_nodes: Dict[CloudInstanceId, CloudInstance]
     ) -> Dict[str, IMInstanceUpdateEvent]:
 
         """
@@ -179,6 +181,7 @@ class CloudProviderReconciler(IReconciler):
         # and transition them to ALLOCATED.
         pass
 
+    @staticmethod
     def _reconcile_failed_to_allocate(
         self, cloud_provider_errors: List[CloudInstanceProviderError]
     ) -> Dict[str, IMInstanceUpdateEvent]:
@@ -192,12 +195,13 @@ class CloudProviderReconciler(IReconciler):
         # Find all launch errors by launch request id.
 
         # For the same request, transition the instance to ALLOCATION_FAILED.
-        # TODO(rickyx): we don't differentiate transient errors (which might be retryable)
-        # and permanent errors (which are not retryable).
+        # TODO(rickyx): we don't differentiate transient errors (which might be
+        # retryable) and permanent errors (which are not retryable).
         pass
 
+    @staticmethod
     def _reconcile_stopped(
-        self, non_terminated_cloud_nodes: Dict[CloudInstanceId, CloudInstance]
+        non_terminated_cloud_nodes: Dict[CloudInstanceId, CloudInstance]
     ) -> Dict[str, IMInstanceUpdateEvent]:
         """
         For any IM (instance manager) instance with a cloud node id, if the mapped
@@ -211,8 +215,9 @@ class CloudProviderReconciler(IReconciler):
         # instance id removed, and GCed later.)
         pass
 
+    @staticmethod
     def _reconcile_failed_to_terminate(
-        self, cloud_provider_errors: List[CloudInstanceProviderError]
+        cloud_provider_errors: List[CloudInstanceProviderError],
     ) -> Dict[str, IMInstanceUpdateEvent]:
         """
         For any STOPPING instances, if there's errors in terminating the cloud instance,
