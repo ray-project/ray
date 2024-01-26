@@ -335,6 +335,7 @@ class OperatorFusionRule(Rule):
             logical_op = AbstractMap(
                 name,
                 input_op,
+                min_rows_per_block=min_rows_per_block,
                 ray_remote_args=ray_remote_args,
             )
         self._op_map[op] = logical_op

@@ -3531,7 +3531,6 @@ class Dataset:
         self,
         datasink: Datasink,
         *,
-        num_rows_per_write: Optional[int] = None,
         ray_remote_args: Dict[str, Any] = None,
     ) -> None:
         """Writes the dataset to a custom :class:`~ray.data.Datasink`.
@@ -3540,9 +3539,6 @@ class Dataset:
 
         Args:
             datasink: The :class:`~ray.data.Datasink` to write to.
-            num_rows_per_write: The target number of rows passed to each
-                :meth:`~ray.data.Datasink.write` call. If ``None``, Ray Data passes a
-                system-chosen number of rows.
             ray_remote_args: Kwargs passed to ``ray.remote`` in the write tasks.
         """  # noqa: E501
         if ray_remote_args is None:
@@ -3566,7 +3562,6 @@ class Dataset:
             write_op = Write(
                 logical_plan.dag,
                 datasink,
-                num_rows_per_write=num_rows_per_write,
                 ray_remote_args=ray_remote_args,
             )
             logical_plan = LogicalPlan(write_op)

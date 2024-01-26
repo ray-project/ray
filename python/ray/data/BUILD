@@ -178,6 +178,14 @@ py_test(
 )
 
 py_test(
+    name = "test_datasink",
+    size = "small",
+    srcs = ["tests/test_datasink.py"],
+    tags = ["team:data", "exclusive"],
+    deps = ["//:ray_lib", ":conftest"],
+)
+
+py_test(
     name = "test_ecosystem",
     size = "small",
     srcs = ["tests/test_ecosystem.py"],

@@ -231,6 +231,13 @@ class BlockBasedFileDatasink(_FileDatasink):
                     csv.write_csv(block.to_arrow(), file)
     """  # noqa: E501
 
+    def __init__(
+        self, path, *, num_rows_per_file: Optional[int] = None, **file_datasink_kwargs
+    ):
+        super().__init__(path, **file_datasink_kwargs)
+
+        self._num_rows_per_file = num_rows_per_file
+
     def write_block_to_file(self, block: BlockAccessor, file: "pyarrow.NativeFile"):
         """Write a block of data to a file.
 
@@ -269,3 +276,7 @@ class BlockBasedFileDatasink(_FileDatasink):
             max_attempts=WRITE_FILE_MAX_ATTEMPTS,
             max_backoff_s=WRITE_FILE_RETRY_MAX_BACKOFF_SECONDS,
         )
+
+    @property
+    def num_rows_per_write(self) -> Optional[int]:
+        return self._num_rows_per_file
