@@ -247,6 +247,14 @@ After you apply the Redis objects along with your updated `RayService`, your Ray
 Check out the KubeRay guide on [GCS fault tolerance](kuberay-gcs-ft) to learn more about how Serve leverages the external Redis cluster to provide head node fault tolerance.
 :::
 
+### Replica spread
+
+One way to improve the availability of your Serve application is to spread deployment replicas across multiple nodes so that you still have enough running
+replicas to serve traffic even after certain number of node failures. You can change the spread behavior of your deployment via the `max_replicas_per_node`
+[deployment option](../serve/api/doc/ray.serve.deployment_decorator.rst) which controls how many replicas of a given deployment can run on a single node.
+If you set to 1 then you are effectively strict spreading the deployment replicas. If you don't set it then there is no spread constraint and Serve may
+schedule all replicas of a deployment on a single node as long as the node has enough resources.
+
 (serve-e2e-ft-behavior)=
 ## Serve's recovery procedures
 
