@@ -1057,11 +1057,8 @@ def _setup_ray_cluster_internal(
         ).collect()[0]
     )
 
-    if num_cpus_worker_node is not None or num_gpus_worker_node is not None:
+    if num_cpus_worker_node is not None and num_gpus_worker_node is not None:
         if support_stage_scheduling:
-            num_cpus_worker_node = num_cpus_worker_node or num_cpus_spark_worker
-            num_gpus_worker_node = num_gpus_worker_node or num_gpus_spark_worker
-
             using_stage_scheduling = True
             res_profile = _create_resource_profile(
                 num_cpus_worker_node, num_gpus_worker_node
@@ -1078,12 +1075,24 @@ def _setup_ray_cluster_internal(
                 "scheduling, you need to upgrade spark to 3.4 version or use "
                 "Databricks Runtime 12.x, and you cannot use spark local mode."
             )
-    else:
-        using_stage_scheduling = False
-        res_profile = None
+    elif num_cpus_worker_node is None and num_gpus_worker_node is None:
+        if support_stage_scheduling:
+            # Make one Ray worker node using maximum CPU / GPU resources
+            # of the whole spark worker node, this is the optimal
+            # configuration.
+            num_cpus_worker_node = num_cpus_spark_worker
+            num_gpus_worker_node = num_gpus_spark_worker
+        else:
+            using_stage_scheduling = False
+            res_profile = None
 
-        num_cpus_worker_node = num_spark_task_cpus
-        num_gpus_worker_node = num_spark_task_gpus
+            num_cpus_worker_node = num_spark_task_cpus
+            num_gpus_worker_node = num_spark_task_gpus
+    else:
+        raise ValueError(
+            "'num_cpus_worker_node' and 'num_gpus_worker_node' arguments must be"
+            "set together or unset together."
+        )
 
     (
         ray_worker_node_heap_mem_bytes,
