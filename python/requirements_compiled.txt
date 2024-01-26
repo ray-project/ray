@@ -393,8 +393,6 @@ dill==0.3.7
     #   evaluate
     #   multiprocess
     #   pymoo
-distlib==0.3.8
-    # via virtualenv
 distributed==2022.10.1
     # via dask
 dm-control==1.0.12
