@@ -40,7 +40,6 @@ class _FileDatasink(Datasink):
         block_path_provider: Optional[BlockWritePathProvider] = None,
         dataset_uuid: Optional[str] = None,
         file_format: Optional[str] = None,
-        num_rows_per_file: Optional[int] = None,
     ):
         """Initialize this datasink.
 
@@ -56,8 +55,6 @@ class _FileDatasink(Datasink):
                 included in the filename.
             file_format: The file extension. If specified, files are written with this
                 extension.
-            num_rows_per_block: The maximum number of rows to write per file. If
-                ``None``, write a system-chosen number of rows per file.
         """
         if open_stream_args is None:
             open_stream_args = {}
