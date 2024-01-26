@@ -29,25 +29,49 @@ def main():
         test_targets_file_path = sys.argv[1]
         test_state = sys.argv[2]
     else:
-        print("Invalid number of arguments.")
+        raise ValueError("Invalid number of arguments.")
 
     # Sanity check
     if test_targets_file_path is None:
-        print("Invalid test targets file path.")
+        raise ValueError("Invalid test targets file path.")
 
     # Read test targets from file
     test_targets = []
     with open(test_targets_file_path, "r") as f:
-        test_targets.append(f.read().splitlines())
+        test_targets = f.read().splitlines()
+
+    TEST_PREFIXES = ["darwin:"]
+
     # Obtain all existing flaky tests
-    tests = Test.get_tests(["d"])
-    flaky_tests = Test.filter_tests_by_state(tests, TestState.FLAKY)
-
+    flaky_test_names = obtain_existing_flaky_test_names(prefix_on=False)
     # Eliminate flaky test from list of test targets
-    print(flaky_tests)
-    print("\n\n\n")
-    
+    non_flaky_test_targets = [test for test in test_targets if test not in flaky_test_names]
 
+    # Write non-flaky test targets to file
+    with open(test_targets_file_path, "w") as f:
+        f.write("\n".join(non_flaky_test_targets))
+
+def obtain_existing_flaky_test_names(prefix_on: bool = False):
+    """
+    Obtain all existing flaky test names.
+
+    Args:
+        prefix_on (bool): Whether to include prefix in test name.
+
+    Returns:
+        List[str]: List of test names.
+    """
+    TEST_PREFIXES = ["darwin:"]
+
+    # Obtain all existing flaky tests
+    tests = Test.get_tests(TEST_PREFIXES)
+    flaky_tests = Test.filter_tests_by_state(tests, TestState.FLAKY)
+    flaky_test_names = [test.get_name() for test in flaky_tests]
+    if prefix_on:
+        return flaky_test_names
+    else:
+        no_prefix_flaky_test_names = [test.get_name().removeprefix(prefix) for test in flaky_tests for prefix in TEST_PREFIXES if test.get_name().startswith(prefix)]
+        return no_prefix_flaky_test_names
 
 if __name__ == "__main__":
     main()
