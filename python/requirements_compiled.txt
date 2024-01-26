@@ -2388,12 +2388,6 @@ uvloop==0.19.0
     #   vmc-draas-client-bindings
     #   vsphere-automation-sdk
     # via vsphere-automation-sdk
-virtualenv==20.25.0
-    # via
-    #   -r /ray/ci/../python/requirements.txt
-    #   pytest-virtualenv
-    # via vsphere-automation-sdk
-    # via vsphere-automation-sdk
 vsphere-automation-sdk @ git+https://github.com/vmware/vsphere-automation-sdk-python.git@v8.0.1.0
     # via -r /ray/ci/../python/requirements/test-requirements.txt
 wandb==0.13.4
