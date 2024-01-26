@@ -1082,6 +1082,10 @@ def _setup_ray_cluster_internal(
             # configuration.
             num_cpus_worker_node = num_cpus_spark_worker
             num_gpus_worker_node = num_gpus_spark_worker
+            using_stage_scheduling = True
+            res_profile = _create_resource_profile(
+                num_cpus_worker_node, num_gpus_worker_node
+            )
         else:
             using_stage_scheduling = False
             res_profile = None
