@@ -268,12 +268,6 @@ class AutoscalingConfig:
     def get_raw_config_mutable(self) -> Dict[str, Any]:
         return self._configs
 
-    def get_provider_config(self) -> Dict[str, Any]:
-        return self._configs.get("provider", {})
-
-    def get_cluster_name(self) -> str:
-        return self._configs.get("cluster_name", "")
-
     @property
     def provider(self) -> Provider:
         provider_str = self._configs.get("provider", {}).get("type", "")
