@@ -203,6 +203,7 @@ def test_update_from_s3(mock_client) -> None:
     assert test.get_oncall() == "ci"
     assert test["github_issue_number"] == "1234"
 
+
 @pytest.mark.parametrize(
     "gen_s3_return, prefixes, expected_tests",
     [
@@ -261,7 +262,7 @@ def test_update_from_s3(mock_client) -> None:
                     "team": "core",
                     "state": TestState.PASSING,
                 },
-            ]
+            ],
         ),
         (
             [
@@ -368,9 +369,9 @@ def test_update_from_s3(mock_client) -> None:
                     "team": "core",
                     "state": TestState.PASSING,
                 },
-            ]
-        )
-    ]
+            ],
+        ),
+    ],
 )
 @mock.patch("ray_release.test.Test.gen_from_s3")
 def test_get_tests(mock_gen_s3, gen_s3_return, prefixes, expected_tests) -> None:
@@ -381,6 +382,7 @@ def test_get_tests(mock_gen_s3, gen_s3_return, prefixes, expected_tests) -> None
         assert test["name"] == expected_tests[i]["name"]
         assert test["team"] == expected_tests[i]["team"]
         assert test["state"] == expected_tests[i]["state"]
+
 
 @pytest.mark.parametrize(
     "input_tests, test_state, expected_tests",
@@ -428,7 +430,7 @@ def test_get_tests(mock_gen_s3, gen_s3_return, prefixes, expected_tests) -> None
                     "team": "core",
                     "state": TestState.FLAKY,
                 },
-            ]
+            ],
         ),
         (
             [
@@ -472,10 +474,10 @@ def test_get_tests(mock_gen_s3, gen_s3_return, prefixes, expected_tests) -> None
                     "name": "linux://t4",
                     "team": "core",
                     "state": TestState.PASSING,
-                }
-            ]
-        )
-    ]
+                },
+            ],
+        ),
+    ],
 )
 def test_filter_tests_by_state(input_tests, test_state, expected_tests) -> None:
     tests = Test.filter_tests_by_state(input_tests, test_state)
@@ -484,6 +486,7 @@ def test_filter_tests_by_state(input_tests, test_state, expected_tests) -> None:
         assert test["name"] == expected_tests[i]["name"]
         assert test["team"] == expected_tests[i]["team"]
         assert test["state"] == expected_tests[i]["state"]
+
 
 if __name__ == "__main__":
     sys.exit(pytest.main(["-v", __file__]))
