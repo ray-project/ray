@@ -2717,6 +2717,7 @@ class Dataset:
         block_path_provider: Optional[BlockWritePathProvider] = None,
         arrow_parquet_args_fn: Callable[[], Dict[str, Any]] = lambda: {},
         ray_remote_args: Dict[str, Any] = None,
+        num_rows_per_file: Optional[int] = None,
         **arrow_parquet_args,
     ) -> None:
         """Writes the :class:`~ray.data.Dataset` to parquet files under the provided ``path``.
@@ -2771,6 +2772,8 @@ class Dataset:
                 instead of ``arrow_parquet_args`` if any of your write arguments
                 can't pickled, or if you'd like to lazily resolve the write
                 arguments for each dataset block.
+            num_rows_per_file: The number of rows to write to each file. If ``None``,
+                Ray Data writes a system-chosen number of rows to each file.
             ray_remote_args: Kwargs passed to :meth:`~ray.remote` in the write tasks.
             arrow_parquet_args: Options to pass to
                 `pyarrow.parquet.write_table() <https://arrow.apache.org/docs/python\
@@ -2788,6 +2791,7 @@ class Dataset:
             filename_provider=filename_provider,
             block_path_provider=block_path_provider,
             dataset_uuid=self._uuid,
+            num_rows_per_file=num_rows_per_file,
         )
         self.write_datasink(datasink, ray_remote_args=ray_remote_args)
 
