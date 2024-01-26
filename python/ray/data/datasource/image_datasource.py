@@ -28,7 +28,7 @@ IMAGE_ENCODING_RATIO_ESTIMATE_LOWER_BOUND = 0.5
 
 
 def _tiff_to_np(tiff_path: bytes):
-    """helper function to read in multitiffs"""
+    """helper function to read in multitiffs."""
     from PIL import Image
 
     with Image.open(tiff_path) as img:
