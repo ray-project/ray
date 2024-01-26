@@ -66,8 +66,13 @@ class VirtualClusterNodeSpec : public MessageWrapper<rpc::VirtualClusterNode> {
     return bundle_resource_labels_;
   }
 
+  void SetNodeId(NodeID node_id) { node_id_ = node_id; }
+
+  NodeID GetNodeId() const { return node_id_; }
+
  private:
   const VirtualClusterID vc_id_;
+  NodeID node_id_;
 
   // TODO: make these fields non-const to support flex nodes.
 

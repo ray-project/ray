@@ -415,7 +415,13 @@ std::string ClusterTaskManager::DebugStr() const {
 
 void ClusterTaskManager::ScheduleOnNode(const NodeID &spillback_to,
                                         const std::shared_ptr<internal::Work> &work) {
-  if (spillback_to == self_node_id_ && local_task_manager_) {
+  NodeID spillback_to_raylet_id =
+      NodeID::FromHex(cluster_resource_scheduler_->GetClusterResourceManager()
+                          .GetNodeResources(scheduling::NodeID(spillback_to.Binary()))
+                          .labels.at(kLabelKeyRayletID));
+
+  if (spillback_to_raylet_id == self_node_id_ && local_task_manager_) {
+    work->SetTargetNodeId(scheduling::NodeID(spillback_to.Binary()));
     local_task_manager_->QueueAndScheduleTask(work);
     return;
   }
@@ -441,15 +447,16 @@ void ClusterTaskManager::ScheduleOnNode(const NodeID &spillback_to,
                    << " on a remote node that are no longer available";
   }
 
-  auto node_info_ptr = get_node_info_(spillback_to);
+  auto node_info_ptr = get_node_info_(spillback_to_raylet_id);
   RAY_CHECK(node_info_ptr)
       << "Spilling back to a node manager, but no GCS info found for node "
-      << spillback_to;
+      << spillback_to_raylet_id;
   auto reply = work->reply;
   reply->mutable_retry_at_raylet_address()->set_ip_address(
       node_info_ptr->node_manager_address());
   reply->mutable_retry_at_raylet_address()->set_port(node_info_ptr->node_manager_port());
-  reply->mutable_retry_at_raylet_address()->set_raylet_id(spillback_to.Binary());
+  reply->mutable_retry_at_raylet_address()->set_raylet_id(
+      spillback_to_raylet_id.Binary());
 
   send_reply_callback();
 }

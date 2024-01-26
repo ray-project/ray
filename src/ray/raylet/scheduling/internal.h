@@ -98,10 +98,15 @@ class Work {
     return grant_or_reject || is_selected_based_on_locality;
   }
 
+  void SetTargetNodeId(scheduling::NodeID node_id) { target_node_id_ = node_id; }
+
+  scheduling::NodeID GetTargetNodeId() const { return target_node_id_; }
+
  private:
   WorkStatus status_ = WorkStatus::WAITING;
   UnscheduledWorkCause unscheduled_work_cause_ =
       UnscheduledWorkCause::WAITING_FOR_RESOURCE_ACQUISITION;
+  scheduling::NodeID target_node_id_;
 };
 
 typedef std::function<const rpc::GcsNodeInfo *(const NodeID &node_id)> NodeInfoGetter;

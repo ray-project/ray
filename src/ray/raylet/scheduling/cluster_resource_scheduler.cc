@@ -66,8 +66,8 @@ void ClusterResourceScheduler::Init(
       local_node_resources,
       get_used_object_store_memory,
       get_pull_manager_at_capacity,
-      [this](const NodeResources &local_resource_update) {
-        cluster_resource_manager_->AddOrUpdateNode(local_node_id_, local_resource_update);
+      [this](scheduling::NodeID node_id, const NodeResources &local_resource_update) {
+        cluster_resource_manager_->AddOrUpdateNode(node_id, local_resource_update);
       });
   RAY_CHECK(!local_node_id_.IsNil());
   cluster_resource_manager_->AddOrUpdateNode(local_node_id_, local_node_resources);
@@ -250,8 +250,8 @@ bool ClusterResourceScheduler::SubtractRemoteNodeAvailableResources(
 std::string ClusterResourceScheduler::DebugString(void) const {
   std::stringstream buffer;
   buffer << "\nLocal id: " << local_node_id_.ToInt();
-  buffer << " Local resources: " << local_resource_manager_->DebugString();
-  buffer << " Cluster resources: " << cluster_resource_manager_->DebugString();
+  buffer << " \nLocal resources: " << local_resource_manager_->DebugString();
+  buffer << " \nCluster resources: " << cluster_resource_manager_->DebugString();
   return buffer.str();
 }
 

@@ -33,6 +33,8 @@ from ray.exceptions import AsyncioActorExit
 from ray.util.annotations import DeveloperAPI, PublicAPI
 from ray.util.placement_group import _configure_placement_group_based_on_context
 from ray.util.scheduling_strategies import (
+    In,
+    NodeLabelSchedulingStrategy,
     PlacementGroupSchedulingStrategy,
     SchedulingStrategyT,
 )
@@ -41,7 +43,6 @@ from ray.util.tracing.tracing_helper import (
     _tracing_actor_creation,
     _tracing_actor_method_invocation,
 )
-from ray.util.virtual_cluster import rewrite_virtual_cluster_resources
 
 logger = logging.getLogger(__name__)
 
@@ -930,15 +931,6 @@ class ActorClass:
             function_signature = meta.method_meta.signatures["__init__"]
             creation_args = signature.flatten_args(function_signature, args, kwargs)
 
-        if ray.get_runtime_context().get_virtual_cluster_id():
-            resources = rewrite_virtual_cluster_resources(
-                ray.get_runtime_context().get_virtual_cluster_id(), resources
-            )
-            actor_placement_resources = rewrite_virtual_cluster_resources(
-                ray.get_runtime_context().get_virtual_cluster_id(),
-                actor_placement_resources,
-            )
-
         if scheduling_strategy is None or isinstance(
             scheduling_strategy, PlacementGroupSchedulingStrategy
         ):
@@ -975,6 +967,19 @@ class ActorClass:
                 )
             else:
                 scheduling_strategy = "DEFAULT"
+
+        if ray.get_runtime_context().get_virtual_cluster_id():
+            if isinstance(scheduling_strategy, PlacementGroupSchedulingStrategy):
+                # TODO(jjyao) Implement pg using vc
+                pass
+            else:
+                scheduling_strategy = NodeLabelSchedulingStrategy(
+                    {
+                        "ray.io/virtual_cluster_id": In(
+                            ray.get_runtime_context().get_virtual_cluster_id()
+                        )
+                    }
+                )
 
         serialized_runtime_env_info = None
         if runtime_env is not None:

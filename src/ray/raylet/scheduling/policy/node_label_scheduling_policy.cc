@@ -168,7 +168,9 @@ NodeLabelSchedulingPolicy::SelectFeasibleNodes(
   for (const auto &pair : nodes_) {
     const auto &node_id = pair.first;
     const auto &node_resources = pair.second.GetLocalView();
-    if (is_node_alive_(node_id) && node_resources.IsFeasible(resource_request)) {
+    const auto &raylet_id = scheduling::NodeID(
+        NodeID::FromHex(node_resources.labels.at(kLabelKeyRayletID)).Binary());
+    if (is_node_alive_(raylet_id) && node_resources.IsFeasible(resource_request)) {
       candidate_nodes.emplace(node_id, &pair.second);
     }
   }

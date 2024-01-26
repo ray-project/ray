@@ -132,6 +132,7 @@ void NodeManagerConfig::AddDefaultLabels(const std::string &self_node_id) {
         << "The label key name " << key << " should never be set by the user.";
   }
   labels[kLabelKeyNodeID] = self_node_id;
+  labels[kLabelKeyRayletID] = self_node_id;
 }
 
 NodeManager::NodeManager(instrumented_io_context &io_service,
@@ -163,7 +164,7 @@ NodeManager::NodeManager(instrumented_io_context &io_service,
             // could use a fraction of a CPU.
             return static_cast<int64_t>(
                 cluster_resource_scheduler_->GetLocalResourceManager()
-                    .GetLocalAvailableCpus());
+                    .GetLocalAvailableCpus(scheduling::NodeID(self_node_id_.Binary())));
           },
           config.num_prestart_python_workers,
           config.maximum_startup_concurrency,

@@ -96,6 +96,10 @@ constexpr char kLibraryPathEnvName[] = "LD_LIBRARY_PATH";
 #define RAY_LABEL_KEY_PREFIX "ray.io/"
 /// Default node label key: node_id
 constexpr char kLabelKeyNodeID[] = RAY_LABEL_KEY_PREFIX "node_id";
+/// Raylet id equals to the root/physical node id
+constexpr char kLabelKeyRayletID[] = RAY_LABEL_KEY_PREFIX "raylet_id";
+constexpr char kLabelKeyParentNodeID[] = RAY_LABEL_KEY_PREFIX "parent_node_id";
+constexpr char kLabelKeyVirtualClusterID[] = RAY_LABEL_KEY_PREFIX "virtual_cluster_id";
 #undef RAY_LABEL_KEY_PREFIX
 
 /// All nodes implicitly have resources with this prefix and the quantity is 1.

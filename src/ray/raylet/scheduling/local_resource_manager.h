@@ -51,41 +51,47 @@ using WorkArtifact = std::variant<WorkFootprint, scheduling::ResourceID>;
 /// This class is not thread safe.
 class LocalResourceManager : public syncer::ReporterInterface {
  public:
-  LocalResourceManager(
-      scheduling::NodeID local_node_id,
-      const NodeResources &node_resources,
-      std::function<int64_t(void)> get_used_object_store_memory,
-      std::function<bool(void)> get_pull_manager_at_capacity,
-      std::function<void(const NodeResources &)> resource_change_subscriber);
+  LocalResourceManager(scheduling::NodeID local_node_id,
+                       const NodeResources &node_resources,
+                       std::function<int64_t(void)> get_used_object_store_memory,
+                       std::function<bool(void)> get_pull_manager_at_capacity,
+                       std::function<void(scheduling::NodeID, const NodeResources &)>
+                           resource_change_subscriber);
 
-  scheduling::NodeID GetNodeId() const { return local_node_id_; }
+  scheduling::NodeID GetLocalRayletID() const { return local_raylet_id_; }
 
   /// Add a local resource that is available.
   ///
   /// \param resource_id: Resource which we want to update.
   /// \param resource_total: New capacity of the resource.
-  void AddLocalResourceInstances(scheduling::ResourceID resource_id,
+  void AddLocalResourceInstances(scheduling::NodeID node_id,
+                                 scheduling::ResourceID resource_id,
                                  const std::vector<FixedPoint> &instances);
 
   /// Delete a given resource from the local node.
   ///
   /// \param resource_id: Resource we want to delete
-  void DeleteLocalResource(scheduling::ResourceID resource_id);
+  void DeleteLocalResource(scheduling::NodeID node_id,
+                           scheduling::ResourceID resource_id);
 
   /// Check whether the available resources are empty.
   ///
   /// \param resource_id: Resource which we want to check.
-  bool IsAvailableResourceEmpty(scheduling::ResourceID resource_id) const;
+  bool IsAvailableResourceEmpty(scheduling::NodeID node_id,
+                                scheduling::ResourceID resource_id) const;
 
   /// Return local resources.
-  NodeResourceInstances GetLocalResources() const { return local_resources_; }
+  NodeResourceInstances GetLocalResources() const {
+    return local_nodes_.at(local_raylet_id_);
+  }
 
   /// Increase the available resource instances of this node.
   ///
   /// \param resource_id id of the resource.
   /// \param instances instances to be added to available resources.
   ///
-  void AddResourceInstances(scheduling::ResourceID resource_id,
+  void AddResourceInstances(scheduling::NodeID node_id,
+                            scheduling::ResourceID resource_id,
                             const std::vector<double> &cpu_instances);
 
   /// Decrease the available resource instances of this node.
@@ -95,7 +101,8 @@ class LocalResourceManager : public syncer::ReporterInterface {
   /// \param allow_going_negative Allow the values to go negative (disable underflow).
   ///
   /// \return Underflow capacities of reousrce instances after subtracting the resources.
-  std::vector<double> SubtractResourceInstances(scheduling::ResourceID resource_id,
+  std::vector<double> SubtractResourceInstances(scheduling::NodeID node_id,
+                                                scheduling::ResourceID resource_id,
                                                 const std::vector<double> &instances,
                                                 bool allow_going_negative = false);
 
@@ -110,33 +117,49 @@ class LocalResourceManager : public syncer::ReporterInterface {
   /// \return True if local node has enough resources to satisfy the resource request.
   /// False otherwise.
   bool AllocateLocalTaskResources(
+      scheduling::NodeID node_id,
       const absl::flat_hash_map<std::string, double> &task_resources,
       std::shared_ptr<TaskResourceInstances> task_allocation);
 
-  bool AllocateLocalTaskResources(const ResourceRequest &resource_request,
+  bool AllocateLocalTaskResources(scheduling::NodeID node_id,
+                                  const ResourceRequest &resource_request,
                                   std::shared_ptr<TaskResourceInstances> task_allocation);
 
-  void ReleaseWorkerResources(std::shared_ptr<TaskResourceInstances> task_allocation);
+  void ReleaseWorkerResources(scheduling::NodeID node_id,
+                              std::shared_ptr<TaskResourceInstances> task_allocation);
+
+  bool IsAvailable(scheduling::NodeID node_id, const ResourceRequest &resource_request);
+
+  void AddVirtualNode(scheduling::NodeID node_id, NodeResourceInstances node) {
+    local_nodes_[node_id] = node;
+    OnResourceOrStateChanged();
+  }
+
+  void RemoveVirtualNode(scheduling::NodeID node_id) {
+    local_nodes_.erase(node_id);
+    OnResourceOrStateChanged();
+  }
 
   // Removes idle time for a WorkFootprint, thereby marking it busy.
   void SetBusyFootprint(WorkFootprint item);
   // Sets the idle time for a WorkFootprint to now.
   void SetIdleFootprint(WorkFootprint item);
 
-  double GetLocalAvailableCpus() const;
+  double GetLocalAvailableCpus(scheduling::NodeID node_id) const;
 
   /// Return human-readable string for this scheduler state.
   std::string DebugString() const;
 
   /// Get the number of cpus on this node.
-  uint64_t GetNumCpus() const;
+  uint64_t GetNumCpus(scheduling::NodeID node_id) const;
 
   /// Check whether the specific resource exists or not in local node.
   ///
   /// \param resource_name: the specific resource name.
   ///
   /// \return true, if exist. otherwise, false.
-  bool ResourcesExist(scheduling::ResourceID resource_id) const;
+  bool ResourcesExist(scheduling::NodeID node_id,
+                      scheduling::ResourceID resource_id) const;
 
   std::optional<syncer::RaySyncMessage> CreateSyncMessage(
       int64_t after_version, syncer::MessageType message_type) const override;
@@ -170,7 +193,7 @@ class LocalResourceManager : public syncer::ReporterInterface {
   void OnResourceOrStateChanged();
 
   /// Convert local resources to NodeResources.
-  NodeResources ToNodeResources() const;
+  NodeResources ToNodeResources(scheduling::NodeID node_id) const;
 
   /// Allocate local resources to satisfy a given request (resource_request).
   ///
@@ -181,6 +204,7 @@ class LocalResourceManager : public syncer::ReporterInterface {
   /// \return true, if allocation successful. If false, the caller needs to free the
   /// allocated resources, i.e., task_allocation.
   bool AllocateTaskResourceInstances(
+      scheduling::NodeID node_id,
       const ResourceRequest &resource_request,
       std::shared_ptr<TaskResourceInstances> task_allocation);
 
@@ -191,7 +215,8 @@ class LocalResourceManager : public syncer::ReporterInterface {
   /// \param record_idle_resource: Whether to record the idle resource. This is false
   ///   when the resource was allocated partially so its idle state is actually not
   ///   affected.
-  void FreeTaskResourceInstances(std::shared_ptr<TaskResourceInstances> task_allocation,
+  void FreeTaskResourceInstances(scheduling::NodeID node_id,
+                                 std::shared_ptr<TaskResourceInstances> task_allocation,
                                  bool record_idle_resource = true);
 
   void UpdateAvailableObjectStoreMemResource();
@@ -202,10 +227,10 @@ class LocalResourceManager : public syncer::ReporterInterface {
 
   absl::optional<absl::Time> GetResourceIdleTime() const;
 
-  /// Identifier of local node.
-  scheduling::NodeID local_node_id_;
-  /// Resources of local node.
-  NodeResourceInstances local_resources_;
+  /// Identifier of local raylet.
+  scheduling::NodeID local_raylet_id_;
+  /// Resources of local nodes.
+  absl::flat_hash_map<scheduling::NodeID, NodeResourceInstances> local_nodes_;
 
   /// A map storing when the resource was last idle.
   absl::flat_hash_map<WorkArtifact, absl::optional<absl::Time>> last_idle_times_;
@@ -214,7 +239,8 @@ class LocalResourceManager : public syncer::ReporterInterface {
   /// Function to get whether the pull manager is at capacity.
   std::function<bool(void)> get_pull_manager_at_capacity_;
   /// Subscribes to resource changes.
-  std::function<void(const NodeResources &)> resource_change_subscriber_;
+  std::function<void(scheduling::NodeID, const NodeResources &)>
+      resource_change_subscriber_;
 
   // Version of this resource. It will incr by one whenever the state changed.
   int64_t version_ = 0;

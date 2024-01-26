@@ -115,6 +115,9 @@ class WorkerInterface {
 
   virtual void SetJobId(const JobID &job_id) = 0;
 
+  virtual void SetTargetNodeId(scheduling::NodeID node_id) = 0;
+  virtual scheduling::NodeID GetTargetNodeId() = 0;
+
  protected:
   virtual void SetStartupToken(StartupToken startup_token) = 0;
 
@@ -242,6 +245,10 @@ class Worker : public WorkerInterface {
 
   void SetJobId(const JobID &job_id);
 
+  void SetTargetNodeId(scheduling::NodeID node_id) { target_node_id_ = node_id; }
+
+  scheduling::NodeID GetTargetNodeId() { return target_node_id_; }
+
  protected:
   void SetStartupToken(StartupToken startup_token);
 
@@ -309,6 +316,7 @@ class Worker : public WorkerInterface {
   absl::Time task_assign_time_;
   /// If true, a RPC need to be sent to notify the worker about GCS restarting.
   bool notify_gcs_restarted_ = false;
+  scheduling::NodeID target_node_id_;
 };
 
 }  // namespace raylet

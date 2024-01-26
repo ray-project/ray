@@ -24,64 +24,85 @@
 namespace ray {
 
 LocalResourceManager::LocalResourceManager(
-    scheduling::NodeID local_node_id,
+    scheduling::NodeID local_raylet_id,
     const NodeResources &node_resources,
     std::function<int64_t(void)> get_used_object_store_memory,
     std::function<bool(void)> get_pull_manager_at_capacity,
-    std::function<void(const NodeResources &)> resource_change_subscriber)
-    : local_node_id_(local_node_id),
+    std::function<void(scheduling::NodeID, const NodeResources &)>
+        resource_change_subscriber)
+    : local_raylet_id_(local_raylet_id),
       get_used_object_store_memory_(get_used_object_store_memory),
       get_pull_manager_at_capacity_(get_pull_manager_at_capacity),
       resource_change_subscriber_(resource_change_subscriber) {
   RAY_CHECK(node_resources.total == node_resources.available);
-  local_resources_.available = NodeResourceInstanceSet(node_resources.total);
-  local_resources_.total = NodeResourceInstanceSet(node_resources.total);
-  local_resources_.labels = node_resources.labels;
+  NodeResourceInstances resources;
+  resources.available = NodeResourceInstanceSet(node_resources.total);
+  resources.total = NodeResourceInstanceSet(node_resources.total);
+  resources.labels = node_resources.labels;
+  local_nodes_[local_raylet_id] = resources;
   const auto now = absl::Now();
   for (const auto &resource_id : node_resources.total.ExplicitResourceIds()) {
     last_idle_times_[resource_id] = now;
   }
-  RAY_LOG(DEBUG) << "local resources: " << local_resources_.DebugString();
+  RAY_LOG(DEBUG) << "local resources: " << local_nodes_[local_raylet_id].DebugString();
 }
 
 void LocalResourceManager::AddLocalResourceInstances(
-    scheduling::ResourceID resource_id, const std::vector<FixedPoint> &instances) {
-  local_resources_.available.Add(resource_id, instances);
-  local_resources_.total.Add(resource_id, instances);
+    scheduling::NodeID node_id,
+    scheduling::ResourceID resource_id,
+    const std::vector<FixedPoint> &instances) {
+  local_nodes_[node_id].available.Add(resource_id, instances);
+  local_nodes_[node_id].total.Add(resource_id, instances);
   SetResourceIdle(resource_id);
   OnResourceOrStateChanged();
 }
 
-void LocalResourceManager::DeleteLocalResource(scheduling::ResourceID resource_id) {
-  local_resources_.available.Remove(resource_id);
-  local_resources_.total.Remove(resource_id);
+void LocalResourceManager::DeleteLocalResource(scheduling::NodeID node_id,
+                                               scheduling::ResourceID resource_id) {
+  local_nodes_[node_id].available.Remove(resource_id);
+  local_nodes_[node_id].total.Remove(resource_id);
   last_idle_times_.erase(resource_id);
   OnResourceOrStateChanged();
 }
 
 bool LocalResourceManager::IsAvailableResourceEmpty(
-    scheduling::ResourceID resource_id) const {
-  return local_resources_.available.Sum(resource_id) <= 0;
+    scheduling::NodeID node_id, scheduling::ResourceID resource_id) const {
+  return local_nodes_.at(node_id).available.Sum(resource_id) <= 0;
 }
 
 std::string LocalResourceManager::DebugString(void) const {
   std::stringstream buffer;
-  buffer << local_resources_.DebugString();
+  for (const auto &[node_id, node] : local_nodes_) {
+    buffer << node_id << ": " << node.DebugString() << "\t";
+  }
   buffer << " is_draining: " << IsLocalNodeDraining();
   buffer << " is_idle: " << IsLocalNodeIdle();
   return buffer.str();
 }
 
-uint64_t LocalResourceManager::GetNumCpus() const {
-  return static_cast<uint64_t>(local_resources_.total.Sum(ResourceID::CPU()).Double());
+uint64_t LocalResourceManager::GetNumCpus(scheduling::NodeID node_id) const {
+  return static_cast<uint64_t>(
+      local_nodes_.at(node_id).total.Sum(ResourceID::CPU()).Double());
+}
+
+bool LocalResourceManager::IsAvailable(scheduling::NodeID node_id,
+                                       const ResourceRequest &resource_request) {
+  auto resource_instances = std::make_shared<TaskResourceInstances>();
+  if (AllocateTaskResourceInstances(node_id, resource_request, resource_instances)) {
+    FreeTaskResourceInstances(node_id, resource_instances, false);
+    return true;
+  } else {
+    return false;
+  }
 }
 
 bool LocalResourceManager::AllocateTaskResourceInstances(
+    scheduling::NodeID node_id,
     const ResourceRequest &resource_request,
     std::shared_ptr<TaskResourceInstances> task_allocation) {
   RAY_CHECK(task_allocation != nullptr);
   auto allocation =
-      local_resources_.available.TryAllocate(resource_request.GetResourceSet());
+      local_nodes_[node_id].available.TryAllocate(resource_request.GetResourceSet());
   if (allocation) {
     *task_allocation = TaskResourceInstances(*allocation);
     for (const auto &resource_id : resource_request.ResourceIds()) {
@@ -94,15 +115,17 @@ bool LocalResourceManager::AllocateTaskResourceInstances(
 }
 
 void LocalResourceManager::FreeTaskResourceInstances(
-    std::shared_ptr<TaskResourceInstances> task_allocation, bool record_idle_resource) {
+    scheduling::NodeID node_id,
+    std::shared_ptr<TaskResourceInstances> task_allocation,
+    bool record_idle_resource) {
   RAY_CHECK(task_allocation != nullptr);
   for (auto &resource_id : task_allocation->ResourceIds()) {
-    if (!local_resources_.total.Has(resource_id)) {
+    if (!local_nodes_[node_id].total.Has(resource_id)) {
       continue;
     }
-    local_resources_.available.Free(resource_id, task_allocation->Get(resource_id));
-    const auto &available = local_resources_.available.Get(resource_id);
-    const auto &total = local_resources_.total.Get(resource_id);
+    local_nodes_[node_id].available.Free(resource_id, task_allocation->Get(resource_id));
+    const auto &available = local_nodes_[node_id].available.Get(resource_id);
+    const auto &total = local_nodes_[node_id].total.Get(resource_id);
     bool is_idle = true;
     for (size_t i = 0; i < total.size(); ++i) {
       RAY_CHECK_GE(total[i], available[i]);
@@ -114,6 +137,7 @@ void LocalResourceManager::FreeTaskResourceInstances(
     }
   }
 }
+
 void LocalResourceManager::SetBusyFootprint(WorkFootprint item) {
   auto prev = last_idle_times_.find(item);
   if (prev != last_idle_times_.end() && !prev->second.has_value()) {
@@ -134,7 +158,9 @@ void LocalResourceManager::SetIdleFootprint(WorkFootprint item) {
 }
 
 void LocalResourceManager::AddResourceInstances(
-    scheduling::ResourceID resource_id, const std::vector<double> &resource_instances) {
+    scheduling::NodeID node_id,
+    scheduling::ResourceID resource_id,
+    const std::vector<double> &resource_instances) {
   std::vector<FixedPoint> resource_instances_fp =
       FixedPointVectorFromDouble(resource_instances);
 
@@ -142,16 +168,16 @@ void LocalResourceManager::AddResourceInstances(
     return;
   }
 
-  local_resources_.available.Free(resource_id, resource_instances_fp);
-  const auto &available = local_resources_.available.Get(resource_id);
-  const auto &total = local_resources_.total.Get(resource_id);
+  local_nodes_[node_id].available.Free(resource_id, resource_instances_fp);
+  const auto &available = local_nodes_[node_id].available.Get(resource_id);
+  const auto &total = local_nodes_[node_id].total.Get(resource_id);
   bool is_idle = true;
   for (size_t i = 0; i < total.size(); ++i) {
     RAY_CHECK_GE(total[i], available[i]);
     is_idle = is_idle && (available[i] == total[i]);
   }
 
-  if (is_idle) {
+  if (is_idle && node_id == local_raylet_id_) {
     SetResourceIdle(resource_id);
   }
 
@@ -159,6 +185,7 @@ void LocalResourceManager::AddResourceInstances(
 }
 
 std::vector<double> LocalResourceManager::SubtractResourceInstances(
+    scheduling::NodeID node_id,
     scheduling::ResourceID resource_id,
     const std::vector<double> &resource_instances,
     bool allow_going_negative) {
@@ -169,7 +196,7 @@ std::vector<double> LocalResourceManager::SubtractResourceInstances(
     return resource_instances;  // No underflow.
   }
 
-  auto underflow = local_resources_.available.Subtract(
+  auto underflow = local_nodes_[node_id].available.Subtract(
       resource_id, resource_instances_fp, allow_going_negative);
 
   // If there's any non 0 instance delta to be subtracted, the source should be marked as
@@ -220,9 +247,10 @@ absl::optional<absl::Time> LocalResourceManager::GetResourceIdleTime() const {
 }
 
 bool LocalResourceManager::AllocateLocalTaskResources(
+    scheduling::NodeID node_id,
     const ResourceRequest &resource_request,
     std::shared_ptr<TaskResourceInstances> task_allocation) {
-  if (AllocateTaskResourceInstances(resource_request, task_allocation)) {
+  if (AllocateTaskResourceInstances(node_id, resource_request, task_allocation)) {
     OnResourceOrStateChanged();
     return true;
   }
@@ -230,29 +258,30 @@ bool LocalResourceManager::AllocateLocalTaskResources(
 }
 
 bool LocalResourceManager::AllocateLocalTaskResources(
+    scheduling::NodeID node_id,
     const absl::flat_hash_map<std::string, double> &task_resources,
     std::shared_ptr<TaskResourceInstances> task_allocation) {
   RAY_CHECK(task_allocation != nullptr);
   // We don't track object store memory demands so no need to allocate them.
   ResourceRequest resource_request = ResourceMapToResourceRequest(
       task_resources, /*requires_object_store_memory=*/false);
-  return AllocateLocalTaskResources(resource_request, task_allocation);
+  return AllocateLocalTaskResources(node_id, resource_request, task_allocation);
 }
 
 void LocalResourceManager::ReleaseWorkerResources(
-    std::shared_ptr<TaskResourceInstances> task_allocation) {
+    scheduling::NodeID node_id, std::shared_ptr<TaskResourceInstances> task_allocation) {
   if (task_allocation == nullptr || task_allocation->IsEmpty()) {
     return;
   }
-  FreeTaskResourceInstances(task_allocation);
+  FreeTaskResourceInstances(node_id, task_allocation);
   OnResourceOrStateChanged();
 }
 
-NodeResources LocalResourceManager::ToNodeResources() const {
+NodeResources LocalResourceManager::ToNodeResources(scheduling::NodeID node_id) const {
   NodeResources node_resources;
-  node_resources.available = local_resources_.available.ToNodeResourceSet();
-  node_resources.total = local_resources_.total.ToNodeResourceSet();
-  node_resources.labels = local_resources_.labels;
+  node_resources.available = local_nodes_.at(node_id).available.ToNodeResourceSet();
+  node_resources.total = local_nodes_.at(node_id).total.ToNodeResourceSet();
+  node_resources.labels = local_nodes_.at(node_id).labels;
   node_resources.is_draining = is_local_node_draining_;
   return node_resources;
 }
@@ -263,15 +292,17 @@ void LocalResourceManager::UpdateAvailableObjectStoreMemResource() {
     return;
   }
 
-  auto &total_instances = local_resources_.total.Get(ResourceID::ObjectStoreMemory());
+  auto &total_instances =
+      local_nodes_[local_raylet_id_].total.Get(ResourceID::ObjectStoreMemory());
   RAY_CHECK_EQ(total_instances.size(), 1u);
   const double used = get_used_object_store_memory_();
   const double total = total_instances[0].Double();
   auto new_available =
       std::vector<FixedPoint>{FixedPoint(total >= used ? total - used : 0.0)};
-  if (new_available != local_resources_.available.Get(ResourceID::ObjectStoreMemory())) {
-    local_resources_.available.Set(ResourceID::ObjectStoreMemory(),
-                                   std::move(new_available));
+  if (new_available !=
+      local_nodes_[local_raylet_id_].available.Get(ResourceID::ObjectStoreMemory())) {
+    local_nodes_[local_raylet_id_].available.Set(ResourceID::ObjectStoreMemory(),
+                                                 std::move(new_available));
 
     // This is more of a discrete approximate of the last idle object store memory usage.
     // TODO(rickyx): in order to know exactly when object store becomes idle/busy, we
@@ -290,15 +321,15 @@ void LocalResourceManager::UpdateAvailableObjectStoreMemResource() {
   }
 }
 
-double LocalResourceManager::GetLocalAvailableCpus() const {
-  return local_resources_.available.Sum(ResourceID::CPU()).Double();
+double LocalResourceManager::GetLocalAvailableCpus(scheduling::NodeID node_id) const {
+  return local_nodes_.at(node_id).available.Sum(ResourceID::CPU()).Double();
 }
 
 void LocalResourceManager::PopulateResourceUsage(
     rpc::ResourcesData &resources_data) const {
-  resources_data.set_node_id(local_node_id_.Binary());
+  resources_data.set_node_id(local_raylet_id_.Binary());
 
-  NodeResources resources = ToNodeResources();
+  NodeResources resources = ToNodeResources(local_raylet_id_);
 
   auto total = resources.total.GetResourceMap();
   resources_data.mutable_resources_total()->insert(total.begin(), total.end());
@@ -349,6 +380,20 @@ void LocalResourceManager::PopulateResourceUsage(
       }
     }
   }
+
+  for (const auto &[node_id, node] : local_nodes_) {
+    rpc::VirtualNode *virtual_node = resources_data.add_virtual_nodes();
+    virtual_node->set_node_id(node_id.Binary());
+    resources = ToNodeResources(node_id);
+    total = resources.total.GetResourceMap();
+    virtual_node->mutable_resources_total()->insert(total.begin(), total.end());
+    for (const auto &[resource_name, available] : resources.available.GetResourceMap()) {
+      (*virtual_node->mutable_resources_available())[resource_name] =
+          std::max(available, 0.0);
+    }
+    virtual_node->mutable_labels()->insert(resources.labels.begin(),
+                                           resources.labels.end());
+  }
 }
 
 std::optional<syncer::RaySyncMessage> LocalResourceManager::CreateSyncMessage(
@@ -367,7 +412,7 @@ std::optional<syncer::RaySyncMessage> LocalResourceManager::CreateSyncMessage(
   rpc::ResourcesData resources_data;
   PopulateResourceUsage(resources_data);
 
-  msg.set_node_id(local_node_id_.Binary());
+  msg.set_node_id(local_raylet_id_.Binary());
   msg.set_version(version_);
   msg.set_message_type(message_type);
   std::string serialized_msg;
@@ -387,11 +432,15 @@ void LocalResourceManager::OnResourceOrStateChanged() {
   if (resource_change_subscriber_ == nullptr) {
     return;
   }
-  resource_change_subscriber_(ToNodeResources());
+
+  for (const auto &[node_id, node] : local_nodes_) {
+    resource_change_subscriber_(node_id, ToNodeResources(node_id));
+  }
 }
 
-bool LocalResourceManager::ResourcesExist(scheduling::ResourceID resource_id) const {
-  return local_resources_.total.Has(resource_id);
+bool LocalResourceManager::ResourcesExist(scheduling::NodeID node_id,
+                                          scheduling::ResourceID resource_id) const {
+  return local_nodes_.at(node_id).total.Has(resource_id);
 }
 
 absl::flat_hash_map<std::string, LocalResourceManager::ResourceUsage>

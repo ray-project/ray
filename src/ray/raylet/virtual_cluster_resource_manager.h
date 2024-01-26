@@ -40,11 +40,11 @@ struct VirtualClusterTransactionState {
 
   explicit VirtualClusterTransactionState(
       const VirtualClusterNodesSpec &nodes_spec,
-      std::shared_ptr<TaskResourceInstances> resources)
+      std::vector<std::shared_ptr<TaskResourceInstances>> resources)
       : state_(PREPARED), nodes_spec_(nodes_spec), resources_(resources) {}
   CommitState state_;
   VirtualClusterNodesSpec nodes_spec_;
-  std::shared_ptr<TaskResourceInstances> resources_;
+  std::vector<std::shared_ptr<TaskResourceInstances>> resources_;
 };
 
 /// `VirtualClusterResourceManager` responsible for managing the resources that

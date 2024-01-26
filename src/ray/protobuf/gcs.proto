@@ -546,6 +546,13 @@ message ResourceLoad {
   repeated ResourceDemand resource_demands = 1;
 }
 
+message VirtualNode {
+  bytes node_id = 1;
+  map<string, double> resources_total = 2;
+  map<string, double> resources_available = 3;
+  map<string, string> labels = 4;
+}
+
 message ResourcesData {
   reserved 3;
   // Node id.
@@ -582,6 +589,7 @@ message ResourcesData {
   bool is_draining = 16;
   // Why the node is not idle.
   repeated string node_activity = 17;
+  repeated VirtualNode virtual_nodes = 18;
 }
 
 message ResourceUsageBatchData {

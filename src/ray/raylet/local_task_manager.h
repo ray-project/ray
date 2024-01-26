@@ -247,6 +247,7 @@ class LocalTaskManager : public ILocalTaskManager {
   void Dispatch(
       std::shared_ptr<WorkerInterface> worker,
       absl::flat_hash_map<WorkerID, std::shared_ptr<WorkerInterface>> &leased_workers_,
+      scheduling::NodeID target_node_id,
       const std::shared_ptr<TaskResourceInstances> &allocated_instances,
       const RayTask &task,
       rpc::RequestWorkerLeaseReply *reply,

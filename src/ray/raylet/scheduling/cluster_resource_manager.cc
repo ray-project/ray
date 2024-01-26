@@ -97,7 +97,36 @@ bool ClusterResourceManager::UpdateNode(scheduling::NodeID node_id,
   local_view.is_draining = resource_data.is_draining();
 
   AddOrUpdateNode(node_id, local_view);
-  received_node_resources_[node_id] = std::move(local_view);
+  received_node_resources_[node_id] = local_view;
+
+  std::vector<scheduling::NodeID> vnodes_to_remove;
+  for (const auto &pair : nodes_) {
+    if (pair.second.GetLocalView().labels.contains(kLabelKeyRayletID) &&
+        pair.second.GetLocalView().labels.at(kLabelKeyRayletID) ==
+            NodeID::FromBinary(node_id.Binary()).Hex() &&
+        pair.first != node_id) {
+      vnodes_to_remove.emplace_back(pair.first);
+    }
+  }
+  for (const auto &vnode_id : vnodes_to_remove) {
+    RemoveNode(vnode_id);
+  }
+  for (const auto &virtual_node : resource_data.virtual_nodes()) {
+    if (virtual_node.node_id() == node_id.Binary()) {
+      // This is the root node.
+      continue;
+    }
+
+    resources_total = MapFromProtobuf(virtual_node.resources_total());
+    resources_available = MapFromProtobuf(virtual_node.resources_available());
+    node_resources = ResourceMapToNodeResources(resources_total, resources_available);
+    local_view.total = node_resources.total;
+    local_view.available = node_resources.available;
+    local_view.labels = MapFromProtobuf(virtual_node.labels());
+    scheduling::NodeID vnode_id(virtual_node.node_id());
+    AddOrUpdateNode(vnode_id, local_view);
+    received_node_resources_[vnode_id] = local_view;
+  }
   return true;
 }
 
@@ -263,8 +292,8 @@ bool ClusterResourceManager::UpdateNodeNormalTaskResources(
 std::string ClusterResourceManager::DebugString() const {
   std::stringstream buffer;
   for (auto &node : GetResourceView()) {
-    buffer << "node id: " << node.first.ToInt();
-    buffer << node.second.GetLocalView().DebugString();
+    buffer << node.first.ToInt() << ": ";
+    buffer << node.second.GetLocalView().DebugString() << "\t";
   }
   buffer << " " << bundle_location_index_.DebugString();
   return buffer.str();

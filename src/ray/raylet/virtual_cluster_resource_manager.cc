@@ -50,17 +50,26 @@ bool VirtualClusterResourceManager::PrepareBundle(
     return false;
   }
 
-  auto resource_instances = std::make_shared<TaskResourceInstances>();
-  bool allocated =
-      cluster_resource_scheduler_->GetLocalResourceManager().AllocateLocalTaskResources(
-          nodes_spec.GetRequiredResources(), resource_instances);
-
-  if (!allocated) {
+  if (!cluster_resource_scheduler_->GetLocalResourceManager().IsAvailable(
+          cluster_resource_scheduler_->GetLocalResourceManager().GetLocalRayletID(),
+          nodes_spec.GetRequiredResources())) {
     return false;
   }
 
+  std::vector<std::shared_ptr<TaskResourceInstances>> resource_allocations;
+  for (const auto &node_spec : nodes_spec.fixed_size_nodes) {
+    auto resource_instances = std::make_shared<TaskResourceInstances>();
+    bool allocated =
+        cluster_resource_scheduler_->GetLocalResourceManager().AllocateLocalTaskResources(
+            cluster_resource_scheduler_->GetLocalResourceManager().GetLocalRayletID(),
+            node_spec.GetRequiredResources(),
+            resource_instances);
+    RAY_CHECK(allocated);
+    resource_allocations.emplace_back(resource_instances);
+  }
+
   vcs_[vc_id] =
-      std::make_shared<VirtualClusterTransactionState>(nodes_spec, resource_instances);
+      std::make_shared<VirtualClusterTransactionState>(nodes_spec, resource_allocations);
   return true;
 }
 
@@ -93,27 +102,32 @@ void VirtualClusterResourceManager::CommitBundle(VirtualClusterID vc_id) {
   const auto &bundle_state = it->second;
   bundle_state->state_ = VirtualClusterTransactionState::CommitState::COMMITTED;
 
-  const auto &task_resource_instances = *bundle_state->resources_;
-  const auto &nodes_spec = bundle_state->nodes_spec_;
-
-  // For each resource {"CPU": 2} allocated, add a {"CPU_vc_vchex": 2}. For the resource
-  // "vcbundle" we did not allocate but we will add 1000 anyway. I feel we can write it
-  // better by adding a ResourceSet of {"vcbundle":1000} in prepare time so we won't need
-  // the `if` here.
-  const auto &resources = nodes_spec.GetFormattedResources();
-  for (const auto &[name, count] : resources) {
-    auto label = VirtualClusterResourceLabel::Parse(name);
-    RAY_CHECK(label.has_value());
-    const std::string &original_resource_name = label->original_resource;
-    if (original_resource_name != kVirtualClusterBundle_ResourceLabel) {
-      const auto &instances =
-          task_resource_instances.Get(ResourceID(original_resource_name));
-      cluster_resource_scheduler_->GetLocalResourceManager().AddLocalResourceInstances(
-          scheduling::ResourceID{name}, instances);
-    } else {
-      cluster_resource_scheduler_->GetLocalResourceManager().AddLocalResourceInstances(
-          scheduling::ResourceID{name}, {count});
+  for (size_t i = 0; i < bundle_state->nodes_spec_.fixed_size_nodes.size(); ++i) {
+    const auto &task_resource_instances = *bundle_state->resources_[i];
+    auto &node_spec = bundle_state->nodes_spec_.fixed_size_nodes[i];
+    NodeResourceInstances node;
+    node.total = NodeResourceInstanceSet();
+    for (const auto &resource_id : task_resource_instances.ResourceIds()) {
+      node.total.Set(resource_id, task_resource_instances.Get(resource_id));
     }
+    NodeID node_id = NodeID::FromRandom();
+    node_spec.SetNodeId(node_id);
+    node.available = node.total;
+    node.labels = MapFromProtobuf(node_spec.GetMessage().labels());
+    node.labels[kLabelKeyNodeID] = node_id.Hex();
+    node.labels[kLabelKeyVirtualClusterID] = vc_id.Hex();
+    node.labels[kLabelKeyRayletID] =
+        NodeID::FromBinary(cluster_resource_scheduler_->GetLocalResourceManager()
+                               .GetLocalRayletID()
+                               .Binary())
+            .Hex();
+    node.labels[kLabelKeyParentNodeID] =
+        NodeID::FromBinary(cluster_resource_scheduler_->GetLocalResourceManager()
+                               .GetLocalRayletID()
+                               .Binary())
+            .Hex();
+    cluster_resource_scheduler_->GetLocalResourceManager().AddVirtualNode(
+        scheduling::NodeID(node_id.Binary()), node);
   }
 }
 
@@ -131,35 +145,17 @@ void VirtualClusterResourceManager::ReturnBundle(VirtualClusterID vc_id) {
   }
 
   // Return original resources to resource allocator `ClusterResourceScheduler`.
-  auto original_resources = it->second->resources_;
-  cluster_resource_scheduler_->GetLocalResourceManager().ReleaseWorkerResources(
-      original_resources);
-
-  // Substract virtual cluster resources from resource allocator
-  // `ClusterResourceScheduler`.
-  const auto &nodes_spec = bundle_state->nodes_spec_;
-  // TODO: what if the tasks and actors in the VC has not yet been killed?
-  const auto &virtual_cluster_resources = nodes_spec.GetFormattedResources();
-
-  auto resource_instances = std::make_shared<TaskResourceInstances>();
-  cluster_resource_scheduler_->GetLocalResourceManager().AllocateLocalTaskResources(
-      virtual_cluster_resources, resource_instances);
-
-  for (const auto &resource : virtual_cluster_resources) {
-    auto resource_id = scheduling::ResourceID{resource.first};
-    if (cluster_resource_scheduler_->GetLocalResourceManager().IsAvailableResourceEmpty(
-            resource_id)) {
-      RAY_LOG(DEBUG) << "Available bundle resource:[" << resource.first
-                     << "] is empty, Will delete it from local resource";
-      // Delete local resource if available resource is empty when return bundle, or there
-      // will be resource leak.
-      cluster_resource_scheduler_->GetLocalResourceManager().DeleteLocalResource(
-          resource_id);
-    } else {
-      RAY_LOG(DEBUG) << "Available bundle resource:[" << resource.first
-                     << "] is not empty. Resources are not deleted from the local node.";
-    }
+  for (size_t i = 0; i < bundle_state->nodes_spec_.fixed_size_nodes.size(); ++i) {
+    const auto &task_resource_instances = bundle_state->resources_[i];
+    const auto &node_spec = bundle_state->nodes_spec_.fixed_size_nodes[i];
+    cluster_resource_scheduler_->GetLocalResourceManager().ReleaseWorkerResources(
+        cluster_resource_scheduler_->GetLocalResourceManager().GetLocalRayletID(),
+        task_resource_instances);
+    cluster_resource_scheduler_->GetLocalResourceManager().RemoveVirtualNode(
+        scheduling::NodeID(node_spec.GetNodeId().Binary()));
   }
+
+  // TODO: what if the tasks and actors in the VC has not yet been killed?
   vcs_.erase(it);
 }
 

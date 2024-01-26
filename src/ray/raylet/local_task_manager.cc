@@ -228,7 +228,8 @@ void LocalTaskManager::DispatchScheduledTasksToWorkers() {
       bool schedulable =
           !cluster_resource_scheduler_->GetLocalResourceManager().IsLocalNodeDraining() &&
           cluster_resource_scheduler_->GetLocalResourceManager()
-              .AllocateLocalTaskResources(spec.GetRequiredResources().GetResourceMap(),
+              .AllocateLocalTaskResources(work->GetTargetNodeId(),
+                                          spec.GetRequiredResources().GetResourceMap(),
                                           allocated_instances);
 
       if (!schedulable) {
@@ -351,8 +352,12 @@ void LocalTaskManager::SpillWaitingTasks() {
     }
 
     if (!scheduling_node_id.IsNil() &&
-        scheduling_node_id.Binary() != self_node_id_.Binary()) {
-      NodeID node_id = NodeID::FromBinary(scheduling_node_id.Binary());
+        scheduling_node_id.Binary() != (*it)->GetTargetNodeId().Binary()) {
+      // TODO(jjyao) Handle spillback to another local virtual node.
+      NodeID node_id =
+          NodeID::FromHex(cluster_resource_scheduler_->GetClusterResourceManager()
+                              .GetNodeResources(scheduling_node_id)
+                              .labels.at(kLabelKeyRayletID));
       Spillback(node_id, *it);
       if (!task.GetTaskSpecification().GetDependencies().empty()) {
         task_dependency_manager_.RemoveTaskDependencies(
@@ -390,11 +395,14 @@ bool LocalTaskManager::TrySpillback(const std::shared_ptr<internal::Work> &work,
       &is_infeasible);
 
   if (is_infeasible || scheduling_node_id.IsNil() ||
-      scheduling_node_id.Binary() == self_node_id_.Binary()) {
+      scheduling_node_id.Binary() == work->GetTargetNodeId().Binary()) {
     return false;
   }
 
-  NodeID node_id = NodeID::FromBinary(scheduling_node_id.Binary());
+  NodeID node_id =
+      NodeID::FromHex(cluster_resource_scheduler_->GetClusterResourceManager()
+                          .GetNodeResources(scheduling_node_id)
+                          .labels.at(kLabelKeyRayletID));
   Spillback(node_id, work);
   num_unschedulable_task_spilled_++;
   if (!work->task.GetTaskSpecification().GetDependencies().empty()) {
@@ -432,6 +440,7 @@ bool LocalTaskManager::PoppedWorkerHandler(
       task.GetTaskSpecification().GetRequiredResources().GetResourceMap();
   for (auto &entry : required_resource) {
     if (!cluster_resource_scheduler_->GetLocalResourceManager().ResourcesExist(
+            scheduling::NodeID(self_node_id_.Binary()),
             scheduling::ResourceID(entry.first))) {
       RAY_CHECK(task.GetTaskSpecification().PlacementGroupBundleId().first !=
                 PlacementGroupID::Nil());
@@ -486,7 +495,7 @@ bool LocalTaskManager::PoppedWorkerHandler(
     dispatched = false;
     // We've already acquired resources so we need to release them.
     cluster_resource_scheduler_->GetLocalResourceManager().ReleaseWorkerResources(
-        work->allocated_instances);
+        work->GetTargetNodeId(), work->allocated_instances);
     work->allocated_instances = nullptr;
     // Release pinned task args.
     ReleaseTaskArgs(task_id);
@@ -536,7 +545,13 @@ bool LocalTaskManager::PoppedWorkerHandler(
     RAY_LOG(DEBUG) << "Dispatching task " << task_id << " to worker "
                    << worker->WorkerId();
 
-    Dispatch(worker, leased_workers_, work->allocated_instances, task, reply, callback);
+    Dispatch(worker,
+             leased_workers_,
+             work->GetTargetNodeId(),
+             work->allocated_instances,
+             task,
+             reply,
+             callback);
     erase_from_dispatch_queue_fn(work, scheduling_class);
     dispatched = true;
   }
@@ -759,7 +774,7 @@ bool LocalTaskManager::CancelTask(
         if ((*work_it)->GetState() == internal::WorkStatus::WAITING_FOR_WORKER) {
           // We've already acquired resources so we need to release them.
           cluster_resource_scheduler_->GetLocalResourceManager().ReleaseWorkerResources(
-              (*work_it)->allocated_instances);
+              (*work_it)->GetTargetNodeId(), (*work_it)->allocated_instances);
           // Release pinned task args.
           ReleaseTaskArgs(task_id);
         }
@@ -845,6 +860,7 @@ bool LocalTaskManager::AnyPendingTasksForResourceAcquisition(
 void LocalTaskManager::Dispatch(
     std::shared_ptr<WorkerInterface> worker,
     absl::flat_hash_map<WorkerID, std::shared_ptr<WorkerInterface>> &leased_workers,
+    scheduling::NodeID target_node_id,
     const std::shared_ptr<TaskResourceInstances> &allocated_instances,
     const RayTask &task,
     rpc::RequestWorkerLeaseReply *reply,
@@ -862,6 +878,8 @@ void LocalTaskManager::Dispatch(
   }
   worker->AssignTaskId(task_spec.TaskId());
   worker->SetAssignedTask(task);
+
+  worker->SetTargetNodeId(target_node_id);
 
   // Pass the contact info of the worker to use.
   reply->set_worker_pid(worker->GetProcess().GetId());
@@ -952,7 +970,7 @@ void LocalTaskManager::ReleaseWorkerResources(std::shared_ptr<WorkerInterface> w
       allocated_instances->Remove(ResourceID::CPU());
     }
     cluster_resource_scheduler_->GetLocalResourceManager().ReleaseWorkerResources(
-        worker->GetAllocatedInstances());
+        worker->GetTargetNodeId(), worker->GetAllocatedInstances());
     worker->ClearAllocatedInstances();
     return;
   }
@@ -965,7 +983,7 @@ void LocalTaskManager::ReleaseWorkerResources(std::shared_ptr<WorkerInterface> w
       lifetime_allocated_instances->Remove(ResourceID::CPU());
     }
     cluster_resource_scheduler_->GetLocalResourceManager().ReleaseWorkerResources(
-        worker->GetLifetimeAllocatedInstances());
+        worker->GetTargetNodeId(), worker->GetLifetimeAllocatedInstances());
     worker->ClearLifetimeAllocatedInstances();
   }
 }
@@ -980,7 +998,7 @@ bool LocalTaskManager::ReleaseCpuResourcesFromUnblockedWorker(
     if (worker->GetAllocatedInstances()->Has(ResourceID::CPU())) {
       auto cpu_instances = worker->GetAllocatedInstances()->GetDouble(ResourceID::CPU());
       cluster_resource_scheduler_->GetLocalResourceManager().AddResourceInstances(
-          ResourceID::CPU(), cpu_instances);
+          worker->GetTargetNodeId(), ResourceID::CPU(), cpu_instances);
       worker->MarkBlocked();
       return true;
     }
@@ -1001,7 +1019,10 @@ bool LocalTaskManager::ReturnCpuResourcesToBlockedWorker(
       // CPU resources by repeatedly blocking / unblocking a task. By allowing it to go
       // negative, at most one task can "borrow" this worker's resources.
       cluster_resource_scheduler_->GetLocalResourceManager().SubtractResourceInstances(
-          ResourceID::CPU(), cpu_instances, /*allow_going_negative=*/true);
+          worker->GetTargetNodeId(),
+          ResourceID::CPU(),
+          cpu_instances,
+          /*allow_going_negative=*/true);
       worker->MarkUnblocked();
       return true;
     }
@@ -1041,8 +1062,8 @@ uint64_t LocalTaskManager::MaxRunningTasksPerSchedulingClass(
     SchedulingClass sched_cls_id) const {
   auto sched_cls = TaskSpecification::GetSchedulingClassDescriptor(sched_cls_id);
   double cpu_req = sched_cls.resource_set.Get(ResourceID::CPU()).Double();
-  uint64_t total_cpus =
-      cluster_resource_scheduler_->GetLocalResourceManager().GetNumCpus();
+  uint64_t total_cpus = cluster_resource_scheduler_->GetLocalResourceManager().GetNumCpus(
+      scheduling::NodeID(self_node_id_.Binary()));
 
   if (cpu_req == 0 || total_cpus == 0) {
     return std::numeric_limits<uint64_t>::max();
