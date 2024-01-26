@@ -19,7 +19,6 @@ from ray._private.utils import get_or_create_event_loop
 from ray.actor import ActorClass
 from ray.remote_function import RemoteFunction
 from ray.serve import metrics
-from ray.serve._private.autoscaling_metrics import InMemoryMetricsStore
 from ray.serve._private.common import (
     DeploymentID,
     ReplicaName,
@@ -54,13 +53,9 @@ from ray.serve._private.logging_utils import (
     configure_component_memory_profiler,
     get_component_logger_file_path,
 )
+from ray.serve._private.metrics_utils import InMemoryMetricsStore, MetricsPusher
 from ray.serve._private.router import RequestMetadata
-from ray.serve._private.utils import (
-    MetricsPusher,
-    merge_dict,
-    parse_import_path,
-    wrap_to_ray_error,
-)
+from ray.serve._private.utils import parse_import_path, wrap_to_ray_error
 from ray.serve._private.version import DeploymentVersion
 from ray.serve.config import AutoscalingConfig
 from ray.serve.deployment import Deployment
@@ -100,6 +95,10 @@ class ReplicaMetricsManager:
         - Queue length metrics are periodically recorded as user-facing gauges.
     """
 
+    PUSH_METRICS_TO_CONTROLLER_TASK_NAME = "push_metrics_to_controller"
+    RECORD_METRICS_TASK_NAME = "record_metrics"
+    SET_REPLICA_REQUEST_METRIC_GAUGE_TASK_NAME = "set_replica_request_metric_gauge"
+
     def __init__(
         self,
         replica_tag: ReplicaTag,
@@ -114,6 +113,7 @@ class ReplicaMetricsManager:
         self._controller_handle = ray.get_actor(
             SERVE_CONTROLLER_NAME, namespace=SERVE_NAMESPACE
         )
+        self._num_ongoing_requests = 0
 
         # Request counter (only set on replica startup).
         self._restart_counter = metrics.Counter(
@@ -159,27 +159,13 @@ class ReplicaMetricsManager:
         )
 
         # Set user-facing gauges periodically.
-        self._metrics_pusher.register_task(
+        self._metrics_pusher.register_or_update_task(
+            self.SET_REPLICA_REQUEST_METRIC_GAUGE_TASK_NAME,
             self._set_replica_requests_metrics,
             RAY_SERVE_GAUGE_METRIC_SET_PERIOD_S,
         )
 
-        if self._autoscaling_config:
-            # Push autoscaling metrics to the controller periodically.
-            self._metrics_pusher.register_task(
-                self._collect_autoscaling_metrics,
-                self._autoscaling_config.metrics_interval_s,
-                self._controller_handle.record_autoscaling_metrics.remote,
-            )
-            # Collect autoscaling metrics locally periodically.
-            self._metrics_pusher.register_task(
-                self.get_num_pending_and_running_requests,
-                min(
-                    RAY_SERVE_REPLICA_AUTOSCALING_METRIC_RECORD_PERIOD_S,
-                    self._autoscaling_config.metrics_interval_s,
-                ),
-                self._add_autoscaling_metrics_point,
-            )
+        self.set_autoscaling_config(autoscaling_config)
 
     def start(self):
         """Start periodic background tasks."""
@@ -189,14 +175,41 @@ class ReplicaMetricsManager:
         """Stop periodic background tasks."""
         self._metrics_pusher.shutdown()
 
-    def set_autoscaling_config(self, autoscaling_config: AutoscalingConfig):
+    def set_autoscaling_config(self, autoscaling_config: Optional[AutoscalingConfig]):
         """Dynamically update autoscaling config."""
+
         self._autoscaling_config = autoscaling_config
 
-    def get_num_pending_and_running_requests(self) -> int:
+        if self._autoscaling_config:
+            # Push autoscaling metrics to the controller periodically.
+            self._metrics_pusher.register_or_update_task(
+                self.PUSH_METRICS_TO_CONTROLLER_TASK_NAME,
+                self._collect_autoscaling_metrics,
+                self._autoscaling_config.metrics_interval_s,
+                self._controller_handle.record_autoscaling_metrics.remote,
+            )
+            # Collect autoscaling metrics locally periodically.
+            self._metrics_pusher.register_or_update_task(
+                self.RECORD_METRICS_TASK_NAME,
+                self.get_num_ongoing_requests,
+                min(
+                    RAY_SERVE_REPLICA_AUTOSCALING_METRIC_RECORD_PERIOD_S,
+                    self._autoscaling_config.metrics_interval_s,
+                ),
+                self._add_autoscaling_metrics_point,
+            )
+
+    def inc_num_ongoing_requests(self) -> int:
+        """Increment the current total queue length of requests for this replica."""
+        self._num_ongoing_requests += 1
+
+    def dec_num_ongoing_requests(self) -> int:
+        """Decrement the current total queue length of requests for this replica."""
+        self._num_ongoing_requests -= 1
+
+    def get_num_ongoing_requests(self) -> int:
         """Get current total queue length of requests for this replica."""
-        stats = self._get_handle_request_stats() or {}
-        return stats.get("pending", 0) + stats.get("running", 0)
+        return self._num_ongoing_requests
 
     def record_request_metrics(
         self, *, route: str, status_str: str, latency_ms: float, was_error: bool
@@ -221,30 +234,7 @@ class ReplicaMetricsManager:
         )
 
     def _set_replica_requests_metrics(self):
-        self._num_processing_items.set(self._get_num_running_requests())
-        self._num_pending_items.set(self._get_num_pending_requests())
-
-    def _get_num_running_requests(self) -> int:
-        stats = self._get_handle_request_stats() or {}
-        return stats.get("running", 0)
-
-    def _get_num_pending_requests(self) -> int:
-        stats = self._get_handle_request_stats() or {}
-        return stats.get("pending", 0)
-
-    def _get_handle_request_stats(self) -> Optional[Dict[str, int]]:
-        replica_actor_name = self._deployment_id.to_replica_actor_class_name()
-        actor_stats = ray.runtime_context.get_runtime_context()._get_actor_call_stats()
-        method_stats = actor_stats.get(f"{replica_actor_name}.handle_request")
-        streaming_method_stats = actor_stats.get(
-            f"{replica_actor_name}.handle_request_streaming"
-        )
-        method_stats_java = actor_stats.get(
-            f"{replica_actor_name}.handle_request_from_java"
-        )
-        return merge_dict(
-            merge_dict(method_stats, streaming_method_stats), method_stats_java
-        )
+        self._num_processing_items.set(self.get_num_ongoing_requests())
 
 
 class ReplicaActor:
@@ -346,7 +336,7 @@ class ReplicaActor:
         This runs on a separate thread (using a Ray concurrency group) so it will
         not be blocked by user code.
         """
-        return self._metrics_manager.get_num_pending_and_running_requests()
+        return self._metrics_manager.get_num_ongoing_requests()
 
     @contextmanager
     def _wrap_user_method_call(self, request_metadata: RequestMetadata):
@@ -369,12 +359,15 @@ class ReplicaActor:
         start_time = time.time()
         user_exception = None
         try:
+            self._metrics_manager.inc_num_ongoing_requests()
             yield
         except Exception as e:
             user_exception = e
             logger.error(f"Request failed:\n{e}")
             if ray.util.pdb._is_ray_debugger_enabled():
                 ray.util.pdb._post_mortem()
+        finally:
+            self._metrics_manager.dec_num_ongoing_requests()
 
         latency_ms = (time.time() - start_time) * 1000
         if user_exception is None:
@@ -645,9 +638,7 @@ class ReplicaActor:
         while True:
             await asyncio.sleep(wait_loop_period_s)
 
-            num_ongoing_requests = (
-                self._metrics_manager.get_num_pending_and_running_requests()
-            )
+            num_ongoing_requests = self._metrics_manager.get_num_ongoing_requests()
             if num_ongoing_requests > 0:
                 logger.info(
                     f"Waiting for an additional {wait_loop_period_s}s to shut down "

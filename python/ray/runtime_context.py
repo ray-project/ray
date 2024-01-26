@@ -400,18 +400,6 @@ class RuntimeContext(object):
         self.worker.check_connected()
         return self.worker.gcs_client.address
 
-    def _get_actor_call_stats(self):
-        """Get the current worker's task counters.
-
-        Returns:
-            A dictionary keyed by the function name. The values are
-            dictionaries with form ``{"pending": 0, "running": 1,
-            "finished": 2}``.
-        """
-        worker = self.worker
-        worker.check_connected()
-        return worker.core_worker.get_actor_call_stats()
-
     @Deprecated(message="Use get_accelerator_ids() instead", warning=True)
     def get_resource_ids(self) -> Dict[str, List[str]]:
         return self.get_accelerator_ids()

@@ -162,6 +162,33 @@ class OpRuntimeMetrics:
             return self.num_outputs_of_finished_tasks / self.num_tasks_finished
 
     @property
+    def average_bytes_per_output(self) -> Optional[float]:
+        """Average size in bytes of output blocks."""
+        if self.num_outputs_generated == 0:
+            return None
+        else:
+            return self.bytes_outputs_generated / self.num_outputs_generated
+
+    @property
+    def obj_store_mem_pending(self) -> Optional[float]:
+        """Estimated size in bytes of output blocks in Ray generator buffers.
+
+        If an estimate isn't available, this property returns ``None``.
+        """
+        context = ray.data.DataContext.get_current()
+        if context._max_num_blocks_in_streaming_gen_buffer is None:
+            return None
+
+        estimated_bytes_per_output = (
+            self.average_bytes_per_output or context.target_max_block_size
+        )
+        return (
+            self.num_tasks_running
+            * estimated_bytes_per_output
+            * context._max_num_blocks_in_streaming_gen_buffer
+        )
+
+    @property
     def average_bytes_inputs_per_task(self) -> Optional[float]:
         """Average size in bytes of ref bundles passed to tasks, or ``None`` if no
         tasks have been submitted."""
