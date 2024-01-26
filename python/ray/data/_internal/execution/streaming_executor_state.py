@@ -138,7 +138,7 @@ class OpBufferQueue:
         """Whether next RefBundle is available.
 
         Args:
-            output_split_idx (int): If specified, only check ref bundles with the
+            output_split_idx: If specified, only check ref bundles with the
                 given output split.
         """
         if output_split_idx is None:
@@ -159,7 +159,7 @@ class OpBufferQueue:
     def pop(self, output_split_idx: Optional[int] = None) -> Optional[RefBundle]:
         """Pop a RefBundle from the queue.
         Args:
-            output_split_idx (int): If specified, only pop a RefBundle
+            output_split_idx: If specified, only pop a RefBundle
                 with the given output split.
         Returns:
             A RefBundle if available, otherwise None.
