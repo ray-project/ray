@@ -57,7 +57,7 @@ class TestDatabricksHook:
         )
         monkeypatch.setattr(
             "ray.util.spark.databricks_hook.get_databricks_display_html_function",
-            lambda x: print(x),
+            lambda: lambda x: print(x),
         )
         try:
             setup_ray_cluster(
