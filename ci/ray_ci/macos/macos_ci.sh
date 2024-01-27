@@ -16,8 +16,8 @@ filter_flaky_tests() {
   while read -r line; do
     test_targets+="$line\n"
   done
-  # shellcheck disable=SC2086
-  echo $test_targets | bazel run ci/ray_ci/automation:filter_tests -- "flaky"
+
+  bazel run ci/ray_ci/automation:filter_tests -- "$test_targets" "flaky"
 }
 
 run_small_test() {

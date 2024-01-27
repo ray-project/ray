@@ -20,9 +20,9 @@ def main():
     init_global_config(bazel_runfile("release/ray_release/configs/oss_config.yaml"))
 
     # Process arguments
-    test_targets = sys.stdin.read()
-    if len(sys.argv) == 2:
-        test_state = sys.argv[1]
+    if len(sys.argv) == 3:
+        test_targets = sys.argv[1]
+        test_state = sys.argv[2]
     else:
         raise ValueError("Invalid number of arguments.")
 
