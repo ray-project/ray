@@ -1703,10 +1703,6 @@ pyrsistent==0.20.0
     # via jsonschema
 pysocks==1.7.1
     # via requests
-pyspark==3.4.1
-    # via
-    #   -r /ray/ci/../python/requirements/test-requirements.txt
-    #   raydp
 pytest==7.0.1
     # via
     #   -r /ray/ci/../python/requirements/test-requirements.txt
