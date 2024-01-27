@@ -2,6 +2,7 @@ import logging
 import os
 import sys
 import threading
+import json
 from typing import Any, Dict, List, Optional, Tuple
 
 import ray._private.ray_constants as ray_constants
@@ -9,15 +10,14 @@ from ray._private.client_mode_hook import (
     _explicitly_disable_client_mode,
     _explicitly_enable_client_mode,
 )
+import ray._private.usage.usage_constants as usage_constant
 from ray._private.ray_logging import setup_logger
 from ray.job_config import JobConfig
 from ray.util.annotations import DeveloperAPI
+from ray._private.utils import check_version_info
+
 
 logger = logging.getLogger(__name__)
-
-# This version string is incremented to indicate breaking changes in the
-# protocol that require upgrading the client version.
-CURRENT_PROTOCOL_VERSION = "2023-06-27"
 
 
 class _ClientContext:
@@ -119,28 +119,16 @@ class _ClientContext:
         ray.util.serialization_addons.apply(ctx)
 
     def _check_versions(self, conn_info: Dict[str, Any], ignore_version: bool) -> None:
-        local_major_minor = f"{sys.version_info[0]}.{sys.version_info[1]}"
-        if not conn_info["python_version"].startswith(local_major_minor):
-            version_str = f"{local_major_minor}.{sys.version_info[2]}"
-            msg = (
-                "Python minor versions differ between client and server:"
-                + f" client is {version_str},"
-                + f" server is {conn_info['python_version']}"
-            )
-            if ignore_version or "RAY_IGNORE_VERSION_MISMATCH" in os.environ:
-                logger.warning(msg)
-            else:
-                raise RuntimeError(msg)
-        if CURRENT_PROTOCOL_VERSION != conn_info["protocol_version"]:
-            msg = (
-                "Client Ray installation incompatible with server:"
-                + f" client is {CURRENT_PROTOCOL_VERSION},"
-                + f" server is {conn_info['protocol_version']}"
-            )
-            if ignore_version or "RAY_IGNORE_VERSION_MISMATCH" in os.environ:
-                logger.warning(msg)
-            else:
-                raise RuntimeError(msg)
+        # blocking get
+        cluster_metadata = json.loads(
+            self._internal_kv_get(
+                usage_constant.CLUSTER_METADATA_KEY,
+                namespace=ray_constants.KV_NAMESPACE_CLUSTER,
+            ).decode("utf-8")
+        )
+        check_version_info(
+            cluster_metadata, "Ray Client", raise_on_mismatch=not ignore_version
+        )
 
     def disconnect(self):
         """Disconnect the Ray Client."""
