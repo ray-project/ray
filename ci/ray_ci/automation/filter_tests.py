@@ -29,7 +29,6 @@ def main():
     filtered_test_targets = omit_tests_by_state(
         test_targets.split("\\n")[:-1], test_state
     )
-    filtered_test_targets = [test[2:] for test in filtered_test_targets]  # Remove "//"
     print("\n".join(filtered_test_targets))  # Write back to stdout
 
 

@@ -78,19 +78,21 @@ def docker_pull(image: str) -> None:
     )
 
 
-def query_all_test_names_by_state(test_state: str = "flaky", prefix_on: bool = False):
+def query_all_test_names_by_state(
+    prefixes: List[str], test_state: str = "flaky", prefix_on: bool = False
+):
     """
     Query all existing test names by the test state.
 
     Args:
         test_state: Test state to filter by.
             Use string representation from ray_release.test.TestState class.
+        prefixes: List of prefixes to filter by.
         prefix_on: Whether to include test prefix in test name.
 
     Returns:
         List[str]: List of test names.
     """
-    TEST_PREFIXES = ["darwin:"]
 
     # Convert test_state string into TestState enum
     test_state_enum = next(
@@ -100,7 +102,7 @@ def query_all_test_names_by_state(test_state: str = "flaky", prefix_on: bool = F
         raise ValueError("Invalid test state.")
 
     # Obtain all existing tests
-    tests = Test.get_tests(TEST_PREFIXES)
+    tests = Test.get_tests(prefixes)
     # Filter tests by test state
     filtered_tests = Test.filter_tests_by_state(tests, test_state_enum)
     filtered_test_names = [test.get_name() for test in filtered_tests]
@@ -110,7 +112,7 @@ def query_all_test_names_by_state(test_state: str = "flaky", prefix_on: bool = F
         no_prefix_filtered_test_names = [
             test.replace(prefix, "")
             for test in filtered_test_names
-            for prefix in TEST_PREFIXES
+            for prefix in prefixes
             if test.startswith(prefix)
         ]
         return no_prefix_filtered_test_names
@@ -132,12 +134,17 @@ def omit_tests_by_state(
     """
     # Obtain all existing tests with specified test state
     state_test_names = query_all_test_names_by_state(
-        test_state=test_state, prefix_on=False
+        test_state=test_state, prefixes=["darwin:"], prefix_on=False
     )
+    print("Flaky tests:\n", state_test_names)
+    print("Tests:\n", test_targets)
     # Eliminate these test from list of test targets
     test_targets_filtered = [
         test for test in test_targets if test not in state_test_names
     ]
+    test_targets_filtered = [
+        test[2:] for test in test_targets_filtered
+    ]  # Remove "//" prefix
     return test_targets_filtered
 
 
