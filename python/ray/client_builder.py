@@ -41,9 +41,9 @@ class ClientContext(BaseContext):
     python_version: str
     ray_version: str
     ray_commit: str
-    protocol_version: Optional[str]
     _num_clients: int
     _context_to_restore: Optional[ray.util.client.RayAPIStub]
+    protocol_version: Optional[str] = None  # Deprecated
 
     def __enter__(self) -> "ClientContext":
         self._swap_context()
