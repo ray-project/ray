@@ -2233,7 +2233,6 @@ class AutoscalingTest(unittest.TestCase):
             update_interval_s=0,
         )
 
-        # Sleep to make sure updates will be eventually triggered.
         autoscaler.update()
         autoscaler.update()
         self.waitForNodes(2)
@@ -2326,11 +2325,12 @@ class AutoscalingTest(unittest.TestCase):
             update_interval_s=0,
         )
         autoscaler.update()
+        # TODO(rickyx): This is a hack to avoid running into race conditions
+        # within v1 autoscaler. These should no longer be relevant in v2.
+        time.sleep(3)
         autoscaler.update()
         self.waitForNodes(2)
         self.provider.finish_starting_nodes()
-        # TODO(rickyx): This is a hack to avoid running into race conditions
-        # within v1 autoscaler. These should no longer be relevant in v2.
         time.sleep(3)
         autoscaler.update()
         time.sleep(3)
