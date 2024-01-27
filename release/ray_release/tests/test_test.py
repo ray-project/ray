@@ -228,12 +228,10 @@ def _make_test(test_name: str, test_team: str, test_state: TestState) -> Test:
             ],
             ["linux:"],
             [
-                [
-                    _make_test("linux://t1_s3", "core", TestState.FLAKY),
-                    _make_test("linux://t2_s3", "ci", TestState.FLAKY),
-                    _make_test("linux://t3_s3", "core", TestState.FLAKY),
-                    _make_test("linux://t4_s3", "core", TestState.PASSING),
-                ],
+                _make_test("linux://t1_s3", "core", TestState.FLAKY),
+                _make_test("linux://t2_s3", "ci", TestState.FLAKY),
+                _make_test("linux://t3_s3", "core", TestState.FLAKY),
+                _make_test("linux://t4_s3", "core", TestState.PASSING),
             ],
         ),
         (
