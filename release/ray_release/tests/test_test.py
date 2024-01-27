@@ -204,171 +204,63 @@ def test_update_from_s3(mock_client) -> None:
     assert test["github_issue_number"] == "1234"
 
 
+def _make_test(test_name: str, test_team: str, test_state: TestState) -> Test:
+    return Test(
+        {
+            "name": test_name,
+            "team": test_team,
+            "state": test_state,
+        }
+    )
+
+
 @pytest.mark.parametrize(
     "gen_s3_return, prefixes, expected_tests",
     [
         (
             [
                 [
-                    Test(
-                        {
-                            "name": "linux://t1_s3",
-                            "team": "core",
-                            "state": TestState.FLAKY,
-                        }
-                    ),
-                    Test(
-                        {
-                            "name": "linux://t2_s3",
-                            "team": "ci",
-                            "state": TestState.FLAKY,
-                        }
-                    ),
-                    Test(
-                        {
-                            "name": "linux://t3_s3",
-                            "team": "core",
-                            "state": TestState.FLAKY,
-                        }
-                    ),
-                    Test(
-                        {
-                            "name": "linux://t4_s3",
-                            "team": "core",
-                            "state": TestState.PASSING,
-                        }
-                    ),
+                    _make_test("linux://t1_s3", "core", TestState.FLAKY),
+                    _make_test("linux://t2_s3", "ci", TestState.FLAKY),
+                    _make_test("linux://t3_s3", "core", TestState.FLAKY),
+                    _make_test("linux://t4_s3", "core", TestState.PASSING),
                 ],
             ],
             ["linux:"],
             [
-                {
-                    "name": "linux://t1_s3",
-                    "team": "core",
-                    "state": TestState.FLAKY,
-                },
-                {
-                    "name": "linux://t2_s3",
-                    "team": "ci",
-                    "state": TestState.FLAKY,
-                },
-                {
-                    "name": "linux://t3_s3",
-                    "team": "core",
-                    "state": TestState.FLAKY,
-                },
-                {
-                    "name": "linux://t4_s3",
-                    "team": "core",
-                    "state": TestState.PASSING,
-                },
+                [
+                    _make_test("linux://t1_s3", "core", TestState.FLAKY),
+                    _make_test("linux://t2_s3", "ci", TestState.FLAKY),
+                    _make_test("linux://t3_s3", "core", TestState.FLAKY),
+                    _make_test("linux://t4_s3", "core", TestState.PASSING),
+                ],
             ],
         ),
         (
             [
                 [
-                    Test(
-                        {
-                            "name": "linux://t1_s3",
-                            "team": "core",
-                            "state": TestState.FLAKY,
-                        }
-                    ),
-                    Test(
-                        {
-                            "name": "linux://t2_s3",
-                            "team": "ci",
-                            "state": TestState.FLAKY,
-                        }
-                    ),
-                    Test(
-                        {
-                            "name": "linux://t3_s3",
-                            "team": "core",
-                            "state": TestState.FLAKY,
-                        }
-                    ),
-                    Test(
-                        {
-                            "name": "linux://t4_s3",
-                            "team": "core",
-                            "state": TestState.PASSING,
-                        }
-                    ),
+                    _make_test("linux://t1_s3", "core", TestState.FLAKY),
+                    _make_test("linux://t2_s3", "ci", TestState.FLAKY),
+                    _make_test("linux://t3_s3", "core", TestState.FLAKY),
+                    _make_test("linux://t4_s3", "core", TestState.PASSING),
                 ],
                 [
-                    Test(
-                        {
-                            "name": "windows://t1_s3",
-                            "team": "core",
-                            "state": TestState.FLAKY,
-                        }
-                    ),
-                    Test(
-                        {
-                            "name": "windows://t2_s3",
-                            "team": "ci",
-                            "state": TestState.FLAKY,
-                        }
-                    ),
-                    Test(
-                        {
-                            "name": "windows://t3_s3",
-                            "team": "core",
-                            "state": TestState.FLAKY,
-                        }
-                    ),
-                    Test(
-                        {
-                            "name": "windows://t4_s3",
-                            "team": "core",
-                            "state": TestState.PASSING,
-                        }
-                    ),
+                    _make_test("windows://t1_s3", "core", TestState.FLAKY),
+                    _make_test("windows://t2_s3", "ci", TestState.FLAKY),
+                    _make_test("windows://t3_s3", "core", TestState.FLAKY),
+                    _make_test("windows://t4_s3", "core", TestState.PASSING),
                 ],
             ],
             ["linux:", "windows:"],
             [
-                {
-                    "name": "linux://t1_s3",
-                    "team": "core",
-                    "state": TestState.FLAKY,
-                },
-                {
-                    "name": "linux://t2_s3",
-                    "team": "ci",
-                    "state": TestState.FLAKY,
-                },
-                {
-                    "name": "linux://t3_s3",
-                    "team": "core",
-                    "state": TestState.FLAKY,
-                },
-                {
-                    "name": "linux://t4_s3",
-                    "team": "core",
-                    "state": TestState.PASSING,
-                },
-                {
-                    "name": "windows://t1_s3",
-                    "team": "core",
-                    "state": TestState.FLAKY,
-                },
-                {
-                    "name": "windows://t2_s3",
-                    "team": "ci",
-                    "state": TestState.FLAKY,
-                },
-                {
-                    "name": "windows://t3_s3",
-                    "team": "core",
-                    "state": TestState.FLAKY,
-                },
-                {
-                    "name": "windows://t4_s3",
-                    "team": "core",
-                    "state": TestState.PASSING,
-                },
+                _make_test("linux://t1_s3", "core", TestState.FLAKY),
+                _make_test("linux://t2_s3", "ci", TestState.FLAKY),
+                _make_test("linux://t3_s3", "core", TestState.FLAKY),
+                _make_test("linux://t4_s3", "core", TestState.PASSING),
+                _make_test("windows://t1_s3", "core", TestState.FLAKY),
+                _make_test("windows://t2_s3", "ci", TestState.FLAKY),
+                _make_test("windows://t3_s3", "core", TestState.FLAKY),
+                _make_test("windows://t4_s3", "core", TestState.PASSING),
             ],
         ),
     ],
@@ -389,92 +281,28 @@ def test_get_tests(mock_gen_s3, gen_s3_return, prefixes, expected_tests) -> None
     [
         (
             [
-                Test(
-                    {
-                        "name": "windows://t1",
-                        "team": "core",
-                        "state": TestState.FLAKY,
-                    }
-                ),
-                Test(
-                    {
-                        "name": "linux://t2",
-                        "team": "ci",
-                        "state": TestState.PASSING,
-                    }
-                ),
-                Test(
-                    {
-                        "name": "linux://t3",
-                        "team": "core",
-                        "state": TestState.FLAKY,
-                    }
-                ),
-                Test(
-                    {
-                        "name": "linux://t4",
-                        "team": "core",
-                        "state": TestState.PASSING,
-                    }
-                ),
+                _make_test("windows://t1", "core", TestState.FLAKY),
+                _make_test("linux://t2", "ci", TestState.PASSING),
+                _make_test("linux://t3", "core", TestState.FLAKY),
+                _make_test("linux://t4", "core", TestState.PASSING),
             ],
             TestState.FLAKY,
             [
-                {
-                    "name": "windows://t1",
-                    "team": "core",
-                    "state": TestState.FLAKY,
-                },
-                {
-                    "name": "linux://t3",
-                    "team": "core",
-                    "state": TestState.FLAKY,
-                },
+                _make_test("windows://t1", "core", TestState.FLAKY),
+                _make_test("linux://t3", "core", TestState.FLAKY),
             ],
         ),
         (
             [
-                Test(
-                    {
-                        "name": "windows://t1",
-                        "team": "core",
-                        "state": TestState.FLAKY,
-                    }
-                ),
-                Test(
-                    {
-                        "name": "linux://t2",
-                        "team": "ci",
-                        "state": TestState.PASSING,
-                    }
-                ),
-                Test(
-                    {
-                        "name": "linux://t3",
-                        "team": "core",
-                        "state": TestState.FLAKY,
-                    }
-                ),
-                Test(
-                    {
-                        "name": "linux://t4",
-                        "team": "core",
-                        "state": TestState.PASSING,
-                    }
-                ),
+                _make_test("windows://t1", "core", TestState.FLAKY),
+                _make_test("linux://t2", "ci", TestState.PASSING),
+                _make_test("linux://t3", "core", TestState.FLAKY),
+                _make_test("linux://t4", "core", TestState.PASSING),
             ],
             TestState.PASSING,
             [
-                {
-                    "name": "linux://t2",
-                    "team": "ci",
-                    "state": TestState.PASSING,
-                },
-                {
-                    "name": "linux://t4",
-                    "team": "core",
-                    "state": TestState.PASSING,
-                },
+                _make_test("linux://t2", "ci", TestState.PASSING),
+                _make_test("linux://t4", "core", TestState.PASSING),
             ],
         ),
     ],
