@@ -1,13 +1,15 @@
 import os
-from typing import Any, Dict
+from typing import Any, Callable, Dict, Optional, Union
 
 import xgboost
 import xgboost_ray
 from xgboost_ray.tune import TuneReportCheckpointCallback
 
+import ray.train
 from ray.train import Checkpoint
+from ray.train.data_parallel_trainer import DataParallelTrainer
 from ray.train.gbdt_trainer import GBDTTrainer
-from ray.train.xgboost import XGBoostCheckpoint
+from ray.train.xgboost import XGBoostCheckpoint, XGBoostConfig
 from ray.util.annotations import PublicAPI
 
 try:
@@ -122,3 +124,93 @@ class XGBoostTrainer(GBDTTrainer):
         # This is only applicable for xgboost-ray<0.1.16
         if Version(xgboost_ray.__version__) < Version("0.1.16"):
             self._repartition_datasets_to_match_num_actors()
+
+
+class SimpleXGBoostTrainer(DataParallelTrainer):
+    def __init__(
+        self,
+        train_loop_per_worker: Union[Callable[[], None], Callable[[Dict], None]],
+        *,
+        train_loop_config: Optional[Dict] = None,
+        xgboost_config: Optional[XGBoostConfig] = None,
+        scaling_config: Optional[ray.train.ScalingConfig] = None,
+        run_config: Optional[ray.train.RunConfig] = None,
+        datasets: Optional[Dict[str, Any]] = None,
+        dataset_config: Optional[ray.train.DataConfig] = None,
+        metadata: Optional[Dict[str, Any]] = None,
+        resume_from_checkpoint: Optional[Checkpoint] = None,
+    ):
+        if not xgboost_config:
+            xgboost_config = XGBoostConfig()
+
+        dataset_config = dataset_config or ray.train.DataConfig()
+        dataset_config._convert_to_data_iterator = False
+
+        super(SimpleXGBoostTrainer, self).__init__(
+            train_loop_per_worker=train_loop_per_worker,
+            train_loop_config=train_loop_config,
+            backend_config=xgboost_config,
+            scaling_config=scaling_config,
+            dataset_config=dataset_config,
+            run_config=run_config,
+            datasets=datasets,
+            resume_from_checkpoint=resume_from_checkpoint,
+            metadata=metadata,
+        )
+
+
+if __name__ == "__main__":
+    from contextlib import contextmanager
+
+    @contextmanager
+    def ray_train_xgboost_setup():
+        # env_vars = {
+        #     "DMLC_NUM_WORKER",
+        #     "DMLC_TASK_ID",
+        #     "DMLC_TRACKER_URI",
+        #     "DMLC_TRACKER_PORT",
+        # }
+
+        # rabit_args = {k: os.environ[k] for k in env_vars}
+
+        from xgboost.collective import CommunicatorContext
+
+        with CommunicatorContext():
+            yield
+
+    def train_fn(config):
+        from xgboost.collective import CommunicatorContext
+
+        with CommunicatorContext():
+            print(
+                f"worker start: {xgboost.collective.get_rank()=} {xgboost.collective.get_world_size()=}"
+            )
+
+            params = {
+                "tree_method": "approx",
+                "objective": "reg:squarederror",
+                "eta": 1e-4,
+                "subsample": 0.5,
+                "max_depth": 2,
+            }
+
+            train_ds = ray.train.get_dataset_shard("train")
+            train_df = train_ds.to_pandas()
+            X, y = train_df.drop("y", axis=1), train_df["y"]
+            dtrain = xgboost.DMatrix(X, label=y)
+
+            # User just calls xgboost.train as they would natively...
+            bst = xgboost.train(
+                params,
+                dtrain,
+            )
+
+            print("done", bst)
+
+    train_dataset = ray.data.from_items([{"x": x, "y": x + 1} for x in range(32)])
+    trainer = SimpleXGBoostTrainer(
+        train_fn,
+        datasets={"train": train_dataset},
+        scaling_config=ray.train.ScalingConfig(num_workers=4),
+    )
+    trainer.fit()
