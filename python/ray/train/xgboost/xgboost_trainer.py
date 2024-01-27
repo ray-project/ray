@@ -183,7 +183,8 @@ if __name__ == "__main__":
 
         with CommunicatorContext():
             print(
-                f"worker start: {xgboost.collective.get_rank()=} {xgboost.collective.get_world_size()=}"
+                f"worker start: {xgboost.collective.get_rank()=} "
+                f"{xgboost.collective.get_world_size()=}"
             )
 
             params = {

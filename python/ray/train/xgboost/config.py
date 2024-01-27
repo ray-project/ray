@@ -2,7 +2,6 @@ from dataclasses import dataclass
 from typing import Any, Dict, Optional
 
 from xgboost import RabitTracker
-from xgboost.collective import CommunicatorContext
 
 import ray
 from ray.train._internal.worker_group import WorkerGroup
