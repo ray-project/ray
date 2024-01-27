@@ -32,7 +32,7 @@ python -m pip install -U pytest==7.0.1 pip-tools==7.3.0
 if [[ "${EXTRA_DEPENDENCY}" == "core" ]]; then
   ./ci/env/install-core-prerelease-dependencies.sh
 elif [[ "${EXTRA_DEPENDENCY}" == "ml" ]]; then
-  pip-compile -o min_requirements.txt python/setup.py --extra ml
+  pip-compile -o min_requirements.txt python/setup.py --extra tune
 elif [[ "${EXTRA_DEPENDENCY}" == "default" ]]; then
   pip-compile -o min_requirements.txt python/setup.py --extra default
 elif [[ "${EXTRA_DEPENDENCY}" == "serve" ]]; then
