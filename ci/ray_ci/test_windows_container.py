@@ -60,7 +60,7 @@ def test_get_run_command() -> None:
     ] + envs + [
         "029272617770.dkr.ecr.us-west-2.amazonaws.com/rayproject/citemp:unknown-test",
         "bash",
-        "-c",
+        "-ec",
         "hi\nhello",
     ]
 

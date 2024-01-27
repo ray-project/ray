@@ -31,7 +31,7 @@ class WindowsContainer(Container):
         )
 
     def get_run_command_shell(self) -> List[str]:
-        return ["bash", "-c"]
+        return ["bash", "-ec"]
 
     def get_run_command_extra_args(
         self,

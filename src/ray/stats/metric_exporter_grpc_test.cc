@@ -325,7 +325,7 @@ TEST(OpenCensusProtoExporterTest, export_view_data_split_by_payload_size) {
 
     RAY_LOG(INFO) << "Request payload: " << requests[0].DebugString();
 
-    ASSERT_THAT(requests.size(), 2);
+    ASSERT_THAT(requests.size(), 20);
     for (int i = 0; i < 2; ++i) {
       // Both batches have to have 1 metric with 2 time-series each
       auto metrics = requests[i].metrics();
