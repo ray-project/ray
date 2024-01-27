@@ -49,8 +49,8 @@ from ray.data._internal.logical.util import (
     _recorded_operators,
     _recorded_operators_lock,
 )
+from ray.data._internal.planner.exchange.sort_task_spec import SortKey
 from ray.data._internal.planner.planner import Planner
-from ray.data._internal.sort import SortKey
 from ray.data._internal.stats import DatasetStats
 from ray.data.aggregate import Count
 from ray.data.context import DataContext
