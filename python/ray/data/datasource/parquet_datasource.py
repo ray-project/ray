@@ -117,21 +117,33 @@ def _deserialize_fragments(
     return [p.deserialize() for p in serialized_fragments]
 
 
-# This retry helps when the upstream datasource is not able to handle
-# overloaded read request or failed with some retriable failures.
-# For example when reading data from HA hdfs service, hdfs might
-# lose connection for some unknown reason expecially when
-# simutaneously running many hyper parameter tuning jobs
-# with ray.data parallelism setting at high value like the default 200
-# Such connection failure can be restored with some waiting and retry.
 def _deserialize_fragments_with_retry(
     serialized_fragments: List[_SerializedFragment],
+    sample_first_row_group: bool = False,
 ) -> List["pyarrow._dataset.ParquetFileFragment"]:
+    """
+    Deserialize the given serialized_fragments with retry upon errors.
+    When `sample_first_row_group` is True, only return the first row group
+    of the first deserialized fragment. This is used for sampling the first
+    fragment in order to estimate the Parquet file encoding ratio
+    (`self._estimate_files_encoding_ratio()`).
+
+    This retry helps when the upstream datasource is not able to handle
+    overloaded read request or failed with some retriable failures.
+    For example when reading data from HA hdfs service, hdfs might
+    lose connection for some unknown reason expecially when
+    simutaneously running many hyper parameter tuning jobs
+    with ray.data parallelism setting at high value like the default 200
+    Such connection failure can be restored with some waiting and retry.
+    """
     min_interval = 0
     final_exception = None
     for i in range(FILE_READING_RETRY):
         try:
-            return _deserialize_fragments(serialized_fragments)
+            deserialized_fragments = _deserialize_fragments(serialized_fragments)
+            if not sample_first_row_group:
+                return deserialized_fragments
+            return deserialized_fragments[0].subset(row_group_ids=[0])
         except Exception as e:
             import random
             import time
@@ -165,6 +177,50 @@ def _deserialize_fragments_with_retry(
             min_interval = min_interval * 2
             final_exception = e
     raise final_exception
+
+
+# def _fragment_subset_with_retry(
+#     fragment: "pyarrow._dataset.ParquetFileFragment",
+#     **subset_kwargs,
+# ) -> "pyarrow._dataset.ParquetFileFragment":
+#     min_interval = 0
+#     final_exception = None
+#     for i in range(FILE_READING_RETRY):
+#         try:
+#             return fragment.subset(**subset_kwargs)
+#         except Exception as e:
+#             import random
+#             import time
+
+#             retry_timing = (
+#                 ""
+#                 if i == FILE_READING_RETRY - 1
+#                 else (f"Retry after {min_interval} sec. ")
+#             )
+#             log_only_show_in_1st_retry = (
+#                 ""
+#                 if i
+#                 else (
+#                     f"If earlier read attempt threw certain Exception"
+#                     f", it may or may not be an issue depends on these retries "
+#                     f"succeed or not. fragment:{fragment}"
+#                 )
+#             )
+#             logger.exception(
+#                 f"{i + 1}th attempt to get subset of ParquetFileFragment failed. "
+#                 f"{retry_timing}"
+#                 f"{log_only_show_in_1st_retry}"
+#             )
+#             if not min_interval:
+#                 # to make retries of different process hit hdfs server
+#                 # at slightly different time
+#                 min_interval = 1 + random.random()
+#             # exponential backoff at
+#             # 1, 2, 4, 8, 16, 32, 64
+#             time.sleep(min_interval)
+#             min_interval = min_interval * 2
+#             final_exception = e
+#     raise final_exception
 
 
 @PublicAPI
@@ -569,12 +625,19 @@ def _sample_fragment(
     schema,
     file_fragment: _SerializedFragment,
 ) -> float:
+    # # Sample the first rows batch from file fragment `serialized_fragment`.
+    # # Return the encoding ratio calculated from the sampled rows.
+    # fragment = _deserialize_fragments_with_retry([file_fragment])[0]
+
+    # # Only sample the first row group.
+    # fragment = fragment.subset(row_group_ids=[0])
+
     # Sample the first rows batch from file fragment `serialized_fragment`.
     # Return the encoding ratio calculated from the sampled rows.
-    fragment = _deserialize_fragments_with_retry([file_fragment])[0]
-
     # Only sample the first row group.
-    fragment = fragment.subset(row_group_ids=[0])
+    fragment = _deserialize_fragments_with_retry(
+        [file_fragment], sample_first_row_group=True
+    )
     batch_size = max(
         min(fragment.metadata.num_rows, PARQUET_ENCODING_RATIO_ESTIMATE_NUM_ROWS), 1
     )
