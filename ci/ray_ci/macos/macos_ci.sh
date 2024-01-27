@@ -27,7 +27,7 @@ run_small_test() {
     --test_env=CONDA_EXE --test_env=CONDA_PYTHON_EXE --test_env=CONDA_SHLVL --test_env=CONDA_PREFIX \
     --test_env=CONDA_DEFAULT_ENV --test_env=CONDA_PROMPT_MODIFIER --test_env=CI
 }
-run_small_test
+
 run_medium_a_j_test() {
   filtered_test_targets=$(bazel query 'attr(tags, "kubernetes|medium_size_python_tests_a_to_j", tests(//python/ray/tests/...))' | filter_flaky_tests)
   # shellcheck disable=SC2046,SC2086
