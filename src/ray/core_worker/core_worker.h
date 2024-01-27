@@ -1330,12 +1330,6 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   /// Mark this worker is exiting.
   void SetIsExiting();
 
-  /// Retrieve the current statistics about tasks being received and executing.
-  /// \return an unordered_map mapping function name to list of (num_received,
-  /// num_executing, num_executed). It is a std map instead of absl due to its
-  /// interface with language bindings.
-  std::unordered_map<std::string, std::vector<int64_t>> GetActorCallStats() const;
-
   /// Add task log info for a task when it starts executing.
   ///
   /// It's an no-op in local mode.

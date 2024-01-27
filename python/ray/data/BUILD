@@ -443,6 +443,14 @@ py_test(
 )
 
 py_test(
+    name = "test_runtime_metrics_scheduling",
+    size = "small",
+    srcs = ["tests/test_runtime_metrics_scheduling.py"],
+    tags = ["team:data", "exclusive"],
+    deps = ["//:ray_lib", ":conftest"],
+)
+
+py_test(
     name = "test_size_estimation",
     size = "medium",
     srcs = ["tests/test_size_estimation.py"],
@@ -478,6 +486,22 @@ py_test(
     name = "test_streaming_executor",
     size = "medium",
     srcs = ["tests/test_streaming_executor.py"],
+    tags = ["team:data", "exclusive"],
+    deps = ["//:ray_lib", ":conftest"],
+)
+
+py_test(
+    name = "test_streaming_executor_resource_limits",
+    size = "medium",
+    srcs = ["tests/test_streaming_executor_resource_limits.py"],
+    tags = ["team:data", "exclusive"],
+    deps = ["//:ray_lib", ":conftest"],
+)
+
+py_test(
+    name = "test_streaming_executor_errored_blocks",
+    size = "medium",
+    srcs = ["tests/test_streaming_executor_errored_blocks.py"],
     tags = ["team:data", "exclusive"],
     deps = ["//:ray_lib", ":conftest"],
 )

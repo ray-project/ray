@@ -52,7 +52,12 @@ class MockDeploymentStateManager:
                 (info, deleting) = checkpointed_data
 
                 self.deployment_infos[name] = info
-                self.deployment_statuses[name] = DeploymentStatus.UPDATING
+                self.deployment_statuses[name] = DeploymentStatusInfo(
+                    name=name,
+                    status=DeploymentStatus.UPDATING,
+                    status_trigger=DeploymentStatusTrigger.CONFIG_UPDATE_STARTED,
+                    message="",
+                )
                 self.deleting[name] = deleting
 
     def deploy(
@@ -911,9 +916,9 @@ class TestOverrideDeploymentInfo:
         updated_info = updated_infos["A"]
         assert updated_info.route_prefix == "/"
         assert updated_info.version == "123"
-        assert updated_info.autoscaling_policy.config.min_replicas == 1
-        assert updated_info.autoscaling_policy.config.initial_replicas == 12
-        assert updated_info.autoscaling_policy.config.max_replicas == 79
+        assert updated_info.autoscaling_policy_manager.config.min_replicas == 1
+        assert updated_info.autoscaling_policy_manager.config.initial_replicas == 12
+        assert updated_info.autoscaling_policy_manager.config.max_replicas == 79
 
     def test_override_route_prefix_1(self, info):
         config = ServeApplicationSchema(

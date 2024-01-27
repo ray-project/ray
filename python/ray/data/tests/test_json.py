@@ -19,7 +19,6 @@ from ray.data.datasource import (
 )
 from ray.data.datasource.path_util import _unwrap_protocol
 from ray.data.tests.conftest import *  # noqa
-from ray.data.tests.mock_http_server import *  # noqa
 from ray.data.tests.test_partitioning import PathPartitionEncoder
 from ray.data.tests.util import Counter
 from ray.tests.conftest import *  # noqa
@@ -255,6 +254,26 @@ def test_zipped_json_read(ray_start_regular_shared, tmp_path):
     dsdf = ds.to_pandas()
     assert df.equals(dsdf)
     shutil.rmtree(dir_path)
+
+
+def test_read_json_fallback_from_pyarrow_failure(ray_start_regular_shared, local_path):
+    # Try to read this with read_json() to trigger fallback logic
+    # to read bytes with json.load().
+    data = [{"one": [1]}, {"one": [1, 2]}]
+    path1 = os.path.join(local_path, "test1.json")
+    with open(path1, "w") as f:
+        json.dump(data, f)
+
+    # pyarrow.json cannot read JSONs containing arrays of different lengths.
+    from pyarrow import ArrowInvalid
+
+    with pytest.raises(ArrowInvalid):
+        pajson.read_json(path1)
+
+    # Ray Data successfully reads this in by
+    # falling back to json.load() when pyarrow fails.
+    ds = ray.data.read_json(path1)
+    assert ds.take_all() == data
 
 
 @pytest.mark.parametrize(
@@ -613,6 +632,72 @@ def test_json_write_block_path_provider(
         ]
     )
     assert df.equals(ds_df)
+
+
+@pytest.mark.parametrize(
+    "fs,data_path,endpoint_url",
+    [
+        (None, lazy_fixture("local_path"), None),
+        (lazy_fixture("local_fs"), lazy_fixture("local_path"), None),
+        (lazy_fixture("s3_fs"), lazy_fixture("s3_path"), lazy_fixture("s3_server")),
+    ],
+)
+def test_json_read_across_blocks(ray_start_regular_shared, fs, data_path, endpoint_url):
+    if endpoint_url is None:
+        storage_options = {}
+    else:
+        storage_options = dict(client_kwargs=dict(endpoint_url=endpoint_url))
+
+    # Single small file, unit block_size
+    df1 = pd.DataFrame({"one": [1, 2, 3], "two": ["a", "b", "c"]})
+    path1 = os.path.join(data_path, "test1.json")
+    df1.to_json(path1, orient="records", lines=True, storage_options=storage_options)
+    ds = ray.data.read_json(
+        path1, filesystem=fs, read_options=pajson.ReadOptions(block_size=1)
+    )
+    dsdf = ds.to_pandas()
+    assert df1.equals(dsdf)
+    # Test metadata ops.
+    assert ds.count() == 3
+    assert ds.input_files() == [_unwrap_protocol(path1)]
+    assert "{one: int64, two: string}" in str(ds), ds
+
+    # Single large file, default block_size
+    num_chars = 2500000
+    num_rows = 3
+    df2 = pd.DataFrame(
+        {
+            "one": ["a" * num_chars for _ in range(num_rows)],
+            "two": ["b" * num_chars for _ in range(num_rows)],
+        }
+    )
+    path2 = os.path.join(data_path, "test2.json")
+    df2.to_json(path2, orient="records", lines=True, storage_options=storage_options)
+    ds = ray.data.read_json(path2, filesystem=fs)
+    dsdf = ds.to_pandas()
+    assert df2.equals(dsdf)
+    # Test metadata ops.
+    assert ds.count() == num_rows
+    assert ds.input_files() == [_unwrap_protocol(path2)]
+    assert "{one: string, two: string}" in str(ds), ds
+
+    # Single file, negative and zero block_size (expect failure)
+    df3 = pd.DataFrame({"one": [1, 2, 3], "two": ["a", "b", "c"]})
+    path3 = os.path.join(data_path, "test3.json")
+    df3.to_json(path3, orient="records", lines=True, storage_options=storage_options)
+
+    # Negative Buffer Size, fails with arrow but succeeds in fallback to json.load()
+    ds = ray.data.read_json(
+        path3, filesystem=fs, read_options=pajson.ReadOptions(block_size=-1)
+    )
+    dsdf = ds.to_pandas()
+
+    # Zero Buffer Size, fails with arrow and fails in fallback to json.load()
+    with pytest.raises(json.decoder.JSONDecodeError, match="Extra data"):
+        ds = ray.data.read_json(
+            path3, filesystem=fs, read_options=pajson.ReadOptions(block_size=0)
+        )
+        dsdf = ds.to_pandas()
 
 
 if __name__ == "__main__":

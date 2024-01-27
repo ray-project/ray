@@ -1,6 +1,6 @@
 import os
 import threading
-from typing import TYPE_CHECKING, Any, Dict, List, Optional
+from typing import TYPE_CHECKING, Any, Dict, List, Optional, Union
 
 import ray
 from ray._private.ray_constants import env_integer
@@ -153,7 +153,17 @@ DEFAULT_ENABLE_PROGRESS_BARS = not bool(
 # Whether to enable get_object_locations for metric
 DEFAULT_ENABLE_GET_OBJECT_LOCATIONS_FOR_METRICS = False
 
-DEFAULT_WRITE_FILE_RETRY_ON_ERRORS = ["AWS Error INTERNAL_FAILURE"]
+DEFAULT_WRITE_FILE_RETRY_ON_ERRORS = [
+    "AWS Error INTERNAL_FAILURE",
+    "AWS Error NETWORK_CONNECTION",
+    "AWS Error SLOW_DOWN",
+]
+
+# The application-level errors that actor task would retry.
+# Default to `False` to not retry on any errors.
+# Set to `True` to retry all errors, or set to a list of errors to retry.
+# This follows same format as `retry_exceptions` in Ray Core.
+DEFAULT_ACTOR_TASK_RETRY_ON_ERRORS = False
 
 
 @DeveloperAPI
@@ -197,6 +207,7 @@ class DataContext:
         enable_get_object_locations_for_metrics: bool,
         use_runtime_metrics_scheduling: bool,
         write_file_retry_on_errors: List[str],
+        actor_task_retry_on_errors: Union[bool, List[BaseException]],
     ):
         """Private constructor (use get_current() instead)."""
         self.target_max_block_size = target_max_block_size
@@ -235,6 +246,7 @@ class DataContext:
         )
         self.use_runtime_metrics_scheduling = use_runtime_metrics_scheduling
         self.write_file_retry_on_errors = write_file_retry_on_errors
+        self.actor_task_retry_on_errors = actor_task_retry_on_errors
         # The additonal ray remote args that should be added to
         # the task-pool-based data tasks.
         self._task_pool_data_task_remote_args: Dict[str, Any] = {}
@@ -253,6 +265,9 @@ class DataContext:
         # the DataContext from the plugin implementations, as well as to avoid
         # circular dependencies.
         self._kv_configs: Dict[str, Any] = {}
+        # The max number of blocks that can be buffered at the streaming generator of
+        # each `DataOpTask`.
+        self._max_num_blocks_in_streaming_gen_buffer = None
 
     @staticmethod
     def get_current() -> "DataContext":
@@ -305,6 +320,7 @@ class DataContext:
                     enable_get_object_locations_for_metrics=DEFAULT_ENABLE_GET_OBJECT_LOCATIONS_FOR_METRICS,  # noqa E501
                     use_runtime_metrics_scheduling=DEFAULT_USE_RUNTIME_METRICS_SCHEDULING,  # noqa: E501
                     write_file_retry_on_errors=DEFAULT_WRITE_FILE_RETRY_ON_ERRORS,
+                    actor_task_retry_on_errors=DEFAULT_ACTOR_TASK_RETRY_ON_ERRORS,
                 )
 
             return _default_context
