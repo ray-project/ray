@@ -106,62 +106,94 @@ class DownstreamMemoryInfo:
     object_store_memory: float
 
 
-class RefBundleDeque(deque):
-    """Thread-safe wrapper around collections.deque that stores current stats."""
+class OpBufferQueue:
+    """A FIFO queue to buffer RefBundles between upstream and downstream operators.
+    This class is thread-safe.
+    """
 
     def __init__(self):
         self._memory_usage = 0
         self._num_blocks = 0
+        self._queue = deque()
+        self._num_per_split = defaultdict(int)
         self._lock = threading.Lock()
         super().__init__()
 
     @property
     def memory_usage(self) -> int:
+        """The total memory usage of the queue in bytes."""
         with self._lock:
             return self._memory_usage
 
     @property
     def num_blocks(self) -> int:
+        """The total number of blocks in the queue."""
         with self._lock:
             return self._num_blocks
 
+    def __len__(self):
+        return len(self._queue)
+
+    def has_next(self, output_split_idx: Optional[int] = None) -> bool:
+        """Whether next RefBundle is available.
+
+        Args:
+            output_split_idx: If specified, only check ref bundles with the
+                given output split.
+        """
+        if output_split_idx is None:
+            return len(self._queue) > 0
+        else:
+            with self._lock:
+                return self._num_per_split[output_split_idx] > 0
+
     def append(self, ref: RefBundle):
+        """Append a RefBundle to the queue."""
+        self._queue.append(ref)
         with self._lock:
             self._memory_usage += ref.size_bytes()
             self._num_blocks += len(ref.blocks)
-        super().append(ref)
+            if ref.output_split_idx is not None:
+                self._num_per_split[ref.output_split_idx] += 1
 
-    def appendleft(self, ref: RefBundle):
+    def pop(self, output_split_idx: Optional[int] = None) -> Optional[RefBundle]:
+        """Pop a RefBundle from the queue.
+        Args:
+            output_split_idx: If specified, only pop a RefBundle
+                with the given output split.
+        Returns:
+            A RefBundle if available, otherwise None.
+        """
+        ret = None
+        if output_split_idx is None:
+            try:
+                ret = self._queue.popleft()
+            except IndexError:
+                pass
+        else:
+            # TODO(hchen): Index the queue by output_split_idx to
+            # avoid linear scan.
+            for i in range(len(self._queue)):
+                ref = self._queue[i]
+                if ref.output_split_idx == output_split_idx:
+                    ret = ref
+                    del self._queue[i]
+                    break
+        if ret is None:
+            return None
         with self._lock:
-            self._memory_usage += ref.size_bytes()
-            self._num_blocks += len(ref.blocks)
-        super().appendleft(ref)
-
-    def pop(self) -> RefBundle:
-        ref = super().pop()
-        with self._lock:
-            self._memory_usage -= ref.size_bytes()
-            self._num_blocks -= len(ref.blocks)
-        return ref
-
-    def popleft(self) -> RefBundle:
-        ref = super().popleft()
-        with self._lock:
-            self._memory_usage -= ref.size_bytes()
-            self._num_blocks -= len(ref.blocks)
-        return ref
-
-    def remove(self, ref: RefBundle):
-        super().remove(ref)
-        with self._lock:
-            self._memory_usage -= ref.size_bytes()
-            self._num_blocks -= len(ref.blocks)
+            self._memory_usage -= ret.size_bytes()
+            self._num_blocks -= len(ret.blocks)
+            if ret.output_split_idx is not None:
+                self._num_per_split[ret.output_split_idx] -= 1
+        return ret
 
     def clear(self):
-        super().clear()
         with self._lock:
+            self._queue.clear()
             self._memory_usage = 0
             self._num_blocks = 0
+            self._num_per_split.clear()
 
 
 class OpState:
@@ -174,17 +206,17 @@ class OpState:
     operator queues to be shared across threads.
     """
 
-    def __init__(self, op: PhysicalOperator, inqueues: List[RefBundleDeque]):
+    def __init__(self, op: PhysicalOperator, inqueues: List[OpBufferQueue]):
         # Each inqueue is connected to another operator's outqueue.
         assert len(inqueues) == len(op.input_dependencies), (op, inqueues)
-        self.inqueues: List[RefBundleDeque] = inqueues
+        self.inqueues: List[OpBufferQueue] = inqueues
         # The outqueue is connected to another operator's inqueue (they physically
         # share the same Python list reference).
         #
         # Note: this queue is also accessed concurrently from the consumer thread.
         # (in addition to the streaming executor thread). Hence, it must be a
         # thread-safe type such as `deque`.
-        self.outqueue: RefBundleDeque = RefBundleDeque()
+        self.outqueue: OpBufferQueue = OpBufferQueue()
         self.op = op
         self.progress_bar = None
         self.num_completed_tasks = 0
@@ -266,8 +298,9 @@ class OpState:
     def dispatch_next_task(self) -> None:
         """Move a bundle from the operator inqueue to the operator itself."""
         for i, inqueue in enumerate(self.inqueues):
-            if inqueue:
-                self.op.add_input(inqueue.popleft(), input_index=i)
+            ref = inqueue.pop()
+            if ref is not None:
+                self.op.add_input(ref, input_index=i)
                 return
         assert False, "Nothing to dispatch"
 
@@ -285,24 +318,11 @@ class OpState:
             # Check if StreamingExecutor has caught an exception or is done execution.
             if self._exception is not None:
                 raise self._exception
-            elif self._finished and len(self.outqueue) == 0:
+            elif self._finished and not self.outqueue.has_next(output_split_idx):
                 raise StopIteration()
-            try:
-                # Non-split output case.
-                if output_split_idx is None:
-                    return self.outqueue.popleft()
-
-                # Scan the queue and look for outputs tagged for the given index.
-                for i in range(len(self.outqueue)):
-                    bundle = self.outqueue[i]
-                    if bundle.output_split_idx == output_split_idx:
-                        self.outqueue.remove(bundle)
-                        return bundle
-
-                # Didn't find any outputs matching this index, repeat the loop until
-                # we find one or hit a None.
-            except IndexError:
-                pass
+            ref = self.outqueue.pop(output_split_idx)
+            if ref is not None:
+                return ref
             time.sleep(0.01)
 
     def inqueue_memory_usage(self) -> int:
