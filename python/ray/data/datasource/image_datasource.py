@@ -45,7 +45,7 @@ def _tiff_to_np(tiff_path: bytes):
     """
     from PIL import Image
 
-    with Image.open(tiff_path) as img   :
+    with Image.open(tiff_path) as img:
         np_arrays = []
 
         for i in range(img.n_frames):
