@@ -1,6 +1,7 @@
 from ray_release.test_automation.state_machine import (
     TestStateMachine,
     DEFAULT_ISSUE_OWNER,
+    WEEKLY_RELEASE_BLOCKER_TAG,
 )
 
 from ray_release.test import Test, TestState
@@ -57,13 +58,13 @@ class CITestStateMachine(TestStateMachine):
 
     def _create_github_issue(self) -> None:
         labels = [
-            "P0",
             "bug",
             "ci-test",
             "ray-test-bot",
             "flaky-tracker",
             "triage",
             self.test.get_oncall(),
+            WEEKLY_RELEASE_BLOCKER_TAG,
         ]
         recent_failures = [
             result for result in self.test_results if result.is_failing()

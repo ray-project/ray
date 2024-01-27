@@ -133,14 +133,6 @@ py_test(
 )
 
 py_test(
-    name = "test_function_api_legacy",
-    size = "small",
-    srcs = ["tests/test_function_api_legacy.py"],
-    deps = [":tune_lib"],
-    tags = ["team:ml", "exclusive"],
-)
-
-py_test(
     name = "test_integration_pytorch_lightning",
     size = "small",
     srcs = ["tests/test_integration_pytorch_lightning.py"],
