@@ -119,14 +119,9 @@ def _deserialize_fragments(
 
 def _deserialize_fragments_with_retry(
     serialized_fragments: List[_SerializedFragment],
-    sample_first_row_group: bool = False,
 ) -> List["pyarrow._dataset.ParquetFileFragment"]:
     """
     Deserialize the given serialized_fragments with retry upon errors.
-    When `sample_first_row_group` is True, only return the first row group
-    of the first deserialized fragment. This is used for sampling the first
-    fragment in order to estimate the Parquet file encoding ratio
-    (`self._estimate_files_encoding_ratio()`).
 
     This retry helps when the upstream datasource is not able to handle
     overloaded read request or failed with some retriable failures.
@@ -140,10 +135,7 @@ def _deserialize_fragments_with_retry(
     final_exception = None
     for i in range(FILE_READING_RETRY):
         try:
-            deserialized_fragments = _deserialize_fragments(serialized_fragments)
-            if not sample_first_row_group:
-                return deserialized_fragments
-            return deserialized_fragments[0].subset(row_group_ids=[0])
+            return _deserialize_fragments(serialized_fragments)
         except Exception as e:
             import random
             import time
@@ -471,7 +463,11 @@ class ParquetDatasource(Datasource):
             # Use SPREAD scheduling strategy to avoid packing many sampling tasks on
             # same machine to cause OOM issue, as sampling can be memory-intensive.
             futures.append(
-                sample_fragment.options(scheduling_strategy=scheduling).remote(
+                sample_fragment.options(
+                    scheduling_strategy=scheduling,
+                    # Retry in case of transient errors during sampling.
+                    retry_exceptions=[OSError],
+                ).remote(
                     self._to_batches_kwargs,
                     self._columns,
                     self._schema,
@@ -583,11 +579,10 @@ def _sample_fragment(
 ) -> float:
     # Sample the first rows batch from file fragment `serialized_fragment`.
     # Return the encoding ratio calculated from the sampled rows.
+    fragment = _deserialize_fragments_with_retry([file_fragment])[0]
 
     # Only sample the first row group.
-    fragment = _deserialize_fragments_with_retry(
-        [file_fragment], sample_first_row_group=True
-    )
+    fragment = fragment.subset(row_group_ids=[0])
     batch_size = max(
         min(fragment.metadata.num_rows, PARQUET_ENCODING_RATIO_ESTIMATE_NUM_ROWS), 1
     )
