@@ -31,7 +31,7 @@ class TestReadImages:
         assert all(record["image"].shape == (32, 32, 3) for record in ds.take())
 
     def test_tiff_reading(self, ray_start_regular_shared):
-        # "simple" contains three 32x32 RGB images.
+        # "tiff_files" contains two tiff  100x100 multi page tiff files.
         ds = ray.data.read_images("example://image-datasets/tiff_files")
         assert ds.schema().names == ["image"]
         column_type = ds.schema().types[0]
