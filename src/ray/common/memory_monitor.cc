@@ -204,6 +204,8 @@ int64_t MemoryMonitor::GetCGroupV1MemoryUsedBytes(const char *stat_path,
   int64_t value;
 
   int64_t cgroup_usage_in_bytes;
+  // The content of "/sys/fs/cgroup/memory/memory.usage_in_bytes" file is
+  // an integer representing the total memory usage bytes of the container.
   std::getline(memusage_ifs, line);
   std::istringstream iss(line);
   iss >> cgroup_usage_in_bytes;
