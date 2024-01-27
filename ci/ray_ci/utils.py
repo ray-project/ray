@@ -136,8 +136,6 @@ def omit_tests_by_state(
     state_test_names = query_all_test_names_by_state(
         test_state=test_state, prefixes=["darwin:"], prefix_on=False
     )
-    print("Flaky tests:\n", state_test_names)
-    print("Tests:\n", test_targets)
     # Eliminate these test from list of test targets
     test_targets_filtered = [
         test for test in test_targets if test not in state_test_names
