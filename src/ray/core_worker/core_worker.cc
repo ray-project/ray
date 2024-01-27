@@ -2990,8 +2990,7 @@ Status CoreWorker::ReportGeneratorItemReturns(
       [waiter, generator_id, item_index](
           const Status &status, const rpc::ReportGeneratorItemReturnsReply &reply) {
         RAY_LOG(DEBUG) << "ReportGeneratorItemReturns replied. " << generator_id
-                       << "index: " << item_index
-                       << ". total_consumed_reported: "
+                       << "index: " << item_index << ". total_consumed_reported: "
                        << reply.total_num_object_consumed();
         RAY_CHECK(waiter != nullptr);
         RAY_LOG(DEBUG) << "Total object consumed: " << waiter->TotalObjectConsumed()
