@@ -707,12 +707,6 @@ class ExecutionPlan:
             and self._snapshot_operator == self._logical_plan.dag
         )
 
-    def _run_with_new_execution_backend(self) -> bool:
-        """Whether this plan should run with new backend.
-        By default, the new execution backend is now fully enabled
-        unless configured otherwise by the user."""
-        return self._context.new_execution_backend
-
     def require_preserve_order(self) -> bool:
         """Whether this plan requires to preserve order."""
         from ray.data._internal.logical.operators.all_to_all_operator import Sort

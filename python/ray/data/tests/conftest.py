@@ -342,12 +342,9 @@ def target_max_block_size(request):
 @pytest.fixture
 def enable_streaming_executor():
     ctx = ray.data.context.DataContext.get_current()
-    original_backend = ctx.new_execution_backend
     use_streaming_executor = ctx.use_streaming_executor
-    ctx.new_execution_backend = True
     ctx.use_streaming_executor = True
     yield
-    ctx.new_execution_backend = original_backend
     ctx.use_streaming_executor = use_streaming_executor
 
 

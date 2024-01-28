@@ -346,7 +346,6 @@ def test_streaming_split_independent_finish(ray_start_10_cpus_shared):
     "remove DAG validation for now; see https://github.com/ray-project/ray/pull/37829"
 )
 def test_e2e_option_propagation(ray_start_10_cpus_shared, restore_data_context):
-    DataContext.get_current().new_execution_backend = True
     DataContext.get_current().use_streaming_executor = True
 
     def run():
@@ -482,7 +481,6 @@ def test_e2e_liveness_with_output_backpressure_edge_case(
 
 
 def test_e2e_autoscaling_up(ray_start_10_cpus_shared, restore_data_context):
-    DataContext.get_current().new_execution_backend = True
     DataContext.get_current().use_streaming_executor = True
 
     @ray.remote(max_concurrency=10)
@@ -557,7 +555,6 @@ def test_e2e_autoscaling_up(ray_start_10_cpus_shared, restore_data_context):
 
 
 def test_e2e_autoscaling_down(ray_start_10_cpus_shared, restore_data_context):
-    DataContext.get_current().new_execution_backend = True
     DataContext.get_current().use_streaming_executor = True
 
     class UDFClass:
@@ -576,7 +573,6 @@ def test_e2e_autoscaling_down(ray_start_10_cpus_shared, restore_data_context):
 
 
 def test_can_pickle(ray_start_10_cpus_shared, restore_data_context):
-    DataContext.get_current().new_execution_backend = True
     DataContext.get_current().use_streaming_executor = True
 
     ds = ray.data.range(1000000)
@@ -589,7 +585,6 @@ def test_can_pickle(ray_start_10_cpus_shared, restore_data_context):
 
 
 def test_streaming_fault_tolerance(ray_start_10_cpus_shared, restore_data_context):
-    DataContext.get_current().new_execution_backend = True
     DataContext.get_current().use_streaming_executor = True
 
     class RandomExit:

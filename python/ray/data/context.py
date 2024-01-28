@@ -79,11 +79,6 @@ DEFAULT_LARGE_ARGS_THRESHOLD = 50 * 1024 * 1024
 # Whether to use Polars for tabular dataset sorts, groupbys, and aggregations.
 DEFAULT_USE_POLARS = False
 
-# Whether to use the new executor backend.
-DEFAULT_NEW_EXECUTION_BACKEND = bool(
-    int(os.environ.get("RAY_DATA_NEW_EXECUTION_BACKEND", "1"))
-)
-
 # Whether to use the streaming executor. This only has an effect if the new execution
 # backend is enabled.
 DEFAULT_USE_STREAMING_EXECUTOR = bool(
@@ -171,7 +166,6 @@ class DataContext:
         scheduling_strategy_large_args: SchedulingStrategyT,
         large_args_threshold: int,
         use_polars: bool,
-        new_execution_backend: bool,
         use_streaming_executor: bool,
         eager_free: bool,
         decoding_size_estimation: bool,
@@ -202,7 +196,6 @@ class DataContext:
         self.scheduling_strategy_large_args = scheduling_strategy_large_args
         self.large_args_threshold = large_args_threshold
         self.use_polars = use_polars
-        self.new_execution_backend = new_execution_backend
         self.use_streaming_executor = use_streaming_executor
         self.eager_free = eager_free
         self.decoding_size_estimation = decoding_size_estimation
@@ -272,7 +265,6 @@ class DataContext:
                     ),
                     large_args_threshold=DEFAULT_LARGE_ARGS_THRESHOLD,
                     use_polars=DEFAULT_USE_POLARS,
-                    new_execution_backend=DEFAULT_NEW_EXECUTION_BACKEND,
                     use_streaming_executor=DEFAULT_USE_STREAMING_EXECUTOR,
                     eager_free=DEFAULT_EAGER_FREE,
                     decoding_size_estimation=DEFAULT_DECODING_SIZE_ESTIMATION_ENABLED,
