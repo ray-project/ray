@@ -9,7 +9,6 @@ import ray
 from ray._private.internal_api import memory_summary
 from ray.data import Dataset
 from ray.data.block import BlockMetadata
-from ray.data.context import DataContext
 from ray.data.datasource import Datasource, ReadTask
 from ray.data.datasource.csv_datasource import CSVDatasource
 from ray.data.tests.util import column_udf, extract_values
@@ -222,9 +221,6 @@ def _assert_has_stages(stages, stage_names):
 
 
 def test_optimize_reorder(ray_start_regular_shared):
-    context = DataContext.get_current()
-    context.optimize_reorder_stages = True
-
     ds = ray.data.range(10).randomize_block_order().map_batches(dummy_map).materialize()
     print("Stats", ds.stats())
     expect_stages(

@@ -51,9 +51,6 @@ DEFAULT_STREAMING_READ_BUFFER_SIZE = 32 * 1024 * 1024
 # TODO (kfstorm): Remove this once stable.
 DEFAULT_ENABLE_PANDAS_BLOCK = True
 
-# Whether to enable stage-reorder optimizations for dataset pipelines.
-DEFAULT_OPTIMIZE_REORDER_STAGES = True
-
 # Minimum amount of parallelism to auto-detect for a dataset. Note that the min
 # block size config takes precedence over this.
 DEFAULT_MIN_PARALLELISM = 200
@@ -172,7 +169,6 @@ class DataContext:
         target_min_block_size: int,
         streaming_read_buffer_size: int,
         enable_pandas_block: bool,
-        optimize_reorder_stages: bool,
         actor_prefetcher_enabled: bool,
         use_push_based_shuffle: bool,
         pipeline_push_based_shuffle_reduce_tasks: bool,
@@ -203,7 +199,6 @@ class DataContext:
         self.target_min_block_size = target_min_block_size
         self.streaming_read_buffer_size = streaming_read_buffer_size
         self.enable_pandas_block = enable_pandas_block
-        self.optimize_reorder_stages = optimize_reorder_stages
         self.actor_prefetcher_enabled = actor_prefetcher_enabled
         self.use_push_based_shuffle = use_push_based_shuffle
         self.pipeline_push_based_shuffle_reduce_tasks = (
@@ -272,7 +267,6 @@ class DataContext:
                     target_min_block_size=DEFAULT_TARGET_MIN_BLOCK_SIZE,
                     streaming_read_buffer_size=DEFAULT_STREAMING_READ_BUFFER_SIZE,
                     enable_pandas_block=DEFAULT_ENABLE_PANDAS_BLOCK,
-                    optimize_reorder_stages=DEFAULT_OPTIMIZE_REORDER_STAGES,
                     actor_prefetcher_enabled=DEFAULT_ACTOR_PREFETCHER_ENABLED,
                     use_push_based_shuffle=DEFAULT_USE_PUSH_BASED_SHUFFLE,
                     # NOTE(swang): We have to pipeline reduce tasks right now
