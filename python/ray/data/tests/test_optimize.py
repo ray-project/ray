@@ -223,7 +223,6 @@ def _assert_has_stages(stages, stage_names):
 
 def test_optimize_reorder(ray_start_regular_shared):
     context = DataContext.get_current()
-    context.optimize_fuse_read_stages = True
     context.optimize_reorder_stages = True
 
     ds = ray.data.range(10).randomize_block_order().map_batches(dummy_map).materialize()
@@ -250,7 +249,6 @@ def test_optimize_reorder(ray_start_regular_shared):
 
 def test_write_fusion(ray_start_regular_shared, tmp_path):
     context = DataContext.get_current()
-    context.optimize_fuse_read_stages = True
     context.optimize_fuse_shuffle_stages = True
 
     path = os.path.join(tmp_path, "out")
