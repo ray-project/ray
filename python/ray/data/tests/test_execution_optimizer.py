@@ -91,7 +91,7 @@ def _check_valid_plan_and_result(
         assert stage in ds.stats(), f"Stage {stage} not found: {ds.stats()}"
 
 
-def test_read_operator(ray_start_regular_shared, enable_optimizer):
+def test_read_operator(ray_start_regular_shared):
     planner = Planner()
     op = get_parquet_read_logical_op()
     plan = LogicalPlan(op)
@@ -107,7 +107,7 @@ def test_read_operator(ray_start_regular_shared, enable_optimizer):
     )
 
 
-def test_split_blocks_operator(ray_start_regular_shared, enable_optimizer):
+def test_split_blocks_operator(ray_start_regular_shared):
     planner = Planner()
     op = get_parquet_read_logical_op(parallelism=10)
     logical_plan = LogicalPlan(op)
@@ -141,7 +141,7 @@ def test_split_blocks_operator(ray_start_regular_shared, enable_optimizer):
     assert up_physical_op.name == "ReadParquet->SplitBlocks(10)"
 
 
-def test_from_operators(ray_start_regular_shared, enable_optimizer):
+def test_from_operators(ray_start_regular_shared):
     op_classes = [
         FromArrow,
         FromItems,
@@ -159,7 +159,7 @@ def test_from_operators(ray_start_regular_shared, enable_optimizer):
         assert len(physical_op.input_dependencies) == 0
 
 
-def test_from_items_e2e(ray_start_regular_shared, enable_optimizer):
+def test_from_items_e2e(ray_start_regular_shared):
     data = ["Hello", "World"]
     ds = ray.data.from_items(data)
     assert ds.take_all() == named_values("item", data), ds
@@ -170,7 +170,7 @@ def test_from_items_e2e(ray_start_regular_shared, enable_optimizer):
     _check_usage_record(["FromItems"])
 
 
-def test_map_operator_udf_name(ray_start_regular_shared, enable_optimizer):
+def test_map_operator_udf_name(ray_start_regular_shared):
     # Test the name of the Map operator with different types of UDF.
     def normal_function(x):
         return x
@@ -214,7 +214,7 @@ def test_map_operator_udf_name(ray_start_regular_shared, enable_optimizer):
         assert op.name == f"Map({expected_name})"
 
 
-def test_map_batches_operator(ray_start_regular_shared, enable_optimizer):
+def test_map_batches_operator(ray_start_regular_shared):
     planner = Planner()
     read_op = get_parquet_read_logical_op()
     op = MapBatches(
@@ -230,14 +230,14 @@ def test_map_batches_operator(ray_start_regular_shared, enable_optimizer):
     assert isinstance(physical_op.input_dependencies[0], MapOperator)
 
 
-def test_map_batches_e2e(ray_start_regular_shared, enable_optimizer):
+def test_map_batches_e2e(ray_start_regular_shared):
     ds = ray.data.range(5)
     ds = ds.map_batches(column_udf("id", lambda x: x))
     assert extract_values("id", ds.take_all()) == list(range(5)), ds
     _check_usage_record(["ReadRange", "MapBatches"])
 
 
-def test_map_rows_operator(ray_start_regular_shared, enable_optimizer):
+def test_map_rows_operator(ray_start_regular_shared):
     planner = Planner()
     read_op = get_parquet_read_logical_op()
     op = MapRows(
@@ -253,14 +253,14 @@ def test_map_rows_operator(ray_start_regular_shared, enable_optimizer):
     assert isinstance(physical_op.input_dependencies[0], MapOperator)
 
 
-def test_map_rows_e2e(ray_start_regular_shared, enable_optimizer):
+def test_map_rows_e2e(ray_start_regular_shared):
     ds = ray.data.range(5)
     ds = ds.map(column_udf("id", lambda x: x + 1))
     assert extract_values("id", ds.take_all()) == [1, 2, 3, 4, 5], ds
     _check_usage_record(["ReadRange", "Map"])
 
 
-def test_filter_operator(ray_start_regular_shared, enable_optimizer):
+def test_filter_operator(ray_start_regular_shared):
     planner = Planner()
     read_op = get_parquet_read_logical_op()
     op = Filter(
@@ -280,14 +280,14 @@ def test_filter_operator(ray_start_regular_shared, enable_optimizer):
     )
 
 
-def test_filter_e2e(ray_start_regular_shared, enable_optimizer):
+def test_filter_e2e(ray_start_regular_shared):
     ds = ray.data.range(5)
     ds = ds.filter(fn=lambda x: x["id"] % 2 == 0)
     assert extract_values("id", ds.take_all()) == [0, 2, 4], ds
     _check_usage_record(["ReadRange", "Filter"])
 
 
-def test_flat_map(ray_start_regular_shared, enable_optimizer):
+def test_flat_map(ray_start_regular_shared):
     planner = Planner()
     read_op = get_parquet_read_logical_op()
     op = FlatMap(
@@ -307,14 +307,14 @@ def test_flat_map(ray_start_regular_shared, enable_optimizer):
     )
 
 
-def test_flat_map_e2e(ray_start_regular_shared, enable_optimizer):
+def test_flat_map_e2e(ray_start_regular_shared):
     ds = ray.data.range(2)
     ds = ds.flat_map(fn=lambda x: [{"id": x["id"]}, {"id": x["id"]}])
     assert extract_values("id", ds.take_all()) == [0, 0, 1, 1], ds
     _check_usage_record(["ReadRange", "FlatMap"])
 
 
-def test_column_ops_e2e(ray_start_regular_shared, enable_optimizer):
+def test_column_ops_e2e(ray_start_regular_shared):
     ds = ray.data.range(2)
     ds = ds.add_column(fn=lambda df: df.iloc[:, 0], col="new_col")
     assert ds.take_all() == [{"id": 0, "new_col": 0}, {"id": 1, "new_col": 1}], ds
@@ -329,7 +329,7 @@ def test_column_ops_e2e(ray_start_regular_shared, enable_optimizer):
     _check_usage_record(["ReadRange", "MapBatches"])
 
 
-def test_random_sample_e2e(ray_start_regular_shared, enable_optimizer):
+def test_random_sample_e2e(ray_start_regular_shared):
     import math
 
     def ensure_sample_size_close(dataset, sample_percent=0.5):
@@ -350,7 +350,7 @@ def test_random_sample_e2e(ray_start_regular_shared, enable_optimizer):
     _check_usage_record(["ReadRange", "MapBatches"])
 
 
-def test_random_shuffle_operator(ray_start_regular_shared, enable_optimizer):
+def test_random_shuffle_operator(ray_start_regular_shared):
     planner = Planner()
     read_op = get_parquet_read_logical_op()
     op = RandomShuffle(
@@ -370,9 +370,7 @@ def test_random_shuffle_operator(ray_start_regular_shared, enable_optimizer):
     )
 
 
-def test_random_shuffle_e2e(
-    ray_start_regular_shared, enable_optimizer, use_push_based_shuffle
-):
+def test_random_shuffle_e2e(ray_start_regular_shared, use_push_based_shuffle):
     ds = ray.data.range(12, parallelism=4)
     r1 = extract_values("id", ds.random_shuffle(seed=0).take_all())
     r2 = extract_values("id", ds.random_shuffle(seed=1024).take_all())
@@ -386,7 +384,7 @@ def test_random_shuffle_e2e(
     "shuffle",
     [True, False],
 )
-def test_repartition_operator(ray_start_regular_shared, enable_optimizer, shuffle):
+def test_repartition_operator(ray_start_regular_shared, shuffle):
     planner = Planner()
     read_op = get_parquet_read_logical_op()
     op = Repartition(read_op, num_outputs=5, shuffle=shuffle)
@@ -413,9 +411,7 @@ def test_repartition_operator(ray_start_regular_shared, enable_optimizer, shuffl
     "shuffle",
     [True, False],
 )
-def test_repartition_e2e(
-    ray_start_regular_shared, enable_optimizer, use_push_based_shuffle, shuffle
-):
+def test_repartition_e2e(ray_start_regular_shared, use_push_based_shuffle, shuffle):
     def _check_repartition_usage_and_stats(ds):
         _check_usage_record(["ReadRange", "Repartition"])
         ds_stats: DatasetStats = ds._plan.stats()
@@ -462,7 +458,7 @@ def test_repartition_e2e(
 
 
 @pytest.mark.parametrize("preserve_order", (True, False))
-def test_union_operator(ray_start_regular_shared, enable_optimizer, preserve_order):
+def test_union_operator(ray_start_regular_shared, preserve_order):
     planner = Planner()
     read_parquet_op1 = get_parquet_read_logical_op()
     read_parquet_op2 = get_parquet_read_logical_op()
@@ -488,7 +484,7 @@ def test_union_operator(ray_start_regular_shared, enable_optimizer, preserve_ord
 
 
 @pytest.mark.parametrize("preserve_order", (True, False))
-def test_union_e2e(ray_start_regular_shared, enable_optimizer, preserve_order):
+def test_union_e2e(ray_start_regular_shared, preserve_order):
     execution_options = ExecutionOptions(preserve_order=preserve_order)
     ctx = ray.data.DataContext.get_current()
     ctx.execution_options = execution_options
@@ -534,7 +530,7 @@ def test_union_e2e(ray_start_regular_shared, enable_optimizer, preserve_order):
         assert ds2.take_all() == (ds2_result + ds_result * 2)
 
 
-def test_read_map_batches_operator_fusion(ray_start_regular_shared, enable_optimizer):
+def test_read_map_batches_operator_fusion(ray_start_regular_shared):
     # Test that Read is fused with MapBatches.
     planner = Planner()
     read_op = get_parquet_read_logical_op(parallelism=1)
@@ -560,7 +556,7 @@ def test_read_map_batches_operator_fusion(ray_start_regular_shared, enable_optim
     )
 
 
-def test_read_map_chain_operator_fusion(ray_start_regular_shared, enable_optimizer):
+def test_read_map_chain_operator_fusion(ray_start_regular_shared):
     # Test that a chain of different map operators are fused.
     planner = Planner()
     read_op = get_parquet_read_logical_op(parallelism=1)
@@ -588,7 +584,7 @@ def test_read_map_chain_operator_fusion(ray_start_regular_shared, enable_optimiz
 
 
 def test_read_map_batches_operator_fusion_compatible_remote_args(
-    ray_start_regular_shared, enable_optimizer
+    ray_start_regular_shared,
 ):
     # Test that map operators are stilled fused when remote args are compatible.
     compatiple_remote_args_pairs = [
@@ -638,7 +634,7 @@ def test_read_map_batches_operator_fusion_compatible_remote_args(
 
 
 def test_read_map_batches_operator_fusion_incompatible_remote_args(
-    ray_start_regular_shared, enable_optimizer
+    ray_start_regular_shared,
 ):
     # Test that map operators won't get fused if the remote args are incompatible.
     incompatiple_remote_args_pairs = [
@@ -681,7 +677,7 @@ def test_read_map_batches_operator_fusion_incompatible_remote_args(
 
 
 def test_read_map_batches_operator_fusion_compute_tasks_to_actors(
-    ray_start_regular_shared, enable_optimizer
+    ray_start_regular_shared,
 ):
     # Test that a task-based map operator is fused into an actor-based map operator when
     # the former comes before the latter.
@@ -702,7 +698,7 @@ def test_read_map_batches_operator_fusion_compute_tasks_to_actors(
 
 
 def test_read_map_batches_operator_fusion_compute_read_to_actors(
-    ray_start_regular_shared, enable_optimizer
+    ray_start_regular_shared,
 ):
     # Test that reads fuse into an actor-based map operator.
     planner = Planner()
@@ -721,7 +717,7 @@ def test_read_map_batches_operator_fusion_compute_read_to_actors(
 
 
 def test_read_map_batches_operator_fusion_incompatible_compute(
-    ray_start_regular_shared, enable_optimizer
+    ray_start_regular_shared,
 ):
     # Test that map operators are not fused when compute strategies are incompatible.
     planner = Planner()
@@ -743,9 +739,7 @@ def test_read_map_batches_operator_fusion_incompatible_compute(
     assert upstream_physical_op.name == "ReadParquet->MapBatches(<lambda>)"
 
 
-def test_read_map_batches_operator_fusion_min_rows_per_block(
-    ray_start_regular_shared, enable_optimizer
-):
+def test_read_map_batches_operator_fusion_min_rows_per_block(ray_start_regular_shared):
     # Test that fusion of map operators merges their block sizes in the expected way
     # (taking the max).
     planner = Planner()
@@ -777,7 +771,7 @@ def test_read_map_batches_operator_fusion_min_rows_per_block(
 
 
 def test_read_map_batches_operator_fusion_with_randomize_blocks_operator(
-    ray_start_regular_shared, enable_optimizer
+    ray_start_regular_shared,
 ):
     # Note: We currently do not fuse MapBatches->RandomizeBlocks.
     # This test is to ensure that we don't accidentally fuse them.
@@ -798,7 +792,7 @@ def test_read_map_batches_operator_fusion_with_randomize_blocks_operator(
 
 
 def test_read_map_batches_operator_fusion_with_random_shuffle_operator(
-    ray_start_regular_shared, enable_optimizer, use_push_based_shuffle
+    ray_start_regular_shared, use_push_based_shuffle
 ):
     # Note: we currently only support fusing MapOperator->AllToAllOperator.
     def fn(batch):
@@ -863,7 +857,7 @@ def test_read_map_batches_operator_fusion_with_random_shuffle_operator(
 
 @pytest.mark.parametrize("shuffle", (True, False))
 def test_read_map_batches_operator_fusion_with_repartition_operator(
-    ray_start_regular_shared, enable_optimizer, shuffle, use_push_based_shuffle
+    ray_start_regular_shared, shuffle, use_push_based_shuffle
 ):
     def fn(batch):
         return {"id": [x + 1 for x in batch["id"]]}
@@ -884,9 +878,7 @@ def test_read_map_batches_operator_fusion_with_repartition_operator(
     _check_usage_record(["ReadRange", "MapBatches", "Repartition"])
 
 
-def test_read_map_batches_operator_fusion_with_sort_operator(
-    ray_start_regular_shared, enable_optimizer
-):
+def test_read_map_batches_operator_fusion_with_sort_operator(ray_start_regular_shared):
     # Note: We currently do not fuse MapBatches->Sort.
     # This test is to ensure that we don't accidentally fuse them, until
     # we implement it later.
@@ -906,7 +898,7 @@ def test_read_map_batches_operator_fusion_with_sort_operator(
 
 
 def test_read_map_batches_operator_fusion_with_aggregate_operator(
-    ray_start_regular_shared, enable_optimizer
+    ray_start_regular_shared,
 ):
     from ray.data.aggregate import AggregateFn
 
@@ -935,7 +927,9 @@ def test_read_map_batches_operator_fusion_with_aggregate_operator(
     _check_usage_record(["ReadRange", "MapBatches", "Aggregate"])
 
 
-def test_read_map_chain_operator_fusion_e2e(ray_start_regular_shared, enable_optimizer):
+def test_read_map_chain_operator_fusion_e2e(
+    ray_start_regular_shared,
+):
     ds = ray.data.range(10, parallelism=2)
     ds = ds.filter(lambda x: x["id"] % 2 == 0)
     ds = ds.map(column_udf("id", lambda x: x + 1))
@@ -963,14 +957,14 @@ def test_read_map_chain_operator_fusion_e2e(ray_start_regular_shared, enable_opt
     _check_usage_record(["ReadRange", "Filter", "Map", "MapBatches", "FlatMap"])
 
 
-def test_write_fusion(ray_start_regular_shared, enable_optimizer, tmp_path):
+def test_write_fusion(ray_start_regular_shared, tmp_path):
     ds = ray.data.range(10, parallelism=2)
     ds.write_csv(tmp_path)
     assert "ReadRange->Write" in ds._write_ds.stats()
     _check_usage_record(["ReadRange", "WriteCSV"])
 
 
-def test_write_operator(ray_start_regular_shared, enable_optimizer, tmp_path):
+def test_write_operator(ray_start_regular_shared, tmp_path):
     planner = Planner()
     datasink = _ParquetDatasink(tmp_path)
     read_op = get_parquet_read_logical_op()
@@ -987,7 +981,9 @@ def test_write_operator(ray_start_regular_shared, enable_optimizer, tmp_path):
     assert isinstance(physical_op.input_dependencies[0], MapOperator)
 
 
-def test_sort_operator(ray_start_regular_shared, enable_optimizer):
+def test_sort_operator(
+    ray_start_regular_shared,
+):
     planner = Planner()
     read_op = get_parquet_read_logical_op()
     op = Sort(
@@ -1007,9 +1003,7 @@ def test_sort_operator(ray_start_regular_shared, enable_optimizer):
     )
 
 
-def test_sort_e2e(
-    ray_start_regular_shared, enable_optimizer, use_push_based_shuffle, tmp_path
-):
+def test_sort_e2e(ray_start_regular_shared, use_push_based_shuffle, tmp_path):
     ds = ray.data.range(100, parallelism=4)
     ds = ds.random_shuffle()
     ds = ds.sort("id")
@@ -1030,10 +1024,7 @@ def test_sort_e2e(
     assert [d["one"] for d in r2] == list(reversed(range(100)))
 
 
-def test_sort_validate_keys(
-    ray_start_regular_shared,
-    enable_optimizer,
-):
+def test_sort_validate_keys(ray_start_regular_shared):
     ds = ray.data.range(10)
     assert extract_values("id", ds.sort("id").take_all()) == list(range(10))
 
@@ -1065,7 +1056,7 @@ def test_sort_validate_keys(
         ds_named.sort(invalid_col_name).take_all()
 
 
-def test_aggregate_operator(ray_start_regular_shared, enable_optimizer):
+def test_aggregate_operator(ray_start_regular_shared):
     planner = Planner()
     read_op = get_parquet_read_logical_op()
     op = Aggregate(
@@ -1086,11 +1077,7 @@ def test_aggregate_operator(ray_start_regular_shared, enable_optimizer):
     )
 
 
-def test_aggregate_e2e(
-    ray_start_regular_shared,
-    enable_optimizer,
-    use_push_based_shuffle,
-):
+def test_aggregate_e2e(ray_start_regular_shared, use_push_based_shuffle):
     ds = ray.data.range(100, parallelism=4)
     ds = ds.groupby("id").count()
     assert ds.count() == 100
@@ -1099,10 +1086,7 @@ def test_aggregate_e2e(
     _check_usage_record(["ReadRange", "Aggregate"])
 
 
-def test_aggregate_validate_keys(
-    ray_start_regular_shared,
-    enable_optimizer,
-):
+def test_aggregate_validate_keys(ray_start_regular_shared):
     ds = ray.data.range(10)
     invalid_col_name = "invalid_column"
     with pytest.raises(
@@ -1139,7 +1123,7 @@ def test_aggregate_validate_keys(
         ds_named.groupby(invalid_col_name).count()
 
 
-def test_zip_operator(ray_start_regular_shared, enable_optimizer):
+def test_zip_operator(ray_start_regular_shared):
     planner = Planner()
     read_op1 = get_parquet_read_logical_op()
     read_op2 = get_parquet_read_logical_op()
@@ -1163,7 +1147,7 @@ def test_zip_operator(ray_start_regular_shared, enable_optimizer):
     "num_blocks1,num_blocks2",
     list(itertools.combinations_with_replacement(range(1, 12), 2)),
 )
-def test_zip_e2e(ray_start_regular_shared, enable_optimizer, num_blocks1, num_blocks2):
+def test_zip_e2e(ray_start_regular_shared, num_blocks1, num_blocks2):
     n = 12
     ds1 = ray.data.range(n, parallelism=num_blocks1)
     ds2 = ray.data.range(n, parallelism=num_blocks2).map(
@@ -1174,7 +1158,7 @@ def test_zip_e2e(ray_start_regular_shared, enable_optimizer, num_blocks1, num_bl
     _check_usage_record(["ReadRange", "Zip"])
 
 
-def test_from_dask_e2e(ray_start_regular_shared, enable_optimizer):
+def test_from_dask_e2e(ray_start_regular_shared):
     import dask.dataframe as dd
 
     df = pd.DataFrame({"one": list(range(100)), "two": list(range(100))})
@@ -1192,7 +1176,7 @@ def test_from_dask_e2e(ray_start_regular_shared, enable_optimizer):
     _check_usage_record(["FromPandas"])
 
 
-def test_from_modin_e2e(ray_start_regular_shared, enable_optimizer):
+def test_from_modin_e2e(ray_start_regular_shared):
     import modin.pandas as mopd
 
     df = pd.DataFrame(
@@ -1215,9 +1199,7 @@ def test_from_modin_e2e(ray_start_regular_shared, enable_optimizer):
 
 
 @pytest.mark.parametrize("enable_pandas_block", [False, True])
-def test_from_pandas_refs_e2e(
-    ray_start_regular_shared, enable_optimizer, enable_pandas_block
-):
+def test_from_pandas_refs_e2e(ray_start_regular_shared, enable_pandas_block):
     ctx = ray.data.context.DataContext.get_current()
     old_enable_pandas_block = ctx.enable_pandas_block
     ctx.enable_pandas_block = enable_pandas_block
@@ -1255,7 +1237,7 @@ def test_from_pandas_refs_e2e(
         ctx.enable_pandas_block = old_enable_pandas_block
 
 
-def test_from_numpy_refs_e2e(ray_start_regular_shared, enable_optimizer):
+def test_from_numpy_refs_e2e(ray_start_regular_shared):
     import numpy as np
 
     arr1 = np.expand_dims(np.arange(0, 4), axis=1)
@@ -1288,7 +1270,7 @@ def test_from_numpy_refs_e2e(ray_start_regular_shared, enable_optimizer):
     _check_usage_record(["FromNumpy"])
 
 
-def test_from_arrow_refs_e2e(ray_start_regular_shared, enable_optimizer):
+def test_from_arrow_refs_e2e(ray_start_regular_shared):
     import pyarrow as pa
 
     df1 = pd.DataFrame({"one": [1, 2, 3], "two": ["a", "b", "c"]})
@@ -1316,7 +1298,7 @@ def test_from_arrow_refs_e2e(ray_start_regular_shared, enable_optimizer):
     _check_usage_record(["FromArrow"])
 
 
-def test_from_huggingface_e2e(ray_start_regular_shared, enable_optimizer):
+def test_from_huggingface_e2e(ray_start_regular_shared):
     import datasets
 
     data = datasets.load_dataset("tweet_eval", "emotion")
@@ -1350,7 +1332,7 @@ def test_from_huggingface_e2e(ray_start_regular_shared, enable_optimizer):
     _check_usage_record(["FromArrow"])
 
 
-def test_from_tf_e2e(ray_start_regular_shared, enable_optimizer):
+def test_from_tf_e2e(ray_start_regular_shared):
     import tensorflow as tf
     import tensorflow_datasets as tfds
 
@@ -1375,7 +1357,7 @@ def test_from_tf_e2e(ray_start_regular_shared, enable_optimizer):
     _check_usage_record(["FromItems"])
 
 
-def test_from_torch_e2e(ray_start_regular_shared, enable_optimizer, tmp_path):
+def test_from_torch_e2e(ray_start_regular_shared, tmp_path):
     import torchvision
 
     torch_dataset = torchvision.datasets.MNIST(tmp_path, download=True)
@@ -1398,7 +1380,7 @@ def test_from_torch_e2e(ray_start_regular_shared, enable_optimizer, tmp_path):
     reason="Limit pushdown currently disabled, see "
     "https://github.com/ray-project/ray/issues/36295"
 )
-def test_limit_pushdown(ray_start_regular_shared, enable_optimizer):
+def test_limit_pushdown(ray_start_regular_shared):
     def f1(x):
         return x
 
@@ -1480,7 +1462,6 @@ def test_limit_pushdown(ray_start_regular_shared, enable_optimizer):
 
 def test_execute_to_legacy_block_list(
     ray_start_regular_shared,
-    enable_optimizer,
     enable_streaming_executor,
 ):
     ds = ray.data.range(10)
@@ -1497,7 +1478,6 @@ def test_execute_to_legacy_block_list(
 
 def test_execute_to_legacy_block_iterator(
     ray_start_regular_shared,
-    enable_optimizer,
     enable_streaming_executor,
 ):
     ds = ray.data.range(10)
@@ -1512,7 +1492,6 @@ def test_execute_to_legacy_block_iterator(
 
 def test_streaming_executor(
     ray_start_regular_shared,
-    enable_optimizer,
     enable_streaming_executor,
 ):
     ds = ray.data.range(100, parallelism=4)
@@ -1532,7 +1511,6 @@ def test_streaming_executor(
 
 def test_schema_partial_execution(
     ray_start_regular_shared,
-    enable_optimizer,
     enable_streaming_executor,
 ):
     fields = [
@@ -1567,9 +1545,7 @@ def check_transform_fns(op, expected_types):
 
 
 @pytest.mark.skip("Needs zero-copy optimization for read->map_batches.")
-def test_zero_copy_fusion_eliminate_build_output_blocks(
-    ray_start_regular_shared, enable_optimizer
-):
+def test_zero_copy_fusion_eliminate_build_output_blocks(ray_start_regular_shared):
     # Test the EliminateBuildOutputBlocks optimization rule.
     planner = Planner()
     read_op = get_parquet_read_logical_op()

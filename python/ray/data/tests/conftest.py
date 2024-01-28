@@ -340,18 +340,6 @@ def target_max_block_size(request):
 
 
 @pytest.fixture
-def enable_optimizer():
-    ctx = ray.data.context.DataContext.get_current()
-    original_backend = ctx.new_execution_backend
-    original_optimizer = ctx.optimizer_enabled
-    ctx.new_execution_backend = True
-    ctx.optimizer_enabled = True
-    yield
-    ctx.new_execution_backend = original_backend
-    ctx.optimizer_enabled = original_optimizer
-
-
-@pytest.fixture
 def enable_streaming_executor():
     ctx = ray.data.context.DataContext.get_current()
     original_backend = ctx.new_execution_backend
