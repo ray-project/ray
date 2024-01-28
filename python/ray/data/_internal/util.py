@@ -989,7 +989,8 @@ def call_with_retry(
                 # Retry with binary expoential backoff with random jitter.
                 backoff = min((2 ** (i + 1)) * random.random(), max_backoff_s)
                 logger.debug(
-                    f"Retrying {i + 1} attempts to {description} after {backoff} seconds."
+                    f"Retrying {i + 1} attempts to {description} after "
+                    f"{backoff} seconds."
                 )
                 time.sleep(backoff)
             else:

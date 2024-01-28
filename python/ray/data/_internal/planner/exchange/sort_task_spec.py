@@ -118,7 +118,6 @@ class SortTaskSpec(ExchangeTaskSpec):
                     dtype=object,
                 )
 
-        print("sample_dict ->>>: ", sample_dict)
         # Compute sorted indices of the samples. In np.lexsort last key is the
         # primary key hence have to reverse the order.
         indices = np.lexsort(list(reversed(list(sample_dict.values()))))
