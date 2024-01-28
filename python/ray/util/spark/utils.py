@@ -197,10 +197,7 @@ _RAY_ON_SPARK_MAX_OBJECT_STORE_MEMORY_PROPORTION = 0.8
 _RAY_ON_SPARK_NODE_MEMORY_BUFFER_OFFSET = 0.8
 
 
-def calc_mem_ray_head_node(
-    configured_heap_memory_bytes,
-    configured_object_store_bytes
-):
+def calc_mem_ray_head_node(configured_heap_memory_bytes, configured_object_store_bytes):
     import psutil
     import shutil
 
@@ -225,8 +222,10 @@ def calc_mem_ray_head_node(
     )
 
     heap_mem_bytes, object_store_bytes, warning_msg = _calc_mem_per_ray_node(
-        available_physical_mem, available_shared_mem,
-        configured_heap_memory_bytes, configured_object_store_bytes
+        available_physical_mem,
+        available_shared_mem,
+        configured_heap_memory_bytes,
+        configured_object_store_bytes,
     )
 
     if warning_msg is not None:
@@ -236,8 +235,11 @@ def calc_mem_ray_head_node(
 
 
 def _calc_mem_per_ray_worker_node(
-    num_task_slots, physical_mem_bytes, shared_mem_bytes,
-    configured_heap_memory_bytes, configured_object_store_bytes
+    num_task_slots,
+    physical_mem_bytes,
+    shared_mem_bytes,
+    configured_heap_memory_bytes,
+    configured_object_store_bytes,
 ):
     available_physical_mem_per_node = int(
         physical_mem_bytes / num_task_slots * _RAY_ON_SPARK_NODE_MEMORY_BUFFER_OFFSET
@@ -408,8 +410,7 @@ def _get_avail_mem_per_ray_worker_node(
         num_gpus = 0
 
     num_ray_node_slots = _get_local_ray_node_slots(
-        num_cpus, num_gpus,
-        num_cpus_per_node, num_gpus_per_node
+        num_cpus, num_gpus, num_cpus_per_node, num_gpus_per_node
     )
 
     physical_mem_bytes = _get_spark_worker_total_physical_memory()

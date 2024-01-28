@@ -51,7 +51,8 @@ def display_databricks_driver_proxy_url(spark_context, port, title):
     print("To monitor and debug Ray from Databricks, view the dashboard at ")
     print(f" {proxy_url}")
 
-    get_databricks_display_html_function()(f"""
+    get_databricks_display_html_function()(
+        f"""
       <div style="margin-bottom: 16px">
           <a href="{proxy_link}">
               Open {title} in a new tab

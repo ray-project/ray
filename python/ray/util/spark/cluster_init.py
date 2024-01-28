@@ -1052,9 +1052,9 @@ def _setup_ray_cluster_internal(
         num_gpus_spark_worker,
         spark_worker_mem_bytes,
     ) = (
-        spark.sparkContext.parallelize([1], 1).map(
-            _get_spark_worker_resources
-        ).collect()[0]
+        spark.sparkContext.parallelize([1], 1)
+        .map(_get_spark_worker_resources)
+        .collect()[0]
     )
 
     if num_cpus_worker_node is not None and num_gpus_worker_node is not None:
@@ -1118,9 +1118,9 @@ def _setup_ray_cluster_internal(
 
     spark_executor_memory_bytes = get_configured_spark_executor_memory_bytes(spark)
     spark_worker_node_required_mem_bytes = (
-        spark_executor_memory_bytes + spark_worker_ray_node_slots * (
-            ray_worker_node_heap_mem_bytes + ray_worker_node_object_store_mem_bytes
-        )
+        spark_executor_memory_bytes
+        + spark_worker_ray_node_slots
+        * (ray_worker_node_heap_mem_bytes + ray_worker_node_object_store_mem_bytes)
     )
     if spark_worker_node_required_mem_bytes > 0.8 * spark_worker_mem_bytes:
         warn_msg = (
@@ -1135,6 +1135,7 @@ def _setup_ray_cluster_internal(
             from ray.util.spark.databricks_hook import (
                 get_databricks_display_html_function,
             )
+
             get_databricks_display_html_function()(
                 f"<b style='background-color:Cyan;'>{warn_msg}</b>"
             )
