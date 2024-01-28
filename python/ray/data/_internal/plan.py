@@ -473,7 +473,7 @@ class ExecutionPlan:
         # Always used the saved context for execution.
         ctx = self._context
 
-        if not ctx.use_streaming_executor or self.has_computed_output():
+        if self.has_computed_output():
             return (
                 self.execute(
                     allow_clear_input_blocks, force_read

@@ -1462,7 +1462,6 @@ def test_limit_pushdown(ray_start_regular_shared):
 
 def test_execute_to_legacy_block_list(
     ray_start_regular_shared,
-    enable_streaming_executor,
 ):
     ds = ray.data.range(10)
     # Stats not initialized until `ds.iter_rows()` is called
@@ -1478,7 +1477,6 @@ def test_execute_to_legacy_block_list(
 
 def test_execute_to_legacy_block_iterator(
     ray_start_regular_shared,
-    enable_streaming_executor,
 ):
     ds = ray.data.range(10)
     assert ds._plan._snapshot_stats is None
@@ -1492,7 +1490,6 @@ def test_execute_to_legacy_block_iterator(
 
 def test_streaming_executor(
     ray_start_regular_shared,
-    enable_streaming_executor,
 ):
     ds = ray.data.range(100, parallelism=4)
     ds = ds.map_batches(lambda x: x)
@@ -1511,7 +1508,6 @@ def test_streaming_executor(
 
 def test_schema_partial_execution(
     ray_start_regular_shared,
-    enable_streaming_executor,
 ):
     fields = [
         ("sepal.length", pa.float64()),

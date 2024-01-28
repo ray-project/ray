@@ -36,7 +36,6 @@ from ray.data._internal.stats import DatasetStats
 from ray.data._internal.util import (
     _autodetect_parallelism,
     _lazy_import_pyarrow_dataset,
-    _warn_on_high_parallelism,
     get_table_block_metadata,
     ndarray_to_block,
     pandas_df_to_arrow_block,
@@ -362,9 +361,6 @@ def read_datasource(
     # TODO(hchen/chengsu): Remove the duplicated get_read_tasks call here after
     # removing LazyBlockList code path.
     read_tasks = datasource_or_legacy_reader.get_read_tasks(requested_parallelism)
-
-    if not ctx.use_streaming_executor:
-        _warn_on_high_parallelism(requested_parallelism, len(read_tasks))
 
     read_stage_name = f"Read{datasource.get_name()}"
 

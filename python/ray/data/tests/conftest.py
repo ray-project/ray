@@ -339,15 +339,6 @@ def target_max_block_size(request):
     ctx.target_max_block_size = original
 
 
-@pytest.fixture
-def enable_streaming_executor():
-    ctx = ray.data.context.DataContext.get_current()
-    use_streaming_executor = ctx.use_streaming_executor
-    ctx.use_streaming_executor = True
-    yield
-    ctx.use_streaming_executor = use_streaming_executor
-
-
 # ===== Pandas dataset formats =====
 @pytest.fixture(scope="function")
 def ds_pandas_single_column_format(ray_start_regular_shared):
