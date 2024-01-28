@@ -248,9 +248,6 @@ def test_optimize_reorder(ray_start_regular_shared):
 
 
 def test_write_fusion(ray_start_regular_shared, tmp_path):
-    context = DataContext.get_current()
-    context.optimize_fuse_shuffle_stages = True
-
     path = os.path.join(tmp_path, "out")
     ds = ray.data.range(100).map_batches(lambda x: x)
     ds.write_csv(path)
