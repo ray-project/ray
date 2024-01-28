@@ -109,8 +109,14 @@ class SortTaskSpec(ExchangeTaskSpec):
 
         for k, v in sample_dict.items():
             if v.dtype == object:
-                sample_dict[k] = np.array([i for i in v if i is not None and type(i) is not pd._libs.missing.NAType],
-                                          dtype=object)
+                sample_dict[k] = np.array(
+                    [
+                        i
+                        for i in v
+                        if i is not None and type(i) is not pd._libs.missing.NAType
+                    ],
+                    dtype=object,
+                )
 
         print("sample_dict ->>>: ", sample_dict)
         # Compute sorted indices of the samples. In np.lexsort last key is the

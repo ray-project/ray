@@ -432,7 +432,7 @@ class PandasBlockAccessor(TableBlockAccessor):
                     if type(next_row[key]) is _pandas._libs.missing.NAType:
                         next_row = next(iter)
                         continue
-                    
+
                     while np.all(next_row[key] == next_key):
                         end += 1
                         try:
