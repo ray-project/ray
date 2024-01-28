@@ -81,10 +81,10 @@ class ServeJSONFormatter(logging.Formatter):
                 SERVE_LOG_APPLICATION
             ]
 
-        if SERVE_LOG_MESSAGE in record.__dict__:
-            record_format[SERVE_LOG_MESSAGE] = (
-                SERVE_LOG_RECORD_FORMAT[SERVE_LOG_MESSAGE] % record.__dict__
-            )
+        message_formatter = logging.Formatter(
+            SERVE_LOG_RECORD_FORMAT[SERVE_LOG_MESSAGE]
+        )
+        record_format[SERVE_LOG_MESSAGE] = message_formatter.format(record)
 
         if SERVE_LOG_EXTRA_FIELDS in record.__dict__:
             if not isinstance(record.__dict__[SERVE_LOG_EXTRA_FIELDS], dict):

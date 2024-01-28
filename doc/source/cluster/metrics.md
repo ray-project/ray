@@ -13,15 +13,58 @@ Ray exports metrics if you use `ray[default]` or {ref}`other installation comman
 **Application metrics**: Application-specific metrics are useful for monitoring your application states. View {ref}`adding application metrics <application-level-metrics>` for how to record metrics.
 
 (prometheus-setup)=
-## Setting up your Prometheus server
-Use Prometheus to scrape metrics from Ray Clusters. Ray doesn't start Prometheus servers for users. Users need to decide where to host and configure it to scrape the metrics from Clusters.
+## Setting up Prometheus
 
-```{admonition} Tip
-:class: tip
-The instructions below describe one way of setting up Prometheus on your local machine. View [Prometheus documentation](https://prometheus.io/docs/introduction/overview/) for the best strategy to set up your Prometheus server.
+You can use Prometheus to scrape metrics from Ray Clusters. Ray doesn't start Prometheus servers for you. You need to decide where to host and configure it to scrape the metrics from Clusters.
 
-For KubeRay users, follow [these instructions](kuberay-prometheus-grafana) to set up Prometheus.
+For a quick demo, you can run Prometheus locally on your machine. Follow the quickstart instructions below to set up Prometheus and scrape metrics from a local single-node Ray Cluster.
+
+### Quickstart: Running Prometheus locally
+
+Run the following command to download and start Prometheus locally with a configuration that scrapes metrics from a local Ray Cluster.
+
+```bash
+ray metrics launch-prometheus
 ```
+
+You should see the following output:
+
+```text
+2024-01-11 16:08:45,805 - INFO - Prometheus installed successfully.
+2024-01-11 16:08:45,810 - INFO - Prometheus has started.
+Prometheus is running with PID 1234.
+To stop Prometheus, use the command: 'kill 1234', or if you need to force stop, use 'kill -9 1234'.
+```
+
+You should also see some logs from Prometheus:
+
+```shell
+[...]
+ts=2024-01-12T00:47:29.761Z caller=main.go:1009 level=info msg="Server is ready to receive web requests."
+ts=2024-01-12T00:47:29.761Z caller=manager.go:1012 level=info component="rule manager" msg="Starting rule manager..."
+```
+
+Now you can access Ray metrics from the default Prometheus URL, http://localhost:9090.
+
+To demonstrate that Prometheus is scraping metrics from Ray, run the following command:
+
+```shell
+ray start --head --metrics-export-port=8080
+```
+
+Then go to the Prometheus UI and run the following query:
+
+```shell
+ray_dashboard_api_requests_count_requests_total
+```
+
+You can then see the number of requests to the Ray Dashboard API over time.
+
+To stop Prometheus, run `kill <PID>` where `<PID>` is the PID of the Prometheus process that was printed out when you ran the command. To find the PID, you can also run `ps aux | grep prometheus`.
+
+### [Optional] Manual: Running Prometheus locally
+
+If the preceding automatic script doesn't work or you would prefer to install and start Prometheus manually, follow these instructions.
 
 First, [download Prometheus](https://prometheus.io/download/). Make sure to download the correct binary for your operating system. (For example, Darwin for macOS X.)
 
@@ -59,6 +102,9 @@ If you are using macOS, you may receive an error at this point about trying to l
 
 Now, you can access Ray metrics from the default Prometheus URL, `http://localhost:9090`.
 
+### Running Prometheus in production
+
+For a production environment, view [Prometheus documentation](https://prometheus.io/docs/introduction/overview/) for the best strategy to set up your Prometheus server. The Prometheus server should live outside of the Ray Cluster, so that metrics are still accessible if the Cluster is down. For KubeRay users, follow [these instructions](kuberay-prometheus-grafana) to set up Prometheus.
 
 ### Troubleshooting
 #### Using Ray configurations in Prometheus with Homebrew on macOS X
@@ -99,7 +145,7 @@ Use auto-discovery to export Prometheus metrics when using the Ray {ref}`cluster
 
 Ray auto-generates a Prometheus [service discovery file](https://prometheus.io/docs/guides/file-sd/#installing-configuring-and-running-prometheus) on the head node to facilitate metrics agents' service discovery. This function allows you to scrape all metrics in the cluster without knowing their IPs. The following information guides you on the setup.
 
-The service discovery file is generated on the {ref}`head node <cluster-head-node>`. On this node, look for ``/tmp/ray/prom_metrics_service_discovery.json`` (or the eqiuvalent file if using a custom Ray ``temp_dir``). Ray periodically updates this file with the addresses of all metrics agents in the cluster.
+The service discovery file is generated on the {ref}`head node <cluster-head-node>`. On this node, look for ``/tmp/ray/prom_metrics_service_discovery.json`` (or the equivalent file if using a custom Ray ``temp_dir``). Ray periodically updates this file with the addresses of all metrics agents in the cluster.
 
 Ray automatically produces a Prometheus config, which scrapes the file for service discovery found at `/tmp/ray/session_latest/metrics/prometheus/prometheus.yml`. You can choose to use this config or modify your own config to enable this behavior. See the details of the config below. Find the full documentation [here](https://prometheus.io/docs/prometheus/latest/configuration/configuration/).
 
@@ -124,7 +170,7 @@ scrape_configs:
 ### Manually discovering metrics endpoints
 
 If you know the IP addresses of the nodes in your Ray Cluster, you can configure Prometheus to read metrics from a static list of endpoints.
-Set a fixed port that Ray should use to export metrics.  If you're using the VM Cluster Launcher, pass ``--metrics-export-port=<port>`` to ``ray start``.  If you're using KubeRay, specify ``rayStartParams.metrics-export-port`` in the RayCluster configuration file. You must specify the port on all nodes in the cluster.
+Set a fixed port that Ray should use to export metrics. If you're using the VM Cluster Launcher, pass ``--metrics-export-port=<port>`` to ``ray start``.  If you're using KubeRay, specify ``rayStartParams.metrics-export-port`` in the RayCluster configuration file. You must specify the port on all nodes in the cluster.
 
 If you do not know the IP addresses of the nodes in your Ray Cluster, you can also programmatically discover the endpoints by reading the Ray Cluster information. The following example uses a Python script and the {py:obj}`ray.nodes` API to find the metrics agents' URLs, by combining the ``NodeManagerAddress`` with the ``MetricsExportPort``.
 
@@ -178,14 +224,14 @@ If you need to process and export metrics into other storage or management syste
 ## Monitoring metrics
 To visualize and monitor collected metrics, there are 3 common paths:
 
-1. **Simplist**: Use Grafana with Ray-provided configurations, which include default Grafana dashboards showing some of the most valuable metrics for debugging Ray applications.
+1. **Simplest**: Use Grafana with Ray-provided configurations, which include default Grafana dashboards showing some of the most valuable metrics for debugging Ray applications.
 2. **Recommended**: Use Ray Dashboard which embeds Grafana visualizations and look at metrics together with logs, Job info and so on in a single pane of glass.
 3. **Manual**: Set up Grafana or other tools like CloudWatch, Cloud Monitoring, and Datadog from scratch.
 
 Here are some instructions for each of the paths:
 
 (grafana)=
-### Simplist: Setting up Grafana with Ray-provided configurations
+### Simplest: Setting up Grafana with Ray-provided configurations
 Grafana is a tool that supports advanced visualizations of Prometheus metrics and allows you to create custom dashboards with your favorite metrics. 
 
 ::::{tab-set}
