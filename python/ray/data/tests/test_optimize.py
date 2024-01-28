@@ -97,9 +97,6 @@ class OnesSource(Datasource):
 
 
 def test_memory_release(shutdown_only):
-    context = DataContext.get_current()
-    # Ensure that stage fusion is enabled.
-    context.optimize_fuse_stages = True
     info = ray.init(num_cpus=1, object_store_memory=1500e6)
     ds = ray.data.range(10)
 
@@ -226,7 +223,6 @@ def _assert_has_stages(stages, stage_names):
 
 def test_optimize_reorder(ray_start_regular_shared):
     context = DataContext.get_current()
-    context.optimize_fuse_stages = True
     context.optimize_fuse_read_stages = True
     context.optimize_reorder_stages = True
 
@@ -254,7 +250,6 @@ def test_optimize_reorder(ray_start_regular_shared):
 
 def test_write_fusion(ray_start_regular_shared, tmp_path):
     context = DataContext.get_current()
-    context.optimize_fuse_stages = True
     context.optimize_fuse_read_stages = True
     context.optimize_fuse_shuffle_stages = True
 

@@ -241,7 +241,6 @@ Operator N MapBatches(dummy_map_batches): {EXECUTION_STRING}
 
 def test_dataset_stats_basic(ray_start_regular_shared, enable_auto_log_stats):
     context = DataContext.get_current()
-    context.optimize_fuse_stages = True
 
     if context.new_execution_backend:
         if context.use_streaming_executor:
@@ -647,8 +646,6 @@ def test_dataset__repr__(ray_start_regular_shared):
 
 
 def test_dataset_stats_shuffle(ray_start_regular_shared):
-    context = DataContext.get_current()
-    context.optimize_fuse_stages = True
     ds = ray.data.range(1000, parallelism=10)
     ds = ds.random_shuffle().repartition(1, shuffle=True)
     stats = canonicalize(ds.materialize().stats())
@@ -736,7 +733,6 @@ def test_dataset_stats_from_items(ray_start_regular_shared):
 
 def test_dataset_stats_read_parquet(ray_start_regular_shared, tmp_path):
     context = DataContext.get_current()
-    context.optimize_fuse_stages = True
     ds = ray.data.range(1000, parallelism=10)
     ds.write_parquet(str(tmp_path))
     ds = ray.data.read_parquet(str(tmp_path)).map(lambda x: x)
@@ -845,9 +841,6 @@ Operator N Map(<lambda>): {EXECUTION_STRING}
 
 
 def test_calculate_blocks_stats(ray_start_regular_shared, stage_two_block):
-    context = DataContext.get_current()
-    context.optimize_fuse_stages = True
-
     block_params, block_meta_list = stage_two_block
     stats = DatasetStats(
         metadata={"Read": block_meta_list},
@@ -890,9 +883,6 @@ def test_calculate_blocks_stats(ray_start_regular_shared, stage_two_block):
 
 
 def test_summarize_blocks(ray_start_regular_shared, stage_two_block):
-    context = DataContext.get_current()
-    context.optimize_fuse_stages = True
-
     block_params, block_meta_list = stage_two_block
     stats = DatasetStats(
         metadata={"Read": block_meta_list},
@@ -984,9 +974,6 @@ def test_get_total_stats(ray_start_regular_shared, stage_two_block):
     `DatasetStats.get_max_wall_time()`,
     `DatasetStats.get_total_cpu_time()`,
     `DatasetStats.get_max_heap_memory()`."""
-    context = DataContext.get_current()
-    context.optimize_fuse_stages = True
-
     block_params, block_meta_list = stage_two_block
     stats = DatasetStats(
         metadata={"Read": block_meta_list},

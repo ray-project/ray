@@ -51,9 +51,6 @@ DEFAULT_STREAMING_READ_BUFFER_SIZE = 32 * 1024 * 1024
 # TODO (kfstorm): Remove this once stable.
 DEFAULT_ENABLE_PANDAS_BLOCK = True
 
-# Whether to enable stage-fusion optimizations for dataset pipelines.
-DEFAULT_OPTIMIZE_FUSE_STAGES = True
-
 # Whether to enable stage-reorder optimizations for dataset pipelines.
 DEFAULT_OPTIMIZE_REORDER_STAGES = True
 
@@ -181,7 +178,6 @@ class DataContext:
         target_min_block_size: int,
         streaming_read_buffer_size: int,
         enable_pandas_block: bool,
-        optimize_fuse_stages: bool,
         optimize_fuse_read_stages: bool,
         optimize_fuse_shuffle_stages: bool,
         optimize_reorder_stages: bool,
@@ -215,7 +211,6 @@ class DataContext:
         self.target_min_block_size = target_min_block_size
         self.streaming_read_buffer_size = streaming_read_buffer_size
         self.enable_pandas_block = enable_pandas_block
-        self.optimize_fuse_stages = optimize_fuse_stages
         self.optimize_fuse_read_stages = optimize_fuse_read_stages
         self.optimize_fuse_shuffle_stages = optimize_fuse_shuffle_stages
         self.optimize_reorder_stages = optimize_reorder_stages
@@ -287,7 +282,6 @@ class DataContext:
                     target_min_block_size=DEFAULT_TARGET_MIN_BLOCK_SIZE,
                     streaming_read_buffer_size=DEFAULT_STREAMING_READ_BUFFER_SIZE,
                     enable_pandas_block=DEFAULT_ENABLE_PANDAS_BLOCK,
-                    optimize_fuse_stages=DEFAULT_OPTIMIZE_FUSE_STAGES,
                     optimize_fuse_read_stages=DEFAULT_OPTIMIZE_FUSE_READ_STAGES,
                     optimize_fuse_shuffle_stages=DEFAULT_OPTIMIZE_FUSE_SHUFFLE_STAGES,
                     optimize_reorder_stages=DEFAULT_OPTIMIZE_REORDER_STAGES,
