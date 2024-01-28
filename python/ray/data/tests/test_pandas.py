@@ -180,16 +180,25 @@ def test_read_pandas_data_array_column(ray_start_regular_shared):
     assert all(row["array"] == [1, 1, 1])
 
 
-def test_ray_data_none_unique(ray_start_regular_shared):
+def test_ray_ds_unique(ray_start_regular_shared):
+    items = [1, 2, 3, 2, 3]
+    ds = ray.data.from_items(items)
+    assert ds.unique("item") == [1, 2, 3]
+
+
+def test_ray_ds_unique_with_none(ray_start_regular_shared):
     items = [1, 2, 3, 2, 3, None, 4, 4, 5, 6, 7, 8, 9, 10, 11, 12, None, None]
-    # set(items) works fine, as expected
-    ds1 = ray.data.from_items(items)
-    print("result", ds1.unique("item"))
-    assert ds1.unique("item") == set(items)
+    ds = ray.data.from_items(items)
+    assert ds.unique("item") == [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12]
+
+
+def test_ray_ds_unique_with_none_from_pandas(ray_start_regular_shared):
+    df = pd.DataFrame({"col": [1, 2, 3, None]}, dtype="Int64")
+    ds = ray.data.from_pandas(df)
+    ds.unique("col")
 
 
 if __name__ == "__main__":
     import sys
 
-    test_ray_data_none_unique(ray_start_regular_shared=None)
-    # sys.exit(pytest.main(["-v", __file__]))
+    sys.exit(pytest.main(["-v", __file__]))

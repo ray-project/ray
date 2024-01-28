@@ -1,6 +1,7 @@
 from typing import List, Tuple, TypeVar, Union
 
 import numpy as np
+import pandas as pd
 
 from ray.data._internal.delegating_block_builder import DelegatingBlockBuilder
 from ray.data._internal.planner.exchange.interfaces import ExchangeTaskSpec
@@ -105,9 +106,11 @@ class SortTaskSpec(ExchangeTaskSpec):
         samples = builder.build()
 
         sample_dict = BlockAccessor.for_block(samples).to_numpy(columns=columns)
+
         for k, v in sample_dict.items():
             if v.dtype == object:
-                sample_dict[k] = np.array([i for i in v if i is not None], dtype=object)
+                sample_dict[k] = np.array([i for i in v if i is not None and type(i) is not pd._libs.missing.NAType],
+                                          dtype=object)
 
         print("sample_dict ->>>: ", sample_dict)
         # Compute sorted indices of the samples. In np.lexsort last key is the
