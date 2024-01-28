@@ -195,7 +195,8 @@ def test_ray_ds_unique_with_none(ray_start_regular_shared):
 def test_ray_ds_unique_with_none_from_pandas(ray_start_regular_shared):
     df = pd.DataFrame({"col": [1, 2, 3, None]}, dtype="Int64")
     ds = ray.data.from_pandas(df)
-    ds.unique("col")
+    # ds.unique("col")
+    assert ds.unique("col") == [1, 2, 3]
 
 
 if __name__ == "__main__":
