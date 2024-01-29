@@ -102,7 +102,7 @@ def query_all_test_names_by_state(
         raise ValueError("Invalid test state.")
 
     # Obtain all existing test
-    tests = Test.get_from_s3(prefix)
+    tests = Test.gen_from_s3(prefix)
     # Filter tests by test state
     filtered_test_names = [
         t.get_name() for t in tests if t.get_state() == test_state_enum

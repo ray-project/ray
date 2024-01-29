@@ -40,9 +40,9 @@ def test_docker_login(mock_client) -> None:
         docker_login("docker_ecr")
 
 
-@mock.patch("ray_release.test.Test.get_tests")
-def test_query_test_names_by_state(mock_get_tests):
-    mock_get_tests.side_effect = (
+@mock.patch("ray_release.test.Test.gen_from_s3")
+def test_query_test_names_by_state(mock_gen_from_s3):
+    mock_gen_from_s3.side_effect = (
         [
             Test(
                 {
@@ -61,14 +61,15 @@ def test_query_test_names_by_state(mock_get_tests):
         ],
     )
     flaky_test_names = query_all_test_names_by_state(
-        test_state="flaky", prefix="darwin:", prefix_on=False
+        test_state="flaky",
+        prefix="darwin:",
     )
     assert flaky_test_names == ["//test_1", "//test_2"]
 
 
-@mock.patch("ray_release.test.Test.get_tests")
-def test_omit_tests_by_state(mock_get_tests):
-    mock_get_tests.side_effect = (
+@mock.patch("ray_release.test.Test.gen_from_s3")
+def test_omit_tests_by_state(mock_gen_from_s3):
+    mock_gen_from_s3.side_effect = (
         [
             Test(
                 {
