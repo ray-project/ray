@@ -72,7 +72,8 @@ Performing Updates
     :nosignatures:
     :toctree: doc/
 
-    Learner.update
+    Learner.update_from_batch
+    Learner.update_from_episodes
     Learner._update
     Learner.additional_update
     Learner.additional_update_for_module

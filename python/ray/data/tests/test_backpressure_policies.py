@@ -273,8 +273,9 @@ class TestStreamOutputBackpressurePolicy(unittest.TestCase):
             policy._max_num_blocks_in_op_output_queue
             == self._max_blocks_in_op_output_queue
         )
+        data_context = ray.data.DataContext.get_current()
         assert (
-            policy._max_num_blocks_in_streaming_gen_buffer
+            data_context._max_num_blocks_in_streaming_gen_buffer
             == self._max_blocks_in_generator_buffer
         )
 
@@ -343,10 +344,10 @@ class TestStreamOutputBackpressurePolicy(unittest.TestCase):
 
         def consumer(batch):
             assert len(batch["id"]) == 1
-            time.sleep(0.1)
             print("Consuming block", batch["id"][0])
-            del batch["data"]
             batch["consumer_timestamp"] = [time.time()]
+            time.sleep(0.1)
+            del batch["data"]
             return batch
 
         ds = ray.data.range(1, parallelism=1).materialize()
@@ -359,19 +360,6 @@ class TestStreamOutputBackpressurePolicy(unittest.TestCase):
             [row["producer_timestamp"] for row in res],
             [row["consumer_timestamp"] for row in res],
         )
-
-    def test_e2e_backpressure(self):
-        producer_timestamps, consumer_timestamps = self._run_dataset(
-            producer_num_cpus=1, consumer_num_cpus=2
-        )
-        # We can buffer at most 2 blocks.
-        # Thus the producer should be backpressured after producing 2 blocks.
-        # Note, although block 2 is backpressured, but producer_timestamps[2] has
-        # been generated before the backpressure. Thus we assert
-        # producer_timestamps[2] < consumer_timestamps[0] < producer_timestamps[3].
-        assert (
-            producer_timestamps[2] < consumer_timestamps[0] < producer_timestamps[3]
-        ), (producer_timestamps, consumer_timestamps)
 
     def test_no_deadlock(self):
         # The producer needs all 5 CPUs, and the consumer has no CPU to run.

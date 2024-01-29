@@ -10,8 +10,10 @@ from abc import ABC, abstractmethod
 from typing import Any, Callable, Dict, Generator, List, Optional, Tuple, Type
 
 import grpc
+import starlette
 import starlette.routing
 import uvicorn
+from packaging import version
 from starlette.datastructures import MutableHeaders
 from starlette.middleware import Middleware
 from starlette.types import Receive
@@ -34,7 +36,7 @@ from ray.serve._private.constants import (
 )
 from ray.serve._private.grpc_util import DummyServicer, create_serve_grpc_server
 from ray.serve._private.http_util import (
-    ASGIMessageQueue,
+    MessageQueue,
     convert_object_to_asgi_messages,
     receive_http_body,
     set_socket_reuse_port,
@@ -142,7 +144,6 @@ class GenericProxy(ABC):
         proxy_router_class: Type[ProxyRouter],
         request_timeout_s: Optional[float] = None,
         controller_actor: Optional[ActorHandle] = None,
-        proxy_actor: Optional[ActorHandle] = None,
     ):
         self.request_timeout_s = request_timeout_s
         if self.request_timeout_s is not None and self.request_timeout_s < 0:
@@ -152,9 +153,6 @@ class GenericProxy(ABC):
 
         # Used only for displaying the route table.
         self.route_info: Dict[str, EndpointTag] = dict()
-
-        self.self_actor_handle = proxy_actor or ray.get_runtime_context().current_actor
-        self.asgi_receive_queues: Dict[str, ASGIMessageQueue] = dict()
 
         self.proxy_router = proxy_router_class(
             serve.get_deployment_handle, self.protocol
@@ -226,9 +224,6 @@ class GenericProxy(ABC):
             }
         )
 
-        # `self._prevent_node_downscale_ref` is used to prevent the node from being
-        # downscaled when there are ongoing requests
-        self._prevent_node_downscale_ref = ray.put("prevent_node_downscale_object")
         # `self._ongoing_requests` is used to count the number of ongoing requests
         self._ongoing_requests = 0
         # The time when the node starts to drain.
@@ -721,7 +716,7 @@ class gRPCProxy(GenericProxy):
         proxy_request: ProxyRequest,
         app_is_cross_language: bool = False,
     ) -> ResponseGenerator:
-        handle_arg = proxy_request.request_object(proxy_handle=self.self_actor_handle)
+        handle_arg = proxy_request.request_object()
         response_generator = ProxyResponseGenerator(
             handle.remote(handle_arg),
             timeout_s=self.request_timeout_s,
@@ -763,6 +758,25 @@ class gRPCProxy(GenericProxy):
 
 class HTTPProxy(GenericProxy):
     """This class is meant to be instantiated and run by an ASGI HTTP server."""
+
+    def __init__(
+        self,
+        node_id: NodeId,
+        node_ip_address: str,
+        proxy_router_class: Type[ProxyRouter],
+        request_timeout_s: Optional[float] = None,
+        controller_actor: Optional[ActorHandle] = None,
+        proxy_actor: Optional[ActorHandle] = None,
+    ):
+        super().__init__(
+            node_id,
+            node_ip_address,
+            proxy_router_class,
+            request_timeout_s=request_timeout_s,
+            controller_actor=controller_actor,
+        )
+        self.self_actor_handle = proxy_actor or ray.get_runtime_context().current_actor
+        self.asgi_receive_queues: Dict[str, MessageQueue] = dict()
 
     @property
     def protocol(self) -> RequestProtocol:
@@ -850,7 +864,7 @@ class HTTPProxy(GenericProxy):
                 await send(message)
 
     async def proxy_asgi_receive(
-        self, receive: Receive, queue: ASGIMessageQueue
+        self, receive: Receive, queue: MessageQueue
     ) -> Optional[int]:
         """Proxies the `receive` interface, placing its messages into the queue.
 
@@ -937,8 +951,9 @@ class HTTPProxy(GenericProxy):
             # Response is returned as raw bytes, convert it to ASGI messages.
             result_callback = convert_object_to_asgi_messages
         else:
+            self_actor_handle = self.self_actor_handle
             handle_arg = proxy_request.request_object(
-                proxy_handle=self.self_actor_handle
+                receive_asgi_messages=self_actor_handle.receive_asgi_messages.remote
             )
             # Messages are returned as pickled dictionaries.
             result_callback = pickle.loads
@@ -946,7 +961,7 @@ class HTTPProxy(GenericProxy):
         # Proxy the receive interface by placing the received messages on a queue.
         # The downstream replica must call back into `receive_asgi_messages` on this
         # actor to receive the messages.
-        receive_queue = ASGIMessageQueue()
+        receive_queue = MessageQueue()
         self.asgi_receive_queues[request_id] = receive_queue
         proxy_asgi_receive_task = get_or_create_event_loop().create_task(
             self.proxy_asgi_receive(proxy_request.receive, receive_queue)
@@ -1037,24 +1052,37 @@ class HTTPProxy(GenericProxy):
             )
 
         finally:
+            # For websocket connection, queue receive task is done when receiving
+            # disconnect message from client.
+            receive_client_disconnect_msg = False
             if not proxy_asgi_receive_task.done():
                 proxy_asgi_receive_task.cancel()
             else:
-                # If the server disconnects, status_code is set above from the
-                # disconnect message. Otherwise the disconnect code comes from
-                # a client message via the receive interface.
-                if (
-                    status is None
-                    and proxy_request.request_type == "websocket"
-                    and proxy_asgi_receive_task.exception() is None
-                ):
+                receive_client_disconnect_msg = True
+
+            # If the server disconnects, status_code can be set above from the
+            # disconnect message.
+            # If client disconnects, the disconnect code comes from
+            # a client message via the receive interface.
+            if status is None and proxy_request.request_type == "websocket":
+                if receive_client_disconnect_msg:
+                    # The disconnect message is sent from the client.
                     status = ResponseStatus(
                         code=str(proxy_asgi_receive_task.result()),
+                        is_error=True,
+                    )
+                else:
+                    # The server disconnect without sending a disconnect message
+                    # (otherwise the `status` would be set).
+                    status = ResponseStatus(
+                        code="1000",  # [Sihan] is there a better code for this?
                         is_error=True,
                     )
 
             del self.asgi_receive_queues[request_id]
 
+        # The status code should always be set.
+        assert status is not None
         yield status
 
 
@@ -1185,9 +1213,18 @@ class ProxyActor:
         self.wrapped_http_proxy = self.http_proxy
 
         for middleware in http_middlewares:
-            self.wrapped_http_proxy = middleware.cls(
-                self.wrapped_http_proxy, **middleware.options
-            )
+            if version.parse(starlette.__version__) < version.parse("0.35.0"):
+                self.wrapped_http_proxy = middleware.cls(
+                    self.wrapped_http_proxy, **middleware.options
+                )
+            else:
+                # In starlette >= 0.35.0, middleware.options does not exist:
+                # https://github.com/encode/starlette/pull/2381.
+                self.wrapped_http_proxy = middleware.cls(
+                    self.wrapped_http_proxy,
+                    *middleware.args,
+                    **middleware.kwargs,
+                )
 
         # Start running the HTTP server on the event loop.
         # This task should be running forever. We track it in case of failure.

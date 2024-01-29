@@ -471,7 +471,7 @@ fairscale==0.4.6
     # via -r /ray/ci/../python/requirements/ml/tune-test-requirements.txt
 farama-notifications==0.0.4
     # via gymnasium
-fastapi==0.104.0
+fastapi==0.108.0
     # via
     #   -r /ray/ci/../python/requirements.txt
     #   -r /ray/ci/../python/requirements/test-requirements.txt
@@ -2175,7 +2175,7 @@ sshpubkeys==3.3.1
     # via moto
 stack-data==0.6.3
     # via ipython
-starlette==0.27.0
+starlette==0.29.0
     # via
     #   -r /ray/ci/../python/requirements.txt
     #   -r /ray/ci/../python/requirements/test-requirements.txt

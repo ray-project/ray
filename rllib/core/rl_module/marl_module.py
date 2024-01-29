@@ -14,10 +14,6 @@ from typing import (
     Union,
 )
 
-from ray.util.annotations import PublicAPI
-from ray.rllib.utils.annotations import override, ExperimentalAPI
-from ray.rllib.utils.nested_dict import NestedDict
-
 from ray.rllib.core.models.specs.typing import SpecType
 from ray.rllib.policy.sample_batch import MultiAgentBatch
 from ray.rllib.core.rl_module.rl_module import (
@@ -28,10 +24,16 @@ from ray.rllib.core.rl_module.rl_module import (
 )
 
 # TODO (Kourosh): change this to module_id later to enforce consistency
-from ray.rllib.utils.annotations import OverrideToImplementCustomLogic
+from ray.rllib.utils.annotations import (
+    ExperimentalAPI,
+    override,
+    OverrideToImplementCustomLogic,
+)
+from ray.rllib.utils.nested_dict import NestedDict
 from ray.rllib.utils.policy import validate_policy_id
 from ray.rllib.utils.serialization import serialize_type, deserialize_type
 from ray.rllib.utils.typing import T
+from ray.util.annotations import PublicAPI
 
 ModuleID = str
 
@@ -418,7 +420,6 @@ class MultiAgentRLModule(RLModule):
 class MultiAgentRLModuleSpec:
     """A utility spec class to make it constructing MARL modules easier.
 
-
     Users can extend this class to modify the behavior of base class. For example to
     share neural networks across the modules, the build method can be overriden to
     create the shared module first and then pass it to custom module classes that would
@@ -463,9 +464,7 @@ class MultiAgentRLModuleSpec:
         return MultiAgentRLModuleConfig(modules=self.module_specs)
 
     @OverrideToImplementCustomLogic
-    def build(
-        self, module_id: Optional[ModuleID] = None
-    ) -> Union[SingleAgentRLModuleSpec, "MultiAgentRLModule"]:
+    def build(self, module_id: Optional[ModuleID] = None) -> RLModule:
         """Builds either the multi-agent module or the single-agent module.
 
         If module_id is None, it builds the multi-agent module. Otherwise, it builds
@@ -484,9 +483,11 @@ class MultiAgentRLModuleSpec:
         """
         self._check_before_build()
 
+        # ModuleID provided, return single-agent RLModule.
         if module_id:
             return self.module_specs[module_id].build()
 
+        # Return MultiAgentRLModule.
         module_config = self.get_marl_config()
         module = self.marl_module_class(module_config)
         return module
@@ -584,6 +585,10 @@ class MultiAgentRLModuleSpec:
                 self.module_specs = other.module_specs
             else:
                 self.module_specs.update(other.module_specs)
+
+    def as_multi_agent(self) -> "MultiAgentRLModuleSpec":
+        """Returns self to match `SingleAgentRLModuleSpec.as_multi_agent()`."""
+        return self
 
 
 @ExperimentalAPI
