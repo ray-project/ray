@@ -4,6 +4,7 @@ from typing import TYPE_CHECKING
 
 import numpy as np
 import pytest
+import tensorflow as tf
 from pandas.api.types import is_float_dtype, is_int64_dtype, is_object_dtype
 
 import ray
@@ -700,6 +701,30 @@ def test_read_with_invalid_schema(
         "Schema field type mismatch during read: "
         "specified type is int, but underlying type is bytes"
     )
+
+
+@pytest.mark.parametrize("num_rows_per_file", [5, 10, 50])
+def test_write_num_rows_per_file(tmp_path, ray_start_regular_shared, num_rows_per_file):
+    import pyarrow.parquet as pq
+
+    ray.data.range(100, parallelism=20).write_parquet(
+        tmp_path, num_rows_per_file=num_rows_per_file
+    )
+
+    for filename in os.listdir(tmp_path):
+        table = pq.read_table(os.path.join(tmp_path, filename))
+        assert len(table) == num_rows_per_file
+
+
+@pytest.mark.parametrize("num_rows_per_file", [5, 10, 50])
+def test_write_num_rows_per_file(tmp_path, ray_start_regular_shared, num_rows_per_file):
+    ray.data.range(100, parallelism=20).write_tfrecords(
+        tmp_path, num_rows_per_file=num_rows_per_file
+    )
+
+    for filename in os.listdir(tmp_path):
+        dataset = tf.data.TFRecordDataset(os.path.join(tmp_path, filename))
+        assert len(list(dataset)) == num_rows_per_file
 
 
 if __name__ == "__main__":
