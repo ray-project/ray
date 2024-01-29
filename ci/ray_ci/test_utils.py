@@ -3,6 +3,7 @@ import sys
 import pytest
 from unittest import mock
 from typing import List
+
 from ray_release.test import Test, TestState
 from ci.ray_ci.utils import (
     chunk_into_n,
@@ -60,7 +61,7 @@ def test_query_test_names_by_state(mock_get_tests):
         ],
     )
     flaky_test_names = query_all_test_names_by_state(
-        test_state="flaky", prefixes=["darwin:"], prefix_on=False
+        test_state="flaky", prefix="darwin:", prefix_on=False
     )
     assert flaky_test_names == ["//test_1", "//test_2"]
 

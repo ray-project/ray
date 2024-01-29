@@ -1,8 +1,8 @@
-#!/usr/bin/env python3
+import sys
+
 from ci.ray_ci.utils import omit_tests_by_state
 from ray_release.configs.global_config import init_global_config
 from ray_release.bazel import bazel_runfile
-import sys
 
 
 def main():
@@ -16,15 +16,15 @@ def main():
         test_state: Test state to filter by.
             Use string representation from ray_release.test.TestState class.
     """
+    # Process arguments
+    if len(sys.argv) != 3:
+        raise ValueError("Invalid number of arguments.")
+
+    test_targets = sys.argv[1]
+    test_state = sys.argv[2]
+
     # Initialize global config
     init_global_config(bazel_runfile("release/ray_release/configs/oss_config.yaml"))
-
-    # Process arguments
-    if len(sys.argv) == 3:
-        test_targets = sys.argv[1]
-        test_state = sys.argv[2]
-    else:
-        raise ValueError("Invalid number of arguments.")
 
     filtered_test_targets = omit_tests_by_state(
         test_targets.split("\\n")[:-1], test_state

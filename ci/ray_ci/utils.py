@@ -7,9 +7,9 @@ import tempfile
 import boto3
 from typing import List
 from math import ceil
-from ray_release.test import Test, TestState
 
 import ci.ray_ci.bazel_sharding as bazel_sharding
+from ray_release.test import Test, TestState
 
 
 POSTMERGE_PIPELINE = "0189e759-8c96-4302-b6b5-b4274406bf89"
@@ -79,16 +79,16 @@ def docker_pull(image: str) -> None:
 
 
 def query_all_test_names_by_state(
-    prefixes: List[str], test_state: str = "flaky", prefix_on: bool = False
+    prefix: str,
+    test_state: str = "flaky",
 ):
     """
     Query all existing test names by the test state.
 
     Args:
+        prefix: A prefix to filter by.
         test_state: Test state to filter by.
             Use string representation from ray_release.test.TestState class.
-        prefixes: List of prefixes to filter by.
-        prefix_on: Whether to include test prefix in test name.
 
     Returns:
         List[str]: List of test names.
@@ -101,21 +101,19 @@ def query_all_test_names_by_state(
     if test_state_enum is None:
         raise ValueError("Invalid test state.")
 
-    # Obtain all existing tests
-    tests = Test.get_tests(prefixes)
+    # Obtain all existing test
+    tests = Test.get_from_s3(prefix)
     # Filter tests by test state
-    filtered_tests = Test.filter_tests_by_state(tests, test_state_enum)
-    filtered_test_names = [test.get_name() for test in filtered_tests]
-    if prefix_on:
-        return filtered_test_names
-    else:
-        no_prefix_filtered_test_names = [
-            test.replace(prefix, "")
-            for test in filtered_test_names
-            for prefix in prefixes
-            if test.startswith(prefix)
-        ]
-        return no_prefix_filtered_test_names
+    filtered_test_names = [
+        t.get_name() for t in tests if t.get_state() == test_state_enum
+    ]
+
+    no_prefix_filtered_test_names = [
+        test.replace(prefix, "")
+        for test in filtered_test_names
+        if test.startswith(prefix)
+    ]
+    return no_prefix_filtered_test_names
 
 
 def omit_tests_by_state(
@@ -134,7 +132,8 @@ def omit_tests_by_state(
     """
     # Obtain all existing tests with specified test state
     state_test_names = query_all_test_names_by_state(
-        test_state=test_state, prefixes=["darwin:"], prefix_on=False
+        prefix="darwin:",
+        test_state=test_state,
     )
     # Eliminate these test from list of test targets
     test_targets_filtered = [
