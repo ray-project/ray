@@ -35,8 +35,8 @@ numpy>=1.20
 aiorwlock
 opentelemetry-exporter-otlp
 # TODO(matthewdeng): [py38]
-scipy; python_version; python_version < "3.9"
-scipy; python_version; python_version >= "3.9"
+scipy; python_version < "3.9"
+scipy; python_version >= "3.9"
 colorful
 pyyaml
 rich
