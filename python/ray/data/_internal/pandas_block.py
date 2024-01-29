@@ -429,10 +429,17 @@ class PandasBlockAccessor(TableBlockAccessor):
                     if next_row is None:
                         next_row = next(iter)
                     next_key = next_row[key]
+                    if type(next_row[key]) is _pandas._libs.missing.NAType:
+                        next_row = next(iter)
+                        continue
+
                     while np.all(next_row[key] == next_key):
                         end += 1
                         try:
                             next_row = next(iter)
+                            if type(next_row[key]) is _pandas._libs.missing.NAType:
+                                next_row = next(iter)
+                                continue
                         except StopIteration:
                             next_row = None
                             break
@@ -520,17 +527,23 @@ class PandasBlockAccessor(TableBlockAccessor):
 
         stats = BlockExecStats.builder()
         keys = key if isinstance(key, list) else [key]
+
         key_fn = (
             (lambda r: tuple(r[r._row.columns[: len(keys)]]))
             if key is not None
             else (lambda r: (0,))
         )
 
-        iter = heapq.merge(
-            *[
-                PandasBlockAccessor(block).iter_rows(public_row_format=False)
-                for block in blocks
-            ],
+        iterables = [
+            filter(
+                lambda r: tuple(r[r._row.columns[: len(keys)]])[0] is not None,
+                PandasBlockAccessor(block).iter_rows(public_row_format=False),
+            )
+            for block in blocks
+        ]
+
+        iters = heapq.merge(
+            *iterables,
             key=key_fn,
         )
         next_row = None
@@ -538,19 +551,20 @@ class PandasBlockAccessor(TableBlockAccessor):
         while True:
             try:
                 if next_row is None:
-                    next_row = next(iter)
+                    next_row = next(iters)
+
                 next_keys = key_fn(next_row)
                 next_key_names = (
                     next_row._row.columns[: len(keys)] if key is not None else None
                 )
 
                 def gen():
-                    nonlocal iter
+                    nonlocal iters
                     nonlocal next_row
                     while key_fn(next_row) == next_keys:
                         yield next_row
                         try:
-                            next_row = next(iter)
+                            next_row = next(iters)
                         except StopIteration:
                             next_row = None
                             break

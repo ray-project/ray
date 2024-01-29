@@ -51,10 +51,8 @@ _VERSION_VALIDATED = False
 _LOCAL_SCHEME = "local"
 _EXAMPLE_SCHEME = "example"
 
-
 LazyModule = Union[None, bool, ModuleType]
 _pyarrow_dataset: LazyModule = None
-
 
 cached_cluster_resources = {}
 cluster_resources_last_fetch_time = 0
@@ -735,6 +733,7 @@ def find_partition_index(
             return right
         col_name = columns[i]
         col_vals = table[col_name].to_numpy()[left:right]
+        col_vals = [x for x in col_vals if x is not None]
         desired_val = desired[i]
 
         prevleft = left
@@ -990,7 +989,8 @@ def call_with_retry(
                 # Retry with binary expoential backoff with random jitter.
                 backoff = min((2 ** (i + 1)) * random.random(), max_backoff_s)
                 logger.debug(
-                    f"Retrying {i+1} attempts to {description} after {backoff} seconds."
+                    f"Retrying {i + 1} attempts to {description} after "
+                    f"{backoff} seconds."
                 )
                 time.sleep(backoff)
             else:

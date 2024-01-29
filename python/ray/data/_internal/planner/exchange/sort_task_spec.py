@@ -1,6 +1,7 @@
 from typing import TYPE_CHECKING, List, Optional, Tuple, TypeVar, Union
 
 import numpy as np
+import pandas as pd
 
 from ray.data._internal.delegating_block_builder import DelegatingBlockBuilder
 from ray.data._internal.planner.exchange.interfaces import ExchangeTaskSpec
@@ -179,6 +180,18 @@ class SortTaskSpec(ExchangeTaskSpec):
         samples = builder.build()
 
         sample_dict = BlockAccessor.for_block(samples).to_numpy(columns=columns)
+
+        for k, v in sample_dict.items():
+            if v.dtype == object:
+                sample_dict[k] = np.array(
+                    [
+                        i
+                        for i in v
+                        if i is not None and type(i) is not pd._libs.missing.NAType
+                    ],
+                    dtype=object,
+                )
+
         # Compute sorted indices of the samples. In np.lexsort last key is the
         # primary key hence have to reverse the order.
         indices = np.lexsort(list(reversed(list(sample_dict.values()))))
