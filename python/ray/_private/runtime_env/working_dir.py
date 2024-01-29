@@ -214,7 +214,11 @@ class WorkingDirPlugin(RuntimeEnvPlugin):
                 )
             key = ray_constants.RAY_RUNTIME_ENV_CREATE_WORKING_DIR_ENV_VAR
             prev = os.environ.get(key)
-            os.environ[key] = str(local_dir)
+            # Windows backslash paths are weird. When it's passed to the env var, and
+            # when Pip expands it, the backslashes are interpreted as escape characters
+            # and messes up the whole path. So we convert it to forward slashes.
+            # This works at least for all Python applications, including pip.
+            os.environ[key] = local_dir.as_posix()
             try:
                 yield
             finally:
