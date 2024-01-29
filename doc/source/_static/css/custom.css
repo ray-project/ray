@@ -21,20 +21,26 @@ html {
 
 html[data-theme='dark'] {
   --pst-color-background: #161a1d;
+  --pst-color-on-background: #1d2125;
   --pst-color-text-base: #f1f2f4;
   --pst-color-text-muted: #b3b9c4;
+  --pst-color-border: #2c333a;
   --heading-color: #ffffff;
   --base-pygments-code-color: #cccccc;
   --pst-color-link-hover: #cce0ff;
+  --anyscale-border-color: #f1f2f4;
 }
 
 html[data-theme='light'] {
   --pst-color-background: #ffffff;
+  --pst-color-on-background: #ffffff;
   --pst-color-text-base: #22272b;
   --pst-color-text-muted: #454f59;
+  --pst-color-border: #dcdfe4;
   --heading-color: #161a1d;
   --base-pygments-code-color: #cccccc;
   --pst-color-link-hover: #09326c;
+  --anyscale-border-color: #161a1d;
 }
 
 nav.bd-links li > a:hover {
@@ -151,6 +157,7 @@ ul.navbar-toplevel {
   align-items: center;
   margin: 0;
   height: 100%;
+  padding-left: 0;
 }
 .navbar-content ul.navbar-sublevel {
   position: absolute;
@@ -183,17 +190,32 @@ nav.navbar-nav {
   gap: 0.5em;
   height: 100%;
 }
+/* Highlight active nav bar link */
+li.active-link {
+  font-weight: bold;
+}
 .navbar-header-items__end {
   /* Prevent the anyscale button from wrapping */
   flex-flow: nowrap !important;
 }
-
-/* Highlight active nav bar link; offset content to compensate for border size */
-li.active-link {
-  border-bottom: 4px solid var(--ray-blue);
+.navbar {
+  box-shadow: 0px 4px 10px 0px rgba(0, 0, 0, 0.08);
 }
-li.active-link > .ref-container {
-  transform: translateY(2px);
+/* Set the first .navbar-persistent--mobile element to have auto left margin */
+.navbar-persistent--mobile {
+  margin-left: auto;
+}
+/* Set any .navbar-persistent--mobile preceeded by a .navbar-persistent--mobile to have */
+/* a 1em left margin */
+.navbar-persistent--mobile ~ .navbar-persistent--mobile {
+  margin-left: 1em;
+}
+/* Disable underline for hovered links in the nav bar */
+.navbar-nav li a:hover {
+  text-decoration: none;
+}
+.navbar-header-items {
+  padding-left: 0;
 }
 
 /* Ray logo */
@@ -207,14 +229,28 @@ li.active-link > .ref-container {
   fill: var(--ray-blue);
 }
 
-/* Anyscale branding */
-#anyscale-logo > path {
-  fill: var(--anyscale-blue);
+/* Search button styling */
+.search-button-field {
+  border-radius: 4px;
+  min-width: 12em;
+  background-color: unset;
 }
-#try-anyscale {
+/* Disable `ctrl+k` label inside search button */
+.search-button-field > .search-button__kbd-shortcut {
+  display: none;
+}
+/* Disable "search" text inside search button */
+.search-button-field > .search-button__default-text {
+  visibility: hidden;
+}
+.search-button-field svg.fa-magnifying-glass {
+  color: var(--pst-color-border);
+}
+
+/* Anyscale branding */
+#try-anyscale-text {
   color: var(--pst-color-text-base);
-  background-color: var(--pst-color-surface);
-  border-radius: 6px;
+  border-radius: 2px;
   white-space: nowrap;
   padding: 0px 12px;
   height: 40px;
@@ -223,7 +259,10 @@ li.active-link > .ref-container {
   justify-content: center;
   align-items: center;
   gap: 1em;
-  border: 1px solid var(--pst-color-border);
+  border: 1px solid var(--anyscale-border-color);
+}
+#try-anyscale-href {
+  text-decoration: none;
 }
 
 /* Remove margin for the release header in the sidebar, otherwise it's too much space */

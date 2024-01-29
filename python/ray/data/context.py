@@ -51,18 +51,6 @@ DEFAULT_STREAMING_READ_BUFFER_SIZE = 32 * 1024 * 1024
 # TODO (kfstorm): Remove this once stable.
 DEFAULT_ENABLE_PANDAS_BLOCK = True
 
-# Whether to enable stage-fusion optimizations for dataset pipelines.
-DEFAULT_OPTIMIZE_FUSE_STAGES = True
-
-# Whether to enable stage-reorder optimizations for dataset pipelines.
-DEFAULT_OPTIMIZE_REORDER_STAGES = True
-
-# Whether to furthermore fuse read stages.
-DEFAULT_OPTIMIZE_FUSE_READ_STAGES = True
-
-# Whether to furthermore fuse prior map tasks with shuffle stages.
-DEFAULT_OPTIMIZE_FUSE_SHUFFLE_STAGES = True
-
 # Minimum amount of parallelism to auto-detect for a dataset. Note that the min
 # block size config takes precedence over this.
 DEFAULT_MIN_PARALLELISM = 200
@@ -91,17 +79,6 @@ DEFAULT_LARGE_ARGS_THRESHOLD = 50 * 1024 * 1024
 # Whether to use Polars for tabular dataset sorts, groupbys, and aggregations.
 DEFAULT_USE_POLARS = False
 
-# Whether to use the new executor backend.
-DEFAULT_NEW_EXECUTION_BACKEND = bool(
-    int(os.environ.get("RAY_DATA_NEW_EXECUTION_BACKEND", "1"))
-)
-
-# Whether to use the streaming executor. This only has an effect if the new execution
-# backend is enabled.
-DEFAULT_USE_STREAMING_EXECUTOR = bool(
-    int(os.environ.get("RAY_DATA_USE_STREAMING_EXECUTOR", "1"))
-)
-
 # Whether to use the runtime object store memory metrics for scheduling.
 DEFAULT_USE_RUNTIME_METRICS_SCHEDULING = bool(
     int(os.environ.get("DEFAULT_USE_RUNTIME_METRICS_SCHEDULING", "0"))
@@ -124,11 +101,6 @@ DEFAULT_ENABLE_TENSOR_EXTENSION_CASTING = True
 # Whether to automatically print Dataset stats after execution.
 # If disabled, users can still manually print stats with Dataset.stats().
 DEFAULT_AUTO_LOG_STATS = False
-
-# Whether to enable optimizer.
-DEFAULT_OPTIMIZER_ENABLED = bool(
-    int(os.environ.get("RAY_DATA_NEW_EXECUTION_OPTIMIZER", "1"))
-)
 
 # Set this env var to enable distributed tqdm (experimental).
 DEFAULT_USE_RAY_TQDM = bool(int(os.environ.get("RAY_TQDM", "1")))
@@ -181,10 +153,6 @@ class DataContext:
         target_min_block_size: int,
         streaming_read_buffer_size: int,
         enable_pandas_block: bool,
-        optimize_fuse_stages: bool,
-        optimize_fuse_read_stages: bool,
-        optimize_fuse_shuffle_stages: bool,
-        optimize_reorder_stages: bool,
         actor_prefetcher_enabled: bool,
         use_push_based_shuffle: bool,
         pipeline_push_based_shuffle_reduce_tasks: bool,
@@ -192,15 +160,12 @@ class DataContext:
         scheduling_strategy_large_args: SchedulingStrategyT,
         large_args_threshold: int,
         use_polars: bool,
-        new_execution_backend: bool,
-        use_streaming_executor: bool,
         eager_free: bool,
         decoding_size_estimation: bool,
         min_parallelism: bool,
         enable_tensor_extension_casting: bool,
         enable_auto_log_stats: bool,
         trace_allocations: bool,
-        optimizer_enabled: bool,
         execution_options: "ExecutionOptions",
         use_ray_tqdm: bool,
         enable_progress_bars: bool,
@@ -215,10 +180,6 @@ class DataContext:
         self.target_min_block_size = target_min_block_size
         self.streaming_read_buffer_size = streaming_read_buffer_size
         self.enable_pandas_block = enable_pandas_block
-        self.optimize_fuse_stages = optimize_fuse_stages
-        self.optimize_fuse_read_stages = optimize_fuse_read_stages
-        self.optimize_fuse_shuffle_stages = optimize_fuse_shuffle_stages
-        self.optimize_reorder_stages = optimize_reorder_stages
         self.actor_prefetcher_enabled = actor_prefetcher_enabled
         self.use_push_based_shuffle = use_push_based_shuffle
         self.pipeline_push_based_shuffle_reduce_tasks = (
@@ -228,15 +189,12 @@ class DataContext:
         self.scheduling_strategy_large_args = scheduling_strategy_large_args
         self.large_args_threshold = large_args_threshold
         self.use_polars = use_polars
-        self.new_execution_backend = new_execution_backend
-        self.use_streaming_executor = use_streaming_executor
         self.eager_free = eager_free
         self.decoding_size_estimation = decoding_size_estimation
         self.min_parallelism = min_parallelism
         self.enable_tensor_extension_casting = enable_tensor_extension_casting
         self.enable_auto_log_stats = enable_auto_log_stats
         self.trace_allocations = trace_allocations
-        self.optimizer_enabled = optimizer_enabled
         # TODO: expose execution options in Dataset public APIs.
         self.execution_options = execution_options
         self.use_ray_tqdm = use_ray_tqdm
@@ -265,6 +223,9 @@ class DataContext:
         # the DataContext from the plugin implementations, as well as to avoid
         # circular dependencies.
         self._kv_configs: Dict[str, Any] = {}
+        # The max number of blocks that can be buffered at the streaming generator of
+        # each `DataOpTask`.
+        self._max_num_blocks_in_streaming_gen_buffer = None
 
     @staticmethod
     def get_current() -> "DataContext":
@@ -284,10 +245,6 @@ class DataContext:
                     target_min_block_size=DEFAULT_TARGET_MIN_BLOCK_SIZE,
                     streaming_read_buffer_size=DEFAULT_STREAMING_READ_BUFFER_SIZE,
                     enable_pandas_block=DEFAULT_ENABLE_PANDAS_BLOCK,
-                    optimize_fuse_stages=DEFAULT_OPTIMIZE_FUSE_STAGES,
-                    optimize_fuse_read_stages=DEFAULT_OPTIMIZE_FUSE_READ_STAGES,
-                    optimize_fuse_shuffle_stages=DEFAULT_OPTIMIZE_FUSE_SHUFFLE_STAGES,
-                    optimize_reorder_stages=DEFAULT_OPTIMIZE_REORDER_STAGES,
                     actor_prefetcher_enabled=DEFAULT_ACTOR_PREFETCHER_ENABLED,
                     use_push_based_shuffle=DEFAULT_USE_PUSH_BASED_SHUFFLE,
                     # NOTE(swang): We have to pipeline reduce tasks right now
@@ -300,8 +257,6 @@ class DataContext:
                     ),
                     large_args_threshold=DEFAULT_LARGE_ARGS_THRESHOLD,
                     use_polars=DEFAULT_USE_POLARS,
-                    new_execution_backend=DEFAULT_NEW_EXECUTION_BACKEND,
-                    use_streaming_executor=DEFAULT_USE_STREAMING_EXECUTOR,
                     eager_free=DEFAULT_EAGER_FREE,
                     decoding_size_estimation=DEFAULT_DECODING_SIZE_ESTIMATION_ENABLED,
                     min_parallelism=DEFAULT_MIN_PARALLELISM,
@@ -310,7 +265,6 @@ class DataContext:
                     ),
                     enable_auto_log_stats=DEFAULT_AUTO_LOG_STATS,
                     trace_allocations=DEFAULT_TRACE_ALLOCATIONS,
-                    optimizer_enabled=DEFAULT_OPTIMIZER_ENABLED,
                     execution_options=ray.data.ExecutionOptions(),
                     use_ray_tqdm=DEFAULT_USE_RAY_TQDM,
                     enable_progress_bars=DEFAULT_ENABLE_PROGRESS_BARS,
