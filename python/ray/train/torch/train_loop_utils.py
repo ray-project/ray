@@ -83,7 +83,7 @@ def get_device() -> torch.device:
     return torch_utils.get_devices()[0]
 
 
-@PublicAPI(stability="alpha")
+@PublicAPI(stability="beta")
 def get_devices() -> List[torch.device]:
     """Gets the correct torch device list configured for this process.
 
