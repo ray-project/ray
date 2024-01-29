@@ -79,9 +79,11 @@ def get_device() -> torch.device:
 
 
         You can move a model to device by:
+
         >>> model.to(ray.train.torch.get_device())
 
         Instead of manually checking the device type:
+
         >>> model.to("cuda" if torch.cuda.is_available() else "cpu")
     """
     from ray.air._internal import torch_utils
