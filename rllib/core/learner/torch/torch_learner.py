@@ -303,7 +303,12 @@ class TorchLearner(Learner):
             # the user the option to run on the gpu of their choice, so we enable that
             # option here via the local gpu id scaling config parameter.
             if self._distributed:
-                self._device = get_devices()[0]
+                devices = get_devices()
+                assert len(devices) == 1, (
+                    "`get_devices()` should only return one cuda device, "
+                    f"but {devices} was returned instead."
+                )
+                self._device = devices[0]
             else:
                 assert self._local_gpu_idx < torch.cuda.device_count(), (
                     f"local_gpu_idx {self._local_gpu_idx} is not a valid GPU id or is "
