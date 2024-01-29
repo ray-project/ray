@@ -477,7 +477,7 @@ class ExecutionPlan:
         # Always used the saved context for execution.
         ctx = self._context
 
-        if not ctx.use_streaming_executor or self.has_computed_output():
+        if self.has_computed_output():
             return (
                 self.execute(
                     allow_clear_input_blocks, force_read
@@ -710,12 +710,6 @@ class ExecutionPlan:
             and not self._snapshot_blocks.is_cleared()
             and self._snapshot_operator == self._logical_plan.dag
         )
-
-    def _run_with_new_execution_backend(self) -> bool:
-        """Whether this plan should run with new backend.
-        By default, the new execution backend is now fully enabled
-        unless configured otherwise by the user."""
-        return self._context.new_execution_backend
 
     def require_preserve_order(self) -> bool:
         """Whether this plan requires to preserve order."""

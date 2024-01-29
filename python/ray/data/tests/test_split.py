@@ -79,9 +79,7 @@ def test_equal_split(shutdown_only):
         ([2, 5], 1),  # Single split.
     ],
 )
-def test_equal_split_balanced(
-    ray_start_regular_shared, enable_optimizer, block_sizes, num_splits
-):
+def test_equal_split_balanced(ray_start_regular_shared, block_sizes, num_splits):
     _test_equal_split_balanced(block_sizes, num_splits)
 
 

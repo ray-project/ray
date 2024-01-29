@@ -183,7 +183,6 @@ def _get_execution_dag(
 
 
 def _get_initial_stats_from_plan(plan: ExecutionPlan) -> DatasetStats:
-    assert DataContext.get_current().optimizer_enabled
     if plan._snapshot_blocks is not None and not plan._snapshot_blocks.is_cleared():
         return plan._snapshot_stats
     # For Datasets created from "read_xxx", `plan._in_blocks` is a LazyBlockList,
