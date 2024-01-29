@@ -2772,7 +2772,7 @@ class Dataset:
                 instead of ``arrow_parquet_args`` if any of your write arguments
                 can't pickled, or if you'd like to lazily resolve the write
                 arguments for each dataset block.
-            num_rows_per_file: The target number of rows to write to each file. If 
+            num_rows_per_file: The target number of rows to write to each file. If
                 ``None``, Ray Data writes a system-chosen number of rows to each file.
             ray_remote_args: Kwargs passed to :meth:`~ray.remote` in the write tasks.
             arrow_parquet_args: Options to pass to
@@ -2871,7 +2871,7 @@ class Dataset:
                 instead of ``pandas_json_args`` if any of your write arguments
                 can't be pickled, or if you'd like to lazily resolve the write
                 arguments for each dataset block.
-            num_rows_per_file: The target number of rows to write to each file. If 
+            num_rows_per_file: The target number of rows to write to each file. If
                 ``None``, Ray Data writes a system-chosen number of rows to each file.
             ray_remote_args: kwargs passed to :meth:`~ray.remote` in the write tasks.
             pandas_json_args: These args are passed to
@@ -3033,7 +3033,7 @@ class Dataset:
                 Use this argument instead of ``arrow_csv_args`` if any of your write
                 arguments cannot be pickled, or if you'd like to lazily resolve the
                 write arguments for each dataset block.
-            num_rows_per_file: The target number of rows to write to each file. If 
+            num_rows_per_file: The target number of rows to write to each file. If
                 ``None``, Ray Data writes a system-chosen number of rows to each file.
             ray_remote_args: kwargs passed to :meth:`~ray.remote` in the write tasks.
             arrow_csv_args: Options to pass to `pyarrow.write.write_csv <https://\
@@ -3124,7 +3124,7 @@ class Dataset:
             filename_provider: A :class:`~ray.data.datasource.FilenameProvider`
                 implementation. Use this parameter to customize what your filenames
                 look like.
-            num_rows_per_file: The target number of rows to write to each file. If 
+            num_rows_per_file: The target number of rows to write to each file. If
                 ``None``, Ray Data writes a system-chosen number of rows to each file.
             ray_remote_args: kwargs passed to :meth:`~ray.remote` in the write tasks.
 
@@ -3277,7 +3277,7 @@ class Dataset:
             filename_provider: A :class:`~ray.data.datasource.FilenameProvider`
                 implementation. Use this parameter to customize what your filenames
                 look like.
-            num_rows_per_file: The target number of rows to write to each file. If 
+            num_rows_per_file: The target number of rows to write to each file. If
                 ``None``, Ray Data writes a system-chosen number of rows to each file.
             ray_remote_args: kwargs passed to :meth:`~ray.remote` in the write tasks.
         """
