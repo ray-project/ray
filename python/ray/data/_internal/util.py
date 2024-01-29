@@ -601,7 +601,7 @@ def get_compute_strategy(
                     raise ValueError(
                         "``concurrency`` is set as a tuple of integers, but ``fn`` "
                         f"is not a callable class: {fn}. Use ``concurrency=n`` to "
-                        "control maximal number of workers to use."
+                        "control maximum number of workers to use."
                     )
             else:
                 raise ValueError(

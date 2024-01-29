@@ -42,7 +42,6 @@ class TaskPoolMapOperator(MapOperator):
                 or None to use as many tasks as possible.
             ray_remote_args: Customize the ray remote args for this op's tasks.
         """
-        self._concurrency = concurrency
         super().__init__(
             map_transformer,
             input_op,
@@ -51,6 +50,7 @@ class TaskPoolMapOperator(MapOperator):
             min_rows_per_bundle,
             ray_remote_args,
         )
+        self._concurrency = concurrency
 
     def _add_bundled_input(self, bundle: RefBundle):
         # Submit the task as a normal Ray task.
