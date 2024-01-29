@@ -1,6 +1,5 @@
 import logging
 import os
-import sys
 import threading
 import json
 from typing import Any, Dict, List, Optional, Tuple
@@ -126,8 +125,12 @@ class _ClientContext:
                 namespace=ray_constants.KV_NAMESPACE_CLUSTER,
             ).decode("utf-8")
         )
+        ignore_version = ignore_version or ("RAY_IGNORE_VERSION_MISMATCH" in os.environ)
         check_version_info(
-            cluster_metadata, "Ray Client", raise_on_mismatch=not ignore_version
+            cluster_metadata,
+            "Ray Client",
+            raise_on_mismatch=not ignore_version,
+            python_version_match_level="minor",
         )
 
     def disconnect(self):
