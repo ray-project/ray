@@ -8,3 +8,4 @@ pytest-repeat
 soundfile
 google-cloud-bigquery
 google-cloud-bigquery-storage
+array-record; platform_system != "Windows" 
