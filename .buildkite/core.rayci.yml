@@ -30,6 +30,8 @@ steps:
       EXTRA_DEPENDENCY: core
 
   - wait: ~
+    depends_on:
+      - corebuild
 
   # tests
   - label: ":ray: core: python tests"
@@ -268,6 +270,8 @@ steps:
         --test-env=RAY_MINIMAL=1
         --only-tags minimal
         --skip-ray-installation
+    depends_on:
+      - minbuild-core
     matrix:
       - "3.8"
       - "3.9"
