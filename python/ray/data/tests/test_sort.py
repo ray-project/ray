@@ -11,7 +11,7 @@ from ray.data import Dataset
 from ray.data._internal.planner.exchange.push_based_shuffle_task_scheduler import (
     PushBasedShuffleTaskScheduler,
 )
-from ray.data._internal.sort import SortKey
+from ray.data._internal.planner.exchange.sort_task_spec import SortKey, SortTaskSpec
 from ray.data.block import BlockAccessor
 from ray.data.context import DataContext
 from ray.data.tests.conftest import *  # noqa
@@ -179,7 +179,7 @@ def test_sort_arrow_with_empty_blocks(
         ds = ray.data.range(10).filter(lambda r: r["id"] > 10)
         assert (
             len(
-                ray.data._internal.sort.sample_boundaries(
+                SortTaskSpec.sample_boundaries(
                     ds._plan.execute().get_blocks(), SortKey("id"), 3
                 )
             )
@@ -278,7 +278,7 @@ def test_sort_pandas_with_empty_blocks(ray_start_regular, use_push_based_shuffle
     ds = ray.data.range(10).filter(lambda r: r["id"] > 10)
     assert (
         len(
-            ray.data._internal.sort.sample_boundaries(
+            SortTaskSpec.sample_boundaries(
                 ds._plan.execute().get_blocks(), SortKey("id"), 3
             )
         )
