@@ -71,7 +71,6 @@ def execute_to_legacy_bundle_iterator(
     dag, stats = _get_execution_dag(
         executor,
         plan,
-        allow_clear_input_blocks,
         preserve_order=False,
     )
     if dag_rewrite:
@@ -103,7 +102,6 @@ def execute_to_legacy_block_list(
     dag, stats = _get_execution_dag(
         executor,
         plan,
-        allow_clear_input_blocks,
         preserve_order,
     )
     bundles = executor.execute(dag, initial_stats=stats)
@@ -165,7 +163,6 @@ def get_legacy_lazy_block_list_read_only(
 def _get_execution_dag(
     executor: Executor,
     plan: ExecutionPlan,
-    allow_clear_input_blocks: bool,
     preserve_order: bool,
 ) -> Tuple[PhysicalOperator, DatasetStats]:
     """Get the physical operators DAG from a plan."""
@@ -177,9 +174,8 @@ def _get_execution_dag(
     dag = get_execution_plan(plan._logical_plan).dag
     stats = _get_initial_stats_from_plan(plan)
 
-    # Enforce to preserve ordering if the plan has stages required to do so, such as
-    # Zip and Sort.
-    # TODO(chengsu): implement this for operator as well.
+    # Enforce to preserve ordering if the plan has operators
+    # required to do so, such as Zip and Sort.
     if preserve_order or plan.require_preserve_order():
         executor._options.preserve_order = True
 
@@ -187,7 +183,6 @@ def _get_execution_dag(
 
 
 def _get_initial_stats_from_plan(plan: ExecutionPlan) -> DatasetStats:
-    assert DataContext.get_current().optimizer_enabled
     if plan._snapshot_blocks is not None and not plan._snapshot_blocks.is_cleared():
         return plan._snapshot_stats
     # For Datasets created from "read_xxx", `plan._in_blocks` is a LazyBlockList,
