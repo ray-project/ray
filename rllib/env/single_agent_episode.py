@@ -150,9 +150,7 @@ class SingleAgentEpisode:
         infos: Optional[Union[List[Dict], InfiniteLookbackBuffer]] = None,
         actions: Optional[Union[List[ActType], InfiniteLookbackBuffer]] = None,
         action_space: Optional[gym.Space] = None,
-        rewards: Optional[
-            Union[List[SupportsFloat], InfiniteLookbackBuffer]
-        ] = None,
+        rewards: Optional[Union[List[SupportsFloat], InfiniteLookbackBuffer]] = None,
         terminated: bool = False,
         truncated: bool = False,
         extra_model_outputs: Optional[Dict[str, Any]] = None,
@@ -193,11 +191,11 @@ class SingleAgentEpisode:
                 with reward data in it). If a list, will construct the buffer
                 automatically (given the data and the `len_lookback_buffer` argument).
             extra_model_outputs: A dict mapping string keys to either lists of
-                individual extra model output tensors (e.g. `action_logp` or state outs)
-                from a sampling or to an already instantiated `InfiniteLookbackBuffer`
-                object (possibly with extra model output data in it). If mapping is to
-                a list, will construct the buffer automatically (given the data and
-                the `len_lookback_buffer` argument).
+                individual extra model output tensors (e.g. `action_logp` or
+                `state_outs`) from a sampling or to already instantiated
+                `InfiniteLookbackBuffer` object (possibly with extra model output data
+                in it). If mapping is to lists, will construct the buffers automatically
+                (given the data and the `len_lookback_buffer` argument).
             render_images: An optional list of RGB uint8 images from rendering
                 the environment.
             terminated: A boolean indicating, if the episode is already terminated.
@@ -290,8 +288,8 @@ class SingleAgentEpisode:
                 # auto-set the lookback buffer to 0 (there is no data passed to that
                 # constructor). Then, when we manually have to set the data property,
                 # the lookback buffer would still be (incorrectly) 0.
-                self.extra_model_outputs[k] = (
-                    InfiniteLookbackBuffer(data=v, lookback=len_lookback_buffer)
+                self.extra_model_outputs[k] = InfiniteLookbackBuffer(
+                    data=v, lookback=len_lookback_buffer
                 )
 
         # RGB uint8 images from rendering the env; the images include the corresponding
@@ -418,8 +416,8 @@ class SingleAgentEpisode:
         RNN internal state outputs), and - optionally - a render image.
 
         Args:
-            observation: The observation received from the environment after taking
-                `action`.
+            observation: The next observation received from the environment after(!)
+                taking `action`.
             action: The last action used by the agent during the call to `env.step()`.
             reward: The last reward received by the agent after taking `action`.
             infos: The last info received from the environment after taking `action`.
@@ -468,7 +466,7 @@ class SingleAgentEpisode:
                 )
 
         # Validate our data.
-        try:#TODO
+        try:  # TODO
             self.validate()
         except Exception as e:
             raise e
@@ -493,7 +491,12 @@ class SingleAgentEpisode:
                 == len(self.infos)
                 == len(self.rewards) + 1
                 == len(self.actions) + 1
-            ), (len(self.observations), len(self.infos), len(self.rewards), len(self.actions))
+            ), (
+                len(self.observations),
+                len(self.infos),
+                len(self.rewards),
+                len(self.actions),
+            )
             for k, v in self.extra_model_outputs.items():
                 assert len(v) == len(self.observations) - 1
 
@@ -1079,6 +1082,7 @@ class SingleAgentEpisode:
                 neg_indices_left_of_zero=neg_indices_left_of_zero,
                 fill=fill,
             )
+        assert False  # TODO(sven)
         # TODO (sven): This does not seem to be solid yet. Users should NOT be able
         #  to just write directly into our buffers. Instead, use:
         #  `self.set_extra_model_outputs(key, new_data, at_indices=...)` and if key

@@ -191,7 +191,7 @@ def check(x, y, decimals=5, atol=None, rtol=None, false=False):
     elif isinstance(x, (tuple, list)):
         assert isinstance(
             y, (tuple, list)
-        ), "ERROR: If x is tuple, y needs to be a tuple as well!"
+        ), "ERROR: If x is tuple/list, y needs to be a tuple/list as well!"
         assert len(y) == len(
             x
         ), "ERROR: y does not have the same length as x ({} vs {})!".format(

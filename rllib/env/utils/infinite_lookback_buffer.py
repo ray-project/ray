@@ -261,7 +261,7 @@ class InfiniteLookbackBuffer:
         )
 
     def _get_all_data(self, one_hot_discrete=False, _ignore_last_ts=False):
-        data = self[:(None if not _ignore_last_ts else -1)]
+        data = self[: (None if not _ignore_last_ts else -1)]
         if one_hot_discrete:
             data = self._one_hot(data, space_struct=self.space_struct)
         return data
@@ -546,11 +546,11 @@ class InfiniteLookbackBuffer:
             fill_right_count = -stop - 1
             stop = -LARGE_INTEGER
 
-        assert start >= 0 and (stop >= 0 or stop == -LARGE_INTEGER) , (start, stop)
-        #assert start <= len_self_plus_lookback and stop <= len_self_plus_lookback, (
+        assert start >= 0 and (stop >= 0 or stop == -LARGE_INTEGER), (start, stop)
+        # assert start <= len_self_plus_lookback and stop <= len_self_plus_lookback, (
         #    start,
         #    stop,
-        #)
+        # )
 
         step = slice_.step if slice_.step is not None else 1
         slice_ = slice(start, stop, step)

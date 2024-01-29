@@ -317,7 +317,7 @@ def get_variable(
             initializer=value,
             dtype=dtype,
             trainable=trainable,
-            **({} if shape is None else {"shape": shape})
+            **({} if shape is None else {"shape": shape}),
         )
     elif framework == "torch" and torch_tensor is True:
         torch, _ = try_import_torch()

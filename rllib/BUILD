@@ -798,6 +798,13 @@ py_test(
 # Tag: env
 # --------------------------------------------------------------------
 
+py_test(
+    name = "env/tests/test_infinite_lookback_buffer",
+    tags = ["team:rllib", "env"],
+    size = "small",
+    srcs = ["env/tests/test_infinite_lookback_buffer.py"]
+)
+
 sh_test(
     name = "env/tests/test_local_inference_cartpole",
     tags = ["team:rllib", "env"],
@@ -898,13 +905,6 @@ py_test(
     tags = ["team:rllib", "env"],
     size = "small",
     srcs = ["env/tests/test_single_agent_episode.py"]
-)
-
-py_test(
-    name = "env/tests/test_lookback_buffer",
-    tags = ["team:rllib", "env"],
-    size = "small",
-    srcs = ["env/tests/test_lookback_buffer.py"]
 )
 
 py_test(

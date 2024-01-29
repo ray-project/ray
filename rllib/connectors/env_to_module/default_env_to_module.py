@@ -1,4 +1,4 @@
-from collections import defaultdict, deque
+from collections import defaultdict
 from typing import Any, List, Optional
 
 import numpy as np
@@ -116,9 +116,6 @@ class DefaultEnvToModule(ConnectorV2):
                     observations_per_agent[agent_id].append(obs)
             # Batch all collected observations together (separately per agent).
             data[SampleBatch.OBS] = observations_per_agent
-            #= {
-            #    agent_id: batch(obs) for agent_id, obs in observations_per_agent.items()
-            #}
 
     @staticmethod
     def _add_most_recent_states_to_data_and_add_time_rank(
@@ -140,7 +137,9 @@ class DefaultEnvToModule(ConnectorV2):
                     state = rl_module.get_initial_state()
                 # Episode is already ongoing -> Use most recent STATE_OUT.
                 else:
-                    state = sa_episode.get_extra_model_outputs(key=STATE_OUT, indices=-1)
+                    state = sa_episode.get_extra_model_outputs(
+                        key=STATE_OUT, indices=-1
+                    )
                 states.append(state)
 
             state_in = batch(states)
@@ -164,12 +163,6 @@ class DefaultEnvToModule(ConnectorV2):
                     )
                 for agent_id, agent_state in all_states.items():
                     state_in[agent_id].append(agent_state)
-
-            ## Batch all collected states together (separately per agent).
-            #state_in = states_per_agent
-            #    agent_id: batch(agent_states)
-            #    for agent_id, agent_states in states_per_agent.items()
-            #}
 
         # Make all other inputs have an additional T=1 axis.
         data = tree.map_structure(lambda s: np.expand_dims(s, axis=1), data)
@@ -205,9 +198,9 @@ class DefaultEnvToModule(ConnectorV2):
             for agent_id in agents_to_act:
                 module_id = ma_episode.agent_to_module_map.get(agent_id)
                 if module_id is None:
-                    ma_episode.agent_to_module_map[agent_id] = module_id = (
-                        agent_to_module_mapping_fn(agent_id, ma_episode)
-                    )
+                    ma_episode.agent_to_module_map[
+                        agent_id
+                    ] = module_id = agent_to_module_mapping_fn(agent_id, ma_episode)
                 agent_to_module_mappings[agent_id].append(module_id)
 
         # Mapping from ModuleID to column data.

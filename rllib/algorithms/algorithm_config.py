@@ -875,9 +875,7 @@ class AlgorithmConfig(_Config):
             input_observation_space=getattr(
                 env, "single_observation_space", env.observation_space
             ),
-            input_action_space=getattr(
-                env, "single_action_space", env.action_space
-            ),
+            input_action_space=getattr(env, "single_action_space", env.action_space),
             env=env,
         )
         pipeline.append(
@@ -918,9 +916,7 @@ class AlgorithmConfig(_Config):
             input_observation_space=getattr(
                 env, "single_observation_space", env.observation_space
             ),
-            input_action_space=getattr(
-                env, "single_action_space", env.action_space
-            ),
+            input_action_space=getattr(env, "single_action_space", env.action_space),
             env=env,
         )
         pipeline.append(

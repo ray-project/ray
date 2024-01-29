@@ -82,9 +82,7 @@ class TestInfiniteLookbackBuffer(unittest.TestCase):
         self.assertTrue(buffer.get(indices=0) == 0)
 
     def test_complex_structs(self):
-        buffer = InfiniteLookbackBuffer(
-            data=[self.space.sample() for _ in range(4)]
-        )
+        buffer = InfiniteLookbackBuffer(data=[self.space.sample() for _ in range(4)])
         self.assertTrue(len(buffer), 4)
         buffer.append(self.space.sample())
         self.assertTrue(len(buffer), 5)

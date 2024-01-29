@@ -418,9 +418,7 @@ class MultiAgentEnvRunner(EnvRunner):
             render_image = self.env.render()
 
         # Set initial obs and infos in the episodes.
-        _episode.add_env_reset(
-            observations=obs, infos=infos, render_image=render_image
-        )
+        _episode.add_env_reset(observations=obs, infos=infos, render_image=render_image)
         self._make_on_episode_callback("on_episode_start", _episode)
 
         # Loop over episodes.

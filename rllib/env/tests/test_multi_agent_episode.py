@@ -6,7 +6,7 @@ from typing import List, Optional, Tuple
 
 import ray
 from ray.rllib.env.multi_agent_env import MultiAgentEnv
-from ray.rllib.env.multi_agent_episode_v2 import MultiAgentEpisodeV2 as MultiAgentEpisode
+from ray.rllib.env.multi_agent_episode import MultiAgentEpisode
 from ray.rllib.utils.test_utils import check
 from ray.rllib.utils.typing import MultiAgentDict
 
@@ -16,12 +16,12 @@ class MultiAgentTestEnv(MultiAgentEnv):
         super().__init__()
         self.t = 0
         self._agent_ids = {"agent_" + str(i) for i in range(10)}
-        self.observation_space = gym.spaces.Dict({
-            agent_id: gym.spaces.Discrete(201) for agent_id in self._agent_ids
-        })
-        self.action_space = gym.spaces.Dict({
-            agent_id: gym.spaces.Discrete(200) for agent_id in self._agent_ids
-        })
+        self.observation_space = gym.spaces.Dict(
+            {agent_id: gym.spaces.Discrete(201) for agent_id in self._agent_ids}
+        )
+        self.action_space = gym.spaces.Dict(
+            {agent_id: gym.spaces.Discrete(200) for agent_id in self._agent_ids}
+        )
 
         self._agents_alive = set(self._agent_ids)
         self.truncate = truncate
@@ -151,7 +151,7 @@ class TestMultiAgentEpisode(unittest.TestCase):
         episode = MultiAgentEpisode(env_t_started=10)
         self.assertTrue(episode.env_t == episode.env_t_started == 10)
 
-        # Generate a bunch of simple multi-agent episode and check all internals after
+        # Generate a simple multi-agent episode and check all internals after
         # construction.
         observations = [{"a0": 0, "a1": 0}, {"a1": 1}, {"a1": 2}, {"a1": 3}]
         actions = [{"a0": 0, "a1": 0}, {"a1": 1}, {"a1": 2}]
@@ -214,8 +214,7 @@ class TestMultiAgentEpisode(unittest.TestCase):
 
         # If "agent_0" is part of the reset obs, it steps in the first ts.
         agent_0_steps.append(
-            agent_0_num_steps if "agent_0" in obs
-            else episode.SKIP_ENV_TS_TAG
+            agent_0_num_steps if "agent_0" in obs else episode.SKIP_ENV_TS_TAG
         )
         if "agent_0" in obs:
             agent_0_num_steps += 1
@@ -235,8 +234,7 @@ class TestMultiAgentEpisode(unittest.TestCase):
 
             # If "agent_0" is part of the reset obs, it steps in the first ts.
             agent_0_steps.append(
-                agent_0_num_steps if "agent_0" in obs
-                else episode.SKIP_ENV_TS_TAG
+                agent_0_num_steps if "agent_0" in obs else episode.SKIP_ENV_TS_TAG
             )
             if "agent_0" in obs:
                 agent_0_num_steps += 1
@@ -325,7 +323,7 @@ class TestMultiAgentEpisode(unittest.TestCase):
 
         # Create the episode from the mock data.
         episode = MultiAgentEpisode(
-            #agent_ids=["agent_1", "agent_2", "agent_3", "agent_4", "agent_5"],
+            # agent_ids=["agent_1", "agent_2", "agent_3", "agent_4", "agent_5"],
             observations=observations,
             actions=actions,
             rewards=rewards,
@@ -340,7 +338,7 @@ class TestMultiAgentEpisode(unittest.TestCase):
         check(len(episode.agent_episodes["agent_2"]), 1)
         check(len(episode.agent_episodes["agent_3"]), 1)
         check(len(episode.agent_episodes["agent_4"]), 1)
-        #check(len(episode.agent_episodes["agent_5"]), 0)
+        # check(len(episode.agent_episodes["agent_5"]), 0)
 
         # TODO (simon): Also test the other structs inside the MAE for agent 5 and
         #  the other agents.
@@ -371,7 +369,9 @@ class TestMultiAgentEpisode(unittest.TestCase):
             # Ensure that all agents have a single env_ts=0 -> agent_ts=0
             # entry in their env- to agent-timestep mappings.
             if agent_id in obs:
-                self.assertGreater(len(episode.agent_episodes[agent_id].observations), 0)
+                self.assertGreater(
+                    len(episode.agent_episodes[agent_id].observations), 0
+                )
                 self.assertGreater(len(episode.agent_episodes[agent_id].infos), 0)
                 check(episode.env_t_to_agent_t[agent_id].data, [0])
             # Agents that have no reset obs, will not step in next ts -> They should NOT
@@ -398,8 +398,7 @@ class TestMultiAgentEpisode(unittest.TestCase):
 
         # If "agent_0" is part of the reset obs, it steps in the first ts.
         agent_0_steps.append(
-            agent_0_num_steps if "agent_0" in obs
-            else episode.SKIP_ENV_TS_TAG
+            agent_0_num_steps if "agent_0" in obs else episode.SKIP_ENV_TS_TAG
         )
         if "agent_0" in obs:
             agent_0_num_steps += 1
@@ -413,8 +412,7 @@ class TestMultiAgentEpisode(unittest.TestCase):
 
             # If "agent_0" is part of the reset obs, it steps in the first ts.
             agent_0_steps.append(
-                agent_0_num_steps if "agent_0" in obs
-                else episode.SKIP_ENV_TS_TAG
+                agent_0_num_steps if "agent_0" in obs else episode.SKIP_ENV_TS_TAG
             )
             if "agent_0" in obs:
                 agent_0_num_steps += 1
@@ -492,14 +490,16 @@ class TestMultiAgentEpisode(unittest.TestCase):
             infos=infos,
             terminateds=terminated,
             truncateds=truncated,
-            #len_lookback_buffer=0,
-            #agent_t_started={},
+            # len_lookback_buffer=0,
+            # agent_t_started={},
         )
         # Now test that intermediate rewards will get recorded and actions buffered.
         action = {"agent_2": 3, "agent_4": 3}
-        observation = {"agent_1": 3, "agent_2": 3}
         reward = {"agent_1": 1.0, "agent_2": 1.0, "agent_3": 1.0, "agent_5": 1.0}
+
+        observation = {"agent_1": 3, "agent_2": 3}
         infos = {"agent_1": {}, "agent_2": {}}
+
         terminated = {k: False for k in observation.keys()}
         terminated.update({"__all__": False})
         truncated = {k: False for k in observation.keys()}
@@ -517,7 +517,7 @@ class TestMultiAgentEpisode(unittest.TestCase):
         # Note also, all other buffers are always full, due to their defaults.
         self.assertTrue(episode._agent_buffered_actions["agent_4"] is not None)
         # Assert that the reward buffers of agents 3 and 5 are at 1.0.
-        check(episode._agent_buffered_rewards["agent_3"], 1.0)
+        check(episode._agent_buffered_rewards["agent_3"], 2.2)
         check(episode._agent_buffered_rewards["agent_5"], 1.0)
 
     def test_get_observations(self):
@@ -613,9 +613,7 @@ class TestMultiAgentEpisode(unittest.TestCase):
         obs = episode.get_observations(indices=[-2, -1], neg_indices_left_of_zero=True)
         check(
             obs,
-            {
-                "agent_1": [0, 1], "agent_2": [0], "agent_3": [0, 1], "agent_4": [1]
-            },
+            {"agent_1": [0, 1], "agent_2": [0], "agent_3": [0, 1], "agent_4": [1]},
         )
 
         # Get last observations for each individual agent.
@@ -644,7 +642,12 @@ class TestMultiAgentEpisode(unittest.TestCase):
         obs = episode.get_observations(indices=[-1, -2], env_steps=False)
         check(
             obs,
-            {"agent_1": [1, 0], "agent_2": [2, 0], "agent_3": [1, 0], "agent_4": [2, 1]},
+            {
+                "agent_1": [1, 0],
+                "agent_2": [2, 0],
+                "agent_3": [1, 0],
+                "agent_4": [2, 1],
+            },
         )
 
         # Now, test the same when returning a list.
@@ -655,16 +658,27 @@ class TestMultiAgentEpisode(unittest.TestCase):
             episode.get_observations(env_steps=False, return_list=True)
         # List of indices.
         obs = episode.get_observations(indices=[-1, -2], return_list=True)
-        check(obs, [
-            {"agent_2": 2, "agent_4": 2},
-            {"agent_1": 1, "agent_3": 1, "agent_4": 1},
-        ])
+        check(
+            obs,
+            [
+                {"agent_2": 2, "agent_4": 2},
+                {"agent_1": 1, "agent_3": 1, "agent_4": 1},
+            ],
+        )
         # Slice of indices w/ fill.
-        obs = episode.get_observations(slice(-1, 1), return_list=True, fill=-8, neg_indices_left_of_zero=True)
-        check(obs, [
-            {"agent_1": 1, "agent_3": 1, "agent_4": 1},
-            {"agent_2": 2, "agent_4": 2},
-        ])
+        obs = episode.get_observations(
+            slice(-1, 1),
+            return_list=True,
+            fill=-8,
+            neg_indices_left_of_zero=True,
+        )
+        check(
+            obs,
+            [
+                {"agent_1": 1, "agent_2": -8, "agent_3": 1, "agent_4": 1},
+                {"agent_1": -8, "agent_2": 2, "agent_3": -8, "agent_4": 2},
+            ],
+        )
 
         # B/c we have lookback="auto" in the ma episode, all data we sent into
         # the c"tor was pushed into the lookback buffers and only the last
@@ -676,27 +690,289 @@ class TestMultiAgentEpisode(unittest.TestCase):
         )
 
         # Test with initial observations only.
-        episode_init_only = MultiAgentEpisode(agent_ids=agent_ids)
-        episode_init_only.add_env_reset(
+        episode = MultiAgentEpisode(agent_ids=agent_ids)
+        episode.add_env_reset(
             observations=observations[0],
             infos=infos[0],
         )
-        # Get the last observation for agents and assert that its correct.
-        obs = episode_init_only.get_observations()
+        # Get the last observation for agents and assert that they are correct.
+        obs = episode.get_observations()
         for agent_id, agent_obs in observations[0].items():
             check(obs[agent_id][0], agent_obs)
         # Now the same as list.
-        #last_observation = episode_init_only.get_observations(as_list=True)
-        #for agent_id, agent_obs in observations[0].items():
-        #    check(last_observation[0][agent_id], agent_obs)
-        # Now locally.
-        obs = episode_init_only.get_observations(env_steps=False)
+        obs = episode.get_observations(return_list=True)
+        for agent_id, agent_obs in observations[0].items():
+            check(obs[0][agent_id], agent_obs)
+        # Now by agent steps.
+        obs = episode.get_observations(env_steps=False)
         for agent_id, agent_obs in observations[0].items():
             check(obs[agent_id][0], agent_obs)
 
+    def test_get_infos(self):
+        # Generate simple records for a multi agent environment.
+        (
+            observations,
+            actions,
+            rewards,
+            is_terminateds,
+            is_truncateds,
+            infos,
+        ) = self._mock_multi_agent_records()
+        # Define the agent ids.
+        agent_ids = ["agent_1", "agent_2", "agent_3", "agent_4", "agent_5"]
+
+        # Create a multi-agent episode.
+        episode = MultiAgentEpisode(
+            agent_ids=agent_ids,
+            observations=observations,
+            actions=actions,
+            rewards=rewards,
+            infos=infos,
+            terminateds=is_terminateds,
+            truncateds=is_truncateds,
+            len_lookback_buffer="auto",  # default: use all data as lookback
+        )
+
+        # Get last infos for the multi-agent episode.
+        inf = episode.get_infos(indices=-1)
+        check(inf, infos[-1])
+
+        # Return last two infos for the entire env.
+        # Also, we flip the indices here and require -1 before -2, this
+        # should reflect in the returned results.
+        inf = episode.get_infos(indices=[-1, -2])
+        # Note, agent 4 has two infos in the last two ones.
+        # Note, `get_infos()` returns in the order of the `indices` arg.
+        check(
+            inf,
+            {
+                "agent_1": [{"a1_i1": 1.1}],
+                "agent_2": [{"a2_i2": 2.2}],
+                "agent_3": [{"a3_i1": 3.1}],
+                "agent_4": [{"a4_i2": 4.2}, {"a4_i1": 4.1}],
+            },
+        )
+
+        # Return last two infos for the entire env using slice.
+        inf = episode.get_infos(slice(-2, None))
+        check(
+            inf,
+            {
+                "agent_1": [{"a1_i1": 1.1}],
+                "agent_2": [{"a2_i2": 2.2}],
+                "agent_3": [{"a3_i1": 3.1}],
+                "agent_4": [{"a4_i1": 4.1}, {"a4_i2": 4.2}],
+            },
+        )
+
+        # Return last four infos for the entire env using slice
+        # and `fill`.
+        inf = episode.get_infos(slice(-5, None), fill={"4": "2"})
+        check(
+            inf,
+            {
+                # All first two ts should be 0s (fill before episode even
+                # started).
+                # 3rd items are the reset obs for agents
+                "agent_1": [
+                    {"4": "2"},
+                    {"4": "2"},
+                    {"a1_i0": 1},
+                    {"a1_i1": 1.1},
+                    {"4": "2"},
+                ],  # ag1 stepped the first 2 ts
+                "agent_2": [
+                    {"4": "2"},
+                    {"4": "2"},
+                    {"a2_i0": 2},
+                    {"4": "2"},
+                    {"a2_i2": 2.2},
+                ],  # ag2 stepped first and last ts
+                "agent_3": [
+                    {"4": "2"},
+                    {"4": "2"},
+                    {"a3_i0": 3},
+                    {"a3_i1": 3.1},
+                    {"4": "2"},
+                ],  # ag3 same as ag1
+                "agent_4": [
+                    {"4": "2"},
+                    {"4": "2"},
+                    {"4": "2"},
+                    {"a4_i1": 4.1},
+                    {"a4_i2": 4.2},
+                ],  # ag4 steps in last 2 ts
+            },
+        )
+
+        # Use `fill` (but as a non-dict, just to check) to look into the future
+        # (ts=100 and 101).
+        inf = episode.get_infos(slice(100, 102), fill=9.9)
+        check(
+            inf,
+            {
+                "agent_1": [9.9, 9.9],
+                "agent_2": [9.9, 9.9],
+                "agent_3": [9.9, 9.9],
+                "agent_4": [9.9, 9.9],
+            },
+        )
+
+        # Return two infos in lookback buffers for the entire env using
+        # `neg_indices_left_of_zero=True` and an index list.
+        # w/ fill
+        inf = episode.get_infos(
+            indices=[-2, -1],
+            fill=-10,
+            neg_indices_left_of_zero=True,
+        )
+        check(
+            inf,
+            {
+                "agent_1": [{"a1_i0": 1}, {"a1_i1": 1.1}],
+                "agent_2": [{"a2_i0": 2}, -10],
+                "agent_3": [{"a3_i0": 3}, {"a3_i1": 3.1}],
+                "agent_4": [-10, {"a4_i1": 4.1}],
+            },
+        )
+        # Same, but w/o fill
+        inf = episode.get_infos(indices=[-2, -1], neg_indices_left_of_zero=True)
+        check(
+            inf,
+            {
+                "agent_1": [{"a1_i0": 1}, {"a1_i1": 1.1}],
+                "agent_2": [{"a2_i0": 2}],
+                "agent_3": [{"a3_i0": 3}, {"a3_i1": 3.1}],
+                "agent_4": [{"a4_i1": 4.1}],
+            },
+        )
+
+        # Get last infos for each individual agent.
+        inf = episode.get_infos(indices=-1, env_steps=False)
+        check(
+            inf,
+            {
+                "agent_1": {"a1_i1": 1.1},
+                "agent_2": {"a2_i2": 2.2},
+                "agent_3": {"a3_i1": 3.1},
+                "agent_4": {"a4_i2": 4.2},
+            },
+        )
+
+        # Same, but with `agent_ids` filters.
+        inf = episode.get_infos(-1, env_steps=False, agent_ids="agent_1")
+        check(inf, {"agent_1": {"a1_i1": 1.1}})
+        inf = episode.get_infos(-1, env_steps=False, agent_ids=["agent_2"])
+        check(inf, {"agent_2": {"a2_i2": 2.2}})
+        inf = episode.get_infos(-1, env_steps=False, agent_ids=("agent_3",))
+        check(inf, {"agent_3": {"a3_i1": 3.1}})
+        inf = episode.get_infos(-1, env_steps=False, agent_ids={"agent_4"})
+        check(inf, {"agent_4": {"a4_i2": 4.2}})
+        inf = episode.get_infos(-1, env_steps=False, agent_ids=["agent_1", "agent_2"])
+        check(inf, {"agent_1": {"a1_i1": 1.1}, "agent_2": {"a2_i2": 2.2}})
+        inf = episode.get_infos(-2, env_steps=True, agent_ids={"agent_4"})
+        check(inf, {"agent_4": {"a4_i1": 4.1}})
+        inf = episode.get_infos([-1, -2], env_steps=True, agent_ids={"agent_4"})
+        check(inf, {"agent_4": [{"a4_i2": 4.2}, {"a4_i1": 4.1}]})
+
+        # Return the last two infos for each individual agent.
+        inf = episode.get_infos(indices=[-1, -2], env_steps=False)
+        check(
+            inf,
+            {
+                "agent_1": [{"a1_i1": 1.1}, {"a1_i0": 1}],
+                "agent_2": [{"a2_i2": 2.2}, {"a2_i0": 2}],
+                "agent_3": [{"a3_i1": 3.1}, {"a3_i0": 3}],
+                "agent_4": [{"a4_i2": 4.2}, {"a4_i1": 4.1}],
+            },
+        )
+
+        # Now, test the same when returning a list.
+        inf = episode.get_infos(return_list=True)
+        check(inf, [{"agent_2": {"a2_i2": 2.2}, "agent_4": {"a4_i2": 4.2}}])
+        # Expect error when calling with env_steps=False.
+        with self.assertRaises(ValueError):
+            episode.get_infos(env_steps=False, return_list=True)
+        # List of indices.
+        inf = episode.get_infos(indices=[-1, -2], return_list=True)
+        check(
+            inf,
+            [
+                {"agent_2": {"a2_i2": 2.2}, "agent_4": {"a4_i2": 4.2}},
+                {
+                    "agent_1": {"a1_i1": 1.1},
+                    "agent_3": {"a3_i1": 3.1},
+                    "agent_4": {"a4_i1": 4.1},
+                },
+            ],
+        )
+        # Slice of indices w/ fill.
+        inf = episode.get_infos(
+            slice(-1, 1),
+            return_list=True,
+            fill=-8,
+            neg_indices_left_of_zero=True,
+        )
+        check(
+            inf,
+            [
+                {
+                    "agent_1": {"a1_i1": 1.1},
+                    "agent_2": -8,
+                    "agent_3": {"a3_i1": 3.1},
+                    "agent_4": {"a4_i1": 4.1},
+                },
+                {
+                    "agent_1": -8,
+                    "agent_2": {"a2_i2": 2.2},
+                    "agent_3": -8,
+                    "agent_4": {"a4_i2": 4.2},
+                },
+            ],
+        )
+
+        # B/c we have lookback="auto" in the ma episode, all data we sent into
+        # the c"tor was pushed into the lookback buffers and only the last
+        # infos are outside these buffers and will be returned here.
+        inf = episode.get_infos(env_steps=False)
+        check(
+            inf,
+            {
+                "agent_1": [{"a1_i1": 1.1}],
+                "agent_2": [{"a2_i2": 2.2}],
+                "agent_3": [{"a3_i1": 3.1}],
+                "agent_4": [{"a4_i2": 4.2}],
+            },
+        )
+
+        # Test with initial infos only.
+        episode = MultiAgentEpisode(agent_ids=agent_ids)
+        episode.add_env_reset(
+            observations=observations[0],
+            infos=infos[0],
+        )
+        # Get the last infos for agents and assert that they are correct.
+        inf = episode.get_infos()
+        for agent_id, agent_inf in infos[0].items():
+            check(inf[agent_id][0], agent_inf)
+        # Now the same as list.
+        inf = episode.get_infos(return_list=True)
+        for agent_id, agent_inf in infos[0].items():
+            check(inf[0][agent_id], agent_inf)
+        # Now by agent steps.
+        inf = episode.get_infos(env_steps=False)
+        for agent_id, agent_inf in infos[0].items():
+            check(inf[agent_id][0], agent_inf)
+
     def test_get_actions(self):
         # Generate a simple multi-agent episode.
-        observations = [{"a0": 0, "a1": 0}, {"a0": 1, "a1": 1}, {"a1": 2}, {"a1": 3}, {"a1": 4}]
+        observations = [
+            {"a0": 0, "a1": 0},
+            {"a0": 1, "a1": 1},
+            {"a1": 2},
+            {"a1": 3},
+            {"a1": 4},
+        ]
         actions = [{"a0": 0, "a1": 0}, {"a0": 1, "a1": 1}, {"a1": 2}, {"a1": 3}]
         rewards = [{"a0": 1, "a1": 1}, {"a0": 2, "a1": 2}, {"a1": 3}, {"a1": 4}]
         episode = MultiAgentEpisode(
@@ -757,9 +1033,6 @@ class TestMultiAgentEpisode(unittest.TestCase):
         ) = self._mock_multi_agent_records()
         # Define the agent ids.
         agent_ids = ["agent_1", "agent_2", "agent_3", "agent_4", "agent_5"]
-
-        # {"agent_1": 0, "agent_2": 0, "agent_3": 0}
-        # {"agent_1": 1, "agent_3": 1, "agent_4": 1}
 
         # Create a multi-agent episode.
         episode = MultiAgentEpisode(
@@ -855,9 +1128,7 @@ class TestMultiAgentEpisode(unittest.TestCase):
         check(act, {"agent_3": 1})
         act = episode.get_actions(-1, env_steps=False, agent_ids={"agent_4"})
         check(act, {"agent_4": 1})
-        act = episode.get_actions(
-            -1, env_steps=False, agent_ids=["agent_1", "agent_2"]
-        )
+        act = episode.get_actions(-1, env_steps=False, agent_ids=["agent_1", "agent_2"])
         check(act, {"agent_1": 1, "agent_2": 0})
         act = episode.get_actions(-2, env_steps=True, agent_ids={"agent_4"})
         check(act, {"agent_4": 1})
@@ -883,12 +1154,17 @@ class TestMultiAgentEpisode(unittest.TestCase):
         check(act, [actions[-1], actions[-2]])
         # Slice of indices w/ fill.
         # From the last ts in lookback buffer to first actual ts (empty as all data is
-        # in lookback buffer).
-        act = episode.get_actions(slice(-1, 1), return_list=True, fill=-8, neg_indices_left_of_zero=True)
-        check(act, [
-            {"agent_1": 1, "agent_3": 1, "agent_4": 1},
-            {"agent_2": 2, "agent_4": 2},
-        ])
+        # in lookback buffer, but we fill).
+        act = episode.get_actions(
+            slice(-1, 1), return_list=True, fill=-8, neg_indices_left_of_zero=True
+        )
+        check(
+            act,
+            [
+                {"agent_1": 1, "agent_2": -8, "agent_3": 1, "agent_4": 1},
+                {"agent_1": -8, "agent_2": -8, "agent_3": -8, "agent_4": -8},
+            ],
+        )
 
         # B/c we have lookback="auto" in the ma episode, all data we sent into
         # the c"tor was pushed into the lookback buffers and thus all
@@ -911,55 +1187,66 @@ class TestMultiAgentEpisode(unittest.TestCase):
 
     def test_get_rewards(self):
         # Generate a simple multi-agent episode.
-        observations = [{"a0": 0, "a1": 0}, {"a0": 1, "a1": 1}, {"a1": 2}, {"a1": 3}, {"a1": 4}]
+        observations = [
+            {"a0": 0, "a1": 0},
+            {"a0": 1, "a1": 1},
+            {"a1": 2},
+            {"a1": 3},
+            {"a1": 4},
+        ]
         actions = [{"a0": 0, "a1": 0}, {"a0": 1, "a1": 1}, {"a1": 2}, {"a1": 3}]
-        rewards = [{"a0": 1, "a1": 1}, {"a0": 2, "a1": 2}, {"a1": 3}, {"a1": 4}]
+        rewards = [
+            {"a0": 0.0, "a1": 0.0},
+            {"a0": 1.0, "a1": 1.0},
+            {"a1": 2.0},
+            {"a1": 3.0},
+        ]
         episode = MultiAgentEpisode(
             observations=observations, actions=actions, rewards=rewards
         )
         # Access single indices, env steps.
         for i in range(-1, -5, -1):
-            act = episode.get_actions(i)
-            check(act, actions[i])
+            rew = episode.get_rewards(i)
+            check(rew, rewards[i])
         # Access list of indices, env steps.
-        act = episode.get_actions([-1, -2])
-        check(act, {"a0": [], "a1": [3, 2]})
-        act = episode.get_actions([-2, -3])
-        check(act, {"a0": [1], "a1": [2, 1]})
-        act = episode.get_actions([-3, -4])
-        check(act, {"a0": [1, 0], "a1": [1, 0]})
+        rew = episode.get_rewards([-1, -2])
+        check(rew, {"a0": [], "a1": [3, 2]})
+        rew = episode.get_rewards([-2, -3])
+        check(rew, {"a0": [1], "a1": [2, 1]})
+        rew = episode.get_rewards([-3, -4])
+        check(rew, {"a0": [1, 0], "a1": [1, 0]})
         # Access slices of indices, env steps.
-        act = episode.get_actions(slice(-1, -3, -1))
-        check(act, {"a0": [], "a1": [3, 2]})
-        act = episode.get_actions(slice(-2, -4, -1))
-        check(act, {"a0": [1], "a1": [2, 1]})
-        act = episode.get_actions(slice(-3, -5, -1))
-        check(act, {"a0": [1, 0], "a1": [1, 0]})
-        act = episode.get_actions(slice(-3, -6, -1), fill="skip")
-        check(act, {"a0": [1, 0, "skip"], "a1": [1, 0, "skip"]})
-        act = episode.get_actions(slice(1, -6, -1), fill="s")
+        rew = episode.get_rewards(slice(-1, -3, -1))
+        check(rew, {"a0": [], "a1": [3, 2]})
+        rew = episode.get_rewards(slice(-2, -4, -1))
+        check(rew, {"a0": [1], "a1": [2, 1]})
+        rew = episode.get_rewards(slice(-3, -5, -1))
+        check(rew, {"a0": [1, 0], "a1": [1, 0]})
+        rew = episode.get_rewards(slice(-3, -6, -1), fill=-10.0)
+        check(rew, {"a0": [1, 0, -10.0], "a1": [1, 0, -10.0]})
+        rew = episode.get_rewards(slice(1, -6, -1), fill=-1)
         check(
-            act,
-            {"a0": ["s", "s", "s", "s", 1, 0, "s"], "a1": ["s", "s", 3, 2, 1, 0, "s"]},
+            rew,
+            {"a0": [-1, -1, -1, -1, 1, 0, -1], "a1": [-1, -1, 3, 2, 1, 0, -1]},
         )
-        act = episode.get_actions(slice(0, -5, -1), fill="s")
+        rew = episode.get_rewards(slice(0, -5, -1), fill=-2)
         check(
-            act,
-            {"a0": ["s", "s", "s", 1, 0], "a1": ["s", 3, 2, 1, 0]},
+            rew,
+            {"a0": [-2, -2, -2, 1, 0], "a1": [-2, 3, 2, 1, 0]},
         )
         # Access single indices, agent steps.
-        act = episode.get_actions(-1, env_steps=False)
-        check(act, {"a0": 1, "a1": 3})
-        act = episode.get_actions(-2, env_steps=False)
-        check(act, {"a0": 0, "a1": 2})
-        act = episode.get_actions(-3, env_steps=False, agent_ids="a1")
-        check(act, {"a1": 1})
-        act = episode.get_actions(-3, env_steps=False, fill="skip")
-        check(act, {"a0": "skip", "a1": 1})
-        act = episode.get_actions(-4, env_steps=False, agent_ids="a1")
-        check(act, {"a1": 0})
-        act = episode.get_actions(-4, env_steps=False, fill="skip")
-        check(act, {"a0": "skip", "a1": 0})
+        rew = episode.get_rewards(-1, env_steps=False)
+        check(rew, {"a0": 1, "a1": 3})
+        rew = episode.get_rewards(-2, env_steps=False)
+        check(rew, {"a0": 0, "a1": 2})
+        rew = episode.get_rewards(-3, env_steps=False, agent_ids="a1")
+        check(rew, {"a1": 1})
+        rew = episode.get_rewards(-3, env_steps=False, fill=-4)
+        check(rew, {"a0": -4, "a1": 1})
+        rew = episode.get_rewards(-4, env_steps=False, agent_ids="a1")
+        check(rew, {"a1": 0})
+        rew = episode.get_rewards(-4, env_steps=False, fill=-5)
+        check(rew, {"a0": -5, "a1": 0})
 
         # Generate simple records for a multi agent environment.
         (
@@ -973,9 +1260,6 @@ class TestMultiAgentEpisode(unittest.TestCase):
         # Define the agent ids.
         agent_ids = ["agent_1", "agent_2", "agent_3", "agent_4", "agent_5"]
 
-        # {"agent_1": 0, "agent_2": 0, "agent_3": 0}
-        # {"agent_1": 1, "agent_3": 1, "agent_4": 1}
-
         # Create a multi-agent episode.
         episode = MultiAgentEpisode(
             agent_ids=agent_ids,
@@ -988,46 +1272,56 @@ class TestMultiAgentEpisode(unittest.TestCase):
             len_lookback_buffer="auto",  # default: use all data as lookback
         )
 
-        # Get last actions for the multi-agent episode.
-        act = episode.get_actions(indices=-1)
-        check(act, {"agent_1": 1, "agent_3": 1, "agent_4": 1})
+        # Get last rewards for the multi-agent episode.
+        rew = episode.get_rewards(indices=-1)
+        check(rew, {"agent_1": 1.1, "agent_3": 1.2, "agent_4": 1.3})
 
-        # Return last two actions for the entire env.
+        # Return last two rewards for the entire env.
         # Also, we flip the indices here and require -1 before -2, this
         # should reflect in the returned results.
-        act = episode.get_actions(indices=[-1, -2])
+        rew = episode.get_rewards(indices=[-1, -2])
         check(
-            act,
-            {"agent_1": [1, 0], "agent_2": [0], "agent_3": [1, 0], "agent_4": [1]},
+            rew,
+            {
+                "agent_1": [1.1, 0.5],
+                "agent_2": [0.6],
+                "agent_3": [1.2, 0.7],
+                "agent_4": [1.3],
+            },
         )
 
-        # Return last two actions for the entire env using slice.
-        act = episode.get_actions(slice(-2, None))
+        # Return last two rewards for the entire env using slice.
+        rew = episode.get_rewards(slice(-2, None))
         check(
-            act,
-            {"agent_1": [0, 1], "agent_2": [0], "agent_3": [0, 1], "agent_4": [1]},
+            rew,
+            {
+                "agent_1": [0.5, 1.1],
+                "agent_2": [0.6],
+                "agent_3": [0.7, 1.2],
+                "agent_4": [1.3],
+            },
         )
 
-        # Return last four actions for the entire env using slice
+        # Return last four rewards for the entire env using slice
         # and `fill`.
-        act = episode.get_actions(slice(-5, None), fill=-10)
+        rew = episode.get_rewards(slice(-5, None), fill=-10)
         check(
-            act,
+            rew,
             {
                 # All first three ts should be 0s (fill before episode even
                 # started).
-                # 4th items are the 1st actions (after reset obs) for agents
-                "agent_1": [-10, -10, -10, 0, 1],  # ag1 stepped the first 2 ts
-                "agent_2": [-10, -10, -10, 0, -10],  # ag2 stepped first and last ts
-                "agent_3": [-10, -10, -10, 0, 1],  # ag3 same as ag1
-                "agent_4": [-10, -10, -10, -10, 1],  # ag4 steps in last 2 ts
+                # 4th items are the 1st rewards (after reset obs) for agents
+                "agent_1": [-10, -10, -10, 0.5, 1.1],  # ag1 stepped the first 2 ts
+                "agent_2": [-10, -10, -10, 0.6, -10],  # ag2 stepped first ts
+                "agent_3": [-10, -10, -10, 0.7, 1.2],  # ag3 same as ag1
+                "agent_4": [-10, -10, -10, -10, 1.3],  # ag4 steps in last 2 ts
             },
         )
 
         # Use `fill` to look into the future (ts=100 and 101).
-        act = episode.get_actions(slice(100, 102), fill=9.9)
+        rew = episode.get_rewards(slice(100, 102), fill=9.9)
         check(
-            act,
+            rew,
             {
                 "agent_1": [9.9, 9.9],
                 "agent_2": [9.9, 9.9],
@@ -1036,93 +1330,105 @@ class TestMultiAgentEpisode(unittest.TestCase):
             },
         )
 
-        # Return two actions in lookback buffers for the entire env using
+        # Return two rewards in lookback buffers for the entire env using
         # `neg_indices_left_of_zero=True` and an index list.
         # w/ fill
-        act = episode.get_actions(
+        rew = episode.get_rewards(
             indices=[-2, -1],
             fill=-10,
             neg_indices_left_of_zero=True,
         )
         check(
-            act,
+            rew,
             {
-                "agent_1": [-10, 0],
-                "agent_2": [-10, 0],
-                "agent_3": [-10, 0],
+                "agent_1": [-10, 0.5],
+                "agent_2": [-10, 0.6],
+                "agent_3": [-10, 0.7],
                 "agent_4": [-10, -10],
             },
         )
         # Same, but w/o fill (should produce error as the lookback is only 1 long).
         with self.assertRaises(IndexError):
-            episode.get_actions(indices=[-2, -1], neg_indices_left_of_zero=True)
+            episode.get_rewards(indices=[-2, -1], neg_indices_left_of_zero=True)
 
-        # Get last actions for each individual agent.
-        act = episode.get_actions(indices=-1, env_steps=False)
-        check(act, {"agent_1": 1, "agent_2": 0, "agent_3": 1, "agent_4": 1})
+        # Get last rewards for each individual agent.
+        rew = episode.get_rewards(indices=-1, env_steps=False)
+        check(rew, {"agent_1": 1.1, "agent_2": 0.6, "agent_3": 1.2, "agent_4": 1.3})
 
         # Same, but with `agent_ids` filters.
-        act = episode.get_actions(-1, env_steps=False, agent_ids="agent_1")
-        check(act, {"agent_1": 1})
-        act = episode.get_actions(-1, env_steps=False, agent_ids=["agent_2"])
-        check(act, {"agent_2": 0})
-        act = episode.get_actions(-1, env_steps=False, agent_ids=("agent_3",))
-        check(act, {"agent_3": 1})
-        act = episode.get_actions(-1, env_steps=False, agent_ids={"agent_4"})
-        check(act, {"agent_4": 1})
-        act = episode.get_actions(
-            -1, env_steps=False, agent_ids=["agent_1", "agent_2"]
-        )
-        check(act, {"agent_1": 1, "agent_2": 0})
-        act = episode.get_actions(-2, env_steps=True, agent_ids={"agent_4"})
-        check(act, {"agent_4": 1})
-        act = episode.get_actions([-1, -2], env_steps=True, agent_ids={"agent_4"})
-        check(act, {"agent_4": [1]})
+        rew = episode.get_rewards(-1, env_steps=False, agent_ids="agent_1")
+        check(rew, {"agent_1": 1.1})
+        rew = episode.get_rewards(-1, env_steps=False, agent_ids=["agent_2"])
+        check(rew, {"agent_2": 0.6})
+        rew = episode.get_rewards(-1, env_steps=False, agent_ids=("agent_3",))
+        check(rew, {"agent_3": 1.2})
+        rew = episode.get_rewards(-1, env_steps=False, agent_ids={"agent_4"})
+        check(rew, {"agent_4": 1.3})
+        rew = episode.get_rewards(-1, env_steps=False, agent_ids=["agent_1", "agent_2"])
+        check(rew, {"agent_1": 1.1, "agent_2": 0.6})
+        rew = episode.get_rewards(-2, env_steps=True, agent_ids={"agent_3"})
+        check(rew, {"agent_3": 0.7})
+        rew = episode.get_rewards(-2, env_steps=True, agent_ids={"agent_4"})
+        check(rew, {})
+        rew = episode.get_rewards([-1, -2], env_steps=True, agent_ids={"agent_3"})
+        check(rew, {"agent_3": [1.2, 0.7]})
+        rew = episode.get_rewards([-1, -2], env_steps=True, agent_ids={"agent_4"})
+        check(rew, {"agent_4": [1.3]})
+
         # Agent 4 has only acted 2x, so there is no (local) ts=-2 for it.
         with self.assertRaises(IndexError):
-            episode.get_actions([-1, -2], env_steps=False, agent_ids={"agent_4"})
-        act = episode.get_actions([-2], env_steps=False, agent_ids="agent_4", fill=-10)
-        check(act, {"agent_4": [-10]})
+            episode.get_rewards([-1, -2], env_steps=False, agent_ids={"agent_4"})
+        rew = episode.get_rewards([-2], env_steps=False, agent_ids="agent_4", fill=-10)
+        check(rew, {"agent_4": [-10]})
 
         # Now, test the same when returning a list.
         # B/c we have lookback="auto" in the ma episode, all data we sent into
         # the c"tor was pushed into the lookback buffers and thus all
-        # actions are in these buffers (and won't get returned here).
-        act = episode.get_actions(return_list=True)
-        self.assertTrue(act == [])
-        # Expect error when calling with env_steps=False.
+        # rewards are in these buffers (and won't get returned here).
+        rew = episode.get_rewards(return_list=True)
+        self.assertTrue(rew == [])
+        # Expect error when calling with combination of env_steps=False, but
+        # return_list=True.
         with self.assertRaises(ValueError):
-            episode.get_actions(env_steps=False, return_list=True)
+            episode.get_rewards(env_steps=False, return_list=True)
         # List of indices.
-        act = episode.get_actions(indices=[-1, -2], return_list=True)
-        check(act, [actions[-1], actions[-2]])
+        rew = episode.get_rewards(indices=[-1, -2], return_list=True)
+        check(rew, [rewards[-1], rewards[-2]])
         # Slice of indices w/ fill.
         # From the last ts in lookback buffer to first actual ts (empty as all data is
         # in lookback buffer).
-        act = episode.get_actions(slice(-1, 1), return_list=True, fill=-8, neg_indices_left_of_zero=True)
-        check(act, [
-            {"agent_1": 1, "agent_3": 1, "agent_4": 1},
-            {"agent_2": 2, "agent_4": 2},
-        ])
+        rew = episode.get_rewards(
+            slice(-1, 1),
+            return_list=True,
+            fill=-8,
+            neg_indices_left_of_zero=True,
+        )
+        check(
+            rew,
+            [
+                {"agent_1": 1.1, "agent_2": -8, "agent_3": 1.2, "agent_4": 1.3},
+                {"agent_1": -8, "agent_2": -8, "agent_3": -8, "agent_4": -8},
+            ],
+        )
 
         # B/c we have lookback="auto" in the ma episode, all data we sent into
         # the c"tor was pushed into the lookback buffers and thus all
-        # actions are in these buffers.
-        act = episode.get_actions(env_steps=False)
-        self.assertTrue(act == {})
+        # rewards are in these buffers.
+        rew = episode.get_rewards(env_steps=False)
+        self.assertTrue(rew == {})
 
-        # Test with initial actions only.
+        # Test with initial rewards only.
         episode = MultiAgentEpisode(agent_ids=agent_ids)
         episode.add_env_reset(observations=observations[0], infos=infos[0])
         # Get the last action for agents and assert that it's correct.
-        act = episode.get_actions()
-        check(act, {})
+        rew = episode.get_rewards()
+        check(rew, {})
         # Now the same as list.
-        act = episode.get_actions(return_list=True)
-        self.assertTrue(act == [])
+        rew = episode.get_rewards(return_list=True)
+        self.assertTrue(rew == [])
         # Now agent steps.
-        act = episode.get_actions(env_steps=False)
-        self.assertTrue(act == {})
+        rew = episode.get_rewards(env_steps=False)
+        self.assertTrue(rew == {})
 
     def test_other_getters(self):
         # TODO (simon): Revisit this test and the MultiAgentEpisode.episode_concat API.
@@ -1140,11 +1446,11 @@ class TestMultiAgentEpisode(unittest.TestCase):
         agent_ids = ["agent_1", "agent_2", "agent_3", "agent_4", "agent_5"]
 
         # Define some extra model outputs.
-        #extra_model_outputs = [
-        #    # Here agent_2 has to buffer.
-        #    {"agent_1": {"extra": 0}, "agent_2": {"extra": 0}, "agent_3": {"extra": 0}},
-        #    {"agent_1": {"extra": 1}, "agent_3": {"extra": 1}, "agent_4": {"extra": 1}},
-        #]
+        extra_model_outputs = [
+            # Here agent_2 has to buffer.
+            {"agent_1": {"extra": 0}, "agent_2": {"extra": 0}, "agent_3": {"extra": 0}},
+            {"agent_1": {"extra": 1}, "agent_3": {"extra": 1}, "agent_4": {"extra": 1}},
+        ]
 
         # Create a multi-agent episode.
         episode = MultiAgentEpisode(
@@ -1155,8 +1461,8 @@ class TestMultiAgentEpisode(unittest.TestCase):
             infos=infos,
             terminateds=is_terminateds,
             truncateds=is_truncateds,
-            #extra_model_outputs=extra_model_outputs,
-            #len_lookback_buffer=0,
+            # extra_model_outputs=extra_model_outputs,
+            # len_lookback_buffer=0,
         )
 
         # --- extra_model_outputs ---
@@ -1204,49 +1510,49 @@ class TestMultiAgentEpisode(unittest.TestCase):
         )
 
         # Now request lists.
-        #last_extra_model_outputs = episode.get_extra_model_outputs(
+        # last_extra_model_outputs = episode.get_extra_model_outputs(
         #    "extra", as_list=True
-        #)
-        #check(
+        # )
+        # check(
         #    last_extra_model_outputs[0]["agent_1"],
         #    extra_model_outputs[-1]["agent_1"]["extra"],
-        #)
-        #check(
+        # )
+        # check(
         #    last_extra_model_outputs[0]["agent_3"],
         #    extra_model_outputs[-1]["agent_3"]["extra"],
-        #)
-        #check(
+        # )
+        # check(
         #    last_extra_model_outputs[0]["agent_4"],
         #    extra_model_outputs[-1]["agent_4"]["extra"],
-        #)
+        # )
         # Request the last two extra model outputs and return as a list.
-        #last_extra_model_outputs = episode.get_extra_model_outputs(
+        # last_extra_model_outputs = episode.get_extra_model_outputs(
         #    "extra", [-1, -2], as_list=True
-        #)
-        #check(
+        # )
+        # check(
         #    last_extra_model_outputs[0]["agent_1"],
         #    extra_model_outputs[-1]["agent_1"]["extra"],
-        #)
-        #check(
+        # )
+        # check(
         #    last_extra_model_outputs[0]["agent_3"],
         #    extra_model_outputs[-1]["agent_3"]["extra"],
-        #)
-        #check(
+        # )
+        # check(
         #    last_extra_model_outputs[0]["agent_4"],
         #    extra_model_outputs[-1]["agent_4"]["extra"],
-        #)
-        #check(
+        # )
+        # check(
         #    last_extra_model_outputs[1]["agent_1"],
         #    extra_model_outputs[-2]["agent_1"]["extra"],
-        #)
-        #check(
+        # )
+        # check(
         #    last_extra_model_outputs[1]["agent_2"],
         #    extra_model_outputs[-2]["agent_2"]["extra"],
-        #)
-        #check(
+        # )
+        # check(
         #    last_extra_model_outputs[1]["agent_3"],
         #    extra_model_outputs[-2]["agent_3"]["extra"],
-        #)
+        # )
 
         # Now request the last extra model outputs at the local timesteps, i.e.
         # for each agent its last two actions.
@@ -1568,9 +1874,7 @@ class TestMultiAgentEpisode(unittest.TestCase):
         # `ts=99`.
         self.assertIn("agent_7", last_rewards)
         check(episode_1.partial_rewards_t["agent_7"][-1], 100)
-        check(
-            episode_1.partial_rewards["agent_7"][-1], last_rewards["agent_7"][0]
-        )
+        check(episode_1.partial_rewards["agent_7"][-1], last_rewards["agent_7"][0])
         # Assert that all the other agents are not in the returned rewards.
         self.assertNotIn("agent_1", last_rewards)
         self.assertNotIn("agent_6", last_rewards)
@@ -1611,9 +1915,7 @@ class TestMultiAgentEpisode(unittest.TestCase):
         # Agent 7 has a partial reward at `ts=100` after its last observation at
         # `ts=99`.
         self.assertIn("agent_7", last_rewards[0])
-        check(
-            episode_1.partial_rewards["agent_7"][-1], last_rewards[0]["agent_7"]
-        )
+        check(episode_1.partial_rewards["agent_7"][-1], last_rewards[0]["agent_7"])
         # Assert that all the other agents are not in the returned rewards.
         self.assertNotIn("agent_1", last_rewards[0])
         self.assertNotIn("agent_6", last_rewards[0])
@@ -1673,9 +1975,7 @@ class TestMultiAgentEpisode(unittest.TestCase):
         self.assertIn("agent_7", last_rewards)
         self.assertListEqual(episode_1.global_t_to_local_t["agent_7"][-2:], [98, 99])
         self.assertListEqual(episode_1.partial_rewards_t["agent_7"][-2:], [99, 100])
-        check(
-            episode_1.partial_rewards["agent_7"][-1], last_rewards["agent_7"][0]
-        )
+        check(episode_1.partial_rewards["agent_7"][-1], last_rewards["agent_7"][0])
         check(
             episode_1.agent_episodes["agent_7"].rewards[-1], last_rewards["agent_7"][1]
         )
@@ -1746,19 +2046,13 @@ class TestMultiAgentEpisode(unittest.TestCase):
         # requested timesteps 100 and 99.
         self.assertIn("agent_6", last_rewards[0])
         self.assertIn("agent_6", last_rewards[1])
-        check(
-            episode_1.partial_rewards["agent_6"][-1], last_rewards[0]["agent_6"]
-        )
-        check(
-            episode_1.partial_rewards["agent_6"][-2], last_rewards[1]["agent_6"]
-        )
+        check(episode_1.partial_rewards["agent_6"][-1], last_rewards[0]["agent_6"])
+        check(episode_1.partial_rewards["agent_6"][-2], last_rewards[1]["agent_6"])
         # Entries for agent 7 also change b/c this agent has a partial reward at
         # `ts=100` while it has no observation recorded at this timestep.
         self.assertIn("agent_7", last_rewards[0])
         self.assertIn("agent_7", last_rewards[1])
-        check(
-            episode_1.partial_rewards["agent_7"][-1], last_rewards[0]["agent_7"]
-        )
+        check(episode_1.partial_rewards["agent_7"][-1], last_rewards[0]["agent_7"])
         check(
             episode_1.agent_episodes["agent_7"].rewards[-1], last_rewards[1]["agent_7"]
         )
@@ -1771,44 +2065,28 @@ class TestMultiAgentEpisode(unittest.TestCase):
         last_rewards = episode_1.get_rewards(partial=True, consider_buffer=False)
         self.assertIn("agent_9", last_rewards)
         check(episode_1.partial_rewards_t["agent_9"][-1], 100)
-        check(
-            episode_1.partial_rewards["agent_9"][-1], last_rewards["agent_9"][-1]
-        )
+        check(episode_1.partial_rewards["agent_9"][-1], last_rewards["agent_9"][-1])
         self.assertIn("agent_0", last_rewards)
         check(episode_1.partial_rewards_t["agent_0"][-1], 100)
-        check(
-            episode_1.partial_rewards["agent_0"][-1], last_rewards["agent_0"][-1]
-        )
+        check(episode_1.partial_rewards["agent_0"][-1], last_rewards["agent_0"][-1])
         self.assertIn("agent_2", last_rewards)
         check(episode_1.partial_rewards_t["agent_2"][-1], 100)
-        check(
-            episode_1.partial_rewards["agent_2"][-1], last_rewards["agent_2"][-1]
-        )
+        check(episode_1.partial_rewards["agent_2"][-1], last_rewards["agent_2"][-1])
         self.assertIn("agent_8", last_rewards)
         check(episode_1.partial_rewards_t["agent_8"][-1], 100)
-        check(
-            episode_1.partial_rewards["agent_8"][-1], last_rewards["agent_8"][-1]
-        )
+        check(episode_1.partial_rewards["agent_8"][-1], last_rewards["agent_8"][-1])
         self.assertIn("agent_4", last_rewards)
         check(episode_1.partial_rewards_t["agent_4"][-1], 100)
-        check(
-            episode_1.partial_rewards["agent_4"][-1], last_rewards["agent_4"][-1]
-        )
+        check(episode_1.partial_rewards["agent_4"][-1], last_rewards["agent_4"][-1])
         self.assertIn("agent_3", last_rewards)
         check(episode_1.partial_rewards_t["agent_3"][-1], 100)
-        check(
-            episode_1.partial_rewards["agent_3"][-1], last_rewards["agent_3"][-1]
-        )
+        check(episode_1.partial_rewards["agent_3"][-1], last_rewards["agent_3"][-1])
         self.assertIn("agent_6", last_rewards)
         check(episode_1.partial_rewards_t["agent_6"][-1], 100)
-        check(
-            episode_1.partial_rewards["agent_6"][-1], last_rewards["agent_6"][-1]
-        )
+        check(episode_1.partial_rewards["agent_6"][-1], last_rewards["agent_6"][-1])
         self.assertIn("agent_7", last_rewards)
         check(episode_1.partial_rewards_t["agent_7"][-1], 100)
-        check(
-            episode_1.partial_rewards["agent_7"][-1], last_rewards["agent_7"][-1]
-        )
+        check(episode_1.partial_rewards["agent_7"][-1], last_rewards["agent_7"][-1])
         # Assert that all the other agents are not in the returned rewards.
         self.assertNotIn("agent_1", last_rewards)
 
@@ -1818,37 +2096,21 @@ class TestMultiAgentEpisode(unittest.TestCase):
             partial=True, consider_buffer=False, as_list=True
         )
         self.assertIn("agent_9", last_rewards[0])
-        check(
-            episode_1.partial_rewards["agent_9"][-1], last_rewards[0]["agent_9"]
-        )
+        check(episode_1.partial_rewards["agent_9"][-1], last_rewards[0]["agent_9"])
         self.assertIn("agent_0", last_rewards[0])
-        check(
-            episode_1.partial_rewards["agent_0"][-1], last_rewards[0]["agent_0"]
-        )
+        check(episode_1.partial_rewards["agent_0"][-1], last_rewards[0]["agent_0"])
         self.assertIn("agent_2", last_rewards[0])
-        check(
-            episode_1.partial_rewards["agent_2"][-1], last_rewards[0]["agent_2"]
-        )
+        check(episode_1.partial_rewards["agent_2"][-1], last_rewards[0]["agent_2"])
         self.assertIn("agent_8", last_rewards[0])
-        check(
-            episode_1.partial_rewards["agent_8"][-1], last_rewards[0]["agent_8"]
-        )
+        check(episode_1.partial_rewards["agent_8"][-1], last_rewards[0]["agent_8"])
         self.assertIn("agent_4", last_rewards[0])
-        check(
-            episode_1.partial_rewards["agent_4"][-1], last_rewards[0]["agent_4"]
-        )
+        check(episode_1.partial_rewards["agent_4"][-1], last_rewards[0]["agent_4"])
         self.assertIn("agent_3", last_rewards[0])
-        check(
-            episode_1.partial_rewards["agent_3"][-1], last_rewards[0]["agent_3"]
-        )
+        check(episode_1.partial_rewards["agent_3"][-1], last_rewards[0]["agent_3"])
         self.assertIn("agent_6", last_rewards[0])
-        check(
-            episode_1.partial_rewards["agent_6"][-1], last_rewards[0]["agent_6"]
-        )
+        check(episode_1.partial_rewards["agent_6"][-1], last_rewards[0]["agent_6"])
         self.assertIn("agent_7", last_rewards[0])
-        check(
-            episode_1.partial_rewards["agent_7"][-1], last_rewards[0]["agent_7"]
-        )
+        check(episode_1.partial_rewards["agent_7"][-1], last_rewards[0]["agent_7"])
         # Assert that all the other agents are not in the returned rewards.
         self.assertNotIn("agent_1", last_rewards[0])
 
@@ -1858,44 +2120,28 @@ class TestMultiAgentEpisode(unittest.TestCase):
         )
         self.assertIn("agent_9", last_rewards)
         self.assertListEqual(episode_1.partial_rewards_t["agent_9"][-2:], [99, 100])
-        check(
-            episode_1.partial_rewards["agent_9"][-1:-3:-1], last_rewards["agent_9"]
-        )
+        check(episode_1.partial_rewards["agent_9"][-1:-3:-1], last_rewards["agent_9"])
         self.assertIn("agent_0", last_rewards)
         self.assertListEqual(episode_1.partial_rewards_t["agent_0"][-2:], [99, 100])
-        check(
-            episode_1.partial_rewards["agent_0"][-1:-3:-1], last_rewards["agent_0"]
-        )
+        check(episode_1.partial_rewards["agent_0"][-1:-3:-1], last_rewards["agent_0"])
         self.assertIn("agent_2", last_rewards)
         self.assertListEqual(episode_1.partial_rewards_t["agent_2"][-2:], [99, 100])
-        check(
-            episode_1.partial_rewards["agent_2"][-1:-3:-1], last_rewards["agent_2"]
-        )
+        check(episode_1.partial_rewards["agent_2"][-1:-3:-1], last_rewards["agent_2"])
         self.assertIn("agent_8", last_rewards)
         self.assertListEqual(episode_1.partial_rewards_t["agent_8"][-2:], [99, 100])
-        check(
-            episode_1.partial_rewards["agent_8"][-1:-3:-1], last_rewards["agent_8"]
-        )
+        check(episode_1.partial_rewards["agent_8"][-1:-3:-1], last_rewards["agent_8"])
         self.assertIn("agent_4", last_rewards)
         self.assertListEqual(episode_1.partial_rewards_t["agent_4"][-2:], [99, 100])
-        check(
-            episode_1.partial_rewards["agent_4"][-1:-3:-1], last_rewards["agent_4"]
-        )
+        check(episode_1.partial_rewards["agent_4"][-1:-3:-1], last_rewards["agent_4"])
         self.assertIn("agent_3", last_rewards)
         self.assertListEqual(episode_1.partial_rewards_t["agent_3"][-2:], [99, 100])
-        check(
-            episode_1.partial_rewards["agent_3"][-1:-3:-1], last_rewards["agent_3"]
-        )
+        check(episode_1.partial_rewards["agent_3"][-1:-3:-1], last_rewards["agent_3"])
         self.assertIn("agent_6", last_rewards)
         self.assertListEqual(episode_1.partial_rewards_t["agent_6"][-2:], [99, 100])
-        check(
-            episode_1.partial_rewards["agent_6"][-1:-3:-1], last_rewards["agent_6"]
-        )
+        check(episode_1.partial_rewards["agent_6"][-1:-3:-1], last_rewards["agent_6"])
         self.assertIn("agent_7", last_rewards)
         self.assertListEqual(episode_1.partial_rewards_t["agent_7"][-2:], [99, 100])
-        check(
-            episode_1.partial_rewards["agent_7"][-1:-3:-1], last_rewards["agent_7"]
-        )
+        check(episode_1.partial_rewards["agent_7"][-1:-3:-1], last_rewards["agent_7"])
         # Assert that all the other agents are not in the returned rewards.
         self.assertNotIn("agent_1", last_rewards)
 
@@ -1906,68 +2152,36 @@ class TestMultiAgentEpisode(unittest.TestCase):
         )
         self.assertIn("agent_9", last_rewards[0])
         self.assertIn("agent_9", last_rewards[1])
-        check(
-            episode_1.partial_rewards["agent_9"][-1], last_rewards[0]["agent_9"]
-        )
-        check(
-            episode_1.partial_rewards["agent_9"][-2], last_rewards[1]["agent_9"]
-        )
+        check(episode_1.partial_rewards["agent_9"][-1], last_rewards[0]["agent_9"])
+        check(episode_1.partial_rewards["agent_9"][-2], last_rewards[1]["agent_9"])
         self.assertIn("agent_0", last_rewards[0])
         self.assertIn("agent_0", last_rewards[1])
-        check(
-            episode_1.partial_rewards["agent_0"][-1], last_rewards[0]["agent_0"]
-        )
-        check(
-            episode_1.partial_rewards["agent_0"][-2], last_rewards[1]["agent_0"]
-        )
+        check(episode_1.partial_rewards["agent_0"][-1], last_rewards[0]["agent_0"])
+        check(episode_1.partial_rewards["agent_0"][-2], last_rewards[1]["agent_0"])
         self.assertIn("agent_2", last_rewards[0])
         self.assertIn("agent_2", last_rewards[1])
-        check(
-            episode_1.partial_rewards["agent_2"][-1], last_rewards[0]["agent_2"]
-        )
-        check(
-            episode_1.partial_rewards["agent_2"][-2], last_rewards[1]["agent_2"]
-        )
+        check(episode_1.partial_rewards["agent_2"][-1], last_rewards[0]["agent_2"])
+        check(episode_1.partial_rewards["agent_2"][-2], last_rewards[1]["agent_2"])
         self.assertIn("agent_8", last_rewards[0])
         self.assertIn("agent_8", last_rewards[1])
-        check(
-            episode_1.partial_rewards["agent_8"][-1], last_rewards[0]["agent_8"]
-        )
-        check(
-            episode_1.partial_rewards["agent_8"][-2], last_rewards[1]["agent_8"]
-        )
+        check(episode_1.partial_rewards["agent_8"][-1], last_rewards[0]["agent_8"])
+        check(episode_1.partial_rewards["agent_8"][-2], last_rewards[1]["agent_8"])
         self.assertIn("agent_4", last_rewards[0])
         self.assertIn("agent_4", last_rewards[1])
-        check(
-            episode_1.partial_rewards["agent_4"][-1], last_rewards[0]["agent_4"]
-        )
-        check(
-            episode_1.partial_rewards["agent_4"][-2], last_rewards[1]["agent_4"]
-        )
+        check(episode_1.partial_rewards["agent_4"][-1], last_rewards[0]["agent_4"])
+        check(episode_1.partial_rewards["agent_4"][-2], last_rewards[1]["agent_4"])
         self.assertIn("agent_3", last_rewards[0])
         self.assertIn("agent_3", last_rewards[1])
-        check(
-            episode_1.partial_rewards["agent_3"][-1], last_rewards[0]["agent_3"]
-        )
-        check(
-            episode_1.partial_rewards["agent_3"][-2], last_rewards[1]["agent_3"]
-        )
+        check(episode_1.partial_rewards["agent_3"][-1], last_rewards[0]["agent_3"])
+        check(episode_1.partial_rewards["agent_3"][-2], last_rewards[1]["agent_3"])
         self.assertIn("agent_6", last_rewards[0])
         self.assertIn("agent_6", last_rewards[1])
-        check(
-            episode_1.partial_rewards["agent_6"][-1], last_rewards[0]["agent_6"]
-        )
-        check(
-            episode_1.partial_rewards["agent_6"][-2], last_rewards[1]["agent_6"]
-        )
+        check(episode_1.partial_rewards["agent_6"][-1], last_rewards[0]["agent_6"])
+        check(episode_1.partial_rewards["agent_6"][-2], last_rewards[1]["agent_6"])
         self.assertIn("agent_7", last_rewards[0])
         self.assertIn("agent_7", last_rewards[1])
-        check(
-            episode_1.partial_rewards["agent_7"][-1], last_rewards[0]["agent_7"]
-        )
-        check(
-            episode_1.partial_rewards["agent_7"][-2], last_rewards[1]["agent_7"]
-        )
+        check(episode_1.partial_rewards["agent_7"][-1], last_rewards[0]["agent_7"])
+        check(episode_1.partial_rewards["agent_7"][-2], last_rewards[1]["agent_7"])
         # Assert that all the other agents are not in the returned rewards.
         self.assertNotIn("agent_1", last_rewards[0])
         self.assertNotIn("agent_1", last_rewards[1])
@@ -1978,6 +2192,93 @@ class TestMultiAgentEpisode(unittest.TestCase):
         # --- is_terminated, is_truncated ---
 
     def test_cut(self):
+        # Generate a simple multi-agent episode and check all internals after
+        # construction.
+        observations = [{"a0": 0, "a1": 0}, {"a1": 1}, {"a1": 2}, {"a1": 3}]
+        actions = [{"a0": 0, "a1": 0}, {"a1": 1}, {"a1": 2}]
+        rewards = [{"a0": 0.1, "a1": 0.1}, {"a1": 0.2}, {"a1": 0.3}]
+        episode_1 = MultiAgentEpisode(
+            observations=observations, actions=actions, rewards=rewards
+        )
+
+        episode_2 = episode_1.cut()
+        check(episode_1.id_, episode_2.id_)
+        check(len(episode_1), 0)
+        check(len(episode_2), 0)
+        # Assert that all `SingleAgentEpisode`s have identical ids.
+        for agent_id, agent_eps in episode_2.agent_episodes.items():
+            check(agent_eps.id_, episode_1.agent_episodes[agent_id].id_)
+        # Assert that the timestep starts at the end of the last episode.
+        check(episode_1.env_t_started, 0)
+        check(episode_1.env_t, episode_2.env_t_started)
+        check(episode_2.env_t_started, episode_2.env_t)
+        # Make sure our mappings have been adjusted properly. We expect the mapping for
+        # a0 to have this agent's last obs added to the mapping's lookback buffer, such
+        # that we can add the buffered action to the new episode without problems.
+        check(episode_2.env_t_to_agent_t["a0"].data, [0, "S", "S", "S"])
+        check(episode_2.env_t_to_agent_t["a0"].lookback, 3)
+        check(episode_2.env_t_to_agent_t["a1"].data, [0, 1, 2, 3])
+        check(episode_2.env_t_to_agent_t["a1"].lookback, 3)
+        # Check all other internals of the cut episode chunk.
+        check(episode_2.agent_episodes["a0"].observations.data, [0])
+        check(episode_2.agent_episodes["a0"].observations.lookback, 0)
+        check(episode_2.agent_episodes["a0"].actions.data, [])
+        check(episode_2.agent_episodes["a0"].actions.lookback, 0)
+
+        # Test getting data from the cut chunk via the getter APIs.
+        check(episode_2.get_observations(-1), {"a1": 3})
+        check(episode_2.get_observations(-1, env_steps=False), {"a0": 0, "a1": 3})
+        check(episode_2.get_observations([-2, -1]), {"a1": [2, 3]})
+        check(episode_2.get_observations(slice(-3, None)), {"a1": [1, 2, 3]})
+        check(
+            episode_2.get_observations(slice(-4, None)), {"a0": [0], "a1": [0, 1, 2, 3]}
+        )
+        # Episode was just cut -> There can't be any actions in it yet (only in the
+        # lookback buffer).
+        check(episode_2.get_actions(), {})
+        check(episode_2.get_actions(-1), {"a1": 2})
+        check(episode_2.get_actions(-2), {"a1": 1})
+        check(episode_2.get_actions([-3]), {"a0": [0], "a1": [0]})
+        with self.assertRaises(IndexError):
+            episode_2.get_actions([-4])
+        # Don't expect index error if slice is given.
+        check(episode_2.get_actions(slice(-4, -3)), {})
+
+        episode_2.add_env_step(
+            actions={"a1": 4},
+            rewards={"a1": 0.4},
+            observations={"a0": 1, "a1": 4},
+        )
+        # Check everything again, but this time with the additional timestep taken.
+        check(len(episode_2), 1)
+        check(episode_2.env_t_to_agent_t["a0"].data, [0, "S", "S", "S", 1])
+        check(episode_2.env_t_to_agent_t["a0"].lookback, 3)
+        check(episode_2.env_t_to_agent_t["a1"].data, [0, 1, 2, 3, 4])
+        check(episode_2.env_t_to_agent_t["a1"].lookback, 3)
+        check(episode_2.agent_episodes["a0"].observations.data, [0, 1])
+        check(episode_2.agent_episodes["a0"].observations.lookback, 0)
+        # Action was "logged" -> Buffer should now be completely empty.
+        check(episode_2.agent_episodes["a0"].actions.data, [0])
+        check(episode_2._agent_buffered_actions, {})
+        check(episode_2.agent_episodes["a0"].actions.lookback, 0)
+        check(episode_2.get_observations(-1), {"a0": 1, "a1": 4})
+        check(episode_2.get_observations(-1, env_steps=False), {"a0": 0, "a1": 3})
+        check(episode_2.get_observations([-2, -1]), {"a1": [2, 3]})
+        check(episode_2.get_observations(slice(-3, None)), {"a1": [1, 2, 3]})
+        check(
+            episode_2.get_observations(slice(-4, None)), {"a0": [0], "a1": [0, 1, 2, 3]}
+        )
+        # Episode was just cut -> There can't be any actions in it yet (only in the
+        # lookback buffer).
+        check(episode_2.get_actions(), {})
+        check(episode_2.get_actions(-1), {"a1": 2})
+        check(episode_2.get_actions(-2), {"a1": 1})
+        check(episode_2.get_actions([-3]), {"a0": [0], "a1": [0]})
+        with self.assertRaises(IndexError):
+            episode_2.get_actions([-4])
+        # Don't expect index error if slice is given.
+        check(episode_2.get_actions(slice(-4, -3)), {})
+
         # Create an environment.
         episode_1, _ = self._mock_multi_agent_records_from_env(size=100)
 
@@ -1988,27 +2289,38 @@ class TestMultiAgentEpisode(unittest.TestCase):
         episode_2 = episode_1.cut()
         # Assert that it has the same id.
         check(episode_1.id_, episode_2.id_)
+        check(len(episode_1), 100)
+        check(len(episode_2), 0)
         # Assert that all `SingleAgentEpisode`s have identical ids.
-        for agent_id, agent_eps in episode_1.agent_episodes.items():
-            check(agent_eps.id_, episode_2.agent_episodes[agent_id].id_)
+        for agent_id, agent_eps in episode_2.agent_episodes.items():
+            check(agent_eps.id_, episode_1.agent_episodes[agent_id].id_)
         # Assert that the timestep starts at the end of the last episode.
-        check(episode_1.t, episode_2.t_started)
+        check(episode_1.env_t_started, 0)
+        check(episode_2.env_t, episode_2.env_t_started)
+        check(episode_1.env_t, episode_2.env_t_started)
         # Assert that the last observation and info of `episode_1` are the first
         # observation and info of `episode_2`.
-        for agent_id, agent_eps in episode_1.agent_episodes.items():
-            # If agents are done only ensure that the `SingleAgentEpisode` is empty.
-            if agent_eps.is_done:
-                check(
-                    len(episode_2.agent_episodes[agent_id].observations), 0
-                )
+        for agent_id, agent_obs in episode_1.get_observations(
+            -1, env_steps=False
+        ).items():
+            # If agents are done only ensure that the `SingleAgentEpisode` does not
+            # exist in episode_2.
+            if episode_1.agent_episodes[agent_id].is_done:
+                self.assertTrue(agent_id not in episode_2.agent_episodes)
             else:
                 check(
-                    agent_eps.observations[-1],
-                    episode_2.agent_episodes[agent_id].observations[0],
+                    agent_obs,
+                    episode_2.get_observations(
+                        -1,
+                        neg_indices_left_of_zero=True,
+                        env_steps=False,
+                        agent_ids=agent_id,
+                    ),
                 )
+                agent_infos = episode_1.get_infos(-1, env_steps=False)
                 check(
-                    agent_eps.infos[-1],
-                    episode_2.agent_episodes[agent_id].infos[0],
+                    agent_infos,
+                    episode_2.get_infos(0, agent_ids=agent_id),
                 )
 
         # Now test the buffers.
@@ -2052,9 +2364,7 @@ class TestMultiAgentEpisode(unittest.TestCase):
             # If an agent is not done, we write over the timestep from its last
             # observation.
             if not episode_2.agent_episodes[agent_id].is_done:
-                check(
-                    agent_global_ts[0], episode_1.global_t_to_local_t[agent_id][-1]
-                )
+                check(agent_global_ts[0], episode_1.global_t_to_local_t[agent_id][-1])
             # In the other case this mapping should be empty.
             else:
                 check(len(agent_global_ts), 0)
@@ -2067,9 +2377,7 @@ class TestMultiAgentEpisode(unittest.TestCase):
                 # If a timestep mapping for actions was copied over the last timestep
                 # of the üredecessor and the first of the successor must match.
                 if agent_global_ts:
-                    check(
-                        agent_global_ts[0], episode_1.global_actions_t[agent_id][-1]
-                    )
+                    check(agent_global_ts[0], episode_1.global_actions_t[agent_id][-1])
                 # If no action timestep mapping was copied over the last action must
                 # have been at or before the last observation in the predecessor.
                 else:
@@ -2084,9 +2392,7 @@ class TestMultiAgentEpisode(unittest.TestCase):
         # Assert that the partial reward mappings and histories match.
         for agent_id, agent_global_ts in episode_2.partial_rewards_t.items():
             # Ensure that timestep mapping and history have the same length.
-            check(
-                len(agent_global_ts), len(episode_2.partial_rewards[agent_id])
-            )
+            check(len(agent_global_ts), len(episode_2.partial_rewards[agent_id]))
             # If an agent is not done, we write over the timestep from its last
             # partial rewards.
             if not episode_2.agent_episodes[agent_id].is_done:
@@ -2282,9 +2588,7 @@ class TestMultiAgentEpisode(unittest.TestCase):
                     agent_eps.rewards[-1],
                     episode_2.agent_episodes[agent_id].rewards[-1],
                 )
-                check(
-                    agent_eps.infos[-1], episode_2.agent_episodes[agent_id].infos[-1]
-                )
+                check(agent_eps.infos[-1], episode_2.agent_episodes[agent_id].infos[-1])
                 # Note, our test environment produces always these extra model outputs.
                 check(
                     agent_eps.extra_model_outputs["extra"][-1],
@@ -2295,9 +2599,7 @@ class TestMultiAgentEpisode(unittest.TestCase):
         # concatenation and matches the observation lengths.
         for agent_id, agent_map in episode_1.global_t_to_local_t.items():
             check(len(agent_map), len(set(agent_map)))
-            check(
-                len(agent_map), len(episode_1.agent_episodes[agent_id].observations)
-            )
+            check(len(agent_map), len(episode_1.agent_episodes[agent_id].observations))
 
         # Now assert that all buffers remained the same.
         for agent_id, agent_buffer in episode_1.agent_buffers.items():
@@ -2354,9 +2656,7 @@ class TestMultiAgentEpisode(unittest.TestCase):
         # Ensure that partial reward timestep mapping have no duplicates and that
         # partial rewards match.
         for agent_id, agent_partial_rewards_t in episode_1.partial_rewards_t.items():
-            check(
-                len(agent_partial_rewards_t), len(set(agent_partial_rewards_t))
-            )
+            check(len(agent_partial_rewards_t), len(set(agent_partial_rewards_t)))
             # Done agents might not have these lists in `episode_2`.
             if not episode_1.agent_episodes[agent_id].is_done:
                 # Ensure for agents that are not done that the last entries match.
@@ -2404,9 +2704,7 @@ class TestMultiAgentEpisode(unittest.TestCase):
                 # Make sure that the correct timestep is recorded.
                 check(episode_1.global_actions_t[agent_id][-1], episode_1.t)
                 # Ensure that the correct action is recorded.
-                check(
-                    episode_1.agent_episodes[agent_id].actions[-1], agent_action[0]
-                )
+                check(episode_1.agent_episodes[agent_id].actions[-1], agent_action[0])
             # For any action the value
             check(episode_1.global_actions_t[agent_id][-1], agent_action[0])
 
@@ -2415,9 +2713,7 @@ class TestMultiAgentEpisode(unittest.TestCase):
         last_reward = episode_1.get_rewards(partial=False, consider_buffer=False)
         for agent_id, agent_reward in last_reward.items():
             # Ensure that the last recorded reward is the one in the getter result.
-            check(
-                episode_1.agent_episodes[agent_id].rewards[-1], agent_reward[0]
-            )
+            check(episode_1.agent_episodes[agent_id].rewards[-1], agent_reward[0])
         # Assert also that the partial rewards are correctly extracted.
         # Note, `partial=True` does not look into the reward histories in the agents'
         # `SingleAgentEpisode`s, but instead into the global reward histories on
@@ -2446,9 +2742,7 @@ class TestMultiAgentEpisode(unittest.TestCase):
             # SingleAgentEpisode`'s reward history. Ensure that these two values
             # are identical.
             else:
-                check(
-                    episode_1.agent_episodes[agent_id].rewards[-1], agent_reward[0]
-                )
+                check(episode_1.agent_episodes[agent_id].rewards[-1], agent_reward[0])
 
         # Assert that the concatenated episode is immutable in its objects.
         buffered_action = episode_2.agent_buffers["agent_4"]["actions"].get_nowait()
@@ -2456,9 +2750,7 @@ class TestMultiAgentEpisode(unittest.TestCase):
         self.assertNotEqual(
             episode_2.agent_buffers["agent_4"]["actions"].queue[0], buffered_action
         )
-        check(
-            episode_1.agent_buffers["agent_4"]["actions"].queue[0], buffered_action
-        )
+        check(episode_1.agent_buffers["agent_4"]["actions"].queue[0], buffered_action)
 
     def test_get_return(self):
         # Generate an empty episode and ensure that the return is zero.
@@ -2620,7 +2912,9 @@ class TestMultiAgentEpisode(unittest.TestCase):
         # Sample `size` many records.
         done_agents = set()
         for i in range(env.t, env.t + size):
-            action = {agent_id: i + 1 for agent_id in obs if agent_id not in done_agents}
+            action = {
+                agent_id: i + 1 for agent_id in obs if agent_id not in done_agents
+            }
             obs, reward, terminated, truncated, info = env.step(action)
             done_agents |= {a for a, v in terminated.items() if v is True}
             done_agents |= {a for a, v in truncated.items() if v is True}
@@ -2658,16 +2952,20 @@ class TestMultiAgentEpisode(unittest.TestCase):
         rewards = [
             # Here agent 4 has to buffer the reward as does not have
             # actions nor observation.
-            {"agent_1": 0.5, "agent_3": 0.5, "agent_4": 0.5},
+            {"agent_1": 0.5, "agent_2": 0.6, "agent_3": 0.7},
             # Agent 4 should now release the buffer with reward 1.0
             # and add the next reward to it, as it stepped and received
             # a next observation.
-            {"agent_2": 1.0, "agent_4": 1.0},
+            {"agent_1": 1.1, "agent_3": 1.2, "agent_4": 1.3},
         ]
         infos = [
-            {"agent_1": {}, "agent_2": {}, "agent_3": {}},
-            {"agent_1": {}, "agent_3": {}, "agent_4": {}},
-            {"agent_2": {}, "agent_4": {}},
+            {"agent_1": {"a1_i0": 1}, "agent_2": {"a2_i0": 2}, "agent_3": {"a3_i0": 3}},
+            {
+                "agent_1": {"a1_i1": 1.1},
+                "agent_3": {"a3_i1": 3.1},
+                "agent_4": {"a4_i1": 4.1},
+            },
+            {"agent_2": {"a2_i2": 2.2}, "agent_4": {"a4_i2": 4.2}},
         ]
         # Let no agent be terminated or truncated.
         terminateds = {
