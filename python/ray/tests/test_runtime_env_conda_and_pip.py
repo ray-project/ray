@@ -315,7 +315,9 @@ def test_working_dir_applies_for_pip_creation_files(start_cluster, tmp_working_d
     cluster, address = start_cluster
 
     with open(Path(tmp_working_dir) / "requirements.txt", "w") as f:
-        abs_path = os.path.join("${RAY_RUNTIME_ENV_CREATE_WORKING_DIR}", "more_requirements.txt")
+        abs_path = os.path.join(
+            "${RAY_RUNTIME_ENV_CREATE_WORKING_DIR}", "more_requirements.txt"
+        )
         f.write("-r " + abs_path)
 
     with open(Path(tmp_working_dir) / "more_requirements.txt", "w") as f:
@@ -353,7 +355,9 @@ def test_working_dir_applies_for_conda_creation(start_cluster, tmp_working_dir):
         f.write("dependencies:\n")
         f.write(" - pip\n")
         f.write(" - pip:\n")
-        abs_path = os.path.join("${RAY_RUNTIME_ENV_CREATE_WORKING_DIR}", "requirements.txt")
+        abs_path = os.path.join(
+            "${RAY_RUNTIME_ENV_CREATE_WORKING_DIR}", "requirements.txt"
+        )
         f.write("   - -r " + abs_path + "\n")
 
     ray.init(
