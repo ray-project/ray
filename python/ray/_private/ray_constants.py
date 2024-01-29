@@ -62,6 +62,13 @@ DEFAULT_OBJECT_STORE_MEMORY_PROPORTION = 0.3
 # The smallest cap on the memory used by the object store that we allow.
 # This must be greater than MEMORY_RESOURCE_UNIT_BYTES
 OBJECT_STORE_MINIMUM_MEMORY_BYTES = 75 * 1024 * 1024
+# Each ObjectRef currently uses about 3KB of caller memory.
+CALLER_MEMORY_USAGE_PER_OBJECT_REF = 3000
+# Match max_direct_call_object_size in
+# src/ray/common/ray_config_def.h.
+# TODO(swang): Ideally this should be pulled directly from the
+# config in case the user overrides it.
+DEFAULT_MAX_DIRECT_CALL_OBJECT_SIZE = 100 * 1024
 # The default maximum number of bytes that the non-primary Redis shards are
 # allowed to use unless overridden by the user.
 DEFAULT_REDIS_MAX_MEMORY_BYTES = 10**10
