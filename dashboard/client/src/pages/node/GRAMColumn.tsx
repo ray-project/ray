@@ -69,6 +69,8 @@ export const getSumGRAMUsage = (
   workerPID: number | null,
   gpus?: GPUStats[]
 ) => {
+  // Get sum of all GRAM usage values for this worker PID. This is an
+  // aggregate of WorkerGRAM and follows the same logic.
   const workerGRAMEntries = (gpus ?? [])
     .map((gpu, i) => {
       const process = gpu.processes?.find(

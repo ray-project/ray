@@ -91,6 +91,8 @@ export const getSumGpuUtilization = (
   workerPID: number | null,
   gpus?: GPUStats[]
 ) => {
+  // Get sum of all GPU utilization values for this worker PID. This is an
+  // aggregate of the WorkerGpuRow and follows the same logic.
   const workerGPUUtilizationEntries = (gpus ?? [])
     .map((gpu, i) => {
       const process = gpu.processes?.find(

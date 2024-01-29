@@ -90,6 +90,7 @@ const ActorTable = ({
   });
   const [actorIdFilterValue, setActorIdFilterValue] = useState(filterToActorId);
   const [pageSize, setPageSize] = useState(10);
+
   const defaultSorterKey = "";
   const gpuUtilizationSorterKey = "fake_gpu_attr";
   const gramUsageSorterKey = "fake_gram_attr";
@@ -102,6 +103,9 @@ const ActorTable = ({
     return _.sortBy(actorList, (actor) => {
       const actorOrder = isActorEnum(actor.state) ? stateOrder[actor.state] : 0;
       const actorTime = sorterKey === defaultSorterKey ? (actor.startTime || 0) : 0;
+
+      // GPU utilization and GRAM usage are user specified sort keys but require an aggregate function
+      // over the actor attribute, so including as a sortBy key
       const sumGpuUtilization = sorterKey === gpuUtilizationSorterKey ? getSumGpuUtilization(actor.pid, actor.gpus) : 0;
       const sumGRAMUsage = sorterKey === gramUsageSorterKey ? getSumGRAMUsage(actor.pid, actor.gpus) : 0;
       return [sumGpuUtilization, sumGRAMUsage, actorOrder, actorTime];
@@ -435,6 +439,8 @@ const ActorTable = ({
                 ["processStats.memoryInfo.rss", "Used Memory"],
                 ["mem[0]", "Total Memory"],
                 ["processStats.cpuPercent", "CPU"],
+                // Fake attribute key used when sorting by GPU utilization and
+                // GRAM usage because aggregate function required on actor key before sorting.
                 [gpuUtilizationSorterKey, "GPU Utilization"],
                 [gramUsageSorterKey, "GRAM Usage"],
               ]}
