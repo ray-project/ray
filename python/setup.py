@@ -49,7 +49,7 @@ CLEANABLE_SUBDIRS = [
 
 # In automated builds, we do a few adjustments before building. For instance,
 # the bazel environment is set up slightly differently, and symlinks are
-# replaced with junctions in Windows. This variable is set e.g. in our conda
+# replaced with junctions in Windows. This variable is set e.g. in our conda-forge
 # feedstock.
 is_automated_build = bool(int(os.environ.get("IS_AUTOMATED_BUILD", "0")))
 
@@ -227,11 +227,7 @@ ray_files += [
 if setup_spec.type == SetupType.RAY:
     pandas_dep = "pandas >= 1.3"
     numpy_dep = "numpy >= 1.20"
-    if sys.platform != "win32":
-        pyarrow_dep = "pyarrow >= 6.0.1"
-    else:
-        # Serialization workaround for pyarrow 7.0.0+ doesn't work for Windows.
-        pyarrow_dep = "pyarrow >= 6.0.1, < 7.0.0"
+    pyarrow_dep = "pyarrow >= 6.0.1"
     setup_spec.extras = {
         "data": [
             numpy_dep,
@@ -266,7 +262,8 @@ if setup_spec.type == SetupType.RAY:
             "uvicorn[standard]",
             "requests",
             "starlette",
-            "fastapi",
+            # Tracking issue: https://github.com/tiangolo/fastapi/discussions/10948
+            "fastapi <= 0.108.0",
             "watchfiles",
         ],
         "tune": ["pandas", "tensorboardX>=1.9", "requests", pyarrow_dep, "fsspec"],
@@ -560,13 +557,17 @@ def build(build_python, build_java, build_cpp):
             FutureWarning,
         )
 
-    if not is_automated_build:
-        bazel_precmd_flags = []
     if is_automated_build:
-        root_dir = os.path.join(
-            os.path.abspath(os.environ["SRC_DIR"]), "..", "bazel-root"
-        )
-        out_dir = os.path.join(os.path.abspath(os.environ["SRC_DIR"]), "..", "b-o")
+        src_dir = os.environ.get("SRC_DIR", False) or os.getcwd()
+        src_dir = os.path.abspath(src_dir)
+        if is_native_windows_or_msys():
+            drive = os.path.splitdrive(src_dir)[0] + "\\"
+            root_dir = os.path.join(drive, "bazel-root")
+            out_dir = os.path.join(drive, "b-o")
+            bazel_flags.append("--enable_runfiles=false")
+        else:
+            root_dir = os.path.join(src_dir, "..", "bazel-root")
+            out_dir = os.path.join(src_dir, "..", "b-o")
 
         for d in (root_dir, out_dir):
             if not os.path.exists(d):
@@ -576,9 +577,8 @@ def build(build_python, build_java, build_cpp):
             "--output_user_root=" + root_dir,
             "--output_base=" + out_dir,
         ]
-
-        if is_native_windows_or_msys():
-            bazel_flags.append("--enable_runfiles=false")
+    else:
+        bazel_precmd_flags = []
 
     bazel_targets = []
     bazel_targets += ["//:ray_pkg"] if build_python else []

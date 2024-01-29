@@ -265,6 +265,9 @@ class DataContext:
         # the DataContext from the plugin implementations, as well as to avoid
         # circular dependencies.
         self._kv_configs: Dict[str, Any] = {}
+        # The max number of blocks that can be buffered at the streaming generator of
+        # each `DataOpTask`.
+        self._max_num_blocks_in_streaming_gen_buffer = None
 
     @staticmethod
     def get_current() -> "DataContext":
