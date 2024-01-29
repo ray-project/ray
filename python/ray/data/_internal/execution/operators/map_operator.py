@@ -86,7 +86,7 @@ class MapOperator(OneToOneOperator, ABC):
         # If set, then all output blocks will be split into
         # this many sub-blocks. This is to avoid having
         # too-large blocks, which may reduce parallelism for
-        # the subsequent stage.
+        # the subsequent operator.
         self._additional_split_factor = None
 
     def get_additional_split_factor(self) -> int:

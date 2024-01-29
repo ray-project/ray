@@ -238,6 +238,26 @@ async def test_batch_timeout_empty_queue():
 
 
 @pytest.mark.asyncio
+async def test_batch_wait_queue_exceeds_batch_size_race_condition():
+    """Check that the wait queue can exceed the batch size.
+
+    This test was added to guard against a race condition documented in
+    https://github.com/ray-project/ray/pull/42705#discussion_r1466653910.
+    """
+
+    @serve.batch(max_batch_size=2, batch_wait_timeout_s=10000)
+    async def no_op(requests):
+        return ["No-op"] * len(requests)
+
+    tasks = [get_or_create_event_loop().create_task(no_op(None)) for _ in range(10)]
+
+    # All the tasks should finish.
+    done, pending = await asyncio.wait(tasks, timeout=0.5)
+    assert len(done) == len(tasks)
+    assert len(pending) == 0
+
+
+@pytest.mark.asyncio
 @pytest.mark.parametrize("use_class", [True, False])
 async def test_batch_size_multiple_long_timeout(use_class):
     @serve.batch(max_batch_size=3, batch_wait_timeout_s=1000)
@@ -314,6 +334,190 @@ async def test_batch_args_kwargs(mode, use_class):
         coros = [func("hi1", key2="hi2"), func("hi3", key2="hi4")]
     elif mode == "out-of-order":
         coros = [func(key2="hi2", key1="hi1"), func(key2="hi4", key1="hi3")]
+
+    result = await asyncio.gather(*coros)
+    assert result == [("hi1", "hi2"), ("hi3", "hi4")]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("use_class", [True, False])
+@pytest.mark.parametrize("use_gen", [True, False])
+async def test_batch_cancellation(use_class, use_gen):
+    block_requests = asyncio.Event()
+    request_was_cancelled = True
+
+    async def unary_implementation(key1, key2):
+        nonlocal block_requests, request_was_cancelled
+        await block_requests.wait()
+        request_was_cancelled = False
+        return [(key1[i], key2[i]) for i in range(len(key1))]
+
+    async def streaming_implementation(key1, key2):
+        nonlocal block_requests, request_was_cancelled
+        await block_requests.wait()
+        request_was_cancelled = False
+        yield [(key1[i], key2[i]) for i in range(len(key1))]
+
+    if use_class:
+
+        class MultipleArgs:
+            @serve.batch(max_batch_size=2, batch_wait_timeout_s=1000)
+            async def unary_method(self, key1, key2):
+                return await unary_implementation(key1, key2)
+
+            @serve.batch(max_batch_size=2, batch_wait_timeout_s=1000)
+            async def streaming_method(self, key1, key2):
+                async for value in streaming_implementation(key1, key2):
+                    yield value
+
+        instance = MultipleArgs()
+
+        if use_gen:
+            func = instance.streaming_method
+        else:
+            func = instance.unary_method
+
+    else:
+
+        @serve.batch(max_batch_size=2, batch_wait_timeout_s=1000)
+        async def unary_func(key1, key2):
+            return await unary_implementation(key1, key2)
+
+        @serve.batch(max_batch_size=2, batch_wait_timeout_s=1000)
+        async def streaming_func(key1, key2):
+            async for value in streaming_implementation(key1, key2):
+                yield value
+
+        if use_gen:
+            func = streaming_func
+        else:
+            func = unary_func
+
+    if use_gen:
+        gens = [func("hi1", "hi2"), func("hi3", "hi4")]
+        coros = [gen.__anext__() for gen in gens]
+    else:
+        coros = [func("hi1", "hi2"), func("hi3", "hi4")]
+
+    print("Submitted requests.")
+
+    # The requests should be blocked on the long request_timeout
+    done, pending = await asyncio.wait(coros, timeout=0.01)
+    assert len(done) == 0
+    assert len(pending) == 2
+
+    print("Requests are blocked, as expected.")
+
+    # Cancel the first request. The second request should still be blocked on
+    # the long request_timeout
+    coros[0].close()
+    pending, done = await asyncio.wait(coros, timeout=0.01)
+    assert len(done) == 1
+    assert len(pending) == 1
+
+    print("Cancelled first request.")
+
+    # Cancel the second request. Both requests should be done.
+    coros[1].close()
+    done, pending = await asyncio.wait(coros, timeout=0.01)
+    assert len(done) == 2
+    assert len(pending) == 0
+
+    print("Cancelled second request. Sending new requests with no timeout.")
+
+    # Sanity check that the request was actually cancelled.
+    assert request_was_cancelled
+
+    # Unblock requests. The requests should succeed.
+    block_requests.set()
+
+    if use_gen:
+        gens = [func("hi1", "hi2"), func("hi3", "hi4")]
+        coros = [gen.__anext__() for gen in gens]
+    else:
+        coros = [func("hi1", "hi2"), func("hi3", "hi4")]
+
+    result = await asyncio.gather(*coros)
+    assert result == [("hi1", "hi2"), ("hi3", "hi4")]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("use_class", [True, False])
+@pytest.mark.parametrize("use_gen", [True, False])
+async def test_cancellation_after_error(use_class, use_gen):
+    """Cancelling a request after it errors should be supported."""
+
+    raise_error = asyncio.Event()
+
+    async def unary_implementation(key1, key2):
+        if not raise_error.is_set():
+            raise ValueError()
+        return [(key1[i], key2[i]) for i in range(len(key1))]
+
+    async def streaming_implementation(key1, key2):
+        if not raise_error.is_set():
+            raise ValueError()
+        yield [(key1[i], key2[i]) for i in range(len(key1))]
+
+    if use_class:
+
+        class MultipleArgs:
+            @serve.batch(max_batch_size=2, batch_wait_timeout_s=1000)
+            async def unary_method(self, key1, key2):
+                return await unary_implementation(key1, key2)
+
+            @serve.batch(max_batch_size=2, batch_wait_timeout_s=1000)
+            async def streaming_method(self, key1, key2):
+                async for value in streaming_implementation(key1, key2):
+                    yield value
+
+        instance = MultipleArgs()
+
+        if use_gen:
+            func = instance.streaming_method
+        else:
+            func = instance.unary_method
+
+    else:
+
+        @serve.batch(max_batch_size=2, batch_wait_timeout_s=1000)
+        async def unary_func(key1, key2):
+            return await unary_implementation(key1, key2)
+
+        @serve.batch(max_batch_size=2, batch_wait_timeout_s=1000)
+        async def streaming_func(key1, key2):
+            async for value in streaming_implementation(key1, key2):
+                yield value
+
+        if use_gen:
+            func = streaming_func
+        else:
+            func = unary_func
+
+    # Submit requests and then cancel them.
+    if use_gen:
+        gens = [func("hi1", "hi2"), func("hi3", "hi4")]
+        coros = [gen.__anext__() for gen in gens]
+    else:
+        coros = [func("hi1", "hi2"), func("hi3", "hi4")]
+
+    print("Submitted initial batch of requests.")
+
+    for coro in coros:
+        coro.close()
+
+    print("Closed initial batch of requests.")
+
+    raise_error.set()
+
+    # Submit requests and check that they still work.
+    if use_gen:
+        gens = [func("hi1", "hi2"), func("hi3", "hi4")]
+        coros = [gen.__anext__() for gen in gens]
+    else:
+        coros = [func("hi1", "hi2"), func("hi3", "hi4")]
+
+    print("Submitted new batch of requests.")
 
     result = await asyncio.gather(*coros)
     assert result == [("hi1", "hi2"), ("hi3", "hi4")]
