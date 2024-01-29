@@ -3,7 +3,7 @@
 # RayJob Batch Inference Example
 
 This example demonstrates how to use the RayJob custom resource to run a batch inference job for an image classification workload on a Ray cluster.
-See the document [Image Classification Batch Inference with HuggingFace Vision Transformer](https://docs.ray.io/en/latest/data/examples/huggingface_vit_batch_prediction.html) for a full explanation of the code.
+See [Image Classification Batch Inference with HuggingFace Vision Transformer](https://docs.ray.io/en/latest/data/examples/huggingface_vit_batch_prediction.html) for a full explanation of the code.
 
 ## Prerequisites
 
@@ -45,7 +45,7 @@ Download the file with `curl`:
 curl -LO https://raw.githubusercontent.com/ray-project/kuberay/v1.0.0/ray-operator/config/samples/ray-job.batch-inference.yaml
 ```
 
-Note that the `RayJob` spec contains a spec for the `RayCluster` that is to be created for the job. For this tutorial, we use a single-node cluster with 4 GPUs. For production use cases, we recommend using a multi-node cluster where the head node doesn't have GPUs, so that Ray can automatically schedule GPU workloads on worker nodes and they won't interfere with critical Ray processes on the head node.
+Note that the `RayJob` spec contains a spec for the `RayCluster`. This tutorial uses a single-node cluster with 4 GPUs. For production use cases, use a multi-node cluster where the head node doesn't have GPUs, so that Ray can automatically schedule GPU workloads on worker nodes which won't interfere with critical Ray processes on the head node.
 
 Note the following fields in the `RayJob` spec, which specify the Ray image and the GPU resources for the Ray node:
 
