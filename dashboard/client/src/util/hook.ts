@@ -64,7 +64,6 @@ export const useSorter = (initialSortKey?: string) => {
     if (!get(b, sorter.key)) {
       return 1;
     }
-
     return get(a, sorter.key) > get(b, sorter.key) ? 1 : -1;
   };
 

@@ -216,4 +216,61 @@ describe("ActorTable", () => {
       Node.DOCUMENT_POSITION_FOLLOWING,
     ); // actor2Row appear before actor1Row
   });
+
+  it("renders a table of actors with same state sorted by CPU", () => {
+    const RUNNING_ACTORS = {
+      ...MOCK_ACTORS,
+      ACTOR_2: {
+        ...MOCK_ACTORS.ACTOR_2,
+        state: "ALIVE",
+        processStats: {
+          cmdline: [],
+          cpuPercent: 20,
+          cpuTimes: {
+            user: 0,
+            system: 0,
+            childrenUser: 0,
+            childrenUystem: 0,
+            iowait: 0,
+          },
+          createTime: 0,
+          memoryInfo: {
+            rss: 0,
+            vms: 0,
+            pfaults: 0,
+            pageins: 0,
+          },
+          pid: 25322,
+        },
+      },
+    };
+
+    const { getByRole, getByTestId } = render(
+      <MemoryRouter>
+        <ActorTable actors={RUNNING_ACTORS} />
+      </MemoryRouter>,
+    );
+    const sortByFilter = getByTestId("sortByFilter");
+    // const input = within(sortByFilter).getByRole("textbox");
+    // Filter by node ID of ACTOR_2
+    fireEvent.change(sortByFilter, {
+      target: {
+        value: "processStats?.cpuPercent",
+      },
+    });
+
+    const actor1Row = getByRole("row", {
+      name: /ACTOR_1/,
+    });
+    const actor2Row = getByRole("row", {
+      name: /ACTOR_2/,
+    });
+
+    expect(within(actor1Row).getByText("ACTOR_1")).toBeInTheDocument();
+    expect(within(actor2Row).getByText("ACTOR_2")).toBeInTheDocument();
+
+    expect(actor2Row.compareDocumentPosition(actor1Row)).toBe(
+      Node.DOCUMENT_POSITION_FOLLOWING,
+    ); // actor2Row appear before actor1Row
+  });
 });

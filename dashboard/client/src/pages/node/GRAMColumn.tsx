@@ -65,6 +65,24 @@ export const WorkerGRAM = ({
   );
 };
 
+export const getSumGRAMUsage = (
+  workerPID: number | null,
+  gpus?: GPUStats[]
+) => {
+  const workerGRAMEntries = (gpus ?? [])
+    .map((gpu, i) => {
+      const process = gpu.processes?.find(
+        (process) => workerPID && process.pid === workerPID,
+      );
+      if (!process) {
+        return 0;
+      }
+      return process.gpuMemoryUsage;
+    })
+    .filter((entry) => entry !== undefined);
+  return workerGRAMEntries.reduce((a, b) => a + b, 0);
+ };
+
 const getMiBRatioNoPercent = (used: number, total: number) =>
   `${used}MiB/${total}MiB`;
 

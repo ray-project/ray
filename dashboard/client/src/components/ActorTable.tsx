@@ -2,6 +2,7 @@ import {
   Box,
   InputAdornment,
   Link,
+  Switch,
   Table,
   TableBody,
   TableCell,
@@ -27,17 +28,18 @@ import {
   MemoryProfilingButton,
 } from "../common/ProfilingLink";
 import rowStyles from "../common/RowStyles";
-import { WorkerGpuRow } from "../pages/node/GPUColumn";
-import { WorkerGRAM } from "../pages/node/GRAMColumn";
+import { WorkerGpuRow, getSumGpuUtilization } from "../pages/node/GPUColumn";
+import { WorkerGRAM, getSumGRAMUsage } from "../pages/node/GRAMColumn";
 import { ActorDetail, ActorEnum } from "../type/actor";
 import { Worker } from "../type/worker";
 import { memoryConverter } from "../util/converter";
-import { useFilter } from "../util/hook";
+import { useFilter, useSorter } from "../util/hook";
 import PercentageBar from "./PercentageBar";
 import StateCounter from "./StatesCounter";
 import { StatusChip } from "./StatusChip";
 import { HelpInfo } from "./Tooltip";
 import RayletWorkerTable, { ExpandableTableRow } from "./WorkerTable";
+import { SearchSelect } from "./SearchComponent";
 
 export type ActorTableProps = {
   actors: { [actorId: string]: ActorDetail };
@@ -70,16 +72,6 @@ const isActorEnum = (state: unknown): state is ActorEnum => {
   return Object.values(ActorEnum).includes(state as ActorEnum);
 };
 
-// We sort the actorsList so that the "Alive" actors appear at first and "Dead" actors appear in the end.
-export const sortActors = (actorList: ActorDetail[]) => {
-  const sortedActors = [...actorList];
-  return _.sortBy(sortedActors, (actor) => {
-    const actorOrder = isActorEnum(actor.state) ? stateOrder[actor.state] : 0;
-    const actorTime = actor.startTime || 0;
-    return [actorOrder, actorTime];
-  });
-};
-
 const ActorTable = ({
   actors = {},
   workers = [],
@@ -98,12 +90,25 @@ const ActorTable = ({
   });
   const [actorIdFilterValue, setActorIdFilterValue] = useState(filterToActorId);
   const [pageSize, setPageSize] = useState(10);
+  const defaultSorterKey = "";
+  const gpuUtilizationSorterKey = "GPU Utilization"
+  const gramUsageSorterKey = "GRAM Usage"
+  const { sorterFunc, setOrderDesc, setSortKey, sorterKey } = useSorter(defaultSorterKey)
+  console.log("sorterkey", sorterKey, sorterKey === "", sorterKey === undefined)
 
   //We get a filtered and sorted actor list to render from prop actors
   const sortedActors = useMemo(() => {
-    const actorList = Object.values(actors || {}).filter(filterFunc);
-    return sortActors(actorList);
-  }, [actors, filterFunc]);
+    const actorList = Object.values(actors || {}).sort(sorterFunc).filter(filterFunc);
+    // Always show ALIVE actors at top. If no other sorting keys are provided, also sort by time
+    return _.sortBy(actorList, (actor) => {
+      const actorOrder = isActorEnum(actor.state) ? stateOrder[actor.state] : 0;
+      const actorTime = sorterKey === defaultSorterKey ? (actor.startTime || 0) : 0;
+      const sumGpuUtilization = sorterKey === gpuUtilizationSorterKey ? getSumGpuUtilization(actor.pid, actor.gpus) : 0;
+      console.log("sumGpuUtilization", sumGpuUtilization);
+      const sumGRAMUsage = sorterKey === gramUsageSorterKey ? getSumGRAMUsage(actor.pid, actor.gpus) : 0;
+      return [sumGpuUtilization, sumGRAMUsage, actorOrder, actorTime];
+    });
+  }, [actors, sorterFunc, filterFunc]);
 
   const list = sortedActors.slice((pageNo - 1) * pageSize, pageNo * pageSize);
 
@@ -423,6 +428,25 @@ const ActorTable = ({
             ),
           }}
         />
+        <span style={{ margin: 8, marginTop: 16 }}>
+          <SearchSelect
+            data-testid="sortByFilter"
+            label="Sort By"
+            options={[
+              ["startTime", "Uptime"],
+              ["processStats.memoryInfo.rss", "Used Memory"],
+              ["mem[0]", "Total Memory"],
+              ["processStats.cpuPercent", "CPU"],
+              ["fake_gpu_attr", gpuUtilizationSorterKey],
+              ["fake_gram_attr", gramUsageSorterKey],
+            ]}
+            onChange={(val) => setSortKey(val)}
+          />
+        </span>
+        <span style={{ margin: 8, marginTop: 20 }}>
+          Reverse:
+          <Switch onChange={(_, checked) => setOrderDesc(checked)} />
+        </span>
       </div>
       <div style={{ display: "flex", alignItems: "center" }}>
         <div>
@@ -593,21 +617,21 @@ const ActorTable = ({
                   </TableCell>
                   <TableCell>
                     <PercentageBar
-                      num={Number(processStats.cpuPercent)}
+                      num={Number(processStats?.cpuPercent)}
                       total={100}
                     >
-                      {processStats.cpuPercent}
+                      {processStats?.cpuPercent}
                     </PercentageBar>
                   </TableCell>
                   <TableCell>
                     {mem && (
                       <PercentageBar
-                        num={processStats.memoryInfo.rss}
+                        num={processStats?.memoryInfo.rss}
                         total={mem[0]}
                       >
-                        {memoryConverter(processStats.memoryInfo.rss)}/
+                        {memoryConverter(processStats?.memoryInfo.rss)}/
                         {memoryConverter(mem[0])}(
-                        {((processStats.memoryInfo.rss / mem[0]) * 100).toFixed(
+                        {((processStats?.memoryInfo.rss / mem[0]) * 100).toFixed(
                           1,
                         )}
                         %)
