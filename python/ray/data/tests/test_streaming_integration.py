@@ -276,6 +276,71 @@ def test_streaming_split_invalid_iterator(ray_start_10_cpus_shared):
         )
 
 
+def test_streaming_split_independent_finish(ray_start_10_cpus_shared):
+    """Test that stream_split iterators can finish independently without
+    waiting for other iterators to finish. Otherwise, this would cause
+    deadlocks.
+    """
+    num_blocks_per_split = 10
+    num_splits = 2
+    ds = ray.data.range(
+        num_splits * num_blocks_per_split,
+        parallelism=num_splits * num_blocks_per_split,
+    )
+    (
+        i1,
+        i2,
+    ) = ds.streaming_split(num_splits, equal=True)
+
+    @ray.remote(max_concurrency=2)
+    class SignalActor:
+        def __init__(self):
+            self._event = threading.Event()
+
+        def wait(self):
+            self._event.wait()
+
+        def set(self):
+            self._event.set()
+
+    @ray.remote
+    class Consumer:
+        def consume(self, it, signal_actor, split_index):
+            for i, _ in enumerate(it.iter_batches(batch_size=None, prefetch_batches=0)):
+                if i == num_blocks_per_split // 2 and split_index == 0:
+                    # The first consumer waits for the second consumer to
+                    # finish first in the middle of the iteration.
+                    print("before wait")
+                    ray.get(signal_actor.wait.remote())
+                    print("after wait")
+            if split_index == 1:
+                # The second consumer sends a signal to unblock the
+                # first consumer. It should finish the iteration independently.
+                # Otherwise, there will be a deadlock.
+                print("before set")
+                # Sleep some time to make sure the other
+                # consume calls wait first.
+                time.sleep(2)
+                ray.get(signal_actor.set.remote())
+                print("after set")
+            pass
+
+    signal_actor = SignalActor.remote()
+    consumer1 = Consumer.remote()
+    consumer2 = Consumer.remote()
+
+    ready, _ = ray.wait(
+        [
+            consumer1.consume.remote(i1, signal_actor, 0),
+            consumer2.consume.remote(i2, signal_actor, 1),
+        ],
+        num_returns=2,
+        timeout=20,
+    )
+
+    assert len(ready) == 2
+
+
 @pytest.mark.skip(
     reason="Incomplete implementation of _validate_dag causes other errors, so we "
     "remove DAG validation for now; see https://github.com/ray-project/ray/pull/37829"

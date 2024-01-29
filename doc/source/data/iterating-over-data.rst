@@ -161,7 +161,8 @@ movement.
 
     To configure ``local_shuffle_buffer_size``, choose the smallest value that achieves
     sufficient randomness. Higher values result in more randomness at the cost of slower
-    iteration.
+    iteration. See :ref:`Local shuffle when iterating over batches <local_shuffle_buffer>`
+    on how to diagnose slowdowns.
 
 .. tab-set::
 

@@ -1,9 +1,9 @@
 import { fireEvent, render, screen, within } from "@testing-library/react";
 import React from "react";
 import { MemoryRouter } from "react-router-dom";
-import { Actor } from "../type/actor";
+import { ActorDetail } from "../type/actor";
 import ActorTable from "./ActorTable";
-const MOCK_ACTORS: { [actorId: string]: Actor } = {
+const MOCK_ACTORS: { [actorId: string]: ActorDetail } = {
   ACTOR_1: {
     actorId: "ACTOR_1",
     jobId: "01000000",
@@ -24,6 +24,33 @@ const MOCK_ACTORS: { [actorId: string]: Actor } = {
     requiredResources: {},
     placementGroupId: "123",
     reprName: ",",
+    workerId: "b8b276a03612644098ed7a929c3b0e50f5bde894eb0d8cab288fbb6d",
+    numPendingTasks: 0,
+    taskQueueLength: 0,
+    numExecutedTasks: 0,
+    numInPlasma: 0,
+    numLocalObjects: 0,
+    numObjectRefsInScope: 0,
+    gpus: [],
+    processStats: {
+      cmdline: [],
+      cpuPercent: 0,
+      cpuTimes: {
+        user: 0,
+        system: 0,
+        childrenUser: 0,
+        childrenUystem: 0,
+        iowait: 0,
+      },
+      createTime: 0,
+      memoryInfo: {
+        rss: 0,
+        vms: 0,
+        pfaults: 0,
+        pageins: 0,
+      },
+      pid: 25321,
+    },
   },
   ACTOR_2: {
     actorId: "ACTOR_2",
@@ -45,6 +72,33 @@ const MOCK_ACTORS: { [actorId: string]: Actor } = {
     requiredResources: {},
     placementGroupId: "123",
     reprName: ",",
+    workerId: "b8b276a03612644098ed7a929c3b0e50f5bde894eb0d8cab288fbb6d",
+    numPendingTasks: 0,
+    taskQueueLength: 0,
+    numExecutedTasks: 0,
+    numInPlasma: 0,
+    numLocalObjects: 0,
+    numObjectRefsInScope: 0,
+    gpus: [],
+    processStats: {
+      cmdline: [],
+      cpuPercent: 0,
+      cpuTimes: {
+        user: 0,
+        system: 0,
+        childrenUser: 0,
+        childrenUystem: 0,
+        iowait: 0,
+      },
+      createTime: 0,
+      memoryInfo: {
+        rss: 0,
+        vms: 0,
+        pfaults: 0,
+        pageins: 0,
+      },
+      pid: 25322,
+    },
   },
 };
 describe("ActorTable", () => {
