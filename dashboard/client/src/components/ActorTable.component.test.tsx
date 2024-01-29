@@ -259,7 +259,7 @@ describe("ActorTable", () => {
             utilizationGpu: 0,
             memoryUsed: 10,
             memoryTotal: 20,
-            processes: [{ pid: 25322, gpuMemoryUsage: 10 }],
+            processes: [{ pid: 25321, gpuMemoryUsage: 10 }],
           },
         ],
       },
