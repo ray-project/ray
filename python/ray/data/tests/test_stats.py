@@ -1136,7 +1136,8 @@ def test_stats_actor_cap_num_stats(ray_start_cluster):
     assert ray.get(actor._get_stats_dict_size.remote()) == (3, 2, 2)
 
 
-def test_spilled_stats(shutdown_only):
+@patch("ray.data._internal.progress_bar.ProgressBar.set_description")
+def test_spilled_stats(mock_set_desc, shutdown_only):
     # The object store is about 100MB.
     ray.init(object_store_memory=100e6)
     # The size of dataset is 1000*80*80*4*8B, about 200MB.
@@ -1184,6 +1185,11 @@ Dataset memory:
     )
 
     assert ds._plan.stats().dataset_bytes_spilled == 0
+
+    assert any(
+        "spilled to external storage" in args[0][0]
+        for args in mock_set_desc.call_args_list
+    )
 
 
 def test_stats_actor_metrics():

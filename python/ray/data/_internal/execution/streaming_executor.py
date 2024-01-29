@@ -32,6 +32,7 @@ from ray.data._internal.execution.streaming_executor_state import (
     select_operator_to_run,
     update_operator_states,
 )
+from ray.data._internal.execution.util import memory_string
 from ray.data._internal.progress_bar import ProgressBar
 from ray.data._internal.stats import DatasetStats, StatsManager
 from ray.data._internal.util import cluster_resources
@@ -366,6 +367,18 @@ class StreamingExecutor(Executor, threading.Thread):
             f"{cur_usage.overall.object_store_memory_str()}/"
             f"{limits.object_store_memory_str()} object_store_memory"
         )
+        if (
+            cur_usage.overall.object_store_memory is not None
+            and limits.object_store_memory is not None
+            and cur_usage.overall.object_store_memory > limits.object_store_memory
+        ):
+            spilled_obj_memory = (
+                cur_usage.overall.object_store_memory - limits.object_store_memory
+            )
+            resources_status += (
+                f" ({memory_string(spilled_obj_memory)} spilled to external storage)"
+            )
+
         if self._global_info:
             self._global_info.set_description(resources_status)
 
