@@ -54,28 +54,35 @@ def get_device() -> torch.device:
     Assumes that `CUDA_VISIBLE_DEVICES` is set and is a
     superset of the `ray.get_gpu_ids()`.
 
-    Example:
-        >>> # os.environ["CUDA_VISIBLE_DEVICES"] = "3,4"
-        >>> # ray.get_gpu_ids() == [3]
-        >>> # torch.cuda.is_available() == True
-        >>> # get_device() == torch.device("cuda:0")
+    Examples:
 
-        >>> # os.environ["CUDA_VISIBLE_DEVICES"] = "0,1,2,3,4"
-        >>> # ray.get_gpu_ids() == [4]
-        >>> # torch.cuda.is_available() == True
-        >>> # get_device() == torch.device("cuda:4")
+        Example: Launched 2 workers on the current node, each with 1 GPU
 
-        >>> # os.environ["CUDA_VISIBLE_DEVICES"] = "0,1,2,3,4,5"
-        >>> # ray.get_gpu_ids() == [4,5]
-        >>> # torch.cuda.is_available() == True
-        >>> # get_device() == torch.device("cuda:4")
+        >>> os.environ["CUDA_VISIBLE_DEVICES"] = "2,3"
+        >>> ray.get_gpu_ids() == [2]
+        >>> torch.cuda.is_available() == True
+        >>> get_device() == torch.device("cuda:0")
+
+        Example: Launched 4 workers on the current node, each with 1 GPU
+
+        >>> os.environ["CUDA_VISIBLE_DEVICES"] = "0,1,2,3"
+        >>> ray.get_gpu_ids() == [2]
+        >>> torch.cuda.is_available() == True
+        >>> get_device() == torch.device("cuda:2")
+
+        Example: Launched 2 workers on the current node, each with 2 GPUs
+
+        >>> os.environ["CUDA_VISIBLE_DEVICES"] = "0,1,2,3"
+        >>> ray.get_gpu_ids() == [2,3]
+        >>> torch.cuda.is_available() == True
+        >>> get_device() == torch.device("cuda:2")
 
 
-        >>> # You can move model to device by:
-        >>> # model.to(ray.train.torch.get_device())
-        >>> #
-        >>> # instead of manually checking the device type:
-        >>> # model.to("cuda" if torch.cuda.is_available() else "cpu")
+        You can move a model to device by:
+        >>> model.to(ray.train.torch.get_device())
+
+        Instead of manually checking the device type:
+        >>> model.to("cuda" if torch.cuda.is_available() else "cpu")
     """
     from ray.air._internal import torch_utils
 
@@ -93,34 +100,26 @@ def get_devices() -> List[torch.device]:
 
     Examples:
 
-        .. testcode::
-            :skipif: True
+        Example: Launched 2 workers on the current node, each with 1 GPU
 
-            import torch
-            import os
-            import ray
-            import ray.train
+        >>> os.environ["CUDA_VISIBLE_DEVICES"] == "2,3"
+        >>> ray.get_gpu_ids() == [2]
+        >>> torch.cuda.is_available() == True
+        >>> get_devices() == [torch.device("cuda:0")]
 
-            # Example: Launched 2 workers, each with 1 GPU
-            def train_func():
-                os.environ["CUDA_VISIBLE_DEVICES"] == "3,4"
-                ray.get_gpu_ids() == [3]
-                torch.cuda.is_available() == True
-                get_devices() == [torch.device("cuda:0")]
+        Example: Launched 4 workers on the current node, each with 1 GPU
 
-            # Example: Launched 5 workers, each with 1 GPU
-            def train_func():
-                os.environ["CUDA_VISIBLE_DEVICES"] == "0,1,2,3,4"
-                ray.get_gpu_ids() == [4]
-                torch.cuda.is_available() == True
-                get_devices() == [torch.device("cuda:4")]
+        >>> os.environ["CUDA_VISIBLE_DEVICES"] == "0,1,2,3"
+        >>> ray.get_gpu_ids() == [2]
+        >>> torch.cuda.is_available() == True
+        >>> get_devices() == [torch.device("cuda:2")]
 
-            # Example: Launched 3 workers, each with 2 GPUs
-            def train_func():
-                os.environ["CUDA_VISIBLE_DEVICES"] == "0,1,2,3,4,5"
-                ray.get_gpu_ids() == [4,5]
-                torch.cuda.is_available() == True
-                get_devices() == [torch.device("cuda:4"), torch.device("cuda:5")]
+        Example: Launched 2 workers on the current node, each with 2 GPUs
+
+        >>> os.environ["CUDA_VISIBLE_DEVICES"] == "0,1,2,3"
+        >>> ray.get_gpu_ids() == [2,3]
+        >>> torch.cuda.is_available() == True
+        >>> get_devices() == [torch.device("cuda:2"), torch.device("cuda:3")]
     """
 
     from ray.air._internal import torch_utils
