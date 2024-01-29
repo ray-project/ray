@@ -151,6 +151,12 @@ def enable_get_object_locations_flag():
     ctx.enable_get_object_locations_for_metrics = True
 
 
+@pytest.fixture(autouse=True)
+def enable_verbose_stats_log():
+    ctx = ray.data.context.DataContext.get_current()
+    ctx.verbose_stats_logs = True
+
+
 @contextmanager
 def patch_update_stats_actor():
     with patch(
@@ -318,6 +324,94 @@ def test_dataset_stats_basic(ray_start_regular_shared, enable_auto_log_stats):
         f"    * In batch creation: T min, T max, T avg, T total\n"
         f"    * In batch formatting: T min, T max, T avg, T total\n"
     )
+
+
+def test_dataset_hide_verbose_log(ray_start_regular_shared, enable_auto_log_stats):
+    context = DataContext.get_current()
+    context.optimize_fuse_stages = True
+    context.verbose_stats_logs = False
+
+    if context.new_execution_backend:
+        if context.use_streaming_executor:
+            logger = DatasetLogger(
+                "ray.data._internal.execution.streaming_executor"
+            ).get_logger(
+                log_to_stdout=enable_auto_log_stats,
+            )
+        else:
+            logger = DatasetLogger(
+                "ray.data._internal.execution.bulk_executor"
+            ).get_logger(
+                log_to_stdout=enable_auto_log_stats,
+            )
+    else:
+        logger = DatasetLogger("ray.data._internal.plan").get_logger(
+            log_to_stdout=enable_auto_log_stats,
+        )
+    with patch.object(logger, "info") as mock_logger:
+        ds = ray.data.range(1000, parallelism=10)
+        ds = ds.map_batches(dummy_map_batches).materialize()
+
+        if enable_auto_log_stats:
+            logger_args, logger_kwargs = mock_logger.call_args
+
+            if context.new_execution_backend:
+                assert (
+                    canonicalize(logger_args[0])
+                    == f"""Operator N ReadRange->MapBatches(dummy_map_batches): {EXECUTION_STRING}
+* Remote wall time: T min, T max, T mean, T total
+* Remote cpu time: T min, T max, T mean, T total
+* Peak heap memory usage (MiB): N min, N max, N mean
+* Output num rows per block: N min, N max, N mean, N total
+* Output size bytes per block: N min, N max, N mean, N total
+* Output rows per task: N min, N max, N mean, N tasks used
+* Tasks per node: N min, N max, N mean; N nodes used
+"""
+                )
+            else:
+                assert (
+                    canonicalize(logger_args[0])
+                    == """Operator N Read->MapBatches(dummy_map_batches): {EXECUTION_STRING}
+* Remote wall time: T min, T max, T mean, T total
+* Remote cpu time: T min, T max, T mean, T total
+* Peak heap memory usage (MiB): N min, N max, N mean
+* Output num rows per block: N min, N max, N mean, N total
+* Output size bytes per block: N min, N max, N mean, N total
+* Output rows per task: N min, N max, N mean, N tasks used
+* Tasks per node: N min, N max, N mean; N nodes used
+"""
+                )
+
+        ds = ds.map(dummy_map_batches).materialize()
+        if enable_auto_log_stats:
+            logger_args, logger_kwargs = mock_logger.call_args
+
+            if context.new_execution_backend:
+                assert (
+                    canonicalize(logger_args[0])
+                    == f"""Operator N Map(dummy_map_batches): {EXECUTION_STRING}
+* Remote wall time: T min, T max, T mean, T total
+* Remote cpu time: T min, T max, T mean, T total
+* Peak heap memory usage (MiB): N min, N max, N mean
+* Output num rows per block: N min, N max, N mean, N total
+* Output size bytes per block: N min, N max, N mean, N total
+* Output rows per task: N min, N max, N mean, N tasks used
+* Tasks per node: N min, N max, N mean; N nodes used
+"""
+                )
+            else:
+                assert (
+                    canonicalize(logger_args[0])
+                    == """Operator N Map(dummy_map_batches): {EXECUTION_STRING}
+* Remote wall time: T min, T max, T mean, T total
+* Remote cpu time: T min, T max, T mean, T total
+* Peak heap memory usage (MiB): N min, N max, N mean
+* Output num rows per block: N min, N max, N mean, N total
+* Output size bytes per block: N min, N max, N mean, N total
+* Output rows per task: N min, N max, N mean, N tasks used
+* Tasks per node: N min, N max, N mean; N nodes used
+"""
+                )
 
 
 def test_dataset__repr__(ray_start_regular_shared):
