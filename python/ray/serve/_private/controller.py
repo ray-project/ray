@@ -191,6 +191,9 @@ class ServeController:
             self.deployment_state_manager, self.endpoint_state, self.kv_store
         )
 
+        # Representation of current config running in Serve
+        self._curr_config_str: str = ""
+
         # Controller actor details
         self._actor_details = ServeActorDetails(
             node_id=ray.get_runtime_context().get_node_id(),
@@ -782,11 +785,13 @@ class ServeController:
         if not deployment_time:
             deployment_time = time.time()
 
-        config_str = config.json(exclude_unset=True, indent=4, encoder=str)
-        logger.info(
-            f"Received config:\n{config_str}",
-            extra={"log_to_stderr": False},
-        )
+        # Only log the config if it hasn't been logged already.
+        config_str = self._get_serve_config_log_str(config)
+        if self._curr_config_str != config_str:
+            logger.info(
+                f"Received new config:\n{config_str}",
+                extra={"log_to_stderr": False},
+            )
 
         new_config_checkpoint = {}
 
@@ -840,6 +845,12 @@ class ServeController:
                 )
             ),
         )
+
+        # We cannot reconstruct this from the config cached in the KV store
+        # because configs are changed slightly when cached (e.g. top-level
+        # options like HTTP options and target_capacity are removed).
+        # For simplicity, we store the config_str explicitly.
+        self._curr_config_str = config_str
 
         # Delete live applications not listed in the config.
         existing_applications = set(
@@ -1128,6 +1139,11 @@ class ServeController:
             if isinstance(handler, logging.handlers.RotatingFileHandler):
                 log_file_path = handler.baseFilename
         return self.global_logging_config, log_file_path
+
+    def _get_serve_config_log_str(self, serve_config: ServeDeploySchema) -> str:
+        """Gets a string representation of a Serve config. Used for logging."""
+
+        return serve_config.json(exclude_unset=True, indent=4, encoder=str)
 
     def _get_target_capacity_direction(self) -> Optional[TargetCapacityDirection]:
         """Gets the controller's scale direction (for testing purposes)."""
