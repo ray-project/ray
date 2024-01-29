@@ -19,7 +19,6 @@ from ray._private.utils import get_or_create_event_loop
 from ray.actor import ActorClass
 from ray.remote_function import RemoteFunction
 from ray.serve import metrics
-from ray.serve._private.autoscaling_metrics import InMemoryMetricsStore
 from ray.serve._private.common import (
     DeploymentID,
     ReplicaName,
@@ -54,8 +53,9 @@ from ray.serve._private.logging_utils import (
     configure_component_memory_profiler,
     get_component_logger_file_path,
 )
+from ray.serve._private.metrics_utils import InMemoryMetricsStore, MetricsPusher
 from ray.serve._private.router import RequestMetadata
-from ray.serve._private.utils import MetricsPusher, parse_import_path, wrap_to_ray_error
+from ray.serve._private.utils import parse_import_path, wrap_to_ray_error
 from ray.serve._private.version import DeploymentVersion
 from ray.serve.config import AutoscalingConfig
 from ray.serve.deployment import Deployment
@@ -94,6 +94,10 @@ class ReplicaMetricsManager:
         - Autoscaling statistics are periodically pushed to the controller.
         - Queue length metrics are periodically recorded as user-facing gauges.
     """
+
+    PUSH_METRICS_TO_CONTROLLER_TASK_NAME = "push_metrics_to_controller"
+    RECORD_METRICS_TASK_NAME = "record_metrics"
+    SET_REPLICA_REQUEST_METRIC_GAUGE_TASK_NAME = "set_replica_request_metric_gauge"
 
     def __init__(
         self,
@@ -155,27 +159,13 @@ class ReplicaMetricsManager:
         )
 
         # Set user-facing gauges periodically.
-        self._metrics_pusher.register_task(
+        self._metrics_pusher.register_or_update_task(
+            self.SET_REPLICA_REQUEST_METRIC_GAUGE_TASK_NAME,
             self._set_replica_requests_metrics,
             RAY_SERVE_GAUGE_METRIC_SET_PERIOD_S,
         )
 
-        if self._autoscaling_config:
-            # Push autoscaling metrics to the controller periodically.
-            self._metrics_pusher.register_task(
-                self._collect_autoscaling_metrics,
-                self._autoscaling_config.metrics_interval_s,
-                self._controller_handle.record_autoscaling_metrics.remote,
-            )
-            # Collect autoscaling metrics locally periodically.
-            self._metrics_pusher.register_task(
-                self.get_num_ongoing_requests,
-                min(
-                    RAY_SERVE_REPLICA_AUTOSCALING_METRIC_RECORD_PERIOD_S,
-                    self._autoscaling_config.metrics_interval_s,
-                ),
-                self._add_autoscaling_metrics_point,
-            )
+        self.set_autoscaling_config(autoscaling_config)
 
     def start(self):
         """Start periodic background tasks."""
@@ -185,9 +175,29 @@ class ReplicaMetricsManager:
         """Stop periodic background tasks."""
         self._metrics_pusher.shutdown()
 
-    def set_autoscaling_config(self, autoscaling_config: AutoscalingConfig):
+    def set_autoscaling_config(self, autoscaling_config: Optional[AutoscalingConfig]):
         """Dynamically update autoscaling config."""
+
         self._autoscaling_config = autoscaling_config
+
+        if self._autoscaling_config:
+            # Push autoscaling metrics to the controller periodically.
+            self._metrics_pusher.register_or_update_task(
+                self.PUSH_METRICS_TO_CONTROLLER_TASK_NAME,
+                self._collect_autoscaling_metrics,
+                self._autoscaling_config.metrics_interval_s,
+                self._controller_handle.record_autoscaling_metrics.remote,
+            )
+            # Collect autoscaling metrics locally periodically.
+            self._metrics_pusher.register_or_update_task(
+                self.RECORD_METRICS_TASK_NAME,
+                self.get_num_ongoing_requests,
+                min(
+                    RAY_SERVE_REPLICA_AUTOSCALING_METRIC_RECORD_PERIOD_S,
+                    self._autoscaling_config.metrics_interval_s,
+                ),
+                self._add_autoscaling_metrics_point,
+            )
 
     def inc_num_ongoing_requests(self) -> int:
         """Increment the current total queue length of requests for this replica."""
