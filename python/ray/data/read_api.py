@@ -362,9 +362,6 @@ def read_datasource(
     # removing LazyBlockList code path.
     read_tasks = datasource_or_legacy_reader.get_read_tasks(requested_parallelism)
 
-    if not ctx.use_streaming_executor:
-        _warn_on_high_parallelism(requested_parallelism, len(read_tasks))
-
     read_op_name = f"Read{datasource.get_name()}"
 
     block_list = LazyBlockList(
