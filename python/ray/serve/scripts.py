@@ -770,7 +770,7 @@ def _generate_config_from_file_or_import_path(
     arguments: Dict[str, str],
     runtime_env: Optional[Dict[str, Any]],
 ) -> ServeDeploySchema:
-    """Generates a deployable config schema for the passed applications(s)."""
+    """Generates a deployable config schema for the passed application(s)."""
     if pathlib.Path(config_or_import_path).is_file():
         config_path = config_or_import_path
         cli_logger.print(f"Publishing from config file: '{config_path}'.")
