@@ -17,12 +17,19 @@ import ray.util.state as state_api
 from ray import serve
 from ray._private.test_utils import wait_for_condition
 from ray.serve._private.common import ServeComponentType
-from ray.serve._private.constants import SERVE_LOG_EXTRA_FIELDS
+from ray.serve._private.constants import (
+    RAY_SERVE_LOG_ENCODING_ENV,
+    SERVE_LOG_EXTRA_FIELDS,
+    SERVE_LOGGER_NAME,
+)
 from ray.serve._private.logging_utils import (
+    ServeFormatter,
     ServeJSONFormatter,
+    configure_component_logger,
     get_component_log_file_name,
     get_serve_logs_dir,
 )
+from ray.serve.schema import EncodingType, LoggingConfig
 
 
 @pytest.fixture
@@ -576,6 +583,42 @@ def test_json_log_formatter(is_replica_type_component):
     record.application = "application"
     expected_json["application"] = "application"
     format_and_verify_json_output(record, expected_json)
+
+
+@pytest.mark.parametrize(
+    "log_encoding",
+    [["TEXT", "TEXT"], ["JSON", "JSON"], ["FOOBAR", "TEXT"], [None, "TEXT"]],
+)
+def test_configure_component_logger(monkeypatch, log_encoding):
+    env_val, expected_encoding = log_encoding
+    monkeypatch.setenv(RAY_SERVE_LOG_ENCODING_ENV, env_val)
+
+    # Clean up logger handlers
+    logger = logging.getLogger(SERVE_LOGGER_NAME)
+    logger.handlers.clear()
+
+    # Ensure there is no logger handlers before calling configure_component_logger
+    assert logger.handlers == []
+
+    logging_config = LoggingConfig(logs_dir="fake_logs_dir")
+    configure_component_logger(
+        component_name="fake_component_name",
+        component_id="fake_component_id",
+        logging_config=logging_config,
+        component_type=ServeComponentType.REPLICA,
+        max_bytes=100,
+        backup_count=3,
+    )
+
+    for handler in logger.handlers:
+        if isinstance(handler, logging.handlers.RotatingFileHandler):
+            if expected_encoding == EncodingType.JSON:
+                assert isinstance(handler.formatter, ServeJSONFormatter)
+            else:
+                assert isinstance(handler.formatter, ServeFormatter)
+
+    # Clean up logger handlers
+    logger.handlers.clear()
 
 
 if __name__ == "__main__":
