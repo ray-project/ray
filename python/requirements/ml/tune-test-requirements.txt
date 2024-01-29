@@ -5,7 +5,9 @@ aim==3.17.5
 gpy==1.10.0
 
 jupyterlab==3.6.1
-matplotlib!=3.4.3
+# TODO(matthewdeng): [py38]
+matplotlib!=3.4.3 ; python_version < "3.9"
+matplotlib!=3.4.3 ; python_version >= "3.9"
 
 pytest-remotedata==0.3.2
 pytorch-lightning==1.6.5
