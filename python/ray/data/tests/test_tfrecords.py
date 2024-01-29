@@ -11,7 +11,6 @@ import ray
 from ray.tests.conftest import *  # noqa
 
 if TYPE_CHECKING:
-    import tensorflow as tf
     from tensorflow_metadata.proto.v0 import schema_pb2
 
 
@@ -701,19 +700,6 @@ def test_read_with_invalid_schema(
         "Schema field type mismatch during read: "
         "specified type is int, but underlying type is bytes"
     )
-
-
-@pytest.mark.parametrize("num_rows_per_file", [5, 10, 50])
-def test_write_num_rows_per_file(tmp_path, ray_start_regular_shared, num_rows_per_file):
-    import pyarrow.parquet as pq
-
-    ray.data.range(100, parallelism=20).write_parquet(
-        tmp_path, num_rows_per_file=num_rows_per_file
-    )
-
-    for filename in os.listdir(tmp_path):
-        table = pq.read_table(os.path.join(tmp_path, filename))
-        assert len(table) == num_rows_per_file
 
 
 @pytest.mark.parametrize("num_rows_per_file", [5, 10, 50])
