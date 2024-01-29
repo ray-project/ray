@@ -81,7 +81,7 @@ def docker_pull(image: str) -> None:
 
 def get_flaky_test_names(prefix: str) -> List[str]:
     """
-    Query all existing test names by the test state.
+    Query all flaky tests with specified prefix.
 
     Args:
         prefix: A prefix to filter by.
@@ -106,7 +106,7 @@ def get_flaky_test_names(prefix: str) -> List[str]:
 
 def filter_out_flaky_tests(input: io.TextIOBase, output: io.TextIOBase, prefix: str):
     """
-    Filter out flaky tests.
+    Filter out flaky tests from list of test targets.
 
     Args:
         input: Input stream, each test name in one line.
