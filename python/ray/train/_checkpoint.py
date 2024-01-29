@@ -58,7 +58,24 @@ class Checkpoint(metaclass=_CheckpointMetaClass):
     Access the checkpoint contents locally using ``checkpoint.to_directory()``
     or ``checkpoint.as_directory``.
 
-    Example creating a checkpoint using ``Checkpoint.from_directory``:
+    Attributes
+    ----------
+    path: A path on the filesystem containing the checkpoint contents.
+    filesystem: PyArrow FileSystem that can be used to access data at the `path`.
+
+    See Also
+    --------
+    ray.train.report : Report a checkpoint during training (with Ray Train/Tune).
+    ray.train.get_checkpoint : Get the latest checkpoint during training
+        (for restoration).
+
+    :ref:`train-checkpointing`
+    :ref:`persistent-storage-guide`
+
+    Examples
+    --------
+
+    Creating a checkpoint using ``Checkpoint.from_directory``:
 
         >>> from ray.train import Checkpoint
         >>> checkpoint = Checkpoint.from_directory("/tmp/example_checkpoint_dir")
@@ -67,7 +84,7 @@ class Checkpoint(metaclass=_CheckpointMetaClass):
         >>> checkpoint.path
         '/tmp/example_checkpoint_dir'
 
-    Example creating a checkpoint from a remote URI:
+    Creating a checkpoint from a remote URI:
 
         >>> checkpoint = Checkpoint("s3://bucket/path/to/checkpoint")
         >>> checkpoint.filesystem  # doctest: +ELLIPSIS
@@ -75,7 +92,7 @@ class Checkpoint(metaclass=_CheckpointMetaClass):
         >>> checkpoint.path
         'bucket/path/to/checkpoint'
 
-    Example creating a checkpoint with a custom filesystem:
+    Creating a checkpoint with a custom filesystem:
 
         >>> checkpoint = Checkpoint(
         ...     path="bucket/path/to/checkpoint",
@@ -86,9 +103,12 @@ class Checkpoint(metaclass=_CheckpointMetaClass):
         >>> checkpoint.path
         'bucket/path/to/checkpoint'
 
-    Attributes:
-        path: A path on the filesystem containing the checkpoint contents.
-        filesystem: PyArrow FileSystem that can be used to access data at the `path`.
+    Accessing a checkpoint's contents:
+
+        >>> import os  # doctest: +SKIP
+        >>> with checkpoint.as_directory() as local_checkpoint_dir:  # doctest: +SKIP
+        ...    print(os.listdir(local_checkpoint_dir))  # doctest: +SKIP
+        ['model.pt', 'optimizer.pt', 'misc.pt']
     """
 
     def __init__(

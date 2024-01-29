@@ -443,6 +443,14 @@ py_test(
 )
 
 py_test(
+    name = "test_runtime_metrics_scheduling",
+    size = "small",
+    srcs = ["tests/test_runtime_metrics_scheduling.py"],
+    tags = ["team:data", "exclusive"],
+    deps = ["//:ray_lib", ":conftest"],
+)
+
+py_test(
     name = "test_size_estimation",
     size = "medium",
     srcs = ["tests/test_size_estimation.py"],
