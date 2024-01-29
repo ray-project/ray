@@ -17,7 +17,6 @@ from ray import train
 from ray.exceptions import RayTaskError
 from ray.train import ScalingConfig
 from ray.train._internal.worker_group import WorkerGroup
-from ray.train.constants import DEFAULT_NCCL_SOCKET_IFNAME
 from ray.train.examples.pytorch.torch_linear_example import LinearDataset
 from ray.train.torch.config import TorchConfig, _TorchBackend
 from ray.train.torch.torch_trainer import TorchTrainer
@@ -328,7 +327,7 @@ def test_torch_backend_nccl_socket_ifname(ray_start_4_cpus_2_gpus, nccl_socket_i
         worker_group.execute(set_env_var)
 
     def assert_env_var_set():
-        value = nccl_socket_ifname if nccl_socket_ifname else DEFAULT_NCCL_SOCKET_IFNAME
+        value = nccl_socket_ifname if nccl_socket_ifname else "TODO"
         assert os.environ["NCCL_SOCKET_IFNAME"] == value
 
     torch_backend = _TorchBackend()
