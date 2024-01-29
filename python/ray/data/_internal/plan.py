@@ -463,8 +463,7 @@ class ExecutionPlan:
     ]:
         """Execute this plan, returning an iterator.
 
-        If the streaming execution backend is enabled, this will use streaming
-        execution to generate outputs, otherwise it will fall back to bulk exec.
+        This will use streaming execution to generate outputs.
 
         Args:
             allow_clear_input_blocks: Whether we should try to clear the input blocks
