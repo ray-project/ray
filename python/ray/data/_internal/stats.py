@@ -218,6 +218,11 @@ class _StatsActor:
             description="Seconds spent in user code",
             tag_keys=iter_tag_keys,
         )
+        self.iter_initialize_s = Gauge(
+            "data_iter_initialize_seconds",
+            description="Seconds spent in iterator initialization code",
+            tag_keys=iter_tag_keys,
+        )
 
     def record_start(self, stats_uuid):
         self.start_time[stats_uuid] = time.perf_counter()
@@ -296,6 +301,7 @@ class _StatsActor:
         tags = self._create_tags(dataset_tag)
         self.iter_total_blocked_s.set(stats.iter_total_blocked_s.get(), tags)
         self.iter_user_s.set(stats.iter_user_s.get(), tags)
+        self.iter_initialize_s.set(stats.iter_initialize_s.get(), tags)
 
     def clear_execution_metrics(self, dataset_tag: str, operator_tags: List[str]):
         for operator_tag in operator_tags:
@@ -314,6 +320,7 @@ class _StatsActor:
         tags = self._create_tags(dataset_tag)
         self.iter_total_blocked_s.set(0, tags)
         self.iter_user_s.set(0, tags)
+        self.iter_initialize_s.set(0, tags)
 
     def register_dataset(self, dataset_tag: str, operator_tags: List[str]):
         self.datasets[dataset_tag] = {
@@ -604,6 +611,7 @@ class DatasetStats:
         self.iter_finalize_batch_s: Timer = Timer()
         self.iter_total_blocked_s: Timer = Timer()
         self.iter_user_s: Timer = Timer()
+        self.iter_initialize_s: Timer = Timer()
         self.iter_total_s: Timer = Timer()
         self.extra_metrics = {}
 
@@ -675,6 +683,7 @@ class DatasetStats:
             self.iter_finalize_batch_s,
             self.iter_total_blocked_s,
             self.iter_user_s,
+            self.iter_initialize_s,
             self.iter_total_s,
             self.iter_blocks_local,
             self.iter_blocks_remote,
@@ -1157,6 +1166,7 @@ class IterStatsSummary:
     block_time: Timer
     # Time spent in user code, in seconds
     user_time: Timer
+    initialize_time: Timer
     # Total time taken by Dataset iterator, in seconds
     total_time: Timer
     # Num of blocks that are in local object store
@@ -1188,6 +1198,10 @@ class IterStatsSummary:
             if self.user_time.get():
                 out += "* Total time in user code: {}\n".format(
                     fmt(self.user_time.get())
+                )
+            if self.initialize_time.get():
+                out += "* Total time in iterator initialization code: {}\n".format(
+                    fmt(self.initialize_time.get())
                 )
             if self.total_time.get():
                 out += "* Total time overall: {}\n".format(fmt(self.total_time.get()))

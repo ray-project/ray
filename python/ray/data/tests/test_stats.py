@@ -198,6 +198,7 @@ Operator N split(N, equal=False): \n"""
 Dataset iterator time breakdown:
 * Total time user code is blocked: T
 * Total time in user code: T
+* Total time in iterator initialization code: T
 * Total time overall: T
 * Num blocks local: Z
 * Num blocks remote: Z
@@ -357,6 +358,7 @@ Operator N Map(dummy_map_batches): {EXECUTION_STRING}
 Dataset iterator time breakdown:
 * Total time user code is blocked: T
 * Total time in user code: T
+* Total time in iterator initialization code: T
 * Total time overall: T
 * Num blocks local: Z
 * Num blocks remote: Z
@@ -429,6 +431,7 @@ Operator N Map(dummy_map_batches): {EXECUTION_STRING}
 Dataset iterator time breakdown:
 * Total time user code is blocked: T
 * Total time in user code: T
+* Total time in iterator initialization code: T
 * Total time overall: T
 * Num blocks local: Z
 * Num blocks remote: Z
@@ -1031,6 +1034,7 @@ def test_streaming_stats_full(ray_start_regular_shared, restore_data_context):
 Dataset iterator time breakdown:
 * Total time user code is blocked: T
 * Total time in user code: T
+* Total time in iterator initialization code: T
 * Total time overall: T
 * Num blocks local: Z
 * Num blocks remote: Z
