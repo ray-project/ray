@@ -158,7 +158,7 @@ describe("ActorTable", () => {
     ); // actor2Row appear after actor1Row
   });
 
-  it("renders a table of actors sorted by startTime asc when states are the same", () => {
+  it("renders a table of actors sorted by startTime desc when states are the same", () => {
     const RUNNING_ACTORS = {
       ...MOCK_ACTORS,
       ACTOR_2: {
@@ -182,12 +182,12 @@ describe("ActorTable", () => {
     expect(within(actor1Row).getByText("ACTOR_1")).toBeInTheDocument();
     expect(within(actor2Row).getByText("ACTOR_2")).toBeInTheDocument();
 
-    expect(actor1Row.compareDocumentPosition(actor2Row)).toBe(
+    expect(actor2Row.compareDocumentPosition(actor1Row)).toBe(
       Node.DOCUMENT_POSITION_FOLLOWING,
-    ); // actor2Row appear after actor1Row
+    ); // actor1Row appear after actor2Row
   });
 
-  it("renders a table of actors sorted by startTime asc when states are the same, actor2 appears first", () => {
+  it("renders a table of actors sorted by startTime desc when states are the same, actor1 appears first", () => {
     const RUNNING_ACTORS = {
       ...MOCK_ACTORS,
       ACTOR_2: {
@@ -212,9 +212,9 @@ describe("ActorTable", () => {
     expect(within(actor1Row).getByText("ACTOR_1")).toBeInTheDocument();
     expect(within(actor2Row).getByText("ACTOR_2")).toBeInTheDocument();
 
-    expect(actor2Row.compareDocumentPosition(actor1Row)).toBe(
+    expect(actor1Row.compareDocumentPosition(actor2Row)).toBe(
       Node.DOCUMENT_POSITION_FOLLOWING,
-    ); // actor2Row appear before actor1Row
+    ); // actor1Row appear before actor2Row
   });
 
   it("renders a table of actors with same state sorted by resource utilization", () => {

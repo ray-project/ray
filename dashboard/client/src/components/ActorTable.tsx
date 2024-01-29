@@ -91,7 +91,8 @@ const ActorTable = ({
   const [actorIdFilterValue, setActorIdFilterValue] = useState(filterToActorId);
   const [pageSize, setPageSize] = useState(10);
 
-  const defaultSorterKey = "";
+  const startTimeSorterKey = "startTime";
+  const defaultSorterKey = startTimeSorterKey;
   const gpuUtilizationSorterKey = "fake_gpu_attr";
   const gramUsageSorterKey = "fake_gram_attr";
   const { sorterFunc, setOrderDesc, setSortKey, sorterKey } =
@@ -105,8 +106,6 @@ const ActorTable = ({
     // Always show ALIVE actors at top. If no other sorting keys are provided, also sort by time
     return _.sortBy(actorList, (actor) => {
       const actorOrder = isActorEnum(actor.state) ? stateOrder[actor.state] : 0;
-      const actorTime =
-        sorterKey === defaultSorterKey ? actor.startTime || 0 : 0;
 
       // GPU utilization and GRAM usage are user specified sort keys but require an aggregate function
       // over the actor attribute, so including as a sortBy key
@@ -118,7 +117,7 @@ const ActorTable = ({
         sorterKey === gramUsageSorterKey
           ? getSumGRAMUsage(actor.pid, actor.gpus)
           : 0;
-      return [sumGpuUtilization, sumGRAMUsage, actorOrder, actorTime];
+      return [sumGpuUtilization, sumGRAMUsage, actorOrder];
     });
   }, [actors, sorterKey, sorterFunc, filterFunc]);
 
@@ -445,7 +444,7 @@ const ActorTable = ({
             <SearchSelect
               label="Sort By"
               options={[
-                ["startTime", "Uptime"],
+                [startTimeSorterKey, "Uptime"],
                 ["processStats.memoryInfo.rss", "Used Memory"],
                 ["mem[0]", "Total Memory"],
                 ["processStats.cpuPercent", "CPU"],
@@ -455,6 +454,8 @@ const ActorTable = ({
                 [gramUsageSorterKey, "GRAM Usage"],
               ]}
               onChange={(val) => setSortKey(val)}
+              showAllOption={false}
+              defaultValue={defaultSorterKey}
             />
           </span>
         </div>
