@@ -428,21 +428,22 @@ const ActorTable = ({
             ),
           }}
         />
-        <span style={{ margin: 8, marginTop: 16 }}>
-          <SearchSelect
-            data-testid="sortByFilter"
-            label="Sort By"
-            options={[
-              ["startTime", "Uptime"],
-              ["processStats.memoryInfo.rss", "Used Memory"],
-              ["mem[0]", "Total Memory"],
-              ["processStats.cpuPercent", "CPU"],
-              ["fake_gpu_attr", gpuUtilizationSorterKey],
-              ["fake_gram_attr", gramUsageSorterKey],
-            ]}
-            onChange={(val) => setSortKey(val)}
-          />
-        </span>
+        <div data-testid="sortByFilter">
+          <span style={{ margin: 8, marginTop: 16 }}>
+            <SearchSelect
+              label="Sort By"
+              options={[
+                ["startTime", "Uptime"],
+                ["processStats.memoryInfo.rss", "Used Memory"],
+                ["mem[0]", "Total Memory"],
+                ["processStats.cpuPercent", "CPU"],
+                ["fake_gpu_attr", gpuUtilizationSorterKey],
+                ["fake_gram_attr", gramUsageSorterKey],
+              ]}
+              onChange={(val) => setSortKey(val)}
+            />
+          </span>
+        </div>
         <span style={{ margin: 8, marginTop: 20 }}>
           Reverse:
           <Switch onChange={(_, checked) => setOrderDesc(checked)} />

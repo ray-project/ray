@@ -245,17 +245,17 @@ describe("ActorTable", () => {
       },
     };
 
-    const { getByRole, getByTestId } = render(
+    const { getByRole, getByTestId, getByText } = render(
       <MemoryRouter>
         <ActorTable actors={RUNNING_ACTORS} />
       </MemoryRouter>,
     );
-    const sortByFilter = getByTestId("sortByFilter");
-    // const input = within(sortByFilter).getByRole("textbox");
+    const sortByFilter = screen.getByTestId("sortByFilter");
+    const input = within(sortByFilter).getByRole("textbox", { hidden: true });
     // Filter by node ID of ACTOR_2
-    fireEvent.change(sortByFilter, {
+    fireEvent.change(input, {
       target: {
-        value: "processStats?.cpuPercent",
+        value: "processStats.cpuPercent",
       },
     });
 
