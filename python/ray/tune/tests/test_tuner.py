@@ -420,11 +420,8 @@ def _test_no_chdir(runner_type, runtime_env, use_deprecated_config=False):
 
 def test_tuner_no_chdir_to_trial_dir_deprecated(shutdown_only, chdir_tmpdir):
     """Test the deprecated `chdir_to_trial_dir` config."""
-    _test_no_chdir("tuner", {}, use_deprecated_config=True)
-
-    # The deprecated config will fallback ot setting the environment variable.
-    # Reset it for the following tests
-    os.environ.pop(RAY_CHDIR_TO_TRIAL_DIR, None)
+    with pytest.raises(DeprecationWarning):
+        _test_no_chdir("tuner", {}, use_deprecated_config=True)
 
 
 @pytest.mark.parametrize("runtime_env", [{}, {"working_dir": "."}])
