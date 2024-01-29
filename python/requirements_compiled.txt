@@ -1009,6 +1009,15 @@ markupsafe==2.1.4
     #   mako
     #   moto
     #   nbconvert
+matplotlib==3.8.2 ; python_version >= "3.9"
+    # via
+    #   -r /ray/ci/../python/requirements/ml/tune-test-requirements.txt
+    #   catboost
+    #   gradio
+    #   minigrid
+    #   mlflow
+    #   pymoo
+    #   zoopt
 matplotlib-inline==0.1.6
     # via
     #   ipykernel
@@ -1913,37 +1922,6 @@ scikit-learn==1.0.2 ; python_version < "3.11"
     #   tune-sklearn
 scikit-optimize==0.9.0 ; python_version < "3.11"
     # via -r /ray/ci/../python/requirements/ml/tune-test-requirements.txt
-scipy==1.12.0 ; python_version < "3.11"
-    # via
-    #   -r /ray/ci/../python/requirements.txt
-    #   ax-platform
-    #   bayesian-optimization
-    #   botorch
-    #   catboost
-    #   configspace
-    #   dm-control
-    #   gpy
-    #   hpbandster
-    #   hyperopt
-    #   jax
-    #   jaxlib
-    #   lightgbm
-    #   linear-operator
-    #   mlflow
-    #   open-spiel
-    #   paramz
-    #   pymars
-    #   pymoo
-    #   recsim
-    #   scikit-image
-    #   scikit-learn
-    #   scikit-optimize
-    #   statsmodels
-    #   torch-cluster
-    #   torch-geometric
-    #   torch-sparse
-    #   tune-sklearn
-    #   xgboost
 segment-analytics-python==2.2.0
     # via
     #   -r /ray/ci/../python/requirements/test-requirements.txt
