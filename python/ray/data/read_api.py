@@ -366,11 +366,11 @@ def read_datasource(
     if not ctx.use_streaming_executor:
         _warn_on_high_parallelism(requested_parallelism, len(read_tasks))
 
-    read_stage_name = f"Read{datasource.get_name()}"
+    read_op_name = f"Read{datasource.get_name()}"
 
     block_list = LazyBlockList(
         read_tasks,
-        read_stage_name=read_stage_name,
+        read_op_name=read_op_name,
         ray_remote_args=ray_remote_args,
         owned_by_consumer=False,
     )

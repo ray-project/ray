@@ -844,11 +844,11 @@ Operator N Map(<lambda>): {EXECUTION_STRING}
             )
 
 
-def test_calculate_blocks_stats(ray_start_regular_shared, stage_two_block):
+def test_calculate_blocks_stats(ray_start_regular_shared, op_two_block):
     context = DataContext.get_current()
     context.optimize_fuse_stages = True
 
-    block_params, block_meta_list = stage_two_block
+    block_params, block_meta_list = op_two_block
     stats = DatasetStats(
         metadata={"Read": block_meta_list},
         parent=None,
@@ -889,11 +889,11 @@ def test_calculate_blocks_stats(ray_start_regular_shared, stage_two_block):
     }
 
 
-def test_summarize_blocks(ray_start_regular_shared, stage_two_block):
+def test_summarize_blocks(ray_start_regular_shared, op_two_block):
     context = DataContext.get_current()
     context.optimize_fuse_stages = True
 
-    block_params, block_meta_list = stage_two_block
+    block_params, block_meta_list = op_two_block
     stats = DatasetStats(
         metadata={"Read": block_meta_list},
         parent=None,
@@ -978,30 +978,30 @@ def test_summarize_blocks(ray_start_regular_shared, stage_two_block):
     )
 
 
-def test_get_total_stats(ray_start_regular_shared, stage_two_block):
+def test_get_total_stats(ray_start_regular_shared, op_two_block):
     """Tests a set of similar getter methods which pull aggregated
-    statistics values after calculating stage-level stats:
+    statistics values after calculating operator-level stats:
     `DatasetStats.get_max_wall_time()`,
     `DatasetStats.get_total_cpu_time()`,
     `DatasetStats.get_max_heap_memory()`."""
     context = DataContext.get_current()
     context.optimize_fuse_stages = True
 
-    block_params, block_meta_list = stage_two_block
+    block_params, block_meta_list = op_two_block
     stats = DatasetStats(
         metadata={"Read": block_meta_list},
         parent=None,
     )
 
     dataset_stats_summary = stats.to_summary()
-    stage_stats = dataset_stats_summary.operators_stats[0]
-    wall_time_stats = stage_stats.wall_time
+    op_stats = dataset_stats_summary.operators_stats[0]
+    wall_time_stats = op_stats.wall_time
     assert dataset_stats_summary.get_total_wall_time() == wall_time_stats.get("max")
 
-    cpu_time_stats = stage_stats.cpu_time
+    cpu_time_stats = op_stats.cpu_time
     assert dataset_stats_summary.get_total_cpu_time() == cpu_time_stats.get("sum")
 
-    peak_memory_stats = stage_stats.memory
+    peak_memory_stats = op_stats.memory
     assert dataset_stats_summary.get_max_heap_memory() == peak_memory_stats.get("max")
 
 

@@ -49,8 +49,8 @@ from ray.data._internal.logical.util import (
     _recorded_operators,
     _recorded_operators_lock,
 )
+from ray.data._internal.planner.exchange.sort_task_spec import SortKey
 from ray.data._internal.planner.planner import Planner
-from ray.data._internal.sort import SortKey
 from ray.data._internal.stats import DatasetStats
 from ray.data.aggregate import Count
 from ray.data.context import DataContext
@@ -81,14 +81,14 @@ def _check_valid_plan_and_result(
     ds,
     expected_plan,
     expected_result,
-    expected_physical_plan_stages=None,
+    expected_physical_plan_ops=None,
 ):
     assert ds.take_all() == expected_result
     assert str(ds._plan._logical_plan.dag) == expected_plan
 
-    expected_physical_plan_stages = expected_physical_plan_stages or []
-    for stage in expected_physical_plan_stages:
-        assert stage in ds.stats(), f"Stage {stage} not found: {ds.stats()}"
+    expected_physical_plan_ops = expected_physical_plan_ops or []
+    for op in expected_physical_plan_ops:
+        assert op in ds.stats(), f"Operator {op} not found: {ds.stats()}"
 
 
 def test_read_operator(ray_start_regular_shared, enable_optimizer):
