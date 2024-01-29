@@ -1182,11 +1182,13 @@ class IterStatsSummary:
         ):
             out += "\nDataset iterator time breakdown:\n"
             if self.block_time.get():
-                out += "* Total time user code is blocked: {}\n".format(
-                    fmt(self.block_time.get())
+                out += (
+                    "* Total time user thread is blocked by iter_batches: {}\n".format(
+                        fmt(self.block_time.get())
+                    )
                 )
             if self.user_time.get():
-                out += "* Total time in user code: {}\n".format(
+                out += "* Total execution time for user thread: {}\n".format(
                     fmt(self.user_time.get())
                 )
             if self.total_time.get():
