@@ -376,7 +376,7 @@ def test_configure_spread_e2e(ray_start_10_cpus_shared, restore_data_context):
     DataContext.get_current().execution_options.preserve_order = True
     DataContext.get_current().large_args_threshold = 0
 
-    # Simple 2-stage pipeline.
+    # Simple 2-operator pipeline.
     ray.data.range(2, parallelism=2).map(lambda x: x, num_cpus=2).take_all()
 
     # Read tasks get SPREAD by default, subsequent ones use default policy.
@@ -387,7 +387,7 @@ def test_configure_spread_e2e(ray_start_10_cpus_shared, restore_data_context):
 def test_scheduling_progress_when_output_blocked(
     ray_start_10_cpus_shared, restore_data_context
 ):
-    # Processing stages should fully finish even if output is completely stalled.
+    # Processing operators should fully finish even if output is completely stalled.
 
     @ray.remote
     class Counter:
