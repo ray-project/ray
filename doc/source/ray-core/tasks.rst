@@ -14,7 +14,7 @@ Ray enables arbitrary functions to be executed asynchronously on separate Python
             :start-after: __tasks_start__
             :end-before: __tasks_end__
 
-        See the :func:`ray.remote package reference<ray.remote>` page for specific documentation on how to use ``ray.remote``.
+        See the :func:`ray.remote<ray.remote>` API for more details.
 
     .. tab-item:: Java
 
