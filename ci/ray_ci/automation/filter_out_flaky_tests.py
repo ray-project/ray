@@ -20,8 +20,6 @@ def main():
 
     prefix = sys.argv[1]
 
-    test_targets_input = sys.stdin
-
     # Initialize global config
     init_global_config(bazel_runfile("release/ray_release/configs/oss_config.yaml"))
 
