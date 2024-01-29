@@ -90,21 +90,37 @@ def get_devices() -> List[torch.device]:
     Assumes that `CUDA_VISIBLE_DEVICES` is set and is a
     superset of the `ray.get_gpu_ids()`.
 
-    Example:
-        >>> # os.environ["CUDA_VISIBLE_DEVICES"] = "3,4"
-        >>> # ray.get_gpu_ids() == [3]
-        >>> # torch.cuda.is_available() == True
-        >>> # get_devices() == [torch.device("cuda:0")]
 
-        >>> # os.environ["CUDA_VISIBLE_DEVICES"] = "0,1,2,3,4"
-        >>> # ray.get_gpu_ids() == [4]
-        >>> # torch.cuda.is_available() == True
-        >>> # get_devices() == [torch.device("cuda:4")]
+    Examples:
 
-        >>> # os.environ["CUDA_VISIBLE_DEVICES"] = "0,1,2,3,4,5"
-        >>> # ray.get_gpu_ids() == [4,5]
-        >>> # torch.cuda.is_available() == True
-        >>> # get_devices() == [torch.device("cuda:4"), torch.device("cuda:5")]
+        .. testcode::
+            :skipif: True
+
+            import torch
+            import os
+            import ray
+            import ray.train
+
+            # Example: Launched 2 workers, each with 1 GPU
+            def train_func():
+                os.environ["CUDA_VISIBLE_DEVICES"] == "3,4"
+                ray.get_gpu_ids() == [3]
+                torch.cuda.is_available() == True
+                get_devices() == [torch.device("cuda:0")]
+
+            # Example: Launched 5 workers, each with 1 GPU
+            def train_func():
+                os.environ["CUDA_VISIBLE_DEVICES"] == "0,1,2,3,4"
+                ray.get_gpu_ids() == [4]
+                torch.cuda.is_available() == True
+                get_devices() == [torch.device("cuda:4")]
+
+            # Example: Launched 3 workers, each with 2 GPUs
+            def train_func():
+                os.environ["CUDA_VISIBLE_DEVICES"] == "0,1,2,3,4,5"
+                ray.get_gpu_ids() == [4,5]
+                torch.cuda.is_available() == True
+                get_devices() == [torch.device("cuda:4"), torch.device("cuda:5")]
     """
 
     from ray.air._internal import torch_utils
