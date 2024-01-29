@@ -2,7 +2,10 @@ import unittest
 
 import numpy as np
 from ray.rllib.env.single_agent_episode import SingleAgentEpisode
-from ray.rllib.utils.replay_buffers.prioritized_episode_replay_buffer import PrioritizedEpisodeReplayBuffer
+from ray.rllib.utils.replay_buffers.prioritized_episode_replay_buffer import (
+    PrioritizedEpisodeReplayBuffer,
+)
+
 
 class TestPrioritizedEpisodeReplayBuffer(unittest.TestCase):
     @staticmethod
@@ -19,7 +22,7 @@ class TestPrioritizedEpisodeReplayBuffer(unittest.TestCase):
         eps.is_terminated = np.random.random() > 0.5
         eps.is_truncated = False if eps.is_terminated else np.random.random() > 0.8
         return eps
-    
+
     def test_add_and_eviction_logic(self):
 
         # Fill the buffer till capacity (100 ts).
@@ -47,7 +50,7 @@ class TestPrioritizedEpisodeReplayBuffer(unittest.TestCase):
 
         self.assertEqual(buffer.get_num_episodes(), 3)
         self.assertEqual(buffer.get_num_timesteps(), 51)
-        self.assertEqual({eps.id_ for eps in buffer.episodes}, {"B", "C", "D"})        
+        self.assertEqual({eps.id_ for eps in buffer.episodes}, {"B", "C", "D"})
 
         # Add another big episode and trigger another eviction.
         episode = self._get_episode(id_="E", episode_len=200)
@@ -113,8 +116,7 @@ class TestPrioritizedEpisodeReplayBuffer(unittest.TestCase):
                 == is_terminated.shape
             )
 
-             
-            # Note, floating point numbers cannot be compared directly. 
+            # Note, floating point numbers cannot be compared directly.
             tolerance = 1e-8
             # Assert that actions correspond to the observations.
             self.assertTrue(np.all(actions - obs < tolerance))
@@ -124,7 +126,7 @@ class TestPrioritizedEpisodeReplayBuffer(unittest.TestCase):
             # Assert that the reward comes from the next observation.
             self.assertTrue(np.all(rewards * 10 - next_obs < tolerance))
 
-            # Furthermore, assert that the improtance sampling weights are 
+            # Furthermore, assert that the improtance sampling weights are
             # one for `beta=0.0`.
             self.assertTrue(np.all(weights - 1.0 < tolerance))
 
@@ -154,8 +156,7 @@ class TestPrioritizedEpisodeReplayBuffer(unittest.TestCase):
                 == is_terminated.shape
             )
 
-             
-            # Note, floating point numbers cannot be compared directly. 
+            # Note, floating point numbers cannot be compared directly.
             tolerance = 1e-8
             # Assert that actions correspond to the observations.
             self.assertTrue(np.all(actions - obs < tolerance))

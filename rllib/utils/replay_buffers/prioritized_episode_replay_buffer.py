@@ -11,8 +11,8 @@ from ray.rllib.utils.annotations import override
 from ray.rllib.utils.typing import SampleBatchType
 
 
-# TODO (simon): Set `self._indices` to a dictionary to have 
-# O(1) average complexity when searching for an index given 
+# TODO (simon): Set `self._indices` to a dictionary to have
+# O(1) average complexity when searching for an index given
 # in sampling from the `SumSegmentTree`.
 class PrioritizedEpisodeReplayBuffer(EpisodeReplayBuffer):
     def __init__(
@@ -223,9 +223,9 @@ class PrioritizedEpisodeReplayBuffer(EpisodeReplayBuffer):
             eps_rewards = episode.get_rewards(slice(episode_ts - n_step, episode_ts))
             observations[B].append(eps_observations[0])
             next_observations[B].append(eps_observations[-1])
-            # Note, this will be the reward after executing action a_(episode_ts-n_step+1).
-            # For `n_step>1` this will be the sum of all rewards that were collected
-            # over the last n steps.
+            # Note, this will be the reward after executing action
+            # `a_(episode_ts-n_step+1)``. For `n_step>1` this will be the sum of
+            # all rewards that were collected over the last n steps.
             rewards[B].append(sum(eps_rewards))
             # Note, `SingleAgentEpisode` stores the action that followed
             # `o_t` with `o_(t+1)`, therefore, we need the next one.
