@@ -251,15 +251,17 @@ describe("ActorTable", () => {
           },
           pid: 25321,
         },
-        gpus: [{
-          uuid: "mock_gpu_uuid1",
-          index: 0,
-          name: "mock_gpu_name1",
-          utilizationGpu: 0,
-          memoryUsed: 10,
-          memoryTotal: 20,
-          processes: [{pid: 25322, gpuMemoryUsage: 10}],
-        }],
+        gpus: [
+          {
+            uuid: "mock_gpu_uuid1",
+            index: 0,
+            name: "mock_gpu_name1",
+            utilizationGpu: 0,
+            memoryUsed: 10,
+            memoryTotal: 20,
+            processes: [{ pid: 25322, gpuMemoryUsage: 10 }],
+          },
+        ],
       },
       ACTOR_2: {
         ...MOCK_ACTORS.ACTOR_2,
@@ -284,15 +286,17 @@ describe("ActorTable", () => {
           },
           pid: 25322,
         },
-        gpus: [{
-          uuid: "mock_gpu_uuid2",
-          index: 0,
-          name: "mock_gpu_name2",
-          utilizationGpu: 50,
-          memoryUsed: 0,
-          memoryTotal: 20,
-          processes: [{pid: 25322, gpuMemoryUsage: 0}],
-        }],
+        gpus: [
+          {
+            uuid: "mock_gpu_uuid2",
+            index: 0,
+            name: "mock_gpu_name2",
+            utilizationGpu: 50,
+            memoryUsed: 0,
+            memoryTotal: 20,
+            processes: [{ pid: 25322, gpuMemoryUsage: 0 }],
+          },
+        ],
       },
     };
 

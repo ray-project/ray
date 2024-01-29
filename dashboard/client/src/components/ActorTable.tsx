@@ -28,18 +28,18 @@ import {
   MemoryProfilingButton,
 } from "../common/ProfilingLink";
 import rowStyles from "../common/RowStyles";
-import { WorkerGpuRow, getSumGpuUtilization } from "../pages/node/GPUColumn";
-import { WorkerGRAM, getSumGRAMUsage } from "../pages/node/GRAMColumn";
+import { getSumGpuUtilization, WorkerGpuRow } from "../pages/node/GPUColumn";
+import { getSumGRAMUsage, WorkerGRAM } from "../pages/node/GRAMColumn";
 import { ActorDetail, ActorEnum } from "../type/actor";
 import { Worker } from "../type/worker";
 import { memoryConverter } from "../util/converter";
 import { useFilter, useSorter } from "../util/hook";
 import PercentageBar from "./PercentageBar";
+import { SearchSelect } from "./SearchComponent";
 import StateCounter from "./StatesCounter";
 import { StatusChip } from "./StatusChip";
 import { HelpInfo } from "./Tooltip";
 import RayletWorkerTable, { ExpandableTableRow } from "./WorkerTable";
-import { SearchSelect } from "./SearchComponent";
 
 export type ActorTableProps = {
   actors: { [actorId: string]: ActorDetail };
@@ -94,23 +94,33 @@ const ActorTable = ({
   const defaultSorterKey = "";
   const gpuUtilizationSorterKey = "fake_gpu_attr";
   const gramUsageSorterKey = "fake_gram_attr";
-  const { sorterFunc, setOrderDesc, setSortKey, sorterKey } = useSorter(defaultSorterKey);
+  const { sorterFunc, setOrderDesc, setSortKey, sorterKey } =
+    useSorter(defaultSorterKey);
 
   //We get a filtered and sorted actor list to render from prop actors
   const sortedActors = useMemo(() => {
-    const actorList = Object.values(actors || {}).sort(sorterFunc).filter(filterFunc);
+    const actorList = Object.values(actors || {})
+      .sort(sorterFunc)
+      .filter(filterFunc);
     // Always show ALIVE actors at top. If no other sorting keys are provided, also sort by time
     return _.sortBy(actorList, (actor) => {
       const actorOrder = isActorEnum(actor.state) ? stateOrder[actor.state] : 0;
-      const actorTime = sorterKey === defaultSorterKey ? (actor.startTime || 0) : 0;
+      const actorTime =
+        sorterKey === defaultSorterKey ? actor.startTime || 0 : 0;
 
       // GPU utilization and GRAM usage are user specified sort keys but require an aggregate function
       // over the actor attribute, so including as a sortBy key
-      const sumGpuUtilization = sorterKey === gpuUtilizationSorterKey ? getSumGpuUtilization(actor.pid, actor.gpus) : 0;
-      const sumGRAMUsage = sorterKey === gramUsageSorterKey ? getSumGRAMUsage(actor.pid, actor.gpus) : 0;
+      const sumGpuUtilization =
+        sorterKey === gpuUtilizationSorterKey
+          ? getSumGpuUtilization(actor.pid, actor.gpus)
+          : 0;
+      const sumGRAMUsage =
+        sorterKey === gramUsageSorterKey
+          ? getSumGRAMUsage(actor.pid, actor.gpus)
+          : 0;
       return [sumGpuUtilization, sumGRAMUsage, actorOrder, actorTime];
     });
-  }, [actors, sorterFunc, filterFunc]);
+  }, [actors, sorterKey, sorterFunc, filterFunc]);
 
   const list = sortedActors.slice((pageNo - 1) * pageSize, pageNo * pageSize);
 
@@ -636,9 +646,10 @@ const ActorTable = ({
                       >
                         {memoryConverter(processStats?.memoryInfo.rss)}/
                         {memoryConverter(mem[0])}(
-                        {((processStats?.memoryInfo.rss / mem[0]) * 100).toFixed(
-                          1,
-                        )}
+                        {(
+                          (processStats?.memoryInfo.rss / mem[0]) *
+                          100
+                        ).toFixed(1)}
                         %)
                       </PercentageBar>
                     )}

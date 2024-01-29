@@ -3,7 +3,6 @@ import React from "react";
 import { RightPaddedTypography } from "../../common/CustomTypography";
 import UsageBar from "../../common/UsageBar";
 import { GPUStats, NodeDetail } from "../../type/node";
-import { worker } from "cluster";
 
 const useStyles = makeStyles((theme) => ({
   gpuColumn: {
@@ -89,7 +88,7 @@ export const WorkerGpuRow = ({
 
 export const getSumGpuUtilization = (
   workerPID: number | null,
-  gpus?: GPUStats[]
+  gpus?: GPUStats[],
 ) => {
   // Get sum of all GPU utilization values for this worker PID. This is an
   // aggregate of the WorkerGpuRow and follows the same logic.
@@ -105,5 +104,4 @@ export const getSumGpuUtilization = (
     })
     .filter((entry) => entry !== undefined);
   return workerGPUUtilizationEntries.reduce((a, b) => a + b, 0);
- };
-  
+};

@@ -67,7 +67,7 @@ export const WorkerGRAM = ({
 
 export const getSumGRAMUsage = (
   workerPID: number | null,
-  gpus?: GPUStats[]
+  gpus?: GPUStats[],
 ) => {
   // Get sum of all GRAM usage values for this worker PID. This is an
   // aggregate of WorkerGRAM and follows the same logic.
@@ -83,7 +83,7 @@ export const getSumGRAMUsage = (
     })
     .filter((entry) => entry !== undefined);
   return workerGRAMEntries.reduce((a, b) => a + b, 0);
- };
+};
 
 const getMiBRatioNoPercent = (used: number, total: number) =>
   `${used}MiB/${total}MiB`;
