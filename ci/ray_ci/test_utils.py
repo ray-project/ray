@@ -1,15 +1,16 @@
 import base64
+import io
 import sys
 import pytest
 from unittest import mock
 from typing import List
 
-from ray_release.test import Test, TestState
+from ray_release.test import Test
 from ci.ray_ci.utils import (
     chunk_into_n,
     docker_login,
-    query_all_test_names_by_state,
-    omit_tests_by_state,
+    get_flaky_test_names,
+    filter_out_flaky_tests,
 )
 
 
@@ -40,57 +41,47 @@ def test_docker_login(mock_client) -> None:
         docker_login("docker_ecr")
 
 
+def _make_test(name: str, state: str, team: str) -> Test:
+    return Test(
+        {
+            "name": name,
+            "state": state,
+            "team": team,
+        }
+    )
+
+
 @mock.patch("ray_release.test.Test.gen_from_s3")
-def test_query_test_names_by_state(mock_gen_from_s3):
+def test_get_flaky_test_names(mock_gen_from_s3):
     mock_gen_from_s3.side_effect = (
         [
-            Test(
-                {
-                    "name": "darwin://test_1",
-                    "team": "core",
-                    "state": TestState.FLAKY,
-                }
-            ),
-            Test(
-                {
-                    "name": "darwin://test_2",
-                    "team": "ci",
-                    "state": TestState.FLAKY,
-                }
-            ),
+            _make_test("darwin://test_1", "flaky", "core"),
+            _make_test("darwin://test_2", "flaky", "ci"),
         ],
     )
-    flaky_test_names = query_all_test_names_by_state(
-        test_state="flaky",
+    flaky_test_names = get_flaky_test_names(
         prefix="darwin:",
     )
     assert flaky_test_names == ["//test_1", "//test_2"]
 
 
 @mock.patch("ray_release.test.Test.gen_from_s3")
-def test_omit_tests_by_state(mock_gen_from_s3):
+def test_filter_out_flaky_tests(mock_gen_from_s3):
     mock_gen_from_s3.side_effect = (
         [
-            Test(
-                {
-                    "name": "darwin://test_1",
-                    "team": "core",
-                    "state": TestState.FLAKY,
-                }
-            ),
-            Test(
-                {
-                    "name": "darwin://test_2",
-                    "team": "ci",
-                    "state": TestState.FLAKY,
-                }
-            ),
+            _make_test("darwin://test_1", "flaky", "core"),
+            _make_test("darwin://test_2", "flaky", "ci"),
+            _make_test("darwin://test_3", "passing", "core"),
+            _make_test("darwin://test_4", "passing", "ci"),
         ],
     )
 
-    test_targets = ["//test_1", "//test_2", "//test_3"]
-    filtered_test_targets = omit_tests_by_state(test_targets, "flaky")
-    assert filtered_test_targets == ["test_3"]
+    test_targets = ["//test_1", "//test_2", "//test_3", "//test_4"]
+    sys.stdout = io.StringIO()
+    filter_out_flaky_tests(io.StringIO("\n".join(test_targets)), sys.stdout, "darwin:")
+
+    filtered_test_targets = sys.stdout.getvalue().strip()
+    assert filtered_test_targets == "//test_3\n//test_4"
 
 
 if __name__ == "__main__":

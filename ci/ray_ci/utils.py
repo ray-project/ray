@@ -1,4 +1,5 @@
 import base64
+import io
 import logging
 import subprocess
 import sys
@@ -78,7 +79,7 @@ def docker_pull(image: str) -> None:
     )
 
 
-def get_flaky_test_names(prefix: str):
+def get_flaky_test_names(prefix: str) -> List[str]:
     """
     Query all existing test names by the test state.
 
@@ -103,14 +104,14 @@ def get_flaky_test_names(prefix: str):
     return test_names
 
 
-def filter_out_flaky_tests(
-    input: io.TextIOBase, output: io.TextIOBase, prefix: str):
+def filter_out_flaky_tests(input: io.TextIOBase, output: io.TextIOBase, prefix: str):
     """
     Filter out flaky tests.
 
     Args:
         input: Input stream, each test name in one line.
         output: Output stream, each test name in one line.
+        prefix: Prefix to query tests with.
     """
     # Obtain all existing tests with specified test state
     flaky_tests = set(get_flaky_test_names(prefix))

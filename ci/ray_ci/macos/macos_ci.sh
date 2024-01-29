@@ -11,34 +11,30 @@ export LANG="en_US.UTF-8"
 export BUILD="1"
 export DL="1"
 
-filter_flaky_tests() {
-  bazel run ci/ray_ci/automation:filter_tests -- "darwin:"
+filter_out_flaky_tests() {
+  bazel run ci/ray_ci/automation:filter_out_flaky_tests -- "darwin:"
 }
 
 run_small_test() {
-  bazel query 'attr(tags, "client_tests|small_size_python_tests", tests(//python/ray/tests/...))' |
-    filter_flaky_tests |
+  bazel query 'attr(tags, "client_tests|small_size_python_tests", tests(//python/ray/tests/...))' | filter_out_flaky_tests |
     xargs bazel test --config=ci $(./ci/run/bazel_export_options) \
       --test_env=CONDA_EXE --test_env=CONDA_PYTHON_EXE --test_env=CONDA_SHLVL --test_env=CONDA_PREFIX \
       --test_env=CONDA_DEFAULT_ENV --test_env=CONDA_PROMPT_MODIFIER --test_env=CI
 }
 
 run_medium_a_j_test() {
-  bazel query 'attr(tags, "kubernetes|medium_size_python_tests_a_to_j", tests(//python/ray/tests/...))' | filter_flaky_tests |
+  bazel query 'attr(tags, "kubernetes|medium_size_python_tests_a_to_j", tests(//python/ray/tests/...))' | filter_out_flaky_tests |
     xargs bazel test $filtered_test_targets --config=ci $(./ci/run/bazel_export_options) --test_env=CI
 }
 
 run_medium_k_z_test() {
-  filtered_test_targets=$(bazel query 'attr(tags, "kubernetes|medium_size_python_tests_k_to_z", tests(//python/ray/tests/...))' | filter_flaky_tests)
-  # shellcheck disable=SC2046,SC2086
-  bazel test $filtered_test_targets --config=ci $(./ci/run/bazel_export_options) \
-    --test_env=CI
+  bazel query 'attr(tags, "kubernetes|medium_size_python_tests_k_to_z", tests(//python/ray/tests/...))' | filter_out_flaky_tests |
+    xargs bazel test $filtered_test_targets --config=ci $(./ci/run/bazel_export_options) --test_env=CI
 }
 
 run_large_test() {
-  filtered_test_targets=$(bazel query 'attr(tags, "large_size_python_tests_shard_'"${BUILDKITE_PARALLEL_JOB}"'", tests(//python/ray/tests/...))' | filter_flaky_tests)
-  # shellcheck disable=SC2046,SC2086
-  bazel test $filtered_test_targets --config=ci $(./ci/run/bazel_export_options) \
+  bazel query 'attr(tags, "large_size_python_tests_shard_'"${BUILDKITE_PARALLEL_JOB}"'", tests(//python/ray/tests/...))' | filter_out_flaky_tests |
+    xargs bazel test $filtered_test_targets --config=ci $(./ci/run/bazel_export_options) \
     --test_env=CONDA_EXE --test_env=CONDA_PYTHON_EXE --test_env=CONDA_SHLVL --test_env=CONDA_PREFIX --test_env=CONDA_DEFAULT_ENV \
     --test_env=CONDA_PROMPT_MODIFIER --test_env=CI "$@"
 }

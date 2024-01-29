@@ -7,13 +7,12 @@ from ray_release.bazel import bazel_runfile
 
 def main():
     """
-    Filter tests based on test targets and test state.
-    Read list of test targets from file path.
-    Write back into the same file path with tests of specified state removed.
+    Filter out flaky tests.
+    Input (stdin) as a list of test names.
+    Output (stdout) as a list of test names without flaky tests.
 
     Args:
-        test_state: Test state to filter by.
-            Use string representation from ray_release.test.TestState class.
+        prefix: Prefix to query tests with.
     """
     # Process arguments
     if len(sys.argv) != 2:
