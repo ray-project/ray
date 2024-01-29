@@ -426,7 +426,7 @@ def disable_pyarrow_version_check():
 
 # ===== Observability & Logging Fixtures =====
 @pytest.fixture
-def stage_two_block():
+def op_two_block():
     block_params = {
         "num_rows": [10000, 5000],
         "size_bytes": [100, 50],

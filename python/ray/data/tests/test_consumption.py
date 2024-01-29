@@ -124,7 +124,7 @@ def test_schema_cached(ray_start_regular):
     ds = ray.data.from_items([{"a": i} for i in range(100)], parallelism=10)
     last_snapshot = check_schema_cached(ds, {}, last_snapshot)
 
-    # Add a map_batches stage so that we are forced to compute the schema.
+    # Add a map_batches operator so that we are forced to compute the schema.
     ds = ds.map_batches(lambda x: x)
     last_snapshot = check_schema_cached(
         ds,

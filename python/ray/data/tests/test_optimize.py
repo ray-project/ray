@@ -99,7 +99,7 @@ def test_memory_release(shutdown_only):
     info = ray.init(num_cpus=1, object_store_memory=1500e6)
     ds = ray.data.range(10)
 
-    # Should get fused into single stage.
+    # Should get fused into single operator.
     ds = ds.map(lambda x: {"data": np.ones(100 * 1024 * 1024, dtype=np.uint8)})
     ds = ds.map(lambda x: {"data": np.ones(100 * 1024 * 1024, dtype=np.uint8)})
     ds = ds.map(lambda x: {"data": np.ones(100 * 1024 * 1024, dtype=np.uint8)})
@@ -212,12 +212,6 @@ def test_spread_hint_inherit(ray_start_regular_shared):
     shuffle_op = ds._plan._logical_plan.dag
     read_op = shuffle_op.input_dependencies[0].input_dependencies[0]
     assert read_op._ray_remote_args == {"scheduling_strategy": "SPREAD"}
-
-
-def _assert_has_stages(stages, stage_names):
-    assert len(stages) == len(stage_names)
-    for stage, name in zip(stages, stage_names):
-        assert stage.name == name
 
 
 def test_optimize_reorder(ray_start_regular_shared):
