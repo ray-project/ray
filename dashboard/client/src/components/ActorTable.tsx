@@ -91,10 +91,9 @@ const ActorTable = ({
   const [actorIdFilterValue, setActorIdFilterValue] = useState(filterToActorId);
   const [pageSize, setPageSize] = useState(10);
   const defaultSorterKey = "";
-  const gpuUtilizationSorterKey = "GPU Utilization"
-  const gramUsageSorterKey = "GRAM Usage"
-  const { sorterFunc, setOrderDesc, setSortKey, sorterKey } = useSorter(defaultSorterKey)
-  console.log("sorterkey", sorterKey, sorterKey === "", sorterKey === undefined)
+  const gpuUtilizationSorterKey = "fake_gpu_attr";
+  const gramUsageSorterKey = "fake_gram_attr";
+  const { sorterFunc, setOrderDesc, setSortKey, sorterKey } = useSorter(defaultSorterKey);
 
   //We get a filtered and sorted actor list to render from prop actors
   const sortedActors = useMemo(() => {
@@ -104,7 +103,6 @@ const ActorTable = ({
       const actorOrder = isActorEnum(actor.state) ? stateOrder[actor.state] : 0;
       const actorTime = sorterKey === defaultSorterKey ? (actor.startTime || 0) : 0;
       const sumGpuUtilization = sorterKey === gpuUtilizationSorterKey ? getSumGpuUtilization(actor.pid, actor.gpus) : 0;
-      console.log("sumGpuUtilization", sumGpuUtilization);
       const sumGRAMUsage = sorterKey === gramUsageSorterKey ? getSumGRAMUsage(actor.pid, actor.gpus) : 0;
       return [sumGpuUtilization, sumGRAMUsage, actorOrder, actorTime];
     });
@@ -437,8 +435,8 @@ const ActorTable = ({
                 ["processStats.memoryInfo.rss", "Used Memory"],
                 ["mem[0]", "Total Memory"],
                 ["processStats.cpuPercent", "CPU"],
-                ["fake_gpu_attr", gpuUtilizationSorterKey],
-                ["fake_gram_attr", gramUsageSorterKey],
+                [gpuUtilizationSorterKey, "GPU Utilization"],
+                [gramUsageSorterKey, "GRAM Usage"],
               ]}
               onChange={(val) => setSortKey(val)}
             />
