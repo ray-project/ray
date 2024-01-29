@@ -954,6 +954,7 @@ def test_actor_pool_strategy_default_num_actors(shutdown_only):
             return x
 
     num_cpus = 5
+    ray.shutdown()
     ray.init(num_cpus=num_cpus)
     compute_strategy = ray.data.ActorPoolStrategy()
     ray.data.range(10, parallelism=10).map_batches(
