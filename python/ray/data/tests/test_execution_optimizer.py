@@ -1319,6 +1319,8 @@ def test_from_arrow_refs_e2e(ray_start_regular_shared, enable_optimizer):
 def test_from_huggingface_e2e(ray_start_regular_shared, enable_optimizer):
     import datasets
 
+    from ray.data.tests.test_huggingface import hfds_assert_equals
+
     data = datasets.load_dataset("tweet_eval", "emotion")
     assert isinstance(data, datasets.DatasetDict)
     ray_datasets = {
@@ -1333,20 +1335,27 @@ def test_from_huggingface_e2e(ray_start_regular_shared, enable_optimizer):
         # needed for checking operator usage below.
         assert len(ds.take_all()) > 0
         # Check that metadata fetch is included in stats;
-        # the underlying implementation uses the `FromArrow` operator.
-        assert "FromArrow" in ds.stats()
-        assert ds._plan._logical_plan.dag.name == "FromArrow"
-        assert ray.get(ray_datasets[ds_key].to_arrow_refs())[0].equals(
-            data[ds_key].data.table
-        )
-        _check_usage_record(["FromArrow"])
+        # the underlying implementation uses the `ReadParquet` operator
+        # as this is an un-transformed public dataset.
+        assert "ReadParquet" in ds.stats()
+        assert ds._plan._logical_plan.dag.name == "ReadParquet"
+        # use sort by 'text' to match order of rows
+        hfds_assert_equals(data[ds_key], ds)
+        _check_usage_record(["ReadParquet"])
 
-    ray_dataset = ray.data.from_huggingface(data["train"])
-    assert isinstance(ray_dataset, ray.data.Dataset)
-    assert len(ray_dataset.take_all()) > 0
-    assert "FromArrow" in ray_dataset.stats()
-    assert ray_dataset._plan._logical_plan.dag.name == "FromArrow"
-    assert ray.get(ray_dataset.to_arrow_refs())[0].equals(data["train"].data.table)
+    # test transformed public dataset for fallback behavior
+    base_hf_dataset = data["train"]
+    hf_dataset_split = base_hf_dataset.train_test_split(test_size=0.2)
+    ray_dataset_split_train = ray.data.from_huggingface(hf_dataset_split["train"])
+    assert isinstance(ray_dataset_split_train, ray.data.Dataset)
+    # `ds.take_all()` triggers execution with new backend, which is
+    # needed for checking operator usage below.
+    assert len(ray_dataset_split_train.take_all()) > 0
+    # Check that metadata fetch is included in stats;
+    # the underlying implementation uses the `FromArrow` operator.
+    assert "FromArrow" in ray_dataset_split_train.stats()
+    assert ray_dataset_split_train._plan._logical_plan.dag.name == "FromArrow"
+    assert ray_dataset_split_train.count() == hf_dataset_split["train"].num_rows
     _check_usage_record(["FromArrow"])
 
 
