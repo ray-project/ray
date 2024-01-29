@@ -612,6 +612,10 @@ message FixedSizeNodes {
 // When representing a fixed size node, all properties are const.
 // When representing a flex node, `resources` may change.
 message VirtualClusterNode {
+  // (virtual) node id. This is unique in a cluster.
+  // Populated by the GCS Virtual Cluster Manager and all GCS-sent RPCs.
+  // Not populated from the core worker.
+  bytes node_id = 4;
   // Resources for a fixed size node. The resource is allocated atomically.
   map<string, double> resources = 1;
 

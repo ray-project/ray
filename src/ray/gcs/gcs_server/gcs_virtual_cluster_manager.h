@@ -126,6 +126,8 @@ struct CreateVnodesTransaction {
 // out 1 2pc transaction for each VC, so we need to group the vnodes.
 // From: {fixed_size_nodes (by ID) -> {node -> [vnodes]}} `scheduled_fixed_size_nodes`
 // To: {node -> [vnodes]} `transaction->scheduled_nodes`
+//
+// Populates node_id for each vnode. If node_id already exists, overwrites.
 struct CreatingVirtualCluster {
   // `manager` is used to callback to inform that the VC is created or failed.
   GcsVirtualClusterManager *manager;
@@ -158,6 +160,8 @@ struct RunningVirtualCluster {
 // For each fixed_size_nodes, we have 1 entry in allocated_fixed_size_nodes and 1 entry in
 // recovering_fixed_size_nodes, even if the fixed_size_nodes is empty or is not affected
 // by the failure.
+//
+// Populates node_id for each vnode. If node_id already exists, overwrites.
 struct RecoveringVirtualCluster {
   GcsVirtualClusterManager *manager;
   // Previously running VC. After recovery we will go back to this state.

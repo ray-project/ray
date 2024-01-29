@@ -199,6 +199,15 @@ CreatingVirtualCluster::CreatingVirtualCluster(
       scheduled_fixed_size_nodes(std::move(scheduled_fixed_size_nodes)) {
   auto vc_id = vc.VirtualClusterId();
 
+  // Overwrites each node ID.
+  for (auto &fixed_size_nodes : this->scheduled_fixed_size_nodes) {
+    for (auto &[node_id, vnodes] : fixed_size_nodes) {
+      for (auto &vnode : vnodes.fixed_size_nodes) {
+        vnode.SetNodeId(NodeID::FromRandom());
+      }
+    }
+  }
+
   transaction = std::make_unique<CreateVnodesTransaction>(
       manager,
       vc_id,
@@ -231,6 +240,15 @@ RecoveringVirtualCluster::RecoveringVirtualCluster(
       running_vc(std::move(running_vc)),
       recovering_fixed_size_nodes(std::move(recovering_fixed_size_nodes)) {
   auto vc_id = running_vc->vc.VirtualClusterId();
+
+  // Overwrites each node ID.
+  for (auto &fixed_size_nodes : this->recovering_fixed_size_nodes) {
+    for (auto &[node_id, vnodes] : fixed_size_nodes) {
+      for (auto &vnode : vnodes.fixed_size_nodes) {
+        vnode.SetNodeId(NodeID::FromRandom());
+      }
+    }
+  }
 
   transaction = std::make_unique<CreateVnodesTransaction>(
       manager,

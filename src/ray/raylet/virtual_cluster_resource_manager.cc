@@ -110,8 +110,7 @@ void VirtualClusterResourceManager::CommitBundle(VirtualClusterID vc_id) {
     for (const auto &resource_id : task_resource_instances.ResourceIds()) {
       node.total.Set(resource_id, task_resource_instances.Get(resource_id));
     }
-    NodeID node_id = NodeID::FromRandom();
-    node_spec.SetNodeId(node_id);
+    NodeID node_id = node_spec.GetNodeId();
     node.available = node.total;
     node.labels = MapFromProtobuf(node_spec.GetMessage().labels());
     node.labels[kLabelKeyNodeID] = node_id.Hex();
