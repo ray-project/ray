@@ -267,7 +267,8 @@ if setup_spec.type == SetupType.RAY:
             "uvicorn[standard]",
             "requests",
             "starlette",
-            "fastapi",
+            # Tracking issue: https://github.com/tiangolo/fastapi/discussions/10948
+            "fastapi <= 0.108.0",
             "aiorwlock",
             "watchfiles",
         ],

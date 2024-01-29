@@ -134,6 +134,11 @@ bazel_workspace_dir = os.environ.get("BUILD_WORKSPACE_DIRECTORY", "")
     ),
     default="optimized",
 )
+@click.option(
+    "--tmp-filesystem",
+    type=str,
+    help=("Filesystem to use for /tmp"),
+)
 def main(
     targets: List[str],
     team: str,
@@ -150,6 +155,7 @@ def main(
     test_arg: Optional[str],
     build_name: Optional[str],
     build_type: Optional[str],
+    tmp_filesystem: Optional[str],
 ) -> None:
     if not bazel_workspace_dir:
         raise Exception("Please use `bazelisk run //ci/ray_ci`")
@@ -166,6 +172,7 @@ def main(
         worker_id,
         parallelism_per_worker,
         gpus,
+        tmp_filesystem=tmp_filesystem,
         test_env=list(test_env),
         build_name=build_name,
         build_type=build_type,
@@ -198,6 +205,7 @@ def _get_container(
     worker_id: int,
     parallelism_per_worker: int,
     gpus: int,
+    tmp_filesystem: Optional[str] = None,
     test_env: Optional[List[str]] = None,
     build_name: Optional[str] = None,
     build_type: Optional[str] = None,
@@ -215,6 +223,7 @@ def _get_container(
         gpus=gpus,
         skip_ray_installation=skip_ray_installation,
         build_type=build_type,
+        tmp_filesystem=tmp_filesystem,
     )
 
 
