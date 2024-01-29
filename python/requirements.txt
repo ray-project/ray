@@ -39,7 +39,7 @@ colorful
 pyyaml
 rich
 opentelemetry-sdk
-fastapi
+fastapi<=0.108.0
 gymnasium==0.28.1
 virtualenv!=20.21.1,>=20.0.24
 opentelemetry-api

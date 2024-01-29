@@ -496,36 +496,9 @@ message StoredConfig {
   string config = 1;
 }
 
-// A notification message about one node's resources being changed.
-message NodeResourceChange {
-  // ID of the node whose resources have changed.
-  bytes node_id = 1;
-  // Labels of the updated resources and their latest capacities.
-  map<string, double> updated_resources = 2;
-  // Labels of the resources that were deleted.
-  repeated string deleted_resources = 3;
-}
-
 message PubSubMessage {
   bytes id = 1;
   bytes data = 2;
-}
-
-// A notification that the resource table has changed.
-message ResourceUpdate {
-  oneof resource_change_or_data {
-    // The total resources on a node have changed.
-    NodeResourceChange change = 1;
-    // The available resources on a node have changed.
-    ResourcesData data = 2;
-  }
-}
-
-message ResourceUsageBroadcastData {
-  // An incrementing sequence number, used for correcting network errors.
-  int64 seq_no = 1;
-  // The changes to the state of the cluster.
-  repeated ResourceUpdate batch = 2;
 }
 
 ///////////////////////////////////////////////////////////////////////////////

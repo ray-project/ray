@@ -152,6 +152,36 @@ class TestCalculateDesiredNumReplicas:
         )
         assert 5 <= desired_num_replicas <= 8  # 10 + 0.5 * (2.5 - 10) = 6.25
 
+    @pytest.mark.parametrize(
+        "num_replicas,ratio,smoothing_factor",
+        [
+            # All of the parametrized scenarios should downscale by 1
+            # replica. Compare the first theoretical calculation that's
+            # with smoothing factor, and the second calculation without
+            # smoothing factor. In these cases, downscaling should not
+            # be blocked by fractional smoothing factor.
+            (2, 0.3, 0.5),  # 2 - 0.5 (2 * 0.7) = 1.3 | 2 - (2 * 0.7) = 0.6
+            (5, 0.4, 0.2),  # 5 - 0.2 (5 * 0.6) = 4.4 | 5 - (5 * 0.6) = 2
+            (10, 0.4, 0.1),  # 10 - 0.1 (10 * 0.6) = 9.4 | 10 - (10 * 0.6) = 4
+        ],
+    )
+    def test_downscaling_with_fractional_smoothing_factor(
+        self, num_replicas: int, ratio: float, smoothing_factor: float
+    ):
+        config = AutoscalingConfig(
+            min_replicas=0,
+            max_replicas=100,
+            target_num_ongoing_requests_per_replica=1,
+            downscale_smoothing_factor=smoothing_factor,
+        )
+        total_num_requests = ratio * num_replicas
+        desired_num_replicas = _calculate_desired_num_replicas(
+            autoscaling_config=config,
+            total_num_requests=total_num_requests,
+            num_running_replicas=num_replicas,
+        )
+        assert desired_num_replicas == num_replicas - 1
+
 
 class TestGetDecisionNumReplicas:
     def test_smoothing_factor_scale_up_from_0_replicas(self):

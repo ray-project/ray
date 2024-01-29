@@ -8,6 +8,7 @@ from zlib import crc32
 from ray._private.pydantic_compat import BaseModel
 from ray.serve._private.config import DeploymentConfig
 from ray.serve._private.utils import DeploymentOptionUpdateType, get_random_string
+from ray.serve.config import AutoscalingConfig
 from ray.serve.generated.serve_pb2 import DeploymentVersion as DeploymentVersionProto
 
 logger = logging.getLogger("ray.serve")
@@ -175,7 +176,11 @@ class DeploymentVersion:
                 reconfigure_dict[option_name] = getattr(
                     self.deployment_config, option_name
                 )
-                if isinstance(reconfigure_dict[option_name], BaseModel):
+                if isinstance(reconfigure_dict[option_name], AutoscalingConfig):
+                    reconfigure_dict[option_name] = reconfigure_dict[option_name].dict(
+                        include={"metrics_interval_s", "look_back_period_s"}
+                    )
+                elif isinstance(reconfigure_dict[option_name], BaseModel):
                     reconfigure_dict[option_name] = reconfigure_dict[option_name].dict()
 
         if (
