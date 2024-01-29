@@ -18,14 +18,11 @@ logger = logging.getLogger(__name__)
 class ConcurrencyCapBackpressurePolicy(BackpressurePolicy):
     """A backpressure policy that caps the concurrency of each operator.
 
-    The concurrency cap limits the number of concurrently running tasks.
-
-    The concrete stategy is as follows:
-    - Each PhysicalOperator is assigned a concurrency cap.
-    - An PhysicalOperator can run new tasks if the number of running tasks is less
-      than the cap.
+    The policy will limit the number of concurrently running tasks based on its
+    concurrency cap parameter.
 
     NOTE: Only support setting concurrency cap for `TaskPoolMapOperator` for now.
+    TODO(chengsu): Consolidate with actor scaling logic of `ActorPoolMapOperator`.
     """
 
     def __init__(self, topology: "Topology"):

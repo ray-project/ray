@@ -125,8 +125,8 @@ class TestConcurrencyCapBackpressurePolicy(unittest.TestCase):
         N = self.__class__._cluster_cpus
         ds = ray.data.range(N, parallelism=N)
         # Use different `num_cpus` to make sure they don't fuse.
-        ds = ds.map_batches(map_func1, batch_size=None, num_cpus=1)
-        ds = ds.map_batches(map_func2, batch_size=None, num_cpus=1.1)
+        ds = ds.map_batches(map_func1, batch_size=None, num_cpus=1, concurrency=1)
+        ds = ds.map_batches(map_func2, batch_size=None, num_cpus=1.1, concurrency=1)
         res = ds.take_all()
         self.assertEqual(len(res), N)
 
