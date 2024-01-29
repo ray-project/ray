@@ -78,71 +78,51 @@ def docker_pull(image: str) -> None:
     )
 
 
-def query_all_test_names_by_state(
-    prefix: str,
-    test_state: str = "flaky",
-):
+def get_flaky_test_names(prefix: str):
     """
     Query all existing test names by the test state.
 
     Args:
         prefix: A prefix to filter by.
-        test_state: Test state to filter by.
-            Use string representation from ray_release.test.TestState class.
 
     Returns:
         List[str]: List of test names.
     """
-
-    # Convert test_state string into TestState enum
-    test_state_enum = next(
-        (state for state in TestState if state.value == test_state), None
-    )
-    if test_state_enum is None:
-        raise ValueError("Invalid test state.")
-
-    # Obtain all existing test
     tests = Test.gen_from_s3(prefix)
+
     # Filter tests by test state
-    filtered_test_names = [
-        t.get_name() for t in tests if t.get_state() == test_state_enum
-    ]
+    state = TestState.FLAKY
+    test_names = [t.get_name() for t in tests if t.get_state() == state]
 
-    no_prefix_filtered_test_names = [
-        test.replace(prefix, "")
-        for test in filtered_test_names
-        if test.startswith(prefix)
-    ]
-    return no_prefix_filtered_test_names
+    # Remove prefixes.
+    for i in range(len(test_names)):
+        test = test_names[i]
+        if test.startswith(prefix):
+            test_names[i] = test[len(prefix) :]
+
+    return test_names
 
 
-def omit_tests_by_state(
-    test_targets: List[str], test_state: str = "flaky"
-) -> List[str]:
+def filter_out_flaky_tests(
+    input: io.TextIOBase, output: io.TextIOBase, prefix: str):
     """
-    Omit tests from list of tests by test state.
+    Filter out flaky tests.
 
     Args:
-        test_targets: List of test targets.
-        test_state: Test state to filter by.
-            Use string representation from ray_release.test.TestState class.
-
-    Returns:
-        List[str]: List of test targets with tests of specified state removed.
+        input: Input stream, each test name in one line.
+        output: Output stream, each test name in one line.
     """
     # Obtain all existing tests with specified test state
-    state_test_names = query_all_test_names_by_state(
-        prefix="darwin:",
-        test_state=test_state,
-    )
-    # Eliminate these test from list of test targets
-    test_targets_filtered = [
-        test for test in test_targets if test not in state_test_names
-    ]
-    test_targets_filtered = [
-        test[2:] for test in test_targets_filtered
-    ]  # Remove "//" prefix
-    return test_targets_filtered
+    flaky_tests = set(get_flaky_test_names(prefix))
+
+    # Filter out these test from list of test targets
+    for t in input:
+        t = t.strip()
+        if not t:
+            continue
+        if t in flaky_tests:
+            continue
+        output.write(f"{t}\n")
 
 
 logger = logging.getLogger()
