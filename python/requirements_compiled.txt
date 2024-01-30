@@ -516,8 +516,6 @@ flatbuffers==2.0.7
     #   onnxruntime
     #   tensorflow
     #   tf2onnx
-flax==0.8.0
-    # via dopamine-rl
 fonttools==4.47.2
     # via matplotlib
 fqdn==1.5.1
