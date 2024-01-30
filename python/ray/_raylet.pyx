@@ -1301,17 +1301,12 @@ cdef report_streaming_generator_output(
         )
         cur_gen_index += 1
 
-
-    # Del output here so that we can GC the memory
-    # usage asap.
-    # TODO del individual objects
-    del outputs
-    del exception
-
-    context.streaming_generator_returns[0].push_back(
-        c_pair[CObjectID, c_bool](
-            return_obj.first,
-            is_plasma_object(return_obj.second)))
+    # TODO(ak/sang) clean up
+    for i in range(dynamic_return_objects.size()):
+        context.streaming_generator_returns[0].push_back(
+            c_pair[CObjectID, c_bool](
+                dynamic_return_objects[i].first,
+                is_plasma_object(dynamic_return_objects[i].second)))
 
     with nogil:
         check_status(CCoreWorkerProcess.GetCoreWorker().ReportGeneratorItemReturns(
