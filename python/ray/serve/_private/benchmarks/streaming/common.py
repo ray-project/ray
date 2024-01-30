@@ -101,9 +101,9 @@ class Caller(Blackhole):
         self._durations.extend(durations)
 
     async def _execute(self, fn):
-        start = time.monotonic()
+        start = time.perf_counter()
         await fn()
-        dur_s = time.monotonic() - start
+        dur_s = time.perf_counter() - start
         return dur_s * 1000  # ms
 
     async def run_benchmark(self) -> Tuple[float, float]:
