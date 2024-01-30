@@ -129,11 +129,12 @@ class LoggingConfig(BaseModel):
     class Config:
         extra = Extra.forbid
 
-    encoding: Union[str, EncodingType] = Field(
-        default="TEXT",
+    encoding: Union[str, EncodingType, None] = Field(
+        default=None,
         description=(
-            "Encoding type for the serve logs. Default to 'TEXT'. 'JSON' is also "
-            "supported to format all serve logs into json structure."
+            "Encoding type for the serve logs. Default to None which will beheave "
+            "as 'TEXT'. 'JSON' is also supported to format all serve logs into "
+            "json structure."
         ),
     )
     log_level: Union[int, str] = Field(
@@ -160,10 +161,10 @@ class LoggingConfig(BaseModel):
 
     @validator("encoding")
     def valid_encoding_format(cls, v):
-        if v not in list(EncodingType):
+        if v is not None and v not in list(EncodingType):
             raise ValueError(
                 f"Got '{v}' for encoding. Encoding must be one "
-                f"of {set(EncodingType)}."
+                f"of {set(EncodingType)} or None."
             )
 
         return v

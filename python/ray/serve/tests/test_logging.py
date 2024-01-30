@@ -18,7 +18,7 @@ from ray import serve
 from ray._private.test_utils import wait_for_condition
 from ray.serve._private.common import ServeComponentType
 from ray.serve._private.constants import (
-    RAY_SERVE_LOG_ENCODING_ENV,
+    RAY_SERVE_LOG_ENCODING,
     SERVE_LOG_EXTRA_FIELDS,
     SERVE_LOGGER_NAME,
 )
@@ -588,10 +588,18 @@ def test_json_log_formatter(is_replica_type_component):
 @pytest.mark.parametrize(
     "log_encoding",
     [
-        [None, "TEXT"],
-        ["TEXT", "TEXT"],
-        ["JSON", "JSON"],
-        ["FOOBAR", "TEXT"],
+        [None, None, "TEXT"],
+        [None, "TEXT", "TEXT"],
+        [None, "JSON", "JSON"],
+        ["TEXT", None, "TEXT"],
+        ["TEXT", "TEXT", "TEXT"],
+        ["TEXT", "JSON", "JSON"],
+        ["JSON", None, "JSON"],
+        ["JSON", "TEXT", "TEXT"],
+        ["JSON", "JSON", "JSON"],
+        ["FOOBAR", None, "TEXT"],
+        ["FOOBAR", "TEXT", "TEXT"],
+        ["FOOBAR", "JSON", "JSON"],
     ],
 )
 def test_configure_component_logger_with_log_encoding_env(monkeypatch, log_encoding):
@@ -599,10 +607,11 @@ def test_configure_component_logger_with_log_encoding_env(monkeypatch, log_encod
 
     When the log encoding env is not set, set to "TEXT" or set to unknon values,
     the ServeFormatter should be used. When the log encoding env is set to "JSON",
-    the ServeJSONFormatter should be used.
+    the ServeJSONFormatter should be used. Also, the log config should take the
+    precedence it's set.
     """
-    env_val, expected_encoding = log_encoding
-    monkeypatch.setenv(RAY_SERVE_LOG_ENCODING_ENV, env_val)
+    env_encoding, log_config_encoding, expected_encoding = log_encoding
+    monkeypatch.setenv(RAY_SERVE_LOG_ENCODING, env_encoding)
 
     # Clean up logger handlers
     logger = logging.getLogger(SERVE_LOGGER_NAME)
@@ -611,7 +620,9 @@ def test_configure_component_logger_with_log_encoding_env(monkeypatch, log_encod
     # Ensure there is no logger handlers before calling configure_component_logger
     assert logger.handlers == []
 
-    logging_config = LoggingConfig(logs_dir="/tmp/fake_logs_dir")
+    logging_config = LoggingConfig(
+        encoding=log_config_encoding, logs_dir="/tmp/fake_logs_dir"
+    )
     configure_component_logger(
         component_name="fake_component_name",
         component_id="fake_component_id",

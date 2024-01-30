@@ -10,7 +10,7 @@ from ray.serve._private.constants import (
     RAY_SERVE_ENABLE_CPU_PROFILING,
     RAY_SERVE_ENABLE_JSON_LOGGING,
     RAY_SERVE_ENABLE_MEMORY_PROFILING,
-    RAY_SERVE_LOG_ENCODING_ENV,
+    RAY_SERVE_LOG_ENCODING,
     SERVE_LOG_APPLICATION,
     SERVE_LOG_COMPONENT,
     SERVE_LOG_COMPONENT_ID,
@@ -231,9 +231,9 @@ def configure_component_logger(
         logs_dir = get_serve_logs_dir()
     os.makedirs(logs_dir, exist_ok=True)
 
-    if not max_bytes:
+    if max_bytes is None:
         max_bytes = ray._private.worker._global_node.max_bytes
-    if not backup_count:
+    if backup_count is None:
         backup_count = ray._private.worker._global_node.backup_count
 
     log_file_name = get_component_log_file_name(
@@ -253,13 +253,14 @@ def configure_component_logger(
             "'RAY_SERVE_ENABLE_JSON_LOGGING' is deprecated, please use "
             "'LoggingConfig' to enable json format."
         )
-    RAY_SERVE_LOG_ENCODING = os.environ.get(
-        RAY_SERVE_LOG_ENCODING_ENV, EncodingType.TEXT
-    )
+    log_encoding_from_env = os.environ.get(RAY_SERVE_LOG_ENCODING, EncodingType.TEXT)
     if (
         RAY_SERVE_ENABLE_JSON_LOGGING
-        or RAY_SERVE_LOG_ENCODING == EncodingType.JSON
         or logging_config.encoding == EncodingType.JSON
+        or (
+            logging_config.encoding is None
+            and log_encoding_from_env == EncodingType.JSON
+        )
     ):
         file_handler.setFormatter(
             ServeJSONFormatter(component_name, component_id, component_type)

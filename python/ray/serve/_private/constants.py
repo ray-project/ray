@@ -164,7 +164,7 @@ DAG_DEPRECATION_MESSAGE = (
 )
 
 # Environment variable name for to specify the encoding of the log messages
-RAY_SERVE_LOG_ENCODING_ENV = "RAY_SERVE_LOG_ENCODING_ENV"
+RAY_SERVE_LOG_ENCODING = "RAY_SERVE_LOG_ENCODING"
 # Jsonify the log messages
 RAY_SERVE_ENABLE_JSON_LOGGING = os.environ.get("RAY_SERVE_ENABLE_JSON_LOGGING") == "1"
 # Logging format attributes
