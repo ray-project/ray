@@ -11,7 +11,6 @@
 # NOTE: Add @ray-project/ray-docs to all following docs subdirs.
 /doc/ @ray-project/ray-docs
 /doc/source/use-cases.rst @ericl @pcmoritz
-/doc/source/templates @justinvyu @matthewdeng @sofianhnaide
 
 # ==== Ray core ====
 
@@ -111,17 +110,16 @@
 # ==== Build and CI ====
 
 # Bazel.
-#/BUILD.bazel @ray-project/ray-core @ray-project/ray-ci
-#/WORKSPACE @ray-project/ray-core @ray-project/ray-ci
-#/bazel/ @ray-project/ray-core @ray-project/ray-ci
+#/BUILD.bazel @ray-project/ray-core @ray-project/ray-ci-reviewers
+#/WORKSPACE @ray-project/ray-core @ray-project/ray-ci-reviewers
+#/bazel/ @ray-project/ray-core @ray-project/ray-ci-reviewers
 
 # CI scripts.
-#/.travis.yml @ray-project/ray-core @ray-project/ray-ci
-#/ci/ @ray-project/ray-core @ray-project/ray-ci
+#/ci/ @ray-project/ray-core @ray-project/ray-ci-reviewers
 
 # Buildkite pipeline management
-.buildkite/hooks @ray-project/ray-ci
+.buildkite/hooks @ray-project/ray-ci-reviewers
 
-/release/ray_release @ray-project/ray-ci
+/release/ray_release @ray-project/ray-ci-reviewers
 
 /.github/ISSUE_TEMPLATE/ @ericl @stephanie-wang @scv119 @pcmoritz

@@ -59,7 +59,14 @@ class Foo:
 
 # NOTE: We should save actor, otherwise it will be out of scope.
 actors = [Foo.remote() for _ in range(30)]
-ray.get([a.__ray_ready__.remote() for a in actors])
+for actor in actors:
+    try:
+        ray.get(actor.__ray_ready__.remote())
+    except ray.exceptions.OutOfMemoryError:
+        # When running the test on a small machine,
+        # some actors might be killed by the memory monitor.
+        # We just catch and ignore the error.
+        pass
 """
         out_str = run_string_as_driver(script)
         print(out_str)

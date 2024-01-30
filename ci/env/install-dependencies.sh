@@ -79,7 +79,7 @@ install_miniconda() {
 
   if [ ! -x "${conda}" ] || [ "${MINIMAL_INSTALL-}" = 1 ]; then  # If no conda is found, install it
     local miniconda_dir  # Keep directories user-independent, to help with Bazel caching
-    local miniconda_version="Miniconda3-py38_23.1.0-1"
+    local miniconda_version="Miniconda3-py39_23.1.0-1"
     local miniconda_platform=""
     local exe_suffix=".sh"
 
@@ -514,7 +514,7 @@ install_thirdparty_packages() {
   fi
   mkdir -p "${WORKSPACE_DIR}/python/ray/thirdparty_files"
   RAY_THIRDPARTY_FILES="$(realpath "${WORKSPACE_DIR}/python/ray/thirdparty_files")"
-  CC=gcc python -m pip install psutil setproctitle==1.2.2 colorama --target="${RAY_THIRDPARTY_FILES}"
+  CC=gcc python -m pip install psutil==5.9.6 setproctitle==1.2.2 colorama==0.4.6 --target="${RAY_THIRDPARTY_FILES}"
 }
 
 install_dependencies() {

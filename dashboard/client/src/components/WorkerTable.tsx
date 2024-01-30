@@ -20,7 +20,7 @@ import React, {
 import { Link } from "react-router-dom";
 import { GlobalContext } from "../App";
 import { formatDateFromTimeMs } from "../common/formatUtils";
-import { Actor } from "../type/actor";
+import { ActorDetail } from "../type/actor";
 import { CoreWorkerStats, Worker } from "../type/worker";
 import { memoryConverter } from "../util/converter";
 import { longTextCut } from "../util/func";
@@ -87,10 +87,10 @@ const WorkerDetailTable = ({
   actorMap,
   coreWorkerStats,
 }: {
-  actorMap: { [actorId: string]: Actor };
+  actorMap: { [actorId: string]: ActorDetail };
   coreWorkerStats: CoreWorkerStats[];
 }) => {
-  const actors = {} as { [actorId: string]: Actor };
+  const actors = {} as { [actorId: string]: ActorDetail };
   (coreWorkerStats || [])
     .filter((e) => actorMap[e.actorId])
     .forEach((e) => (actors[e.actorId] = actorMap[e.actorId]));
@@ -112,7 +112,7 @@ const RayletWorkerTable = ({
   mini,
 }: {
   workers: Worker[];
-  actorMap: { [actorId: string]: Actor };
+  actorMap: { [actorId: string]: ActorDetail };
   mini?: boolean;
 }) => {
   const { changeFilter, filterFunc } = useFilter();

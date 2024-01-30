@@ -448,8 +448,8 @@ TEST_F(ClusterTaskManagerTest, IdempotencyTest) {
   /*
     A few task manager methods are meant to be idempotent.
     * `TaskFinished`
-    * `ReleaseCpuResourcesFromUnblockedWorker`
-    * `ReturnCpuResourcesToBlockedWorker`
+    * `ReleaseCpuResourcesFromBlockedWorker`
+    * `ReturnCpuResourcesToUnblockedWorker`
    */
   RayTask task = CreateTask({{ray::kCPU_ResourceLabel, 4}});
   rpc::RequestWorkerLeaseReply reply;
@@ -478,13 +478,13 @@ TEST_F(ClusterTaskManagerTest, IdempotencyTest) {
 
   ASSERT_EQ(scheduler_->GetLocalResourceManager().GetLocalAvailableCpus(), 4.0);
 
-  local_task_manager_->ReleaseCpuResourcesFromUnblockedWorker(worker);
-  local_task_manager_->ReleaseCpuResourcesFromUnblockedWorker(worker);
+  local_task_manager_->ReleaseCpuResourcesFromBlockedWorker(worker);
+  local_task_manager_->ReleaseCpuResourcesFromBlockedWorker(worker);
 
   ASSERT_EQ(scheduler_->GetLocalResourceManager().GetLocalAvailableCpus(), 8.0);
 
-  local_task_manager_->ReturnCpuResourcesToBlockedWorker(worker);
-  local_task_manager_->ReturnCpuResourcesToBlockedWorker(worker);
+  local_task_manager_->ReturnCpuResourcesToUnblockedWorker(worker);
+  local_task_manager_->ReturnCpuResourcesToUnblockedWorker(worker);
 
   ASSERT_EQ(scheduler_->GetLocalResourceManager().GetLocalAvailableCpus(), 4.0);
 
@@ -599,7 +599,7 @@ TEST_F(ClusterTaskManagerTest, BlockedWorkerDiesTest) {
   ASSERT_EQ(node_info_calls_, 0);
 
   // Block the worker. Which releases only the CPU resource.
-  local_task_manager_->ReleaseCpuResourcesFromUnblockedWorker(worker);
+  local_task_manager_->ReleaseCpuResourcesFromBlockedWorker(worker);
 
   RayTask finished_task;
   // If a resource was double-freed, we will crash in this call.
@@ -649,7 +649,7 @@ TEST_F(ClusterTaskManagerTest, BlockedWorkerDies2Test) {
             task.GetTaskSpecification().TaskId());
 
   // Block the worker. Which releases only the CPU resource.
-  local_task_manager_->ReleaseCpuResourcesFromUnblockedWorker(worker);
+  local_task_manager_->ReleaseCpuResourcesFromBlockedWorker(worker);
 
   AssertNoLeaks();
 }
@@ -1775,7 +1775,7 @@ TEST_F(ClusterTaskManagerTestWithGPUsAtHead, RleaseAndReturnWorkerCpuResources) 
   auto worker = std::make_shared<MockWorker>(WorkerID::FromRandom(), 1234);
 
   // Check failed as the worker has no allocated resource instances.
-  ASSERT_FALSE(local_task_manager_->ReleaseCpuResourcesFromUnblockedWorker(worker));
+  ASSERT_FALSE(local_task_manager_->ReleaseCpuResourcesFromBlockedWorker(worker));
 
   auto node_resource_instances =
       scheduler_->GetLocalResourceManager().GetLocalResources();
@@ -1793,7 +1793,7 @@ TEST_F(ClusterTaskManagerTestWithGPUsAtHead, RleaseAndReturnWorkerCpuResources) 
   ASSERT_EQ(node_resources.available.Get(ResourceID::GPU()), 3);
 
   // Check that the cpu resources are released successfully.
-  ASSERT_TRUE(local_task_manager_->ReleaseCpuResourcesFromUnblockedWorker(worker));
+  ASSERT_TRUE(local_task_manager_->ReleaseCpuResourcesFromBlockedWorker(worker));
 
   // Check that only cpu resources are released.
   ASSERT_EQ(node_resources.available.Get(ResourceID::CPU()), 8);
@@ -1802,13 +1802,13 @@ TEST_F(ClusterTaskManagerTestWithGPUsAtHead, RleaseAndReturnWorkerCpuResources) 
   // Mark worker as blocked.
   worker->MarkBlocked();
   // Check failed as the worker is blocked.
-  ASSERT_FALSE(local_task_manager_->ReleaseCpuResourcesFromUnblockedWorker(worker));
+  ASSERT_FALSE(local_task_manager_->ReleaseCpuResourcesFromBlockedWorker(worker));
   // Check nothing will be changed.
   ASSERT_EQ(node_resources.available.Get(ResourceID::CPU()), 8);
   ASSERT_EQ(node_resources.available.Get(ResourceID::GPU()), 3);
 
   // Check that the cpu resources are returned back to worker successfully.
-  ASSERT_TRUE(local_task_manager_->ReturnCpuResourcesToBlockedWorker(worker));
+  ASSERT_TRUE(local_task_manager_->ReturnCpuResourcesToUnblockedWorker(worker));
 
   // Check that only cpu resources are returned back to the worker.
   ASSERT_EQ(node_resources.available.Get(ResourceID::CPU()), 7);
@@ -1816,7 +1816,7 @@ TEST_F(ClusterTaskManagerTestWithGPUsAtHead, RleaseAndReturnWorkerCpuResources) 
 
   // Mark worker as unblocked.
   worker->MarkUnblocked();
-  ASSERT_FALSE(local_task_manager_->ReturnCpuResourcesToBlockedWorker(worker));
+  ASSERT_FALSE(local_task_manager_->ReturnCpuResourcesToUnblockedWorker(worker));
   // Check nothing will be changed.
   ASSERT_EQ(node_resources.available.Get(ResourceID::CPU()), 7);
   ASSERT_EQ(node_resources.available.Get(ResourceID::GPU()), 3);
@@ -2122,8 +2122,8 @@ TEST_F(ClusterTaskManagerTest, CapRunningOnDispatchQueue) {
 
   ASSERT_EQ(num_callbacks, 2);
 
-  local_task_manager_->ReleaseCpuResourcesFromUnblockedWorker(workers[0]);
-  local_task_manager_->ReleaseCpuResourcesFromUnblockedWorker(workers[1]);
+  local_task_manager_->ReleaseCpuResourcesFromBlockedWorker(workers[0]);
+  local_task_manager_->ReleaseCpuResourcesFromBlockedWorker(workers[1]);
 
   task_manager_.ScheduleAndDispatchTasks();
 
@@ -2296,7 +2296,7 @@ TEST_F(ClusterTaskManagerTest, SchedulingClassCapIncrease) {
 
   current_time_ms_ += UNIT;
   ASSERT_FALSE(workers.back()->IsBlocked());
-  ASSERT_TRUE(local_task_manager_->ReleaseCpuResourcesFromUnblockedWorker(
+  ASSERT_TRUE(local_task_manager_->ReleaseCpuResourcesFromBlockedWorker(
       get_unblocked_worker(workers)));
   task_manager_.ScheduleAndDispatchTasks();
   pool_.TriggerCallbacks();
@@ -2305,7 +2305,7 @@ TEST_F(ClusterTaskManagerTest, SchedulingClassCapIncrease) {
 
   // Since we're increasing exponentially, increasing by a unit show no longer be enough.
   current_time_ms_ += UNIT;
-  ASSERT_TRUE(local_task_manager_->ReleaseCpuResourcesFromUnblockedWorker(
+  ASSERT_TRUE(local_task_manager_->ReleaseCpuResourcesFromBlockedWorker(
       get_unblocked_worker(workers)));
   task_manager_.ScheduleAndDispatchTasks();
   pool_.TriggerCallbacks();
@@ -2388,7 +2388,7 @@ TEST_F(ClusterTaskManagerTest, SchedulingClassCapResetTest) {
   pool_.TriggerCallbacks();
   task_manager_.ScheduleAndDispatchTasks();
 
-  ASSERT_TRUE(local_task_manager_->ReleaseCpuResourcesFromUnblockedWorker(worker1));
+  ASSERT_TRUE(local_task_manager_->ReleaseCpuResourcesFromBlockedWorker(worker1));
   current_time_ms_ += UNIT;
 
   std::shared_ptr<MockWorker> worker2 =
@@ -2419,7 +2419,7 @@ TEST_F(ClusterTaskManagerTest, SchedulingClassCapResetTest) {
   task_manager_.ScheduleAndDispatchTasks();
   ASSERT_EQ(num_callbacks, 3);
 
-  ASSERT_TRUE(local_task_manager_->ReleaseCpuResourcesFromUnblockedWorker(worker3));
+  ASSERT_TRUE(local_task_manager_->ReleaseCpuResourcesFromBlockedWorker(worker3));
   current_time_ms_ += UNIT;
 
   std::shared_ptr<MockWorker> worker4 =
@@ -2489,7 +2489,7 @@ TEST_F(ClusterTaskManagerTest, DispatchTimerAfterRequestTest) {
   ASSERT_EQ(num_callbacks, 1);
   for (auto &worker : workers) {
     if (worker->GetAllocatedInstances() && !worker->IsBlocked()) {
-      local_task_manager_->ReleaseCpuResourcesFromUnblockedWorker(worker);
+      local_task_manager_->ReleaseCpuResourcesFromBlockedWorker(worker);
     }
   }
 
@@ -2500,7 +2500,7 @@ TEST_F(ClusterTaskManagerTest, DispatchTimerAfterRequestTest) {
   ASSERT_EQ(num_callbacks, 2);
   for (auto &worker : workers) {
     if (worker->GetAllocatedInstances() && !worker->IsBlocked()) {
-      local_task_manager_->ReleaseCpuResourcesFromUnblockedWorker(worker);
+      local_task_manager_->ReleaseCpuResourcesFromBlockedWorker(worker);
     }
   }
 

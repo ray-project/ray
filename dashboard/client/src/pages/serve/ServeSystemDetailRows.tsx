@@ -88,7 +88,7 @@ const ServeSystemActorRow = ({
       <TableCell align="center">
         {type === "proxy" ? (
           <Link component={RouterLink} to={`proxies/${node_id}`}>
-            ProxyActor:{node_id}
+            HTTPProxyActor:{node_id}
           </Link>
         ) : (
           <Link component={RouterLink} to="controller">

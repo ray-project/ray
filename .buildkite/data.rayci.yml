@@ -10,6 +10,14 @@ steps:
   - name: data14build
     wanda: ci/docker/data14.build.wanda.yaml
 
+  - name: databuild-multipy
+    label: "wanda: databuild-py{{matrix}}"
+    wanda: ci/docker/data.build.wanda.yaml
+    matrix: ["3.8", "3.10"]
+    env:
+      PYTHON: "{{matrix}}"
+    depends_on: oss-ci-base_build-multipy
+
   - name: datanbuild
     wanda: ci/docker/datan.build.wanda.yaml
 
@@ -28,7 +36,6 @@ steps:
         --workers "$${BUILDKITE_PARALLEL_JOB_COUNT}" 
         --worker-id "$${BUILDKITE_PARALLEL_JOB}" --parallelism-per-worker 3
         --build-name data6build
-        --test-env RAY_DATA_USE_STREAMING_EXECUTOR=1
         --except-tags data_integration,doctest
     depends_on: data6build
 
@@ -43,9 +50,25 @@ steps:
         --workers "$${BUILDKITE_PARALLEL_JOB_COUNT}" 
         --worker-id "$${BUILDKITE_PARALLEL_JOB}" --parallelism-per-worker 3
         --build-name data14build
-        --test-env RAY_DATA_USE_STREAMING_EXECUTOR=1
         --except-tags data_integration,doctest
     depends_on: data14build
+
+  - label: ":database: data: python {{matrix.python}} tests ({{matrix.worker_id}})"
+    if: build.env("RAYCI_CONTINUOUS_BUILD") == "1" || build.pull_request.labels includes "continuous-build"
+    tags: 
+      - python
+      - data
+    instance_type: medium
+    commands:
+      - bazel run //ci/ray_ci:test_in_docker -- //python/ray/data/... //python/ray/air/... data
+        --workers 2 --worker-id {{matrix.worker_id}} --parallelism-per-worker 3
+        --except-tags data_integration,doctest
+        --python-version {{matrix.python}}
+    depends_on: databuild-multipy
+    matrix:
+      setup:
+        python: ["3.8"]
+        worker_id: ["0", "1"]
 
   - label: ":database: data: arrow nightly tests"
     tags: 
@@ -59,7 +82,6 @@ steps:
         --workers "$${BUILDKITE_PARALLEL_JOB_COUNT}" 
         --worker-id "$${BUILDKITE_PARALLEL_JOB}" --parallelism-per-worker 3
         --build-name datanbuild
-        --test-env RAY_DATA_USE_STREAMING_EXECUTOR=1
         --except-tags data_integration,doctest
     depends_on: datanbuild
 
@@ -137,6 +159,20 @@ steps:
     soft_fail: true
     commands:
       - bazel run //ci/ray_ci:test_in_docker -- //... data --run-flaky-tests 
-        --test-env RAY_DATA_USE_STREAMING_EXECUTOR=1 --parallelism-per-worker 3
+        --parallelism-per-worker 3
         --build-name data14build
+        --except-tags gpu_only,gpu
     depends_on: data14build
+
+  - label: ":database: data: flaky gpu tests"
+    tags: 
+      - python
+      - data
+      - skip-on-premerge
+    instance_type: gpu-large
+    soft_fail: true
+    commands:
+      - bazel run //ci/ray_ci:test_in_docker -- //... data --run-flaky-tests 
+        --build-name docgpubuild
+        --only-tags gpu,gpu_only
+    depends_on: docgpubuild
