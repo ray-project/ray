@@ -42,7 +42,7 @@ def test_basic(ray_start_regular):
         with InputNode() as i:
             dag = a.noop.bind(i)
 
-        compiled_dag = dag.experimental_compile()
+        compiled_dag = dag.experimental_compile(buffer_size_bytes=1000)
 
         for i in range(3):
             output_channel = compiled_dag.execute(b"input")
@@ -66,10 +66,10 @@ def test_broadcast(ray_start_regular):
             out = [a.noop.bind(i) for a in actors]
             dag = MultiOutputNode(out)
 
-        compiled_dag = dag.experimental_compile()
+        compiled_dag = dag.experimental_compile(buffer_size_bytes=1000)
 
         for i in range(3):
-            output_channels = compiled_dag.execute(1)
+            output_channels = compiled_dag.execute(b"input")
             results = [chan.begin_read() for chan in output_channels]
             assert results == [b"value"] * 4
             for chan in output_channels:

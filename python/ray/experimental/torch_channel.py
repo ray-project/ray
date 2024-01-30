@@ -7,7 +7,6 @@ import sys
 from typing import Any, List
 
 import numpy as np
-import torch
 
 import ray
 from ray.experimental.channel import Channel
@@ -24,10 +23,14 @@ class TorchChannel(Channel):
         writer_rank: int,
         strategy: str = "isend",
     ):
+        # Delayed import to avoid hard torch dependency.
+        import torch
+        self._torch = torch
+
         self._buffer_size_bytes = buffer_size_bytes
         self._reader_ranks = reader_ranks
         self._writer_rank = writer_rank
-        self._arr = torch.from_numpy(np.zeros(4 + buffer_size_bytes, dtype=np.uint8))
+        self._arr = self._torch.from_numpy(np.zeros(4 + buffer_size_bytes, dtype=np.uint8))
         self._worker = ray._private.worker.global_worker
         self._strategy = strategy
         assert strategy in ["broadcast", "isend"]
@@ -53,25 +56,25 @@ class TorchChannel(Channel):
             raise ValueError("Serialized value larger than the channel buffer length")
         arr = np.frombuffer(serialized_value, np.uint8)
         prefix = np.array([datalen], dtype=np.uint32).view(np.uint8)
-        self._arr[:4] = torch.from_numpy(prefix)
-        self._arr[4 : 4 + datalen] = torch.from_numpy(np.copy(arr))
+        self._arr[:4] = self._torch.from_numpy(prefix)
+        self._arr[4 : 4 + datalen] = self._torch.from_numpy(np.copy(arr))
         work = []
         if self._strategy == "broadcast":
             work.append(
-                torch.distributed.broadcast(
+                self._torch.distributed.broadcast(
                     self._arr, src=self._writer_rank, async_op=True
                 )
             )
         else:
             for rank in self._reader_ranks:
-                work.append(torch.distributed.isend(self._arr, rank))
+                work.append(self._torch.distributed.isend(self._arr, rank))
         [w.wait() for w in work]
 
     def begin_read(self) -> Any:
         if self._strategy == "broadcast":
-            torch.distributed.broadcast(self._arr, src=self._writer_rank)
+            self._torch.distributed.broadcast(self._arr, src=self._writer_rank)
         else:
-            torch.distributed.irecv(self._arr, self._writer_rank).wait()
+            self._torch.distributed.irecv(self._arr, self._writer_rank).wait()
         datalen = self._arr[:4].numpy().view(np.uint32)[0]
         return self._deserialize(self._arr[4 : 4 + datalen].numpy().tobytes())
 
