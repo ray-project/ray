@@ -365,6 +365,7 @@ class Experiment:
     @property
     @Deprecated("Replaced by `local_path`")
     def local_dir(self):
+        # TODO(justinvyu): [Deprecated] Remove in 2.11.
         raise DeprecationWarning("Use `local_path` instead of `local_dir`.")
 
     @property
@@ -382,7 +383,7 @@ class Experiment:
     @property
     @Deprecated("Replaced by `checkpoint_dir`")
     def checkpoint_dir(self):
-        # Provided when initializing Experiment, if so, return directly.
+        # TODO(justinvyu): [Deprecated] Remove in 2.11.
         raise DeprecationWarning("Use `local_path` instead of `checkpoint_dir`.")
 
     @property

@@ -659,6 +659,7 @@ def run(
         )
         checkpoint_config.checkpoint_at_end = checkpoint_at_end
 
+    # TODO(justinvyu): [Deprecated] Remove in 2.11.
     if chdir_to_trial_dir != _DEPRECATED_VALUE:
         raise DeprecationWarning(
             "`chdir_to_trial_dir` is deprecated. "

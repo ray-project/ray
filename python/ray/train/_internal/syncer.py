@@ -68,7 +68,7 @@ class SyncConfig:
     syncer: Optional[Union[str, "Syncer"]] = _DEPRECATED_VALUE
     sync_on_checkpoint: bool = _DEPRECATED_VALUE
 
-    # TODO(justinvyu): [Deprecation] Remove in 2.11.
+    # TODO(justinvyu): [Deprecated] Remove in 2.11.
     def _deprecation_warning(self, attr_name: str, extra_msg: str):
         if getattr(self, attr_name) != _DEPRECATED_VALUE:
             raise DeprecationWarning(
