@@ -1,7 +1,6 @@
 import logging
 import os
 import threading
-import json
 from typing import Any, Dict, List, Optional, Tuple
 
 import ray._private.ray_constants as ray_constants
@@ -9,7 +8,6 @@ from ray._private.client_mode_hook import (
     _explicitly_disable_client_mode,
     _explicitly_enable_client_mode,
 )
-import ray._private.usage.usage_constants as usage_constant
 from ray._private.ray_logging import setup_logger
 from ray.job_config import JobConfig
 from ray.util.annotations import DeveloperAPI
