@@ -258,7 +258,7 @@ def configure_component_logger(
         RAY_SERVE_ENABLE_JSON_LOGGING
         or logging_config.encoding == EncodingType.JSON
         or (
-            logging_config.encoding is None
+            logging_config.encoding == EncodingType.NOT_SET
             and log_encoding_from_env == EncodingType.JSON
         )
     ):

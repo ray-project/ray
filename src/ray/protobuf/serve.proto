@@ -74,6 +74,7 @@ message AutoscalingConfig {
 enum EncodingType {
   TEXT = 0;
   JSON = 1;
+  NOT_SET = 2;
 }
 
 message LoggingConfig {

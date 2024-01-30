@@ -102,6 +102,7 @@ class EncodingType(str, Enum):
 
     TEXT = "TEXT"
     JSON = "JSON"
+    NOT_SET = "NOT_SET"
 
 
 @PublicAPI(stability="alpha")
@@ -129,10 +130,10 @@ class LoggingConfig(BaseModel):
     class Config:
         extra = Extra.forbid
 
-    encoding: Union[str, EncodingType, None] = Field(
-        default=None,
+    encoding: Union[str, EncodingType] = Field(
+        default=EncodingType.NOT_SET,
         description=(
-            "Encoding type for the serve logs. Default to None which will beheave "
+            "Encoding type for the serve logs. Default to 'NOT_SET' which will behave "
             "as 'TEXT'. 'JSON' is also supported to format all serve logs into "
             "json structure."
         ),
@@ -161,10 +162,10 @@ class LoggingConfig(BaseModel):
 
     @validator("encoding")
     def valid_encoding_format(cls, v):
-        if v is not None and v not in list(EncodingType):
+        if v not in list(EncodingType):
             raise ValueError(
                 f"Got '{v}' for encoding. Encoding must be one "
-                f"of {set(EncodingType)} or None."
+                f"of {set(EncodingType)}."
             )
 
         return v
