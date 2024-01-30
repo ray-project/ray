@@ -1178,6 +1178,8 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   std::vector<ObjectID> GetCurrentReturnIds(int num_returns,
                                             const ActorID &callee_actor_id);
 
+  int64_t GetLocalMemoryStoreBytesUsed() const;
+
   /// The following methods are handlers for the core worker's gRPC server, which follow
   /// a macro-generated call convention. These are executed on the io_service_ and
   /// post work to the appropriate event loop.
