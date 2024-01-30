@@ -541,8 +541,7 @@ class Trial:
     @property
     @Deprecated("Replaced by `local_path`")
     def logdir(self) -> Optional[str]:
-        # Deprecate: Raise in 2.5, Remove in 2.6
-        return self.local_path
+        raise DeprecationWarning("Use `local_path` instead of `local_dir`.")
 
     @property
     def local_path(self) -> Optional[str]:
@@ -627,8 +626,7 @@ class Trial:
 
     @Deprecated("Replaced by `init_local_path()`")
     def init_logdir(self):
-        # Deprecate: Raise in 2.5, Remove in 2.6
-        self.init_local_path()
+        raise DeprecationWarning("Use `init_local_path` instead of `init_local_dir`.")
 
     def init_local_path(self):
         """Init logdir."""

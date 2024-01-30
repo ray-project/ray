@@ -365,8 +365,7 @@ class Experiment:
     @property
     @Deprecated("Replaced by `local_path`")
     def local_dir(self):
-        # Deprecate: Raise in 2.5, Remove in 2.6
-        return self.local_path
+        raise DeprecationWarning("Use `local_path` instead of `local_dir`.")
 
     @property
     def remote_path(self) -> Optional[str]:
@@ -383,9 +382,8 @@ class Experiment:
     @property
     @Deprecated("Replaced by `checkpoint_dir`")
     def checkpoint_dir(self):
-        # Deprecate: Raise in 2.5, Remove in 2.6
         # Provided when initializing Experiment, if so, return directly.
-        return self.local_path
+        raise DeprecationWarning("Use `local_path` instead of `checkpoint_dir`.")
 
     @property
     def run_identifier(self):
