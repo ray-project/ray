@@ -1988,14 +1988,6 @@ sphinx==4.3.2
     #   sphinx-togglebutton
 sphinx-togglebutton==0.2.3
     # via myst-nb
-sphinxcontrib-htmlhelp==2.0.5
-    # via sphinx
-sphinxcontrib-jsmath==1.0.1
-    # via sphinx
-sphinxcontrib-qthelp==1.0.7
-    # via sphinx
-sphinxcontrib-serializinghtml==1.1.10
-    # via sphinx
 sqlalchemy==1.4.17
     # via
     #   aim
