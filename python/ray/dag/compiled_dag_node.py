@@ -50,6 +50,38 @@ def do_exec_compiled_task(
             the loop.
     """
     self._dag_cancelled = False
+    outer = self
+
+    class InputReader(threading.Thread):
+        def __init__(self, input_channel_idxs):
+            super().__init__(daemon=True)
+            self.queue = queue.Queue()
+            self.input_channel_idxs = input_channel_idxs
+
+        def run(self):
+            while not outer._dag_cancelled:
+                res = [(idx, c.begin_read()) for idx, c in self.input_channel_idxs]
+                # XXX not safe for shm objects
+                for _, c in self.input_channel_idxs:
+                    c.end_read()
+                self.queue.put(res)
+
+        def read(self):
+            return self.queue.get()
+
+    class OutputWriter(threading.Thread):
+        def __init__(self, output_channel):
+            super().__init__(daemon=True)
+            self.queue = queue.Queue()
+            self._output_channel = output_channel
+
+        def run(self):
+            while not outer._dag_cancelled:
+                res = self.queue.get()
+                self._output_channel.write(res)
+
+        def write(self, val):
+            self.queue.put(val)
 
     try:
         self._input_channels = [i for i in inputs if isinstance(i, Channel)]
@@ -65,9 +97,15 @@ def do_exec_compiled_task(
             else:
                 resolved_inputs.append(inp)
 
+        input_reader = InputReader(input_channel_idxs)
+        input_reader.start()
+        output_writer = OutputWriter(self._output_channel)
+        output_writer.start()
+
         while True:
-            for idx, channel in input_channel_idxs:
-                resolved_inputs[idx] = channel.begin_read()
+            res = input_reader.read()
+            for idx, output in res:
+                resolved_inputs[idx] = output
 
             try:
                 output_val = method(*resolved_inputs)
@@ -83,14 +121,11 @@ def do_exec_compiled_task(
                     traceback_str=backtrace,
                     cause=exc,
                 )
-                self._output_channel.write(wrapped)
+                output_writer.write(wrapped)
             else:
                 if self._dag_cancelled:
                     raise RuntimeError("DAG execution cancelled")
-                self._output_channel.write(output_val)
-
-            for _, channel in input_channel_idxs:
-                channel.end_read()
+                output_writer.write(output_val)
 
     except Exception:
         logging.exception("Compiled DAG task exited with exception")
@@ -472,12 +507,27 @@ class CompiledDAG:
             raise NotImplementedError("Compiled DAGs do not support kwargs")
 
         input_channel, output_channels = self._get_or_compile()
-        input_channel.write(args[0])
+        self._submitter.submit(args[0])
         return output_channels
 
     def teardown(self):
         """Teardown and cancel all worker tasks for this DAG."""
         self._monitor.teardown()
+
+
+class Submitter(threading.Thread):
+    def __init__(self, input_channel):
+        self._todo = queue.Queue()
+        self._input_channel = input_channel
+        super().__init__(daemon=True)
+
+    def submit(self, args):
+        self._todo.put(args)
+
+    def run(self):
+        while True:
+            args = self._todo.get()
+            self._input_channel.write(args)
 
 
 @DeveloperAPI
