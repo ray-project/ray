@@ -28,7 +28,7 @@ class ResourceManager:
         self._options = options
         self._global_limits = ExecutionResources()
         self._global_limits_last_update_time = 0
-        self._global_usage = ExecutionResources()
+        self._global_usage = ExecutionResources(0, 0, 0)
         self._op_usages: Dict[PhysicalOperator, ExecutionResources] = {}
 
         self._downstream_fraction: Dict[PhysicalOperator, float] = {}
@@ -65,13 +65,7 @@ class ResourceManager:
             ] = self._global_usage.object_store_memory
 
     def get_global_usage(self) -> ExecutionResources:
-        global_usage = ExecutionResources()
-        for op in self._topology:
-            # Don't count input refs towards dynamic memory usage, as they have been
-            # pre-created already outside this execution.
-            if not isinstance(op, InputDataBuffer):
-                global_usage = global_usage.add(self.get_op_usage(op))
-        return global_usage
+        return self._global_usage
 
     def get_global_limits(self) -> ExecutionResources:
         """Return the global resource limits at the current time.
