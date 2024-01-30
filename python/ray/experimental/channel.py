@@ -167,7 +167,7 @@ class Channel:
         if self._swap_ref:
             self._base_ref, self._swap_ref = self._swap_ref, self._base_ref
 
-        time.sleep(0.5)  # Emulate transfer delay XXX DO NOT MERGE
+#        time.sleep(0.5)  # Emulate transfer delay XXX DO NOT MERGE
         return values[0]
 
     def end_read(self):

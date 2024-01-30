@@ -560,6 +560,7 @@ class CompiledDAG:
 
         input_channel, output_channels = self._get_or_compile()
         self._submitter.submit(args[0])
+
         if self._max_concurrency > 1:
             self._pending.put(output_channels)
             num_pending = self._completed.qsize() + self._pending.qsize()
@@ -568,6 +569,8 @@ class CompiledDAG:
                     f"the number of active executions ({num_pending}) exceeds "
                     f"the max concurrency ({self._max_concurrency})"
                 )
+            return None  # use has_next() / get_next()
+
         return output_channels
 
     def has_next(self) -> bool:
