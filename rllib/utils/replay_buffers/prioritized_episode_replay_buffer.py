@@ -2,7 +2,9 @@ import copy
 import numpy as np
 
 from collections import deque
-from typing import List, Optional, Union
+from numpy.typing import NDArray
+from typing import Any, Dict, List, Optional, Union
+
 from ray.rllib.env.single_agent_episode import SingleAgentEpisode
 from ray.rllib.execution.segment_tree import MinSegmentTree, SumSegmentTree
 from ray.rllib.policy.sample_batch import SampleBatch
@@ -11,9 +13,7 @@ from ray.rllib.utils.annotations import override
 from ray.rllib.utils.typing import SampleBatchType
 
 
-# TODO (simon): Set `self._indices` to a dictionary to have
-# O(1) average complexity when searching for an index given
-# in sampling from the `SumSegmentTree`.
+# TODO (simon): Implement getter and setter for the state.
 class PrioritizedEpisodeReplayBuffer(EpisodeReplayBuffer):
     def __init__(
         self,
@@ -87,17 +87,24 @@ class PrioritizedEpisodeReplayBuffer(EpisodeReplayBuffer):
             self._num_timesteps -= len(eps_evicted[-1])
             self._num_episodes_evicted += 1
 
-        # Remove corresponding indices.
-        new_list = []
-        for idx_triple in self._indices:
-            if idx_triple[0] in eps_evicted_idxs:
-                self._free_nodes.append(idx_triple[2])
-            else:
-                new_list.append(idx_triple)
-        # Assign the new list of indices.
-        self._indices = new_list
+        # Remove corresponding indices, if episodes were evicted.
+        if eps_evicted_idxs:
+            new_list = []
+            i = 0
+            for idx_triple in self._indices:
+                if idx_triple[0] in eps_evicted_idxs:
+                    self._free_nodes.append(idx_triple[2])
+                    self._sum_segment[idx_triple[2]] = 0.0
+                    self._min_segment[idx_triple[2]] = float("inf")
+                else:
+                    new_list.append(idx_triple)
+                    self._tree_idx_to_sample_idx[idx_triple[2]] = i
+                    i += 1
+            # Assign the new list of indices.
+            self._indices = new_list
 
         # Now append the indices for the new episodes.
+        j = len(self._indices)
         for eps in episodes:
             # If the episode chunk is part of an evicted episode continue.
             if eps.id_ in eps_evicted_ids:
@@ -116,7 +123,7 @@ class PrioritizedEpisodeReplayBuffer(EpisodeReplayBuffer):
                                 eps_idx,
                                 old_len + i,
                                 # Get the index in the segment trees.
-                                self._get_free_node_and_assign(weight),
+                                self._get_free_node_and_assign(j + i, weight),
                             )
                             for i in range(len(eps))
                         ]
@@ -129,11 +136,14 @@ class PrioritizedEpisodeReplayBuffer(EpisodeReplayBuffer):
                     self.episode_id_to_index[eps.id_] = eps_idx
                     self._indices.extend(
                         [
-                            (eps_idx, i, self._get_free_node_and_assign(weight))
+                            (eps_idx, i, self._get_free_node_and_assign(j + i, weight))
                             for i in range(len(eps))
                         ]
                     )
+                # Increase index.
+                j = len(self._indices)
 
+    @override(EpisodeReplayBuffer)
     def sample(
         self,
         num_items: Optional[int] = None,
@@ -169,11 +179,11 @@ class PrioritizedEpisodeReplayBuffer(EpisodeReplayBuffer):
         # TODO (simon): Add also `extra_model_outs`.
         if include_infos:
             infos = [[] for _ in range(batch_size_B)]
-
+        # Keep track of the indices that were sampled last for updating the
+        # weights.
         self._last_sampled_indices = []
 
         # Sample proportionally from replay buffer's segments using the weights.
-
         total_segment_sum = self._sum_segment.sum()
         p_min = self._min_segment.min() / total_segment_sum
         max_weight = (p_min * self.get_num_timesteps()) ** (-beta)
@@ -196,13 +206,13 @@ class PrioritizedEpisodeReplayBuffer(EpisodeReplayBuffer):
             # Compute the importance sampling weight.
             weight = (p_sample * self.get_num_timesteps()) ** (-beta)
             # Now, get the transition stored at this index.
-            index_tuple = self._indices[idx]
+            index_triple = self._indices[self._tree_idx_to_sample_idx[idx]]
 
             # Compute the actual episode index (offset by the number of
             # already evicted episodes)
             episode_idx, episode_ts = (
-                index_tuple[0] - self._num_episodes_evicted,
-                index_tuple[1],
+                index_triple[0] - self._num_episodes_evicted,
+                index_triple[1],
             )
             episode = self.episodes[episode_idx]
             # If we are at the end of an episode, continue.
@@ -273,18 +283,89 @@ class PrioritizedEpisodeReplayBuffer(EpisodeReplayBuffer):
 
         return ret
 
+    @override(EpisodeReplayBuffer)
+    def get_state(self) -> Dict[str, Any]:
+        # Get super's state.
+        state = super().get_state()
+        # Add additional attributes.
+        state.update(
+            {
+                "_sum_segment": self._sum_segment.get_state(),
+                "_min_segment": self._min_segment.get_state(),
+                "_free_nodes": list(self._free_nodes),
+                "_max_priority": self._max_priority,
+                "_tree_idx_to_sample_idx": list(self._tree_idx_to_sample_idx.items()),
+                # TODO (simon): Do we need these?
+                "_last_sampled_indices": self._last_sampled_indices,
+            }
+        )
+        return state
+
+    @override(EpisodeReplayBuffer)
+    def set_state(self, state) -> None:
+        # Set super's state.
+        super().set_state()
+        # Set additional attributes.
+        self._sum_segment.set_state(state["_sum_segment"])
+        self._min_segment.set_state(state["_min_segment"])
+        self._free_nodes = deque(state["_free_nodes"])
+        self._max_priority = state["_max_priority"]
+        self._tree_idx_to_sample_idx = dict(state["_tree_idx_to_sample_idx"])
+        # TODO (simon):
+        self._last_sampled_indices = state["_last_sampled_indices"]
+
+    def update_priorities(self, priorities: NDArray) -> None:
+        """Update the priorities of items at corresponding indices.
+
+        Usually, incoming priorities are TD-errors.
+        """
+        assert len(priorities) == len(self._last_sampled_indices)
+
+        for idx, priority in zip(self._last_sampled_indices, priorities):
+            # Note, TD-errors come in as absolute values or results from
+            # cross-entropy loss calculations.
+            assert priority > 0
+            assert 0 <= idx < self.get_num_timesteps()
+            # TODO (simon): Create metrics.
+            # delta = priority**self._alpha - self._sum_segment[idx]
+            # Update the priorities in the segment trees.
+            self._sum_segment[idx] = priority**self._alpha
+            self._min_segment[idx] = priority**self._alpha
+            # Update the maximal priority.
+            self._max_priority = max(self._max_priority, priority)
+
     def _get_free_node_and_assign(self, sample_index, weight: float = 1.0) -> int:
+        """Gets the next free node in the segment trees.
+
+        In addition the initial priorities for a new transition are added
+        to the segment trees and the index of the nodes is added to the
+        index mapping.
+        """
         # Get an index from the free nodes in the segment trees.
         idx = self._free_nodes.popleft()
         # Add the weight to the segments.
         self._sum_segment[idx] = weight**self._alpha
         self._min_segment[idx] = weight**self._alpha
-        # Add an entry to the index mapping.
+        # Map the index in the trees to the index in `self._indices`.
         self._tree_idx_to_sample_idx[idx] = sample_index
         # Return the index.
         return idx
 
     def _num_remaining_episodes(self, new_eps, evicted_eps):
+        """Calculates the number of remaining episodes.
+
+        When adding episodes and evicting them in the `add()` method
+        this function calculates iteratively the number of remaining
+        episodes.
+
+        Args:
+            new_eps: List of new episode IDs.
+            evicted_eps: List of evicted episode IDs.
+
+        Returns:
+            Number of episodes remaining after evicting the episodes in
+            `evicted_eps` and adding the episode in `new_eps`.
+        """
         return len(
             set(self.episode_id_to_index.keys()).union(set(new_eps)) - set(evicted_eps)
         )

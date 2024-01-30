@@ -166,7 +166,7 @@ class TestPrioritizedEpisodeReplayBuffer(unittest.TestCase):
             # Assert that the reward is indeed the cumulated sum of rewards
             # collected between the observation and the next_observation.
             reward_sum = (next_obs + next_obs - 1 + next_obs - 2) * 0.1
-            self.assertTrue(np.all(rewards * 10 - reward_sum < tolerance))
+            self.assertTrue(np.all(rewards - reward_sum < tolerance))
 
 
 if __name__ == "__main__":
