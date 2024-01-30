@@ -1,5 +1,6 @@
 from collections import Counter
 from dataclasses import dataclass
+from enum import Enum
 from pathlib import Path
 from typing import Callable, Dict, Optional, Tuple, Union
 
@@ -34,9 +35,14 @@ _DRIVER_SYNC_EXCLUDE_PATTERNS = ["*/checkpoint_*"]
 
 @dataclass
 class _ResumeConfig:
-    resume_unfinished: bool = True
-    resume_errored: bool = False
-    restart_errored: bool = False
+    class ResumeType(Enum):
+        RESUME = "resume"
+        RESTART = "restart"
+        IGNORE = "ignore"
+
+    finished: str = ResumeType.IGNORE
+    unfinished: str = ResumeType.RESUME
+    errored: str = ResumeType.IGNORE
 
 
 def _resume_str_to_config(resume_str: str) -> Tuple[str, _ResumeConfig]:
