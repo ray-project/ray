@@ -1361,22 +1361,21 @@ class Learner:
             raise ValueError("`num_iters` must be >= 1")
 
         # Call the learner connector.
-        # TODO (sven): make multi-agent capable.
         if self._learner_connector is not None:
             # Call the train data preprocessor.
             batch, episodes = self._preprocess_train_data(
                 batch=batch, episodes=episodes
             )
             batch = self._learner_connector(
-                rl_module=self.module["default_policy"],
+                rl_module=self.module,
                 data=batch,
                 episodes=episodes,
             )
-            if episodes is not None:
-                batch = MultiAgentBatch(
-                    policy_batches={DEFAULT_POLICY_ID: SampleBatch(batch)},
-                    env_steps=sum(len(e) for e in episodes),
-                )
+            # if episodes is not None:
+            #    batch = MultiAgentBatch(
+            #        policy_batches={DEFAULT_POLICY_ID: SampleBatch(batch)},
+            #        env_steps=sum(len(e) for e in episodes),
+            #    )
 
         if minibatch_size:
             batch_iter = MiniBatchCyclicIterator

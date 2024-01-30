@@ -3,7 +3,7 @@ import tree
 
 from collections import defaultdict
 from functools import partial
-from typing import Dict, List, Optional
+from typing import DefaultDict, List, Optional
 
 from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
 from ray.rllib.algorithms.callbacks import DefaultCallbacks
@@ -110,7 +110,7 @@ class SingleAgentEnvRunner(EnvRunner):
         ]
 
         self._done_episodes_for_metrics: List[SingleAgentEpisode] = []
-        self._ongoing_episodes_for_metrics: Dict[List] = defaultdict(list)
+        self._ongoing_episodes_for_metrics: DefaultDict[List] = defaultdict(list)
         self._weights_seq_no: int = 0
 
     @override(EnvRunner)
@@ -505,7 +505,7 @@ class SingleAgentEnvRunner(EnvRunner):
 
         return samples
 
-    # TODO (sven): Remove the requirement for EnvRunners/RolloutWorkers to have this
+    # TODO (sven): Remove the requirement for EnvRunners to have this
     #  API. Instead Algorithm should compile episode metrics itself via its local
     #  buffer.
     def get_metrics(self) -> List[RolloutMetrics]:

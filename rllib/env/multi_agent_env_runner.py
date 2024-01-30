@@ -3,7 +3,7 @@ import tree
 
 from collections import defaultdict
 from functools import partial
-from typing import Dict, List, Optional, Union
+from typing import DefaultDict, Dict, List, Optional, Union
 
 from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
 from ray.rllib.algorithms.callbacks import DefaultCallbacks
@@ -16,6 +16,7 @@ from ray.rllib.env.env_runner import EnvRunner
 from ray.rllib.env.multi_agent_env import MultiAgentEnv
 from ray.rllib.env.multi_agent_episode import MultiAgentEpisode
 from ray.rllib.env.utils import _gym_env_creator
+from ray.rllib.evaluation.metrics import RolloutMetrics
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils.annotations import ExperimentalAPI, override
 from ray.rllib.utils.typing import ModelWeights
@@ -85,61 +86,11 @@ class MultiAgentEnvRunner(EnvRunner):
         # Create the env-to-module connector pipeline.
         self._env_to_module = self.config.build_env_to_module_connector(self.env)
 
-        # Check, if spaces are in preferred format, i.e. `gym.spaces.Dict` with
-        # agent ids mapping to agent spaces.
-        self._action_space_in_preferred_format = (
-            self.env.unwrapped._check_if_action_space_maps_agent_id_to_sub_space()
-        )
-        self._obs_space_in_preferred_format = (
-            self.env.unwrapped._check_if_obs_space_maps_agent_id_to_sub_space()
-        )
+        ## TODO (simon): An env runner needs not to know about what agents are there.
+        ## We can pull these when needed from the environment or the episode.
+        # self.agent_ids: List[Union[str, int]] = self.env.get_agent_ids()
 
-        # TODO (simon): An env runner needs not to know about what agents are there.
-        # We can pull these when needed from the environment or the episode.
-        self.agent_ids: List[Union[str, int]] = self.env.get_agent_ids()
-
-        # Create our own instance of the (single-agent) `RLModule` (which
-        # the needs to be weight-synched) each iteration.
-        # TODO (sven, simon): We have to rebuild the `AlgorithmConfig` to work on
-        # `RLModule`s and not `Policy`s. Like here `policies`->`modules`
-        try:
-            policy_dict, _ = self.config.get_multi_agent_setup(env=self.env)
-            module_spec: MultiAgentRLModuleSpec = self.config.get_marl_module_spec(
-                policy_dict=policy_dict
-            )
-
-            # TODO (simon): The `gym.Wrapper` for `gym.vector.VectorEnv` should
-            #  actually hold the spaces for a single env, but for boxes the
-            #  shape is (1, 1) which brings a problem with the action dists.
-            #  shape=(1,) is expected.
-            module_spec.action_space = self.env.action_space
-            module_spec.observation_space = self.env.observation_space
-            # Set action and observation spaces for all module specs.
-            for agent_id, agent_module_spec in module_spec.module_specs.items():
-                # Note, `MultiAgentEnv` has a preferred format of spaces, i.e.
-                # a mapping from agent ids to spaces.
-                # If the action space is a mapping from agent ids to spaces.
-                if self._action_space_in_preferred_format:
-                    agent_module_spec.action_space = self.env.action_space[agent_id]
-                # Otherwise, use the same space for each agent.
-                else:
-                    agent_module_spec.action_space = self.env.action_space
-                # Similar to the action spaces, observation spaces could be described
-                # by a mapping.
-                if self._obs_space_in_preferred_format:
-                    agent_module_spec.observation_space = self.env.observation_space[
-                        agent_id
-                    ]
-                # Otherwise, use the same space for all agents.
-                else:
-                    agent_module_spec.observation_space = self.env.observation_space
-
-            # Build the module from its spec.
-            self.module: MultiAgentRLModule = module_spec.build()
-
-        # This error could be thrown, when only random actions are used.
-        except NotImplementedError:
-            self.module = None
+        self._make_module()
 
         # Create the two connector pipelines: env-to-module and module-to-env.
         self._module_to_env = self.config.build_module_to_env_connector(self.env)
@@ -149,9 +100,9 @@ class MultiAgentEnvRunner(EnvRunner):
         self._episode: Optional[MultiAgentEpisode] = None
 
         self._done_episodes_for_metrics: List[MultiAgentEpisode] = []
-        self._ongoing_episode_for_metrics: Dict[List[MultiAgentEpisode]] = defaultdict(
-            list
-        )
+        self._ongoing_episodes_for_metrics: DefaultDict[
+            List[MultiAgentEpisode]
+        ] = defaultdict(list)
         self._weights_seq_no: int = 0
 
     @override(EnvRunner)
@@ -241,8 +192,7 @@ class MultiAgentEnvRunner(EnvRunner):
         # Have to reset the env.
         if force_reset or self._needs_initial_reset:
             # Create n new episodes and make the `on_episode_created` callbacks.
-            self._episodes = []
-            self._episode = MultiAgentEpisode(agent_ids=self.agent_ids)
+            self._episode = MultiAgentEpisode()  # agent_ids=self.agent_ids)
             self._make_on_episode_callback("on_episode_created")
 
             # Reset the environment.
@@ -259,14 +209,12 @@ class MultiAgentEnvRunner(EnvRunner):
             # Set the initial observations in the episodes.
             self._episode.add_env_reset(observations=obs, infos=infos)
 
-        # Do not reset environments, but instead continue in already started episodes.
-        else:
-            # Pick up stored observations from previous timesteps.
-            obs = self._episode.get_observations(as_list=True)[0]
+        # TODO (sven): figure out how often we should reset the shared data dict.
+        shared_data = {
+            "agent_to_module_mapping_fn": self.config.policy_mapping_fn,
+        }
 
         # Loop through timesteps.
-        env_steps = 0
-        agent_steps = 0
         ts = 0
 
         while ts < num_timesteps:
@@ -284,7 +232,7 @@ class MultiAgentEnvRunner(EnvRunner):
                     SampleBatch.ACTIONS: {
                         agent_id: agent_action
                         for agent_id, agent_action in actions.items()
-                        if agent_id in obs
+                        if agent_id in self._episode.get_agents_to_act()
                     }
                 }
             # Compute an action using the RLModule.
@@ -293,6 +241,7 @@ class MultiAgentEnvRunner(EnvRunner):
                     rl_module=self.module,
                     episodes=[self._episode],
                     explore=explore,
+                    shared_data=shared_data,
                 )
                 # Explore or not.
                 if explore:
@@ -303,37 +252,50 @@ class MultiAgentEnvRunner(EnvRunner):
                 to_env = self._module_to_env(
                     rl_module=self.module,
                     data=to_env,
-                    episodes=self._episodes,
+                    episodes=[self._episode],
                     explore=explore,
+                    shared_data=shared_data,
                 )
 
+            # Extract the (vectorized) actions from the module/connector output.
             actions = to_env.pop(SampleBatch.ACTIONS)
 
-            obs, rewards, terminateds, truncateds, infos = self.env.step(actions)
+            # TODO (sven): [0] = actions is vectorized, but env is NOT a vector Env.
+            #  Support vectorized multi-agent envs.
+            obs, rewards, terminateds, truncateds, infos = self.env.step(actions[0])
 
-            env_steps += 1
-            agent_steps += len(obs)
-
-            # If we count by environment steps.
             # TODO (sven, simon): We have to record these steps somewhere.
             # TODO: Refactor into multiagent-episode sth. like `get_agent_steps()`.
+            # TODO: When env is vectorized, need to change this to:
+            #  env_steps += len(obs)  # <- vectorized observations
+            #  agent_steps += sum([len(obs) for o in obs])
+            # We count by environment steps ..
             if self.config.count_steps_by == "env_steps":
-                ts += env_steps
-            # Or by agent steps.
+                ts += 1
+            # .. or by agent steps.
             else:
-                ts += agent_steps
+                ts += len(obs)
 
-            extra_model_output = tree.map_structure(lambda s: s[0], to_env)
+            # TODO (sven): This simple approach to re-map `to_env` from a
+            #  dict[col, List[MADict]] to a dict[agentID, MADict] would not work for
+            #  a vectorized env.
+            extra_model_outputs = defaultdict(dict)
+            for col, ma_dict_list in to_env.items():
+                # TODO (sven): Support vectorized MA env.
+                ma_dict = ma_dict_list[0]
+                for agent_id, val in ma_dict.items():
+                    extra_model_outputs[agent_id][col] = val
+            extra_model_outputs = dict(extra_model_outputs)
 
             # Record the timestep in the episode instance.
             self._episode.add_env_step(
                 obs,
-                actions,
+                actions[0],
                 rewards,
                 infos=infos,
                 terminateds=terminateds,
                 truncateds=truncateds,
-                extra_model_outputs=extra_model_output,
+                extra_model_outputs=extra_model_outputs,
             )
 
             # Make the `on_episode_step` callback.
@@ -349,22 +311,18 @@ class MultiAgentEnvRunner(EnvRunner):
             #       truncated and vice versa.
             # See also `MultiAgentEpisode` for handling the `__all__`.
             if self._all_agents_done(terminateds, truncateds):
-                # Finish the episode.
-                for agent_eps in self._episode.agent_episodes.values():
-                    agent_eps.finalize()
-                # TODO (simon): Call here the `MAE.finalize()` method when ready.
+                # Finalize (numpy'ize) the episode.
+                self._episode.finalize()
                 done_episodes_to_return.append(self._episode)
                 # Create a new episode instance.
-                self._episode = MultiAgentEpisode(agent_ids=self.agent_ids)
+                self._episode = MultiAgentEpisode()
                 # Reset the environment.
                 obs, infos = self.env.reset()
                 # Add initial observations and infos.
                 self._episode.add_env_reset(observations=obs, infos=infos)
 
-        # Return done episodes ...
-        # TODO (simon): Check, how much memory this attribute uses.
+        # Store done episodes for metrics.
         self._done_episodes_for_metrics.extend(done_episodes_to_return)
-        # ... and the ongoing episode chunk.
 
         # Also, make sure we start new episode chunks (continuing the ongoing episodes
         # from the to-be-returned chunks).
@@ -375,7 +333,7 @@ class MultiAgentEnvRunner(EnvRunner):
         ongoing_episodes_to_return = []
         # Just started Episodes do not have to be returned. There is no data
         # in them anyway.
-        if self._episode.t > 0:
+        if self._episode.env_t > 0:
             self._episode.validate()
             self._ongoing_episodes_for_metrics[self._episode.id_].append(self._episode)
             # Return finalized (numpy'ized) Episodes.
@@ -385,7 +343,7 @@ class MultiAgentEnvRunner(EnvRunner):
         self._episode = ongoing_episode_continuation
 
         # Return collected episode data.
-        return done_episodes_to_return + [ongoing_episode_continuation]
+        return done_episodes_to_return + ongoing_episodes_to_return
 
     def _sample_episodes(
         self,
@@ -409,7 +367,7 @@ class MultiAgentEnvRunner(EnvRunner):
         obs, infos = self.env.reset()
 
         # Create a new multi-agent episode.
-        _episode = MultiAgentEpisode(agent_ids=self.agent_ids)
+        _episode = MultiAgentEpisode()  # agent_ids=self.agent_ids)
         self._make_on_episode_callback("on_episode_created", _episode)
 
         # Initialize image rendering if needed.
@@ -420,6 +378,11 @@ class MultiAgentEnvRunner(EnvRunner):
         # Set initial obs and infos in the episodes.
         _episode.add_env_reset(observations=obs, infos=infos, render_image=render_image)
         self._make_on_episode_callback("on_episode_start", _episode)
+
+        # TODO (sven): figure out how often we should reset the shared data dict.
+        shared_data = {
+            "agent_to_module_mapping_fn": self.config.policy_mapping_fn,
+        }
 
         # Loop over episodes.
         eps = 0
@@ -438,7 +401,7 @@ class MultiAgentEnvRunner(EnvRunner):
                     SampleBatch.ACTIONS: {
                         agent_id: agent_action
                         for agent_id, agent_action in actions.items()
-                        if agent_id in obs
+                        if agent_id in _episode.get_agents_to_act()
                     },
                 }
             # Compute an action using the RLModule.
@@ -447,44 +410,52 @@ class MultiAgentEnvRunner(EnvRunner):
                     rl_module=self.module,
                     episodes=[_episode],
                     explore=explore,
+                    shared_data=shared_data,
                 )
 
                 # Explore or not.
                 if explore:
-                    to_env = self.marl_module.forward_exploration(to_module)
+                    to_env = self.module.forward_exploration(to_module)
                 else:
-                    to_env = self.marl_module.forward_inference(to_module)
+                    to_env = self.module.forward_inference(to_module)
 
                 to_env = self._module_to_env(
                     rl_module=self.module,
                     data=to_env,
                     episodes=[_episode],
                     explore=explore,
+                    shared_data=shared_data,
                 )
 
             # Step the environment.
             actions = to_env.pop(SampleBatch.ACTIONS)
 
-            obs, rewards, terminateds, truncateds, infos = self.env.step(actions)
+            obs, rewards, terminateds, truncateds, infos = self.env.step(actions[0])
 
             # Add render data if needed.
             if with_render_data:
                 render_image = self.env.render()
 
-            # TODO (simon): This might be unfortunate if a user needs to set a
-            #  certain env parameter during different episodes (for example for
-            #  benchmarking).
-            extra_model_output = tree.map_structure(lambda s: s[0], to_env)
+            # TODO (sven): This simple approach to re-map `to_env` from a
+            #  dict[col, List[MADict]] to a dict[agentID, MADict] would not work for
+            #  a vectorized env.
+            extra_model_outputs = defaultdict(dict)
+            for col, ma_dict_list in to_env.items():
+                # TODO (sven): Support vectorized MA env.
+                ma_dict = ma_dict_list[0]
+                for agent_id, val in ma_dict.items():
+                    extra_model_outputs[agent_id][col] = val
+            extra_model_outputs = dict(extra_model_outputs)
 
             # Record the timestep in the episode instance.
             _episode.add_env_step(
                 obs,
-                actions,
+                actions[0],
                 rewards,
                 infos=infos,
                 terminateds=terminateds,
                 truncateds=truncateds,
-                extra_model_outputs=extra_model_output,
+                extra_model_outputs=extra_model_outputs,
                 render_image=render_image,
             )
 
@@ -500,7 +471,7 @@ class MultiAgentEnvRunner(EnvRunner):
             #   2. There are edge cases like, some agents terminated, all others
             #       truncated and vice versa.
             # See also `MultiAgentEpisode` for handling the `__all__`.
-            if self._all_agents_done(terminateds, truncateds):
+            if self._all_agents_done(terminateds, truncateds, episode=_episode):
                 # Increase episode count.
                 eps += 1
 
@@ -516,7 +487,7 @@ class MultiAgentEnvRunner(EnvRunner):
                     break
 
                 # Create a new episode instance.
-                _episode = MultiAgentEpisode(agent_ids=self.agent_ids)
+                _episode = MultiAgentEpisode()  # agent_ids=self.agent_ids)
                 self._make_on_episode_callback("on_episode_created", _episode)
 
                 # Reset the environment.
@@ -530,6 +501,34 @@ class MultiAgentEnvRunner(EnvRunner):
         self._done_episodes_for_metrics.extend(done_episodes_to_return)
 
         return done_episodes_to_return
+
+    # TODO (sven): Remove the requirement for EnvRunners to have this
+    #  API. Instead Algorithm should compile episode metrics itself via its local
+    #  buffer.
+    def get_metrics(self) -> List[RolloutMetrics]:
+        # Compute per-episode metrics (only on already completed episodes).
+        metrics = []
+        for eps in self._done_episodes_for_metrics:
+            assert eps.is_done
+            episode_length = len(eps)
+            episode_reward = eps.get_return()
+            # Don't forget about the already returned chunks of this episode.
+            if eps.id_ in self._ongoing_episodes_for_metrics:
+                for eps2 in self._ongoing_episodes_for_metrics[eps.id_]:
+                    episode_length += len(eps2)
+                    episode_reward += eps2.get_return()
+                del self._ongoing_episodes_for_metrics[eps.id_]
+
+            metrics.append(
+                RolloutMetrics(
+                    episode_length=episode_length,
+                    episode_reward=episode_reward,
+                )
+            )
+
+        self._done_episodes_for_metrics.clear()
+
+        return metrics
 
     def set_weights(
         self,
@@ -560,7 +559,7 @@ class MultiAgentEnvRunner(EnvRunner):
             worker.set_weights(weights, {"timestep": 42})
         """
 
-        self.marl_module.set_state(weights)
+        self.module.set_state(weights)
 
     def get_weights(self, modules=None) -> Dict[ModuleID, ModelWeights]:
         """Returns the weights of our multi-agent `RLModule`.
@@ -574,7 +573,7 @@ class MultiAgentEnvRunner(EnvRunner):
             A dictionary mapping `ModuleID`s to their corresponding weights.
         """
 
-        return self.marl_module.get_state(module_ids=modules)
+        return self.module.get_state(module_ids=modules)
 
     @override(EnvRunner)
     def assert_healthy(self):
@@ -587,7 +586,7 @@ class MultiAgentEnvRunner(EnvRunner):
             AssertionError: If the EnvRunner Actor has NOT been properly initialized.
         """
         # Make sure, we have built our gym.vector.Env and RLModule properly.
-        assert self.env and self.marl_module
+        assert self.env and self.module
 
     @override(EnvRunner)
     def stop(self):
@@ -595,6 +594,58 @@ class MultiAgentEnvRunner(EnvRunner):
 
         # Note, `MultiAgentEnv` inherits `close()`-method from `gym.Env`.
         self.env.close()
+
+    def _make_module(self):
+        # Create our own instance of the (single-agent) `RLModule` (which
+        # the needs to be weight-synched) each iteration.
+        # TODO (sven, simon): We have to rebuild the `AlgorithmConfig` to work on
+        # `RLModule`s and not `Policy`s. Like here `policies`->`modules`
+        try:
+            policy_dict, _ = self.config.get_multi_agent_setup(env=self.env)
+            ma_rlm_spec: MultiAgentRLModuleSpec = self.config.get_marl_module_spec(
+                policy_dict=policy_dict
+            )
+            # Env has proper Dict observation space.
+            if getattr(self.env.unwrapped, "_obs_space_in_preferred_format", False):
+                for agent_id, obs_space in self.env.observation_space.items():
+                    module_id = self.config.policy_mapping_fn(
+                        agent_id, episode=None, worker=self
+                    )
+                    ma_rlm_spec.module_specs[module_id].observation_space = obs_space
+            # Env uses same spaces for all agents.
+            else:
+                for module_id, sa_module_spec in ma_rlm_spec.module_specs.items():
+                    sa_module_spec.observation_space = self.env.observation_space
+            # Env has proper Dict action space.
+            if getattr(self.env.unwrapped, "_action_space_in_preferred_format", False):
+                for agent_id, act_space in self.env.action_space.items():
+                    module_id = self.config.policy_mapping_fn(
+                        agent_id, episode=None, worker=self
+                    )
+                    ma_rlm_spec.module_specs[module_id].action_space = act_space
+            # Env uses same spaces for all agents.
+            else:
+                for module_id, sa_module_spec in ma_rlm_spec.module_specs.items():
+                    sa_module_spec.action_space = self.env.action_space
+
+            for module_id, sa_module_spec in ma_rlm_spec.module_specs.items():
+                if ma_rlm_spec.module_specs[module_id].observation_space is None:
+                    raise ValueError(
+                        f"Cannot infer observation space for module {module_id}! "
+                        "Space not found in policy dict."
+                    )
+                elif ma_rlm_spec.module_specs[module_id].action_space is None:
+                    raise ValueError(
+                        f"Cannot infer action space for module {module_id}! "
+                        "Space not found in policy dict."
+                    )
+
+            # Build the module from its spec.
+            self.module: MultiAgentRLModule = ma_rlm_spec.build()
+
+        # This error could be thrown, when only random actions are used.
+        except NotImplementedError:
+            self.module = None
 
     def _make_on_episode_callback(self, which: str, episode=None):
         episode = episode if episode is not None else self._episode
@@ -606,7 +657,7 @@ class MultiAgentEnvRunner(EnvRunner):
             env_index=0,
         )
 
-    def _all_agents_done(self, terminateds, truncateds):
+    def _all_agents_done(self, terminateds, truncateds, episode=None):
         """Determines, if all agents are either terminated or truncated
 
         Note, this is not determined by the `__all__` in an `MultiAgentEnv`
@@ -622,109 +673,24 @@ class MultiAgentEnvRunner(EnvRunner):
         Returns:
             A boolean indicating if all agents are done.
         """
+        episode = episode or self._episode
 
         # CASE 1: all agents are terminated or all are truncated.
         if terminateds["__all__"] or truncateds["__all__"]:
             return True
-        # If not we have two further
+        # TODO (simon): Refactor into `MultiAgentEpisode`.
+        # Find all agents that were done at prior timesteps.
+        agents_done = [
+            agent_id
+            for agent_id, agent_eps in episode.agent_episodes.items()
+            if agent_eps.is_done
+        ]
+        # Add the agents that are done at the present timestep.
+        agents_done += [agent_id for agent_id in terminateds if terminateds[agent_id]]
+        agents_done += [agent_id for agent_id in truncateds if truncateds[agent_id]]
+        # CASE 2: some agents are truncated and the others are terminated.
+        if all(agent_id in set(agents_done) for agent_id in episode.agent_ids):
+            return True
+        # CASE 3: there are still some agents alive.
         else:
-            # TODO (simon): Refactor into `MultiAgentEpisode`.
-            # Find all agents that were done at prior timesteps.
-            agents_done = [
-                agent_id
-                for agent_id, agent_eps in self._episode.agent_episodes.items()
-                if agent_eps.is_done
-            ]
-            # Add the agents that are done at the present timestep.
-            agents_done += [
-                agent_id for agent_id in terminateds if terminateds[agent_id]
-            ]
-            agents_done += [agent_id for agent_id in truncateds if truncateds[agent_id]]
-            # CASE 2: some agents are truncated and the others are terminated.
-            if all(agent_id in set(agents_done) for agent_id in self.agent_ids):
-                return True
-            # CASE 3: there are still some agents alive.
-            else:
-                return False
-
-    # def _sample_actions_if_necessary(
-    #     self, fwd_out: TensorStructType, explore: bool = True
-    # ) -> Tuple[np.array, np.array]:
-    #     """Samples actions from action distribution if necessary.
-    #
-    #     The `RLModule`s return `TensorType`s specific to the framework
-    #     used (i.e. either Torch or TensorFlow). These need to be converted.
-    #     In addition, action log-probabilities are converted if provided
-    #     by an agent module.
-    #     Furthermore, the `MultiAgentRLModule` returns a `MultiAgentDict`
-    #     mapping `ModuleID`s to their corresponding `forward()` outputs.
-    #     The environment needs, however, a `MultiAgentDict` mapping
-    #     agent ids to their corresponding actions, only. This function
-    #     converts the parameters accordingly.
-    #
-    #     Args:
-    #         fwd_out: dict. A dictionary mapping `ModuleID`s to the outputs
-    #             of their module`s `forward()` method.
-    #
-    #     Returns:
-    #         A `tuple` containing a `MultiAgentDict` mapping agent ids to their
-    #         corresponding actions and a second `MultiAgentDict` mapping agent ids
-    #         to their corresponding action log-probabilities if provided by their
-    #         modules.
-    #     """
-    #
-    #     # TODO (sven): Move this into connector pipeline (if no
-    #     # "actions" key in returned dict, sample automatically as
-    #     # the last piece of the connector pipeline; basically do
-    #     # the same thing that the Policy is currently doing, but
-    #     # using connectors)
-    #     actions = {}
-    #     action_logps = {}
-    #     for module_id, module_fwd_out in fwd_out.items():
-    #         # If actions are provided just load them.
-    #         if SampleBatch.ACTIONS in module_fwd_out.keys():
-    #             actions[self._module_id_to_agent_id[module_id]] = convert_to_numpy(
-    #                 module_fwd_out[SampleBatch.ACTIONS]
-    #             )
-    #             # TODO (simon, sven): Some algos do not return logps.
-    #             if SampleBatch.ACTION_LOGP in module_fwd_out:
-    #                 action_logps[
-    #                     self._module_id_to_agent_id[module_id]
-    #                 ] = convert_to_numpy(module_fwd_out[SampleBatch.ACTION_LOGP])
-    #         # If no actions are provided we need to sample them.
-    #         else:
-    #             # Explore or not.
-    #             if explore:
-    #                 action_dist_cls = self.marl_module[
-    #                     module_id
-    #                 ].get_exploration_action_dist_cls()
-    #             else:
-    #                 action_dist_cls = self.marl_module[
-    #                     module_id
-    #                 ].get_inference_action_dist_cls()
-    #             # Generate action distribution and sample actions.
-    #             action_dist = action_dist_cls.from_logits(
-    #                 module_fwd_out[SampleBatch.ACTION_DIST_INPUTS]
-    #             )
-    #             action = action_dist.sample()
-    #             # We need numpy actions for gym environments.
-    #             action_logps[self._module_id_to_agent_id[module_id]] =
-    #             convert_to_numpy(
-    #                 action_dist.logp(action)
-    #             )
-    #             actions[self._module_id_to_agent_id[module_id]] = convert_to_numpy(
-    #                 action
-    #             ).reshape(-1)
-    #             # Squeeze for the last dimension if necessary.
-    #             # TODO (sven, simon): This is not optimal here. But there seems
-    #             # to be some differences between MultiDiscrete action spaces
-    #             # and Box action spaces for `gym.VectorEnv`.
-    #             # For the former we have to squeeze away the last action
-    #             # dimension delivered from the action_dist and for the latter
-    #             # we should not. This might be connected to the way how the
-    #             # `action_space` is defined for the `RLModule` in the
-    #             # `__init__()` of this class here.
-    #             # if actions.ndim > len(self.env.action_space.shape):
-    #             #    actions = actions.squeeze(axis=-1)
-    #
-    #     return actions, action_logps
+            return False

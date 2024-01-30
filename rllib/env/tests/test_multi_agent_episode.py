@@ -2262,22 +2262,23 @@ class TestMultiAgentEpisode(unittest.TestCase):
         check(episode_2._agent_buffered_actions, {})
         check(episode_2.agent_episodes["a0"].actions.lookback, 0)
         check(episode_2.get_observations(-1), {"a0": 1, "a1": 4})
-        check(episode_2.get_observations(-1, env_steps=False), {"a0": 0, "a1": 3})
-        check(episode_2.get_observations([-2, -1]), {"a1": [2, 3]})
-        check(episode_2.get_observations(slice(-3, None)), {"a1": [1, 2, 3]})
+        check(episode_2.get_observations(-1, env_steps=False), {"a0": 1, "a1": 4})
+        check(episode_2.get_observations([-2, -1]), {"a0": [1], "a1": [3, 4]})
+        check(episode_2.get_observations(slice(-3, None)), {"a0": [1], "a1": [2, 3, 4]})
         check(
-            episode_2.get_observations(slice(-4, None)), {"a0": [0], "a1": [0, 1, 2, 3]}
+            episode_2.get_observations(slice(-4, None)), {"a0": [1], "a1": [1, 2, 3, 4]}
         )
         # Episode was just cut -> There can't be any actions in it yet (only in the
         # lookback buffer).
-        check(episode_2.get_actions(), {})
-        check(episode_2.get_actions(-1), {"a1": 2})
-        check(episode_2.get_actions(-2), {"a1": 1})
-        check(episode_2.get_actions([-3]), {"a0": [0], "a1": [0]})
+        check(episode_2.get_actions(), {"a1": [4]})
+        check(episode_2.get_actions(-1), {"a1": 4})
+        check(episode_2.get_actions(-2), {"a1": 2})
+        check(episode_2.get_actions([-3]), {"a1": [1]})
+        check(episode_2.get_actions([-4]), {"a0": [0], "a1": [0]})
         with self.assertRaises(IndexError):
-            episode_2.get_actions([-4])
+            episode_2.get_actions([-5])
         # Don't expect index error if slice is given.
-        check(episode_2.get_actions(slice(-4, -3)), {})
+        check(episode_2.get_actions(slice(-5, -4)), {})
 
         # Create an environment.
         episode_1, _ = self._mock_multi_agent_records_from_env(size=100)

@@ -50,13 +50,13 @@ class DefaultEnvToModule(ConnectorV2):
         # If observations cannot be found in `input`, add the most recent ones (from all
         # episodes).
         if SampleBatch.OBS not in data:
-            self._add_most_recent_observations_to_data(data, episodes, is_multi_agent)
+            self._add_most_recent_obs_to_data(data, episodes, is_multi_agent)
 
         # If our module is stateful:
         # - Add the most recent STATE_OUTs to `data`.
         # - Make all data in `data` have a time rank (T=1).
         if rl_module.is_stateful():
-            self._add_most_recent_states_to_data_and_add_time_rank(
+            self._add_most_recent_states_and_time_rank_to_data(
                 data, episodes, rl_module, is_multi_agent
             )
 
@@ -77,7 +77,9 @@ class DefaultEnvToModule(ConnectorV2):
                         "In multi-agent mode, the DefaultEnvToModule requires the "
                         "`shared_data` argument (a dict) to be passed into the call!"
                     )
-                self._perform_agent_to_module_mapping(data, episodes, shared_data)
+                data = self._perform_agent_to_module_mapping(
+                    data, episodes, shared_data
+                )
 
         # Convert data to proper tensor formats, depending on framework used by the
         # RLModule.
@@ -88,7 +90,7 @@ class DefaultEnvToModule(ConnectorV2):
         return data
 
     @staticmethod
-    def _add_most_recent_observations_to_data(data, episodes, is_multi_agent):
+    def _add_most_recent_obs_to_data(data, episodes, is_multi_agent):
         # Single-agent case:
         # Construct:
         #  {"obs": [batch across all single-agent episodes]}
@@ -110,15 +112,14 @@ class DefaultEnvToModule(ConnectorV2):
             observations_per_agent = defaultdict(list)
             for ma_episode in episodes:
                 # Collect all most-recent observations from given episodes.
-                for agent_id, obs in ma_episode.get_observations(
-                    indices=-1, global_ts=True
-                ).items():
-                    observations_per_agent[agent_id].append(obs)
+                for agent_id, obs in ma_episode.get_observations(-1).items():
+                    if not ma_episode.agent_episodes[agent_id].is_done:
+                        observations_per_agent[agent_id].append(obs)
             # Batch all collected observations together (separately per agent).
             data[SampleBatch.OBS] = observations_per_agent
 
     @staticmethod
-    def _add_most_recent_states_to_data_and_add_time_rank(
+    def _add_most_recent_states_and_time_rank_to_data(
         data,
         episodes,
         rl_module,
@@ -180,7 +181,7 @@ class DefaultEnvToModule(ConnectorV2):
 
         # Mapping (no cost/extra memory):
         data[OBS]: "module1": push into list -> [..., ...]
-        # ... then concat([each module's items in list], axis=0)
+        # ... then perform batching: stack([each module's items in list], axis=0)
         data[OBS]: "module1": [...] <- already batched data
         # Flip column (e.g. OBS) with module IDs (no cost/extra memory):
         data[module1]: OBS: ...
@@ -192,16 +193,26 @@ class DefaultEnvToModule(ConnectorV2):
         # Using a deque here as we will be popleft'ing items out of it again when we
         # perform the mapping step.
         agent_to_module_mappings = defaultdict(list)
+        # Store in shared data, which module IDs map to which episode/agent, such
+        # that the module-to-env pipeline can map the data back to agents.
+        module_to_episode_agents_mapping = defaultdict(list)
 
-        for ma_episode in episodes:
-            agents_to_act = ma_episode.get_agents_to_act()
-            for agent_id in agents_to_act:
+        for episode_idx, ma_episode in enumerate(episodes):
+            for agent_id in ma_episode.get_agents_to_act():
                 module_id = ma_episode.agent_to_module_map.get(agent_id)
                 if module_id is None:
-                    ma_episode.agent_to_module_map[
-                        agent_id
-                    ] = module_id = agent_to_module_mapping_fn(agent_id, ma_episode)
+                    module_id = agent_to_module_mapping_fn(agent_id, ma_episode)
+                    ma_episode.agent_to_module_map[agent_id] = module_id
                 agent_to_module_mappings[agent_id].append(module_id)
+                # Store (in the correct order) which episode+agentID belongs to which
+                # batch item in a module IDs forward batch.
+                module_to_episode_agents_mapping[module_id].append(
+                    (episode_idx, agent_id)
+                )
+
+        shared_data[
+            "module_to_episode_agents_mapping"
+        ] = module_to_episode_agents_mapping
 
         # Mapping from ModuleID to column data.
         module_data = {}
@@ -221,11 +232,9 @@ class DefaultEnvToModule(ConnectorV2):
                     # Append the data.
                     module_data[module_id][column].append(value)
 
-        # Convert lists of items with properly concatenated (batched) data.
+        # Convert lists of items into properly stacked (batched) data.
         for module_id, columns in module_data.items():
             for column, values in columns.items():
-                module_data[module_id][column] = tree.map_structure(
-                    lambda *s: np.concatenate(s, axis=0), *values
-                )
+                module_data[module_id][column] = batch(values)
 
         return module_data

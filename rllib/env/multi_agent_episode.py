@@ -298,28 +298,28 @@ class MultiAgentEpisode:
         """Adds a timestep to the episode.
 
         Args:
-            observations: A dictionary mapping agent ids to their corresponding
+            observations: A dictionary mapping agent IDs to their corresponding
                 next observations. Note that some agents may not have stepped at this
                 timestep.
-            actions: Mandatory. A dictionary mapping agent ids to their
+            actions: Mandatory. A dictionary mapping agent IDs to their
                 corresponding actions. Note that some agents may not have stepped at
                 this timestep.
-            rewards: Mandatory. A dictionary mapping agent ids to their
+            rewards: Mandatory. A dictionary mapping agent IDs to their
                 corresponding observations. Note that some agents may not have stepped
                 at this timestep.
-            infos: A dictionary mapping agent ids to their
+            infos: A dictionary mapping agent IDs to their
                 corresponding info. Note that some agents may not have stepped at this
                 timestep.
-            terminateds: A dictionary mapping agent ids to their `terminated` flags,
+            terminateds: A dictionary mapping agent IDs to their `terminated` flags,
                 indicating, whether the environment has been terminated for them.
                 A special `__all__` key indicates that the episode is terminated for
-                all agent ids.
-            terminateds: A dictionary mapping agent ids to their `truncated` flags,
+                all agent IDs.
+            terminateds: A dictionary mapping agent IDs to their `truncated` flags,
                 indicating, whether the environment has been truncated for them.
                 A special `__all__` key indicates that the episode is `truncated` for
-                all agent ids.
+                all agent IDs.
             render_image: An RGB uint8 image from rendering the environment.
-            extra_model_outputs: Optional. A dictionary mapping agent ids to their
+            extra_model_outputs: A dictionary mapping agent IDs to their
                 corresponding specific model outputs (also in a dictionary; e.g.
                 `vf_preds` for PPO).
         """
@@ -548,7 +548,9 @@ class MultiAgentEpisode:
                     extra_model_outputs=_extra_model_outputs,
                 )
                 # Update the env- to agent-step mapping.
-                self.env_t_to_agent_t[agent_id].append(len(sa_episode))
+                self.env_t_to_agent_t[agent_id].append(
+                    len(sa_episode) + sa_episode.observations.lookback
+                )
 
             # Agent is also done. -> Erase all buffered values for this agent
             # (they should be empty at this point anyways).
@@ -1189,6 +1191,333 @@ class MultiAgentEpisode:
             return_list=return_list,
         )
 
+    def get_terminateds(self) -> MultiAgentDict:
+        """Gets the terminateds at given indices."""
+        terminateds = {
+            agent_id: self.agent_episodes[agent_id].is_terminated
+            for agent_id in self.agent_ids
+        }
+        terminateds.update({"__all__": self.is_terminated})
+        return terminateds
+
+    def get_truncateds(self) -> MultiAgentDict:
+        truncateds = {
+            agent_id: self.agent_episodes[agent_id].is_truncated
+            for agent_id in self.agent_ids
+        }
+        truncateds.update({"__all__": self.is_terminated})
+        return truncateds
+
+    def __len__(self):
+        """Returns the length of an `MultiAgentEpisode`.
+
+        Note that the length of an episode is defined by the difference
+        between its actual timestep and the starting point.
+
+        Returns: An integer defining the length of the episode or an
+            error if the episode has not yet started.
+        """
+        assert (
+            sum(len(agent_map) for agent_map in self.env_t_to_agent_t.values()) > 0
+        ), (
+            "ERROR: Cannot determine length of episode that hasn't started, yet!"
+            "Call `MultiAgentEpisode.add_env_reset(observations=)` "
+            "first (after which `len(MultiAgentEpisode)` will be 0)."
+        )
+        return self.env_t - self.env_t_started
+
+    def get_state(self) -> Dict[str, Any]:
+        """Returns the state of a multi-agent episode.
+
+        Note that from an episode's state the episode itself can
+        be recreated.
+
+        Returns: A dicitonary containing pickable data fro a
+            `MultiAgentEpisode`.
+        """
+        # TODO (simon): Add the buffers.
+        return list(
+            {
+                "id_": self.id_,
+                "agent_ids": self.agent_ids,
+                "env_t_to_agent_t": self.env_t_to_agent_t,
+                "global_actions_t": self.global_actions_t,
+                "partial_rewards_t": self.partial_rewards_t,
+                "partial_rewards": self.partial_rewards,
+                "agent_episodes": list(
+                    {
+                        agent_id: agent_eps.get_state()
+                        for agent_id, agent_eps in self.agent_episodes.items()
+                    }.items()
+                ),
+                "env_t_started": self.env_t_started,
+                "env_t": self.env_t,
+                "ts_carriage_return": self.ts_carriage_return,
+                "is_terminated": self.is_terminated,
+                "is_truncated": self.is_truncated,
+            }.items()
+        )
+
+    @staticmethod
+    def from_state(state) -> None:
+        """Creates a multi-agent episode from a state dictionary.
+
+        See `MultiAgentEpisode.get_state()` for creating a state for
+        a `MultiAgentEpisode` pickable state. For recreating a
+        `MultiAgentEpisode` from a state, this state has to be complete,
+        i.e. all data must have been stored in the state.
+        """
+        # TODO (simon): Add the buffers.
+        episode = MultiAgentEpisode(id=state[0][1])
+        episode._agent_ids = state[1][1]
+        episode.env_t_to_agent_t = state[2][1]
+        episode.global_actions_t = state[3][1]
+        episode.partial_rewards_t = state[4][1]
+        episode.partial_rewards = state[5][1]
+        episode.agent_episodes = {
+            agent_id: SingleAgentEpisode.from_state(agent_state)
+            for agent_id, agent_state in state[6][1]
+        }
+        episode.env_t_started = state[7][1]
+        episode.env_t = state[8][1]
+        episode.ts_carriage_return = state[9][1]
+        episode.is_terminated = state[10][1]
+        episode.is_trcunated = state[11][1]
+        return episode
+
+    def get_sample_batch(self) -> MultiAgentBatch:
+        """Converts this `MultiAgentEpisode` into a `MultiAgentBatch`.
+
+        Each `SingleAgentEpisode` instances in `MultiAgentEpisode.agent_epiosdes`
+        will be converted into a `SampleBatch` and the environment timestep will be
+        passed as the returned MultiAgentBatch's `env_steps`.
+
+        Returns:
+            A MultiAgentBatch containing all of this episode's data.
+        """
+        # TODO (simon): Check, if timesteps should be converted into global
+        # timesteps instead of agent steps.
+        # Note, only agents that have stepped are included into the batch.
+        return MultiAgentBatch(
+            policy_batches={
+                agent_id: agent_eps.get_sample_batch()
+                for agent_id, agent_eps in self.agent_episodes.items()
+                if agent_eps.t - agent_eps.t_started > 0
+            },
+            env_steps=self.env_t - self.env_t_started,
+        )
+
+    def get_return(
+        self,
+        consider_buffer: bool = False,
+    ) -> float:
+        """Returns all-agent return.
+
+        Args:
+            consider_buffer: Whether we should also consider
+                buffered rewards wehn calculating the overall return. Agents might
+                have received partial rewards, i.e. rewards without an
+                observation. These are stored to the buffer for each agent and added up
+                until the next observation is received by that agent.
+
+        Returns:
+            The sum of all single-agents' returns (maybe including the buffered
+            rewards per agent).
+        """
+        env_return = sum(
+            agent_eps.get_return() for agent_eps in self.agent_episodes.values()
+        )
+        if consider_buffer:
+            for buffered_r in self._agent_buffered_rewards.values():
+                env_return += buffered_r
+
+        return env_return
+
+    def get_agents_to_act(self) -> Set[AgentID]:
+        """Returns a set of agent IDs required to send an action to `env.step()` next.
+
+        Those are generally the agents that received an observation in the most recent
+        `env.step()` call.
+
+        Returns:
+            A set of AgentIDs that are suposed to send actions to the next `env.step()`
+            call.
+        """
+        return set(
+            [
+                aid
+                for aid in self.get_observations(-1).keys()
+                if not self.agent_episodes[aid].is_done
+            ]
+        )
+
+    # TODO (sven, simon): This function can only deal with data if it does not contain
+    #  terminated or truncated agents (i.e. you have to provide ONLY alive agents in the
+    #  agent_ids in the constructor - the episode does not deduce the agents).
+    def _init_single_agent_episodes(
+        self,
+        *,
+        agent_episode_ids: Optional[Dict[str, str]] = None,
+        observations: Optional[List[MultiAgentDict]] = None,
+        actions: Optional[List[MultiAgentDict]] = None,
+        rewards: Optional[List[MultiAgentDict]] = None,
+        infos: Optional[List[MultiAgentDict]] = None,
+        terminateds: Union[MultiAgentDict, bool] = False,
+        truncateds: Union[MultiAgentDict, bool] = False,
+        extra_model_outputs: Optional[List[MultiAgentDict]] = None,
+        len_lookback_buffer: int,
+    ) -> Dict[AgentID, SingleAgentEpisode]:
+
+        if observations is None:
+            return
+
+        # Infos and extra_model_outputs are allowed to be None -> Fill them with
+        # proper dummy values, if so.
+        if infos is None:
+            infos = [{} for _ in range(len(observations))]
+        if extra_model_outputs is None:
+            extra_model_outputs = [{} for _ in range(len(actions))]
+
+        observations_per_agent = defaultdict(list)
+        infos_per_agent = defaultdict(list)
+        actions_per_agent = defaultdict(list)
+        rewards_per_agent = defaultdict(list)
+        extra_model_outputs_per_agent = defaultdict(list)
+        done_per_agent = defaultdict(bool)
+        len_lookback_buffer_per_agent = defaultdict(int)
+
+        all_agent_ids = set(
+            agent_episode_ids.keys() if agent_episode_ids is not None else []
+        )
+
+        # Step through all observations and interpret these as the (global) env steps.
+        env_t = self.env_t - len_lookback_buffer
+        for data_idx, (obs, inf) in enumerate(zip(observations, infos)):
+            # If we do have actions/extra outs/rewards for this timestep, use the data.
+            # It may be that these lists have the same length as the observations list,
+            # in which case the data will be buffered (agent did step/send an action,
+            # but the step has not been concluded yet by the env).
+            act = actions[data_idx] if len(actions) > data_idx else {}
+            extra_outs = (
+                extra_model_outputs[data_idx]
+                if len(extra_model_outputs) > data_idx
+                else {}
+            )
+            rew = rewards[data_idx] if len(rewards) > data_idx else {}
+
+            for agent_id, agent_obs in obs.items():
+                all_agent_ids.add(agent_id)
+
+                observations_per_agent[agent_id].append(agent_obs)
+                infos_per_agent[agent_id].append(inf.get(agent_id, {}))
+
+                # Pull out buffered action (if not first obs for this agent) and
+                # complete step for agent.
+                if len(observations_per_agent[agent_id]) > 1:
+                    actions_per_agent[agent_id].append(
+                        self._agent_buffered_actions.pop(agent_id)
+                    )
+                    extra_model_outputs_per_agent[agent_id].append(
+                        self._agent_buffered_extra_model_outputs.pop(agent_id)
+                    )
+                    rewards_per_agent[agent_id].append(
+                        self._agent_buffered_rewards.pop(agent_id)
+                    )
+                # First obs for this agent. Make sure the agent's mapping is
+                # appropriately prepended with self.SKIP_ENV_TS_TAG tags.
+                else:
+                    self.env_t_to_agent_t[agent_id].extend(
+                        [self.SKIP_ENV_TS_TAG] * data_idx
+                    )
+                    len_lookback_buffer_per_agent[agent_id] += data_idx
+
+                # Agent is still continuing (has an action for the next step).
+                if agent_id in act:
+                    # Always push actions/extra outputs into buffer, then remove them
+                    # from there, once the next observation comes in. Same for rewards.
+                    self._agent_buffered_actions[agent_id] = act[agent_id]
+                    self._agent_buffered_extra_model_outputs[agent_id] = extra_outs.get(
+                        agent_id, {}
+                    )
+                    self._agent_buffered_rewards[
+                        agent_id
+                    ] = self._agent_buffered_rewards.get(agent_id, 0.0) + rew.get(
+                        agent_id, 0.0
+                    )
+                # Agent is done (has no action for the next step).
+                elif terminateds.get(agent_id) or truncateds.get(agent_id):
+                    done_per_agent[agent_id] = True
+                # This is the last obs (no further action/reward data).
+                else:
+                    assert data_idx == len(observations) - 1
+
+                # Update env_t_to_agent_t mapping.
+                self.env_t_to_agent_t[agent_id].append(
+                    len(observations_per_agent[agent_id]) - 1
+                )
+
+            # Those agents that did NOT step get None added to their mapping.
+            for agent_id in all_agent_ids:
+                if agent_id not in obs and agent_id not in done_per_agent:
+                    self.env_t_to_agent_t[agent_id].append(self.SKIP_ENV_TS_TAG)
+
+            # Update per-agent lookback buffer and t_started counters.
+            for agent_id in all_agent_ids:
+                if env_t < self.env_t_started:
+                    if agent_id not in done_per_agent:
+                        len_lookback_buffer_per_agent[agent_id] += 1
+
+            # Increase env timestep by one.
+            env_t += 1
+
+        # - Validate per-agent data.
+        # - Fix lookback buffers of env_t_to_agent_t mappings.
+        for agent_id, buf in self.env_t_to_agent_t.items():
+            # Skip agent if it doesn't seem to have any data.
+            if agent_id not in observations_per_agent:
+                continue
+            assert (
+                len(observations_per_agent[agent_id])
+                == len(infos_per_agent[agent_id])
+                == len(actions_per_agent[agent_id]) + 1
+                == len(extra_model_outputs_per_agent[agent_id]) + 1
+                == len(rewards_per_agent[agent_id]) + 1
+            )
+            buf.lookback = len_lookback_buffer_per_agent[agent_id]
+
+        # Now create the individual episodes from the collected per-agent data.
+        for agent_id, agent_obs in observations_per_agent.items():
+            lookback = sum(
+                s != self.SKIP_ENV_TS_TAG
+                for s in self.env_t_to_agent_t[agent_id].get(
+                    slice(-len_lookback_buffer_per_agent[agent_id], 0),
+                    neg_indices_left_of_zero=True,
+                )
+            )
+            sa_episode = SingleAgentEpisode(
+                id_=(
+                    agent_episode_ids.get(agent_id)
+                    if agent_episode_ids is not None
+                    else None
+                ),
+                observations=agent_obs,
+                observation_space=self.observation_space.get(agent_id),
+                infos=infos_per_agent[agent_id],
+                actions=actions_per_agent[agent_id],
+                action_space=self.action_space.get(agent_id),
+                rewards=rewards_per_agent[agent_id],
+                extra_model_outputs=tree.map_structure(
+                    lambda *s: list(s), *extra_model_outputs_per_agent[agent_id]
+                )
+                if extra_model_outputs_per_agent[agent_id]
+                else None,
+                terminated=terminateds.get(agent_id, False),
+                truncated=truncateds.get(agent_id, False),
+                t_started=self.agent_t_started[agent_id],
+                len_lookback_buffer=lookback,
+            )
+            self.agent_episodes[agent_id] = sa_episode
+
     def _get(
         self,
         *,
@@ -1486,312 +1815,6 @@ class MultiAgentEpisode:
                 **one_hot_discrete,
             )
         return ret
-
-    def get_terminateds(self) -> MultiAgentDict:
-        """Gets the terminateds at given indices."""
-        terminateds = {
-            agent_id: self.agent_episodes[agent_id].is_terminated
-            for agent_id in self.agent_ids
-        }
-        terminateds.update({"__all__": self.is_terminated})
-        return terminateds
-
-    def get_truncateds(self) -> MultiAgentDict:
-        truncateds = {
-            agent_id: self.agent_episodes[agent_id].is_truncated
-            for agent_id in self.agent_ids
-        }
-        truncateds.update({"__all__": self.is_terminated})
-        return truncateds
-
-    def __len__(self):
-        """Returns the length of an `MultiAgentEpisode`.
-
-        Note that the length of an episode is defined by the difference
-        between its actual timestep and the starting point.
-
-        Returns: An integer defining the length of the episode or an
-            error if the episode has not yet started.
-        """
-        assert (
-            sum(len(agent_map) for agent_map in self.env_t_to_agent_t.values()) > 0
-        ), (
-            "ERROR: Cannot determine length of episode that hasn't started, yet!"
-            "Call `MultiAgentEpisode.add_env_reset(observations=)` "
-            "first (after which `len(MultiAgentEpisode)` will be 0)."
-        )
-        return self.env_t - self.env_t_started
-
-    def get_state(self) -> Dict[str, Any]:
-        """Returns the state of a multi-agent episode.
-
-        Note that from an episode's state the episode itself can
-        be recreated.
-
-        Returns: A dicitonary containing pickable data fro a
-            `MultiAgentEpisode`.
-        """
-        # TODO (simon): Add the buffers.
-        return list(
-            {
-                "id_": self.id_,
-                "agent_ids": self.agent_ids,
-                "env_t_to_agent_t": self.env_t_to_agent_t,
-                "global_actions_t": self.global_actions_t,
-                "partial_rewards_t": self.partial_rewards_t,
-                "partial_rewards": self.partial_rewards,
-                "agent_episodes": list(
-                    {
-                        agent_id: agent_eps.get_state()
-                        for agent_id, agent_eps in self.agent_episodes.items()
-                    }.items()
-                ),
-                "env_t_started": self.env_t_started,
-                "env_t": self.env_t,
-                "ts_carriage_return": self.ts_carriage_return,
-                "is_terminated": self.is_terminated,
-                "is_truncated": self.is_truncated,
-            }.items()
-        )
-
-    @staticmethod
-    def from_state(state) -> None:
-        """Creates a multi-agent episode from a state dictionary.
-
-        See `MultiAgentEpisode.get_state()` for creating a state for
-        a `MultiAgentEpisode` pickable state. For recreating a
-        `MultiAgentEpisode` from a state, this state has to be complete,
-        i.e. all data must have been stored in the state.
-        """
-        # TODO (simon): Add the buffers.
-        episode = MultiAgentEpisode(id=state[0][1])
-        episode._agent_ids = state[1][1]
-        episode.env_t_to_agent_t = state[2][1]
-        episode.global_actions_t = state[3][1]
-        episode.partial_rewards_t = state[4][1]
-        episode.partial_rewards = state[5][1]
-        episode.agent_episodes = {
-            agent_id: SingleAgentEpisode.from_state(agent_state)
-            for agent_id, agent_state in state[6][1]
-        }
-        episode.env_t_started = state[7][1]
-        episode.env_t = state[8][1]
-        episode.ts_carriage_return = state[9][1]
-        episode.is_terminated = state[10][1]
-        episode.is_trcunated = state[11][1]
-        return episode
-
-    def get_sample_batch(self) -> MultiAgentBatch:
-        """Converts this `MultiAgentEpisode` into a `MultiAgentBatch`.
-
-        Each `SingleAgentEpisode` instances in `MultiAgentEpisode.agent_epiosdes`
-        will be converted into a `SampleBatch` and the environment timestep will be
-        passed as the returned MultiAgentBatch's `env_steps`.
-
-        Returns:
-            A MultiAgentBatch containing all of this episode's data.
-        """
-        # TODO (simon): Check, if timesteps should be converted into global
-        # timesteps instead of agent steps.
-        # Note, only agents that have stepped are included into the batch.
-        return MultiAgentBatch(
-            policy_batches={
-                agent_id: agent_eps.get_sample_batch()
-                for agent_id, agent_eps in self.agent_episodes.items()
-                if agent_eps.t - agent_eps.t_started > 0
-            },
-            env_steps=self.env_t - self.env_t_started,
-        )
-
-    def get_return(
-        self,
-        consider_buffer: bool = False,
-    ) -> float:
-        """Returns all-agent return.
-
-        Args:
-            consider_buffer: Whether we should also consider
-                buffered rewards wehn calculating the overall return. Agents might
-                have received partial rewards, i.e. rewards without an
-                observation. These are stored to the buffer for each agent and added up
-                until the next observation is received by that agent.
-
-        Returns:
-            The sum of all single-agents' returns (maybe including the buffered
-            rewards per agent).
-        """
-        env_return = sum(
-            agent_eps.get_return() for agent_eps in self.agent_episodes.values()
-        )
-        if consider_buffer:
-            for buffered_r in self._agent_buffered_rewards.values():
-                env_return += buffered_r
-
-        return env_return
-
-    # TODO (sven, simon): This function can only deal with data if it does not contain
-    #  terminated or truncated agents (i.e. you have to provide ONLY alive agents in the
-    #  agent_ids in the constructor - the episode does not deduce the agents).
-    def _init_single_agent_episodes(
-        self,
-        *,
-        agent_episode_ids: Optional[Dict[str, str]] = None,
-        observations: Optional[List[MultiAgentDict]] = None,
-        actions: Optional[List[MultiAgentDict]] = None,
-        rewards: Optional[List[MultiAgentDict]] = None,
-        infos: Optional[List[MultiAgentDict]] = None,
-        terminateds: Union[MultiAgentDict, bool] = False,
-        truncateds: Union[MultiAgentDict, bool] = False,
-        extra_model_outputs: Optional[List[MultiAgentDict]] = None,
-        len_lookback_buffer: int,
-    ) -> Dict[AgentID, SingleAgentEpisode]:
-
-        if observations is None:
-            return
-
-        # Infos and extra_model_outputs are allowed to be None -> Fill them with
-        # proper dummy values, if so.
-        if infos is None:
-            infos = [{} for _ in range(len(observations))]
-        if extra_model_outputs is None:
-            extra_model_outputs = [{} for _ in range(len(actions))]
-
-        observations_per_agent = defaultdict(list)
-        infos_per_agent = defaultdict(list)
-        actions_per_agent = defaultdict(list)
-        rewards_per_agent = defaultdict(list)
-        extra_model_outputs_per_agent = defaultdict(list)
-        done_per_agent = defaultdict(bool)
-        len_lookback_buffer_per_agent = defaultdict(int)
-
-        all_agent_ids = set(
-            agent_episode_ids.keys() if agent_episode_ids is not None else []
-        )
-
-        # Step through all observations and interpret these as the (global) env steps.
-        env_t = self.env_t - len_lookback_buffer
-        for data_idx, (obs, inf) in enumerate(zip(observations, infos)):
-            # If we do have actions/extra outs/rewards for this timestep, use the data.
-            # It may be that these lists have the same length as the observations list,
-            # in which case the data will be buffered (agent did step/send an action,
-            # but the step has not been concluded yet by the env).
-            act = actions[data_idx] if len(actions) > data_idx else {}
-            extra_outs = (
-                extra_model_outputs[data_idx]
-                if len(extra_model_outputs) > data_idx
-                else {}
-            )
-            rew = rewards[data_idx] if len(rewards) > data_idx else {}
-
-            for agent_id, agent_obs in obs.items():
-                all_agent_ids.add(agent_id)
-
-                observations_per_agent[agent_id].append(agent_obs)
-                infos_per_agent[agent_id].append(inf.get(agent_id, {}))
-
-                # Pull out buffered action (if not first obs for this agent) and
-                # complete step for agent.
-                if len(observations_per_agent[agent_id]) > 1:
-                    actions_per_agent[agent_id].append(
-                        self._agent_buffered_actions.pop(agent_id)
-                    )
-                    extra_model_outputs_per_agent[agent_id].append(
-                        self._agent_buffered_extra_model_outputs.pop(agent_id)
-                    )
-                    rewards_per_agent[agent_id].append(
-                        self._agent_buffered_rewards.pop(agent_id)
-                    )
-                # First obs for this agent. Make sure the agent's mapping is
-                # appropriately prepended with self.SKIP_ENV_TS_TAG tags.
-                else:
-                    self.env_t_to_agent_t[agent_id].extend(
-                        [self.SKIP_ENV_TS_TAG] * data_idx
-                    )
-                    len_lookback_buffer_per_agent[agent_id] += data_idx
-
-                # Agent is still continuing (has an action for the next step).
-                if agent_id in act:
-                    # Always push actions/extra outputs into buffer, then remove them
-                    # from there, once the next observation comes in. Same for rewards.
-                    self._agent_buffered_actions[agent_id] = act[agent_id]
-                    self._agent_buffered_extra_model_outputs[agent_id] = extra_outs.get(
-                        agent_id, {}
-                    )
-                    self._agent_buffered_rewards[
-                        agent_id
-                    ] = self._agent_buffered_rewards.get(agent_id, 0.0) + rew.get(
-                        agent_id, 0.0
-                    )
-                # Agent is done (has no action for the next step).
-                elif agent_id in terminateds or agent_id in truncateds:
-                    done_per_agent[agent_id] = True
-                # This is the last obs (no further action/reward data).
-                else:
-                    assert data_idx == len(observations) - 1
-
-                # Update env_t_to_agent_t mapping.
-                self.env_t_to_agent_t[agent_id].append(
-                    len(observations_per_agent[agent_id]) - 1
-                )
-
-            # Those agents that did NOT step get None added to their mapping.
-            for agent_id in all_agent_ids:
-                if agent_id not in obs and agent_id not in done_per_agent:
-                    self.env_t_to_agent_t[agent_id].append(self.SKIP_ENV_TS_TAG)
-
-            # Update per-agent lookback buffer and t_started counters.
-            for agent_id in all_agent_ids:
-                if env_t < self.env_t_started:
-                    if agent_id not in done_per_agent:
-                        len_lookback_buffer_per_agent[agent_id] += 1
-
-            # Increase env timestep by one.
-            env_t += 1
-
-        # - Validate per-agent data.
-        # - Fix lookback buffers of env_t_to_agent_t mappings.
-        for agent_id, buf in self.env_t_to_agent_t.items():
-            assert (
-                len(observations_per_agent[agent_id])
-                == len(infos_per_agent[agent_id])
-                == len(actions_per_agent[agent_id]) + 1
-                == len(extra_model_outputs_per_agent[agent_id]) + 1
-                == len(rewards_per_agent[agent_id]) + 1
-            )
-            buf.lookback = len_lookback_buffer_per_agent[agent_id]
-
-        # Now create the individual episodes from the collected per-agent data.
-        for agent_id, agent_obs in observations_per_agent.items():
-            lookback = sum(
-                s != self.SKIP_ENV_TS_TAG
-                for s in self.env_t_to_agent_t[agent_id].get(
-                    slice(-len_lookback_buffer_per_agent[agent_id], 0),
-                    neg_indices_left_of_zero=True,
-                )
-            )
-            sa_episode = SingleAgentEpisode(
-                id_=(
-                    agent_episode_ids.get(agent_id)
-                    if agent_episode_ids is not None
-                    else None
-                ),
-                observations=agent_obs,
-                observation_space=self.observation_space.get(agent_id),
-                infos=infos_per_agent[agent_id],
-                actions=actions_per_agent[agent_id],
-                action_space=self.action_space.get(agent_id),
-                rewards=rewards_per_agent[agent_id],
-                extra_model_outputs=tree.map_structure(
-                    lambda *s: list(s), *extra_model_outputs_per_agent[agent_id]
-                )
-                if extra_model_outputs_per_agent[agent_id]
-                else None,
-                terminated=terminateds.get(agent_id, False),
-                truncated=truncateds.get(agent_id, False),
-                t_started=self.agent_t_started[agent_id],
-                len_lookback_buffer=lookback,
-            )
-            self.agent_episodes[agent_id] = sa_episode
 
     def _get_buffer_value(self, what, agent_id):
         if what == "actions":

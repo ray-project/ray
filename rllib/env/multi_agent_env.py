@@ -41,6 +41,9 @@ class MultiAgentEnv(gym.Env):
     """
 
     def __init__(self):
+        # TODO (sven): super init call seems to have been missing. Since forever.
+        # super().__init__()
+
         if not hasattr(self, "observation_space"):
             self.observation_space = None
         if not hasattr(self, "action_space"):

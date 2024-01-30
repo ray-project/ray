@@ -1,5 +1,5 @@
 import abc
-from typing import Any, Dict
+from typing import Any, Dict, List, Optional, Tuple
 
 import numpy as np
 
@@ -9,7 +9,7 @@ from ray.rllib.algorithms.ppo.ppo import (
 )
 from ray.rllib.core.learner.learner import Learner
 from ray.rllib.evaluation.postprocessing import Postprocessing
-from ray.rllib.policy.sample_batch import SampleBatch
+from ray.rllib.policy.sample_batch import MultiAgentBatch, SampleBatch
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.lambda_defaultdict import LambdaDefaultDict
 from ray.rllib.utils.numpy import convert_to_numpy
@@ -21,7 +21,7 @@ from ray.rllib.utils.postprocessing.episodes import (
 )
 from ray.rllib.utils.postprocessing.zero_padding import unpad_data_if_necessary
 from ray.rllib.utils.schedules.scheduler import Scheduler
-from ray.rllib.utils.typing import ModuleID
+from ray.rllib.utils.typing import EpisodeType, ModuleID
 
 
 class PPOLearner(Learner):
@@ -56,9 +56,9 @@ class PPOLearner(Learner):
     def _preprocess_train_data(
         self,
         *,
-        batch,
-        episodes,
-    ):
+        batch: Optional[MultiAgentBatch] = None,
+        episodes: Optional[List[EpisodeType]] = None,
+    ) -> Tuple[Optional[MultiAgentBatch], Optional[List[EpisodeType]]]:
         batch = batch or {}
         if not episodes:
             return batch, episodes
@@ -73,7 +73,7 @@ class PPOLearner(Learner):
         # in order to get the batch to pass through the module for vf (and
         # bootstrapped vf) computations.
         batch_for_vf = self._learner_connector(
-            rl_module=self.module["default_policy"],  # TODO: make multi-agent capable
+            rl_module=self.module,
             data={},
             episodes=episodes,
         )
