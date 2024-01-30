@@ -1,4 +1,3 @@
-import inspect
 import logging
 from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional, Type, Union
 
@@ -308,29 +307,12 @@ class DataParallelTrainer(BaseTrainer):
             **kwargs,
         )
 
-    def _validate_attributes(self):
-        super()._validate_attributes()
-
-        self._validate_train_loop_per_worker(
-            self._train_loop_per_worker, "train_loop_per_worker"
-        )
-
     def preprocess_datasets(self) -> None:
         # Evaluate all datasets.
         self.datasets = {k: d() if callable(d) else d for k, d in self.datasets.items()}
         self.datasets = self._data_config._legacy_preprocessing(
             self.datasets, self.preprocessor
         )
-
-    def _validate_train_loop_per_worker(
-        self, train_loop_per_worker: Callable, fn_name: str
-    ) -> None:
-        num_params = len(inspect.signature(train_loop_per_worker).parameters)
-        if num_params > 1:
-            raise ValueError(
-                f"{fn_name} should take in 0 or 1 arguments, "
-                f"but it accepts {num_params} arguments instead."
-            )
 
     @classmethod
     def _validate_scaling_config(cls, scaling_config: ScalingConfig) -> ScalingConfig:
