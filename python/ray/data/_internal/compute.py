@@ -56,6 +56,20 @@ class ComputeStrategy:
 
 @DeveloperAPI
 class TaskPoolStrategy(ComputeStrategy):
+    def __init__(
+        self,
+        size: Optional[int] = None,
+    ):
+        """Construct TaskPoolStrategy for a Dataset transform.
+
+        Args:
+            size: Specify the maximum size of the task pool.
+        """
+
+        if size is not None and size < 1:
+            raise ValueError("`size` must be >= 1", size)
+        self.size = size
+
     def _apply(
         self,
         block_fn: BlockTransform,
@@ -148,7 +162,9 @@ class TaskPoolStrategy(ComputeStrategy):
         )
 
     def __eq__(self, other: Any) -> bool:
-        return isinstance(other, TaskPoolStrategy) or other == "tasks"
+        return (isinstance(other, TaskPoolStrategy) and self.size == other.size) or (
+            other == "tasks" and self.size is None
+        )
 
 
 @PublicAPI
