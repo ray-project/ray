@@ -138,7 +138,7 @@ function rayAssistant(event) {
 
         async function readStream() {
             try {
-                const response = await fetch('https://ray-assistant-public-30-bxauk.cld-kvedzwag2qa8i5bj.s.anyscaleuserdata.com/chat', {
+                const response = await fetch('https://ray-assistant-public-bxauk.cld-kvedzwag2qa8i5bj.s.anyscaleuserdata.com/chat', {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json',
