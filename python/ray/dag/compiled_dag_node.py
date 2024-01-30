@@ -4,7 +4,6 @@ import queue
 from typing import Any, Dict, List, Tuple, Union, Optional
 import logging
 import threading
-import time
 import traceback
 
 import ray
