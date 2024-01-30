@@ -1,7 +1,7 @@
 import time
 from typing import TYPE_CHECKING, Dict
 
-from ray._private.state import cluster_resources
+import ray
 from ray.data._internal.execution.interfaces.execution_options import (
     ExecutionOptions,
     ExecutionResources,
@@ -83,7 +83,7 @@ class ResourceManager:
         self._global_limits_last_update_time = time.time()
         base = self._options.resource_limits
         exclude = self._options.exclude_resources
-        cluster = cluster_resources()
+        cluster = ray.cluster_resources()
 
         cpu = base.cpu
         if cpu is None:
