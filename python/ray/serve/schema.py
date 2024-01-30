@@ -1,4 +1,5 @@
 import logging
+import os
 from collections import Counter
 from contextlib import contextmanager
 from contextvars import ContextVar
@@ -26,6 +27,7 @@ from ray.serve._private.common import (
 from ray.serve._private.constants import (
     DEFAULT_GRPC_PORT,
     DEFAULT_UVICORN_KEEP_ALIVE_TIMEOUT_S,
+    RAY_SERVE_LOG_ENCODING,
     SERVE_DEFAULT_APP_NAME,
 )
 from ray.serve._private.deployment_info import DeploymentInfo
@@ -102,7 +104,10 @@ class EncodingType(str, Enum):
 
     TEXT = "TEXT"
     JSON = "JSON"
-    NOT_SET = "NOT_SET"
+
+
+def ray_serve_log_encoding():
+    return RAY_SERVE_LOG_ENCODING
 
 
 @PublicAPI(stability="alpha")
@@ -131,11 +136,11 @@ class LoggingConfig(BaseModel):
         extra = Extra.forbid
 
     encoding: Union[str, EncodingType] = Field(
-        default="NOT_SET",
+        default_factory=ray_serve_log_encoding,
         description=(
-            "Encoding type for the serve logs. Default to 'NOT_SET' which will behave "
-            "as 'TEXT'. 'JSON' is also supported to format all serve logs into "
-            "json structure."
+            "Encoding type for the serve logs. Default to 'TEXT'. The default can be "
+            "overwritten using the `RAY_SERVE_LOG_ENCODING` environment variable. "
+            "'JSON' is also supported to format all serve logs into json structure."
         ),
     )
     log_level: Union[int, str] = Field(

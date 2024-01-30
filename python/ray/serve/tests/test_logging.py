@@ -7,6 +7,7 @@ import string
 import sys
 import time
 from contextlib import redirect_stderr
+from unittest.mock import patch
 
 import pytest
 import requests
@@ -17,11 +18,7 @@ import ray.util.state as state_api
 from ray import serve
 from ray._private.test_utils import wait_for_condition
 from ray.serve._private.common import ServeComponentType
-from ray.serve._private.constants import (
-    RAY_SERVE_LOG_ENCODING,
-    SERVE_LOG_EXTRA_FIELDS,
-    SERVE_LOGGER_NAME,
-)
+from ray.serve._private.constants import SERVE_LOG_EXTRA_FIELDS, SERVE_LOGGER_NAME
 from ray.serve._private.logging_utils import (
     ServeFormatter,
     ServeJSONFormatter,
@@ -588,21 +585,21 @@ def test_json_log_formatter(is_replica_type_component):
 @pytest.mark.parametrize(
     "log_encoding",
     [
-        [None, "NOT_SET", "TEXT"],
+        [None, None, "TEXT"],
         [None, "TEXT", "TEXT"],
         [None, "JSON", "JSON"],
-        ["TEXT", "NOT_SET", "TEXT"],
+        ["TEXT", None, "TEXT"],
         ["TEXT", "TEXT", "TEXT"],
         ["TEXT", "JSON", "JSON"],
-        ["JSON", "NOT_SET", "JSON"],
+        ["JSON", None, "JSON"],
         ["JSON", "TEXT", "TEXT"],
         ["JSON", "JSON", "JSON"],
-        ["FOOBAR", "NOT_SET", "TEXT"],
+        ["FOOBAR", None, "TEXT"],
         ["FOOBAR", "TEXT", "TEXT"],
         ["FOOBAR", "JSON", "JSON"],
     ],
 )
-def test_configure_component_logger_with_log_encoding_env(monkeypatch, log_encoding):
+def test_configure_component_logger_with_log_encoding_env_text(log_encoding):
     """Test the configure_component_logger function with different log encoding env.
 
     When the log encoding env is not set, set to "TEXT" or set to unknon values,
@@ -611,36 +608,40 @@ def test_configure_component_logger_with_log_encoding_env(monkeypatch, log_encod
     precedence it's set.
     """
     env_encoding, log_config_encoding, expected_encoding = log_encoding
-    monkeypatch.setenv(RAY_SERVE_LOG_ENCODING, env_encoding)
 
-    # Clean up logger handlers
-    logger = logging.getLogger(SERVE_LOGGER_NAME)
-    logger.handlers.clear()
+    with patch("ray.serve.schema.RAY_SERVE_LOG_ENCODING", env_encoding):
 
-    # Ensure there is no logger handlers before calling configure_component_logger
-    assert logger.handlers == []
+        # Clean up logger handlers
+        logger = logging.getLogger(SERVE_LOGGER_NAME)
+        logger.handlers.clear()
 
-    logging_config = LoggingConfig(
-        encoding=log_config_encoding, logs_dir="/tmp/fake_logs_dir"
-    )
-    configure_component_logger(
-        component_name="fake_component_name",
-        component_id="fake_component_id",
-        logging_config=logging_config,
-        component_type=ServeComponentType.REPLICA,
-        max_bytes=100,
-        backup_count=3,
-    )
+        # Ensure there is no logger handlers before calling configure_component_logger
+        assert logger.handlers == []
 
-    for handler in logger.handlers:
-        if isinstance(handler, logging.handlers.RotatingFileHandler):
-            if expected_encoding == EncodingType.JSON:
-                assert isinstance(handler.formatter, ServeJSONFormatter)
-            else:
-                assert isinstance(handler.formatter, ServeFormatter)
+        if log_config_encoding is None:
+            logging_config = LoggingConfig(logs_dir="/tmp/fake_logs_dir")
+        else:
+            logging_config = LoggingConfig(
+                encoding=log_config_encoding, logs_dir="/tmp/fake_logs_dir"
+            )
+        configure_component_logger(
+            component_name="fake_component_name",
+            component_id="fake_component_id",
+            logging_config=logging_config,
+            component_type=ServeComponentType.REPLICA,
+            max_bytes=100,
+            backup_count=3,
+        )
 
-    # Clean up logger handlers
-    logger.handlers.clear()
+        for handler in logger.handlers:
+            if isinstance(handler, logging.handlers.RotatingFileHandler):
+                if expected_encoding == EncodingType.JSON:
+                    assert isinstance(handler.formatter, ServeJSONFormatter)
+                else:
+                    assert isinstance(handler.formatter, ServeFormatter)
+
+        # Clean up logger handlers
+        logger.handlers.clear()
 
 
 if __name__ == "__main__":

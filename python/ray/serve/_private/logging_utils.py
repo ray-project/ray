@@ -10,7 +10,6 @@ from ray.serve._private.constants import (
     RAY_SERVE_ENABLE_CPU_PROFILING,
     RAY_SERVE_ENABLE_JSON_LOGGING,
     RAY_SERVE_ENABLE_MEMORY_PROFILING,
-    RAY_SERVE_LOG_ENCODING,
     SERVE_LOG_APPLICATION,
     SERVE_LOG_COMPONENT,
     SERVE_LOG_COMPONENT_ID,
@@ -253,15 +252,7 @@ def configure_component_logger(
             "'RAY_SERVE_ENABLE_JSON_LOGGING' is deprecated, please use "
             "'LoggingConfig' to enable json format."
         )
-    log_encoding_from_env = os.environ.get(RAY_SERVE_LOG_ENCODING, EncodingType.TEXT)
-    if (
-        RAY_SERVE_ENABLE_JSON_LOGGING
-        or logging_config.encoding == EncodingType.JSON
-        or (
-            logging_config.encoding == EncodingType.NOT_SET
-            and log_encoding_from_env == EncodingType.JSON
-        )
-    ):
+    if RAY_SERVE_ENABLE_JSON_LOGGING or logging_config.encoding == EncodingType.JSON:
         file_handler.setFormatter(
             ServeJSONFormatter(component_name, component_id, component_type)
         )
