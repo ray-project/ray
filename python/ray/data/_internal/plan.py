@@ -591,14 +591,22 @@ class ExecutionPlan:
                 blocks._owned_by_consumer = False
 
             # Retrieve memory-related stats from ray.
-            reply = get_memory_info_reply(
-                get_state_from_address(ray.get_runtime_context().gcs_address)
-            )
-            if reply.store_stats.spill_time_total_s > 0:
-                stats.global_bytes_spilled = int(reply.store_stats.spilled_bytes_total)
-            if reply.store_stats.restore_time_total_s > 0:
-                stats.global_bytes_restored = int(
-                    reply.store_stats.restored_bytes_total
+            try:
+                reply = get_memory_info_reply(
+                    get_state_from_address(ray.get_runtime_context().gcs_address)
+                )
+                if reply.store_stats.spill_time_total_s > 0:
+                    stats.global_bytes_spilled = int(
+                        reply.store_stats.spilled_bytes_total
+                    )
+                if reply.store_stats.restore_time_total_s > 0:
+                    stats.global_bytes_restored = int(
+                        reply.store_stats.restored_bytes_total
+                    )
+            except Exception as e:
+                logger.get_logger(log_to_stdout=False).error(
+                    "Skipping recording memory spilled and restored statistics due to "
+                    f"exception: {e}"
                 )
 
             stats.dataset_bytes_spilled = 0
