@@ -35,6 +35,7 @@ class ResourceManager:
         self._downstream_object_store_memory: Dict[PhysicalOperator, int] = {}
 
     def refresh(self):
+        """Recalcuate resource usages."""
         self._global_usage = ExecutionResources(0, 0, 0)
         self._op_usages.clear()
         self._downstream_fraction.clear()
@@ -65,6 +66,7 @@ class ResourceManager:
             ] = self._global_usage.object_store_memory
 
     def get_global_usage(self) -> ExecutionResources:
+        """Return the global resource usage at the current time."""
         return self._global_usage
 
     def get_global_limits(self) -> ExecutionResources:
@@ -106,10 +108,13 @@ class ResourceManager:
         return self._global_limits
 
     def get_op_usage(self, op: PhysicalOperator) -> ExecutionResources:
+        """Return the resource usage of the given operator at the current time."""
         return self._op_usages[op]
 
     def get_downstream_fraction(self, op: PhysicalOperator) -> float:
+        """Return the downstream fraction of the given operator."""
         return self._downstream_fraction[op]
 
     def get_downstream_object_store_memory(self, op: PhysicalOperator) -> int:
+        """Return the downstream object store memory usage of the given operator."""
         return self._downstream_object_store_memory[op]
