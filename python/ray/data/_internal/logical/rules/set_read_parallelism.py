@@ -60,7 +60,7 @@ def compute_additional_split_factor(
 
     # Add more output splitting for each read task if needed.
     # TODO(swang): For parallelism=-1 (user did not explicitly set
-    # parallelism), and if the following stage produces much larger blocks,
+    # parallelism), and if the following operator produces much larger blocks,
     # we should scale down the target max block size here instead of using
     # splitting, which can have higher memory usage.
     if estimated_num_blocks < parallelism and estimated_num_blocks > 0:
@@ -79,7 +79,7 @@ class SetReadParallelismRule(Rule):
 
     If the parallelism is lower than requested, this rule also sets a split
     factor to split the output blocks of the read task, so that the following
-    stage will have the desired parallelism.
+    operator will have the desired parallelism.
     """
 
     def apply(self, plan: PhysicalPlan) -> PhysicalPlan:
@@ -114,7 +114,7 @@ class SetReadParallelismRule(Rule):
             assert reason != ""
             logger.get_logger().info(
                 f"Using autodetected parallelism={detected_parallelism} "
-                f"for stage {logical_op.name} to satisfy {reason}."
+                f"for operator {logical_op.name} to satisfy {reason}."
             )
         logical_op.set_detected_parallelism(detected_parallelism)
 

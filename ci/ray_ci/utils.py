@@ -1,4 +1,5 @@
 import base64
+import io
 import logging
 import subprocess
 import sys
@@ -9,6 +10,7 @@ from typing import List
 from math import ceil
 
 import ci.ray_ci.bazel_sharding as bazel_sharding
+from ray_release.test import Test, TestState
 
 
 POSTMERGE_PIPELINE = "0189e759-8c96-4302-b6b5-b4274406bf89"
@@ -75,6 +77,52 @@ def docker_pull(image: str) -> None:
         stderr=sys.stderr,
         check=True,
     )
+
+
+def get_flaky_test_names(prefix: str) -> List[str]:
+    """
+    Query all flaky tests with specified prefix.
+
+    Args:
+        prefix: A prefix to filter by.
+
+    Returns:
+        List[str]: List of test names.
+    """
+    tests = Test.gen_from_s3(prefix)
+    # Filter tests by test state
+    state = TestState.FLAKY
+    test_names = [t.get_name() for t in tests if t.get_state() == state]
+
+    # Remove prefixes.
+    for i in range(len(test_names)):
+        test = test_names[i]
+        if test.startswith(prefix):
+            test_names[i] = test[len(prefix) :]
+
+    return test_names
+
+
+def filter_out_flaky_tests(input: io.TextIOBase, output: io.TextIOBase, prefix: str):
+    """
+    Filter out flaky tests from list of test targets.
+
+    Args:
+        input: Input stream, each test name in one line.
+        output: Output stream, each test name in one line.
+        prefix: Prefix to query tests with.
+    """
+    # Obtain all existing tests with specified test state
+    flaky_tests = set(get_flaky_test_names(prefix))
+
+    # Filter out these test from list of test targets
+    for t in input:
+        t = t.strip()
+        if not t:
+            continue
+        if t in flaky_tests:
+            continue
+        output.write(f"{t}\n")
 
 
 logger = logging.getLogger()

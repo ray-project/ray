@@ -1132,20 +1132,11 @@ def test_random_block_order(ray_start_regular_shared, restore_data_context):
     assert results == expected
 
     # Test LazyBlockList.randomize_block_order.
-    context = DataContext.get_current()
-    try:
-        original_optimize_fuse_read_stages = context.optimize_fuse_read_stages
-        context.optimize_fuse_read_stages = False
-
-        lazy_blocklist_ds = ray.data.range(12, parallelism=4)
-        lazy_blocklist_ds = lazy_blocklist_ds.randomize_block_order(seed=0)
-        lazy_blocklist_results = lazy_blocklist_ds.take()
-        lazy_blocklist_expected = named_values(
-            "id", [6, 7, 8, 0, 1, 2, 3, 4, 5, 9, 10, 11]
-        )
-        assert lazy_blocklist_results == lazy_blocklist_expected
-    finally:
-        context.optimize_fuse_read_stages = original_optimize_fuse_read_stages
+    lazy_blocklist_ds = ray.data.range(12, parallelism=4)
+    lazy_blocklist_ds = lazy_blocklist_ds.randomize_block_order(seed=0)
+    lazy_blocklist_results = lazy_blocklist_ds.take()
+    lazy_blocklist_expected = named_values("id", [6, 7, 8, 0, 1, 2, 3, 4, 5, 9, 10, 11])
+    assert lazy_blocklist_results == lazy_blocklist_expected
 
 
 # NOTE: All tests above share a Ray cluster, while the tests below do not. These

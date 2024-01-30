@@ -76,10 +76,22 @@ class ExperimentTest(unittest.TestCase):
                 checkpoint_config=CheckpointConfig(checkpoint_at_end=True),
             )
 
+    def testInvalidExperimentConfig(self):
+        with self.assertRaises(ValueError):
+            Experiment(name="foo", run="f1", config="invalid")
+
+        class InvalidClass:
+            def to_dict(self):
+                return {"valid": 1}
+
+        with self.assertRaises(ValueError):
+            Experiment(name="foo", run="f1", config=InvalidClass())
+
+        Experiment(name="foo", run="f1", config=InvalidClass().to_dict())
+
 
 class ValidateUtilTest(unittest.TestCase):
     def testDiagnoseSerialization(self):
-
         # this is not serializable
         e = threading.Event()
 
