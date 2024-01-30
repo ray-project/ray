@@ -36,6 +36,9 @@ class ResourceManager:
 
     def update_usages(self):
         """Recalcuate resource usages."""
+        # TODO(hchen): This method will be called frequently during the execution loop.
+        # And some computations are redundant. We should either remove redundant
+        # computations or remove this method entirely and compute usages on demand.
         self._global_usage = ExecutionResources(0, 0, 0)
         self._op_usages.clear()
         self._downstream_fraction.clear()

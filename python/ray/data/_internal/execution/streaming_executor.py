@@ -79,7 +79,6 @@ class StreamingExecutor(Executor, threading.Thread):
         # generator `yield`s.
         self._topology: Optional[Topology] = None
         self._output_node: Optional[OpState] = None
-
         self._backpressure_policies: List[BackpressurePolicy] = []
 
         self._dataset_tag = dataset_tag
