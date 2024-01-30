@@ -118,7 +118,7 @@ def filter_flaky_tests(
     # Obtain all existing tests with specified test state
     flaky_tests = set(get_flaky_test_names(prefix))
 
-    # Filter out these test from list of test targets based on user condition.
+    # Filter these test from list of test targets based on user condition.
     for t in input:
         t = t.strip()
         if not t:
