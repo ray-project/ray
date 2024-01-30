@@ -371,56 +371,6 @@ class _ExperimentCheckpointManager:
             f"-> {self._storage.experiment_local_path}"
         )
 
-    def _resume_auto(self) -> bool:
-        experiment_local_path = self._storage.experiment_local_path
-        experiment_fs_path = self._storage.experiment_fs_path
-        syncer = self._storage.syncer
-
-        if experiment_fs_path and syncer:
-            logger.info(
-                f"Trying to find and download experiment checkpoint at "
-                f"{experiment_fs_path}"
-            )
-            try:
-                self.sync_down_experiment_state()
-            except Exception:
-                logger.exception(
-                    "Got error when trying to sync down.\n"
-                    "Please check this error message for potential "
-                    "access problems - if a directory was not found, "
-                    "that is expected at this stage when you're starting "
-                    "a new experiment."
-                )
-                logger.info(
-                    "No remote checkpoint was found or an error occurred "
-                    "when trying to download the experiment checkpoint. "
-                    "Please check the previous warning message for more "
-                    "details. "
-                    "Starting a new run..."
-                )
-                return False
-            if not _experiment_checkpoint_exists(experiment_local_path):
-                logger.warning(
-                    "A remote checkpoint was fetched, but no checkpoint "
-                    "data was found. This can happen when e.g. the cloud "
-                    "bucket exists but does not contain any data. "
-                    "Starting a new run..."
-                )
-                return False
-            logger.info(
-                "A remote experiment checkpoint was found and will be "
-                "used to restore the previous experiment state."
-            )
-            return True
-        elif not _experiment_checkpoint_exists(experiment_local_path):
-            logger.info("No local checkpoint was found. Starting a new run...")
-            return False
-        logger.info(
-            "A local experiment checkpoint was found and will be used "
-            "to restore the previous experiment state."
-        )
-        return True
-
     def resume(self, resume_config: _ResumeConfig) -> bool:
         """Checks whether to resume experiment.
 
@@ -435,49 +385,42 @@ class _ExperimentCheckpointManager:
         Returns:
             can_restore: Whether the experiment can be restored.
         """
-        resume_type, resume_config = _resume_str_to_config(resume_type)
-
         experiment_local_path = self._storage.experiment_local_path
         experiment_fs_path = self._storage.experiment_fs_path
 
-        if resume_type == "AUTO":
-            if self._resume_auto():
-                return resume_config
-            # Else
-            return None
+        syncer = self._storage.syncer
 
-        if resume_type in ["LOCAL", "PROMPT"]:
-            if not _experiment_checkpoint_exists(experiment_local_path):
-                raise ValueError(
-                    f"You called resume ({resume_type}) when no checkpoint "
-                    f"exists in local directory "
-                    f"({experiment_local_path}). If you want to start "
-                    f'a new experiment, use `resume="AUTO"` or '
-                    f"`resume=None`. If you expected an experiment to "
-                    f"already exist, check if you supplied the correct "
-                    f"`local_dir` to `train.RunConfig()`."
-                )
-            elif resume_type == "PROMPT":
-                if click.confirm(
-                    f"Resume from local directory? " f"({experiment_local_path})"
-                ):
-                    return resume_config
-
-        if resume_type in ["REMOTE", "PROMPT"]:
-            if resume_type == "PROMPT" and not click.confirm(
-                f"Try downloading from remote directory? " f"({experiment_fs_path})"
-            ):
-                return None
-
-            # Try syncing down the upload directory.
+        # syncer is not None when the local path != storage path
+        if syncer:
             logger.info(
-                f"Downloading experiment checkpoint from " f"{experiment_fs_path}"
+                f"Trying to find and download experiment checkpoint from: "
+                f"{experiment_fs_path}"
             )
-            self.sync_down_experiment_state()
-
-            if not _experiment_checkpoint_exists(experiment_local_path):
-                raise ValueError(
-                    "Called resume when no checkpoint exists "
-                    "in remote or local directory."
+            try:
+                self.sync_down_experiment_state()
+            except Exception:
+                logger.exception(
+                    "Got error when trying to sync down experiment state from "
+                    f"{experiment_fs_path}\n"
+                    "Please check this error message for potential "
+                    "access problems - if a directory was not found, "
+                    "that is expected at this stage when you're starting "
+                    "a new experiment."
                 )
-        return resume_config
+                return False
+
+        latest_experiment_checkpoint_path = _find_newest_experiment_checkpoint(
+            experiment_local_path
+        )
+        if latest_experiment_checkpoint_path is None:
+            logger.warning(
+                f"No experiment metadata was found at {experiment_fs_path}. "
+                "Starting a new run..."
+            )
+            return False
+
+        logger.info(
+            f"The run will now start from the experiment state found in: "
+            f"{latest_experiment_checkpoint_path}"
+        )
+        return True
