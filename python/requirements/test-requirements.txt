@@ -119,3 +119,7 @@ watchfiles==0.19.0
 # For test_runtime_env_complicated.py::test_pip_with_env_vars
 # https://github.com/ray-project/ray/issues/42763
 virtualenv==20.21.0
+
+
+# TODO(matthewdeng): [py38]
+sphinxcontrib-applehelp; python_version >= "3.9"

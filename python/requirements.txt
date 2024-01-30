@@ -49,7 +49,9 @@ opencensus
 aiohttp_cors
 dm_tree
 uvicorn
-scikit-image
+# TODO(matthewdeng): [py38]
+scikit-image; python_version < "3.9"
+scikit-image; python_version >= "3.9"
 prometheus_client>=0.7.1
 requests
 pandas

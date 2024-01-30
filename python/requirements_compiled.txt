@@ -1868,8 +1868,6 @@ safetensors==0.4.2
     # via timm
 sarif-om==1.0.4
     # via cfn-lint
-scikit-image==0.22.0 ; python_version < "3.11"
-    # via -r /ray/ci/../python/requirements.txt
 scikit-learn==1.0.2 ; python_version < "3.11"
     # via
     #   -r /ray/ci/../python/requirements/test-requirements.txt
@@ -1990,8 +1988,6 @@ sphinx==4.3.2
     #   sphinx-togglebutton
 sphinx-togglebutton==0.2.3
     # via myst-nb
-sphinxcontrib-applehelp==1.0.8
-    # via sphinx
 sphinxcontrib-devhelp==1.0.6
     # via sphinx
 sphinxcontrib-htmlhelp==2.0.5
