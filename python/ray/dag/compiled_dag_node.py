@@ -60,7 +60,9 @@ def do_exec_compiled_task(
     class InputReader(threading.Thread):
         def __init__(self, input_channel_idxs):
             super().__init__(daemon=True)
-            self.queue = queue.Queue()
+            # Queue size cannot be greater than 1 since the shm channel only has two
+            # buffers, otherwise we'd hit the "Reader missed a value" error.
+            self.queue = queue.Queue(1)
             self.input_channel_idxs = input_channel_idxs
 
         def run(self):
