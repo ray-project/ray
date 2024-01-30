@@ -437,6 +437,8 @@ class CompiledDAG:
 
         # Driver should ray.put on input, ray.get/release on output
         self._monitor = self._monitor_failures()
+        self._submitter = Submitter(self.dag_input_channel)
+        self._submitter.start()
         return (self.dag_input_channel, self.dag_output_channels, self._monitor)
 
     def _monitor_failures(self):
