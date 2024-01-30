@@ -252,7 +252,7 @@ Check out the KubeRay guide on [GCS fault tolerance](kuberay-gcs-ft) to learn mo
 One way to improve the availability of your Serve application is to spread deployment replicas across multiple nodes so that you still have enough running
 replicas to serve traffic even after a certain number of node failures.
 
-By default, Serve soft spreads all deployments replicas but it has a few limitations:
+By default, Serve soft spreads all deployment replicas but it has a few limitations:
 
 * It's a soft and best-effort spread and there is no guarantee that the spread is perfectly even.
 
@@ -281,7 +281,7 @@ class Deployment2:
     return "world"
 ```
 
-In this example, we have two Serve deployments with different `max_replicas_per_node`: Deployment1 can have at most 1 replica on each node and Deployment2 can have at most 2 replicas on each node. If we schedule 2 replicas of Deployment1 and 2 replicas of Deployment2, we will have a cluster with at least 2 nodes each running 1 replica of Deployment1. The 2 replicas of Deployment2 may run on a single node or two nodes and either satisfies the `max_replicas_per_node` constraint.
+In this example, we have two Serve deployments with different `max_replicas_per_node`: `Deployment1` can have at most one replica on each node and `Deployment2` can have at most two replicas on each node. If we schedule two replicas of `Deployment1` and two replicas of `Deployment2`, we will have a cluster with at least two nodes, each running one replica of `Deployment1`. The two replicas of `Deployment2` may run on either a single node or across two nodes because either satisfies the `max_replicas_per_node` constraint.
 
 (serve-e2e-ft-behavior)=
 ## Serve's recovery procedures
