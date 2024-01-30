@@ -90,7 +90,7 @@ You can get a list of associated devices with :meth:`ray.train.torch.get_devices
 
         device = get_device()
         devices = get_devices()
-        assert device = [torch.device("cuda:0")]
+        assert device == torch.device("cuda:0")
         assert devices == [torch.device("cuda:0"), torch.device("cuda:1")]
 
     trainer = TorchTrainer(
