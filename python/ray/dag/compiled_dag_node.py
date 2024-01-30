@@ -53,6 +53,7 @@ def do_exec_compiled_task(
     self._dag_cancelled = False
     outer = self
 
+    # Pipeline arg fetching.
     class InputReader(threading.Thread):
         def __init__(self, input_channel_idxs):
             super().__init__(daemon=True)
@@ -71,6 +72,7 @@ def do_exec_compiled_task(
             for _, c in self.input_channel_idxs:
                 c.end_read()
 
+    # Pipeline output writing.
     class OutputWriter(threading.Thread):
         def __init__(self, output_channel):
             super().__init__(daemon=True)
@@ -439,9 +441,25 @@ class CompiledDAG:
             assert len(self.dag_output_channels) == 1
             self.dag_output_channels = self.dag_output_channels[0]
 
+        # Pipeline input submission.
+        class Submitter(threading.Thread):
+            def __init__(self, input_channel, monitor):
+                self._inputs = queue.Queue(1)
+                self._input_channel = input_channel
+                self._monitor = monitor
+                super().__init__(daemon=True)
+
+            def submit(self, args: Any) -> None:
+                self._inputs.put(args)
+
+            def run(self):
+                while not self._monitor.in_teardown:
+                    args = self._inputs.get()
+                    self._input_channel.write(args)
+
         # Driver should ray.put on input, ray.get/release on output
         self._monitor = self._monitor_failures()
-        self._submitter = Submitter(self.dag_input_channel)
+        self._submitter = Submitter(self.dag_input_channel, self._monitor)
         self._submitter.start()
         return (self.dag_input_channel, self.dag_output_channels, self._monitor)
 
@@ -519,21 +537,6 @@ class CompiledDAG:
     def teardown(self):
         """Teardown and cancel all worker tasks for this DAG."""
         self._monitor.teardown()
-
-
-class Submitter(threading.Thread):
-    def __init__(self, input_channel):
-        self._todo = queue.Queue()
-        self._input_channel = input_channel
-        super().__init__(daemon=True)
-
-    def submit(self, args):
-        self._todo.put(args)
-
-    def run(self):
-        while True:
-            args = self._todo.get()
-            self._input_channel.write(args)
 
 
 @DeveloperAPI
