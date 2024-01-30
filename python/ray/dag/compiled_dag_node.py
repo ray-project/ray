@@ -1,8 +1,10 @@
 from collections import defaultdict
+from contextlib import contextmanager
 import queue
 from typing import Any, Dict, List, Tuple, Union, Optional
 import logging
 import threading
+import time
 import traceback
 
 import ray
@@ -57,26 +59,29 @@ def do_exec_compiled_task(
     class InputReader(threading.Thread):
         def __init__(self, input_channel_idxs):
             super().__init__(daemon=True)
-            self.queue = queue.Queue(1)
+            self.queue = queue.Queue()
             self.input_channel_idxs = input_channel_idxs
 
         def run(self):
             while not outer._dag_cancelled:
                 res = [(idx, c.begin_read()) for idx, c in self.input_channel_idxs]
+                for _, c in self.input_channel_idxs:
+                    c.end_read()
                 self.queue.put(res)
 
         def read(self) -> Any:
             return self.queue.get()
 
         def end_read(self) -> None:
-            for _, c in self.input_channel_idxs:
-                c.end_read()
+            pass
+#            for _, c in self.input_channel_idxs:
+#                c.end_read()
 
     # Pipeline output writing.
     class OutputWriter(threading.Thread):
         def __init__(self, output_channel):
             super().__init__(daemon=True)
-            self.queue = queue.Queue(1)
+            self.queue = queue.Queue()
             self._output_channel = output_channel
 
         def run(self):
@@ -222,6 +227,10 @@ class CompiledDAG:
         # Set of actors present in the DAG.
         self.actor_refs = set()
 
+        # Result fetch pipelining.
+        self._pending = queue.Queue()
+        self._completed = queue.Queue()
+
     def _add_node(self, node: "ray.dag.DAGNode") -> None:
         idx = self.counter
         self.idx_to_task[idx] = CompiledTask(idx, node)
@@ -350,11 +359,11 @@ class CompiledDAG:
                 self.dag_output_channels,
             )
 
-        queue = [self.input_task_idx]
+        frontier = [self.input_task_idx]
         visited = set()
         # Create output buffers
-        while queue:
-            cur_idx = queue.pop(0)
+        while frontier:
+            cur_idx = frontier.pop(0)
             if cur_idx in visited:
                 continue
             visited.add(cur_idx)
@@ -381,7 +390,7 @@ class CompiledDAG:
                 assert isinstance(task.dag_node, MultiOutputNode)
 
             for idx in task.downstream_node_idxs:
-                queue.append(idx)
+                frontier.append(idx)
 
         for node_idx, task in self.idx_to_task.items():
             if node_idx == self.input_task_idx:
@@ -444,7 +453,7 @@ class CompiledDAG:
         # Pipeline input submission.
         class Submitter(threading.Thread):
             def __init__(self, input_channel, monitor):
-                self._inputs = queue.Queue(1)
+                self._inputs = queue.Queue()
                 self._input_channel = input_channel
                 self._monitor = monitor
                 super().__init__(daemon=True)
@@ -457,10 +466,27 @@ class CompiledDAG:
                     args = self._inputs.get()
                     self._input_channel.write(args)
 
+        # Pipeline output fetching.
+        class Fetcher(threading.Thread):
+            def __init__(self, pending, completed, monitor):
+                self._pending = pending
+                self._completed = completed
+                self._monitor = monitor
+                super().__init__(daemon=True)
+
+            def run(self):
+                while not self._monitor.in_teardown:
+                    chn = self._pending.get()
+                    res = chn.begin_read()
+                    chn.end_read()  # XXX
+                    self._completed.put((res, chn))
+
         # Driver should ray.put on input, ray.get/release on output
         self._monitor = self._monitor_failures()
         self._submitter = Submitter(self.dag_input_channel, self._monitor)
         self._submitter.start()
+        self._fetcher = Fetcher(self._pending, self._completed, self._monitor)
+        self._fetcher.start()
         return (self.dag_input_channel, self.dag_output_channels, self._monitor)
 
     def _monitor_failures(self):
@@ -532,7 +558,20 @@ class CompiledDAG:
 
         input_channel, output_channels = self._get_or_compile()
         self._submitter.submit(args[0])
+        self._pending.put(output_channels)
         return output_channels
+
+    def has_next(self) -> bool:
+        return self._completed.qsize() > 0 or self._pending.qsize() > 0
+
+    @contextmanager
+    def get_next(self):
+        result, chn = self._completed.get()
+        try:
+            yield result
+        finally:
+            pass
+#            chn.end_read()
 
     def teardown(self):
         """Teardown and cancel all worker tasks for this DAG."""

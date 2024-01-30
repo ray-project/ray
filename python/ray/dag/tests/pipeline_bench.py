@@ -6,7 +6,7 @@ from ray.dag import InputNode
 
 
 n_stages = 4
-pipeline_concurrency = 6  # 1.5s/stage = 1s compute + 0.5s transfer
+pipeline_concurrency = 7  # 1.5s/stage = 1s compute + 0.5s transfer
 n = 100
 
 
@@ -32,36 +32,31 @@ with InputNode() as i:
     for stage in stages:
         dag = stage.f.bind(dag)
 
-compiled_dag = dag.experimental_compile(buffer_size_bytes=100)
+pipeline = dag.experimental_compile(buffer_size_bytes=100)
 start = time.time()
-active = []
 
 for i in range(pipeline_concurrency):
     print("Executing", i)
-    res = compiled_dag.execute(b"input")
-    active.append(res)
+    pipeline.execute(b"input")
+print("Warmup done")
 
 # TODO need to submit / read from separate threads
 for j in range(n - pipeline_concurrency):
-    chn = active.pop(0)
     s = time.time()
-    x = chn.begin_read()
-    assert x == b"last", x
-    chn.end_read()
+    with pipeline.get_next() as x:
+        assert x == b"last", x
     if time.time() - s > 0.2:
         print("*** Read delay ***", time.time() - s)
     print("Executing", j + pipeline_concurrency)
     s = time.time()
-    res = compiled_dag.execute(b"input")
+    pipeline.execute(b"input")
     if time.time() - s > 0.2:
         print("*** Execute delay ***", time.time() - s)
-    active.append(res)
     print("iterations/s", (pipeline_concurrency + j) / (time.time() - start))
 
-while active:
+while pipeline.has_next():
     print("Getting last result")
-    chn = active.pop(0)
-    chn.begin_read()
-    chn.end_read()
+    with pipeline.next_result() as result:
+        pass
 
 print("iterations/s", n / (time.time() - start))
