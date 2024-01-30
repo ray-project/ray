@@ -102,7 +102,8 @@ DEFAULT_ENABLE_TENSOR_EXTENSION_CASTING = True
 # If disabled, users can still manually print stats with Dataset.stats().
 DEFAULT_AUTO_LOG_STATS = False
 
-# Whether stats logs should be verbose.
+# Whether stats logs should be verbose. This will include fields such
+# as `extra_metrics` in the stats output, which are excluded by default.
 DEFAULT_VERBOSE_STATS_LOG = False
 
 # Set this env var to enable distributed tqdm (experimental).
