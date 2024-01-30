@@ -168,6 +168,70 @@ class TestPrioritizedEpisodeReplayBuffer(unittest.TestCase):
             reward_sum = (next_obs + next_obs - 1 + next_obs - 2) * 0.1
             self.assertTrue(np.all(rewards - reward_sum < tolerance))
 
+    def test_update_priorities(self):
+        # Define replay buffer (alpha=1.0).
+        buffer = PrioritizedEpisodeReplayBuffer(capacity=100)
+
+        # Generate 200 episode of random length.
+        for _ in range(200):
+            episode = self._get_episode()
+            buffer.add(episode)
+
+        # Now sample from the buffer and update priorities.
+
+        sample = buffer.sample(batch_size_B=16, n_step=1)
+        weights = sample["weights"]
+
+        # Make sure the initial weights are 1.0.
+        tolerance = 1e-5
+        self.assertTrue(np.all(weights - 1 < tolerance))
+
+        # Define some deltas.
+        deltas = np.array([0.01] * 16)
+        # Get the last sampled indices (in the segment trees).
+        last_sampled_indices = buffer._last_sampled_indices
+        # Update th epriorities of the last sampled transitions.
+        buffer.update_priorities(priorities=deltas)
+
+        # Assert that the new priorities are indeed the ones we passed in.
+        new_priorities = [buffer._sum_segment[idx] for idx in last_sampled_indices]
+        self.assertTrue(np.all(new_priorities - deltas < tolerance))
+
+        # Sample several times.
+        index_counts = []
+        for _ in range(1000):
+            sample = buffer.sample(batch_size_B=16, n_step=1)
+
+            index_counts.append(
+                any(
+                    [
+                        idx in last_sampled_indices
+                        for idx in buffer._last_sampled_indices
+                    ]
+                )
+            )
+
+        self.assertGreater(0.15, sum(index_counts) / len(index_counts))
+
+        # Define replay buffer (alpha=1.0).
+        buffer = PrioritizedEpisodeReplayBuffer(capacity=10)
+        episode = self._get_episode(10)
+        buffer.add(episode)
+
+        # Manipulate the priorities such that 1's priority is
+        # way higher than the others and sample.
+        buffer._last_sampled_indices = [1]
+        randn = np.random.random() + 0.2
+        buffer.update_priorities(np.array([randn]))
+        buffer._last_sampled_indices = [2, 3, 4, 5, 6, 7, 8, 9]
+        buffer.update_priorities(np.array([0.01] * 8))
+
+        # Expect that around 90% of the samples are from index 1.
+        for _ in range(10):
+            sample = buffer.sample(1000)
+            number_of_ones = np.sum(np.array(buffer._last_sampled_indices) == 1)
+            self.assertTrue(number_of_ones / 1000 > 0.8)
+
 
 if __name__ == "__main__":
     import pytest

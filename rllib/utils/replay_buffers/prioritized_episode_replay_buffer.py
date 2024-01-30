@@ -282,6 +282,9 @@ class PrioritizedEpisodeReplayBuffer(EpisodeReplayBuffer):
             # If we are at the end of an episode, continue.
             # Note, priority sampling got us `o_(t+n_step)` and we need
             # for the loss calculation in addition `o_t`.
+            # TODO (simon): Maybe introduce a variable `num_retry` until the while
+            # loop should break when not enough samples have been collected to
+            # make n-step possible.
             if episode_ts - n_step < 0:
                 continue
 
