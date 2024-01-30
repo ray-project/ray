@@ -313,6 +313,7 @@ void GcsServer::InitGcsNodeManager(const GcsInitData &gcs_init_data) {
   node_info_service_.reset(
       new rpc::NodeInfoGrpcService(main_service_, *gcs_node_manager_));
   rpc_server_.RegisterService(*node_info_service_);
+  gcs_node_manager_->cluster_resource_scheduler_ = cluster_resource_scheduler_;
 }
 
 void GcsServer::InitGcsHealthCheckManager(const GcsInitData &gcs_init_data) {

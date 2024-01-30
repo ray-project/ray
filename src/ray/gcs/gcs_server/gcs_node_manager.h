@@ -32,6 +32,7 @@
 #include "ray/rpc/node_manager/node_manager_client.h"
 #include "ray/rpc/node_manager/node_manager_client_pool.h"
 #include "src/ray/protobuf/gcs.pb.h"
+#include "ray/raylet/scheduling/cluster_resource_scheduler.h"
 
 namespace ray {
 class GcsMonitorServerTest;
@@ -147,6 +148,8 @@ class GcsNodeManager : public rpc::NodeInfoHandler {
   /// Drain the given node.
   /// Idempotent.
   virtual void DrainNode(const NodeID &node_id);
+
+  std::shared_ptr<ClusterResourceScheduler> cluster_resource_scheduler_;
 
  private:
   /// Add the dead node to the cache. If the cache is full, the earliest dead node is
