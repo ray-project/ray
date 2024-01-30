@@ -1392,15 +1392,17 @@ async def execute_streaming_generator_async(
 
     gen = context.generator
 
-    BATCH_MAX_DURATION_US = 10.0
-    DEFAULT_BATCH_SIZE = 10
+    loop = asyncio.get_running_loop()
+    worker = ray._private.worker.global_worker
+
     cur_batch_size = DEFAULT_BATCH_SIZE
 
     futures = []
 
-    outputs = []
-    exception = None
     while True:
+        outputs = []
+        exception = None
+
         try:
             start = time.monotonic()
 
@@ -1422,32 +1424,26 @@ async def execute_streaming_generator_async(
             raise
         except Exception as e:
             exception = e
-
-        loop = asyncio.get_running_loop()
-        worker = ray._private.worker.global_worker
-
-        # NOTE: Reporting generator output in a streaming fashion,
-        #       is done in a standalone thread-pool fully *asynchronously*
-        #       to avoid blocking the event-loop and allow it to *concurrently*
-        #       make progress, since serializing and actual RPC I/O is done
-        #       with "nogil".
-        futures.append(
-            loop.run_in_executor(
-                worker.core_worker.get_thread_pool_for_async_event_loop(),
-                report_streaming_generator_output,
-                context,
-                outputs,
-                exception,
-                cur_generator_index,
-            )
-        )
-
-        if exception:
             break
-        else:
-            cur_generator_index += len(outputs)
-            outputs = []
+        finally:
+            # NOTE: Reporting generator output in a streaming fashion,
+            #       is done in a standalone thread-pool fully *asynchronously*
+            #       to avoid blocking the event-loop and allow it to *concurrently*
+            #       make progress, since serializing and actual RPC I/O is done
+            #       with "nogil".
+            futures.append(
+                loop.run_in_executor(
+                    worker.core_worker.get_thread_pool_for_async_event_loop(),
+                    report_streaming_generator_output,
+                    context,
+                    outputs,
+                    exception,
+                    cur_generator_index,
+                )
+            )
 
+            if not exception:
+                cur_generator_index += len(outputs)
 
     # Make sure all RPC I/O completes before returning
     await asyncio.gather(*futures)
