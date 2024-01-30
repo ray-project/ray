@@ -35,7 +35,7 @@ class ResourceManager:
         self._downstream_object_store_memory: Dict[PhysicalOperator, int] = {}
 
     def update_usages(self):
-        """Recalcuate resource usages."""
+        """Recalculate resource usages."""
         # TODO(hchen): This method will be called frequently during the execution loop.
         # And some computations are redundant. We should either remove redundant
         # computations or remove this method entirely and compute usages on demand.
