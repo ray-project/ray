@@ -18,7 +18,7 @@ class PublishProvider(ABC):
     def publish(
         config: Dict,
         *,
-        name: str,
+        name: Optional[str],
         ray_version: str,
         base_image: Optional[str] = None,
     ):
@@ -49,14 +49,15 @@ class AnyscalePublishProvider(PublishProvider):
     def publish(
         config: Dict,
         *,
-        name: str,
+        name: Optional[str],
         ray_version: str,
         base_image: Optional[str] = None,
     ):
         service_config = {
-            "name": name,
             "ray_serve_config": config,
         }
+        if name is not None:
+            service_config["name"] = name
         if base_image is not None:
             service_config["cluster_env"] = base_image
 
