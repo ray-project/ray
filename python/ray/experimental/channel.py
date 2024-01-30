@@ -57,7 +57,9 @@ class Channel:
         self,
         buffer_size_bytes: Optional[int] = None,
         num_readers: int = 1,
+        pipelined: bool = False,
         _base_ref: Optional["ray.ObjectRef"] = None,
+        _swap_ref: Optional["ray.ObjectRef"] = None,
     ):
         """
         Create a channel that can be read and written by co-located Ray processes.
@@ -69,6 +71,8 @@ class Channel:
             buffer_size_bytes: The number of bytes to allocate for the object data and
                 metadata. Writes to the channel must produce serialized data and
                 metadata less than or equal to this value.
+            pipelined: If enabled, allows overlap of data transfer and compute by
+                using two buffers instead of one. Doubles memory usage.
         Returns:
             Channel: A wrapper around ray.ObjectRef.
         """
@@ -78,10 +82,15 @@ class Channel:
                     "One of `buffer_size_bytes` or `_base_ref` must be provided"
                 )
             self._base_ref = _base_ref
+            self._swap_ref = _swap_ref
         else:
             if not isinstance(buffer_size_bytes, int):
                 raise ValueError("buffer_size_bytes must be an integer")
             self._base_ref = _create_channel_ref(buffer_size_bytes)
+            if pipelined:
+                self._swap_ref = _create_channel_ref(buffer_size_bytes)
+            else:
+                self._swap_ref = None
 
         if not isinstance(num_readers, int):
             raise ValueError("num_readers must be an integer")
@@ -89,13 +98,16 @@ class Channel:
         self._num_readers = num_readers
         self._worker = ray._private.worker.global_worker
         self._worker.check_connected()
+        self._next_end_read = []
 
     @staticmethod
-    def _from_base_ref(base_ref: "ray.ObjectRef", num_readers: int) -> "Channel":
-        return Channel(num_readers=num_readers, _base_ref=base_ref)
+    def _from_base_ref(
+        base_ref: "ray.ObjectRef", swap_ref: "ray.ObjectRef", num_readers: int
+    ) -> "Channel":
+        return Channel(num_readers=num_readers, _base_ref=base_ref, _swap_ref=swap_ref)
 
     def __reduce__(self):
-        return self._from_base_ref, (self._base_ref, self._num_readers)
+        return self._from_base_ref, (self._base_ref, self._swap_ref, self._num_readers)
 
     def write(self, value: Any, num_readers: Optional[int] = None):
         """
@@ -133,6 +145,9 @@ class Channel:
             num_readers,
         )
 
+        if self._swap_ref:
+            self._base_ref, self._swap_ref = self._swap_ref, self._base_ref
+
     def begin_read(self) -> Any:
         """
         Read the latest value from the channel. This call will block until a
@@ -148,6 +163,10 @@ class Channel:
         values, _ = self._worker.get_objects(
             [self._base_ref], _is_experimental_mutable_object=True
         )
+        self._next_end_read.append(self._base_ref)
+        if self._swap_ref:
+            self._base_ref, self._swap_ref = self._swap_ref, self._base_ref
+
         time.sleep(0.5)  # Emulate transfer delay
         return values[0]
 
@@ -158,9 +177,8 @@ class Channel:
         If begin_read is not called first, then this call will block until a
         value is written, then drop the value.
         """
-        self._worker.core_worker.experimental_mutable_object_read_release(
-            [self._base_ref]
-        )
+        ref = self._next_end_read.pop(0)
+        self._worker.core_worker.experimental_mutable_object_read_release([ref])
 
     def close(self) -> None:
         """

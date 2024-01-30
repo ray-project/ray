@@ -32,7 +32,9 @@ with InputNode() as i:
     for stage in stages:
         dag = stage.f.bind(dag)
 
-pipeline = dag.experimental_compile(buffer_size_bytes=100)
+pipeline = dag.experimental_compile(
+    buffer_size_bytes=100, max_concurrency=pipeline_concurrency
+)
 start = time.time()
 
 for i in range(pipeline_concurrency):

@@ -19,7 +19,9 @@ logger = logging.getLogger(__name__)
 
 
 @DeveloperAPI
-def do_allocate_channel(self, buffer_size_bytes: int, num_readers: int = 1) -> Channel:
+def do_allocate_channel(
+    self, buffer_size_bytes: int, num_readers: int, pipelined: bool
+) -> Channel:
     """Generic actor method to allocate an output channel.
 
     Args:
@@ -29,7 +31,7 @@ def do_allocate_channel(self, buffer_size_bytes: int, num_readers: int = 1) -> C
     Returns:
         The allocated channel.
     """
-    self._output_channel = Channel(buffer_size_bytes, num_readers)
+    self._output_channel = Channel(buffer_size_bytes, num_readers, pipelined=pipelined)
     return self._output_channel
 
 
@@ -65,17 +67,14 @@ def do_exec_compiled_task(
         def run(self):
             while not outer._dag_cancelled:
                 res = [(idx, c.begin_read()) for idx, c in self.input_channel_idxs]
-                for _, c in self.input_channel_idxs:
-                    c.end_read()
                 self.queue.put(res)
 
         def read(self) -> Any:
             return self.queue.get()
 
         def end_read(self) -> None:
-            pass
-#            for _, c in self.input_channel_idxs:
-#                c.end_read()
+            for _, c in self.input_channel_idxs:
+                c.end_read()
 
     # Pipeline output writing.
     class OutputWriter(threading.Thread):
@@ -194,7 +193,10 @@ class CompiledDAG:
     information.
     """
 
-    def __init__(self, buffer_size_bytes: Optional[int]):
+    def __init__(self, buffer_size_bytes: Optional[int], max_concurrency: int):
+        if max_concurrency < 1:
+            raise ValueError("Concurrency must be at least 1")
+        self._max_concurrency: int = max_concurrency
         self._buffer_size_bytes: Optional[int] = buffer_size_bytes
         if self._buffer_size_bytes is None:
             self._buffer_size_bytes = MAX_BUFFER_SIZE
@@ -378,6 +380,7 @@ class CompiledDAG:
                         do_allocate_channel,
                         buffer_size_bytes=self._buffer_size_bytes,
                         num_readers=task.num_readers,
+                        pipelined=self._max_concurrency > 1,
                     )
                 )
                 self.actor_refs.add(task.dag_node._get_actor_handle())
@@ -385,6 +388,7 @@ class CompiledDAG:
                 task.output_channel = Channel(
                     buffer_size_bytes=self._buffer_size_bytes,
                     num_readers=task.num_readers,
+                    pipelined=self._max_concurrency > 1,
                 )
             else:
                 assert isinstance(task.dag_node, MultiOutputNode)
@@ -478,7 +482,6 @@ class CompiledDAG:
                 while not self._monitor.in_teardown:
                     chn = self._pending.get()
                     res = chn.begin_read()
-                    chn.end_read()  # XXX
                     self._completed.put((res, chn))
 
         # Driver should ray.put on input, ray.get/release on output
@@ -558,20 +561,30 @@ class CompiledDAG:
 
         input_channel, output_channels = self._get_or_compile()
         self._submitter.submit(args[0])
-        self._pending.put(output_channels)
+        if self._max_concurrency > 1:
+            self._pending.put(output_channels)
+            num_pending = self._completed.qsize() + self._pending.qsize()
+            if num_pending > self._max_concurrency:
+                raise ValueError(
+                    f"the number of active executions ({num_pending}) exceeds "
+                    f"the max concurrency ({self._max_concurrency})"
+                )
         return output_channels
 
     def has_next(self) -> bool:
+        if self._max_concurrency <= 1:
+            raise ValueError("has_next() requires max_concurrency > 1")
         return self._completed.qsize() > 0 or self._pending.qsize() > 0
 
     @contextmanager
     def get_next(self):
+        if self._max_concurrency <= 1:
+            raise ValueError("get_next() requires max_concurrency > 1")
         result, chn = self._completed.get()
         try:
             yield result
         finally:
-            pass
-#            chn.end_read()
+            chn.end_read()
 
     def teardown(self):
         """Teardown and cancel all worker tasks for this DAG."""
@@ -580,9 +593,9 @@ class CompiledDAG:
 
 @DeveloperAPI
 def build_compiled_dag_from_ray_dag(
-    dag: "ray.dag.DAGNode", buffer_size_bytes: Optional[int]
+    dag: "ray.dag.DAGNode", buffer_size_bytes: Optional[int], max_concurrency: int
 ) -> "CompiledDAG":
-    compiled_dag = CompiledDAG(buffer_size_bytes)
+    compiled_dag = CompiledDAG(buffer_size_bytes, max_concurrency)
 
     def _build_compiled_dag(node):
         compiled_dag._add_node(node)
