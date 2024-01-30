@@ -138,7 +138,8 @@ def _set_torch_distributed_env_vars():
 
     # Makes sure Hugging Face Accelerate uses the correct device
     device = get_device()
-    torch.cuda.set_device(device)
+    if torch.cuda.is_available() and device.type == "cuda":
+        torch.cuda.set_device(device)
     os.environ["ACCELERATE_TORCH_DEVICE"] = str(device)
 
 

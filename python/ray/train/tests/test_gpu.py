@@ -71,6 +71,9 @@ def test_torch_get_device(
             visible_devices = os.environ["CUDA_VISIBLE_DEVICES"]
             assert visible_devices == "1,2"
 
+        # Ensure we autimatically set the current cuda device
+        assert torch.cuda.current_device() == train.torch.get_device().index
+
         devices = sorted([device.index for device in train.torch.get_devices()])
         write_rank_data(tmp_path, devices)
 
@@ -106,6 +109,9 @@ def test_torch_get_device_dist(ray_2_node_2_gpu, num_gpus_per_worker, tmp_path):
     def train_fn():
         devices = sorted([device.index for device in train.torch.get_devices()])
         write_rank_data(tmp_path, devices)
+
+        # Ensure we autimatically set the current cuda device
+        assert torch.cuda.current_device() == train.torch.get_device().index
 
     trainer = TorchTrainer(
         train_fn,
