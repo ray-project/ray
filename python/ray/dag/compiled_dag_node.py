@@ -13,6 +13,8 @@ from ray.util.annotations import DeveloperAPI
 
 
 MAX_BUFFER_SIZE = int(100 * 1e6)  # 100MB
+
+# Experimental support for using gloo as the channel backend.
 USE_TORCH_CHANNEL = bool(int(os.environ.get("USE_TORCH_CHANNEL", "0")))
 USE_TORCH_BROADCAST = bool(int(os.environ.get("USE_TORCH_BROADCAST", "1")))
 
@@ -46,8 +48,7 @@ def _make_channel(
 def torch_init(self, rank, world_size):
     import torch
 
-    print("call torch init", rank, world_size)
-    # TODO assign these in a better way
+    # TODO(ekl): assign these in a better way
     os.environ["MASTER_ADDR"] = ray._private.services.get_node_ip_address()
     os.environ["MASTER_PORT"] = "26254"
 
@@ -368,7 +369,7 @@ class CompiledDAG:
                 self.actor_ranks[task.dag_node._get_actor_handle()] = task.idx
             elif isinstance(task.dag_node, InputNode):
                 if len(task.downstream_node_idxs) > 1 and USE_TORCH_BROADCAST:
-                    # TODO this assumes we send to all actors
+                    # TODO(ekl): this assumes we send to all actors
                     strategy = "broadcast"
                 else:
                     strategy = "isend"
@@ -450,8 +451,8 @@ class CompiledDAG:
 
     def _torch_init(self):
         futs = []
-        print("Actor ranks", self.actor_ranks)
-        print("Driver ranks", self.input_task_idx)
+        logger.debug(f"Actor ranks {self.actor_ranks}")
+        logger.debug(f"Driver ranks {self.input_task_idx}")
         world_size = len(self.actor_ranks) + 1
         for actor, rank in self.actor_ranks.items():
             fn = actor.__ray_call__

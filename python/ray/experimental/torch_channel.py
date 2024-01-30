@@ -1,3 +1,4 @@
+import logging
 from typing import Any, List
 
 import numpy as np
@@ -5,6 +6,8 @@ import torch
 
 import ray
 from ray.experimental.channel import Channel
+
+logger = logging.getLogger(__name__)
 
 
 # Precondition: the communication group is setup for the reader and writer actors.
@@ -23,7 +26,7 @@ class TorchChannel(Channel):
         self._worker = ray._private.worker.global_worker
         self._strategy = strategy
         assert strategy in ["broadcast", "isend"]
-        print(
+        logger.info(
             f"Created Torch channel with buffer_size_bytes={buffer_size_bytes}, "
             f"reader_ranks={reader_ranks}, writer_rank={writer_rank}, "
             f"strategy={strategy}"
@@ -39,7 +42,7 @@ class TorchChannel(Channel):
 
     def write(self, value: Any) -> None:
         serialized_value = self._serialize(value)
-        # TODO: can we avoid sending the entire buffer each time?
+        # TODO(ekl): can we avoid sending the entire buffer each time?
         datalen = len(serialized_value)
         if datalen + 4 > len(self._arr):
             raise ValueError("Serialized value larger than the channel buffer length")
@@ -75,7 +78,7 @@ class TorchChannel(Channel):
 
     def _serialize(self, value: Any) -> bytes:
         if not isinstance(value, bytes):
-            raise NotImplementedError("only support bytes types only for now")
+            raise NotImplementedError("only supports bytes types only for now")
         return value
 
     def _deserialize(self, serialized_value: bytes) -> Any:
