@@ -34,7 +34,7 @@ class ResourceManager:
         self._downstream_fraction: Dict[PhysicalOperator, float] = {}
         self._downstream_object_store_memory: Dict[PhysicalOperator, int] = {}
 
-    def refresh(self):
+    def update_usages(self):
         """Recalcuate resource usages."""
         self._global_usage = ExecutionResources(0, 0, 0)
         self._op_usages.clear()
