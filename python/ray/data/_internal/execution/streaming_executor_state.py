@@ -627,6 +627,7 @@ def _execution_allowed(op: PhysicalOperator, resource_manager: ResourceManager) 
 
     Args:
         op: The operator to check.
+        resource_manager: The ResourceManager of the current dataset.
 
     Returns:
         Whether the op is allowed to run.
