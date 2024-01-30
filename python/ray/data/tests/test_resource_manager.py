@@ -124,7 +124,7 @@ class TestResourceManager(unittest.TestCase):
         topo[o2].add_output(inputs[0])
 
         resource_manager = ResourceManager(topo, ExecutionOptions())
-        resource_manager.update_usage()
+        resource_manager.update_usages()
         assert resource_manager.get_global_usage() == ExecutionResources(15, 0, 1700)
 
         assert resource_manager.get_op_usage(o1) == ExecutionResources(0, 0, 0)

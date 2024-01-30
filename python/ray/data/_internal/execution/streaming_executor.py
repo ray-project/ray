@@ -264,7 +264,7 @@ class StreamingExecutor(Executor, threading.Thread):
             self._max_errored_blocks -= num_errored_blocks
         self._num_errored_blocks += num_errored_blocks
 
-        self._resource_manager.update_usage()
+        self._resource_manager.update_usages()
         # Dispatch as many operators as we can for completed tasks.
         self._report_current_usage()
         op = select_operator_to_run(
@@ -283,7 +283,7 @@ class StreamingExecutor(Executor, threading.Thread):
             if DEBUG_TRACE_SCHEDULING:
                 _debug_dump_topology(topology)
             topology[op].dispatch_next_task()
-            self._resource_manager.update_usage()
+            self._resource_manager.update_usages()
             op = select_operator_to_run(
                 topology,
                 self._resource_manager,
