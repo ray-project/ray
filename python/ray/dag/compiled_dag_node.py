@@ -1,4 +1,5 @@
 from collections import defaultdict
+import queue
 from typing import Any, Dict, List, Tuple, Union, Optional
 import logging
 import threading
@@ -55,24 +56,25 @@ def do_exec_compiled_task(
     class InputReader(threading.Thread):
         def __init__(self, input_channel_idxs):
             super().__init__(daemon=True)
-            self.queue = queue.Queue()
+            self.queue = queue.Queue(1)
             self.input_channel_idxs = input_channel_idxs
 
         def run(self):
             while not outer._dag_cancelled:
                 res = [(idx, c.begin_read()) for idx, c in self.input_channel_idxs]
-                # XXX not safe for shm objects
-                for _, c in self.input_channel_idxs:
-                    c.end_read()
                 self.queue.put(res)
 
-        def read(self):
+        def read(self) -> Any:
             return self.queue.get()
+
+        def end_read(self) -> None:
+            for _, c in self.input_channel_idxs:
+                c.end_read()
 
     class OutputWriter(threading.Thread):
         def __init__(self, output_channel):
             super().__init__(daemon=True)
-            self.queue = queue.Queue()
+            self.queue = queue.Queue(1)
             self._output_channel = output_channel
 
         def run(self):
@@ -80,7 +82,7 @@ def do_exec_compiled_task(
                 res = self.queue.get()
                 self._output_channel.write(res)
 
-        def write(self, val):
+        def write(self, val: Any) -> None:
             self.queue.put(val)
 
     try:
@@ -126,6 +128,8 @@ def do_exec_compiled_task(
                 if self._dag_cancelled:
                     raise RuntimeError("DAG execution cancelled")
                 output_writer.write(output_val)
+            finally:
+                input_reader.end_read()
 
     except Exception:
         logging.exception("Compiled DAG task exited with exception")

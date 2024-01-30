@@ -1,6 +1,6 @@
 import io
-import time
 import logging
+import time
 from typing import Any, Optional
 
 import ray
@@ -150,7 +150,7 @@ class Channel:
         )
         # TODO implement pipeline of driver result fetch
         if values[0] != b"last":
-#            print("Transfer object", values[0])
+            #            print("Transfer object", values[0])
             time.sleep(0.5)  # Emulate transfer delay
         return values[0]
 

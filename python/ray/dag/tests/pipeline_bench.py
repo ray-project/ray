@@ -2,7 +2,7 @@
 
 import ray
 import time
-from ray.dag import InputNode, MultiOutputNode
+from ray.dag import InputNode
 
 
 n_stages = 4
