@@ -1,9 +1,11 @@
 import math
 import unittest
+import time
 from unittest.mock import MagicMock, patch
 
 import pytest
 
+import ray
 from ray.data._internal.execution.interfaces.execution_options import (
     ExecutionOptions,
     ExecutionResources,
@@ -66,6 +68,32 @@ class TestResourceManager(unittest.TestCase):
                 options.resource_limits = ExecutionResources(cpu=2)
                 options.exclude_resources = ExecutionResources(cpu=1)
                 options.validate()
+
+    def test_global_limits_cache(self):
+        resources = {"CPU": 4, "GPU": 1, "object_store_memory": 0}
+        cache_interval_s = 0.1
+        with patch.object(
+            ResourceManager,
+            "GLOBAL_LIMITS_UPDATE_INTERVAL_S",
+            cache_interval_s,
+        ):
+            with patch(
+                "ray.cluster_resources",
+                return_value=resources,
+            ) as ray_cluster_resources:
+                resource_manager = ResourceManager(MagicMock(), ExecutionOptions())
+                expected_resource = ExecutionResources(4, 1, 0)
+                # The first call should call ray.cluster_resources().
+                assert resource_manager.get_global_limits() == expected_resource
+                assert ray_cluster_resources.call_count == 1
+                # The second call should return the cached value.
+                assert resource_manager.get_global_limits() == expected_resource
+                assert ray_cluster_resources.call_count == 1
+                time.sleep(cache_interval_s)
+                # After the cache interval, the third call should call
+                # ray.cluster_resources() again.
+                assert resource_manager.get_global_limits() == expected_resource
+                assert ray_cluster_resources.call_count == 2
 
     def test_calculating_usage(self):
         pass
