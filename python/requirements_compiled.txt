@@ -1988,8 +1988,6 @@ sphinx==4.3.2
     #   sphinx-togglebutton
 sphinx-togglebutton==0.2.3
     # via myst-nb
-sphinxcontrib-devhelp==1.0.6
-    # via sphinx
 sphinxcontrib-htmlhelp==2.0.5
     # via sphinx
 sphinxcontrib-jsmath==1.0.1

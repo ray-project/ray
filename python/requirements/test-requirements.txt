@@ -123,3 +123,4 @@ virtualenv==20.21.0
 
 # TODO(matthewdeng): [py38]
 sphinxcontrib-applehelp; python_version >= "3.9"
+sphinxcontrib-devhelp; python_version >= "3.9"
