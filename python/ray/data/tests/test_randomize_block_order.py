@@ -19,7 +19,7 @@ from ray.data.tests.test_util import get_parquet_read_logical_op
 from ray.data.tests.util import extract_values
 
 
-def test_randomize_blocks_operator(ray_start_regular_shared, enable_optimizer):
+def test_randomize_blocks_operator(ray_start_regular_shared):
     planner = Planner()
     read_op = get_parquet_read_logical_op()
     op = RandomizeBlocks(
@@ -112,7 +112,7 @@ def test_randomize_block_order_after_repartition():
     assert operator_count == 6
 
 
-def test_randomize_blocks_e2e(ray_start_regular_shared, enable_optimizer):
+def test_randomize_blocks_e2e(ray_start_regular_shared):
     ds = ray.data.range(12, parallelism=4)
     ds = ds.randomize_block_order(seed=0)
     assert extract_values("id", ds.take_all()) == [
@@ -131,7 +131,7 @@ def test_randomize_blocks_e2e(ray_start_regular_shared, enable_optimizer):
     ], ds
 
 
-def test_randomize_blocks_rule_e2e(ray_start_regular_shared, enable_optimizer):
+def test_randomize_blocks_rule_e2e(ray_start_regular_shared):
     def dummy_map(x):
         return x
 
