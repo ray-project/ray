@@ -115,6 +115,7 @@ const ActorTable = ({
         const descMultiplier = descVal ? 1 : -1;
         switch (sorterKey) {
           case uptimeSorterKey:
+            // Note: Sort by uptime only is re-sorted on re-render (not as uptime value changes)
             const startTime = actor.startTime;
             const endTime = actor.endTime;
             // If actor doesn't have startTime, set uptime to infinity for sort so it appears at the bottom of
