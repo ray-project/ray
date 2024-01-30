@@ -110,11 +110,26 @@ py_test(
     deps = ["//:ray_lib", ":conftest"],
 )
 
-
 py_test(
     name = "test_instance_manager",
     size = "small",
     srcs = ["tests/test_instance_manager.py"],
+    tags = ["team:core", "exclusive"],
+    deps = ["//:ray_lib", ":conftest"],
+)
+
+py_test(
+    name = "test_instance_util",
+    size = "small",
+    srcs = ["tests/test_instance_util.py"],
+    tags = ["team:core", "exclusive"],
+    deps = ["//:ray_lib", ":conftest"],
+)
+
+py_test(
+    name = "test_schema",
+    size = "small",
+    srcs = ["tests/test_schema.py"],
     tags = ["team:core", "exclusive"],
     deps = ["//:ray_lib", ":conftest"],
 )

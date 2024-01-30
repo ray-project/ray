@@ -584,40 +584,6 @@ def validate_save_restore(
     return True
 
 
-def _detect_checkpoint_function(train_func, abort=False, partial=False):
-    """Use checkpointing if any arg has "checkpoint_dir" and args = 2"""
-    func_sig = inspect.signature(train_func)
-    validated = True
-    try:
-        # check if signature is func(config, checkpoint_dir=None)
-        if partial:
-            func_sig.bind_partial({}, checkpoint_dir="tmp/path")
-        else:
-            func_sig.bind({}, checkpoint_dir="tmp/path")
-    except Exception as e:
-        logger.debug(str(e))
-        validated = False
-    if abort and not validated:
-        func_args = inspect.getfullargspec(train_func).args
-        raise ValueError(
-            "Provided training function must have 1 `config` argument "
-            "`func(config)`. Got {}".format(func_args)
-        )
-    return validated
-
-
-def _detect_reporter(func):
-    """Use reporter if any arg has "reporter" and args = 2"""
-    func_sig = inspect.signature(func)
-    use_reporter = True
-    try:
-        func_sig.bind({}, reporter=None)
-    except Exception as e:
-        logger.debug(str(e))
-        use_reporter = False
-    return use_reporter
-
-
 def _detect_config_single(func):
     """Check if func({}) works."""
     func_sig = inspect.signature(func)

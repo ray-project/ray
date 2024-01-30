@@ -35,7 +35,7 @@ class StreamingOutputBackpressurePolicy(BackpressurePolicy):
 
     # The max number of blocks that can be buffered at the streaming generator
     # of each `DataOpTask`.
-    MAX_BLOCKS_IN_GENERATOR_BUFFER = 10
+    MAX_BLOCKS_IN_GENERATOR_BUFFER = 4
     MAX_BLOCKS_IN_GENERATOR_BUFFER_CONFIG_KEY = (
         "backpressure_policies.streaming_output.max_blocks_in_generator_buffer"
     )
@@ -52,17 +52,11 @@ class StreamingOutputBackpressurePolicy(BackpressurePolicy):
 
     def __init__(self, topology: "Topology"):
         data_context = ray.data.DataContext.get_current()
-        self._max_num_blocks_in_streaming_gen_buffer = data_context.get_config(
+        data_context._max_num_blocks_in_streaming_gen_buffer = data_context.get_config(
             self.MAX_BLOCKS_IN_GENERATOR_BUFFER_CONFIG_KEY,
             self.MAX_BLOCKS_IN_GENERATOR_BUFFER,
         )
-        assert self._max_num_blocks_in_streaming_gen_buffer > 0
-        # The `_generator_backpressure_num_objects` parameter should be
-        # `2 * self._max_num_blocks_in_streaming_gen_buffer` because we yield
-        # 2 objects for each block: the block and the block metadata.
-        data_context._task_pool_data_task_remote_args[
-            "_generator_backpressure_num_objects"
-        ] = (2 * self._max_num_blocks_in_streaming_gen_buffer)
+        assert data_context._max_num_blocks_in_streaming_gen_buffer > 0
 
         self._max_num_blocks_in_op_output_queue = data_context.get_config(
             self.MAX_BLOCKS_IN_OP_OUTPUT_QUEUE_CONFIG_KEY,
@@ -146,4 +140,4 @@ class StreamingOutputBackpressurePolicy(BackpressurePolicy):
             " `DataContext.get_current().execution_options.exclude_resources`."
             " This message will only print once."
         )
-        logger.get_logger().warning(msg)
+        logger.get_logger(log_to_stdout=False).warning(msg)
