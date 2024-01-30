@@ -1244,9 +1244,9 @@ cdef report_streaming_generator_output(
         context: Streaming generator's execution context.
         outputs: The output yielded from a
             generator 
-        exception: Exceptions raised from a generator
-        generator_index: index of the output element in the
-            generated sequence
+        exception: Exception raised from a generator
+        prev_generator_index: index of the last previously reported 
+            element in the generated sequence (to continue from)
     """
     worker = ray._private.worker.global_worker
 
@@ -1257,8 +1257,11 @@ cdef report_streaming_generator_output(
     cur_gen_index = prev_generator_index
 
     if outputs:
+        # Reserve appropriate amount of capacity in vector
+        # to avoid costly re-allocations
+        dynamic_return_objects.reserve(len(outputs))
         # Report the intermediate result if there was no error.
-        create_generator_return_obj(
+        create_generator_return_objects(
             outputs,
             context.generator_id,
             worker,
@@ -1272,6 +1275,10 @@ cdef report_streaming_generator_output(
         cur_gen_index += len(outputs)
 
     if exception:
+        # Reserve appropriate amount of capacity in vector
+        # to avoid costly re-allocations
+        dynamic_return_objects.reserve(1)
+
         create_generator_error_object(
             exception,
             worker,
@@ -1451,7 +1458,7 @@ async def execute_streaming_generator_async(
     await asyncio.gather(*futures)
 
 
-cdef create_generator_return_obj(
+cdef create_generator_return_objects(
         outputs,
         const CObjectID &generator_id,
         worker: "Worker",
@@ -1475,15 +1482,16 @@ cdef create_generator_return_obj(
         generator_index: The index of a current error object.
         is_async: Whether or not the given object is created within
             an async actor.
-        TODO fix
-        dynamic_return_objects(out): A Ray Object that contains the given output.
+        dynamic_return_objects(out): A collection of Ray Objects that contains the given output.
     """
     cdef:
-        c_vector[c_pair[CObjectID, shared_ptr[CRayObject]]] intermediate_result = c_vector[c_pair[CObjectID, shared_ptr[CRayObject]]](len(outputs))
         CoreWorker core_worker = worker.core_worker
 
+    assert dynamic_return_objects.size() == 0
+    # Allocate dynamic return object-ids for objects returned by
+    # the generator
     for i in range(len(outputs)):
-        intermediate_result[i].first = core_worker.allocate_dynamic_return_id_for_generator(
+        dynamic_return_obj_id = core_worker.allocate_dynamic_return_id_for_generator(
             caller_address,
             task_id.native(),
             return_size,
@@ -1492,31 +1500,16 @@ cdef create_generator_return_obj(
         )
         generator_index += 1
 
-    # return_id = core_worker.allocate_dynamic_return_id_for_generator(
-    #     caller_address,
-    #     task_id.native(),
-    #     return_size,
-    #     generator_index,
-    #     is_async,
-    # )
-    #
-    # intermediate_result.push_back(
-    #         c_pair[CObjectID, shared_ptr[CRayObject]](
-    #             return_id, shared_ptr[CRayObject]()))
+        dynamic_return_objects.push_back(
+            c_pair[CObjectID, shared_ptr[CRayObject]](dynamic_return_obj_id, shared_ptr[CRayObject]())
+        )
 
     core_worker.store_task_outputs(
         worker,
         outputs,
         caller_address,
-        &intermediate_result,
+        &dynamic_return_objects,
         generator_id)
-
-    # TODO replace w/ move iterator
-    dynamic_return_objects.insert(
-        dynamic_return_objects.end(),
-        intermediate_result.begin(),
-        intermediate_result.end(),
-    )
 
 
 cdef create_generator_error_object(
@@ -1535,7 +1528,7 @@ cdef create_generator_error_object(
         generator_index,
         is_async,
         c_bool should_retry_exceptions,
-        c_vector[c_pair[CObjectID, shared_ptr[CRayObject]]] return_objects,
+        c_vector[c_pair[CObjectID, shared_ptr[CRayObject]]] &dynamic_return_objects,
         c_bool *is_retryable_error,
         c_string *application_error):
     """Create a generator error object.
@@ -1567,15 +1560,14 @@ cdef create_generator_error_object(
         generator_index: The index of a current error object.
         is_async: Whether or not the given object is created within
             an async actor.
-        TODO fix
-        error_object(out): A Ray Object that contains the given error exception.
+        dynamic_return_objects(out): A collection of Ray Objects that contains the given 
+            output/exception.
         is_retryable_error(out): It is set to True if the generator
             raises an exception, and the error is retryable.
         application_error(out): It is set if the generator raises an
             application error.
     """
     cdef:
-        c_vector[c_pair[CObjectID, shared_ptr[CRayObject]]] intermediate_result = c_vector[c_pair[CObjectID, shared_ptr[CRayObject]]](1)
         CoreWorker core_worker = worker.core_worker
 
     is_retryable_error[0] = determine_if_retryable(
@@ -1598,7 +1590,10 @@ cdef create_generator_error_object(
         "Task failed with unretryable exception:"
         " {}.".format(task_id), exc_info=True)
 
-    error_id = core_worker.allocate_dynamic_return_id_for_generator(
+    assert dynamic_return_objects.size() == 0
+    # Allocate dynamic return object-id for an exception object returned by
+    # the generator
+    dynamic_return_obj_id = core_worker.allocate_dynamic_return_id_for_generator(
         caller_address,
         task_id.native(),
         return_size,
@@ -1606,9 +1601,9 @@ cdef create_generator_error_object(
         is_async,
     )
 
-    # intermediate_result.push_back(
-    #         c_pair[CObjectID, shared_ptr[CRayObject]](
-    #             error_id, shared_ptr[CRayObject]()))
+    dynamic_return_objects.push_back(
+        c_pair[CObjectID, shared_ptr[CRayObject]](dynamic_return_obj_id, shared_ptr[CRayObject]())
+    )
 
     store_task_errors(
         worker,
@@ -1618,11 +1613,9 @@ cdef create_generator_error_object(
         actor_id,  # actor id
         function_name, task_type, title,
         caller_address,
-        &intermediate_result,
+        &dynamic_return_objects,
         application_error
     )
-
-    return_objects.push_back(intermediate_result.back())
 
 
 cdef execute_dynamic_generator_and_store_task_outputs(
