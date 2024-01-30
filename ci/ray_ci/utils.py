@@ -103,7 +103,7 @@ def get_flaky_test_names(prefix: str) -> List[str]:
     return test_names
 
 
-def filter_flaky_tests(
+def filter_tests(
     input: io.TextIOBase, output: io.TextIOBase, prefix: str, state_filter: str
 ):
     """
@@ -126,27 +126,17 @@ def filter_flaky_tests(
     # Obtain all existing tests with specified test state
     flaky_tests = set(get_flaky_test_names(prefix))
 
-    # Function to filter each test.
-    filter_func = None
-    if state_filter == "flaky":
-
-        def f(t):
-            t in flaky_tests
-
-        filter_func = f
-    else:
-
-        def f(t):
-            t not in flaky_tests
-
-        filter_func = f
-
     # Filter these test from list of test targets based on user condition.
     for t in input:
         t = t.strip()
         if not t:
             continue
-        if filter_func(t):
+
+        hit = t in flaky_tests
+        if state_filter == "-flaky":
+            hit = not hit
+
+        if hit:
             output.write(f"{t}\n")
 
 

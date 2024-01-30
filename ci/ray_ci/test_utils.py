@@ -10,7 +10,7 @@ from ci.ray_ci.utils import (
     chunk_into_n,
     docker_login,
     get_flaky_test_names,
-    filter_flaky_tests,
+    filter_tests,
 )
 
 
@@ -88,7 +88,7 @@ def test_get_flaky_test_names(mock_gen_from_s3):
     ],
 )
 @mock.patch("ray_release.test.Test.gen_from_s3")
-def test_filter_flaky_tests(mock_gen_from_s3, state_filter, expected_value):
+def test_filter_tests(mock_gen_from_s3, state_filter, expected_value):
     # Setup test input/output
     mock_gen_from_s3.side_effect = (
         [
@@ -101,9 +101,7 @@ def test_filter_flaky_tests(mock_gen_from_s3, state_filter, expected_value):
     test_targets = ["//test_1", "//test_2", "//test_3", "//test_4"]
     output = io.StringIO()
 
-    filter_flaky_tests(
-        io.StringIO("\n".join(test_targets)), output, "darwin:", state_filter
-    )
+    filter_tests(io.StringIO("\n".join(test_targets)), output, "darwin:", state_filter)
     assert output.getvalue() == expected_value
 
 
@@ -120,13 +118,11 @@ def test_filter_flaky_tests(mock_gen_from_s3, state_filter, expected_value):
         ),
     ],
 )
-def test_filter_flaky_tests_fail(state_filter, prefix):
+def test_filter_tests_fail(state_filter, prefix):
     test_targets = ["//test_1", "//test_2", "//test_3", "//test_4"]
     output = io.StringIO()
     with pytest.raises(ValueError, match="must be one of"):
-        filter_flaky_tests(
-            io.StringIO("\n".join(test_targets)), output, prefix, state_filter
-        )
+        filter_tests(io.StringIO("\n".join(test_targets)), output, prefix, state_filter)
     return
 
 

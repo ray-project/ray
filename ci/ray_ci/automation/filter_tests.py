@@ -1,7 +1,7 @@
 import sys
 import click
 
-from ci.ray_ci.utils import filter_flaky_tests
+from ci.ray_ci.utils import filter_tests
 from ray_release.configs.global_config import init_global_config
 from ray_release.bazel import bazel_runfile
 
@@ -24,7 +24,7 @@ def main(prefix: str, state_filter: str) -> None:
     # Initialize global config
     init_global_config(bazel_runfile("release/ray_release/configs/oss_config.yaml"))
 
-    filter_flaky_tests(sys.stdin, sys.stdout, prefix, state_filter)
+    filter_tests(sys.stdin, sys.stdout, prefix, state_filter)
 
 
 if __name__ == "__main__":
