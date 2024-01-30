@@ -1,5 +1,6 @@
 import base64
 import io
+import io
 import sys
 import pytest
 from unittest import mock

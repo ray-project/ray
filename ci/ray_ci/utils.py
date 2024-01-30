@@ -1,5 +1,6 @@
 import base64
 import io
+import io
 import logging
 import subprocess
 import sys
@@ -10,6 +11,7 @@ from typing import List
 from math import ceil
 
 import ci.ray_ci.bazel_sharding as bazel_sharding
+from ray_release.test import Test, TestState
 from ray_release.test import Test, TestState
 
 
