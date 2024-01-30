@@ -1078,6 +1078,7 @@ def run_experiments(
     verbose: Optional[Union[int, AirVerbosity, Verbosity]] = None,
     progress_reporter: Optional[ProgressReporter] = None,
     resume: Union[bool, str] = False,
+    resume_config: Optional[_ResumeConfig] = None,
     reuse_actors: Optional[bool] = None,
     raise_on_failed_trial: bool = True,
     concurrent: bool = True,
@@ -1129,6 +1130,7 @@ def run_experiments(
                 verbose,
                 progress_reporter,
                 resume,
+                resume_config,
                 reuse_actors,
                 raise_on_failed_trial,
                 concurrent,
@@ -1142,30 +1144,22 @@ def run_experiments(
     # and it conducts the implicit registration.
     experiments = _convert_to_experiment_list(experiments)
 
+    tune_run_params = dict(
+        verbose=verbose,
+        progress_reporter=progress_reporter,
+        resume=resume,
+        resume_config=resume_config,
+        reuse_actors=reuse_actors,
+        raise_on_failed_trial=raise_on_failed_trial,
+        scheduler=scheduler,
+        callbacks=callbacks,
+        _entrypoint=AirEntrypoint.TUNE_RUN_EXPERIMENTS,
+    )
+
     if concurrent:
-        return run(
-            experiments,
-            verbose=verbose,
-            progress_reporter=progress_reporter,
-            resume=resume,
-            reuse_actors=reuse_actors,
-            raise_on_failed_trial=raise_on_failed_trial,
-            scheduler=scheduler,
-            callbacks=callbacks,
-            _entrypoint=AirEntrypoint.TUNE_RUN_EXPERIMENTS,
-        ).trials
+        return run(experiments, **tune_run_params).trials
     else:
         trials = []
         for exp in experiments:
-            trials += run(
-                exp,
-                verbose=verbose,
-                progress_reporter=progress_reporter,
-                resume=resume,
-                reuse_actors=reuse_actors,
-                raise_on_failed_trial=raise_on_failed_trial,
-                scheduler=scheduler,
-                callbacks=callbacks,
-                _entrypoint=AirEntrypoint.TUNE_RUN_EXPERIMENTS,
-            ).trials
+            trials += run(exp, **tune_run_params).trials
         return trials
