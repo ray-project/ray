@@ -751,12 +751,6 @@ importlib-metadata==4.10.0
     #   markdown
     #   mlflow
     #   myst-nb
-importlib-resources==6.1.1
-    # via
-    #   ale-py
-    #   etils
-    #   gradio
-    #   matplotlib
 iniconfig==2.0.0
     # via pytest
 ipykernel==6.29.0
@@ -1258,8 +1252,6 @@ open-spiel==1.2
     # via -r /ray/ci/../python/requirements/ml/rllib-test-requirements.txt
 openapi-schema-validator==0.4.4
     # via openapi-spec-validator
-openapi-spec-validator==0.5.7
-    # via moto
 opencensus==0.11.4
     # via -r /ray/ci/../python/requirements.txt
 opencensus-context==0.1.3
