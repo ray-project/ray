@@ -691,7 +691,7 @@ class TestLoggingConfig:
     def test_default_values(self):
         schema = LoggingConfig.parse_obj({})
         assert schema.log_level == "INFO"
-        assert schema.encoding == "TEXT"
+        assert schema.encoding == "NOT_SET"
         assert schema.logs_dir is None
         assert schema.enable_access_log
 

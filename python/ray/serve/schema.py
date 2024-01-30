@@ -131,7 +131,7 @@ class LoggingConfig(BaseModel):
         extra = Extra.forbid
 
     encoding: Union[str, EncodingType] = Field(
-        default=EncodingType.NOT_SET,
+        default="NOT_SET",
         description=(
             "Encoding type for the serve logs. Default to 'NOT_SET' which will behave "
             "as 'TEXT'. 'JSON' is also supported to format all serve logs into "
