@@ -104,7 +104,7 @@ def get_flaky_test_names(prefix: str) -> List[str]:
 
 
 def filter_flaky_tests(
-    input: io.TextIOBase, output: io.TextIOBase, prefix: str, filter_option: str
+    input: io.TextIOBase, output: io.TextIOBase, prefix: str, state_filter: str
 ):
     """
     Filter flaky tests from list of test targets.
@@ -113,24 +113,40 @@ def filter_flaky_tests(
         input: Input stream, each test name in one line.
         output: Output stream, each test name in one line.
         prefix: Prefix to query tests with.
-        filter_option: Options to filter tests: "only-flaky" or "non-flaky" tests.
+        state_filter: Options to filter tests: "flaky" or "-flaky" tests.
     """
+    # Valid prefix check
+    if prefix not in ["darwin:", "linux:", "windows:"]:
+        raise ValueError("Prefix must be one of 'darwin:', 'linux:', or 'windows:'.")
+
     # Valid filter choices check
-    if filter_option not in ["only-flaky", "non-flaky"]:
-        raise ValueError("Filter option must be one of 'only-flaky' or 'non-flaky'.")
+    if state_filter not in ["flaky", "-flaky"]:
+        raise ValueError("Filter option must be one of 'flaky' or '-flaky'.")
 
     # Obtain all existing tests with specified test state
     flaky_tests = set(get_flaky_test_names(prefix))
+
+    # Function to filter each test.
+    filter_func = None
+    if state_filter == "flaky":
+
+        def f(t):
+            t in flaky_tests
+
+        filter_func = f
+    else:
+
+        def f(t):
+            t not in flaky_tests
+
+        filter_func = f
 
     # Filter these test from list of test targets based on user condition.
     for t in input:
         t = t.strip()
         if not t:
             continue
-        is_test_selected = (filter_option == "only-flaky" and t in flaky_tests) or (
-            filter_option == "non-flaky" and t not in flaky_tests
-        )
-        if is_test_selected:
+        if filter_func(t):
             output.write(f"{t}\n")
 
 

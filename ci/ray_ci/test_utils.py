@@ -75,24 +75,20 @@ def test_get_flaky_test_names(mock_gen_from_s3):
 
 
 @pytest.mark.parametrize(
-    "filter_option, expected_value",
+    "state_filter, expected_value",
     [
         (
-            "non-flaky",
+            "-flaky",
             "//test_3\n//test_4\n",
         ),
         (
-            "only-flaky",
+            "flaky",
             "//test_1\n//test_2\n",
-        ),
-        (
-            "wrong-option",  # invalid filter option
-            "",
         ),
     ],
 )
 @mock.patch("ray_release.test.Test.gen_from_s3")
-def test_filter_flaky_tests(mock_gen_from_s3, filter_option, expected_value):
+def test_filter_flaky_tests(mock_gen_from_s3, state_filter, expected_value):
     # Setup test input/output
     mock_gen_from_s3.side_effect = (
         [
@@ -105,21 +101,33 @@ def test_filter_flaky_tests(mock_gen_from_s3, filter_option, expected_value):
     test_targets = ["//test_1", "//test_2", "//test_3", "//test_4"]
     output = io.StringIO()
 
-    # Test invalid filter option
-    if filter_option not in ["only-flaky", "non-flaky"]:
-        with pytest.raises(
-            ValueError, match="must be one of 'only-flaky' or 'non-flaky'"
-        ):
-            filter_flaky_tests(
-                io.StringIO("\n".join(test_targets)), output, "darwin:", filter_option
-            )
-        return
-
-    # Test valid filter options
     filter_flaky_tests(
-        io.StringIO("\n".join(test_targets)), output, "darwin:", filter_option
+        io.StringIO("\n".join(test_targets)), output, "darwin:", state_filter
     )
     assert output.getvalue() == expected_value
+
+
+@pytest.mark.parametrize(
+    "state_filter, prefix",
+    [
+        (
+            "wrong-option",  # invalid filter option
+            "darwin:",
+        ),
+        (
+            "-flaky",
+            "wrong-prefix",  # invalid prefix
+        ),
+    ],
+)
+def test_filter_flaky_tests_fail(state_filter, prefix):
+    test_targets = ["//test_1", "//test_2", "//test_3", "//test_4"]
+    output = io.StringIO()
+    with pytest.raises(ValueError, match="must be one of"):
+        filter_flaky_tests(
+            io.StringIO("\n".join(test_targets)), output, prefix, state_filter
+        )
+    return
 
 
 if __name__ == "__main__":
