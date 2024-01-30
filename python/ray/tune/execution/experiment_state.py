@@ -371,16 +371,13 @@ class _ExperimentCheckpointManager:
             f"-> {self._storage.experiment_local_path}"
         )
 
-    def resume(self, resume_config: _ResumeConfig) -> bool:
+    def resume(self) -> bool:
         """Checks whether to resume experiment.
 
         The experiment can be resumed if a metadata file uploaded from a
         previous run can be found at the specified experiment directory on storage.
         If experiment should be resumed, this method will pull the necessary
         experiment state from storage.
-
-        Args:
-            resume_config: TODO(justinvyu)
 
         Returns:
             can_restore: Whether the experiment can be restored.
