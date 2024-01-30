@@ -10,7 +10,7 @@ from ci.ray_ci.utils import (
     chunk_into_n,
     docker_login,
     get_flaky_test_names,
-    filter_out_flaky_tests,
+    filter_flaky_tests,
 )
 
 
@@ -73,9 +73,21 @@ def test_get_flaky_test_names(mock_gen_from_s3):
     )
     assert flaky_test_names == ["//test_1"]
 
-
+@pytest.mark.parametrize(
+    "select_flaky, expected_value",
+    [
+        (
+            False,
+            "//test_3\n//test_4\n",
+        ),
+        (
+            True,
+            "//test_1\n//test_2\n",
+        )
+    ],
+)
 @mock.patch("ray_release.test.Test.gen_from_s3")
-def test_filter_out_flaky_tests(mock_gen_from_s3):
+def test_filter_flaky_tests(mock_gen_from_s3, select_flaky, expected_value):
     mock_gen_from_s3.side_effect = (
         [
             _make_test("darwin://test_1", "flaky", "core"),
@@ -84,12 +96,10 @@ def test_filter_out_flaky_tests(mock_gen_from_s3):
             _make_test("darwin://test_4", "passing", "ci"),
         ],
     )
-
     test_targets = ["//test_1", "//test_2", "//test_3", "//test_4"]
     output = io.StringIO()
-    filter_out_flaky_tests(io.StringIO("\n".join(test_targets)), output, "darwin:")
-    assert output.getvalue() == "//test_3\n//test_4\n"
-
+    filter_flaky_tests(io.StringIO("\n".join(test_targets)), output, "darwin:", select_flaky)
+    assert output.getvalue() == expected_value
 
 if __name__ == "__main__":
     sys.exit(pytest.main(["-v", __file__]))

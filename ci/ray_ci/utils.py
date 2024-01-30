@@ -102,27 +102,27 @@ def get_flaky_test_names(prefix: str) -> List[str]:
 
     return test_names
 
-
-def filter_out_flaky_tests(input: io.TextIOBase, output: io.TextIOBase, prefix: str):
+def filter_flaky_tests(input: io.TextIOBase, output: io.TextIOBase, prefix: str, select_flaky: bool = False):
     """
-    Filter out flaky tests from list of test targets.
+    Filter flaky tests from list of test targets.
 
     Args:
         input: Input stream, each test name in one line.
         output: Output stream, each test name in one line.
         prefix: Prefix to query tests with.
+        select_flaky: If True, print only flaky tests. If False, print non-flaky tests.
     """
     # Obtain all existing tests with specified test state
     flaky_tests = set(get_flaky_test_names(prefix))
 
-    # Filter out these test from list of test targets
+    # Filter out these test from list of test targets based on user condition.
     for t in input:
         t = t.strip()
         if not t:
             continue
-        if t in flaky_tests:
-            continue
-        output.write(f"{t}\n")
+        is_test_selected = (select_flaky and t in flaky_tests) or (not select_flaky and t not in flaky_tests)
+        if is_test_selected:
+            output.write(f"{t}\n")
 
 
 logger = logging.getLogger()

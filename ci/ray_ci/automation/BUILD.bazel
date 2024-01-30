@@ -19,8 +19,8 @@ py_binary(
 )
 
 py_binary(
-    name = "filter_out_flaky_tests",
-    srcs = ["filter_out_flaky_tests.py"],
+    name = "filter_flaky_tests",
+    srcs = ["filter_flaky_tests.py"],
     deps = ["//ci/ray_ci:ray_ci_lib"],
 )
 
