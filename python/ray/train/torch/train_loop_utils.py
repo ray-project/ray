@@ -58,33 +58,48 @@ def get_device() -> torch.device:
 
         Example: Launched 2 workers on the current node, each with 1 GPU
 
-        >>> os.environ["CUDA_VISIBLE_DEVICES"] = "2,3"
-        >>> ray.get_gpu_ids() == [2]
-        >>> torch.cuda.is_available() == True
-        >>> get_device() == torch.device("cuda:0")
+        .. testcode::
+            :skipif: True
+
+            os.environ["CUDA_VISIBLE_DEVICES"] = "2,3"
+            ray.get_gpu_ids() == [2]
+            torch.cuda.is_available() == True
+            get_device() == torch.device("cuda:0")
 
         Example: Launched 4 workers on the current node, each with 1 GPU
 
-        >>> os.environ["CUDA_VISIBLE_DEVICES"] = "0,1,2,3"
-        >>> ray.get_gpu_ids() == [2]
-        >>> torch.cuda.is_available() == True
-        >>> get_device() == torch.device("cuda:2")
+        .. testcode::
+            :skipif: True
+
+            os.environ["CUDA_VISIBLE_DEVICES"] = "0,1,2,3"
+            ray.get_gpu_ids() == [2]
+            torch.cuda.is_available() == True
+            get_device() == torch.device("cuda:2")
 
         Example: Launched 2 workers on the current node, each with 2 GPUs
 
-        >>> os.environ["CUDA_VISIBLE_DEVICES"] = "0,1,2,3"
-        >>> ray.get_gpu_ids() == [2,3]
-        >>> torch.cuda.is_available() == True
-        >>> get_device() == torch.device("cuda:2")
+        .. testcode::
+            :skipif: True
+
+            os.environ["CUDA_VISIBLE_DEVICES"] = "0,1,2,3"
+            ray.get_gpu_ids() == [2,3]
+            torch.cuda.is_available() == True
+            get_device() == torch.device("cuda:2")
 
 
         You can move a model to device by:
 
-        >>> model.to(ray.train.torch.get_device())
+        .. testcode::
+            :skipif: True
+
+            model.to(ray.train.torch.get_device())
 
         Instead of manually checking the device type:
 
-        >>> model.to("cuda" if torch.cuda.is_available() else "cpu")
+        .. testcode::
+            :skipif: True
+
+            model.to("cuda" if torch.cuda.is_available() else "cpu")
     """
     from ray.air._internal import torch_utils
 
@@ -104,24 +119,33 @@ def get_devices() -> List[torch.device]:
 
         Example: Launched 2 workers on the current node, each with 1 GPU
 
-        >>> os.environ["CUDA_VISIBLE_DEVICES"] == "2,3"
-        >>> ray.get_gpu_ids() == [2]
-        >>> torch.cuda.is_available() == True
-        >>> get_devices() == [torch.device("cuda:0")]
+        .. testcode::
+            :skipif: True
+
+            os.environ["CUDA_VISIBLE_DEVICES"] == "2,3"
+            ray.get_gpu_ids() == [2]
+            torch.cuda.is_available() == True
+            get_devices() == [torch.device("cuda:0")]
 
         Example: Launched 4 workers on the current node, each with 1 GPU
 
-        >>> os.environ["CUDA_VISIBLE_DEVICES"] == "0,1,2,3"
-        >>> ray.get_gpu_ids() == [2]
-        >>> torch.cuda.is_available() == True
-        >>> get_devices() == [torch.device("cuda:2")]
+        .. testcode::
+            :skipif: True
+
+            os.environ["CUDA_VISIBLE_DEVICES"] == "0,1,2,3"
+            ray.get_gpu_ids() == [2]
+            torch.cuda.is_available() == True
+            get_devices() == [torch.device("cuda:2")]
 
         Example: Launched 2 workers on the current node, each with 2 GPUs
 
-        >>> os.environ["CUDA_VISIBLE_DEVICES"] == "0,1,2,3"
-        >>> ray.get_gpu_ids() == [2,3]
-        >>> torch.cuda.is_available() == True
-        >>> get_devices() == [torch.device("cuda:2"), torch.device("cuda:3")]
+        .. testcode::
+            :skipif: True
+
+            os.environ["CUDA_VISIBLE_DEVICES"] == "0,1,2,3"
+            ray.get_gpu_ids() == [2,3]
+            torch.cuda.is_available() == True
+            get_devices() == [torch.device("cuda:2"), torch.device("cuda:3")]
     """
 
     from ray.air._internal import torch_utils
