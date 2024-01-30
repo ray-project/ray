@@ -72,7 +72,8 @@ class AbstractUDFMap(AbstractMap):
                 `fn` is a callable class.
             fn_constructor_kwargs: Keyword Arguments to provide to the initializor of
                 `fn` if `fn` is a callable class.
-            min_rows_per_bundled_input: The target size for blocks outputted by this operator.
+            min_rows_per_bundled_input: The target number of rows to pass to
+                ``MapOperator._add_bundled_input()``.
             compute: The compute strategy, either ``"tasks"`` (default) to use Ray
                 tasks, or ``"actors"`` to use an autoscaling actor pool.
             ray_remote_args: Args to provide to ray.remote.
