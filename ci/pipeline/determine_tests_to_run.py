@@ -333,8 +333,6 @@ if __name__ == "__main__":
             ):
                 # These scripts are always run as part of the build process
                 RAY_CI_TOOLS_AFFECTED = 1
-                if changed_file == "ci/ray_ci/macos/macos_ci.sh":
-                    RAY_CI_MACOS_WHEELS_AFFECTED = 1
             elif (
                 changed_file.endswith("build-docker-images.py")
                 or changed_file == ".buildkite/base.rayci.yml"
