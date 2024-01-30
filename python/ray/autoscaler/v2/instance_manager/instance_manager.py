@@ -1,4 +1,5 @@
 import logging
+import uuid
 
 from ray.autoscaler.v2.instance_manager.common import (
     InstanceUtil,
@@ -40,8 +41,6 @@ class InstanceManager:
 
     Not thread safe, should be used as a singleton.
     """
-
-    _instance_id_counter = 0
 
     def __init__(self, instance_storage: InstanceStorage):
         self._instance_storage = instance_storage
@@ -99,7 +98,7 @@ class InstanceManager:
         for request in request.launch_requests:
             for _ in range(request.count):
                 instance = InstanceUtil.new_instance(
-                    instance_id=self._next_instance_id(),
+                    instance_id=self._random_instance_id(),
                     instance_type=request.instance_type,
                     request_id=request.id,
                 )
@@ -153,13 +152,11 @@ class InstanceManager:
     # Private methods
     #########################################
 
-    def _next_instance_id(self) -> str:
+    def _random_instance_id(self) -> str:
         """
-        Returns a new instance id.
+        Returns an instance_id.
         """
-        next_id = self._instance_id_counter
-        self._instance_id_counter += 1
-        return str(next_id)
+        return str(uuid.uuid4())
 
     def _get_update_im_state_reply(
         self, status_code: StatusCode, version: int, error_message: str = ""
