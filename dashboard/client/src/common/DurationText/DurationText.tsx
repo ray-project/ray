@@ -11,8 +11,8 @@ export const getDurationVal = ({ startTime, endTime }: DurationTextProps) => {
   // Helper to get duration value for DurationText component
   // Assume current time, if end time is nullish
   const endTimeToRender = endTime ? endTime : new Date();
-  const durationTime = dayjs(endTimeToRender).diff(dayjs(startTime))
-  return durationTime
+  const durationTime = dayjs(endTimeToRender).diff(dayjs(startTime));
+  return durationTime;
 };
 
 /**
@@ -23,7 +23,7 @@ export const DurationText = ({ startTime, endTime }: DurationTextProps) => {
   // Increments to force a re-render.
   const [, setRerenderCounter] = useState(0);
 
-  const duration = dayjs.duration(getDurationVal({startTime, endTime}));
+  const duration = dayjs.duration(getDurationVal({ startTime, endTime }));
 
   let durationText: string;
   let refreshInterval = 1000;

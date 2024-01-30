@@ -220,11 +220,11 @@ describe("ActorTable", () => {
   it("renders a table of actors with same state sorted by resource utilization", () => {
     /*
     When sorted by
-      - CPU: Actor 2 row > Actor 1 row
-      - Used memory: Actor 1 row > Actor 2 row
-      - Uptime: Actor 2 row > Actor 1 row
-      - GPU Utilization: Actor 1 row > Actor 2 row
-      - GRAM Utilization: Actor 2 row > Actor 1 row
+      - CPU: Actor 2 CPU > Actor 1 CPU --> Actor 2 row before Actor 1 row
+      - Used memory: Actor 1 memory > Actor 2 memory --> Actor 1 row before Actor 2 row
+      - Uptime: Actor 2 uptime < Actor 1 uptime --> Actor 2 row before Actor 1 row
+      - GPU Utilization: Actor 1 GPU > Actor 2 GPU --> Actor 1 row before Actor 2 row
+      - GRAM Utilization: Actor 2 GRAM > Actor 1 GRAM --> Actor 2 row before Actor 1 row
     */
     const RUNNING_ACTORS = {
       ...MOCK_ACTORS,
@@ -256,10 +256,10 @@ describe("ActorTable", () => {
             uuid: "mock_gpu_uuid1",
             index: 0,
             name: "mock_gpu_name1",
-            utilizationGpu: 0,
-            memoryUsed: 10,
+            utilizationGpu: 50,
+            memoryUsed: 0,
             memoryTotal: 20,
-            processes: [{ pid: 25321, gpuMemoryUsage: 10 }],
+            processes: [{ pid: 25321, gpuMemoryUsage: 0 }],
           },
         ],
       },
@@ -291,10 +291,10 @@ describe("ActorTable", () => {
             uuid: "mock_gpu_uuid2",
             index: 0,
             name: "mock_gpu_name2",
-            utilizationGpu: 50,
-            memoryUsed: 0,
+            utilizationGpu: 0,
+            memoryUsed: 10,
             memoryTotal: 20,
-            processes: [{ pid: 25322, gpuMemoryUsage: 0 }],
+            processes: [{ pid: 25322, gpuMemoryUsage: 10 }],
           },
         ],
       },
@@ -346,7 +346,7 @@ describe("ActorTable", () => {
     // Sort by uptime
     fireEvent.change(input, {
       target: {
-        value: "startTime",
+        value: "fake_uptime_attr",
       },
     });
     const actor1UptimeRow = getByRole("row", {

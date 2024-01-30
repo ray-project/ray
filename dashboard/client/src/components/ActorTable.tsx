@@ -40,7 +40,6 @@ import StateCounter from "./StatesCounter";
 import { StatusChip } from "./StatusChip";
 import { HelpInfo } from "./Tooltip";
 import RayletWorkerTable, { ExpandableTableRow } from "./WorkerTable";
-import { start } from "repl";
 
 export type ActorTableProps = {
   actors: { [actorId: string]: ActorDetail };
@@ -95,7 +94,6 @@ const ActorTable = ({
   const uptimeSorterKey = "fake_uptime_attr";
   const gpuUtilizationSorterKey = "fake_gpu_attr";
   const gramUsageSorterKey = "fake_gram_attr";
-  const aggregateUserSortKey = [uptimeSorterKey, gpuUtilizationSorterKey, gramUsageSorterKey];
 
   const defaultSorterKey = uptimeSorterKey;
   const { sorterFunc, setOrderDesc, setSortKey, sorterKey, descVal } =
@@ -103,10 +101,14 @@ const ActorTable = ({
 
   //We get a filtered and sorted actor list to render from prop actors
   const sortedActors = useMemo(() => {
-    const actorList = Object.values(actors || {})
-      .filter(filterFunc);
+    const aggregateUserSortKeys = [
+      uptimeSorterKey,
+      gpuUtilizationSorterKey,
+      gramUsageSorterKey,
+    ];
+    const actorList = Object.values(actors || {}).filter(filterFunc);
     let actorsSortedUserKey = actorList;
-    if (aggregateUserSortKey.includes(sorterKey)) {
+    if (aggregateUserSortKeys.includes(sorterKey)) {
       // Uptime, GPU utilization, and GRAM usage are user specified sort keys but require an aggregate function
       // over the actor attribute, so sorting with sortBy
       actorsSortedUserKey = _.sortBy(actorList, (actor) => {
@@ -117,12 +119,18 @@ const ActorTable = ({
             const endTime = actor.endTime;
             // If actor doesn't have startTime, set uptime to infinity for sort so it appears at the bottom of
             // the table by default
-            const uptime = startTime && startTime > 0 ? getDurationVal({startTime, endTime}) : Number.POSITIVE_INFINITY;
+            const uptime =
+              startTime && startTime > 0
+                ? getDurationVal({ startTime, endTime })
+                : Number.POSITIVE_INFINITY;
             // Default sort for uptime should be ascending (default for all others is descending)
             // so multiply by -1
             return uptime * -1 * descMultiplier;
           case gpuUtilizationSorterKey:
-            const sumGpuUtilization = getSumGpuUtilization(actor.pid, actor.gpus);
+            const sumGpuUtilization = getSumGpuUtilization(
+              actor.pid,
+              actor.gpus,
+            );
             return sumGpuUtilization * descMultiplier;
           case gramUsageSorterKey:
             const sumGRAMUsage = getSumGRAMUsage(actor.pid, actor.gpus);
@@ -130,9 +138,9 @@ const ActorTable = ({
           default:
             return 0;
         }
-      })
+      });
     } else {
-      actorsSortedUserKey = actorList.sort(sorterFunc)
+      actorsSortedUserKey = actorList.sort(sorterFunc);
     }
     return _.sortBy(actorsSortedUserKey, (actor) => {
       // Always show ALIVE actors at top
