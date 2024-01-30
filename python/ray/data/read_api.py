@@ -281,19 +281,23 @@ def read_datasource(
     *,
     parallelism: int = -1,
     ray_remote_args: Dict[str, Any] = None,
+    concurrency: Optional[int] = None,
     **read_args,
 ) -> Dataset:
     """Read a stream from a custom :class:`~ray.data.Datasource`.
 
     Args:
         datasource: The :class:`~ray.data.Datasource` to read data from.
-        parallelism: The requested parallelism of the read. Parallelism might be
+        parallelism: The total number of Ray tasks for read. Parallelism might be
             limited by the available partitioning of the datasource. If set to -1,
             parallelism is automatically chosen based on the available cluster
             resources and estimated in-memory data size.
+        ray_remote_args: kwargs passed to :meth:`ray.remote` in the read tasks.
+        concurrency: The maximum number of Ray tasks to run concurrently. Set this
+            less than `parallelism` to control number of tasks to run concurrently.
+            This doesn't change the total number of tasks need to run.
         read_args: Additional kwargs to pass to the :class:`~ray.data.Datasource`
             implementation.
-        ray_remote_args: kwargs passed to :meth:`ray.remote` in the read tasks.
 
     Returns:
         :class:`~ray.data.Dataset` that reads data from the :class:`~ray.data.Datasource`.
@@ -559,6 +563,7 @@ def read_parquet(
     shuffle: Union[Literal["files"], None] = None,
     include_paths: bool = False,
     file_extensions: Optional[List[str]] = None,
+    concurrency: Optional[int] = None,
     **arrow_parquet_args,
 ) -> Dataset:
     """Creates a :class:`~ray.data.Dataset` from parquet files.
@@ -645,7 +650,7 @@ def read_parquet(
             used. If ``None``, this function uses a system-chosen implementation.
         columns: A list of column names to read. Only the specified columns are
             read during the file scan.
-        parallelism: The amount of parallelism to use for the dataset. Defaults to -1,
+        parallelism: The total number of Ray tasks for read. Defaults to -1,
             which automatically determines the optimal parallelism for your
             configuration. You should not need to manually set this value in most cases.
             For details on how the parallelism is automatically determined and guidance
@@ -674,6 +679,9 @@ def read_parquet(
         include_paths: If ``True``, include the path to each file. File paths are
             stored in the ``'path'`` column.
         file_extensions: A list of file extensions to filter files by.
+        concurrency: The maximum number of Ray tasks to run concurrently. Set this
+            less than `parallelism` to control number of tasks to run concurrently.
+            This doesn't change the total number of tasks need to run.
 
     Returns:
         :class:`~ray.data.Dataset` producing records read from the specified parquet
@@ -707,6 +715,7 @@ def read_parquet(
         datasource,
         parallelism=parallelism,
         ray_remote_args=ray_remote_args,
+        concurrency=concurrency,
     )
 
 
