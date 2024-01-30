@@ -250,6 +250,8 @@ class OperatorFusionRule(Rule):
     def _get_fused_map_operator(
         self, down_op: MapOperator, up_op: MapOperator
     ) -> MapOperator:
+        from ray.data._internal.logical.operators.map_operator import AbstractMap
+
         assert self._can_fuse(down_op, up_op), (
             "Current rule supports fusing MapOperator->MapOperator, but received: "
             f"{type(up_op).__name__} -> {type(down_op).__name__}"
@@ -264,12 +266,12 @@ class OperatorFusionRule(Rule):
         # Merge minimum block sizes.
         down_min_rows_per_block = (
             down_logical_op._min_rows_per_block
-            if isinstance(down_logical_op, AbstractUDFMap)
+            if isinstance(down_logical_op, AbstractMap)
             else None
         )
         up_min_rows_per_block = (
             up_logical_op._min_rows_per_block
-            if isinstance(up_logical_op, AbstractUDFMap)
+            if isinstance(up_logical_op, AbstractMap)
             else None
         )
         if down_min_rows_per_block is not None and up_min_rows_per_block is not None:
@@ -333,6 +335,7 @@ class OperatorFusionRule(Rule):
             logical_op = AbstractMap(
                 name,
                 input_op,
+                min_rows_per_block=min_rows_per_block,
                 ray_remote_args=ray_remote_args,
             )
         self._op_map[op] = logical_op

@@ -632,15 +632,6 @@ class DatasetStats:
         """Start recording stats for an op of the given name (e.g., map)."""
         return _DatasetStatsBuilder(name, self, override_start_time)
 
-    def child_TODO(self, name: str) -> "DatasetStats":
-        """Placeholder for child ops not yet instrumented."""
-        return DatasetStats(metadata={name + "_TODO": []}, parent=self)
-
-    @staticmethod
-    def TODO():
-        """Placeholder for ops not yet instrumented."""
-        return DatasetStats(metadata={"TODO": []}, parent=None)
-
     def to_summary(self) -> "DatasetStatsSummary":
         """Generate a `DatasetStatsSummary` object from the given `DatasetStats`
         object, which can be used to generate a summary string."""
