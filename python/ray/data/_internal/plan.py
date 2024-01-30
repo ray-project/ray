@@ -604,7 +604,7 @@ class ExecutionPlan:
                         reply.store_stats.restored_bytes_total
                     )
             except Exception as e:
-                logger.get_logger(log_to_stdout=False).error(
+                logger.get_logger(log_to_stdout=False).warning(
                     "Skipping recording memory spilled and restored statistics due to "
                     f"exception: {e}"
                 )
