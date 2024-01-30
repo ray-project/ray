@@ -118,16 +118,10 @@ class _ClientContext:
         ray.util.serialization_addons.apply(ctx)
 
     def _check_versions(self, conn_info: Dict[str, Any], ignore_version: bool) -> None:
-        # blocking get
-        cluster_metadata = json.loads(
-            self._internal_kv_get(
-                usage_constant.CLUSTER_METADATA_KEY,
-                namespace=ray_constants.KV_NAMESPACE_CLUSTER,
-            ).decode("utf-8")
-        )
+        # conn_info has "python_version" and "ray_version" so it can be used to compare.
         ignore_version = ignore_version or ("RAY_IGNORE_VERSION_MISMATCH" in os.environ)
         check_version_info(
-            cluster_metadata,
+            conn_info,
             "Ray Client",
             raise_on_mismatch=not ignore_version,
             python_version_match_level="minor",
