@@ -147,7 +147,7 @@ class DeepSpeedInferenceWorker:
             return DummyStreamer()
 
 
-# __worker_def_end
+# __worker_def_end__
 
 # Define the Ray serve deployment
 @serve.deployment
