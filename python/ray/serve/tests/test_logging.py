@@ -23,8 +23,8 @@ from ray.serve._private.constants import (
     SERVE_LOGGER_NAME,
 )
 from ray.serve._private.logging_utils import (
-    ServeJSONFormatter,
     ServeFormatter,
+    ServeJSONFormatter,
     configure_component_logger,
     get_component_log_file_name,
     get_serve_logs_dir,
@@ -587,7 +587,12 @@ def test_json_log_formatter(is_replica_type_component):
 
 @pytest.mark.parametrize(
     "log_encoding",
-    [[None, "TEXT"], ["TEXT", "TEXT"], ["JSON", "JSON"], ["FOOBAR", "TEXT"], ],
+    [
+        [None, "TEXT"],
+        ["TEXT", "TEXT"],
+        ["JSON", "JSON"],
+        ["FOOBAR", "TEXT"],
+    ],
 )
 def test_configure_component_logger_with_log_encoding_env(monkeypatch, log_encoding):
     """Test the configure_component_logger function with different log encoding env.
