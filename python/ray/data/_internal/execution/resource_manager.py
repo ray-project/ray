@@ -1,5 +1,5 @@
 import time
-from typing import Dict, TYPE_CHECKING
+from typing import TYPE_CHECKING, Dict
 
 from ray._private.state import cluster_resources
 from ray.data._internal.execution.interfaces.execution_options import (
@@ -8,7 +8,6 @@ from ray.data._internal.execution.interfaces.execution_options import (
 )
 from ray.data._internal.execution.interfaces.physical_operator import PhysicalOperator
 from ray.data._internal.execution.operators.input_data_buffer import InputDataBuffer
-
 
 if TYPE_CHECKING:
     from ray.data._internal.execution.streaming_executor_state import Topology
