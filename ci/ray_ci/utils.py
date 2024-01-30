@@ -102,7 +102,10 @@ def get_flaky_test_names(prefix: str) -> List[str]:
 
     return test_names
 
-def filter_flaky_tests(input: io.TextIOBase, output: io.TextIOBase, prefix: str, select_flaky: bool = False):
+
+def filter_flaky_tests(
+    input: io.TextIOBase, output: io.TextIOBase, prefix: str, select_flaky: bool = False
+):
     """
     Filter flaky tests from list of test targets.
 
@@ -120,7 +123,9 @@ def filter_flaky_tests(input: io.TextIOBase, output: io.TextIOBase, prefix: str,
         t = t.strip()
         if not t:
             continue
-        is_test_selected = (select_flaky and t in flaky_tests) or (not select_flaky and t not in flaky_tests)
+        is_test_selected = (select_flaky and t in flaky_tests) or (
+            not select_flaky and t not in flaky_tests
+        )
         if is_test_selected:
             output.write(f"{t}\n")
 

@@ -73,6 +73,7 @@ def test_get_flaky_test_names(mock_gen_from_s3):
     )
     assert flaky_test_names == ["//test_1"]
 
+
 @pytest.mark.parametrize(
     "select_flaky, expected_value",
     [
@@ -83,7 +84,7 @@ def test_get_flaky_test_names(mock_gen_from_s3):
         (
             True,
             "//test_1\n//test_2\n",
-        )
+        ),
     ],
 )
 @mock.patch("ray_release.test.Test.gen_from_s3")
@@ -98,8 +99,11 @@ def test_filter_flaky_tests(mock_gen_from_s3, select_flaky, expected_value):
     )
     test_targets = ["//test_1", "//test_2", "//test_3", "//test_4"]
     output = io.StringIO()
-    filter_flaky_tests(io.StringIO("\n".join(test_targets)), output, "darwin:", select_flaky)
+    filter_flaky_tests(
+        io.StringIO("\n".join(test_targets)), output, "darwin:", select_flaky
+    )
     assert output.getvalue() == expected_value
+
 
 if __name__ == "__main__":
     sys.exit(pytest.main(["-v", __file__]))

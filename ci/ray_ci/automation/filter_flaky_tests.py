@@ -13,7 +13,8 @@ def main():
 
     Args:
         prefix: Prefix to query tests with.
-        select_flaky: If true, only print flaky tests. If false, only print non-flaky tests.
+        select_flaky: If true, only print flaky tests.
+            If false, only print non-flaky tests.
     """
     # Process arguments
     if len(sys.argv) != 3:
