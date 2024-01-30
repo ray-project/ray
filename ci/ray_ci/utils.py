@@ -104,7 +104,7 @@ def get_flaky_test_names(prefix: str) -> List[str]:
 
 
 def filter_flaky_tests(
-    input: io.TextIOBase, output: io.TextIOBase, prefix: str, select_flaky: bool = False
+    input: io.TextIOBase, output: io.TextIOBase, prefix: str, filter_option: str
 ):
     """
     Filter flaky tests from list of test targets.
@@ -113,8 +113,12 @@ def filter_flaky_tests(
         input: Input stream, each test name in one line.
         output: Output stream, each test name in one line.
         prefix: Prefix to query tests with.
-        select_flaky: If True, print only flaky tests. If False, print non-flaky tests.
+        filter_option: Options to filter tests: "only-flaky" or "non-flaky" tests.
     """
+    # Valid filter choices check
+    if filter_option not in ["only-flaky", "non-flaky"]:
+        raise ValueError("Filter option must be one of 'only-flaky' or 'non-flaky'.")
+
     # Obtain all existing tests with specified test state
     flaky_tests = set(get_flaky_test_names(prefix))
 
@@ -123,8 +127,8 @@ def filter_flaky_tests(
         t = t.strip()
         if not t:
             continue
-        is_test_selected = (select_flaky and t in flaky_tests) or (
-            not select_flaky and t not in flaky_tests
+        is_test_selected = (filter_option == "only-flaky" and t in flaky_tests) or (
+            filter_option == "non-flaky" and t not in flaky_tests
         )
         if is_test_selected:
             output.write(f"{t}\n")

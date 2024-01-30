@@ -75,20 +75,25 @@ def test_get_flaky_test_names(mock_gen_from_s3):
 
 
 @pytest.mark.parametrize(
-    "select_flaky, expected_value",
+    "filter_option, expected_value",
     [
         (
-            False,
+            "non-flaky",
             "//test_3\n//test_4\n",
         ),
         (
-            True,
+            "only-flaky",
             "//test_1\n//test_2\n",
+        ),
+        (
+            "wrong-option",  # invalid filter option
+            "",
         ),
     ],
 )
 @mock.patch("ray_release.test.Test.gen_from_s3")
-def test_filter_flaky_tests(mock_gen_from_s3, select_flaky, expected_value):
+def test_filter_flaky_tests(mock_gen_from_s3, filter_option, expected_value):
+    # Setup test input/output
     mock_gen_from_s3.side_effect = (
         [
             _make_test("darwin://test_1", "flaky", "core"),
@@ -99,8 +104,20 @@ def test_filter_flaky_tests(mock_gen_from_s3, select_flaky, expected_value):
     )
     test_targets = ["//test_1", "//test_2", "//test_3", "//test_4"]
     output = io.StringIO()
+
+    # Test invalid filter option
+    if filter_option not in ["only-flaky", "non-flaky"]:
+        with pytest.raises(
+            ValueError, match="must be one of 'only-flaky' or 'non-flaky'"
+        ):
+            filter_flaky_tests(
+                io.StringIO("\n".join(test_targets)), output, "darwin:", filter_option
+            )
+        return
+
+    # Test valid filter options
     filter_flaky_tests(
-        io.StringIO("\n".join(test_targets)), output, "darwin:", select_flaky
+        io.StringIO("\n".join(test_targets)), output, "darwin:", filter_option
     )
     assert output.getvalue() == expected_value
 
