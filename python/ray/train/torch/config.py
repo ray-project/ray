@@ -142,6 +142,7 @@ def _set_torch_distributed_env_vars():
     device = get_device()
     if isinstance(device, list):
         device = device[0]
+    torch.cuda.set_device(device)
     os.environ["ACCELERATE_TORCH_DEVICE"] = str(device)
 
 
