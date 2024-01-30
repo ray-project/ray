@@ -76,3 +76,11 @@ py_test(
     tags = ["exclusive", "team:core", "ray_dag_tests"],
     deps = [":dag_lib"],
 )
+
+py_test(
+    name = "test_torch_channel",
+    size = "medium",
+    srcs = dag_tests_srcs,
+    tags = ["exclusive", "team:core", "ray_dag_tests"],
+    deps = [":dag_lib"],
+)

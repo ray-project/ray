@@ -1,4 +1,9 @@
+"""Experimental code for leveraging gloo as a channel backend.
+
+This currently leverages gloo through torch distributed."""
+
 import logging
+import sys
 from typing import Any, List
 
 import numpy as np
@@ -74,7 +79,8 @@ class TorchChannel(Channel):
         pass
 
     def close(self) -> None:
-        pass
+        # TODO(ekl): support proper shutdown.
+        sys.exit(1)
 
     def _serialize(self, value: Any) -> bytes:
         if not isinstance(value, bytes):
