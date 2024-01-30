@@ -557,7 +557,7 @@ class ResourceDemandScheduler(IResourceScheduler):
             non_terminate_nodes_of_type.sort(key=self._sort_nodes_for_termination)
 
             # Terminate the nodes
-            to_terminate, remained_nodes = self._terminate_nodes(
+            to_terminate, remained_nodes = self._select_nodes_to_terminate(
                 non_terminate_nodes_of_type,
                 num_extra_nodes,
                 TerminationRequest.Cause.MAX_NUM_NODE_PER_TYPE,
@@ -610,7 +610,7 @@ class ResourceDemandScheduler(IResourceScheduler):
 
         non_terminating_nodes.sort(key=self._sort_nodes_for_termination)
         # Terminate the nodes
-        to_terminate_nodes, non_terminating_nodes = self._terminate_nodes(
+        to_terminate_nodes, non_terminating_nodes = self._select_nodes_to_terminate(
             non_terminating_nodes,
             num_to_terminate,
             TerminationRequest.Cause.MAX_NUM_NODES,
@@ -645,7 +645,7 @@ class ResourceDemandScheduler(IResourceScheduler):
         )
 
     @staticmethod
-    def _terminate_nodes(
+    def _select_nodes_to_terminate(
         nodes: List[SchedulingNode],
         num_to_terminate: int,
         cause: TerminationRequest.Cause,
@@ -654,7 +654,8 @@ class ResourceDemandScheduler(IResourceScheduler):
         idle_duration_ms: Optional[int] = None,
     ) -> Tuple[List[SchedulingNode], List[SchedulingNode]]:
         """
-        Terminate the nodes.
+        Select 'num_to_terminate' of nodes to be terminated
+        from the 'nodes' list.
 
         Args:
             nodes: The nodes to be terminated.
@@ -704,7 +705,7 @@ class ResourceDemandScheduler(IResourceScheduler):
         """
         Sort the nodes for termination increasingly by:
 
-            1. First if it doesn't have a ray node.
+            1. First if ray hasn't been started yet
             2. Then if the nodes are idle
             3. Then with lower resources util nodes first.
 
