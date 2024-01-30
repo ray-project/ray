@@ -229,6 +229,12 @@ GRPC_STATUS_CODE_DEADLINE_EXCEEDED = CGrpcStatusCode.DEADLINE_EXCEEDED
 GRPC_STATUS_CODE_RESOURCE_EXHAUSTED = CGrpcStatusCode.RESOURCE_EXHAUSTED
 GRPC_STATUS_CODE_UNIMPLEMENTED = CGrpcStatusCode.UNIMPLEMENTED
 
+TARGET_MAX_BATCH_DURATION_US = float(os.getenv("TARGET_MAX_BATCH_DURATION_US", "100.0"))
+DEFAULT_BATCH_SIZE = int(os.getenv("DEFAULT_BATCH_SIZE", "25"))
+
+# TODO clean up
+_DBG_PRINT_BATCHING_STATS = int(os.getenv("DBG_PRINT_BATCHING_STATS", "0"))
+
 logger = logging.getLogger(__name__)
 
 # The currently executing task, if any. These are used to synchronize task
@@ -1404,19 +1410,21 @@ async def execute_streaming_generator_async(
         exception = None
 
         try:
-            start = time.monotonic()
-
+            start = time.perf_counter()
             i = 0
             while i < cur_batch_size:
                 outputs.append(await gen.__anext__())
                 i += 1
 
-            batch_duration_us = (time.monotonic() - start) * 1_000_000
+            batch_duration_us = (time.perf_counter() - start) * 1_000_000
             # Batches are targeted to be exactly 1us in duration, otherwise we fallback to
             # batch size of
-            cur_batch_size = max(1, round((BATCH_MAX_DURATION_US / batch_duration_us) * cur_batch_size))
+            next_batch_size = max(1, round((TARGET_MAX_BATCH_DURATION_US / batch_duration_us) * cur_batch_size))
 
-            # print(f"[DBG] Batch size = {cur_batch_size}, duration: ", batch_duration_us, "us")
+            if _DBG_PRINT_BATCHING_STATS:
+                print(f"[DBG] Batch size: {next_batch_size} ({cur_batch_size}), duration: ", batch_duration_us, f"us (ratio {TARGET_MAX_BATCH_DURATION_US / batch_duration_us})")
+
+            cur_batch_size = next_batch_size
         except StopAsyncIteration:
             break
         except AsyncioActorExit:
