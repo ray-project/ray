@@ -20,7 +20,7 @@ import Pagination from "@material-ui/lab/Pagination";
 import _ from "lodash";
 import React, { useMemo, useState } from "react";
 import { Link as RouterLink } from "react-router-dom";
-import { DurationText } from "../common/DurationText";
+import { DurationText, getDurationVal } from "../common/DurationText";
 import { ActorLink, generateNodeLink } from "../common/links";
 import {
   CpuProfilingLink,
@@ -40,6 +40,7 @@ import StateCounter from "./StatesCounter";
 import { StatusChip } from "./StatusChip";
 import { HelpInfo } from "./Tooltip";
 import RayletWorkerTable, { ExpandableTableRow } from "./WorkerTable";
+import { start } from "repl";
 
 export type ActorTableProps = {
   actors: { [actorId: string]: ActorDetail };
@@ -91,35 +92,54 @@ const ActorTable = ({
   const [actorIdFilterValue, setActorIdFilterValue] = useState(filterToActorId);
   const [pageSize, setPageSize] = useState(10);
 
-  const startTimeSorterKey = "startTime";
-  const defaultSorterKey = startTimeSorterKey;
+  const uptimeSorterKey = "fake_uptime_attr";
   const gpuUtilizationSorterKey = "fake_gpu_attr";
   const gramUsageSorterKey = "fake_gram_attr";
-  const { sorterFunc, setOrderDesc, setSortKey, sorterKey } =
+  const aggregateUserSortKey = [uptimeSorterKey, gpuUtilizationSorterKey, gramUsageSorterKey];
+
+  const defaultSorterKey = uptimeSorterKey;
+  const { sorterFunc, setOrderDesc, setSortKey, sorterKey, descVal } =
     useSorter(defaultSorterKey);
 
   //We get a filtered and sorted actor list to render from prop actors
   const sortedActors = useMemo(() => {
     const actorList = Object.values(actors || {})
-      .sort(sorterFunc)
       .filter(filterFunc);
-    // Always show ALIVE actors at top. If no other sorting keys are provided, also sort by time
-    return _.sortBy(actorList, (actor) => {
+    let actorsSortedUserKey = actorList;
+    if (aggregateUserSortKey.includes(sorterKey)) {
+      // Uptime, GPU utilization, and GRAM usage are user specified sort keys but require an aggregate function
+      // over the actor attribute, so sorting with sortBy
+      actorsSortedUserKey = _.sortBy(actorList, (actor) => {
+        const descMultiplier = descVal ? 1 : -1;
+        switch (sorterKey) {
+          case uptimeSorterKey:
+            const startTime = actor.startTime;
+            const endTime = actor.endTime;
+            // If actor doesn't have startTime, set uptime to infinity for sort so it appears at the bottom of
+            // the table by default
+            const uptime = startTime && startTime > 0 ? getDurationVal({startTime, endTime}) : Number.POSITIVE_INFINITY;
+            // Default sort for uptime should be ascending (default for all others is descending)
+            // so multiply by -1
+            return uptime * -1 * descMultiplier;
+          case gpuUtilizationSorterKey:
+            const sumGpuUtilization = getSumGpuUtilization(actor.pid, actor.gpus);
+            return sumGpuUtilization * descMultiplier;
+          case gramUsageSorterKey:
+            const sumGRAMUsage = getSumGRAMUsage(actor.pid, actor.gpus);
+            return sumGRAMUsage * descMultiplier;
+          default:
+            return 0;
+        }
+      })
+    } else {
+      actorsSortedUserKey = actorList.sort(sorterFunc)
+    }
+    return _.sortBy(actorsSortedUserKey, (actor) => {
+      // Always show ALIVE actors at top
       const actorOrder = isActorEnum(actor.state) ? stateOrder[actor.state] : 0;
-
-      // GPU utilization and GRAM usage are user specified sort keys but require an aggregate function
-      // over the actor attribute, so including as a sortBy key
-      const sumGpuUtilization =
-        sorterKey === gpuUtilizationSorterKey
-          ? getSumGpuUtilization(actor.pid, actor.gpus)
-          : 0;
-      const sumGRAMUsage =
-        sorterKey === gramUsageSorterKey
-          ? getSumGRAMUsage(actor.pid, actor.gpus)
-          : 0;
-      return [sumGpuUtilization, sumGRAMUsage, actorOrder];
+      return actorOrder;
     });
-  }, [actors, sorterKey, sorterFunc, filterFunc]);
+  }, [actors, sorterKey, sorterFunc, filterFunc, descVal]);
 
   const list = sortedActors.slice((pageNo - 1) * pageSize, pageNo * pageSize);
 
@@ -444,7 +464,7 @@ const ActorTable = ({
             <SearchSelect
               label="Sort By"
               options={[
-                [startTimeSorterKey, "Uptime"],
+                [uptimeSorterKey, "Uptime"],
                 ["processStats.memoryInfo.rss", "Used Memory"],
                 ["mem[0]", "Total Memory"],
                 ["processStats.cpuPercent", "CPU"],
