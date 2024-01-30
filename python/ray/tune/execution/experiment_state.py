@@ -421,23 +421,20 @@ class _ExperimentCheckpointManager:
         )
         return True
 
-    def resume(self, resume_type: Union[str, bool]) -> Optional[_ResumeConfig]:
+    def resume(self, resume_config: _ResumeConfig) -> bool:
         """Checks whether to resume experiment.
 
-        If experiment should be resumed, this method may sync down experiment state
-        from the cloud and then return a ResumeConfig mapping to the resume type.
+        The experiment can be resumed if a metadata file uploaded from a
+        previous run can be found at the specified experiment directory on storage.
+        If experiment should be resumed, this method will pull the necessary
+        experiment state from storage.
 
         Args:
-            resume_type: One of ["REMOTE", "LOCAL", "PROMPT", "AUTO"]. Can
-                be suffixed with one or more of ["+ERRORED", "+ERRORED_ONLY",
-                "+RESTART_ERRORED", "+RESTART_ERRORED_ONLY"]
+            resume_config: TODO(justinvyu)
 
         Returns:
-            _ResumeConfig if resume is successful. None otherwise.
+            can_restore: Whether the experiment can be restored.
         """
-        if not resume_type:
-            return None
-
         resume_type, resume_config = _resume_str_to_config(resume_type)
 
         experiment_local_path = self._storage.experiment_local_path

@@ -30,6 +30,7 @@ from ray.tune.analysis import ExperimentAnalysis
 from ray.tune.callback import Callback
 from ray.tune.error import TuneError
 from ray.tune.execution.tune_controller import TuneController
+from ray.tune.execution.experiment_state import _ResumeConfig
 from ray.tune.experiment import Experiment, _convert_to_experiment_list
 from ray.tune.experimental.output import (
     get_air_verbosity,
@@ -260,6 +261,7 @@ def run(
     fail_fast: bool = False,
     restore: Optional[str] = None,
     resume: Union[bool, str] = False,
+    resume_config: Optional[_ResumeConfig] = None,
     reuse_actors: Optional[bool] = None,
     raise_on_failed_trial: bool = True,
     callbacks: Optional[Sequence[Callback]] = None,
@@ -921,12 +923,15 @@ def run(
     if air_verbosity is None:
         progress_reporter = progress_reporter or _detect_reporter()
 
+    resume_config = resume_config or _ResumeConfig()
+
     runner_kwargs = dict(
         search_alg=search_alg,
         placeholder_resolvers=placeholder_resolvers,
         scheduler=scheduler,
         stopper=experiments[0].stopper,
         resume=resume,
+        resume_config=resume_config,
         fail_fast=fail_fast,
         callbacks=callbacks,
         metric=metric,

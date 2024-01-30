@@ -60,6 +60,7 @@ from ray.tune.utils.resource_updater import _ResourceUpdater
 from ray.tune.utils import warn_if_slow, flatten_dict
 from ray.tune.utils.log import Verbosity, has_verbosity
 from ray.tune.execution.placement_groups import PlacementGroupFactory
+from ray.tune.execution.experiment_state import _ResumeConfig
 from ray.tune.utils.serialization import TuneFunctionDecoder, TuneFunctionEncoder
 from ray.util.annotations import DeveloperAPI, Deprecated
 from ray.util.debug import log_once
@@ -81,6 +82,7 @@ class TuneController:
         scheduler: Optional[TrialScheduler] = None,
         stopper: Optional[Stopper] = None,
         resume: Union[str, bool] = False,
+        resume_config: Optional[_ResumeConfig] = None,
         fail_fast: bool = False,
         checkpoint_period: Union[str, int] = None,
         callbacks: Optional[List[Callback]] = None,
@@ -228,8 +230,9 @@ class TuneController:
         self._checkpoint_manager = self._create_checkpoint_manager()
 
         self._resumed = False
-        resume_config = self._checkpoint_manager.resume(resume_type=resume)
+        # resume_config = self._checkpoint_manager.resume(resume_type=resume)
 
+        self._checkpoint_manager.resume(resume_config)
         if resume_config:
             try:
                 self.resume(
