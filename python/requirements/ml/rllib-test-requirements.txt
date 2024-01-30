@@ -43,4 +43,5 @@ autorom[accept-rom-license]; platform_machine != "arm64"
 h5py==3.7.0
 
 # TODO(matthewdeng): [py38]
+jax; python_version >= "3.9"
 flax; python_version >= "3.9"

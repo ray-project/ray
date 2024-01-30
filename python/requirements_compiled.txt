@@ -791,13 +791,6 @@ isort==5.10.1
     # via -r /ray/ci/../python/requirements/lint-requirements.txt
 itsdangerous==2.1.2
     # via flask
-jax==0.4.23
-    # via
-    #   chex
-    #   dopamine-rl
-    #   flax
-    #   optax
-    #   orbax-checkpoint
 jax-jumpy==1.0.0
     # via gymnasium
 jaxlib==0.4.23
