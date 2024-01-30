@@ -16,9 +16,8 @@ import ray.data
 from ray import train
 from ray.exceptions import RayTaskError
 from ray.train import ScalingConfig
-from ray.train._internal.worker_group import WorkerGroup
 from ray.train.examples.pytorch.torch_linear_example import LinearDataset
-from ray.train.torch.config import TorchConfig, _TorchBackend
+from ray.train.torch.config import TorchConfig
 from ray.train.torch.torch_trainer import TorchTrainer
 from ray.train.trainer import TrainingFailedError
 
