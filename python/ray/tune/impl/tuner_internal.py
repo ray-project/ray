@@ -635,26 +635,14 @@ class TunerInternal:
         self, trainable: TrainableType, param_space: Optional[Dict[str, Any]]
     ) -> ExperimentAnalysis:
         """Fitting for a restored Tuner."""
-        resume = "AUTO"
-
-        if self._resume_config:
-            if not self._resume_config.resume_unfinished:
-                if self._resume_config.resume_errored:
-                    resume += "+ERRORED_ONLY"
-                elif self._resume_config.restart_errored:
-                    resume += "+RESTART_ERRORED_ONLY"
-            else:
-                if self._resume_config.resume_errored:
-                    resume += "+ERRORED"
-                elif self._resume_config.restart_errored:
-                    resume += "+RESTART_ERRORED"
+        assert self._resume_config
 
         args = {
             **self._get_tune_run_arguments(trainable),
             **dict(
                 run_or_experiment=trainable,
                 config=param_space,
-                resume=resume,
+                resume_config=self._resume_config,
                 search_alg=self._tune_config.search_alg,
                 scheduler=self._tune_config.scheduler,
             ),

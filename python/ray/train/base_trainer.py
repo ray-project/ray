@@ -588,6 +588,7 @@ class BaseTrainer(abc.ABC):
         """
         from ray.tune import TuneError
         from ray.tune.tuner import Tuner, TunerInternal
+        from ray.tune.execution.experiment_state import _ResumeConfig
 
         trainable = self.as_trainable()
         param_space = self._extract_fields_for_tuner_param_space()
@@ -597,8 +598,11 @@ class BaseTrainer(abc.ABC):
                 path=self._restore_path,
                 trainable=trainable,
                 param_space=param_space,
-                resume_unfinished=True,
-                resume_errored=True,
+                resume_config=_ResumeConfig(
+                    finished=_ResumeConfig.ResumeType.RESUME,
+                    unfinished=_ResumeConfig.ResumeType.RESUME,
+                    errored=_ResumeConfig.ResumeType.RESUME,
+                ),
                 storage_filesystem=self._restore_storage_filesystem,
             )
         else:

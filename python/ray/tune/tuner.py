@@ -185,6 +185,7 @@ class Tuner:
         resume_unfinished: bool = True,
         resume_errored: bool = False,
         restart_errored: bool = False,
+        resume_config: Optional[_ResumeConfig] = None,
         param_space: Optional[Dict[str, Any]] = None,
         storage_filesystem: Optional[pyarrow.fs.FileSystem] = None,
     ) -> "Tuner":
@@ -248,12 +249,7 @@ class Tuner:
                 corresponding to the ``path``. This may be necessary if the original
                 experiment passed in a custom filesystem.
         """
-        # TODO(xwjiang): Add some comments to clarify the config behavior across
-        #  retored runs.
-        #  For example, is callbacks supposed to be automatically applied
-        #  when a Tuner is restored and fit again?
-
-        resume_config = _ResumeConfig(
+        resume_config = resume_config or _ResumeConfig(
             resume_unfinished=resume_unfinished,
             resume_errored=resume_errored,
             restart_errored=restart_errored,
