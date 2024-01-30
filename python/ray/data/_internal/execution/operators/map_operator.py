@@ -86,7 +86,7 @@ class MapOperator(OneToOneOperator, ABC):
         # If set, then all output blocks will be split into
         # this many sub-blocks. This is to avoid having
         # too-large blocks, which may reduce parallelism for
-        # the subsequent stage.
+        # the subsequent operator.
         self._additional_split_factor = None
 
     def get_additional_split_factor(self) -> int:
@@ -152,6 +152,7 @@ class MapOperator(OneToOneOperator, ABC):
                 name=name,
                 target_max_block_size=target_max_block_size,
                 min_rows_per_bundle=min_rows_per_bundle,
+                concurrency=compute_strategy.size,
                 ray_remote_args=ray_remote_args,
             )
         elif isinstance(compute_strategy, ActorPoolStrategy):

@@ -60,9 +60,9 @@ class JsonLogger(Logger):
         self.local_out.close()
 
     def update_config(self, config: Dict):
-        self.config = config if isinstance(config, dict) else config.to_dict()
+        self.config = config
         config_out = Path(self.logdir, EXPR_PARAM_FILE)
-        with config_out.open("w") as f:
+        with open(config_out, "w") as f:
             json.dump(self.config, f, indent=2, sort_keys=True, cls=SafeFallbackEncoder)
         config_pkl = Path(self.logdir, EXPR_PARAM_PICKLE_FILE)
         with config_pkl.open("wb") as f:
@@ -115,9 +115,7 @@ class JsonLoggerCallback(LoggerCallback):
         del self._trial_files[trial]
 
     def update_config(self, trial: "Trial", config: Dict):
-        self._trial_configs[trial] = (
-            config if isinstance(config, dict) else config.to_dict()
-        )
+        self._trial_configs[trial] = config
 
         config_out = Path(trial.local_path, EXPR_PARAM_FILE)
         with config_out.open("w") as f:

@@ -1,7 +1,6 @@
 import asyncio
 import json
 import os
-import time
 from unittest.mock import patch
 
 import numpy as np
@@ -11,10 +10,7 @@ from fastapi.encoders import jsonable_encoder
 import ray
 from ray import serve
 from ray._private.resource_spec import HEAD_NODE_RESOURCE_NAME
-from ray._private.test_utils import wait_for_condition
-from ray.serve._private.test_utils import MockTimer
 from ray.serve._private.utils import (
-    MetricsPusher,
     calculate_remaining_timeout,
     get_all_live_placement_group_names,
     get_current_actor_id,
@@ -452,83 +448,6 @@ def test_get_all_live_placement_group_names(ray_instance):
     assert pg8.wait()
 
     assert set(get_all_live_placement_group_names()) == {"pg3", "pg4", "pg5", "pg6"}
-
-
-def test_metrics_pusher_no_tasks():
-    """Test that a metrics pusher can't be started with zero tasks."""
-    metrics_pusher = MetricsPusher()
-    with pytest.raises(ValueError):
-        metrics_pusher.start()
-
-
-def test_metrics_pusher_basic():
-    start = 0
-    timer = MockTimer(start)
-
-    with patch("time.time", new=timer.time), patch(
-        "time.sleep", new=timer.realistic_sleep
-    ):
-        counter = {"val": 0}
-        result = {}
-        expected_result = 20
-
-        def task(c, res):
-            timer.realistic_sleep(0.001)
-            c["val"] += 1
-            # At 10 seconds, this task should have been called 20 times
-            if timer.time() >= 10 and "val" not in res:
-                res["val"] = c["val"]
-
-        metrics_pusher = MetricsPusher()
-        metrics_pusher.register_task(lambda: task(counter, result), 0.5)
-
-        metrics_pusher.start()
-        # This busy wait loop should run for at most a few hundred milliseconds
-        # The test should finish by then, and if the test fails this prevents
-        # an infinite loop
-        for _ in range(10000000):
-            if "val" in result:
-                assert result["val"] == expected_result
-                break
-
-        assert result["val"] == expected_result
-
-
-def test_metrics_pusher_multiple_tasks():
-    start = 0
-    timer = MockTimer(start)
-
-    with patch("time.time", new=timer.time), patch(
-        "time.sleep", new=timer.realistic_sleep
-    ):
-        counter = {"A": 0, "B": 0, "C": 0}
-        result = {}
-        expected_results = {"A": 35, "B": 14, "C": 10}
-
-        def task(key, c, res):
-            time.sleep(0.001)
-            c[key] += 1
-            # Check for how many times this task has been called
-            # At 7 seconds, tasks A, B, C should have executed 35, 14, and 10
-            # times respectively.
-            if timer.time() >= 7 and key not in res:
-                res[key] = c[key]
-
-        metrics_pusher = MetricsPusher()
-        # Each task interval is different, and they don't divide each other.
-        metrics_pusher.register_task(lambda: task("A", counter, result), 0.2)
-        metrics_pusher.register_task(lambda: task("B", counter, result), 0.5)
-        metrics_pusher.register_task(lambda: task("C", counter, result), 0.7)
-        metrics_pusher.start()
-
-        # Check there are three results set and all are expected.
-        def check_results():
-            for key in result.keys():
-                assert result[key] == expected_results[key]
-            assert len(result) == 3
-            return True
-
-        wait_for_condition(check_results, timeout=20)
 
 
 def test_is_running_in_asyncio_loop_false():
