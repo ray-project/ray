@@ -1,6 +1,6 @@
 import sys
 
-from ci.ray_ci.utils import filter_out_flaky_tests
+from ci.ray_ci.utils import filter_flaky_tests
 from ray_release.configs.global_config import init_global_config
 from ray_release.bazel import bazel_runfile
 
@@ -26,7 +26,7 @@ def main():
     # Initialize global config
     init_global_config(bazel_runfile("release/ray_release/configs/oss_config.yaml"))
 
-    filter_out_flaky_tests(sys.stdin, sys.stdout, prefix, select_flaky)
+    filter_flaky_tests(sys.stdin, sys.stdout, prefix, select_flaky)
 
 
 if __name__ == "__main__":
