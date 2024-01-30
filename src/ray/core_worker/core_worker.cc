@@ -2115,15 +2115,12 @@ Status CoreWorker::CreateActor(const RayFunction &function,
   return Status::OK();
 }
 
-Status CoreWorker::CreateVirtualCluster(
-    const std::string &spec_json,
-    VirtualClusterID *virtual_cluster_id) {
+Status CoreWorker::CreateVirtualCluster(const std::string &spec_json,
+                                        VirtualClusterID *virtual_cluster_id) {
   *virtual_cluster_id = VirtualClusterID::FromRandom();
 
   auto proto = std::make_shared<rpc::VirtualClusterSpec>();
-  RAY_CHECK(google::protobuf::util::JsonStringToMessage(spec_json,
-                                                        proto.get())
-                .ok());
+  RAY_CHECK(google::protobuf::util::JsonStringToMessage(spec_json, proto.get()).ok());
   proto->set_virtual_cluster_id(virtual_cluster_id->Binary());
 
   VirtualClusterSpecification spec(proto);

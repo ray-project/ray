@@ -883,9 +883,8 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
       const PlacementGroupCreationOptions &placement_group_creation_options,
       PlacementGroupID *placement_group_id);
 
-  Status CreateVirtualCluster(
-      const std::string &spec_json,
-      VirtualClusterID *virtual_cluster_id);
+  Status CreateVirtualCluster(const std::string &spec_json,
+                              VirtualClusterID *virtual_cluster_id);
 
   Status RemoveVirtualCluster(const VirtualClusterID &virtual_cluster_id);
 
