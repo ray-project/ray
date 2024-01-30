@@ -12,7 +12,6 @@ from sklearn.utils import shuffle
 import ray
 from ray import train, tune
 from ray.train import CheckpointConfig, RunConfig, ScalingConfig
-from ray.train.constants import RAY_CHDIR_TO_TRIAL_DIR
 from ray.train.examples.pytorch.torch_linear_example import (
     train_func as linear_train_func,
 )
