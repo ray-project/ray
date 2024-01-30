@@ -33,7 +33,6 @@ from ray.data._internal.execution.streaming_executor_state import (
 )
 from ray.data._internal.progress_bar import ProgressBar
 from ray.data._internal.stats import DatasetStats, StatsManager
-from ray.data._internal.util import cluster_resources
 from ray.data.context import DataContext
 
 logger = DatasetLogger(__name__)
