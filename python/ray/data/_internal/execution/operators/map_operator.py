@@ -152,6 +152,7 @@ class MapOperator(OneToOneOperator, ABC):
                 name=name,
                 target_max_block_size=target_max_block_size,
                 min_rows_per_bundle=min_rows_per_bundle,
+                concurrency=compute_strategy.size,
                 ray_remote_args=ray_remote_args,
             )
         elif isinstance(compute_strategy, ActorPoolStrategy):

@@ -587,32 +587,32 @@ def get_compute_strategy(
             )
         return compute
     elif concurrency is not None:
-        if not is_callable_class:
-            # Currently do not support concurrency control with function,
-            # i.e., running with Ray Tasks (`TaskPoolMapOperator`).
-            logger.warning(
-                "``concurrency`` is set, but ``fn`` is not a callable class: "
-                f"{fn}. ``concurrency`` are currently only supported when "
-                "``fn`` is a callable class."
-            )
-            return TaskPoolStrategy()
-
         if isinstance(concurrency, tuple):
             if (
                 len(concurrency) == 2
                 and isinstance(concurrency[0], int)
                 and isinstance(concurrency[1], int)
             ):
-                return ActorPoolStrategy(
-                    min_size=concurrency[0], max_size=concurrency[1]
-                )
+                if is_callable_class:
+                    return ActorPoolStrategy(
+                        min_size=concurrency[0], max_size=concurrency[1]
+                    )
+                else:
+                    raise ValueError(
+                        "``concurrency`` is set as a tuple of integers, but ``fn`` "
+                        f"is not a callable class: {fn}. Use ``concurrency=n`` to "
+                        "control maximum number of workers to use."
+                    )
             else:
                 raise ValueError(
                     "``concurrency`` is expected to be set as a tuple of "
                     f"integers, but got: {concurrency}."
                 )
         elif isinstance(concurrency, int):
-            return ActorPoolStrategy(size=concurrency)
+            if is_callable_class:
+                return ActorPoolStrategy(size=concurrency)
+            else:
+                return TaskPoolStrategy(size=concurrency)
         else:
             raise ValueError(
                 "``concurrency`` is expected to be set as an integer or a "
