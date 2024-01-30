@@ -17,6 +17,7 @@ from ray.data._internal.execution.operators.map_operator import MapOperator
 from ray.data._internal.execution.operators.map_transformer import (
     create_map_transformer_from_block_fn,
 )
+from ray.data._internal.execution.resource_manager import ResourceManager
 from ray.data._internal.execution.streaming_executor import (
     _debug_dump_topology,
     _validate_dag,
@@ -31,7 +32,6 @@ from ray.data._internal.execution.streaming_executor_state import (
     update_operator_states,
 )
 from ray.data._internal.execution.util import make_ref_bundles
-from ray.data._internal.execution.resource_manager import ResourceManager
 from ray.data.tests.conftest import *  # noqa
 from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
 
@@ -175,7 +175,9 @@ def test_select_operator_to_run():
         make_map_transformer(lambda block: [b * 2 for b in block]), o2
     )
     topo, _ = build_streaming_topology(o3, opt)
-    resource_manager = mock_resource_manager()
+    resource_manager = mock_resource_manager(
+        global_limits=ExecutionResources(1, 1, 1),
+    )
 
     # Test empty.
     assert (
@@ -317,44 +319,98 @@ def test_execution_allowed():
 
     # CPU.
     op.incremental_resource_usage = MagicMock(return_value=ExecutionResources(cpu=1))
-    resource_manager1 = mock_resource_manager(
-        global_usage=ExecutionResources(cpu=1),
-        global_limits=ExecutionResources(cpu=2),
+    assert _execution_allowed(
+        op,
+        mock_resource_manager(
+            global_usage=ExecutionResources(cpu=1),
+            global_limits=ExecutionResources(cpu=2),
+        ),
     )
-    assert _execution_allowed(op, resource_manager1)
-    resource_manager2 = mock_resource_manager(
-        global_usage=ExecutionResources(cpu=2),
-        global_limits=ExecutionResources(cpu=2),
+    assert not _execution_allowed(
+        op,
+        mock_resource_manager(
+            global_usage=ExecutionResources(cpu=2),
+            global_limits=ExecutionResources(cpu=2),
+        ),
     )
-    assert not _execution_allowed(op, resource_manager2)
-    assert _execution_allowed(op, resource_manager2)
+    assert _execution_allowed(
+        op,
+        mock_resource_manager(
+            global_usage=ExecutionResources(cpu=2),
+            global_limits=ExecutionResources(gpu=2),
+        ),
+    )
 
     # GPU.
     op.incremental_resource_usage = MagicMock(
         return_value=ExecutionResources(cpu=0, gpu=1)
     )
-    assert _execution_allowed(op, resource_manager1)
-    assert not _execution_allowed(op, resource_manager2)
+    assert _execution_allowed(
+        op,
+        mock_resource_manager(
+            global_usage=ExecutionResources(gpu=1),
+            global_limits=ExecutionResources(gpu=2),
+        ),
+    )
+    assert not _execution_allowed(
+        op,
+        mock_resource_manager(
+            global_usage=ExecutionResources(gpu=2),
+            global_limits=ExecutionResources(gpu=2),
+        ),
+    )
 
     # Test conversion to indicator (0/1).
     op.incremental_resource_usage = MagicMock(
         return_value=ExecutionResources(cpu=0, gpu=100)
     )
-    assert _execution_allowed(op, resource_manager1)
-    resource_manager3 = mock_resource_manager(
-        global_usage=ExecutionResources(cpu=1.5),
-        global_limits=ExecutionResources(cpu=2),
+    assert _execution_allowed(
+        op,
+        mock_resource_manager(
+            global_usage=ExecutionResources(gpu=1),
+            global_limits=ExecutionResources(gpu=2),
+        ),
     )
-    assert _execution_allowed(op, resource_manager3)
-    assert not _execution_allowed(op, resource_manager2)
+    assert _execution_allowed(
+        op,
+        mock_resource_manager(
+            global_usage=ExecutionResources(gpu=1.5),
+            global_limits=ExecutionResources(gpu=2),
+        ),
+    )
+    assert not _execution_allowed(
+        op,
+        mock_resource_manager(
+            global_usage=ExecutionResources(gpu=2),
+            global_limits=ExecutionResources(gpu=2),
+        ),
+    )
 
     # Test conversion to indicator (0/1).
     op.incremental_resource_usage = MagicMock(
         return_value=ExecutionResources(cpu=0, gpu=0.1)
     )
-    assert _execution_allowed(op, resource_manager1)
-    assert _execution_allowed(op, resource_manager3)
-    assert not _execution_allowed(op, resource_manager2)
+    assert _execution_allowed(
+        op,
+        mock_resource_manager(
+            global_usage=ExecutionResources(gpu=1),
+            global_limits=ExecutionResources(gpu=2),
+        ),
+    )
+    assert _execution_allowed(
+        op,
+        mock_resource_manager(
+            global_usage=ExecutionResources(gpu=1.5),
+            global_limits=ExecutionResources(gpu=2),
+        ),
+    )
+    assert not _execution_allowed(
+        op,
+        mock_resource_manager(
+            global_usage=ExecutionResources(gpu=2),
+            global_limits=ExecutionResources(gpu=2),
+        ),
+    )
 
 
 @pytest.mark.skip(
