@@ -13,7 +13,9 @@ from ray.rllib.utils.annotations import override
 from ray.rllib.utils.typing import SampleBatchType
 
 
-# TODO (simon): Implement getter and setter for the state.
+# TODO (simon): Implement a function to update the priorities when running
+# DQN/SAC (similar to `ray.rllib.utils.replay_buffers.utils.
+# update_priorities_in_replay_buffer`).
 class PrioritizedEpisodeReplayBuffer(EpisodeReplayBuffer):
     def __init__(
         self,
@@ -49,6 +51,28 @@ class PrioritizedEpisodeReplayBuffer(EpisodeReplayBuffer):
         episodes: Union[List["SingleAgentEpisode"], "SingleAgentEpisode"],
         weight: Optional[float] = None,
     ) -> None:
+        """Adds incoming episodes to the replay buffer.
+
+        Note, if the incoming episodes' time steps cause the buffer to overflow,
+        older peisodes are evicted. Because episodes usually come in chunks and
+        not complete, this could lead to edge cases (e.g. with very small capacity
+        or very long episode length) where the first part of an episode is evicted
+        while the next part just came in.
+        In such cases, we evict the complete episode, including the new chunk,
+        unless the episode is the ladst one in the buffer. In the latter case the
+        buffer will be allowed to overflow in a time-limited fashion, i.e. during
+        the next addition of samples to the buffer an attempt is made to fall below
+        capacity again.
+
+        The user is advised to select a large enough buffer with regard to the maximum
+        expected episode length.
+
+        Args:
+            episodes: A list of `SingleAgentEpisode`s that contain the episode data.
+            weight: A starting priority for the samples in `episodes`.
+        """
+
+        # TODO (sven, simon): Eventually allow here an array?
         if weight is None:
             weight = self._max_priority
 
@@ -154,6 +178,46 @@ class PrioritizedEpisodeReplayBuffer(EpisodeReplayBuffer):
         beta: float = 0.0,
         include_infos: bool = False,
     ) -> SampleBatchType:
+        """Samples from a buffer in a prioritized way.
+
+        This sampling method also adds (importance sampling) weights to
+        the returned batch. See for prioritized sampling Schaul et al.
+        (2016).
+
+        Each sampled item defines a transition of the form:
+
+        `(o_t, a_t, sum(r_(t+1:t+n+1)), o_(t+n), temrinated_(t+n), truncated_(t+n))`
+
+        where `o_(t+n)` is drawn by prioritized sampling, i.e. the priority
+        of `o_(t+n)` led to the sample and defines the importance weight that
+        is returned in the sample batch. `n` is defined by the `n-step` applied.
+
+        If requested, `info`s of a transitions last timestep `t+n` are added to
+        the batch.
+
+        Args:
+            num_items: Number of items (transitions) to sample from this
+                buffer.
+            batch_size_B: The number of rows (transiitons) to return in the
+                batch
+            n_step: The n-step to apply. For the default the batch contains in
+                `"new_obs"` the observation and at `"obs"` the observation `n`
+                time steps before. The reward will be the sum of rewards
+                collected in between these two observations and the action will
+                be the one executed n steps before such that we always have the
+                state-action pair that triggered the rewards.
+            beta: The exponent of the importance sampling weight (see Schaul et
+                al. (2016)). A `beta=0.0` does not correct for the bias introduced
+                by prioritized replay and `beta=1.0` fully corrects for it.
+            include_infos: A boolean indicating, if `info`s should be included in
+                the batch. This could be of advantage, if the `info` contains
+                values from the environment important for loss computation. If
+                `True`, the info at the `"new_obs"` in the batch is included.
+
+        Returns:
+            A sample batch (observations, actions, rewards, new observations,
+            terminateds, truncateds) and if requested infos of dimension [B, 1].
+        """
         assert beta >= 0.0
 
         if num_items is not None:
@@ -285,6 +349,11 @@ class PrioritizedEpisodeReplayBuffer(EpisodeReplayBuffer):
 
     @override(EpisodeReplayBuffer)
     def get_state(self) -> Dict[str, Any]:
+        """Gets the state of a `PrioritizedEpisodeReplayBuffer`.
+
+        Returns:
+            A state dict that can be stored in a checkpoint.
+        """
         # Get super's state.
         state = super().get_state()
         # Add additional attributes.
@@ -295,7 +364,7 @@ class PrioritizedEpisodeReplayBuffer(EpisodeReplayBuffer):
                 "_free_nodes": list(self._free_nodes),
                 "_max_priority": self._max_priority,
                 "_tree_idx_to_sample_idx": list(self._tree_idx_to_sample_idx.items()),
-                # TODO (simon): Do we need these?
+                # TODO (sven, simon): Do we need these?
                 "_last_sampled_indices": self._last_sampled_indices,
             }
         )
@@ -303,6 +372,11 @@ class PrioritizedEpisodeReplayBuffer(EpisodeReplayBuffer):
 
     @override(EpisodeReplayBuffer)
     def set_state(self, state) -> None:
+        """Sets the state of a `PrioritizedEpisodeReplayBuffer`.
+
+        Args:
+            state: A buffer state stored (usually stored in a checkpoint).
+        """
         # Set super's state.
         super().set_state()
         # Set additional attributes.
@@ -311,13 +385,17 @@ class PrioritizedEpisodeReplayBuffer(EpisodeReplayBuffer):
         self._free_nodes = deque(state["_free_nodes"])
         self._max_priority = state["_max_priority"]
         self._tree_idx_to_sample_idx = dict(state["_tree_idx_to_sample_idx"])
-        # TODO (simon):
+        # TODO (sven, simon): Do we need these?
         self._last_sampled_indices = state["_last_sampled_indices"]
 
     def update_priorities(self, priorities: NDArray) -> None:
         """Update the priorities of items at corresponding indices.
 
         Usually, incoming priorities are TD-errors.
+
+        Args:
+            priorities: Numpy array containing the new priorities to be used
+                in sampling for the items in the last sampled batch.
         """
         assert len(priorities) == len(self._last_sampled_indices)
 
@@ -340,6 +418,16 @@ class PrioritizedEpisodeReplayBuffer(EpisodeReplayBuffer):
         In addition the initial priorities for a new transition are added
         to the segment trees and the index of the nodes is added to the
         index mapping.
+
+        Args:
+            sample_index: The index of the sample in the `self._indices` list.
+            weight: The initial priority weight to be used in sampling for
+                the item at index `sample_index`.
+
+        Returns:
+            The index in the segment trees `self._sum_segment` and
+            `self._min_segment` for the item at index `sample_index` in
+            ``self._indices`.
         """
         # Get an index from the free nodes in the segment trees.
         idx = self._free_nodes.popleft()
