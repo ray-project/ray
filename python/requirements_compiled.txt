@@ -438,12 +438,6 @@ entrypoints==0.4
     #   nbconvert
 et-xmlfile==1.1.0
     # via openpyxl
-etils==1.5.2
-    # via
-    #   array-record
-    #   etils
-    #   orbax-checkpoint
-    #   tensorflow-datasets
 evaluate==0.4.0
     # via -r /ray/ci/../python/requirements/ml/train-test-requirements.txt
 everett==3.3.0

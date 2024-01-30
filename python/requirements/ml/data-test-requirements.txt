@@ -9,3 +9,6 @@ soundfile
 google-cloud-bigquery
 google-cloud-bigquery-storage
 array-record; platform_system != "Windows" 
+
+# TODO(matthewdeng): [py38]
+etils; python_version >= "3.9"
