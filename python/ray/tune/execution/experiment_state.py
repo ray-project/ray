@@ -36,6 +36,14 @@ _DRIVER_SYNC_EXCLUDE_PATTERNS = ["*/checkpoint_*"]
 @dataclass
 class _ResumeConfig:
     class ResumeType(Enum):
+        """An enumeration to define resume types for various trial states.
+
+        Members:
+            RESUME: Resume from the latest checkpoint.
+            RESTART: Restart from the beginning (with no checkpoint).
+            IGNORE: Ignore this trial.
+        """
+
         RESUME = "resume"
         RESTART = "restart"
         IGNORE = "ignore"
@@ -155,7 +163,7 @@ class _ExperimentCheckpointManager:
 
         self._excessive_sync_threshold = float(
             os.environ.get(
-                "TUNE_WARN_EXCESSIVE_EXPERIMENT_CHECKPOINT_SYNC_THRESHOLD_S", "30"
+                "TUNE_WARN_EXCESSIVE_EXPERIMENT_CHECKPOINT_SYNC_THRESHOLD_S", "5"
             )
         )
         self._should_force_cloud_sync = False
