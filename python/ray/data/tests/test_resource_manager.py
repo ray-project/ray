@@ -5,7 +5,6 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-import ray
 from ray.data._internal.execution.interfaces.execution_options import (
     ExecutionOptions,
     ExecutionResources,
@@ -71,7 +70,8 @@ class TestResourceManager(unittest.TestCase):
             )
             assert resource_manager.get_global_limits() == expected
 
-            # Test that we don't support setting both resource_limits and exclude_resources.
+            # Test that we don't support setting both resource_limits
+            # and exclude_resources.
             with pytest.raises(ValueError):
                 options = ExecutionOptions()
                 options.resource_limits = ExecutionResources(cpu=2)

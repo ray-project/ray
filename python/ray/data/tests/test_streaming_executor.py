@@ -1,4 +1,3 @@
-import collections
 import time
 from unittest.mock import MagicMock
 
@@ -17,7 +16,6 @@ from ray.data._internal.execution.operators.map_operator import MapOperator
 from ray.data._internal.execution.operators.map_transformer import (
     create_map_transformer_from_block_fn,
 )
-from ray.data._internal.execution.resource_manager import ResourceManager
 from ray.data._internal.execution.streaming_executor import (
     _debug_dump_topology,
     _validate_dag,

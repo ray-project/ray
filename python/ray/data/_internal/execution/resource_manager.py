@@ -56,7 +56,7 @@ class ResourceManager:
             self._op_usages[op] = op_usage
             # Update `self._global_usage`.
             self._global_usage = self._global_usage.add(op_usage)
-            # Update `self._downstream_fraction` and `self._downstream_object_store_memory`.
+            # Update `self._downstream_fraction` and `_downstream_object_store_memory`.
             # Subtract one from denom to account for input buffer.
             f = (1.0 + num_ops_so_far) / max(1.0, num_ops_total - 1.0)
             num_ops_so_far += 1
