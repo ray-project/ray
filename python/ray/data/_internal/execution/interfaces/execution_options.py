@@ -50,6 +50,30 @@ class ExecutionResources:
             )
         return total
 
+    def subtract(self, other: "ExecutionResources", non_negative=Fales) -> "ExecutionResources":
+        """Subtracts execution resources.
+
+        Returns:
+            A new ExecutionResource object with subtracted resources.
+        """
+        total = ExecutionResources()
+        if self.cpu is not None or other.cpu is not None:
+            total.cpu = (self.cpu or 0.0) - (other.cpu or 0.0)
+        if self.gpu is not None or other.gpu is not None:
+            total.gpu = (self.gpu or 0.0) - (other.gpu or 0.0)
+        if (
+            self.object_store_memory is not None
+            or other.object_store_memory is not None
+        ):
+            total.object_store_memory = (self.object_store_memory or 0.0) - (
+                other.object_store_memory or 0.0
+            )
+        if non_negative:
+            total.cpu = max(0.0, total.cpu)
+            total.gpu = max(0.0, total.gpu)
+            total.object_store_memory = max(0.0, total.object_store_memory)
+        return total
+
     def satisfies_limit(self, limit: "ExecutionResources") -> bool:
         """Return if this resource struct meets the specified limits.
 

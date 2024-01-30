@@ -256,15 +256,15 @@ class StreamingExecutor(Executor, threading.Thread):
         # Note: calling process_completed_tasks() is expensive since it incurs
         # ray.wait() overhead, so make sure to allow multiple dispatch per call for
         # greater parallelism.
+        self._resource_manager.update_usages()
         num_errored_blocks = process_completed_tasks(
-            topology, self._backpressure_policies, self._max_errored_blocks
+            topology, self._resource_manager, self._backpressure_policies, self._max_errored_blocks
         )
         if self._max_errored_blocks > 0:
             self._max_errored_blocks -= num_errored_blocks
         self._num_errored_blocks += num_errored_blocks
-
-        self._resource_manager.update_usages()
         # Dispatch as many operators as we can for completed tasks.
+        self._resource_manager.update_usages()
         self._report_current_usage()
         op = select_operator_to_run(
             topology,

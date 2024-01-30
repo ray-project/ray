@@ -9,6 +9,7 @@ from ray.data._internal.dataset_logger import DatasetLogger
 if TYPE_CHECKING:
     from ray.data._internal.execution.interfaces import PhysicalOperator
     from ray.data._internal.execution.streaming_executor_state import OpState, Topology
+    from ray.data._internal.execution.resource_manager import ResourceManager
 
 
 logger = DatasetLogger(__name__)
@@ -72,7 +73,7 @@ class StreamingOutputBackpressurePolicy(BackpressurePolicy):
         self._warning_printed = False
 
     def calculate_max_blocks_to_read_per_op(
-        self, topology: "Topology"
+        self, topology: "Topology", resource_manager: "ResourceManager"
     ) -> Dict["OpState", int]:
         max_blocks_to_read_per_op: Dict["OpState", int] = {}
 
@@ -80,15 +81,7 @@ class StreamingOutputBackpressurePolicy(BackpressurePolicy):
         downstream_idle = False
 
         for op, state in reversed(topology.items()):
-            max_blocks_to_read_per_op[state] = (
-                self._max_num_blocks_in_op_output_queue - state.outqueue_num_blocks()
-            )
-
-            if downstream_idle:
-                max_blocks_to_read_per_op[state] = max(
-                    max_blocks_to_read_per_op[state],
-                    1,
-                )
+            max_blocks_to_read_per_op[state] = resource_manager.get_op_available(op)
 
             # An operator is considered idle if either of the following is true:
             # - It has no active tasks.
