@@ -351,7 +351,7 @@ class JobSubmitRequest:
     # to reserve for the entrypoint command, separately from any Ray tasks
     # or actors that are created by it.
     entrypoint_resources: Optional[Dict[str, float]] = None
-    virtual_cluster_config: List[Dict[str, float]] = None
+    virtual_cluster_config: Optional[str] = None
 
     def __post_init__(self):
         if not isinstance(self.entrypoint, str):

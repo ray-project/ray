@@ -2116,29 +2116,15 @@ Status CoreWorker::CreateActor(const RayFunction &function,
 }
 
 Status CoreWorker::CreateVirtualCluster(
-    const std::vector<std::unordered_map<std::string, double>> &bundles,
+    const std::string &spec_json,
     VirtualClusterID *virtual_cluster_id) {
-  // TODO: expose the complete virtual cluster spec to the python side.
-  //
-  // Now we can only create a subset of virtual clusters:
-  // - no flex resources (all default = can use 0 to all)
-  // - 1 fixed_size_nodes, SCHEDULING_POLICY_SPREAD
-  // - no labels, no node selector
-
   *virtual_cluster_id = VirtualClusterID::FromRandom();
 
   auto proto = std::make_shared<rpc::VirtualClusterSpec>();
+  RAY_CHECK(google::protobuf::util::JsonStringToMessage(spec_json,
+                                                        proto.get())
+                .ok());
   proto->set_virtual_cluster_id(virtual_cluster_id->Binary());
-  rpc::FixedSizeNodes *fixed_size_nodes = proto->add_fixed_size_nodes();
-  for (const auto &node_resources : bundles) {
-    fixed_size_nodes->set_scheduling_policy(rpc::SCHEDULING_POLICY_SPREAD);
-    rpc::VirtualClusterNode *vnode = fixed_size_nodes->add_nodes();
-    for (const auto &[name, count] : node_resources) {
-      if (count != 0) {
-        vnode->mutable_resources()->insert({name, count});
-      }
-    }
-  }
 
   VirtualClusterSpecification spec(proto);
   return gcs_client_->VirtualClusters().SyncCreateVirtualCluster(spec);

@@ -877,7 +877,7 @@ class JobManager:
         entrypoint_memory: Optional[int] = None,
         entrypoint_resources: Optional[Dict[str, float]] = None,
         _start_signal_actor: Optional[ActorHandle] = None,
-        virtual_cluster_config: List[Dict[str, float]] = None,
+        virtual_cluster_config: Optional[str] = None,
     ) -> str:
         """
         Job execution happens asynchronously.

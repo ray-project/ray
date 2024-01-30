@@ -3749,7 +3749,7 @@ cdef class CoreWorker:
 
     def create_virtual_cluster(
                             self,
-                            c_vector[unordered_map[c_string, double]] bundles):
+                            c_string spec):
         cdef:
             CVirtualClusterID c_virtual_cluster_id
 
@@ -3757,7 +3757,7 @@ cdef class CoreWorker:
             check_status(
                         CCoreWorkerProcess.GetCoreWorker().
                         CreateVirtualCluster(
-                            bundles,
+                            spec,
                             &c_virtual_cluster_id))
 
         return VirtualClusterID(c_virtual_cluster_id.Binary())

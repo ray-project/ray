@@ -245,7 +245,6 @@ def submit(
         metadata_json = parse_metadata_json(
             metadata_json, cli_logger, cf, command_arg="metadata-json"
         )
-    virtual_cluster_config = json.loads(virtual_cluster_config)
 
     submission_id = submission_id or job_id
 

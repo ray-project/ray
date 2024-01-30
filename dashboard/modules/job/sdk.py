@@ -138,7 +138,7 @@ class JobSubmissionClient(SubmissionClient):
         entrypoint_num_gpus: Optional[Union[int, float]] = None,
         entrypoint_memory: Optional[int] = None,
         entrypoint_resources: Optional[Dict[str, float]] = None,
-        virtual_cluster_config: List[Dict[str, float]],
+        virtual_cluster_config: str,
     ) -> str:
         """Submit and execute a job asynchronously.
 

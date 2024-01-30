@@ -1,5 +1,4 @@
 import ray
-from typing import Dict, List
 from ray._raylet import VirtualClusterID
 
 
@@ -21,7 +20,7 @@ class VirtualCluster:
         )
 
     def ready(self):
-        @ray.remote(num_cpus=0, resources={"vcbundle": 0.001})
+        @ray.remote(num_cpus=0)
         def _ready():
             return True
 
@@ -29,11 +28,11 @@ class VirtualCluster:
             return _ready.remote()
 
 
-def virtual_cluster(bundles: List[Dict[str, float]]) -> VirtualCluster:
+def virtual_cluster(spec: str) -> VirtualCluster:
     worker = ray._private.worker.global_worker
     worker.check_connected()
 
-    virtual_cluster_id = worker.core_worker.create_virtual_cluster(bundles)
+    virtual_cluster_id = worker.core_worker.create_virtual_cluster(spec)
 
     return VirtualCluster(virtual_cluster_id)
 
