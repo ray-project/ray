@@ -1,5 +1,4 @@
 import logging
-import os
 from collections import Counter
 from contextlib import contextmanager
 from contextvars import ContextVar
