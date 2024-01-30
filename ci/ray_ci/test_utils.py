@@ -106,22 +106,20 @@ def test_filter_tests(mock_gen_from_s3, state_filter, expected_value):
 
 
 @pytest.mark.parametrize(
-    "state_filter, prefix",
+    "state_filter, prefix, error_message",
     [
         (
             "wrong-option",  # invalid filter option
             "darwin:",
+            "Filter option must be one of",
         ),
-        (
-            "-flaky",
-            "wrong-prefix",  # invalid prefix
-        ),
+        ("-flaky", "wrong-prefix", "Prefix must be one of"),  # invalid prefix
     ],
 )
-def test_filter_tests_fail(state_filter, prefix):
+def test_filter_tests_fail(state_filter, prefix, error_message):
     test_targets = ["//test_1", "//test_2", "//test_3", "//test_4"]
     output = io.StringIO()
-    with pytest.raises(ValueError, match="must be one of"):
+    with pytest.raises(ValueError, match=error_message):
         filter_tests(io.StringIO("\n".join(test_targets)), output, prefix, state_filter)
     return
 
