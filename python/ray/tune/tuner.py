@@ -249,10 +249,19 @@ class Tuner:
                 corresponding to the ``path``. This may be necessary if the original
                 experiment passed in a custom filesystem.
         """
+        unfinished = (
+            _ResumeConfig.ResumeType.RESUME
+            if resume_unfinished
+            else _ResumeConfig.ResumeType.IGNORE
+        )
+        errored = _ResumeConfig.ResumeType.IGNORE
+        if resume_errored:
+            errored = _ResumeConfig.ResumeType.RESUME
+        elif restart_errored:
+            errored = _ResumeConfig.ResumeType.RESTART
+
         resume_config = resume_config or _ResumeConfig(
-            resume_unfinished=resume_unfinished,
-            resume_errored=resume_errored,
-            restart_errored=restart_errored,
+            unfinished=unfinished, errored=errored
         )
 
         if not ray.util.client.ray.is_connected():
