@@ -793,12 +793,6 @@ itsdangerous==2.1.2
     # via flask
 jax-jumpy==1.0.0
     # via gymnasium
-jaxlib==0.4.23
-    # via
-    #   chex
-    #   dopamine-rl
-    #   optax
-    #   orbax-checkpoint
 jedi==0.19.1
     # via ipython
 jinja2==3.0.3
