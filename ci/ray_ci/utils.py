@@ -90,7 +90,6 @@ def get_flaky_test_names(prefix: str) -> List[str]:
         List[str]: List of test names.
     """
     tests = Test.gen_from_s3(prefix)
-
     # Filter tests by test state
     state = TestState.FLAKY
     test_names = [t.get_name() for t in tests if t.get_state() == state]

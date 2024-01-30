@@ -57,12 +57,21 @@ def test_get_flaky_test_names(mock_gen_from_s3):
         [
             _make_test("darwin://test_1", "flaky", "core"),
             _make_test("darwin://test_2", "flaky", "ci"),
+            _make_test("darwin://test_3", "passing", "core"),
+        ],
+        [
+            _make_test("linux://test_1", "flaky", "core"),
+            _make_test("linux://test_2", "passing", "ci"),
         ],
     )
     flaky_test_names = get_flaky_test_names(
         prefix="darwin:",
     )
     assert flaky_test_names == ["//test_1", "//test_2"]
+    flaky_test_names = get_flaky_test_names(
+        prefix="linux:",
+    )
+    assert flaky_test_names == ["//test_1"]
 
 
 @mock.patch("ray_release.test.Test.gen_from_s3")
@@ -77,11 +86,9 @@ def test_filter_out_flaky_tests(mock_gen_from_s3):
     )
 
     test_targets = ["//test_1", "//test_2", "//test_3", "//test_4"]
-    sys.stdout = io.StringIO()
-    filter_out_flaky_tests(io.StringIO("\n".join(test_targets)), sys.stdout, "darwin:")
-
-    filtered_test_targets = sys.stdout.getvalue().strip()
-    assert filtered_test_targets == "//test_3\n//test_4"
+    output = io.StringIO()
+    filter_out_flaky_tests(io.StringIO("\n".join(test_targets)), output, "darwin:")
+    assert output.getvalue() == "//test_3\n//test_4\n"
 
 
 if __name__ == "__main__":
