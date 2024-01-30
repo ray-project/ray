@@ -606,7 +606,7 @@ def test_configure_component_logger_with_log_encoding_env(monkeypatch, log_encod
     # Ensure there is no logger handlers before calling configure_component_logger
     assert logger.handlers == []
 
-    logging_config = LoggingConfig(logs_dir="fake_logs_dir")
+    logging_config = LoggingConfig(logs_dir="/tmp/fake_logs_dir")
     configure_component_logger(
         component_name="fake_component_name",
         component_id="fake_component_id",
