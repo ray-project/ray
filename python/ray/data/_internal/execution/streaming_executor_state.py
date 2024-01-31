@@ -32,6 +32,7 @@ from ray.data._internal.execution.operators.base_physical_operator import (
     AllToAllOperator,
 )
 from ray.data._internal.execution.operators.input_data_buffer import InputDataBuffer
+from ray.data._internal.execution.resource_manager import ResourceManager
 from ray.data._internal.execution.util import memory_string
 from ray.data._internal.progress_bar import ProgressBar
 from ray.data.context import DataContext
@@ -41,10 +42,6 @@ logger = DatasetLogger(__name__)
 # Holds the full execution state of the streaming topology. It's a dict mapping each
 # operator to tracked streaming exec state.
 Topology = Dict[PhysicalOperator, "OpState"]
-
-# The fraction of the object store capacity that will be used as the default object
-# store memory limit for the streaming executor.
-DEFAULT_OBJECT_STORE_MEMORY_LIMIT_FRACTION = 0.25
 
 # Min number of seconds between two autoscaling requests.
 MIN_GAP_BETWEEN_AUTOSCALING_REQUESTS = 20
@@ -57,53 +54,6 @@ class AutoscalingState:
     # The timestamp of the latest resource request made to Ray autoscaler
     # by an executor.
     last_request_ts: int = 0
-
-
-@dataclass
-class TopologyResourceUsage:
-    """Snapshot of resource usage in a `Topology` object.
-
-    The stats here can be computed on the fly from any `Topology`; this class
-    serves only a convenience wrapper to access the current usage snapshot.
-    """
-
-    # The current usage of the topology (summed across all operators and queues).
-    overall: ExecutionResources
-
-    # The downstream resource usage by operator.
-    downstream_memory_usage: Dict[PhysicalOperator, "DownstreamMemoryInfo"]
-
-    @staticmethod
-    def of(topology: Topology) -> "TopologyResourceUsage":
-        """Calculate the resource usage of the given topology."""
-        downstream_usage = {}
-        cur_usage = ExecutionResources(0, 0, 0)
-        # Iterate from last to first operator.
-        for op, state in reversed(topology.items()):
-            cur_usage = cur_usage.add(op.current_resource_usage())
-            # Don't count input refs towards dynamic memory usage, as they have been
-            # pre-created already outside this execution.
-            if not isinstance(op, InputDataBuffer):
-                cur_usage.object_store_memory += state.outqueue_memory_usage()
-            # Subtract one from denom to account for input buffer.
-            f = (1.0 + len(downstream_usage)) / max(1.0, len(topology) - 1.0)
-            downstream_usage[op] = DownstreamMemoryInfo(
-                topology_fraction=min(1.0, f),
-                object_store_memory=cur_usage.object_store_memory,
-            )
-        return TopologyResourceUsage(cur_usage, downstream_usage)
-
-
-@dataclass
-class DownstreamMemoryInfo:
-    """Mem stats of an operator and its downstream operators in a topology."""
-
-    # The fraction of the topology this covers, e.g., the last operator of a 4-op
-    # graph would have fraction `0.25`.
-    topology_fraction: float
-
-    # The resources used by this operator and operators downstream of this operator.
-    object_store_memory: float
 
 
 class OpBufferQueue:
@@ -544,8 +494,7 @@ def update_operator_states(topology: Topology) -> None:
 
 def select_operator_to_run(
     topology: Topology,
-    cur_usage: TopologyResourceUsage,
-    limits: ExecutionResources,
+    resource_manager: ResourceManager,
     backpressure_policies: List[BackpressurePolicy],
     ensure_at_least_one_running: bool,
     execution_id: str,
@@ -564,12 +513,10 @@ def select_operator_to_run(
     provides backpressure if the consumer is slow. However, once a bundle is returned
     to the user, it is no longer tracked.
     """
-    assert isinstance(cur_usage, TopologyResourceUsage), cur_usage
-
     # Filter to ops that are eligible for execution.
     ops = []
     for op, state in topology.items():
-        under_resource_limits = _execution_allowed(op, cur_usage, limits)
+        under_resource_limits = _execution_allowed(op, resource_manager)
         if (
             op.need_more_inputs()
             and state.num_queued() > 0
@@ -667,11 +614,7 @@ def _try_to_scale_up_cluster(topology: Topology, execution_id: str):
     actor.request_resources.remote(resource_request, execution_id)
 
 
-def _execution_allowed(
-    op: PhysicalOperator,
-    global_usage: TopologyResourceUsage,
-    global_limits: ExecutionResources,
-) -> bool:
+def _execution_allowed(op: PhysicalOperator, resource_manager: ResourceManager) -> bool:
     """Return whether an operator is allowed to execute given resource usage.
 
     Operators are throttled globally based on CPU and GPU limits for the stream.
@@ -684,8 +627,7 @@ def _execution_allowed(
 
     Args:
         op: The operator to check.
-        global_usage: Resource usage across the entire topology.
-        global_limits: Execution resource limits.
+        resource_manager: The ResourceManager of the current dataset.
 
     Returns:
         Whether the op is allowed to run.
@@ -693,15 +635,16 @@ def _execution_allowed(
 
     if op.throttling_disabled():
         return True
+    global_usage = resource_manager.get_global_usage()
+    global_limits = resource_manager.get_global_limits()
 
-    assert isinstance(global_usage, TopologyResourceUsage), global_usage
     # To avoid starvation problems when dealing with fractional resource types,
     # convert all quantities to integer (0 or 1) for deciding admissibility. This
     # allows operators with non-integral requests to slightly overshoot the limit.
     global_floored = ExecutionResources(
-        cpu=math.floor(global_usage.overall.cpu or 0),
-        gpu=math.floor(global_usage.overall.gpu or 0),
-        object_store_memory=global_usage.overall.object_store_memory,
+        cpu=math.floor(global_usage.cpu or 0),
+        gpu=math.floor(global_usage.gpu or 0),
+        object_store_memory=global_usage.object_store_memory,
     )
     inc = op.incremental_resource_usage()
     if inc.cpu and inc.gpu:
@@ -734,14 +677,13 @@ def _execution_allowed(
         cpu=global_limits.cpu, gpu=global_limits.gpu
     )
     global_ok_sans_memory = new_usage.satisfies_limit(global_limits_sans_memory)
-    downstream_usage = global_usage.downstream_memory_usage[op]
-    downstream_memory = downstream_usage.object_store_memory
+    downstream_memory = resource_manager.get_downstream_object_store_memory(op)
     if (
         DataContext.get_current().use_runtime_metrics_scheduling
         and inc.object_store_memory
     ):
         downstream_memory += inc.object_store_memory
-    downstream_limit = global_limits.scale(downstream_usage.topology_fraction)
+    downstream_limit = global_limits.scale(resource_manager.get_downstream_fraction(op))
     downstream_memory_ok = ExecutionResources(
         object_store_memory=downstream_memory
     ).satisfies_limit(downstream_limit)

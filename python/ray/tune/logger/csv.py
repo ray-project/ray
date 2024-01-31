@@ -1,6 +1,6 @@
 import csv
 import logging
-import os
+from pathlib import Path
 
 from typing import TYPE_CHECKING, Dict, TextIO
 
@@ -38,11 +38,11 @@ class CSVLogger(Logger):
     def _maybe_init(self):
         """CSV outputted with Headers as first set of results."""
         if not self._initialized:
-            progress_file = os.path.join(self.logdir, EXPR_PROGRESS_FILE)
+            progress_file = Path(self.logdir, EXPR_PROGRESS_FILE)
             self._continuing = (
-                os.path.exists(progress_file) and os.path.getsize(progress_file) > 0
+                progress_file.exists() and progress_file.stat().st_size > 0
             )
-            self._file = open(progress_file, "a")
+            self._file = progress_file.open("a")
             self._csv_out = None
             self._initialized = True
 
@@ -95,16 +95,16 @@ class CSVLoggerCallback(LoggerCallback):
 
         # Make sure logdir exists
         trial.init_local_path()
-        local_file = os.path.join(trial.local_path, EXPR_PROGRESS_FILE)
+        local_file_path = Path(trial.local_path, EXPR_PROGRESS_FILE)
 
         # Resume the file from remote storage.
         self._restore_from_remote(EXPR_PROGRESS_FILE, trial)
 
         self._trial_continue[trial] = (
-            os.path.exists(local_file) and os.path.getsize(local_file) > 0
+            local_file_path.exists() and local_file_path.stat().st_size > 0
         )
 
-        self._trial_files[trial] = open(local_file, "at")
+        self._trial_files[trial] = local_file_path.open("at")
         self._trial_csv[trial] = None
 
     def log_trial_result(self, iteration: int, trial: "Trial", result: Dict):

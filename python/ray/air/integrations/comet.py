@@ -1,4 +1,5 @@
 import os
+from pathlib import Path
 from typing import Dict, List
 
 import pyarrow.fs
@@ -238,8 +239,8 @@ class CometLoggerCallback(LoggerCallback):
                 for root, dirs, files in os.walk(checkpoint_root):
                     rel_root = os.path.relpath(root, checkpoint_root)
                     for file in files:
-                        local_file = os.path.join(checkpoint_root, rel_root, file)
-                        logical_path = os.path.join(rel_root, file)
+                        local_file = Path(checkpoint_root, rel_root, file).as_posix()
+                        logical_path = Path(rel_root, file).as_posix()
 
                         # Strip leading `./`
                         if logical_path.startswith("./"):

@@ -325,7 +325,7 @@ class TunerInternal:
         storage_filesystem: Optional[pyarrow.fs.FileSystem],
     ):
         fs, fs_path = get_fs_and_path(path_or_uri, storage_filesystem)
-        with fs.open_input_file(os.path.join(fs_path, _TUNER_PKL)) as f:
+        with fs.open_input_file(Path(fs_path, _TUNER_PKL).as_posix()) as f:
             tuner_state = pickle.loads(f.readall())
 
         old_trainable_name, flattened_param_space_keys = self._load_tuner_state(
