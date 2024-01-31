@@ -168,9 +168,11 @@ _FORMATTER_ENABLED_ENV_VAR = "TENSOR_COLUMN_EXTENSION_FORMATTER_ENABLED"
 if os.getenv(_FORMATTER_ENABLED_ENV_VAR, "1") == "1":
     if Version(pd.__version__) < Version("2.2.0"):
         from pandas.io.formats.format import ExtensionArrayFormatter
+
         formatter_cls = ExtensionArrayFormatter
     else:
         from pandas.io.formats.format import _ExtensionArrayFormatter
+
         formatter_cls = _ExtensionArrayFormatter
     formatter_cls._format_strings_orig = formatter_cls._format_strings
     if Version("1.1.0") <= Version(pd.__version__) < Version("1.3.0"):
