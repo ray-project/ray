@@ -1,10 +1,10 @@
 import os
 import io
 import json
+from pathlib import Path
 import pandas as pd
 import pyarrow
 from dataclasses import dataclass
-from pathlib import Path
 from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple, Union
 
 import ray
@@ -167,8 +167,8 @@ class Result:
             raise RuntimeError(f"Trial folder {fs_path} doesn't exist!")
 
         # Restore metrics from result.json
-        result_json_file = os.path.join(fs_path, EXPR_RESULT_FILE)
-        progress_csv_file = os.path.join(fs_path, EXPR_PROGRESS_FILE)
+        result_json_file = Path(fs_path, EXPR_RESULT_FILE).as_posix()
+        progress_csv_file = Path(fs_path, EXPR_PROGRESS_FILE).as_posix()
         if _exists_at_fs_path(fs, result_json_file):
             lines = cls._read_file_as_str(fs, result_json_file).split("\n")
             json_list = [json.loads(line) for line in lines if line]
@@ -232,7 +232,7 @@ class Result:
 
         # Restore the trial error if it exists
         error = None
-        error_file_path = os.path.join(fs_path, EXPR_ERROR_PICKLE_FILE)
+        error_file_path = Path(fs_path, EXPR_ERROR_PICKLE_FILE).as_posix()
         if _exists_at_fs_path(fs, error_file_path):
             with fs.open_input_stream(error_file_path) as f:
                 error = ray.cloudpickle.load(f)
