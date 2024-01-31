@@ -188,51 +188,63 @@ TEST_F(MemoryMonitorTest, TestMonitorMinFreeZeroThresholdIsOne) {
 }
 
 TEST_F(MemoryMonitorTest, TestCgroupV1MemFileValidReturnsWorkingSet) {
-  std::string file_name = UniqueID::FromRandom().Hex();
+  std::string stat_file_name = UniqueID::FromRandom().Hex();
+  std::string usage_file_name = UniqueID::FromRandom().Hex();
 
   std::ofstream mem_file;
-  mem_file.open(file_name);
+  mem_file.open(stat_file_name);
   mem_file << "total_cache "
            << "918757" << std::endl;
   mem_file << "unknown "
            << "9" << std::endl;
-  mem_file << "total_rss "
+  mem_file << "total_shmem "
            << "8571" << std::endl;
-  mem_file << "total_inactive_file "
-           << "821" << std::endl;
   mem_file.close();
 
-  int64_t used_bytes = MemoryMonitor::GetCGroupV1MemoryUsedBytes(file_name.c_str());
+  mem_file.open(usage_file_name);
+  mem_file << "1378135" << std::endl;
+  mem_file.close();
 
-  std::remove(file_name.c_str());
+  int64_t used_bytes = MemoryMonitor::GetCGroupV1MemoryUsedBytes(stat_file_name.c_str(),
+                                                                 usage_file_name.c_str());
 
-  ASSERT_EQ(used_bytes, 8571 + 918757 - 821);
+  std::remove(stat_file_name.c_str());
+  std::remove(usage_file_name.c_str());
+
+  ASSERT_EQ(used_bytes, 1378135 - (918757 - 8571));
 }
 
 TEST_F(MemoryMonitorTest, TestCgroupV1MemFileMissingFieldReturnskNull) {
-  std::string file_name = UniqueID::FromRandom().Hex();
+  std::string stat_file_name = UniqueID::FromRandom().Hex();
+  std::string usage_file_name = UniqueID::FromRandom().Hex();
 
   std::ofstream mem_file;
-  mem_file.open(file_name);
+  mem_file.open(stat_file_name);
   mem_file << "total_cache "
            << "918757" << std::endl;
   mem_file << "unknown "
            << "9" << std::endl;
-  mem_file << "total_rss "
-           << "8571" << std::endl;
   mem_file.close();
 
-  int64_t used_bytes = MemoryMonitor::GetCGroupV1MemoryUsedBytes(file_name.c_str());
+  mem_file.open(usage_file_name);
+  mem_file << "1378135" << std::endl;
+  mem_file.close();
 
-  std::remove(file_name.c_str());
+  int64_t used_bytes = MemoryMonitor::GetCGroupV1MemoryUsedBytes(stat_file_name.c_str(),
+                                                                 usage_file_name.c_str());
+
+  std::remove(stat_file_name.c_str());
+  std::remove(usage_file_name.c_str());
 
   ASSERT_EQ(used_bytes, MemoryMonitor::kNull);
 }
 
 TEST_F(MemoryMonitorTest, TestCgroupV1NonexistentMemFileReturnskNull) {
-  std::string file_name = UniqueID::FromRandom().Hex();
+  std::string stat_file_name = UniqueID::FromRandom().Hex();
+  std::string usage_file_name = UniqueID::FromRandom().Hex();
 
-  int64_t used_bytes = MemoryMonitor::GetCGroupV1MemoryUsedBytes(file_name.c_str());
+  int64_t used_bytes = MemoryMonitor::GetCGroupV1MemoryUsedBytes(stat_file_name.c_str(),
+                                                                 usage_file_name.c_str());
 
   ASSERT_EQ(used_bytes, MemoryMonitor::kNull);
 }
