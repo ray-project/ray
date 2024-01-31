@@ -7,8 +7,8 @@ steps:
 
   - wait: ~
     depends_on:
-    - serverlessbuild
-    - forge
+      - serverlessbuild
+      - forge
 
   # tests
   - label: ":serverless: serverless: python tests"

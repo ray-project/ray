@@ -477,7 +477,7 @@ class ExecutionPlan:
         # Always used the saved context for execution.
         ctx = self._context
 
-        if not ctx.use_streaming_executor or self.has_computed_output():
+        if self.has_computed_output():
             return (
                 self.execute(
                     allow_clear_input_blocks, force_read
@@ -591,14 +591,22 @@ class ExecutionPlan:
                 blocks._owned_by_consumer = False
 
             # Retrieve memory-related stats from ray.
-            reply = get_memory_info_reply(
-                get_state_from_address(ray.get_runtime_context().gcs_address)
-            )
-            if reply.store_stats.spill_time_total_s > 0:
-                stats.global_bytes_spilled = int(reply.store_stats.spilled_bytes_total)
-            if reply.store_stats.restore_time_total_s > 0:
-                stats.global_bytes_restored = int(
-                    reply.store_stats.restored_bytes_total
+            try:
+                reply = get_memory_info_reply(
+                    get_state_from_address(ray.get_runtime_context().gcs_address)
+                )
+                if reply.store_stats.spill_time_total_s > 0:
+                    stats.global_bytes_spilled = int(
+                        reply.store_stats.spilled_bytes_total
+                    )
+                if reply.store_stats.restore_time_total_s > 0:
+                    stats.global_bytes_restored = int(
+                        reply.store_stats.restored_bytes_total
+                    )
+            except Exception as e:
+                logger.get_logger(log_to_stdout=False).warning(
+                    "Skipping recording memory spilled and restored statistics due to "
+                    f"exception: {e}"
                 )
 
             stats.dataset_bytes_spilled = 0
@@ -710,12 +718,6 @@ class ExecutionPlan:
             and not self._snapshot_blocks.is_cleared()
             and self._snapshot_operator == self._logical_plan.dag
         )
-
-    def _run_with_new_execution_backend(self) -> bool:
-        """Whether this plan should run with new backend.
-        By default, the new execution backend is now fully enabled
-        unless configured otherwise by the user."""
-        return self._context.new_execution_backend
 
     def require_preserve_order(self) -> bool:
         """Whether this plan requires to preserve order."""

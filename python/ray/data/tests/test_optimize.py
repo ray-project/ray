@@ -9,7 +9,6 @@ import ray
 from ray._private.internal_api import memory_summary
 from ray.data import Dataset
 from ray.data.block import BlockMetadata
-from ray.data.context import DataContext
 from ray.data.datasource import Datasource, ReadTask
 from ray.data.datasource.csv_datasource import CSVDatasource
 from ray.data.tests.util import column_udf, extract_values
@@ -97,9 +96,6 @@ class OnesSource(Datasource):
 
 
 def test_memory_release(shutdown_only):
-    context = DataContext.get_current()
-    # Ensure that stage fusion is enabled.
-    context.optimize_fuse_stages = True
     info = ray.init(num_cpus=1, object_store_memory=1500e6)
     ds = ray.data.range(10)
 
@@ -219,11 +215,6 @@ def test_spread_hint_inherit(ray_start_regular_shared):
 
 
 def test_optimize_reorder(ray_start_regular_shared):
-    context = DataContext.get_current()
-    context.optimize_fuse_stages = True
-    context.optimize_fuse_read_stages = True
-    context.optimize_reorder_stages = True
-
     ds = ray.data.range(10).randomize_block_order().map_batches(dummy_map).materialize()
     print("Stats", ds.stats())
     expect_stages(
@@ -247,11 +238,6 @@ def test_optimize_reorder(ray_start_regular_shared):
 
 
 def test_write_fusion(ray_start_regular_shared, tmp_path):
-    context = DataContext.get_current()
-    context.optimize_fuse_stages = True
-    context.optimize_fuse_read_stages = True
-    context.optimize_fuse_shuffle_stages = True
-
     path = os.path.join(tmp_path, "out")
     ds = ray.data.range(100).map_batches(lambda x: x)
     ds.write_csv(path)
