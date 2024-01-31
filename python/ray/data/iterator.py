@@ -335,8 +335,8 @@ class DataIterator(abc.ABC):
 
         from ray.air._internal.torch_utils import (
             convert_ndarray_batch_to_torch_tensor_batch,
-            get_device,
         )
+        from ray.train.torch import get_device
 
         if collate_fn is not None and (dtypes is not None or device != "auto"):
             raise ValueError(
