@@ -111,6 +111,8 @@ class InstanceManagerTest(unittest.TestCase):
         assert reply.status.code == StatusCode.OK
         assert len(reply.state.instances) == 3
 
+        instance_ids = [ins.instance_id for ins in reply.state.instances]
+
         types_count = defaultdict(int)
         for ins in reply.state.instances:
             types_count[ins.instance_type] += 1
@@ -126,11 +128,11 @@ class InstanceManagerTest(unittest.TestCase):
                 expected_version=1,
                 updates=[
                     InstanceUpdateEvent(
-                        instance_id="0",
+                        instance_id=instance_ids[0],
                         new_instance_status=Instance.REQUESTED,
                     ),
                     InstanceUpdateEvent(
-                        instance_id="1",
+                        instance_id=instance_ids[1],
                         new_instance_status=Instance.REQUESTED,
                     ),
                 ],
@@ -147,7 +149,7 @@ class InstanceManagerTest(unittest.TestCase):
         types_count = defaultdict(int)
         for ins in reply.state.instances:
             types_count[ins.instance_type] += 1
-            if ins.instance_id in ["0", "1"]:
+            if ins.instance_id in [instance_ids[0], instance_ids[1]]:
                 assert ins.status == Instance.REQUESTED
             else:
                 assert ins.status == Instance.QUEUED
@@ -158,7 +160,7 @@ class InstanceManagerTest(unittest.TestCase):
                 expected_version=2,
                 updates=[
                     InstanceUpdateEvent(
-                        instance_id="2",
+                        instance_id=instance_ids[2],
                         new_instance_status=Instance.RAY_RUNNING,  # Not requested yet.
                     ),
                 ],
@@ -172,7 +174,7 @@ class InstanceManagerTest(unittest.TestCase):
                 expected_version=0,  # Invalid version, outdated.
                 updates=[
                     InstanceUpdateEvent(
-                        instance_id="2",
+                        instance_id=instance_ids[2],
                         new_instance_status=Instance.REQUESTED,
                     ),
                 ],
