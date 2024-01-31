@@ -510,8 +510,10 @@ class TuneController:
                 trial_to_add.restore_path = None
             elif resume_type == _ResumeConfig.ResumeType.IGNORE:
                 trial_to_add = trial
-                # Set the status to terminated to skip it.
-                trial_to_add.set_status(Trial.TERMINATED)
+                if trial_to_add.status != Trial.ERROR:
+                    # Set the status to terminated to skip it.
+                    # Keep errored trial status as ERROR.
+                    trial_to_add.set_status(Trial.TERMINATED)
             else:
                 raise ValueError(f"Unknown resume type: {resume_type}")
             assert trial_to_add is not None
