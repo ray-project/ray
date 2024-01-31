@@ -587,8 +587,8 @@ class BaseTrainer(abc.ABC):
             ``self.as_trainable()``, or during the Tune execution loop.
         """
         from ray.tune import TuneError
-        from ray.tune.execution.experiment_state import _ResumeConfig
         from ray.tune.tuner import Tuner, TunerInternal
+        from ray.tune.execution.experiment_state import _ResumeConfig
 
         trainable = self.as_trainable()
         param_space = self._extract_fields_for_tuner_param_space()
