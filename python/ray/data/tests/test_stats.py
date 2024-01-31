@@ -20,9 +20,9 @@ from ray.data._internal.stats import (
 )
 from ray.data._internal.util import create_dataset_tag
 from ray.data.block import BlockMetadata
+from ray.data.context import DataContext
 from ray.data.tests.util import column_udf
 from ray.tests.conftest import *  # noqa
-from ray.data.context import DataContext
 
 
 def gen_expected_metrics(
@@ -290,8 +290,8 @@ def test_dataset_stats_basic(ray_start_regular_shared, enable_auto_log_stats):
             logger_args, logger_kwargs = mock_logger.call_args
 
             assert (
-                    canonicalize(logger_args[0])
-                    == f"""Operator N ReadRange->MapBatches(dummy_map_batches): {EXECUTION_STRING}
+                canonicalize(logger_args[0])
+                == f"""Operator N ReadRange->MapBatches(dummy_map_batches): {EXECUTION_STRING}
 * Remote wall time: T min, T max, T mean, T total
 * Remote cpu time: T min, T max, T mean, T total
 * Peak heap memory usage (MiB): N min, N max, N mean
@@ -307,8 +307,8 @@ def test_dataset_stats_basic(ray_start_regular_shared, enable_auto_log_stats):
             logger_args, logger_kwargs = mock_logger.call_args
 
             assert (
-                    canonicalize(logger_args[0])
-                    == f"""Operator N Map(dummy_map_batches): {EXECUTION_STRING}
+                canonicalize(logger_args[0])
+                == f"""Operator N Map(dummy_map_batches): {EXECUTION_STRING}
 * Remote wall time: T min, T max, T mean, T total
 * Remote cpu time: T min, T max, T mean, T total
 * Peak heap memory usage (MiB): N min, N max, N mean
