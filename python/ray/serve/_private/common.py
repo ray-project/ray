@@ -19,6 +19,7 @@ from ray.serve.generated.serve_pb2 import (
     DeploymentStatusTrigger as DeploymentStatusTriggerProto,
 )
 from ray.serve.generated.serve_pb2 import StatusOverview as StatusOverviewProto
+from ray.serve.grpc_util import RayServegRPCContext
 
 
 class DeploymentID(NamedTuple):
@@ -672,6 +673,39 @@ class RequestProtocol(str, Enum):
     UNDEFINED = "UNDEFINED"
     HTTP = "HTTP"
     GRPC = "gRPC"
+
+
+@dataclass
+class RequestMetadata:
+    request_id: str
+    endpoint: str
+    call_method: str = "__call__"
+
+    # HTTP route path of the request.
+    route: str = ""
+
+    # Application name.
+    app_name: str = ""
+
+    # Multiplexed model ID.
+    multiplexed_model_id: str = ""
+
+    # If this request expects a streaming response.
+    is_streaming: bool = False
+
+    # The protocol to serve this request
+    _request_protocol: RequestProtocol = RequestProtocol.UNDEFINED
+
+    # Serve's gRPC context associated with this request for getting and setting metadata
+    grpc_context: Optional[RayServegRPCContext] = None
+
+    @property
+    def is_http_request(self) -> bool:
+        return self._request_protocol == RequestProtocol.HTTP
+
+    @property
+    def is_grpc_request(self) -> bool:
+        return self._request_protocol == RequestProtocol.GRPC
 
 
 class TargetCapacityDirection(str, Enum):
