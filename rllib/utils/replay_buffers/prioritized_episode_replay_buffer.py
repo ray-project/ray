@@ -13,9 +13,6 @@ from ray.rllib.utils.annotations import override
 from ray.rllib.utils.typing import SampleBatchType
 
 
-# TODO (simon): Implement a function to update the priorities when running
-# DQN/SAC (similar to `ray.rllib.utils.replay_buffers.utils.
-# update_priorities_in_replay_buffer`).
 class PrioritizedEpisodeReplayBuffer(EpisodeReplayBuffer):
     def __init__(
         self,
@@ -32,8 +29,10 @@ class PrioritizedEpisodeReplayBuffer(EpisodeReplayBuffer):
         assert alpha > 0
         self._alpha = alpha
 
-        # Initialize segment trees for the priority weights. Note, b/c the trees a
+        # Initialize segment trees for the priority weights. Note, b/c the trees are
         # binary we need for them a capacity that is an exponential of 2.
+        # Double it to enable temporary buffer overflow (we need then free nodes in
+        # the trees).
         tree_capacity = int(2 ** np.ceil(np.log2(self.capacity)))
 
         self._max_priority = 1.0
@@ -43,6 +42,7 @@ class PrioritizedEpisodeReplayBuffer(EpisodeReplayBuffer):
         self._free_nodes = deque(
             list(range(2 * tree_capacity)), maxlen=2 * tree_capacity
         )
+        # Map from tree indices to sample indices (i.e. `self._indices`).
         self._tree_idx_to_sample_idx = {}
 
     @override(EpisodeReplayBuffer)
@@ -54,13 +54,13 @@ class PrioritizedEpisodeReplayBuffer(EpisodeReplayBuffer):
         """Adds incoming episodes to the replay buffer.
 
         Note, if the incoming episodes' time steps cause the buffer to overflow,
-        older peisodes are evicted. Because episodes usually come in chunks and
+        older episodes are evicted. Because episodes usually come in chunks and
         not complete, this could lead to edge cases (e.g. with very small capacity
         or very long episode length) where the first part of an episode is evicted
-        while the next part just came in.
+        while the next part just comes in.
         In such cases, we evict the complete episode, including the new chunk,
-        unless the episode is the ladst one in the buffer. In the latter case the
-        buffer will be allowed to overflow in a time-limited fashion, i.e. during
+        unless the episode is the last one in the buffer. In the latter case the
+        buffer will be allowed to overflow in a temporary fashion, i.e. during
         the next addition of samples to the buffer an attempt is made to fall below
         capacity again.
 
@@ -79,6 +79,8 @@ class PrioritizedEpisodeReplayBuffer(EpisodeReplayBuffer):
         if isinstance(episodes, SingleAgentEpisode):
             episodes = [episodes]
 
+        # Add first the timesteps of new episodes to have info about how many
+        # episodes should be evicted to stay below capacity.
         new_episode_ids = []
         for eps in episodes:
             new_episode_ids.append(eps.id_)
@@ -105,6 +107,7 @@ class PrioritizedEpisodeReplayBuffer(EpisodeReplayBuffer):
                 len_to_subtract = len(
                     episodes[new_episode_ids.index(eps_evicted_idxs[-1])]
                 )
+                # Subtract again the timesteps that were added above.
                 self._num_timesteps -= len_to_subtract
                 self._num_timesteps_added -= len_to_subtract
             # Remove the timesteps of the evicted episode from the counter.
@@ -113,19 +116,22 @@ class PrioritizedEpisodeReplayBuffer(EpisodeReplayBuffer):
 
         # Remove corresponding indices, if episodes were evicted.
         if eps_evicted_idxs:
-            new_list = []
+            new_indices = []
             i = 0
             for idx_triple in self._indices:
+                # If the index comes from an evicted episode free the nodes.
                 if idx_triple[0] in eps_evicted_idxs:
+                    # Here we need the index of a sample in the segment tree.
                     self._free_nodes.append(idx_triple[2])
                     self._sum_segment[idx_triple[2]] = 0.0
                     self._min_segment[idx_triple[2]] = float("inf")
+                # Otherwise update the index in the index mapping.
                 else:
-                    new_list.append(idx_triple)
+                    new_indices.append(idx_triple)
                     self._tree_idx_to_sample_idx[idx_triple[2]] = i
                     i += 1
             # Assign the new list of indices.
-            self._indices = new_list
+            self._indices = new_indices
 
         # Now append the indices for the new episodes.
         j = len(self._indices)
@@ -186,11 +192,11 @@ class PrioritizedEpisodeReplayBuffer(EpisodeReplayBuffer):
 
         Each sampled item defines a transition of the form:
 
-        `(o_t, a_t, sum(r_(t+1:t+n+1)), o_(t+n), temrinated_(t+n), truncated_(t+n))`
+        `(o_t, a_t, sum(r_(t+1:t+n+1)), o_(t+n), terminated_(t+n), truncated_(t+n))`
 
         where `o_(t+n)` is drawn by prioritized sampling, i.e. the priority
         of `o_(t+n)` led to the sample and defines the importance weight that
-        is returned in the sample batch. `n` is defined by the `n-step` applied.
+        is returned in the sample batch. `n` is defined by the `n_step` applied.
 
         If requested, `info`s of a transitions last timestep `t+n` are added to
         the batch.
@@ -198,10 +204,10 @@ class PrioritizedEpisodeReplayBuffer(EpisodeReplayBuffer):
         Args:
             num_items: Number of items (transitions) to sample from this
                 buffer.
-            batch_size_B: The number of rows (transiitons) to return in the
+            batch_size_B: The number of rows (transitions) to return in the
                 batch
             n_step: The n-step to apply. For the default the batch contains in
-                `"new_obs"` the observation and at `"obs"` the observation `n`
+                `"new_obs"` the observation and in `"obs"` the observation `n`
                 time steps before. The reward will be the sum of rewards
                 collected in between these two observations and the action will
                 be the one executed n steps before such that we always have the
@@ -218,7 +224,8 @@ class PrioritizedEpisodeReplayBuffer(EpisodeReplayBuffer):
 
         Returns:
             A sample batch (observations, actions, rewards, new observations,
-            terminateds, truncateds) and if requested infos of dimension [B, 1].
+            terminateds, truncateds, weights) and if requested infos of dimension
+            [B, 1].
         """
         assert beta >= 0.0
 
@@ -254,7 +261,8 @@ class PrioritizedEpisodeReplayBuffer(EpisodeReplayBuffer):
         if include_infos:
             infos = [[] for _ in range(batch_size_B)]
         # Keep track of the indices that were sampled last for updating the
-        # weights.
+        # weights later (see `ray.rllib.utils.replay_buffer.utils.
+        # update_priorities_in_episode_replay_buffer`).
         self._last_sampled_indices = []
 
         # Sample proportionally from replay buffer's segments using the weights.
@@ -264,8 +272,8 @@ class PrioritizedEpisodeReplayBuffer(EpisodeReplayBuffer):
         B = 0
         while B < batch_size_B:
             # First, draw a random sample from Uniform(0, sum over all weights).
-            # Note, like this transitions with higher weight get sampled more
-            # often (as more random draws fall into larger intervals).
+            # Note, transitions with higher weight get sampled more often (as
+            # more random draws fall into larger intervals).
             random_sum = self.rng.random() * self._sum_segment.sum(
                 0, self.get_num_timesteps()
             )
@@ -290,11 +298,11 @@ class PrioritizedEpisodeReplayBuffer(EpisodeReplayBuffer):
             )
             episode = self.episodes[episode_idx]
             # If we are at the end of an episode, continue.
-            # Note, priority sampling got us `o_(t+n_step)` and we need
-            # for the loss calculation in addition `o_t`.
-            # TODO (simon): Maybe introduce a variable `num_retry` until the while
-            # loop should break when not enough samples have been collected to
-            # make n-step possible.
+            # Note, priority sampling got us `o_(t+n)` and we need for the loss
+            # calculation in addition `o_t`.
+            # TODO (simon): Maybe introduce a variable `num_retries` until the
+            # while loop should break when not enough samples have been collected
+            # to make n-step possible.
             if episode_ts - n_step < 0:
                 continue
 
