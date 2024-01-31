@@ -36,6 +36,7 @@ from ray.data._internal.stats import StatsDict
 from ray.data._internal.arrow_block import ArrowBlockAccessor
 from ray.data.block import Block, BlockAccessor, BlockExecStats, BlockMetadata
 from ray.data.context import DataContext
+from ray.data.datasource.datasource import ReadTask
 from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
 
 
@@ -420,7 +421,10 @@ def _map_task(
 
     def _maybe_decompress_blocks(block_iter: Iterator[Block]) -> Iterator[Block]:
         for b in block_iter: 
-            yield BlockAccessor.for_block(b).to_block()
+            if isinstance(b, ReadTask):
+                yield b
+            else:
+                yield BlockAccessor.for_block(b).to_block()
 
     for b_out in map_transformer.apply_transform(_maybe_decompress_blocks(iter(blocks)), ctx):
         # TODO(Clark): Add input file propagation from input blocks.
