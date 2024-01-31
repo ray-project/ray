@@ -192,7 +192,9 @@ backoff==1.10.0
 base58==2.0.1
     # via aimrecords
 bayesian-optimization==1.4.3
-    # via -r /ray/ci/../python/requirements/ml/tune-requirements.txt
+    # via
+    #   -r /ray/ci/../python/requirements/ml/tune-requirements.txt
+    #   nevergrad
 bcrypt==4.0.1
     # via paramiko
 beautifulsoup4==4.11.1
@@ -301,7 +303,9 @@ cloudpickle==2.2.0
     #   pymars
     #   tensorflow-probability
 cma==3.2.2
-    # via pymoo
+    # via
+    #   nevergrad
+    #   pymoo
 cmaes==0.10.0
     # via optuna
 colorama==0.4.6
@@ -1164,6 +1168,8 @@ networkx==3.1 ; python_version < "3.11"
     #   hyperopt
     #   scikit-image
     #   torch
+nevergrad==0.4.3.post7
+    # via -r /ray/ci/../python/requirements/ml/tune-requirements.txt
 ninja==1.11.1.1
     # via deepspeed
 notebook==6.5.6
@@ -1230,6 +1236,7 @@ numpy==1.23.5 ; python_version >= "3.9"
     #   modin
     #   msgpack-numpy
     #   mujoco
+    #   nevergrad
     #   numba
     #   numexpr
     #   onnx
@@ -2328,6 +2335,7 @@ typing-extensions==4.8.0
     #   huggingface-hub
     #   ipython
     #   mypy
+    #   nevergrad
     #   onnx
     #   orbax-checkpoint
     #   polars
