@@ -141,7 +141,7 @@ class Router:
     def _collect_handle_queue_metrics(self) -> Dict[str, int]:
         return (self.deployment_id, self.handle_id), self.num_queued_queries
 
-    async def replace_known_types_in_args(
+    async def _replace_known_types_in_args(
         self, args: Tuple[Any], kwargs: Dict[str, Any]
     ) -> Tuple[Tuple[Any], Dict[str, Any]]:
         """Uses the `_PyObjScanner` to find and replace known types.
