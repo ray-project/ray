@@ -13,7 +13,6 @@ from ray.serve.schema import ServeDeploySchema
 
 try:
     import anyscale  # noqa: F401
-
     ANYSCALE_AVAILABLE = True
 except Exception:
     ANYSCALE_AVAILABLE = False

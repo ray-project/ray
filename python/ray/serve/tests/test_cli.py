@@ -20,6 +20,9 @@ from ray.serve.scripts import convert_args_to_dict, remove_ansi_escape_sequences
 from ray.tests.conftest import tmp_working_dir  # noqa: F401, E501
 from ray.util.state import list_actors
 
+# XXX: comment.
+ray.serve._private.deploy_provider.ANYSCALE_AVAILABLE = False
+
 
 def assert_deployments_live(ids: List[DeploymentID]):
     """Checks if all deployments named in names have at least 1 living replica."""
