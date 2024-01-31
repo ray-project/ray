@@ -247,6 +247,42 @@ After you apply the Redis objects along with your updated `RayService`, your Ray
 Check out the KubeRay guide on [GCS fault tolerance](kuberay-gcs-ft) to learn more about how Serve leverages the external Redis cluster to provide head node fault tolerance.
 :::
 
+### Spreading replicas across nodes
+
+One way to improve the availability of your Serve application is to spread deployment replicas across multiple nodes so that you still have enough running
+replicas to serve traffic even after a certain number of node failures.
+
+By default, Serve soft spreads all deployment replicas but it has a few limitations:
+
+* It's a soft and best-effort spread and there is no guarantee that the spread is perfectly even.
+
+* Serve tries to spread replicas among the existing nodes if possible instead of launching new nodes.
+For example, if you have a big enough single node cluster, Serve schedules all replicas on that single node assuming
+it has enough resources and that node becomes the single point of failure.
+
+You can change the spread behavior of your deployment through the `max_replicas_per_node`
+[deployment option](../../serve/api/doc/ray.serve.deployment_decorator.rst) which hard limits the number of replicas of a given deployment that can run on a single node.
+If you set it to 1 then you are effectively strict spreading the deployment replicas. If you don't set it then there is no hard spread constraint and Serve uses the default soft spread mentioned above. `max_replicas_per_node` option is per deployment and only affects the spread of replicas within a deployment. There is no spread between replicas of different deployments.
+
+Here is a code example showing how to set `max_replicas_per_node` deployment option:
+
+```{testcode}
+import ray
+from ray import serve
+
+@serve.deployment(max_replicas_per_node=1)
+class Deployment1:
+  def __call__(self, request):
+    return "hello"
+
+@serve.deployment(max_replicas_per_node=2)
+class Deployment2:
+  def __call__(self, request):
+    return "world"
+```
+
+In this example, we have two Serve deployments with different `max_replicas_per_node`: `Deployment1` can have at most one replica on each node and `Deployment2` can have at most two replicas on each node. If we schedule two replicas of `Deployment1` and two replicas of `Deployment2`, we will have a cluster with at least two nodes, each running one replica of `Deployment1`. The two replicas of `Deployment2` may run on either a single node or across two nodes because either satisfies the `max_replicas_per_node` constraint.
+
 (serve-e2e-ft-behavior)=
 ## Serve's recovery procedures
 
