@@ -81,7 +81,6 @@ class TuneController:
         placeholder_resolvers: Optional[Dict[Tuple, Any]] = None,
         scheduler: Optional[TrialScheduler] = None,
         stopper: Optional[Stopper] = None,
-        resume: Union[str, bool] = False,
         resume_config: Optional[_ResumeConfig] = None,
         fail_fast: bool = False,
         checkpoint_period: Union[str, int] = None,
