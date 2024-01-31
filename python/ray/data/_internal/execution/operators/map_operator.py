@@ -33,8 +33,8 @@ from ray.data._internal.execution.operators.map_transformer import (
     MapTransformer,
 )
 from ray.data._internal.stats import StatsDict
+from ray.data._internal.arrow_block import ArrowBlockAccessor
 from ray.data.block import Block, BlockAccessor, BlockExecStats, BlockMetadata
-from ray.data.arrow_block import ArrowBlockAccessor
 from ray.data.context import DataContext
 from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
 
@@ -417,7 +417,12 @@ def _map_task(
     DataContext._set_current(data_context)
     stats = BlockExecStats.builder()
     map_transformer.set_target_max_block_size(ctx.target_max_block_size)
-    for b_out in map_transformer.apply_transform(iter(blocks), ctx):
+
+    def _maybe_decompress_blocks(block_iter: Iterator[Block]) -> Iterator[Block]:
+        for b in block_iter: 
+            yield BlockAccessor.for_block(b).to_block()
+
+    for b_out in map_transformer.apply_transform(_maybe_decompress_blocks(iter(blocks)), ctx):
         # TODO(Clark): Add input file propagation from input blocks.
         block_accessor = BlockAccessor.for_block(b_out)
         m_out = block_accessor.get_metadata([], None)

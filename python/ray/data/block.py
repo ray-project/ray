@@ -51,7 +51,7 @@ AggType = TypeVar("AggType")
 #
 # Block data can be accessed in a uniform way via ``BlockAccessors`` like`
 # ``ArrowBlockAccessor``.
-Block = Union["pyarrow.Table", "pandas.DataFrame"]
+Block = Union["pyarrow.Table", "pandas.DataFrame", "pyarrow.Buffer"]
 
 # User-facing data batch type. This is the data type for data that is supplied to and
 # returned from batch UDFs.
