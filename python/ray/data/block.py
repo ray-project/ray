@@ -390,7 +390,7 @@ class BlockAccessor:
             from ray.data._internal.pandas_block import PandasBlockAccessor
 
             return PandasBlockAccessor(block)
-        elif isinstance(block, bytes):
+        elif isinstance(block, bytes) or isinstance(block, pyarrow.Buffer):
             from ray.data._internal.arrow_block import ArrowBlockAccessor
 
             return ArrowBlockAccessor.from_bytes(block)

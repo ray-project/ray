@@ -179,9 +179,16 @@ class ArrowBlockAccessor(TableBlockAccessor):
         return self._table.append_column(name, [data])
 
     @classmethod
-    def from_bytes(cls, data: bytes) -> "ArrowBlockAccessor":
-        reader = pyarrow.ipc.open_stream(data)
-        return cls(reader.read_all())
+    def from_bytes(cls, data: Union[bytes, "pyarrow.Buffer"]) -> "ArrowBlockAccessor":
+        with pyarrow.ipc.open_stream(data) as reader:
+            table = reader.read_all()
+        return cls(table)
+
+    def to_bytes(self, codec: str = None) -> "pyarrow.Buffer":
+        sink = pyarrow.BufferOutputStream()
+        with pyarrow.ipc.new_stream(sink, sampled_table.schema, options=pyarrow.ipc.IpcWriteOptions(compression=codec)) as writer:
+            writer.write(sampled_table)
+        return sink.getvalue()
 
     @staticmethod
     def numpy_to_block(

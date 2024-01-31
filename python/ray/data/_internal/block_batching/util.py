@@ -61,7 +61,8 @@ def resolve_block_refs(
         # `ray.get()` call.
         with stats.iter_get_s.timer() if stats else nullcontext():
             block = ray.get(block_ref)
-        yield block
+
+        yield BlockAccessor.for_block(block).to_block()
 
     if stats:
         stats.iter_blocks_local = hits
