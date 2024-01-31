@@ -1,6 +1,6 @@
 #!/bin/bash
 
-set -x
+set -ex
 
 export CI="true"
 export PYTHON="3.8"
@@ -20,6 +20,9 @@ select_flaky_tests() {
 }
 
 run_flaky_tests() {
+  # Disable exit so that we can run all test sets.
+  set +e
+
   # shellcheck disable=SC2046
   bazel query 'attr(tags, "client_tests|small_size_python_tests", tests(//python/ray/tests/...))' | select_flaky_tests |
     xargs bazel test --config=ci $(./ci/run/bazel_export_options) \
@@ -39,6 +42,9 @@ run_flaky_tests() {
   # shellcheck disable=SC2046
   bazel query 'attr(tags, "kubernetes|medium_size_python_tests_k_to_z", tests(//python/ray/tests/...))' | select_flaky_tests |
     xargs bazel test --config=ci $(./ci/run/bazel_export_options) --test_env=CI
+  
+  # Re-enable exit behavior.
+  set -e
 }
 
 run_small_test() {
