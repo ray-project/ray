@@ -26,7 +26,7 @@ from ray._private.utils import load_class
 from ray.actor import ActorHandle
 from ray.dag.py_obj_scanner import _PyObjScanner
 from ray.exceptions import RayActorError
-from ray.serve._private.common import DeploymentID, RequestProtocol, RunningReplicaInfo
+from ray.serve._private.common import DeploymentID, RequestMetadata, RunningReplicaInfo
 from ray.serve._private.constants import (
     HANDLE_METRIC_PUSH_INTERVAL_S,
     RAY_SERVE_MAX_QUEUE_LENGTH_RESPONSE_DEADLINE_S,
@@ -39,44 +39,10 @@ from ray.serve._private.long_poll import LongPollClient, LongPollNamespace
 from ray.serve._private.metrics_utils import MetricsPusher
 from ray.serve._private.utils import JavaActorHandleProxy
 from ray.serve.generated.serve_pb2 import RequestMetadata as RequestMetadataProto
-from ray.serve.grpc_util import RayServegRPCContext
 from ray.util import metrics
 
 logger = logging.getLogger(SERVE_LOGGER_NAME)
 PUSH_METRICS_TO_CONTROLLER_TASK_NAME = "push_metrics_to_controller"
-
-
-@dataclass
-class RequestMetadata:
-    request_id: str
-    endpoint: str
-    call_method: str = "__call__"
-
-    # HTTP route path of the request.
-    route: str = ""
-
-    # Application name.
-    app_name: str = ""
-
-    # Multiplexed model ID.
-    multiplexed_model_id: str = ""
-
-    # If this request expects a streaming response.
-    is_streaming: bool = False
-
-    # The protocol to serve this request
-    _request_protocol: RequestProtocol = RequestProtocol.UNDEFINED
-
-    # Serve's gRPC context associated with this request for getting and setting metadata
-    grpc_context: Optional[RayServegRPCContext] = None
-
-    @property
-    def is_http_request(self) -> bool:
-        return self._request_protocol == RequestProtocol.HTTP
-
-    @property
-    def is_grpc_request(self) -> bool:
-        return self._request_protocol == RequestProtocol.GRPC
 
 
 @dataclass

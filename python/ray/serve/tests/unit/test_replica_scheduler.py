@@ -9,12 +9,11 @@ import pytest
 
 import ray
 from ray._private.utils import get_or_create_event_loop
-from ray.serve._private.common import DeploymentID
+from ray.serve._private.common import DeploymentID, RequestMetadata
 from ray.serve._private.router import (
     PowerOfTwoChoicesReplicaScheduler,
     Query,
     ReplicaWrapper,
-    RequestMetadata,
 )
 
 SCHEDULER_NODE_ID = "scheduler_node_id"
