@@ -260,15 +260,6 @@ class _BatchQueue:
                     "_process_batches asyncio task ran into an unexpected exception."
                 )
 
-        logger.warning(
-            "The asyncio loop has closed. The @serve.batch handler is not "
-            "running anymore. All future requests sent to this handler will "
-            "fail. This should only occur if the Serve app is "
-            "being torn down. If it occurs any other time, please file an "
-            "issue on GitHub.",
-            extra={"log_to_stderr": False},
-        )
-
     async def _process_batch(self, func: Callable) -> None:
         """Processes queued request batch."""
 
