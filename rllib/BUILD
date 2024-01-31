@@ -351,7 +351,7 @@ py_test(
     tags = ["team:rllib", "exclusive", "learning_tests", "learning_tests_cartpole", "learning_tests_discrete", "no_tf_static_graph"],
     size = "large",
     srcs = ["tests/run_regression_tests.py"],
-    data = ["tuned_examples/ppo/cartpole-ppo-envrunner.py"],
+    data = ["tuned_examples/ppo/cartpole_ppo_envrunner.py"],
     args = ["--dir=tuned_examples/ppo"]
 )
 
@@ -362,7 +362,7 @@ py_test(
     tags = ["torch_only", "team:rllib", "exclusive", "learning_tests", "learning_tests_pendulum", "learning_tests_continuous"],
     size = "large",
     srcs = ["tests/run_regression_tests.py"],
-    data = ["tuned_examples/ppo/pendulum-ppo-envrunner.py"],
+    data = ["tuned_examples/ppo/pendulum_ppo_envrunner.py"],
     args = ["--dir=tuned_examples/ppo"]
 )
 
@@ -373,7 +373,7 @@ py_test(
     tags = ["team:rllib", "exclusive", "learning_tests", "learning_tests_cartpole", "learning_tests_discrete", "no_tf_static_graph"],
     size = "large",
     srcs = ["tests/run_regression_tests.py"],
-    data = ["tuned_examples/ppo/cartpole-truncated-ppo.py"],
+    data = ["tuned_examples/ppo/cartpole_truncated_ppo.py"],
     args = ["--dir=tuned_examples/ppo"]
 )
 
@@ -733,7 +733,7 @@ py_test(
     main = "utils/tests/run_memory_leak_tests.py",
     size = "large",
     srcs = ["utils/tests/run_memory_leak_tests.py"],
-    data = ["tuned_examples/ppo/memory-leak-test-ppo-new-stack.py"],
+    data = ["tuned_examples/ppo/memory_leak_test_ppo_new_stack.py"],
     args = ["--dir=tuned_examples/ppo", "--to-check=rollout_worker"]
 )
 

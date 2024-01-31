@@ -1343,13 +1343,11 @@ class MultiAgentEpisode:
             A set of AgentIDs that are suposed to send actions to the next `env.step()`
             call.
         """
-        return set(
-            [
-                aid
-                for aid in self.get_observations(-1).keys()
-                if not self.agent_episodes[aid].is_done
-            ]
-        )
+        return {
+            aid
+            for aid in self.get_observations(-1).keys()
+            if not self.agent_episodes[aid].is_done
+        }
 
     # TODO (sven, simon): This function can only deal with data if it does not contain
     #  terminated or truncated agents (i.e. you have to provide ONLY alive agents in the
