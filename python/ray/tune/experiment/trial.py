@@ -542,7 +542,7 @@ class Trial:
     @Deprecated("Replaced by `local_path`")
     def logdir(self) -> Optional[str]:
         # TODO(justinvyu): [Deprecated] Remove in 2.11.
-        raise DeprecationWarning("Use `local_path` instead of `local_dir`.")
+        raise DeprecationWarning("Use `local_path` instead of `logdir`.")
 
     @property
     def local_path(self) -> Optional[str]:
@@ -628,7 +628,7 @@ class Trial:
     @Deprecated("Replaced by `init_local_path()`")
     def init_logdir(self):
         # TODO(justinvyu): [Deprecated] Remove in 2.11.
-        raise DeprecationWarning("Use `init_local_path` instead of `init_local_dir`.")
+        raise DeprecationWarning("Use `init_local_path` instead of `init_logdir`.")
 
     def init_local_path(self):
         """Init logdir."""

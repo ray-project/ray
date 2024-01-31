@@ -386,7 +386,7 @@ class Experiment:
         return self.spec.get("checkpoint_config")
 
     @property
-    @Deprecated("Replaced by `checkpoint_dir`")
+    @Deprecated("Replaced by `local_path`")
     def checkpoint_dir(self):
         # TODO(justinvyu): [Deprecated] Remove in 2.11.
         raise DeprecationWarning("Use `local_path` instead of `checkpoint_dir`.")
