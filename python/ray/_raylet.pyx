@@ -4757,6 +4757,15 @@ cdef class CoreWorker:
 
         return (num_tasks_submitted, num_leases_requested)
 
+    def get_local_memory_store_bytes_used(self):
+        cdef:
+            int64_t num_bytes_used
+
+        with nogil:
+            num_bytes_used = (
+                    CCoreWorkerProcess.GetCoreWorker().GetLocalMemoryStoreBytesUsed())
+        return num_bytes_used
+
     def record_task_log_start(
             self, task_id: TaskID, int attempt_number,
             stdout_path, stderr_path,
