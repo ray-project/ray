@@ -315,6 +315,7 @@ steps:
   - label: ":train: ml: flaky tests"
     tags: 
       - train
+      - skip-on-premerge
     instance_type: medium
     commands:
       - bazel run //ci/ray_ci:test_in_docker -- //... ml --run-flaky-tests
