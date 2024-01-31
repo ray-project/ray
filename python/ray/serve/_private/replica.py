@@ -24,6 +24,7 @@ from ray.serve._private.common import (
     ReplicaName,
     ReplicaQueueLengthInfo,
     ReplicaTag,
+    RequestMetadata,
     ServeComponentType,
     StreamingHTTPRequest,
     gRPCRequest,
@@ -55,7 +56,6 @@ from ray.serve._private.logging_utils import (
     get_component_logger_file_path,
 )
 from ray.serve._private.metrics_utils import InMemoryMetricsStore, MetricsPusher
-from ray.serve._private.router import RequestMetadata
 from ray.serve._private.utils import parse_import_path, wrap_to_ray_error
 from ray.serve._private.version import DeploymentVersion
 from ray.serve.config import AutoscalingConfig
