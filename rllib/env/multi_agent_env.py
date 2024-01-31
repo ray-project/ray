@@ -525,34 +525,6 @@ def make_multi_agent(
             self._action_space_in_preferred_format = True
             self._agent_ids = set(range(num))
 
-        # @override(MultiAgentEnv)
-        # def observation_space_sample(self, agent_ids: list = None) -> MultiAgentDict:
-        #    if agent_ids is None:
-        #        agent_ids = list(range(len(self.envs)))
-        #    obs = {agent_id: self.observation_space.sample() for agent_id in agent_ids}
-
-        #    return obs
-
-        # @override(MultiAgentEnv)
-        # def action_space_sample(self, agent_ids: list = None) -> MultiAgentDict:
-        #    if agent_ids is None:
-        #        agent_ids = list(range(len(self.envs)))
-        #    actions = {agent_id: self.action_space.sample() for agent_id in agent_ids}
-
-        #    return actions
-
-        # @override(MultiAgentEnv)
-        # def action_space_contains(self, x: MultiAgentDict) -> bool:
-        #    if not isinstance(x, dict):
-        #        return False
-        #    return all(self.action_space.contains(val) for val in x.values())
-
-        # @override(MultiAgentEnv)
-        # def observation_space_contains(self, x: MultiAgentDict) -> bool:
-        #    if not isinstance(x, dict):
-        #        return False
-        #    return all(self.observation_space.contains(val) for val in x.values())
-
         @override(MultiAgentEnv)
         def reset(self, *, seed: Optional[int] = None, options: Optional[dict] = None):
             self.terminateds = set()
