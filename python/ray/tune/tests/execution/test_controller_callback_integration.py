@@ -6,6 +6,7 @@ import sys
 import ray
 from ray.air.execution import FixedResourceManager, PlacementGroupResourceManager
 from ray.tune import Callback
+from ray.tune.execution.experiment_state import _ResumeConfig
 from ray.tune.execution.tune_controller import TuneController
 from ray.tune.experiment import Trial
 
@@ -56,7 +57,7 @@ def test_callback_save_restore(
     callback = StatefulCallback()
     runner2 = TuneController(callbacks=[callback], storage=storage)
     assert callback.counter == 0
-    runner2.resume()
+    runner2.resume(resume_config=_ResumeConfig())
     assert callback.counter == 3
 
 
