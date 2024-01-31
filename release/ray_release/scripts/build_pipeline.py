@@ -142,14 +142,7 @@ def main(
     if no_concurrency_limit:
         logger.warning("Concurrency is not limited for this run!")
 
-    # Report if REPORT=1 or BUILDKITE_SOURCE=schedule or it's a release branch (i.e.
-    # both the buildkite wheel branch and the test branch started with 'releases/')
     _, buildkite_branch = get_buildkite_repo_branch()
-    report = (
-        bool(int(os.environ.get("REPORT", "0")))
-        or os.environ.get("BUILDKITE_SOURCE", "manual") == "schedule"
-        or buildkite_branch.startswith("releases/")
-    )
     if os.environ.get("REPORT_TO_RAY_TEST_DB", False):
         env["REPORT_TO_RAY_TEST_DB"] = "1"
 
@@ -163,7 +156,9 @@ def main(
                     test,
                     test_collection_file,
                     run_id=run_id,
-                    report=report,
+                    # Always report performance data to databrick. Since the data is
+                    # indexed by branch and commit hash, we can always filter data later
+                    report=True,
                     smoke_test=smoke_test,
                     env=env,
                     priority_val=priority.value,

@@ -4,7 +4,7 @@ import collections
 import datetime
 import numbers
 
-import os
+from pathlib import Path
 import sys
 import textwrap
 import time
@@ -1388,7 +1388,7 @@ class TrialProgressCallback(Callback):
         elif has_verbosity(Verbosity.V2_TRIAL_NORM):
             metric_name = self._metric or "_metric"
             metric_value = result.get(metric_name, -99.0)
-            error_file = os.path.join(trial.local_path, EXPR_ERROR_FILE)
+            error_file = Path(trial.local_path, EXPR_ERROR_FILE).as_posix()
 
             info = ""
             if done:

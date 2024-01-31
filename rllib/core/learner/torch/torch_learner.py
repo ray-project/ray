@@ -43,7 +43,7 @@ from ray.rllib.utils.typing import ModuleID, Optimizer, Param, ParamDict, Tensor
 torch, nn = try_import_torch()
 
 if torch:
-    from ray.air._internal.torch_utils import get_device
+    from ray.air._internal.torch_utils import get_devices
 
 
 logger = logging.getLogger(__name__)
@@ -298,12 +298,17 @@ class TorchLearner(Learner):
         # TODO (Kourosh): Instead of using _TorchAccelerator, we should use the public
         #  API in ray.train but allow for session to be None without any errors raised.
         if self._use_gpu:
-            # get_device() returns the 0th device if
+            # get_devices() returns a list that contains the 0th device if
             # it is called from outside of a Ray Train session. Its necessary to give
             # the user the option to run on the gpu of their choice, so we enable that
             # option here via the local gpu id scaling config parameter.
             if self._distributed:
-                self._device = get_device()
+                devices = get_devices()
+                assert len(devices) == 1, (
+                    "`get_devices()` should only return one cuda device, "
+                    f"but {devices} was returned instead."
+                )
+                self._device = devices[0]
             else:
                 assert self._local_gpu_idx < torch.cuda.device_count(), (
                     f"local_gpu_idx {self._local_gpu_idx} is not a valid GPU id or is "
