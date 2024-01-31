@@ -1,0 +1,16 @@
+group: release
+depends_on:
+  - anyscalebuild
+  - anyscalemlbuild
+steps:
+  - label: "microbenchmark.aws"
+    tags: 
+      - skip-on-premerge
+      - oss
+    commands:
+      - ./release/run_release_test.sh microbenchmark.aws --report
+    instance_type: release
+    job_env: oss-ci-base_build
+    depends_on:
+      - forge
+      - oss-ci-base_build

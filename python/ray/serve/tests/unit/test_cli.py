@@ -29,7 +29,7 @@ class TestPublish:
                 "runtime_env": {},
             }
         ]
-        assert publish_provider.published_name == "my_app"
+        assert publish_provider.published_name is None
         assert publish_provider.published_ray_version == ray.__version__
         assert publish_provider.published_base_image is None
 
@@ -70,7 +70,7 @@ class TestPublish:
                 "runtime_env": {},
             }
         ]
-        assert publish_provider.published_name == "my_app"
+        assert publish_provider.published_name is None
         assert publish_provider.published_ray_version == ray.__version__
         assert publish_provider.published_base_image == "test-image"
 
@@ -90,7 +90,7 @@ class TestPublish:
                 "runtime_env": {},
             }
         ]
-        assert publish_provider.published_name == "my_app"
+        assert publish_provider.published_name is None
         assert publish_provider.published_ray_version == ray.__version__
         assert publish_provider.published_base_image is None
 
@@ -139,7 +139,7 @@ class TestPublish:
                 "runtime_env": runtime_env,
             }
         ]
-        assert publish_provider.published_name == "my_app"
+        assert publish_provider.published_name is None
         assert publish_provider.published_ray_version == ray.__version__
         assert publish_provider.published_base_image is None
 

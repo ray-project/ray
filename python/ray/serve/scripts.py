@@ -769,11 +769,8 @@ def _generate_config_from_file_or_import_path(
     *,
     arguments: Dict[str, str],
     runtime_env: Optional[Dict[str, Any]],
-) -> Tuple[ServeDeploySchema, str]:
-    """Generates a deployable config schema and name for the passed applications(s).
-
-    NOTE: the returned name must not contain any "." or ":" characters.
-    """
+) -> ServeDeploySchema:
+    """Generates a deployable config schema for the passed application(s)."""
     if pathlib.Path(config_or_import_path).is_file():
         config_path = config_or_import_path
         cli_logger.print(f"Publishing from config file: '{config_path}'.")
@@ -783,7 +780,6 @@ def _generate_config_from_file_or_import_path(
             )
 
         # TODO(edoakes): runtime_env is silently ignored -- should we enable overriding?
-        name = os.path.basename(config_path).split(".")[0]
         with open(config_path, "r") as config_file:
             config_dict = yaml.safe_load(config_file)
             config = ServeDeploySchema.parse_obj(config_dict)
@@ -797,7 +793,6 @@ def _generate_config_from_file_or_import_path(
                 "Import path must be of the form 'module.submodule:app_or_builder', "
                 f"got: '{import_path}'."
             )
-        name = import_path.split(":")[1]
         app = ServeApplicationSchema(
             import_path=import_path,
             runtime_env=runtime_env,
@@ -806,8 +801,7 @@ def _generate_config_from_file_or_import_path(
         config = ServeDeploySchema(applications=[app])
 
     assert isinstance(config, ServeDeploySchema)
-    assert isinstance(name, str) and name
-    return config, name
+    return config
 
 
 @cli.command(
@@ -883,14 +877,11 @@ def publish(
 
     # Skip validating runtime_env URIs so publishers can enable local URI usage.
     with _skip_validating_runtime_env_uris():
-        config, default_name = _generate_config_from_file_or_import_path(
+        config = _generate_config_from_file_or_import_path(
             config_or_import_path,
             arguments=args_dict,
             runtime_env=final_runtime_env,
         )
-
-    if name is None:
-        name = default_name
 
     publish_provider = get_publish_provider(provider)
     publish_provider.publish(
