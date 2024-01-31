@@ -186,8 +186,10 @@ class ArrowBlockAccessor(TableBlockAccessor):
 
     def to_bytes(self, codec: str = None) -> "pyarrow.Buffer":
         sink = pyarrow.BufferOutputStream()
-        with pyarrow.ipc.new_stream(sink, sampled_table.schema, options=pyarrow.ipc.IpcWriteOptions(compression=codec)) as writer:
-            writer.write(sampled_table)
+        with pyarrow.ipc.new_stream(
+            sink, self._table.schema, options=pyarrow.ipc.IpcWriteOptions(compression=codec)
+        ) as writer:
+            writer.write(self._table.schema)
         return sink.getvalue()
 
     @staticmethod
