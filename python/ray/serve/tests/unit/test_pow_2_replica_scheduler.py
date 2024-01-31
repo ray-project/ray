@@ -10,7 +10,7 @@ import pytest
 import ray
 from ray._private.utils import get_or_create_event_loop
 from ray.serve._private.common import DeploymentID, RequestMetadata
-from ray.serve._private.router import (
+from ray.serve._private.replica_scheduler import (
     PowerOfTwoChoicesReplicaScheduler,
     Query,
     ReplicaWrapper,
@@ -123,7 +123,7 @@ def pow_2_scheduler(request) -> PowerOfTwoChoicesReplicaScheduler:
     # to 0.01s to speed up the test.
     os.environ.update({"RAY_SERVE_MULTIPLEXED_MODEL_ID_MATCHING_TIMEOUT_S": "0.01"})
     importlib.reload(ray.serve._private.constants)
-    importlib.reload(ray.serve._private.router)
+    importlib.reload(ray.serve._private.replica_scheduler.pow_2_scheduler)
 
     yield s
 
