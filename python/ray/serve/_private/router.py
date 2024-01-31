@@ -142,7 +142,7 @@ class Router:
         return (self.deployment_id, self.handle_id), self.num_queued_queries
 
     async def _replace_known_types_in_args(
-        self, args: Tuple[Any], kwargs: Dict[str, Any]
+        self, request_args: Tuple[Any], request_kwargs: Dict[str, Any]
     ) -> Tuple[Tuple[Any], Dict[str, Any]]:
         """Uses the `_PyObjScanner` to find and replace known types.
 
@@ -163,7 +163,7 @@ class Router:
             tasks = []
             responses = []
             replacement_table = {}
-            objs = scanner.find_nodes((args, kwargs))
+            objs = scanner.find_nodes((request_args, request_kwargs))
             for obj in objs:
                 if isinstance(obj, asyncio.Task):
                     tasks.append(obj)
