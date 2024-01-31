@@ -13,7 +13,8 @@ def to_dict_key(key: str):
 
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(
+    parser = argparse.ArgumentParser()
+    parser.add_argument(
         "--experimental",
         action="store_true",
         default=False,
