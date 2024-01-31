@@ -84,6 +84,15 @@ class MultiAgentEnvRunner(EnvRunner):
 
         # Create the env-to-module connector pipeline.
         self._env_to_module = self.config.build_env_to_module_connector(self.env)
+        # Cached env-to-module results taken at the end of a `_sample_timesteps()`
+        # call to make sure the final observation (before an episode cut) gets properly
+        # processed (and maybe postprocessed and re-stored into the episode).
+        # For example, if we had a connector that normalizes observations and directly
+        # re-inserts these new obs back into the episode, the last observation in each
+        # sample call would NOT be processed, which could be very harmful in cases,
+        # in which value function bootstrapping of those (truncation) observations is
+        # required in the learning step.
+        self._cached_to_module = None
 
         self._make_module()
 
@@ -193,6 +202,7 @@ class MultiAgentEnvRunner(EnvRunner):
             # Reset the environment.
             # TODO (simon): Check, if we need here the seed from the config.
             obs, infos = self.env.reset()
+            self._cached_to_module = None
 
             # Call `on_episode_start()` callbacks.
             self._make_on_episode_callback("on_episode_start")
@@ -232,12 +242,13 @@ class MultiAgentEnvRunner(EnvRunner):
                 }
             # Compute an action using the RLModule.
             else:
-                to_module = self._env_to_module(
+                to_module = self._cached_to_module or self._env_to_module(
                     rl_module=self.module,
                     episodes=[self._episode],
                     explore=explore,
                     shared_data=shared_data,
                 )
+                self._cached_to_module = None
                 # Explore or not.
                 if explore:
                     to_env = self.module.forward_exploration(to_module)
@@ -315,6 +326,18 @@ class MultiAgentEnvRunner(EnvRunner):
                 obs, infos = self.env.reset()
                 # Add initial observations and infos.
                 self._episode.add_env_reset(observations=obs, infos=infos)
+
+        # Already perform env-to-module connector call for next call to
+        # `_sample_timesteps()`. See comment in c'tor for `self._cached_to_module`.
+        # TODO (sven): Figure out shared_data problem. We will have to store that as
+        #  well (in between `self._sample_timesteps()` calls).
+        # if self.module is not None:
+        #    self._cached_to_module = self._env_to_module(
+        #        rl_module=self.module,
+        #        episodes=[self._episode],
+        #        explore=explore,
+        #        shared_data=shared_data,
+        #    )
 
         # Store done episodes for metrics.
         self._done_episodes_for_metrics.extend(done_episodes_to_return)

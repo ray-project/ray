@@ -82,7 +82,6 @@ class SingleAgentEnvRunner(EnvRunner):
 
         # Create the env-to-module connector pipeline.
         self._env_to_module = self.config.build_env_to_module_connector(self.env)
-
         # Cached env-to-module results taken at the end of a `_sample_timesteps()`
         # call to make sure the final observation (before an episode cut) gets properly
         # processed (and maybe postprocessed and re-stored into the episode).
