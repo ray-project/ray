@@ -54,6 +54,23 @@ def get_data_from_all_ranks(tmp_path: Path) -> Dict[int, Union[int, List, Dict]]
     return rank_data
 
 
+@pytest.mark.parametrize("num_gpus_per_worker", [1, 2, 4])
+def test_torch_auto_set_device(ray_2_node_4_gpu, num_gpus_per_worker):
+    def train_fn():
+        # Ensure Ray Train automatically sets the correct default cuda device
+        assert torch.cuda.current_device() == train.torch.get_device().index
+
+    trainer = TorchTrainer(
+        train_fn,
+        scaling_config=ScalingConfig(
+            num_workers=8 // num_gpus_per_worker,
+            use_gpu=True,
+            resources_per_worker={"GPU": num_gpus_per_worker},
+        ),
+    )
+    trainer.fit()
+
+
 @pytest.mark.parametrize("cuda_visible_devices", ["", "1,2"])
 @pytest.mark.parametrize("num_gpus_per_worker", [0.5, 1, 2])
 def test_torch_get_device(
@@ -70,9 +87,6 @@ def test_torch_get_device(
         if cuda_visible_devices:
             visible_devices = os.environ["CUDA_VISIBLE_DEVICES"]
             assert visible_devices == "1,2"
-
-        # Ensure we autimatically set the current cuda device
-        assert torch.cuda.current_device() == train.torch.get_device().index
 
         devices = sorted([device.index for device in train.torch.get_devices()])
         write_rank_data(tmp_path, devices)
@@ -109,9 +123,6 @@ def test_torch_get_device_dist(ray_2_node_2_gpu, num_gpus_per_worker, tmp_path):
     def train_fn():
         devices = sorted([device.index for device in train.torch.get_devices()])
         write_rank_data(tmp_path, devices)
-
-        # Ensure we autimatically set the current cuda device
-        assert torch.cuda.current_device() == train.torch.get_device().index
 
     trainer = TorchTrainer(
         train_fn,
