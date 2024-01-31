@@ -172,14 +172,14 @@ class PPOTorchLearner(PPOLearner, TorchLearner):
         values = {}
         for module_id, sa_batch in batch.policy_batches.items():
             infos = sa_batch.pop(SampleBatch.INFOS, None)
-            batch = convert_to_torch_tensor(sa_batch, device=self._device)
+            sa_batch = convert_to_torch_tensor(sa_batch, device=self._device)
             if infos is not None:
                 sa_batch[SampleBatch.INFOS] = infos
 
             module = self.module[module_id].unwrapped()
 
             # Shared encoder.
-            encoder_outs = module.encoder(batch)
+            encoder_outs = module.encoder(sa_batch)
             # Value head.
             vf_out = module.vf(encoder_outs[ENCODER_OUT][CRITIC])
             # Squeeze out last dimension (single node value head).

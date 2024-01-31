@@ -179,17 +179,20 @@ class PPOTfLearner(PPOLearner, TfLearner):
 
     @override(PPOLearner)
     def _compute_values(self, batch):
-        infos = batch.pop(SampleBatch.INFOS, None)
-        batch = tree.map_structure(lambda s: tf.convert_to_tensor(s), batch)
-        if infos is not None:
-            batch[SampleBatch.INFOS] = infos
+        values = {}
+        for module_id, sa_batch in batch.policy_batches.items():
+            infos = sa_batch.pop(SampleBatch.INFOS, None)
+            sa_batch = tree.map_structure(lambda s: tf.convert_to_tensor(s), sa_batch)
+            if infos is not None:
+                sa_batch[SampleBatch.INFOS] = infos
 
-        # TODO (sven): Make multi-agent capable.
-        module = self.module[DEFAULT_POLICY_ID].unwrapped()
+            module = self.module[module_id].unwrapped()
 
-        # Shared encoder.
-        encoder_outs = module.encoder(batch)
-        # Value head.
-        vf_out = module.vf(encoder_outs[ENCODER_OUT][CRITIC])
-        # Squeeze out last dimension (single node value head).
-        return tf.squeeze(vf_out, -1)
+            # Shared encoder.
+            encoder_outs = module.encoder(sa_batch)
+            # Value head.
+            vf_out = module.vf(encoder_outs[ENCODER_OUT][CRITIC])
+            # Squeeze out last dimension (single node value head).
+            values[module_id] = tf.squeeze(vf_out, -1)
+
+        return values
