@@ -3,7 +3,7 @@ import numpy as np
 
 from collections import deque
 from numpy.typing import NDArray
-from typing import Any, Dict, List, Optional, Union
+from typing import Any, Dict, List, Optional, Tuple, Union
 
 from ray.rllib.env.single_agent_episode import SingleAgentEpisode
 from ray.rllib.execution.segment_tree import MinSegmentTree, SumSegmentTree
@@ -174,7 +174,7 @@ class PrioritizedEpisodeReplayBuffer(EpisodeReplayBuffer):
         *,
         batch_size_B: Optional[int] = None,
         batch_length_T: Optional[int] = None,
-        n_step: int = 1,
+        n_step: Optional[Union[int, Tuple]] = 1,
         beta: float = 0.0,
         include_infos: bool = False,
     ) -> SampleBatchType:
@@ -206,6 +206,8 @@ class PrioritizedEpisodeReplayBuffer(EpisodeReplayBuffer):
                 collected in between these two observations and the action will
                 be the one executed n steps before such that we always have the
                 state-action pair that triggered the rewards.
+                If `n_step` is a tuple, it is considered as a range to sample
+                from. If `None`, we sample from the range (1, 5).
             beta: The exponent of the importance sampling weight (see Schaul et
                 al. (2016)). A `beta=0.0` does not correct for the bias introduced
                 by prioritized replay and `beta=1.0` fully corrects for it.
@@ -230,6 +232,12 @@ class PrioritizedEpisodeReplayBuffer(EpisodeReplayBuffer):
         # Use our default values if no sizes/lengths provided.
         batch_size_B = batch_size_B or self.batch_size_B
         batch_length_T = batch_length_T or self.batch_length_T
+
+        # Sample the n-step if necessary.
+        if n_step is None:
+            n_step = self.rng.integers(1, 5)
+        elif isinstance(n_step, tuple):
+            n_step = self.rng.integers(n_step[0], n_step[1])
 
         # Rows to return.
         observations = [[] for _ in range(batch_size_B)]
