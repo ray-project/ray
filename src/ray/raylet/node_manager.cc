@@ -2791,6 +2791,10 @@ void NodeManager::RecordMetrics() {
 
 void NodeManager::ConsumeSyncMessage(
     std::shared_ptr<const syncer::RaySyncMessage> message) {
+  if (NodeID::FromBinary(message->node_id()) == self_node_id_) {
+    // Ignore sync message from self.
+    return;
+  }
   if (message->message_type() == syncer::MessageType::RESOURCE_VIEW) {
     rpc::ResourcesData data;
     data.ParseFromString(message->sync_message());

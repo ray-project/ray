@@ -66,8 +66,8 @@ void ClusterResourceScheduler::Init(
       local_node_resources,
       get_used_object_store_memory,
       get_pull_manager_at_capacity,
-      [this](scheduling::NodeID node_id, const NodeResources &local_resource_update) {
-        cluster_resource_manager_->AddOrUpdateNode(node_id, local_resource_update);
+      [this](const rpc::ResourcesData &local_resources_data) {
+        cluster_resource_manager_->UpdateNode(local_node_id_, local_resources_data);
       });
   RAY_CHECK(!local_node_id_.IsNil());
   cluster_resource_manager_->AddOrUpdateNode(local_node_id_, local_node_resources);

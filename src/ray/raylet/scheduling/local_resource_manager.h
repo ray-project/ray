@@ -55,7 +55,7 @@ class LocalResourceManager : public syncer::ReporterInterface {
                        const NodeResources &node_resources,
                        std::function<int64_t(void)> get_used_object_store_memory,
                        std::function<bool(void)> get_pull_manager_at_capacity,
-                       std::function<void(scheduling::NodeID, const NodeResources &)>
+                       std::function<void(const rpc::ResourcesData &)>
                            resource_change_subscriber);
 
   scheduling::NodeID GetLocalRayletID() const { return local_raylet_id_; }
@@ -239,7 +239,7 @@ class LocalResourceManager : public syncer::ReporterInterface {
   /// Function to get whether the pull manager is at capacity.
   std::function<bool(void)> get_pull_manager_at_capacity_;
   /// Subscribes to resource changes.
-  std::function<void(scheduling::NodeID, const NodeResources &)>
+  std::function<void(const rpc::ResourcesData &)>
       resource_change_subscriber_;
 
   // Version of this resource. It will incr by one whenever the state changed.
