@@ -1182,11 +1182,12 @@ class IterStatsSummary:
                 )
             if self.total_time.get():
                 out += "* Total time overall: {}\n".format(fmt(self.total_time.get()))
-            out += "* Num blocks local: {}\n".format(self.iter_blocks_local)
-            out += "* Num blocks remote: {}\n".format(self.iter_blocks_remote)
-            out += "* Num blocks unknown location: {}\n".format(
-                self.iter_unknown_location
-            )
+            if DataContext.get_current().enable_get_object_locations_for_metrics:
+                out += "* Num blocks local: {}\n".format(self.iter_blocks_local)
+                out += "* Num blocks remote: {}\n".format(self.iter_blocks_remote)
+                out += "* Num blocks unknown location: {}\n".format(
+                    self.iter_unknown_location
+                )
             out += (
                 "* Batch iteration time breakdown (summed across prefetch threads):\n"
             )
