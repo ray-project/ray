@@ -61,6 +61,8 @@ class PPOLearner(Learner):
         episodes: Optional[List[EpisodeType]] = None,
     ) -> Tuple[Optional[MultiAgentBatch], Optional[List[EpisodeType]]]:
 
+        is_multi_agent = isinstance(episodes[0], MultiAgentEpisode)
+
         if not episodes:
             raise ValueError(
                 "`PPOLearner._preprocess_train_data()` must have the `episodes` arg "
@@ -68,7 +70,7 @@ class PPOLearner(Learner):
             )
         batch = batch or {}
 
-        if isinstance(episodes[0], MultiAgentEpisode):
+        if is_multi_agent:
             sa_episodes_list = [
                 sa_eps
                 for ma_eps in episodes
@@ -96,13 +98,19 @@ class PPOLearner(Learner):
         vf_preds = convert_to_numpy(self._compute_values(batch_for_vf))
 
         for module_id, module_vf_preds in vf_preds.items():
+            # Collect new (single-agent) episode lengths.
+            if is_multi_agent:
+                episode_lens_plus_1 = [
+                    len(sa_eps)
+                    for ma_eps in episodes
+                    for agent_id, sa_eps in ma_eps.agent_episodes.items()
+                    if ma_eps.agent_to_module_map[agent_id] == module_id
+                ]
+            else:
+                episode_lens_plus_1 = [len(eps) for eps in episodes]
+
             batch[module_id] = {}
-            episode_lens_plus_1 = [
-                len(sa_eps)
-                for ma_eps in episodes
-                for agent_id, sa_eps in ma_eps.agent_episodes.items()
-                if ma_eps.agent_to_module_map[agent_id] == module_id
-            ]
+
             # Remove all zero-padding again, if applicable for the upcoming
             # GAE computations.
             module_vf_preds = unpad_data_if_necessary(
