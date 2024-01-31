@@ -91,16 +91,13 @@ class OpRuntimeMetrics:
     obj_store_mem_freed: int = field(
         default=0, metadata={"map_only": True, "export_metric": True}
     )
-    # Current memory size in the object store.
-    obj_store_mem_cur: int = field(
-        default=0, metadata={"map_only": True, "export_metric": True}
-    )
-    # Peak memory size in the object store.
-    obj_store_mem_peak: int = field(default=0, metadata={"map_only": True})
     # Spilled memory size in the object store.
     obj_store_mem_spilled: int = field(
         default=0, metadata={"map_only": True, "export_metric": True}
     )
+
+    obj_store_mem_internal_inqueue: int = 0
+    obj_store_mem_internal_outqueue: int = 0
 
     # === Miscellaneous metrics ===
 
@@ -136,7 +133,7 @@ class OpRuntimeMetrics:
 
         # TODO: record resource usage in OpRuntimeMetrics,
         # avoid calling self._op.current_resource_usage()
-        resource_usage = self._op.current_resource_usage()
+        resource_usage = self._op.current_processor_usage()
         result.extend(
             [
                 ("cpu_usage", resource_usage.cpu or 0),
@@ -170,7 +167,7 @@ class OpRuntimeMetrics:
             return self.bytes_outputs_generated / self.num_outputs_generated
 
     @property
-    def obj_store_mem_pending(self) -> Optional[float]:
+    def obj_store_mem_pending_tasks(self) -> Optional[float]:
         """Estimated size in bytes of output blocks in Ray generator buffers.
 
         If an estimate isn't available, this property returns ``None``.
@@ -233,17 +230,14 @@ class OpRuntimeMetrics:
         self.num_inputs_received += 1
         input_size = input.size_bytes()
         self.bytes_inputs_received += input_size
-        # Update object store metrics.
-        self.obj_store_mem_cur += input_size
-        if self.obj_store_mem_cur > self.obj_store_mem_peak:
-            self.obj_store_mem_peak = self.obj_store_mem_cur
+        self.obj_store_mem_internal_inqueue += input_size
 
     def on_output_taken(self, output: RefBundle):
         """Callback when an output is taken from the operator."""
         output_bytes = output.size_bytes()
         self.num_outputs_taken += 1
         self.bytes_outputs_taken += output_bytes
-        self.obj_store_mem_cur -= output_bytes
+        self.obj_store_mem_internal_outqueue -= output_bytes
 
     def on_task_submitted(self, task_index: int, inputs: RefBundle):
         """Callback when the operator submits a task."""
@@ -268,9 +262,7 @@ class OpRuntimeMetrics:
 
         # Update object store metrics.
         self.obj_store_mem_alloc += output_bytes
-        self.obj_store_mem_cur += output_bytes
-        if self.obj_store_mem_cur > self.obj_store_mem_peak:
-            self.obj_store_mem_peak = self.obj_store_mem_cur
+        self.obj_store_mem_internal_outqueue += output_bytes
 
         for block_ref, meta in output.blocks:
             assert meta.exec_stats and meta.exec_stats.wall_time_s
@@ -306,7 +298,7 @@ class OpRuntimeMetrics:
                     self.obj_store_mem_spilled += meta.size_bytes
 
         self.obj_store_mem_freed += total_input_size
-        self.obj_store_mem_cur -= total_input_size
+        self.obj_store_mem_internal_inqueue -= total_input_size
 
         inputs.destroy_if_owned()
         del self._running_tasks[task_index]

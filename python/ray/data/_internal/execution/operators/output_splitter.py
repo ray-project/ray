@@ -137,11 +137,11 @@ class OutputSplitter(PhysicalOperator):
     def internal_queue_size(self) -> int:
         return len(self._buffer)
 
-    def current_resource_usage(self) -> ExecutionResources:
-        return ExecutionResources(
-            object_store_memory=sum(b.size_bytes() for b in self._buffer)
-            + sum(b.size_bytes() for b in self._output_queue)
-        )
+    def internal_inqueue_memory_usage(self) -> int:
+        return sum(b.size_bytes() for b in self._buffer)
+
+    def internal_outqueue_memory_usage(self) -> int:
+        return sum(b.size_bytes() for b in self._output_queue)
 
     def progress_str(self) -> str:
         if self._locality_hints:

@@ -1,3 +1,4 @@
+import itertools
 import time
 from typing import TYPE_CHECKING, Dict
 
@@ -47,15 +48,13 @@ class ResourceManager:
         # Iterate from last to first operator.
         num_ops_so_far = 0
         num_ops_total = len(self._topology)
-        for op, state in reversed(self._topology.items()):
+        ops = list(self._topology)
+        for op, next_op in reversed(itertools.zip_longest(ops, ops[1:])):
             # Update `self._op_usages`.
-            op_usage = op.current_resource_usage()
-            # Don't count input refs towards dynamic memory usage, as they have been
-            # pre-created already outside this execution.
-            if not isinstance(op, InputDataBuffer):
-                op_usage.object_store_memory = (
-                    op_usage.object_store_memory or 0
-                ) + state.outqueue_memory_usage()
+            op_usage = op.current_processor_usage()
+            op_usage.object_store_memory = _estimate_object_store_memory(
+                op, self._topology[op], next_op
+            )
             self._op_usages[op] = op_usage
             # Update `self._global_usage`.
             self._global_usage = self._global_usage.add(op_usage)
@@ -121,3 +120,16 @@ class ResourceManager:
     def get_downstream_object_store_memory(self, op: PhysicalOperator) -> int:
         """Return the downstream object store memory usage of the given operator."""
         return self._downstream_object_store_memory[op]
+
+
+def _estimate_object_store_memory(op, state, next_op) -> int:
+    object_store_memory = (
+        op.pending_task_memory_usage() + op.internal_outqueue_memory_usage()
+    )
+    # Don't count input refs towards dynamic memory usage, as they have been
+    # pre-created already outside this execution.
+    if not isinstance(op, InputDataBuffer):
+        object_store_memory += state.outqueue_memory_usage()
+    if next_op is not None:
+        object_store_memory += next_op.internal_inqueue_memory_usage()
+    return object_store_memory

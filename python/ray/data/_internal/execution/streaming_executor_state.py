@@ -236,7 +236,8 @@ class OpState:
         active = self.op.num_active_tasks()
         desc = f"- {self.op.name}: {active} active, {queued} queued"
         mem = memory_string(
-            (self.op.current_resource_usage().object_store_memory or 0)
+            self.op.internal_inqueue_memory_usage()
+            + self.op.internal_outqueue_memory_usage()
             + self.inqueue_memory_usage()
         )
         desc += f", {mem} objects"

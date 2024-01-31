@@ -383,8 +383,17 @@ class MapOperator(OneToOneOperator, ABC):
         self._finished_streaming_gens.clear()
 
     @abstractmethod
-    def current_resource_usage(self) -> ExecutionResources:
+    def current_processor_usage(self) -> ExecutionResources:
         raise NotImplementedError
+
+    def pending_task_memory_usage(self) -> int:
+        return self._metrics.obj_store_mem_pending_tasks or 0
+
+    def internal_inqueue_memory_usage(self) -> int:
+        return self._metrics.obj_store_mem_internal_inqueue
+
+    def internal_outqueue_memory_usage(self) -> int:
+        return self._metrics.obj_store_mem_internal_outqueue
 
     @abstractmethod
     def base_resource_usage(self) -> ExecutionResources:

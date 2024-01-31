@@ -379,13 +379,25 @@ class PhysicalOperator(Operator):
         if not self._started:
             raise ValueError("Operator must be started before being shutdown.")
 
-    def current_resource_usage(self) -> ExecutionResources:
-        """Returns the current estimated resource usage of this operator.
+    def current_processor_usage(self) -> ExecutionResources:
+        """Returns the current estimated CPU and GPU usage of this operator.
 
         This method is called by the executor to decide how to allocate resources
         between different operators.
         """
         return ExecutionResources(0, 0, 0)
+
+    def pending_task_memory_usage(self) -> int:
+        """Returns the estimated memory usage from buffered task outputs."""
+        return 0
+
+    def internal_inqueue_memory_usage(self) -> int:
+        """Returns the estimated memory usage of internal input queues."""
+        return 0
+
+    def internal_outqueue_memory_usage(self) -> int:
+        """Returns the estimated memory usage of internal output queues."""
+        return 0
 
     def base_resource_usage(self) -> ExecutionResources:
         """Returns the minimum amount of resources required for execution.

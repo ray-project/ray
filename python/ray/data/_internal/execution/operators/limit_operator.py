@@ -116,3 +116,6 @@ class LimitOperator(OneToOneOperator):
             return self._estimated_output_blocks
         else:
             return self.input_dependencies[0].num_outputs_total()
+
+    def internal_outqueue_memory_usage(self) -> int:
+        return sum(b.size_bytes() for b in self._buffer)
