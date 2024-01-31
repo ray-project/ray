@@ -976,7 +976,6 @@ def run(
         placeholder_resolvers=placeholder_resolvers,
         scheduler=scheduler,
         stopper=experiments[0].stopper,
-        resume=resume,
         resume_config=resume_config,
         fail_fast=fail_fast,
         callbacks=callbacks,
