@@ -18,14 +18,16 @@ class Write(AbstractMap):
         **write_args,
     ):
         if isinstance(datasink_or_legacy_datasource, Datasink):
-            min_rows_per_block = datasink_or_legacy_datasource.num_rows_per_write
+            min_rows_per_bundled_input = (
+                datasink_or_legacy_datasource.num_rows_per_write
+            )
         else:
-            min_rows_per_block = None
+            min_rows_per_bundled_input = None
 
         super().__init__(
             "Write",
             input_op,
-            min_rows_per_block=min_rows_per_block,
+            min_rows_per_bundled_input=min_rows_per_bundled_input,
             ray_remote_args=ray_remote_args,
         )
         self._datasink_or_legacy_datasource = datasink_or_legacy_datasource
