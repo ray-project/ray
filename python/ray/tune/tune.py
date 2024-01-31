@@ -137,7 +137,7 @@ def _build_resume_config_from_legacy_config(
             "Configure this via `tune.run(resume_config)` instead."
         )
 
-    for setting in resume_settings:
+    for setting in resume_settings[1:]:
         if setting == "ERRORED":
             resume_config = _ResumeConfig(errored=_ResumeConfig.ResumeType.RESUME)
         elif setting == "RESTART_ERRORED":
