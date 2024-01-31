@@ -547,6 +547,7 @@ class TestMultiAgentEnv(unittest.TestCase):
         )
         assert action_space_in_preferred_format, "Act space is not in preferred format."
         assert obs_space_in_preferred_format, "Obs space is not in preferred format."
+
         env2 = make_multi_agent("CartPole-v1")()
         action_spaces_in_preferred_format = (
             env2._check_if_action_space_maps_agent_id_to_sub_space()
@@ -555,11 +556,11 @@ class TestMultiAgentEnv(unittest.TestCase):
             env2._check_if_obs_space_maps_agent_id_to_sub_space()
         )
         assert (
-            not action_spaces_in_preferred_format
-        ), "Action space should not be in preferred format but is."
+            action_spaces_in_preferred_format
+        ), "Action space should be in preferred format but isn't."
         assert (
-            not obs_space_in_preferred_format
-        ), "Observation space should not be in preferred format but is."
+            obs_space_in_preferred_format
+        ), "Observation space should be in preferred format but isn't."
 
     def test_spaces_sample_contain_in_preferred_format(self):
         env = NestedMultiAgentEnv()

@@ -1676,6 +1676,8 @@ class MultiAgentEpisode:
                     buffer_val=buffer_val,
                     extra_model_outputs_key=extra_model_outputs_key,
                 )
+                if len(agent_values) == 0:
+                    continue
             else:
                 agent_values = self._get_single_agent_data_by_index(
                     what=what,
@@ -1686,7 +1688,7 @@ class MultiAgentEpisode:
                     buffer_val=buffer_val,
                     extra_model_outputs_key=extra_model_outputs_key,
                 )
-            if agent_values is None or agent_values == []:
+            if agent_values is None:
                 continue
             ret[agent_id] = agent_values
         return ret
