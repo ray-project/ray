@@ -1,4 +1,5 @@
 import warnings
+import json
 from typing import Dict, List, Optional, Union
 
 import ray
@@ -8,7 +9,7 @@ from ray._private.utils import hex_to_binary, get_ray_doc_version
 from ray._raylet import PlacementGroupID
 from ray.util.annotations import DeveloperAPI, PublicAPI
 from ray.util.scheduling_strategies import PlacementGroupSchedulingStrategy
-from ray.util.virtual_cluster import rewrite_virtual_cluster_placement_group_bundles
+from ray.util.virtual_cluster import virtual_cluster
 
 bundle_reservation_check = None
 BUNDLE_RESOURCE_LABEL = "bundle"
@@ -48,15 +49,15 @@ class PlacementGroup:
 
     def __init__(
         self,
-        id: "ray._raylet.PlacementGroupID",
+        vc,
         bundle_cache: Optional[List[Dict]] = None,
     ):
-        self.id = id
+        self.vc = vc
         self.bundle_cache = bundle_cache
 
     @property
     def is_empty(self):
-        return self.id.is_nil()
+        return self.vc is None
 
     def ready(self) -> "ray._raylet.ObjectRef":
         """Returns an ObjectRef to check ready status.
@@ -76,20 +77,7 @@ class PlacementGroup:
                 ray.wait([pg.ready()])
 
         """
-        self._fill_bundle_cache_if_needed()
-
-        _export_bundle_reservation_check_method_if_needed()
-
-        assert len(self.bundle_cache) != 0, (
-            "ready() cannot be called on placement group object with a "
-            "bundle length == 0, current bundle length: "
-            f"{len(self.bundle_cache)}"
-        )
-
-        return bundle_reservation_check.options(
-            scheduling_strategy=PlacementGroupSchedulingStrategy(placement_group=self),
-            resources={BUNDLE_RESOURCE_LABEL: 0.001},
-        ).remote(self)
+        return self.vc.ready()
 
     def wait(self, timeout_seconds: Union[float, int] = 30) -> bool:
         """Wait for the placement group to be ready within the specified time.
@@ -118,10 +106,10 @@ class PlacementGroup:
     def __eq__(self, other):
         if not isinstance(other, PlacementGroup):
             return False
-        return self.id == other.id
+        return self.vc == other.vc
 
     def __hash__(self):
-        return hash(self.id)
+        return hash(self.vc.id.hex())
 
 
 @client_mode_wrap
@@ -242,19 +230,20 @@ def placement_group(
             "placement group `lifetime` argument must be either `None` or 'detached'"
         )
 
-    if ray.get_runtime_context().get_virtual_cluster_id():
-        bundles = rewrite_virtual_cluster_placement_group_bundles(
-            ray.get_runtime_context().get_virtual_cluster_id(), bundles
-        )
-    placement_group_id = worker.core_worker.create_placement_group(
-        name,
-        bundles,
-        strategy,
-        detached,
-        _max_cpu_fraction_per_node,
-    )
+    spec = {
+        "fixed_size_nodes": [
+            {
+                "nodes": [
+                    {"resources": bundle, "labels": {"ray.io/pg_bundle_index": str(i)}}
+                    for i, bundle in enumerate(bundles)
+                ],
+                "scheduling_policy": f"SCHEDULING_POLICY_{strategy}",
+            }
+        ]
+    }
+    vc = virtual_cluster(json.dumps(spec))
 
-    return PlacementGroup(placement_group_id)
+    return PlacementGroup(vc)
 
 
 @PublicAPI

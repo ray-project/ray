@@ -363,6 +363,9 @@ class RemoteFunction:
 
         resources = ray._private.utils.resources_from_ray_options(task_options)
 
+        if scheduling_strategy is None:
+            scheduling_strategy = "DEFAULT"
+        """
         if scheduling_strategy is None or isinstance(
             scheduling_strategy, PlacementGroupSchedulingStrategy
         ):
@@ -395,12 +398,10 @@ class RemoteFunction:
                 )
             else:
                 scheduling_strategy = "DEFAULT"
+        """
 
         if ray.get_runtime_context().get_virtual_cluster_id():
-            if isinstance(scheduling_strategy, PlacementGroupSchedulingStrategy):
-                # TODO(jjyao) Implement pg using vc
-                pass
-            else:
+            if not isinstance(scheduling_strategy, PlacementGroupSchedulingStrategy):
                 scheduling_strategy = NodeLabelSchedulingStrategy(
                     {
                         "ray.io/virtual_cluster_id": In(
@@ -408,6 +409,18 @@ class RemoteFunction:
                         )
                     }
                 )
+
+        if isinstance(scheduling_strategy, PlacementGroupSchedulingStrategy):
+            labels = {
+                "ray.io/virtual_cluster_id": In(
+                    scheduling_strategy.placement_group.vc.id.hex(),
+                )
+            }
+            if scheduling_strategy.placement_group_bundle_index != -1:
+                labels["ray.io/pg_bundle_index"] = In(
+                    str(scheduling_strategy.placement_group_bundle_index)
+                )
+            scheduling_strategy = NodeLabelSchedulingStrategy(labels)
 
         serialized_runtime_env_info = None
         if runtime_env is not None:
