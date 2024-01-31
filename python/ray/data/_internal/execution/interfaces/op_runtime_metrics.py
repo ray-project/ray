@@ -101,6 +101,12 @@ class OpRuntimeMetrics:
     obj_store_mem_spilled: int = field(
         default=0, metadata={"map_only": True, "export_metric": True}
     )
+    obj_store_mem_inputs: int = field(
+        default=0, metadata={"map_only": True, "export_metric": True}
+    )
+    obj_store_mem_outputs: int = field(
+        default=0, metadata={"map_only": True, "export_metric": True}
+    )
 
     # === Miscellaneous metrics ===
 
@@ -235,6 +241,7 @@ class OpRuntimeMetrics:
         self.bytes_inputs_received += input_size
         # Update object store metrics.
         self.obj_store_mem_cur += input_size
+        self.obj_store_mem_inputs += input_size
         if self.obj_store_mem_cur > self.obj_store_mem_peak:
             self.obj_store_mem_peak = self.obj_store_mem_cur
 
@@ -244,6 +251,7 @@ class OpRuntimeMetrics:
         self.num_outputs_taken += 1
         self.bytes_outputs_taken += output_bytes
         self.obj_store_mem_cur -= output_bytes
+        self.obj_store_mem_outputs -= output_bytes
 
     def on_task_submitted(self, task_index: int, inputs: RefBundle):
         """Callback when the operator submits a task."""
@@ -269,6 +277,7 @@ class OpRuntimeMetrics:
         # Update object store metrics.
         self.obj_store_mem_alloc += output_bytes
         self.obj_store_mem_cur += output_bytes
+        self.obj_store_mem_outputs += output_bytes
         if self.obj_store_mem_cur > self.obj_store_mem_peak:
             self.obj_store_mem_peak = self.obj_store_mem_cur
 
@@ -307,6 +316,7 @@ class OpRuntimeMetrics:
 
         self.obj_store_mem_freed += total_input_size
         self.obj_store_mem_cur -= total_input_size
+        self.obj_store_mem_inputs -= total_input_size
 
         inputs.destroy_if_owned()
         del self._running_tasks[task_index]

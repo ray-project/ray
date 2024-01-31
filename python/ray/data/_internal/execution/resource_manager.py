@@ -55,6 +55,9 @@ class ResourceManager:
         for op, state in reversed(self._topology.items()):
             # Update `self._op_usages`.
             op_usage = op.current_resource_usage()
+            op_usage.object_store_memory = op._metrics.obj_store_mem_outputs
+            for next_op in op.output_dependencies:
+                op_usage.object_store_memory += next_op._metrics.obj_store_mem_inputs
             # Don't count input refs towards dynamic memory usage, as they have been
             # pre-created already outside this execution.
             if not isinstance(op, InputDataBuffer):
@@ -140,8 +143,7 @@ class ResourceManager:
         return self._op_resource_limiter.get_op_available(op)
 
 
-class OpResourceLimiter(ABCMeta):
-
+class OpResourceLimiter(metaclass=ABCMeta):
     def __init__(self, resource_manager: ResourceManager):
         self._resource_manager = resource_manager
 
@@ -177,12 +179,34 @@ class ReservationOpResourceLimiter(OpResourceLimiter):
             op_reserved_remaining = reserved.subtract(op_usage, non_negative=True)
             op_reserved_exceeded = op_usage.subtract(reserved, non_negative=True)
             self._op_limits[op] = op_reserved_remaining
-            shared = shared.subtract(op_reserved_exceeded)
+            # print("===", op.name, shared, op_reserved_exceeded)
+            shared = shared.subtract(op_reserved_exceeded, non_negative=True)
 
         shared_divided = shared.scale(1.0 / num_ops)
         for op in self._resource_manager._topology:
             self._op_limits[op] = self._op_limits[op].add(shared_divided)
             self._op_limits[op].gpu = None
+
+        return
+        print("global limits", global_limits.object_store_memory_str())
+        print("reserved", reserved.object_store_memory_str())
+        print("shared", shared.object_store_memory_str())
+        print("shared divided", shared_divided.object_store_memory_str())
+        for op in self._op_limits:
+            print(
+                "===",
+                op.name,
+                "limit",
+                self._op_limits[op].object_store_memory_str(),
+                "usage",
+                self._resource_manager.get_op_usage(op).object_store_memory_str(),
+                "internal inqueue",
+                op._metrics.obj_store_mem_inputs,
+                "internal outqueue",
+                op._metrics.obj_store_mem_outputs,
+                "external outqueue",
+                self._resource_manager._topology[op].outqueue_memory_usage(),
+            )
 
     def get_op_available(self, op: PhysicalOperator) -> ExecutionResources:
         return self._op_limits[op]

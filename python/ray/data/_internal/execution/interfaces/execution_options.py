@@ -50,7 +50,7 @@ class ExecutionResources:
             )
         return total
 
-    def subtract(self, other: "ExecutionResources", non_negative=Fales) -> "ExecutionResources":
+    def subtract(self, other: "ExecutionResources", non_negative=False) -> "ExecutionResources":
         """Subtracts execution resources.
 
         Returns:
