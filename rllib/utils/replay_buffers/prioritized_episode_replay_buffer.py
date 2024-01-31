@@ -8,6 +8,7 @@ from typing import Any, Dict, List, Optional, Tuple, Union
 from ray.rllib.env.single_agent_episode import SingleAgentEpisode
 from ray.rllib.execution.segment_tree import MinSegmentTree, SumSegmentTree
 from ray.rllib.policy.sample_batch import SampleBatch
+from ray.rllib.utils import force_list
 from ray.rllib.utils.replay_buffers.episode_replay_buffer import EpisodeReplayBuffer
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.typing import SampleBatchType
@@ -69,15 +70,14 @@ class PrioritizedEpisodeReplayBuffer(EpisodeReplayBuffer):
 
         Args:
             episodes: A list of `SingleAgentEpisode`s that contain the episode data.
-            weight: A starting priority for the samples in `episodes`.
+            weight: A starting priority for the time steps in `episodes`.
         """
 
         # TODO (sven, simon): Eventually allow here an array?
         if weight is None:
             weight = self._max_priority
 
-        if isinstance(episodes, SingleAgentEpisode):
-            episodes = [episodes]
+        episodes = force_list(episodes)
 
         # Add first the timesteps of new episodes to have info about how many
         # episodes should be evicted to stay below capacity.

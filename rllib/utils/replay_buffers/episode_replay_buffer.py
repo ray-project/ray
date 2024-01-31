@@ -8,6 +8,7 @@ from ray.rllib.env.single_agent_episode import SingleAgentEpisode
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.replay_buffers.base import ReplayBufferInterface
 from ray.rllib.utils.typing import SampleBatchType
+from ray.rllib.utils import force_list
 
 
 class EpisodeReplayBuffer(ReplayBufferInterface):
@@ -105,8 +106,7 @@ class EpisodeReplayBuffer(ReplayBufferInterface):
 
         Then adds these episodes to the internal deque.
         """
-        if isinstance(episodes, SingleAgentEpisode):
-            episodes = [episodes]
+        episodes = force_list(episodes)
 
         for eps in episodes:
             # Make sure we don't change what's coming in from the user.
@@ -126,16 +126,14 @@ class EpisodeReplayBuffer(ReplayBufferInterface):
                 eps_idx = self.episode_id_to_index[eps.id_]
                 existing_eps = self.episodes[eps_idx - self._num_episodes_evicted]
                 old_len = len(existing_eps)
-                self._indices.extend(
-                    [(eps_idx, old_len + i, None) for i in range(len(eps))]
-                )
+                self._indices.extend([(eps_idx, old_len + i) for i in range(len(eps))])
                 existing_eps.concat_episode(eps)
             # New episode. Add to end of our episodes deque.
             else:
                 self.episodes.append(eps)
                 eps_idx = len(self.episodes) - 1 + self._num_episodes_evicted
                 self.episode_id_to_index[eps.id_] = eps_idx
-                self._indices.extend([(eps_idx, i, None) for i in range(len(eps))])
+                self._indices.extend([(eps_idx, i) for i in range(len(eps))])
 
             # Eject old records from front of deque (only if we have more than 1 episode
             # in the buffer).

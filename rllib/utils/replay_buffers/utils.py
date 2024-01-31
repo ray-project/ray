@@ -1,6 +1,6 @@
 import logging
 import psutil
-from typing import Optional, Any
+from typing import Any, Optional, TYPE_CHECKING
 
 import numpy as np
 
@@ -20,12 +20,15 @@ from ray.rllib.policy.sample_batch import concat_samples, MultiAgentBatch, Sampl
 from ray.rllib.utils.typing import ResultDict, SampleBatchType, AlgorithmConfigDict
 from ray.util import log_once
 
+if TYPE_CHECKING:
+    from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
+
 logger = logging.getLogger(__name__)
 
 
 def update_priorities_in_episode_replay_buffer(
     replay_buffer: EpisodeReplayBuffer,
-    config: AlgorithmConfigDict,
+    config: "AlgorithmConfig",
     train_batch: SampleBatchType,
     train_results: ResultDict,
 ) -> None:
