@@ -1,14 +1,17 @@
 import asyncio
 import tempfile
+from starlette.responses import StreamingResponse
 
-from ray.util.queue import Queue
-from ray import serve
-from ray.runtime_env import RuntimeEnv
-import ray
 import torch
 from transformers import TextStreamer
 from transformers import AutoTokenizer, AutoModelForCausalLM, AutoConfig
-from starlette.responses import StreamingResponse
+
+import ray
+from ray.util.queue import Queue
+from ray.runtime_env import RuntimeEnv
+
+from ray import serve
+
 import deepspeed
 from optimum.habana.checkpoint_utils import (
     get_ds_injection_policy,
@@ -17,7 +20,7 @@ from optimum.habana.checkpoint_utils import (
 
 # the default port used by torch
 TORCH_DISTRIBUTED_DEFAULT_PORT = 29500
-# habana required variables
+# variables required for habana
 HABANA_ENVS = {
     "PT_HPU_LAZY_ACC_PAR_MODE": "0",
     "PT_HPU_ENABLE_REFINE_DYNAMIC_SHAPES": "0",
@@ -137,14 +140,14 @@ class DeepSpeedInferenceWorker:
             return RayTextIteratorStreamer(self.tokenizer, skip_special_tokens=True)
         else:
 
-            class DummyStreamer:
+            class FakeStreamer:
                 def put(self, value):
                     pass
 
                 def end(self):
                     pass
 
-            return DummyStreamer()
+            return FakeStreamer()
 
 
 # __worker_def_end__
@@ -166,7 +169,7 @@ class LlamaModel:
                     runtime_env=RuntimeEnv(env_vars=worker_env)
                 ).remote(model_id_or_path, world_size, i)
             )
-        # get workers' streamer
+        # get workers' streamers
         self.streamers = ray.get(
             [worker.get_streamer.remote() for worker in self.deepspeed_workers]
         )

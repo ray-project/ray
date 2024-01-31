@@ -2,15 +2,16 @@
 import asyncio
 from queue import Empty
 
-from ray import serve
 import torch
+
+from ray import serve
 
 
 # Define the Ray serve deployment
 @serve.deployment(ray_actor_options={"num_cpus": 10, "resources": {"HPU": 1}})
 class LlamaModel:
     def __init__(self, model_id_or_path):
-        # Prepare and load model to gaudi
+        # Load the model in gaudi
         from optimum.habana.transformers.modeling_utils import (
             adapt_transformers_to_gaudi,
         )
@@ -37,12 +38,14 @@ class LlamaModel:
             use_auth_token="",
         )
         model = model.eval().to(self.device)
+
         # enable hpu graph runtime
         from habana_frameworks.torch.hpu import (
             wrap_in_hpu_graph,
         )  # pylint: disable=E0401
 
         self.model = wrap_in_hpu_graph(model)
+
         # set pad token, etc.
         self.model.generation_config.pad_token_id = 0
         self.model.generation_config.bos_token_id = 1
@@ -58,9 +61,9 @@ class LlamaModel:
         input_tokens = self.tokenizer(prompt, return_tensors="pt", padding=True)
         return input_tokens.input_ids.to(device=self.device)
 
-    # generate the response given input
-    # return after it's all generated
     def generate(self, prompt, **config):
+        """Takes in a prompt and generates a response."""
+
         input_ids = self.tokenize(prompt)
         gen_tokens = self.model.generate(input_ids, **config)
         return self.tokenizer.batch_decode(gen_tokens, skip_special_tokens=True)[0]
@@ -75,7 +78,7 @@ class LlamaModel:
             except Empty:
                 await asyncio.sleep(0.001)
 
-    # generate the repsonse given input in a streaming manner
+    # generate the response given input in a streaming manner
     def streaming_generate(self, prompt, streamer, **config):
         input_ids = self.tokenize(prompt)
         self.model.generate(input_ids, streamer=streamer, **config)
