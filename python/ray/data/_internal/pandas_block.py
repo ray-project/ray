@@ -86,7 +86,7 @@ class PandasRow(TableRow):
         if items is None:
             return None
         elif is_single_item:
-            return items[0]
+            return items.iloc[0]
         else:
             return items
 
