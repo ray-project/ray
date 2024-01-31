@@ -83,6 +83,16 @@ class SingleAgentEnvRunner(EnvRunner):
         # Create the env-to-module connector pipeline.
         self._env_to_module = self.config.build_env_to_module_connector(self.env)
 
+        # Cached env-to-module results taken at the end of a `_sample_timesteps()`
+        # call to make sure the final observation (before an episode cut) gets properly
+        # processed (and maybe postprocessed and re-stored into the episode).
+        # For example, if we had a connector that normalizes observations and directly
+        # re-inserts these new obs back into the episode, the last observation in each
+        # sample call would NOT be processed, which could be very harmful in cases,
+        # in which value function bootstrapping of those (truncation) observations is
+        # required in the learning step.
+        self._cached_to_module = None
+
         # Create our own instance of the (single-agent) `RLModule` (which
         # the needs to be weight-synched) each iteration.
         try:
@@ -220,6 +230,7 @@ class SingleAgentEnvRunner(EnvRunner):
             # Reset the environment.
             # TODO (simon): Check, if we need here the seed from the config.
             obs, infos = self.env.reset()
+            self._cached_to_module = None
 
             # Call `on_episode_start()` callbacks.
             for env_index in range(self.num_envs):
@@ -247,11 +258,12 @@ class SingleAgentEnvRunner(EnvRunner):
                 }
             # Compute an action using the RLModule.
             else:
-                to_module = self._env_to_module(
+                to_module = self._cached_to_module or self._env_to_module(
                     rl_module=self.module,
                     episodes=self._episodes,
                     explore=explore,
                 )
+                self._cached_to_module = None
                 # Explore or not.
                 if explore:
                     to_env = self.module.forward_exploration(to_module)
@@ -277,7 +289,7 @@ class SingleAgentEnvRunner(EnvRunner):
                 #  benchmarking).
                 extra_model_output = tree.map_structure(lambda s: s[env_index], to_env)
 
-                # In inference we have only the action logits.
+                # In inference, we have only the action logits.
                 if terminateds[env_index] or truncateds[env_index]:
                     # Finish the episode with the actual terminal observation stored in
                     # the info dict.
@@ -325,6 +337,15 @@ class SingleAgentEnvRunner(EnvRunner):
 
                     # Make the `on_episode_step` callback.
                     self._make_on_episode_callback("on_episode_step", env_index)
+
+        # Already perform env-to-module connector call for next call to
+        # `_sample_timesteps()`. See comment in c'tor for `self._cached_to_module`.
+        if self.module is not None:
+            self._cached_to_module = self._env_to_module(
+                rl_module=self.module,
+                episodes=self._episodes,
+                explore=explore,
+            )
 
         # Return done episodes ...
         # TODO (simon): Check, how much memory this attribute uses.
