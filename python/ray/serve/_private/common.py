@@ -713,11 +713,3 @@ class TargetCapacityDirection(str, Enum):
 
     UP = "UP"
     DOWN = "DOWN"
-
-
-@dataclass(frozen=True)
-class ReplicaQueueLengthInfo:
-    """XXX. TODO: try dict and benchmark."""
-
-    accepted: bool
-    num_ongoing_requests: int
