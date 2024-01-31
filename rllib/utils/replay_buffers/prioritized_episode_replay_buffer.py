@@ -30,9 +30,9 @@ class PrioritizedEpisodeReplayBuffer(EpisodeReplayBuffer):
         assert alpha > 0
         self._alpha = alpha
 
-        # Initialize segment trees for the priority weights. Note, b/c the trees are
-        # binary we need for them a capacity that is an exponential of 2.
-        # Double it to enable temporary buffer overflow (we need then free nodes in
+        # Initialize segment trees for the priority weights. Note that b/c the trees are
+        # binary, we need a capacity that is an exponential of 2.
+        # Double it to enable temporary buffer overflow (we then always have free nodes in
         # the trees).
         tree_capacity = int(2 ** np.ceil(np.log2(self.capacity)))
 
