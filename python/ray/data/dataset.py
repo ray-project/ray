@@ -59,8 +59,8 @@ from ray.data._internal.logical.operators.write_operator import Write
 from ray.data._internal.logical.optimizers import LogicalPlan
 from ray.data._internal.pandas_block import PandasBlockSchema
 from ray.data._internal.plan import ExecutionPlan
+from ray.data._internal.planner.exchange.sort_task_spec import SortKey
 from ray.data._internal.remote_fn import cached_remote_fn
-from ray.data._internal.sort import SortKey
 from ray.data._internal.split import _get_num_rows, _split_at_indices
 from ray.data._internal.stats import DatasetStats, DatasetStatsSummary, StatsManager
 from ray.data._internal.util import (
@@ -212,7 +212,7 @@ class Dataset:
     def __init__(
         self,
         plan: ExecutionPlan,
-        logical_plan: Optional[LogicalPlan] = None,
+        logical_plan: LogicalPlan,
     ):
         """Construct a Dataset (internal API).
 
@@ -224,8 +224,7 @@ class Dataset:
 
         self._plan = plan
         self._logical_plan = logical_plan
-        if logical_plan is not None:
-            self._plan.link_logical_plan(logical_plan)
+        self._plan.link_logical_plan(logical_plan)
 
         # Handle to currently running executor for this dataset.
         self._current_executor: Optional["Executor"] = None
@@ -349,19 +348,17 @@ class Dataset:
             ray_remote_args["num_gpus"] = num_gpus
 
         plan = self._plan.copy()
-        logical_plan = self._logical_plan
-        if logical_plan is not None:
-            map_op = MapRows(
-                logical_plan.dag,
-                fn,
-                fn_args=fn_args,
-                fn_kwargs=fn_kwargs,
-                fn_constructor_args=fn_constructor_args,
-                fn_constructor_kwargs=fn_constructor_kwargs,
-                compute=compute,
-                ray_remote_args=ray_remote_args,
-            )
-            logical_plan = LogicalPlan(map_op)
+        map_op = MapRows(
+            self._logical_plan.dag,
+            fn,
+            fn_args=fn_args,
+            fn_kwargs=fn_kwargs,
+            fn_constructor_args=fn_constructor_args,
+            fn_constructor_kwargs=fn_constructor_kwargs,
+            compute=compute,
+            ray_remote_args=ray_remote_args,
+        )
+        logical_plan = LogicalPlan(map_op)
         return Dataset(plan, logical_plan)
 
     def _set_name(self, name: Optional[str]):
@@ -569,12 +566,12 @@ class Dataset:
         if batch_format == "native":
             logger.warning("The 'native' batch format has been renamed 'default'.")
 
-        min_rows_per_block = None
+        min_rows_per_bundled_input = None
         if batch_size is not None and batch_size != "default":
             if batch_size < 1:
                 raise ValueError("Batch size cannot be negative or 0")
             # Enable blocks bundling when batch_size is specified by caller.
-            min_rows_per_block = batch_size
+            min_rows_per_bundled_input = batch_size
 
         batch_size = _apply_strict_mode_batch_size(
             batch_size, use_gpu="num_gpus" in ray_remote_args
@@ -587,25 +584,21 @@ class Dataset:
             )
 
         plan = self._plan.copy()
-
-        logical_plan = self._logical_plan
-        if logical_plan is not None:
-            map_batches_op = MapBatches(
-                logical_plan.dag,
-                fn,
-                batch_size=batch_size,
-                batch_format=batch_format,
-                zero_copy_batch=zero_copy_batch,
-                min_rows_per_block=min_rows_per_block,
-                fn_args=fn_args,
-                fn_kwargs=fn_kwargs,
-                fn_constructor_args=fn_constructor_args,
-                fn_constructor_kwargs=fn_constructor_kwargs,
-                compute=compute,
-                ray_remote_args=ray_remote_args,
-            )
-            logical_plan = LogicalPlan(map_batches_op)
-
+        map_batches_op = MapBatches(
+            self._logical_plan.dag,
+            fn,
+            batch_size=batch_size,
+            batch_format=batch_format,
+            zero_copy_batch=zero_copy_batch,
+            min_rows_per_bundled_input=min_rows_per_bundled_input,
+            fn_args=fn_args,
+            fn_kwargs=fn_kwargs,
+            fn_constructor_args=fn_constructor_args,
+            fn_constructor_kwargs=fn_constructor_kwargs,
+            compute=compute,
+            ray_remote_args=ray_remote_args,
+        )
+        logical_plan = LogicalPlan(map_batches_op)
         return Dataset(plan, logical_plan)
 
     def add_column(
@@ -897,20 +890,17 @@ class Dataset:
             ray_remote_args["num_gpus"] = num_gpus
 
         plan = self._plan.copy()
-
-        logical_plan = self._logical_plan
-        if logical_plan is not None:
-            op = FlatMap(
-                input_op=logical_plan.dag,
-                fn=fn,
-                fn_args=fn_args,
-                fn_kwargs=fn_kwargs,
-                fn_constructor_args=fn_constructor_args,
-                fn_constructor_kwargs=fn_constructor_kwargs,
-                compute=compute,
-                ray_remote_args=ray_remote_args,
-            )
-            logical_plan = LogicalPlan(op)
+        op = FlatMap(
+            input_op=self._logical_plan.dag,
+            fn=fn,
+            fn_args=fn_args,
+            fn_kwargs=fn_kwargs,
+            fn_constructor_args=fn_constructor_args,
+            fn_constructor_kwargs=fn_constructor_kwargs,
+            compute=compute,
+            ray_remote_args=ray_remote_args,
+        )
+        logical_plan = LogicalPlan(op)
         return Dataset(plan, logical_plan)
 
     def filter(
@@ -960,17 +950,13 @@ class Dataset:
         )
 
         plan = self._plan.copy()
-
-        logical_plan = self._logical_plan
-        if logical_plan is not None:
-            op = Filter(
-                input_op=logical_plan.dag,
-                fn=fn,
-                compute=compute,
-                ray_remote_args=ray_remote_args,
-            )
-            logical_plan = LogicalPlan(op)
-
+        op = Filter(
+            input_op=self._logical_plan.dag,
+            fn=fn,
+            compute=compute,
+            ray_remote_args=ray_remote_args,
+        )
+        logical_plan = LogicalPlan(op)
         return Dataset(plan, logical_plan)
 
     @AllToAllAPI
@@ -1022,15 +1008,12 @@ class Dataset:
             The repartitioned :class:`Dataset`.
         """  # noqa: E501
         plan = self._plan.copy()
-
-        logical_plan = self._logical_plan
-        if logical_plan is not None:
-            op = Repartition(
-                logical_plan.dag,
-                num_outputs=num_blocks,
-                shuffle=shuffle,
-            )
-            logical_plan = LogicalPlan(op)
+        op = Repartition(
+            self._logical_plan.dag,
+            num_outputs=num_blocks,
+            shuffle=shuffle,
+        )
+        logical_plan = LogicalPlan(op)
         return Dataset(plan, logical_plan)
 
     @AllToAllAPI
@@ -1075,15 +1058,12 @@ class Dataset:
                 DeprecationWarning,
             )
         plan = self._plan.copy()
-
-        logical_plan = self._logical_plan
-        if logical_plan is not None:
-            op = RandomShuffle(
-                logical_plan.dag,
-                seed=seed,
-                ray_remote_args=ray_remote_args,
-            )
-            logical_plan = LogicalPlan(op)
+        op = RandomShuffle(
+            self._logical_plan.dag,
+            seed=seed,
+            ray_remote_args=ray_remote_args,
+        )
+        logical_plan = LogicalPlan(op)
         return Dataset(plan, logical_plan)
 
     @AllToAllAPI
@@ -1115,14 +1095,11 @@ class Dataset:
         """  # noqa: E501
 
         plan = self._plan.copy()
-
-        logical_plan = self._logical_plan
-        if logical_plan is not None:
-            op = RandomizeBlocks(
-                logical_plan.dag,
-                seed=seed,
-            )
-            logical_plan = LogicalPlan(op)
+        op = RandomizeBlocks(
+            self._logical_plan.dag,
+            seed=seed,
+        )
+        logical_plan = LogicalPlan(op)
         return Dataset(plan, logical_plan)
 
     def random_sample(
@@ -1367,10 +1344,8 @@ class Dataset:
                 block_list = BlockList(
                     b.tolist(), m.tolist(), owned_by_consumer=owned_by_consumer
                 )
-                logical_plan = self._plan._logical_plan
-                if logical_plan is not None:
-                    ref_bundles = _block_list_to_bundles(block_list, owned_by_consumer)
-                    logical_plan = LogicalPlan(InputData(input_data=ref_bundles))
+                ref_bundles = _block_list_to_bundles(block_list, owned_by_consumer)
+                logical_plan = LogicalPlan(InputData(input_data=ref_bundles))
                 split_datasets.append(
                     MaterializedDataset(
                         ExecutionPlan(
@@ -1492,10 +1467,8 @@ class Dataset:
 
         split_datasets = []
         for block_split in per_split_block_lists:
-            logical_plan = self._plan._logical_plan
-            if logical_plan is not None:
-                ref_bundles = _block_list_to_bundles(block_split, owned_by_consumer)
-                logical_plan = LogicalPlan(InputData(input_data=ref_bundles))
+            ref_bundles = _block_list_to_bundles(block_split, owned_by_consumer)
+            logical_plan = LogicalPlan(InputData(input_data=ref_bundles))
             split_datasets.append(
                 MaterializedDataset(
                     ExecutionPlan(
@@ -1573,12 +1546,10 @@ class Dataset:
             split_block_list = BlockList(
                 bs, ms, owned_by_consumer=block_list._owned_by_consumer
             )
-            logical_plan = self._plan._logical_plan
-            if logical_plan is not None:
-                ref_bundles = _block_list_to_bundles(
-                    split_block_list, block_list._owned_by_consumer
-                )
-                logical_plan = LogicalPlan(InputData(input_data=ref_bundles))
+            ref_bundles = _block_list_to_bundles(
+                split_block_list, block_list._owned_by_consumer
+            )
+            logical_plan = LogicalPlan(InputData(input_data=ref_bundles))
 
             splits.append(
                 MaterializedDataset(
@@ -1765,7 +1736,7 @@ class Dataset:
 
         owned_by_consumer = self._plan.execute()._owned_by_consumer
         datasets = [self] + list(other)
-        bls = []
+        bls: List[BlockList] = []
         has_nonlazy = False
         for ds in datasets:
             bl = ds._plan.execute()
@@ -1782,18 +1753,13 @@ class Dataset:
                 else:
                     assert isinstance(bl, BlockList), type(bl)
                     bs, ms = bl._blocks, bl._metadata
-                op_logical_plan = getattr(datasets[idx]._plan, "_logical_plan", None)
-                if isinstance(op_logical_plan, LogicalPlan):
-                    ops_to_union.append(op_logical_plan.dag)
-                else:
-                    ops_to_union.append(None)
+                op_logical_plan = datasets[idx]._plan._logical_plan
+                ops_to_union.append(op_logical_plan.dag)
                 blocks.extend(bs)
                 metadata.extend(ms)
             blocklist = BlockList(blocks, metadata, owned_by_consumer=owned_by_consumer)
 
-            logical_plan = None
-            if all(ops_to_union):
-                logical_plan = LogicalPlan(UnionLogicalOperator(*ops_to_union))
+            logical_plan = LogicalPlan(UnionLogicalOperator(*ops_to_union))
         else:
             tasks: List[ReadTask] = []
             block_partition_refs: List[ObjectRef[BlockPartition]] = []
@@ -1802,10 +1768,10 @@ class Dataset:
             # Gather read task names from input blocks of unioned Datasets,
             # and concat them before passing to resulting LazyBlockList
             read_task_names = []
-            self_read_name = self._plan._in_blocks._read_stage_name or "Read"
+            self_read_name = self._plan._in_blocks._read_op_name or "Read"
             read_task_names.append(self_read_name)
             other_read_names = [
-                o._plan._in_blocks._read_stage_name or "Read" for o in other
+                o._plan._in_blocks._read_op_name or "Read" for o in other
             ]
             read_task_names.extend(other_read_names)
 
@@ -1822,14 +1788,11 @@ class Dataset:
             )
 
             logical_plan = self._logical_plan
-            logical_plans = [
-                getattr(union_ds, "_logical_plan", None) for union_ds in datasets
-            ]
-            if all(logical_plans):
-                op = UnionLogicalOperator(
-                    *[plan.dag for plan in logical_plans],
-                )
-                logical_plan = LogicalPlan(op)
+            logical_plans = [union_ds._plan._logical_plan for union_ds in datasets]
+            op = UnionLogicalOperator(
+                *[plan.dag for plan in logical_plans],
+            )
+            logical_plan = LogicalPlan(op)
 
         stats = DatasetStats(
             metadata={"Union": []},
@@ -2260,14 +2223,11 @@ class Dataset:
         """
         sort_key = SortKey(key, descending, boundaries)
         plan = self._plan.copy()
-
-        logical_plan = self._logical_plan
-        if logical_plan is not None:
-            op = Sort(
-                logical_plan.dag,
-                sort_key=sort_key,
-            )
-            logical_plan = LogicalPlan(op)
+        op = Sort(
+            self._logical_plan.dag,
+            sort_key=sort_key,
+        )
+        logical_plan = LogicalPlan(op)
         return Dataset(plan, logical_plan)
 
     def zip(self, other: "Dataset") -> "Dataset":
@@ -2303,12 +2263,8 @@ class Dataset:
             with duplicate column names disambiguated with suffixes like ``"_1"``.
         """
         plan = self._plan.copy()
-
-        logical_plan = self._logical_plan
-        other_logical_plan = other._logical_plan
-        if logical_plan is not None and other_logical_plan is not None:
-            op = Zip(logical_plan.dag, other_logical_plan.dag)
-            logical_plan = LogicalPlan(op)
+        op = Zip(self._logical_plan.dag, other._logical_plan.dag)
+        logical_plan = LogicalPlan(op)
         return Dataset(plan, logical_plan)
 
     def limit(self, limit: int) -> "Dataset":
@@ -2333,10 +2289,8 @@ class Dataset:
             The truncated dataset.
         """
         plan = self._plan.copy()
-        logical_plan = self._logical_plan
-        if logical_plan is not None:
-            op = Limit(logical_plan.dag, limit=limit)
-            logical_plan = LogicalPlan(op)
+        op = Limit(self._logical_plan.dag, limit=limit)
+        logical_plan = LogicalPlan(op)
         return Dataset(plan, logical_plan)
 
     @ConsumptionAPI
@@ -2716,6 +2670,7 @@ class Dataset:
         filename_provider: Optional[FilenameProvider] = None,
         block_path_provider: Optional[BlockWritePathProvider] = None,
         arrow_parquet_args_fn: Callable[[], Dict[str, Any]] = lambda: {},
+        num_rows_per_file: Optional[int] = None,
         ray_remote_args: Dict[str, Any] = None,
         **arrow_parquet_args,
     ) -> None:
@@ -2771,6 +2726,8 @@ class Dataset:
                 instead of ``arrow_parquet_args`` if any of your write arguments
                 can't pickled, or if you'd like to lazily resolve the write
                 arguments for each dataset block.
+            num_rows_per_file: The target number of rows to write to each file. If
+                ``None``, Ray Data writes a system-chosen number of rows to each file.
             ray_remote_args: Kwargs passed to :meth:`~ray.remote` in the write tasks.
             arrow_parquet_args: Options to pass to
                 `pyarrow.parquet.write_table() <https://arrow.apache.org/docs/python\
@@ -2782,6 +2739,7 @@ class Dataset:
             path,
             arrow_parquet_args_fn=arrow_parquet_args_fn,
             arrow_parquet_args=arrow_parquet_args,
+            num_rows_per_file=num_rows_per_file,
             filesystem=filesystem,
             try_create_dir=try_create_dir,
             open_stream_args=arrow_open_stream_args,
@@ -2802,6 +2760,7 @@ class Dataset:
         filename_provider: Optional[FilenameProvider] = None,
         block_path_provider: Optional[BlockWritePathProvider] = None,
         pandas_json_args_fn: Callable[[], Dict[str, Any]] = lambda: {},
+        num_rows_per_file: Optional[int] = None,
         ray_remote_args: Dict[str, Any] = None,
         **pandas_json_args,
     ) -> None:
@@ -2866,6 +2825,8 @@ class Dataset:
                 instead of ``pandas_json_args`` if any of your write arguments
                 can't be pickled, or if you'd like to lazily resolve the write
                 arguments for each dataset block.
+            num_rows_per_file: The target number of rows to write to each file. If
+                ``None``, Ray Data writes a system-chosen number of rows to each file.
             ray_remote_args: kwargs passed to :meth:`~ray.remote` in the write tasks.
             pandas_json_args: These args are passed to
                 `pandas.DataFrame.to_json() <https://pandas.pydata.org/docs/reference/\
@@ -2878,6 +2839,7 @@ class Dataset:
             path,
             pandas_json_args_fn=pandas_json_args_fn,
             pandas_json_args=pandas_json_args,
+            num_rows_per_file=num_rows_per_file,
             filesystem=filesystem,
             try_create_dir=try_create_dir,
             open_stream_args=arrow_open_stream_args,
@@ -2961,6 +2923,7 @@ class Dataset:
         filename_provider: Optional[FilenameProvider] = None,
         block_path_provider: Optional[BlockWritePathProvider] = None,
         arrow_csv_args_fn: Callable[[], Dict[str, Any]] = lambda: {},
+        num_rows_per_file: Optional[int] = None,
         ray_remote_args: Dict[str, Any] = None,
         **arrow_csv_args,
     ) -> None:
@@ -3024,6 +2987,8 @@ class Dataset:
                 Use this argument instead of ``arrow_csv_args`` if any of your write
                 arguments cannot be pickled, or if you'd like to lazily resolve the
                 write arguments for each dataset block.
+            num_rows_per_file: The target number of rows to write to each file. If
+                ``None``, Ray Data writes a system-chosen number of rows to each file.
             ray_remote_args: kwargs passed to :meth:`~ray.remote` in the write tasks.
             arrow_csv_args: Options to pass to `pyarrow.write.write_csv <https://\
                 arrow.apache.org/docs/python/generated/pyarrow.csv.write_csv.html\
@@ -3034,6 +2999,7 @@ class Dataset:
             path,
             arrow_csv_args_fn=arrow_csv_args_fn,
             arrow_csv_args=arrow_csv_args,
+            num_rows_per_file=num_rows_per_file,
             filesystem=filesystem,
             try_create_dir=try_create_dir,
             open_stream_args=arrow_open_stream_args,
@@ -3054,6 +3020,7 @@ class Dataset:
         arrow_open_stream_args: Optional[Dict[str, Any]] = None,
         filename_provider: Optional[FilenameProvider] = None,
         block_path_provider: Optional[BlockWritePathProvider] = None,
+        num_rows_per_file: Optional[int] = None,
         ray_remote_args: Dict[str, Any] = None,
     ) -> None:
         """Write the :class:`~ray.data.Dataset` to TFRecord files.
@@ -3111,12 +3078,15 @@ class Dataset:
             filename_provider: A :class:`~ray.data.datasource.FilenameProvider`
                 implementation. Use this parameter to customize what your filenames
                 look like.
+            num_rows_per_file: The target number of rows to write to each file. If
+                ``None``, Ray Data writes a system-chosen number of rows to each file.
             ray_remote_args: kwargs passed to :meth:`~ray.remote` in the write tasks.
 
         """
         datasink = _TFRecordDatasink(
             path=path,
             tf_schema=tf_schema,
+            num_rows_per_file=num_rows_per_file,
             filesystem=filesystem,
             try_create_dir=try_create_dir,
             open_stream_args=arrow_open_stream_args,
@@ -3137,6 +3107,7 @@ class Dataset:
         arrow_open_stream_args: Optional[Dict[str, Any]] = None,
         filename_provider: Optional[FilenameProvider] = None,
         block_path_provider: Optional[BlockWritePathProvider] = None,
+        num_rows_per_file: Optional[int] = None,
         ray_remote_args: Dict[str, Any] = None,
         encoder: Optional[Union[bool, str, callable, list]] = True,
     ) -> None:
@@ -3182,12 +3153,15 @@ class Dataset:
                 ``pyarrow.fs.FileSystem.open_output_stream``
             block_path_provider: :class:`~ray.data.datasource.BlockWritePathProvider`
                 implementation to write each dataset block to a custom output path.
+            num_rows_per_file: The target number of rows to write to each file. If
+                ``None``, Ray Data writes a system-chosen number of rows to each file.
             ray_remote_args: Kwargs passed to ``ray.remote`` in the write tasks.
 
         """
         datasink = _WebDatasetDatasink(
             path,
             encoder=encoder,
+            num_rows_per_file=num_rows_per_file,
             filesystem=filesystem,
             try_create_dir=try_create_dir,
             open_stream_args=arrow_open_stream_args,
@@ -3208,6 +3182,7 @@ class Dataset:
         arrow_open_stream_args: Optional[Dict[str, Any]] = None,
         filename_provider: Optional[FilenameProvider] = None,
         block_path_provider: Optional[BlockWritePathProvider] = None,
+        num_rows_per_file: Optional[int] = None,
         ray_remote_args: Dict[str, Any] = None,
     ) -> None:
         """Writes a column of the :class:`~ray.data.Dataset` to .npy files.
@@ -3256,12 +3231,15 @@ class Dataset:
             filename_provider: A :class:`~ray.data.datasource.FilenameProvider`
                 implementation. Use this parameter to customize what your filenames
                 look like.
+            num_rows_per_file: The target number of rows to write to each file. If
+                ``None``, Ray Data writes a system-chosen number of rows to each file.
             ray_remote_args: kwargs passed to :meth:`~ray.remote` in the write tasks.
         """
 
         datasink = _NumpyDatasink(
             path,
             column,
+            num_rows_per_file=num_rows_per_file,
             filesystem=filesystem,
             try_create_dir=try_create_dir,
             open_stream_args=arrow_open_stream_args,
@@ -3501,15 +3479,13 @@ class Dataset:
 
         plan = self._plan.copy()
 
-        logical_plan = self._logical_plan
-        if logical_plan is not None:
-            write_op = Write(
-                logical_plan.dag,
-                datasource,
-                ray_remote_args=ray_remote_args,
-                **write_args,
-            )
-            logical_plan = LogicalPlan(write_op)
+        write_op = Write(
+            self._logical_plan.dag,
+            datasource,
+            ray_remote_args=ray_remote_args,
+            **write_args,
+        )
+        logical_plan = LogicalPlan(write_op)
 
         try:
             import pandas as pd
@@ -3556,15 +3532,12 @@ class Dataset:
             )
 
         plan = self._plan.copy()
-
-        logical_plan = self._logical_plan
-        if logical_plan is not None:
-            write_op = Write(
-                logical_plan.dag,
-                datasink,
-                ray_remote_args=ray_remote_args,
-            )
-            logical_plan = LogicalPlan(write_op)
+        write_op = Write(
+            self._logical_plan.dag,
+            datasink,
+            ray_remote_args=ray_remote_args,
+        )
+        logical_plan = LogicalPlan(write_op)
 
         try:
             import pandas as pd

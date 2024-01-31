@@ -17,7 +17,7 @@ import ray
 from ray.actor import ActorHandle
 from ray.train._internal.utils import get_address_and_port
 from ray.train.constants import DEFAULT_NCCL_SOCKET_IFNAME
-from ray.air._internal.torch_utils import get_device
+from ray.air._internal.torch_utils import get_devices
 
 
 class TorchDistributedWorker(ABC):
@@ -183,9 +183,7 @@ def _shutdown_torch_distributed():
         return
 
     # Clean up cuda memory.
-    devices = get_device()
-    if not isinstance(devices, list):
-        devices = [devices]
+    devices = get_devices()
     for device in devices:
         with torch.cuda.device(device):
             torch.cuda.empty_cache()
