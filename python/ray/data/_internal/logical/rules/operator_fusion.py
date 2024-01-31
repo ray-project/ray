@@ -250,6 +250,8 @@ class OperatorFusionRule(Rule):
     def _get_fused_map_operator(
         self, down_op: MapOperator, up_op: MapOperator
     ) -> MapOperator:
+        from ray.data._internal.logical.operators.map_operator import AbstractMap
+
         assert self._can_fuse(down_op, up_op), (
             "Current rule supports fusing MapOperator->MapOperator, but received: "
             f"{type(up_op).__name__} -> {type(down_op).__name__}"
@@ -262,22 +264,27 @@ class OperatorFusionRule(Rule):
         up_logical_op = self._op_map.pop(up_op)
 
         # Merge minimum block sizes.
-        down_min_rows_per_block = (
-            down_logical_op._min_rows_per_block
-            if isinstance(down_logical_op, AbstractUDFMap)
+        down_min_rows_per_bundled_input = (
+            down_logical_op._min_rows_per_bundled_input
+            if isinstance(down_logical_op, AbstractMap)
             else None
         )
-        up_min_rows_per_block = (
-            up_logical_op._min_rows_per_block
-            if isinstance(up_logical_op, AbstractUDFMap)
+        up_min_rows_per_bundled_input = (
+            up_logical_op._min_rows_per_bundled_input
+            if isinstance(up_logical_op, AbstractMap)
             else None
         )
-        if down_min_rows_per_block is not None and up_min_rows_per_block is not None:
-            min_rows_per_block = max(down_min_rows_per_block, up_min_rows_per_block)
-        elif up_min_rows_per_block is not None:
-            min_rows_per_block = up_min_rows_per_block
+        if (
+            down_min_rows_per_bundled_input is not None
+            and up_min_rows_per_bundled_input is not None
+        ):
+            min_rows_per_bundled_input = max(
+                down_min_rows_per_bundled_input, up_min_rows_per_bundled_input
+            )
+        elif up_min_rows_per_bundled_input is not None:
+            min_rows_per_bundled_input = up_min_rows_per_bundled_input
         else:
-            min_rows_per_block = down_min_rows_per_block
+            min_rows_per_bundled_input = down_min_rows_per_bundled_input
 
         target_max_block_size = self._get_merged_target_max_block_size(
             up_op.target_max_block_size, down_op.target_max_block_size
@@ -301,7 +308,7 @@ class OperatorFusionRule(Rule):
             target_max_block_size=target_max_block_size,
             name=name,
             compute_strategy=compute,
-            min_rows_per_bundle=min_rows_per_block,
+            min_rows_per_bundle=min_rows_per_bundled_input,
             ray_remote_args=ray_remote_args,
         )
 
@@ -322,7 +329,7 @@ class OperatorFusionRule(Rule):
                 down_logical_op._fn_kwargs,
                 down_logical_op._fn_constructor_args,
                 down_logical_op._fn_constructor_kwargs,
-                min_rows_per_block,
+                min_rows_per_bundled_input,
                 compute,
                 ray_remote_args,
             )
@@ -333,6 +340,7 @@ class OperatorFusionRule(Rule):
             logical_op = AbstractMap(
                 name,
                 input_op,
+                min_rows_per_bundled_input=min_rows_per_bundled_input,
                 ray_remote_args=ray_remote_args,
             )
         self._op_map[op] = logical_op

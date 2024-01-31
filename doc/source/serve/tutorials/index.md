@@ -1,13 +1,12 @@
 (serve-examples)=
-# Examples
 
-Below is a list of tutorials that you can use to learn more about the different pieces of
-Ray Serve functionality and how to integrate different modeling frameworks.
+# Ray Serve Examples
 
 ```{toctree}
-:caption: Serve Examples
+:caption: Ray Serve Examples
 :maxdepth: '-1'
 :name: serve-tutorials
+:hidden:
 
 serve-ml-models
 stable-diffusion
@@ -18,4 +17,34 @@ gradio-integration
 batch
 streaming
 java
+triton-server-integration
+```
+
+Below are tutorials for exploring Ray Serve capabilities and learning how to integrate different modeling frameworks.
+
+Beginner
+--------
+
+```{list-table}
+  * - [Serve ML Models](serve-ml-models)
+  * - [Serve a Stable Diffusion Model](stable-diffusion)
+  * - [Serve a Text Classification Model](text-classification)
+  * - [Serve an Object Detection Model](object-detection)
+```
+
+Intermediate
+------------
+
+```{list-table}
+  * - [Serve an Inference Model on AWS NeuronCores Using FastAPI](aws-neuron-core-inference)
+  * - [Scale a Gradio App with Ray Serve](gradio-integration)
+  * - [Serve a Text Generator with Request Batching](batch.md)
+  * - [Serve a Chatbot with Request and Response Streaming](streaming)
+```
+
+Advanced
+--------
+
+```{list-table}
+  * - [Serve a Java App](java)
 ```

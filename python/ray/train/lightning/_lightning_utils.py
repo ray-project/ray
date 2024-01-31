@@ -51,15 +51,6 @@ logger = logging.getLogger(__name__)
 LIGHTNING_REPORT_STAGE_KEY = "_report_on"
 
 
-def get_worker_root_device():
-    """Get the first torch device of the current worker if there are multiple."""
-    devices = ray.train.torch.get_device()
-    if isinstance(devices, list):
-        return devices[0]
-    else:
-        return devices
-
-
 @PublicAPI(stability="beta")
 class RayDDPStrategy(pl.strategies.DDPStrategy):
     """Subclass of DDPStrategy to ensure compatibility with Ray orchestration.
@@ -77,7 +68,7 @@ class RayDDPStrategy(pl.strategies.DDPStrategy):
 
     @property
     def root_device(self) -> torch.device:
-        return get_worker_root_device()
+        return ray.train.torch.get_device()
 
     @property
     def distributed_sampler_kwargs(self) -> Dict[str, Any]:
@@ -101,7 +92,7 @@ class RayFSDPStrategy(FSDPStrategy):  # noqa: F821
 
     @property
     def root_device(self) -> torch.device:
-        return get_worker_root_device()
+        return ray.train.torch.get_device()
 
     @property
     def distributed_sampler_kwargs(self) -> Dict[str, Any]:
@@ -144,7 +135,7 @@ class RayDeepSpeedStrategy(pl.strategies.DeepSpeedStrategy):
 
     @property
     def root_device(self) -> torch.device:
-        return get_worker_root_device()
+        return ray.train.torch.get_device()
 
     @property
     def distributed_sampler_kwargs(self) -> Dict[str, Any]:

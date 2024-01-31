@@ -1,5 +1,7 @@
 import logging
 from collections import Counter
+from contextlib import contextmanager
+from contextvars import ContextVar
 from dataclasses import dataclass, field
 from enum import Enum
 from typing import Any, Dict, List, Optional, Set, Union
@@ -30,6 +32,25 @@ from ray.serve._private.deployment_info import DeploymentInfo
 from ray.serve._private.utils import DEFAULT
 from ray.serve.config import ProxyLocation
 from ray.util.annotations import PublicAPI
+
+# Allows selectively toggling validation of runtime_env URIs.
+# This is used by the `serve publish` CLI command to pass through local URIs to
+# publish providers.
+VALIDATE_RUNTIME_ENV_URIS = ContextVar("VALIDATE_RUNTIME_ENV_URIS", default=True)
+
+
+@contextmanager
+def _skip_validating_runtime_env_uris():
+    """Temporarily disable validation of runtime_env URIs across all schema models.
+
+    This uses a contextvar.ContextVar so has the same asyncio and threading properties.
+    """
+    try:
+        VALIDATE_RUNTIME_ENV_URIS.set(False)
+        yield
+    finally:
+        VALIDATE_RUNTIME_ENV_URIS.set(True)
+
 
 # Shared amongst multiple schemas.
 TARGET_CAPACITY_FIELD = Field(
@@ -242,6 +263,9 @@ class RayActorOptionsSchema(BaseModel):
 
         if v is None:
             return
+
+        if not VALIDATE_RUNTIME_ENV_URIS.get():
+            return v
 
         uris = v.get("py_modules", [])
         if "working_dir" in v and v["working_dir"] not in uris:
@@ -520,10 +544,12 @@ class ServeApplicationSchema(BaseModel):
 
     @validator("runtime_env")
     def runtime_env_contains_remote_uris(cls, v):
-        # Ensure that all uris in py_modules and working_dir are remote
-
+        # Ensure that all uris in py_modules and working_dir are remote.
         if v is None:
             return
+
+        if not VALIDATE_RUNTIME_ENV_URIS.get():
+            return v
 
         uris = v.get("py_modules", [])
         if "working_dir" in v and v["working_dir"] not in uris:
