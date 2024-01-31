@@ -13,7 +13,7 @@ from ray.rllib.core.learner.learner import POLICY_LOSS_KEY, VF_LOSS_KEY, ENTROPY
 from ray.rllib.core.learner.torch.torch_learner import TorchLearner
 from ray.rllib.core.models.base import ENCODER_OUT, CRITIC
 from ray.rllib.evaluation.postprocessing import Postprocessing
-from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID, SampleBatch
+from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.framework import try_import_torch
 from ray.rllib.utils.nested_dict import NestedDict
@@ -175,9 +175,9 @@ class PPOTorchLearner(PPOLearner, TorchLearner):
             batch = convert_to_torch_tensor(sa_batch, device=self._device)
             if infos is not None:
                 sa_batch[SampleBatch.INFOS] = infos
-    
+
             module = self.module[module_id].unwrapped()
-    
+
             # Shared encoder.
             encoder_outs = module.encoder(batch)
             # Value head.

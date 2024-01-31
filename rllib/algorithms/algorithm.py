@@ -37,6 +37,7 @@ import ray.cloudpickle as pickle
 from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
 from ray.rllib.algorithms.registry import ALGORITHMS_CLASS_TO_NAME as ALL_ALGORITHMS
 from ray.rllib.connectors.agent.obs_preproc import ObsPreprocessorConnector
+from ray.rllib.core.rl_module.marl_module import MultiAgentRLModuleSpec
 from ray.rllib.core.rl_module.rl_module import SingleAgentRLModuleSpec
 from ray.rllib.env.env_context import EnvContext
 from ray.rllib.env.env_runner import EnvRunner
@@ -726,16 +727,12 @@ class Algorithm(Trainable, AlgorithmBase):
             #  way. For other EnvRunner classes (that don't have this property),
             #  Algorithm should infer this itself.
             if hasattr(local_worker, "marl_module_spec"):
-                module_spec = local_worker.marl_module_spec
+                module_spec: MultiAgentRLModuleSpec = local_worker.marl_module_spec
             else:
                 policy_dict, _ = self.config.get_multi_agent_setup(env=local_worker.env)
                 module_spec: MultiAgentRLModuleSpec = self.config.get_marl_module_spec(
                     policy_dict=policy_dict
                 )
-                #module_spec = self.config.get_marl_module_spec(
-                #    env=local_worker.env,
-                #    spaces=getattr(local_worker, "spaces", None),
-                #)
             self.learner_group = self.config.build_learner_group(
                 rl_module_spec=module_spec,
             )

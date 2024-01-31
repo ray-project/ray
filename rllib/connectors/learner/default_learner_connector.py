@@ -65,7 +65,7 @@ class DefaultLearnerConnector(ConnectorV2):
             #  connector pieces before this (default) one here.
             #  Probably the only solution here would be to introduce the connector
             #  input/output types.
-            #assert not data
+            # assert not data
             module_to_episodes = defaultdict(list)
             for ma_episode in episodes:
                 for agent_id, sa_episode in ma_episode.agent_episodes.items():

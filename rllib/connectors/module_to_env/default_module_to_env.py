@@ -7,7 +7,7 @@ from ray.rllib.connectors.connector_v2 import ConnectorV2
 from ray.rllib.core.models.base import STATE_OUT
 from ray.rllib.core.rl_module.rl_module import RLModule
 from ray.rllib.env.multi_agent_episode import MultiAgentEpisode
-from ray.rllib.policy.sample_batch import SampleBatch
+from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID, SampleBatch
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.numpy import convert_to_numpy
 from ray.rllib.utils.spaces.space_utils import (
@@ -163,9 +163,10 @@ class DefaultModuleToEnv(ConnectorV2):
             else:
                 if action_dist is None:
                     raise KeyError(
-                        "Your RLModule's `forward_[exploration|inference]()` methods must "
-                        f"return a dict with either the '{SampleBatch.ACTIONS}' key or "
-                        f"the '{SampleBatch.ACTION_DIST_INPUTS}' key in it (or both)!"
+                        "Your RLModule's `forward_[exploration|inference]()` methods "
+                        f"must return a dict with either the '{SampleBatch.ACTIONS}' "
+                        f"key or the '{SampleBatch.ACTION_DIST_INPUTS}' key in it "
+                        "(or both)!"
                     )
                 actions = module_data[SampleBatch.ACTIONS] = action_dist.sample()
 

@@ -1,9 +1,8 @@
 import gymnasium as gym
-import tree
 
 from collections import defaultdict
 from functools import partial
-from typing import DefaultDict, Dict, List, Optional, Union
+from typing import DefaultDict, Dict, List, Optional
 
 from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
 from ray.rllib.algorithms.callbacks import DefaultCallbacks
@@ -85,10 +84,6 @@ class MultiAgentEnvRunner(EnvRunner):
 
         # Create the env-to-module connector pipeline.
         self._env_to_module = self.config.build_env_to_module_connector(self.env)
-
-        ## TODO (simon): An env runner needs not to know about what agents are there.
-        ## We can pull these when needed from the environment or the episode.
-        # self.agent_ids: List[Union[str, int]] = self.env.get_agent_ids()
 
         self._make_module()
 
@@ -605,40 +600,6 @@ class MultiAgentEnvRunner(EnvRunner):
             ma_rlm_spec: MultiAgentRLModuleSpec = self.config.get_marl_module_spec(
                 policy_dict=policy_dict
             )
-            ## Env has proper Dict observation space.
-            #if getattr(self.env.unwrapped, "_obs_space_in_preferred_format", False):
-            #    for agent_id, obs_space in self.env.observation_space.items():
-            #        module_id = self.config.policy_mapping_fn(
-            #            agent_id, episode=None, worker=self
-            #        )
-            #        ma_rlm_spec.module_specs[module_id].observation_space = obs_space
-            ## Env uses same spaces for all agents.
-            #else:
-            #    for module_id, sa_module_spec in ma_rlm_spec.module_specs.items():
-            #        sa_module_spec.observation_space = self.env.observation_space
-            ## Env has proper Dict action space.
-            #if getattr(self.env.unwrapped, "_action_space_in_preferred_format", False):
-            #    for agent_id, act_space in self.env.action_space.items():
-            #        module_id = self.config.policy_mapping_fn(
-            #            agent_id, episode=None, worker=self
-            #        )
-            #        ma_rlm_spec.module_specs[module_id].action_space = act_space
-            ## Env uses same spaces for all agents.
-            #else:
-            #    for module_id, sa_module_spec in ma_rlm_spec.module_specs.items():
-            #        sa_module_spec.action_space = self.env.action_space
-
-            #for module_id, sa_module_spec in ma_rlm_spec.module_specs.items():
-            #    if ma_rlm_spec.module_specs[module_id].observation_space is None:
-            #        raise ValueError(
-            #            f"Cannot infer observation space for module {module_id}! "
-            #            "Space not found in policy dict."
-            #        )
-            #    elif ma_rlm_spec.module_specs[module_id].action_space is None:
-            #        raise ValueError(
-            #            f"Cannot infer action space for module {module_id}! "
-            #            "Space not found in policy dict."
-            #        )
 
             # Build the module from its spec.
             self.module: MultiAgentRLModule = ma_rlm_spec.build()

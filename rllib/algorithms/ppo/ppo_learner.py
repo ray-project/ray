@@ -66,29 +66,23 @@ class PPOLearner(Learner):
                 "`PPOLearner._preprocess_train_data()` must have the `episodes` arg "
                 "to work with! Otherwise, GAE/advantage computation can't be performed."
             )
+        batch = batch or {}
 
         if isinstance(episodes[0], MultiAgentEpisode):
-            sa_episodes_list = [sa_eps for ma_eps in episodes for sa_eps in ma_eps.agent_episodes.values()]
-            #module_id_to_episodes = defaultdict(list)
-            #for ma_eps in episodes:
-            #    for agent_id, sa_eps in ma_eps.agent_episodes.items():
-            #        module_id_to_episodes[
-            #            ma_eps.agent_to_module_map[agent_id]
-            #        ].append(sa_eps)
-            #module_id_to_episodes = dict(module_id_to_episodes)
+            sa_episodes_list = [
+                sa_eps
+                for ma_eps in episodes
+                for sa_eps in ma_eps.agent_episodes.values()
+            ]
         else:
             sa_episodes_list = episodes
-            #module_id_to_episodes = {DEFAULT_POLICY_ID: episodes}
+
+        # Make all episodes one ts longer in order to just have a single batch
+        # (and distributed forward pass) for both vf predictions AND the bootstrap
+        # vf computations.
         orig_truncateds_of_sa_episodes = add_one_ts_to_episodes_and_truncate(
             sa_episodes_list
         )
-
-        batch = batch or {}
-
-        #for module_id, episodes_list in module_id_to_episodes.items():
-            # Make all episodes one ts longer in order to just have a single batch
-            # (and distributed forward pass) for both vf predictions AND the bootstrap
-            # vf computations.
 
         # Call the learner connector (on the artificially elongated episodes)
         # in order to get the batch to pass through the module for vf (and
@@ -109,11 +103,11 @@ class PPOLearner(Learner):
                 for agent_id, sa_eps in ma_eps.agent_episodes.items()
                 if ma_eps.agent_to_module_map[agent_id] == module_id
             ]
-            #episode_lens_plus_1 = [len(e) for e in episodes]
-
             # Remove all zero-padding again, if applicable for the upcoming
             # GAE computations.
-            module_vf_preds = unpad_data_if_necessary(episode_lens_plus_1, module_vf_preds)
+            module_vf_preds = unpad_data_if_necessary(
+                episode_lens_plus_1, module_vf_preds
+            )
             # Compute value targets.
             module_value_targets = compute_value_targets(
                 values=module_vf_preds,
@@ -121,7 +115,8 @@ class PPOLearner(Learner):
                     episode_lens_plus_1, batch_for_vf[module_id][SampleBatch.REWARDS]
                 ),
                 terminateds=unpad_data_if_necessary(
-                    episode_lens_plus_1, batch_for_vf[module_id][SampleBatch.TERMINATEDS]
+                    episode_lens_plus_1,
+                    batch_for_vf[module_id][SampleBatch.TERMINATEDS],
                 ),
                 truncateds=unpad_data_if_necessary(
                     episode_lens_plus_1, batch_for_vf[module_id][SampleBatch.TRUNCATEDS]
@@ -131,8 +126,8 @@ class PPOLearner(Learner):
             )
 
             # Remove the extra timesteps again from vf_preds and value targets. Now that
-            # the GAE computation is done, we don't need this last timestep anymore in any
-            # of our data.
+            # the GAE computation is done, we don't need this last timestep anymore in
+            # any of our data.
             (
                 batch[module_id][SampleBatch.VF_PREDS],
                 batch[module_id][Postprocessing.VALUE_TARGETS],
@@ -141,12 +136,15 @@ class PPOLearner(Learner):
                 module_vf_preds,
                 module_value_targets,
             )
-            module_advantages = batch[module_id][Postprocessing.VALUE_TARGETS] - batch[module_id][SampleBatch.VF_PREDS]
+            module_advantages = (
+                batch[module_id][Postprocessing.VALUE_TARGETS]
+                - batch[module_id][SampleBatch.VF_PREDS]
+            )
             # Standardize advantages (used for more stable and better weighted
             # policy gradient computations).
-            batch[module_id][Postprocessing.ADVANTAGES] = (module_advantages - module_advantages.mean()) / max(
-                1e-4, module_advantages.std()
-            )
+            batch[module_id][Postprocessing.ADVANTAGES] = (
+                module_advantages - module_advantages.mean()
+            ) / max(1e-4, module_advantages.std())
 
         # Remove the extra (artificial) timesteps again at the end of all episodes.
         remove_last_ts_from_episodes_and_restore_truncateds(
