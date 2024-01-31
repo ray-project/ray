@@ -27,12 +27,12 @@
 #include "ray/gcs/gcs_server/gcs_resource_manager.h"
 #include "ray/gcs/gcs_server/gcs_table_storage.h"
 #include "ray/gcs/pubsub/gcs_pub_sub.h"
+#include "ray/raylet/scheduling/cluster_resource_scheduler.h"
 #include "ray/rpc/client_call.h"
 #include "ray/rpc/gcs_server/gcs_rpc_server.h"
 #include "ray/rpc/node_manager/node_manager_client.h"
 #include "ray/rpc/node_manager/node_manager_client_pool.h"
 #include "src/ray/protobuf/gcs.pb.h"
-#include "ray/raylet/scheduling/cluster_resource_scheduler.h"
 
 namespace ray {
 class GcsMonitorServerTest;

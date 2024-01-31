@@ -156,19 +156,22 @@ void GcsNodeManager::HandleGetAllNodeInfo(rpc::GetAllNodeInfoRequest request,
   // The request will be sent when call send_reply_callback and after that, reply will
   // not be used any more. But entry is still valid.
   for (const auto &entry : alive_nodes_) {
-    for (const auto & [vnode_id, vnode]: cluster_resource_scheduler_->GetClusterResourceManager().GetResourceView()) {
+    for (const auto &[vnode_id, vnode] :
+         cluster_resource_scheduler_->GetClusterResourceManager().GetResourceView()) {
       if (!vnode.GetLocalView().labels.contains(kLabelKeyRayletID)) {
         continue;
       }
       if (vnode.GetLocalView().labels.at(kLabelKeyRayletID) == entry.first.Hex()) {
-        auto copy = *entry.second;
-        copy.set_node_id(vnode_id.Binary());
-        copy.clear_labels();
-        copy.mutable_labels()->insert(vnode.GetLocalView().labels.begin(), vnode.GetLocalView().labels.end());
-        copy.clear_resources_total();
-        copy.mutable_resources_total()->insert(vnode.GetLocalView().total.GetResourceMap().begin(),
-          vnode.GetLocalView().total.GetResourceMap().end());
-        *reply->add_node_info_list() = copy;
+        auto *node_info = reply->add_node_info_list();
+        *node_info = *entry.second;
+        node_info->set_node_id(vnode_id.Binary());
+        node_info->clear_labels();
+        node_info->mutable_labels()->insert(vnode.GetLocalView().labels.begin(),
+                                            vnode.GetLocalView().labels.end());
+        node_info->clear_resources_total();
+        node_info->mutable_resources_total()->insert(
+            vnode.GetLocalView().total.GetResourceMap().begin(),
+            vnode.GetLocalView().total.GetResourceMap().end());
       }
     }
   }
