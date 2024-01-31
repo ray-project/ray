@@ -26,7 +26,7 @@ from ray._private.utils import load_class
 from ray.actor import ActorHandle
 from ray.dag.py_obj_scanner import _PyObjScanner
 from ray.exceptions import RayActorError
-from ray.serve._private.common import DeploymentID, RequestProtocol, RunningReplicaInfo
+from ray.serve._private.common import DeploymentID, RequestMetadata, RunningReplicaInfo
 from ray.serve._private.constants import (
     HANDLE_METRIC_PUSH_INTERVAL_S,
     RAY_SERVE_MAX_QUEUE_LENGTH_RESPONSE_DEADLINE_S,
@@ -39,7 +39,6 @@ from ray.serve._private.long_poll import LongPollClient, LongPollNamespace
 from ray.serve._private.metrics_utils import MetricsPusher
 from ray.serve._private.utils import JavaActorHandleProxy
 from ray.serve.generated.serve_pb2 import RequestMetadata as RequestMetadataProto
-from ray.serve.grpc_util import RayServegRPCContext
 from ray.util import metrics
 
 logger = logging.getLogger(SERVE_LOGGER_NAME)
@@ -47,101 +46,10 @@ PUSH_METRICS_TO_CONTROLLER_TASK_NAME = "push_metrics_to_controller"
 
 
 @dataclass
-class RequestMetadata:
-    request_id: str
-    endpoint: str
-    call_method: str = "__call__"
-
-    # HTTP route path of the request.
-    route: str = ""
-
-    # Application name.
-    app_name: str = ""
-
-    # Multiplexed model ID.
-    multiplexed_model_id: str = ""
-
-    # If this request expects a streaming response.
-    is_streaming: bool = False
-
-    # The protocol to serve this request
-    _request_protocol: RequestProtocol = RequestProtocol.UNDEFINED
-
-    # Serve's gRPC context associated with this request for getting and setting metadata
-    grpc_context: Optional[RayServegRPCContext] = None
-
-    @property
-    def is_http_request(self) -> bool:
-        return self._request_protocol == RequestProtocol.HTTP
-
-    @property
-    def is_grpc_request(self) -> bool:
-        return self._request_protocol == RequestProtocol.GRPC
-
-
-@dataclass
 class Query:
     args: List[Any]
     kwargs: Dict[Any, Any]
     metadata: RequestMetadata
-
-    async def replace_known_types_in_args(self):
-        """Uses the `_PyObjScanner` to find and replace known types.
-
-        1) Replaces `asyncio.Task` objects with their results. This is used for the old
-           serve handle API and should be removed once that API is deprecated & removed.
-        2) Replaces `DeploymentResponse` objects with their resolved object refs. This
-           enables composition without explicitly calling `_to_object_ref`.
-        """
-        from ray.serve.handle import (
-            DeploymentResponse,
-            DeploymentResponseGenerator,
-            _DeploymentResponseBase,
-        )
-
-        scanner = _PyObjScanner(source_type=(asyncio.Task, _DeploymentResponseBase))
-
-        try:
-            tasks = []
-            responses = []
-            replacement_table = {}
-            objs = scanner.find_nodes((self.args, self.kwargs))
-            for obj in objs:
-                if isinstance(obj, asyncio.Task):
-                    tasks.append(obj)
-                elif isinstance(obj, DeploymentResponseGenerator):
-                    raise RuntimeError(
-                        "Streaming deployment handle results cannot be passed to "
-                        "downstream handle calls. If you have a use case requiring "
-                        "this feature, please file a feature request on GitHub."
-                    )
-                elif isinstance(obj, DeploymentResponse):
-                    responses.append(obj)
-
-            for task in tasks:
-                # NOTE(edoakes): this is a hack to enable the legacy behavior of passing
-                # `asyncio.Task` objects directly to downstream handle calls without
-                # `await`. Because the router now runs on a separate loop, the
-                # `asyncio.Task` can't directly be awaited here. So we use the
-                # thread-safe `concurrent.futures.Future` instead.
-                # This can be removed when `RayServeHandle` is fully deprecated.
-                if hasattr(task, "_ray_serve_object_ref_future"):
-                    future = task._ray_serve_object_ref_future
-                    replacement_table[task] = await asyncio.wrap_future(future)
-                else:
-                    replacement_table[task] = task
-
-            # Gather `DeploymentResponse` object refs concurrently.
-            if len(responses) > 0:
-                obj_refs = await asyncio.gather(
-                    *[r._to_object_ref() for r in responses]
-                )
-                replacement_table.update((zip(responses, obj_refs)))
-
-            self.args, self.kwargs = scanner.replace_nodes(replacement_table)
-        finally:
-            # Make the scanner GC-able to avoid memory leaks.
-            scanner.clear()
 
 
 class ReplicaWrapper(ABC):
@@ -1037,6 +945,66 @@ class Router:
     def _collect_handle_queue_metrics(self) -> Dict[str, int]:
         return (self.deployment_id, self.handle_id), self.num_queued_queries
 
+    async def _replace_known_types_in_args(
+        self, request_args: Tuple[Any], request_kwargs: Dict[str, Any]
+    ) -> Tuple[Tuple[Any], Dict[str, Any]]:
+        """Uses the `_PyObjScanner` to find and replace known types.
+
+        1) Replaces `asyncio.Task` objects with their results. This is used for the old
+           serve handle API and should be removed once that API is deprecated & removed.
+        2) Replaces `DeploymentResponse` objects with their resolved object refs. This
+           enables composition without explicitly calling `_to_object_ref`.
+        """
+        from ray.serve.handle import (
+            DeploymentResponse,
+            DeploymentResponseGenerator,
+            _DeploymentResponseBase,
+        )
+
+        scanner = _PyObjScanner(source_type=(asyncio.Task, _DeploymentResponseBase))
+
+        try:
+            tasks = []
+            responses = []
+            replacement_table = {}
+            objs = scanner.find_nodes((request_args, request_kwargs))
+            for obj in objs:
+                if isinstance(obj, asyncio.Task):
+                    tasks.append(obj)
+                elif isinstance(obj, DeploymentResponseGenerator):
+                    raise RuntimeError(
+                        "Streaming deployment handle results cannot be passed to "
+                        "downstream handle calls. If you have a use case requiring "
+                        "this feature, please file a feature request on GitHub."
+                    )
+                elif isinstance(obj, DeploymentResponse):
+                    responses.append(obj)
+
+            for task in tasks:
+                # NOTE(edoakes): this is a hack to enable the legacy behavior of passing
+                # `asyncio.Task` objects directly to downstream handle calls without
+                # `await`. Because the router now runs on a separate loop, the
+                # `asyncio.Task` can't directly be awaited here. So we use the
+                # thread-safe `concurrent.futures.Future` instead.
+                # This can be removed when `RayServeHandle` is fully deprecated.
+                if hasattr(task, "_ray_serve_object_ref_future"):
+                    future = task._ray_serve_object_ref_future
+                    replacement_table[task] = await asyncio.wrap_future(future)
+                else:
+                    replacement_table[task] = task
+
+            # Gather `DeploymentResponse` object refs concurrently.
+            if len(responses) > 0:
+                obj_refs = await asyncio.gather(
+                    *[r._to_object_ref() for r in responses]
+                )
+                replacement_table.update((zip(responses, obj_refs)))
+
+            return scanner.replace_nodes(replacement_table)
+        finally:
+            # Make the scanner GC-able to avoid memory leaks.
+            scanner.clear()
+
     async def assign_request(
         self,
         request_meta: RequestMetadata,
@@ -1066,12 +1034,14 @@ class Router:
             )
 
         try:
+            request_args, request_kwargs = await self._replace_known_types_in_args(
+                request_args, request_kwargs
+            )
             query = Query(
                 args=list(request_args),
                 kwargs=request_kwargs,
                 metadata=request_meta,
             )
-            await query.replace_known_types_in_args()
             return await self._replica_scheduler.assign_replica(query)
         finally:
             # If the query is disconnected before assignment, this coroutine
