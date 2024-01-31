@@ -556,6 +556,12 @@ def test_json_log_formatter(is_replica_type_component):
         expected_json["deployment"] = "component"
         expected_json["replica"] = "component_id"
 
+    # Ensure message exists in the output.
+    # Note that there is no "message" key in the record dict until it has been
+    # formatted. This check should go before other fields are set and checked.
+    expected_json["message"] = "my_path:1 - my_message"
+    format_and_verify_json_output(record, expected_json)
+
     # Set request id
     record.request_id = "request_id"
     expected_json["request_id"] = "request_id"

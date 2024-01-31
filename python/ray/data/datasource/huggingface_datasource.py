@@ -4,6 +4,7 @@ from typing import TYPE_CHECKING, Iterable, List, Optional, Union
 from ray.data._internal.dataset_logger import DatasetLogger
 from ray.data._internal.util import _check_pyarrow_version
 from ray.data.block import Block, BlockAccessor, BlockMetadata
+from ray.data.dataset import Dataset
 from ray.data.datasource import Datasource, ReadTask
 from ray.util.annotations import DeveloperAPI
 
@@ -70,6 +71,53 @@ class HuggingFaceDatasource(Datasource):
 
         self._dataset = dataset
         self._batch_size = batch_size
+
+    @classmethod
+    def list_parquet_urls_from_dataset(
+        cls, dataset: Union["datasets.Dataset", "datasets.IterableDataset"]
+    ) -> Dataset:
+        """Return list of Hugging Face hosted parquet file URLs if they
+        exist for the data (i.e. if the dataset is a public dataset that
+        has not been transformed) else return an empty list."""
+        import datasets
+
+        # We can use the dataset name, config name, and split name to load
+        # public hugging face datasets from the Hugging Face Hub. More info
+        # here: https://huggingface.co/docs/datasets-server/parquet
+        dataset_name = dataset.info.dataset_name
+        config_name = dataset.info.config_name
+        split_name = str(dataset.split)
+
+        # If a dataset is not an iterable dataset, we will check if the
+        # dataset with the matching dataset name, config name, and split name
+        # on the Hugging Face Hub has the same fingerprint as the
+        # dataset passed into this function. If it is not matching, transforms
+        # or other operations have been performed so we cannot use the parquet
+        # files on the Hugging Face Hub, so we return an empty list.
+        if not isinstance(dataset, datasets.IterableDataset):
+            from datasets import load_dataset
+
+            try:
+                ds = load_dataset(dataset_name, config_name, split=split_name)
+                if ds._fingerprint != dataset._fingerprint:
+                    return []
+            except Exception:
+                # If an exception is thrown when trying to reload the dataset
+                # we should exit gracefully by returning an empty list.
+                return []
+
+        import requests
+
+        public_url = (
+            f"https://huggingface.co/api/datasets/{dataset_name}"
+            f"/parquet/{config_name}/{split_name}"
+        )
+        resp = requests.get(public_url)
+        if resp.status_code == requests.codes["ok"]:
+            # dataset corresponds to a public dataset, return list of parquet_files
+            return resp.json()
+        else:
+            return []
 
     def estimate_inmemory_data_size(self) -> Optional[int]:
         return self._dataset.dataset_size
