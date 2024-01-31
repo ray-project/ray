@@ -23,17 +23,31 @@ steps:
     commands:
       - ./ci/ray_ci/macos/macos_ci_build.sh build_aarch64
 
-  - label: ":ray: core: :mac: flaky tests"
+  - label: ":ray: core: :mac: small & large flaky tests"
     tags: 
       - core_cpp
       - python
       - macos_wheels
       - oss
+      - skip-on-premerge
     job_env: MACOS
     instance_type: macos
     soft_fail: true
     commands:
-      - ./ci/ray_ci/macos/macos_ci.sh run_flaky_tests
+      - ./ci/ray_ci/macos/macos_ci.sh run_small_and_large_flaky_tests
+
+  - label: ":ray: core: :mac: medium flaky tests"
+    tags: 
+      - core_cpp
+      - python
+      - macos_wheels
+      - oss
+      - skip-on-premerge
+    job_env: MACOS
+    instance_type: macos
+    soft_fail: true
+    commands:
+      - ./ci/ray_ci/macos/macos_ci.sh run_medium_flaky_tests
 
   - label: ":ray: core: :mac: small & client tests"
     tags: 
