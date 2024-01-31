@@ -161,7 +161,9 @@ class ActorProxyWrapper(ProxyWrapper):
             num_cpus=config.num_cpus,
             name=name,
             namespace=SERVE_NAMESPACE,
-            lifetime="detached" if os.environ.get("BYTED_RAY_SERVE_CONTROLLER_OLD_MODE") is None else None,
+            lifetime="detached"
+            if os.environ.get("BYTED_RAY_SERVE_CONTROLLER_OLD_MODE") is None
+            else None,
             max_concurrency=ASYNC_CONCURRENCY,
             max_restarts=0,
             scheduling_strategy=NodeAffinitySchedulingStrategy(node_id, soft=False),

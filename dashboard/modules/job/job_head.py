@@ -161,7 +161,10 @@ class JobHead(dashboard_utils.DashboardHeadModule):
         self._job_info_client = None
 
         import os
-        self._byted_job_submit_ban_head = os.environ.get("BYTED_RAY_JOB_SUBMIT_BAN_HEAD")
+
+        self._byted_job_submit_ban_head = os.environ.get(
+            "BYTED_RAY_JOB_SUBMIT_BAN_HEAD"
+        )
         self._byted_job_submit_only_head = (
             os.environ.get("BYTED_RAY_JOB_SUBMIT_ONLY_HEAD") is not None
         )
@@ -176,7 +179,7 @@ class JobHead(dashboard_utils.DashboardHeadModule):
 
     async def choose_agent(
         self, choose_head_node: Optional[bool] = False
-    ) -> Optional[JobAgentSubmissionClient]:        
+    ) -> Optional[JobAgentSubmissionClient]:
         """
         Try to disperse as much as possible to select one of
         the `CANDIDATE_AGENT_NUMBER` agents to solve requests.
@@ -216,13 +219,19 @@ class JobHead(dashboard_utils.DashboardHeadModule):
                     for key, value in raw_agent_infos.items()
                     if value.get("httpPort", -1) > 0
                 }
-            
-            if choose_head_node and head_node_id is None and choost_head_failed_count <= 10:
+
+            if (
+                choose_head_node
+                and head_node_id is None
+                and choost_head_failed_count <= 10
+            ):
                 choost_head_failed_count += 1
-                logger.info("failed to choose ray head in only head mode, try again next time")
+                logger.info(
+                    "failed to choose ray head in only head mode, try again next time"
+                )
                 await asyncio.sleep(5)
                 continue
-            
+
             if len(agent_infos) > 0:
                 break
             await asyncio.sleep(dashboard_consts.TRY_TO_GET_AGENT_INFO_INTERVAL_SECONDS)
@@ -237,7 +246,9 @@ class JobHead(dashboard_utils.DashboardHeadModule):
                 node_ip = agent_info["ipAddress"]
                 http_port = agent_info["httpPort"]
                 agent_http_address = f"http://{node_ip}:{http_port}"
-                self._agents[head_node_id] = JobAgentSubmissionClient(agent_http_address)
+                self._agents[head_node_id] = JobAgentSubmissionClient(
+                    agent_http_address
+                )
             return self._agents[head_node_id]
         elif len(self._agents) >= dashboard_consts.CANDIDATE_AGENT_NUMBER:
             node_id = sample(set(self._agents), 1)[0]

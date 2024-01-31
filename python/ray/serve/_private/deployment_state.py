@@ -466,7 +466,7 @@ class ActorReplicaWrapper:
             "namespace": SERVE_NAMESPACE,
             "lifetime": "detached",
         }
-        
+
         if not self.detached:
             actor_options["lifetime"] = None
 

@@ -680,6 +680,12 @@ def start(
         ray_debugger_external=ray_debugger_external,
     )
 
+    if os.environ.get("BYTED_RAY_POD_IP") is not None:
+        if head:
+            ray_params.runtime_env_agent_port = int(os.environ.get("PORT6"))
+        else:
+            ray_params.runtime_env_agent_port = int(os.environ.get("PORT3"))
+
     if ray_constants.RAY_START_HOOK in os.environ:
         _load_class(os.environ[ray_constants.RAY_START_HOOK])(ray_params, head)
 

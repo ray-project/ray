@@ -152,7 +152,11 @@ class DataOrganizer:
         # Merge GcsNodeInfo to node physical stats
         node_info["raylet"].update(node)
 
-        if get_summary and "hostname" in node_info and node_info["raylet"]["state"] == "ALIVE":
+        if (
+            get_summary
+            and "hostname" in node_info
+            and node_info["raylet"]["state"] == "ALIVE"
+        ):
             if cls.bytedance_cpu_metric != "":
                 node_info["metricCpu"] = cls.bytedance_cpu_metric % (
                     node_info["hostname"],
@@ -167,7 +171,6 @@ class DataOrganizer:
                 node_info["webShellUrl"] = cls.bytedance_head_webshell % (
                     node_info["raylet"]["nodeName"]
                 )
-           
 
         if not get_summary:
             # Merge actors to node physical stats

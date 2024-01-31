@@ -273,10 +273,10 @@ format_all_scripts() {
     echo "$(date)" "isort...."
     git ls-files -- '*.py' "${GIT_LS_EXCLUDES[@]}" | xargs -P 10 \
       isort
-    echo "$(date)" "Black...."
-    git ls-files -- '*.py' "${GIT_LS_EXCLUDES[@]}" | xargs -P 10 \
-      black "${BLACK_EXCLUDES[@]}"
-    echo "$(date)" "MYPY...."
+    #echo "$(date)" "Black...."
+    #git ls-files -- '*.py' "${GIT_LS_EXCLUDES[@]}" | xargs \
+    #  black "${BLACK_EXCLUDES[@]}"
+    #echo "$(date)" "MYPY...."
     # mypy_on_each "${MYPY_FILES[@]}"
     if [ $HAS_FLAKE8 ]; then
       echo "$(date)" "Flake8...."

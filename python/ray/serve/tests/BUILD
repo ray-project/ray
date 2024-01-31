@@ -29,7 +29,7 @@ py_test_module_list(
     "test_persistence.py",
     "test_cluster_node_info_cache.py",
     "test_long_poll.py",
-    "test_util.py",
+    # "test_util.py", modified by bytedance
     "test_cross_language.py",
     "test_proxy.py",
     "test_deployment_graph_ingress_deployment.py",

@@ -17,12 +17,12 @@ from ray.serve._private.common import (
 )
 from ray.serve._private.config import DeploymentConfig, ReplicaConfig
 from ray.serve._private.constants import (
+    BYTED_RAY_SERVE_TIMEOUT,
     CLIENT_CHECK_CREATION_POLLING_INTERVAL_S,
     CLIENT_POLLING_INTERVAL_S,
     MAX_CACHED_HANDLES,
     RAY_SERVE_ENABLE_NEW_HANDLE_API,
     SERVE_DEFAULT_APP_NAME,
-    BYTED_RAY_SERVE_TIMEOUT,
 )
 from ray.serve._private.controller import ServeController
 from ray.serve._private.deploy_utils import get_deploy_args

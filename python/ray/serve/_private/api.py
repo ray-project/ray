@@ -1,10 +1,10 @@
 import inspect
 import logging
+import os
 from types import FunctionType
 from typing import Any, Dict, Tuple, Union
 
 import ray
-import os
 from ray._private.pydantic_compat import is_subclass_of_base_model
 from ray._private.resource_spec import HEAD_NODE_RESOURCE_NAME
 from ray._private.usage import usage_lib
@@ -17,16 +17,12 @@ from ray.serve._private.constants import (
     SERVE_NAMESPACE,
 )
 from ray.serve._private.controller import ServeController
+from ray.serve._private.utils import format_actor_name, get_random_letters
 from ray.serve.config import HTTPOptions, gRPCOptions
 from ray.serve.context import _get_global_client, _set_global_client
 from ray.serve.deployment import Application, Deployment
 from ray.serve.exceptions import RayServeException
 from ray.serve.schema import LoggingConfig
-
-from ray.serve._private.utils import (
-    format_actor_name,
-    get_random_letters,
-)
 
 logger = logging.getLogger(__file__)
 

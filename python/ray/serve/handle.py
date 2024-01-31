@@ -232,7 +232,7 @@ class _DeploymentHandleBase:
         # AttributeError: 'Worker' object has no attribute 'core_worker'
         if method_name == "_stop_event" or method_name == "_pusher":
             return
-        
+
         new_handle_options = self.handle_options.copy_and_update(
             method_name=method_name,
             multiplexed_model_id=multiplexed_model_id,

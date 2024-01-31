@@ -1,5 +1,6 @@
 # only for testing
 pytest==7.0.1
+werkzeug==2.3.4
 pytest-asyncio==0.16.0
 pytest-httpserver==1.0.6
 pytest-rerunfailures==11.1.2

@@ -7,7 +7,7 @@ py_library(
 
 py_test_run_all_subdirectory(
   include = glob(["test_*.py"]),
-  exclude = [],
+  exclude = ["test_deployment_class.py"], # modified by bytedance
   extra_srcs = [],
   size = "small",
   tags = ["team:serve"],

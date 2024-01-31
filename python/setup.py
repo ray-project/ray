@@ -264,7 +264,7 @@ if setup_spec.type == SetupType.RAY:
             "starlette >= 0.14.0, < 1.0.0",
             "fastapi >= 0.40, < 0.99",
             "aiorwlock >= 1.0.0, < 2.0.0",
-            "watchfiles >= 0.12, < 0.3",
+            "watchfiles >= 0.12, < 0.30",
         ],
         "tune": [
             pandas_dep,

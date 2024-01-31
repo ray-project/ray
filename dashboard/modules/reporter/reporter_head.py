@@ -72,8 +72,10 @@ class ReportHead(dashboard_utils.DashboardHeadModule):
 
         import os
 
-        if os.environ.get("BYTED_RAY_POD_IP") is not None \
-            and os.environ.get("BYTED_RAY_UNDERLAY_NETWORK") is None:
+        if (
+            os.environ.get("BYTED_RAY_POD_IP") is not None
+            and os.environ.get("BYTED_RAY_UNDERLAY_NETWORK") is None
+        ):
             self._bytedance_client_mode = (
                 "ray://["
                 + os.environ.get("BYTED_RAY_POD_IP")

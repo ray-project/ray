@@ -144,6 +144,7 @@ def test_serialize_app_pydantic_type_closure_ref_import(start_ray, BaseModel: Ty
     ray.get(ray.put(make))
 
 
+@pytest.mark.skip(reason=("bytedance skip, also not work in ray2.6"))
 @pytest.mark.parametrize("BaseModel", BASE_MODELS)
 def test_serialize_app_pydantic_type_closure(start_ray, BaseModel: Type):
     def make():

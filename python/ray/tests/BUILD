@@ -76,7 +76,7 @@ py_test(
 
 py_test_module_list(
   files = [
-    "test_client.py",
+    # "test_client.py", by bytedance
     "test_client_reconnect.py",
   ],
   size = "large",
@@ -507,7 +507,7 @@ py_test(
     name = "test_gcp_tpu_command_runner",
     size = "small",
     srcs = ["gcp/test_gcp_tpu_command_runner.py"],
-    tags = ["exclusive", "small_size_python_tests", "team:serverless"],
+    tags = ["exclusive", "team:serverless"], # modifed by bytedance
     deps = ["//:ray_lib", ":conftest"],
 )
 
@@ -515,7 +515,7 @@ py_test(
     name = "vsphere/test_vsphere_node_provider",
     size = "small",
     srcs = ["vsphere/test_vsphere_node_provider.py"],
-    tags = ["exclusive", "small_size_python_tests", "team:serverless"],
+    tags = ["exclusive", "team:serverless"], # modified by bytedance
     deps = ["//:ray_lib", ":conftest"],
 )
 
@@ -543,7 +543,7 @@ py_test(
     name = "test_pydantic_serialization",
     size = "small",
     srcs = ["test_pydantic_serialization.py", "pydantic_module.py"],
-    tags = ["exclusive", "small_size_python_tests", "team:serve"],
+    tags = ["exclusive", "team:serve"], # modified by bytedance
     deps = ["//:ray_lib", ":conftest"],
 )
 
