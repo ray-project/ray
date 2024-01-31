@@ -105,10 +105,6 @@ class EncodingType(str, Enum):
     JSON = "JSON"
 
 
-def _ray_serve_log_encoding():
-    return RAY_SERVE_LOG_ENCODING
-
-
 @PublicAPI(stability="alpha")
 class LoggingConfig(BaseModel):
     """Logging config schema for configuring serve components logs.
@@ -135,11 +131,11 @@ class LoggingConfig(BaseModel):
         extra = Extra.forbid
 
     encoding: Union[str, EncodingType] = Field(
-        default_factory=_ray_serve_log_encoding,
+        default_factory=lambda: RAY_SERVE_LOG_ENCODING,
         description=(
-            "Encoding type for the serve logs. Default to 'TEXT'. The default can be "
+            "Encoding type for the serve logs. Defaults to 'TEXT'. The default can be "
             "overwritten using the `RAY_SERVE_LOG_ENCODING` environment variable. "
-            "'JSON' is also supported to format all serve logs into json structure."
+            "'JSON' is also supported for structured logging."
         ),
     )
     log_level: Union[int, str] = Field(

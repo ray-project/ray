@@ -165,8 +165,11 @@ DAG_DEPRECATION_MESSAGE = (
 
 # Environment variable name for to specify the encoding of the log messages
 RAY_SERVE_LOG_ENCODING = os.environ.get("RAY_SERVE_LOG_ENCODING", "TEXT")
-# Jsonify the log messages
+
+# Jsonify the log messages. This constant is deprecated and will be removed in the
+# future. Use RAY_SERVE_LOG_ENCODING or 'LoggingConfig' to enable json format.
 RAY_SERVE_ENABLE_JSON_LOGGING = os.environ.get("RAY_SERVE_ENABLE_JSON_LOGGING") == "1"
+
 # Logging format attributes
 SERVE_LOG_REQUEST_ID = "request_id"
 SERVE_LOG_ROUTE = "route"
