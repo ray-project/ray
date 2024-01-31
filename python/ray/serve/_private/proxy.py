@@ -10,8 +10,10 @@ from abc import ABC, abstractmethod
 from typing import Any, Callable, Dict, Generator, List, Optional, Tuple, Type
 
 import grpc
+import starlette
 import starlette.routing
 import uvicorn
+from packaging import version
 from starlette.datastructures import MutableHeaders
 from starlette.middleware import Middleware
 from starlette.types import Receive
@@ -1211,9 +1213,18 @@ class ProxyActor:
         self.wrapped_http_proxy = self.http_proxy
 
         for middleware in http_middlewares:
-            self.wrapped_http_proxy = middleware.cls(
-                self.wrapped_http_proxy, **middleware.options
-            )
+            if version.parse(starlette.__version__) < version.parse("0.35.0"):
+                self.wrapped_http_proxy = middleware.cls(
+                    self.wrapped_http_proxy, **middleware.options
+                )
+            else:
+                # In starlette >= 0.35.0, middleware.options does not exist:
+                # https://github.com/encode/starlette/pull/2381.
+                self.wrapped_http_proxy = middleware.cls(
+                    self.wrapped_http_proxy,
+                    *middleware.args,
+                    **middleware.kwargs,
+                )
 
         # Start running the HTTP server on the event loop.
         # This task should be running forever. We track it in case of failure.
