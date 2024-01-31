@@ -33,6 +33,7 @@ chatPopupDiv.innerHTML = `
     © Copyright 2023, The Ray Team.
   </div>
 `
+chatPopupDiv.messages = []
 document.body.appendChild(chatPopupDiv);
 
 const anchorDiv = document.getElementById('anchor');
@@ -118,6 +119,9 @@ function rayAssistant(event) {
         // clear search bar value and change placeholder to prompt user to ask follow up question
         searchBar.value = ""
         searchBar.placeholder = "Ask follow up question here"
+
+	// Add query to the list of messages
+	chatPopupDiv.messages.push({"role": "user", "content": searchTerm})
         
         let msgBlock = document.createElement('div');
         
@@ -134,13 +138,13 @@ function rayAssistant(event) {
 
         async function readStream() {
             try {
-                const response = await fetch('https://ray-assistant-public-bxauk.cld-kvedzwag2qa8i5bj.s.anyscaleuserdata.com/stream', {
+                const response = await fetch('https://ray-assistant-public-bxauk.cld-kvedzwag2qa8i5bj.s.anyscaleuserdata.com/chat', {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json',
                         'Accept': 'application/json'
                     },
-                    body: JSON.stringify({query: searchTerm})
+                    body: JSON.stringify({messages: chatPopupDiv.messages})
                 });
                 const reader = response.body.getReader();
                 let decoder = new TextDecoder('utf-8');
@@ -164,6 +168,7 @@ function rayAssistant(event) {
                     msgContent.innerHTML = html;
                     highlightCode();
                 }
+		chatPopupDiv.messages.push({"role": "assistant", "content": collectChunks})
                 // we want to autoscroll to the bottom of the chat container after the answer is streamed in
                 chatContainerDiv.scrollTo(0, chatContainerDiv.scrollHeight);
             } catch (error) {
