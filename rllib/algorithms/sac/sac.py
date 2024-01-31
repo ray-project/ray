@@ -463,8 +463,6 @@ class SAC(DQN):
             self._counters[NUM_ENV_STEPS_SAMPLED] += sum(len(e) for e in episodes)
 
             # Add the sampled experiences to the replay buffer.
-            # TODO (simon): Apply the same function like in PPO to aggregate episodes
-            # over workers.
             self.local_replay_buffer.add(episodes)
 
         # Update the target network each `target_network_update_freq` steps.
@@ -479,6 +477,7 @@ class SAC(DQN):
             # Run multiple training iterations.
             for _ in range(sample_and_train_weight):
                 # Sample training batch from replay_buffer.
+                # TODO (simon): Implement here the `PERB.sample()`.
                 train_dict = self.local_replay_buffer.sample(
                     num_items=self.config.train_batch_size,
                     # TODO (simon): Implement for n-step adjustment.
@@ -508,10 +507,9 @@ class SAC(DQN):
                         SampleBatch.TRUNCATEDS: train_dict["is_truncated"][
                             :, self.config.n_step
                         ],
-                        "is_first": train_dict["is_first"][:, 0],
-                        "is_last": train_dict["is_last"][:, 0],
                     }
                 )
+                # Convert to multi-agent batch as `LearnerGroup` depends on it.
                 train_batch = train_batch.as_multi_agent()
 
                 # Training on batch.
@@ -520,6 +518,7 @@ class SAC(DQN):
                 )
 
                 # Update replay buffer priorities.
+                # TODO (simon): Add here the new function for the PERB.
                 update_priorities_in_replay_buffer(
                     self.local_replay_buffer,
                     self.config,
