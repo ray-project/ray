@@ -720,17 +720,22 @@ class Algorithm(Trainable, AlgorithmBase):
             #  MARLModule from the RLModule within each policy.
             local_worker = self.workers.local_worker()
             # TODO (Sven): Unify the inference of the MARLModuleSpec. Right now,
-            #  we get this from the EnvRunner's `marl_module_spec` property.
+            #  we get this from the RolloutWorker's `marl_module_spec` property
+            #  (which other EnvRunners do not have).
             #  However, this is hacky (information leak) and should not remain this
             #  way. For other EnvRunner classes (that don't have this property),
             #  Algorithm should infer this itself.
             if hasattr(local_worker, "marl_module_spec"):
                 module_spec = local_worker.marl_module_spec
             else:
-                module_spec = self.config.get_marl_module_spec(
-                    env=local_worker.env,
-                    spaces=getattr(local_worker, "spaces", None),
+                policy_dict, _ = self.config.get_multi_agent_setup(env=local_worker.env)
+                module_spec: MultiAgentRLModuleSpec = self.config.get_marl_module_spec(
+                    policy_dict=policy_dict
                 )
+                #module_spec = self.config.get_marl_module_spec(
+                #    env=local_worker.env,
+                #    spaces=getattr(local_worker, "spaces", None),
+                #)
             self.learner_group = self.config.build_learner_group(
                 rl_module_spec=module_spec,
             )

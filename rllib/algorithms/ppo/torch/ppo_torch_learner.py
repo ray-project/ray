@@ -169,17 +169,20 @@ class PPOTorchLearner(PPOLearner, TorchLearner):
 
     @override(PPOLearner)
     def _compute_values(self, batch):
-        infos = batch.pop(SampleBatch.INFOS, None)
-        batch = convert_to_torch_tensor(batch, device=self._device)
-        if infos is not None:
-            batch[SampleBatch.INFOS] = infos
+        values = {}
+        for module_id, sa_batch in batch.policy_batches.items():
+            infos = sa_batch.pop(SampleBatch.INFOS, None)
+            batch = convert_to_torch_tensor(sa_batch, device=self._device)
+            if infos is not None:
+                sa_batch[SampleBatch.INFOS] = infos
+    
+            module = self.module[module_id].unwrapped()
+    
+            # Shared encoder.
+            encoder_outs = module.encoder(batch)
+            # Value head.
+            vf_out = module.vf(encoder_outs[ENCODER_OUT][CRITIC])
+            # Squeeze out last dimension (single node value head).
+            values[module_id] = vf_out.squeeze(-1)
 
-        # TODO (sven): Make multi-agent capable.
-        module = self.module[DEFAULT_POLICY_ID].unwrapped()
-
-        # Shared encoder.
-        encoder_outs = module.encoder(batch)
-        # Value head.
-        vf_out = module.vf(encoder_outs[ENCODER_OUT][CRITIC])
-        # Squeeze out last dimension (single node value head).
-        return vf_out.squeeze(-1)
+        return values

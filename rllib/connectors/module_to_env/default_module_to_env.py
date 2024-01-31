@@ -107,11 +107,12 @@ class DefaultModuleToEnv(ConnectorV2):
                 data = self._perform_module_to_agent_unmapping(
                     data, episodes, shared_data
                 )
-        # Process actions according to Env's action space bounds, if necessary.
-        self._normalize_clip_actions(data, is_multi_agent)
 
         # Convert everything into numpy.
         data = convert_to_numpy(data)
+
+        # Process actions according to Env's action space bounds, if necessary.
+        self._normalize_clip_actions(data, is_multi_agent)
 
         return data
 

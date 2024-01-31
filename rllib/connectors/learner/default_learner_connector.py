@@ -9,7 +9,11 @@ from ray.rllib.connectors.connector_v2 import ConnectorV2
 from ray.rllib.core.models.base import STATE_IN, STATE_OUT
 from ray.rllib.core.rl_module.rl_module import RLModule
 from ray.rllib.env.multi_agent_episode import MultiAgentEpisode
-from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID, SampleBatch
+from ray.rllib.policy.sample_batch import (
+    DEFAULT_POLICY_ID,
+    MultiAgentBatch,
+    SampleBatch,
+)
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.numpy import convert_to_numpy
 from ray.rllib.utils.typing import EpisodeType
@@ -61,7 +65,7 @@ class DefaultLearnerConnector(ConnectorV2):
             #  connector pieces before this (default) one here.
             #  Probably the only solution here would be to introduce the connector
             #  input/output types.
-            assert not data
+            #assert not data
             module_to_episodes = defaultdict(list)
             for ma_episode in episodes:
                 for agent_id, sa_episode in ma_episode.agent_episodes.items():
@@ -78,7 +82,7 @@ class DefaultLearnerConnector(ConnectorV2):
             sa_data = data.get(module_id, {})
 
             state_in = None
-            T = rl_module.config.model_config_dict.get("max_seq_len")
+            T = rl_module.config.modules[module_id].model_config_dict.get("max_seq_len")
 
             # RLModule is stateful and STATE_IN is not found in `data` (user's custom
             # connectors have not provided this information yet) -> Perform separate
@@ -200,7 +204,14 @@ class DefaultLearnerConnector(ConnectorV2):
 
             return_data[module_id] = sa_data
 
-        return return_data
+        # Convert to MultiAgentBatch.
+        return MultiAgentBatch(
+            policy_batches={
+                module_id: SampleBatch(batch)
+                for module_id, batch in return_data.items()
+            },
+            env_steps=sum(len(e) for e in episodes),
+        )
 
 
 def split_and_pad(episodes_data, T):
