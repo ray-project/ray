@@ -84,7 +84,7 @@ class InstanceManagerTest(unittest.TestCase):
         # Empty storage.
         reply = im.get_instance_manager_state(GetInstanceManagerStateRequest())
         assert reply.status.code == StatusCode.OK
-        assert reply.state.instances == []
+        assert list(reply.state.instances) == []
 
         # Launch nodes.
         reply = im.update_instance_manager_state(
