@@ -30,6 +30,8 @@ enum StatusCode {
   UNKNOWN_ERRORS = 3;
   // Unavailable resources or operations. Caller should retry.
   UNAVAILABLE = 4;
+  // Invalid values.
+  INVALID_VALUE = 5;
 }
 
 message Status {
