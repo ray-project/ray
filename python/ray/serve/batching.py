@@ -265,7 +265,8 @@ class _BatchQueue:
             "running anymore. All future requests sent to this handler will "
             "fail. This should only occur if the Serve app is "
             "being torn down. If it occurs any other time, please file an "
-            "issue on GitHub."
+            "issue on GitHub.",
+            extra={"log_to_stderr": False},
         )
 
     async def _process_batch(self, func: Callable) -> None:
