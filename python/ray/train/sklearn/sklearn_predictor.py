@@ -9,12 +9,27 @@ from ray.air.data_batch_type import DataBatchType
 from ray.air.util.data_batch_conversion import _unwrap_ndarray_object_type_if_needed
 from ray.train.predictor import Predictor
 from ray.train.sklearn import SklearnCheckpoint
-from ray.train.sklearn._sklearn_utils import _set_cpu_params
 from ray.util.annotations import PublicAPI
 from ray.util.joblib import register_ray
 
 if TYPE_CHECKING:
     from ray.data.preprocessor import Preprocessor
+
+
+# thread_count is a catboost parameter
+SKLEARN_CPU_PARAM_NAMES = ["n_jobs", "thread_count"]
+
+
+def _set_cpu_params(estimator: BaseEstimator, num_cpus: int) -> None:
+    """Sets all CPU-related params to num_cpus (incl. nested)."""
+    cpu_params = {
+        param: num_cpus
+        for param in estimator.get_params(deep=True)
+        if any(
+            param.endswith(cpu_param_name) for cpu_param_name in SKLEARN_CPU_PARAM_NAMES
+        )
+    }
+    estimator.set_params(**cpu_params)
 
 
 @PublicAPI(stability="alpha")
