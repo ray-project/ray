@@ -235,8 +235,10 @@ class PrioritizedEpisodeReplayBuffer(EpisodeReplayBuffer):
 
         # Sample the n-step if necessary.
         if n_step is None:
+            # If ' None' we sample from the closed interval (1, 5).
             n_step = self.rng.integers(1, 5)
         elif isinstance(n_step, tuple):
+            # Otherwise sample from the user-defined interval.
             n_step = self.rng.integers(n_step[0], n_step[1])
 
         # Rows to return.
