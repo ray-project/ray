@@ -14,6 +14,11 @@ from ray.train.backend import Backend, BackendConfig
 from ray.train.constants import DEFAULT_NCCL_SOCKET_IFNAME
 from ray.util import PublicAPI
 
+from ray._private.accelerators.hpu import HPU_PACKAGE_AVAILABLE
+if HPU_PACKAGE_AVAILABLE:
+    import habana_frameworks.torch.core as htcore
+    import habana_frameworks.torch.distributed.hccl as hpu_dist
+
 logger = logging.getLogger(__name__)
 
 

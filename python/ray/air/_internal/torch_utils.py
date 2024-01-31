@@ -9,6 +9,9 @@ import torch
 import ray
 from ray.air.util.data_batch_conversion import _unwrap_ndarray_object_type_if_needed
 
+from ray._private.accelerators.hpu import HPU_PACKAGE_AVAILABLE
+if HPU_PACKAGE_AVAILABLE:
+    import habana_frameworks.torch.hpu as torch_hpu
 
 def get_device() -> Union[torch.device, List[torch.device]]:
     """Gets the correct torch device configured for this process.
@@ -56,6 +59,8 @@ def get_device() -> Union[torch.device, List[torch.device]]:
 
         devices = [torch.device(f"cuda:{device_id}") for device_id in device_ids]
         device = devices[0] if len(devices) == 1 else devices
+    elif HPU_PACKAGE_AVAILABLE and torch_hpu.is_available():
+        device = torch.device("hpu")
     else:
         device = torch.device("cpu")
 
