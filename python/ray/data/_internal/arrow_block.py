@@ -189,7 +189,7 @@ class ArrowBlockAccessor(TableBlockAccessor):
         with pyarrow.ipc.new_stream(
             sink, self._table.schema, options=pyarrow.ipc.IpcWriteOptions(compression=codec)
         ) as writer:
-            writer.write(self._table.schema)
+            writer.write(self._table)
         return sink.getvalue()
 
     @staticmethod
