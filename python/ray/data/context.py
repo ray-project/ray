@@ -220,13 +220,10 @@ class DataContext:
         )
         self.use_runtime_metrics_scheduling = use_runtime_metrics_scheduling
         self.write_file_retry_on_errors = write_file_retry_on_errors
-<<<<<<< Updated upstream
         self.warn_on_driver_memory_usage_bytes = warn_on_driver_memory_usage_bytes
         self.actor_task_retry_on_errors = actor_task_retry_on_errors
-=======
         self.enable_block_compression = enable_block_compression
         self.block_compression_codec = block_compression_codec
->>>>>>> Stashed changes
         # The additonal ray remote args that should be added to
         # the task-pool-based data tasks.
         self._task_pool_data_task_remote_args: Dict[str, Any] = {}
@@ -293,15 +290,12 @@ class DataContext:
                     enable_get_object_locations_for_metrics=DEFAULT_ENABLE_GET_OBJECT_LOCATIONS_FOR_METRICS,  # noqa E501
                     use_runtime_metrics_scheduling=DEFAULT_USE_RUNTIME_METRICS_SCHEDULING,  # noqa: E501
                     write_file_retry_on_errors=DEFAULT_WRITE_FILE_RETRY_ON_ERRORS,
-<<<<<<< Updated upstream
                     warn_on_driver_memory_usage_bytes=(
                         DEFAULT_WARN_ON_DRIVER_MEMORY_USAGE_BYTES
                     ),
                     actor_task_retry_on_errors=DEFAULT_ACTOR_TASK_RETRY_ON_ERRORS,
-=======
                     enable_block_compression=DEFAULT_ENABLE_BLOCK_COMPRESSION,
                     block_compression_codec=DEFAULT_BLOCK_COMPRESSION_CODEC,
->>>>>>> Stashed changes
                 )
 
             return _default_context
