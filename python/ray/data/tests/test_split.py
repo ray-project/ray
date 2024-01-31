@@ -79,9 +79,7 @@ def test_equal_split(shutdown_only):
         ([2, 5], 1),  # Single split.
     ],
 )
-def test_equal_split_balanced(
-    ray_start_regular_shared, enable_optimizer, block_sizes, num_splits
-):
+def test_equal_split_balanced(ray_start_regular_shared, block_sizes, num_splits):
     _test_equal_split_balanced(block_sizes, num_splits)
 
 
@@ -100,8 +98,9 @@ def _test_equal_split_balanced(block_sizes, num_splits):
     block_list = BlockList(blocks, metadata, owned_by_consumer=True)
 
     logical_plan = LogicalPlan(InputData(input_data=ref_bundles))
+    stats = DatasetStats(metadata={"TODO": []}, parent=None)
     ds = Dataset(
-        ExecutionPlan(block_list, DatasetStats.TODO(), run_by_consumer=True),
+        ExecutionPlan(block_list, stats, run_by_consumer=True),
         logical_plan,
     )
 

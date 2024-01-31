@@ -178,6 +178,14 @@ py_test(
 )
 
 py_test(
+    name = "test_datasink",
+    size = "small",
+    srcs = ["tests/test_datasink.py"],
+    tags = ["team:data", "exclusive"],
+    deps = ["//:ray_lib", ":conftest"],
+)
+
+py_test(
     name = "test_ecosystem",
     size = "small",
     srcs = ["tests/test_ecosystem.py"],
@@ -439,6 +447,14 @@ py_test(
     size = "medium",
     srcs = ["tests/test_raydp.py"],
     tags = ["team:data", "exclusive", "data_integration"],
+    deps = ["//:ray_lib", ":conftest"],
+)
+
+py_test(
+    name = "test_runtime_metrics_scheduling",
+    size = "small",
+    srcs = ["tests/test_runtime_metrics_scheduling.py"],
+    tags = ["team:data", "exclusive"],
     deps = ["//:ray_lib", ":conftest"],
 )
 

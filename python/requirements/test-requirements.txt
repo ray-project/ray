@@ -17,7 +17,7 @@ cloudpickle==2.2.0
 # Keep in sync with `ci/build/upload_build_info.sh`
 cryptography==38.0.1
 cython==0.29.32
-fastapi==0.104.0
+fastapi==0.108.0
 feather-format==0.4.1
 # Keep compatible with Werkzeug
 flask==2.1.3
@@ -93,7 +93,7 @@ importlib-metadata==4.10.0
 # Some packages have downstream dependencies that we have to specify here to resolve conflicts.
 # Feel free to add (or remove!) packages here liberally.
 tensorboardX==2.6.0
-starlette==0.27.0
+starlette==0.29.0
 h11==0.12.0
 markdown-it-py==1.1.0
 attrs==21.4.0
