@@ -9,10 +9,10 @@ from ray.rllib.algorithms.sac.sac_learner import (
     QF_MEAN_KEY,
     QF_MAX_KEY,
     QF_MIN_KEY,
-    TD_ERROR_KEY,
     QF_PREDS,
     QF_TWIN_LOSS_KEY,
     QF_TWIN_PREDS,
+    TD_ERROR_KEY,
     SACLearner,
 )
 from ray.rllib.core.learner.learner import (
@@ -224,15 +224,7 @@ class SACTorchLearner(SACLearner, TorchLearner):
         # Note, we use here the sampled actions in the log probabilities.
         q_target_next -= alpha * logps_next
         # Now mask all Q-values with terminated next states in the targets.
-        q_next_masked = (
-            (1.0 - batch[SampleBatch.TERMINATEDS].float())
-            # If the current experience is the last in the episode we neglect it as
-            # otherwise the next value would be from a new episode's reset observation.
-            # See for more information the `EpisodeReplayBuffer.sample()` with
-            # `batch_length_T > 0`.
-            * (1.0 - batch["is_last"].float())
-            * q_target_next
-        )
+        q_next_masked = (1.0 - batch[SampleBatch.TERMINATEDS].float()) * q_target_next
 
         # Compute the right hand side of the Bellman equation.
         # Detach this node from the computation graph as we do not want to
@@ -260,7 +252,8 @@ class SACTorchLearner(SACLearner, TorchLearner):
         critic_loss = torch.mean(
             # TODO (simon): Introduce priority weights when episode buffer is ready.
             # batch[PRIO_WEIGHTS] *
-            torch.nn.HuberLoss(reduction="none", delta=1.0)(
+            batch["weights"]
+            * torch.nn.HuberLoss(reduction="none", delta=1.0)(
                 q_selected, q_selected_target
             )
         )
@@ -269,7 +262,8 @@ class SACTorchLearner(SACLearner, TorchLearner):
             critic_twin_loss = torch.mean(
                 # TODO (simon): Introduce priority weights when episode buffer is ready.
                 # batch[PRIO_WEIGHTS] *
-                torch.nn.HuberLoss(reduction="none", delta=1.0)(
+                batch["weights"]
+                * torch.nn.HuberLoss(reduction="none", delta=1.0)(
                     q_twin_selected, q_selected_target
                 )
             )
@@ -282,8 +276,8 @@ class SACTorchLearner(SACLearner, TorchLearner):
 
         # Optimize also the hyperparameter alpha by using the current policy
         # evaluated at the current state (sampled values).
-        # TODO (simon): Check, if this is indeed log(alpha), prob. just better
-        # to optimize and monotonic function.
+        # TODO (simon): Check, why log(alpha) is used, prob. just better
+        # to optimize and monotonic function. Original equation uses alpha.
         alpha_loss = -torch.mean(
             self.curr_log_alpha[module_id]
             * (logps_curr.detach() + self.target_entropy[module_id])
