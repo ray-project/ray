@@ -1,7 +1,6 @@
 import itertools
 import math
 import os
-import signal
 import threading
 import time
 from typing import Iterator
@@ -13,8 +12,6 @@ import pyarrow.parquet as pq
 import pytest
 
 import ray
-from ray._private.test_utils import wait_for_condition
-from ray.data.block import BlockAccessor
 from ray.data.context import DataContext
 from ray.data.tests.conftest import *  # noqa
 from ray.data.tests.util import column_udf, column_udf_class, extract_values
@@ -253,8 +250,13 @@ def test_concurrency(shutdown_only):
     for fn in [udf, UDFClass]:
         # Test concurrency with None, single integer and a tuple of integers.
         for concurrency in [2, (2, 4)]:
-            result = ds.map(fn, concurrency=concurrency).take_all()
-            assert sorted(extract_values("id", result)) == list(range(10)), result
+            if fn == udf and concurrency == (2, 4):
+                error_message = "``concurrency`` is set as a tuple of integers"
+                with pytest.raises(ValueError, match=error_message):
+                    ds.map(fn, concurrency=concurrency).take_all()
+            else:
+                result = ds.map(fn, concurrency=concurrency).take_all()
+                assert sorted(extract_values("id", result)) == list(range(10)), result
 
     # Test concurrency with an illegal value.
     error_message = "``concurrency`` is expected to be set a"
@@ -426,10 +428,7 @@ def test_map_batches_extra_args(shutdown_only, tmp_path):
 
     def put(x):
         # We only support automatic deref in the legacy backend.
-        if DataContext.get_current().new_execution_backend:
-            return x
-        else:
-            return ray.put(x)
+        return x
 
     # Test input validation
     ds = ray.data.range(5)
@@ -951,37 +950,6 @@ def test_random_sample_checks(ray_start_regular_shared):
 
 # NOTE: All tests above share a Ray cluster, while the tests below do not. These
 # tests should only be carefully reordered to retain this invariant!
-
-
-def test_actor_pool_strategy_apply_interrupt(shutdown_only):
-    """Test that _apply kills the actor pool if an interrupt is raised."""
-    ray.shutdown()
-
-    ray.init(include_dashboard=False, num_cpus=1)
-
-    cpus = ray.available_resources()["CPU"]
-    ds = ray.data.range(5, parallelism=5)
-    aps = ray.data.ActorPoolStrategy(max_size=5)
-    blocks = ds._plan.execute()
-
-    # Start some actors, the first one sends a SIGINT, emulating a KeyboardInterrupt
-    def test_func(block):
-        for i, _ in enumerate(BlockAccessor.for_block(block).iter_rows()):
-            if i == 0:
-                os.kill(os.getpid(), signal.SIGINT)
-            else:
-                time.sleep(1000)
-                return block
-
-    # No need to test ActorPoolStrategy in new execution backend.
-    if not DataContext.get_current().new_execution_backend:
-        with pytest.raises(ray.exceptions.RayTaskError):
-            aps._apply(test_func, {}, blocks, False)
-
-    # Check that all actors have been killed by counting the available CPUs
-    wait_for_condition(lambda: (ray.available_resources().get("CPU", 0) == cpus))
-
-
 def test_actor_pool_strategy_default_num_actors(shutdown_only):
     import time
 
@@ -991,24 +959,12 @@ def test_actor_pool_strategy_default_num_actors(shutdown_only):
             return x
 
     num_cpus = 5
+    ray.shutdown()
     ray.init(num_cpus=num_cpus)
     compute_strategy = ray.data.ActorPoolStrategy()
     ray.data.range(10, parallelism=10).map_batches(
         UDFClass, compute=compute_strategy, batch_size=1
     ).materialize()
-
-    # The new execution backend is not using the ActorPoolStrategy under
-    # the hood, so the expectation here applies only to the old backend.
-    # TODO(https://github.com/ray-project/ray/issues/31723): we should check
-    # the num of workers once we have autoscaling in new execution backend.
-    if not DataContext.get_current().new_execution_backend:
-        expected_max_num_workers = math.ceil(
-            num_cpus * (1 / compute_strategy.ready_to_total_workers_ratio)
-        )
-        assert (
-            compute_strategy.num_workers >= num_cpus
-            and compute_strategy.num_workers <= expected_max_num_workers
-        ), "Number of actors is out of the expected bound"
 
 
 def test_actor_pool_strategy_bundles_to_max_actors(shutdown_only):
@@ -1024,11 +980,6 @@ def test_actor_pool_strategy_bundles_to_max_actors(shutdown_only):
         .map_batches(UDFClass, batch_size=None, concurrency=max_size)
         .materialize()
     )
-
-    # TODO(https://github.com/ray-project/ray/issues/31723): implement the feature
-    # of capping bundle size by actor pool size, and then re-enable this test.
-    if not DataContext.get_current().new_execution_backend:
-        assert f"{max_size} blocks" in ds.stats()
 
     # Check batch size is still respected.
     ds = (

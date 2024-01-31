@@ -19,7 +19,7 @@ class TestPublishProvider(PublishProvider):
         self,
         config: Dict,
         *,
-        name: str,
+        name: Optional[str],
         ray_version: str,
         base_image: Optional[str] = None,
     ):
