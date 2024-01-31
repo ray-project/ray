@@ -26,11 +26,11 @@ from ray.serve._private.constants import (
     SERVE_DEFAULT_APP_NAME,
     SERVE_NAMESPACE,
 )
+from ray.serve._private.deploy_provider import get_deploy_provider
 from ray.serve._private.deployment_graph_build import build as pipeline_build
 from ray.serve._private.deployment_graph_build import (
     get_and_validate_ingress_deployment,
 )
-from ray.serve._private.publish_provider import get_publish_provider
 from ray.serve.config import DeploymentMode, ProxyLocation, gRPCOptions
 from ray.serve.deployment import Application, deployment_to_schema
 from ray.serve.schema import (
@@ -805,7 +805,7 @@ def _generate_config_from_file_or_import_path(
 
 
 @cli.command(
-    short_help="Publish an application to a remote provider.",
+    short_help="Deploy applications to a remote provider.",
     # TODO(edoakes): un-hide this at some point.
     hidden=True,
 )
@@ -854,9 +854,13 @@ def _generate_config_from_file_or_import_path(
 @click.option(
     "--provider",
     required=False,
-    default="anyscale",
+    default=None,
     type=str,
-    help="Publish provider to use. Defaults to anyscale.",
+    help=(
+        "Deploy provider to use. By default, this uses a 'local' provider that makes "
+        "a REST API request to the provided address. If 'anyscale' is available in the "
+        "environment, deploys to anyscale instead."
+    ),
 )
 def publish(
     config_or_import_path: str,
@@ -866,7 +870,7 @@ def publish(
     working_dir: str,
     name: Optional[str],
     base_image: Optional[str],
-    provider: str,
+    provider: Optional[str],
 ):
     args_dict = convert_args_to_dict(arguments)
     final_runtime_env = parse_runtime_env_args(
@@ -883,8 +887,8 @@ def publish(
             runtime_env=final_runtime_env,
         )
 
-    publish_provider = get_publish_provider(provider)
-    publish_provider.publish(
+    deploy_provider = get_deploy_provider(provider)
+    deploy_provider.deploy(
         config.dict(exclude_unset=True),
         name=name,
         ray_version=ray.__version__,
