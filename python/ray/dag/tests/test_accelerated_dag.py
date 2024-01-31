@@ -48,6 +48,13 @@ class Actor:
         self.i += y
         return self.i
 
+    def inc_four(self, a, b, x, y):
+        self.i += a
+        self.i += b
+        self.i += x
+        self.i += y
+        return self.i
+
     def sleep(self, x):
         time.sleep(x)
         return x
@@ -85,6 +92,60 @@ def test_regular_args(ray_start_regular):
         # TODO(swang): Replace with fake ObjectRef.
         result = output_channel.begin_read()
         assert result == (i + 1) * 3
+        output_channel.end_read()
+
+    compiled_dag.teardown()
+
+
+def test_multi_args(ray_start_regular):
+    # Test passing multiple args to .bind in addition to DAGNode args.
+    a = Actor.remote(0)
+    with InputNode() as i:
+        dag = a.inc_two.bind(i[0], i[1])
+
+    compiled_dag = dag.experimental_compile()
+
+    for i in range(3):
+        output_channel = compiled_dag.execute(1, 2)
+        # TODO(terry): Replace with fake ObjectRef.
+        result = output_channel.begin_read()
+        assert result == (i + 1) * 3
+        output_channel.end_read()
+
+    compiled_dag.teardown()
+
+
+def test_multi_kwargs(ray_start_regular):
+    # Test passing multiple kwargs to .bind in addition to DAGNode args.
+    a = Actor.remote(0)
+    with InputNode() as i:
+        dag = a.inc_two.bind(i.x,  i.y)
+
+    compiled_dag = dag.experimental_compile()
+
+    for i in range(3):
+        output_channel = compiled_dag.execute(x=1, y=2)
+        # TODO(terry): Replace with fake ObjectRef.
+        result = output_channel.begin_read()
+        assert result == (i + 1) * 3
+        output_channel.end_read()
+
+    compiled_dag.teardown()
+
+
+def test_multi_args_kwargs(ray_start_regular):
+    # Test passing multiple args and kwargs to .bind in addition to DAGNode args.
+    a = Actor.remote(0)
+    with InputNode() as i:
+        dag = a.inc_four.bind(i[0],  i[1], i.x, i.y)
+
+    compiled_dag = dag.experimental_compile()
+
+    for i in range(3):
+        output_channel = compiled_dag.execute(1, 2, x=3, y=4)
+        # TODO(terry): Replace with fake ObjectRef.
+        result = output_channel.begin_read()
+        assert result == (i + 1) * 10
         output_channel.end_read()
 
     compiled_dag.teardown()
