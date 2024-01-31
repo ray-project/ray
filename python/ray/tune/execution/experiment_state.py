@@ -2,12 +2,11 @@ from collections import Counter
 from dataclasses import dataclass
 from enum import Enum
 from pathlib import Path
-from typing import Callable, Dict, Optional, Tuple, Union
+from typing import Callable, Dict, Optional, Union
 
 import logging
 import os
 import time
-import warnings
 
 from ray.train._internal.storage import (
     StorageContext,
