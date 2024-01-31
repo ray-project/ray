@@ -4,6 +4,11 @@ from typing import List
 from ci.ray_ci.utils import logger
 from ray_release.test import Test
 from ray_release.test_automation.ci_state_machine import CITestStateMachine
+from ray_release.configs.global_config import init_global_config
+from ray_release.bazel import bazel_runfile
+
+
+ALL_TEST_PREFIXES = ["linux:", "windows:", "darwin:"]
 
 
 @click.command()
@@ -14,12 +19,23 @@ from ray_release.test_automation.ci_state_machine import CITestStateMachine
     default=False,
     help=("Update the state of the test on S3 and perform state transition actions."),
 )
-def main(production: bool) -> None:
+@click.option(
+    "--test-prefix",
+    multiple=True,
+    type=str,
+    help=(
+        "Prefix of tests to run the state machine on. "
+        "If not specified, run on all tests."
+    ),
+)
+def main(production: bool, test_prefix: List[str]) -> None:
     """
     Run state machine on all CI tests.
     """
     logger.info("Starting state machine bot ...")
-    tests = _get_all_ci_tests()
+    init_global_config(bazel_runfile("release/ray_release/configs/oss_config.yaml"))
+    test_prefix = test_prefix or ALL_TEST_PREFIXES
+    tests = _get_ci_tests(test_prefix)
     for test in tests:
         _move_state(test, production)
 
@@ -42,11 +58,15 @@ def _move_state(test, production: bool) -> None:
     logger.info("\tTest state updated successfully")
 
 
-def _get_all_ci_tests() -> List[Test]:
+def _get_ci_tests(prefixes: List[str]) -> List[Test]:
     """
     Get all CI tests.
     """
-    return []
+    tests = []
+    for prefix in prefixes:
+        tests.extend(Test.gen_from_s3(prefix))
+
+    return tests
 
 
 if __name__ == "__main__":

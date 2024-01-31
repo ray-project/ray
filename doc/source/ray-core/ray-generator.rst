@@ -125,17 +125,17 @@ use ``__anext__`` or ``async for`` loops.
     :start-after: __streaming_generator_asyncio_start__
     :end-before: __streaming_generator_asyncio_end__
 
-Garbage collection of object referneces
+Garbage collection of object references
 ---------------------------------------
-The returned ref from ``next(generator)`` is just a regular Ray object reference and is distribute ref counted in the same way.
-If references are not consumed from a generator by the ``next`` API, referencesare garbage collected (GC’ed) when the generator is GC’ed
+The returned ref from ``next(generator)`` is just a regular Ray object reference and is distributed ref counted in the same way.
+If references are not consumed from a generator by the ``next`` API, references are garbage collected (GC’ed) when the generator is GC’ed.
 
 .. literalinclude:: doc_code/streaming_generator.py
     :language: python
     :start-after: __streaming_generator_gc_start__
     :end-before: __streaming_generator_gc_end__
 
-In the following example, Ray counts ``ref1`` a normal Ray object reference after Ray returns it. Other references
+In the following example, Ray counts ``ref1`` as a normal Ray object reference after Ray returns it. Other references
 that aren't consumed with ``next(gen)`` are removed when the generator is GC'ed. In this example, garbage collection happens when you call ``del gen``.
 
 Fault tolerance

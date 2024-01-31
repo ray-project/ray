@@ -15,13 +15,13 @@ from typing import (
     Sequence,
     Set,
     Tuple,
+    TYPE_CHECKING,
     Union,
 )
 
 import ray
-from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
 from ray.rllib.connectors.learner.learner_connector_pipeline import (
-    LearnerConnectorPipeline
+    LearnerConnectorPipeline,
 )
 from ray.rllib.core.learner.reduce_result_dict_fn import _reduce_mean_results
 from ray.rllib.core.rl_module.marl_module import (
@@ -66,6 +66,9 @@ from ray.rllib.utils.typing import (
     TensorType,
 )
 from ray.util.annotations import PublicAPI
+
+if TYPE_CHECKING:
+    from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
 
 
 torch, _ = try_import_torch()
@@ -212,7 +215,7 @@ class Learner:
     def __init__(
         self,
         *,
-        config: AlgorithmConfig,
+        config: "AlgorithmConfig",
         module_spec: Optional[
             Union[SingleAgentRLModuleSpec, MultiAgentRLModuleSpec]
         ] = None,
@@ -293,15 +296,18 @@ class Learner:
             return
 
         # Build learner connector pipeline used on this Learner worker.
-        # TODO (sven): Support multi-agent.
-        module_spec = self._module_spec.module_specs["default_policy"]
-        self._learner_connector = self.config.build_learner_connector(
-            input_observation_space=module_spec.observation_space,
-            input_action_space=module_spec.action_space,
-        )
-        # Adjust module spec based on connector's (possibly transformed) spaces.
-        module_spec.observation_space = self._learner_connector.observation_space
-        module_spec.action_space = self._learner_connector.action_space
+        # TODO (sven): Support multi-agent cases.
+        if self.config.uses_new_env_runners and not self.config.is_multi_agent():
+            module_spec = self._module_spec.as_multi_agent().module_specs[
+                DEFAULT_POLICY_ID
+            ]
+            self._learner_connector = self.config.build_learner_connector(
+                input_observation_space=module_spec.observation_space,
+                input_action_space=module_spec.action_space,
+            )
+            # Adjust module spec based on connector's (possibly transformed) spaces.
+            module_spec.observation_space = self._learner_connector.observation_space
+            module_spec.action_space = self._learner_connector.action_space
 
         # Build the module to be trained by this learner.
         self._module = self._make_module()
@@ -427,7 +433,7 @@ class Learner:
     @OverrideToImplementCustomLogic
     @abc.abstractmethod
     def configure_optimizers_for_module(
-        self, module_id: ModuleID, config: AlgorithmConfig = None, hps=None
+        self, module_id: ModuleID, config: "AlgorithmConfig" = None, hps=None
     ) -> None:
         """Configures an optimizer for the given module_id.
 
@@ -519,7 +525,7 @@ class Learner:
         self,
         *,
         module_id: ModuleID,
-        config: AlgorithmConfig = None,
+        config: Optional["AlgorithmConfig"] = None,
         module_gradients_dict: ParamDict,
         hps=None,
     ) -> ParamDict:
@@ -922,7 +928,7 @@ class Learner:
         self,
         *,
         module_id: ModuleID,
-        config: AlgorithmConfig = None,
+        config: Optional["AlgorithmConfig"] = None,
         batch: NestedDict,
         fwd_out: Dict[str, TensorType],
     ) -> TensorType:
@@ -1074,7 +1080,7 @@ class Learner:
         self,
         *,
         module_id: ModuleID,
-        config: AlgorithmConfig = None,
+        config: Optional["AlgorithmConfig"] = None,
         timestep: int,
         hps=None,
         **kwargs,
@@ -1354,24 +1360,23 @@ class Learner:
             # We must do at least one pass on the batch for training.
             raise ValueError("`num_iters` must be >= 1")
 
-        # Call the train data preprocessor.
-        batch, episodes = self._preprocess_train_data(batch=batch, episodes=episodes)
-
         # Call the learner connector.
-        batch = self._learner_connector(
-            rl_module=self.module["default_policy"],  # TODO: make multi-agent capable
-            data=batch,
-            episodes=episodes,
-            # persistent_data=None, # TODO
-        )
-
-        # TODO (sven): Thus far, processing from episodes and the learner connector are
-        #  solely single-agent.
-        if episodes is not None:
-            batch = MultiAgentBatch(
-                policy_batches={DEFAULT_POLICY_ID: SampleBatch(batch)},
-                env_steps=sum(len(e) for e in episodes),
+        # TODO (sven): make multi-agent capable.
+        if self._learner_connector is not None:
+            # Call the train data preprocessor.
+            batch, episodes = self._preprocess_train_data(
+                batch=batch, episodes=episodes
             )
+            batch = self._learner_connector(
+                rl_module=self.module["default_policy"],
+                data=batch,
+                episodes=episodes,
+            )
+            if episodes is not None:
+                batch = MultiAgentBatch(
+                    policy_batches={DEFAULT_POLICY_ID: SampleBatch(batch)},
+                    env_steps=sum(len(e) for e in episodes),
+                )
 
         if minibatch_size:
             batch_iter = MiniBatchCyclicIterator

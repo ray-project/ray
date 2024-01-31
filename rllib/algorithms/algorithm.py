@@ -25,6 +25,7 @@ from typing import (
     Set,
     Tuple,
     Type,
+    TYPE_CHECKING,
     Union,
 )
 
@@ -129,6 +130,8 @@ from ray.util import log_once
 from ray.util.timer import _Timer
 from ray.tune.registry import get_trainable_cls
 
+if TYPE_CHECKING:
+    from ray.rllib.core.learner.learner_group import LearnerGroup
 
 try:
     from ray.rllib.extensions import AlgorithmBase
@@ -439,6 +442,9 @@ class Algorithm(Trainable, AlgorithmBase):
 
         # Placeholder for a local replay buffer instance.
         self.local_replay_buffer = None
+
+        # Placeholder for our LearnerGroup responsible for updating the RLModule(s).
+        self.learner_group: Optional["LearnerGroup"] = None
 
         # Create a default logger creator if no logger_creator is specified
         if logger_creator is None:
@@ -1410,7 +1416,12 @@ class Algorithm(Trainable, AlgorithmBase):
             worker.set_weights(
                 weights=ray.get(weights_ref), weights_seq_no=weights_seq_no
             )
-            episodes = worker.sample(explore=False)
+            # By episode: Run always only one episode per remote call.
+            # By timesteps: By default EnvRunner runs for the configured number of
+            # timesteps (based on `rollout_fragment_length` and `num_envs_per_worker`).
+            episodes = worker.sample(
+                explore=False, num_episodes=1 if unit == "episodes" else None
+            )
             metrics = worker.get_metrics()
             return episodes, metrics, weights_seq_no
 
@@ -1451,6 +1462,9 @@ class Algorithm(Trainable, AlgorithmBase):
 
             # Collect steps stats.
             # TODO (sven): Solve for proper multi-agent env/agent steps counting.
+            #  Once we have multi-agent support on EnvRunner stack, we can simply do:
+            #  `len(episode)` for env steps and `episode.num_agent_steps()` for agent
+            #  steps.
             _agent_steps = sum(len(e) for e in episodes)
             _env_steps = sum(len(e) for e in episodes)
 
@@ -2473,7 +2487,7 @@ class Algorithm(Trainable, AlgorithmBase):
                     return env_obj
 
                 return env_specifier, env_creator_from_classpath
-            # Try gym/PyBullet/Vizdoom.
+            # Try gym/PyBullet.
             else:
                 return env_specifier, functools.partial(
                     _gym_env_creator, env_descriptor=env_specifier

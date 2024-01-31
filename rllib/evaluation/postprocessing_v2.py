@@ -32,4 +32,4 @@ def compute_value_targets(
     # Reverse back to correct (time) direction.
     value_targets = np.stack(list(reversed(Rs)), axis=0)
 
-    return value_targets
+    return value_targets.astype(np.float32)

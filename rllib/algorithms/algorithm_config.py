@@ -1310,9 +1310,8 @@ class AlgorithmConfig(_Config):
                 via `tune.register_env([name], lambda env_ctx: [env object])`,
                 or a string specifier of an RLlib supported type. In the latter case,
                 RLlib will try to interpret the specifier as either an Farama-Foundation
-                gymnasium env, a PyBullet env, a ViZDoomGym env, or a fully qualified
-                classpath to an Env class, e.g.
-                "ray.rllib.examples.env.random_env.RandomEnv".
+                gymnasium env, a PyBullet env, or a fully qualified classpath to an Env
+                class, e.g. "ray.rllib.examples.env.random_env.RandomEnv".
             env_config: Arguments dict passed to the env creator as an EnvContext
                 object (which is a dict plus the properties: num_rollout_workers,
                 worker_index, vector_index, and remote).
@@ -1733,11 +1732,14 @@ class AlgorithmConfig(_Config):
                 clipping. Allowed values are `value`, `norm`, and `global_norm`.
             train_batch_size_per_learner: Train batch size per individual Learner
                 worker. This setting only applies to the new API stack. The number
-                of Learner workers can be set via
-                `config.resources(num_learner_workers=...)`.
+                of Learner workers can be set via `config.resources(
+                num_learner_workers=...)`. The total effective batch size is then
+                `num_learner_workers` x `train_batch_size_per_learner` and can
+                be accessed via the property `AlgorithmConfig.total_train_batch_size`.
             train_batch_size: Training batch size, if applicable. When on the new API
-                stack, this setting should no longer be used and instead
-                `train_batch_size_per_worker` should be used.
+                stack, this setting should no longer be used. Instead, use
+                `train_batch_size_per_learner` (in combination with
+                `num_learner_workers`).
             model: Arguments passed into the policy model. See models/catalog.py for a
                 full list of the available model options.
                 TODO: Provide ModelConfig objects instead of dicts.
@@ -2742,16 +2744,16 @@ class AlgorithmConfig(_Config):
         """Automatically infers a proper rollout_fragment_length setting if "auto".
 
         Uses the simple formula:
-        `rollout_fragment_length` = `train_batch_size` /
+        `rollout_fragment_length` = `total_train_batch_size` /
         (`num_envs_per_worker` * `num_rollout_workers`)
 
         If result is a fraction AND `worker_index` is provided, will make
         those workers add additional timesteps, such that the overall batch size (across
-        the workers) will add up to exactly the `train_batch_size`.
+        the workers) will add up to exactly the `total_train_batch_size`.
 
         Returns:
             The user-provided `rollout_fragment_length` or a computed one (if user
-            provided value is "auto"), making sure `train_batch_size` is reached
+            provided value is "auto"), making sure `total_train_batch_size` is reached
             exactly in each iteration.
         """
         if self.rollout_fragment_length == "auto":
@@ -3117,7 +3119,7 @@ class AlgorithmConfig(_Config):
 
         Raises:
             ValueError: If there is a mismatch between user provided
-            `rollout_fragment_length` and `train_batch_size`.
+            `rollout_fragment_length` and `total_train_batch_size`.
         """
         if (
             self.rollout_fragment_length != "auto"
@@ -3132,16 +3134,18 @@ class AlgorithmConfig(_Config):
             batch_size = min_batch_size
             while batch_size < self.total_train_batch_size:
                 batch_size += min_batch_size
-            if (
-                batch_size - train_batch_size > 0.1 * self.total_train_batch_size
-                or batch_size - min_batch_size - self.total_train_batch_size
-                > (0.1 * train_batch_size)
+            if batch_size - self.total_train_batch_size > (
+                0.1 * self.total_train_batch_size
+            ) or batch_size - min_batch_size - self.total_train_batch_size > (
+                0.1 * self.total_train_batch_size
             ):
                 suggested_rollout_fragment_length = self.total_train_batch_size // (
                     self.num_envs_per_worker * (self.num_rollout_workers or 1)
                 )
                 raise ValueError(
-                    f"Your desired `train_batch_size` ({self.total_train_batch_size}) "
+                    "Your desired `total_train_batch_size` "
+                    f"({self.total_train_batch_size}={self.num_learner_workers} "
+                    f"learners x {self.train_batch_size_per_learner}) "
                     "or a value 10% off of that cannot be achieved with your other "
                     f"settings (num_rollout_workers={self.num_rollout_workers}; "
                     f"num_envs_per_worker={self.num_envs_per_worker}; "
@@ -3602,8 +3606,7 @@ class AlgorithmConfig(_Config):
         """Checks, whether evaluation related settings make sense."""
         if (
             self.evaluation_interval
-            and self.env_runner_cls is not None
-            and not issubclass(self.env_runner_cls, RolloutWorker)
+            and self.uses_new_env_runners
             and not self.enable_async_evaluation
         ):
             raise ValueError(

@@ -11,7 +11,7 @@ lightgbm==3.3.5
 lightgbm_ray==0.1.9
 
 # Huggingface
-transformers==4.19.1
+transformers==4.19.1  # TODO(ml-team): This should be upgraded.
 accelerate==0.20.3
 
 # DL libraries
