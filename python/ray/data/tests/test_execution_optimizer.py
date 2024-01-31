@@ -739,14 +739,16 @@ def test_read_map_batches_operator_fusion_incompatible_compute(
     assert upstream_physical_op.name == "ReadParquet->MapBatches(<lambda>)"
 
 
-def test_read_map_batches_operator_fusion_min_rows_per_block(ray_start_regular_shared):
+def test_read_map_batches_operator_fusion_min_rows_per_bundled_input(
+    ray_start_regular_shared,
+):
     # Test that fusion of map operators merges their block sizes in the expected way
     # (taking the max).
     planner = Planner()
     read_op = get_parquet_read_logical_op(parallelism=1)
-    op = MapBatches(read_op, lambda x: x, min_rows_per_block=2)
-    op = MapBatches(op, lambda x: x, min_rows_per_block=5)
-    op = MapBatches(op, lambda x: x, min_rows_per_block=3)
+    op = MapBatches(read_op, lambda x: x, min_rows_per_bundled_input=2)
+    op = MapBatches(op, lambda x: x, min_rows_per_bundled_input=5)
+    op = MapBatches(op, lambda x: x, min_rows_per_bundled_input=3)
     logical_plan = LogicalPlan(op)
     physical_plan = planner.plan(logical_plan)
     physical_plan = PhysicalOptimizer().optimize(physical_plan)
