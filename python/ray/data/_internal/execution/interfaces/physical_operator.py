@@ -291,7 +291,6 @@ class PhysicalOperator(Operator):
                 input. For most operators, this is always `0` since there is only
                 one upstream input operator.
         """
-        self._metrics.on_input_received(refs)
         self._add_input_inner(refs, input_index)
 
     def _add_input_inner(self, refs: RefBundle, input_index: int) -> None:
@@ -336,7 +335,6 @@ class PhysicalOperator(Operator):
         Subclasses should override `_get_next_inner` instead of this method.
         """
         output = self._get_next_inner()
-        self._metrics.on_output_taken(output)
         return output
 
     def _get_next_inner(self) -> RefBundle:

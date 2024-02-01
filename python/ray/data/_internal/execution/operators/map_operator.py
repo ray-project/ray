@@ -224,6 +224,7 @@ class MapOperator(OneToOneOperator, ABC):
 
     def _add_input_inner(self, refs: RefBundle, input_index: int):
         assert input_index == 0, input_index
+        self._metrics.on_input_received(refs)
         # Add RefBundle to the bundler.
         self._block_ref_bundler.add_bundle(refs)
         if self._block_ref_bundler.has_bundle():
@@ -363,6 +364,7 @@ class MapOperator(OneToOneOperator, ABC):
         bundle = self._output_queue.get_next()
         for _, meta in bundle.blocks:
             self._output_metadata.append(meta)
+        self._metrics.on_output_taken(bundle)
         return bundle
 
     @abstractmethod
