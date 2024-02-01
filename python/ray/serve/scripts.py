@@ -280,14 +280,14 @@ def _generate_config_from_file_or_import_path(
 @cli.command(
     short_help="Deploy an application or group of applications.",
     help=(
-        "Deploy an application from the specified import path (e.g., main:app) "
-        "or a group of applications specified in a YAML config file.\n\n"
-        "If passing an import path, it must point to a Serve Application or "
+        "Deploy an application from an import path (e.g., main:app) "
+        "or a group of applications from a YAML config file.\n\n"
+        "Passed import paths must point to an Application object or "
         "a function that returns one. If a function is used, arguments can be "
         "passed to it in 'key=val' format after the import path, for example:\n\n"
         "serve deploy main:app model_path='/path/to/model.pkl' num_replicas=5\n\n"
-        "This command supports different 'provider' backends. By default, it uses "
-        "a 'local' provider that makes a REST API request to a running Ray cluster. "
+        "This command supports different 'providers'. By default, it uses a 'local'"
+        "provider that makes a REST API request to a running Ray cluster. "
         "Not all arguments are supported by all providers."
     ),
 )
@@ -392,9 +392,9 @@ def deploy(
 @cli.command(
     short_help="Run an application or group of applications.",
     help=(
-        "Runs an application from the specified import path (e.g., my_script:"
-        "app) or application(s) from a YAML config.\n\n"
-        "If passing an import path, it must point to a Serve Application or "
+        "Run an application from an import path (e.g., my_script:"
+        "app) or a group of applications from a YAML config file.\n\n"
+        "Passed import paths must point to an Application object or "
         "a function that returns one. If a function is used, arguments can be "
         "passed to it in 'key=val' format after the import path, for example:\n\n"
         "serve run my_script:app model_path='/path/to/model.pkl' num_replicas=5\n\n"
