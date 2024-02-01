@@ -975,6 +975,7 @@ class SingleAgentEpisode:
             episode = SingleAgentEpisode(
                 rewards=[1.0, 2.0, 3.0],
                 observations=[0, 1, 2, 3], actions=[1, 2, 3],  # <- not relevant here
+                len_lookback_buffer=0,  # no lookback; all data is actually "in" episode
             )
             # Plain usage (`indices` arg only).
             episode.get_rewards(-1)  # 3.0
