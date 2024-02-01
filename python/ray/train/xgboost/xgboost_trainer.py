@@ -7,10 +7,7 @@ from ray.train.gbdt_trainer import GBDTTrainer
 from ray.train.xgboost import XGBoostCheckpoint
 from ray.util.annotations import PublicAPI
 
-try:
-    from packaging.version import Version
-except ImportError:
-    from distutils.version import LooseVersion as Version
+from packaging.version import Version
 
 
 @PublicAPI(stability="beta")
