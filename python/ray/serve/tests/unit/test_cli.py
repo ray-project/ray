@@ -9,9 +9,9 @@ from click.testing import CliRunner
 
 import ray
 from ray.serve.scripts import deploy
-from ray.serve.tests.unit.deploy_provider import get_ray_serve_deploy_provider
+from ray.serve.tests.unit.fake_deploy_provider import get_ray_serve_deploy_provider
 
-TEST_PROVIDER_ARG = "--provider=ray.serve.tests.unit.deploy_provider"
+TEST_PROVIDER_ARG = "--provider=ray.serve.tests.unit.fake_deploy_provider"
 
 
 class TestDeploy:
