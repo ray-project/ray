@@ -353,7 +353,7 @@ def _generate_config_from_file_or_import_path(
     default=os.environ.get("RAY_DASHBOARD_ADDRESS", "http://localhost:8265"),
     required=False,
     type=str,
-    help=RAY_DASHBOARD_ADDRESS_HELP_STR + " . Only relevant for 'local' provider.",
+    help=RAY_DASHBOARD_ADDRESS_HELP_STR + " . Only used by the 'local' provider.",
 )
 def deploy(
     config_or_import_path: str,
