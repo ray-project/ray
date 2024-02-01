@@ -49,7 +49,7 @@ class InstanceReconcileConfig:
         "RAY_AUTOSCALER_REQUEST_STATUS_TIMEOUT_S", 300
     )
     # The number of times to retry requesting to allocate an instance.
-    max_num_request_to_allocate: int = env_integer(
+    max_num_retry_request_to_allocate: int = env_integer(
         "RAY_AUTOSCALER_MAX_NUM_REQUEST_TO_ALLOCATE", 3
     )
 

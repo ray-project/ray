@@ -123,6 +123,11 @@ message InstanceUpdateEvent {
   Instance.InstanceStatus new_instance_status = 2;
   // The details of the status change if any.
   string details = 3;
+
+  /// Additional metdata for the update event.
+
+  // Cloud instance id for ALLOCATED event.
+  optional string cloud_instance_id = 4;
 }
 
 // Launch request for a node type.

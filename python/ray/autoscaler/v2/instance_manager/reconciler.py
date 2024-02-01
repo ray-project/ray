@@ -119,14 +119,14 @@ class Reconciler:
                 )
 
             # If there's a launch error, transition to ALLOCATION_FAILED.
-            launch_error = ctx.get_launch_error(
+            launch_error_msg = ctx.take_launch_error_msg(
                 im_instance.launch_request_id, instance_type=im_instance.instance_type
             )
-            if launch_error:
+            if launch_error_msg is not None:
                 return IMInstanceUpdateEvent(
                     instance_id=im_instance.instance_id,
                     new_instance_status=IMInstance.ALLOCATION_FAILED,
-                    error_message=launch_error.details,
+                    details=launch_error_msg,
                 )
             return None
 
@@ -136,7 +136,9 @@ class Reconciler:
             # If we have been stuck in this allocated status for too long, we should
             # either retry or fail.
             timeout_s = ctx.get_config().request_status_timeout_s
-            max_num_request_to_allocate = ctx.get_config().max_num_request_to_allocate
+            max_num_retry_request_to_allocate = (
+                ctx.get_config().max_num_retry_request_to_allocate
+            )
 
             all_request_times_ns = sorted(
                 InstanceUtil.get_status_transition_times_ns(
@@ -145,7 +147,8 @@ class Reconciler:
             )
 
             # Fail the allocation if we have tried too many times.
-            if len(all_request_times_ns) >= max_num_request_to_allocate:
+            # +1 for the original request
+            if len(all_request_times_ns) > max_num_retry_request_to_allocate:
                 return IMInstanceUpdateEvent(
                     instance_id=im_instance.instance_id,
                     new_instance_status=IMInstance.ALLOCATION_FAILED,
@@ -285,11 +288,14 @@ class Reconciler:
             )
             return unassigned_cloud_instance
 
-        def get_launch_error(
+        def take_launch_error_msg(
             self, request_id: str, instance_type: str
-        ) -> Optional[LaunchNodeError]:
+        ) -> Optional[str]:
             """
-            Get the launch error for the request_id and instance_type.
+            Take the launch error message for the request_id and instance_type.
+
+            Returns:
+                The launch error message if there's any, otherwise None.
             """
             if not self.launch_errors.get((request_id, instance_type), []):
                 return None

@@ -37,10 +37,10 @@ class FakeCounter:
 def create_instance(
     instance_id,
     status=Instance.UNKNOWN,
-    version=0,
     instance_type="worker_nodes1",
-    launch_request_id="",
     status_times: List[Tuple["Instance.InstanceStatus", int]] = None,
+    launch_request_id="",
+    version=0,
 ):
     return Instance(
         instance_id=instance_id,
