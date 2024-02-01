@@ -14,5 +14,6 @@ steps:
     job_env: MACOS
     instance_type: macos
     soft_fail: true
+    parallelism: 3
     commands:
       - ./ci/ray_ci/macos/macos_ci.sh run_small_and_large_flaky_tests
