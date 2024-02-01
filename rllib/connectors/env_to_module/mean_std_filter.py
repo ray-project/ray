@@ -7,6 +7,7 @@ import tree
 
 from ray.rllib.connectors.connector_v2 import ConnectorV2
 from ray.rllib.core.rl_module.rl_module import RLModule
+from ray.rllib.env.multi_agent_episode import MultiAgentEpisode
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.filter import Filter, MeanStdFilter as _MeanStdFilter
 from ray.rllib.utils.spaces.space_utils import get_base_struct_from_space
@@ -96,14 +97,6 @@ class MeanStdFilter(ConnectorV2):
         self._filter: Optional[_MeanStdFilter] = None
         self._init_new_filter()
 
-    def _init_new_filter(self):
-        self._filter = _MeanStdFilter(
-            self.filter_shape,
-            demean=self.de_mean_to_zero,
-            destd=self.de_std_to_one,
-            clip=self.clip_by_value,
-        )
-
     @override(ConnectorV2)
     def __call__(
         self,
@@ -130,11 +123,19 @@ class MeanStdFilter(ConnectorV2):
             #  error). However, this would NOT work if our
             #  space were to be more more restrictive than the env's original space
             #  b/c then the adding of the original env observation would fail.
-            episode.observation_space = episode.observations.space = self.observation_space
-            episode.set_observations(
-                new_data=normalized_observations,
-                at_indices=-1,
-            )
+            #episode.observation_space = episode.observations.space = self.observation_space
+            # TODO (sven): Add setter APIs to multi-agent episode.
+            if isinstance(episode, MultiAgentEpisode):
+                for agent_id, val in normalized_observations.items():
+                    episode.agent_episodes[agent_id].set_observations(
+                        new_data=val,
+                        at_indices=-1,
+                    )
+            else:
+                episode.set_observations(
+                    new_data=normalized_observations,
+                    at_indices=-1,
+                )
 
         # Leave the `input_` as is. RLlib's default connector will automatically
         # populate the OBS column therein from the episodes' (transformed) observations.
@@ -142,19 +143,6 @@ class MeanStdFilter(ConnectorV2):
 
     def get_state(self) -> Any:
         return self._get_state_from_filter(self._filter)
-
-    @staticmethod
-    def _get_state_from_filter(filter):
-        flattened_rs = tree.flatten(filter.running_stats)
-        #flattened_buffer = tree.flatten(self._filter.buffer)
-        return {
-            "shape": filter.shape,
-            "de_mean_to_zero": filter.demean,
-            "de_std_to_one": filter.destd,
-            "clip_by_value": filter.clip,
-            "running_stats": [s.to_state() for s in flattened_rs],
-            #"buffer": [s.to_state() for s in flattened_buffer],
-        }
 
     @override(ConnectorV2)
     def set_state(self, state: Dict[str, Any]) -> None:
@@ -166,8 +154,8 @@ class MeanStdFilter(ConnectorV2):
         self._filter.running_stats = tree.unflatten_as(
             self._filter.shape, running_stats
         )
-        #buffer = [RunningStat.from_state(s) for s in state["buffer"]]
-        #self._filter.buffer = tree.unflatten_as(self._filter.shape, buffer)
+        buffer = [RunningStat.from_state(s) for s in state["buffer"]]
+        self._filter.buffer = tree.unflatten_as(self._filter.shape, buffer)
 
     @override(ConnectorV2)
     def reset_state(self) -> None:
@@ -213,3 +201,24 @@ class MeanStdFilter(ConnectorV2):
             filter.apply_changes(_other_filter, with_buffer=False)
 
         return MeanStdFilter._get_state_from_filter(filter)
+
+    def _init_new_filter(self):
+        self._filter = _MeanStdFilter(
+            self.filter_shape,
+            demean=self.de_mean_to_zero,
+            destd=self.de_std_to_one,
+            clip=self.clip_by_value,
+        )
+
+    @staticmethod
+    def _get_state_from_filter(filter):
+        flattened_rs = tree.flatten(filter.running_stats)
+        #flattened_buffer = tree.flatten(self._filter.buffer)
+        return {
+            "shape": filter.shape,
+            "de_mean_to_zero": filter.demean,
+            "de_std_to_one": filter.destd,
+            "clip_by_value": filter.clip,
+            "running_stats": [s.to_state() for s in flattened_rs],
+            "buffer": [s.to_state() for s in flattened_buffer],
+        }
