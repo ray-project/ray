@@ -656,13 +656,14 @@ class MultiAgentEpisode:
             episode = MultiAgentEpisode(
                 agent_ids=agent_ids,
                 observations=observations,
+                infos=infos,
                 actions=actions,
                 rewards=rewards,
                 # Note: terminated/truncated have nothing to do with an episode
                 # being `finalized` or not (via the `self.finalize()` method)!
                 terminateds=terminateds,
                 truncateds=truncateds,
-                infos=infos,
+                len_lookback_buffer=0,  # no lookback; all data is actually "in" episode
             )
 
             # Episode has not been finalized (numpy'ized) yet.
@@ -671,7 +672,6 @@ class MultiAgentEpisode:
             assert (
                 episode.get_observations(
                     indices=[1],
-                    indices_in_env_steps=True,
                     agent_ids="agent_1",
                 ) == [1]
             )
@@ -685,7 +685,6 @@ class MultiAgentEpisode:
             assert (
                 isinstance(episode.get_observations(
                     indices=[1],
-                    indices_in_env_steps=True,
                     agent_ids="agent_1",
                 ), np.ndarray)
             )

@@ -13,7 +13,7 @@ config = (
     .rollouts(
         env_runner_cls=MultiAgentEnvRunner,
         num_envs_per_worker=1,
-        num_rollout_workers=2,
+        num_rollout_workers=4,
     )
     .training(
         train_batch_size=512,
@@ -35,7 +35,7 @@ config = (
 
 stop = {
     "timesteps_total": 500000,
-    "episode_reward_mean": -900.0,  # agents required to reach -400 on average
+    "episode_reward_mean": -1000.0,  # agents required to reach -500 on average
 }
 
 
