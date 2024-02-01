@@ -331,7 +331,10 @@ def _generate_config_from_file_or_import_path(
     required=False,
     default=None,
     type=str,
-    help="Container image to use for the application(s).",
+    help=(
+        "Container image to use for the application(s). Not supported for the "
+        "default 'local' provider because it deploys to an existing cluster."
+    ),
 )
 @click.option(
     "--provider",
