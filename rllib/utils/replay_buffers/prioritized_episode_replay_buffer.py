@@ -1,5 +1,6 @@
 import copy
 import numpy as np
+import scipy
 
 from collections import deque
 from numpy.typing import NDArray
@@ -182,6 +183,7 @@ class PrioritizedEpisodeReplayBuffer(EpisodeReplayBuffer):
         batch_length_T: Optional[int] = None,
         n_step: Optional[Union[int, Tuple]] = 1,
         beta: float = 0.0,
+        gamma: float = 0.99,
         include_infos: bool = False,
     ) -> SampleBatchType:
         """Samples from a buffer in a prioritized way.
@@ -217,6 +219,9 @@ class PrioritizedEpisodeReplayBuffer(EpisodeReplayBuffer):
             beta: The exponent of the importance sampling weight (see Schaul et
                 al. (2016)). A `beta=0.0` does not correct for the bias introduced
                 by prioritized replay and `beta=1.0` fully corrects for it.
+            gamma: The discount factor to be used when applying n-step caluclations.
+                The default of `0.99` should be replaced by the `Algorithm`s
+                discount factor.
             include_infos: A boolean indicating, if `info`s should be included in
                 the batch. This could be of advantage, if the `info` contains
                 values from the environment important for loss computation. If
@@ -274,9 +279,7 @@ class PrioritizedEpisodeReplayBuffer(EpisodeReplayBuffer):
             # First, draw a random sample from Uniform(0, sum over all weights).
             # Note, transitions with higher weight get sampled more often (as
             # more random draws fall into larger intervals).
-            random_sum = self.rng.random() * self._sum_segment.sum(
-                0, self.get_num_timesteps()
-            )
+            random_sum = self.rng.random() * self._sum_segment.sum()
             # Get the highest index in the sum-tree for which the sum is
             # smaller or equal the random sum sample.
             # Note, we sample `o_(t + n_step)` as this is the state that
@@ -319,9 +322,12 @@ class PrioritizedEpisodeReplayBuffer(EpisodeReplayBuffer):
             observations[B].append(eps_observations[0])
             next_observations[B].append(eps_observations[-1])
             # Note, this will be the reward after executing action
-            # `a_(episode_ts-n_step+1)``. For `n_step>1` this will be the sum of
+            # `a_(episode_ts-n_step+1)`. For `n_step>1` this will be the sum of
             # all rewards that were collected over the last n steps.
-            rewards[B].append(sum(eps_rewards))
+            rewards[B].append(
+                scipy.signal.lfilter([1], [1, -gamma], eps_rewards[::-1], axis=0)[-1]
+            )
+            # rewards[B].append(sum(eps_rewards))
             # Note, `SingleAgentEpisode` stores the action that followed
             # `o_t` with `o_(t+1)`, therefore, we need the next one.
             actions[B].append(episode.get_actions(episode_ts - n_step))

@@ -24,7 +24,6 @@ class TestPrioritizedEpisodeReplayBuffer(unittest.TestCase):
         return eps
 
     def test_add_and_eviction_logic(self):
-
         # Fill the buffer till capacity (100 ts).
         buffer = PrioritizedEpisodeReplayBuffer(capacity=100)
 
@@ -84,7 +83,6 @@ class TestPrioritizedEpisodeReplayBuffer(unittest.TestCase):
         )
 
     def test_prioritized_buffer_sample_logic(self):
-
         buffer = PrioritizedEpisodeReplayBuffer(capacity=10000)
 
         for _ in range(200):
@@ -165,7 +163,9 @@ class TestPrioritizedEpisodeReplayBuffer(unittest.TestCase):
             self.assertTrue(np.all(next_obs - obs - 1 - 2 < tolerance))
             # Assert that the reward is indeed the cumulated sum of rewards
             # collected between the observation and the next_observation.
-            reward_sum = (next_obs + next_obs - 1 + next_obs - 2) * 0.1
+            reward_sum = (
+                next_obs * 0.99**2 + (next_obs - 1) * 0.99 + next_obs - 2
+            ) * 0.1
             self.assertTrue(np.all(rewards - reward_sum < tolerance))
 
     def test_update_priorities(self):
