@@ -72,7 +72,6 @@ if __name__ == "__main__":
         # And new EnvRunner.
         .rollouts(
             env_runner_cls=SingleAgentEnvRunner,
-            #num_rollout_workers=0,#TODO: 2
             env_to_module_connector=_env_to_module,
         )
         .resources(
@@ -98,13 +97,10 @@ if __name__ == "__main__":
         "episode_reward_mean": args.stop_reward,
     }
 
-    algo = config.build()
-    algo.train()
-
     tuner = tune.Tuner(
         config.algo_class,
         param_space=config.to_dict(),
-        run_config=air.RunConfig(stop=stop, verbose=2),
+        run_config=air.RunConfig(stop=stop, verbose=1),
         tune_config=tune.TuneConfig(num_samples=1),
     )
     results = tuner.fit()
