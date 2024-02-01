@@ -226,18 +226,17 @@ class OpState:
         if self.progress_bar:
             self.progress_bar.update(1, self.op._estimated_output_blocks)
 
-    def refresh_progress_bar(self) -> None:
+    def refresh_progress_bar(self, resource_manager) -> None:
         """Update the console with the latest operator progress."""
         if self.progress_bar:
-            self.progress_bar.set_description(self.summary_str())
+            self.progress_bar.set_description(self.summary_str(resource_manager))
 
-    def summary_str(self) -> str:
+    def summary_str(self, resource_manager) -> str:
         queued = self.num_queued() + self.op.internal_queue_size()
         active = self.op.num_active_tasks()
         desc = f"- {self.op.name}: {active} active, {queued} queued"
         mem = memory_string(
-            (self.op.current_resource_usage().object_store_memory or 0)
-            + self.inqueue_memory_usage()
+            resource_manager.get_op_usage(self.op).object_store_memory
         )
         desc += f", {mem} objects"
         suffix = self.op.progress_str()
