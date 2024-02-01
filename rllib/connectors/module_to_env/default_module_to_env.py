@@ -120,11 +120,11 @@ class DefaultModuleToEnv(ConnectorV2):
         if not is_multi_agent:
             data = {DEFAULT_POLICY_ID: data}
 
-        for module_id, module_data in data.items():
-            state = data.pop(STATE_OUT, None)
-            data = tree.map_structure(lambda s: np.squeeze(s, axis=1), data)
+        for module_id, module_data in data.copy().items():
+            state = module_data.pop(STATE_OUT, None)
+            data[module_id] = tree.map_structure(lambda s: np.squeeze(s, axis=1), module_data)
             if state:
-                data[STATE_OUT] = state
+                data[module_id][STATE_OUT] = state
 
         if not is_multi_agent:
             return data[DEFAULT_POLICY_ID]

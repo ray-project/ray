@@ -54,7 +54,6 @@ if __name__ == "__main__":
         return PrevRewardPrevActionEnvToModule(
             input_observation_space=env.single_observation_space,
             input_action_space=env.single_action_space,
-            env=env,
         )
 
     def _learner_connector(input_observation_space, input_action_space):
@@ -73,9 +72,12 @@ if __name__ == "__main__":
         # And new EnvRunner.
         .rollouts(
             env_runner_cls=SingleAgentEnvRunner,
+            #num_rollout_workers=0,#TODO: 2
             env_to_module_connector=_env_to_module,
         )
-        .resources(num_gpus=int(os.environ.get("RLLIB_NUM_GPUS", "0")))
+        .resources(
+            num_learner_workers=0,
+        )
         .training(
             learner_connector=_learner_connector,
             num_sgd_iter=5,
@@ -85,6 +87,7 @@ if __name__ == "__main__":
                 "use_lstm": True,
                 "lstm_cell_size": 32,
                 "vf_share_layers": True,
+                "uses_new_env_runners": True,
             },
         )
     )
@@ -95,10 +98,13 @@ if __name__ == "__main__":
         "episode_reward_mean": args.stop_reward,
     }
 
+    algo = config.build()
+    algo.train()
+
     tuner = tune.Tuner(
         config.algo_class,
         param_space=config.to_dict(),
-        run_config=air.RunConfig(stop=stop),
+        run_config=air.RunConfig(stop=stop, verbose=2),
         tune_config=tune.TuneConfig(num_samples=1),
     )
     results = tuner.fit()

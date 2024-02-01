@@ -213,7 +213,7 @@ class MeanStdFilter(ConnectorV2):
     @staticmethod
     def _get_state_from_filter(filter):
         flattened_rs = tree.flatten(filter.running_stats)
-        #flattened_buffer = tree.flatten(self._filter.buffer)
+        flattened_buffer = tree.flatten(filter.buffer)
         return {
             "shape": filter.shape,
             "de_mean_to_zero": filter.demean,
