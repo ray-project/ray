@@ -11,6 +11,7 @@ import requests
 # when we deprecate the v1 kuberay node provider.
 from ray.autoscaler._private.kuberay.node_provider import (
     KUBERAY_KIND_HEAD,
+    KUBERAY_KIND_WORKER,
     KUBERAY_LABEL_KEY_KIND,
     KUBERAY_LABEL_KEY_TYPE,
     KUBERAY_TYPE_HEAD,
@@ -35,20 +36,13 @@ from ray.autoscaler.v2.schema import NodeKind, NodeStatus, NodeType
 logger = logging.getLogger(__name__)
 
 
-class KuberayProvider(ICloudInstanceProvider):
+class KubeRayProvider(ICloudInstanceProvider):
     """
-    This class is a thin wrapper around the Kuberay API client. It modifies
-    the RayCluster resource spec on the Kuberay API server to scale the cluster:
+    This class is a thin wrapper around the Kubernetes API client. It modifies
+    the RayCluster resource spec on the Kubernetes API server to scale the cluster:
 
-    It launches new instances/nodes by submitting a scale request to the Kuberay API
-    to overwrite "replicas" fields in the RayCluster resource on the Kubernetes API
-    server.
-
-    It terminates instances/nodes by submitting a scale request to the Kuberay API to
-    overwrite "workersToDelete" fields in the RayCluster resource on the Kubernetes
-    API server, as well as adjusting the "replicas" fields in the RayCluster resource
-    spec.
-
+    It launches new instances/nodes by submitting patches to the Kubernetes API
+    to update the RayCluster CRD.
     """
 
     def __init__(
@@ -61,7 +55,7 @@ class KuberayProvider(ICloudInstanceProvider):
         Args:
             cluster_name: The name of the RayCluster resource.
             namespace: The namespace of the RayCluster resource.
-            k8s_api_client: The client to the Kuberay API server.
+            k8s_api_client: The client to the Kubernetes API server.
         """
         self._cluster_name = cluster_name
         self._namespace = namespace
@@ -73,7 +67,7 @@ class KuberayProvider(ICloudInstanceProvider):
         self._launch_errors_queue = []
         self._terminate_errors_queue = []
 
-        # Below are states that are fetched from the Kuberay API server.
+        # Below are states that are fetched from the Kubernetes API server.
         self._ray_cluster = None
         self._cached_instances: Dict[CloudInstanceId, CloudInstance]
 
@@ -82,8 +76,13 @@ class KuberayProvider(ICloudInstanceProvider):
         """Represents a scale request that contains the current states and go-to states
         for the ray cluster.
 
-        This class will be converted to patches to be submitted to the Kuberay API
-        server.
+        This class will be converted to patches to be submitted to the Kubernetes API
+        server:
+        - For launching new instances, it will adjust the `replicas` field in the
+            workerGroupSpecs.
+        - For terminating instances, it will adjust the `workersToDelete` field in the
+            workerGroupSpecs.
+
         """
 
         # The desired number of workers for each node type.
@@ -92,8 +91,12 @@ class KuberayProvider(ICloudInstanceProvider):
         workers_to_delete: Dict[NodeType, List[CloudInstanceId]] = field(
             default_factory=dict
         )
-        # The worker groups to clear the workersToDelete field.
-        worker_groups_to_clear_delete: Set[NodeType] = field(default_factory=set)
+        # The worker groups with empty workersToDelete field.
+        # This is needed since we will also need to clear the workersToDelete field
+        # for the worker groups that have finished deletes.
+        worker_groups_without_pending_deletes: Set[NodeType] = field(
+            default_factory=set
+        )
         # The worker groups that still have workers to be deleted.
         worker_groups_with_pending_deletes: Set[NodeType] = field(default_factory=set)
 
@@ -124,7 +127,8 @@ class KuberayProvider(ICloudInstanceProvider):
             errors_msg = (
                 "There are workers to be deleted from: "
                 f"{scale_request.worker_groups_with_pending_deletes}. "
-                "Waiting for them to be created before deleting workers."
+                "Waiting for them to be deleted before adding new workers "
+                " to be deleted"
             )
             logger.warning(errors_msg)
             self._add_terminate_errors(
@@ -184,7 +188,7 @@ class KuberayProvider(ICloudInstanceProvider):
 
     def _initialize_scale_request(
         self, to_launch: Dict[NodeType, int], to_delete_instances: List[CloudInstanceId]
-    ) -> "KuberayProvider.ScaleRequest":
+    ) -> "KubeRayProvider.ScaleRequest":
         """
         Initialize the scale request based on the current state of the cluster and
         the desired state (to launch, to delete).
@@ -219,55 +223,49 @@ class KuberayProvider(ICloudInstanceProvider):
                 continue
             num_workers_dict[instance.node_type] += 1
 
-        # Add to launch nodes..
+        # Add to launch nodes.
         for node_type, count in to_launch.items():
             num_workers_dict[node_type] += count
 
-        # Remove deleting workers.
+        to_delete_instances_by_type = defaultdict(list)
+        # Update the number of workers with to_delete_instances
+        # and group them by type.
         for to_delete_id in to_delete_instances:
             to_delete_instance = cur_instances.get(to_delete_id, None)
             if to_delete_instance is None:
                 # This instance has already been deleted.
                 continue
-            num_workers_dict[to_delete_instance.node_type] -= 1
-            assert num_workers_dict[to_delete_instance.node_type] >= 0
 
-        # Group the to delete workers by node type.
-        to_delete_instances_by_type = defaultdict(list)
-        for instance_id in to_delete_instances:
-            instance = cur_instances.get(instance_id, None)
-            if instance is None:
-                # This instance has already been deleted.
-                continue
-
-            if instance.node_kind == NodeKind.HEAD:
+            if to_delete_instance.node_kind == NodeKind.HEAD:
                 # Not possible to delete head node.
                 continue
 
+            num_workers_dict[to_delete_instance.node_type] -= 1
+            assert num_workers_dict[to_delete_instance.node_type] >= 0
             to_delete_instances_by_type[instance.node_type].append(instance)
 
-        scale_request = KuberayProvider.ScaleRequest(
+        scale_request = KubeRayProvider.ScaleRequest(
             desired_num_workers=num_workers_dict,
             workers_to_delete=to_delete_instances_by_type,
-            worker_groups_to_clear_delete=worker_groups_without_pending_deletes,
+            worker_groups_without_pending_deletes=worker_groups_without_pending_deletes,
             worker_groups_with_pending_deletes=worker_groups_with_pending_deletes,
         )
 
         return scale_request
 
     def _submit_scale_request(
-        self, scale_request: "KuberayProvider.ScaleRequest"
+        self, scale_request: "KubeRayProvider.ScaleRequest"
     ) -> None:
-        """Submits a scale request to the Kuberay API server.
+        """Submits a scale request to the Kubernetes API server.
 
         This method will convert the scale request to patches and submit the patches
-        to the Kuberay API server.
+        to the Kubernetes API server.
 
         Args:
             scale_request: The scale request.
 
         Raises:
-            Exception: An exception is raised if the Kuberay API server returns an
+            Exception: An exception is raised if the Kubernetes API server returns an
                 error.
         """
         # Get the current ray cluster spec.
@@ -307,7 +305,7 @@ class KuberayProvider(ICloudInstanceProvider):
             patch_payload.append(patch)
 
         # Clear the workersToDelete field for the worker groups that have been deleted.
-        for node_type in scale_request.worker_groups_to_clear_delete:
+        for node_type in scale_request.worker_groups_without_pending_deletes:
             if node_type in scale_request.workers_to_delete:
                 # This node type is still being deleted.
                 continue
@@ -377,7 +375,7 @@ class KuberayProvider(ICloudInstanceProvider):
             )
 
     def _sync_with_api_server(self) -> None:
-        """Fetches the RayCluster resource from the Kuberay API server."""
+        """Fetches the RayCluster resource from the Kubernetes API server."""
         self._ray_cluster = self._get(f"rayclusters/{self._cluster_name}")
         self._cached_instances = self._fetch_instances()
 
@@ -405,7 +403,7 @@ class KuberayProvider(ICloudInstanceProvider):
         """
 
         worker_groups_with_pending_deletes = set()
-        worker_groups_with_finished_deletes = set()
+        worker_groups_with_deletes = set()
 
         worker_groups = ray_cluster_spec["spec"].get("workerGroupSpecs", [])
         for worker_group in worker_groups:
@@ -417,19 +415,21 @@ class KuberayProvider(ICloudInstanceProvider):
                 continue
 
             node_type = worker_group["groupName"]
+            worker_groups_with_deletes.add(node_type)
+
             for worker in workersToDelete:
                 if worker in node_set:
                     worker_groups_with_pending_deletes.add(node_type)
                     break
 
-            # All to delete in the worker spec have been deleted.
-            worker_groups_with_finished_deletes.add(node_type)
-
+        worker_groups_with_finished_deletes = (
+            worker_groups_with_deletes - worker_groups_with_pending_deletes
+        )
         return worker_groups_with_pending_deletes, worker_groups_with_finished_deletes
 
     def _fetch_instances(self) -> Dict[CloudInstanceId, CloudInstance]:
         """
-        Fetches the pods from the Kuberay API server and convert them to Ray
+        Fetches the pods from the Kubernetes API server and convert them to Ray
         CloudInstance.
 
         Returns:
@@ -473,11 +473,13 @@ class KuberayProvider(ICloudInstanceProvider):
                 # Ignore pods marked for termination.
                 continue
             pod_name = pod["metadata"]["name"]
-            cloud_instances[pod_name] = self._cloud_instance_from_pod(pod)
+            cloud_instance = self._cloud_instance_from_pod(pod)
+            if cloud_instance:
+                cloud_instances[pod_name] = cloud_instance
         return cloud_instances
 
     @staticmethod
-    def _cloud_instance_from_pod(pod: Dict[str, Any]) -> CloudInstance:
+    def _cloud_instance_from_pod(pod: Dict[str, Any]) -> Optional[CloudInstance]:
         """
         Convert a pod to a Ray CloudInstance.
         """
@@ -485,11 +487,16 @@ class KuberayProvider(ICloudInstanceProvider):
         if labels[KUBERAY_LABEL_KEY_KIND] == KUBERAY_KIND_HEAD:
             kind = NodeKind.HEAD
             type = KUBERAY_TYPE_HEAD
-        else:
+        elif labels[KUBERAY_LABEL_KEY_KIND] == KUBERAY_KIND_WORKER:
             kind = NodeKind.WORKER
             type = labels[KUBERAY_LABEL_KEY_TYPE]
+        else:
+            # Other ray nodes types defined by KubeRay.
+            # e.g. this could also be `redis-cleanup`
+            # We will not track these nodes.
+            return None
 
-        status = KuberayProvider._get_node_status(pod)
+        status = KubeRayProvider._get_node_status(pod)
         cloud_instance_id = pod["metadata"]["name"]
         return CloudInstance(
             cloud_instance_id=cloud_instance_id,
@@ -509,7 +516,7 @@ class KuberayProvider(ICloudInstanceProvider):
 
         state = pod["status"]["containerStatuses"][0]["state"]
 
-        if "pending" in state or "waiting" in state:
+        if "waiting" in state:
             return NodeStatus.PENDING
         if "running" in state:
             return NodeStatus.RUNNING
@@ -518,11 +525,11 @@ class KuberayProvider(ICloudInstanceProvider):
         return NodeStatus.UNKNOWN
 
     def _get(self, remote_path: str) -> Dict[str, Any]:
-        """Get a resource from the Kuberay API server."""
+        """Get a resource from the Kubernetes API server."""
         return self._k8s_api_client.get(remote_path)
 
     def _patch(self, remote_path: str, payload: List[Dict[str, Any]]) -> Dict[str, Any]:
-        """Patch a resource on the Kuberay API server."""
+        """Patch a resource on the Kubernetes API server."""
         return self._k8s_api_client.patch(remote_path, payload)
 
     def _get_pods_resource_version(self) -> str:

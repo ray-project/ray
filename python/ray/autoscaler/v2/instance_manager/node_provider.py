@@ -39,10 +39,6 @@ class CloudInstance:
     # Status of the cloud instance.
     status: NodeStatus
     # Update request id from which the cloud instance is launched.
-    # None if cloud instance provider unable to associate the cloud instance
-    # with any update request. This could happen for example when the cloud instance
-    # is created outside of the cluster, or the cloud instance provider is unable to
-    # associate the cloud instance with an update request like Kuberay.
     request_id: Optional[str] = None
 
 

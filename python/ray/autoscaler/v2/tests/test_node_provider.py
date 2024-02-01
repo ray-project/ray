@@ -15,7 +15,7 @@ from ray.autoscaler._private.node_provider_availability_tracker import (
 )
 from ray.autoscaler.node_launch_exception import NodeLaunchException
 from ray.autoscaler.v2.instance_manager.cloud_providers.kuberay.cloud_provider import (
-    KuberayProvider,
+    KubeRayProvider,
 )
 from ray.autoscaler.v2.instance_manager.config import AutoscalingConfig
 from ray.autoscaler.v2.instance_manager.node_provider import (
@@ -129,12 +129,12 @@ class MockKubernetesHttpApiClient(IKubernetesHttpApiClient):
         return self._patches[path]
 
 
-class KuberayProviderTest(unittest.TestCase):
+class KubeRayProviderTest(unittest.TestCase):
     def setUp(self):
         self.mock_client = MockKubernetesHttpApiClient(
             _get_test_yaml("podlist1.yaml"), get_basic_ray_cr()
         )
-        self.provider = KuberayProvider(
+        self.provider = KubeRayProvider(
             cluster_name="test",
             namespace="test-namespace",
             k8s_api_client=self.mock_client,

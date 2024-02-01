@@ -30,8 +30,14 @@ KUBERAY_LABEL_KEY_KIND = "ray.io/node-type"
 # Key for KubeRay label that identifies the worker group (autoscaler node type) of a
 # Ray pod.
 KUBERAY_LABEL_KEY_TYPE = "ray.io/group"
+
+# These should be synced with:
+# https://github.com/ray-project/kuberay/blob/f2d94ffe213dd8f69481b09c474047cb899fa73b/ray-operator/apis/ray/v1/raycluster_types.go#L165-L171 # noqa
 # Kind label value indicating the pod is the head.
 KUBERAY_KIND_HEAD = "head"
+# Kind label value indicating the pod is the worker.
+KUBERAY_KIND_WORKER = "worker"
+
 # Group name (node type) to use for the head.
 KUBERAY_TYPE_HEAD = "head-group"
 # KubeRay CRD version
