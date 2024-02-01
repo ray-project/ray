@@ -71,11 +71,7 @@ def test_torch_get_device(
             visible_devices = os.environ["CUDA_VISIBLE_DEVICES"]
             assert visible_devices == "1,2"
 
-        devices = (
-            sorted([device.index for device in train.torch.get_device()])
-            if num_gpus_per_worker > 1
-            else train.torch.get_device().index
-        )
+        devices = sorted([device.index for device in train.torch.get_devices()])
         write_rank_data(tmp_path, devices)
 
     trainer = TorchTrainer(
@@ -92,9 +88,9 @@ def test_torch_get_device(
     devices = list(rank_data.values())
 
     if num_gpus_per_worker == 0.5:
-        assert sorted(devices) == [0, 0, 1, 1]
+        assert sorted(devices) == [[0], [0], [1], [1]]
     elif num_gpus_per_worker == 1:
-        assert sorted(devices) == [0, 1]
+        assert sorted(devices) == [[0], [1]]
     elif num_gpus_per_worker == 2:
         assert sorted(devices[0]) == [0, 1]
     else:
@@ -108,11 +104,7 @@ def test_torch_get_device(
 def test_torch_get_device_dist(ray_2_node_2_gpu, num_gpus_per_worker, tmp_path):
     @patch("torch.cuda.is_available", lambda: True)
     def train_fn():
-        devices = (
-            sorted([device.index for device in train.torch.get_device()])
-            if num_gpus_per_worker > 1
-            else train.torch.get_device().index
-        )
+        devices = sorted([device.index for device in train.torch.get_devices()])
         write_rank_data(tmp_path, devices)
 
     trainer = TorchTrainer(
@@ -138,12 +130,12 @@ def test_torch_get_device_dist(ray_2_node_2_gpu, num_gpus_per_worker, tmp_path):
         # 4 workers on node 1, 4 workers on node 2
         # `ray.get_gpu_ids()` returns [0], [0], [1], [1] on node 1
         # and [0], [0], [1], [1] on node 2
-        assert sorted(devices) == [0, 0, 0, 0, 1, 1, 1, 1]
+        assert sorted(devices) == [[0], [0], [0], [0], [1], [1], [1], [1]]
     elif num_gpus_per_worker == 1:
         # worker gpu topology:
         # 2 workers on node 1, 2 workers on node 2
         # `ray.get_gpu_ids()` returns [0], [1] on node 1 and [0], [1] on node 2
-        assert sorted(devices) == [0, 0, 1, 1]
+        assert sorted(devices) == [[0], [0], [1], [1]]
     elif num_gpus_per_worker == 2:
         # worker gpu topology:
         # 1 workers on node 1, 1 workers on node 2

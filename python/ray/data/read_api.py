@@ -36,7 +36,6 @@ from ray.data._internal.stats import DatasetStats
 from ray.data._internal.util import (
     _autodetect_parallelism,
     _lazy_import_pyarrow_dataset,
-    _warn_on_high_parallelism,
     get_table_block_metadata,
     ndarray_to_block,
     pandas_df_to_arrow_block,
@@ -363,14 +362,11 @@ def read_datasource(
     # removing LazyBlockList code path.
     read_tasks = datasource_or_legacy_reader.get_read_tasks(requested_parallelism)
 
-    if not ctx.use_streaming_executor:
-        _warn_on_high_parallelism(requested_parallelism, len(read_tasks))
-
-    read_stage_name = f"Read{datasource.get_name()}"
+    read_op_name = f"Read{datasource.get_name()}"
 
     block_list = LazyBlockList(
         read_tasks,
-        read_stage_name=read_stage_name,
+        read_op_name=read_op_name,
         ray_remote_args=ray_remote_args,
         owned_by_consumer=False,
     )
@@ -2358,12 +2354,17 @@ def from_spark(
 
 @PublicAPI
 def from_huggingface(
-    dataset: Union["datasets.Dataset", "datasets.IterableDataset"],
+    dataset: Union["datasets.Dataset", "datasets.IterableDataset"], parallelism=-1
 ) -> Union[MaterializedDataset, Dataset]:
     """Create a :class:`~ray.data.MaterializedDataset` from a
     `Hugging Face Datasets Dataset <https://huggingface.co/docs/datasets/package_reference/main_classes#datasets.Dataset/>`_
     or a :class:`~ray.data.Dataset` from a `Hugging Face Datasets IterableDataset <https://huggingface.co/docs/datasets/package_reference/main_classes#datasets.IterableDataset/>`_.
     For an `IterableDataset`, we use a streaming implementation to read data.
+
+    If the dataset is a public Hugging Face Dataset that is hosted on the Hugging Face Hub and
+    no transformations have been applied, then the `hosted parquet files <https://huggingface.co/docs/datasets-server/parquet#list-parquet-files>`_
+    will be passed to :meth:`~ray.data.read_parquet` to perform a distributed read. All
+    other cases will be done with a single node read.
 
     Example:
 
@@ -2403,18 +2404,36 @@ def from_huggingface(
             `DatasetDict <https://huggingface.co/docs/datasets/package_reference/main_classes#datasets.DatasetDict/>`_
             and `IterableDatasetDict <https://huggingface.co/docs/datasets/package_reference/main_classes#datasets.IterableDatasetDict/>`_
             are not supported.
+        parallelism: The amount of parallelism to use for the dataset if applicable (i.e.
+            if the dataset is a public Hugging Face Dataset without transforms applied).
+            Defaults to -1, which automatically determines the optimal parallelism for your
+            configuration. You should not need to manually set this value in most cases.
+            For details on how the parallelism is automatically determined and guidance
+            on how to tune it, see :ref:`Tuning read parallelism
+            <read_parallelism>`. Parallelism is upper bounded by the total number of
+            records in all the parquet files.
 
     Returns:
         A :class:`~ray.data.Dataset` holding rows from the `Hugging Face Datasets Dataset`_.
     """  # noqa: E501
     import datasets
 
-    if isinstance(dataset, datasets.IterableDataset):
-        # HuggingFaceDatasource should not be imported at top level, because
-        # we only want the Hugging Face datasets package to be imported
-        # if Hugging Face Datasets are used.
-        from ray.data.datasource.huggingface_datasource import HuggingFaceDatasource
+    from ray.data.datasource.huggingface_datasource import HuggingFaceDatasource
 
+    if isinstance(dataset, (datasets.IterableDataset, datasets.Dataset)):
+        # Attempt to read data via Hugging Face Hub parquet files. If the
+        # returned list of files is empty, attempt read via other methods.
+        file_urls = HuggingFaceDatasource.list_parquet_urls_from_dataset(dataset)
+        if len(file_urls) > 0:
+            # If file urls are returned, the parquet files are available via API
+            # TODO: Add support for reading from http filesystem in FileBasedDatasource
+            # GH Issue: https://github.com/ray-project/ray/issues/42706
+            import fsspec.implementations.http
+
+            http = fsspec.implementations.http.HTTPFileSystem()
+            return read_parquet(file_urls, parallelism=parallelism, filesystem=http)
+
+    if isinstance(dataset, datasets.IterableDataset):
         # For an IterableDataset, we can use a streaming implementation to read data.
         return read_datasource(HuggingFaceDatasource(dataset=dataset))
     if isinstance(dataset, datasets.Dataset):
