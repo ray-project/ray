@@ -636,6 +636,11 @@ def _execution_allowed(op: PhysicalOperator, resource_manager: ResourceManager) 
 
     if op.throttling_disabled():
         return True
+
+    if resource_manager.per_op_limiting_enabled():
+        op_available = resource_manager.get_op_available(op)
+        return op.incremental_resource_usage().satisfies_limit(op_available)
+
     global_usage = resource_manager.get_global_usage()
     global_limits = resource_manager.get_global_limits()
 
