@@ -116,7 +116,8 @@ class MemoryMonitor {
   /// \param path file path to the memory stat file.
   ///
   /// \return the used memory for cgroup v1.
-  static int64_t GetCGroupV1MemoryUsedBytes(const char *path);
+  static int64_t GetCGroupV1MemoryUsedBytes(const char *stat_path,
+                                            const char *usage_path);
 
   /// \param stat_path file path to the memory.stat file.
   /// \param usage_path file path to the memory.current file
