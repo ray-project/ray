@@ -10,7 +10,10 @@ steps:
   - label: ":tapioca: build: pip-compile dependencies"
     instance_type: small
     commands:
-      - rm ./python/requirements_compiled.txt
+      # uncomment the following line to update the pinned versions of pip dependencies
+      # to the latest versions; otherwise, the pinned versions will be re-used as much
+      # as possible
+      # - rm ./python/requirements_compiled.txt
       - ./ci/ci.sh compile_pip_dependencies
       - cp -f ./python/requirements_compiled.txt /artifact-mount/
     soft_fail: true
