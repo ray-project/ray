@@ -57,6 +57,7 @@ class PandasRow(TableRow):
 
     def __getitem__(self, key: Union[str, List[str]]) -> Any:
         from ray.data.extensions import TensorArrayElement
+
         pd = lazy_import_pandas()
 
         def get_item(keys: List[str]) -> Any:
