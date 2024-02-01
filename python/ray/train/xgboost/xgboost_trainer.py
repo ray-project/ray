@@ -1,13 +1,12 @@
 from typing import Any, Dict, Type
 
 import xgboost
+from packaging.version import Version
 
 from ray.train import Checkpoint
 from ray.train.gbdt_trainer import GBDTTrainer
 from ray.train.xgboost import XGBoostCheckpoint
 from ray.util.annotations import PublicAPI
-
-from packaging.version import Version
 
 
 @PublicAPI(stability="beta")
