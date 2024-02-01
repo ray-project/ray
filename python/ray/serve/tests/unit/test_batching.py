@@ -408,10 +408,12 @@ async def test_batch_cancellation(use_class, use_gen):
     else:
         coros = [func("hi1", "hi2"), func("hi3", "hi4")]
 
+    tasks = [asyncio.create_task(coro) for coro in coros]
+
     print("Submitted requests.")
 
     # The requests should be blocked on the long request_timeout
-    done, pending = await asyncio.wait(coros, timeout=0.01)
+    done, pending = await asyncio.wait(tasks, timeout=0.01)
     assert len(done) == 0
     assert len(pending) == 2
 
@@ -419,16 +421,16 @@ async def test_batch_cancellation(use_class, use_gen):
 
     # Cancel the first request. The second request should still be blocked on
     # the long request_timeout
-    coros[0].close()
-    pending, done = await asyncio.wait(coros, timeout=0.01)
+    tasks[0].cancel()
+    pending, done = await asyncio.wait(tasks, timeout=0.01)
     assert len(done) == 1
     assert len(pending) == 1
 
     print("Cancelled first request.")
 
     # Cancel the second request. Both requests should be done.
-    coros[1].close()
-    done, pending = await asyncio.wait(coros, timeout=0.01)
+    tasks[1].cancel()
+    done, pending = await asyncio.wait(tasks, timeout=0.01)
     assert len(done) == 2
     assert len(pending) == 0
 
@@ -446,7 +448,9 @@ async def test_batch_cancellation(use_class, use_gen):
     else:
         coros = [func("hi1", "hi2"), func("hi3", "hi4")]
 
-    result = await asyncio.gather(*coros)
+    tasks = [asyncio.create_task(coro) for coro in coros]
+
+    result = await asyncio.gather(*tasks)
     assert result == [("hi1", "hi2"), ("hi3", "hi4")]
 
 
@@ -510,10 +514,12 @@ async def test_cancellation_after_error(use_class, use_gen):
     else:
         coros = [func("hi1", "hi2"), func("hi3", "hi4")]
 
+    tasks = [asyncio.create_task(coro) for coro in coros]
+
     print("Submitted initial batch of requests.")
 
-    for coro in coros:
-        coro.close()
+    for task in tasks:
+        task.cancel()
 
     print("Closed initial batch of requests.")
 
@@ -526,9 +532,11 @@ async def test_cancellation_after_error(use_class, use_gen):
     else:
         coros = [func("hi1", "hi2"), func("hi3", "hi4")]
 
+    tasks = [asyncio.create_task(coro) for coro in coros]
+
     print("Submitted new batch of requests.")
 
-    result = await asyncio.gather(*coros)
+    result = await asyncio.gather(*tasks)
     assert result == [("hi1", "hi2"), ("hi3", "hi4")]
 
 
