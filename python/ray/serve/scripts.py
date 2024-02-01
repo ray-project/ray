@@ -349,6 +349,7 @@ def deploy(
     name: Optional[str],
     base_image: Optional[str],
     provider: Optional[str],
+    address: str,
 ):
     args_dict = convert_args_to_dict(arguments)
     final_runtime_env = parse_runtime_env_args(
@@ -368,6 +369,7 @@ def deploy(
     deploy_provider = get_deploy_provider(provider)
     deploy_provider.deploy(
         config.dict(exclude_unset=True),
+        address=address,
         name=name,
         ray_version=ray.__version__,
         base_image=base_image,

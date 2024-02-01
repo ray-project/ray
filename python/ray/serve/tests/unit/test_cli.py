@@ -29,6 +29,29 @@ class TestDeploy:
                 "runtime_env": {},
             }
         ]
+        assert deploy_provider.deployed_address == "http://localhost:8265"
+        assert deploy_provider.deployed_name is None
+        assert deploy_provider.deployed_ray_version == ray.__version__
+        assert deploy_provider.deployed_base_image is None
+
+    def test_deploy_with_address(self):
+        deploy_provider = get_ray_serve_deploy_provider()
+
+        runner = CliRunner()
+        result = runner.invoke(
+            deploy,
+            [TEST_PROVIDER_ARG, "my_module:my_app", "--address", "http://magic.com"],
+        )
+        assert result.exit_code == 0, result.output
+
+        assert deploy_provider.deployed_config["applications"] == [
+            {
+                "import_path": "my_module:my_app",
+                "args": {},
+                "runtime_env": {},
+            }
+        ]
+        assert deploy_provider.deployed_address == "http://magic.com"
         assert deploy_provider.deployed_name is None
         assert deploy_provider.deployed_ray_version == ray.__version__
         assert deploy_provider.deployed_base_image is None
@@ -49,6 +72,7 @@ class TestDeploy:
                 "runtime_env": {},
             }
         ]
+        assert deploy_provider.deployed_address == "http://localhost:8265"
         assert deploy_provider.deployed_name == "test-name"
         assert deploy_provider.deployed_ray_version == ray.__version__
         assert deploy_provider.deployed_base_image is None
@@ -70,6 +94,7 @@ class TestDeploy:
                 "runtime_env": {},
             }
         ]
+        assert deploy_provider.deployed_address == "http://localhost:8265"
         assert deploy_provider.deployed_name is None
         assert deploy_provider.deployed_ray_version == ray.__version__
         assert deploy_provider.deployed_base_image == "test-image"
@@ -90,6 +115,7 @@ class TestDeploy:
                 "runtime_env": {},
             }
         ]
+        assert deploy_provider.deployed_address == "http://localhost:8265"
         assert deploy_provider.deployed_name is None
         assert deploy_provider.deployed_ray_version == ray.__version__
         assert deploy_provider.deployed_base_image is None
@@ -139,6 +165,7 @@ class TestDeploy:
                 "runtime_env": runtime_env,
             }
         ]
+        assert deploy_provider.deployed_address == "http://localhost:8265"
         assert deploy_provider.deployed_name is None
         assert deploy_provider.deployed_ray_version == ray.__version__
         assert deploy_provider.deployed_base_image is None

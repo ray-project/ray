@@ -6,7 +6,7 @@ from ray.serve._private.deploy_provider import (
     AnyscaleDeployProvider,
     get_deploy_provider,
 )
-from ray.serve.tests.unit.deploy_provider import TestDeployProvider
+from ray.serve.tests.unit.fake_deploy_provider import FakeDeployProvider
 
 
 def test_get_default_deploy_provider():
@@ -16,12 +16,17 @@ def test_get_default_deploy_provider():
 
 def test_get_custom_deploy_provider():
     """Test dynamically importing a deploy provider."""
-    deploy_provider = get_deploy_provider("ray.serve.tests.unit.deploy_provider")
-    assert isinstance(deploy_provider, TestDeployProvider)
+    deploy_provider = get_deploy_provider("ray.serve.tests.unit.fake_deploy_provider")
+    assert isinstance(deploy_provider, FakeDeployProvider)
     deploy_provider.deploy(
-        {}, name="test-name", ray_version="test-version", base_image="test-image"
+        {},
+        address="http://localhost:8265",
+        name="test-name",
+        ray_version="test-version",
+        base_image="test-image",
     )
     assert deploy_provider.deployed_config == {}
+    assert deploy_provider.deployed_address == "http://localhost:8265"
     assert deploy_provider.deployed_name == "test-name"
     assert deploy_provider.deployed_ray_version == "test-version"
     assert deploy_provider.deployed_base_image == "test-image"
