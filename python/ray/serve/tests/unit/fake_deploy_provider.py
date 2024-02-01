@@ -1,6 +1,7 @@
-from typing import Dict, Optional
+from typing import Optional
 
 from ray.serve._private.deploy_provider import DeployProvider
+from ray.serve.schema import ServeDeploySchema
 
 
 class FakeDeployProvider(DeployProvider):
@@ -8,6 +9,13 @@ class FakeDeployProvider(DeployProvider):
 
     def __init__(self):
         self.reset()
+        self._supports_local_uris = True
+
+    def set_supports_local_uris(self, supported: bool):
+        self._supports_local_uris = supported
+
+    def supports_local_uris(self):
+        return self._supports_local_uris
 
     def reset(self):
         self.deployed_config = None
@@ -17,7 +25,7 @@ class FakeDeployProvider(DeployProvider):
 
     def deploy(
         self,
-        config: Dict,
+        config: ServeDeploySchema,
         *,
         address: str,
         name: Optional[str],

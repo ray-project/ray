@@ -7,7 +7,7 @@ import pytest
 import yaml
 from click.testing import CliRunner
 
-import ray
+from ray.serve.schema import ServeApplicationSchema, _skip_validating_runtime_env_uris
 from ray.serve.scripts import deploy
 from ray.serve.tests.unit.fake_deploy_provider import get_ray_serve_deploy_provider
 
@@ -22,12 +22,12 @@ class TestDeploy:
         result = runner.invoke(deploy, [TEST_PROVIDER_ARG, "my_module:my_app"])
         assert result.exit_code == 0, result.output
 
-        assert deploy_provider.deployed_config["applications"] == [
-            {
-                "import_path": "my_module:my_app",
-                "args": {},
-                "runtime_env": {},
-            }
+        assert deploy_provider.deployed_config.applications == [
+            ServeApplicationSchema(
+                import_path="my_module:my_app",
+                args={},
+                runtime_env={},
+            )
         ]
         assert deploy_provider.deployed_address == "http://localhost:8265"
         assert deploy_provider.deployed_name is None
@@ -43,12 +43,12 @@ class TestDeploy:
         )
         assert result.exit_code == 0, result.output
 
-        assert deploy_provider.deployed_config["applications"] == [
-            {
-                "import_path": "my_module:my_app",
-                "args": {},
-                "runtime_env": {},
-            }
+        assert deploy_provider.deployed_config.applications == [
+            ServeApplicationSchema(
+                import_path="my_module:my_app",
+                args={},
+                runtime_env={},
+            )
         ]
         assert deploy_provider.deployed_address == "http://magic.com"
         assert deploy_provider.deployed_name is None
@@ -63,13 +63,13 @@ class TestDeploy:
         )
         assert result.exit_code == 0, result.output
 
-        assert deploy_provider.deployed_config["applications"] == [
-            {
-                "import_path": "my_module:my_app",
-                "name": "test-name",
-                "args": {},
-                "runtime_env": {},
-            }
+        assert deploy_provider.deployed_config.applications == [
+            ServeApplicationSchema(
+                import_path="my_module:my_app",
+                name="test-name",
+                args={},
+                runtime_env={},
+            )
         ]
         assert deploy_provider.deployed_address == "http://localhost:8265"
         assert deploy_provider.deployed_name == "test-name"
@@ -85,12 +85,12 @@ class TestDeploy:
         )
         assert result.exit_code == 0, result.output
 
-        assert deploy_provider.deployed_config["applications"] == [
-            {
-                "import_path": "my_module:my_app",
-                "args": {},
-                "runtime_env": {},
-            }
+        assert deploy_provider.deployed_config.applications == [
+            ServeApplicationSchema(
+                import_path="my_module:my_app",
+                args={},
+                runtime_env={},
+            )
         ]
         assert deploy_provider.deployed_address == "http://localhost:8265"
         assert deploy_provider.deployed_name is None
@@ -105,12 +105,12 @@ class TestDeploy:
         )
         assert result.exit_code == 0, result.output
 
-        assert deploy_provider.deployed_config["applications"] == [
-            {
-                "import_path": "my_module:my_app",
-                "args": {"arg1": "val1", "arg2": "val2"},
-                "runtime_env": {},
-            }
+        assert deploy_provider.deployed_config.applications == [
+            ServeApplicationSchema(
+                import_path="my_module:my_app",
+                args={"arg1": "val1", "arg2": "val2"},
+                runtime_env={},
+            )
         ]
         assert deploy_provider.deployed_address == "http://localhost:8265"
         assert deploy_provider.deployed_name is None
@@ -154,16 +154,32 @@ class TestDeploy:
         if override_working_dir:
             runtime_env["working_dir"] = "./override"
 
-        assert deploy_provider.deployed_config["applications"] == [
-            {
-                "import_path": "my_module:my_app",
-                "args": {},
-                "runtime_env": runtime_env,
-            }
-        ]
+        with _skip_validating_runtime_env_uris():
+            assert deploy_provider.deployed_config.applications == [
+                ServeApplicationSchema(
+                    import_path="my_module:my_app",
+                    args={},
+                    runtime_env=runtime_env,
+                )
+            ]
         assert deploy_provider.deployed_address == "http://localhost:8265"
         assert deploy_provider.deployed_name is None
         assert deploy_provider.deployed_base_image is None
+
+    @pytest.mark.parametrize("supported", [False, True])
+    def test_deploy_provider_supports_runtime_env_local_uri(self, supported: bool):
+        deploy_provider = get_ray_serve_deploy_provider()
+        deploy_provider.set_supports_local_uris(supported)
+
+        runner = CliRunner()
+        result = runner.invoke(
+            deploy, [TEST_PROVIDER_ARG, "my_module:my_app", "--working-dir", "."]
+        )
+
+        if supported:
+            assert result.exit_code == 0, result.output
+        else:
+            assert result.exit_code == 1, result.output
 
 
 if __name__ == "__main__":

@@ -2,7 +2,7 @@ import os
 from abc import ABC, abstractmethod
 from subprocess import CalledProcessError, check_output
 from tempfile import NamedTemporaryFile
-from typing import Dict, Optional
+from typing import Optional
 
 import click
 import yaml
@@ -18,10 +18,13 @@ DEPLOY_PROVIDER_ENV_VAR = "RAY_SERVE_DEPLOY_PROVIDER"
 
 
 class DeployProvider(ABC):
-    @staticmethod
+    @abstractmethod
+    def supports_local_uris(self) -> bool:
+        pass
+
     @abstractmethod
     def deploy(
-        config: Dict,
+        config: ServeDeploySchema,
         *,
         address: str,
         name: Optional[str],
@@ -57,14 +60,16 @@ def get_deploy_provider(provider_name: Optional[str]) -> DeployProvider:
 class LocalDeployProvider(DeployProvider):
     """Provider that deploys by sending a REST API request to a cluster."""
 
+    def supports_local_uris(self) -> bool:
+        return False
+
     def deploy(
-        config: Dict,
+        config: ServeDeploySchema,
         *,
         address: str,
         name: Optional[str],
         base_image: Optional[str] = None,
     ):
-        ServeDeploySchema.parse_obj(config)
         if base_image is not None:
             raise ValueError(
                 "`--base-image` is not supported when using the 'local' deploy "
@@ -82,15 +87,18 @@ class LocalDeployProvider(DeployProvider):
 class AnyscaleDeployProvider(DeployProvider):
     """Provider that deploys to the anyscale platform."""
 
+    def supports_local_uris(self) -> bool:
+        return True
+
     def deploy(
-        config: Dict,
+        config: ServeDeploySchema,
         *,
         address: str,
         name: Optional[str],
         base_image: Optional[str] = None,
     ):
         service_config = {
-            "ray_serve_config": config,
+            "ray_serve_config": config.dict(exclude_unset=True),
         }
         if name is not None:
             service_config["name"] = name

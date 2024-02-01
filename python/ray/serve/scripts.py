@@ -367,8 +367,17 @@ def deploy(
         working_dir=working_dir,
     )
 
-    # Skip validating runtime_env URIs so publishers can enable local URI usage.
-    with _skip_validating_runtime_env_uris():
+    deploy_provider = get_deploy_provider(provider)
+    if deploy_provider.supports_local_uris():
+        # Some deploy providers support local paths as URIs (e.g., for working_dir).
+        with _skip_validating_runtime_env_uris():
+            config = _generate_config_from_file_or_import_path(
+                config_or_import_path,
+                name=name,
+                arguments=args_dict,
+                runtime_env=final_runtime_env,
+            )
+    else:
         config = _generate_config_from_file_or_import_path(
             config_or_import_path,
             name=name,
@@ -376,9 +385,8 @@ def deploy(
             runtime_env=final_runtime_env,
         )
 
-    deploy_provider = get_deploy_provider(provider)
     deploy_provider.deploy(
-        config.dict(exclude_unset=True),
+        config,
         address=address,
         name=name,
         base_image=base_image,
