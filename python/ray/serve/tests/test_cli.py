@@ -706,7 +706,7 @@ def test_deploy_from_import_path(ray_start_stop):
     )
 
     subprocess.check_output(
-        f"cd {config_file_dir} && serve deploy arg_builders:build_echo_app'",
+        f"cd {config_file_dir} && serve deploy arg_builders:build_echo_app",
         shell=True,
     )
 
