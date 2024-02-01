@@ -154,6 +154,9 @@ class RAY_EXPORT PythonGcsPublisher {
   /// Publish logs to GCS.
   Status PublishLogs(const std::string &key_id, const rpc::LogBatch &log_batch);
 
+  /// Publish a function key to GCS.
+  Status PublishFunctionKey(const rpc::PythonFunction &python_function);
+
  private:
   Status DoPublishWithRetries(const rpc::GcsPublishRequest &request,
                               int64_t num_retries,

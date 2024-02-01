@@ -160,7 +160,11 @@ export const LogViewer = ({
                   variant="contained"
                   component="a"
                   href={downloadUrl}
-                  download={path}
+                  download={
+                    path.startsWith("/logs/")
+                      ? path.substring("/logs/".length)
+                      : path
+                  }
                 >
                   Download log file
                 </Button>

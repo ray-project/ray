@@ -302,10 +302,10 @@ export const WorkerRow = ({ node, worker }: WorkerRowProps) => {
         )}
       </TableCell>
       <TableCell>
-        <WorkerGpuRow workerPID={pid} gpus={node.gpus} />
+        <WorkerGpuRow worker={worker} node={node} />
       </TableCell>
       <TableCell>
-        <WorkerGRAM workerPID={pid} gpus={node.gpus} />
+        <WorkerGRAM worker={worker} node={node} />
       </TableCell>
       <TableCell>N/A</TableCell>
       <TableCell>N/A</TableCell>

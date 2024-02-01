@@ -16,6 +16,7 @@ from ray.core.generated import (
 )
 from ray.dashboard.datacenter import DataSource, DataOrganizer
 from ray.dashboard.modules.actor import actor_consts
+from ray.dashboard.optional_utils import rest_response
 
 logger = logging.getLogger(__name__)
 routes = dashboard_optional_utils.DashboardHeadRouteTable
@@ -241,11 +242,10 @@ class ActorHead(dashboard_utils.DashboardHeadModule):
     @routes.get("/logical/actors")
     @dashboard_optional_utils.aiohttp_cache
     async def get_all_actors(self, req) -> aiohttp.web.Response:
-        actors = await DataOrganizer.get_all_actors()
-        return dashboard_optional_utils.rest_response(
+        return rest_response(
             success=True,
             message="All actors fetched.",
-            actors=actors,
+            actors=DataSource.actors,
             # False to avoid converting Ray resource name to google style.
             # It's not necessary here because the fields are already
             # google formatted when protobuf was converted into dict.

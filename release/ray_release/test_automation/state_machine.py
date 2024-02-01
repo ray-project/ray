@@ -16,16 +16,6 @@ AWS_SECRET_GITHUB = "ray_ci_github_token"
 AWS_SECRET_BUILDKITE = "ray_ci_buildkite_token"
 DEFAULT_ISSUE_OWNER = "can-anyscale"
 WEEKLY_RELEASE_BLOCKER_TAG = "weekly-release-blocker"
-NO_TEAM = "none"
-TEAM = [
-    "core",
-    "data",
-    "kuberay",
-    "ml",
-    "rllib",
-    "serve",
-    "serverless",
-]
 
 
 class TestStateMachine(abc.ABC):
@@ -84,15 +74,6 @@ class TestStateMachine(abc.ABC):
         blocker_label = cls.get_ray_repo().get_label(WEEKLY_RELEASE_BLOCKER_TAG)
 
         return user.get_issues(state="open", labels=[blocker_label])
-
-    @classmethod
-    def get_issue_owner(cls, issue: github.Issue.Issue) -> str:
-        labels = issue.get_labels()
-        for label in labels:
-            if label.name in TEAM:
-                return label.name
-
-        return NO_TEAM
 
     def move(self) -> None:
         """

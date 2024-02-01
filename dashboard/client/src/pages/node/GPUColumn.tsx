@@ -3,6 +3,7 @@ import React from "react";
 import { RightPaddedTypography } from "../../common/CustomTypography";
 import UsageBar from "../../common/UsageBar";
 import { GPUStats, NodeDetail } from "../../type/node";
+import { Worker } from "../../type/worker";
 
 const useStyles = makeStyles((theme) => ({
   gpuColumn: {
@@ -58,17 +59,17 @@ export const NodeGPUView = ({ node }: { node: NodeDetail }) => {
 };
 
 export const WorkerGpuRow = ({
-  workerPID,
-  gpus,
+  worker,
+  node,
 }: {
-  workerPID: number | null;
-  gpus?: GPUStats[];
+  worker: Worker;
+  node: NodeDetail;
 }) => {
   const classes = useStyles();
-  const workerGPUEntries = (gpus ?? [])
+  const workerGPUEntries = (node.gpus ?? [])
     .map((gpu, i) => {
       const process = gpu.processes?.find(
-        (process) => process.pid === workerPID,
+        (process) => process.pid === worker.pid,
       );
       if (!process) {
         return undefined;

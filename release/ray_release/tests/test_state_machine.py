@@ -24,7 +24,6 @@ from ray_release.test_automation.ci_state_machine import (
 from ray_release.test_automation.state_machine import (
     TestStateMachine,
     WEEKLY_RELEASE_BLOCKER_TAG,
-    NO_TEAM,
 )
 
 
@@ -322,13 +321,6 @@ def test_get_release_blockers() -> None:
     issues = TestStateMachine.get_release_blockers()
     assert len(issues) == 1
     assert issues[0].title == "blocker"
-
-
-def test_get_issue_owner() -> None:
-    issue = TestStateMachine.ray_repo.create_issue(labels=["core"], title="hi")
-    assert TestStateMachine.get_issue_owner(issue) == "core"
-    issue = TestStateMachine.ray_repo.create_issue(labels=["w00t"], title="bye")
-    assert TestStateMachine.get_issue_owner(issue) == NO_TEAM
 
 
 if __name__ == "__main__":

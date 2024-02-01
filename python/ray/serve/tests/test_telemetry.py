@@ -117,6 +117,7 @@ def test_rest_api(manage_ray_with_telemetry, tmp_dir):
 
     serve.run(
         receiver_app,
+        host="0.0.0.0",
         name="telemetry",
         route_prefix=TELEMETRY_ROUTE_PREFIX,
     )
@@ -231,15 +232,15 @@ tester = Tester.bind()
 
 
 @pytest.mark.parametrize(
-    "lightweight_option,value,new_value",
+    "lightweight_option,value",
     [
-        ("num_replicas", 1, 2),
-        ("user_config", {}, {"some_setting": 10}),
-        ("autoscaling_config", {"max_replicas": 3}, {"max_replicas": 5}),
+        ("num_replicas", 2),
+        ("user_config", {"some_setting": 10}),
+        ("autoscaling_config", {"max_replicas": 5}),
     ],
 )
 def test_lightweight_config_options(
-    manage_ray_with_telemetry, lightweight_option, value, new_value
+    manage_ray_with_telemetry, lightweight_option, value
 ):
     """
     Check that lightweight config options are detected by telemetry.
@@ -257,6 +258,7 @@ def test_lightweight_config_options(
 
     serve.run(
         receiver_app,
+        host="0.0.0.0",
         name="telemetry",
         route_prefix=TELEMETRY_ROUTE_PREFIX,
     )
@@ -285,7 +287,6 @@ def test_lightweight_config_options(
             },
         ]
     }
-    config["applications"][1]["deployments"][0][lightweight_option] = value
 
     # Deploy first config
     serve.start()
@@ -317,7 +318,7 @@ def test_lightweight_config_options(
         assert tagkey.get_value_from_report(report) is None
 
     # Change config and deploy again
-    config["applications"][1]["deployments"][0][lightweight_option] = new_value
+    config["applications"][1]["deployments"][0][lightweight_option] = value
     client.deploy_apps(ServeDeploySchema(**config))
     wait_for_condition(
         lambda: serve.status().applications["receiver_app"].status

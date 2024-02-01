@@ -60,12 +60,14 @@ def _calculate_desired_num_replicas(
     smoothed_error_ratio = 1 + ((error_ratio - 1) * smoothing_factor)
     desired_num_replicas = math.ceil(num_running_replicas * smoothed_error_ratio)
 
-    # If desired num replicas is "stuck" because of the smoothing factor
-    # (meaning the traffic is low enough for the replicas to downscale
-    # without the smoothing factor), decrease desired_num_replicas by 1.
+    # If error_ratio = 0, meaning there is no more traffic, and desired
+    # num replicas is stuck at a positive number due to the math.ceil
+    # above, decrease desired_num_replicas by one so that the deployment
+    # can eventually scale to 0.
     if (
-        math.ceil(num_running_replicas * error_ratio) < num_running_replicas
+        error_ratio == 0
         and desired_num_replicas == num_running_replicas
+        and desired_num_replicas >= 1
     ):
         desired_num_replicas -= 1
 

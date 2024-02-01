@@ -8,10 +8,8 @@ from unittest.mock import patch
 
 import pytest
 
-from ray.autoscaler.v2.instance_manager.common import (
-    InstanceUtil,
-    InvalidInstanceStatusTransitionError,
-)
+from ray.autoscaler.v2.instance_manager.instance_manager import InstanceUtil
+from ray.autoscaler.v2.schema import InvalidInstanceStatusError
 from ray.core.generated.instance_manager_pb2 import Instance
 
 
@@ -48,10 +46,10 @@ class InstanceUtilTest(unittest.TestCase):
         assert instance.status == Instance.REQUESTED
 
         # Set status with invalid status.
-        with pytest.raises(InvalidInstanceStatusTransitionError):
+        with pytest.raises(InvalidInstanceStatusError):
             InstanceUtil.set_status(instance, Instance.RAY_RUNNING)
 
-        with pytest.raises(InvalidInstanceStatusTransitionError):
+        with pytest.raises(InvalidInstanceStatusError):
             InstanceUtil.set_status(instance, Instance.UNKNOWN)
 
     def test_transition_graph(self):
@@ -63,11 +61,7 @@ class InstanceUtilTest(unittest.TestCase):
         assert g[Instance.QUEUED] == {Instance.REQUESTED}
         all_status.remove(Instance.QUEUED)
 
-        assert g[Instance.REQUESTED] == {
-            Instance.ALLOCATED,
-            Instance.QUEUED,
-            Instance.ALLOCATION_FAILED,
-        }
+        assert g[Instance.REQUESTED] == {Instance.ALLOCATED, Instance.ALLOCATION_FAILED}
         all_status.remove(Instance.REQUESTED)
 
         assert g[Instance.ALLOCATED] == {
@@ -105,7 +99,7 @@ class InstanceUtilTest(unittest.TestCase):
         assert g[Instance.STOPPED] == set()
         all_status.remove(Instance.STOPPED)
 
-        assert g[Instance.ALLOCATION_FAILED] == set()
+        assert g[Instance.ALLOCATION_FAILED] == {Instance.QUEUED}
         all_status.remove(Instance.ALLOCATION_FAILED)
 
         assert g[Instance.RAY_INSTALL_FAILED] == {Instance.STOPPED, Instance.STOPPING}
@@ -121,31 +115,23 @@ class InstanceUtilTest(unittest.TestCase):
         mock_time.return_value = 1
         instance = InstanceUtil.new_instance("i-123", "type_1", "rq-1")
         # OK
-        assert (
-            InstanceUtil.get_status_transition_times_ns(instance, Instance.QUEUED)[0]
-            == 1
-        )
+        assert InstanceUtil.get_status_times_ns(instance, Instance.QUEUED)[0] == 1
         # No filter.
-        assert InstanceUtil.get_status_transition_times_ns(
+        assert InstanceUtil.get_status_times_ns(
             instance,
         ) == [1]
 
         # Missing status returns empty list
-        assert (
-            InstanceUtil.get_status_transition_times_ns(instance, Instance.REQUESTED)
-            == []
-        )
+        assert InstanceUtil.get_status_times_ns(instance, Instance.REQUESTED) == []
 
         # Multiple status.
         mock_time.return_value = 2
         InstanceUtil.set_status(instance, Instance.REQUESTED)
         mock_time.return_value = 3
-        InstanceUtil.set_status(instance, Instance.QUEUED)
+        InstanceUtil.set_status(instance, Instance.ALLOCATION_FAILED)
         mock_time.return_value = 4
-        InstanceUtil.set_status(instance, Instance.REQUESTED)
-        assert InstanceUtil.get_status_transition_times_ns(
-            instance, Instance.QUEUED
-        ) == [1, 3]
+        InstanceUtil.set_status(instance, Instance.QUEUED)
+        assert InstanceUtil.get_status_times_ns(instance, Instance.QUEUED) == [1, 4]
 
     def test_is_cloud_instance_allocated(self):
         all_status = set(Instance.InstanceStatus.values())
@@ -161,14 +147,14 @@ class InstanceUtilTest(unittest.TestCase):
         }
         for s in positive_status:
             instance.status = s
-            assert InstanceUtil.is_cloud_instance_allocated(instance.status)
+            assert InstanceUtil.is_cloud_instance_allocated(instance)
             all_status.remove(s)
 
         # Unknown not possible.
         all_status.remove(Instance.UNKNOWN)
         for s in all_status:
             instance.status = s
-            assert not InstanceUtil.is_cloud_instance_allocated(instance.status)
+            assert not InstanceUtil.is_cloud_instance_allocated(instance)
 
     def test_is_ray_running_reachable(self):
         all_status = set(Instance.InstanceStatus.values())
@@ -178,10 +164,11 @@ class InstanceUtilTest(unittest.TestCase):
             Instance.REQUESTED,
             Instance.ALLOCATED,
             Instance.RAY_INSTALLING,
+            Instance.ALLOCATION_FAILED,
         }
         for s in positive_status:
             instance.status = s
-            assert InstanceUtil.is_ray_running_reachable(instance.status)
+            assert InstanceUtil.is_ray_running_reachable(instance)
             assert exists_path(
                 s, Instance.RAY_RUNNING, InstanceUtil.get_valid_transitions()
             )
@@ -191,7 +178,7 @@ class InstanceUtilTest(unittest.TestCase):
         all_status.remove(Instance.UNKNOWN)
         for s in all_status:
             instance.status = s
-            assert not InstanceUtil.is_ray_running_reachable(instance.status)
+            assert not InstanceUtil.is_ray_running_reachable(instance)
             assert not exists_path(
                 s, Instance.RAY_RUNNING, InstanceUtil.get_valid_transitions()
             )

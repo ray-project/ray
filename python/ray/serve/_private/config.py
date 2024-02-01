@@ -133,7 +133,7 @@ class DeploymentConfig(BaseModel):
     )
 
     autoscaling_config: Optional[AutoscalingConfig] = Field(
-        default=None, update_type=DeploymentOptionUpdateType.NeedsActorReconfigure
+        default=None, update_type=DeploymentOptionUpdateType.LightWeight
     )
 
     # This flag is used to let replica know they are deployed from

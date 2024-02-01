@@ -71,12 +71,15 @@ class GroupedData:
         """
 
         plan = self._dataset._plan.copy()
-        op = Aggregate(
-            self._dataset._logical_plan.dag,
-            key=self._key,
-            aggs=aggs,
-        )
-        logical_plan = LogicalPlan(op)
+
+        logical_plan = self._dataset._logical_plan
+        if logical_plan is not None:
+            op = Aggregate(
+                logical_plan.dag,
+                key=self._key,
+                aggs=aggs,
+            )
+            logical_plan = LogicalPlan(op)
         return Dataset(
             plan,
             logical_plan,

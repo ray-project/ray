@@ -1,4 +1,4 @@
-import { ActorDetail } from "../type/actor";
+import { Actor, ActorDetail } from "../type/actor";
 import { get } from "./requestHandlers";
 
 export const getActors = () => {
@@ -7,7 +7,7 @@ export const getActors = () => {
     message: string;
     data: {
       actors: {
-        [actorId: string]: ActorDetail;
+        [actorId: string]: Actor;
       };
     };
   }>("logical/actors");

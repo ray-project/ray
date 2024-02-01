@@ -2,7 +2,8 @@ import { Box, Tooltip, Typography } from "@material-ui/core";
 import React from "react";
 import { RightPaddedTypography } from "../../common/CustomTypography";
 import PercentageBar from "../../components/PercentageBar";
-import { GPUStats, NodeDetail } from "../../type/node";
+import { NodeDetail } from "../../type/node";
+import { Worker } from "../../type/worker";
 
 const GRAM_COL_WIDTH = 120;
 
@@ -31,16 +32,16 @@ export const NodeGRAM = ({ node }: { node: NodeDetail }) => {
 };
 
 export const WorkerGRAM = ({
-  workerPID,
-  gpus,
+  worker,
+  node,
 }: {
-  workerPID: number | null;
-  gpus?: GPUStats[];
+  worker: Worker;
+  node: NodeDetail;
 }) => {
-  const workerGRAMEntries = (gpus ?? [])
+  const workerGRAMEntries = (node.gpus ?? [])
     .map((gpu, i) => {
       const process = gpu.processes?.find(
-        (process) => workerPID && process.pid === workerPID,
+        (process) => process.pid === worker.pid,
       );
       if (!process) {
         return undefined;

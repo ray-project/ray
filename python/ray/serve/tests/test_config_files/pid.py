@@ -8,21 +8,13 @@ from ray import serve
 @serve.deployment
 class f:
     def __init__(self, async_wait: bool = False):
-        # whether to use wait() (busy spin) or async_wait() (busy spin
-        # while yielding event loop)
         self._async = async_wait
-
-        # to be updated through reconfigure()
         self.name = "default_name"
-
-        # used to block calls to __call__()
+        # for __call__()
         self.ready = True
-        # used to check how many times __call__() has been called
         self.counter = 0
-
-        # used to block calls to health_check()
+        # for check_health()
         self.health_check_ready = True
-        # used to check how many times health_check() has been called
         self.health_check_counter = 0
 
     async def get_counter(self, health_check=False) -> int:
@@ -37,16 +29,16 @@ class f:
         else:
             self.ready = not clear
 
-    def wait(self, _health_check=False):
-        if _health_check:
+    def wait(self, health_check=False):
+        if health_check:
             while not self.health_check_ready:
                 time.sleep(0.1)
         else:
             while not self.ready:
                 time.sleep(0.1)
 
-    async def async_wait(self, _health_check=False):
-        if _health_check:
+    async def async_wait(self, health_check=False):
+        if health_check:
             while not self.health_check_ready:
                 await asyncio.sleep(0.1)
         else:
@@ -68,9 +60,9 @@ class f:
     async def check_health(self):
         self.health_check_counter += 1
         if self._async:
-            await self.async_wait(_health_check=True)
+            await self.async_wait(health_check=True)
         else:
-            self.wait(_health_check=True)
+            self.wait(health_check=True)
 
 
 node = f.bind()

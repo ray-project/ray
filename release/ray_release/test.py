@@ -3,7 +3,6 @@ import os
 import platform
 import json
 import time
-from itertools import chain
 from typing import Optional, List, Dict
 from dataclasses import dataclass
 
@@ -127,11 +126,10 @@ class Test(dict):
         """
         bucket = get_global_config()["state_machine_aws_bucket"]
         s3_client = boto3.client("s3")
-        pages = s3_client.get_paginator("list_objects_v2").paginate(
+        files = s3_client.list_objects_v2(
             Bucket=bucket,
             Prefix=f"{AWS_TEST_KEY}/{prefix}",
-        )
-        files = chain.from_iterable([page.get("Contents", []) for page in pages])
+        ).get("Contents", [])
 
         return [
             Test(

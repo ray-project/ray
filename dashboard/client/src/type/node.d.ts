@@ -74,7 +74,7 @@ export type NodeDetailExtend = {
   workers: Worker[];
   raylet: Raylet;
   actors: {
-    [actorId: string]: ActorDetail;
+    [actorId: string]: Actor;
   };
 } & NodeDetail;
 

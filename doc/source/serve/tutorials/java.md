@@ -1,6 +1,6 @@
 (serve-java-tutorial)=
 
-# Serve a Java App
+# Java Tutorial
 
 To use Java Ray Serve, you need the following dependency in your pom.xml.
 
@@ -13,11 +13,11 @@ To use Java Ray Serve, you need the following dependency in your pom.xml.
 </dependency>
 ```
 
-> NOTE: After installing Ray with Python, the local environment includes the Java jar of Ray Serve. The `provided` scope ensures that you can compile the Java code using Ray Serve without version conflicts when you deploy on the cluster.
+> NOTE: After installing Ray via Python, the Java jar of Ray Serve is included locally. The `provided` scope could ensure the Java code using Ray Serve can be compiled and will not cause version conflicts when deployed on the cluster.
 
-## Example model
+## Example Model
 
-This example use case is a production workflow of a financial application. The application needs to compute the best strategy to interact with different banks for a single task.
+Our example use case is derived from production workflow of a financial application. The application needs to compute the best strategy to interact with different banks for a single task.
 
 ```{literalinclude} ../../../../java/serve/src/test/java/io/ray/serve/docdemo/Strategy.java
 :end-before: docs-strategy-end
@@ -25,14 +25,14 @@ This example use case is a production workflow of a financial application. The a
 :start-after: docs-strategy-start
 ```
 
-This example uses the `Strategy` class to calculate the indicators of a number of banks.
+This `Strategy` class is used to calculate the indicators of a number of banks.
 
-* The `calc` method is the entry of the calculation. The input parameters are the time interval of calculation and the map of the banks and their indicators. The `calc` method contains a two-tier `for` loop, traversing each indicator list of each bank, and calling the `calcBankIndicators` method to calculate the indicators of the specified bank.
+* The `calc` method is the entry of the calculation. The input parameters are the time interval of calculation and the map of the banks and their indicators. As we can see, the `calc` method contains a two-tier `for` loop, traversing each indicator list of each bank, and calling the `calcBankIndicators` method to calculate the indicators of the specified bank.
 
 - There is another layer of `for` loop in the `calcBankIndicators` method, which traverses each indicator, and then calls the `calcIndicator` method to calculate the specific indicator of the bank.
 - The `calcIndicator` method is a specific calculation logic based on the bank, the specified time interval and the indicator.
 
-This code uses the `Strategy` class:
+This is the code that uses the `Strategy` class:
 
 ```{literalinclude} ../../../../java/serve/src/test/java/io/ray/serve/docdemo/StrategyCalc.java
 :end-before: docs-strategy-calc-end
@@ -40,13 +40,13 @@ This code uses the `Strategy` class:
 :start-after: docs-strategy-calc-start
 ```
 
-When the scale of banks and indicators expands, the three-tier `for` loop slows down the calculation. Even if you use the thread pool to calculate each indicator in parallel, you may encounter a single machine performance bottleneck. Moreover, you can't use this `Strategy`  object as a resident service.
+When the scale of banks and indicators expands, the three-tier `for` loop will slow down the calculation. Even if the thread pool is used to calculate each indicator in parallel, we may encounter a single machine performance bottleneck. Moreover, this `Strategy`  object cannot be reused as a resident service.
 
 ## Converting to a Ray Serve Deployment
 
-Through Ray Serve, you can deploy the core computing logic of `Strategy` as a scalable distributed computing service.
+Through Ray Serve, the core computing logic of `Strategy` can be deployed as a scalable distributed computing service.
 
-First, extract the indicator calculation of each institution into a separate `StrategyOnRayServe` class:
+First, we can extract the indicator calculation of each institution into a separate `StrategyOnRayServe` class:
 
 ```{literalinclude} ../../../../java/serve/src/test/java/io/ray/serve/docdemo/StrategyOnRayServe.java
 :end-before: docs-strategy-end
@@ -54,7 +54,7 @@ First, extract the indicator calculation of each institution into a separate `St
 :start-after: docs-strategy-start
 ```
 
-Next, start the Ray Serve runtime and deploy `StrategyOnRayServe` as a deployment.
+Next, we start the Ray Serve runtime and deploy `StrategyOnRayServe` as a deployment.
 
 ```{literalinclude} ../../../../java/serve/src/test/java/io/ray/serve/docdemo/StrategyCalcOnRayServe.java
 :end-before: docs-deploy-end
@@ -62,11 +62,11 @@ Next, start the Ray Serve runtime and deploy `StrategyOnRayServe` as a deploymen
 :start-after: docs-deploy-start
 ```
 
-The `Deployment.create` makes a Deployment object named `strategy`. After executing `Deployment.deploy`, the Ray Serve instance deploys this `strategy` deployment with four replicas, and you can access it for distributed parallel computing.
+The `Deployment.create` makes a Deployment object named "strategy." After executing `Deployment.deploy`, this "strategy" deployment is deployed in the instance of Ray Serve with four replicas, and we can access it for distributed parallel computing.
 
 ## Testing the Ray Serve Deployment
 
-You can test the `strategy` deployment using RayServeHandle inside Ray:
+Now we can test the "strategy" deployment using RayServeHandle inside Ray:
 
 ```{literalinclude} ../../../../java/serve/src/test/java/io/ray/serve/docdemo/StrategyCalcOnRayServe.java
 :end-before: docs-calc-end
@@ -74,7 +74,7 @@ You can test the `strategy` deployment using RayServeHandle inside Ray:
 :start-after: docs-calc-start
 ```
 
-This code executes the calculation of each bank's each indicator serially, and sends it to Ray for execution. You can make the calculation concurrent, which not only improves the calculation efficiency, but also solves the bottleneck of single machine.
+At present, the calculation of each bank's each indicator is still executed serially, and sent to Ray for execution. We can make the calculation concurrent, which not only improves the calculation efficiency, but also solves the bottleneck of single machine.
 
 ```{literalinclude} ../../../../java/serve/src/test/java/io/ray/serve/docdemo/StrategyCalcOnRayServe.java
 :end-before: docs-parallel-calc-end
@@ -82,7 +82,7 @@ This code executes the calculation of each bank's each indicator serially, and s
 :start-after: docs-parallel-calc-start
 ```
 
-You can use `StrategyCalcOnRayServe` like the example in the `main` method:
+Now, we can use `StrategyCalcOnRayServe` like the example in the `main` method:
 
 ```{literalinclude} ../../../../java/serve/src/test/java/io/ray/serve/docdemo/StrategyCalcOnRayServe.java
 :end-before: docs-main-end
@@ -92,13 +92,13 @@ You can use `StrategyCalcOnRayServe` like the example in the `main` method:
 
 ## Calling Ray Serve Deployment with HTTP
 
-Another way to test or call a deployment is through the HTTP request. However, two limitations exist for the Java deployments:
+Another way to test or call a deployment is through the HTTP request. But there are now two limitations for the Java deployments:
 
-- Only the `call` method of the user class can process the HTTP requests.
+- The HTTP requests can only be processed by the `call` method of the user class.
 
-- The `call` method can only have one input parameter, and the type of the input parameter and the returned value can only be `String`.
+- The `call` method could only have one input parameter, and the type of the input parameter and the returned value can only be `String`.
 
-If you want to call the `strategy` deployment with HTTP, then you can rewrite the class like this code:
+If we want to call the "strategy" deployment via HTTP, the class can be rewritten like this:
 
 ```{literalinclude} ../../../../java/serve/src/test/java/io/ray/serve/docdemo/HttpStrategyOnRayServe.java
 :end-before: docs-strategy-end
@@ -106,13 +106,13 @@ If you want to call the `strategy` deployment with HTTP, then you can rewrite th
 :start-after: docs-strategy-start
 ```
 
-After deploying this deployment, you can access it with the `curl` command:
+After deploying this deployment, we can access it through `curl` command:
 
 ```shell
 curl -d '{"time":1641038674, "bank":"test_bank", "indicator":"test_indicator"}' http://127.0.0.1:8000/strategy
 ```
 
-You can also access it using HTTP Client in Java code:
+It can also be accessed using HTTP Client in Java code:
 
 ```{literalinclude} ../../../../java/serve/src/test/java/io/ray/serve/docdemo/HttpStrategyCalcOnRayServe.java
 :end-before: docs-http-end
@@ -128,7 +128,7 @@ The example of strategy calculation using HTTP to access deployment is as follow
 :start-after: docs-calc-start
 ```
 
-You can also rewrite this code to support concurrency:
+This code can also be rewritten to support concurrency:
 
 ```{literalinclude} ../../../../java/serve/src/test/java/io/ray/serve/docdemo/HttpStrategyCalcOnRayServe.java
 :end-before: docs-parallel-calc-end
@@ -136,7 +136,7 @@ You can also rewrite this code to support concurrency:
 :start-after: docs-parallel-calc-start
 ```
 
-Finally, the complete usage of `HttpStrategyCalcOnRayServe` is like this code:
+Finally, the complete usage of `HttpStrategyCalcOnRayServe` is like this:
 
 ```{literalinclude} ../../../../java/serve/src/test/java/io/ray/serve/docdemo/HttpStrategyCalcOnRayServe.java
 :end-before: docs-main-end

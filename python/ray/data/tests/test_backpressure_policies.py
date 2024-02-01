@@ -273,9 +273,8 @@ class TestStreamOutputBackpressurePolicy(unittest.TestCase):
             policy._max_num_blocks_in_op_output_queue
             == self._max_blocks_in_op_output_queue
         )
-        data_context = ray.data.DataContext.get_current()
         assert (
-            data_context._max_num_blocks_in_streaming_gen_buffer
+            policy._max_num_blocks_in_streaming_gen_buffer
             == self._max_blocks_in_generator_buffer
         )
 

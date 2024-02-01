@@ -10,6 +10,7 @@ from ray.tune.execution.placement_groups import (
 )
 from ray.air.config import ScalingConfig
 from ray.tune.registry import _ParameterRegistry
+from ray.tune.utils import _detect_checkpoint_function
 from ray.util.annotations import PublicAPI
 
 if TYPE_CHECKING:
@@ -123,6 +124,12 @@ def with_parameters(trainable: Union[Type["Trainable"], Callable], **kwargs):
         trainable_with_params = _Inner
     else:
         # Function trainable
+        if _detect_checkpoint_function(trainable, partial=True):
+            from ray.tune.trainable.function_trainable import (
+                _CHECKPOINT_DIR_ARG_DEPRECATION_MSG,
+            )
+
+            raise DeprecationWarning(_CHECKPOINT_DIR_ARG_DEPRECATION_MSG)
 
         def inner(config):
             fn_kwargs = {}
@@ -216,6 +223,13 @@ def with_resources(
     if not inspect.isclass(trainable):
         if isinstance(trainable, types.MethodType):
             # Methods cannot set arbitrary attributes, so we have to wrap them
+            if _detect_checkpoint_function(trainable, partial=True):
+                from ray.tune.trainable.function_trainable import (
+                    _CHECKPOINT_DIR_ARG_DEPRECATION_MSG,
+                )
+
+                raise DeprecationWarning(_CHECKPOINT_DIR_ARG_DEPRECATION_MSG)
+
             def _trainable(config):
                 return trainable(config)
 
