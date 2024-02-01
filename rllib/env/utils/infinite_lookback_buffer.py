@@ -247,12 +247,15 @@ class InfiniteLookbackBuffer:
 
     def __len__(self):
         """Return the length of our data, excluding the lookback buffer."""
-        if self.finalized:
-            len_ = len(tree.flatten(self.data)[0])
-        else:
-            len_ = len(self.data)
+        len_ = self.len_incl_lookback()
         # Only count the data after the lookback.
         return max(len_ - self.lookback, 0)
+
+    def len_incl_lookback(self):
+        if self.finalized:
+            return len(tree.flatten(self.data)[0])
+        else:
+            return len(self.data)
 
     def __repr__(self):
         return (
@@ -280,12 +283,28 @@ class InfiniteLookbackBuffer:
     ):
         data_to_use = self.data
         if _ignore_last_ts:
-            data_to_use = self.data[:-1]
+            if self.finalized:
+                data_to_use = tree.map_structure(lambda s: s[:-1], self.data)
+            else:
+                data_to_use = self.data[:-1]
         if _add_last_ts_value is not None:
-            data_to_use = np.append(data_to_use.copy(), _add_last_ts_value)
+            if self.finalized:
+                data_to_use = tree.map_structure(
+                    lambda s, t: np.append(s, t),
+                    data_to_use.copy(),
+                    _add_last_ts_value,
+                )
+            else:
+                data_to_use = np.append(data_to_use.copy(), _add_last_ts_value)
 
         slice_, slice_len, fill_left_count, fill_right_count = self._interpret_slice(
-            slice_, neg_indices_left_of_zero, len_self_plus_lookback=len(data_to_use)
+            slice_,
+            neg_indices_left_of_zero,
+            len_self_plus_lookback=(
+                self.len_incl_lookback()
+                + int(_add_last_ts_value is not None)
+                - int(_ignore_last_ts)
+            ),
         )
 
         # Perform the actual slice.
