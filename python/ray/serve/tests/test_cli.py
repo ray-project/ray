@@ -4,7 +4,7 @@ import sys
 import time
 from copy import deepcopy
 from tempfile import NamedTemporaryFile
-from typing import List
+from typing import Dict, List, Optional
 
 import click
 import pytest
@@ -51,7 +51,7 @@ def test_start_shutdown(ray_start_stop):
     subprocess.check_output(["serve", "shutdown", "-y"])
 
 
-def check_http_response(json, expected_text):
+def check_http_response(expected_text: str, json: Optional[Dict] = None):
     resp = requests.post("http://localhost:8000/", json=json)
     assert resp.text == expected_text
     return True
@@ -694,6 +694,38 @@ def test_replica_placement_group_options(ray_start_stop):
         return True
 
     wait_for_condition(check_application_status, timeout=15)
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="File path incorrect on Windows.")
+def test_deploy_from_import_path(ray_start_stop):
+    """Test that `deploy` works from an import path."""
+
+    config_file_dir = os.path.join(
+        os.path.dirname(__file__),
+        "test_config_files",
+    )
+
+    subprocess.check_output(
+        f"cd {config_file_dir} && serve deploy arg_builders:build_echo_app'",
+        shell=True,
+    )
+
+    wait_for_condition(
+        check_http_response,
+        expected_text="DEFAULT",
+        timeout=15,
+    )
+
+    subprocess.check_output(
+        f"cd {config_file_dir} && serve deploy arg_builders:build_echo_app message='redeployed!'",
+        shell=True,
+    )
+
+    wait_for_condition(
+        check_http_response,
+        expected_text="redeployed!",
+        timeout=15,
+    )
 
 
 if __name__ == "__main__":

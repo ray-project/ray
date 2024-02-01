@@ -1,8 +1,10 @@
+import os
 import sys
 
 import pytest
 
 from ray.serve._private.deploy_provider import (
+    DEPLOY_PROVIDER_ENV_VAR,
     AnyscaleDeployProvider,
     get_deploy_provider,
 )
@@ -14,9 +16,19 @@ def test_get_default_deploy_provider():
     assert get_deploy_provider("anyscale") == AnyscaleDeployProvider
 
 
-def test_get_custom_deploy_provider():
+@pytest.mark.parametrize("from_env_var", [False, True])
+def test_get_custom_deploy_provider(from_env_var: bool):
     """Test dynamically importing a deploy provider."""
-    deploy_provider = get_deploy_provider("ray.serve.tests.unit.fake_deploy_provider")
+    import_path = "ray.serve.tests.unit.fake_deploy_provider"
+    if from_env_var:
+        try:
+            os.environ[DEPLOY_PROVIDER_ENV_VAR] = import_path
+            deploy_provider = get_deploy_provider(None)
+        finally:
+            os.environ.pop(DEPLOY_PROVIDER_ENV_VAR)
+    else:
+        deploy_provider = get_deploy_provider(import_path)
+
     assert isinstance(deploy_provider, FakeDeployProvider)
     deploy_provider.deploy(
         {},
