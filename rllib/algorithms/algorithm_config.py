@@ -151,12 +151,12 @@ class AlgorithmConfig(_Config):
         tune.Tuner("PPO", param_space=config.to_dict())
     """
 
-    @staticmethod
-    def DEFAULT_AGENT_TO_MODULE_MAPPING_FN(agent_id, episode):
-        # The default agent ID to module ID mapping function to use in the multi-agent
-        # case if None is provided.
-        # Map any agent ID to "default_policy".
-        return DEFAULT_MODULE_ID
+    # @staticmethod
+    # def DEFAULT_AGENT_TO_MODULE_MAPPING_FN(agent_id, episode):
+    #    # The default agent ID to module ID mapping function to use in the multi-agent
+    #    # case if None is provided.
+    #    # Map any agent ID to "default_policy".
+    #    return DEFAULT_MODULE_ID
 
     # TODO (sven): Deprecate in new API stack.
     @staticmethod
@@ -414,7 +414,7 @@ class AlgorithmConfig(_Config):
         # `self.algorithm_config_overrides_per_module`.
         self._per_module_overrides: Dict[ModuleID, "AlgorithmConfig"] = {}
         self.count_steps_by = "env_steps"
-        self.agent_to_module_mapping_fn = self.DEFAULT_AGENT_TO_MODULE_MAPPING_FN
+        # self.agent_to_module_mapping_fn = self.DEFAULT_AGENT_TO_MODULE_MAPPING_FN
         # Soon to be Deprecated.
         self.policies = {DEFAULT_POLICY_ID: PolicySpec()}
         self.policy_map_capacity = 100
