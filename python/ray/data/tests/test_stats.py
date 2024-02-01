@@ -252,98 +252,19 @@ def test_large_args_scheduling_strategy(ray_start_regular_shared, verbose_stats_
         context.verbose_stats_logs = False
 
 
-def test_dataset_stats_basic(ray_start_regular_shared, enable_auto_log_stats):
-    logger = DatasetLogger(
-        "ray.data._internal.execution.streaming_executor"
-    ).get_logger(
-        log_to_stdout=enable_auto_log_stats,
-    )
-
-    with patch.object(logger, "info") as mock_logger:
-        ds = ray.data.range(1000, parallelism=10)
-        ds = ds.map_batches(dummy_map_batches).materialize()
-
-        if enable_auto_log_stats:
-            logger_args, logger_kwargs = mock_logger.call_args
-
-            assert (
-                canonicalize(logger_args[0])
-                == f"""Operator N ReadRange->MapBatches(dummy_map_batches): {EXECUTION_STRING}
-* Remote wall time: T min, T max, T mean, T total
-* Remote cpu time: T min, T max, T mean, T total
-* Peak heap memory usage (MiB): N min, N max, N mean
-* Output num rows per block: N min, N max, N mean, N total
-* Output size bytes per block: N min, N max, N mean, N total
-* Output rows per task: N min, N max, N mean, N tasks used
-* Tasks per node: N min, N max, N mean; N nodes used
-"""
-            )
-
-        ds = ds.map(dummy_map_batches).materialize()
-        if enable_auto_log_stats:
-            logger_args, logger_kwargs = mock_logger.call_args
-
-            assert (
-                canonicalize(logger_args[0])
-                == f"""Operator N Map(dummy_map_batches): {EXECUTION_STRING}
-* Remote wall time: T min, T max, T mean, T total
-* Remote cpu time: T min, T max, T mean, T total
-* Peak heap memory usage (MiB): N min, N max, N mean
-* Output num rows per block: N min, N max, N mean, N total
-* Output size bytes per block: N min, N max, N mean, N total
-* Output rows per task: N min, N max, N mean, N tasks used
-* Tasks per node: N min, N max, N mean; N nodes used
-"""
-            )
-
-    for batch in ds.iter_batches():
-        pass
-    stats = canonicalize(ds.materialize().stats())
-
-    assert stats == (
-        f"Operator N ReadRange->MapBatches(dummy_map_batches): {EXECUTION_STRING}\n"
-        f"* Remote wall time: T min, T max, T mean, T total\n"
-        f"* Remote cpu time: T min, T max, T mean, T total\n"
-        f"* Peak heap memory usage (MiB): N min, N max, N mean\n"
-        f"* Output num rows per block: N min, N max, N mean, N total\n"
-        f"* Output size bytes per block: N min, N max, N mean, N total\n"
-        f"* Output rows per task: N min, N max, N mean, N tasks used\n"
-        f"* Tasks per node: N min, N max, N mean; N nodes used\n"
-        f"\n"
-        f"Operator N Map(dummy_map_batches): {EXECUTION_STRING}\n"
-        f"* Remote wall time: T min, T max, T mean, T total\n"
-        f"* Remote cpu time: T min, T max, T mean, T total\n"
-        f"* Peak heap memory usage (MiB): N min, N max, N mean\n"
-        f"* Output num rows per block: N min, N max, N mean, N total\n"
-        f"* Output size bytes per block: N min, N max, N mean, N total\n"
-        f"* Output rows per task: N min, N max, N mean, N tasks used\n"
-        f"* Tasks per node: N min, N max, N mean; N nodes used\n"
-        f"\n"
-        f"Dataset iterator time breakdown:\n"
-        f"* Total time user code is blocked: T\n"
-        f"* Total time in user code: T\n"
-        f"* Total time overall: T\n"
-        f"* Num blocks local: Z\n"
-        f"* Num blocks remote: Z\n"
-        f"* Num blocks unknown location: N\n"
-        f"* Batch iteration time breakdown (summed across prefetch threads):\n"
-        f"    * In ray.get(): T min, T max, T avg, T total\n"
-        f"    * In batch creation: T min, T max, T avg, T total\n"
-        f"    * In batch formatting: T min, T max, T avg, T total\n"
-    )
-
-
-def test_dataset_verbose_log(ray_start_regular_shared, enable_auto_log_stats):
+@pytest.mark.parametrize("verbose_stats_logs", [True, False])
+def test_dataset_stats_basic(
+    ray_start_regular_shared, enable_auto_log_stats, verbose_stats_logs
+):
     try:
         context = DataContext.get_current()
-        context.optimize_fuse_stages = True
-        context.verbose_stats_logs = True
-
+        context.verbose_stats_logs = verbose_stats_logs
         logger = DatasetLogger(
             "ray.data._internal.execution.streaming_executor"
         ).get_logger(
             log_to_stdout=enable_auto_log_stats,
         )
+
         with patch.object(logger, "info") as mock_logger:
             ds = ray.data.range(1000, parallelism=10)
             ds = ds.map_batches(dummy_map_batches).materialize()
@@ -351,36 +272,70 @@ def test_dataset_verbose_log(ray_start_regular_shared, enable_auto_log_stats):
             if enable_auto_log_stats:
                 logger_args, logger_kwargs = mock_logger.call_args
 
-                assert (
-                    canonicalize(logger_args[0])
-                    == f"""Operator N ReadRange->MapBatches(dummy_map_batches): {EXECUTION_STRING}
-* Remote wall time: T min, T max, T mean, T total
-* Remote cpu time: T min, T max, T mean, T total
-* Peak heap memory usage (MiB): N min, N max, N mean
-* Output num rows per block: N min, N max, N mean, N total
-* Output size bytes per block: N min, N max, N mean, N total
-* Output rows per task: N min, N max, N mean, N tasks used
-* Tasks per node: N min, N max, N mean; N nodes used
-* Extra metrics: {STANDARD_EXTRA_METRICS}
-"""
+                assert canonicalize(logger_args[0]) == (
+                    f"Operator N ReadRange->MapBatches(dummy_map_batches): "
+                    f"{EXECUTION_STRING}\n"
+                    f"* Remote wall time: T min, T max, T mean, T total\n"
+                    f"* Remote cpu time: T min, T max, T mean, T total\n"
+                    f"* Peak heap memory usage (MiB): N min, N max, N mean\n"
+                    f"* Output num rows per block: N min, N max, N mean, N total\n"
+                    f"* Output size bytes per block: N min, N max, N mean, N total\n"
+                    f"* Output rows per task: N min, N max, N mean, N tasks used\n"
+                    f"* Tasks per node: N min, N max, N mean; N nodes used\n"
+                    f"{gen_extra_metrics_str(STANDARD_EXTRA_METRICS, verbose_stats_logs)}"  # noqa: E501
                 )
 
             ds = ds.map(dummy_map_batches).materialize()
             if enable_auto_log_stats:
                 logger_args, logger_kwargs = mock_logger.call_args
-                assert (
-                    canonicalize(logger_args[0])
-                    == f"""Operator N Map(dummy_map_batches): {EXECUTION_STRING}
-* Remote wall time: T min, T max, T mean, T total
-* Remote cpu time: T min, T max, T mean, T total
-* Peak heap memory usage (MiB): N min, N max, N mean
-* Output num rows per block: N min, N max, N mean, N total
-* Output size bytes per block: N min, N max, N mean, N total
-* Output rows per task: N min, N max, N mean, N tasks used
-* Tasks per node: N min, N max, N mean; N nodes used
-* Extra metrics: {STANDARD_EXTRA_METRICS}
-"""
+
+                assert canonicalize(logger_args[0]) == (
+                    f"Operator N Map(dummy_map_batches): {EXECUTION_STRING}\n"
+                    f"* Remote wall time: T min, T max, T mean, T total\n"
+                    f"* Remote cpu time: T min, T max, T mean, T total\n"
+                    f"* Peak heap memory usage (MiB): N min, N max, N mean\n"
+                    f"* Output num rows per block: N min, N max, N mean, N total\n"
+                    f"* Output size bytes per block: N min, N max, N mean, N total\n"
+                    f"* Output rows per task: N min, N max, N mean, N tasks used\n"
+                    f"* Tasks per node: N min, N max, N mean; N nodes used\n"
+                    f"{gen_extra_metrics_str(STANDARD_EXTRA_METRICS, verbose_stats_logs)}"  # noqa: E501
                 )
+
+        for batch in ds.iter_batches():
+            pass
+        stats = canonicalize(ds.materialize().stats())
+
+        assert stats == (
+            f"Operator N ReadRange->MapBatches(dummy_map_batches): {EXECUTION_STRING}\n"
+            f"* Remote wall time: T min, T max, T mean, T total\n"
+            f"* Remote cpu time: T min, T max, T mean, T total\n"
+            f"* Peak heap memory usage (MiB): N min, N max, N mean\n"
+            f"* Output num rows per block: N min, N max, N mean, N total\n"
+            f"* Output size bytes per block: N min, N max, N mean, N total\n"
+            f"* Output rows per task: N min, N max, N mean, N tasks used\n"
+            f"* Tasks per node: N min, N max, N mean; N nodes used\n"
+            f"{gen_extra_metrics_str(STANDARD_EXTRA_METRICS, verbose_stats_logs)}\n"
+            f"Operator N Map(dummy_map_batches): {EXECUTION_STRING}\n"
+            f"* Remote wall time: T min, T max, T mean, T total\n"
+            f"* Remote cpu time: T min, T max, T mean, T total\n"
+            f"* Peak heap memory usage (MiB): N min, N max, N mean\n"
+            f"* Output num rows per block: N min, N max, N mean, N total\n"
+            f"* Output size bytes per block: N min, N max, N mean, N total\n"
+            f"* Output rows per task: N min, N max, N mean, N tasks used\n"
+            f"* Tasks per node: N min, N max, N mean; N nodes used\n"
+            f"{gen_extra_metrics_str(STANDARD_EXTRA_METRICS, verbose_stats_logs)}\n"
+            f"Dataset iterator time breakdown:\n"
+            f"* Total time user code is blocked: T\n"
+            f"* Total time in user code: T\n"
+            f"* Total time overall: T\n"
+            f"* Num blocks local: Z\n"
+            f"* Num blocks remote: Z\n"
+            f"* Num blocks unknown location: N\n"
+            f"* Batch iteration time breakdown (summed across prefetch threads):\n"
+            f"    * In ray.get(): T min, T max, T avg, T total\n"
+            f"    * In batch creation: T min, T max, T avg, T total\n"
+            f"    * In batch formatting: T min, T max, T avg, T total\n"
+        )
     finally:
         context.verbose_stats_logs = False
 
