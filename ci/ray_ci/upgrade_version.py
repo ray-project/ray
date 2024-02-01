@@ -42,7 +42,6 @@ def upgrade_file_version(non_java_files, java_files, non_java_version: str, java
     for file_path in non_java_files | java_files:
         with open(os.path.join(bazel_workspace_dir, file_path), 'r') as f:
             content = f.read()
-            print("Content: ", content)
         current_version = non_java_version if file_path in non_java_files else java_version
         content = content.replace(current_version, new_version)
 
