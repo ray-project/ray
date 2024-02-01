@@ -12,6 +12,9 @@ non_java_files = {
 
 
 def list_java_files():
+    """
+    Scan the directories and return the set of pom.xml and pom_template.xml files.
+    """
     files = set()
     for root_dir, _, file_names in os.walk(bazel_workspace_dir):
         for file_name in file_names:
@@ -22,7 +25,7 @@ def list_java_files():
 
 def get_current_version(non_java_version: str, java_version: str):
     """
-    Scan for current Ray version and update the version global variables.
+    Scan for current Ray version and return the current versions.
     """
     version_file_path = os.path.join(bazel_workspace_dir, "python/ray/_version.py")
     output = subprocess.run(
