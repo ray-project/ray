@@ -56,6 +56,8 @@ def get_deploy_provider(provider_name: Optional[str]) -> DeployProvider:
 
 
 class LocalDeployProvider(DeployProvider):
+    """Provider that deploys by sending a REST API request to a cluster."""
+
     def deploy(
         config: Dict,
         *,
@@ -65,35 +67,23 @@ class LocalDeployProvider(DeployProvider):
         base_image: Optional[str] = None,
     ):
         ServeDeploySchema.parse_obj(config)
-        ServeSubmissionClient(address).deploy_applications(config)
+        if base_image is not None:
+            raise ValueError(
+                "`--base-image` is not supported when using the 'local' deploy "
+                "provider because it deploys to an existing Ray cluster."
+            )
 
+        ServeSubmissionClient(address).deploy_applications(config)
         cli_logger.success(
             "\nSent deploy request successfully.\n "
             "* Use `serve status` to check applications' statuses.\n "
             "* Use `serve config` to see the current application config(s).\n"
         )
 
-        service_config = {
-            "ray_serve_config": config,
-        }
-        if name is not None:
-            service_config["name"] = name
-        if base_image is not None:
-            service_config["cluster_env"] = base_image
-
-        # TODO(edoakes): use the Anyscale SDK (or another fixed entrypoint) instead of
-        # subprocessing out to the CLI.
-        with NamedTemporaryFile(mode="w") as f:
-            yaml.dump(service_config, f, default_flow_style=False)
-            f.flush()
-
-            try:
-                check_output(["anyscale", "service", "rollout", "-f", f.name])
-            except CalledProcessError:
-                raise click.ClickException("Failed to deploy service.")
-
 
 class AnyscaleDeployProvider(DeployProvider):
+    """Provider that deploys to the anyscale platform."""
+
     def deploy(
         config: Dict,
         *,

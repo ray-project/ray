@@ -238,13 +238,14 @@ def start(
 def _generate_config_from_file_or_import_path(
     config_or_import_path: str,
     *,
+    name: Optional[str],
     arguments: Dict[str, str],
     runtime_env: Optional[Dict[str, Any]],
 ) -> ServeDeploySchema:
     """Generates a deployable config schema for the passed application(s)."""
     if pathlib.Path(config_or_import_path).is_file():
         config_path = config_or_import_path
-        cli_logger.print(f"Publishing from config file: '{config_path}'.")
+        cli_logger.print(f"Deploying from config file: '{config_path}'.")
         if len(arguments) > 0:
             raise click.ClickException(
                 "Application arguments cannot be specified for a config file."
@@ -257,7 +258,7 @@ def _generate_config_from_file_or_import_path(
     else:
         # TODO(edoakes): should we default to --working-dir="." for this?
         import_path = config_or_import_path
-        cli_logger.print(f"Publishing import path: '{import_path}'.")
+        cli_logger.print(f"Deploying from import path: '{import_path}'.")
 
         if import_path.count(":") != 1:
             raise click.ClickException(
@@ -269,6 +270,8 @@ def _generate_config_from_file_or_import_path(
             runtime_env=runtime_env,
             args=arguments,
         )
+        if name is not None:
+            app.name = name
         config = ServeDeploySchema(applications=[app])
 
     assert isinstance(config, ServeDeploySchema)
@@ -276,8 +279,18 @@ def _generate_config_from_file_or_import_path(
 
 
 @cli.command(
-    short_help="TODO.",
-    help=("TODO."),
+    short_help="Deploy an application or group of applications.",
+    help=(
+        "Deploy an application from the specified import path (e.g., main:app) "
+        "or a group of applications specified in a YAML config file.\n\n"
+        "If passing an import path, it must point to a Serve Application or "
+        "a function that returns one. If a function is used, arguments can be "
+        "passed to it in 'key=val' format after the import path, for example:\n\n"
+        "serve deploy main:app model_path='/path/to/model.pkl' num_replicas=5\n\n"
+        "This command supports different 'provider' backends. By default, it uses "
+        "a 'local' provider that makes a REST API request to a running Ray cluster. "
+        "Not all arguments are supported by all providers."
+    ),
 )
 @click.argument("config_or_import_path")
 @click.argument("arguments", nargs=-1, required=False)
@@ -301,10 +314,10 @@ def _generate_config_from_file_or_import_path(
     default=None,
     required=False,
     help=(
-        "Directory containing files that your application(s) will run in. Can be a "
-        "local directory or a remote URI to a .zip file (S3, GS, HTTP). "
-        "This overrides the working_dir in --runtime-env if both are "
-        "specified."
+        "Directory containing files that your application(s) will run in. When using "
+        "the 'local' provider, this must be a remote URI to a .zip file (e.g., S3 "
+        "bucket). Other providers may support local paths. This overrides the "
+        "working_dir in --runtime-env if both are specified."
     ),
 )
 @click.option(
@@ -312,14 +325,14 @@ def _generate_config_from_file_or_import_path(
     required=False,
     default=None,
     type=str,
-    help="Optional custom name for the application.",
+    help="Custom name for the application(s).",
 )
 @click.option(
     "--base-image",
     required=False,
     default=None,
     type=str,
-    help="Optional container image to use for the application.",
+    help="Container image to use for the application(s).",
 )
 @click.option(
     "--provider",
@@ -338,7 +351,7 @@ def _generate_config_from_file_or_import_path(
     default=os.environ.get("RAY_DASHBOARD_ADDRESS", "http://localhost:8265"),
     required=False,
     type=str,
-    help=RAY_DASHBOARD_ADDRESS_HELP_STR,
+    help=RAY_DASHBOARD_ADDRESS_HELP_STR + " . Only relevant for 'local' provider.",
 )
 def deploy(
     config_or_import_path: str,
@@ -362,6 +375,7 @@ def deploy(
     with _skip_validating_runtime_env_uris():
         config = _generate_config_from_file_or_import_path(
             config_or_import_path,
+            name=name,
             arguments=args_dict,
             runtime_env=final_runtime_env,
         )
@@ -377,7 +391,7 @@ def deploy(
 
 
 @cli.command(
-    short_help="Run Serve applications.",
+    short_help="Run an application or group of applications.",
     help=(
         "Runs an application from the specified import path (e.g., my_script:"
         "app) or application(s) from a YAML config.\n\n"
