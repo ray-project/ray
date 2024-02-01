@@ -65,7 +65,7 @@ class InstanceReconcilerTest(unittest.TestCase):
         instances, _ = self.instance_storage.get_instances(
             instance_ids={instance.instance_id}
         )
-        assert instances[instance.instance_id].status == Instance.STOPPING
+        assert instances[instance.instance_id].status == Instance.TERMINATING
         assert self.base_provider.is_terminated(instance.cloud_instance_id)
 
         # reconciler will detect the node is terminated and update the status.
@@ -73,7 +73,7 @@ class InstanceReconcilerTest(unittest.TestCase):
         instances, _ = self.instance_storage.get_instances(
             instance_ids={instance.instance_id}
         )
-        assert instances[instance.instance_id].status == Instance.STOPPED
+        assert instances[instance.instance_id].status == Instance.TERMINATED
 
 
 if __name__ == "__main__":

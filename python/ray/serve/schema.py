@@ -26,6 +26,7 @@ from ray.serve._private.common import (
 from ray.serve._private.constants import (
     DEFAULT_GRPC_PORT,
     DEFAULT_UVICORN_KEEP_ALIVE_TIMEOUT_S,
+    RAY_SERVE_LOG_ENCODING,
     SERVE_DEFAULT_APP_NAME,
 )
 from ray.serve._private.deployment_info import DeploymentInfo
@@ -130,10 +131,11 @@ class LoggingConfig(BaseModel):
         extra = Extra.forbid
 
     encoding: Union[str, EncodingType] = Field(
-        default="TEXT",
+        default_factory=lambda: RAY_SERVE_LOG_ENCODING,
         description=(
-            "Encoding type for the serve logs. Default to 'TEXT'. 'JSON' is also "
-            "supported to format all serve logs into json structure."
+            "Encoding type for the serve logs. Defaults to 'TEXT'. The default can be "
+            "overwritten using the `RAY_SERVE_LOG_ENCODING` environment variable. "
+            "'JSON' is also supported for structured logging."
         ),
     )
     log_level: Union[int, str] = Field(

@@ -346,9 +346,6 @@ def test_streaming_split_independent_finish(ray_start_10_cpus_shared):
     "remove DAG validation for now; see https://github.com/ray-project/ray/pull/37829"
 )
 def test_e2e_option_propagation(ray_start_10_cpus_shared, restore_data_context):
-    DataContext.get_current().new_execution_backend = True
-    DataContext.get_current().use_streaming_executor = True
-
     def run():
         ray.data.range(5, parallelism=5).map(
             lambda x: x, compute=ray.data.ActorPoolStrategy(size=2)
@@ -372,11 +369,10 @@ def test_configure_spread_e2e(ray_start_10_cpus_shared, restore_data_context):
             tasks.append(strategy)
 
     remote_function._task_launch_hook = _test_hook
-    DataContext.get_current().use_streaming_executor = True
     DataContext.get_current().execution_options.preserve_order = True
     DataContext.get_current().large_args_threshold = 0
 
-    # Simple 2-stage pipeline.
+    # Simple 2-operator pipeline.
     ray.data.range(2, parallelism=2).map(lambda x: x, num_cpus=2).take_all()
 
     # Read tasks get SPREAD by default, subsequent ones use default policy.
@@ -387,7 +383,7 @@ def test_configure_spread_e2e(ray_start_10_cpus_shared, restore_data_context):
 def test_scheduling_progress_when_output_blocked(
     ray_start_10_cpus_shared, restore_data_context
 ):
-    # Processing stages should fully finish even if output is completely stalled.
+    # Processing operators should fully finish even if output is completely stalled.
 
     @ray.remote
     class Counter:
@@ -406,7 +402,6 @@ def test_scheduling_progress_when_output_blocked(
         ray.get(counter.inc.remote())
         return x
 
-    DataContext.get_current().use_streaming_executor = True
     DataContext.get_current().execution_options.preserve_order = True
 
     # Only take the first item from the iterator.
@@ -444,7 +439,6 @@ def test_backpressure_from_output(ray_start_10_cpus_shared, restore_data_context
         return x
 
     ctx = DataContext.get_current()
-    ctx.use_streaming_executor = True
     ctx.execution_options.resource_limits.object_store_memory = 10000
 
     # Only take the first item from the iterator.
@@ -472,7 +466,6 @@ def test_e2e_liveness_with_output_backpressure_edge_case(
 ):
     # At least one operator is ensured to be running, if the output becomes idle.
     ctx = DataContext.get_current()
-    ctx.use_streaming_executor = True
     ctx.execution_options.preserve_order = True
     ctx.execution_options.resource_limits.object_store_memory = 1
     ds = ray.data.range(10000, parallelism=100).map(lambda x: x, num_cpus=2)
@@ -482,9 +475,6 @@ def test_e2e_liveness_with_output_backpressure_edge_case(
 
 
 def test_e2e_autoscaling_up(ray_start_10_cpus_shared, restore_data_context):
-    DataContext.get_current().new_execution_backend = True
-    DataContext.get_current().use_streaming_executor = True
-
     @ray.remote(max_concurrency=10)
     class Barrier:
         def __init__(self, n, delay=0):
@@ -557,9 +547,6 @@ def test_e2e_autoscaling_up(ray_start_10_cpus_shared, restore_data_context):
 
 
 def test_e2e_autoscaling_down(ray_start_10_cpus_shared, restore_data_context):
-    DataContext.get_current().new_execution_backend = True
-    DataContext.get_current().use_streaming_executor = True
-
     class UDFClass:
         def __call__(self, x):
             time.sleep(1)
@@ -576,9 +563,6 @@ def test_e2e_autoscaling_down(ray_start_10_cpus_shared, restore_data_context):
 
 
 def test_can_pickle(ray_start_10_cpus_shared, restore_data_context):
-    DataContext.get_current().new_execution_backend = True
-    DataContext.get_current().use_streaming_executor = True
-
     ds = ray.data.range(1000000)
     it = iter(ds.iter_batches())
     next(it)
@@ -589,9 +573,6 @@ def test_can_pickle(ray_start_10_cpus_shared, restore_data_context):
 
 
 def test_streaming_fault_tolerance(ray_start_10_cpus_shared, restore_data_context):
-    DataContext.get_current().new_execution_backend = True
-    DataContext.get_current().use_streaming_executor = True
-
     class RandomExit:
         def __call__(self, x):
             import os
