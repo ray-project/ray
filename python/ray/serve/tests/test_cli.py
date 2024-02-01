@@ -704,9 +704,10 @@ def test_deploy_from_import_path(ray_start_stop):
         os.path.dirname(__file__),
         "test_config_files",
     )
+    deploy_cmd = f"cd {config_file_dir} && serve deploy arg_builders:build_echo_app"
 
     subprocess.check_output(
-        f"cd {config_file_dir} && serve deploy arg_builders:build_echo_app",
+        deploy_cmd,
         shell=True,
     )
 
@@ -717,7 +718,7 @@ def test_deploy_from_import_path(ray_start_stop):
     )
 
     subprocess.check_output(
-        f"cd {config_file_dir} && serve deploy arg_builders:build_echo_app message='redeployed!'",
+        deploy_cmd + " message='redeployed!'",
         shell=True,
     )
 

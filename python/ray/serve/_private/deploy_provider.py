@@ -2,7 +2,7 @@ import os
 from abc import ABC, abstractmethod
 from subprocess import CalledProcessError, check_output
 from tempfile import NamedTemporaryFile
-from typing import Optional
+from typing import Callable, Optional
 
 import click
 import yaml
@@ -18,16 +18,17 @@ DEPLOY_PROVIDER_ENV_VAR = "RAY_SERVE_DEPLOY_PROVIDER"
 
 
 class DeployProvider(ABC):
+    @abstractmethod
     def supports_local_uris(self) -> bool:
-        """By default, providers don't support local URIs in the runtime_env.
+        """Whether or not this deploy provider supports local URIs in the runtime_env.
 
-        Provider implementations can override if they do support it and the relevant
-        validation will be skipped.
+        If they do, the relevant validation will be skipped when building the config.
         """
-        return False
+        pass
 
     @abstractmethod
     def deploy(
+        self,
         config: ServeDeploySchema,
         *,
         address: str,
@@ -38,6 +39,13 @@ class DeployProvider(ABC):
         pass
 
 
+def _get_builtin_deploy_provider_factory(provider_name: str) -> Callable:
+    return {
+        "anyscale": AnyscaleDeployProvider,
+        "local": LocalDeployProvider,
+    }.get(provider_name, None)
+
+
 def get_deploy_provider(provider_name: Optional[str]) -> DeployProvider:
     """Returns the specified deploy provider or a default.
 
@@ -46,12 +54,8 @@ def get_deploy_provider(provider_name: Optional[str]) -> DeployProvider:
     if provider_name is None:
         provider_name = os.environ.get(DEPLOY_PROVIDER_ENV_VAR, "local")
 
-    deploy_provider = {
-        "anyscale": AnyscaleDeployProvider,
-        "local": LocalDeployProvider,
-    }.get(provider_name, None)
-
-    if deploy_provider is None:
+    deploy_provider_factory = _get_builtin_deploy_provider_factory(provider_name)
+    if deploy_provider_factory is None:
         try:
             deploy_provider_factory = import_attr(
                 f"{provider_name}.{DEPLOY_PROVIDER_FACTORY_METHOD}"
@@ -61,15 +65,18 @@ def get_deploy_provider(provider_name: Optional[str]) -> DeployProvider:
                 f"Failed to import '{DEPLOY_PROVIDER_FACTORY_METHOD}' "
                 f"from deploy provider module '{provider_name}'."
             )
-        deploy_provider = deploy_provider_factory()
 
-    return deploy_provider
+    return deploy_provider_factory()
 
 
 class LocalDeployProvider(DeployProvider):
     """Provider that deploys by sending a REST API request to a cluster."""
 
+    def supports_local_uris(self) -> bool:
+        return False
+
     def deploy(
+        self,
         config: ServeDeploySchema,
         *,
         address: str,
@@ -97,6 +104,7 @@ class AnyscaleDeployProvider(DeployProvider):
         return True
 
     def deploy(
+        self,
         config: ServeDeploySchema,
         *,
         address: str,
