@@ -29,6 +29,7 @@ from ray.serve._private.constants import (
 )
 from ray.serve._private.controller import ServeController
 from ray.serve._private.test_utils import (
+    check_deployment_status,
     check_num_replicas_eq,
     check_num_replicas_gte,
     check_num_replicas_lte,
@@ -47,12 +48,6 @@ def get_running_replica_tags(name: str, controller: ServeController) -> List:
     )
     running_replicas = replicas.get([ReplicaState.RUNNING])
     return [replica.replica_tag for replica in running_replicas]
-
-
-def check_deployment_status(name, expected_status) -> DeploymentStatus:
-    app_status = serve.status().applications[SERVE_DEFAULT_APP_NAME]
-    assert app_status.deployments[name].status == expected_status
-    return True
 
 
 def get_deployment_start_time(controller: ServeController, name: str):
@@ -209,8 +204,8 @@ def test_e2e_scale_up_down_basic(min_replicas, serve_instance):
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows.")
-@pytest.mark.parametrize("smoothing_factor", [1])  # , 0.2])
-@pytest.mark.parametrize("use_upscale_downscale_config", [True])  # , False])
+@pytest.mark.parametrize("smoothing_factor", [1, 0.2])
+@pytest.mark.parametrize("use_upscale_downscale_config", [True, False])
 def test_e2e_scale_up_down_with_0_replica(
     serve_instance, smoothing_factor, use_upscale_downscale_config
 ):
