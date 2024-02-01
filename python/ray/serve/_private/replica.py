@@ -33,6 +33,7 @@ from ray.serve._private.constants import (
     DEFAULT_LATENCY_BUCKET_MS,
     GRPC_CONTEXT_ARG_NAME,
     HEALTH_CHECK_METHOD,
+    RAY_SERVE_COLLECT_AUTOSCALING_METRICS_ON_HANDLE,
     RAY_SERVE_GAUGE_METRIC_SET_PERIOD_S,
     RAY_SERVE_REPLICA_AUTOSCALING_METRIC_RECORD_PERIOD_S,
     RECONFIGURE_METHOD,
@@ -180,7 +181,10 @@ class ReplicaMetricsManager:
 
         self._autoscaling_config = autoscaling_config
 
-        if self._autoscaling_config:
+        if (
+            not RAY_SERVE_COLLECT_AUTOSCALING_METRICS_ON_HANDLE
+            and self._autoscaling_config
+        ):
             # Push autoscaling metrics to the controller periodically.
             self._metrics_pusher.register_or_update_task(
                 self.PUSH_METRICS_TO_CONTROLLER_TASK_NAME,
