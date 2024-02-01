@@ -24,10 +24,11 @@ from ray.tests.conftest import call_ray_stop_only  # noqa: F401
 
 
 @pytest.fixture
-def shutdown_ray():
+def shutdown_serve_and_ray():
     if ray.is_initialized():
         ray.shutdown()
     yield
+    serve.shutdown()
     if ray.is_initialized():
         ray.shutdown()
 
@@ -218,7 +219,7 @@ def test_shutdown_remote(start_and_shutdown_ray_cli_function):
         os.unlink(shutdown_file.name)
 
 
-def test_handle_early_detect_failure(shutdown_ray):
+def test_handle_early_detect_failure(shutdown_serve_and_ray):
     """Check that handle can be notified about replicas failure.
 
     It should detect replica raises ActorError and take them out of the replicas set.
@@ -245,12 +246,9 @@ def test_handle_early_detect_failure(shutdown_ray):
     pids = ray.get([handle.remote()._to_object_ref_sync() for _ in range(10)])
     assert len(set(pids)) == 1
 
-    # Restart the controller, and then clean up all the replicas
-    serve.shutdown()
-
 
 def test_autoscaler_shutdown_node_http_everynode(
-    monkeypatch, shutdown_ray, call_ray_stop_only  # noqa: F811
+    monkeypatch, shutdown_serve_and_ray, call_ray_stop_only  # noqa: F811
 ):
     monkeypatch.setenv("RAY_SERVE_PROXY_MIN_DRAINING_PERIOD_S", "1")
     cluster = AutoscalingCluster(
@@ -322,12 +320,9 @@ def test_autoscaler_shutdown_node_http_everynode(
         lambda: len(list(filter(lambda n: n["Alive"], ray.nodes()))) == 1
     )
 
-    # Clean up serve.
-    serve.shutdown()
-
 
 def test_drain_and_undrain_http_proxy_actors(
-    monkeypatch, shutdown_ray, call_ray_stop_only  # noqa: F811
+    monkeypatch, shutdown_serve_and_ray, call_ray_stop_only  # noqa: F811
 ):
     """Test the state transtion of the proxy actor between
     HEALTHY, DRAINING and DRAINED
@@ -398,12 +393,9 @@ def test_drain_and_undrain_http_proxy_actors(
         proxy_status_to_count={ProxyStatus.HEALTHY: 2},
     )
 
-    # Clean up serve.
-    serve.shutdown()
-
 
 def test_healthz_and_routes_on_head_and_worker_nodes(
-    shutdown_ray, call_ray_stop_only  # noqa: F811
+    shutdown_serve_and_ray, call_ray_stop_only  # noqa: F811
 ):
     """Test `/-/healthz` and `/-/routes` return the correct responses for head and
     worker nodes.
@@ -516,13 +508,12 @@ def test_healthz_and_routes_on_head_and_worker_nodes(
         == "This node is being drained."
     )
 
-    # Clean up serve.
-    serve.shutdown()
-
 
 @pytest.mark.parametrize("wait_for_controller_shutdown", (True, False))
 def test_controller_shutdown_gracefully(
-    shutdown_ray, call_ray_stop_only, wait_for_controller_shutdown  # noqa: F811
+    shutdown_serve_and_ray,
+    call_ray_stop_only,
+    wait_for_controller_shutdown,  # noqa: F811
 ):
     """Test controller shutdown gracefully when calling `graceful_shutdown()`.
 
@@ -567,12 +558,9 @@ def test_controller_shutdown_gracefully(
         )
     )
 
-    # Clean up serve.
-    serve.shutdown()
-
 
 def test_client_shutdown_gracefully_when_timeout(
-    shutdown_ray, call_ray_stop_only, caplog  # noqa: F811
+    shutdown_serve_and_ray, call_ray_stop_only, caplog  # noqa: F811
 ):
     """Test client shutdown gracefully when timeout.
 
@@ -616,12 +604,9 @@ def test_client_shutdown_gracefully_when_timeout(
         ),
     )
 
-    # Clean up serve.
-    serve.shutdown()
-
 
 def test_serve_shut_down_without_duplicated_logs(
-    shutdown_ray, call_ray_stop_only  # noqa: F811
+    shutdown_serve_and_ray, call_ray_stop_only  # noqa: F811
 ):
     """Test Serve shut down without duplicated logs.
 
