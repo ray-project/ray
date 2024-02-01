@@ -29,7 +29,11 @@
 #include "ray/raylet/scheduling/cluster_resource_manager.h"
 #include "ray/raylet/scheduling/internal.h"
 #include "ray/raylet/scheduling/local_resource_manager.h"
+#include "ray/raylet/scheduling/policy/composite_scheduler2.h"
 #include "ray/raylet/scheduling/policy/composite_scheduling_policy.h"
+#include "ray/raylet/scheduling/policy/filters.h"
+#include "ray/raylet/scheduling/policy/finalizers.h"
+#include "ray/raylet/scheduling/policy/scheduling_interface.h"
 #include "ray/util/logging.h"
 #include "src/ray/protobuf/gcs.pb.h"
 
@@ -98,7 +102,6 @@ class ClusterResourceScheduler {
                                             bool exclude_local_node,
                                             bool requires_object_store_memory,
                                             bool *is_infeasible);
-
   /// Subtract the resources required by a given resource request (resource_request) from
   /// a given remote node.
   ///
@@ -213,6 +216,10 @@ class ClusterResourceScheduler {
   /// The bundle scheduling policy to use.
   std::unique_ptr<raylet_scheduling_policy::IBundleSchedulingPolicy>
       bundle_scheduling_policy_;
+
+  // EXPERIMENTAL
+  std::unique_ptr<raylet_scheduling_policy::CompositeScheduler2> experimental_scheduler_;
+
   /// Whether there is a raylet on the local node.
   bool is_local_node_with_raylet_ = true;
 
