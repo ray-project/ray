@@ -4,7 +4,6 @@ from typing import Any, Dict, List, Optional
 
 from ray.data._internal.execution.interfaces import (
     ExecutionOptions,
-    ExecutionResources,
     NodeIdStr,
     PhysicalOperator,
     RefBundle,
