@@ -673,7 +673,7 @@ class MultiAgentEpisode:
                 episode.get_observations(
                     indices=[1],
                     agent_ids="agent_1",
-                ) == [1]
+                ) == {"agent_1": [1]}
             )
 
             # Let's finalize the episode.
@@ -686,7 +686,7 @@ class MultiAgentEpisode:
                 isinstance(episode.get_observations(
                     indices=[1],
                     agent_ids="agent_1",
-                ), np.ndarray)
+                )["agent_1"], np.ndarray)
             )
 
         Returns:

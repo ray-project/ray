@@ -196,7 +196,7 @@ class MultiAgentEnvRunner(EnvRunner):
         # Have to reset the env.
         if force_reset or self._needs_initial_reset:
             # Create n new episodes and make the `on_episode_created` callbacks.
-            self._episode = MultiAgentEpisode()  # agent_ids=self.agent_ids)
+            self._episode = MultiAgentEpisode()
             self._make_on_episode_callback("on_episode_created")
 
             # Reset the environment.
@@ -385,7 +385,7 @@ class MultiAgentEnvRunner(EnvRunner):
         obs, infos = self.env.reset()
 
         # Create a new multi-agent episode.
-        _episode = MultiAgentEpisode()  # agent_ids=self.agent_ids)
+        _episode = MultiAgentEpisode()
         self._make_on_episode_callback("on_episode_created", _episode)
 
         # Initialize image rendering if needed.
@@ -505,7 +505,7 @@ class MultiAgentEnvRunner(EnvRunner):
                     break
 
                 # Create a new episode instance.
-                _episode = MultiAgentEpisode()  # agent_ids=self.agent_ids)
+                _episode = MultiAgentEpisode()
                 self._make_on_episode_callback("on_episode_created", _episode)
 
                 # Reset the environment.
