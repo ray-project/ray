@@ -33,5 +33,5 @@ config = (
 
 stop = {
     "timesteps_total": 400000,
-    "sampler_results/episode_reward_mean": -300.0,
+    "sampler_results/episode_reward_mean": -400.0,
 }

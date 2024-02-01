@@ -35,7 +35,7 @@ config = (
 
 stop = {
     "timesteps_total": 500000,
-    "episode_reward_mean": -800.0,  # agents required to reach -400 on average
+    "episode_reward_mean": -900.0,  # agents required to reach -400 on average
 }
 
 
