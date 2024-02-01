@@ -23,6 +23,7 @@ from ray.serve._private.common import (
     DeploymentID,
     ReplicaName,
     ReplicaTag,
+    RequestMetadata,
     ServeComponentType,
     StreamingHTTPRequest,
     gRPCRequest,
@@ -32,6 +33,7 @@ from ray.serve._private.constants import (
     DEFAULT_LATENCY_BUCKET_MS,
     GRPC_CONTEXT_ARG_NAME,
     HEALTH_CHECK_METHOD,
+    RAY_SERVE_COLLECT_AUTOSCALING_METRICS_ON_HANDLE,
     RAY_SERVE_GAUGE_METRIC_SET_PERIOD_S,
     RAY_SERVE_REPLICA_AUTOSCALING_METRIC_RECORD_PERIOD_S,
     RECONFIGURE_METHOD,
@@ -54,7 +56,6 @@ from ray.serve._private.logging_utils import (
     get_component_logger_file_path,
 )
 from ray.serve._private.metrics_utils import InMemoryMetricsStore, MetricsPusher
-from ray.serve._private.router import RequestMetadata
 from ray.serve._private.utils import parse_import_path, wrap_to_ray_error
 from ray.serve._private.version import DeploymentVersion
 from ray.serve.config import AutoscalingConfig
@@ -180,7 +181,10 @@ class ReplicaMetricsManager:
 
         self._autoscaling_config = autoscaling_config
 
-        if self._autoscaling_config:
+        if (
+            not RAY_SERVE_COLLECT_AUTOSCALING_METRICS_ON_HANDLE
+            and self._autoscaling_config
+        ):
             # Push autoscaling metrics to the controller periodically.
             self._metrics_pusher.register_or_update_task(
                 self.PUSH_METRICS_TO_CONTROLLER_TASK_NAME,

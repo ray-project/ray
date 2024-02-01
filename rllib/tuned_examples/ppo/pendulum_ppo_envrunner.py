@@ -8,8 +8,8 @@ config = (
     .experimental(_enable_new_api_stack=True)
     .rollouts(
         env_runner_cls=SingleAgentEnvRunner,
+        num_rollout_workers=2,
         num_envs_per_worker=20,
-        num_rollout_workers=0,
     )
     .environment("Pendulum-v1")
     .training(
@@ -17,21 +17,21 @@ config = (
         gamma=0.95,
         lr=0.0003,
         lambda_=0.1,
-        #vf_loss_coeff=0.01,
         vf_clip_param=10.0,
         sgd_minibatch_size=64,
         model={
             "fcnet_activation": "relu",
+            "uses_new_env_runners": True,
         },
     )
-    #.evaluation(
-    #    evaluation_num_workers=1,
-    #    evaluation_interval=1,
-    #    enable_async_evaluation=True,
-    #)
+    .evaluation(
+        evaluation_num_workers=1,
+        evaluation_interval=1,
+        enable_async_evaluation=True,
+    )
 )
 
 stop = {
     "timesteps_total": 400000,
-    "sampler_results/episode_reward_mean": -400.0,
+    "evaluation/sampler_results/episode_reward_mean": -400.0,
 }

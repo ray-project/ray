@@ -499,9 +499,9 @@ py_test(
 )
 
 py_test(
-    name = "test_streaming_executor_resource_limits",
+    name = "test_resource_manager",
     size = "medium",
-    srcs = ["tests/test_streaming_executor_resource_limits.py"],
+    srcs = ["tests/test_resource_manager.py"],
     tags = ["team:data", "exclusive"],
     deps = ["//:ray_lib", ":conftest"],
 )

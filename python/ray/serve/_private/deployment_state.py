@@ -35,6 +35,7 @@ from ray.serve._private.common import (
 from ray.serve._private.config import DeploymentConfig
 from ray.serve._private.constants import (
     MAX_DEPLOYMENT_CONSTRUCTOR_RETRY_COUNT,
+    RAY_SERVE_COLLECT_AUTOSCALING_METRICS_ON_HANDLE,
     RAY_SERVE_FORCE_STOP_UNHEALTHY_REPLICAS,
     REPLICA_HEALTH_CHECK_UNHEALTHY_THRESHOLD,
     SERVE_LOGGER_NAME,
@@ -185,6 +186,13 @@ MAX_BACKOFF_TIME_S = int(os.environ.get("SERVE_MAX_BACKOFF_TIME_S", 64))
 
 ALL_REPLICA_STATES = list(ReplicaState)
 _SCALING_LOG_ENABLED = os.environ.get("SERVE_ENABLE_SCALING_LOG", "0") != "0"
+
+
+@dataclass
+class HandleRequestMetric:
+    queued_requests: float
+    running_requests: Dict[str, float]
+    timestamp: float
 
 
 def print_verbose_scaling_log():
@@ -1246,7 +1254,9 @@ class DeploymentState:
         self.replica_average_ongoing_requests: Dict[str, float] = dict()
 
         # Map from handle ID to (# requests recorded at handle, recording timestamp)
-        self.handle_requests: Dict[str, Tuple(float, float)] = dict()
+        self.handle_requests: Dict[str, HandleRequestMetric] = dict()
+        self.requests_queued_at_handles: Dict[str, float] = dict()
+        # Number of ongoing requests reported by replicas
         self.replica_average_ongoing_requests: Dict[str, float] = dict()
 
         self.health_check_gauge = metrics.Gauge(
@@ -1586,23 +1596,37 @@ class DeploymentState:
         self._backoff_time_s = 1
         return True
 
-    def get_total_num_requests(self) -> int:
-        """Return total number of ongoing requests in Serve.
+    def get_total_num_requests(self) -> float:
+        """Get average total number of requests aggregated over the past
+        `look_back_period_s` number of seconds.
 
         If there are 0 running replicas, then returns the total number
-        of requests queued at handles.
+        of requests queued at handles
+
+        If the flag RAY_SERVE_COLLECT_AUTOSCALING_METRICS_ON_HANDLE is
+        set to 1, the returned average includes both queued and ongoing
+        requests. Otherwise, the returned average includes only ongoing
+        requests.
         """
 
         total_requests = 0
         running_replicas = self._replicas.get([ReplicaState.RUNNING])
-        for replica in running_replicas:
-            replica_tag = replica.replica_tag
-            if replica_tag in self.replica_average_ongoing_requests:
-                total_requests += self.replica_average_ongoing_requests[replica_tag][1]
 
-        if len(running_replicas) == 0:
-            for handle_metrics in self.handle_requests.values():
-                total_requests += handle_metrics[1]
+        if (
+            RAY_SERVE_COLLECT_AUTOSCALING_METRICS_ON_HANDLE
+            or len(running_replicas) == 0
+        ):
+            for handle_metric in self.handle_requests.values():
+                total_requests += handle_metric.queued_requests
+                for replica in running_replicas:
+                    id = replica.replica_tag
+                    if id in handle_metric.running_requests:
+                        total_requests += handle_metric.running_requests[id]
+        else:
+            for replica in running_replicas:
+                id = replica.replica_tag
+                if id in self.replica_average_ongoing_requests:
+                    total_requests += self.replica_average_ongoing_requests[id][1]
 
         return total_requests
 
@@ -1613,11 +1637,12 @@ class DeploymentState:
             return
 
         total_num_requests = self.get_total_num_requests()
+        num_running_replicas = len(self.get_running_replica_infos())
         autoscaling_policy_manager = self.autoscaling_policy_manager
         decision_num_replicas = autoscaling_policy_manager.get_decision_num_replicas(
             curr_target_num_replicas=self._target_state.target_num_replicas,
             total_num_requests=total_num_requests,
-            num_running_replicas=len(self.get_running_replica_infos()),
+            num_running_replicas=num_running_replicas,
             target_capacity=self._target_state.info.target_capacity,
             target_capacity_direction=self._target_state.info.target_capacity_direction,
         )
@@ -1631,7 +1656,8 @@ class DeploymentState:
         logger.info(
             f"Autoscaling replicas for deployment '{self.deployment_name}' in "
             f"application '{self.app_name}' to {decision_num_replicas}. "
-            f"Current number of requests: {total_num_requests}."
+            f"Current number of requests: {total_num_requests}. Current number of "
+            f"running replicas: {num_running_replicas}."
         )
 
         new_info = copy(self._target_state.info)
@@ -2279,15 +2305,23 @@ class DeploymentState:
             )
 
     def record_request_metrics_for_handle(
-        self, handle_id: str, num_requests: float, send_timestamp: float
+        self,
+        handle_id: str,
+        queued_requests: float,
+        running_requests: Dict[str, float],
+        send_timestamp: float,
     ) -> None:
         """Update request metric for a specific handle."""
 
         if (
             handle_id not in self.handle_requests
-            or send_timestamp > self.handle_requests[handle_id][0]
+            or send_timestamp > self.handle_requests[handle_id].timestamp
         ):
-            self.handle_requests[handle_id] = (send_timestamp, num_requests)
+            self.handle_requests[handle_id] = HandleRequestMetric(
+                queued_requests=queued_requests,
+                running_requests=running_requests,
+                timestamp=send_timestamp,
+            )
 
     def record_multiplexed_model_ids(
         self, replica_name: str, multiplexed_model_ids: List[str]
@@ -2367,18 +2401,14 @@ class DeploymentStateManager:
                 replica_name.deployment_id
             ].record_autoscaling_metrics(replica_tag, window_avg, send_timestamp)
 
-    def record_handle_metrics(self, data: Dict[str, float], send_timestamp: float):
-        id, num_requests = data
-        if num_requests is not None:
-            deployment_id, handle_id = id
-            # There can be handles to deleted deployments still sending
-            # metrics to the controller
-            if deployment_id in self._deployment_states:
-                self._deployment_states[
-                    deployment_id
-                ].record_request_metrics_for_handle(
-                    handle_id, num_requests, send_timestamp
-                )
+    def record_handle_metrics(self, data, send_timestamp: float):
+        deployment_id, handle_id, queued_requests, running_requests = data
+        # NOTE(zcin): There can be handles to deleted deployments still
+        # sending metrics to the controller
+        if deployment_id in self._deployment_states:
+            self._deployment_states[deployment_id].record_request_metrics_for_handle(
+                handle_id, queued_requests, running_requests, send_timestamp
+            )
 
     def get_autoscaling_metrics(self):
         """Return autoscaling metrics (used for dumping from controller)"""
