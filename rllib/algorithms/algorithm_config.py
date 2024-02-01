@@ -6,7 +6,6 @@ import math
 import os
 import sys
 from typing import (
-    TYPE_CHECKING,
     Any,
     Callable,
     Container,
@@ -14,6 +13,7 @@ from typing import (
     Optional,
     Tuple,
     Type,
+    TYPE_CHECKING,
     Union,
 )
 
@@ -21,10 +21,7 @@ from packaging import version
 
 import ray
 from ray.rllib.algorithms.callbacks import DefaultCallbacks
-from ray.rllib.core.rl_module.marl_module import (
-    DEFAULT_MODULE_ID,
-    MultiAgentRLModuleSpec,
-)
+from ray.rllib.core.rl_module.marl_module import MultiAgentRLModuleSpec
 from ray.rllib.core.rl_module.rl_module import SingleAgentRLModuleSpec
 from ray.rllib.env.env_context import EnvContext
 from ray.rllib.env.multi_agent_env import MultiAgentEnv
