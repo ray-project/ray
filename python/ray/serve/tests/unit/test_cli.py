@@ -68,6 +68,7 @@ class TestDeploy:
         assert deploy_provider.deployed_config["applications"] == [
             {
                 "import_path": "my_module:my_app",
+                "name": "test-name",
                 "args": {},
                 "runtime_env": {},
             }
