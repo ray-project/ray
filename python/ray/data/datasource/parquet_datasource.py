@@ -495,9 +495,7 @@ def _read_fragments(
                     yield table
 
 
-def _fetch_metadata_serialization_wrapper(
-    fragments: List[_SerializedFragment],
-) -> List["pyarrow.parquet.FileMetaData"]:
+def _deserialize_fragments_with_retry(fragments):
     # The deserialization retry helps when the upstream datasource is not able to
     # handle overloaded read request or failed with some retriable failures.
     # For example when reading data from HA hdfs service, hdfs might
@@ -505,11 +503,17 @@ def _fetch_metadata_serialization_wrapper(
     # simutaneously running many hyper parameter tuning jobs
     # with ray.data parallelism setting at high value like the default 200
     # Such connection failure can be restored with some waiting and retry.
-    deserialized_fragments = call_with_retry(
+    return call_with_retry(
         lambda: _deserialize_fragments(fragments),
         description="deserialize fragments",
         max_attempts=FILE_READING_RETRY,
     )
+
+
+def _fetch_metadata_serialization_wrapper(
+    fragments: List[_SerializedFragment],
+) -> List["pyarrow.parquet.FileMetaData"]:
+    deserialized_fragments = _deserialize_fragments_with_retry(fragments)
     metadata = call_with_retry(
         lambda: _fetch_metadata(deserialized_fragments),
         description="fetch metdata",

@@ -332,8 +332,8 @@ class DefaultParquetMetadataProvider(ParquetMetadataProvider):
         from ray.data.datasource.parquet_datasource import (
             FRAGMENTS_PER_META_FETCH,
             PARALLELIZE_META_FETCH_THRESHOLD,
-            _deserialize_and_fetch_metadata_with_retry,
             _fetch_metadata,
+            _fetch_metadata_serialization_wrapper,
             _SerializedFragment,
         )
 
@@ -344,7 +344,7 @@ class DefaultParquetMetadataProvider(ParquetMetadataProvider):
             return list(
                 _fetch_metadata_parallel(
                     fragments,
-                    _deserialize_and_fetch_metadata_with_retry,
+                    _fetch_metadata_serialization_wrapper,
                     FRAGMENTS_PER_META_FETCH,
                     **ray_remote_args,
                 )
