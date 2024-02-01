@@ -51,13 +51,12 @@ APP_DIR_HELP_STR = (
     "from an installed module."
 )
 RAY_INIT_ADDRESS_HELP_STR = (
-    "Address to use for ray.init(). Can also be specified "
-    "using the RAY_ADDRESS environment variable."
+    "Address to use for ray.init(). Can also be set using "
+    "the RAY_ADDRESS environment variable."
 )
 RAY_DASHBOARD_ADDRESS_HELP_STR = (
-    "Address to use to query the Ray dashboard head (defaults to "
-    "http://localhost:8265). Can also be specified using the "
-    "RAY_DASHBOARD_ADDRESS environment variable."
+    "Address for the Ray dashboard. Defaults to http://localhost:8265. "
+    "Can also be set using the RAY_DASHBOARD_ADDRESS environment variable."
 )
 
 
