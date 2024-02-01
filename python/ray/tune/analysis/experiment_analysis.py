@@ -146,8 +146,8 @@ class ExperimentAnalysis:
         if trial.last_result is None:
             return DataFrame()
 
-        json_fs_path = os.path.join(trial.storage.trial_fs_path, EXPR_RESULT_FILE)
-        csv_fs_path = os.path.join(trial.storage.trial_fs_path, EXPR_PROGRESS_FILE)
+        json_fs_path = Path(trial.storage.trial_fs_path, EXPR_RESULT_FILE).as_posix()
+        csv_fs_path = Path(trial.storage.trial_fs_path, EXPR_PROGRESS_FILE).as_posix()
         # Prefer reading the JSON if it exists.
         if _exists_at_fs_path(trial.storage.storage_filesystem, json_fs_path):
             with trial.storage.storage_filesystem.open_input_stream(json_fs_path) as f:
@@ -223,7 +223,7 @@ class ExperimentAnalysis:
         if not matching:
             return None
         filename = max(matching)
-        return os.path.join(experiment_fs_path, filename)
+        return Path(experiment_fs_path, filename).as_posix()
 
     @property
     def experiment_path(self) -> str:
