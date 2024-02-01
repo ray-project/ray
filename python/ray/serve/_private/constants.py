@@ -268,3 +268,9 @@ RAY_SERVE_MAX_QUEUE_LENGTH_RESPONSE_DEADLINE_S = float(
 
 # The default autoscaling policy to use if none is specified.
 DEFAULT_AUTOSCALING_POLICY = "ray.serve.autoscaling_policy:default_autoscaling_policy"
+
+# Feature flag to enable collecting all queued and ongoing request
+# metrics at handles instead of replicas. OFF by default.
+RAY_SERVE_COLLECT_AUTOSCALING_METRICS_ON_HANDLE = (
+    os.environ.get("RAY_SERVE_COLLECT_AUTOSCALING_METRICS_ON_HANDLE", "0") == "1"
+)
