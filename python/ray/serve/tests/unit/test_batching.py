@@ -9,6 +9,13 @@ from ray._private.utils import get_or_create_event_loop
 from ray.serve.exceptions import RayServeException
 
 
+@pytest.fixture(scope="session")
+def event_loop():
+    loop = get_or_create_event_loop()
+    yield loop
+    loop.close()
+
+
 @pytest.mark.asyncio
 async def test_batching_magic_attributes():
     class BatchingExample:
