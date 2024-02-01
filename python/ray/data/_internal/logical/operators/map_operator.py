@@ -22,6 +22,8 @@ class AbstractMap(AbstractOneToOne):
         name: str,
         input_op: Optional[LogicalOperator] = None,
         num_outputs: Optional[int] = None,
+        *,
+        min_rows_per_block: Optional[int] = None,
         ray_remote_args: Optional[Dict[str, Any]] = None,
     ):
         """
@@ -30,9 +32,11 @@ class AbstractMap(AbstractOneToOne):
                 inspecting the logical plan of a Dataset.
             input_op: The operator preceding this operator in the plan DAG. The outputs
                 of `input_op` will be the inputs to this operator.
+            min_rows_per_block: The target size for blocks outputted by this operator.
             ray_remote_args: Args to provide to ray.remote.
         """
         super().__init__(name, input_op, num_outputs)
+        self._min_rows_per_block = min_rows_per_block
         self._ray_remote_args = ray_remote_args or {}
 
 
@@ -73,13 +77,17 @@ class AbstractUDFMap(AbstractMap):
             ray_remote_args: Args to provide to ray.remote.
         """
         name = self._get_operator_name(name, fn)
-        super().__init__(name, input_op, ray_remote_args=ray_remote_args)
+        super().__init__(
+            name,
+            input_op,
+            min_rows_per_block=min_rows_per_block,
+            ray_remote_args=ray_remote_args,
+        )
         self._fn = fn
         self._fn_args = fn_args
         self._fn_kwargs = fn_kwargs
         self._fn_constructor_args = fn_constructor_args
         self._fn_constructor_kwargs = fn_constructor_kwargs
-        self._min_rows_per_block = min_rows_per_block
         self._compute = compute or TaskPoolStrategy()
 
     def _get_operator_name(self, op_name: str, fn: UserDefinedFunction):

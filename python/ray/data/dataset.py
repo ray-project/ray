@@ -2670,6 +2670,7 @@ class Dataset:
         filename_provider: Optional[FilenameProvider] = None,
         block_path_provider: Optional[BlockWritePathProvider] = None,
         arrow_parquet_args_fn: Callable[[], Dict[str, Any]] = lambda: {},
+        num_rows_per_file: Optional[int] = None,
         ray_remote_args: Dict[str, Any] = None,
         **arrow_parquet_args,
     ) -> None:
@@ -2725,6 +2726,8 @@ class Dataset:
                 instead of ``arrow_parquet_args`` if any of your write arguments
                 can't pickled, or if you'd like to lazily resolve the write
                 arguments for each dataset block.
+            num_rows_per_file: The target number of rows to write to each file. If
+                ``None``, Ray Data writes a system-chosen number of rows to each file.
             ray_remote_args: Kwargs passed to :meth:`~ray.remote` in the write tasks.
             arrow_parquet_args: Options to pass to
                 `pyarrow.parquet.write_table() <https://arrow.apache.org/docs/python\
@@ -2736,6 +2739,7 @@ class Dataset:
             path,
             arrow_parquet_args_fn=arrow_parquet_args_fn,
             arrow_parquet_args=arrow_parquet_args,
+            num_rows_per_file=num_rows_per_file,
             filesystem=filesystem,
             try_create_dir=try_create_dir,
             open_stream_args=arrow_open_stream_args,
@@ -2756,6 +2760,7 @@ class Dataset:
         filename_provider: Optional[FilenameProvider] = None,
         block_path_provider: Optional[BlockWritePathProvider] = None,
         pandas_json_args_fn: Callable[[], Dict[str, Any]] = lambda: {},
+        num_rows_per_file: Optional[int] = None,
         ray_remote_args: Dict[str, Any] = None,
         **pandas_json_args,
     ) -> None:
@@ -2820,6 +2825,8 @@ class Dataset:
                 instead of ``pandas_json_args`` if any of your write arguments
                 can't be pickled, or if you'd like to lazily resolve the write
                 arguments for each dataset block.
+            num_rows_per_file: The target number of rows to write to each file. If
+                ``None``, Ray Data writes a system-chosen number of rows to each file.
             ray_remote_args: kwargs passed to :meth:`~ray.remote` in the write tasks.
             pandas_json_args: These args are passed to
                 `pandas.DataFrame.to_json() <https://pandas.pydata.org/docs/reference/\
@@ -2832,6 +2839,7 @@ class Dataset:
             path,
             pandas_json_args_fn=pandas_json_args_fn,
             pandas_json_args=pandas_json_args,
+            num_rows_per_file=num_rows_per_file,
             filesystem=filesystem,
             try_create_dir=try_create_dir,
             open_stream_args=arrow_open_stream_args,
@@ -2915,6 +2923,7 @@ class Dataset:
         filename_provider: Optional[FilenameProvider] = None,
         block_path_provider: Optional[BlockWritePathProvider] = None,
         arrow_csv_args_fn: Callable[[], Dict[str, Any]] = lambda: {},
+        num_rows_per_file: Optional[int] = None,
         ray_remote_args: Dict[str, Any] = None,
         **arrow_csv_args,
     ) -> None:
@@ -2978,6 +2987,8 @@ class Dataset:
                 Use this argument instead of ``arrow_csv_args`` if any of your write
                 arguments cannot be pickled, or if you'd like to lazily resolve the
                 write arguments for each dataset block.
+            num_rows_per_file: The target number of rows to write to each file. If
+                ``None``, Ray Data writes a system-chosen number of rows to each file.
             ray_remote_args: kwargs passed to :meth:`~ray.remote` in the write tasks.
             arrow_csv_args: Options to pass to `pyarrow.write.write_csv <https://\
                 arrow.apache.org/docs/python/generated/pyarrow.csv.write_csv.html\
@@ -2988,6 +2999,7 @@ class Dataset:
             path,
             arrow_csv_args_fn=arrow_csv_args_fn,
             arrow_csv_args=arrow_csv_args,
+            num_rows_per_file=num_rows_per_file,
             filesystem=filesystem,
             try_create_dir=try_create_dir,
             open_stream_args=arrow_open_stream_args,
@@ -3008,6 +3020,7 @@ class Dataset:
         arrow_open_stream_args: Optional[Dict[str, Any]] = None,
         filename_provider: Optional[FilenameProvider] = None,
         block_path_provider: Optional[BlockWritePathProvider] = None,
+        num_rows_per_file: Optional[int] = None,
         ray_remote_args: Dict[str, Any] = None,
     ) -> None:
         """Write the :class:`~ray.data.Dataset` to TFRecord files.
@@ -3065,12 +3078,15 @@ class Dataset:
             filename_provider: A :class:`~ray.data.datasource.FilenameProvider`
                 implementation. Use this parameter to customize what your filenames
                 look like.
+            num_rows_per_file: The target number of rows to write to each file. If
+                ``None``, Ray Data writes a system-chosen number of rows to each file.
             ray_remote_args: kwargs passed to :meth:`~ray.remote` in the write tasks.
 
         """
         datasink = _TFRecordDatasink(
             path=path,
             tf_schema=tf_schema,
+            num_rows_per_file=num_rows_per_file,
             filesystem=filesystem,
             try_create_dir=try_create_dir,
             open_stream_args=arrow_open_stream_args,
@@ -3091,6 +3107,7 @@ class Dataset:
         arrow_open_stream_args: Optional[Dict[str, Any]] = None,
         filename_provider: Optional[FilenameProvider] = None,
         block_path_provider: Optional[BlockWritePathProvider] = None,
+        num_rows_per_file: Optional[int] = None,
         ray_remote_args: Dict[str, Any] = None,
         encoder: Optional[Union[bool, str, callable, list]] = True,
     ) -> None:
@@ -3136,12 +3153,15 @@ class Dataset:
                 ``pyarrow.fs.FileSystem.open_output_stream``
             block_path_provider: :class:`~ray.data.datasource.BlockWritePathProvider`
                 implementation to write each dataset block to a custom output path.
+            num_rows_per_file: The target number of rows to write to each file. If
+                ``None``, Ray Data writes a system-chosen number of rows to each file.
             ray_remote_args: Kwargs passed to ``ray.remote`` in the write tasks.
 
         """
         datasink = _WebDatasetDatasink(
             path,
             encoder=encoder,
+            num_rows_per_file=num_rows_per_file,
             filesystem=filesystem,
             try_create_dir=try_create_dir,
             open_stream_args=arrow_open_stream_args,
@@ -3162,6 +3182,7 @@ class Dataset:
         arrow_open_stream_args: Optional[Dict[str, Any]] = None,
         filename_provider: Optional[FilenameProvider] = None,
         block_path_provider: Optional[BlockWritePathProvider] = None,
+        num_rows_per_file: Optional[int] = None,
         ray_remote_args: Dict[str, Any] = None,
     ) -> None:
         """Writes a column of the :class:`~ray.data.Dataset` to .npy files.
@@ -3210,12 +3231,15 @@ class Dataset:
             filename_provider: A :class:`~ray.data.datasource.FilenameProvider`
                 implementation. Use this parameter to customize what your filenames
                 look like.
+            num_rows_per_file: The target number of rows to write to each file. If
+                ``None``, Ray Data writes a system-chosen number of rows to each file.
             ray_remote_args: kwargs passed to :meth:`~ray.remote` in the write tasks.
         """
 
         datasink = _NumpyDatasink(
             path,
             column,
+            num_rows_per_file=num_rows_per_file,
             filesystem=filesystem,
             try_create_dir=try_create_dir,
             open_stream_args=arrow_open_stream_args,

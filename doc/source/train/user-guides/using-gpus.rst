@@ -61,12 +61,44 @@ You can get the associated devices with :meth:`ray.train.torch.get_device`.
         device = get_device()
         assert device == torch.device("cuda:0")
 
-
     trainer = TorchTrainer(
         train_func,
         scaling_config=ScalingConfig(
             num_workers=1,
             use_gpu=True
+        )
+    )
+    trainer.fit()
+
+Assigning multiple GPUs to a worker
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+Sometimes you might want to allocate multiple GPUs for a worker. For example, 
+you can specify `resources_per_worker={"GPU": 2}` in the `ScalingConfig` if you want to 
+assign 2 GPUs for each worker.
+
+You can get a list of associated devices with :meth:`ray.train.torch.get_devices`.
+
+.. testcode::
+
+    import torch
+    from ray.train import ScalingConfig
+    from ray.train.torch import TorchTrainer, get_device, get_devices
+
+
+    def train_func(config):
+        assert torch.cuda.is_available()
+
+        device = get_device()
+        devices = get_devices()
+        assert device == torch.device("cuda:0")
+        assert devices == [torch.device("cuda:0"), torch.device("cuda:1")]
+
+    trainer = TorchTrainer(
+        train_func,
+        scaling_config=ScalingConfig(
+            num_workers=1,
+            use_gpu=True,
+            resources_per_worker={"GPU": 2}
         )
     )
     trainer.fit()

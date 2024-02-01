@@ -172,6 +172,11 @@ class Experiment:
         logger.debug(f"StorageContext on the DRIVER:\n{self.storage}")
 
         config = config or {}
+        if not isinstance(config, dict):
+            raise ValueError(
+                f"`Experiment(config)` must be a dict, got: {type(config)}. "
+                "Please convert your search space to a dict before passing it in."
+            )
 
         self._stopper = None
         stopping_criteria = {}

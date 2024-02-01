@@ -250,8 +250,13 @@ def test_concurrency(shutdown_only):
     for fn in [udf, UDFClass]:
         # Test concurrency with None, single integer and a tuple of integers.
         for concurrency in [2, (2, 4)]:
-            result = ds.map(fn, concurrency=concurrency).take_all()
-            assert sorted(extract_values("id", result)) == list(range(10)), result
+            if fn == udf and concurrency == (2, 4):
+                error_message = "``concurrency`` is set as a tuple of integers"
+                with pytest.raises(ValueError, match=error_message):
+                    ds.map(fn, concurrency=concurrency).take_all()
+            else:
+                result = ds.map(fn, concurrency=concurrency).take_all()
+                assert sorted(extract_values("id", result)) == list(range(10)), result
 
     # Test concurrency with an illegal value.
     error_message = "``concurrency`` is expected to be set a"
