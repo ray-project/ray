@@ -42,9 +42,8 @@ class LlamaModel:
         )
         model = model.eval().to(self.device)
 
-        from habana_frameworks.torch.hpu import (
-            wrap_in_hpu_graph
-        )
+        from habana_frameworks.torch.hpu import wrap_in_hpu_graph
+
         # enable hpu graph runtime
         # check details here: https://docs.habana.ai/en/latest/Gaudi_Overview/SynapseAI_Software_Suite.html?highlight=graph#graph-compiler-and-runtime
         self.model = wrap_in_hpu_graph(model)
@@ -95,14 +94,14 @@ class LlamaModel:
         # Config used in generation
         config = json_request["config"] if "config" in json_request else {}
         streaming_response = json_request["stream"]
-        
+
         # prepare prompts
         prompts = []
         if isinstance(text, list):
             prompts.extend(text)
         else:
             prompts.append(text)
-        
+
         # process config
         if "max_new_tokens" not in config:
             # if not specified, use default value
@@ -116,9 +115,10 @@ class LlamaModel:
         # non streaming case
         if not streaming_response:
             return self.generate(prompts, **config)
-        
+
         # streaming case
         from transformers import TextIteratorStreamer
+
         streamer = TextIteratorStreamer(
             self.tokenizer, skip_prompt=True, timeout=0, skip_special_tokens=True
         )
@@ -131,6 +131,7 @@ class LlamaModel:
             status_code=200,
             media_type="text/plain",
         )
+
 
 # replace the model id with path if necessary
 entrypoint = LlamaModel.bind("meta-llama/Llama-2-7b-chat-hf")

@@ -1,5 +1,4 @@
 # __worker_def_start__
-import asyncio
 import tempfile
 from starlette.responses import StreamingResponse
 
@@ -12,8 +11,9 @@ from ray.util.queue import Queue
 from ray.runtime_env import RuntimeEnv
 from ray.air.util.torch_dist import (
     init_torch_dist_process_group,
-    TorchDistributedWorker
+    TorchDistributedWorker,
 )
+
 
 @ray.remote(num_cpus=8, resources={"HPU": 1})
 class DeepSpeedInferenceWorker(TorchDistributedWorker):
@@ -104,9 +104,9 @@ class DeepSpeedInferenceWorker(TorchDistributedWorker):
 
     def get_streamer(self):
         """
-            Return a streamer.
-            Only Rank 0 worker's result is needed.
-            Other workers return a fake streamer.
+        Return a streamer.
+        Only Rank 0 worker's result is needed.
+        Other workers return a fake streamer.
         """
 
         if self._local_rank == 0:
@@ -121,6 +121,7 @@ class DeepSpeedInferenceWorker(TorchDistributedWorker):
                     pass
 
             return FakeStreamer()
+
 
 class RayTextIteratorStreamer(TextStreamer):
     def __init__(
@@ -149,6 +150,8 @@ class RayTextIteratorStreamer(TextStreamer):
             raise StopIteration()
         else:
             return value
+
+
 # __worker_def_end__
 
 # __deploy_def_start__
@@ -175,14 +178,14 @@ class DeepSpeedLlamaModel:
                     runtime_env=RuntimeEnv(env_vars=HABANA_ENVS)
                 ).remote(model_id_or_path, world_size, i)
             )
-        
+
         # Initialize communication using HCCL backend
         init_torch_dist_process_group(self.deepspeed_workers, backend="hccl")
-        
+
         # Load model in all workers
         for worker in self.deepspeed_workers:
             worker.load_model.remote()
-        
+
         # Get workers' streamers
         self.streamers = ray.get(
             [worker.get_streamer.remote() for worker in self.deepspeed_workers]
@@ -190,9 +193,9 @@ class DeepSpeedLlamaModel:
 
     def generate(self, prompt, **config):
         """
-            Send the prompt to workers for generation.
-            Return after all workers have done generation.
-            Only rank 0 worker's result is returned.
+        Send the prompt to workers for generation.
+        Return after all workers have done generation.
+        Only rank 0 worker's result is returned.
         """
 
         futures = [
@@ -203,8 +206,8 @@ class DeepSpeedLlamaModel:
 
     def streaming_generate(self, prompt, **config):
         """
-            Send the prompt to workers for streaming generation.
-            Only rank 0 worker's result is used.
+        Send the prompt to workers for streaming generation.
+        Only rank 0 worker's result is used.
         """
 
         for worker, streamer in zip(self.deepspeed_workers, self.streamers):
@@ -224,14 +227,14 @@ class DeepSpeedLlamaModel:
         # Config used in generation
         config = json_request["config"] if "config" in json_request else {}
         streaming_response = json_request["stream"]
-        
+
         # prepare prompts
         prompts = []
         if isinstance(text, list):
             prompts.extend(text)
         else:
             prompts.append(text)
-        
+
         # process config
         if "max_new_tokens" not in config:
             # if not specified, use default value
@@ -253,6 +256,7 @@ class DeepSpeedLlamaModel:
             status_code=200,
             media_type="text/plain",
         )
+
 
 # replace the model id with path if necessary
 entrypoint = DeepSpeedLlamaModel.bind(8, "meta-llama/Llama-2-70b-chat-hf")
