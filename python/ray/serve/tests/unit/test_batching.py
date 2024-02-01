@@ -404,11 +404,9 @@ async def test_batch_cancellation(use_class, use_gen):
 
     if use_gen:
         gens = [func("hi1", "hi2"), func("hi3", "hi4")]
-        coros = [gen.__anext__() for gen in gens]
+        tasks = [asyncio.create_task(gen.__anext__()) for gen in gens]
     else:
-        coros = [func("hi1", "hi2"), func("hi3", "hi4")]
-
-    tasks = [asyncio.create_task(coro) for coro in coros]
+        tasks = [asyncio.create_task(func("hi1", "hi2")), func("hi3", "hi4")]
 
     print("Submitted requests.")
 
@@ -444,11 +442,9 @@ async def test_batch_cancellation(use_class, use_gen):
 
     if use_gen:
         gens = [func("hi1", "hi2"), func("hi3", "hi4")]
-        coros = [gen.__anext__() for gen in gens]
+        tasks = [asyncio.create_task(gen.__anext__()) for gen in gens]
     else:
-        coros = [func("hi1", "hi2"), func("hi3", "hi4")]
-
-    tasks = [asyncio.create_task(coro) for coro in coros]
+        tasks = [asyncio.create_task(func("hi1", "hi2")), func("hi3", "hi4")]
 
     result = await asyncio.gather(*tasks)
     assert result == [("hi1", "hi2"), ("hi3", "hi4")]
@@ -510,11 +506,9 @@ async def test_cancellation_after_error(use_class, use_gen):
     # Submit requests and then cancel them.
     if use_gen:
         gens = [func("hi1", "hi2"), func("hi3", "hi4")]
-        coros = [gen.__anext__() for gen in gens]
+        tasks = [asyncio.create_task(gen.__anext__()) for gen in gens]
     else:
-        coros = [func("hi1", "hi2"), func("hi3", "hi4")]
-
-    tasks = [asyncio.create_task(coro) for coro in coros]
+        tasks = [asyncio.create_task(func("hi1", "hi2")), func("hi3", "hi4")]
 
     print("Submitted initial batch of requests.")
 
@@ -528,11 +522,9 @@ async def test_cancellation_after_error(use_class, use_gen):
     # Submit requests and check that they still work.
     if use_gen:
         gens = [func("hi1", "hi2"), func("hi3", "hi4")]
-        coros = [gen.__anext__() for gen in gens]
+        tasks = [asyncio.create_task(gen.__anext__()) for gen in gens]
     else:
-        coros = [func("hi1", "hi2"), func("hi3", "hi4")]
-
-    tasks = [asyncio.create_task(coro) for coro in coros]
+        tasks = [asyncio.create_task(func("hi1", "hi2")), func("hi3", "hi4")]
 
     print("Submitted new batch of requests.")
 
