@@ -64,7 +64,7 @@ class InstanceReconciler(InstanceUpdatedSubscriber):
             # this call is asynchronous.
             self._node_provider.terminate_node(instance.cloud_instance_id)
 
-            instance.status = Instance.STOPPING
+            instance.status = Instance.TERMINATING
             result, _ = self._instance_storage.upsert_instance(
                 instance, expected_instance_version=instance.version
             )
@@ -88,12 +88,12 @@ class InstanceReconciler(InstanceUpdatedSubscriber):
         # 1. if the storage instance is in STOPPING state and the no
         # cloud instance is found, change the instance state to TERMINATED.
         stopping_instances, _ = self._instance_storage.get_instances(
-            status_filter={Instance.STOPPING}
+            status_filter={Instance.TERMINATING}
         )
 
         for instance in stopping_instances.values():
             if none_terminated_cloud_instances.get(instance.cloud_instance_id) is None:
-                instance.status = Instance.STOPPED
+                instance.status = Instance.TERMINATED
                 result, _ = self._instance_storage.upsert_instance(
                     instance, expected_instance_version=instance.version
                 )
