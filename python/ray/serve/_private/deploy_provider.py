@@ -18,9 +18,13 @@ DEPLOY_PROVIDER_ENV_VAR = "RAY_SERVE_DEPLOY_PROVIDER"
 
 
 class DeployProvider(ABC):
-    @abstractmethod
     def supports_local_uris(self) -> bool:
-        pass
+        """By default, providers don't support local URIs in the runtime_env.
+
+        Provider implementations can override if they do support it and the relevant
+        validation will be skipped.
+        """
+        return False
 
     @abstractmethod
     def deploy(
@@ -30,10 +34,15 @@ class DeployProvider(ABC):
         name: Optional[str],
         base_image: Optional[str] = None,
     ):
+        """The primary method providers must implement to deploy a Serve config."""
         pass
 
 
 def get_deploy_provider(provider_name: Optional[str]) -> DeployProvider:
+    """Returns the specified deploy provider or a default.
+
+    Order of precedence is: provided name > env var > default (local provider).
+    """
     if provider_name is None:
         provider_name = os.environ.get(DEPLOY_PROVIDER_ENV_VAR, "local")
 
@@ -59,9 +68,6 @@ def get_deploy_provider(provider_name: Optional[str]) -> DeployProvider:
 
 class LocalDeployProvider(DeployProvider):
     """Provider that deploys by sending a REST API request to a cluster."""
-
-    def supports_local_uris(self) -> bool:
-        return False
 
     def deploy(
         config: ServeDeploySchema,
