@@ -163,8 +163,13 @@ DAG_DEPRECATION_MESSAGE = (
     "instead (see https://docs.ray.io/en/latest/serve/model_composition.html)."
 )
 
-# Jsonify the log messages
+# Environment variable name for to specify the encoding of the log messages
+RAY_SERVE_LOG_ENCODING = os.environ.get("RAY_SERVE_LOG_ENCODING", "TEXT")
+
+# Jsonify the log messages. This constant is deprecated and will be removed in the
+# future. Use RAY_SERVE_LOG_ENCODING or 'LoggingConfig' to enable json format.
 RAY_SERVE_ENABLE_JSON_LOGGING = os.environ.get("RAY_SERVE_ENABLE_JSON_LOGGING") == "1"
+
 # Logging format attributes
 SERVE_LOG_REQUEST_ID = "request_id"
 SERVE_LOG_ROUTE = "route"
@@ -268,3 +273,9 @@ RAY_SERVE_MAX_QUEUE_LENGTH_RESPONSE_DEADLINE_S = float(
 
 # The default autoscaling policy to use if none is specified.
 DEFAULT_AUTOSCALING_POLICY = "ray.serve.autoscaling_policy:default_autoscaling_policy"
+
+# Feature flag to enable collecting all queued and ongoing request
+# metrics at handles instead of replicas. OFF by default.
+RAY_SERVE_COLLECT_AUTOSCALING_METRICS_ON_HANDLE = (
+    os.environ.get("RAY_SERVE_COLLECT_AUTOSCALING_METRICS_ON_HANDLE", "0") == "1"
+)
