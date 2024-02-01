@@ -13,6 +13,7 @@ from ray.air.util.tensor_extensions.utils import (
 )
 from ray._private.utils import _get_pyarrow_version
 from ray.util.annotations import PublicAPI
+import logging
 
 
 PYARROW_VERSION = _get_pyarrow_version()
@@ -26,6 +27,8 @@ MIN_PYARROW_VERSION_SCALAR = parse_version("8.0.0")
 MIN_PYARROW_VERSION_SCALAR_SUBCLASS = parse_version("9.0.0")
 
 NUM_BYTES_PER_UNICODE_CHAR = 4
+
+logger = logging.getLogger(__name__)
 
 
 def _arrow_supports_extension_scalars():
@@ -289,7 +292,9 @@ class ArrowTensorArray(_ArrowTensorScalarIndexingMixin, pa.ExtensionArray):
 
     @classmethod
     def from_numpy(
-        cls, arr: Union[np.ndarray, Iterable[np.ndarray]]
+        cls,
+        arr: Union[np.ndarray, Iterable[np.ndarray]],
+        column_name: Optional[str] = None,
     ) -> Union["ArrowTensorArray", "ArrowVariableShapedTensorArray"]:
         """
         Convert an ndarray or an iterable of ndarrays to an array of homogeneous-typed
@@ -299,6 +304,8 @@ class ArrowTensorArray(_ArrowTensorScalarIndexingMixin, pa.ExtensionArray):
 
         Args:
             arr: An ndarray or an iterable of ndarrays.
+            column_name: Optional. Used only in logging outputs to provide
+                additional details.
 
         Returns:
             - If fixed-shape tensor elements, an ``ArrowTensorArray`` containing
@@ -325,7 +332,26 @@ class ArrowTensorArray(_ArrowTensorScalarIndexingMixin, pa.ExtensionArray):
             if not arr.flags.c_contiguous:
                 # We only natively support C-contiguous ndarrays.
                 arr = np.ascontiguousarray(arr)
-            pa_dtype = pa.from_numpy_dtype(arr.dtype)
+            try:
+                pa_dtype = pa.from_numpy_dtype(arr.dtype)
+            except pa.ArrowNotImplementedError as e:
+                if "Unsupported numpy type 17" in str(e):
+                    # Cannot convert dict in numpy array to pyarrow struct.
+                    # Instead, this will fall back to using pandas, which is
+                    # slower and consumes more memory.
+                    column_info = (
+                        f" in column named '{column_name}'" if column_name else ""
+                    )
+                    logger.warning(
+                        "Could not construct Arrow block from numpy array; encountered "
+                        f"`dict` values{column_info}, which cannot be casted to an "
+                        "Arrow data type. Falling back to using pandas "
+                        "block type, which is slower and consumes more memory. "
+                        "For maximum performance, consider expanding out each "
+                        "key-value pair in the dict into its own column in "
+                        "order to use native Arrow block types."
+                    )
+                    raise e
             if pa.types.is_string(pa_dtype):
                 if arr.dtype.byteorder == ">" or (
                     arr.dtype.byteorder == "=" and sys.byteorder == "big"
