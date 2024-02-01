@@ -133,7 +133,7 @@ class ResourceManager:
         """Return the downstream object store memory usage of the given operator."""
         return self._downstream_object_store_memory[op]
 
-    def per_op_limiting_enabled(self, op: PhysicalOperator) -> bool:
+    def per_op_limiting_enabled(self) -> bool:
         """Return whether per-operator resource limiting is enabled."""
         return self._op_resource_limiter is not None
 
