@@ -9,6 +9,8 @@ from ray._private.utils import get_or_create_event_loop
 from ray.serve.exceptions import RayServeException
 
 
+# We use a single event loop for the entire test session. Without this
+# fixture, the event loop is sometimes prematurely terminated by pytest.
 @pytest.fixture(scope="session")
 def event_loop():
     loop = get_or_create_event_loop()
