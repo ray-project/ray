@@ -13,7 +13,6 @@ class FakeDeployProvider(DeployProvider):
         self.deployed_config = None
         self.deployed_address = None
         self.deployed_name = None
-        self.deployed_ray_version = None
         self.deployed_base_image = None
 
     def deploy(
@@ -22,13 +21,11 @@ class FakeDeployProvider(DeployProvider):
         *,
         address: str,
         name: Optional[str],
-        ray_version: str,
         base_image: Optional[str] = None,
     ):
         self.deployed_config = config
         self.deployed_address = address
         self.deployed_name = name
-        self.deployed_ray_version = ray_version
         self.deployed_base_image = base_image
 
 

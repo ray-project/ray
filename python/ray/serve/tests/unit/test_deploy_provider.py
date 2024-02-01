@@ -22,13 +22,11 @@ def test_get_custom_deploy_provider():
         {},
         address="http://localhost:8265",
         name="test-name",
-        ray_version="test-version",
         base_image="test-image",
     )
     assert deploy_provider.deployed_config == {}
     assert deploy_provider.deployed_address == "http://localhost:8265"
     assert deploy_provider.deployed_name == "test-name"
-    assert deploy_provider.deployed_ray_version == "test-version"
     assert deploy_provider.deployed_base_image == "test-image"
 
 

@@ -31,7 +31,6 @@ class TestDeploy:
         ]
         assert deploy_provider.deployed_address == "http://localhost:8265"
         assert deploy_provider.deployed_name is None
-        assert deploy_provider.deployed_ray_version == ray.__version__
         assert deploy_provider.deployed_base_image is None
 
     def test_deploy_with_address(self):
@@ -53,7 +52,6 @@ class TestDeploy:
         ]
         assert deploy_provider.deployed_address == "http://magic.com"
         assert deploy_provider.deployed_name is None
-        assert deploy_provider.deployed_ray_version == ray.__version__
         assert deploy_provider.deployed_base_image is None
 
     def test_deploy_with_name(self):
@@ -75,7 +73,6 @@ class TestDeploy:
         ]
         assert deploy_provider.deployed_address == "http://localhost:8265"
         assert deploy_provider.deployed_name == "test-name"
-        assert deploy_provider.deployed_ray_version == ray.__version__
         assert deploy_provider.deployed_base_image is None
 
     def test_deploy_with_base_image(self):
@@ -97,7 +94,6 @@ class TestDeploy:
         ]
         assert deploy_provider.deployed_address == "http://localhost:8265"
         assert deploy_provider.deployed_name is None
-        assert deploy_provider.deployed_ray_version == ray.__version__
         assert deploy_provider.deployed_base_image == "test-image"
 
     def test_deploy_with_args(self):
@@ -118,7 +114,6 @@ class TestDeploy:
         ]
         assert deploy_provider.deployed_address == "http://localhost:8265"
         assert deploy_provider.deployed_name is None
-        assert deploy_provider.deployed_ray_version == ray.__version__
         assert deploy_provider.deployed_base_image is None
 
     @pytest.mark.skipif(sys.platform == "win32", reason="Tempfile not working.")
@@ -168,7 +163,6 @@ class TestDeploy:
         ]
         assert deploy_provider.deployed_address == "http://localhost:8265"
         assert deploy_provider.deployed_name is None
-        assert deploy_provider.deployed_ray_version == ray.__version__
         assert deploy_provider.deployed_base_image is None
 
 

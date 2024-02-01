@@ -25,7 +25,6 @@ class DeployProvider(ABC):
         *,
         address: str,
         name: Optional[str],
-        ray_version: str,
         base_image: Optional[str] = None,
     ):
         pass
@@ -63,7 +62,6 @@ class LocalDeployProvider(DeployProvider):
         *,
         address: str,
         name: Optional[str],
-        ray_version: str,
         base_image: Optional[str] = None,
     ):
         ServeDeploySchema.parse_obj(config)
@@ -89,7 +87,6 @@ class AnyscaleDeployProvider(DeployProvider):
         *,
         address: str,
         name: Optional[str],
-        ray_version: str,
         base_image: Optional[str] = None,
     ):
         service_config = {

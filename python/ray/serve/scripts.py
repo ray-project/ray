@@ -259,11 +259,6 @@ def _generate_config_from_file_or_import_path(
         import_path = config_or_import_path
         cli_logger.print(f"Deploying from import path: '{import_path}'.")
 
-        if import_path.count(":") != 1:
-            raise click.ClickException(
-                "Import path must be of the form 'module.submodule:app_or_builder', "
-                f"got: '{import_path}'."
-            )
         app = ServeApplicationSchema(
             import_path=import_path,
             runtime_env=runtime_env,
@@ -273,7 +268,6 @@ def _generate_config_from_file_or_import_path(
             app.name = name
         config = ServeDeploySchema(applications=[app])
 
-    assert isinstance(config, ServeDeploySchema)
     return config
 
 
@@ -387,7 +381,6 @@ def deploy(
         config.dict(exclude_unset=True),
         address=address,
         name=name,
-        ray_version=ray.__version__,
         base_image=base_image,
     )
 
