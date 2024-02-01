@@ -72,6 +72,10 @@ def gen_expected_metrics(
     return "{" + ", ".join(metrics) + "}"
 
 
+def gen_extra_metrics_str(metrics: str, verbose: bool):
+    return f"* Extra metrics: {metrics}" + "\n" if verbose else ""
+
+
 STANDARD_EXTRA_METRICS = gen_expected_metrics(
     is_map=True,
     spilled=False,
@@ -215,62 +219,35 @@ Dataset iterator time breakdown:
         context.verbose_stats_logs = False
 
 
-def test_large_args_scheduling_strategy(ray_start_regular_shared):
-    ds = ray.data.range_tensor(100, shape=(100000,), parallelism=1)
-    ds = ds.map_batches(dummy_map_batches, num_cpus=0.9).materialize()
-    stats = ds.stats()
-    assert (
-        canonicalize(stats)
-        == f"""Operator N ReadRange: {EXECUTION_STRING}
-* Remote wall time: T min, T max, T mean, T total
-* Remote cpu time: T min, T max, T mean, T total
-* Peak heap memory usage (MiB): N min, N max, N mean
-* Output num rows per block: N min, N max, N mean, N total
-* Output size bytes per block: N min, N max, N mean, N total
-* Output rows per task: N min, N max, N mean, N tasks used
-* Tasks per node: N min, N max, N mean; N nodes used
-
-Operator N MapBatches(dummy_map_batches): {EXECUTION_STRING}
-* Remote wall time: T min, T max, T mean, T total
-* Remote cpu time: T min, T max, T mean, T total
-* Peak heap memory usage (MiB): N min, N max, N mean
-* Output num rows per block: N min, N max, N mean, N total
-* Output size bytes per block: N min, N max, N mean, N total
-* Output rows per task: N min, N max, N mean, N tasks used
-* Tasks per node: N min, N max, N mean; N nodes used
-"""
-    )
-
-    # Try with verbose logs
+@pytest.mark.parametrize("verbose_stats_logs", [True, False])
+def test_large_args_scheduling_strategy(ray_start_regular_shared, verbose_stats_logs):
     try:
         context = DataContext.get_current()
-        context.verbose_stats_logs = True
+        context.verbose_stats_logs = verbose_stats_logs
         ds = ray.data.range_tensor(100, shape=(100000,), parallelism=1)
         ds = ds.map_batches(dummy_map_batches, num_cpus=0.9).materialize()
         stats = ds.stats()
-        assert (
-            canonicalize(stats)
-            == f"""Operator N ReadRange: {EXECUTION_STRING}
-* Remote wall time: T min, T max, T mean, T total
-* Remote cpu time: T min, T max, T mean, T total
-* Peak heap memory usage (MiB): N min, N max, N mean
-* Output num rows per block: N min, N max, N mean, N total
-* Output size bytes per block: N min, N max, N mean, N total
-* Output rows per task: N min, N max, N mean, N tasks used
-* Tasks per node: N min, N max, N mean; N nodes used
-* Extra metrics: {STANDARD_EXTRA_METRICS}
-
-Operator N MapBatches(dummy_map_batches): {EXECUTION_STRING}
-* Remote wall time: T min, T max, T mean, T total
-* Remote cpu time: T min, T max, T mean, T total
-* Peak heap memory usage (MiB): N min, N max, N mean
-* Output num rows per block: N min, N max, N mean, N total
-* Output size bytes per block: N min, N max, N mean, N total
-* Output rows per task: N min, N max, N mean, N tasks used
-* Tasks per node: N min, N max, N mean; N nodes used
-* Extra metrics: {LARGE_ARGS_EXTRA_METRICS}
-"""
+        expected_stats = (
+            f"Operator N ReadRange: {EXECUTION_STRING}\n"
+            f"* Remote wall time: T min, T max, T mean, T total\n"
+            f"* Remote cpu time: T min, T max, T mean, T total\n"
+            f"* Peak heap memory usage (MiB): N min, N max, N mean\n"
+            f"* Output num rows per block: N min, N max, N mean, N total\n"
+            f"* Output size bytes per block: N min, N max, N mean, N total\n"
+            f"* Output rows per task: N min, N max, N mean, N tasks used\n"
+            f"* Tasks per node: N min, N max, N mean; N nodes used\n"
+            f"{gen_extra_metrics_str(STANDARD_EXTRA_METRICS, verbose_stats_logs)}\n"
+            f"Operator N MapBatches(dummy_map_batches): {EXECUTION_STRING}\n"
+            f"* Remote wall time: T min, T max, T mean, T total\n"
+            f"* Remote cpu time: T min, T max, T mean, T total\n"
+            f"* Peak heap memory usage (MiB): N min, N max, N mean\n"
+            f"* Output num rows per block: N min, N max, N mean, N total\n"
+            f"* Output size bytes per block: N min, N max, N mean, N total\n"
+            f"* Output rows per task: N min, N max, N mean, N tasks used\n"
+            f"* Tasks per node: N min, N max, N mean; N nodes used\n"
+            f"{gen_extra_metrics_str(LARGE_ARGS_EXTRA_METRICS, verbose_stats_logs)}"
         )
+        assert canonicalize(stats) == expected_stats
     finally:
         context.verbose_stats_logs = False
 
@@ -997,83 +974,58 @@ def test_stats_actor_cap_num_stats(ray_start_cluster):
     assert ray.get(actor._get_stats_dict_size.remote()) == (3, 2, 2)
 
 
-def test_spilled_stats(shutdown_only):
-    # The object store is about 100MB.
-    ray.init(object_store_memory=100e6)
-    # The size of dataset is 1000*80*80*4*8B, about 200MB.
-    ds = ray.data.range(1000 * 80 * 80 * 4).map_batches(lambda x: x).materialize()
-
-    assert (
-        canonicalize(ds.stats(), filter_global_stats=False)
-        == f"""Operator N ReadRange->MapBatches(<lambda>): {EXECUTION_STRING}
-* Remote wall time: T min, T max, T mean, T total
-* Remote cpu time: T min, T max, T mean, T total
-* Peak heap memory usage (MiB): N min, N max, N mean
-* Output num rows per block: N min, N max, N mean, N total
-* Output size bytes per block: N min, N max, N mean, N total
-* Output rows per task: N min, N max, N mean, N tasks used
-* Tasks per node: N min, N max, N mean; N nodes used
-
-Cluster memory:
-* Spilled to disk: M
-* Restored from disk: M
-
-Dataset memory:
-* Spilled to disk: M
-"""
-    )
-
-    # Test with verbose logs
+@pytest.mark.parametrize("verbose_stats_logs", [True, False])
+def test_spilled_stats(shutdown_only, verbose_stats_logs):
     try:
         context = DataContext.get_current()
-        context.verbose_stats_logs = True
-
+        context.verbose_stats_logs = verbose_stats_logs
+        # The object store is about 100MB.
+        ray.init(object_store_memory=100e6)
+        # The size of dataset is 1000*80*80*4*8B, about 200MB.
         ds = ray.data.range(1000 * 80 * 80 * 4).map_batches(lambda x: x).materialize()
-
-        assert (
-            canonicalize(ds.stats(), filter_global_stats=False)
-            == f"""Operator N ReadRange->MapBatches(<lambda>): {EXECUTION_STRING}
-* Remote wall time: T min, T max, T mean, T total
-* Remote cpu time: T min, T max, T mean, T total
-* Peak heap memory usage (MiB): N min, N max, N mean
-* Output num rows per block: N min, N max, N mean, N total
-* Output size bytes per block: N min, N max, N mean, N total
-* Output rows per task: N min, N max, N mean, N tasks used
-* Tasks per node: N min, N max, N mean; N nodes used
-* Extra metrics: {MEM_SPILLED_EXTRA_METRICS}
-
-Cluster memory:
-* Spilled to disk: M
-* Restored from disk: M
-
-Dataset memory:
-* Spilled to disk: M
-"""
+        expected_stats = (
+            f"Operator N ReadRange->MapBatches(<lambda>): {EXECUTION_STRING}\n"
+            f"* Remote wall time: T min, T max, T mean, T total\n"
+            f"* Remote cpu time: T min, T max, T mean, T total\n"
+            f"* Peak heap memory usage (MiB): N min, N max, N mean\n"
+            f"* Output num rows per block: N min, N max, N mean, N total\n"
+            f"* Output size bytes per block: N min, N max, N mean, N total\n"
+            f"* Output rows per task: N min, N max, N mean, N tasks used\n"
+            f"* Tasks per node: N min, N max, N mean; N nodes used\n"
+            f"{gen_extra_metrics_str(MEM_SPILLED_EXTRA_METRICS, verbose_stats_logs)}\n"
+            f"Cluster memory:\n"
+            f"* Spilled to disk: M\n"
+            f"* Restored from disk: M\n"
+            f"\n"
+            f"Dataset memory:\n"
+            f"* Spilled to disk: M\n"
         )
+
+        assert canonicalize(ds.stats(), filter_global_stats=False) == expected_stats
+
+        # Around 100MB should be spilled (200MB - 100MB)
+        assert ds._plan.stats().dataset_bytes_spilled > 100e6
+
+        ds = (
+            ray.data.range(1000 * 80 * 80 * 4)
+            .map_batches(lambda x: x)
+            .materialize()
+            .map_batches(lambda x: x)
+            .materialize()
+        )
+        # two map_batches operators, twice the spillage
+        assert ds._plan.stats().dataset_bytes_spilled > 200e6
+
+        # The size of dataset is around 50MB, there should be no spillage
+        ds = (
+            ray.data.range(250 * 80 * 80 * 4, parallelism=1)
+            .map_batches(lambda x: x)
+            .materialize()
+        )
+
+        assert ds._plan.stats().dataset_bytes_spilled == 0
     finally:
         context.verbose_stats_logs = False
-
-    # Around 100MB should be spilled (200MB - 100MB)
-    assert ds._plan.stats().dataset_bytes_spilled > 100e6
-
-    ds = (
-        ray.data.range(1000 * 80 * 80 * 4)
-        .map_batches(lambda x: x)
-        .materialize()
-        .map_batches(lambda x: x)
-        .materialize()
-    )
-    # two map_batches operators, twice the spillage
-    assert ds._plan.stats().dataset_bytes_spilled > 200e6
-
-    # The size of dataset is around 50MB, there should be no spillage
-    ds = (
-        ray.data.range(250 * 80 * 80 * 4, parallelism=1)
-        .map_batches(lambda x: x)
-        .materialize()
-    )
-
-    assert ds._plan.stats().dataset_bytes_spilled == 0
 
 
 def test_stats_actor_metrics():
