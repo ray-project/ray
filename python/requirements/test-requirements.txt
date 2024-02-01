@@ -49,9 +49,7 @@ PyOpenSSL==23.0.0
 pygame==2.1.2; python_version < '3.11'
 Pygments==2.13.0
 pymongo==4.3.2
-# For test_raydp.py
-# https://github.com/ray-project/ray/issues/42762
-pyspark==3.4.2 
+pyspark
 pytest==7.0.1
 pytest-asyncio==0.16.0
 pytest-httpserver==1.0.6
@@ -115,19 +113,3 @@ numexpr==2.8.4
 
 # For `serve run --reload` CLI.
 watchfiles==0.19.0
-
-# For test_runtime_env_complicated.py::test_pip_with_env_vars
-# https://github.com/ray-project/ray/issues/42763
-virtualenv==20.21.0
-
-
-# TODO(matthewdeng): [py38]
-sphinxcontrib-applehelp; python_version >= "3.9"
-sphinxcontrib-devhelp; python_version >= "3.9"
-sphinxcontrib-htmlhelp; python_version >= "3.9"
-sphinxcontrib-jsmath; python_version >= "3.9"
-sphinxcontrib-qthelp; python_version >= "3.9"
-sphinxcontrib-serializinghtml; python_version >= "3.9"
-alabaster; python_version >= "3.9"
-importlib-resources; python_version >= "3.9"
-openapi-spec-validator; python_version >= "3.9"

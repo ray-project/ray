@@ -34,9 +34,7 @@ lz4
 numpy>=1.20
 aiorwlock
 opentelemetry-exporter-otlp
-# TODO(matthewdeng): [py38]
-scipy; python_version < "3.9"
-scipy; python_version >= "3.9"
+scipy
 colorful
 pyyaml
 rich
@@ -49,9 +47,7 @@ opencensus
 aiohttp_cors
 dm_tree
 uvicorn
-# TODO(matthewdeng): [py38]
-scikit-image; python_version < "3.9"
-scikit-image; python_version >= "3.9"
+scikit-image
 prometheus_client>=0.7.1
 requests
 pandas
