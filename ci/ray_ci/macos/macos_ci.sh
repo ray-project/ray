@@ -81,7 +81,7 @@ run_ray_cpp_and_java() {
 
 _prelude() {
   rm -rf /tmp/bazel_event_logs
-  (which bazel && bazel clean) || true
+  (which bazel && bazel clean) || true;
   . ./ci/ci.sh init && source ~/.zshenv
   source ~/.zshrc
   ./ci/ci.sh build
