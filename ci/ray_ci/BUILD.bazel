@@ -203,7 +203,7 @@ py_test(
 )
 
 py_test(
-    name="test_upgrade_version",
+    name = "test_upgrade_version",
     size = "small",
     srcs = ["test_upgrade_version.py"],
     tags = [
@@ -219,5 +219,5 @@ py_test(
 
 py_binary(
     name = "upgrade_version",
-    srcs = ["upgrade_version.py"]
+    srcs = ["upgrade_version.py"],
 )

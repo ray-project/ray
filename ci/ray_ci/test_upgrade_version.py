@@ -2,6 +2,7 @@ from unittest import mock
 import sys
 import pytest
 import tempfile
+import os
 
 from ci.ray_ci.upgrade_version import (
     list_java_files,
@@ -10,47 +11,49 @@ from ci.ray_ci.upgrade_version import (
 )
 
 
-@mock.patch("os.walk")
-def test_list_java_files(mock_os_walk):
-    mock_os_walk.return_value = [
-        (
-            "root/dir",
-            ["subdir_1", "subdir_2", "subdir_3"],
-            ["pom_template.xml", "not_pom.xml"],
-        ),
-        ("root/dir/subdir_1", [], ["pom.xml", "not_pom.xml", "not_pom_template.xml"]),
-        ("root/dir/subdir_2", [], ["pom_template.xml", "pom.xml", "not_pom.py"]),
-        (
-            "root/dir/subdir_3",
-            [],
-            ["pom.xml", "pom_template.xml", "not_pom_template.py"],
-        ),
+def test_list_java_files():
+    with tempfile.TemporaryDirectory() as tmp_dir:
+        os.mkdir(os.path.join(tmp_dir, "subdir_0"))
+        os.mkdir(os.path.join(tmp_dir, "subdir_1"))
+        os.mkdir(os.path.join(tmp_dir, "subdir_0/subdir_0_0"))
+        select_file_paths = [
+            "pom_template.xml",
+            "subdir_0/pom.xml",
+            "subdir_0/pom_template.xml",
+            "subdir_1/pom.xml",
+            "subdir_1/pom_template.xml",
+            "subdir_0/subdir_0_0/pom.xml",
+        ]
+        non_select_file_paths = [
+            "not_pom.xml",
+            "subdir_1/not_pom_template.xml",
+            "subdir_0/subdir_0_0/not_pom_template.xml",
+            "subdir_0/subdir_0_0/not_pom.xml",
+        ]
+        for file_path in select_file_paths + non_select_file_paths:
+            with open(os.path.join(tmp_dir, file_path), "w") as f:
+                f.write("")
+
+        assert list_java_files(tmp_dir) == {
+            os.path.join(tmp_dir, file_path) for file_path in select_file_paths
+        }
+
+
+@mock.patch("ci.ray_ci.upgrade_version.get_check_output")
+def test_get_current_version(mock_check_output):
+    mock_check_output.side_effect = [
+        "3.0.0.dev0 commit-sha",
+        "1.1.1.non_default commit-sha",
     ]
-    assert list_java_files() == {
-        "root/dir/pom_template.xml",
-        "root/dir/subdir_1/pom.xml",
-        "root/dir/subdir_2/pom_template.xml",
-        "root/dir/subdir_2/pom.xml",
-        "root/dir/subdir_3/pom.xml",
-        "root/dir/subdir_3/pom_template.xml",
-    }
-
-
-@mock.patch("subprocess.run")
-def test_get_current_version(mock_subprocess_run):
-    mock_subprocess_run.return_value = mock.MagicMock(
-        returncode=0,
-        stdout="1.1.1.default",
-    )
     # Test when version is default
-    assert get_current_version("1.1.1.default", "2.0.0-SNAPSHOT") == (
-        "1.1.1.default",
+    assert get_current_version(tempfile.gettempdir()) == (
+        "3.0.0.dev0",
         "2.0.0-SNAPSHOT",
     )
     # Test when version is different
-    assert get_current_version("1.1.1.dev1", "2.0.0-SNAPSHOT") == (
-        "1.1.1.default",
-        "1.1.1.default",
+    assert get_current_version(tempfile.gettempdir()) == (
+        "1.1.1.non_default",
+        "1.1.1.non_default",
     )
 
 
@@ -84,6 +87,7 @@ def test_upgrade_file_version():
         non_java_version=non_java_version,
         java_version=java_version,
         new_version=new_version,
+        root_dir=tempfile.gettempdir(),
     )
 
     for file in non_java_files:

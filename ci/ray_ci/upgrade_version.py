@@ -10,57 +10,65 @@ non_java_files = {
     "src/ray/common/constants.h",
 }
 
+DEFAULT_NON_JAVA_VERSION = "3.0.0.dev0"
+DEFAULT_JAVA_VERSION = "2.0.0-SNAPSHOT"
 
-def list_java_files():
+
+def list_java_files(root_dir: str):
     """
     Scan the directories and return the set of pom.xml and pom_template.xml files.
     """
     files = set()
-    for root_dir, _, file_names in os.walk(bazel_workspace_dir):
+    for current_root_dir, _, file_names in os.walk(root_dir):
         for file_name in file_names:
             if file_name in ["pom.xml", "pom_template.xml"]:
-                files.add(os.path.join(root_dir, file_name))
+                files.add(os.path.join(current_root_dir, file_name))
     return files
 
 
-def get_current_version(non_java_version: str, java_version: str):
+def get_check_output(file_path: str):
+    return subprocess.check_output(["python", file_path], text=True)
+
+
+def get_current_version(root_dir: str):
     """
     Scan for current Ray version and return the current versions.
     """
-    version_file_path = os.path.join(bazel_workspace_dir, "python/ray/_version.py")
-    output = subprocess.run(
-        ["python", version_file_path], stdout=subprocess.PIPE, text=True
-    )
+    version_file_path = os.path.join(root_dir, "python/ray/_version.py")
+    ray_version_output = get_check_output(version_file_path).split(" ")
+    if len(ray_version_output) != 2:
+        raise ValueError(
+            f"Unexpected output from {version_file_path}: {ray_version_output}"
+        )
+    version = ray_version_output[0]
 
-    if output.returncode != 0 or not output.stdout:
-        raise Exception("Failed to get current version")
-    version = output.stdout.split(" ")[0]
-
-    if version != non_java_version:
+    if version != DEFAULT_NON_JAVA_VERSION:
         non_java_version = version
         java_version = version
-    return (non_java_version, java_version)
+        return (non_java_version, java_version)
+    return (DEFAULT_NON_JAVA_VERSION, DEFAULT_JAVA_VERSION)
 
 
 def upgrade_file_version(
-    non_java_files,
-    java_files,
+    non_java_files: set[str],
+    java_files: set[str],
     non_java_version: str,
     java_version: str,
     new_version: str,
+    root_dir: str,
 ):
     """
     Modify the version in the files to the specified version.
     """
     for file_path in non_java_files | java_files:
-        with open(os.path.join(bazel_workspace_dir, file_path), "r") as f:
+        with open(os.path.join(root_dir, file_path), "r") as f:
             content = f.read()
         current_version = (
             non_java_version if file_path in non_java_files else java_version
         )
         content = content.replace(current_version, new_version)
 
-        with open(os.path.join(bazel_workspace_dir, file_path), "w") as f:
+        with open(os.path.join(root_dir, file_path), "w") as f:
             f.write(content)
 
 
@@ -70,13 +78,16 @@ def main(new_version: str):
     """
     Update the version in the files to the specified version.
     """
-    non_java_version = "3.0.0.dev0"
-    java_version = "2.0.0-SNAPSHOT"
-    non_java_version, java_version = get_current_version(non_java_version, java_version)
+    non_java_version, java_version = get_current_version(bazel_workspace_dir)
 
-    java_files = list_java_files()
+    java_files = list_java_files(bazel_workspace_dir)
     upgrade_file_version(
-        non_java_files, java_files, non_java_version, java_version, new_version
+        non_java_files,
+        java_files,
+        non_java_version,
+        java_version,
+        new_version,
+        bazel_workspace_dir,
     )
 
 
