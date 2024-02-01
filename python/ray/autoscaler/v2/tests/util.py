@@ -1,7 +1,7 @@
 import abc
 import operator
 from abc import abstractmethod
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, Tuple
 
 import ray
 from ray.autoscaler.v2.schema import AutoscalerInstance, ClusterStatus, ResourceUsage
@@ -39,12 +39,21 @@ def create_instance(
     status=Instance.UNKNOWN,
     version=0,
     instance_type="worker_nodes1",
+    launch_request_id="",
+    status_times: List[Tuple["Instance.InstanceStatus", int]] = None,
 ):
     return Instance(
         instance_id=instance_id,
         status=status,
         version=version,
         instance_type=instance_type,
+        launch_request_id=launch_request_id,
+        status_history=[
+            Instance.StatusHistory(instance_status=status, timestamp_ns=ts)
+            for status, ts in status_times
+        ]
+        if status_times
+        else [],
     )
 
 
