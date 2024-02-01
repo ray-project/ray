@@ -4004,8 +4004,8 @@ class Dataset:
         drop_last: bool = False,
         local_shuffle_buffer_size: Optional[int] = None,
         local_shuffle_seed: Optional[int] = None,
-        feature_type_spec: Union[tf.TypeSpec, Dict[str, tf.TypeSpec]] = None,
-        label_type_spec: Union[tf.TypeSpec, Dict[str, tf.TypeSpec]] = None,
+        feature_type_spec: Union["tf.TypeSpec", Dict[str, "tf.TypeSpec"]] = None,
+        label_type_spec: Union["tf.TypeSpec", Dict[str, "tf.TypeSpec"]] = None,
         # Deprecated
         prefetch_blocks: int = 0,
     ) -> "tf.data.Dataset":
