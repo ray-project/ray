@@ -385,7 +385,7 @@ class PhysicalOperator(Operator):
         This method is called by the executor to decide how to allocate resources
         between different operators.
         """
-        return ExecutionResources()
+        return ExecutionResources(0, 0, 0)
 
     def base_resource_usage(self) -> ExecutionResources:
         """Returns the minimum amount of resources required for execution.

@@ -743,13 +743,15 @@ class Trial:
     def error_file(self):
         if not self.local_path or not self.run_metadata.error_filename:
             return None
-        return os.path.join(self.local_path, self.run_metadata.error_filename)
+        return Path(self.local_path, self.run_metadata.error_filename).as_posix()
 
     @property
     def pickled_error_file(self):
         if not self.local_path or not self.run_metadata.pickled_error_filename:
             return None
-        return os.path.join(self.local_path, self.run_metadata.pickled_error_filename)
+        return Path(
+            self.local_path, self.run_metadata.pickled_error_filename
+        ).as_posix()
 
     def _handle_restore_error(self, exc: Exception):
         if self.temporary_state.num_restore_failures >= int(
@@ -988,13 +990,13 @@ class Trial:
     def from_directory(
         cls, path: Union[str, os.PathLike], stub: bool = False
     ) -> "Trial":
-        metadata_path = os.path.join(path, TRIAL_STATE_FILENAME)
-        if not os.path.exists(metadata_path):
+        metadata_path = Path(path, TRIAL_STATE_FILENAME)
+        if not metadata_path.exists():
             raise FileNotFoundError(
                 f"Can't restore trial from path: File `{metadata_path}` not found."
             )
 
-        json_state = Path(metadata_path).read_text()
+        json_state = metadata_path.read_text()
         return cls.from_json_state(json_state, stub=stub)
 
     def __getstate__(self):
