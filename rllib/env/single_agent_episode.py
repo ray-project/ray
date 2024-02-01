@@ -548,6 +548,7 @@ class SingleAgentEpisode:
                 # Note: terminated/truncated have nothing to do with an episode
                 # being `finalized` or not (via the `self.finalize()` method)!
                 terminated=False,
+                len_lookback_buffer=0,  # no lookback; all data is actually "in" episode
             )
             # Episode has not been finalized (numpy'ized) yet.
             assert not episode.is_finalized
@@ -810,6 +811,7 @@ class SingleAgentEpisode:
                 infos=[{"a":0}, {"b":1}, {"c":2}, {"d":3}],
                 # The following is needed, but not relevant for this demo.
                 observations=[0, 1, 2, 3], actions=[1, 2, 3], rewards=[1, 2, 3],
+                len_lookback_buffer=0,  # no lookback; all data is actually "in" episode
             )
             # Plain usage (`indices` arg only).
             episode.get_infos(-1)  # {"d":3}
@@ -1054,6 +1056,7 @@ class SingleAgentEpisode:
 
             episode = SingleAgentEpisode(
                 extra_model_outputs={"mo": [1, 2, 3]},
+                len_lookback_buffer=0,  # no lookback; all data is actually "in" episode
                 # The following is needed, but not relevant for this demo.
                 observations=[0, 1, 2, 3], actions=[1, 2, 3], rewards=[1, 2, 3],
             )
