@@ -1526,6 +1526,13 @@ py_test(
 )
 
 py_test(
+    name = "test_prioritized_episode_replay_buffer",
+    tags = ["team::rllib", "utils"],
+    size = "small",
+    srcs = ["utils/replay_buffers/tests/test_prioritized_episode_replay_buffer.py"]
+)
+
+py_test(
     name = "test_prioritized_replay_buffer_replay_buffer_api",
     tags = ["team:rllib", "utils"],
     size = "small",
