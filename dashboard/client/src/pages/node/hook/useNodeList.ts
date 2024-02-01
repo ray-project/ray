@@ -51,13 +51,14 @@ export const useNodeList = () => {
       logicalResources: nodeLogicalResources[e.raylet.nodeId],
     }))
     .sort(sorterFunc);
-  
+
   const sortedList = _.sortBy(nodeListWithAdditionalInfo, (node) => {
-    // After sorting by user specified field, stable sort by 
+    // After sorting by user specified field, stable sort by
     // 1) Alive nodes first then alphabetically for other states
     // 2) Head node
     // 3) Alphabetical by node id
-    const nodeStateOrder = node.raylet.state === "ALIVE" ? "0" : node.raylet.state;
+    const nodeStateOrder =
+      node.raylet.state === "ALIVE" ? "0" : node.raylet.state;
     const isHeadNodeOrder = node.raylet.isHeadNode ? "0" : "1";
     const nodeIdOrder = node.raylet.nodeId;
     return [nodeStateOrder, isHeadNodeOrder, nodeIdOrder];
