@@ -3,15 +3,30 @@ import sys
 from tempfile import NamedTemporaryFile
 from typing import Dict
 
+import click
 import pytest
 import yaml
 from click.testing import CliRunner
 
 from ray.serve.schema import ServeApplicationSchema, _skip_validating_runtime_env_uris
-from ray.serve.scripts import deploy
+from ray.serve.scripts import convert_args_to_dict, deploy
 from ray.serve.tests.unit.fake_deploy_provider import get_ray_serve_deploy_provider
 
 TEST_PROVIDER_ARG = "--provider=ray.serve.tests.unit.fake_deploy_provider"
+
+
+def test_convert_args_to_dict():
+    assert convert_args_to_dict(tuple()) == {}
+
+    with pytest.raises(
+        click.ClickException, match="Invalid application argument 'bad_arg'"
+    ):
+        convert_args_to_dict(("bad_arg",))
+
+    assert convert_args_to_dict(("key1=val1", "key2=val2")) == {
+        "key1": "val1",
+        "key2": "val2",
+    }
 
 
 class TestDeploy:

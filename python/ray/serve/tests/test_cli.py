@@ -6,7 +6,6 @@ from copy import deepcopy
 from tempfile import NamedTemporaryFile
 from typing import Dict, List, Optional
 
-import click
 import pytest
 import requests
 import yaml
@@ -16,7 +15,7 @@ from ray import serve
 from ray._private.test_utils import wait_for_condition
 from ray.serve._private.common import DeploymentID
 from ray.serve._private.constants import SERVE_DEFAULT_APP_NAME, SERVE_NAMESPACE
-from ray.serve.scripts import convert_args_to_dict, remove_ansi_escape_sequences
+from ray.serve.scripts import remove_ansi_escape_sequences
 from ray.tests.conftest import tmp_working_dir  # noqa: F401, E501
 from ray.util.state import list_actors
 
@@ -30,20 +29,6 @@ def assert_deployments_live(ids: List[DeploymentID]):
         prefix = f"{deployment_id.app}#{deployment_id.name}"
         msg = f"Deployment {deployment_id} is not live"
         assert any(prefix in actor_name for actor_name in running_actor_names), msg
-
-
-def test_convert_args_to_dict():
-    assert convert_args_to_dict(tuple()) == {}
-
-    with pytest.raises(
-        click.ClickException, match="Invalid application argument 'bad_arg'"
-    ):
-        convert_args_to_dict(("bad_arg",))
-
-    assert convert_args_to_dict(("key1=val1", "key2=val2")) == {
-        "key1": "val1",
-        "key2": "val2",
-    }
 
 
 def test_start_shutdown(ray_start_stop):
