@@ -3,8 +3,7 @@ from typing import Any, Dict, List, Optional
 from ray.data._internal.logical.interfaces import LogicalOperator
 from ray.data._internal.planner.exchange.interfaces import ExchangeTaskSpec
 from ray.data._internal.planner.exchange.shuffle_task_spec import ShuffleTaskSpec
-from ray.data._internal.planner.exchange.sort_task_spec import SortTaskSpec
-from ray.data._internal.sort import SortKey
+from ray.data._internal.planner.exchange.sort_task_spec import SortKey, SortTaskSpec
 from ray.data.aggregate import AggregateFn
 
 
@@ -31,7 +30,7 @@ class AbstractAllToAll(LogicalOperator):
                 operator.
             ray_remote_args: Args to provide to ray.remote.
         """
-        super().__init__(name, [input_op])
+        super().__init__(name, [input_op], num_outputs)
         self._num_outputs = num_outputs
         self._ray_remote_args = ray_remote_args or {}
         self._sub_progress_bar_names = sub_progress_bar_names

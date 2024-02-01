@@ -58,15 +58,7 @@ class TuneConfig:
             directory name. Otherwise, trials could overwrite artifacts and checkpoints
             of other trials. The return value cannot be a path.
             NOTE: This API is in alpha and subject to change.
-        chdir_to_trial_dir: Deprecated. Use the `RAY_CHDIR_TO_TRIAL_DIR=0`
-            environment variable instead.
-            Whether to change the working directory of each worker
-            to its corresponding trial directory. Defaults to `True` to prevent
-            contention between workers saving trial-level outputs.
-            If set to `False`, files are accessible with paths relative to the
-            original working directory. However, all workers on the same node now
-            share the same working directory, so be sure to use
-            `ray.train.get_context().get_trial_dir()` as the path to save any outputs.
+        chdir_to_trial_dir: Deprecated. Set the `RAY_CHDIR_TO_TRIAL_DIR` env var instead
     """
 
     # Currently this is not at feature parity with `tune.run`, nor should it be.

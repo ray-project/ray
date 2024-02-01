@@ -9,6 +9,7 @@ from uuid import uuid4
 import numpy as np
 
 import ray
+from ray.actor import ActorHandle
 from ray.data._internal.block_list import BlockList
 from ray.data._internal.dataset_logger import DatasetLogger
 from ray.data._internal.execution.interfaces.op_runtime_metrics import OpRuntimeMetrics
@@ -393,7 +394,7 @@ class _StatsManager:
 
     def __init__(self):
         # Lazily get stats actor handle to avoid circular import.
-        self._stats_actor_handle = None
+        self._stats_actor_handle: Optional[ActorHandle] = None
         self._stats_actor_cluster_id = None
 
         # Last execution stats snapshots for all executing datasets
@@ -409,7 +410,7 @@ class _StatsManager:
         self._update_thread: Optional[threading.Thread] = None
         self._update_thread_lock: threading.Lock = threading.Lock()
 
-    def _stats_actor(self, create_if_not_exists=True) -> _StatsActor:
+    def _stats_actor(self, create_if_not_exists=True) -> Optional[ActorHandle]:
         if ray._private.worker._global_node is None:
             raise RuntimeError("Global node is not initialized.")
         current_cluster_id = ray._private.worker._global_node.cluster_id
@@ -420,9 +421,12 @@ class _StatsManager:
             if create_if_not_exists:
                 self._stats_actor_handle = _get_or_create_stats_actor()
             else:
-                self._stat_actor_handle = ray.get_actor(
-                    name=STATS_ACTOR_NAME, namespace=STATS_ACTOR_NAMESPACE
-                )
+                try:
+                    self._stats_actor_handle = ray.get_actor(
+                        name=STATS_ACTOR_NAME, namespace=STATS_ACTOR_NAMESPACE
+                    )
+                except ValueError:
+                    return None
             self._stats_actor_cluster_id = current_cluster_id
         return self._stats_actor_handle
 
@@ -440,9 +444,12 @@ class _StatsManager:
                                 # this thread can be running even after the cluster is
                                 # shutdown. Creating an actor will automatically start
                                 # a new cluster.
-                                self._stats_actor(
+                                stats_actor = self._stats_actor(
                                     create_if_not_exists=False
-                                ).update_metrics.remote(
+                                )
+                                if stats_actor is None:
+                                    continue
+                                stats_actor.update_metrics.remote(
                                     execution_metrics=list(
                                         self._last_execution_stats.values()
                                     ),
@@ -624,15 +631,6 @@ class DatasetStats:
     ) -> _DatasetStatsBuilder:
         """Start recording stats for an op of the given name (e.g., map)."""
         return _DatasetStatsBuilder(name, self, override_start_time)
-
-    def child_TODO(self, name: str) -> "DatasetStats":
-        """Placeholder for child ops not yet instrumented."""
-        return DatasetStats(metadata={name + "_TODO": []}, parent=self)
-
-    @staticmethod
-    def TODO():
-        """Placeholder for ops not yet instrumented."""
-        return DatasetStats(metadata={"TODO": []}, parent=None)
 
     def to_summary(self) -> "DatasetStatsSummary":
         """Generate a `DatasetStatsSummary` object from the given `DatasetStats`

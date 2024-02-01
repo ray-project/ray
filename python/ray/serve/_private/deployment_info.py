@@ -1,20 +1,13 @@
 from typing import Any, Dict, Optional
 
 import ray
-from ray.serve._private.autoscaling_policy import BasicAutoscalingPolicy
+from ray.serve._private.autoscaling_policy import AutoscalingPolicyManager
 from ray.serve._private.common import TargetCapacityDirection
 from ray.serve._private.config import DeploymentConfig, ReplicaConfig
-from ray.serve._private.constants import REPLICA_CONTROL_PLANE_CONCURRENCY_GROUP
 from ray.serve.generated.serve_pb2 import DeploymentInfo as DeploymentInfoProto
 from ray.serve.generated.serve_pb2 import (
     TargetCapacityDirection as TargetCapacityDirectionProto,
 )
-
-# Concurrency group used for operations that cannot be blocked by user code
-# (e.g., health checks and fetching queue length).
-REPLICA_DEFAULT_ACTOR_OPTIONS = {
-    "concurrency_groups": {REPLICA_CONTROL_PLANE_CONCURRENCY_GROUP: 1}
-}
 
 
 class DeploymentInfo:
@@ -53,12 +46,9 @@ class DeploymentInfo:
         self.target_capacity = target_capacity
         self.target_capacity_direction = target_capacity_direction
 
-        if deployment_config.autoscaling_config is not None:
-            self.autoscaling_policy = BasicAutoscalingPolicy(
-                deployment_config.autoscaling_config
-            )
-        else:
-            self.autoscaling_policy = None
+        self.autoscaling_policy_manager = AutoscalingPolicyManager(
+            config=deployment_config.autoscaling_config
+        )
 
     def __getstate__(self) -> Dict[Any, Any]:
         clean_dict = self.__dict__.copy()
@@ -109,7 +99,7 @@ class DeploymentInfo:
 
             # Dynamically create a new class with custom name here so Ray picks it up
             # correctly in actor metadata table and observability stack.
-            self._cached_actor_def = ray.remote(**REPLICA_DEFAULT_ACTOR_OPTIONS)(
+            self._cached_actor_def = ray.remote(
                 type(
                     self.actor_name,
                     (ReplicaActor,),

@@ -1,4 +1,5 @@
 import dis
+import sys
 import hashlib
 import importlib
 import inspect
@@ -172,10 +173,6 @@ class FunctionActorManager:
                     > 0
                 ):
                     break
-        # Notify all subscribers that there is a new function exported. Note
-        # that the notification doesn't include any actual data.
-        # TODO(mwtian) implement per-job notification here.
-        self._worker.gcs_publisher.publish_function_key(key)
 
     def export_setup_func(
         self, setup_func: Callable, timeout: Optional[int] = None
@@ -332,7 +329,8 @@ class FunctionActorManager:
                         "The remote function failed to import on the "
                         "worker. This may be because needed library "
                         "dependencies are not installed in the worker "
-                        "environment:\n\n{}".format(traceback_str)
+                        "environment or cannot be found from sys.path "
+                        f"{sys.path}:\n\n{traceback_str}"
                     )
 
                 # Use a placeholder method when function pickled failed

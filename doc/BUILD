@@ -100,7 +100,7 @@ py_test(
     size = "medium",
     main = "source/ray-core/doc_code/ray_oom_prevention.py",
     srcs = ["source/ray-core/doc_code/ray_oom_prevention.py"],
-    tags = ["exclusive", "xcommit", "team:core"]
+    tags = ["exclusive", "mem_pressure", "team:core"]
 )
 
 py_test_run_all_subdirectory(
@@ -254,7 +254,7 @@ py_test(
 # --------------------------------------------------------------------
 
 py_test_run_all_subdirectory(
-    size = "large",
+    size = "enormous",
     include = ["external/*.py"],
     exclude = [],
     extra_srcs = [],

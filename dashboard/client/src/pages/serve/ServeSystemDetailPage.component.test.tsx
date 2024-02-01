@@ -87,7 +87,7 @@ describe("ServeSystemDetailPage", () => {
     expect(screen.getByText("8000")).toBeVisible();
 
     // Proxy row
-    expect(screen.getByText("ProxyActor:node:12345")).toBeVisible();
+    expect(screen.getByText("HTTPProxyActor:node:12345")).toBeVisible();
     expect(screen.getByText("STARTING")).toBeVisible();
 
     // Serve Controller row

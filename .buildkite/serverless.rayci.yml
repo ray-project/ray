@@ -7,8 +7,8 @@ steps:
 
   - wait: ~
     depends_on:
-    - serverlessbuild
-    - forge
+      - serverlessbuild
+      - forge
 
   # tests
   - label: ":serverless: serverless: python tests"
@@ -22,6 +22,7 @@ steps:
   - label: ":serverless: serverless: :windows: tests"
     tags: python
     job_env: WINDOWS
+    mount_windows_artifacts: true
     instance_type: windows
     commands:
       - bash ci/ray_ci/windows/install_tools.sh

@@ -161,9 +161,9 @@ class PhysicalOperator(Operator):
                 return ready[0]
 
     Note that the above operator fully supports both bulk and streaming execution,
-    since `add_input` and `get_next` can be called in any order. In bulk execution,
-    all inputs would be added up-front, but in streaming execution the calls could
-    be interleaved.
+    since `add_input` and `get_next` can be called in any order. In bulk execution
+    (now deprecated), all inputs would be added up-front, but in streaming
+    execution (now the default execution mode) the calls could be interleaved.
     """
 
     def __init__(
@@ -385,7 +385,7 @@ class PhysicalOperator(Operator):
         This method is called by the executor to decide how to allocate resources
         between different operators.
         """
-        return ExecutionResources()
+        return ExecutionResources(0, 0, 0)
 
     def base_resource_usage(self) -> ExecutionResources:
         """Returns the minimum amount of resources required for execution.
