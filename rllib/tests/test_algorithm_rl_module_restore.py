@@ -192,8 +192,8 @@ class TestAlgorithmRLModuleRestore(unittest.TestCase):
             module_class = PPO_MODULES[fw]
             module_spec = SingleAgentRLModuleSpec(
                 module_class=module_class,
-                observation_space=env.observation_space[0],
-                action_space=env.action_space[0],
+                observation_space=env.observation_space,
+                action_space=env.action_space,
                 model_config_dict={"fcnet_hiddens": [32]},
                 catalog_class=PPOCatalog,
             )
@@ -204,8 +204,8 @@ class TestAlgorithmRLModuleRestore(unittest.TestCase):
 
             module_to_load_spec = SingleAgentRLModuleSpec(
                 module_class=module_class,
-                observation_space=env.observation_space[0],
-                action_space=env.action_space[0],
+                observation_space=env.observation_space,
+                action_space=env.action_space,
                 model_config_dict={"fcnet_hiddens": [32]},
                 catalog_class=PPOCatalog,
                 load_state_path=module_ckpt_path,

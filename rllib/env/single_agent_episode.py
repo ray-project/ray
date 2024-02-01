@@ -720,6 +720,7 @@ class SingleAgentEpisode:
                 observation_space=gym.spaces.Discrete(4),
                 observations=[0, 1, 2, 3],
                 actions=[1, 2, 3], rewards=[1, 2, 3],  # <- not relevant for this demo
+                len_lookback_buffer=0,  # no lookback; all data is actually "in" episode
             )
             # Plain usage (`indices` arg only).
             episode.get_observations(-1)  # 3
@@ -890,6 +891,7 @@ class SingleAgentEpisode:
                 action_space=gym.spaces.Discrete(4),
                 actions=[1, 2, 3],
                 observations=[0, 1, 2, 3], rewards=[1, 2, 3],  # <- not relevant here
+                len_lookback_buffer=0,  # no lookback; all data is actually "in" episode
             )
             # Plain usage (`indices` arg only).
             episode.get_actions(-1)  # 3
