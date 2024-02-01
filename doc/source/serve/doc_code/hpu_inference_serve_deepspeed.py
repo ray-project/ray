@@ -75,8 +75,6 @@ class DeepSpeedInferenceWorker(TorchDistributedWorker):
         kwargs["checkpoint"] = checkpoints_json.name
         kwargs["tensor_parallel"] = {"tp_size": self._world_size}
         # enable hpu graph, similar to cuda graph
-        # check details here: https://docs.habana.ai/en/latest/Gaudi_Overview/SynapseAI_Software_Suite.html?highlight=graph#graph-compiler-and-runtime
-        kwargs["enable_cuda_graph"] = True
         # Specify injection policy, required by DeepSpeed tensor parallel
         kwargs["injection_policy"] = get_ds_injection_policy(self.model_config)
 
@@ -163,6 +161,7 @@ HABANA_ENVS = {
     "PT_HPU_ENABLE_LAZY_COLLECTIVES": "true",
     "HABANA_VISIBLE_MODULES": "0,1,2,3,4,5,6,7",
 }
+
 
 # Define the Ray serve deployment
 @serve.deployment

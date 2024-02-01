@@ -101,7 +101,7 @@ Start a ray cluster via `ray start --head` and you are ready to run the examples
 
 This example shows how to deploy a Llama2-7b model on Gaudi for inference. 
 
-First, define a deployment that serves Llama2-7b model using a HPU.
+First, define a deployment that serves Llama2-7b model using a HPU. Note that we enable [HPU graph optimization](https://docs.habana.ai/en/latest/Gaudi_Overview/SynapseAI_Software_Suite.html?highlight=graph#graph-compiler-and-runtime) for better performance.
 
 ```{literalinclude} ../doc_code/hpu_inference_serve.py
 :language: python

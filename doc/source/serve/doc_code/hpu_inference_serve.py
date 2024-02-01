@@ -45,7 +45,6 @@ class LlamaModel:
         from habana_frameworks.torch.hpu import wrap_in_hpu_graph
 
         # enable hpu graph runtime
-        # check details here: https://docs.habana.ai/en/latest/Gaudi_Overview/SynapseAI_Software_Suite.html?highlight=graph#graph-compiler-and-runtime
         self.model = wrap_in_hpu_graph(model)
 
         # set pad token, etc.

@@ -21,7 +21,7 @@ from ray.air._internal.torch_utils import get_devices
 from ray._private.accelerators.hpu import HPU_PACKAGE_AVAILABLE
 
 if HPU_PACKAGE_AVAILABLE:
-    import habana_frameworks.torch.core as htcore
+    import habana_frameworks.torch.core as htcore  # noqa: F401
     import habana_frameworks.torch.distributed.hccl as hpu_dist
 
 
