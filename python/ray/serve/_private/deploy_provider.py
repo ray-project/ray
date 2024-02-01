@@ -1,3 +1,4 @@
+import os
 from abc import ABC, abstractmethod
 from subprocess import CalledProcessError, check_output
 from tempfile import NamedTemporaryFile
@@ -11,14 +12,9 @@ from ray.autoscaler._private.cli_logger import cli_logger
 from ray.dashboard.modules.serve.sdk import ServeSubmissionClient
 from ray.serve.schema import ServeDeploySchema
 
-try:
-    import anyscale  # noqa: F401
-    ANYSCALE_AVAILABLE = True
-except Exception:
-    ANYSCALE_AVAILABLE = False
-
 # Method that dynamically imported modules must implement to return a `DeployProvider`.
 DEPLOY_PROVIDER_FACTORY_METHOD = "get_ray_serve_deploy_provider"
+DEPLOY_PROVIDER_ENV_VAR = "RAY_SERVE_DEPLOY_PROVIDER"
 
 
 class DeployProvider(ABC):
@@ -37,10 +33,7 @@ class DeployProvider(ABC):
 
 def get_deploy_provider(provider_name: Optional[str]) -> DeployProvider:
     if provider_name is None:
-        if ANYSCALE_AVAILABLE:
-            provider_name = "anyscale"
-        else:
-            provider_name = "local"
+        provider_name = os.environ.get(DEPLOY_PROVIDER_ENV_VAR, "local")
 
     deploy_provider = {
         "anyscale": AnyscaleDeployProvider,

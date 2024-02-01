@@ -26,7 +26,10 @@ from ray.serve._private.constants import (
     SERVE_DEFAULT_APP_NAME,
     SERVE_NAMESPACE,
 )
-from ray.serve._private.deploy_provider import get_deploy_provider
+from ray.serve._private.deploy_provider import (
+    DEPLOY_PROVIDER_ENV_VAR,
+    get_deploy_provider,
+)
 from ray.serve._private.deployment_graph_build import build as pipeline_build
 from ray.serve._private.deployment_graph_build import (
     get_and_validate_ingress_deployment,
@@ -325,8 +328,8 @@ def _generate_config_from_file_or_import_path(
     type=str,
     help=(
         "Deploy provider to use. By default, this uses a 'local' provider that makes "
-        "a REST API request to the provided address. If 'anyscale' is available in the "
-        "environment, deploys to anyscale instead."
+        "a REST API request to the provided address. Can also be set with the "
+        f"{DEPLOY_PROVIDER_ENV_VAR} environment variable."
     ),
 )
 @click.option(
