@@ -73,8 +73,8 @@ class InstanceUtilTest(unittest.TestCase):
         assert g[Instance.ALLOCATED] == {
             Instance.RAY_INSTALLING,
             Instance.RAY_RUNNING,
-            Instance.STOPPING,
-            Instance.STOPPED,
+            Instance.TERMINATING,
+            Instance.TERMINATED,
         }
         all_status.remove(Instance.ALLOCATED)
 
@@ -82,33 +82,36 @@ class InstanceUtilTest(unittest.TestCase):
             Instance.RAY_RUNNING,
             Instance.RAY_INSTALL_FAILED,
             Instance.RAY_STOPPED,
-            Instance.STOPPED,
+            Instance.TERMINATED,
         }
         all_status.remove(Instance.RAY_INSTALLING)
 
         assert g[Instance.RAY_RUNNING] == {
             Instance.RAY_STOPPING,
             Instance.RAY_STOPPED,
-            Instance.STOPPED,
+            Instance.TERMINATED,
         }
         all_status.remove(Instance.RAY_RUNNING)
 
-        assert g[Instance.RAY_STOPPING] == {Instance.RAY_STOPPED, Instance.STOPPED}
+        assert g[Instance.RAY_STOPPING] == {Instance.RAY_STOPPED, Instance.TERMINATED}
         all_status.remove(Instance.RAY_STOPPING)
 
-        assert g[Instance.RAY_STOPPED] == {Instance.STOPPED, Instance.STOPPING}
+        assert g[Instance.RAY_STOPPED] == {Instance.TERMINATED, Instance.TERMINATING}
         all_status.remove(Instance.RAY_STOPPED)
 
-        assert g[Instance.STOPPING] == {Instance.STOPPED}
-        all_status.remove(Instance.STOPPING)
+        assert g[Instance.TERMINATING] == {Instance.TERMINATED}
+        all_status.remove(Instance.TERMINATING)
 
-        assert g[Instance.STOPPED] == set()
-        all_status.remove(Instance.STOPPED)
+        assert g[Instance.TERMINATED] == set()
+        all_status.remove(Instance.TERMINATED)
 
         assert g[Instance.ALLOCATION_FAILED] == set()
         all_status.remove(Instance.ALLOCATION_FAILED)
 
-        assert g[Instance.RAY_INSTALL_FAILED] == {Instance.STOPPED, Instance.STOPPING}
+        assert g[Instance.RAY_INSTALL_FAILED] == {
+            Instance.TERMINATED,
+            Instance.TERMINATING,
+        }
         all_status.remove(Instance.RAY_INSTALL_FAILED)
 
         assert g[Instance.UNKNOWN] == set()
@@ -157,7 +160,7 @@ class InstanceUtilTest(unittest.TestCase):
             Instance.RAY_RUNNING,
             Instance.RAY_STOPPING,
             Instance.RAY_STOPPED,
-            Instance.STOPPING,
+            Instance.TERMINATING,
         }
         for s in positive_status:
             instance.status = s
