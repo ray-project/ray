@@ -1,52 +1,131 @@
+# __worker_def_start__
 import asyncio
 import tempfile
 from starlette.responses import StreamingResponse
 
 import torch
 from transformers import TextStreamer
-from transformers import AutoTokenizer, AutoModelForCausalLM, AutoConfig
 
 import ray
+from ray import serve
 from ray.util.queue import Queue
 from ray.runtime_env import RuntimeEnv
-
-from ray import serve
-
-import deepspeed
-from optimum.habana.checkpoint_utils import (
-    get_ds_injection_policy,
-    write_checkpoints_json,
+from ray.air.util.torch_dist import (
+    init_torch_dist_process_group,
+    TorchDistributedWorker
 )
 
-# the default port used by torch
-TORCH_DISTRIBUTED_DEFAULT_PORT = 29500
-# variables required for habana
-HABANA_ENVS = {
-    "PT_HPU_LAZY_ACC_PAR_MODE": "0",
-    "PT_HPU_ENABLE_REFINE_DYNAMIC_SHAPES": "0",
-    "PT_HPU_ENABLE_WEIGHT_CPU_PERMUTE": "0",
-    "PT_HPU_ENABLE_LAZY_COLLECTIVES": "true",
-    "HABANA_VISIBLE_MODULES": "0,1,2,3,4,5,6,7",
-}
+@ray.remote(num_cpus=8, resources={"HPU": 1})
+class DeepSpeedInferenceWorker(TorchDistributedWorker):
+    def __init__(self, model_id_or_path, world_size, local_rank):
+        from transformers import AutoTokenizer, AutoConfig
+        from optimum.habana.transformers.modeling_utils import (
+            adapt_transformers_to_gaudi,
+        )
 
-# set PyTorch distributed related environmental variables
-TORCH_ENVS = {
-    # for single node
-    "MASTER_ADDR": "127.0.0.1",
-    "MASTER_PORT": f"{TORCH_DISTRIBUTED_DEFAULT_PORT}",
-    "WORLD_SIZE": "",
-    "CROSS_RANK": "0",
-    "CROSS_SIZE": "1",
-    "LOCAL_SIZE": "",
-    "RANK": "",
-    "LOCAL_RANK": "",
-}
+        # tweak transformers for better performance on gaudi
+        adapt_transformers_to_gaudi()
 
+        self.model_id_or_path = model_id_or_path
+        self._world_size = world_size
+        self._local_rank = local_rank
+        self.device = torch.device("hpu")
+
+        self.model_config = AutoConfig.from_pretrained(
+            model_id_or_path,
+            torch_dtype=torch.bfloat16,
+            token="",
+            trust_remote_code=False,
+        )
+
+        # Load and configure the tokenizer
+        self.tokenizer = AutoTokenizer.from_pretrained(
+            model_id_or_path, use_fast=False, token=""
+        )
+        self.tokenizer.padding_side = "left"
+        if self.tokenizer.pad_token is None:
+            self.tokenizer.pad_token = self.tokenizer.eos_token
+
+    def load_model(self):
+        """Load the model to HPU and initialize DeepSpeed inference engine"""
+
+        import deepspeed
+        from transformers import AutoModelForCausalLM
+        from optimum.habana.checkpoint_utils import (
+            get_ds_injection_policy,
+            write_checkpoints_json,
+        )
+
+        # Construct the model with fake meta tensors
+        # It will load the model weights from the checkpoint later
+        with deepspeed.OnDevice(dtype=torch.bfloat16, device="meta"):
+            model = AutoModelForCausalLM.from_config(
+                self.model_config, torch_dtype=torch.bfloat16
+            )
+        model = model.eval()
+
+        # Create a file to indicate where the checkpoint is
+        checkpoints_json = tempfile.NamedTemporaryFile(suffix=".json", mode="+w")
+        write_checkpoints_json(
+            self.model_id_or_path, self._local_rank, checkpoints_json, token=""
+        )
+
+        # Prepare DeepSpeed inference configuration
+        kwargs = {"dtype": torch.bfloat16}
+        kwargs["checkpoint"] = checkpoints_json.name
+        kwargs["tensor_parallel"] = {"tp_size": self._world_size}
+        # enable hpu graph, similar to cuda graph
+        # check details here: https://docs.habana.ai/en/latest/Gaudi_Overview/SynapseAI_Software_Suite.html?highlight=graph#graph-compiler-and-runtime
+        kwargs["enable_cuda_graph"] = True
+        # Specify injection policy, required by DeepSpeed tensor parallel
+        kwargs["injection_policy"] = get_ds_injection_policy(self.model_config)
+
+        # initialize the inference engine
+        self.model = deepspeed.init_inference(model, **kwargs).module
+
+    def tokenize(self, prompt):
+        """Tokenize the input and move to HPU"""
+
+        input_tokens = self.tokenizer(prompt, return_tensors="pt", padding=True)
+        return input_tokens.input_ids.to(device=self.device)
+
+    def generate(self, prompt, **config):
+        """Takes in a prompt and generates a response."""
+
+        input_ids = self.tokenize(prompt)
+        gen_tokens = self.model.generate(input_ids, **config)
+        return self.tokenizer.batch_decode(gen_tokens, skip_special_tokens=True)[0]
+
+    def streaming_generate(self, prompt, streamer, **config):
+        """Generate the response given input in a streaming manner"""
+
+        input_ids = self.tokenize(prompt)
+        self.model.generate(input_ids, streamer=streamer, **config)
+
+    def get_streamer(self):
+        """
+            Return a streamer.
+            Only Rank 0 worker's result is needed.
+            Other workers return a fake streamer.
+        """
+
+        if self._local_rank == 0:
+            return RayTextIteratorStreamer(self.tokenizer, skip_special_tokens=True)
+        else:
+
+            class FakeStreamer:
+                def put(self, value):
+                    pass
+
+                def end(self):
+                    pass
+
+            return FakeStreamer()
 
 class RayTextIteratorStreamer(TextStreamer):
     def __init__(
         self,
-        tokenizer: "AutoTokenizer",
+        tokenizer,
         skip_prompt=False,
         timeout=None,
         **decode_kwargs,
@@ -70,148 +149,104 @@ class RayTextIteratorStreamer(TextStreamer):
             raise StopIteration()
         else:
             return value
-
-
-# __worker_def_start__
-@ray.remote(num_cpus=8, resources={"HPU": 1})
-class DeepSpeedInferenceWorker:
-    def __init__(self, model_id_or_path, world_size, local_rank):
-        # tweak transformers for better performance on gaudi
-        from optimum.habana.transformers.modeling_utils import (
-            adapt_transformers_to_gaudi,
-        )
-
-        adapt_transformers_to_gaudi()
-
-        self.model_id_or_path = model_id_or_path
-        self._world_size = world_size
-        self._local_rank = local_rank
-        self.device = torch.device("hpu")
-        self.model_config = AutoConfig.from_pretrained(
-            model_id_or_path,
-            torch_dtype=torch.bfloat16,
-            token="",
-            trust_remote_code=False,
-        )
-        self.tokenizer = AutoTokenizer.from_pretrained(
-            model_id_or_path, use_fast=False, token=""
-        )
-        self.tokenizer.padding_side = "left"
-        if self.tokenizer.pad_token is None:
-            self.tokenizer.pad_token = self.tokenizer.eos_token
-        self.model = self.load_model()
-
-    def load_model(self):
-        with deepspeed.OnDevice(dtype=torch.bfloat16, device="meta"):
-            model = AutoModelForCausalLM.from_config(
-                self.model_config, torch_dtype=torch.bfloat16
-            )
-        model = model.eval()
-
-        checkpoints_json = tempfile.NamedTemporaryFile(suffix=".json", mode="+w")
-        write_checkpoints_json(
-            self.model_id_or_path, self._local_rank, checkpoints_json, token=""
-        )
-        kwargs = {"dtype": torch.bfloat16}
-        kwargs["checkpoint"] = checkpoints_json.name
-        kwargs["tensor_parallel"] = {"tp_size": self._world_size}
-        # enable hpu graph
-        kwargs["enable_cuda_graph"] = True
-        # injection policy
-        kwargs["injection_policy"] = get_ds_injection_policy(self.model_config)
-
-        return deepspeed.init_inference(model, **kwargs).module
-
-    def generate(self, prompt, **config):
-        input_ids = self.tokenizer(
-            prompt, return_tensors="pt", padding=True
-        ).input_ids.to(self.device)
-        gen_tokens = self.model.generate(input_ids, **config)
-        return self.tokenizer.batch_decode(gen_tokens, skip_special_tokens=True)[0]
-
-    def streaming_generate(self, prompt, streamer, **config):
-        input_ids = self.tokenizer(
-            prompt, return_tensors="pt", padding=True
-        ).input_ids.to(self.device)
-        self.model.generate(input_ids, streamer=streamer, **config)
-
-    def get_streamer(self):
-        if self._local_rank == 0:
-            return RayTextIteratorStreamer(self.tokenizer, skip_special_tokens=True)
-        else:
-
-            class FakeStreamer:
-                def put(self, value):
-                    pass
-
-                def end(self):
-                    pass
-
-            return FakeStreamer()
-
-
 # __worker_def_end__
+
+# __deploy_def_start__
+# variables required for DeepSpeed on HPU
+HABANA_ENVS = {
+    "PT_HPU_LAZY_ACC_PAR_MODE": "0",
+    "PT_HPU_ENABLE_REFINE_DYNAMIC_SHAPES": "0",
+    "PT_HPU_ENABLE_WEIGHT_CPU_PERMUTE": "0",
+    "PT_HPU_ENABLE_LAZY_COLLECTIVES": "true",
+    "HABANA_VISIBLE_MODULES": "0,1,2,3,4,5,6,7",
+}
 
 # Define the Ray serve deployment
 @serve.deployment
-class LlamaModel:
-    def __init__(self, model_id_or_path, world_size):
+class DeepSpeedLlamaModel:
+    def __init__(self, world_size, model_id_or_path):
         self._world_size = world_size
-        TORCH_ENVS["WORLD_SIZE"] = str(world_size)
-        TORCH_ENVS["LOCAL_SIZE"] = str(world_size)
+
+        # Create the DeepSpeed workers
         self.deepspeed_workers = []
         for i in range(world_size):
-            worker_env = {**HABANA_ENVS, **TORCH_ENVS}
-            worker_env["RANK"] = str(i)
-            worker_env["LOCAL_RANK"] = str(i)
             self.deepspeed_workers.append(
                 DeepSpeedInferenceWorker.options(
-                    runtime_env=RuntimeEnv(env_vars=worker_env)
+                    runtime_env=RuntimeEnv(env_vars=HABANA_ENVS)
                 ).remote(model_id_or_path, world_size, i)
             )
-        # get workers' streamers
+        
+        # Initialize communication using HCCL backend
+        init_torch_dist_process_group(self.deepspeed_workers, backend="hccl")
+        
+        # Load model in all workers
+        for worker in self.deepspeed_workers:
+            worker.load_model.remote()
+        
+        # Get workers' streamers
         self.streamers = ray.get(
             [worker.get_streamer.remote() for worker in self.deepspeed_workers]
         )
-        self.loop = asyncio.get_running_loop()
 
-    # generate the response given input
-    # return after it's all generated
     def generate(self, prompt, **config):
+        """
+            Send the prompt to workers for generation.
+            Return after all workers have done generation.
+            Only rank 0 worker's result is returned.
+        """
+
         futures = [
             worker.generate.remote(prompt, **config)
             for worker in self.deepspeed_workers
         ]
         return ray.get(futures)[0]
 
-    # generate the repsonse given input in a streaming manner
     def streaming_generate(self, prompt, **config):
+        """
+            Send the prompt to workers for streaming generation.
+            Only rank 0 worker's result is used.
+        """
+
         for worker, streamer in zip(self.deepspeed_workers, self.streamers):
             worker.streaming_generate.remote(prompt, streamer, **config)
 
     def consume_streamer(self, streamer):
+        """Consume the streamer, return a generator"""
         for token in streamer:
             yield token
 
-    # handle requests
     async def __call__(self, http_request):
+        """Handle received http requests"""
+
+        # Load fields from the request
         json_request: str = await http_request.json()
-        prompts = []
         text = json_request["text"]
+        # Config used in generation
         config = json_request["config"] if "config" in json_request else {}
         streaming_response = json_request["stream"]
-        # process config
-        if "max_new_tokens" not in config:
-            # hpu requires setting max_new_tokens
-            config["max_new_tokens"] = 128
+        
         # prepare prompts
+        prompts = []
         if isinstance(text, list):
             prompts.extend(text)
         else:
             prompts.append(text)
-        # non streaming
+        
+        # process config
+        if "max_new_tokens" not in config:
+            # if not specified, use default value
+            config["max_new_tokens"] = 128
+
+        # enable hpu graph runtime
+        config["hpu_graphs"] = True
+        # lazy mode should be True when using hpu graphs
+        config["lazy_mode"] = True
+
+        # non streaming case
         if not streaming_response:
             return self.generate(prompts, **config)
+
+        # streming case
         self.streaming_generate(prompts, **config)
         return StreamingResponse(
             self.consume_streamer(self.streamers[0]),
@@ -219,30 +254,6 @@ class LlamaModel:
             media_type="text/plain",
         )
 
-
-if __name__ == "__main__":
-    ray.init(address="auto")
-    import sys
-    import requests
-
-    if len(sys.argv) > 2:
-        model_id_or_path = sys.argv[2]
-    else:
-        model_id_or_path = "meta-llama/Llama-2-70b-chat-hf"
-    deployment = LlamaModel.bind(model_id_or_path, int(sys.argv[1]))
-    handle = serve.run(deployment, _blocking=True)
-    print("Model is deployed successfully at http://127.0.0.1:8000/")
-    input("Press Enter to start inference")
-    prompt = "Once upon a time,"
-    # Add generation config here
-    config = {}
-    sample_input = {"text": prompt, "config": config, "stream": False}
-    outputs = requests.post("http://127.0.0.1:8000/", json=sample_input, stream=False)
-    print(outputs.text, flush=True)
-    input("Press Enter to start streaming inference")
-    sample_input["stream"] = True
-    outputs = requests.post("http://127.0.0.1:8000/", json=sample_input, stream=True)
-    outputs.raise_for_status()
-    for output in outputs.iter_content(chunk_size=None, decode_unicode=True):
-        print(output, end="", flush=True)
-    print()
+# replace the model id with path if necessary
+entrypoint = DeepSpeedLlamaModel.bind(8, "meta-llama/Llama-2-70b-chat-hf")
+# __deploy_def_start__
