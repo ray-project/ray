@@ -2,7 +2,8 @@
 
 set -euo pipefail
 
-export RAY_VERSION="3.0.0.dev0"
+RAY_VERSION="$(python python/ray/_version.py | cut -d' ' -f1)"
+export RAY_VERSION
 export S3_TEMP="s3://bk-premerge-first-jawfish-artifacts/tmp/runtime/${RAYCI_BUILD_ID}"
 export RUNTIME_ECR="830883877497.dkr.ecr.us-west-2.amazonaws.com"
 
