@@ -406,7 +406,10 @@ async def test_batch_cancellation(use_class, use_gen):
         gens = [func("hi1", "hi2"), func("hi3", "hi4")]
         tasks = [asyncio.create_task(gen.__anext__()) for gen in gens]
     else:
-        tasks = [asyncio.create_task(func("hi1", "hi2")), func("hi3", "hi4")]
+        tasks = [
+            asyncio.create_task(func("hi1", "hi2")),
+            asyncio.create_task(func("hi3", "hi4")),
+        ]
 
     print("Submitted requests.")
 
@@ -444,7 +447,10 @@ async def test_batch_cancellation(use_class, use_gen):
         gens = [func("hi1", "hi2"), func("hi3", "hi4")]
         tasks = [asyncio.create_task(gen.__anext__()) for gen in gens]
     else:
-        tasks = [asyncio.create_task(func("hi1", "hi2")), func("hi3", "hi4")]
+        tasks = [
+            asyncio.create_task(func("hi1", "hi2")),
+            asyncio.create_task(func("hi3", "hi4")),
+        ]
 
     result = await asyncio.gather(*tasks)
     assert result == [("hi1", "hi2"), ("hi3", "hi4")]
@@ -508,7 +514,10 @@ async def test_cancellation_after_error(use_class, use_gen):
         gens = [func("hi1", "hi2"), func("hi3", "hi4")]
         tasks = [asyncio.create_task(gen.__anext__()) for gen in gens]
     else:
-        tasks = [asyncio.create_task(func("hi1", "hi2")), func("hi3", "hi4")]
+        tasks = [
+            asyncio.create_task(func("hi1", "hi2")),
+            asyncio.create_task(func("hi3", "hi4")),
+        ]
 
     print("Submitted initial batch of requests.")
 
@@ -524,7 +533,10 @@ async def test_cancellation_after_error(use_class, use_gen):
         gens = [func("hi1", "hi2"), func("hi3", "hi4")]
         tasks = [asyncio.create_task(gen.__anext__()) for gen in gens]
     else:
-        tasks = [asyncio.create_task(func("hi1", "hi2")), func("hi3", "hi4")]
+        tasks = [
+            asyncio.create_task(func("hi1", "hi2")),
+            asyncio.create_task(func("hi3", "hi4")),
+        ]
 
     print("Submitted new batch of requests.")
 
