@@ -73,7 +73,6 @@ def download_example_file(
     """
     temp_file = None
     if not os.path.exists(example_file):
-
         example_url = base_url + example_file if base_url else example_file
         print(f">>> Attempting to download example file {example_url}...")
 
@@ -143,7 +142,6 @@ train_help = dict(
     ray_num_gpus="The '--num-gpus' argument to use if starting a new cluster.",
     ray_num_nodes="Emulate multiple cluster nodes for debugging.",
     ray_object_store_memory="--object-store-memory to use if starting a new cluster.",
-    upload_dir="Optional URI to sync training results to (e.g. s3://bucket).",
     trace="Whether to attempt to enable eager-tracing for framework=tf2.",
     torch="Whether to use PyTorch (instead of tf) as the DL framework. "
     "This argument is deprecated, please use --framework to select 'torch'"
@@ -236,7 +234,6 @@ class CLIArguments:
     CheckpointScoreAttr = typer.Option(
         "training_iteration", help=get_help("sync_on_checkpoint")
     )
-    UploadDir = typer.Option("", help=train_help.get("upload_dir"))
     Trace = typer.Option(False, help=train_help.get("trace"))
     LocalMode = typer.Option(False, help=train_help.get("local_mode"))
     Scheduler = typer.Option("FIFO", help=get_help("scheduler"))

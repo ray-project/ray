@@ -258,7 +258,6 @@ def run(
     resources_per_trial: str = cli.ResourcesPerTrial,
     keep_checkpoints_num: int = cli.KeepCheckpointsNum,
     checkpoint_score_attr: str = cli.CheckpointScoreAttr,
-    upload_dir: str = cli.UploadDir,
     # Additional config arguments used for overriding.
     v: bool = cli.V,
     vv: bool = cli.VV,
@@ -287,7 +286,6 @@ def run(
     # If no subcommand is specified, simply run the following lines as the
     # "rllib train" main command.
     if ctx.invoked_subcommand is None:
-
         # we only check for backends when actually running the command. otherwise the
         # start-up time is too slow.
         import_backends()
@@ -315,9 +313,6 @@ def run(
                 "config": dict(config, env=env),
                 "restore": restore,
                 "num_samples": num_samples,
-                "sync_config": {
-                    "upload_dir": upload_dir,
-                },
             }
         }
 
