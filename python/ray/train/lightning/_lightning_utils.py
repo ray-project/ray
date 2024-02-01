@@ -2,6 +2,7 @@ import logging
 import os
 import shutil
 import tempfile
+from pathlib import Path
 from typing import Any, Dict
 
 import torch
@@ -51,15 +52,6 @@ logger = logging.getLogger(__name__)
 LIGHTNING_REPORT_STAGE_KEY = "_report_on"
 
 
-def get_worker_root_device():
-    """Get the first torch device of the current worker if there are multiple."""
-    devices = ray.train.torch.get_device()
-    if isinstance(devices, list):
-        return devices[0]
-    else:
-        return devices
-
-
 @PublicAPI(stability="beta")
 class RayDDPStrategy(pl.strategies.DDPStrategy):
     """Subclass of DDPStrategy to ensure compatibility with Ray orchestration.
@@ -77,7 +69,7 @@ class RayDDPStrategy(pl.strategies.DDPStrategy):
 
     @property
     def root_device(self) -> torch.device:
-        return get_worker_root_device()
+        return ray.train.torch.get_device()
 
     @property
     def distributed_sampler_kwargs(self) -> Dict[str, Any]:
@@ -101,7 +93,7 @@ class RayFSDPStrategy(FSDPStrategy):  # noqa: F821
 
     @property
     def root_device(self) -> torch.device:
-        return get_worker_root_device()
+        return ray.train.torch.get_device()
 
     @property
     def distributed_sampler_kwargs(self) -> Dict[str, Any]:
@@ -144,7 +136,7 @@ class RayDeepSpeedStrategy(pl.strategies.DeepSpeedStrategy):
 
     @property
     def root_device(self) -> torch.device:
-        return get_worker_root_device()
+        return ray.train.torch.get_device()
 
     @property
     def distributed_sampler_kwargs(self) -> Dict[str, Any]:
@@ -242,7 +234,7 @@ class RayTrainReportCallback(pl.callbacks.Callback):
         super().__init__()
         self.trial_name = train.get_context().get_trial_name()
         self.local_rank = train.get_context().get_local_rank()
-        self.tmpdir_prefix = os.path.join(tempfile.gettempdir(), self.trial_name)
+        self.tmpdir_prefix = Path(tempfile.gettempdir(), self.trial_name).as_posix()
         if os.path.isdir(self.tmpdir_prefix) and self.local_rank == 0:
             shutil.rmtree(self.tmpdir_prefix)
 
@@ -250,7 +242,7 @@ class RayTrainReportCallback(pl.callbacks.Callback):
 
     def on_train_epoch_end(self, trainer, pl_module) -> None:
         # Creates a checkpoint dir with fixed name
-        tmpdir = os.path.join(self.tmpdir_prefix, str(trainer.current_epoch))
+        tmpdir = Path(self.tmpdir_prefix, str(trainer.current_epoch)).as_posix()
         os.makedirs(tmpdir, exist_ok=True)
 
         # Fetch metrics
@@ -262,7 +254,7 @@ class RayTrainReportCallback(pl.callbacks.Callback):
         metrics["step"] = trainer.global_step
 
         # Save checkpoint to local
-        ckpt_path = os.path.join(tmpdir, self.CHECKPOINT_NAME)
+        ckpt_path = Path(tmpdir, self.CHECKPOINT_NAME).as_posix()
         trainer.save_checkpoint(ckpt_path, weights_only=False)
 
         # Report to train session

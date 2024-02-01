@@ -7,6 +7,7 @@ import os
 import tarfile
 
 import pytest
+import webdataset as wds
 
 import ray
 from ray.tests.conftest import *  # noqa
@@ -197,6 +198,17 @@ def test_webdataset_coding(ray_start_2_cpus, tmp_path):
         assert isinstance(sample["und"], bytes)
         assert sample["und"] == b"undecoded"
         assert sample["custom"] == "custom-value"
+
+
+@pytest.mark.parametrize("num_rows_per_file", [5, 10, 50])
+def test_write_num_rows_per_file(tmp_path, ray_start_regular_shared, num_rows_per_file):
+    ray.data.from_items(
+        [{"id": str(i)} for i in range(100)], parallelism=20
+    ).write_webdataset(tmp_path, num_rows_per_file=num_rows_per_file)
+
+    for filename in os.listdir(tmp_path):
+        dataset = wds.WebDataset(os.path.join(tmp_path, filename))
+        assert len(list(dataset)) == num_rows_per_file
 
 
 if __name__ == "__main__":

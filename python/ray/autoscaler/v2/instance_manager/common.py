@@ -60,7 +60,7 @@ class InstanceUtil:
             Instance.RAY_RUNNING,
             Instance.RAY_STOPPING,
             Instance.RAY_STOPPED,
-            Instance.STOPPING,
+            Instance.TERMINATING,
             Instance.RAY_INSTALL_FAILED,
         }
 
@@ -166,9 +166,9 @@ class InstanceUtil:
                 Instance.RAY_RUNNING,
                 # Instance is requested to be stopped, e.g. instance leaked: no matching
                 # Instance with the same type is found in the autoscaler's state.
-                Instance.STOPPING,
+                Instance.TERMINATING,
                 # cloud instance somehow failed.
-                Instance.STOPPED,
+                Instance.TERMINATED,
             },
             # Ray process is being installed and started on the cloud instance.
             # This status is skipped for node provider that manages the ray
@@ -187,7 +187,7 @@ class InstanceUtil:
                 # transition was skipped.
                 Instance.RAY_STOPPED,
                 # cloud instance somehow failed during the installation process.
-                Instance.STOPPED,
+                Instance.TERMINATED,
             },
             # Ray process is installed and running on the cloud instance. When in this
             # status, a ray node must be present in the ray cluster.
@@ -198,7 +198,7 @@ class InstanceUtil:
                 # Ray is already stopped, as reported by the ray cluster.
                 Instance.RAY_STOPPED,
                 # cloud instance somehow failed.
-                Instance.STOPPED,
+                Instance.TERMINATED,
             },
             # When in this status, the ray process is requested to be stopped to the
             # ray cluster, but not yet present in the dead ray node list reported by
@@ -208,36 +208,36 @@ class InstanceUtil:
                 # reported by the ray cluster.
                 Instance.RAY_STOPPED,
                 # cloud instance somehow failed.
-                Instance.STOPPED,
+                Instance.TERMINATED,
             },
             # When in this status, the ray process is stopped, and the ray node is
             # present in the dead ray node list reported by the ray cluster.
             Instance.RAY_STOPPED: {
                 # cloud instance is requested to be stopped.
-                Instance.STOPPING,
+                Instance.TERMINATING,
                 # cloud instance somehow failed.
-                Instance.STOPPED,
+                Instance.TERMINATED,
             },
             # When in this status, the cloud instance is requested to be stopped to
             # the node provider.
-            Instance.STOPPING: {
+            Instance.TERMINATING: {
                 # When a cloud instance no longer appears in the list of running cloud
                 # instances from the node provider.
-                Instance.STOPPED
+                Instance.TERMINATED
             },
             # Whenever a cloud instance disappears from the list of running cloud
             # instances from the node provider, the instance is marked as stopped. Since
             # we guarantee 1:1 mapping of a Instance to a cloud instance, this is a
             # terminal state.
-            Instance.STOPPED: set(),  # Terminal state.
+            Instance.TERMINATED: set(),  # Terminal state.
             # When in this status, the cloud instance failed to be allocated by the
             # node provider.
             Instance.ALLOCATION_FAILED: set(),  # Terminal state.
             Instance.RAY_INSTALL_FAILED: {
                 # Autoscaler requests to shutdown the instance when ray install failed.
-                Instance.STOPPING,
+                Instance.TERMINATING,
                 # cloud instance somehow failed.
-                Instance.STOPPED,
+                Instance.TERMINATED,
             },
             # Initial state before the instance is created. Should never be used.
             Instance.UNKNOWN: set(),
