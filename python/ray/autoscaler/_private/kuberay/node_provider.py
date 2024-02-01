@@ -230,7 +230,7 @@ class IKubernetesHttpApiClient(ABC):
 
 
 class KubernetesHttpApiClient(IKubernetesHttpApiClient):
-    def __init__(self, namespace: str, kuberay_crd_version: KUBERAY_CRD_VER):
+    def __init__(self, namespace: str, kuberay_crd_version: str = KUBERAY_CRD_VER):
         self._kuberay_crd_version = kuberay_crd_version
         self._namespace = namespace
         self._headers, self._verify = load_k8s_secrets()

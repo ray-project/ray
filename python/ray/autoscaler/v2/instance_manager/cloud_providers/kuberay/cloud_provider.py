@@ -497,6 +497,8 @@ class KubeRayProvider(ICloudInstanceProvider):
             return None
 
         status = KubeRayProvider._get_node_status(pod)
+        # TODO: we should prob get from the pod's env var (RAY_CLOUD_INSTANCE_ID)
+        # directly.
         cloud_instance_id = pod["metadata"]["name"]
         return CloudInstance(
             cloud_instance_id=cloud_instance_id,

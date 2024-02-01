@@ -39,6 +39,12 @@ class CloudInstance:
     # Status of the cloud instance.
     status: NodeStatus
     # Update request id from which the cloud instance is launched.
+    # This could be None if the cloud instance couldn't be associated with requests
+    # by the cloud provider: e.g. cloud provider doesn't support per-instance
+    # extra metadata.
+    # This is fine for now since the reconciler should be able to know how
+    # to handle cloud instances w/o request ids.
+    # TODO: make this a required field.
     request_id: Optional[str] = None
 
 
