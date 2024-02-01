@@ -1,6 +1,7 @@
 import click
 import os
 import subprocess
+from typing import Set
 
 bazel_workspace_dir = os.environ.get("BUILD_WORKSPACE_DIRECTORY", "")
 
@@ -50,8 +51,8 @@ def get_current_version(root_dir: str):
 
 
 def upgrade_file_version(
-    non_java_files: set[str],
-    java_files: set[str],
+    non_java_files: Set[str],
+    java_files: Set[str],
     non_java_version: str,
     java_version: str,
     new_version: str,
