@@ -66,3 +66,18 @@ Advanced
     - :ref:`Fine-tune vicuna-13b with PyTorch Lightning and DeepSpeed <vicuna_lightning_deepspeed_finetuning>`
   * - Lightning
     - :ref:`Fine-tune dolly-v2-7b with PyTorch Lightning and FSDP <dolly_lightning_fsdp_finetuning>`
+
+Community Examples
+==================
+
+.. list-table::
+  :widths: 1 5
+  :header-rows: 1
+
+  * - Framework
+    - Example
+  * - Framework A
+    - `Dummy Example A <https://github.com/aws-neuron/aws-neuron-samples/blob/master/torch-neuronx/transformers-neuronx/inference/meta-llama-2-13b-sampling.ipynb>`_
+  * - Framework B
+    - :ref:`Dummy Example B <dummy_hpu_examples>`
+  
