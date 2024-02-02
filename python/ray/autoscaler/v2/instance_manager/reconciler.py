@@ -1,9 +1,11 @@
-from collections import defaultdict
 import logging
 import time
+from collections import defaultdict
 from typing import Dict, List, Optional, Set, Tuple
-from ray.autoscaler.v2.instance_manager.common import InstanceUtil
 
+from google.protobuf.json_format import MessageToDict
+
+from ray.autoscaler.v2.instance_manager.common import InstanceUtil
 from ray.autoscaler.v2.instance_manager.config import InstanceReconcileConfig
 from ray.autoscaler.v2.instance_manager.instance_manager import InstanceManager
 from ray.autoscaler.v2.instance_manager.node_provider import (
@@ -13,17 +15,17 @@ from ray.autoscaler.v2.instance_manager.node_provider import (
     LaunchNodeError,
 )
 from ray.autoscaler.v2.instance_manager.ray_installer import RayInstallError
-from ray.autoscaler.v2.instance_manager.instance_manager import InstanceManager
+from ray.autoscaler.v2.scheduler import IResourceScheduler
 from ray.core.generated.autoscaler_pb2 import ClusterResourceState, NodeState
-from ray.core.generated.instance_manager_pb2 import (
-    Instance as IMInstance,
-    StatusCode,
-    UpdateInstanceManagerStateRequest,
-)
+from ray.core.generated.instance_manager_pb2 import GetInstanceManagerStateRequest
+from ray.core.generated.instance_manager_pb2 import Instance as IMInstance
 from ray.core.generated.instance_manager_pb2 import (
     InstanceUpdateEvent as IMInstanceUpdateEvent,
 )
-from ray.autoscaler.v2.scheduler import IResourceScheduler
+from ray.core.generated.instance_manager_pb2 import (
+    StatusCode,
+    UpdateInstanceManagerStateRequest,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -112,7 +114,10 @@ class Reconciler:
 
         # Handle 1 & 2 for cloud instance allocation.
         Reconciler._handle_cloud_instance_allocation(
-            instance_manager, non_terminated_cloud_instances, cloud_provider_errors
+            instance_manager,
+            non_terminated_cloud_instances,
+            cloud_provider_errors,
+            config,
         )
         Reconciler._handle_cloud_instance_terminated(
             instance_manager, non_terminated_cloud_instances, cloud_provider_errors
@@ -179,6 +184,7 @@ class Reconciler:
         unassigned_cloud_instances_by_type: Dict[
             str, List[CloudInstance]
         ] = defaultdict(list)
+
         for cloud_instance_id, cloud_instance in non_terminated_cloud_instances.items():
             if cloud_instance_id not in assigned_cloud_instance_ids:
                 unassigned_cloud_instances_by_type[cloud_instance.node_type].append(
@@ -266,6 +272,8 @@ class Reconciler:
 
             if not update_event:
                 continue
+
+            logger.debug("Updating {}".format(MessageToDict(update_event)))
             updates[instance.instance_id] = update_event
 
         # Update the instance manager for the events.
@@ -301,7 +309,11 @@ class Reconciler:
     def _get_im_instances(
         instance_manager: InstanceManager,
     ) -> Tuple[List[IMInstance], int]:
-        im_state = instance_manager.get_instance_manager_state()
+        reply = instance_manager.get_instance_manager_state(
+            request=GetInstanceManagerStateRequest()
+        )
+        assert reply.status.code == StatusCode.OK
+        im_state = reply.state
         return im_state.instances, im_state.version
 
     @staticmethod
@@ -310,6 +322,8 @@ class Reconciler:
         updates: Dict[str, IMInstanceUpdateEvent],
         version: int,
     ) -> None:
+        if not updates:
+            return
         reply = instance_manager.update_instance_manager_state(
             request=UpdateInstanceManagerStateRequest(
                 expected_version=version,
@@ -317,5 +331,5 @@ class Reconciler:
             )
         )
         assert (
-            reply.status == StatusCode.OK
+            reply.status.code == StatusCode.OK
         ), f"Failed to update instance manager: {reply}"
