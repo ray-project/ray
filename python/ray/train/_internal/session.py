@@ -244,11 +244,9 @@ class _TrainSession:
         self.storage.persist_artifacts(force=True)
 
         # Wait for training to finish.
-        # This will raise any errors that occur during training, including
-        # SystemError
-        func_output = self.training_thread.join(timeout=timeout)
-        # If training finished successfully, then return results.
-        return func_output
+        # This will raise any errors that occur during training, including SystemError
+        if self.training_thread.is_alive():
+            self.training_thread.join(timeout=timeout)
 
     def get_next(self) -> Optional[_TrainingResult]:
         """Gets the next ``_TrainingResult`` from the result queue.
