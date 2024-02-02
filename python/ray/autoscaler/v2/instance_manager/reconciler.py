@@ -2,14 +2,14 @@ import logging
 from typing import Dict, List
 
 from ray.autoscaler.v2.instance_manager.config import InstanceReconcileConfig
-from ray.autoscaler.v2.scheduler import IResourceScheduler
+from ray.autoscaler.v2.instance_manager.instance_manager import InstanceManager
 from ray.autoscaler.v2.instance_manager.node_provider import (
     CloudInstance,
     CloudInstanceId,
     CloudInstanceProviderError,
 )
 from ray.autoscaler.v2.instance_manager.ray_installer import RayInstallError
-from ray.autoscaler.v2.instance_manager.instance_manager import InstanceManager
+from ray.autoscaler.v2.scheduler import IResourceScheduler
 from ray.core.generated.autoscaler_pb2 import NodeState
 
 logger = logging.getLogger(__name__)
