@@ -11,7 +11,7 @@ def list_commit_shas():
     """
     owner = "ray-project"
     repo = "ray"
-    token = "input-github-token-here"
+    token = "your-github-token-here"
     headers = {
         "Authorization": f"Bearer {token}",
         "Accept": "application/vnd.github+json",
@@ -25,7 +25,7 @@ def list_commit_shas():
         "per_page": 1,
         "page": 1,
         "since": "2023-08-23T00:00:00Z",
-        "until": bound
+        "until": time_bound
     }
     def get_commit_count():
         response = requests.get(f"https://api.github.com/repos/{owner}/{repo}/commits", headers=headers, params=params)
@@ -61,7 +61,7 @@ def get_docker_token():
     token = response.json().get('token')
     return token
 
-def count_docker_tags(page_size: int = 100):
+def count_docker_tags():
     """
     Count number of tags from rayproject/ray repository.
     """
@@ -85,12 +85,13 @@ def delete_tags(namespace: str, repository: str, tags: list[str]):
     Delete tag from Docker Hub repo.
     """
     for tag in tags:
+        print(f"Deleting {tag}") # TODO: delete this line
         url = f"https://hub.docker.com/v2/repositories/{namespace}/{repository}/tags/{tag}"
-        response = requests.delete(url)
-        if response.status_code != 204:
-            print(f"Failed to delete {tag}")
+        #response = requests.delete(url)
+        #if response.status_code != 204:
+        #    print(f"Failed to delete {tag}")
 
-def query_tags_to_delete(page_size:int = 100, page_count: int, commit_short_shas: Set[str]):
+def query_tags_to_delete(page_count: int, commit_short_shas: Set[str], page_size: int = 100):
     """
     Query tags to delete from rayproject/ray repository.
     """
@@ -98,10 +99,12 @@ def query_tags_to_delete(page_size:int = 100, page_count: int, commit_short_shas
     current_time = datetime.now(timezone.utc)
     tags_to_delete = []
     for page in range(page_count, 0, -1):
+        print("Querying page ", page) # Replace with log
         response = requests.get('https://hub.docker.com/v2/namespaces/rayproject/repositories/ray/tags', params={'page': page, 'page_size': 100})
         result = response.json()["results"]
         tags = [tag["name"] for tag in result]
-        commit_tags = [tag for tag in tags if len(tag.split('-')[0]) == 6 and tag.split('-')[0] in far_commits]
+        # Check if tag is in list of commit SHAs
+        commit_tags = [tag for tag in tags if len(tag.split('-')[0]) == 6 and tag.split('-')[0] in commit_short_shas]
         
         for tag in commit_tags:
             created_time = get_image_creation_time(repository, tag)
@@ -115,15 +118,17 @@ def query_tags_to_delete(page_size:int = 100, page_count: int, commit_short_shas
                 return tags_to_delete
     return tags_to_delete
 
-
 def main():
+    page_size = 100
     # Get list of commit SHAs from at least 30 days ago
     commit_shas = list_commit_shas()
-
+    print(len(commit_shas))
     token = get_docker_token()
-    docker_tag_count = count_docker_tags(100)
-    page_count = tag_count // page_size + 1
-    tags_to_delete = query_tags_to_delete(page_size, page_count, commit_shas)
-    # delete_tags("rayproject", "ray", tags_to_delete)
+    docker_tag_count = count_docker_tags()
+    print(docker_tag_count)
+    page_count = docker_tag_count // page_size + 1
+    tags_to_delete = query_tags_to_delete(page_count, commit_shas, page_size)
+    delete_tags("rayproject", "ray", tags_to_delete)
+
 if __name__ == '__main__':
     main()
