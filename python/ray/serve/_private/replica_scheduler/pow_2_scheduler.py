@@ -506,12 +506,15 @@ class PowerOfTwoChoicesReplicaScheduler(ReplicaScheduler):
                     self.num_scheduling_tasks_in_backoff
                 )
 
-    async def _actively_probe_queue_lens(
+    async def _probe_queue_lens(
         self,
         replicas: List[ReplicaWrapper],
         backoff_index: int,
     ) -> List[Tuple[ReplicaWrapper, int]]:
-        """XXX: COMMENT!"""
+        """XXX: COMMENT!
+
+        Note that it updates the cache.
+        """
         result: List[Tuple[ReplicaWrapper, int]] = []
         if len(replicas) == 0:
             return result
@@ -569,7 +572,9 @@ class PowerOfTwoChoicesReplicaScheduler(ReplicaScheduler):
 
                 logger.warning(msg)
             else:
-                result.append((t.replica, t.result()))
+                queue_len = t.result()
+                result.append((t.replica, queue_len))
+                self._replica_queue_len_cache.update(r.replica_id, queue_len)
 
         assert len(result) == len(replicas)
         return result
@@ -594,46 +599,39 @@ class PowerOfTwoChoicesReplicaScheduler(ReplicaScheduler):
         lowest_queue_len = math.inf
         chosen_replica_id: Optional[str] = None
 
-        # XXX: if a replica is at max_concurrent_requests, should we consider it not in
-        # the cache? Otherwise we'll have to wait for the timeout to be able to schedule
-        # to it...
-
         not_in_cache: List[ReplicaWrapper] = []
         if self._use_replica_queue_len_cache:
             # Populate available queue lens from the cache.
             for r in candidates:
                 queue_len = self._replica_queue_len_cache.get(r.replica_id)
-                if queue_len is None:
+                # XXX: comment here! Don't consider those at capacity.
+                if queue_len is None or queue_len >= r.max_concurrent_requests:
                     not_in_cache.append(r)
-                elif (
-                    queue_len < r.max_concurrent_requests
-                    and queue_len < lowest_queue_len
-                ):
+                elif queue_len < lowest_queue_len:
                     lowest_queue_len = queue_len
                     chosen_replica_id = r.replica_id
         else:
             not_in_cache = candidates
 
-        # XXX: decision point here! If we have a validate candidate from the cache, do
-        # we bother actively probing? Or even probe all if we're probing any?
-        #
-        # Ideally, we make the fast decision and refresh the cache in the background.
-
-        for r, queue_len in await self._actively_probe_queue_lens(
-            not_in_cache,
-            backoff_index,
-        ):
-            if queue_len is None:
-                # None is returned if we failed to get the queue len.
-                continue
-
-            self._replica_queue_len_cache.update(r.replica_id, queue_len)
-            if queue_len < r.max_concurrent_requests and queue_len < lowest_queue_len:
-                lowest_queue_len = queue_len
-                chosen_replica_id = r.replica_id
-
+        # XXX: maybe we should optimistically increment for the chosen replica.
         if chosen_replica_id is None:
-            return None
+            for r, queue_len in await self._probe_queue_lens(
+                not_in_cache,
+                backoff_index,
+            ):
+                if queue_len is None:
+                    # None is returned if we failed to get the queue len.
+                    continue
+
+                if (
+                    queue_len < r.max_concurrent_requests
+                    and queue_len < lowest_queue_len
+                ):
+                    lowest_queue_len = queue_len
+                    chosen_replica_id = r.replica_id
+        elif len(not_in_cache) > 0:
+            # Probe in the background.
+            self._loop.create_task(self._probe_queue_lens(not_in_cache, backoff_index))
 
         # `self._replicas` may have been updated since the candidates were chosen.
         # In that case, return `None` so a new one is selected.
