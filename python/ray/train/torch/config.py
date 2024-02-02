@@ -113,11 +113,9 @@ def _setup_torch_process_group(
 
 
 def _shutdown_torch(destroy_process_group=False):
-    from ray.air._internal.torch_utils import get_device
+    from ray.air._internal.torch_utils import get_devices
 
-    devices = get_device()
-    if not isinstance(devices, list):
-        devices = [devices]
+    devices = get_devices()
     if destroy_process_group:
         dist.destroy_process_group()
     if torch.cuda.is_available():
@@ -129,7 +127,7 @@ def _shutdown_torch(destroy_process_group=False):
 def _set_torch_distributed_env_vars():
     # Same env vars as in
     # https://pytorch.org/docs/stable/elastic/run.html#environment-variables
-    from ray.air._internal.torch_utils import get_device
+    from ray.train.torch import get_device
 
     context = ray.train.get_context()
     os.environ["LOCAL_RANK"] = str(context.get_local_rank())
@@ -140,8 +138,6 @@ def _set_torch_distributed_env_vars():
 
     # Makes sure Hugging Face Accelerate uses the correct device
     device = get_device()
-    if isinstance(device, list):
-        device = device[0]
     os.environ["ACCELERATE_TORCH_DEVICE"] = str(device)
 
 

@@ -192,6 +192,8 @@ if __name__ == "__main__":
                 or changed_file == ".buildkite/pipeline.gpu_large.yml"
                 or changed_file == "ci/docker/ml.build.wanda.yaml"
                 or changed_file == "ci/ray_ci/ml.tests.yml"
+                or changed_file == "ci/docker/min.build.Dockerfile"
+                or changed_file == "ci/docker/min.build.wanda.yaml"
             ):
                 RAY_CI_ML_AFFECTED = 1
                 RAY_CI_TRAIN_AFFECTED = 1
@@ -308,6 +310,8 @@ if __name__ == "__main__":
                 ):
                     # Do not run on config changes
                     RAY_CI_RELEASE_TESTS_AFFECTED = 1
+                    if changed_file == "ci/ray_ci/macos/macos_ci.sh":
+                        RAY_CI_MACOS_WHEELS_AFFECTED = 1
             elif any(changed_file.startswith(prefix) for prefix in skip_prefix_list):
                 # nothing is run but linting in these cases
                 pass

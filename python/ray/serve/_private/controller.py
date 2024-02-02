@@ -260,7 +260,8 @@ class ServeController:
         )
         self.deployment_state_manager.record_autoscaling_metrics(data, send_timestamp)
 
-    def record_handle_metrics(self, data: Dict[str, float], send_timestamp: float):
+    def record_handle_metrics(self, data, send_timestamp: float):
+        logger.debug(f"Received handle metrics: {data} at timestamp {send_timestamp}")
         self.deployment_state_manager.record_handle_metrics(data, send_timestamp)
 
     def _dump_autoscaling_metrics_for_testing(self):

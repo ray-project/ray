@@ -237,6 +237,7 @@ class WorkerSet:
         if (
             local_worker
             and self.__worker_manager.num_actors() > 0
+            and not config.uses_new_env_runners
             and not config.create_env_on_local_worker
             and (not config.observation_space or not config.action_space)
         ):
