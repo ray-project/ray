@@ -2,12 +2,14 @@ import asyncio
 import enum
 import logging
 import math
+import pickle
 import random
 import time
 from collections import defaultdict, deque
 from dataclasses import dataclass
 from typing import (
     AsyncGenerator,
+    Callable,
     DefaultDict,
     Deque,
     Dict,
@@ -20,7 +22,12 @@ from typing import (
 
 import ray
 from ray.exceptions import RayActorError
-from ray.serve._private.common import DeploymentID, RequestMetadata, RunningReplicaInfo
+from ray.serve._private.common import (
+    DeploymentID,
+    ReplicaQueueLengthInfo,
+    RequestMetadata,
+    RunningReplicaInfo,
+)
 from ray.serve._private.constants import (
     RAY_SERVE_MAX_QUEUE_LENGTH_RESPONSE_DEADLINE_S,
     RAY_SERVE_MULTIPLEXED_MODEL_ID_MATCHING_TIMEOUT_S,
@@ -46,6 +53,45 @@ class PendingRequest:
 class LocalityScope(str, enum.Enum):
     NODE = "NODE"
     AVAILABILITY_ZONE = "AVAILABILITY_ZONE"
+
+
+class ReplicaQueueLengthCache:
+    def __init__(
+        self,
+        *,
+        staleness_timeout_s: float = 10.0,
+        get_curr_time_s: Callable[[], float] = None,
+    ):
+        # Map of replica_id: (queue_length, timestamp).
+        self._cache: Dict[str, Tuple[int, float]] = {}
+        self._staleness_timeout_s = staleness_timeout_s
+        self._get_curr_time_s = (
+            get_curr_time_s if get_curr_time_s is not None else time.time
+        )
+
+    def _is_timed_out(self, timestamp_s: int) -> bool:
+        return self._get_curr_time_s() - timestamp_s > self._staleness_timeout_s
+
+    def get(self, replica_id: str) -> Optional[int]:
+        """Get the queue length for a replica ID.
+
+        Returns `None` if the replica ID is not present or the entry is timed out.
+        """
+        replica_info = self._cache.get(replica_id)
+        if replica_info is None or self._is_timed_out(replica_info[1]):
+            return None
+
+        return replica_info[0]
+
+    def set(self, replica_id: str, queue_length: int):
+        """Set (or update) the queue length for a replica ID."""
+        self._cache[replica_id] = (queue_length, self._get_curr_time_s())
+
+    def remove_inactive_replicas(self, *, active_replica_ids: Set[str]):
+        """Removes entries for all replica IDs not in the provided active set."""
+        for replica_id in list(self._cache.keys()):
+            if replica_id not in active_replica_ids:
+                self._cache.pop(replica_id)
 
 
 class PowerOfTwoChoicesReplicaScheduler(ReplicaScheduler):
@@ -96,6 +142,7 @@ class PowerOfTwoChoicesReplicaScheduler(ReplicaScheduler):
         self_node_id: Optional[str] = None,
         self_actor_id: Optional[str] = None,
         self_availability_zone: Optional[str] = None,
+        use_replica_queue_len_cache: bool = False,
     ):
         self._loop = event_loop
         self._deployment_id = deployment_id
@@ -103,11 +150,13 @@ class PowerOfTwoChoicesReplicaScheduler(ReplicaScheduler):
         self._prefer_local_az_routing = prefer_local_az_routing
         self._self_node_id = self_node_id
         self._self_availability_zone = self_availability_zone
+        self._use_replica_queue_len_cache = use_replica_queue_len_cache
 
         # Current replicas available to be scheduled.
         # Updated via `update_replicas`.
         self._replica_id_set: Set[str] = set()
         self._replicas: Dict[str, ReplicaWrapper] = {}
+        self._replica_queue_len_cache = ReplicaQueueLengthCache()
 
         # NOTE(edoakes): Python 3.10 removed the `loop` parameter to `asyncio.Event`.
         # Now, the `asyncio.Event` will call `get_running_loop` in its constructor to
@@ -260,6 +309,9 @@ class PowerOfTwoChoicesReplicaScheduler(ReplicaScheduler):
         self._colocated_replica_ids = new_colocated_replica_ids
         self._multiplexed_model_id_to_replica_ids = (
             new_multiplexed_model_id_to_replica_ids
+        )
+        self._replica_queue_len_cache.remove_inactive_replicas(
+            active_replica_ids=new_replica_id_set
         )
         self._replicas_updated_event.set()
         self.maybe_start_scheduling_tasks()
@@ -453,23 +505,16 @@ class PowerOfTwoChoicesReplicaScheduler(ReplicaScheduler):
                     self.num_scheduling_tasks_in_backoff
                 )
 
-    async def select_from_candidate_replicas(
+    async def _actively_probe_queue_lens(
         self,
         candidates: List[ReplicaWrapper],
         backoff_index: int,
-    ) -> Optional[ReplicaWrapper]:
-        """Chooses the best replica from the list of candidates.
+    ) -> List[Tuple[ReplicaWrapper, int]]:
+        """XXX: COMMENT!"""
+        result: List[Tuple[ReplicaWrapper, int]] = []
+        if len(candidates) == 0:
+            return result
 
-        If none of the replicas can be scheduled, returns `None`.
-
-        The queue length at each replica is queried directly from it. The time waited
-        for these queries is capped by a response deadline; if a replica doesn't
-        doesn't respond within the deadline it is not considered. The deadline will be
-        increased exponentially in backoff.
-
-        Among replicas that respond within the deadline and accept the request (don't
-        have full queues), the one with the lowest queue length is chosen.
-        """
         # Ensure the max deadline is always >= the initial deadline.
         max_queue_len_response_deadline_s = max(
             self.queue_len_response_deadline_s,
@@ -494,6 +539,7 @@ class PowerOfTwoChoicesReplicaScheduler(ReplicaScheduler):
             return_when=asyncio.ALL_COMPLETED,
         )
         for t in pending:
+            result.append((t.replica_id, None))
             t.cancel()
             logger.warning(
                 f"Failed to get queue length from replica {t.replica_id} "
@@ -503,10 +549,9 @@ class PowerOfTwoChoicesReplicaScheduler(ReplicaScheduler):
                 "`RAY_SERVE_QUEUE_LENGTH_RESPONSE_DEADLINE_S` environment variable."
             )
 
-        chosen_replica_id = None
-        lowest_queue_len = math.inf
         for t in done:
             if t.exception() is not None:
+                result.append((t.replica_id, None))
                 msg = (
                     "Failed to fetch queue length for "
                     f"replica {t.replica_id}: '{t.exception()}'"
@@ -523,10 +568,54 @@ class PowerOfTwoChoicesReplicaScheduler(ReplicaScheduler):
 
                 logger.warning(msg)
             else:
-                queue_len, accepted = t.result()
-                if accepted and queue_len < lowest_queue_len:
-                    chosen_replica_id = t.replica_id
+                result.append((t.replica_id, t.result()[0]))
+
+        assert len(result) == len(candidates)
+        return result
+
+    async def select_from_candidate_replicas(
+        self,
+        candidates: List[ReplicaWrapper],
+        backoff_index: int,
+    ) -> Optional[ReplicaWrapper]:
+        """Chooses the best replica from the list of candidates.
+
+        If none of the replicas can be scheduled, returns `None`.
+
+        The queue length at each replica is queried directly from it. The time waited
+        for these queries is capped by a response deadline; if a replica doesn't
+        doesn't respond within the deadline it is not considered. The deadline will be
+        increased exponentially in backoff.
+
+        Among replicas that respond within the deadline and accept the request (don't
+        have full queues), the one with the lowest queue length is chosen.
+        """
+        lowest_queue_len = math.inf
+        chosen_replica_id: Optional[str] = None
+
+        not_in_cache: List[ReplicaWrapper] = []
+        if self._use_replica_queue_len_cache:
+            # Populate available queue lens from the cache.
+            for c in candidates:
+                queue_len = self._replica_queue_len_cache.get(c.replica_id)
+                if queue_len is not None:
+                    if queue_len < lowest_queue_len:
+                        lowest_queue_len = queue_len
+                        chosen_replica_id = c.replica_id
+                else:
+                    not_in_cache.append(c)
+        else:
+            not_in_cache = candidates
+
+        for replica_id, queue_len in await self._actively_probe_queue_lens(
+            not_in_cache,
+            backoff_index,
+        ):
+            if queue_len is not None:
+                self._replica_queue_len_cache.update(replica_id, queue_len)
+                if queue_len < lowest_queue_len:
                     lowest_queue_len = queue_len
+                    chosen_replica_id = replica_id
 
         if chosen_replica_id is None:
             return None
@@ -642,7 +731,9 @@ class PowerOfTwoChoicesReplicaScheduler(ReplicaScheduler):
         if tasks_to_start > 0:
             self.num_scheduling_tasks_gauge.set(self.curr_num_scheduling_tasks)
 
-    async def choose_replica_for_query(self, query: Query) -> ReplicaWrapper:
+    async def choose_replica_for_query(
+        self, query: Query, *, emplace_front: bool = False
+    ) -> ReplicaWrapper:
         """Chooses a replica to send the provided request to.
 
         Requests are scheduled in FIFO order, so this puts a future on the internal
@@ -651,11 +742,18 @@ class PowerOfTwoChoicesReplicaScheduler(ReplicaScheduler):
 
         Upon cancellation (by the caller), the future is cancelled and will be passed
         over when a replica becomes available.
+
+        XXX: comment emplace_front.
         """
         pending_request = PendingRequest(asyncio.Future(), query.metadata)
         try:
-            self._pending_requests_to_fulfill.append(pending_request)
-            self._pending_requests_to_schedule.append(pending_request)
+            if emplace_front:
+                self._pending_requests_to_fulfill.appendleft(pending_request)
+                self._pending_requests_to_schedule.appendleft(pending_request)
+            else:
+                self._pending_requests_to_fulfill.append(pending_request)
+                self._pending_requests_to_schedule.append(pending_request)
+
             self.maybe_start_scheduling_tasks()
             replica = await pending_request.future
         except asyncio.CancelledError as e:
@@ -664,6 +762,19 @@ class PowerOfTwoChoicesReplicaScheduler(ReplicaScheduler):
             raise e from None
 
         return replica
+
+    async def _handle_system_response(
+        self, obj_ref_gen: "ray._raylet.ObjectRefGenerator"
+    ) -> bool:
+        # TODO: put this in the wrapper.
+        system_response_ref = await obj_ref_gen.__anext__()
+        system_response: ReplicaQueueLengthInfo = pickle.loads(
+            await system_response_ref
+        )
+        self._replica_queue_len_cache.set_replica_queue_length(
+            system_response.num_ongoing_requests
+        )
+        return system_response.accepted
 
     async def assign_replica(
         self, query: Query
@@ -674,4 +785,21 @@ class PowerOfTwoChoicesReplicaScheduler(ReplicaScheduler):
         request, so it's up to the caller to time out or cancel the request.
         """
         replica = await self.choose_replica_for_query(query)
-        return replica.send_query(query), replica.replica_id
+        if not self._use_replica_queue_len_cache:
+            return replica.send_query(query), replica.replica_id
+
+        while True:
+            try:
+                obj_ref_gen = replica.send_query(query)
+                accepted = await self._handle_system_response(obj_ref_gen)
+                if accepted:
+                    if query.metadata.is_streaming:
+                        return obj_ref_gen, replica.replica_id
+                    else:
+                        return await obj_ref_gen.__anext__(), replica.replica_id
+
+                replica = await self.choose_replica_for_query(query, emplace_front=True)
+            except Exception:
+                # XXX: should we retry here or not?
+                logger.exception("Unexpected error during scheduling.")
+                raise

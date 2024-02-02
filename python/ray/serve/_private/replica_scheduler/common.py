@@ -114,10 +114,15 @@ class ActorReplicaWrapper:
         )
 
     def _send_query_python(
-        self, query: Query
+        self, query: Query, *, late_binding: bool
     ) -> Union[ray.ObjectRef, "ray._raylet.ObjectRefGenerator"]:
         """Send the query to a Python replica."""
-        if query.metadata.is_streaming:
+        if late_binding:
+            # XXX: needs comments.
+            method = self._actor_handle.handle_request_late_binding.options(
+                num_returns="streaming"
+            )
+        elif query.metadata.is_streaming:
             method = self._actor_handle.handle_request_streaming.options(
                 num_returns="streaming"
             )
@@ -127,12 +132,12 @@ class ActorReplicaWrapper:
         return method.remote(pickle.dumps(query.metadata), *query.args, **query.kwargs)
 
     def send_query(
-        self, query: Query
+        self, query: Query, *, late_binding: bool
     ) -> Union[ray.ObjectRef, "ray._raylet.ObjectRefGenerator"]:
         if self._replica_info.is_cross_language:
             return self._send_query_java(query)
         else:
-            return self._send_query_python(query)
+            return self._send_query_python(query, late_binding=late_binding)
 
 
 class ReplicaScheduler(ABC):

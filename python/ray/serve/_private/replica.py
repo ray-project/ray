@@ -22,6 +22,7 @@ from ray.serve import metrics
 from ray.serve._private.common import (
     DeploymentID,
     ReplicaName,
+    ReplicaQueueLengthInfo,
     ReplicaTag,
     RequestMetadata,
     ServeComponentType,
@@ -399,14 +400,54 @@ class ReplicaActor:
         if user_exception is not None:
             raise user_exception from None
 
-    async def handle_request(
+    async def handle_request_late_binding(
         self,
         pickled_request_metadata: bytes,
         *request_args,
         **request_kwargs,
+    ) -> AsyncGenerator[Any, None]:
+        """XXX: TODO"""
+        request_metadata = pickle.loads(pickled_request_metadata)
+        limit = self._deployment_config.max_concurrent_queries
+        num_ongoing_requests = self.get_num_ongoing_requests()
+        if num_ongoing_requests >= limit:
+            logger.warning(
+                f"Replica at capacity of max_concurrent_queries={limit}, "
+                f"rejecting request {request_metadata.request_id}."
+            )
+            yield pickle.dumps(
+                ReplicaQueueLengthInfo(
+                    accepted=False, num_ongoing_requests=num_ongoing_requests
+                )
+            )
+            # XXX: comment.
+            return
+
+        yield pickle.dumps(
+            ReplicaQueueLengthInfo(
+                # TODO: comment about +1.
+                accepted=True,
+                num_ongoing_requests=num_ongoing_requests + 1,
+            )
+        )
+
+        if request_metadata.is_streaming:
+            async for result in self.handle_request_streaming(
+                request_metadata, *request_args, **request_kwargs
+            ):
+                yield result
+        else:
+            yield self.handle_request(request_metadata, *request_args, **request_kwargs)
+
+    async def handle_request(
+        self,
+        request_metadata: Union[bytes, RequestMetadata],
+        *request_args,
+        **request_kwargs,
     ) -> Tuple[bytes, Any]:
         """Entrypoint for all `stream=False` calls."""
-        request_metadata = pickle.loads(pickled_request_metadata)
+        if isinstance(request_metadata, bytes):
+            request_metadata = pickle.loads(request_metadata)
         with self._wrap_user_method_call(request_metadata):
             return await self._user_callable_wrapper.call_user_method(
                 request_metadata, request_args, request_kwargs
@@ -481,12 +522,13 @@ class ReplicaActor:
 
     async def handle_request_streaming(
         self,
-        pickled_request_metadata: bytes,
+        request_metadata: Union[bytes, RequestMetadata],
         *request_args,
         **request_kwargs,
     ) -> AsyncGenerator[Any, None]:
         """Generator that is the entrypoint for all `stream=True` handle calls."""
-        request_metadata = pickle.loads(pickled_request_metadata)
+        if isinstance(request_metadata, bytes):
+            request_metadata = pickle.loads(request_metadata)
         with self._wrap_user_method_call(request_metadata):
             async for result in self._call_user_generator(
                 request_metadata,
