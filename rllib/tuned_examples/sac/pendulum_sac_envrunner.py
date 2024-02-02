@@ -1,6 +1,3 @@
-import ray
-
-from ray import air, tune
 from ray.rllib.algorithms.sac.sac import SACConfig
 from ray.rllib.env.single_agent_env_runner import SingleAgentEnvRunner
 
@@ -23,7 +20,7 @@ config = (
         train_batch_size=256,
         target_network_update_freq=1,
         replay_buffer_config={
-            "type": "EpisodeReplayBuffer",
+            "type": "PrioritizedEpisodeReplayBuffer",
         },
         num_steps_sampled_before_learning_starts=256,
         model={
@@ -46,14 +43,3 @@ stop = {
     "sampler_results/episode_reward_mean": -250,
     "timesteps_total": 100000,
 }
-
-
-ray.init(local_mode=True)
-tuner = tune.Tuner(
-    "SAC",
-    param_space=config,
-    run_config=air.RunConfig(
-        stop=stop,
-    ),
-)
-tuner.fit()

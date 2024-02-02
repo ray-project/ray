@@ -1,4 +1,5 @@
 import logging
+import numpy as np
 import tree
 from typing import Any, Dict, List, Optional, Type, Union
 
@@ -26,7 +27,7 @@ from ray.rllib.utils.metrics import (
     SYNCH_WORKER_WEIGHTS_TIMER,
 )
 from ray.rllib.utils.replay_buffers.utils import (
-    update_priorities_in_replay_buffer,
+    update_priorities_in_episode_replay_buffer,
 )
 from ray.rllib.utils.typing import RLModuleSpec, ResultDict
 
@@ -311,6 +312,10 @@ class SACConfig(AlgorithmConfig):
                 num_steps_sampled_before_learning_starts
             )
 
+        # Include the `twin_q` hyperparameter into the model config.
+        # TODO (simon, sven): Find a general way to update the model_config.
+        self.model.update({"twin_q": self.twin_q})
+
         return self
 
     @override(AlgorithmConfig)
@@ -351,10 +356,10 @@ class SACConfig(AlgorithmConfig):
 
         # Validate that we use the corresponding `EpisodeReplayBuffer` when using
         # episodes.
-        if (
-            self.uses_new_env_runners
-            and self.replay_buffer_config["type"] != "EpisodeReplayBuffer"
-        ):
+        if self.uses_new_env_runners and self.replay_buffer_config["type"] not in [
+            "EpisodeReplayBuffer",
+            "PrioritizedEpisodeReplayBuffer",
+        ]:
             raise ValueError(
                 "When using the new `EnvRunner API` the replay buffer must be of type "
                 "`EpisodeReplayBuffer`."
@@ -477,11 +482,10 @@ class SAC(DQN):
             # Run multiple training iterations.
             for _ in range(sample_and_train_weight):
                 # Sample training batch from replay_buffer.
-                # TODO (simon): Implement here the `PERB.sample()`.
                 train_dict = self.local_replay_buffer.sample(
                     num_items=self.config.train_batch_size,
-                    # TODO (simon): Implement for n-step adjustment.
-                    batch_length_T=self.config.n_step + 1,
+                    n_step=self.config.n_step,
+                    gamma=self.config.gamma,
                 )
 
                 # TODO (sven): This looks a bit ugly, but we have not the same
@@ -491,35 +495,52 @@ class SAC(DQN):
                 # returns obs_t, action_t, reward_(t-1). So, we take the
                 # reward from the subsequent experience in the episode to
                 # calculate the Q-values.
-                train_batch = SampleBatch(
-                    {
-                        SampleBatch.OBS: train_dict[SampleBatch.OBS][:, 0],
-                        SampleBatch.NEXT_OBS: train_dict[SampleBatch.OBS][
-                            :, self.config.n_step
-                        ],
-                        SampleBatch.ACTIONS: train_dict[SampleBatch.ACTIONS][:, 0],
-                        SampleBatch.REWARDS: train_dict[SampleBatch.REWARDS][:, 1:].sum(
-                            dim=-1
-                        ),
-                        SampleBatch.TERMINATEDS: train_dict["is_terminated"][
-                            :, self.config.n_step
-                        ],
-                        SampleBatch.TRUNCATEDS: train_dict["is_truncated"][
-                            :, self.config.n_step
-                        ],
-                    }
-                )
+                train_batch = SampleBatch(train_dict)
+                # train_batch = SampleBatch(
+                #     {
+                #         SampleBatch.OBS: train_dict[SampleBatch.OBS],
+                #         SampleBatch.NEXT_OBS: train_dict[SampleBatch.NEXT_OBS],
+                #         SampleBatch.ACTIONS: train_dict[SampleBatch.ACTIONS],
+                #         SampleBatch.REWARDS: train_dict[SampleBatch.REWARDS],
+                #         SampleBatch.TERMINATEDS: train_dict["is_terminated"],
+                #         SampleBatch.TRUNCATEDS: train_dict["is_truncated"],
+                #     }
+                # )
                 # Convert to multi-agent batch as `LearnerGroup` depends on it.
                 train_batch = train_batch.as_multi_agent()
+
+                def reduce_fn(results: List[ResultDict]) -> ResultDict:
+                    """Reduces all metrics, but the TD-errors."""
+                    # First get the single modules' results.
+                    module_results = [
+                        v for res in results for k, v in res.items() if k != "__all__"
+                    ]
+                    # Extract the TD-errors as we want to keep them as arrays.
+                    td_errors = tree.map_structure_up_to(
+                        {"td_error": True}, lambda x: x, *module_results
+                    )
+                    # Now reduce all other results.
+                    reduced_results = tree.map_structure(
+                        lambda *x: np.mean(x), *results
+                    )
+                    # Add the TD-error arrays to the results and return.
+                    return {
+                        k: v if k == "__all__" else {**v, "td_error": td_error}
+                        for k, v, td_error in zip(
+                            reduced_results.keys(),
+                            reduced_results.values(),
+                            [None] + list(td_errors.values()),
+                        )
+                    }
 
                 # Training on batch.
                 train_results = self.learner_group.update_from_batch(
                     train_batch,
+                    reduce_fn=reduce_fn,
                 )
 
                 # Update replay buffer priorities.
-                # TODO (simon): Add here the new function for the PERB.
-                update_priorities_in_replay_buffer(
+                update_priorities_in_episode_replay_buffer(
                     self.local_replay_buffer,
                     self.config,
                     train_batch,

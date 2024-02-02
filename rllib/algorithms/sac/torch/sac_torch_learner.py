@@ -67,7 +67,7 @@ class SACTorchLearner(SACLearner, TorchLearner):
 
             self.register_optimizer(
                 module_id=module_id,
-                optimizer_name="qf",
+                optimizer_name="qf_twin",
                 optimizer=optim_twin_critic,
                 params=params_twin_critic,
                 lr_or_lr_schedule=self.config.lr,
@@ -199,7 +199,7 @@ class SACTorchLearner(SACLearner, TorchLearner):
             q_twin_curr = self.module[module_id]._qf_twin_forward_train(q_batch_curr)[
                 QF_PREDS
             ]
-            q_curr = torch.min(q_curr, q_twin_curr, dim=-1)
+            q_curr = torch.min(q_curr, q_twin_curr)
 
         # Compute Q-values from the target Q network for the next state with the
         # sampled actions for the next state.
@@ -217,8 +217,8 @@ class SACTorchLearner(SACLearner, TorchLearner):
         if self.config.twin_q:
             q_target_twin_next = self.module[module_id]._qf_target_twin_forward_train(
                 q_batch_next
-            )
-            q_target_next = torch.min(q_target_next, q_target_twin_next, dim=-1)
+            )[QF_PREDS]
+            q_target_next = torch.min(q_target_next, q_target_twin_next)
 
         # Compute value function for next state (see eq. (3) in Haarnoja et al. (2018)).
         # Note, we use here the sampled actions in the log probabilities.
@@ -231,9 +231,7 @@ class SACTorchLearner(SACLearner, TorchLearner):
         # backpropagate through the target network when optimizing the Q loss.
         q_selected_target = (
             batch[SampleBatch.REWARDS]
-            # TODO (simon): Implement n-step adjustment.
-            # + (self.config["gamma"] ** self.config["n_step"]) * q_next_masked
-            + self.config.gamma * q_next_masked
+            + (self.config.gamma**self.config.n_step) * q_next_masked
         ).detach()
 
         # Calculate the TD-error. Note, this is needed for the priority weights in
@@ -241,7 +239,7 @@ class SACTorchLearner(SACLearner, TorchLearner):
         td_error = torch.abs(q_selected - q_selected_target)
         # If a twin Q network should be used, add the TD error of the twin Q network.
         if self.config.twin_q:
-            td_error += torch.abs(q_twin_selected, q_selected_target)
+            td_error += torch.abs(q_twin_selected - q_selected_target)
             # Rescale the TD error.
             td_error *= 0.5
 

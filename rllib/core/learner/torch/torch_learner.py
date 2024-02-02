@@ -43,7 +43,7 @@ from ray.rllib.utils.typing import ModuleID, Optimizer, Param, ParamDict, Tensor
 torch, nn = try_import_torch()
 
 if torch:
-    from ray.air._internal.torch_utils import get_devices
+    from ray.air._internal.torch_utils import get_device
 
 
 logger = logging.getLogger(__name__)
@@ -303,7 +303,7 @@ class TorchLearner(Learner):
             # the user the option to run on the gpu of their choice, so we enable that
             # option here via the local gpu id scaling config parameter.
             if self._distributed:
-                devices = get_devices()
+                devices = get_device()
                 assert len(devices) == 1, (
                     "`get_devices()` should only return one cuda device, "
                     f"but {devices} was returned instead."
