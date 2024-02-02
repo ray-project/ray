@@ -1,5 +1,4 @@
 import logging
-import time
 from collections import defaultdict
 from typing import Dict, List, Optional, Set, Tuple
 
@@ -82,11 +81,9 @@ class Reconciler:
                 When a instance with launch request id (indicating a previous launch
                 request was made) could be assigned to an unassigned cloud instance
                 of the same instance type.
-            2.  REQUESTED -> ALLOCATION_FAILED/QUEUED:
+            2.  REQUESTED -> ALLOCATION_FAILED:
                 When there's an error from the cloud provider for launch failure so
-                that the instance becomes ALLOCATION_FAILED, or the requested instance
-                is not assigned for too long that it times out and becomes QUEUED
-                again.
+                that the instance becomes ALLOCATION_FAILED.
             3.  * -> RAY_RUNNING:
                 When a ray node on a cloud instance joins the ray cluster, we will
                 transition the instance to RAY_RUNNING.
@@ -156,6 +153,7 @@ class Reconciler:
             5. Drain ray nodes
               (RAY_RUNNING -> RAY_STOPPING):
                 a. Idle terminating ray nodes.
+            6. Handle any stuck instances with timeouts.
         """
         pass
 
@@ -199,77 +197,11 @@ class Reconciler:
         )
 
         # For each instance, try to allocate or fail the allocation.
-        def _allocate_or_fail(im_instance) -> Optional[IMInstanceUpdateEvent]:
-            unassigned_cloud_instance = None
-
-            # Try to allocate an unassigned cloud instance.
-            # TODO(rickyx): We could also look at the launch request id
-            # on the cloud node and the im instance later once all node providers
-            # support request id. For now, we only look at the instance type.
-            if len(
-                unassigned_cloud_instances_by_type.get(im_instance.instance_type, [])
-            ):
-                unassigned_cloud_instance = unassigned_cloud_instances_by_type[
-                    im_instance.instance_type
-                ].pop()
-
-            if unassigned_cloud_instance:
-                return IMInstanceUpdateEvent(
-                    instance_id=im_instance.instance_id,
-                    new_instance_status=IMInstance.ALLOCATED,
-                    cloud_instance_id=unassigned_cloud_instance.cloud_instance_id,
-                )
-
-            # If there's a launch error, transition to ALLOCATION_FAILED.
-            launch_error = launch_errors.get(im_instance.launch_request_id)
-            if launch_error and launch_error.node_type == im_instance.instance_type:
-                return IMInstanceUpdateEvent(
-                    instance_id=im_instance.instance_id,
-                    new_instance_status=IMInstance.ALLOCATION_FAILED,
-                    details=launch_error.details,
-                )
-            # No update.
-            return None
-
-        def _retry_or_fail(im_instance) -> Optional[IMInstanceUpdateEvent]:
-            # If we have been stuck in this allocated status for too long, we should
-            # either retry or fail.
-            timeout_s = config.request_status_timeout_s
-            max_num_retry_request_to_allocate = config.max_num_retry_request_to_allocate
-
-            all_request_times_ns = sorted(
-                InstanceUtil.get_status_transition_times_ns(
-                    im_instance, select_instance_status=IMInstance.REQUESTED
-                )
-            )
-
-            # Fail the allocation if we have tried too many times.
-            if len(all_request_times_ns) > max_num_retry_request_to_allocate:
-                return IMInstanceUpdateEvent(
-                    instance_id=im_instance.instance_id,
-                    new_instance_status=IMInstance.ALLOCATION_FAILED,
-                    details=(
-                        "Failed to allocate cloud instance after "
-                        f"{len(all_request_times_ns)} attempts"
-                    ),
-                )
-
-            # Retry the allocation if we have waited for too long.
-            last_request_time_ns = all_request_times_ns[-1]
-            if time.time_ns() - last_request_time_ns > timeout_s * 1e9:
-                return IMInstanceUpdateEvent(
-                    instance_id=im_instance.instance_id,
-                    new_instance_status=IMInstance.QUEUED,
-                    details=f"Retry allocation after timeout={timeout_s}s",
-                )
-            return None
-
         for instance in instances_with_launch_requests:
             # Try allocate or fail with errors.
-            update_event = _allocate_or_fail(instance)
-            if not update_event:
-                update_event = _retry_or_fail(instance)
-
+            update_event = Reconciler._try_or_fail_allocation(
+                instance, unassigned_cloud_instances_by_type, launch_errors
+            )
             if not update_event:
                 continue
 
@@ -278,6 +210,57 @@ class Reconciler:
 
         # Update the instance manager for the events.
         Reconciler._update_instance_manager(instance_manager, updates, version)
+
+    @staticmethod
+    def _try_or_fail_allocation(
+        im_instance: IMInstance,
+        unassigned_cloud_instances_by_type: Dict[str, List[CloudInstance]],
+        launch_errors: Dict[str, LaunchNodeError],
+    ) -> Optional[IMInstanceUpdateEvent]:
+        """
+        Allocate, or fail the cloud instance allocation for the instance.
+
+        Args:
+            im_instance: The instance to allocate or fail.
+            unassigned_cloud_instances_by_type: The unassigned cloud instances by type.
+            launch_errors: The launch errors from the cloud provider.
+
+        Returns:
+            Instance update to ALLOCATED: if there's a matching unassigned cloud
+                instance with the same type.
+            Instance update to ALLOCATION_FAILED: if the instance allocation failed
+                with errors.
+            None: if there's no update.
+
+        """
+        unassigned_cloud_instance = None
+
+        # Try to allocate an unassigned cloud instance.
+        # TODO(rickyx): We could also look at the launch request id
+        # on the cloud node and the im instance later once all node providers
+        # support request id. For now, we only look at the instance type.
+        if len(unassigned_cloud_instances_by_type.get(im_instance.instance_type, [])):
+            unassigned_cloud_instance = unassigned_cloud_instances_by_type[
+                im_instance.instance_type
+            ].pop()
+
+        if unassigned_cloud_instance:
+            return IMInstanceUpdateEvent(
+                instance_id=im_instance.instance_id,
+                new_instance_status=IMInstance.ALLOCATED,
+                cloud_instance_id=unassigned_cloud_instance.cloud_instance_id,
+            )
+
+        # If there's a launch error, transition to ALLOCATION_FAILED.
+        launch_error = launch_errors.get(im_instance.launch_request_id)
+        if launch_error and launch_error.node_type == im_instance.instance_type:
+            return IMInstanceUpdateEvent(
+                instance_id=im_instance.instance_id,
+                new_instance_status=IMInstance.ALLOCATION_FAILED,
+                details=launch_error.details,
+            )
+        # No update.
+        return None
 
     @staticmethod
     def _handle_ray_running(

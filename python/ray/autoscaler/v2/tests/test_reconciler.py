@@ -5,8 +5,6 @@ import time
 
 import pytest
 
-import mock
-
 from ray.autoscaler.v2.instance_manager.config import InstanceReconcileConfig
 from ray.autoscaler.v2.instance_manager.instance_manager import InstanceManager
 from ray.autoscaler.v2.instance_manager.instance_storage import InstanceStorage
@@ -121,89 +119,27 @@ class TestReconciler:
         assert instances["i-2"].status == Instance.REQUESTED
 
     @staticmethod
-    @mock.patch("time.time_ns")
-    def test_requested_instance_to_queued(cur_time_ns, setup):
-        """
-        When retry for request timeout happens, the instance should be
-        moved to QUEUED.
-        """
-        instance_manager, instance_storage = setup
-        cur_time_ns.return_value = 100 * s_to_ns
-
-        instances = [
-            create_instance(
-                "i-1",
-                status=Instance.REQUESTED,
-                instance_type="type-1",
-                status_times=[(Instance.REQUESTED, cur_time_ns - 10 * s_to_ns)],
-                launch_request_id="l1",
-            ),
-        ]
-
-        TestReconciler._add_instances(
-            instance_storage,
-            instances,
-        )
-
-        Reconciler.sync_from(
-            instance_manager,
-            ray_nodes=[],
-            non_terminated_cloud_instances={},
-            cloud_provider_errors=[],
-            ray_install_errors=[],
-            config=InstanceReconcileConfig(
-                request_status_timeout_s=1, max_num_retry_request_to_allocate=3
-            ),
-        )
-
-        instances, _ = instance_storage.get_instances()
-        assert len(instances) == 1
-        assert instances["i-1"].status == Instance.QUEUED
-
-    @staticmethod
-    @mock.patch("time.time_ns")
-    def test_requested_instance_to_allocation_failed(cur_time_ns, setup):
+    def test_requested_instance_to_allocation_failed(setup):
         """
         Test that the instance should be transitioned to ALLOCATION_FAILED
-        iff:
-            1. request timeout happens and retry count hits.
-            2. launch error happens.
+        when launch error happens.
         """
-        timeout_s = 5
-        cur_time_ns.return_value = 20 * s_to_ns
         instance_manager, instance_storage = setup
 
         instances = [
-            # Should fail due to launch error.
+            # Should succeed with instance matched.
             create_instance(
                 "i-1",
                 status=Instance.REQUESTED,
                 instance_type="type-1",
-                status_times=[
-                    (Instance.REQUESTED, cur_time_ns - (timeout_s - 1) * s_to_ns)
-                ],
                 launch_request_id="l1",
             ),
-            # Should fail due to timeout and retry count hits.
+            # Should fail due to launch error.
             create_instance(
                 "i-2",
                 status=Instance.REQUESTED,
-                instance_type="type-1",
-                status_times=[
-                    (Instance.REQUESTED, cur_time_ns - (timeout_s + 2) * s_to_ns),
-                    (Instance.REQUESTED, cur_time_ns - (timeout_s + 1) * s_to_ns),
-                ],
-                launch_request_id="l2",
-            ),
-            # Still OK - but retrying
-            create_instance(
-                "i-3",
-                status=Instance.REQUESTED,
-                instance_type="type-1",
-                status_times=[
-                    (Instance.REQUESTED, cur_time_ns - (timeout_s + 1) * s_to_ns)
-                ],
-                launch_request_id="l2",
+                instance_type="type-2",
+                launch_request_id="l1",
             ),
         ]
         TestReconciler._add_instances(instance_storage, instances)
@@ -212,29 +148,31 @@ class TestReconciler:
             LaunchNodeError(
                 request_id="l1",
                 count=1,  # The request failed.
-                node_type="type-1",
+                node_type="type-2",
                 timestamp_ns=1,
                 exception=None,
-                details="fail",
+                details="nooooo",
             )
         ]
+
+        cloud_instances = {
+            "c-1": CloudInstance("c-1", "type-1", "", True),
+        }
 
         Reconciler.sync_from(
             instance_manager,
             ray_nodes=[],
-            non_terminated_cloud_instances={},
+            non_terminated_cloud_instances=cloud_instances,
             cloud_provider_errors=launch_errors,
             ray_install_errors=[],
-            config=InstanceReconcileConfig(
-                request_status_timeout_s=timeout_s, max_num_retry_request_to_allocate=1
-            ),
+            config=InstanceReconcileConfig(),
         )
 
         instances, _ = instance_storage.get_instances()
-        assert len(instances) == 3
-        assert instances["i-1"].status == Instance.ALLOCATION_FAILED
+        assert len(instances) == 2
+        assert instances["i-1"].status == Instance.ALLOCATED
+        assert instances["i-1"].cloud_instance_id == "c-1"
         assert instances["i-2"].status == Instance.ALLOCATION_FAILED
-        assert instances["i-3"].status == Instance.QUEUED
 
 
 if __name__ == "__main__":
