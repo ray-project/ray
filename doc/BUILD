@@ -122,6 +122,9 @@ py_test_run_all_subdirectory(
     include = ["source/serve/doc_code/**/*.py"],
     exclude = [
         "source/serve/doc_code/aws_neuron_core_inference_serve.py",
+        "source/serve/doc_code/hpu_inference_serve.py",
+        "source/serve/doc_code/hpu_inference_serve_deepspeed.py",
+        "source/serve/doc_code/hpu_inference_client.py",
         "source/serve/doc_code/distilbert.py",
         "source/serve/doc_code/stable_diffusion.py",
         "source/serve/doc_code/object_detection.py",
@@ -153,7 +156,10 @@ py_test_run_all_subdirectory(
         "source/serve/doc_code/object_detection.py",
     ],
     exclude = [
-        "source/serve/doc_code/aws_neuron_core_inference_serve.py"
+        "source/serve/doc_code/aws_neuron_core_inference_serve.py",
+        "source/serve/doc_code/hpu_inference_serve.py",
+        "source/serve/doc_code/hpu_inference_serve_deepspeed.py",
+        "source/serve/doc_code/hpu_inference_client.py",
     ],
     extra_srcs = [],
     tags = ["exclusive", "team:serve", "gpu"],
