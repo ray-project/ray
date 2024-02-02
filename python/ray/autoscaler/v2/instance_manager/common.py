@@ -223,7 +223,15 @@ class InstanceUtil:
             Instance.TERMINATING: {
                 # When a cloud instance no longer appears in the list of running cloud
                 # instances from the node provider.
-                Instance.TERMINATED
+                Instance.TERMINATED,
+                # When the cloud instance failed to be terminated.
+                Instance.TERMINATION_FAILED,
+            },
+            # When in this status, the cloud instance failed to be terminated by the
+            # node provider. We will keep retrying.
+            Instance.TERMINATION_FAILED: {
+                # Retry the termination, become terminating again.
+                Instance.TERMINATING,
             },
             # Whenever a cloud instance disappears from the list of running cloud
             # instances from the node provider, the instance is marked as stopped. Since

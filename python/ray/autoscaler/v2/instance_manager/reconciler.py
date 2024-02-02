@@ -16,7 +16,7 @@ from ray.autoscaler.v2.instance_manager.node_provider import (
 )
 from ray.autoscaler.v2.instance_manager.ray_installer import RayInstallError
 from ray.autoscaler.v2.instance_manager.instance_manager import InstanceManager
-from ray.core.generated.autoscaler_pb2 import NodeState
+from ray.core.generated.autoscaler_pb2 import ClusterResourceState, NodeState
 from ray.core.generated.instance_manager_pb2 import (
     Instance as IMInstance,
     StatusCode,
@@ -32,7 +32,7 @@ logger = logging.getLogger(__name__)
 class Reconciler:
     """
     Reconciler is responsible for
-        1. Reconciling the instance manager's instances with extenal states like
+        1. Reconciling the instance manager's instances with external states like
         the cloud provider's, the ray cluster's states, the ray installer's results.
         It performs "passive" status transitions for the instances (where the status
         transition should only be reflecting the external states of the cloud provider
@@ -92,17 +92,22 @@ class Reconciler:
             4.  * -> TERMINATED:
                 When the cloud instance is already terminated, we will transition the
                 instance to TERMINATED.
-            5.  * -> RAY_STOPPED:
+            5.  TERMINATING -> TERMINATION_FAILED:
+                When there's an error from the cloud provider for termination failure.
+            6.  * -> RAY_STOPPED:
                 When ray was stopped on the cloud instance, we will transition the
                 instance to RAY_STOPPED.
-            6.  * -> RAY_INSTALL_FAILED:
+            7.  * -> RAY_INSTALL_FAILED:
                 When there's an error from RayInstaller.
 
         Args:
-            im_instances: The instance manager's instances.
-            ray_cluster_resource_state: The ray cluster's resource state.
-            non_terminated_cloud_instances: The non-terminated cloud instances.
-            cloud_provider_errors: The cloud provider errors.
+            instance_manager: The instance manager to reconcile.
+            ray_nodes: The ray cluster's states of ray nodes.
+            non_terminated_cloud_instances: The non-terminated cloud instances from
+                the cloud provider.
+            cloud_provider_errors: The errors from the cloud provider.
+            ray_install_errors: The errors from RayInstaller.
+            config: The config for the instance reconcile.
 
         """
 
@@ -110,16 +115,17 @@ class Reconciler:
         Reconciler._handle_cloud_instance_allocation(
             instance_manager, non_terminated_cloud_instances, cloud_provider_errors
         )
-        Reconciler._handle_ray_running(instance_manager, ray_nodes)
         Reconciler._handle_cloud_instance_terminated(
             instance_manager, non_terminated_cloud_instances, cloud_provider_errors
         )
+        Reconciler._handle_ray_running(instance_manager, ray_nodes)
         Reconciler._handle_ray_stopped(instance_manager, ray_nodes)
         Reconciler._handle_ray_install_failed(instance_manager, ray_install_errors)
 
     @staticmethod
     def step_next(
         instance_manager: InstanceManager,
+        ray_cluster_resource_state: ClusterResourceState,
         scheduler: IResourceScheduler,
         config: InstanceReconcileConfig,
     ):
@@ -154,6 +160,7 @@ class Reconciler:
         instance_manager: InstanceManager,
         non_terminated_cloud_instances: Dict[CloudInstanceId, CloudInstance],
         cloud_provider_errors: List[CloudInstanceProviderError],
+        config: InstanceReconcileConfig,
     ):
         im_instances, version = Reconciler._get_im_instances(instance_manager)
         updates = {}
@@ -187,7 +194,7 @@ class Reconciler:
         )
 
         # For each instance, try to allocate or fail the allocation.
-        def _try_allocate_or_fail(im_instance):
+        def _allocate_or_fail(im_instance) -> Optional[IMInstanceUpdateEvent]:
             unassigned_cloud_instance = None
 
             # Try to allocate an unassigned cloud instance.
@@ -219,10 +226,48 @@ class Reconciler:
             # No update.
             return None
 
+        def _retry_or_fail(im_instance) -> Optional[IMInstanceUpdateEvent]:
+            # If we have been stuck in this allocated status for too long, we should
+            # either retry or fail.
+            timeout_s = config.request_status_timeout_s
+            max_num_retry_request_to_allocate = config.max_num_retry_request_to_allocate
+
+            all_request_times_ns = sorted(
+                InstanceUtil.get_status_transition_times_ns(
+                    im_instance, select_instance_status=IMInstance.REQUESTED
+                )
+            )
+
+            # Fail the allocation if we have tried too many times.
+            if len(all_request_times_ns) > max_num_retry_request_to_allocate:
+                return IMInstanceUpdateEvent(
+                    instance_id=im_instance.instance_id,
+                    new_instance_status=IMInstance.ALLOCATION_FAILED,
+                    details=(
+                        "Failed to allocate cloud instance after "
+                        f"{len(all_request_times_ns)} attempts"
+                    ),
+                )
+
+            # Retry the allocation if we have waited for too long.
+            last_request_time_ns = all_request_times_ns[-1]
+            if time.time_ns() - last_request_time_ns > timeout_s * 1e9:
+                return IMInstanceUpdateEvent(
+                    instance_id=im_instance.instance_id,
+                    new_instance_status=IMInstance.QUEUED,
+                    details=f"Retry allocation after timeout={timeout_s}s",
+                )
+            return None
+
         for instance in instances_with_launch_requests:
-            update_event = _try_allocate_or_fail(instance)
-            if update_event:
-                updates[instance.instance_id] = update_event
+            # Try allocate or fail with errors.
+            update_event = _allocate_or_fail(instance)
+            if not update_event:
+                update_event = _retry_or_fail(instance)
+
+            if not update_event:
+                continue
+            updates[instance.instance_id] = update_event
 
         # Update the instance manager for the events.
         Reconciler._update_instance_manager(instance_manager, updates, version)
