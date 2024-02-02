@@ -439,8 +439,10 @@ directory you launched the training script from.
         # NOTE: The working directory is copied to each worker and is read only.
         assert os.path.exists("./data.txt"), os.getcwd()
 
-        # Write artifacts that you want to persist in the trial directory.
-        print(ray.train.get_context().get_trial_dir())
+        # If `SyncConfig(sync_artifacts=True)`, write artifacts that you want to
+        # persist in the trial directory.
+        # Artifacts written in the current working directory will NOT be persisted.
+        ray.train.get_context().get_trial_dir()
 
     trainer = TorchTrainer(
         train_fn_per_worker,
