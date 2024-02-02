@@ -271,6 +271,8 @@ RAY_SERVE_MAX_QUEUE_LENGTH_RESPONSE_DEADLINE_S = float(
     os.environ.get("RAY_SERVE_MAX_QUEUE_LENGTH_RESPONSE_DEADLINE_S", 1.0)
 )
 
+# XXX: add another feature flag for late binding!
+
 # Feature flag for caching queue lengths for faster routing in each handle.
 RAY_SERVE_ENABLE_QUEUE_LENGTH_CACHE = (
     os.environ.get("RAY_SERVE_ENABLE_QUEUE_LENGTH_CACHE", "0") == "1"
