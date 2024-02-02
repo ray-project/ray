@@ -6,6 +6,9 @@ import subprocess
 from typing import Set
 
 def list_commit_shas():
+    """
+    Get list of commit SHAs on ray master branch from at least 30 days ago.
+    """
     owner = "ray-project"
     repo = "ray"
     token = "input-github-token-here"
@@ -114,7 +117,9 @@ def query_tags_to_delete(page_size:int = 100, page_count: int, commit_short_shas
 
 
 def main():
+    # Get list of commit SHAs from at least 30 days ago
     commit_shas = list_commit_shas()
+
     token = get_docker_token()
     docker_tag_count = count_docker_tags(100)
     page_count = tag_count // page_size + 1
