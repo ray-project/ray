@@ -3,7 +3,7 @@ import importlib
 import os
 import sys
 import time
-from typing import Optional, Set, Tuple, Union
+from typing import Optional, Set, Union
 
 import pytest
 
@@ -16,6 +16,7 @@ from ray.serve._private.replica_scheduler import (
     ReplicaWrapper,
 )
 
+DEFAULT_MAX_CONCURRENT_REQUESTS = 10
 SCHEDULER_NODE_ID = "scheduler_node_id"
 SCHEDULER_AZ = "scheduler_az"
 
@@ -29,19 +30,20 @@ class FakeReplicaWrapper(ReplicaWrapper):
         availability_zone: Optional[str] = None,
         reset_after_response: bool = False,
         model_ids: Optional[Set[str]] = None,
-        sleep_time_s: float = 0.0
+        sleep_time_s: float = 0.0,
+        max_concurrent_requests: int = DEFAULT_MAX_CONCURRENT_REQUESTS,
     ):
         self._replica_id = replica_id
         self._node_id = node_id
         self._availability_zone = availability_zone
         self._queue_len = 0
-        self._accepted = False
+        self._max_concurrent_requests = max_concurrent_requests
         self._has_queue_len_response = asyncio.Event()
         self._reset_after_response = reset_after_response
         self._model_ids = model_ids or set()
         self._sleep_time_s = sleep_time_s
 
-        self.get_queue_state_was_cancelled = False
+        self.get_queue_len_was_cancelled = False
         self.queue_len_deadline_history = list()
 
     @property
@@ -60,18 +62,20 @@ class FakeReplicaWrapper(ReplicaWrapper):
     def multiplexed_model_ids(self) -> Set[str]:
         return self._model_ids
 
-    def set_queue_state_response(
+    @property
+    def max_concurrent_requests(self) -> int:
+        return self._max_concurrent_requests
+
+    def set_queue_len_response(
         self,
         queue_len: int,
-        accepted: bool = True,
         exception: Optional[Exception] = None,
     ):
         self._queue_len = queue_len
-        self._accepted = accepted
         self._exception = exception
         self._has_queue_len_response.set()
 
-    async def get_queue_state(self, *, deadline_s: float) -> Tuple[int, bool]:
+    async def get_queue_len(self, *, deadline_s: float) -> int:
         self.queue_len_deadline_history.append(deadline_s)
         try:
             while not self._has_queue_len_response.is_set():
@@ -86,9 +90,9 @@ class FakeReplicaWrapper(ReplicaWrapper):
             if self._exception is not None:
                 raise self._exception
 
-            return self._queue_len, self._accepted
+            return self._queue_len
         except asyncio.CancelledError:
-            self.get_queue_state_was_cancelled = True
+            self.get_queue_len_was_cancelled = True
             raise
 
     def send_query(
@@ -113,6 +117,7 @@ def pow_2_scheduler(request) -> PowerOfTwoChoicesReplicaScheduler:
             self_node_id=SCHEDULER_NODE_ID,
             self_actor_id="fake-actor-id",
             self_availability_zone=request.param.get("az", None),
+            use_replica_queue_len_cache=False,
         )
 
     s = asyncio.new_event_loop().run_until_complete(
@@ -171,7 +176,7 @@ async def test_no_replicas_available_then_one_available(pow_2_scheduler, fake_qu
     assert len(done) == 0
 
     r1 = FakeReplicaWrapper("r1")
-    r1.set_queue_state_response(0)
+    r1.set_queue_len_response(0)
     s.update_replicas([r1])
 
     assert (await task) == r1
@@ -201,13 +206,13 @@ async def test_replica_does_not_accept_then_accepts(pow_2_scheduler, fake_query)
     assert len(done) == 0
 
     r1 = FakeReplicaWrapper("r1")
-    r1.set_queue_state_response(0, accepted=False)
+    r1.set_queue_len_response(DEFAULT_MAX_CONCURRENT_REQUESTS + 1)
     s.update_replicas([r1])
 
     done, _ = await asyncio.wait([task], timeout=0.1)
     assert len(done) == 0
 
-    r1.set_queue_state_response(0, accepted=True)
+    r1.set_queue_len_response(0)
     assert (await task) == r1
 
 
@@ -235,14 +240,14 @@ async def test_no_replicas_accept_then_new_one_accepts(pow_2_scheduler, fake_que
     assert len(done) == 0
 
     r1 = FakeReplicaWrapper("r1")
-    r1.set_queue_state_response(0, accepted=False)
+    r1.set_queue_len_response(DEFAULT_MAX_CONCURRENT_REQUESTS + 1)
     s.update_replicas([r1])
 
     done, _ = await asyncio.wait([task], timeout=0.1)
     assert len(done) == 0
 
     r2 = FakeReplicaWrapper("r2")
-    r2.set_queue_state_response(0)
+    r2.set_queue_len_response(0)
     s.update_replicas([r1, r2])
 
     assert (await task) == r2
@@ -268,7 +273,7 @@ async def test_one_replica_available_then_none_then_one(pow_2_scheduler, fake_qu
     loop = get_or_create_event_loop()
 
     r1 = FakeReplicaWrapper("r1")
-    r1.set_queue_state_response(0, accepted=False)
+    r1.set_queue_len_response(DEFAULT_MAX_CONCURRENT_REQUESTS + 1)
     s.update_replicas([r1])
 
     task = loop.create_task(s.choose_replica_for_query(fake_query))
@@ -279,7 +284,7 @@ async def test_one_replica_available_then_none_then_one(pow_2_scheduler, fake_qu
     done, _ = await asyncio.wait([task], timeout=0.1)
     assert len(done) == 0
 
-    r1.set_queue_state_response(0, accepted=True)
+    r1.set_queue_len_response(0)
     s.update_replicas([r1])
 
     assert (await task) == r1
@@ -304,10 +309,10 @@ async def test_two_replicas_available_then_one(pow_2_scheduler, fake_query):
     s = pow_2_scheduler
 
     r1 = FakeReplicaWrapper("r1")
-    r1.set_queue_state_response(0)
+    r1.set_queue_len_response(0)
 
     r2 = FakeReplicaWrapper("r2")
-    r2.set_queue_state_response(0)
+    r2.set_queue_len_response(0)
 
     s.update_replicas([r1, r2])
 
@@ -338,10 +343,10 @@ async def test_two_replicas_one_accepts(pow_2_scheduler, fake_query):
     s = pow_2_scheduler
 
     r1 = FakeReplicaWrapper("r1")
-    r1.set_queue_state_response(0)
+    r1.set_queue_len_response(0)
 
     r2 = FakeReplicaWrapper("r2")
-    r2.set_queue_state_response(0, accepted=False)
+    r2.set_queue_len_response(DEFAULT_MAX_CONCURRENT_REQUESTS + 1)
 
     s.update_replicas([r1, r2])
 
@@ -367,13 +372,13 @@ async def test_three_replicas_two_accept(pow_2_scheduler, fake_query):
     s = pow_2_scheduler
 
     r1 = FakeReplicaWrapper("r1")
-    r1.set_queue_state_response(0)
+    r1.set_queue_len_response(0)
 
     r2 = FakeReplicaWrapper("r2")
-    r2.set_queue_state_response(0, accepted=False)
+    r2.set_queue_len_response(DEFAULT_MAX_CONCURRENT_REQUESTS + 1)
 
     r3 = FakeReplicaWrapper("r3")
-    r3.set_queue_state_response(0)
+    r3.set_queue_len_response(0)
 
     s.update_replicas([r1, r2, r3])
 
@@ -400,10 +405,10 @@ async def test_two_replicas_choose_shorter_queue(pow_2_scheduler, fake_query):
     s = pow_2_scheduler
 
     r1 = FakeReplicaWrapper("r1")
-    r1.set_queue_state_response(1)
+    r1.set_queue_len_response(1)
 
     r2 = FakeReplicaWrapper("r2")
-    r2.set_queue_state_response(0)
+    r2.set_queue_len_response(0)
 
     s.update_replicas([r1, r2])
 
@@ -444,7 +449,7 @@ async def test_tasks_scheduled_fifo(pow_2_scheduler, fake_query):
     s.update_replicas([r1])
 
     for i in range(len(tasks)):
-        r1.set_queue_state_response(0)
+        r1.set_queue_len_response(0)
         done, pending = await asyncio.wait(tasks, return_when=asyncio.FIRST_COMPLETED)
 
         # If the order was not FIFO, the fulfilled assignment may not be the front of
@@ -481,7 +486,7 @@ async def test_cancellation(pow_2_scheduler, fake_query):
     task1.cancel()
 
     r1 = FakeReplicaWrapper("r1")
-    r1.set_queue_state_response(0)
+    r1.set_queue_len_response(0)
     s.update_replicas([r1])
 
     assert (await task2) == r1
@@ -518,7 +523,7 @@ async def test_only_task_cancelled(pow_2_scheduler, fake_query):
     task.cancel()
 
     r1 = FakeReplicaWrapper("r1")
-    r1.set_queue_state_response(0)
+    r1.set_queue_len_response(0)
     s.update_replicas([r1])
 
     start = time.time()
@@ -562,7 +567,7 @@ async def test_scheduling_task_cap(pow_2_scheduler, fake_query):
     assert s.curr_num_scheduling_tasks == 0
 
     r1 = FakeReplicaWrapper("r1", reset_after_response=True)
-    r1.set_queue_state_response(0, accepted=False)
+    r1.set_queue_len_response(DEFAULT_MAX_CONCURRENT_REQUESTS + 1)
     s.update_replicas([r1])
 
     done, _ = await asyncio.wait(tasks, timeout=0.1)
@@ -576,14 +581,14 @@ async def test_scheduling_task_cap(pow_2_scheduler, fake_query):
     # Number of tasks should increase when more replicas are available.
     scheduling_tasks_one_replica = s.curr_num_scheduling_tasks
     r2 = FakeReplicaWrapper("r2")
-    r2.set_queue_state_response(0, accepted=False)
+    r2.set_queue_len_response(DEFAULT_MAX_CONCURRENT_REQUESTS + 1)
     s.update_replicas([r1, r2])
     assert s.curr_num_scheduling_tasks > scheduling_tasks_one_replica
     assert s.curr_num_scheduling_tasks == s.max_num_scheduling_tasks
 
     # Number of tasks should decrease as the number of pending queries decreases.
     for i in range(len(tasks)):
-        r1.set_queue_state_response(0, accepted=True)
+        r1.set_queue_len_response(0)
         done, pending = await asyncio.wait(tasks, return_when=asyncio.FIRST_COMPLETED)
         assert done.pop() == tasks[0]
         tasks = tasks[1:]
@@ -625,7 +630,7 @@ async def test_scheduling_task_cap_hard_limit(pow_2_scheduler, fake_query):
     assert s.curr_num_scheduling_tasks == 0
 
     r1 = FakeReplicaWrapper("r1", reset_after_response=True)
-    r1.set_queue_state_response(0, accepted=False)
+    r1.set_queue_len_response(DEFAULT_MAX_CONCURRENT_REQUESTS + 1)
     s.update_replicas([r1])
 
     done, _ = await asyncio.wait(tasks, timeout=0.1)
@@ -638,13 +643,13 @@ async def test_scheduling_task_cap_hard_limit(pow_2_scheduler, fake_query):
 
     # Number of tasks should not increase when adding another replica due to the limit.
     r2 = FakeReplicaWrapper("r2")
-    r2.set_queue_state_response(0, accepted=False)
+    r2.set_queue_len_response(DEFAULT_MAX_CONCURRENT_REQUESTS + 1)
     s.update_replicas([r1, r2])
     assert s.curr_num_scheduling_tasks == hard_limit
 
     # Number of tasks should decrease as the number of pending queries decreases.
     for i in range(len(tasks)):
-        r1.set_queue_state_response(0, accepted=True)
+        r1.set_queue_len_response(0)
         done, pending = await asyncio.wait(tasks, return_when=asyncio.FIRST_COMPLETED)
         assert done.pop() == tasks[0]
         tasks = tasks[1:]
@@ -689,7 +694,7 @@ async def test_replica_responds_after_being_removed(pow_2_scheduler, fake_query)
     # Also set the queue length response on the existing replica.
     r2 = FakeReplicaWrapper("r2")
     s.update_replicas([r2])
-    r1.set_queue_state_response(0, accepted=True)
+    r1.set_queue_len_response(0)
 
     # The original replica should *not* be scheduled.
     done, _ = await asyncio.wait([task], timeout=0.1)
@@ -697,7 +702,7 @@ async def test_replica_responds_after_being_removed(pow_2_scheduler, fake_query)
     assert s.curr_num_scheduling_tasks == 1
 
     # Set the new replica to accept, it should be scheduled.
-    r2.set_queue_state_response(0, accepted=True)
+    r2.set_queue_len_response(0)
     assert (await task) == r2
 
 
@@ -720,11 +725,9 @@ async def test_prefer_replica_on_same_node(pow_2_scheduler, fake_query):
     loop = get_or_create_event_loop()
 
     r1 = FakeReplicaWrapper("r1", node_id=SCHEDULER_NODE_ID)
-    print(r1.node_id)
-    r1.set_queue_state_response(0, accepted=True)
+    r1.set_queue_len_response(0)
     r2 = FakeReplicaWrapper("r2", node_id="some_other_node_in_the_stratosphere")
-    print(r2.node_id)
-    r2.set_queue_state_response(0, accepted=True)
+    r2.set_queue_len_response(0)
     s.update_replicas([r1, r2])
 
     tasks = []
@@ -735,8 +738,8 @@ async def test_prefer_replica_on_same_node(pow_2_scheduler, fake_query):
     assert all(replica == r1 for replica in await asyncio.gather(*tasks))
 
     # Update the replica on the same node to reject requests -- now requests should
-    # fall back to the other replica..
-    r1.set_queue_state_response(0, accepted=False)
+    # fall back to the other replica.
+    r1.set_queue_len_response(DEFAULT_MAX_CONCURRENT_REQUESTS + 1)
 
     tasks = []
     for _ in range(10):
@@ -777,9 +780,9 @@ async def test_prefer_replica_in_same_az(pow_2_scheduler, fake_query):
         node_id="some_other_node_in_the_stratosphere",
         availability_zone="some_other_az_in_the_solar_system",
     )
-    r1.set_queue_state_response(0, accepted=True)
-    r2.set_queue_state_response(0, accepted=True)
-    r3.set_queue_state_response(0, accepted=True)
+    r1.set_queue_len_response(0)
+    r2.set_queue_len_response(0)
+    r3.set_queue_len_response(0)
     s.update_replicas([r1, r2, r3])
 
     async def choose_replicas():
@@ -793,12 +796,12 @@ async def test_prefer_replica_in_same_az(pow_2_scheduler, fake_query):
 
     # Update the replica on the same node to reject requests -- now requests should
     # fall back to replica in the same az.
-    r1.set_queue_state_response(0, accepted=False)
+    r1.set_queue_len_response(DEFAULT_MAX_CONCURRENT_REQUESTS + 1)
     assert all(replica == r2 for replica in await choose_replicas())
 
     # Update the replica on the same az to reject requests -- now requests should
     # fall back to the last replica.
-    r2.set_queue_state_response(0, accepted=False)
+    r2.set_queue_len_response(DEFAULT_MAX_CONCURRENT_REQUESTS + 1)
     assert all(replica == r3 for replica in await choose_replicas())
 
 
@@ -820,9 +823,9 @@ async def test_prefer_az_off(pow_2_scheduler, fake_query):
     r1 = FakeReplicaWrapper("r1", availability_zone=SCHEDULER_AZ)
     r2 = FakeReplicaWrapper("r2", availability_zone=SCHEDULER_AZ)
     r3 = FakeReplicaWrapper("r3", availability_zone="western-hemisphere")
-    r1.set_queue_state_response(0, accepted=True)
-    r2.set_queue_state_response(0, accepted=True)
-    r3.set_queue_state_response(0, accepted=True)
+    r1.set_queue_len_response(0)
+    r2.set_queue_len_response(0)
+    r3.set_queue_len_response(0)
     s.update_replicas([r1, r2, r3])
 
     async def choose_replicas():
@@ -846,7 +849,7 @@ async def test_prefer_az_off(pow_2_scheduler, fake_query):
     # This deflakes the test, but also makes sure the test runs fast on average
     await verify_replicas_batched({r1.replica_id, r2.replica_id, r3.replica_id})
 
-    r1.set_queue_state_response(0, accepted=False)
+    r1.set_queue_len_response(DEFAULT_MAX_CONCURRENT_REQUESTS + 1)
     await verify_replicas_batched({r2.replica_id, r3.replica_id})
 
 
@@ -874,9 +877,9 @@ async def test_prefer_replica_in_same_az_without_prefer_node(
     )
     r2 = FakeReplicaWrapper("r2", node_id="node-alpha", availability_zone=SCHEDULER_AZ)
     r3 = FakeReplicaWrapper("r3", node_id="node-beta", availability_zone="some_zone")
-    r1.set_queue_state_response(0, accepted=True)
-    r2.set_queue_state_response(0, accepted=True)
-    r3.set_queue_state_response(0, accepted=True)
+    r1.set_queue_len_response(0)
+    r2.set_queue_len_response(0)
+    r3.set_queue_len_response(0)
     s.update_replicas([r1, r2, r3])
 
     async def choose_replicas():
@@ -893,12 +896,12 @@ async def test_prefer_replica_in_same_az_without_prefer_node(
     # Update replica on one of the nodes in the same AZ to reject
     # requests. Now requests should only go to the remaining node in the
     # same AZ
-    r2.set_queue_state_response(0, accepted=False)
+    r2.set_queue_len_response(DEFAULT_MAX_CONCURRENT_REQUESTS + 1)
     assert all(replica == r1 for replica in await choose_replicas())
 
     # Update the replica on last node in the same AZ to reject requests.
     # Now requests should fall back to the last replica.
-    r1.set_queue_state_response(0, accepted=False)
+    r1.set_queue_len_response(DEFAULT_MAX_CONCURRENT_REQUESTS + 1)
     assert all(replica == r3 for replica in await choose_replicas())
 
 
@@ -925,9 +928,9 @@ async def test_prefer_replica_on_same_node_without_prefer_az(
     )  # noqa
     r2 = FakeReplicaWrapper("r2", node_id="node-alpha", availability_zone=SCHEDULER_AZ)
     r3 = FakeReplicaWrapper("r3", node_id="node-beta", availability_zone="west")
-    r1.set_queue_state_response(0, accepted=True)
-    r2.set_queue_state_response(0, accepted=True)
-    r3.set_queue_state_response(0, accepted=True)
+    r1.set_queue_len_response(0)
+    r2.set_queue_len_response(0)
+    r3.set_queue_len_response(0)
     s.update_replicas([r1, r2, r3])
 
     async def choose_replicas():
@@ -941,7 +944,7 @@ async def test_prefer_replica_on_same_node_without_prefer_az(
 
     # If replica on same node is blocked, there should be no preference between
     # remaining replicas even if the availability zones are different.
-    r1.set_queue_state_response(0, accepted=False)
+    r1.set_queue_len_response(DEFAULT_MAX_CONCURRENT_REQUESTS + 1)
     assert set(await choose_replicas()) == {r2, r3}
 
 
@@ -966,11 +969,11 @@ class TestModelMultiplexing:
         loop = get_or_create_event_loop()
 
         r1 = FakeReplicaWrapper("r1", model_ids={"m1", "m2"})
-        r1.set_queue_state_response(100, accepted=True)
+        r1.set_queue_len_response(DEFAULT_MAX_CONCURRENT_REQUESTS - 1)
         r2 = FakeReplicaWrapper("r2", model_ids={"m2", "m3"})
-        r2.set_queue_state_response(100, accepted=True)
+        r2.set_queue_len_response(DEFAULT_MAX_CONCURRENT_REQUESTS - 1)
         r3 = FakeReplicaWrapper("r3", model_ids={})
-        r3.set_queue_state_response(0, accepted=True)
+        r3.set_queue_len_response(0)
         s.update_replicas([r1, r2, r3])
 
         for _ in range(10):
@@ -986,8 +989,8 @@ class TestModelMultiplexing:
         loop = get_or_create_event_loop()
         r1 = FakeReplicaWrapper("r1", model_ids={"m1", "m2"})
         r2 = FakeReplicaWrapper("r2", model_ids={"m2"})
-        r1.set_queue_state_response(0, accepted=True)
-        r2.set_queue_state_response(0, accepted=True)
+        r1.set_queue_len_response(0)
+        r2.set_queue_len_response(0)
         s.update_replicas([r1, r2])
         for _ in range(10):
             query = query_with_model_id("m3")
@@ -1002,7 +1005,7 @@ class TestModelMultiplexing:
         loop = get_or_create_event_loop()
 
         r1 = FakeReplicaWrapper("r1", model_ids={})
-        r1.set_queue_state_response(0, accepted=True)
+        r1.set_queue_len_response(0)
         s.update_replicas([r1])
 
         for _ in range(10):
@@ -1019,11 +1022,11 @@ class TestModelMultiplexing:
         loop = get_or_create_event_loop()
 
         r1 = FakeReplicaWrapper("r1", model_ids={"m1", "m2"})
-        r1.set_queue_state_response(0, accepted=False)
+        r1.set_queue_len_response(DEFAULT_MAX_CONCURRENT_REQUESTS + 1)
         r2 = FakeReplicaWrapper("r2", model_ids={"m2", "m3"})
-        r2.set_queue_state_response(100, accepted=False)
+        r2.set_queue_len_response(DEFAULT_MAX_CONCURRENT_REQUESTS + 1)
         r3 = FakeReplicaWrapper("r3", model_ids={})
-        r3.set_queue_state_response(0, accepted=True)
+        r3.set_queue_len_response(0)
         s.update_replicas([r1, r2, r3])
 
         for _ in range(10):
@@ -1040,11 +1043,11 @@ class TestModelMultiplexing:
         loop = get_or_create_event_loop()
 
         r1 = FakeReplicaWrapper("r1", model_ids={"m1"})
-        r1.set_queue_state_response(0, accepted=True)
+        r1.set_queue_len_response(0)
         r2 = FakeReplicaWrapper("r2", model_ids={"m2"})
-        r2.set_queue_state_response(0, accepted=True)
+        r2.set_queue_len_response(0)
         r3 = FakeReplicaWrapper("r3", model_ids={"m3"})
-        r3.set_queue_state_response(0, accepted=True)
+        r3.set_queue_len_response(0)
         s.update_replicas([r1, r2, r3])
 
         for _ in range(10):
@@ -1080,7 +1083,7 @@ class TestModelMultiplexing:
         loop = get_or_create_event_loop()
 
         r1 = FakeReplicaWrapper("r1")
-        r1.set_queue_state_response(0, accepted=False)
+        r1.set_queue_len_response(DEFAULT_MAX_CONCURRENT_REQUESTS + 1)
 
         tasks = [
             loop.create_task(s.choose_replica_for_query(query_with_model_id("m1")))
@@ -1094,9 +1097,9 @@ class TestModelMultiplexing:
         # Now add two more replicas, one of which has the model ID.
         # That one should be chosen for all of the tasks.
         r2 = FakeReplicaWrapper("r2")
-        r2.set_queue_state_response(0, accepted=False)
+        r2.set_queue_len_response(DEFAULT_MAX_CONCURRENT_REQUESTS + 1)
         r3 = FakeReplicaWrapper("r3", model_ids={"m1"})
-        r3.set_queue_state_response(100, accepted=True)
+        r3.set_queue_len_response(DEFAULT_MAX_CONCURRENT_REQUESTS - 1)
 
         s.update_replicas([r1, r2, r3])
 
@@ -1128,16 +1131,16 @@ class TestModelMultiplexing:
         assert len(done) == 0
 
         r1 = FakeReplicaWrapper("r1", model_ids={"m1"}, reset_after_response=True)
-        r1.set_queue_state_response(0, accepted=True)
+        r1.set_queue_len_response(0)
         r2 = FakeReplicaWrapper("r2", model_ids={"m2"}, reset_after_response=True)
-        r2.set_queue_state_response(0, accepted=True)
+        r2.set_queue_len_response(0)
         s.update_replicas([r1, r2])
 
         # In each iteration, allow one replica of w/ each model ID to be scheduled.
         # The tasks for each model ID should be scheduled in FIFO order.
         for i in range(10):
-            r1.set_queue_state_response(0, accepted=True)
-            r2.set_queue_state_response(0, accepted=True)
+            r1.set_queue_len_response(0)
+            r2.set_queue_len_response(0)
 
             done, pending = await asyncio.wait(
                 m1_tasks, return_when=asyncio.FIRST_COMPLETED
@@ -1153,9 +1156,9 @@ class TestModelMultiplexing:
 
 
 @pytest.mark.asyncio
-async def test_get_queue_state_cancelled_on_timeout(pow_2_scheduler, fake_query):
+async def test_get_queue_len_cancelled_on_timeout(pow_2_scheduler, fake_query):
     """
-    Verify that `get_queue_state` is cancelled if the `queue_len_response_deadline_s`
+    Verify that `get_queue_len` is cancelled if the `queue_len_response_deadline_s`
     is reached.
     """
     s = pow_2_scheduler
@@ -1171,10 +1174,10 @@ async def test_get_queue_state_cancelled_on_timeout(pow_2_scheduler, fake_query)
     done, _ = await asyncio.wait([task], timeout=0.1)
     assert len(done) == 0
 
-    # The `get_queue_state` method should be cancelled.
-    assert r1.get_queue_state_was_cancelled
+    # The `get_queue_len` method should be cancelled.
+    assert r1.get_queue_len_was_cancelled
 
-    r1.set_queue_state_response(0, accepted=True)
+    r1.set_queue_len_response(0)
     assert (await task) == r1
 
 
@@ -1205,7 +1208,6 @@ async def test_queue_len_response_deadline_backoff(pow_2_scheduler, fake_query):
     ):
         deadline_i = r1.queue_len_deadline_history[i]
         deadline_j = r1.queue_len_deadline_history[j]
-        print(deadline_i, deadline_j)
         assert (
             deadline_i <= deadline_j
             and deadline_j <= s.max_queue_len_response_deadline_s
@@ -1216,7 +1218,7 @@ async def test_queue_len_response_deadline_backoff(pow_2_scheduler, fake_query):
                 or deadline_j == 2 * deadline_i
             )
 
-    r1.set_queue_state_response(0, accepted=True)
+    r1.set_queue_len_response(0)
     assert (await task) == r1
 
 
@@ -1244,7 +1246,7 @@ async def test_max_queue_len_response_deadline(pow_2_scheduler, fake_query):
         d == s.queue_len_response_deadline_s for d in r1.queue_len_deadline_history
     )
 
-    r1.set_queue_state_response(0, accepted=True)
+    r1.set_queue_len_response(0)
     assert (await task) == r1
 
 

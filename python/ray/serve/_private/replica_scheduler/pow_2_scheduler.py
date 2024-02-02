@@ -507,12 +507,12 @@ class PowerOfTwoChoicesReplicaScheduler(ReplicaScheduler):
 
     async def _actively_probe_queue_lens(
         self,
-        candidates: List[ReplicaWrapper],
+        replicas: List[ReplicaWrapper],
         backoff_index: int,
     ) -> List[Tuple[ReplicaWrapper, int]]:
         """XXX: COMMENT!"""
         result: List[Tuple[ReplicaWrapper, int]] = []
-        if len(candidates) == 0:
+        if len(replicas) == 0:
             return result
 
         # Ensure the max deadline is always >= the initial deadline.
@@ -525,24 +525,24 @@ class PowerOfTwoChoicesReplicaScheduler(ReplicaScheduler):
             max_queue_len_response_deadline_s,
         )
 
-        get_queue_state_tasks = []
-        for c in candidates:
+        get_queue_len_tasks = []
+        for r in replicas:
             t = self._loop.create_task(
-                c.get_queue_state(deadline_s=queue_len_response_deadline_s)
+                r.get_queue_len(deadline_s=queue_len_response_deadline_s)
             )
-            t.replica_id = c.replica_id
-            get_queue_state_tasks.append(t)
+            t.replica = r
+            get_queue_len_tasks.append(t)
 
         done, pending = await asyncio.wait(
-            get_queue_state_tasks,
+            get_queue_len_tasks,
             timeout=queue_len_response_deadline_s,
             return_when=asyncio.ALL_COMPLETED,
         )
         for t in pending:
-            result.append((t.replica_id, None))
+            result.append((t.replica, None))
             t.cancel()
             logger.warning(
-                f"Failed to get queue length from replica {t.replica_id} "
+                f"Failed to get queue length from replica {t.replica.replica_id} "
                 f"within {queue_len_response_deadline_s}s. If this happens repeatedly "
                 "it's likely caused by high network latency in the cluster. You can "
                 "configure the deadline using the "
@@ -551,26 +551,26 @@ class PowerOfTwoChoicesReplicaScheduler(ReplicaScheduler):
 
         for t in done:
             if t.exception() is not None:
-                result.append((t.replica_id, None))
+                result.append((t.replica, None))
                 msg = (
                     "Failed to fetch queue length for "
-                    f"replica {t.replica_id}: '{t.exception()}'"
+                    f"replica {t.replica.replica_id}: '{t.exception()}'"
                 )
                 # If we get a RayActorError, it means the replica actor has died. This
                 # is not recoverable (the controller will start a new replica in its
                 # place), so we should no longer consider it for requests.
                 if isinstance(t.exception(), RayActorError):
-                    self._replicas.pop(t.replica_id, None)
-                    self._replica_id_set.discard(t.replica_id)
+                    self._replicas.pop(t.replica.replica_id, None)
+                    self._replica_id_set.discard(t.replica.replica_id)
                     for id_set in self._colocated_replica_ids.values():
-                        id_set.discard(t.replica_id)
+                        id_set.discard(t.replica.replica_id)
                     msg += " This replica will no longer be considered for requests."
 
                 logger.warning(msg)
             else:
-                result.append((t.replica_id, t.result()[0]))
+                result.append((t.replica, t.result()))
 
-        assert len(result) == len(candidates)
+        assert len(result) == len(replicas)
         return result
 
     async def select_from_candidate_replicas(
@@ -593,30 +593,41 @@ class PowerOfTwoChoicesReplicaScheduler(ReplicaScheduler):
         lowest_queue_len = math.inf
         chosen_replica_id: Optional[str] = None
 
+        # XXX: if a replica is at max_concurrent_requests, should we consider it not in
+        # the cache? Otherwise we'll have to wait for the timeout to be able to schedule
+        # to it...
+
         not_in_cache: List[ReplicaWrapper] = []
         if self._use_replica_queue_len_cache:
             # Populate available queue lens from the cache.
-            for c in candidates:
-                queue_len = self._replica_queue_len_cache.get(c.replica_id)
-                if queue_len is not None:
-                    # logger.info(f"Got cached info for replica! {(c.replica_id, queue_len)}")
-                    if queue_len < lowest_queue_len:
-                        lowest_queue_len = queue_len
-                        chosen_replica_id = c.replica_id
-                else:
-                    not_in_cache.append(c)
+            for r in candidates:
+                queue_len = self._replica_queue_len_cache.get(r.replica_id)
+                if queue_len is None:
+                    not_in_cache.append(r)
+                elif (
+                    queue_len < r.max_concurrent_requests
+                    and queue_len < lowest_queue_len
+                ):
+                    lowest_queue_len = queue_len
+                    chosen_replica_id = r.replica_id
         else:
             not_in_cache = candidates
 
-        for replica_id, queue_len in await self._actively_probe_queue_lens(
+        # XXX: decision point here! If we have a validate candidate from the cache, do
+        # we bother actively probing? Or even probe all if we're probing any?
+
+        for r, queue_len in await self._actively_probe_queue_lens(
             not_in_cache,
             backoff_index,
         ):
-            if queue_len is not None:
-                self._replica_queue_len_cache.update(replica_id, queue_len)
-                if queue_len < lowest_queue_len:
-                    lowest_queue_len = queue_len
-                    chosen_replica_id = replica_id
+            if queue_len is None:
+                # None is returned if we failed to get the queue len.
+                continue
+
+            self._replica_queue_len_cache.update(r.replica_id, queue_len)
+            if queue_len < r.max_concurrent_requests and queue_len < lowest_queue_len:
+                lowest_queue_len = queue_len
+                chosen_replica_id = r.replica_id
 
         if chosen_replica_id is None:
             return None
@@ -772,7 +783,6 @@ class PowerOfTwoChoicesReplicaScheduler(ReplicaScheduler):
         system_response: ReplicaQueueLengthInfo = pickle.loads(
             await system_response_ref
         )
-        # print(system_response)
         self._replica_queue_len_cache.update(
             replica_id, system_response.num_ongoing_requests
         )

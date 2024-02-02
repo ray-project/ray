@@ -3,7 +3,7 @@ import logging
 import pickle
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
-from typing import Any, Dict, List, Optional, Set, Tuple, Union
+from typing import Any, Dict, List, Optional, Set, Union
 
 import ray
 from ray.serve._private.common import RequestMetadata, RunningReplicaInfo
@@ -37,8 +37,13 @@ class ReplicaWrapper(ABC):
         """Set of model IDs on this replica."""
         pass
 
-    async def get_queue_state(self, *, deadline_s: float) -> Tuple[int, bool]:
-        """Returns tuple of (queue_len, accepted).
+    @property
+    def max_concurrent_requests(self) -> int:
+        """Max concurrent requests that can be sent to this replica."""
+        pass
+
+    async def get_queue_len(self, *, deadline_s: float) -> int:
+        """Returns current queue len for the replica.
 
         `deadline_s` is passed to verify backoff for testing.
         """
@@ -77,15 +82,17 @@ class ActorReplicaWrapper:
     def multiplexed_model_ids(self) -> Set[str]:
         return self._multiplexed_model_ids
 
-    async def get_queue_state(self, *, deadline_s: float) -> Tuple[int, bool]:
+    @property
+    def max_concurrent_requests(self) -> int:
+        return self._replica_info.max_concurrent_queries
+
+    async def get_queue_len(self, *, deadline_s: float) -> int:
         # NOTE(edoakes): the `get_num_ongoing_requests` method name is shared by
         # the Python and Java replica implementations. If you change it, you need to
         # change both (or introduce a branch here).
         obj_ref = self._actor_handle.get_num_ongoing_requests.remote()
         try:
-            queue_len = await obj_ref
-            accepted = queue_len < self._replica_info.max_concurrent_queries
-            return queue_len, accepted
+            return await obj_ref
         except asyncio.CancelledError:
             ray.cancel(obj_ref)
             raise

@@ -437,7 +437,9 @@ class ReplicaActor:
             ):
                 yield result
         else:
-            yield await self.handle_request(request_metadata, *request_args, **request_kwargs)
+            yield await self.handle_request(
+                request_metadata, *request_args, **request_kwargs
+            )
 
     async def handle_request(
         self,
