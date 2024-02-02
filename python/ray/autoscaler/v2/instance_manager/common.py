@@ -62,6 +62,7 @@ class InstanceUtil:
             Instance.RAY_STOPPED,
             Instance.TERMINATING,
             Instance.RAY_INSTALL_FAILED,
+            Instance.TERMINATION_FAILED,
         }
 
     @staticmethod
