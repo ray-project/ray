@@ -32,6 +32,7 @@ TUNE_SEARCHERS = {
     "TuneBOHB",
     "HEBOSearch",
     "HyperOptSearch",
+    "NevergradSearch",
     "OptunaSearch",
     "SkOptSearch",
     "ZOOptSearch",
