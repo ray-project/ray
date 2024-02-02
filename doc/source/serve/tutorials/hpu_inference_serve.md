@@ -1,4 +1,6 @@
-# Serving an inference model on Intel Gaudi
+# Serving an inference model on Intel Habana Gaudi
+
+[Habana® Gaudi® AI Processor (HPU)](https://habana.ai) training processors are AI hardware accelerators designed by Habana Labs. They are designed to maximize training throughput and efficiency, while providing developers with optimized software and tools that scale to many workloads and systems. For more information, check out [Gaudi Architecture](https://docs.habana.ai/en/latest/Gaudi_Overview/index.html) and [Gaudi Developer Docs](https://developer.habana.ai/).
 
 In this tutorial, we will go through two examples:
 
