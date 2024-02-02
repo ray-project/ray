@@ -423,7 +423,7 @@ directory you launched the training script from.
 
     import ray
     import ray.train
-    from ray.train.data_parallel_trainer import DataParallelTrainer
+    from ray.train.torch import TorchTrainer
 
     os.environ["RAY_CHDIR_TO_TRIAL_DIR"] = "0"
 
@@ -442,7 +442,7 @@ directory you launched the training script from.
         # Write artifacts that you want to persist in the trial directory.
         print(ray.train.get_context().get_trial_dir())
 
-    trainer = DataParallelTrainer(
+    trainer = TorchTrainer(
         train_fn_per_worker,
         scaling_config=ray.train.ScalingConfig(num_workers=2),
         run_config=ray.train.RunConfig(
