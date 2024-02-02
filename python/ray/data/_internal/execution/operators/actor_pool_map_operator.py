@@ -339,7 +339,7 @@ class ActorPoolMapOperator(MapOperator):
         return ExecutionResources(
             cpu=num_cpus,
             gpu=num_gpus,
-            object_store_memory=self._metrics.average_bytes_outputs_per_task,
+            object_store_memory=4 * 128 * 1024 * 1024,
         )
 
     def _extra_metrics(self) -> Dict[str, Any]:
