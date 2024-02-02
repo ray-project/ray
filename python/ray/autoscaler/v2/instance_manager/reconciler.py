@@ -6,6 +6,7 @@ from typing import Dict, List, Optional, Set, Tuple
 
 from ray.autoscaler.v2.instance_manager.common import InstanceUtil
 from ray.autoscaler.v2.instance_manager.config import InstanceReconcileConfig
+from ray.autoscaler.v2.scheduler import IResourceScheduler
 from ray.autoscaler.v2.instance_manager.node_provider import (
     CloudInstance,
     CloudInstanceId,
@@ -13,9 +14,14 @@ from ray.autoscaler.v2.instance_manager.node_provider import (
     LaunchNodeError,
     TerminateNodeError,
 )
-from ray.autoscaler.v2.schema import NodeType
-from ray.core.generated.autoscaler_pb2 import ClusterResourceState, NodeState
-from ray.core.generated.instance_manager_pb2 import Instance as IMInstance
+from ray.autoscaler.v2.instance_manager.ray_installer import RayInstallError
+from ray.autoscaler.v2.instance_manager.instance_manager import InstanceManager
+from ray.core.generated.autoscaler_pb2 import NodeState
+from ray.core.generated.instance_manager_pb2 import (
+    Instance as IMInstance,
+    StatusCode,
+    UpdateInstanceManagerStateRequest,
+)
 from ray.core.generated.instance_manager_pb2 import (
     InstanceUpdateEvent as IMInstanceUpdateEvent,
 )
@@ -24,22 +30,73 @@ logger = logging.getLogger(__name__)
 
 
 class Reconciler:
+    """
+    Reconciler is responsible for
+        1. Reconciling the instance manager's instances with extenal states like
+        the cloud provider's, the ray cluster's states, the ray installer's results.
+        It performs "passive" status transitions for the instances (where the status
+        transition should only be reflecting the external states of the cloud provider
+        and the ray cluster, and should not be actively changing them)
+
+        2. Stepping the reconciler to the next state by computing instance status
+        transitions that are needed and updating the instance manager's state.
+        These transitions should be "active" where the transitions have side effects
+        (through InstanceStatusSubscriber) to the cloud provider and the ray cluster.
+
+    Example:
+    ```
+        # Step 1: Reconcile the instance manager's instances with external states.
+        Reconciler.sync_from([external states])
+
+        # Step 2: Step the reconciler to the next state by computing instance status
+        # transitions that are needed and updating the instance manager's state.
+        Reconciler.step_next()
+
+    """
+
     @staticmethod
-    def reconcile(
-        im_instances: List[IMInstance],
-        ray_cluster_resource_state: ClusterResourceState,
+    def sync_from(
+        instance_manager: InstanceManager,
+        ray_nodes: List[NodeState],
         non_terminated_cloud_instances: Dict[CloudInstanceId, CloudInstance],
         cloud_provider_errors: List[CloudInstanceProviderError],
+        ray_install_errors: List[RayInstallError],
         config: InstanceReconcileConfig,
-    ) -> Dict[str, IMInstanceUpdateEvent]:
+    ):
         """
-        Reconcile the instance states of the instance manager with the cloud provider's
-        states and the ray cluster's states.
+        Reconcile the instance states of the instance manager from external states like
+        the cloud provider's, the ray cluster's states, the ray installer's results,
+        etc.
 
         For each instance, we try to figure out if we need to transition the instance
         status to a new status, and if so, what the new status should be.
 
-        These events are then consumed by the InstanceManager's subscribers for actions.
+        These transitions should be purely "passive", meaning they should only be
+        reflecting the external states of the cloud provider and the ray cluster,
+        and should not be actively changing the states of the cloud provider or the ray
+        cluster.
+
+        More specifically, we will reconcile status transitions for:
+            1.  QUEUED/REQUESTED -> ALLOCATED:
+                When a instance with launch request id (indicating a previous launch
+                request was made) could be assigned to an unassigned cloud instance
+                of the same instance type.
+            2.  REQUESTED -> ALLOCATION_FAILED/QUEUED:
+                When there's an error from the cloud provider for launch failure so
+                that the instance becomes ALLOCATION_FAILED, or the requested instance
+                is not assigned for too long that it times out and becomes QUEUED
+                again.
+            3.  * -> RAY_RUNNING:
+                When a ray node on a cloud instance joins the ray cluster, we will
+                transition the instance to RAY_RUNNING.
+            4.  * -> TERMINATED:
+                When the cloud instance is already terminated, we will transition the
+                instance to TERMINATED.
+            5.  * -> RAY_STOPPED:
+                When ray was stopped on the cloud instance, we will transition the
+                instance to RAY_STOPPED.
+            6.  * -> RAY_INSTALL_FAILED:
+                When there's an error from RayInstaller.
 
         Args:
             im_instances: The instance manager's instances.
@@ -47,69 +104,102 @@ class Reconciler:
             non_terminated_cloud_instances: The non-terminated cloud instances.
             cloud_provider_errors: The cloud provider errors.
 
-        Returns:
-            A dictionary of instance id to instance update event.
-
         """
-        updates = {}
-        ctx = Reconciler.ReconcileContext(
-            ray_cluster_resource_state=ray_cluster_resource_state,
-            non_terminated_cloud_instances=non_terminated_cloud_instances,
-            cloud_provider_errors=cloud_provider_errors,
-            im_instances=im_instances,
-            config=config,
+
+        # Handle 1 & 2 for cloud instance allocation.
+        Reconciler._handle_cloud_instance_allocation(
+            instance_manager, non_terminated_cloud_instances, cloud_provider_errors
         )
-
-        for im_instance in im_instances:
-            if im_instance.status == IMInstance.QUEUED:
-                raise NotImplementedError("Not implemented")
-            elif im_instance.status == IMInstance.REQUESTED:
-                handle_fn = Reconciler._handle_requested_instance
-            elif im_instance.status == IMInstance.ALLOCATED:
-                raise NotImplementedError("Not implemented")
-            elif im_instance.status == IMInstance.RAY_INSTALLING:
-                raise NotImplementedError("Not implemented")
-            elif im_instance.status == IMInstance.RAY_RUNNING:
-                raise NotImplementedError("Not implemented")
-            elif im_instance.status == IMInstance.RAY_STOPPING:
-                raise NotImplementedError("Not implemented")
-            elif im_instance.status == IMInstance.RAY_STOPPED:
-                raise NotImplementedError("Not implemented")
-            elif im_instance.status == IMInstance.TERMINATING:
-                raise NotImplementedError("Not implemented")
-            elif im_instance.status == IMInstance.TERMINATED:
-                raise NotImplementedError("Not implemented")
-            elif im_instance.status == IMInstance.ALLOCATION_FAILED:
-                raise NotImplementedError("Not implemented")
-            elif im_instance.status == IMInstance.RAY_INSTALL_FAILED:
-                raise NotImplementedError("Not implemented")
-            else:
-                raise ValueError(f"Unknown instance status: {im_instance.status}")
-
-            update = handle_fn(im_instance, ctx)
-
-            if update:
-                updates[im_instance.instance_id] = update
-
-        return updates
+        Reconciler._handle_ray_running(instance_manager, ray_nodes)
+        Reconciler._handle_cloud_instance_terminated(
+            instance_manager, non_terminated_cloud_instances, cloud_provider_errors
+        )
+        Reconciler._handle_ray_stopped(instance_manager, ray_nodes)
+        Reconciler._handle_ray_install_failed(instance_manager, ray_install_errors)
 
     @staticmethod
-    def _handle_requested_instance(
-        im_instance: IMInstance,
-        ctx: "Reconciler.ReconcileContext",
-    ) -> Optional[IMInstanceUpdateEvent]:
-        def _allocate_or_fail(
-            im_instance: IMInstance, ctx: "Reconciler.ReconcileContext"
-        ) -> Optional[IMInstanceUpdateEvent]:
+    def step_next(
+        instance_manager: InstanceManager,
+        scheduler: IResourceScheduler,
+        config: InstanceReconcileConfig,
+    ):
+        """
+        Step the reconciler to the next state by computing instance status transitions
+        that are needed and updating the instance manager's state.
+
+        Specifically, we will:
+            1. Shut down extra cloud instances
+              (* -> TERMINATING)
+                a. Leaked cloud instances that are not managed by the instance manager.
+                b. Extra cloud due to max nodes config.
+                c. Cloud instances with outdated configs.
+                d. Stopped ray nodes or failed to install ray nodes.
+            2. Create new instances
+              (new QUEUED)
+                Create new instances based on the IResourceScheduler's decision for
+                scaling up.
+            3. Request cloud provider to launch new instances.
+              (QUEUED -> REQUESTED)
+            4. Install ray
+              (ALLOCATED -> RAY_INSTALLING)
+                When ray needs to be manually installed.
+            5. Drain ray nodes
+              (RAY_RUNNING -> RAY_STOPPING):
+                a. Idle terminating ray nodes.
+        """
+        pass
+
+    @staticmethod
+    def _handle_cloud_instance_allocation(
+        instance_manager: InstanceManager,
+        non_terminated_cloud_instances: Dict[CloudInstanceId, CloudInstance],
+        cloud_provider_errors: List[CloudInstanceProviderError],
+    ):
+        im_instances, version = Reconciler._get_im_instances(instance_manager)
+        updates = {}
+
+        # Compute intermediate states.
+        instances_with_launch_requests: List[IMInstance] = [
+            instance for instance in im_instances if instance.launch_request_id
+        ]
+        assigned_cloud_instance_ids: Set[CloudInstanceId] = {
+            instance.cloud_instance_id for instance in im_instances
+        }
+        launch_errors: Dict[str, LaunchNodeError] = {
+            error.request_id: error
+            for error in cloud_provider_errors
+            if isinstance(error, LaunchNodeError)
+        }
+        unassigned_cloud_instances_by_type: Dict[
+            str, List[CloudInstance]
+        ] = defaultdict(list)
+        for cloud_instance_id, cloud_instance in non_terminated_cloud_instances.items():
+            if cloud_instance_id not in assigned_cloud_instance_ids:
+                unassigned_cloud_instances_by_type[cloud_instance.node_type].append(
+                    cloud_instance
+                )
+
+        # Sort the request instance by the increasing request time.
+        instances_with_launch_requests.sort(
+            key=lambda instance: InstanceUtil.get_status_transition_times_ns(
+                instance, IMInstance.REQUESTED
+            )
+        )
+
+        # For each instance, try to allocate or fail the allocation.
+        def _try_allocate_or_fail(im_instance):
+            unassigned_cloud_instance = None
+
+            # Try to allocate an unassigned cloud instance.
             # TODO(rickyx): We could also look at the launch request id
             # on the cloud node and the im instance later once all node providers
             # support request id. For now, we only look at the instance type.
-
-            # If there's an unassigned cloud instance with the same node type,
-            # transition to ALLOCATED.
-            unassigned_cloud_instance = ctx.take_unassigned_cloud_instance(
-                instance_type=im_instance.instance_type,
-            )
+            if len(
+                unassigned_cloud_instances_by_type.get(im_instance.instance_type, [])
+            ):
+                unassigned_cloud_instance = unassigned_cloud_instances_by_type[
+                    im_instance.instance_type
+                ].pop()
 
             if unassigned_cloud_instance:
                 return IMInstanceUpdateEvent(
@@ -119,188 +209,69 @@ class Reconciler:
                 )
 
             # If there's a launch error, transition to ALLOCATION_FAILED.
-            launch_error_msg = ctx.take_launch_error_msg(
-                im_instance.launch_request_id, instance_type=im_instance.instance_type
-            )
-            if launch_error_msg is not None:
+            launch_error = launch_errors.get(im_instance.launch_request_id)
+            if launch_error and launch_error.node_type == im_instance.instance_type:
                 return IMInstanceUpdateEvent(
                     instance_id=im_instance.instance_id,
                     new_instance_status=IMInstance.ALLOCATION_FAILED,
-                    details=launch_error_msg,
+                    details=launch_error.details,
                 )
+            # No update.
             return None
 
-        def _retry_or_fail(
-            im_instance, ctx: "Reconciler.ReconcileContext"
-        ) -> Optional[IMInstanceUpdateEvent]:
-            # If we have been stuck in this allocated status for too long, we should
-            # either retry or fail.
-            timeout_s = ctx.get_config().request_status_timeout_s
-            max_num_retry_request_to_allocate = (
-                ctx.get_config().max_num_retry_request_to_allocate
+        for instance in instances_with_launch_requests:
+            update_event = _try_allocate_or_fail(instance)
+            if update_event:
+                updates[instance.instance_id] = update_event
+
+        # Update the instance manager for the events.
+        Reconciler._update_instance_manager(instance_manager, updates, version)
+
+    @staticmethod
+    def _handle_ray_running(
+        instance_manager: InstanceManager, ray_nodes: List[NodeState]
+    ):
+        pass
+
+    @staticmethod
+    def _handle_ray_stopped(
+        instance_manager: InstanceManager, ray_nodes: List[NodeState]
+    ):
+        pass
+
+    @staticmethod
+    def _handle_ray_install_failed(
+        instance_manager: InstanceManager, ray_install_errors: List[RayInstallError]
+    ):
+        pass
+
+    @staticmethod
+    def _handle_cloud_instance_terminated(
+        instance_manager: InstanceManager,
+        non_terminated_cloud_instances: Dict[CloudInstanceId, CloudInstance],
+        cloud_provider_errors: List[CloudInstanceProviderError],
+    ):
+        pass
+
+    @staticmethod
+    def _get_im_instances(
+        instance_manager: InstanceManager,
+    ) -> Tuple[List[IMInstance], int]:
+        im_state = instance_manager.get_instance_manager_state()
+        return im_state.instances, im_state.version
+
+    @staticmethod
+    def _update_instance_manager(
+        instance_manager: InstanceManager,
+        updates: Dict[str, IMInstanceUpdateEvent],
+        version: int,
+    ) -> None:
+        reply = instance_manager.update_instance_manager_state(
+            request=UpdateInstanceManagerStateRequest(
+                expected_version=version,
+                updates=list(updates.values()),
             )
-
-            all_request_times_ns = sorted(
-                InstanceUtil.get_status_transition_times_ns(
-                    im_instance, select_instance_status=IMInstance.REQUESTED
-                )
-            )
-
-            # Fail the allocation if we have tried too many times.
-            # +1 for the original request
-            if len(all_request_times_ns) > max_num_retry_request_to_allocate:
-                return IMInstanceUpdateEvent(
-                    instance_id=im_instance.instance_id,
-                    new_instance_status=IMInstance.ALLOCATION_FAILED,
-                    details=(
-                        "Failed to allocate cloud instance after "
-                        f"{len(all_request_times_ns)} attempts"
-                    ),
-                )
-
-            # Retry the allocation if we have waited for too long.
-            last_request_time_ns = all_request_times_ns[-1]
-            if time.time_ns() - last_request_time_ns > timeout_s * 1e9:
-                return IMInstanceUpdateEvent(
-                    instance_id=im_instance.instance_id,
-                    new_instance_status=IMInstance.QUEUED,
-                    details=f"Retry allocation after timeout={timeout_s}s",
-                )
-            return None
-
-        # Try to allocate from an unassigned cloud instance or fail with a launch error.
-        update = _allocate_or_fail(im_instance, ctx)
-        if update:
-            return update
-
-        # If we have been stuck in this allocated status for too long, we should
-        # either retry or fail.
-        update = _retry_or_fail(im_instance, ctx)
-        if update:
-            return update
-
-        return None
-
-    @dataclass
-    class ReconcileContext:
-        """A utility class of context for reconciler
-
-        This class encapsulates the data that's used for reconciling the instance
-        manager's state with the cloud provider's state, and the ray cluster's state.
-        """
-
-        # Config
-        config: InstanceReconcileConfig
-
-        # Ray nodes
-        ray_nodes: Dict[CloudInstanceId, NodeState]
-
-        # Cloud provider errors, key is the request_id and node type tuple,
-        # value is a list of error messages.
-        launch_errors: Dict[Tuple[str, NodeType], List[str]]
-        terminate_errors: Dict[CloudInstanceId, TerminateNodeError]
-        # Primary index for the cloud instances.
-        non_terminated_cloud_instances: Dict[CloudInstanceId, CloudInstance]
-        # Secondary indexes for the cloud instances.
-        unassigned_cloud_instance_ids: Set[CloudInstanceId]
-        cloud_instances_by_instance_type: Dict[str, Set[CloudInstanceId]]
-
-        def __init__(
-            self,
-            ray_cluster_resource_state: ClusterResourceState,
-            non_terminated_cloud_instances: Dict[CloudInstanceId, CloudInstance],
-            cloud_provider_errors: List[CloudInstanceProviderError],
-            im_instances: List[IMInstance],
-            config: InstanceReconcileConfig,
-        ):
-            self.config = config
-            self.ray_nodes = {}
-            self.launch_errors = {}
-            self.terminate_errors = {}
-            self.unassigned_cloud_instance_ids = set()
-            self.non_terminated_cloud_instances = non_terminated_cloud_instances
-            self.cloud_instances_by_instance_type = defaultdict(set)
-
-            # Split the errors
-            for error in cloud_provider_errors:
-                if isinstance(error, LaunchNodeError):
-                    self.launch_errors[(error.request_id, error.node_type)] = [
-                        error.details
-                    ] * error.count
-                elif isinstance(error, TerminateNodeError):
-                    self.terminate_errors[error.cloud_instance_id] = error
-                else:
-                    raise ValueError(f"Unknown cloud provider error: {error}")
-
-            # Group the ray nodes by cloud instance id.
-            for node in ray_cluster_resource_state.node_states:
-                if not node.instance_id:
-                    logger.warning(
-                        f"Ray node {node.node_id} has no instance_id. Skipping "
-                        "reconcile. This is likely a ray node that's not managed "
-                        "by ray autoscaler, or the cloud provider failed to "
-                        "inject the cloud instance id into the ray node."
-                    )
-                    continue
-                self.ray_nodes[node.instance_id] = node
-
-            im_instances_with_cloud_instance_id = {
-                im_instance.cloud_instance_id: im_instance
-                for im_instance in im_instances
-                if im_instance.cloud_instance_id
-            }
-
-            for (
-                cloud_instance_id,
-                cloud_instance,
-            ) in non_terminated_cloud_instances.items():
-                if cloud_instance_id not in im_instances_with_cloud_instance_id:
-                    self.unassigned_cloud_instance_ids.add(cloud_instance_id)
-
-                self.cloud_instances_by_instance_type[cloud_instance.node_type].add(
-                    cloud_instance_id
-                )
-
-        def take_unassigned_cloud_instance(
-            self, instance_type: NodeType
-        ) -> Optional[CloudInstance]:
-            """
-            Take an unassigned cloud instance that matches the request_id and
-            instance_type from the unassigned cloud instances.
-            """
-            by_type = self.cloud_instances_by_instance_type.get(instance_type, set())
-
-            matched = by_type & self.unassigned_cloud_instance_ids
-            if not matched:
-                return None
-            matched_list = list(matched)
-            unassigned_cloud_instance_id = matched_list.pop()
-
-            # Update the secondary indexes.
-            self.cloud_instances_by_instance_type[instance_type].remove(
-                unassigned_cloud_instance_id
-            )
-            self.unassigned_cloud_instance_ids.remove(unassigned_cloud_instance_id)
-
-            # Update the primary index and get the cloud instance.
-            unassigned_cloud_instance = self.non_terminated_cloud_instances.pop(
-                unassigned_cloud_instance_id
-            )
-            return unassigned_cloud_instance
-
-        def take_launch_error_msg(
-            self, request_id: str, instance_type: str
-        ) -> Optional[str]:
-            """
-            Take the launch error message for the request_id and instance_type.
-
-            Returns:
-                The launch error message if there's any, otherwise None.
-            """
-            if not self.launch_errors.get((request_id, instance_type), []):
-                return None
-
-            return self.launch_errors[(request_id, instance_type)].pop()
-
-        def get_config(self) -> InstanceReconcileConfig:
-            return self.config
+        )
+        assert (
+            reply.status == StatusCode.OK
+        ), f"Failed to update instance manager: {reply}"
