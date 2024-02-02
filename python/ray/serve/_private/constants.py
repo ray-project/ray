@@ -272,6 +272,9 @@ RAY_SERVE_MAX_QUEUE_LENGTH_RESPONSE_DEADLINE_S = float(
 )
 
 # XXX: add another feature flag for late binding!
+RAY_SERVE_ENABLE_MAX_CONCURRENT_QUERIES_STRICT_ENFORCEMENT = (
+    os.environ.get("RAY_SERVE_ENABLE_MAX_CONCURRENT_QUERIES_STRICT_ENFORCEMENT", "0") == "1"
+)
 
 # Feature flag for caching queue lengths for faster routing in each handle.
 RAY_SERVE_ENABLE_QUEUE_LENGTH_CACHE = (
