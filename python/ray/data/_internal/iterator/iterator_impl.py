@@ -40,24 +40,6 @@ class DataIteratorImpl(DataIterator):
     def schema(self) -> Union[type, "pyarrow.lib.Schema"]:
         return self._base_dataset.schema()
 
-    def __getattr__(self, name):
-        if name == "_base_dataset":
-            raise AttributeError()
-
-        if hasattr(self._base_dataset, name) and not name.startswith("_"):
-            # Raise error for backwards compatibility.
-            # TODO: remove this method in 2.6.
-            raise DeprecationWarning(
-                "ray.train.get_dataset_shard returns a ray.data.DataIterator "
-                "instead of a Dataset/DatasetPipeline as of Ray v2.3. "
-                "Use iter_torch_batches(), to_tf(), or iter_batches() to "
-                "iterate over one epoch. See "
-                "https://docs.ray.io/en/latest/data/api/dataset_iterator.html "
-                "for full DataIterator docs.",
-            )
-
-        raise AttributeError()
-
     def _get_dataset_tag(self):
         return create_dataset_tag(
             self._base_dataset._plan._dataset_name, self._base_dataset._uuid
