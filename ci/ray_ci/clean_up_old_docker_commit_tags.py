@@ -81,7 +81,7 @@ def delete_tags(namespace: str, repository: str, tags: list[str]):
         url = f"https://hub.docker.com/v2/repositories/{namespace}/{repository}/tags/{tag}"
         response = requests.delete(url, headers=headers)
         if response.status_code != 204:
-            print(f"Failed to delete {tag}")
+            print(f"Failed to delete {tag}, status code: {response.status_code}")
 
 
 def query_tags_to_delete(
