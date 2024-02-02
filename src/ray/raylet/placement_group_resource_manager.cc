@@ -26,7 +26,7 @@ void PlacementGroupResourceManager::ReturnUnusedBundle(
     const std::unordered_set<BundleID, pair_hash> &in_use_bundles) {
   for (auto iter = bundle_spec_map_.begin(); iter != bundle_spec_map_.end();) {
     if (0 == in_use_bundles.count(iter->first)) {
-      ReturnBundle(*iter->second);
+      RAY_CHECK(ReturnBundle(*iter->second).ok());
       bundle_spec_map_.erase(iter++);
     } else {
       iter++;
@@ -51,7 +51,7 @@ bool NewPlacementGroupResourceManager::PrepareBundle(
     } else {
       // If there was a bundle in prepare state, it already locked resources, we will
       // return bundle resources so that we can start from the prepare phase again.
-      ReturnBundle(bundle_spec);
+      RAY_CHECK(ReturnBundle(bundle_spec).ok());
     }
   }
 
@@ -94,7 +94,7 @@ bool NewPlacementGroupResourceManager::PrepareBundles(
     RAY_LOG(DEBUG) << "There are one or more bundles request resource failed, will "
                       "release the requested resources before.";
     for (const auto &bundle : prepared_bundles) {
-      ReturnBundle(*bundle);
+      RAY_CHECK(ReturnBundle(*bundle).ok());
       // Erase from `bundle_spec_map_`.
       const auto &iter = bundle_spec_map_.find(bundle->BundleId());
       if (iter != bundle_spec_map_.end()) {

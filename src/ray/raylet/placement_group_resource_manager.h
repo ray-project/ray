@@ -64,6 +64,9 @@ class PlacementGroupResourceManager {
   /// Return back all the bundle resource.
   ///
   /// \param bundle_spec Specification of bundle whose resources will be returned.
+  /// \return ok status if it succeeds to return a bundle. Invalid if it is
+  /// in a transient state that cannot return a bundle. The caller should
+  /// retry in this case.
   virtual Status ReturnBundle(const BundleSpecification &bundle_spec) = 0;
 
   /// Return back all the bundle(which is unused) resource.
