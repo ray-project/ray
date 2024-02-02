@@ -271,6 +271,11 @@ RAY_SERVE_MAX_QUEUE_LENGTH_RESPONSE_DEADLINE_S = float(
     os.environ.get("RAY_SERVE_MAX_QUEUE_LENGTH_RESPONSE_DEADLINE_S", 1.0)
 )
 
+# Feature flag for caching queue lengths for faster routing in each handle.
+RAY_SERVE_ENABLE_QUEUE_LENGTH_CACHE = (
+    os.environ.get("RAY_SERVE_ENABLE_QUEUE_LENGTH_CACHE", "0") == "1"
+)
+
 # Length of time to respect entries in the queue length cache when scheduling requests.
 RAY_SERVE_QUEUE_LENGTH_CACHE_STALENESS_TIMEOUT_S = float(
     os.environ.get("RAY_SERVE_QUEUE_LENGTH_CACHE_STALENESS_TIMEOUT_S", 10.0)

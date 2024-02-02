@@ -29,6 +29,7 @@ from ray.serve._private.common import (
     RunningReplicaInfo,
 )
 from ray.serve._private.constants import (
+    RAY_SERVE_ENABLE_QUEUE_LENGTH_CACHE,
     RAY_SERVE_MAX_QUEUE_LENGTH_RESPONSE_DEADLINE_S,
     RAY_SERVE_MULTIPLEXED_MODEL_ID_MATCHING_TIMEOUT_S,
     RAY_SERVE_QUEUE_LENGTH_CACHE_STALENESS_TIMEOUT_S,
@@ -143,7 +144,7 @@ class PowerOfTwoChoicesReplicaScheduler(ReplicaScheduler):
         self_node_id: Optional[str] = None,
         self_actor_id: Optional[str] = None,
         self_availability_zone: Optional[str] = None,
-        use_replica_queue_len_cache: bool = False,
+        use_replica_queue_len_cache: bool = RAY_SERVE_ENABLE_QUEUE_LENGTH_CACHE,
     ):
         self._loop = event_loop
         self._deployment_id = deployment_id
