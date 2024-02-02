@@ -5,7 +5,6 @@ import time
 
 import pytest
 
-from ray.autoscaler.v2.instance_manager.config import InstanceReconcileConfig
 from ray.autoscaler.v2.instance_manager.instance_manager import InstanceManager
 from ray.autoscaler.v2.instance_manager.instance_storage import InstanceStorage
 from ray.autoscaler.v2.instance_manager.node_provider import (  # noqa
@@ -65,7 +64,6 @@ class TestReconciler:
             non_terminated_cloud_instances={},
             cloud_provider_errors=[],
             ray_install_errors=[],
-            config=InstanceReconcileConfig(),
         )
 
         instances, _ = instance_storage.get_instances()
@@ -108,7 +106,6 @@ class TestReconciler:
             non_terminated_cloud_instances=cloud_instances,
             cloud_provider_errors=[],
             ray_install_errors=[],
-            config=InstanceReconcileConfig(),
         )
 
         instances, _ = instance_storage.get_instances()
@@ -165,7 +162,6 @@ class TestReconciler:
             non_terminated_cloud_instances=cloud_instances,
             cloud_provider_errors=launch_errors,
             ray_install_errors=[],
-            config=InstanceReconcileConfig(),
         )
 
         instances, _ = instance_storage.get_instances()
