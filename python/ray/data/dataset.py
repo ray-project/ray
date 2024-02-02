@@ -563,8 +563,6 @@ class Dataset:
             ray_remote_args["num_gpus"] = num_gpus
 
         batch_format = _apply_batch_format(batch_format)
-        if batch_format == "native":
-            logger.warning("The 'native' batch format has been renamed 'default'.")
 
         min_rows_per_bundled_input = None
         if batch_size is not None and batch_size != "default":
@@ -3657,8 +3655,6 @@ class Dataset:
             An iterable over batches of data.
         """
         batch_format = _apply_batch_format(batch_format)
-        if batch_format == "native":
-            logger.warning("The 'native' batch format has been renamed 'default'.")
         return self.iterator().iter_batches(
             prefetch_batches=prefetch_batches,
             prefetch_blocks=prefetch_blocks,
