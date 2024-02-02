@@ -46,14 +46,13 @@ from ray.tune.progress_reporter import (
     _prepare_progress_reporter_for_ray_client,
     _stream_client_output,
 )
-from ray.tune.registry import get_trainable_cls, is_function_trainable
+from ray.tune.registry import get_trainable_cls
 
 # Must come last to avoid circular imports
 from ray.tune.schedulers import (
     FIFOScheduler,
     PopulationBasedTraining,
     PopulationBasedTrainingReplay,
-    ResourceChangingScheduler,
     TrialScheduler,
 )
 from ray.tune.schedulers.util import (
