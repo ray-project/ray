@@ -10,7 +10,6 @@ import requests
 
 from ray.train.constants import _DEPRECATED_VALUE
 from ray.tune.experiment.config_parser import _make_parser
-from ray.tune.result import DEFAULT_RESULTS_DIR
 
 
 class FrameworkEnum(str, Enum):
@@ -136,8 +135,8 @@ train_help = dict(
     storage_path=(
         "Directory to save training results and checkpoints to. "
         "Can be either a local directory or a cloud storage path "
-        "(e.g. '/tmp/ray_results', 's3://bucket-name'). Defaults to '~/ray_results'.",
-    )
+        "(e.g. '/tmp/ray_results', 's3://bucket-name'). Defaults to '~/ray_results'."
+    ),
     local_dir="Deprecated. Use `storage_path` instead.",
     local_mode="Run Ray in local mode for easier debugging.",
     ray_address="Connect to an existing Ray cluster at this address instead "
