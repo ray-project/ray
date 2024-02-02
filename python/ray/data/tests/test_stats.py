@@ -424,7 +424,6 @@ def test_dataset__repr__(ray_start_regular_shared):
         "      block_generation_time: N,\n"
         "      cpu_usage: Z,\n"
         "      gpu_usage: Z,\n"
-        "      ray_remote_args: {'num_cpus': N, 'scheduling_strategy': 'SPREAD'},\n"
         "   },\n"
         "   operators_stats=[\n"
         "      OperatorStatsSummary(\n"
@@ -1088,7 +1087,7 @@ def test_op_metrics_logging():
             "Operator InputDataBuffer[Input] -> "
             "TaskPoolMapOperator[ReadRange->MapBatches(<lambda>)] completed. "
             "Operator Metrics:\n"
-        ) + STANDARD_EXTRA_METRICS
+        ) + gen_expected_metrics(is_map=True)
 
         # Check that these strings are logged exactly once.
         assert sum([log == input_str for log in logs]) == 1
