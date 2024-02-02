@@ -107,15 +107,11 @@ You can get a list of associated devices with :meth:`ray.train.torch.get_devices
 (PyTorch) Setting the communication backend 
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-.. note::
+PyTorch Distributed supports multiple `backends <https://pytorch.org/docs/stable/distributed.html#backends>`__
+for communicating tensors across workers. By default Ray Train will use NCCL when ``use_gpu=True`` and Gloo otherwise.
 
-    This is an advanced setting. In most cases, you don't have to change this setting.
-
-You can set the PyTorch distributed communication backend (e.g. GLOO or NCCL) by passing a
-:class:`~ray.train.torch.TorchConfig` to the :class:`~ray.train.torch.TorchTrainer`.
-
-See the `PyTorch API reference <https://pytorch.org/docs/stable/distributed.html#torch.distributed.init_process_group>`__
-for valid options.
+If you explictly want to override this setting, you can configure a :class:`~ray.train.torch.TorchConfig` 
+and pass it into the :class:`~ray.train.torch.TorchTrainer`.
 
 .. testcode::
     :hide:
@@ -130,7 +126,7 @@ for valid options.
         train_func,
         scaling_config=ScalingConfig(
             num_workers=num_training_workers,
-            use_gpu=True,
+            use_gpu=True, # Defaults to NCCL
         ),
         torch_config=TorchConfig(backend="gloo"),
     )
