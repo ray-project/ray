@@ -63,12 +63,7 @@ from ray.data._internal.planner.exchange.sort_task_spec import SortKey
 from ray.data._internal.remote_fn import cached_remote_fn
 from ray.data._internal.split import _get_num_rows, _split_at_indices
 from ray.data._internal.stats import DatasetStats, DatasetStatsSummary, StatsManager
-from ray.data._internal.util import (
-    AllToAllAPI,
-    ConsumptionAPI,
-    _is_local_scheme,
-    get_compute_strategy,
-)
+from ray.data._internal.util import AllToAllAPI, ConsumptionAPI, get_compute_strategy
 from ray.data.aggregate import AggregateFn, Max, Mean, Min, Std, Sum
 from ray.data.block import (
     VALID_BATCH_FORMATS,
@@ -3462,7 +3457,6 @@ class Dataset:
             "`write_datasink` instead. For more information, see "
             "https://docs.ray.io/en/master/data/api/doc/ray.data.Datasink.html.",  # noqa: E501
         )
-
 
     @ConsumptionAPI(pattern="Time complexity:")
     def write_datasink(
