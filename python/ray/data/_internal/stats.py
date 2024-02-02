@@ -760,7 +760,7 @@ class DatasetStatsSummary:
                 else:
                     already_printed.add(operator_uuid)
                     out += str(operators_stats_summary)
-        if self.extra_metrics:
+        if DataContext.get_current().verbose_stats_logs and self.extra_metrics:
             indent = (
                 "\t"
                 if operators_stats_summary and operators_stats_summary.is_sub_operator
