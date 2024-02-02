@@ -100,6 +100,52 @@ def test_torch_get_device(
         )
 
 
+@pytest.mark.parametrize("cuda_visible_devices", ["", "1,2"])
+@pytest.mark.parametrize("num_gpus_per_worker", [0.5, 1, 2])
+def test_torch_get_amd_device(
+    shutdown_only, num_gpus_per_worker, cuda_visible_devices, monkeypatch, tmp_path
+):
+    if cuda_visible_devices:
+        # Test if `get_device` is correct even with user specified env var.
+        monkeypatch.setenv("ROCR_VISIBLE_DEVICES", cuda_visible_devices)
+
+    ray.init(num_cpus=4)
+
+    def train_fn():
+        # Make sure environment variable is being set correctly.
+        if cuda_visible_devices:
+            visible_devices = os.environ["ROCR_VISIBLE_DEVICES"]
+            assert visible_devices == "1,2"
+
+        devices = sorted([device.index for device in train.torch.get_devices()])
+        write_rank_data(tmp_path, devices)
+
+    trainer = TorchTrainer(
+        train_fn,
+        scaling_config=ScalingConfig(
+            num_workers=int(2 / num_gpus_per_worker),
+            use_gpu=True,
+            resources_per_worker={"GPU": num_gpus_per_worker},
+        ),
+    )
+    trainer.fit()
+
+    rank_data = get_data_from_all_ranks(tmp_path)
+    devices = list(rank_data.values())
+
+    if num_gpus_per_worker == 0.5:
+        assert sorted(devices) == [[0], [0], [1], [1]]
+    elif num_gpus_per_worker == 1:
+        assert sorted(devices) == [[0], [1]]
+    elif num_gpus_per_worker == 2:
+        assert sorted(devices[0]) == [0, 1]
+    else:
+        raise RuntimeError(
+            "New parameter for this test has been added without checking that the "
+            "correct devices have been returned."
+        )
+
+
 @pytest.mark.parametrize("num_gpus_per_worker", [0.5, 1, 2])
 def test_torch_get_device_dist(ray_2_node_2_gpu, num_gpus_per_worker, tmp_path):
     @patch("torch.cuda.is_available", lambda: True)

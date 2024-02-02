@@ -16,8 +16,9 @@ def get_devices() -> List[torch.device]:
     Returns a list of torch CUDA devices allocated for the current worker.
     If no GPUs are assigned, then it returns a list with a single CPU device.
 
-    Assumes that `CUDA_VISIBLE_DEVICES` is set and is a
-    superset of the `ray.get_gpu_ids()`.
+    Assumes that `CUDA_VISIBLE_DEVICES`, `ONEAPI_DEVICE_SELECTOR`,
+    `ROCR_VISIBLE_DEVICES`, `NEURON_RT_VISIBLE_CORES`, `TPU_VISIBLE_CHIPS`,
+    `HABANA_VISIBLE_MODULES`,... is set and is a superset of the `ray.get_gpu_ids()`.
     """
     if torch.cuda.is_available():
         # GPU IDs are assigned by Ray after you specify "use_gpu"
@@ -26,9 +27,13 @@ def get_devices() -> List[torch.device]:
         gpu_ids = [str(id) for id in ray.get_gpu_ids()]
 
         device_ids = []
+        acceleratormanager = (
+            ray._private.accelerators.get_accelerator_manager_for_resource("GPU")
+        )
+        acc_env_var = acceleratormanager.get_visible_accelerator_ids_env_var()
 
         if len(gpu_ids) > 0:
-            cuda_visible_str = os.environ.get("CUDA_VISIBLE_DEVICES", "")
+            cuda_visible_str = os.environ.get(acc_env_var, "")
             if cuda_visible_str and cuda_visible_str != "NoDevFiles":
                 cuda_visible_list = cuda_visible_str.split(",")
             else:
@@ -43,10 +48,16 @@ def get_devices() -> List[torch.device]:
                     device_ids.append(cuda_visible_list.index(gpu_id))
                 except IndexError:
                     raise RuntimeError(
-                        "CUDA_VISIBLE_DEVICES set incorrectly. "
+                        "CUDA_VISIBLE_DEVICES, ONEAPI_DEVICE_SELECTOR, "
+                        "ROCR_VISIBLE_DEVICES, NEURON_RT_VISIBLE_CORES, "
+                        "TPU_VISIBLE_CHIPS , HABANA_VISIBLE_MODULES ,..."
+                        "set incorrectly. "
                         f"Got {cuda_visible_str}, expected to include {gpu_id}. "
-                        "Did you override the `CUDA_VISIBLE_DEVICES` environment"
-                        " variable? If not, please help file an issue on Github."
+                        "Did you override the `CUDA_VISIBLE_DEVICESi`, "
+                        "`ONEAPI_DEVICE_SELECTOR`, `ROCR_VISIBLE_DEVICES`, "
+                        "`NEURON_RT_VISIBLE_CORES`, `TPU_VISIBLE_CHIPS` , "
+                        "`HABANA_VISIBLE_MODULES` ,... environment variable? "
+                        "If not, please help file an issue on Github."
                     )
 
         else:
