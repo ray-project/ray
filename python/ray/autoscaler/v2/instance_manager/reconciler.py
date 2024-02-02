@@ -67,30 +67,48 @@ class Reconciler:
                 When a instance with launch request id (indicating a previous launch
                 request was made) could be assigned to an unassigned cloud instance
                 of the same instance type.
-            2.  REQUESTED -> ALLOCATION_FAILED/QUEUED:
+            2.  REQUESTED -> ALLOCATION_FAILED:
                 When there's an error from the cloud provider for launch failure so
-                that the instance becomes ALLOCATION_FAILED, or the requested instance
-                is not assigned for too long that it times out and becomes QUEUED
-                again.
+                that the instance becomes ALLOCATION_FAILED.
             3.  * -> RAY_RUNNING:
                 When a ray node on a cloud instance joins the ray cluster, we will
                 transition the instance to RAY_RUNNING.
             4.  * -> TERMINATED:
                 When the cloud instance is already terminated, we will transition the
                 instance to TERMINATED.
-            5.  * -> RAY_STOPPED:
+            5.  TERMINATING -> TERMINATION_FAILED:
+                When there's an error from the cloud provider for termination failure.
+            6.  * -> RAY_STOPPED:
                 When ray was stopped on the cloud instance, we will transition the
                 instance to RAY_STOPPED.
-            6.  * -> RAY_INSTALL_FAILED:
+            7.  * -> RAY_INSTALL_FAILED:
                 When there's an error from RayInstaller.
 
         Args:
-            im_instances: The instance manager's instances.
-            ray_cluster_resource_state: The ray cluster's resource state.
-            non_terminated_cloud_instances: The non-terminated cloud instances.
-            cloud_provider_errors: The cloud provider errors.
+            instance_manager: The instance manager to reconcile.
+            ray_nodes: The ray cluster's states of ray nodes.
+            non_terminated_cloud_instances: The non-terminated cloud instances from
+                the cloud provider.
+            cloud_provider_errors: The errors from the cloud provider.
+            ray_install_errors: The errors from RayInstaller.
+            config: The config for the instance reconcile.
 
         """
+
+        # Handle 1 & 2 for cloud instance allocation.
+        Reconciler._handle_cloud_instance_allocation(
+            instance_manager,
+            non_terminated_cloud_instances,
+            cloud_provider_errors,
+            config,
+        )
+        Reconciler._handle_cloud_instance_terminated(
+            instance_manager, non_terminated_cloud_instances, cloud_provider_errors
+        )
+        Reconciler._handle_ray_running(instance_manager, ray_nodes)
+        Reconciler._handle_ray_stopped(instance_manager, ray_nodes)
+        Reconciler._handle_ray_install_failed(instance_manager, ray_install_errors)
+
         pass
 
     @staticmethod
@@ -123,4 +141,39 @@ class Reconciler:
               (RAY_RUNNING -> RAY_STOPPING):
                 a. Idle terminating ray nodes.
         """
+        pass
+
+    @staticmethod
+    def _handle_cloud_instance_allocation(
+        instance_manager: InstanceManager,
+        non_terminated_cloud_instances: Dict[CloudInstanceId, CloudInstance],
+        cloud_provider_errors: List[CloudInstanceProviderError],
+        config: InstanceReconcileConfig,
+    ):
+        pass
+
+    @staticmethod
+    def _handle_ray_running(
+        instance_manager: InstanceManager, ray_nodes: List[NodeState]
+    ):
+        pass
+
+    @staticmethod
+    def _handle_ray_stopped(
+        instance_manager: InstanceManager, ray_nodes: List[NodeState]
+    ):
+        pass
+
+    @staticmethod
+    def _handle_ray_install_failed(
+        instance_manager: InstanceManager, ray_install_errors: List[RayInstallError]
+    ):
+        pass
+
+    @staticmethod
+    def _handle_cloud_instance_terminated(
+        instance_manager: InstanceManager,
+        non_terminated_cloud_instances: Dict[CloudInstanceId, CloudInstance],
+        cloud_provider_errors: List[CloudInstanceProviderError],
+    ):
         pass

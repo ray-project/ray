@@ -99,8 +99,14 @@ class InstanceUtilTest(unittest.TestCase):
         assert g[Instance.RAY_STOPPED] == {Instance.TERMINATED, Instance.TERMINATING}
         all_status.remove(Instance.RAY_STOPPED)
 
-        assert g[Instance.TERMINATING] == {Instance.TERMINATED}
+        assert g[Instance.TERMINATING] == {
+            Instance.TERMINATED,
+            Instance.TERMINATION_FAILED,
+        }
         all_status.remove(Instance.TERMINATING)
+
+        assert g[Instance.TERMINATION_FAILED] == {Instance.TERMINATING}
+        all_status.remove(Instance.TERMINATION_FAILED)
 
         assert g[Instance.TERMINATED] == set()
         all_status.remove(Instance.TERMINATED)
@@ -161,6 +167,7 @@ class InstanceUtilTest(unittest.TestCase):
             Instance.RAY_STOPPING,
             Instance.RAY_STOPPED,
             Instance.TERMINATING,
+            Instance.TERMINATION_FAILED,
         }
         for s in positive_status:
             instance.status = s

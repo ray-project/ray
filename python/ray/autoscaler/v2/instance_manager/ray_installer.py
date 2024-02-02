@@ -11,7 +11,7 @@ from ray.core.generated.instance_manager_pb2 import Instance
 logger = logging.getLogger(__name__)
 
 
-@dataclasses(frozen=True)
+@dataclasses.dataclass(frozen=True)
 class RayInstallError:
     # Instance manager's instance id.
     im_instance_id: str
