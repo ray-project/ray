@@ -1,18 +1,16 @@
+from collections import defaultdict
 import logging
 import time
-from collections import defaultdict
-from dataclasses import dataclass
 from typing import Dict, List, Optional, Set, Tuple
-
 from ray.autoscaler.v2.instance_manager.common import InstanceUtil
+
 from ray.autoscaler.v2.instance_manager.config import InstanceReconcileConfig
-from ray.autoscaler.v2.scheduler import IResourceScheduler
+from ray.autoscaler.v2.instance_manager.instance_manager import InstanceManager
 from ray.autoscaler.v2.instance_manager.node_provider import (
     CloudInstance,
     CloudInstanceId,
     CloudInstanceProviderError,
     LaunchNodeError,
-    TerminateNodeError,
 )
 from ray.autoscaler.v2.instance_manager.ray_installer import RayInstallError
 from ray.autoscaler.v2.instance_manager.instance_manager import InstanceManager
@@ -25,6 +23,7 @@ from ray.core.generated.instance_manager_pb2 import (
 from ray.core.generated.instance_manager_pb2 import (
     InstanceUpdateEvent as IMInstanceUpdateEvent,
 )
+from ray.autoscaler.v2.scheduler import IResourceScheduler
 
 logger = logging.getLogger(__name__)
 
