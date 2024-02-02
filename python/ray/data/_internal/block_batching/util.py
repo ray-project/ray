@@ -34,8 +34,8 @@ def _calculate_ref_hits(refs: List[ObjectRef[Any]]) -> Tuple[int, int, int]:
         unknowns = sum(1 for node_ids in nodes if not node_ids)
         misses = len(nodes) - hits - unknowns
         return hits, misses, unknowns
-return 0, 0, 0
-        return 0, 0, 0
+
+    return 0, 0, 0
 
 
 def resolve_block_refs(
