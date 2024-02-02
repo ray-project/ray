@@ -350,8 +350,8 @@ def test_proxy_prefers_replicas_on_same_node(ray_cluster: Cluster, set_flag):
     should route to all replicas equally.
     """
 
-    if set_flag:
-        os.environ["RAY_SERVE_PROXY_PREFER_LOCAL_NODE_ROUTING"] = "1"
+    if not set_flag:
+        os.environ["RAY_SERVE_PROXY_PREFER_LOCAL_NODE_ROUTING"] = "0"
 
     cluster = ray_cluster
     cluster.add_node(num_cpus=1)
