@@ -142,7 +142,6 @@ def test_webdataset_coding(ray_start_2_cpus, tmp_path):
     image = np.random.randint(0, 255, (100, 100, 3), dtype=np.uint8)
     gray = np.random.randint(0, 255, (100, 100), dtype=np.uint8)
     dstruct = dict(a=[1], b=dict(c=2), d="hello")
-    # Note: tensors are supported as numpy format only in strict mode.
     ttensor = torch.tensor([1, 2, 3]).numpy()
 
     sample = {

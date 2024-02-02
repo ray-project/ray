@@ -87,23 +87,22 @@ BlockPartitionMetadata = List["BlockMetadata"]
 # is on by default. When block splitting is off, the type is a plain block.
 MaybeBlockPartition = Union[Block, DynamicObjectRefGenerator]
 
-VALID_BATCH_FORMATS = ["default", "native", "pandas", "pyarrow", "numpy", None]
+VALID_BATCH_FORMATS = ["pandas", "pyarrow", "numpy", None]
+DEFAULT_BATCH_FORMAT = "numpy"
 
-VALID_BATCH_FORMATS_STRICT_MODE = ["pandas", "pyarrow", "numpy", None]
 
-
-def _apply_strict_mode_batch_format(given_batch_format: Optional[str]) -> str:
+def _apply_batch_format(given_batch_format: Optional[str]) -> str:
     if given_batch_format == "default":
-        given_batch_format = "numpy"
-    if given_batch_format not in VALID_BATCH_FORMATS_STRICT_MODE:
+        given_batch_format = DEFAULT_BATCH_FORMAT
+    if given_batch_format not in VALID_BATCH_FORMATS:
         raise ValueError(
-            f"The given batch format {given_batch_format} is not allowed "
-            f"in Ray 2.5 (must be one of {VALID_BATCH_FORMATS_STRICT_MODE})."
+            f"The given batch format {given_batch_format} isn't allowed (must be one of"
+            f" {VALID_BATCH_FORMATS})."
         )
     return given_batch_format
 
 
-def _apply_strict_mode_batch_size(
+def _apply_batch_size(
     given_batch_size: Optional[Union[int, Literal["default"]]], use_gpu: bool
 ) -> Optional[int]:
     if use_gpu and (not given_batch_size or given_batch_size == "default"):
@@ -115,7 +114,7 @@ def _apply_strict_mode_batch_size(
             "usage via the Ray dashboard."
         )
     elif given_batch_size == "default":
-        return ray.data.context.STRICT_MODE_DEFAULT_BATCH_SIZE
+        return ray.data.context.DEFAULT_BATCH_SIZE
     else:
         return given_batch_size
 

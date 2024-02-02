@@ -23,7 +23,7 @@ from ray.data.block import (
     BlockAccessor,
     BlockMetadata,
     DataBatch,
-    _apply_strict_mode_batch_format,
+    _apply_batch_format,
 )
 from ray.types import ObjectRef
 from ray.util.annotations import PublicAPI
@@ -153,7 +153,7 @@ class DataIterator(abc.ABC):
                 "prefetching in terms of batches instead of blocks."
             )
 
-        batch_format = _apply_strict_mode_batch_format(batch_format)
+        batch_format = _apply_batch_format(batch_format)
 
         def _create_iterator() -> Iterator[DataBatch]:
             time_start = time.perf_counter()
