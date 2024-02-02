@@ -89,7 +89,9 @@ class LocalDeployProvider(DeployProvider):
                 "provider because it deploys to an existing Ray cluster."
             )
 
-        ServeSubmissionClient(address).deploy_applications(config)
+        ServeSubmissionClient(address).deploy_applications(
+            config.dict(exclude_unset=True),
+        )
         cli_logger.success(
             "\nSent deploy request successfully.\n "
             "* Use `serve status` to check applications' statuses.\n "
