@@ -143,7 +143,7 @@ class PowerOfTwoChoicesReplicaScheduler(ReplicaScheduler):
         self_node_id: Optional[str] = None,
         self_actor_id: Optional[str] = None,
         self_availability_zone: Optional[str] = None,
-        use_replica_queue_len_cache: bool = True,
+        use_replica_queue_len_cache: bool = False,
     ):
         self._loop = event_loop
         self._deployment_id = deployment_id
@@ -800,6 +800,7 @@ class PowerOfTwoChoicesReplicaScheduler(ReplicaScheduler):
         replica = await self.choose_replica_for_query(query)
         replica_id = replica.replica_id
         if not self._use_replica_queue_len_cache:
+            # XXX: Java needs to go into this path somehow too.
             return replica.send_query(query), replica_id
 
         while True:
