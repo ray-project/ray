@@ -83,7 +83,7 @@ class ReplicaQueueLengthCache:
 
         return replica_info[0]
 
-    def set(self, replica_id: str, queue_length: int):
+    def update(self, replica_id: str, queue_length: int):
         """Set (or update) the queue length for a replica ID."""
         self._cache[replica_id] = (queue_length, self._get_curr_time_s())
 
@@ -142,7 +142,7 @@ class PowerOfTwoChoicesReplicaScheduler(ReplicaScheduler):
         self_node_id: Optional[str] = None,
         self_actor_id: Optional[str] = None,
         self_availability_zone: Optional[str] = None,
-        use_replica_queue_len_cache: bool = False,
+        use_replica_queue_len_cache: bool = True,
     ):
         self._loop = event_loop
         self._deployment_id = deployment_id
@@ -599,6 +599,7 @@ class PowerOfTwoChoicesReplicaScheduler(ReplicaScheduler):
             for c in candidates:
                 queue_len = self._replica_queue_len_cache.get(c.replica_id)
                 if queue_len is not None:
+                    # logger.info(f"Got cached info for replica! {(c.replica_id, queue_len)}")
                     if queue_len < lowest_queue_len:
                         lowest_queue_len = queue_len
                         chosen_replica_id = c.replica_id
@@ -764,15 +765,16 @@ class PowerOfTwoChoicesReplicaScheduler(ReplicaScheduler):
         return replica
 
     async def _handle_system_response(
-        self, obj_ref_gen: "ray._raylet.ObjectRefGenerator"
+        self, replica_id: str, obj_ref_gen: "ray._raylet.ObjectRefGenerator"
     ) -> bool:
         # TODO: put this in the wrapper.
         system_response_ref = await obj_ref_gen.__anext__()
         system_response: ReplicaQueueLengthInfo = pickle.loads(
             await system_response_ref
         )
-        self._replica_queue_len_cache.set_replica_queue_length(
-            system_response.num_ongoing_requests
+        # print(system_response)
+        self._replica_queue_len_cache.update(
+            replica_id, system_response.num_ongoing_requests
         )
         return system_response.accepted
 
@@ -785,19 +787,22 @@ class PowerOfTwoChoicesReplicaScheduler(ReplicaScheduler):
         request, so it's up to the caller to time out or cancel the request.
         """
         replica = await self.choose_replica_for_query(query)
+        replica_id = replica.replica_id
         if not self._use_replica_queue_len_cache:
-            return replica.send_query(query), replica.replica_id
+            return replica.send_query(query), replica_id
 
         while True:
             try:
-                obj_ref_gen = replica.send_query(query)
-                accepted = await self._handle_system_response(obj_ref_gen)
+                obj_ref_gen = replica.send_query(query, late_binding=True)
+                accepted = await self._handle_system_response(replica_id, obj_ref_gen)
                 if accepted:
+                    # logger.info("Replica accepted!")
                     if query.metadata.is_streaming:
-                        return obj_ref_gen, replica.replica_id
+                        return obj_ref_gen, replica_id
                     else:
-                        return await obj_ref_gen.__anext__(), replica.replica_id
+                        return await obj_ref_gen.__anext__(), replica_id
 
+                logger.info("Replica rejected :( trying again")
                 replica = await self.choose_replica_for_query(query, emplace_front=True)
             except Exception:
                 # XXX: should we retry here or not?

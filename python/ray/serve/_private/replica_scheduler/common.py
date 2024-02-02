@@ -132,7 +132,7 @@ class ActorReplicaWrapper:
         return method.remote(pickle.dumps(query.metadata), *query.args, **query.kwargs)
 
     def send_query(
-        self, query: Query, *, late_binding: bool
+        self, query: Query, *, late_binding: bool = False
     ) -> Union[ray.ObjectRef, "ray._raylet.ObjectRefGenerator"]:
         if self._replica_info.is_cross_language:
             return self._send_query_java(query)
