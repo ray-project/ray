@@ -124,10 +124,9 @@ class ResourceManager:
 
 
 def _estimate_object_store_memory(op, state, next_op) -> int:
-    object_store_memory = (
-        op.metrics.obj_store_mem_pending_tasks
-        + op.metrics.obj_store_mem_internal_outqueue
-    )
+    object_store_memory = op.metrics.obj_store_mem_internal_outqueue
+    if op.metrics.obj_store_mem_pending_tasks is not None:
+        object_store_memory += op.metrics.obj_store_mem_pending_tasks
     # Don't count input refs towards dynamic memory usage, as they have been
     # pre-created already outside this execution.
     if not isinstance(op, InputDataBuffer):
