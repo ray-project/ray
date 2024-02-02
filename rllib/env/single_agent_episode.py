@@ -141,6 +141,22 @@ class SingleAgentEpisode:
         prev_4_actions_col = batch(prev_4_a)
     """
 
+    __slots__ = (
+        "id_",
+        "observation_space",
+        "observations",
+        "infos",
+        "action_space",
+        "actions",
+        "rewards",
+        "is_terminated",
+        "is_truncated",
+        "extra_model_outputs",
+        "render_images",
+        "t_started",
+        "t",
+    )
+
     def __init__(
         self,
         id_: Optional[str] = None,

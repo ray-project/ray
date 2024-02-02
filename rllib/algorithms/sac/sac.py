@@ -314,7 +314,8 @@ class SACConfig(AlgorithmConfig):
 
         # Include the `twin_q` hyperparameter into the model config.
         # TODO (simon, sven): Find a general way to update the model_config.
-        self.model.update({"twin_q": self.twin_q})
+        if self._enable_new_api_stack:
+            self.model.update({"twin_q": self.twin_q})
 
         return self
 
