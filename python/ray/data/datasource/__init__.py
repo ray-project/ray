@@ -10,7 +10,6 @@ from ray.data.datasource.csv_datasource import CSVDatasource
 from ray.data.datasource.datasink import Datasink
 from ray.data.datasource.datasource import (
     Datasource,
-    DummyOutputDatasource,
     RandomIntRowDatasource,
     Reader,
     ReadTask,
@@ -81,7 +80,6 @@ __all__ = [
     "DefaultBlockWritePathProvider",
     "DefaultFileMetadataProvider",
     "DefaultParquetMetadataProvider",
-    "DummyOutputDatasource",
     "FastFileMetadataProvider",
     "FileBasedDatasource",
     "FileExtensionFilter",
