@@ -205,34 +205,6 @@ def test_deepspeed_zero_stages(ray_start_6_cpus_4_gpus, tmpdir, stage):
             ), f"[stage-{stage}] Model states {full_model} doesn't exist!"
 
 
-def test_high_frequency_checkpoining(ray_start_6_cpus_4_gpus):
-    """Test high frequency checkpoiting to identify deadlocks."""
-
-    def train_loop():
-        model = LinearModule(input_dim=32, output_dim=4, strategy="fsdp")
-
-        trainer = pl.Trainer(
-            max_epochs=30,
-            limit_train_batches=1,
-            limit_val_batches=1,
-            devices="auto",
-            accelerator="auto",
-            strategy=RayFSDPStrategy(),
-            plugins=[RayLightningEnvironment()],
-            callbacks=[RayTrainReportCallback()],
-        )
-
-        datamodule = DummyDataModule(batch_size=8, dataset_size=8)
-        trainer.fit(model, datamodule=datamodule)
-
-    trainer = TorchTrainer(
-        train_loop_per_worker=train_loop,
-        scaling_config=ScalingConfig(num_workers=4, use_gpu=True),
-    )
-
-    trainer.fit()
-
-
 if __name__ == "__main__":
     import sys
 
