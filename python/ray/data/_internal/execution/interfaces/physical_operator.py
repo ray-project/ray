@@ -227,9 +227,7 @@ class PhysicalOperator(Operator):
     @property
     def metrics(self) -> OpRuntimeMetrics:
         """Returns the runtime metrics of this operator."""
-        context = DataContext.get_current()
-        if context.verbose_stats_logs:
-            self._metrics._extra_metrics = self._extra_metrics()
+        self._metrics._extra_metrics = self._extra_metrics()
         return self._metrics
 
     def _extra_metrics(self) -> Dict[str, Any]:
