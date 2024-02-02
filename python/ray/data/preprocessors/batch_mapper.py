@@ -1,5 +1,4 @@
-import warnings
-from typing import TYPE_CHECKING, Any, Callable, Dict, Literal, Optional, Union
+from typing import TYPE_CHECKING, Callable, Dict, Literal, Optional, Union
 
 import numpy as np
 
@@ -69,8 +68,6 @@ class BatchMapper(Preprocessor):
             we will infer based on the input dataset data format.
     """
 
-    _is_fittable = False
-
     def __init__(
         self,
         fn: Union[
@@ -82,43 +79,5 @@ class BatchMapper(Preprocessor):
         ],
         batch_format: Optional[BatchFormat],
         batch_size: Optional[Union[int, Literal["default"]]] = "default",
-        # TODO: Introduce a "zero_copy" format
-        # TODO: We should reach consistency of args between BatchMapper and map_batches.
     ):
-
-        warnings.warn(
-            BATCH_MAPPER_DEPRECATION_MESSAGE, DeprecationWarning, stacklevel=2
-        )
-
-        if batch_format not in [
-            BatchFormat.PANDAS,
-            BatchFormat.NUMPY,
-        ]:
-            raise ValueError(
-                "BatchMapper only supports 'pandas' or 'numpy' batch format."
-            )
-
-        self.batch_format = batch_format
-        self.batch_size = batch_size
-        self.fn = fn
-
-    def _transform_numpy(
-        self, np_data: Union[np.ndarray, Dict[str, np.ndarray]]
-    ) -> Union[np.ndarray, Dict[str, np.ndarray]]:
-        return self.fn(np_data)
-
-    def _transform_pandas(self, df: "pandas.DataFrame") -> "pandas.DataFrame":
-        return self.fn(df)
-
-    def _determine_transform_to_use(self):
-        if self.batch_format:
-            return self.batch_format
-        else:
-            return super()._determine_transform_to_use()
-
-    def _get_transform_config(self) -> Dict[str, Any]:
-        return {"batch_size": self.batch_size}
-
-    def __repr__(self):
-        fn_name = getattr(self.fn, "__name__", self.fn)
-        return f"{self.__class__.__name__}(fn={fn_name})"
+        raise DeprecationWarning(BATCH_MAPPER_DEPRECATION_MESSAGE)
