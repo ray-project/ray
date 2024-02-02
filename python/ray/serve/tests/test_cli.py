@@ -685,28 +685,16 @@ def test_replica_placement_group_options(ray_start_stop):
 def test_deploy_from_import_path(ray_start_stop):
     """Test that `deploy` works from an import path."""
 
-    config_file_dir = os.path.join(
-        os.path.dirname(__file__),
-        "test_config_files",
-    )
-    deploy_cmd = f"cd {config_file_dir} && serve deploy arg_builders:build_echo_app"
+    import_path = "ray.serve.tests.test_config_files.arg_builders.build_echo_app"
 
-    subprocess.check_output(
-        deploy_cmd,
-        shell=True,
-    )
-
+    subprocess.check_output(["serve", "deploy", import_path])
     wait_for_condition(
         check_http_response,
         expected_text="DEFAULT",
         timeout=15,
     )
 
-    subprocess.check_output(
-        deploy_cmd + " message='redeployed!'",
-        shell=True,
-    )
-
+    subprocess.check_output(["serve", "deploy", import_path, "message=redeployed!"])
     wait_for_condition(
         check_http_response,
         expected_text="redeployed!",
