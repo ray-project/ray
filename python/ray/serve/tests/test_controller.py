@@ -161,6 +161,7 @@ def test_get_serve_instance_details_json_serializable(serve_instance, policy):
                                 "user_config": None,
                                 "autoscaling_config": {
                                     "min_replicas": 1,
+                                    "initial_replicas": None,
                                     "max_replicas": 10,
                                     "target_num_ongoing_requests_per_replica": 1.0,
                                     "metrics_interval_s": 10.0,
