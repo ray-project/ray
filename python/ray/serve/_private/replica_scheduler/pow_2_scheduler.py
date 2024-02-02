@@ -31,6 +31,7 @@ from ray.serve._private.common import (
 from ray.serve._private.constants import (
     RAY_SERVE_MAX_QUEUE_LENGTH_RESPONSE_DEADLINE_S,
     RAY_SERVE_MULTIPLEXED_MODEL_ID_MATCHING_TIMEOUT_S,
+    RAY_SERVE_QUEUE_LENGTH_CACHE_STALENESS_TIMEOUT_S,
     RAY_SERVE_QUEUE_LENGTH_RESPONSE_DEADLINE_S,
     SERVE_LOGGER_NAME,
 )
@@ -59,7 +60,7 @@ class ReplicaQueueLengthCache:
     def __init__(
         self,
         *,
-        staleness_timeout_s: float = 10.0,
+        staleness_timeout_s: float = RAY_SERVE_QUEUE_LENGTH_CACHE_STALENESS_TIMEOUT_S,
         get_curr_time_s: Callable[[], float] = None,
     ):
         # Map of replica_id: (queue_length, timestamp).
@@ -615,6 +616,8 @@ class PowerOfTwoChoicesReplicaScheduler(ReplicaScheduler):
 
         # XXX: decision point here! If we have a validate candidate from the cache, do
         # we bother actively probing? Or even probe all if we're probing any?
+        #
+        # Ideally, we make the fast decision and refresh the cache in the background.
 
         for r, queue_len in await self._actively_probe_queue_lens(
             not_in_cache,

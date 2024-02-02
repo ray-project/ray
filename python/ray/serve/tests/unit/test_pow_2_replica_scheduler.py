@@ -15,6 +15,8 @@ from ray.serve._private.replica_scheduler import (
     Query,
     ReplicaWrapper,
 )
+from ray.serve._private.replica_scheduler.pow_2_scheduler import ReplicaQueueLengthCache
+from ray.serve._private.test_utils import MockTimer
 
 DEFAULT_MAX_CONCURRENT_REQUESTS = 10
 SCHEDULER_NODE_ID = "scheduler_node_id"
@@ -1264,6 +1266,47 @@ async def test_replicas_updated_event_on_correct_loop(pow_2_scheduler):
 
     pow_2_scheduler._replicas_updated_event.set()
     await pow_2_scheduler._replicas_updated_event.wait()
+
+
+@pytest.mark.asyncio
+async def test_replica_queue_length_cache():
+    timer = MockTimer()
+    staleness_timeout_s = 10.0
+    c = ReplicaQueueLengthCache(
+        staleness_timeout_s=staleness_timeout_s, get_curr_time_s=timer.time
+    )
+
+    # Get nonexistent key.
+    assert c.get("replica-id-1") is None
+
+    # Insert and get a valid key.
+    c.update("replica-id-1", 123)
+    assert c.get("replica-id-1") == 123
+
+    # Get timed out key.
+    timer.advance(staleness_timeout_s + 1)
+    assert c.get("replica-id-1") is None
+
+    # Reset timed out key.
+    c.update("replica-id-1", 456)
+    assert c.get("replica-id-1") == 456
+
+    # Insert multiple keys and remove an inactive set of them.
+    c.update("replica-id-1", 1)
+    c.update("replica-id-2", 2)
+    c.update("replica-id-3", 3)
+    c.update("replica-id-4", 4)
+    c.remove_inactive_replicas(
+        active_replica_ids={"replica-id-1", "replica-id-3"},
+    )
+    assert all(
+        [
+            c.get("replica-id-1") == 1,
+            c.get("replica-id-2") is None,
+            c.get("replica-id-3") == 3,
+            c.get("replica-id-4") is None,
+        ]
+    )
 
 
 if __name__ == "__main__":
