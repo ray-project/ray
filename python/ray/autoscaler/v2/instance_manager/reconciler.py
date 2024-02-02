@@ -1,7 +1,6 @@
 import logging
 from typing import Dict, List
 
-from ray.autoscaler.v2.instance_manager.config import InstanceReconcileConfig
 from ray.autoscaler.v2.instance_manager.instance_manager import InstanceManager
 from ray.autoscaler.v2.instance_manager.node_provider import (
     CloudInstance,
@@ -47,7 +46,6 @@ class Reconciler:
         non_terminated_cloud_instances: Dict[CloudInstanceId, CloudInstance],
         cloud_provider_errors: List[CloudInstanceProviderError],
         ray_install_errors: List[RayInstallError],
-        config: InstanceReconcileConfig,
     ):
         """
         Reconcile the instance states of the instance manager from external states like
@@ -91,7 +89,6 @@ class Reconciler:
                 the cloud provider.
             cloud_provider_errors: The errors from the cloud provider.
             ray_install_errors: The errors from RayInstaller.
-            config: The config for the instance reconcile.
 
         """
 
@@ -100,7 +97,6 @@ class Reconciler:
             instance_manager,
             non_terminated_cloud_instances,
             cloud_provider_errors,
-            config,
         )
         Reconciler._handle_cloud_instance_terminated(
             instance_manager, non_terminated_cloud_instances, cloud_provider_errors
@@ -115,7 +111,6 @@ class Reconciler:
     def step_next(
         instance_manager: InstanceManager,
         scheduler: IResourceScheduler,
-        config: InstanceReconcileConfig,
     ):
         """
         Step the reconciler to the next state by computing instance status transitions
@@ -148,7 +143,6 @@ class Reconciler:
         instance_manager: InstanceManager,
         non_terminated_cloud_instances: Dict[CloudInstanceId, CloudInstance],
         cloud_provider_errors: List[CloudInstanceProviderError],
-        config: InstanceReconcileConfig,
     ):
         pass
 
