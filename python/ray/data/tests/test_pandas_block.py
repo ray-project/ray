@@ -23,7 +23,7 @@ def test_dict_fallback_to_pandas_block(ray_start_regular_shared):
     # to a supported arrow type. This test checks that the block
     # construction falls back to pandas and still succeeds.
     def fn(batch):
-        batch["data"] = [{"data": 0} for _ in range(len(batch["id"]))]
+        batch["data_dict"] = [{"data": 0} for _ in range(len(batch["id"]))]
         return batch
 
     ds = ray.data.range(10).map_batches(fn)
@@ -31,6 +31,15 @@ def test_dict_fallback_to_pandas_block(ray_start_regular_shared):
     block = ray.get(ds.get_internal_block_refs()[0])
     # TODO: Once we support converting dict to a supported arrow type,
     # the block type should be Arrow.
+    assert isinstance(block, pd.DataFrame)
+
+    def fn2(batch):
+        batch["data_none"] = [None for _ in range(len(batch["id"]))]
+        return batch
+
+    ds2 = ray.data.range(10).map_batches(fn2)
+    ds2 = ds2.materialize()
+    block = ray.get(ds2.get_internal_block_refs()[0])
     assert isinstance(block, pd.DataFrame)
 
 
