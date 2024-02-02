@@ -6,14 +6,17 @@ import pytest
 from ray.serve._private.deploy_provider import (
     DEPLOY_PROVIDER_ENV_VAR,
     AnyscaleDeployProvider,
+    LocalDeployProvider,
     get_deploy_provider,
 )
 from ray.serve.tests.unit.fake_deploy_provider import FakeDeployProvider
 
 
-def test_get_default_deploy_provider():
-    """Test getting a default deploy provider."""
-    assert get_deploy_provider("anyscale") == AnyscaleDeployProvider
+def test_get_builtin_deploy_providers():
+    """Test getting builtin deploy provider."""
+    assert isinstance(get_deploy_provider(None), LocalDeployProvider)
+    assert isinstance(get_deploy_provider("local"), LocalDeployProvider)
+    assert isinstance(get_deploy_provider("anyscale"), AnyscaleDeployProvider)
 
 
 @pytest.mark.parametrize("from_env_var", [False, True])
