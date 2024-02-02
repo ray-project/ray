@@ -64,7 +64,7 @@ class PlacementGroupResourceManager {
   /// Return back all the bundle resource.
   ///
   /// \param bundle_spec Specification of bundle whose resources will be returned.
-  virtual void ReturnBundle(const BundleSpecification &bundle_spec) = 0;
+  virtual Status ReturnBundle(const BundleSpecification &bundle_spec) = 0;
 
   /// Return back all the bundle(which is unused) resource.
   ///
@@ -96,7 +96,7 @@ class NewPlacementGroupResourceManager : public PlacementGroupResourceManager {
   void CommitBundles(const std::vector<std::shared_ptr<const BundleSpecification>>
                          &bundle_specs) override;
 
-  void ReturnBundle(const BundleSpecification &bundle_spec) override;
+  Status ReturnBundle(const BundleSpecification &bundle_spec) override;
 
   const std::shared_ptr<ClusterResourceScheduler> GetResourceScheduler() const {
     return cluster_resource_scheduler_;

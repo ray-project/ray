@@ -93,9 +93,11 @@ bool NodeResourceInstanceSet::operator==(const NodeResourceInstanceSet &other) c
 std::optional<absl::flat_hash_map<ResourceID, std::vector<FixedPoint>>>
 NodeResourceInstanceSet::TryAllocate(const ResourceSet &resource_demands) {
   absl::flat_hash_map<ResourceID, std::vector<FixedPoint>> allocations;
+  RAY_LOG(DEBUG) << "Allocate resource demands: " << resource_demands.DebugString();
   for (const auto &[resource_id, demand] : resource_demands.Resources()) {
     auto allocation = TryAllocate(resource_id, demand);
     if (allocation) {
+      RAY_LOG(DEBUG) << "Succeed to allocate resources " << resource_id.Binary();
       // Even if allocation failed we need to remember partial allocations to correctly
       // free resources.
       allocations[resource_id] = std::move(*allocation);
@@ -104,6 +106,7 @@ NodeResourceInstanceSet::TryAllocate(const ResourceSet &resource_demands) {
       for (const auto &[resource_id, allocation] : allocations) {
         Free(resource_id, allocation);
       }
+      RAY_LOG(DEBUG) << "Failed to allocate resources";
       return std::nullopt;
     }
   }
@@ -114,8 +117,10 @@ NodeResourceInstanceSet::TryAllocate(const ResourceSet &resource_demands) {
 
 std::optional<std::vector<FixedPoint>> NodeResourceInstanceSet::TryAllocate(
     ResourceID resource_id, FixedPoint demand) {
+  RAY_LOG(DEBUG) << "Start allocating resources";
   std::vector<FixedPoint> available = Get(resource_id);
   if (available.empty()) {
+    RAY_LOG(DEBUG) << "Failed to allocate. Resource doesn't exist.";
     return std::nullopt;
   }
 
@@ -123,13 +128,16 @@ std::optional<std::vector<FixedPoint>> NodeResourceInstanceSet::TryAllocate(
   FixedPoint remaining_demand = demand;
 
   if (available.size() == 1) {
+    RAY_LOG(DEBUG) << "Only one instance. Available: " << available[0] << ". Remaining demand: " << remaining_demand;
     // This resource has just one instance.
     if (available[0] >= remaining_demand) {
+      RAY_LOG(DEBUG) << "Only one instance. Succeeds to allocate resources.";
       available[0] -= remaining_demand;
       allocation[0] = remaining_demand;
       Set(resource_id, std::move(available));
       return std::make_optional<std::vector<FixedPoint>>(std::move(allocation));
     } else {
+      RAY_LOG(DEBUG) << "Only one instance. Failed to allocate resources because there's no capacity Available: " << available[0] << ". Remaining demand: " << remaining_demand;
       // Not enough capacity.
       return std::nullopt;
     }
@@ -143,12 +151,14 @@ std::optional<std::vector<FixedPoint>> NodeResourceInstanceSet::TryAllocate(
   // allocating the resource instance with the smallest available capacity greater than
   // remaining_demand
   if (remaining_demand >= 1.) {
+    RAY_LOG(DEBUG) << "Multiple instances. Remaining demand: " << remaining_demand << ". Total available instances " << available.size();
     for (size_t i = 0; i < available.size(); i++) {
       if (available[i] == 1.) {
         // Allocate a full unit-capacity instance.
         allocation[i] = 1.;
         available[i] = 0;
         remaining_demand -= 1.;
+        RAY_LOG(DEBUG) << "Allocate full unit capacity instance. Remaining demand: " << remaining_demand;
       }
       if (remaining_demand < 1.) {
         break;
@@ -158,11 +168,13 @@ std::optional<std::vector<FixedPoint>> NodeResourceInstanceSet::TryAllocate(
 
   if (remaining_demand >= 1.) {
     // Cannot satisfy a demand greater than one if no unit capacity resource is available.
+    RAY_LOG(DEBUG) << "Not enough capacity to satisfy. Remaining demand: " << remaining_demand;
     return std::nullopt;
   }
 
   // Remaining demand is fractional. Find the best fit, if exists.
   if (remaining_demand > 0.) {
+    RAY_LOG(DEBUG) << "Find the best fit. Remaining demand: " << remaining_demand;
     int64_t idx_best_fit = -1;
     FixedPoint available_best_fit = 1.;
     for (size_t i = 0; i < available.size(); i++) {
@@ -175,8 +187,10 @@ std::optional<std::vector<FixedPoint>> NodeResourceInstanceSet::TryAllocate(
       }
     }
     if (idx_best_fit == -1) {
+      RAY_LOG(DEBUG) << "Couldn't find the best fit. Remaining demand: " << remaining_demand;
       return std::nullopt;
     } else {
+      RAY_LOG(DEBUG) << "Best fit was at " << idx_best_fit << ". Remaning demand" << remaining_demand;
       allocation[idx_best_fit] = remaining_demand;
       available[idx_best_fit] -= remaining_demand;
     }

@@ -152,13 +152,14 @@ void NewPlacementGroupResourceManager::CommitBundles(
   }
 }
 
-void NewPlacementGroupResourceManager::ReturnBundle(
+Status NewPlacementGroupResourceManager::ReturnBundle(
     const BundleSpecification &bundle_spec) {
   auto it = pg_bundles_.find(bundle_spec.BundleId());
   if (it == pg_bundles_.end()) {
     RAY_LOG(DEBUG) << "Duplicate cancel request, skip it directly.";
-    return;
+    return Status::OK();
   }
+
   const auto &bundle_state = it->second;
   if (bundle_state->state_ == CommitState::PREPARED) {
     // Commit bundle first so that we can remove the bundle with consistent
@@ -166,17 +167,22 @@ void NewPlacementGroupResourceManager::ReturnBundle(
     CommitBundle(bundle_spec);
   }
 
-  // Return original resources to resource allocator `ClusterResourceScheduler`.
-  auto original_resources = it->second->resources_;
-  cluster_resource_scheduler_->GetLocalResourceManager().ReleaseWorkerResources(
-      original_resources);
-
   // Substract placement group resources from resource allocator
   // `ClusterResourceScheduler`.
   const auto &placement_group_resources = bundle_spec.GetFormattedResources();
   auto resource_instances = std::make_shared<TaskResourceInstances>();
-  cluster_resource_scheduler_->GetLocalResourceManager().AllocateLocalTaskResources(
+  auto allocated = cluster_resource_scheduler_->GetLocalResourceManager().AllocateLocalTaskResources(
       placement_group_resources, resource_instances);
+
+  if (!allocated) {
+    RAY_LOG(WARNING) << "Bundle resources are still in use. GCS should retry to release a bundle." << bundle_spec.DebugString();
+    return Status::Invalid("Bundle resources are still in use. Retry again.");
+  } else {
+    // Return original resources to resource allocator `ClusterResourceScheduler`.
+    auto original_resources = it->second->resources_;
+    cluster_resource_scheduler_->GetLocalResourceManager().ReleaseWorkerResources(
+        original_resources);
+  }
 
   for (const auto &resource : placement_group_resources) {
     auto resource_id = scheduling::ResourceID{resource.first};
@@ -194,6 +200,7 @@ void NewPlacementGroupResourceManager::ReturnBundle(
     }
   }
   pg_bundles_.erase(it);
+  return Status::OK();
 }
 
 }  // namespace raylet
