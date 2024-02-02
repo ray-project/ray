@@ -511,10 +511,18 @@ class PowerOfTwoChoicesReplicaScheduler(ReplicaScheduler):
         self,
         replicas: List[ReplicaWrapper],
         backoff_index: int,
-    ) -> List[Tuple[ReplicaWrapper, int]]:
-        """XXX: COMMENT!
+    ) -> List[Tuple[ReplicaWrapper, Optional[int]]]:
+        """Actively probe the queue length from each of the replicas.
 
-        Note that it updates the cache.
+        Sends an RPC to each replica to fetch its queue length, with a response deadline
+        that increases exponentially in backoff.
+
+        Returns a list of queue lengths in the same order as the replicas passed in.
+        Replicas whose RPCs fail or don't respond within the deadline will have a queue
+        length of `None`.
+
+        This method also updates the local cache of replica queue lengths according to
+        the responses.
         """
         result: List[Tuple[ReplicaWrapper, int]] = []
         if len(replicas) == 0:
@@ -589,13 +597,11 @@ class PowerOfTwoChoicesReplicaScheduler(ReplicaScheduler):
 
         If none of the replicas can be scheduled, returns `None`.
 
-        The queue length at each replica is queried directly from it. The time waited
-        for these queries is capped by a response deadline; if a replica doesn't
-        doesn't respond within the deadline it is not considered. The deadline will be
-        increased exponentially in backoff.
+        The queue length for each replica is first looked up in the local cache. If not
+        present in the cache, the replica will be actively probed and the cache updated.
 
-        Among replicas that respond within the deadline and accept the request (don't
-        have full queues), the one with the lowest queue length is chosen.
+        Among replicas that respond within the deadline and don't have full queues, the
+        one with the lowest queue length is chosen.
         """
         lowest_queue_len = math.inf
         chosen_replica_id: Optional[str] = None
@@ -605,7 +611,9 @@ class PowerOfTwoChoicesReplicaScheduler(ReplicaScheduler):
             # Populate available queue lens from the cache.
             for r in candidates:
                 queue_len = self._replica_queue_len_cache.get(r.replica_id)
-                # XXX: comment here! Don't consider those at capacity.
+                # Include replicas whose queues are full as not in the cache so we will
+                # actively probe them. Otherwise we may end up in "deadlock" until their
+                # cache entries expire.
                 if queue_len is None or queue_len >= r.max_concurrent_requests:
                     not_in_cache.append(r)
                 elif queue_len < lowest_queue_len:
@@ -614,7 +622,8 @@ class PowerOfTwoChoicesReplicaScheduler(ReplicaScheduler):
         else:
             not_in_cache = candidates
 
-        # XXX: maybe we should optimistically increment for the chosen replica.
+        # If there is a valid replica to schedule based on the information in the
+        # cache, schedule it. Else fall back to actively probing.
         if chosen_replica_id is None:
             for r, queue_len in await self._probe_queue_lens(
                 not_in_cache,
@@ -631,7 +640,8 @@ class PowerOfTwoChoicesReplicaScheduler(ReplicaScheduler):
                     lowest_queue_len = queue_len
                     chosen_replica_id = r.replica_id
         elif len(not_in_cache) > 0:
-            # Probe in the background.
+            # If there are replicas without a valid cache entry, probe them in the
+            # background to populate the cache.
             self._loop.create_task(self._probe_queue_lens(not_in_cache, backoff_index))
 
         # `self._replicas` may have been updated since the candidates were chosen.
@@ -750,14 +760,14 @@ class PowerOfTwoChoicesReplicaScheduler(ReplicaScheduler):
     ) -> ReplicaWrapper:
         """Chooses a replica to send the provided request to.
 
-        Requests are scheduled in FIFO order, so this puts a future on the internal
-        queue that will be resolved when a replica is available and it's the front of
-        the queue.
+        By default, requests are scheduled in FIFO order, so this places a future on the
+        back of an internal queue that will be popped when a replica is available.
+
+        If `emplace_front` is passed, the request will be placed at the front of the
+        queue.
 
         Upon cancellation (by the caller), the future is cancelled and will be passed
         over when a replica becomes available.
-
-        XXX: comment emplace_front.
         """
         pending_request = PendingRequest(asyncio.Future(), query.metadata)
         try:
@@ -800,24 +810,26 @@ class PowerOfTwoChoicesReplicaScheduler(ReplicaScheduler):
         """
         replica = await self.choose_replica_for_query(query)
         replica_id = replica.replica_id
-        if not self._use_replica_queue_len_cache:
-            # XXX: Java needs to go into this path somehow too.
-            return replica.send_query(query), replica_id
+
+        # If the queue len cache is disabled or we're sending a request to Java,
+        # then directly send the query and hand the response back. The replica will
+        # never reject requests in this code path.
+        if not self._use_replica_queue_len_cache or replica.is_cross_language:
+            return replica.send_query(query, with_rejection=False), replica_id
 
         while True:
-            try:
-                obj_ref_gen = replica.send_query(query, late_binding=True)
-                accepted = await self._handle_system_response(replica_id, obj_ref_gen)
-                if accepted:
-                    # logger.info("Replica accepted!")
-                    if query.metadata.is_streaming:
-                        return obj_ref_gen, replica_id
-                    else:
-                        return await obj_ref_gen.__anext__(), replica_id
+            obj_ref_gen = replica.send_query(query, with_rejection=True)
+            accepted = await self._handle_system_response(replica_id, obj_ref_gen)
+            if accepted:
+                if query.metadata.is_streaming:
+                    return obj_ref_gen, replica_id
+                else:
+                    # For non-streaming requests, resolve the generator to its next
+                    # object ref, which will contain the unary response.
+                    return await obj_ref_gen.__anext__(), replica_id
 
-                logger.info("Replica rejected :( trying again")
-                replica = await self.choose_replica_for_query(query, emplace_front=True)
-            except Exception:
-                # XXX: should we retry here or not?
-                logger.exception("Unexpected error during scheduling.")
-                raise
+            # If the replica rejects the request, retry the scheduling process.
+            # Place the request on the front of the queue to avoid tail latencies.
+            # TODO(edoakes): this retry procedure is not perfect because it'll reset the
+            # process of choosing candidates replicas (i.e., for locality-awareness).
+            replica = await self.choose_replica_for_query(query, emplace_front=True)

@@ -86,6 +86,10 @@ class ActorReplicaWrapper:
     def max_concurrent_requests(self) -> int:
         return self._replica_info.max_concurrent_queries
 
+    @property
+    def is_cross_language(self) -> bool:
+        return self._replica_info.is_cross_language
+
     async def get_queue_len(self, *, deadline_s: float) -> int:
         # NOTE(edoakes): the `get_num_ongoing_requests` method name is shared by
         # the Python and Java replica implementations. If you change it, you need to
@@ -121,12 +125,14 @@ class ActorReplicaWrapper:
         )
 
     def _send_query_python(
-        self, query: Query, *, late_binding: bool
+        self, query: Query, *, with_rejection: bool
     ) -> Union[ray.ObjectRef, "ray._raylet.ObjectRefGenerator"]:
         """Send the query to a Python replica."""
-        if late_binding:
-            # XXX: needs comments.
-            method = self._actor_handle.handle_request_late_binding.options(
+        if with_rejection:
+            # Call a separate handler that may reject the request.
+            # This handler is *always* a streaming call and the first message will
+            # be a system message that accepts or rejects.
+            method = self._actor_handle.handle_request_with_rejection.options(
                 num_returns="streaming"
             )
         elif query.metadata.is_streaming:
@@ -139,12 +145,12 @@ class ActorReplicaWrapper:
         return method.remote(pickle.dumps(query.metadata), *query.args, **query.kwargs)
 
     def send_query(
-        self, query: Query, *, late_binding: bool = False
+        self, query: Query, *, with_rejection: bool = False
     ) -> Union[ray.ObjectRef, "ray._raylet.ObjectRefGenerator"]:
         if self._replica_info.is_cross_language:
             return self._send_query_java(query)
         else:
-            return self._send_query_python(query, late_binding=late_binding)
+            return self._send_query_python(query, with_rejection=with_rejection)
 
 
 class ReplicaScheduler(ABC):
