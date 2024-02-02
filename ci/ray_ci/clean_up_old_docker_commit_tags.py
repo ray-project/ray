@@ -1,7 +1,6 @@
 import requests
 import json
-from datetime import datetime, timezone, timedelta
-import re
+from datetime import datetime, timezone
 import subprocess
 from typing import Set
 
@@ -10,57 +9,12 @@ def list_commit_shas():
     """
     Get list of commit SHAs on ray master branch from at least 30 days ago.
     """
-    owner = "ray-project"
-    repo = "ray"
-    token = "your-github-token-here"
-    headers = {
-        "Authorization": f"Bearer {token}",
-        "Accept": "application/vnd.github+json",
-        "X-Github-Api_Version": "2022-11-28",
-    }
-    current_time = datetime.now(timezone.utc)
-    time_bound = current_time - timedelta(days=30)
-    time_bound = datetime.strftime(time_bound, "%Y-%m-%dT%H:%M:%SZ")
-    params = {
-        "sha": "master",
-        "per_page": 1,
-        "page": 1,
-        "since": "2023-08-23T00:00:00Z",
-        "until": time_bound,
-    }
-
-    def get_commit_count():
-        response = requests.get(
-            f"https://api.github.com/repos/{owner}/{repo}/commits",
-            headers=headers,
-            params=params,
-        )
-        pattern = r"&page=(\d+)"
-        commit_count = re.findall(pattern, response.headers["Link"])[1]
-        return commit_count
-
-    commit_count = get_commit_count()
-    params["per_page"] = 100
-    page_count = int(commit_count) // params["per_page"] + 1
-
-    commit_shas = set()
-    for page in range(page_count, 0, -1):
-        params["page"] = page
-        response = requests.get(
-            f"https://api.github.com/repos/{owner}/{repo}/commits",
-            headers=headers,
-            params=params,
-        )
-        commits = response.json()
-        for commit in commits:
-            commit_time = commit["commit"]["author"]["date"]
-            commit_time = datetime.fromisoformat(commit_time)
-            time_delta = current_time - commit_time
-            if time_delta.days > 30:
-                commit_shas.add(commit["sha"][:6])
-            else:
-                return commit_shas
-    return commit_shas
+    commit_shas = subprocess.check_output(
+        ["git", "log", "--until='30 days ago'", "--pretty=format:%H"],
+        text=True,
+    )
+    short_commit_shas = [commit_sha[:6] for commit_sha in commit_shas.split("\n")]
+    return short_commit_shas
 
 
 def get_docker_token():
@@ -145,7 +99,7 @@ def query_tags_to_delete(
         print("Delete count: ", len(tags_to_delete))  # Replace with log
         response = requests.get(
             "https://hub.docker.com/v2/namespaces/rayproject/repositories/ray/tags",
-            params={"page": page, "page_size": 100}
+            params={"page": page, "page_size": 100},
         )
         if "errors" in response.json():
             continue
