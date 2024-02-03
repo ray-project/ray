@@ -195,3 +195,5 @@ class InstanceManager:
         InstanceUtil.set_status(instance, update.new_instance_status)
         if update.new_instance_status == Instance.ALLOCATED:
             instance.cloud_instance_id = update.cloud_instance_id
+        elif update.new_instance_status == Instance.TERMINATED:
+            instance.cloud_instance_id = ""

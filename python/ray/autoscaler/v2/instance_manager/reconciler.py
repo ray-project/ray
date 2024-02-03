@@ -11,6 +11,7 @@ from ray.autoscaler.v2.instance_manager.node_provider import (
     CloudInstanceId,
     CloudInstanceProviderError,
     LaunchNodeError,
+    TerminateNodeError,
 )
 from ray.autoscaler.v2.instance_manager.ray_installer import RayInstallError
 from ray.autoscaler.v2.scheduler import IResourceScheduler
@@ -304,6 +305,7 @@ class Reconciler:
             updates[instance.instance_id] = IMInstanceUpdateEvent(
                 instance_id=instance.instance_id,
                 new_instance_status=IMInstance.TERMINATED,
+                details=f"Cloud instance {cloud_instance_id} is terminated.",
             )
 
             logger.debug(
@@ -327,7 +329,7 @@ class Reconciler:
         termination_errors = {
             error.cloud_instance_id: error
             for error in cloud_provider_errors
-            if isinstance(error, CloudInstanceProviderError)
+            if isinstance(error, TerminateNodeError)
         }
 
         terminating_instances_by_cloud_instance_id = {
