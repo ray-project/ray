@@ -466,7 +466,7 @@ def update_operator_states(topology: Topology) -> None:
             continue
         all_inputs_done = True
         for idx, dep in enumerate(op.input_dependencies):
-            if dep.completed() and not topology[dep].outqueue and not dep.has_next():
+            if dep.completed() and not topology[dep].outqueue:
                 if not op_state.input_done_called[idx]:
                     op.input_done(idx)
                     op_state.input_done_called[idx] = True
@@ -487,7 +487,7 @@ def update_operator_states(topology: Topology) -> None:
             dep.completed() for dep in op.output_dependencies
         )
         if dependents_completed:
-            op.mark_completed()
+            op.mark_execution_completed()
 
 
 def select_operator_to_run(

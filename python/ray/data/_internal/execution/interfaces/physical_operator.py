@@ -181,7 +181,7 @@ class PhysicalOperator(Operator):
         self._started = False
         self._metrics = OpRuntimeMetrics(self)
         self._estimated_output_blocks = None
-        self._completed = False
+        self._execution_completed = False
 
     def __reduce__(self):
         raise ValueError("Operator is not serializable.")
@@ -207,27 +207,25 @@ class PhysicalOperator(Operator):
     def set_target_max_block_size(self, target_max_block_size: Optional[int]):
         self._target_max_block_size = target_max_block_size
 
-    def mark_completed(self):
-        """Manually mark this operator as completed."""
-        self._completed = True
+    def mark_execution_completed(self):
+        """Manually mark this operator has completed execution."""
+        self._execution_completed = True
 
     def completed(self) -> bool:
         """Return True when this operator is completed.
 
-        An operator is completed if any of the following conditions are met:
-        - All upstream operators are completed and all outputs are taken.
-        - All downstream operators are completed.
+        An operator is completed the operator has stopped execution and all
+        outputs are taken.
         """
-        if self._completed:
-            return True
-
-        if (
-            self._inputs_complete
-            and self.num_active_tasks() == 0
-            and not self.has_next()
-        ):
-            self._completed = True
-        return self._completed
+        if not self._execution_completed:
+            if (
+                self._inputs_complete
+                and self.num_active_tasks() == 0
+            ):
+                # If all inputs are complete and there are no active tasks,
+                # then the operator has completed execution.
+                self._execution_completed = True
+        return self._execution_completed and not self.has_next()
 
     def get_stats(self) -> StatsDict:
         """Return recorded execution stats for use with DatasetStats."""

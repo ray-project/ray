@@ -29,8 +29,7 @@ class LimitOperator(OneToOneOperator):
         self._cur_output_bundles = 0
         super().__init__(self._name, input_op, target_max_block_size=None)
         if self._limit <= 0:
-            self.all_inputs_done()
-            self.mark_completed()
+            self.mark_execution_completed()
 
     def _limit_reached(self) -> bool:
         return self._consumed_rows >= self._limit
@@ -77,8 +76,7 @@ class LimitOperator(OneToOneOperator):
         )
         self._buffer.append(out_refs)
         if self._limit_reached():
-            self.all_inputs_done()
-            self.mark_completed()
+            self.mark_execution_completed()
 
         # We cannot estimate if we have only consumed empty blocks
         if self._consumed_rows > 0:
