@@ -11,6 +11,7 @@ from ray.autoscaler.v2.instance_manager.node_provider import (  # noqa
     CloudInstance,
     LaunchNodeError,
 )
+from ray.autoscaler.v2.instance_manager.ray_installer import RayInstallError
 from ray.autoscaler.v2.instance_manager.reconciler import Reconciler, logger
 from ray.autoscaler.v2.instance_manager.storage import InMemoryStorage
 from ray.autoscaler.v2.tests.util import create_instance
@@ -372,6 +373,37 @@ class TestReconciler:
         assert instances["i-1"].status == Instance.RAY_STOPPED
         assert instances["i-2"].status == Instance.RAY_STOPPED
         assert instances["i-3"].status == Instance.TERMINATING
+
+    @staticmethod
+    def test_reconcile_ray_installer_failures(setup):
+        instance_manager, instance_storage, _ = setup
+
+        # dead ray nodes
+        im_instances = [
+            create_instance(
+                "i-1", status=Instance.RAY_INSTALLING, cloud_instance_id="c-1"
+            ),  # To be reconciled.
+        ]
+        TestReconciler._add_instances(instance_storage, im_instances)
+
+        ray_install_errors = [
+            RayInstallError(
+                im_instance_id="i-1",
+                details="failed to install",
+            )
+        ]
+
+        Reconciler.sync_from(
+            instance_manager,
+            ray_nodes=[],
+            non_terminated_cloud_instances={},
+            cloud_provider_errors=[],
+            ray_install_errors=ray_install_errors,
+        )
+
+        instances, _ = instance_storage.get_instances()
+        assert len(instances) == 1
+        assert instances["i-1"].status == Instance.RAY_INSTALL_FAILED
 
 
 if __name__ == "__main__":

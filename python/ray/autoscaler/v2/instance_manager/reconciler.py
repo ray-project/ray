@@ -273,7 +273,39 @@ class Reconciler:
     def _handle_ray_install_failed(
         instance_manager: InstanceManager, ray_install_errors: List[RayInstallError]
     ):
-        pass
+
+        instances, version = Reconciler._get_im_instances(instance_manager)
+        updates = {}
+
+        # Get all instances with RAY_INSTALLING status.
+        instances_with_ray_installing = {
+            instance.instance_id: instance
+            for instance in instances
+            if instance.status == IMInstance.RAY_INSTALLING
+        }
+
+        install_errors = {error.im_instance_id: error for error in ray_install_errors}
+
+        # For each instance with RAY_INSTALLING status, check if there's any
+        # install error.
+        for instance_id, instance in instances_with_ray_installing.items():
+            install_error = install_errors.get(instance_id)
+            if install_error:
+                updates[instance_id] = IMInstanceUpdateEvent(
+                    instance_id=instance_id,
+                    new_instance_status=IMInstance.RAY_INSTALL_FAILED,
+                    details=install_error.details,
+                )
+                logger.debug(
+                    "Updating {}({}) with {}".format(
+                        instance_id,
+                        IMInstance.InstanceStatus.Name(instance.status),
+                        MessageToDict(updates[instance_id]),
+                    )
+                )
+
+        # Update the instance manager for the events.
+        Reconciler._update_instance_manager(instance_manager, updates, version)
 
     @staticmethod
     def _handle_cloud_instance_terminated(
