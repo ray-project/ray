@@ -5,6 +5,8 @@ import time
 
 import pytest
 
+from mock import MagicMock
+
 from ray.autoscaler.v2.instance_manager.instance_manager import InstanceManager
 from ray.autoscaler.v2.instance_manager.instance_storage import InstanceStorage
 from ray.autoscaler.v2.instance_manager.node_provider import (  # noqa
@@ -16,7 +18,11 @@ from ray.autoscaler.v2.instance_manager.ray_installer import RayInstallError
 from ray.autoscaler.v2.instance_manager.reconciler import Reconciler, logger
 from ray.autoscaler.v2.instance_manager.storage import InMemoryStorage
 from ray.autoscaler.v2.tests.util import create_instance
-from ray.core.generated.autoscaler_pb2 import NodeState, NodeStatus
+from ray.core.generated.autoscaler_pb2 import (
+    ClusterResourceState,
+    NodeState,
+    NodeStatus,
+)
 from ray.core.generated.instance_manager_pb2 import Instance
 
 s_to_ns = 1 * 1_000_000_000
@@ -76,9 +82,10 @@ class TestReconciler:
             ],
         )
 
-        Reconciler.sync_from(
+        Reconciler.reconcile(
             instance_manager,
-            ray_nodes=[],
+            MagicMock(),
+            ray_cluster_resource_state=ClusterResourceState(),
             non_terminated_cloud_instances={},
             cloud_provider_errors=[],
             ray_install_errors=[],
@@ -118,9 +125,10 @@ class TestReconciler:
             "c-2": CloudInstance("c-2", "type-999", "", True),
         }
 
-        Reconciler.sync_from(
+        Reconciler.reconcile(
             instance_manager,
-            ray_nodes=[],
+            MagicMock(),
+            ray_cluster_resource_state=ClusterResourceState(),
             non_terminated_cloud_instances=cloud_instances,
             cloud_provider_errors=[],
             ray_install_errors=[],
@@ -174,9 +182,10 @@ class TestReconciler:
             "c-1": CloudInstance("c-1", "type-1", "", True),
         }
 
-        Reconciler.sync_from(
+        Reconciler.reconcile(
             instance_manager,
-            ray_nodes=[],
+            MagicMock(),
+            ray_cluster_resource_state=ClusterResourceState(),
             non_terminated_cloud_instances=cloud_instances,
             cloud_provider_errors=launch_errors,
             ray_install_errors=[],
@@ -223,9 +232,10 @@ class TestReconciler:
             )
         ]
 
-        Reconciler.sync_from(
+        Reconciler.reconcile(
             instance_manager,
-            ray_nodes=[],
+            MagicMock(),
+            ray_cluster_resource_state=ClusterResourceState(),
             non_terminated_cloud_instances=cloud_instances,
             cloud_provider_errors=termination_errors,
             ray_install_errors=[],
@@ -257,9 +267,10 @@ class TestReconciler:
         TestReconciler._add_instances(instance_storage, im_instances)
         subscriber.clear()
 
-        Reconciler.sync_from(
+        Reconciler.reconcile(
             instance_manager,
-            ray_nodes=[],
+            MagicMock(),
+            ray_cluster_resource_state=ClusterResourceState(),
             non_terminated_cloud_instances=cloud_instances,
             cloud_provider_errors=[],
             ray_install_errors=[],
@@ -276,9 +287,10 @@ class TestReconciler:
             ),
         ]
 
-        Reconciler.sync_from(
+        Reconciler.reconcile(
             instance_manager,
-            ray_nodes=ray_nodes,
+            MagicMock(),
+            ray_cluster_resource_state=ClusterResourceState(node_states=ray_nodes),
             non_terminated_cloud_instances=cloud_instances,
             cloud_provider_errors=[],
             ray_install_errors=[],
@@ -302,9 +314,10 @@ class TestReconciler:
             "c-1": CloudInstance("c-1", "type-1", "", True),
         }
         TestReconciler._add_instances(instance_storage, im_instances)
-        Reconciler.sync_from(
+        Reconciler.reconcile(
             instance_manager,
-            ray_nodes=node_states,
+            MagicMock(),
+            ray_cluster_resource_state=ClusterResourceState(node_states=node_states),
             non_terminated_cloud_instances=cloud_instances,
             cloud_provider_errors=[],
             ray_install_errors=[],
@@ -341,9 +354,10 @@ class TestReconciler:
         }
 
         subscriber.clear()
-        Reconciler.sync_from(
+        Reconciler.reconcile(
             instance_manager,
-            ray_nodes=ray_nodes,
+            MagicMock(),
+            ray_cluster_resource_state=ClusterResourceState(node_states=ray_nodes),
             non_terminated_cloud_instances=cloud_instances,
             cloud_provider_errors=[],
             ray_install_errors=[],
@@ -381,9 +395,10 @@ class TestReconciler:
             "c-3": CloudInstance("c-3", "type-3", "", True),
         }
 
-        Reconciler.sync_from(
+        Reconciler.reconcile(
             instance_manager,
-            ray_nodes=ray_nodes,
+            MagicMock(),
+            ray_cluster_resource_state=ClusterResourceState(node_states=ray_nodes),
             non_terminated_cloud_instances=cloud_instances,
             cloud_provider_errors=[],
             ray_install_errors=[],
@@ -425,9 +440,10 @@ class TestReconciler:
             "c-3": CloudInstance("c-3", "type-3", "", True),
         }
 
-        Reconciler.sync_from(
+        Reconciler.reconcile(
             instance_manager,
-            ray_nodes=ray_nodes,
+            MagicMock(),
+            ray_cluster_resource_state=ClusterResourceState(node_states=ray_nodes),
             non_terminated_cloud_instances=cloud_instances,
             cloud_provider_errors=[],
             ray_install_errors=[],
@@ -462,9 +478,10 @@ class TestReconciler:
             "c-1": CloudInstance("c-1", "type-1", "", True),
         }
 
-        Reconciler.sync_from(
+        Reconciler.reconcile(
             instance_manager,
-            ray_nodes=[],
+            MagicMock(),
+            ray_cluster_resource_state=ClusterResourceState(node_states=[]),
             non_terminated_cloud_instances=cloud_instances,
             cloud_provider_errors=[],
             ray_install_errors=ray_install_errors,
@@ -502,9 +519,10 @@ class TestReconciler:
             # Terminated cloud instance.
         }
 
-        Reconciler.sync_from(
+        Reconciler.reconcile(
             instance_manager,
-            ray_nodes=ray_nodes,
+            MagicMock(),
+            ray_cluster_resource_state=ClusterResourceState(node_states=ray_nodes),
             non_terminated_cloud_instances=cloud_instances,
             cloud_provider_errors=[],
             ray_install_errors=[],

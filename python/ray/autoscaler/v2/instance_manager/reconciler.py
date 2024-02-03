@@ -35,31 +35,61 @@ logger = logging.getLogger(__name__)
 
 class Reconciler:
     """
-    Reconciler is responsible for
+    A singleton class that reconciles the instance states of the instance manager
+    for autoscaler.
+
+    """
+
+    @staticmethod
+    def reconcile(
+        instance_manager: InstanceManager,
+        scheduler: IResourceScheduler,
+        ray_cluster_resource_state: ClusterResourceState,
+        non_terminated_cloud_instances: Dict[CloudInstanceId, CloudInstance],
+        cloud_provider_errors: List[CloudInstanceProviderError],
+        ray_install_errors: List[RayInstallError],
+    ):
+        """
+        The reconcile method computes InstanceUpdateEvents for the instance manager
+        by:
+
         1. Reconciling the instance manager's instances with external states like
         the cloud provider's, the ray cluster's states, the ray installer's results.
         It performs "passive" status transitions for the instances (where the status
         transition should only be reflecting the external states of the cloud provider
         and the ray cluster, and should not be actively changing them)
 
-        2. Stepping the reconciler to the next state by computing instance status
+        2. Stepping the instances to the next state by computing instance status
         transitions that are needed and updating the instance manager's state.
         These transitions should be "active" where the transitions have side effects
         (through InstanceStatusSubscriber) to the cloud provider and the ray cluster.
 
-    Example:
-    ```
-        # Step 1: Reconcile the instance manager's instances with external states.
-        Reconciler.sync_from([external states])
+        Args:
+            instance_manager: The instance manager to reconcile.
+            ray_cluster_resource_state: The ray cluster's resource state.
+            non_terminated_cloud_instances: The non-terminated cloud instances from
+                the cloud provider.
+            cloud_provider_errors: The errors from the cloud provider.
+            ray_install_errors: The errors from RayInstaller.
 
-        # Step 2: Step the reconciler to the next state by computing instance status
-        # transitions that are needed and updating the instance manager's state.
-        Reconciler.step_next()
+        """
+        Reconciler._sync_from(
+            instance_manager,
+            ray_cluster_resource_state.node_states,
+            non_terminated_cloud_instances,
+            cloud_provider_errors,
+            ray_install_errors,
+        )
 
-    """
+        Reconciler._step_next(
+            instance_manager,
+            scheduler,
+            ray_cluster_resource_state,
+            non_terminated_cloud_instances,
+        )
 
     @staticmethod
-    def sync_from(
+    def _sync_from(
         instance_manager: InstanceManager,
         ray_nodes: List[NodeState],
         non_terminated_cloud_instances: Dict[CloudInstanceId, CloudInstance],
@@ -128,10 +158,11 @@ class Reconciler:
         Reconciler._handle_ray_install_failed(instance_manager, ray_install_errors)
 
     @staticmethod
-    def step_next(
+    def _step_next(
         instance_manager: InstanceManager,
         ray_cluster_resource_state: ClusterResourceState,
         scheduler: IResourceScheduler,
+        non_terminated_cloud_instances: Dict[CloudInstanceId, CloudInstance],
     ):
         """
         Step the reconciler to the next state by computing instance status transitions
@@ -157,6 +188,14 @@ class Reconciler:
               (RAY_RUNNING -> RAY_STOPPING):
                 a. Idle terminating ray nodes.
             6. Handle any stuck instances with timeouts.
+
+        Args:
+            instance_manager: The instance manager to reconcile.
+            scheduler: The resource scheduler to make scaling decisions.
+            ray_cluster_resource_state: The ray cluster's resource state.
+            non_terminated_cloud_instances: The non-terminated cloud instances from
+                the cloud provider.
+
         """
         pass
 
