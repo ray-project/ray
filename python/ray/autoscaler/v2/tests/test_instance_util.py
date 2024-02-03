@@ -73,6 +73,8 @@ class InstanceUtilTest(unittest.TestCase):
         assert g[Instance.ALLOCATED] == {
             Instance.RAY_INSTALLING,
             Instance.RAY_RUNNING,
+            Instance.RAY_STOPPING,
+            Instance.RAY_STOPPED,
             Instance.TERMINATING,
             Instance.TERMINATED,
         }
