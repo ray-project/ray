@@ -218,10 +218,7 @@ class PhysicalOperator(Operator):
         outputs are taken.
         """
         if not self._execution_completed:
-            if (
-                self._inputs_complete
-                and self.num_active_tasks() == 0
-            ):
+            if self._inputs_complete and self.num_active_tasks() == 0:
                 # If all inputs are complete and there are no active tasks,
                 # then the operator has completed execution.
                 self._execution_completed = True
