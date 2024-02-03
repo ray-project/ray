@@ -284,6 +284,15 @@ class Reconciler:
         instance_manager: InstanceManager,
         non_terminated_cloud_instances: Dict[CloudInstanceId, CloudInstance],
     ):
+        """
+        For any IM (instance manager) instance with a cloud node id, if the mapped
+        cloud instance is no longer running, transition the instance to TERMINATED.
+
+        Args:
+            instance_manager: The instance manager to reconcile.
+            non_terminated_cloud_instances: The non-terminated cloud instances from
+                the cloud provider.
+        """
         updates = {}
         instances, version = Reconciler._get_im_instances(instance_manager)
 
@@ -323,6 +332,18 @@ class Reconciler:
         instance_manager: InstanceManager,
         cloud_provider_errors: List[CloudInstanceProviderError],
     ):
+        """
+        If any TERMINATING instances have termination errors, transition the instance to
+        TERMINATION_FAILED.
+
+        We will retry the termination for the TERMINATION_FAILED instances in the next
+        reconciler step.
+
+        Args:
+            instance_manager: The instance manager to reconcile.
+            cloud_provider_errors: The errors from the cloud provider.
+
+        """
         instances, version = Reconciler._get_im_instances(instance_manager)
         updates = {}
 
