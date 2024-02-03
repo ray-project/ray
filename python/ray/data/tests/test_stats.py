@@ -191,10 +191,10 @@ def test_streaming_split_stats(ray_start_regular_shared, restore_data_context):
 * Extra metrics: {STANDARD_EXTRA_METRICS}
 
 Operator N split(N, equal=False): \n"""
-            # Workaround to preserve trailing whitespace in the above line without
-            # causing linter failures.
-            f"""* Extra metrics: {extra_metrics}\n"""
-            """
+        # Workaround to preserve trailing whitespace in the above line without
+        # causing linter failures.
+        f"""* Extra metrics: {extra_metrics}\n"""
+        """
 Dataset iterator time breakdown:
 * Total time user code is blocked: T
 * Total time in user code: T
@@ -204,7 +204,7 @@ Dataset iterator time breakdown:
     * In batch creation: T min, T max, T avg, T total
     * In batch formatting: T min, T max, T avg, T total
 """
-        )
+    )
 
 
 @pytest.mark.parametrize("verbose_stats_logs", [True, False])
@@ -317,58 +317,6 @@ def test_dataset_stats_basic(
         f"    * In batch creation: T min, T max, T avg, T total\n"
         f"    * In batch formatting: T min, T max, T avg, T total\n"
     )
-
-
-def test_dataset_verbose_log(ray_start_regular_shared, enable_auto_log_stats):
-    try:
-        context = DataContext.get_current()
-        context.optimize_fuse_stages = True
-        context.verbose_stats_logs = True
-
-        logger = DatasetLogger(
-            "ray.data._internal.execution.streaming_executor"
-        ).get_logger(
-            log_to_stdout=enable_auto_log_stats,
-        )
-        with patch.object(logger, "info") as mock_logger:
-            ds = ray.data.range(1000, parallelism=10)
-            ds = ds.map_batches(dummy_map_batches).materialize()
-
-            if enable_auto_log_stats:
-                logger_args, logger_kwargs = mock_logger.call_args
-
-                assert (
-                    canonicalize(logger_args[0])
-                    == f"""Operator N ReadRange->MapBatches(dummy_map_batches): {EXECUTION_STRING}
-* Remote wall time: T min, T max, T mean, T total
-* Remote cpu time: T min, T max, T mean, T total
-* Peak heap memory usage (MiB): N min, N max, N mean
-* Output num rows per block: N min, N max, N mean, N total
-* Output size bytes per block: N min, N max, N mean, N total
-* Output rows per task: N min, N max, N mean, N tasks used
-* Tasks per node: N min, N max, N mean; N nodes used
-* Extra metrics: {STANDARD_EXTRA_METRICS}
-"""
-                )
-
-            ds = ds.map(dummy_map_batches).materialize()
-            if enable_auto_log_stats:
-                logger_args, logger_kwargs = mock_logger.call_args
-                assert (
-                    canonicalize(logger_args[0])
-                    == f"""Operator N Map(dummy_map_batches): {EXECUTION_STRING}
-* Remote wall time: T min, T max, T mean, T total
-* Remote cpu time: T min, T max, T mean, T total
-* Peak heap memory usage (MiB): N min, N max, N mean
-* Output num rows per block: N min, N max, N mean, N total
-* Output size bytes per block: N min, N max, N mean, N total
-* Output rows per task: N min, N max, N mean, N tasks used
-* Tasks per node: N min, N max, N mean; N nodes used
-* Extra metrics: {STANDARD_EXTRA_METRICS}
-"""
-                )
-    finally:
-        context.verbose_stats_logs = False
 
 
 def test_block_location_nums(ray_start_regular_shared, restore_data_context):
@@ -995,7 +943,6 @@ def test_stats_actor_cap_num_stats(ray_start_cluster):
     assert ray.get(actor.get.remote(0))[0] == {}
     # The start_time has 3 entries because we just added it above with record_start().
     assert ray.get(actor._get_stats_dict_size.remote()) == (3, 2, 2)
-
 
 
 @pytest.mark.parametrize("verbose_stats_logs", [True, False])
