@@ -10,6 +10,7 @@ from ray.autoscaler.v2.instance_manager.instance_storage import InstanceStorage
 from ray.autoscaler.v2.instance_manager.node_provider import (  # noqa
     CloudInstance,
     LaunchNodeError,
+    TerminateNodeError,
 )
 from ray.autoscaler.v2.instance_manager.ray_installer import RayInstallError
 from ray.autoscaler.v2.instance_manager.reconciler import Reconciler, logger
@@ -186,6 +187,55 @@ class TestReconciler:
         assert instances["i-1"].status == Instance.ALLOCATED
         assert instances["i-1"].cloud_instance_id == "c-1"
         assert instances["i-2"].status == Instance.ALLOCATION_FAILED
+
+    @staticmethod
+    def test_reconcile_terminated_cloud_instances(setup):
+
+        instance_manager, instance_storage = setup
+
+        instances = [
+            create_instance(
+                "i-1",
+                status=Instance.ALLOCATED,
+                instance_type="type-1",
+                cloud_instance_id="c-1",
+            ),
+            create_instance(
+                "i-2",
+                status=Instance.TERMINATING,
+                instance_type="type-2",
+                cloud_instance_id="c-2",
+            ),
+        ]
+        TestReconciler._add_instances(instance_storage, instances)
+
+        cloud_instances = {
+            "c-2": CloudInstance("c-2", "type-2", "", False),
+        }
+
+        termination_errors = [
+            TerminateNodeError(
+                cloud_instance_id="c-2",
+                timestamp_ns=1,
+                exception=None,
+                details="nooooo",
+                request_id="t1",
+            )
+        ]
+
+        Reconciler.sync_from(
+            instance_manager,
+            ray_nodes=[],
+            non_terminated_cloud_instances=cloud_instances,
+            cloud_provider_errors=termination_errors,
+            ray_install_errors=[],
+        )
+
+        instances, _ = instance_storage.get_instances()
+        assert len(instances) == 2
+        assert instances["i-1"].status == Instance.TERMINATED
+        assert not instances["i-1"].cloud_instance_id
+        assert instances["i-2"].status == Instance.TERMINATION_FAILED
 
     @staticmethod
     def test_ray_reconciler_no_op(setup):
