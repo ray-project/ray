@@ -113,8 +113,12 @@ class Reconciler:
             cloud_provider_errors,
         )
         Reconciler._handle_cloud_instance_terminated(
-            instance_manager, non_terminated_cloud_instances, cloud_provider_errors
+            instance_manager, non_terminated_cloud_instances
         )
+        Reconciler._handle_cloud_instance_termination_errors(
+            instance_manager, cloud_provider_errors
+        )
+
         Reconciler._handle_ray_running(instance_manager, ray_nodes)
         Reconciler._handle_ray_stopped(instance_manager, ray_nodes)
         Reconciler._handle_ray_install_failed(instance_manager, ray_install_errors)
@@ -278,9 +282,80 @@ class Reconciler:
     def _handle_cloud_instance_terminated(
         instance_manager: InstanceManager,
         non_terminated_cloud_instances: Dict[CloudInstanceId, CloudInstance],
+    ):
+        updates = {}
+        instances, version = Reconciler._get_im_instances(instance_manager)
+
+        instances_with_cloud_instance_assigned = {
+            instance.cloud_instance_id: instance
+            for instance in instances
+            if instance.cloud_instance_id
+        }
+
+        for (
+            cloud_instance_id,
+            instance,
+        ) in instances_with_cloud_instance_assigned.items():
+            if cloud_instance_id in non_terminated_cloud_instances.keys():
+                # The cloud instance is still running.
+                continue
+
+            # The cloud instance is terminated.
+            updates[instance.instance_id] = IMInstanceUpdateEvent(
+                instance_id=instance.instance_id,
+                new_instance_status=IMInstance.TERMINATED,
+            )
+
+            logger.debug(
+                "Updating {}({}) with {}".format(
+                    instance.instance_id,
+                    IMInstance.InstanceStatus.Name(instance.status),
+                    MessageToDict(updates[instance.instance_id]),
+                )
+            )
+
+        Reconciler._update_instance_manager(instance_manager, updates, version)
+
+    @staticmethod
+    def _handle_cloud_instance_termination_errors(
+        instance_manager: InstanceManager,
         cloud_provider_errors: List[CloudInstanceProviderError],
     ):
-        pass
+        instances, version = Reconciler._get_im_instances(instance_manager)
+        updates = {}
+
+        termination_errors = {
+            error.cloud_instance_id: error
+            for error in cloud_provider_errors
+            if isinstance(error, CloudInstanceProviderError)
+        }
+
+        terminating_instances_by_cloud_instance_id = {
+            instance.cloud_instance_id: instance
+            for instance in instances
+            if instance.status == IMInstance.TERMINATING
+        }
+
+        for cloud_instance_id, failure in termination_errors.items():
+            instance = terminating_instances_by_cloud_instance_id.get(cloud_instance_id)
+            if not instance:
+                # The instance is no longer in TERMINATING status.
+                continue
+
+            updates[instance.instance_id] = IMInstanceUpdateEvent(
+                instance_id=instance.instance_id,
+                new_instance_status=IMInstance.TERMINATION_FAILED,
+                details=failure.details,
+            )
+            logger.debug(
+                "Updating {}({}) with {}".format(
+                    instance.instance_id,
+                    IMInstance.InstanceStatus.Name(instance.status),
+                    MessageToDict(updates[instance.instance_id]),
+                )
+            )
+
+        Reconciler._update_instance_manager(instance_manager, updates, version)
 
     @staticmethod
     def _get_im_instances(
