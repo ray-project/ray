@@ -30,12 +30,10 @@ class LimitOperator(OneToOneOperator):
         super().__init__(self._name, input_op, target_max_block_size=None)
         if self._limit <= 0:
             self.all_inputs_done()
+            self.mark_completed()
 
     def _limit_reached(self) -> bool:
         return self._consumed_rows >= self._limit
-
-    def need_more_inputs(self) -> bool:
-        return not self._limit_reached()
 
     def _add_input_inner(self, refs: RefBundle, input_index: int) -> None:
         assert not self.completed()
@@ -80,6 +78,7 @@ class LimitOperator(OneToOneOperator):
         self._buffer.append(out_refs)
         if self._limit_reached():
             self.all_inputs_done()
+            self.mark_completed()
 
         # We cannot estimate if we have only consumed empty blocks
         if self._consumed_rows > 0:
@@ -116,3 +115,6 @@ class LimitOperator(OneToOneOperator):
             return self._estimated_output_blocks
         else:
             return self.input_dependencies[0].num_outputs_total()
+
+    def throttling_disabled(self) -> bool:
+        return True

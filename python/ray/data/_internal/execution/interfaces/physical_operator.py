@@ -178,10 +178,10 @@ class PhysicalOperator(Operator):
             assert isinstance(x, PhysicalOperator), x
         self._inputs_complete = not input_dependencies
         self._target_max_block_size = target_max_block_size
-        self._dependents_complete = False
         self._started = False
         self._metrics = OpRuntimeMetrics(self)
         self._estimated_output_blocks = None
+        self._completed = False
 
     def __reduce__(self):
         raise ValueError("Operator is not serializable.")
@@ -207,6 +207,10 @@ class PhysicalOperator(Operator):
     def set_target_max_block_size(self, target_max_block_size: Optional[int]):
         self._target_max_block_size = target_max_block_size
 
+    def mark_completed(self):
+        """Manually mark this operator as completed."""
+        self._completed = True
+
     def completed(self) -> bool:
         """Return True when this operator is completed.
 
@@ -214,11 +218,16 @@ class PhysicalOperator(Operator):
         - All upstream operators are completed and all outputs are taken.
         - All downstream operators are completed.
         """
-        return (
+        if self._completed:
+            return True
+
+        if (
             self._inputs_complete
             and self.num_active_tasks() == 0
             and not self.has_next()
-        ) or self._dependents_complete
+        ):
+            self._completed = True
+        return self._completed
 
     def get_stats(self) -> StatsDict:
         """Return recorded execution stats for use with DatasetStats."""
@@ -270,13 +279,6 @@ class PhysicalOperator(Operator):
         """
         return True
 
-    def need_more_inputs(self) -> bool:
-        """Return true if the operator still needs more inputs.
-
-        Once this return false, it should never return true again.
-        """
-        return True
-
     def add_input(self, refs: RefBundle, input_index: int) -> None:
         """Called when an upstream result is available.
 
@@ -313,13 +315,6 @@ class PhysicalOperator(Operator):
         via `add_input` for any input index.
         """
         self._inputs_complete = True
-
-    def all_dependents_complete(self) -> None:
-        """Called when all downstream operators have completed().
-
-        After this is called, the operator is marked as completed.
-        """
-        self._dependents_complete = True
 
     def has_next(self) -> bool:
         """Returns when a downstream output is available.

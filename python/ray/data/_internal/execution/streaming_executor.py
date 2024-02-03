@@ -316,7 +316,7 @@ class StreamingExecutor(Executor, threading.Thread):
                 self._has_op_completed[op] = True
 
         # Keep going until all operators run to completion.
-        return not all(op.completed() for op in topology)
+        return not all(op.completed() and not op.has_next() for op in topology)
 
     def _consumer_idling(self) -> bool:
         """Returns whether the user thread is blocked on topology execution."""
