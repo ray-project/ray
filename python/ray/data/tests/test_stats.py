@@ -354,184 +354,181 @@ Dataset iterator time breakdown:
     )
 
 
-def test_dataset__repr__(ray_start_regular_shared):
-    try:
-        context = DataContext.get_current()
-        context.enable_get_object_locations_for_metrics = True
-        n = 100
-        ds = ray.data.range(n)
-        assert len(ds.take_all()) == n
-        ds = ds.materialize()
+def test_dataset__repr__(ray_start_regular_shared, restore_data_context):
+    context = DataContext.get_current()
+    context.enable_get_object_locations_for_metrics = True
+    n = 100
+    ds = ray.data.range(n)
+    assert len(ds.take_all()) == n
+    ds = ds.materialize()
 
-        expected_stats = (
-            "DatasetStatsSummary(\n"
-            "   dataset_uuid=N,\n"
-            "   base_name=None,\n"
-            "   number=N,\n"
-            "   extra_metrics={},\n"
-            "   operators_stats=[\n"
-            "      OperatorStatsSummary(\n"
-            "         operator_name='Read',\n"
-            "         is_suboperator=False,\n"
-            "         time_total_s=T,\n"
-            f"         block_execution_summary_str={EXECUTION_STRING}\n"
-            "         wall_time={'min': 'T', 'max': 'T', 'mean': 'T', 'sum': 'T'},\n"
-            "         cpu_time={'min': 'T', 'max': 'T', 'mean': 'T', 'sum': 'T'},\n"
-            "         memory={'min': 'T', 'max': 'T', 'mean': 'T'},\n"
-            "         output_num_rows={'min': 'T', 'max': 'T', 'mean': 'T', 'sum': 'T'},\n"  # noqa: E501
-            "         output_size_bytes={'min': 'T', 'max': 'T', 'mean': 'T', 'sum': 'T'},\n"  # noqa: E501
-            "         node_count={'min': 'T', 'max': 'T', 'mean': 'T', 'count': 'T'},\n"
-            "      ),\n"
-            "   ],\n"
-            "   iter_stats=IterStatsSummary(\n"
-            "      wait_time=T,\n"
-            "      get_time=T,\n"
-            "      iter_blocks_local=None,\n"
-            "      iter_blocks_remote=None,\n"
-            "      iter_unknown_location=None,\n"
-            "      next_time=T,\n"
-            "      format_time=T,\n"
-            "      user_time=T,\n"
-            "      total_time=T,\n"
-            "   ),\n"
-            "   global_bytes_spilled=M,\n"
-            "   global_bytes_restored=M,\n"
-            "   dataset_bytes_spilled=M,\n"
-            "   parents=[],\n"
-            ")"
-        )
+    expected_stats = (
+        "DatasetStatsSummary(\n"
+        "   dataset_uuid=N,\n"
+        "   base_name=None,\n"
+        "   number=N,\n"
+        "   extra_metrics={},\n"
+        "   operators_stats=[\n"
+        "      OperatorStatsSummary(\n"
+        "         operator_name='Read',\n"
+        "         is_suboperator=False,\n"
+        "         time_total_s=T,\n"
+        f"         block_execution_summary_str={EXECUTION_STRING}\n"
+        "         wall_time={'min': 'T', 'max': 'T', 'mean': 'T', 'sum': 'T'},\n"
+        "         cpu_time={'min': 'T', 'max': 'T', 'mean': 'T', 'sum': 'T'},\n"
+        "         memory={'min': 'T', 'max': 'T', 'mean': 'T'},\n"
+        "         output_num_rows={'min': 'T', 'max': 'T', 'mean': 'T', 'sum': 'T'},\n"
+        "         output_size_bytes={'min': 'T', 'max': 'T', 'mean': 'T', 'sum': 'T'},\n"  # noqa: E501
+        "         node_count={'min': 'T', 'max': 'T', 'mean': 'T', 'count': 'T'},\n"
+        "      ),\n"
+        "   ],\n"
+        "   iter_stats=IterStatsSummary(\n"
+        "      wait_time=T,\n"
+        "      get_time=T,\n"
+        "      iter_blocks_local=None,\n"
+        "      iter_blocks_remote=None,\n"
+        "      iter_unknown_location=None,\n"
+        "      next_time=T,\n"
+        "      format_time=T,\n"
+        "      user_time=T,\n"
+        "      total_time=T,\n"
+        "   ),\n"
+        "   global_bytes_spilled=M,\n"
+        "   global_bytes_restored=M,\n"
+        "   dataset_bytes_spilled=M,\n"
+        "   parents=[],\n"
+        ")"
+    )
 
-        def check_stats():
-            stats = canonicalize(repr(ds._plan.stats().to_summary()))
-            assert stats == expected_stats
-            return True
+    def check_stats():
+        stats = canonicalize(repr(ds._plan.stats().to_summary()))
+        assert stats == expected_stats
+        return True
 
-        # TODO(hchen): The reason why `wait_for_condition` is needed here is because
-        # `to_summary` depends on an external actor (_StatsActor) that records stats
-        # asynchronously. This makes the behavior non-deterministic.
-        # See the TODO in `to_summary`.
-        # We should make it deterministic and refine this test.
-        wait_for_condition(
-            check_stats,
-            timeout=10,
-            retry_interval_ms=1000,
-        )
+    # TODO(hchen): The reason why `wait_for_condition` is needed here is because
+    # `to_summary` depends on an external actor (_StatsActor) that records stats
+    # asynchronously. This makes the behavior non-deterministic.
+    # See the TODO in `to_summary`.
+    # We should make it deterministic and refine this test.
+    wait_for_condition(
+        check_stats,
+        timeout=10,
+        retry_interval_ms=1000,
+    )
 
-        ds2 = ds.map_batches(lambda x: x).materialize()
-        assert len(ds2.take_all()) == n
-        expected_stats2 = (
-            "DatasetStatsSummary(\n"
-            "   dataset_uuid=N,\n"
-            "   base_name=MapBatches(<lambda>),\n"
-            "   number=N,\n"
-            "   extra_metrics={\n"
-            "      num_inputs_received: N,\n"
-            "      bytes_inputs_received: N,\n"
-            "      num_inputs_processed: N,\n"
-            "      bytes_inputs_processed: N,\n"
-            "      bytes_inputs_of_submitted_tasks: N,\n"
-            "      num_outputs_generated: N,\n"
-            "      bytes_outputs_generated: N,\n"
-            "      rows_outputs_generated: N,\n"
-            "      num_outputs_taken: N,\n"
-            "      bytes_outputs_taken: N,\n"
-            "      num_outputs_of_finished_tasks: N,\n"
-            "      bytes_outputs_of_finished_tasks: N,\n"
-            "      num_tasks_submitted: N,\n"
-            "      num_tasks_running: Z,\n"
-            "      num_tasks_have_outputs: N,\n"
-            "      num_tasks_finished: N,\n"
-            "      num_tasks_failed: Z,\n"
-            "      obj_store_mem_alloc: N,\n"
-            "      obj_store_mem_freed: N,\n"
-            "      obj_store_mem_cur: Z,\n"
-            "      obj_store_mem_peak: N,\n"
-            "      obj_store_mem_spilled: Z,\n"
-            "      block_generation_time: N,\n"
-            "      cpu_usage: Z,\n"
-            "      gpu_usage: Z,\n"
-            "      ray_remote_args: {'num_cpus': N, 'scheduling_strategy': 'SPREAD'},\n"
-            "   },\n"
-            "   operators_stats=[\n"
-            "      OperatorStatsSummary(\n"
-            "         operator_name='MapBatches(<lambda>)',\n"
-            "         is_suboperator=False,\n"
-            "         time_total_s=T,\n"
-            f"         block_execution_summary_str={EXECUTION_STRING}\n"
-            "         wall_time={'min': 'T', 'max': 'T', 'mean': 'T', 'sum': 'T'},\n"
-            "         cpu_time={'min': 'T', 'max': 'T', 'mean': 'T', 'sum': 'T'},\n"
-            "         memory={'min': 'T', 'max': 'T', 'mean': 'T'},\n"
-            "         output_num_rows={'min': 'T', 'max': 'T', 'mean': 'T', 'sum': 'T'},\n"  # noqa: E501
-            "         output_size_bytes={'min': 'T', 'max': 'T', 'mean': 'T', 'sum': 'T'},\n"  # noqa: E501
-            "         node_count={'min': 'T', 'max': 'T', 'mean': 'T', 'count': 'T'},\n"
-            "      ),\n"
-            "   ],\n"
-            "   iter_stats=IterStatsSummary(\n"
-            "      wait_time=T,\n"
-            "      get_time=T,\n"
-            "      iter_blocks_local=None,\n"
-            "      iter_blocks_remote=None,\n"
-            "      iter_unknown_location=N,\n"
-            "      next_time=T,\n"
-            "      format_time=T,\n"
-            "      user_time=T,\n"
-            "      total_time=T,\n"
-            "   ),\n"
-            "   global_bytes_spilled=M,\n"
-            "   global_bytes_restored=M,\n"
-            "   dataset_bytes_spilled=M,\n"
-            "   parents=[\n"
-            "      DatasetStatsSummary(\n"
-            "         dataset_uuid=N,\n"
-            "         base_name=None,\n"
-            "         number=N,\n"
-            "         extra_metrics={},\n"
-            "         operators_stats=[\n"
-            "            OperatorStatsSummary(\n"
-            "               operator_name='Read',\n"
-            "               is_suboperator=False,\n"
-            "               time_total_s=T,\n"
-            f"               block_execution_summary_str={EXECUTION_STRING}\n"
-            "               wall_time={'min': 'T', 'max': 'T', 'mean': 'T', 'sum': 'T'},\n"  # noqa: E501
-            "               cpu_time={'min': 'T', 'max': 'T', 'mean': 'T', 'sum': 'T'},\n"  # noqa: E501
-            "               memory={'min': 'T', 'max': 'T', 'mean': 'T'},\n"
-            "               output_num_rows={'min': 'T', 'max': 'T', 'mean': 'T', 'sum': 'T'},\n"  # noqa: E501
-            "               output_size_bytes={'min': 'T', 'max': 'T', 'mean': 'T', 'sum': 'T'},\n"  # noqa: E501
-            "               node_count={'min': 'T', 'max': 'T', 'mean': 'T', 'count': 'T'},\n"  # noqa: E501
-            "            ),\n"
-            "         ],\n"
-            "         iter_stats=IterStatsSummary(\n"
-            "            wait_time=T,\n"
-            "            get_time=T,\n"
-            "            iter_blocks_local=None,\n"
-            "            iter_blocks_remote=None,\n"
-            "            iter_unknown_location=None,\n"
-            "            next_time=T,\n"
-            "            format_time=T,\n"
-            "            user_time=T,\n"
-            "            total_time=T,\n"
-            "         ),\n"
-            "         global_bytes_spilled=M,\n"
-            "         global_bytes_restored=M,\n"
-            "         dataset_bytes_spilled=M,\n"
-            "         parents=[],\n"
-            "      ),\n"
-            "   ],\n"
-            ")"
-        )
+    ds2 = ds.map_batches(lambda x: x).materialize()
+    assert len(ds2.take_all()) == n
+    expected_stats2 = (
+        "DatasetStatsSummary(\n"
+        "   dataset_uuid=N,\n"
+        "   base_name=MapBatches(<lambda>),\n"
+        "   number=N,\n"
+        "   extra_metrics={\n"
+        "      num_inputs_received: N,\n"
+        "      bytes_inputs_received: N,\n"
+        "      num_inputs_processed: N,\n"
+        "      bytes_inputs_processed: N,\n"
+        "      bytes_inputs_of_submitted_tasks: N,\n"
+        "      num_outputs_generated: N,\n"
+        "      bytes_outputs_generated: N,\n"
+        "      rows_outputs_generated: N,\n"
+        "      num_outputs_taken: N,\n"
+        "      bytes_outputs_taken: N,\n"
+        "      num_outputs_of_finished_tasks: N,\n"
+        "      bytes_outputs_of_finished_tasks: N,\n"
+        "      num_tasks_submitted: N,\n"
+        "      num_tasks_running: Z,\n"
+        "      num_tasks_have_outputs: N,\n"
+        "      num_tasks_finished: N,\n"
+        "      num_tasks_failed: Z,\n"
+        "      obj_store_mem_alloc: N,\n"
+        "      obj_store_mem_freed: N,\n"
+        "      obj_store_mem_cur: Z,\n"
+        "      obj_store_mem_peak: N,\n"
+        "      obj_store_mem_spilled: Z,\n"
+        "      block_generation_time: N,\n"
+        "      cpu_usage: Z,\n"
+        "      gpu_usage: Z,\n"
+        "      ray_remote_args: {'num_cpus': N, 'scheduling_strategy': 'SPREAD'},\n"
+        "   },\n"
+        "   operators_stats=[\n"
+        "      OperatorStatsSummary(\n"
+        "         operator_name='MapBatches(<lambda>)',\n"
+        "         is_suboperator=False,\n"
+        "         time_total_s=T,\n"
+        f"         block_execution_summary_str={EXECUTION_STRING}\n"
+        "         wall_time={'min': 'T', 'max': 'T', 'mean': 'T', 'sum': 'T'},\n"
+        "         cpu_time={'min': 'T', 'max': 'T', 'mean': 'T', 'sum': 'T'},\n"
+        "         memory={'min': 'T', 'max': 'T', 'mean': 'T'},\n"
+        "         output_num_rows={'min': 'T', 'max': 'T', 'mean': 'T', 'sum': 'T'},\n"
+        "         output_size_bytes={'min': 'T', 'max': 'T', 'mean': 'T', 'sum': 'T'},\n"  # noqa: E501
+        "         node_count={'min': 'T', 'max': 'T', 'mean': 'T', 'count': 'T'},\n"
+        "      ),\n"
+        "   ],\n"
+        "   iter_stats=IterStatsSummary(\n"
+        "      wait_time=T,\n"
+        "      get_time=T,\n"
+        "      iter_blocks_local=None,\n"
+        "      iter_blocks_remote=None,\n"
+        "      iter_unknown_location=N,\n"
+        "      next_time=T,\n"
+        "      format_time=T,\n"
+        "      user_time=T,\n"
+        "      total_time=T,\n"
+        "   ),\n"
+        "   global_bytes_spilled=M,\n"
+        "   global_bytes_restored=M,\n"
+        "   dataset_bytes_spilled=M,\n"
+        "   parents=[\n"
+        "      DatasetStatsSummary(\n"
+        "         dataset_uuid=N,\n"
+        "         base_name=None,\n"
+        "         number=N,\n"
+        "         extra_metrics={},\n"
+        "         operators_stats=[\n"
+        "            OperatorStatsSummary(\n"
+        "               operator_name='Read',\n"
+        "               is_suboperator=False,\n"
+        "               time_total_s=T,\n"
+        f"               block_execution_summary_str={EXECUTION_STRING}\n"
+        "               wall_time={'min': 'T', 'max': 'T', 'mean': 'T', 'sum': 'T'},\n"
+        "               cpu_time={'min': 'T', 'max': 'T', 'mean': 'T', 'sum': 'T'},\n"
+        "               memory={'min': 'T', 'max': 'T', 'mean': 'T'},\n"
+        "               output_num_rows={'min': 'T', 'max': 'T', 'mean': 'T', 'sum': 'T'},\n"  # noqa: E501
+        "               output_size_bytes={'min': 'T', 'max': 'T', 'mean': 'T', 'sum': 'T'},\n"  # noqa: E501
+        "               node_count={'min': 'T', 'max': 'T', 'mean': 'T', 'count': 'T'},\n"  # noqa: E501
+        "            ),\n"
+        "         ],\n"
+        "         iter_stats=IterStatsSummary(\n"
+        "            wait_time=T,\n"
+        "            get_time=T,\n"
+        "            iter_blocks_local=None,\n"
+        "            iter_blocks_remote=None,\n"
+        "            iter_unknown_location=None,\n"
+        "            next_time=T,\n"
+        "            format_time=T,\n"
+        "            user_time=T,\n"
+        "            total_time=T,\n"
+        "         ),\n"
+        "         global_bytes_spilled=M,\n"
+        "         global_bytes_restored=M,\n"
+        "         dataset_bytes_spilled=M,\n"
+        "         parents=[],\n"
+        "      ),\n"
+        "   ],\n"
+        ")"
+    )
 
-        def check_stats2():
-            stats = canonicalize(repr(ds2._plan.stats().to_summary()))
-            assert stats == expected_stats2
-            return True
+    def check_stats2():
+        stats = canonicalize(repr(ds2._plan.stats().to_summary()))
+        assert stats == expected_stats2
+        return True
 
-        wait_for_condition(
-            check_stats2,
-            timeout=10,
-            retry_interval_ms=1000,
-        )
-    finally:
-        context.enable_get_object_locations_for_metrics = False
+    wait_for_condition(
+        check_stats2,
+        timeout=10,
+        retry_interval_ms=1000,
+    )
 
 
 def test_dataset_stats_shuffle(ray_start_regular_shared):
