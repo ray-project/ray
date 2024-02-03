@@ -162,11 +162,11 @@ class InstanceUtil:
                 # For node provider that manages the ray installation and launching,
                 # this state is skipped.
                 Instance.RAY_INSTALLING,
-                # Ray is already installed and running on the provisioned cloud
-                # instance. This happens when a ray node joins the ray cluster,
-                # and the instance is discovered in the set of running ray nodes
-                # from the Ray cluster.
+                # Ray is already installed on the provisioned cloud
+                # instance. It could be any valid ray status.
                 Instance.RAY_RUNNING,
+                Instance.RAY_STOPPING,
+                Instance.RAY_STOPPED,
                 # Instance is requested to be stopped, e.g. instance leaked: no matching
                 # Instance with the same type is found in the autoscaler's state.
                 Instance.TERMINATING,
