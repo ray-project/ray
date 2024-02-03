@@ -191,7 +191,7 @@ class TestReconciler:
     @staticmethod
     def test_reconcile_terminated_cloud_instances(setup):
 
-        instance_manager, instance_storage = setup
+        instance_manager, instance_storage, _ = setup
 
         instances = [
             create_instance(
@@ -335,12 +335,16 @@ class TestReconciler:
                 node_id=b"r-2", status=NodeStatus.IDLE, instance_id="c-2"
             ),  # Already being stopped
         ]
+        cloud_instances = {
+            "c-1": CloudInstance("c-1", "type-1", "", True),
+            "c-2": CloudInstance("c-2", "type-2", "", True),
+        }
 
         subscriber.clear()
         Reconciler.sync_from(
             instance_manager,
             ray_nodes=ray_nodes,
-            non_terminated_cloud_instances={},
+            non_terminated_cloud_instances=cloud_instances,
             cloud_provider_errors=[],
             ray_install_errors=[],
         )
@@ -371,11 +375,16 @@ class TestReconciler:
             NodeState(node_id=b"r-2", status=NodeStatus.DRAINING, instance_id="c-2"),
             NodeState(node_id=b"r-3", status=NodeStatus.DRAINING, instance_id="c-3"),
         ]
+        cloud_instances = {
+            "c-1": CloudInstance("c-1", "type-1", "", True),
+            "c-2": CloudInstance("c-2", "type-2", "", True),
+            "c-3": CloudInstance("c-3", "type-3", "", True),
+        }
 
         Reconciler.sync_from(
             instance_manager,
             ray_nodes=ray_nodes,
-            non_terminated_cloud_instances={},
+            non_terminated_cloud_instances=cloud_instances,
             cloud_provider_errors=[],
             ray_install_errors=[],
         )
@@ -410,10 +419,16 @@ class TestReconciler:
             NodeState(node_id=b"r-3", status=NodeStatus.DEAD, instance_id="c-3"),
         ]
 
+        cloud_instances = {
+            "c-1": CloudInstance("c-1", "type-1", "", True),
+            "c-2": CloudInstance("c-2", "type-2", "", True),
+            "c-3": CloudInstance("c-3", "type-3", "", True),
+        }
+
         Reconciler.sync_from(
             instance_manager,
             ray_nodes=ray_nodes,
-            non_terminated_cloud_instances={},
+            non_terminated_cloud_instances=cloud_instances,
             cloud_provider_errors=[],
             ray_install_errors=[],
         )
@@ -443,10 +458,14 @@ class TestReconciler:
             )
         ]
 
+        cloud_instances = {
+            "c-1": CloudInstance("c-1", "type-1", "", True),
+        }
+
         Reconciler.sync_from(
             instance_manager,
             ray_nodes=[],
-            non_terminated_cloud_instances={},
+            non_terminated_cloud_instances=cloud_instances,
             cloud_provider_errors=[],
             ray_install_errors=ray_install_errors,
         )
