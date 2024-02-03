@@ -565,9 +565,10 @@ message PlacementGroupSpec {
 
 // A virtual cluster consits of flexible resources and fixed size resources.
 message VirtualClusterSpec {
-  
+
   // ID of the virtual cluster. Unique in a cluster.
   bytes virtual_cluster_id = 1;
+  bytes parent_virtual_cluster_id = 2;
 
   // == Flexible resources ==
   // Flexible resources are stored in flexible virtual nodes
@@ -579,12 +580,12 @@ message VirtualClusterSpec {
   // If specified, ensure we have at least this min amount
   // of resources before starting the cluster.
   // If not specified, the default value is 0.
-  map<string, double> flex_resource_min = 2;
+  map<string, double> flex_resource_min = 3;
 
   // If specified, limit the consumption of these resources to
   // the specified values.
   // If not specified, the default value is infinite.
-  map<string, double> flex_resource_max = 3;
+  map<string, double> flex_resource_max = 4;
 
   // == Fixed size resources ==
   // Fixed sized virtual nodes to request, e.g. {"GPU": 4}.
@@ -592,7 +593,7 @@ message VirtualClusterSpec {
   // together with flex_resource_min
   // that will be atomically reserved when the
   // virtual cluster is created.
-  repeated FixedSizeNodes fixed_size_nodes = 4;
+  repeated FixedSizeNodes fixed_size_nodes = 5;
 }
 
 
@@ -606,26 +607,28 @@ message FixedSizeNodes {
   // NOTE: There is no STRICT_PACK because that's equivalent to have 1 fixed node = sum
   // of all nodes.
   SchedulingPolicy scheduling_policy = 2;
+
+  // Use label match expression to specify candidate parent nodes of this fixed size
+  // node.
+  LabelMatchExpressions parent_node_selector = 3;
 }
 
-// A fixed or a flex virtual cluster node. 
+// A fixed or a flex virtual cluster node.
 // When representing a fixed size node, all properties are const.
 // When representing a flex node, `resources` may change.
 message VirtualClusterNode {
   // (virtual) node id. This is unique in a cluster.
   // Populated by the GCS Virtual Cluster Manager and all GCS-sent RPCs.
   // Not populated from the core worker.
-  bytes node_id = 4;
-  // Resources for a fixed size node. The resource is allocated atomically.
-  map<string, double> resources = 1;
+  bytes node_id = 1;
+  bytes parent_node_id = 2;
 
-  // Use label match expression to specify candidate parent nodes of this fixed size
-  // node.
-  LabelMatchExpressions parent_node_selector = 2;
+  // Resources for a fixed size node. The resource is allocated atomically.
+  map<string, double> resources = 3;
 
   // Additional labels that the virtual node has in addition to those inherited from the
   // parent node.
-  map<string, string> labels = 3;
+  map<string, string> labels = 4;
 }
 
 // Same as the current placement group strategies.

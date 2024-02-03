@@ -3749,6 +3749,7 @@ cdef class CoreWorker:
 
     def create_virtual_cluster(
                             self,
+                            c_string parent_id,
                             c_string spec):
         cdef:
             CVirtualClusterID c_virtual_cluster_id
@@ -3757,6 +3758,7 @@ cdef class CoreWorker:
             check_status(
                         CCoreWorkerProcess.GetCoreWorker().
                         CreateVirtualCluster(
+                            parent_id,
                             spec,
                             &c_virtual_cluster_id))
 

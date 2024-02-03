@@ -131,11 +131,24 @@ message CancelResourceReserveReply {
 // During the running, the flex node can scale up or down. This movement is not needed
 // to be 2pc, but we don't need another API anyway. so the gcs calls `prepare` then `commit`
 
+message TransferResourceRequest {
+  bytes from_node_id = 1;
+  bytes to_node_id = 2;
+  bytes to_virtual_cluster_id = 3;
+  map<string, double> resources = 4;
+  bool create_to_node = 5;
+  bool delete_from_node = 6;
+}
+
+message TransferResourceReply {
+  bool success = 1;
+}
+
 // Prepares a virtual cluster creation in a node.
 // There may be multiple fixed size node on a parent node.
 message PrepareVirtualClusterRequest {
   bytes virtual_cluster_id = 1;
-  repeated VirtualClusterNode fixed_size_nodes = 2;
+  repeated VirtualClusterNode nodes = 2;
   // TODO: add min resource for the flex node as a vnode here
   // TODO: repurpose this into a "borrow" API, add a parent vc id (or vnode id).
 }

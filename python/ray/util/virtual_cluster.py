@@ -32,7 +32,9 @@ def virtual_cluster(spec: str) -> VirtualCluster:
     worker = ray._private.worker.global_worker
     worker.check_connected()
 
-    virtual_cluster_id = worker.core_worker.create_virtual_cluster(spec)
+    virtual_cluster_id = worker.core_worker.create_virtual_cluster(
+        ray.get_runtime_context().get_virtual_cluster_id() or "", spec
+    )
 
     return VirtualCluster(virtual_cluster_id)
 

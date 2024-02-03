@@ -124,6 +124,7 @@ cdef extern from "ray/core_worker/core_worker.h" nogil:
             const CPlacementGroupCreationOptions &options,
             CPlacementGroupID *placement_group_id)
         CRayStatus CreateVirtualCluster(
+            const c_string &parent_id,
             const c_string &spec_json,
             CVirtualClusterID *virtual_cluster_id)
         CRayStatus RemoveVirtualCluster(
