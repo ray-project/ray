@@ -28,8 +28,7 @@ LocalResourceManager::LocalResourceManager(
     const NodeResources &node_resources,
     std::function<int64_t(void)> get_used_object_store_memory,
     std::function<bool(void)> get_pull_manager_at_capacity,
-    std::function<void(const rpc::ResourcesData &)>
-        resource_change_subscriber)
+    std::function<void(const rpc::ResourcesData &)> resource_change_subscriber)
     : local_raylet_id_(local_raylet_id),
       get_used_object_store_memory_(get_used_object_store_memory),
       get_pull_manager_at_capacity_(get_pull_manager_at_capacity),

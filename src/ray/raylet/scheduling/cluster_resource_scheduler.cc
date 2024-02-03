@@ -82,6 +82,13 @@ void ClusterResourceScheduler::Init(
           *cluster_resource_manager_,
           /*is_node_available_fn*/
           [this](auto node_id) { return this->NodeAvailable(node_id); });
+
+  experimental_scheduler_ =
+      std::make_unique<raylet_scheduling_policy::CompositeScheduler2>(
+          /*is_node_available=*/
+          [this](auto node_id) { return this->NodeAvailable(node_id); },
+          local_node_id_,
+          is_local_node_with_raylet_);
 }
 
 bool ClusterResourceScheduler::NodeAvailable(scheduling::NodeID node_id) const {
@@ -153,52 +160,14 @@ scheduling::NodeID ClusterResourceScheduler::GetBestSchedulableNode(
     return scheduling_policy_->Schedule(resource_request, SchedulingOptions::Random());
   }
 
-  auto best_node_id = scheduling::NodeID::Nil();
-  if (scheduling_strategy.scheduling_strategy_case() ==
-      rpc::SchedulingStrategy::SchedulingStrategyCase::kSpreadSchedulingStrategy) {
-    best_node_id =
-        scheduling_policy_->Schedule(resource_request,
-                                     SchedulingOptions::Spread(
-                                         /*avoid_local_node*/ force_spillback,
-                                         /*require_node_available*/ force_spillback));
-  } else if (scheduling_strategy.scheduling_strategy_case() ==
-             rpc::SchedulingStrategy::SchedulingStrategyCase::
-                 kNodeAffinitySchedulingStrategy) {
-    best_node_id = scheduling_policy_->Schedule(
-        resource_request,
-        SchedulingOptions::NodeAffinity(
-            force_spillback,
-            force_spillback,
-            scheduling_strategy.node_affinity_scheduling_strategy().node_id(),
-            scheduling_strategy.node_affinity_scheduling_strategy().soft(),
-            scheduling_strategy.node_affinity_scheduling_strategy()
-                .spill_on_unavailable(),
-            scheduling_strategy.node_affinity_scheduling_strategy()
-                .fail_on_unavailable()));
-  } else if (IsAffinityWithBundleSchedule(scheduling_strategy) &&
-             !is_local_node_with_raylet_) {
-    // This scheduling strategy is only used for gcs scheduling for the time being.
-    auto placement_group_id = PlacementGroupID::FromBinary(
-        scheduling_strategy.placement_group_scheduling_strategy().placement_group_id());
-    BundleID bundle_id =
-        std::pair(placement_group_id,
-                  scheduling_strategy.placement_group_scheduling_strategy()
-                      .placement_group_bundle_index());
-    best_node_id = scheduling_policy_->Schedule(
-        resource_request, SchedulingOptions::AffinityWithBundle(bundle_id));
-  } else if (scheduling_strategy.has_node_label_scheduling_strategy()) {
-    best_node_id = scheduling_policy_->Schedule(
-        resource_request, SchedulingOptions::NodeLabelScheduling(scheduling_strategy));
-  } else {
-    // TODO (Alex): Setting require_available == force_spillback is a hack in order to
-    // remain bug compatible with the legacy scheduling algorithms.
-    best_node_id =
-        scheduling_policy_->Schedule(resource_request,
-                                     SchedulingOptions::Hybrid(
-                                         /*avoid_local_node*/ force_spillback,
-                                         /*require_node_available*/ force_spillback,
-                                         preferred_node_id));
-  }
+  scheduling::NodeID best_node_id =
+      experimental_scheduler_->Schedule(cluster_resource_manager_->GetResourceView(),
+                                        scheduling_strategy,
+                                        resource_request,
+                                        force_spillback,
+                                        preferred_node_id
+
+      );
 
   *is_infeasible = best_node_id.IsNil();
   if (!*is_infeasible) {
