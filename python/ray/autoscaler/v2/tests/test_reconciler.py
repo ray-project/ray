@@ -474,6 +474,47 @@ class TestReconciler:
         assert len(instances) == 1
         assert instances["i-1"].status == Instance.RAY_INSTALL_FAILED
 
+    @staticmethod
+    def test_draining_ray_node_also_terminated(setup):
+        """
+        A draining ray node due to a cloud instance termination should also
+        transition the instance to TERMINATED.
+        """
+
+        instance_manager, instance_storage, _ = setup
+
+        im_instances = [
+            create_instance(
+                "i-1", status=Instance.RAY_RUNNING, cloud_instance_id="c-1"
+            ),  # To be reconciled.
+            create_instance(
+                "i-2", status=Instance.RAY_RUNNING, cloud_instance_id="c-2"
+            ),  # To be reconciled.
+        ]
+        TestReconciler._add_instances(instance_storage, im_instances)
+
+        ray_nodes = [
+            NodeState(node_id=b"r-1", status=NodeStatus.DEAD, instance_id="c-1"),
+            NodeState(node_id=b"r-2", status=NodeStatus.DRAINING, instance_id="c-2"),
+        ]
+
+        cloud_instances = {
+            # Terminated cloud instance.
+        }
+
+        Reconciler.sync_from(
+            instance_manager,
+            ray_nodes=ray_nodes,
+            non_terminated_cloud_instances=cloud_instances,
+            cloud_provider_errors=[],
+            ray_install_errors=[],
+        )
+
+        instances, _ = instance_storage.get_instances()
+        assert len(instances) == 2
+        assert instances["i-1"].status == Instance.TERMINATED
+        assert instances["i-2"].status == Instance.TERMINATED
+
 
 if __name__ == "__main__":
     if os.environ.get("PARALLEL_CI"):
