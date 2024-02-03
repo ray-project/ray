@@ -208,7 +208,9 @@ Dataset iterator time breakdown:
 
 
 @pytest.mark.parametrize("verbose_stats_logs", [True, False])
-def test_large_args_scheduling_strategy(ray_start_regular_shared, verbose_stats_logs):
+def test_large_args_scheduling_strategy(
+    ray_start_regular_shared, verbose_stats_logs, restore_data_context
+):
     context = DataContext.get_current()
     context.verbose_stats_logs = verbose_stats_logs
     ds = ray.data.range_tensor(100, shape=(100000,), parallelism=1)
@@ -239,7 +241,10 @@ def test_large_args_scheduling_strategy(ray_start_regular_shared, verbose_stats_
 
 @pytest.mark.parametrize("verbose_stats_logs", [True, False])
 def test_dataset_stats_basic(
-    ray_start_regular_shared, enable_auto_log_stats, verbose_stats_logs
+    ray_start_regular_shared,
+    enable_auto_log_stats,
+    verbose_stats_logs,
+    restore_data_context,
 ):
     context = DataContext.get_current()
     context.verbose_stats_logs = verbose_stats_logs
@@ -943,7 +948,7 @@ def test_stats_actor_cap_num_stats(ray_start_cluster):
 
 
 @pytest.mark.parametrize("verbose_stats_logs", [True, False])
-def test_spilled_stats(shutdown_only, verbose_stats_logs):
+def test_spilled_stats(shutdown_only, verbose_stats_logs, restore_data_context):
     context = DataContext.get_current()
     context.verbose_stats_logs = verbose_stats_logs
     context.enable_get_object_locations_for_metrics = True
