@@ -98,8 +98,9 @@ class InstanceUtil:
         Raises:
             InvalidInstanceStatusTransitionError if the transition is not allowed.
         """
-        if new_instance_status not in InstanceUtil.get_reachable_statuses(
-            instance.status
+        if (
+            new_instance_status
+            not in InstanceUtil.get_valid_transitions()[instance.status]
         ):
             raise InvalidInstanceStatusTransitionError(
                 instance_id=instance.instance_id,
