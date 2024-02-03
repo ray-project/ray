@@ -104,10 +104,9 @@ class LimitOperator(OneToOneOperator):
         return {self._name: self._output_metadata}
 
     def num_outputs_total(self) -> int:
-        # Before inputs are completed (either because the limit is reached or
-        # because the inputs operators are done), we don't know how many output
+        # Before execution is completed, we don't know how many output
         # bundles we will have. We estimate based off the consumption so far.
-        if self._inputs_complete:
+        if self._execution_completed:
             return self._cur_output_bundles
         elif self._estimated_output_blocks is not None:
             return self._estimated_output_blocks
