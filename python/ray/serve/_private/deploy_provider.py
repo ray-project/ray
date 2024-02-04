@@ -1,5 +1,6 @@
 import os
 from abc import ABC, abstractmethod
+from dataclasses import dataclass
 from subprocess import CalledProcessError, check_output
 from tempfile import NamedTemporaryFile
 from typing import Callable, Optional
@@ -17,6 +18,14 @@ DEPLOY_PROVIDER_FACTORY_METHOD = "get_ray_serve_deploy_provider"
 DEPLOY_PROVIDER_ENV_VAR = "RAY_SERVE_DEPLOY_PROVIDER"
 
 
+@dataclass(frozen=True)
+class DeployOptions:
+    address: str
+    name: Optional[str] = None
+    base_image: Optional[str] = None
+    in_place: bool = False
+
+
 class DeployProvider(ABC):
     @abstractmethod
     def supports_local_uris(self) -> bool:
@@ -31,9 +40,7 @@ class DeployProvider(ABC):
         self,
         config: ServeDeploySchema,
         *,
-        address: str,
-        name: Optional[str],
-        base_image: Optional[str] = None,
+        options: DeployOptions,
     ):
         """The primary method providers must implement to deploy a Serve config."""
         pass
@@ -79,17 +86,15 @@ class LocalDeployProvider(DeployProvider):
         self,
         config: ServeDeploySchema,
         *,
-        address: str,
-        name: Optional[str],
-        base_image: Optional[str] = None,
+        options: DeployOptions,
     ):
-        if base_image is not None:
+        if options.base_image is not None:
             raise ValueError(
                 "`--base-image` is not supported when using the 'local' deploy "
                 "provider because it deploys to an existing Ray cluster."
             )
 
-        ServeSubmissionClient(address).deploy_applications(
+        ServeSubmissionClient(options.address).deploy_applications(
             config.dict(exclude_unset=True),
         )
         cli_logger.success(
@@ -109,17 +114,17 @@ class AnyscaleDeployProvider(DeployProvider):
         self,
         config: ServeDeploySchema,
         *,
-        address: str,
-        name: Optional[str],
-        base_image: Optional[str] = None,
+        options: DeployOptions,
     ):
         service_config = {
             "ray_serve_config": config.dict(exclude_unset=True),
         }
-        if name is not None:
-            service_config["name"] = name
-        if base_image is not None:
-            service_config["cluster_env"] = base_image
+        if options.name is not None:
+            service_config["name"] = options.name
+        if options.base_image is not None:
+            service_config["cluster_env"] = options.base_image
+        if options.in_place:
+            service_config["rollout_strategy"] = "IN_PLACE"
 
         # TODO(edoakes): use the Anyscale SDK (or another fixed entrypoint) instead of
         # subprocessing out to the CLI.
