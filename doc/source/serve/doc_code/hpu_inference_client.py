@@ -7,6 +7,7 @@ prompt = "Once upon a time,"
 # Add generation config here
 config = {}
 
+# Non-streaming response
 sample_input = {"text": prompt, "config": config, "stream": False}
 outputs = requests.post("http://127.0.0.1:8000/", json=sample_input, stream=False)
 print(outputs.text, flush=True)

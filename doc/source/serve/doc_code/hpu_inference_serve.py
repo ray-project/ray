@@ -9,7 +9,7 @@ import torch
 from ray import serve
 
 
-# Define the Ray serve deployment
+# Define the Ray Serve deployment
 @serve.deployment(ray_actor_options={"num_cpus": 10, "resources": {"HPU": 1}})
 class LlamaModel:
     def __init__(self, model_id_or_path):
@@ -18,7 +18,7 @@ class LlamaModel:
             adapt_transformers_to_gaudi,
         )
 
-        # tweak transformers to optimize performance
+        # Tweak transformers to optimize performance
         adapt_transformers_to_gaudi()
 
         self.device = torch.device("hpu")
@@ -32,7 +32,7 @@ class LlamaModel:
             use_auth_token="",
             trust_remote_code=False,
         )
-        # Load the model in gaudi
+        # Load the model in Gaudi
         model = AutoModelForCausalLM.from_pretrained(
             model_id_or_path,
             config=hf_config,
@@ -47,28 +47,28 @@ class LlamaModel:
         # enable hpu graph runtime
         self.model = wrap_in_hpu_graph(model)
 
-        # set pad token, etc.
+        # Set pad token, etc.
         self.tokenizer.pad_token_id = self.model.generation_config.pad_token_id
         self.tokenizer.padding_side = "left"
 
-        # async loop is used in streaming
+        # Use async loop in streaming
         self.loop = asyncio.get_running_loop()
 
     def tokenize(self, prompt):
-        """Tokenize the input and move to HPU"""
+        """Tokenize the input and move to HPU."""
 
         input_tokens = self.tokenizer(prompt, return_tensors="pt", padding=True)
         return input_tokens.input_ids.to(device=self.device)
 
     def generate(self, prompt, **config):
-        """Takes in a prompt and generates a response."""
+        """Take a prompt and generate a response."""
 
         input_ids = self.tokenize(prompt)
         gen_tokens = self.model.generate(input_ids, **config)
         return self.tokenizer.batch_decode(gen_tokens, skip_special_tokens=True)[0]
 
     async def consume_streamer_async(self, streamer):
-        """Consume the streamer async-ly"""
+        """Consume the streamer asynchronously."""
 
         while True:
             try:
@@ -79,7 +79,7 @@ class LlamaModel:
                 await asyncio.sleep(0.001)
 
     def streaming_generate(self, prompt, streamer, **config):
-        """Generate the response given input in a streaming manner"""
+        """Generate a streamed response given an input."""
 
         input_ids = self.tokenize(prompt)
         self.model.generate(input_ids, streamer=streamer, **config)
