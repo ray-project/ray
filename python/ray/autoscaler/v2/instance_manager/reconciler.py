@@ -1,8 +1,15 @@
 import logging
+import time
 from collections import defaultdict
 from typing import Dict, List, Optional, Set, Tuple
 
 from google.protobuf.json_format import MessageToDict
+from python.ray.autoscaler.v2.instance_manager.config import (
+    AutoscalingConfig,
+    NodeTypeConfig,
+)
+from python.ray.autoscaler.v2.scheduler import SchedulingRequest
+from python.ray.autoscaler.v2.schema import NodeType
 
 from ray.autoscaler.v2.instance_manager.common import InstanceUtil
 from ray.autoscaler.v2.instance_manager.instance_manager import InstanceManager
@@ -10,6 +17,7 @@ from ray.autoscaler.v2.instance_manager.node_provider import (
     CloudInstance,
     CloudInstanceId,
     CloudInstanceProviderError,
+    ICloudInstanceProvider,
     LaunchNodeError,
     TerminateNodeError,
 )
@@ -44,6 +52,7 @@ class Reconciler:
     def reconcile(
         instance_manager: InstanceManager,
         scheduler: IResourceScheduler,
+        cloud_provider: ICloudInstanceProvider,
         ray_cluster_resource_state: ClusterResourceState,
         non_terminated_cloud_instances: Dict[CloudInstanceId, CloudInstance],
         cloud_provider_errors: List[CloudInstanceProviderError],
@@ -84,6 +93,7 @@ class Reconciler:
         Reconciler._step_next(
             instance_manager,
             scheduler,
+            cloud_provider,
             ray_cluster_resource_state,
             non_terminated_cloud_instances,
         )
@@ -160,8 +170,9 @@ class Reconciler:
     @staticmethod
     def _step_next(
         instance_manager: InstanceManager,
-        ray_cluster_resource_state: ClusterResourceState,
         scheduler: IResourceScheduler,
+        cloud_provider: ICloudInstanceProvider,
+        ray_cluster_resource_state: ClusterResourceState,
         non_terminated_cloud_instances: Dict[CloudInstanceId, CloudInstance],
     ):
         """
@@ -197,7 +208,15 @@ class Reconciler:
                 the cloud provider.
 
         """
-        pass
+        Reconciler._handle_extra_cloud_instances(
+            instance_manager=instance_manager,
+            cloud_provider=cloud_provider,
+            non_terminated_cloud_instances=non_terminated_cloud_instances,
+        )
+
+        Reconciler._scale_cluster(
+            instance_manager=instance_manager,
+        )
 
     #######################################################
     # Private methods for reconciling instance states.
@@ -590,3 +609,83 @@ class Reconciler:
             return cur_im_status
 
         return reconciled_im_status
+
+    @staticmethod
+    def _handle_extra_cloud_instances(
+        instance_manager: InstanceManager,
+        cloud_provider: ICloudInstanceProvider,
+        non_terminated_cloud_instances: Dict[CloudInstanceId, CloudInstance],
+    ):
+        """
+        Shut down extra cloud instances that are not managed by the instance manager.
+
+        Since we have sync the IM states with the cloud provider's states in
+        earlier step (`sync_from`), each non terminated cloud instance should either
+        be:
+            1. assigned to a newly ALLOCATED im instance
+            2. already associated with an im instance that's running/terminating.
+
+        Any cloud instance that's not managed by the IM should be considered leak.
+
+        Args:
+            instance_manager: The instance manager to reconcile.
+            non_terminated_cloud_instances: The non-terminated cloud instances from
+                the cloud provider.
+        """
+        instances, _ = Reconciler._get_im_instances(instance_manager)
+
+        cloud_instance_ids_managed_by_im = {
+            instance.cloud_instance_id
+            for instance in instances
+            if instance.cloud_instance_id
+        }
+
+        leaked_cloud_instance_ids = []
+        for cloud_instance_id, _ in non_terminated_cloud_instances.items():
+            if cloud_instance_id in cloud_instance_ids_managed_by_im:
+                continue
+
+            leaked_cloud_instance_ids.append(cloud_instance_id)
+
+        if not leaked_cloud_instance_ids:
+            return
+
+        cloud_provider.terminate(
+            ids=leaked_cloud_instance_ids, request_id=str(time.time_ns())
+        )
+        logger.warning(
+            f"Terminating leaked cloud instances: {leaked_cloud_instance_ids}: no"
+            " matching instance found in instance manager."
+        )
+
+        @staticmethod
+        def _scale_cluster(
+            instance_manager: InstanceManager,
+            ray_state: ClusterResourceState,
+            scheduler: IResourceScheduler,
+            autoscaling_config: AutoscalingConfig,
+        ) -> None:
+            """
+            Scale the cluster based on the resource state and the resource scheduler's
+            decision:
+
+            - It launches new instances if needed.
+            - It terminates extra ray nodes if they should be shut down (preemption
+                or idle termination)
+            """
+
+            # Get the current instance states.
+            im_instances, version = Reconciler._get_im_instances(instance_manager)
+
+            # Make the scheduling request.
+            sched_request = SchedulingRequest(
+                node_type_configs=autoscaling_config.get_node_type_configs(),
+                max_num_worker_nodes=autoscaling_config.get_max_num_worker_nodes(),
+                resource_requests=ray_state.pending_resource_requests,
+                gang_resource_requests=ray_state.pending_gang_resource_requests,
+                cluster_resource_constraints=ray_state.cluster_resource_constraints,
+                current_instances=im_instances,
+                current_nodes=ray_state.node_states,
+            )
+
+            reply = scheduler.schedule(sched_request)

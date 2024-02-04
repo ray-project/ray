@@ -85,6 +85,7 @@ class TestReconciler:
         Reconciler.reconcile(
             instance_manager,
             MagicMock(),
+            MagicMock(),
             ray_cluster_resource_state=ClusterResourceState(),
             non_terminated_cloud_instances={},
             cloud_provider_errors=[],
@@ -127,6 +128,7 @@ class TestReconciler:
 
         Reconciler.reconcile(
             instance_manager,
+            MagicMock(),
             MagicMock(),
             ray_cluster_resource_state=ClusterResourceState(),
             non_terminated_cloud_instances=cloud_instances,
@@ -185,6 +187,7 @@ class TestReconciler:
         Reconciler.reconcile(
             instance_manager,
             MagicMock(),
+            MagicMock(),
             ray_cluster_resource_state=ClusterResourceState(),
             non_terminated_cloud_instances=cloud_instances,
             cloud_provider_errors=launch_errors,
@@ -235,6 +238,7 @@ class TestReconciler:
         Reconciler.reconcile(
             instance_manager,
             MagicMock(),
+            MagicMock(),
             ray_cluster_resource_state=ClusterResourceState(),
             non_terminated_cloud_instances=cloud_instances,
             cloud_provider_errors=termination_errors,
@@ -270,6 +274,7 @@ class TestReconciler:
         Reconciler.reconcile(
             instance_manager,
             MagicMock(),
+            MagicMock(),
             ray_cluster_resource_state=ClusterResourceState(),
             non_terminated_cloud_instances=cloud_instances,
             cloud_provider_errors=[],
@@ -289,6 +294,7 @@ class TestReconciler:
 
         Reconciler.reconcile(
             instance_manager,
+            MagicMock(),
             MagicMock(),
             ray_cluster_resource_state=ClusterResourceState(node_states=ray_nodes),
             non_terminated_cloud_instances=cloud_instances,
@@ -316,6 +322,7 @@ class TestReconciler:
         TestReconciler._add_instances(instance_storage, im_instances)
         Reconciler.reconcile(
             instance_manager,
+            MagicMock(),
             MagicMock(),
             ray_cluster_resource_state=ClusterResourceState(node_states=node_states),
             non_terminated_cloud_instances=cloud_instances,
@@ -357,6 +364,7 @@ class TestReconciler:
         Reconciler.reconcile(
             instance_manager,
             MagicMock(),
+            MagicMock(),
             ray_cluster_resource_state=ClusterResourceState(node_states=ray_nodes),
             non_terminated_cloud_instances=cloud_instances,
             cloud_provider_errors=[],
@@ -397,6 +405,7 @@ class TestReconciler:
 
         Reconciler.reconcile(
             instance_manager,
+            MagicMock(),
             MagicMock(),
             ray_cluster_resource_state=ClusterResourceState(node_states=ray_nodes),
             non_terminated_cloud_instances=cloud_instances,
@@ -443,6 +452,7 @@ class TestReconciler:
         Reconciler.reconcile(
             instance_manager,
             MagicMock(),
+            MagicMock(),
             ray_cluster_resource_state=ClusterResourceState(node_states=ray_nodes),
             non_terminated_cloud_instances=cloud_instances,
             cloud_provider_errors=[],
@@ -480,6 +490,7 @@ class TestReconciler:
 
         Reconciler.reconcile(
             instance_manager,
+            MagicMock(),
             MagicMock(),
             ray_cluster_resource_state=ClusterResourceState(node_states=[]),
             non_terminated_cloud_instances=cloud_instances,
@@ -522,6 +533,7 @@ class TestReconciler:
         Reconciler.reconcile(
             instance_manager,
             MagicMock(),
+            MagicMock(),
             ray_cluster_resource_state=ClusterResourceState(node_states=ray_nodes),
             non_terminated_cloud_instances=cloud_instances,
             cloud_provider_errors=[],
@@ -532,6 +544,45 @@ class TestReconciler:
         assert len(instances) == 2
         assert instances["i-1"].status == Instance.TERMINATED
         assert instances["i-2"].status == Instance.TERMINATED
+
+    @staticmethod
+    def test_extra_cloud_instances(setup):
+        """
+        Test that extra cloud instances should be terminated.
+        """
+        instance_manager, instance_storage, _ = setup
+
+        im_instances = [
+            create_instance(
+                "i-1", status=Instance.RAY_RUNNING, cloud_instance_id="c-1"
+            ),  # To be reconciled.
+        ]
+        TestReconciler._add_instances(instance_storage, im_instances)
+
+        ray_nodes = [
+            NodeState(node_id=b"r-1", status=NodeStatus.RUNNING, instance_id="c-1"),
+        ]
+
+        cloud_instances = {
+            "c-1": CloudInstance("c-1", "type-1", "", True),
+            "c-2": CloudInstance("c-2", "type-2", "", True),  # Extra
+        }
+
+        mock_cloud_provider = MagicMock()
+
+        Reconciler.reconcile(
+            instance_manager,
+            scheduler=MagicMock(),
+            cloud_provider=mock_cloud_provider,
+            ray_cluster_resource_state=ClusterResourceState(node_states=ray_nodes),
+            non_terminated_cloud_instances=cloud_instances,
+            cloud_provider_errors=[],
+            ray_install_errors=[],
+        )
+
+        assert mock_cloud_provider.terminate.call_count == 1
+        assert mock_cloud_provider.terminate.call_args.kwargs["ids"] == ["c-2"]
+
 
 
 if __name__ == "__main__":
