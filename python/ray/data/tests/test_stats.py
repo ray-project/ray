@@ -33,12 +33,12 @@ def gen_expected_metrics(
         metrics = [
             "'num_inputs_received': N",
             "'bytes_inputs_received': N",
-            "'num_inputs_processed': N",
-            "'bytes_inputs_processed': N",
+            "'num_task_inputs_processed': N",
+            "'bytes_task_inputs_processed': N",
             "'bytes_inputs_of_submitted_tasks': N",
-            "'num_outputs_generated': N",
-            "'bytes_outputs_generated': N",
-            "'rows_outputs_generated': N",
+            "'num_task_outputs_generated': N",
+            "'bytes_task_outputs_generated': N",
+            "'rows_task_outputs_generated': N",
             "'num_outputs_taken': N",
             "'bytes_outputs_taken': N",
             "'num_outputs_of_finished_tasks': N",
@@ -48,11 +48,7 @@ def gen_expected_metrics(
             "'num_tasks_have_outputs': N",
             "'num_tasks_finished': N",
             "'num_tasks_failed': Z",
-            "'obj_store_mem_alloc': N",
             "'obj_store_mem_freed': N",
-            "'obj_store_mem_cur': Z",
-            "'obj_store_mem_peak': N",
-            f"""'obj_store_mem_spilled': {"N" if spilled else "Z"}""",
             "'block_generation_time': N",
             "'cpu_usage': Z",
             "'gpu_usage': Z",
@@ -390,12 +386,12 @@ def test_dataset__repr__(ray_start_regular_shared):
         "   extra_metrics={\n"
         "      num_inputs_received: N,\n"
         "      bytes_inputs_received: N,\n"
-        "      num_inputs_processed: N,\n"
-        "      bytes_inputs_processed: N,\n"
+        "      num_task_inputs_processed: N,\n"
+        "      bytes_task_inputs_processed: N,\n"
         "      bytes_inputs_of_submitted_tasks: N,\n"
-        "      num_outputs_generated: N,\n"
-        "      bytes_outputs_generated: N,\n"
-        "      rows_outputs_generated: N,\n"
+        "      num_task_outputs_generated: N,\n"
+        "      bytes_task_outputs_generated: N,\n"
+        "      rows_task_outputs_generated: N,\n"
         "      num_outputs_taken: N,\n"
         "      bytes_outputs_taken: N,\n"
         "      num_outputs_of_finished_tasks: N,\n"
@@ -405,11 +401,7 @@ def test_dataset__repr__(ray_start_regular_shared):
         "      num_tasks_have_outputs: N,\n"
         "      num_tasks_finished: N,\n"
         "      num_tasks_failed: Z,\n"
-        "      obj_store_mem_alloc: N,\n"
         "      obj_store_mem_freed: N,\n"
-        "      obj_store_mem_cur: Z,\n"
-        "      obj_store_mem_peak: N,\n"
-        "      obj_store_mem_spilled: Z,\n"
         "      block_generation_time: N,\n"
         "      cpu_usage: Z,\n"
         "      gpu_usage: Z,\n"
@@ -976,19 +968,15 @@ def test_stats_actor_metrics():
     # last emitted metrics from map operator
     final_metric = update_fn.call_args_list[-1].args[1][-1]
 
-    assert final_metric.obj_store_mem_spilled == ds._plan.stats().dataset_bytes_spilled
-    assert (
-        final_metric.obj_store_mem_alloc
-        == ds._plan.stats().extra_metrics["obj_store_mem_alloc"]
-    )
     assert (
         final_metric.obj_store_mem_freed
         == ds._plan.stats().extra_metrics["obj_store_mem_freed"]
     )
-    assert final_metric.bytes_outputs_generated == 1000 * 80 * 80 * 4 * 8  # 8B per int
-    assert final_metric.rows_outputs_generated == 1000 * 80 * 80 * 4
+    assert (
+        final_metric.bytes_task_outputs_generated == 1000 * 80 * 80 * 4 * 8
+    )  # 8B per int
+    assert final_metric.rows_task_outputs_generated == 1000 * 80 * 80 * 4
     # There should be nothing in object store at the end of execution.
-    assert final_metric.obj_store_mem_cur == 0
 
     args = update_fn.call_args_list[-1].args
     assert args[0] == f"dataset_{ds._uuid}"

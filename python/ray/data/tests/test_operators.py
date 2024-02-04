@@ -192,8 +192,6 @@ def test_map_operator_bulk(ray_start_regular_shared, use_actors):
 
     # Check memory stats.
     metrics = op.metrics.as_dict()
-    assert metrics["obj_store_mem_alloc"] == pytest.approx(832200, 0.5), metrics
-    assert metrics["obj_store_mem_peak"] == pytest.approx(1688000, 0.5), metrics
     assert metrics["obj_store_mem_freed"] == pytest.approx(832200, 0.5), metrics
 
 
@@ -226,8 +224,6 @@ def test_map_operator_streamed(ray_start_regular_shared, use_actors):
     # Check equivalent to bulk execution in order.
     assert np.array_equal(output, [[np.ones(1024) * i * 2] for i in range(100)])
     metrics = op.metrics.as_dict()
-    assert metrics["obj_store_mem_alloc"] == pytest.approx(832200, 0.5), metrics
-    assert metrics["obj_store_mem_peak"] == pytest.approx(16880, 0.5), metrics
     assert metrics["obj_store_mem_freed"] == pytest.approx(832200, 0.5), metrics
     if use_actors:
         assert "locality_hits" in metrics, metrics
@@ -387,8 +383,6 @@ def test_map_operator_actor_locality_stats(ray_start_regular_shared):
     # Check equivalent to bulk execution in order.
     assert np.array_equal(output, [[np.ones(100) * i * 2] for i in range(100)])
     metrics = op.metrics.as_dict()
-    assert metrics["obj_store_mem_alloc"] == pytest.approx(92900, 0.5), metrics
-    assert metrics["obj_store_mem_peak"] == pytest.approx(2096, 0.5), metrics
     assert metrics["obj_store_mem_freed"] == pytest.approx(92900, 0.5), metrics
     # Check e2e locality manager working.
     assert metrics["locality_hits"] == 100, metrics
@@ -856,17 +850,18 @@ def test_operator_metrics():
             inputs[k].size_bytes() for k in range(i + 1)
         ), i
         assert (
-            metrics.num_inputs_processed == num_tasks_submitted * MIN_ROWS_PER_BUNDLE
+            metrics.num_task_inputs_processed
+            == num_tasks_submitted * MIN_ROWS_PER_BUNDLE
         ), i
-        assert metrics.bytes_inputs_processed == sum(
+        assert metrics.bytes_task_inputs_processed == sum(
             inputs[k].size_bytes()
             for k in range(num_tasks_submitted * MIN_ROWS_PER_BUNDLE)
         ), i
 
         # Check outputs metrics
         assert num_outputs_taken == num_tasks_submitted * NUM_BLOCKS_PER_TASK, i
-        assert metrics.num_outputs_generated == num_outputs_taken, i
-        assert metrics.bytes_outputs_generated == bytes_outputs_taken, i
+        assert metrics.num_task_outputs_generated == num_outputs_taken, i
+        assert metrics.bytes_task_outputs_generated == bytes_outputs_taken, i
         assert metrics.num_outputs_taken == num_outputs_taken, i
         assert metrics.bytes_outputs_taken == bytes_outputs_taken, i
         assert metrics.num_outputs_of_finished_tasks == num_outputs_taken, i
@@ -879,17 +874,7 @@ def test_operator_metrics():
         assert metrics.num_tasks_finished == num_tasks_submitted, i
 
         # Check object store metrics
-        assert metrics.obj_store_mem_alloc == metrics.bytes_outputs_taken, i
-        assert metrics.obj_store_mem_freed == metrics.bytes_inputs_processed, i
-        assert (
-            metrics.obj_store_mem_cur
-            == metrics.bytes_inputs_received
-            - metrics.bytes_inputs_processed
-            + metrics.bytes_outputs_generated
-            - metrics.bytes_outputs_taken
-        ), i
-
-        assert metrics.obj_store_mem_peak >= metrics.obj_store_mem_cur, i
+        assert metrics.obj_store_mem_freed == metrics.bytes_task_inputs_processed, i
 
 
 def test_map_estimated_output_blocks():
