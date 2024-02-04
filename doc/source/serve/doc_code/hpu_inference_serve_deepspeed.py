@@ -23,7 +23,7 @@ class DeepSpeedInferenceWorker(TorchDistributedWorker):
             adapt_transformers_to_gaudi,
         )
 
-        # tweak transformers for better performance on gaudi
+        # Tweak transformers for better performance on Gaudi
         adapt_transformers_to_gaudi()
 
         self.model_id_or_path = model_id_or_path
@@ -47,7 +47,7 @@ class DeepSpeedInferenceWorker(TorchDistributedWorker):
             self.tokenizer.pad_token = self.tokenizer.eos_token
 
     def load_model(self):
-        """Load the model to HPU and initialize DeepSpeed inference engine"""
+        """Load the model to HPU and initialize the DeepSpeed inference engine."""
 
         import deepspeed
         from transformers import AutoModelForCausalLM
@@ -75,35 +75,35 @@ class DeepSpeedInferenceWorker(TorchDistributedWorker):
         kwargs["checkpoint"] = checkpoints_json.name
         kwargs["tensor_parallel"] = {"tp_size": self._world_size}
         # enable hpu graph, similar to cuda graph
-        # Specify injection policy, required by DeepSpeed tensor parallel
+        # Specify injection policy, required by DeepSpeed tensor parallelism
         kwargs["injection_policy"] = get_ds_injection_policy(self.model_config)
 
-        # initialize the inference engine
+        # Initialize the inference engine
         self.model = deepspeed.init_inference(model, **kwargs).module
 
     def tokenize(self, prompt):
-        """Tokenize the input and move to HPU"""
+        """Tokenize the input and move it to HPU."""
 
         input_tokens = self.tokenizer(prompt, return_tensors="pt", padding=True)
         return input_tokens.input_ids.to(device=self.device)
 
     def generate(self, prompt, **config):
-        """Takes in a prompt and generates a response."""
+        """Take in a prompt and generate a response."""
 
         input_ids = self.tokenize(prompt)
         gen_tokens = self.model.generate(input_ids, **config)
         return self.tokenizer.batch_decode(gen_tokens, skip_special_tokens=True)[0]
 
     def streaming_generate(self, prompt, streamer, **config):
-        """Generate the response given input in a streaming manner"""
+        """Generate streamed response given an input."""
 
         input_ids = self.tokenize(prompt)
         self.model.generate(input_ids, streamer=streamer, **config)
 
     def get_streamer(self):
-        """
-        Return a streamer.
-        Only Rank 0 worker's result is needed.
+        """Return a streamer.
+        
+        Only the rank 0 worker's result is needed.
         Other workers return a fake streamer.
         """
 
@@ -153,7 +153,7 @@ class RayTextIteratorStreamer(TextStreamer):
 # __worker_def_end__
 
 # __deploy_def_start__
-# variables required for DeepSpeed on HPU
+# Required variables for DeepSpeed on HPU
 HABANA_ENVS = {
     "PT_HPU_LAZY_ACC_PAR_MODE": "0",
     "PT_HPU_ENABLE_REFINE_DYNAMIC_SHAPES": "0",
@@ -163,7 +163,7 @@ HABANA_ENVS = {
 }
 
 
-# Define the Ray serve deployment
+# Define the Ray Serve deployment
 @serve.deployment
 class DeepSpeedLlamaModel:
     def __init__(self, world_size, model_id_or_path):
@@ -191,10 +191,10 @@ class DeepSpeedLlamaModel:
         )
 
     def generate(self, prompt, **config):
-        """
-        Send the prompt to workers for generation.
-        Return after all workers have done generation.
-        Only rank 0 worker's result is returned.
+        """Send the prompt to workers for generation.
+
+        Return after all workers have finished generation.
+        Only return the rank 0 worker's result.
         """
 
         futures = [
@@ -204,51 +204,49 @@ class DeepSpeedLlamaModel:
         return ray.get(futures)[0]
 
     def streaming_generate(self, prompt, **config):
-        """
-        Send the prompt to workers for streaming generation.
-        Only rank 0 worker's result is used.
+        """Send the prompt to workers for streaming generation.
+
+        Only use the rank 0 worker's result.
         """
 
         for worker, streamer in zip(self.deepspeed_workers, self.streamers):
             worker.streaming_generate.remote(prompt, streamer, **config)
 
     def consume_streamer(self, streamer):
-        """Consume the streamer, return a generator"""
+        """Consume the streamer and return a generator."""
         for token in streamer:
             yield token
 
     async def __call__(self, http_request):
-        """Handle received http requests"""
+        """Handle received HTTP requests."""
 
         # Load fields from the request
         json_request: str = await http_request.json()
         text = json_request["text"]
         # Config used in generation
-        config = json_request["config"] if "config" in json_request else {}
+        config = json_request.get("config", {})
         streaming_response = json_request["stream"]
 
-        # prepare prompts
+        # Prepare prompts
         prompts = []
         if isinstance(text, list):
             prompts.extend(text)
         else:
             prompts.append(text)
 
-        # process config
-        if "max_new_tokens" not in config:
-            # if not specified, use default value
-            config["max_new_tokens"] = 128
+        # Process config
+        config.setdefault("max_new_tokens", 128)
 
-        # enable hpu graph runtime
+        # Enable HPU graph runtime
         config["hpu_graphs"] = True
-        # lazy mode should be True when using hpu graphs
+        # Lazy mode should be True when using HPU graphs
         config["lazy_mode"] = True
 
-        # non streaming case
+        # Non-streaming case
         if not streaming_response:
             return self.generate(prompts, **config)
 
-        # streming case
+        # streaming case
         self.streaming_generate(prompts, **config)
         return StreamingResponse(
             self.consume_streamer(self.streamers[0]),
@@ -257,6 +255,6 @@ class DeepSpeedLlamaModel:
         )
 
 
-# replace the model id with path if necessary
+# Replace the model ID with path if necessary
 entrypoint = DeepSpeedLlamaModel.bind(8, "meta-llama/Llama-2-70b-chat-hf")
 # __deploy_def_end__
