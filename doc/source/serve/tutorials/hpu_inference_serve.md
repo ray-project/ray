@@ -1,37 +1,32 @@
-# Serving an inference model on Intel Habana Gaudi
+# Serve a model on Intel Habana Gaudi
 
-[Habana® Gaudi® AI Processor (HPU)](https://habana.ai) training processors are AI hardware accelerators designed by Habana Labs. They are designed to maximize training throughput and efficiency, while providing developers with optimized software and tools that scale to many workloads and systems. For more information, check out [Gaudi Architecture](https://docs.habana.ai/en/latest/Gaudi_Overview/index.html) and [Gaudi Developer Docs](https://developer.habana.ai/).
+[Habana Gaudi AI Processors (HPUs)](https://habana.ai) are AI hardware accelerators designed by Habana Labs. For more information, see [Gaudi Architecture](https://docs.habana.ai/en/latest/Gaudi_Overview/index.html) and [Gaudi Developer Docs](https://developer.habana.ai/).
 
-In this tutorial, we will go through two examples:
+This tutorial has two examples:
 
-1. Deployment of [Llama2-7b](https://huggingface.co/meta-llama/Llama-2-7b-chat-hf) using single HPU:
+1. Deployment of [Llama2-7b](https://huggingface.co/meta-llama/Llama-2-7b-chat-hf) using a single HPU:
 
-    * How to load model in HPU
+    * How to load a model in an HPU
 
-    * How to perform generation on HPU
+    * How to perform generation on an HPU
 
-    * How to enable HPU Graph optimization
+    * How to enable HPU Graph optimizations
 
-2. Deployment of [Llama2-70b](https://huggingface.co/meta-llama/Llama-2-70b-chat-hf) using multiple HPUs on single node:
+2. Deployment of [Llama2-70b](https://huggingface.co/meta-llama/Llama-2-70b-chat-hf) using multiple HPUs on a single node:
 
     * How to use DeepSpeed with HPU
 
-    * How to load sharded model in DeepSpeed workers
+    * How to load a sharded model onto DeepSpeed workers
 
-    * How to stream response from DeepSpeed workers
+    * How to stream responses from DeepSpeed workers
 
-This tutorial should help you with following use cases:
+This tutorial helps you serve a large language model on HPUs.
 
-* You want to serve a large language model on HPU
+## Environment setup
 
-* You want to serve a large language model using DeepSpeed on HPU
+We recommend using a prebuilt container to run these examples. To run a container, you need Docker. See [Install Docker Engine](https://docs.docker.com/engine/install/) for installation instructions.
 
-## Environment Setup
-
-We recommend using a prebuilt container to run these examples. To run a container, you will need Docker. Please refer to [here](https://docs.docker.com/engine/install/) to install it if you haven't.
-
-Next, ensure that the drivers and container runtime
-are installed, if not, refer to [this guide](https://docs.habana.ai/en/latest/Installation_Guide/Bare_Metal_Fresh_OS.html?highlight=installer#run-using-containers). To verify your installation, start a shell and run `hl-smi`, and it should print information like this:
+Next, follow [Run Using Containers](https://docs.habana.ai/en/latest/Installation_Guide/Bare_Metal_Fresh_OS.html?highlight=installer#run-using-containers) to install the Habana drivers and container runtime. To verify your installation, start a shell and run `hl-smi`. It should print status information about the HPUs on the machine:
 
 ```text
 +-----------------------------------------------------------------------------+
@@ -79,31 +74,29 @@ are installed, if not, refer to [this guide](https://docs.habana.ai/en/latest/In
 +=============================================================================+
 ```
 
-If it works, you can then start a container like this:
+Next, start the Habana container:
 ```bash
 docker pull vault.habana.ai/gaudi-docker/1.14.0/ubuntu22.04/habanalabs/pytorch-installer-2.1.1:latest
 docker run -it --runtime=habana -e HABANA_VISIBLE_DEVICES=all -e OMPI_MCA_btl_vader_single_copy_mechanism=none --cap-add=sys_nice --net=host --ipc=host vault.habana.ai/gaudi-docker/1.14.0/ubuntu22.04/habanalabs/pytorch-installer-2.1.1:latest
 ```
 
-Note that you may want to mount the directory containing the examples into the container, as well as the models.
-
-Inside the container, run
+To follow the examples in this tutorial, mount the directory containing the examples and models into the container. Inside the container, run:
 ```bash
 pip install ray[tune,serve]
 pip install git+https://github.com/huggingface/optimum-habana.git
-# 1.14.0 should be replaced with the driver version of the container
+# Replace 1.14.0 with the driver version of the container
 pip install git+https://github.com/HabanaAI/DeepSpeed.git@1.14.0
-# Only needed by the deepspeed example
+# Only needed by the DeepSpeed example
 export RAY_EXPERIMENTAL_NOSET_HABANA_VISIBLE_MODULES=1
 ```
 
-Start a ray cluster via `ray start --head` and you are ready to run the examples.
+Start Ray in the container with `ray start --head`. You are now ready to run the examples.
 
-## Single HPU Example
+## Running a model on a single HPU
 
-This example shows how to deploy a Llama2-7b model on Gaudi for inference. 
+This example shows how to deploy a Llama2-7b model on an HPU for inference. 
 
-First, define a deployment that serves Llama2-7b model using a HPU. Note that we enable [HPU graph optimization](https://docs.habana.ai/en/latest/Gaudi_Overview/SynapseAI_Software_Suite.html?highlight=graph#graph-compiler-and-runtime) for better performance.
+First, define a deployment that serves a Llama2-7b model using an HPU. Note that we enable [HPU graph optimizations](https://docs.habana.ai/en/latest/Gaudi_Overview/SynapseAI_Software_Suite.html?highlight=graph#graph-compiler-and-runtime) for better performance.
 
 ```{literalinclude} ../doc_code/hpu_inference_serve.py
 :language: python
@@ -117,7 +110,7 @@ Copy the code above and save it as `hpu_inference_serve.py`. Start the deploymen
 serve run hpu_inference_serve:entrypoint
 ```
 
-If it succeeds, you should see something like this:
+The terminal should print logs as the deployment starts up:
 
 ```text
 2024-02-01 05:38:34,021 INFO scripts.py:438 -- Running import path: 'ray_serve_7b:entrypoint'.
@@ -176,24 +169,24 @@ In this kingdom, there was a beautiful princess named Lily. She was kind, gentle
 One day, a wicked sorcerer cast a spell on the kingdom, causing all
 ```
 
-## Multiple HPU Example
+## Running a sharded model on multiple HPUs
 
 This example shows how to deploy a Llama2-70b model using 8 HPUs orchestrated by DeepSpeed. 
 
-The example requires caching the Llama2-70b model. If you haven't cached it yet, run the following Python code in your container to cache the model. 
+The example requires caching the Llama2-70b model. Run the following Python code in the Habana container to cache the model. 
 
 ```python
 from huggingface_hub import snapshot_download
 snapshot_download(
     "meta-llama/Llama-2-70b-chat-hf",
-    # replace the path if necessary
+    # Replace the path if necessary
     cache_dir=os.getenv("TRANSFORMERS_CACHE", None),
-    # specify your huggingface token
+    # Specify your Hugging Face token
     token=""
 )
 ```
 
-In this example, the deployment replica sends prompts to the deepspeed workers, which are running in ray actors:
+In this example, the deployment replica sends prompts to the Deepspeed workers, which are running in Ray actors:
 
 ```{literalinclude} ../doc_code/hpu_inference_serve_deepspeed.py
 :language: python
@@ -209,9 +202,9 @@ Next, define a deployment:
 :end-before: __deploy_def_end__
 ```
 
-Copy both blocks of code above and save them into `hpu_inference_serve_deepspeed.py`. You can run this example using `serve run hpu_inference_serve_deepspeed:entrypoint`.
+Copy both blocks of the preceding code and save them into `hpu_inference_serve_deepspeed.py`. Run this example using `serve run hpu_inference_serve_deepspeed:entrypoint`.
 
-If it succeds, you should see something like this:
+The terminal should print logs as the deployment starts up:
 ```text
 2024-02-01 06:08:51,170 INFO scripts.py:438 -- Running import path: 'deepspeed_demo:entrypoint'.
 2024-02-01 06:08:54,143 INFO worker.py:1540 -- Connecting to existing Ray cluster at address: 10.111.128.177:6379...
@@ -280,7 +273,7 @@ Loading 15 checkpoint shards: 100%|██████████| 15/15 [05:02<
 2024-02-01 06:14:24,054 SUCC scripts.py:483 -- Deployed Serve app successfully.
 ```
 
-Use the same code snippet introduced in Single HPU Example for sending requests to perform generation. An example output:
+Use the same code snippet introduced in the single HPU example to send generation requests. Here's an example output:
 ```text
 Once upon a time, there was a young woman named Sophia who lived in a small village nestled in the rolling hills of Tuscany. Sophia was a curious and adventurous soul, always eager to explore the world around her. One day, while wandering through the village, she stumbled upon a hidden path she had never seen before.
 
