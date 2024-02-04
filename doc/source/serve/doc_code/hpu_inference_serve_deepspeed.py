@@ -1,6 +1,7 @@
 # __worker_def_start__
 import tempfile
-from starlette.responses import StreamingResponse
+from typing import Dict, Any
+from starlette.responses import Request, StreamingResponse
 
 import torch
 from transformers import TextStreamer
@@ -17,7 +18,19 @@ from ray.air.util.torch_dist import (
 
 @ray.remote(num_cpus=8, resources={"HPU": 1})
 class DeepSpeedInferenceWorker(TorchDistributedWorker):
-    def __init__(self, model_id_or_path, world_size, local_rank):
+    def __init__(
+            self,
+            model_id_or_path: str,
+            world_size: int,
+            local_rank:int
+        ):
+        """A worker process of DeepSpeed inference engine.
+
+        Arguments:
+            model_id_or_path: Either an HuggingFace model ID or a path to a cached model.
+            world_size: Total number of worker processes.
+            local_rank: Rank of this worker process. The rank 0 worker is the head worker.
+        """
         from transformers import AutoTokenizer, AutoConfig
         from optimum.habana.transformers.modeling_utils import (
             adapt_transformers_to_gaudi,
@@ -81,20 +94,20 @@ class DeepSpeedInferenceWorker(TorchDistributedWorker):
         # Initialize the inference engine
         self.model = deepspeed.init_inference(model, **kwargs).module
 
-    def tokenize(self, prompt):
+    def tokenize(self, prompt: str):
         """Tokenize the input and move it to HPU."""
 
         input_tokens = self.tokenizer(prompt, return_tensors="pt", padding=True)
         return input_tokens.input_ids.to(device=self.device)
 
-    def generate(self, prompt, **config):
+    def generate(self, prompt: str, **config: Dict[str, Any]):
         """Take in a prompt and generate a response."""
 
         input_ids = self.tokenize(prompt)
         gen_tokens = self.model.generate(input_ids, **config)
         return self.tokenizer.batch_decode(gen_tokens, skip_special_tokens=True)[0]
 
-    def streaming_generate(self, prompt, streamer, **config):
+    def streaming_generate(self, prompt: str, streamer, **config: Dict[str, Any]):
         """Generate streamed response given an input."""
 
         input_ids = self.tokenize(prompt)
@@ -125,9 +138,9 @@ class RayTextIteratorStreamer(TextStreamer):
     def __init__(
         self,
         tokenizer,
-        skip_prompt=False,
-        timeout=None,
-        **decode_kwargs,
+        skip_prompt: bool = False,
+        timeout: int = None,
+        **decode_kwargs: Dict[str, Any],
     ):
         super().__init__(tokenizer, skip_prompt, **decode_kwargs)
         self.text_queue = Queue()
@@ -166,7 +179,7 @@ HABANA_ENVS = {
 # Define the Ray Serve deployment
 @serve.deployment
 class DeepSpeedLlamaModel:
-    def __init__(self, world_size, model_id_or_path):
+    def __init__(self, world_size: int, model_id_or_path: str):
         self._world_size = world_size
 
         # Create the DeepSpeed workers
@@ -190,7 +203,7 @@ class DeepSpeedLlamaModel:
             [worker.get_streamer.remote() for worker in self.deepspeed_workers]
         )
 
-    def generate(self, prompt, **config):
+    def generate(self, prompt: str, **config: Dict[str, Any]):
         """Send the prompt to workers for generation.
 
         Return after all workers have finished generation.
@@ -203,7 +216,7 @@ class DeepSpeedLlamaModel:
         ]
         return ray.get(futures)[0]
 
-    def streaming_generate(self, prompt, **config):
+    def streaming_generate(self, prompt: str, **config: Dict[str, Any]):
         """Send the prompt to workers for streaming generation.
 
         Only use the rank 0 worker's result.
@@ -217,7 +230,7 @@ class DeepSpeedLlamaModel:
         for token in streamer:
             yield token
 
-    async def __call__(self, http_request):
+    async def __call__(self, http_request: Request):
         """Handle received HTTP requests."""
 
         # Load fields from the request

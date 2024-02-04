@@ -2,8 +2,9 @@
 import asyncio
 from functools import partial
 from queue import Empty
+from typing import Dict, Any
 
-from starlette.responses import StreamingResponse
+from starlette.responses import Request, StreamingResponse
 import torch
 
 from ray import serve
@@ -12,7 +13,7 @@ from ray import serve
 # Define the Ray Serve deployment
 @serve.deployment(ray_actor_options={"num_cpus": 10, "resources": {"HPU": 1}})
 class LlamaModel:
-    def __init__(self, model_id_or_path):
+    def __init__(self, model_id_or_path: str):
         from transformers import AutoTokenizer, AutoModelForCausalLM, AutoConfig
         from optimum.habana.transformers.modeling_utils import (
             adapt_transformers_to_gaudi,
@@ -54,13 +55,13 @@ class LlamaModel:
         # Use async loop in streaming
         self.loop = asyncio.get_running_loop()
 
-    def tokenize(self, prompt):
+    def tokenize(self, prompt: str):
         """Tokenize the input and move to HPU."""
 
         input_tokens = self.tokenizer(prompt, return_tensors="pt", padding=True)
         return input_tokens.input_ids.to(device=self.device)
 
-    def generate(self, prompt, **config):
+    def generate(self, prompt: str, **config: Dict[str, Any]):
         """Take a prompt and generate a response."""
 
         input_ids = self.tokenize(prompt)
@@ -78,13 +79,13 @@ class LlamaModel:
             except Empty:
                 await asyncio.sleep(0.001)
 
-    def streaming_generate(self, prompt, streamer, **config):
+    def streaming_generate(self, prompt: str, streamer, **config: Dict[str, Any]):
         """Generate a streamed response given an input."""
 
         input_ids = self.tokenize(prompt)
         self.model.generate(input_ids, streamer=streamer, **config)
 
-    async def __call__(self, http_request):
+    async def __call__(self, http_request: Request):
         """Handle HTTP requests."""
 
         # Load fields from the request
