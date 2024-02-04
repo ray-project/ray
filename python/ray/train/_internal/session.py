@@ -231,8 +231,7 @@ class _TrainSession:
     def finish(self, timeout: Optional[float] = None):
         """Finishes the training thread.
 
-        Either returns the output from training or raises any Exception from
-        training.
+        Raises any Exception from training.
         """
         # Set the stop event for the training thread to gracefully exit.
         self.stop_event.set()
