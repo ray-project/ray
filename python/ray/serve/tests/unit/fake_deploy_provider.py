@@ -1,6 +1,6 @@
 from typing import Optional
 
-from ray.serve._private.deploy_provider import DeployProvider
+from ray.serve._private.deploy_provider import DeployOptions, DeployProvider
 from ray.serve.schema import ServeDeploySchema
 
 
@@ -18,23 +18,12 @@ class FakeDeployProvider(DeployProvider):
         return self._supports_local_uris
 
     def reset(self):
-        self.deployed_config = None
-        self.deployed_address = None
-        self.deployed_name = None
-        self.deployed_base_image = None
+        self.deployed_config: Optional[ServeDeploySchema] = None
+        self.deployed_options: Optional[DeployOptions] = None
 
-    def deploy(
-        self,
-        config: ServeDeploySchema,
-        *,
-        address: str,
-        name: Optional[str],
-        base_image: Optional[str] = None,
-    ):
+    def deploy(self, config: ServeDeploySchema, *, options: DeployOptions):
         self.deployed_config = config
-        self.deployed_address = address
-        self.deployed_name = name
-        self.deployed_base_image = base_image
+        self.deployed_options = options
 
 
 DEPLOY_PROVIDER_SINGLETON = None
