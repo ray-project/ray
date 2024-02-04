@@ -18,18 +18,15 @@ from ray.air.util.torch_dist import (
 
 @ray.remote(num_cpus=8, resources={"HPU": 1})
 class DeepSpeedInferenceWorker(TorchDistributedWorker):
-    def __init__(
-            self,
-            model_id_or_path: str,
-            world_size: int,
-            local_rank:int
-        ):
+    def __init__(self, model_id_or_path: str, world_size: int, local_rank: int):
         """A worker process of DeepSpeed inference engine.
 
         Arguments:
-            model_id_or_path: Either an HuggingFace model ID or a path to a cached model.
+            model_id_or_path: Either an HuggingFace model ID
+                or a path to a cached model.
             world_size: Total number of worker processes.
-            local_rank: Rank of this worker process. The rank 0 worker is the head worker.
+            local_rank: Rank of this worker process.
+                The rank 0 worker is the head worker.
         """
         from transformers import AutoTokenizer, AutoConfig
         from optimum.habana.transformers.modeling_utils import (
@@ -115,7 +112,7 @@ class DeepSpeedInferenceWorker(TorchDistributedWorker):
 
     def get_streamer(self):
         """Return a streamer.
-        
+
         Only the rank 0 worker's result is needed.
         Other workers return a fake streamer.
         """
