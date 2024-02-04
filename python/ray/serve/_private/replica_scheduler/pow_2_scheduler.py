@@ -6,7 +6,17 @@ import random
 import time
 from collections import defaultdict, deque
 from dataclasses import dataclass
-from typing import AsyncGenerator, DefaultDict, Deque, Dict, List, Optional, Set, Union
+from typing import (
+    AsyncGenerator,
+    DefaultDict,
+    Deque,
+    Dict,
+    List,
+    Optional,
+    Set,
+    Tuple,
+    Union,
+)
 
 import ray
 from ray.exceptions import RayActorError
@@ -657,11 +667,11 @@ class PowerOfTwoChoicesReplicaScheduler(ReplicaScheduler):
 
     async def assign_replica(
         self, query: Query
-    ) -> Union[ray.ObjectRef, "ray._raylet.ObjectRefGenerator"]:
+    ) -> Tuple[Union[ray.ObjectRef, "ray._raylet.ObjectRefGenerator"], str]:
         """Choose a replica for the request and send it.
 
         This will block indefinitely if no replicas are available to handle the
         request, so it's up to the caller to time out or cancel the request.
         """
         replica = await self.choose_replica_for_query(query)
-        return replica.send_query(query)
+        return replica.send_query(query), replica.replica_id
