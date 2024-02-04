@@ -88,7 +88,7 @@ class LocalDeployProvider(DeployProvider):
         *,
         options: DeployOptions,
     ):
-        if base_image is not None:
+        if options.base_image is not None:
             raise ValueError(
                 "`--base-image` is not supported when using the 'local' deploy "
                 "provider because it deploys to an existing Ray cluster."
