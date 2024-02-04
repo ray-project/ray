@@ -28,6 +28,7 @@ from ray.serve._private.constants import (
 )
 from ray.serve._private.deploy_provider import (
     DEPLOY_PROVIDER_ENV_VAR,
+    DeployOptions,
     get_deploy_provider,
 )
 from ray.serve._private.deployment_graph_build import build as pipeline_build
@@ -349,6 +350,15 @@ def _generate_config_from_file_or_import_path(
     type=str,
     help=RAY_DASHBOARD_ADDRESS_HELP_STR + " Only used by the 'local' provider.",
 )
+@click.option(
+    "--in-place",
+    "-i",
+    is_flag=True,
+    help=(
+        "Update the application(s) in-place in the same cluster rather than starting "
+        "a new cluster. The 'local' provider always performs in-place updates."
+    ),
+)
 def deploy(
     config_or_import_path: str,
     arguments: Tuple[str],
@@ -359,6 +369,7 @@ def deploy(
     base_image: Optional[str],
     provider: Optional[str],
     address: str,
+    in_place: bool,
 ):
     args_dict = convert_args_to_dict(arguments)
     final_runtime_env = parse_runtime_env_args(
@@ -387,9 +398,12 @@ def deploy(
 
     deploy_provider.deploy(
         config,
-        address=address,
-        name=name,
-        base_image=base_image,
+        options=DeployOptions(
+            address=address,
+            name=name,
+            base_image=base_image,
+            in_place=in_place,
+        ),
     )
 
 
