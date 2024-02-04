@@ -1117,18 +1117,18 @@ def _setup_ray_cluster_internal(
     )
 
     spark_executor_memory_bytes = get_configured_spark_executor_memory_bytes(spark)
-    spark_worker_node_required_mem_bytes = (
+    spark_worker_required_mem_bytes = (
         spark_executor_memory_bytes
         + spark_worker_ray_node_slots
         * (ray_worker_node_heap_mem_bytes + ray_worker_node_object_store_mem_bytes)
     )
-    if spark_worker_node_required_mem_bytes > 0.8 * spark_worker_mem_bytes:
+    if spark_worker_required_mem_bytes > 0.8 * spark_worker_mem_bytes:
         warn_msg = (
-            "In each spark worker node, we recommend the sum of "
-            "'spark_executor_memory + Ray_worker_nodes_heap_memory + "
-            "Ray_worker_nodes_object_store_memory' to be less than "
-            "'spark_worker_node_physical_memory * 0.8', otherwise it might lead to "
-            "spark worker node physical memory exhaustion and Ray task OOM errors."
+            "In each spark worker node, we recommend making the sum of "
+            "'spark_executor_memory + num_Ray_worker_nodes_per_spark_worker * "
+            "(memory_worker_node + object_store_memory_worker_node)' to be less than "
+            "'spark_worker_physical_memory * 0.8', otherwise it might lead to "
+            "spark worker physical memory exhaustion and Ray task OOM errors."
         )
 
         if is_in_databricks_runtime():
@@ -1204,7 +1204,7 @@ def _setup_ray_cluster_internal(
             f"{ray_worker_node_heap_mem_bytes} bytes heap memory. This is less than "
             "the recommended value of 10GB. The ray worker node heap memory size is "
             "calculated by "
-            "(SPARK_WORKER_NODE_PHYSICAL_MEMORY / num_local_spark_task_slots * 0.8) - "
+            "(SPARK_WORKER_PHYSICAL_MEMORY / num_local_spark_task_slots * 0.8) - "
             "object_store_memory_worker_node. To increase the heap space available, "
             "increase the memory in the spark cluster by using instance types with "
             "larger memory, or increase number of CPU/GPU per Ray worker node "
