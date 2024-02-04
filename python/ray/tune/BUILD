@@ -823,7 +823,6 @@ py_test(
     srcs = ["examples/xgboost_dynamic_resources_example.py"],
     deps = [":tune_lib"],
     tags = ["team:ml", "exclusive", "example"],
-    args = ["--test"]
 )
 
 # --------------------------------------------------------------------

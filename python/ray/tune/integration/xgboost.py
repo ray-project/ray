@@ -52,6 +52,9 @@ class TuneReportCheckpointCallback(TuneCallback):
             the dict that will be reported to Tune (after it has been flattened)
             and returns a modified dict that will be reported instead. Can be used
             to eg. average results across CV fold when using ``xgboost.cv``.
+        checkpoint_cls: An optional checkpoint class that subclasses
+            `ray.train.xgboost.XGBoostCheckpoint` that implements the
+            checkpoint saving and loading logic from an XGBoost model.
         filename: Deprecated. Customize the saved checkpoint file type by passing
             a `ray.train.xgboost.XGBoostCheckpoint` subclass instead.
 
