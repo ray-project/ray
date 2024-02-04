@@ -85,37 +85,35 @@ class LlamaModel:
         self.model.generate(input_ids, streamer=streamer, **config)
 
     async def __call__(self, http_request):
-        """Handle received http requests"""
+        """Handle HTTP requests."""
 
         # Load fields from the request
         json_request: str = await http_request.json()
         text = json_request["text"]
         # Config used in generation
-        config = json_request["config"] if "config" in json_request else {}
+        config = json_request.get("config", {})
         streaming_response = json_request["stream"]
 
-        # prepare prompts
+        # Prepare prompts
         prompts = []
         if isinstance(text, list):
             prompts.extend(text)
         else:
             prompts.append(text)
 
-        # process config
-        if "max_new_tokens" not in config:
-            # if not specified, use default value
-            config["max_new_tokens"] = 128
+        # Process config
+        config.setdefault("max_new_tokens", 128)
 
-        # enable hpu graph runtime
+        # Enable HPU graph runtime
         config["hpu_graphs"] = True
-        # lazy mode should be True when using hpu graphs
+        # Lazy mode should be True when using HPU graphs
         config["lazy_mode"] = True
 
-        # non streaming case
+        # Non-streaming case
         if not streaming_response:
             return self.generate(prompts, **config)
 
-        # streaming case
+        # Streaming case
         from transformers import TextIteratorStreamer
 
         streamer = TextIteratorStreamer(
@@ -132,6 +130,6 @@ class LlamaModel:
         )
 
 
-# replace the model id with path if necessary
+# Replace the model ID with path if necessary
 entrypoint = LlamaModel.bind("meta-llama/Llama-2-7b-chat-hf")
 # __model_def_end__
