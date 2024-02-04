@@ -1183,9 +1183,9 @@ provider:
             print_dashboard_log()
             raise
         payload = ray.get(reporter.get_payload.remote())
-        ray_version, python_version = ray._private.utils.compute_version_info()
-        assert payload["ray_version"] == ray_version
-        assert payload["python_version"] == python_version
+        version_info = ray._private.utils.compute_version_info()
+        assert payload["ray_version"] == version_info.ray_version
+        assert payload["python_version"] == version_info.python_version
         assert payload["schema_version"] == "0.1"
         assert payload["os"] == sys.platform
         if sys.platform != "linux":

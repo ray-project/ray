@@ -41,6 +41,7 @@ Note that it is also possible to configure the interval using the environment va
 To see collected/reported data, see `usage_stats.json` inside a temp
 folder (e.g., /tmp/ray/session_[id]/*).
 """
+import importlib.util
 import json
 import logging
 import threading
@@ -381,13 +382,9 @@ def usage_stats_prompt_enabled():
 
 def _generate_cluster_metadata():
     """Return a dictionary of cluster metadata."""
-    ray_version, python_version = ray._private.utils.compute_version_info()
-    # These two metadata is necessary although usage report is not enabled
-    # to check version compatibility.
-    metadata = {
-        "ray_version": ray_version,
-        "python_version": python_version,
-    }
+    # These metadata items are recorded to check version compatibility.
+    # They are necessary whether or not usage stats are enabled.
+    metadata = asdict(ray._private.utils.compute_version_info())
     # Additional metadata is recorded only when usage stats are enabled.
     if usage_stats_enabled():
         metadata.update(
@@ -401,7 +398,7 @@ def _generate_cluster_metadata():
             }
         )
         if sys.platform == "linux":
-            # Record llibc version
+            # Record libc version
             (lib, ver) = platform.libc_ver()
             if not lib:
                 metadata.update({"libc_version": "NA"})

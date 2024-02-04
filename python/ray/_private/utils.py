@@ -2,9 +2,11 @@ import asyncio
 import binascii
 from collections import defaultdict
 import contextlib
+from dataclasses import dataclass
 import errno
 import functools
 import importlib
+import importlib.util
 import inspect
 import json
 import logging
@@ -1500,15 +1502,47 @@ def internal_kv_put_with_retry(gcs_client, key, value, namespace, num_retries=20
     raise error
 
 
+@dataclass
+class VersionInfo:
+    ray_version: str
+    python_version: str
+    python_magic_number: Optional[str]
+
+    def __str__(self):
+        if self.python_magic_number is not None:
+            magic_str = f" (magic number {self.python_magic_number})"
+        else:
+            magic_str = ""
+        return (
+            f"    Ray: {self.ray_version}\n"
+            + f"    Python: {self.python_version}{magic_str}\n"
+        )
+
+    def __eq__(self, other):
+        if self.ray_version != other.ray_version:
+            return False
+        # If we have the magic number from both sides, use it; if not,
+        # fall back to exact Python version comparison.
+        if (
+            self.python_magic_number is not None
+            and other.python_magic_number is not None
+        ):
+            return self.python_magic_number == other.python_magic_number
+        else:
+            return self.python_version == other.python_version
+
+
 def compute_version_info():
     """Compute the versions of Python, and Ray.
 
     Returns:
-        A tuple containing the version information.
+        A VersionInfo object for the current interpreter.
     """
-    ray_version = ray.__version__
-    python_version = ".".join(map(str, sys.version_info[:3]))
-    return ray_version, python_version
+    return VersionInfo(
+        ray_version=ray.__version__,
+        python_version=".".join(map(str, sys.version_info[:3])),
+        python_magic_number=importlib.util.MAGIC_NUMBER.hex(),
+    )
 
 
 def get_directory_size_bytes(path: Union[str, Path] = ".") -> int:
@@ -1532,20 +1566,19 @@ def check_version_info(cluster_metadata):
     Raises:
         Exception: An exception is raised if there is a version mismatch.
     """
-    cluster_version_info = (
-        cluster_metadata["ray_version"],
-        cluster_metadata["python_version"],
+    cluster_version_info = VersionInfo(
+        ray_version=cluster_metadata["ray_version"],
+        python_version=cluster_metadata["python_version"],
+        python_magic_number=cluster_metadata.get("python_magic_number"),
     )
     version_info = compute_version_info()
     if version_info != cluster_version_info:
         node_ip_address = ray._private.services.get_node_ip_address()
         error_message = (
             "Version mismatch: The cluster was started with:\n"
-            "    Ray: " + cluster_version_info[0] + "\n"
-            "    Python: " + cluster_version_info[1] + "\n"
-            "This process on node " + node_ip_address + " was started with:" + "\n"
-            "    Ray: " + version_info[0] + "\n"
-            "    Python: " + version_info[1] + "\n"
+            + f"{cluster_version_info}"
+            + f"This process on node {node_ip_address} was started with:\n"
+            + f"{version_info}"
         )
         raise RuntimeError(error_message)
 
