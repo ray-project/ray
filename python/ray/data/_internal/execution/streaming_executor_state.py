@@ -478,8 +478,8 @@ def update_operator_states(topology: Topology) -> None:
             op_state.inputs_done_called = True
 
     # Traverse the topology in reverse topological order.
-    # For each op, if all of its downstream operators don't need any more inputs,
-    # call all_dependents_complete() to also complete this op.
+    # For each op, if all of its downstream operators have completed.
+    # call mark_execution_completed() to also complete this op.
     for op, op_state in reversed(list(topology.items())):
         if op.completed():
             continue
