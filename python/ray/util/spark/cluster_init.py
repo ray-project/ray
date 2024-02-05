@@ -34,6 +34,8 @@ from .utils import (
     _wait_service_up,
     _get_local_ray_node_slots,
     get_configured_spark_executor_memory_bytes,
+    _get_cpu_cores,
+    _get_num_physical_gpus,
 )
 from .start_hook_base import RayOnSparkStartHook
 from .databricks_hook import DefaultDatabricksRayOnSparkStartHook
@@ -1224,7 +1226,10 @@ def _setup_ray_cluster_internal(
             _logger.warning("\n".join(insufficient_resources))
 
     if num_cpus_head_node is None:
-        num_cpus_head_node = 0
+        if is_global:
+            num_cpus_head_node = _get_cpu_cores()
+        else:
+            num_cpus_head_node = 0
     else:
         if num_cpus_head_node < 0:
             raise ValueError(
@@ -1233,7 +1238,13 @@ def _setup_ray_cluster_internal(
             )
 
     if num_gpus_head_node is None:
-        num_gpus_head_node = 0
+        if is_global:
+            num_gpus_head_node = 0
+        else:
+            try:
+                num_gpus_head_node = _get_num_physical_gpus()
+            except Exception:
+                num_gpus_head_node = 0
     else:
         if num_gpus_head_node < 0:
             raise ValueError(
@@ -1347,6 +1358,8 @@ def setup_ray_cluster(
             **Limitation** Only spark version >= 3.4 or Databricks Runtime 12.x
             supports setting this argument.
         num_cpus_head_node: Number of cpus available to Ray head node, if not provide,
+            if it is global mode Ray cluster, use number of cpu cores in spark driver
+            node, otherwise use 0 instead.
             use 0 instead. Number 0 means tasks requiring CPU resources are not
             scheduled to Ray head node.
         num_gpus_worker_node: Number of gpus available to per-ray worker node, if not
@@ -1359,7 +1372,8 @@ def setup_ray_cluster(
             **Limitation** Only spark version >= 3.4 or Databricks Runtime 12.x
             supports setting this argument.
         num_gpus_head_node: Number of gpus available to Ray head node, if not provide,
-            use 0 instead.
+            if it is global mode Ray cluster, use number of GPUs in spark driver node,
+            otherwise use 0 instead.
             This argument is only available on spark cluster which spark driver node
             has GPUs.
         memory_worker_node: Optional[int]:
@@ -1498,7 +1512,7 @@ def setup_global_ray_cluster(
     If "is_blocking" is True,
     then keep the call blocking until it is interrupted.
     once the call is interrupted, the global Ray on spark cluster is shut down and
-    `serve_global_ray_cluster` call terminates.
+    `setup_global_ray_cluster` call terminates.
     If "is_blocking" is False,
     once Ray cluster setup completes, return immediately.
     """
