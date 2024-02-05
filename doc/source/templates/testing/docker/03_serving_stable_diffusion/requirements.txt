@@ -1,6 +1,6 @@
 accelerate==0.20.3
 diffusers==0.17.1
-fastapi==0.97.0
+fastapi==0.109.1
 ipywidgets
 matplotlib==3.7.1
 numpy==1.24.3
