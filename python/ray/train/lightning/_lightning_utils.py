@@ -262,7 +262,7 @@ class RayTrainReportCallback(pl.callbacks.Callback):
         train.report(metrics=metrics, checkpoint=checkpoint)
 
         # Add a barrier to ensure all workers finished reporting here
-        torch.distributed.barrier()
+        trainer.strategy.barrier()
 
         if self.local_rank == 0:
             shutil.rmtree(tmpdir)

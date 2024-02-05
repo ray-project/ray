@@ -396,14 +396,7 @@ def run(
             unique identifier (such as `Trial.trial_id`) is used in each trial's
             directory name. Otherwise, trials could overwrite artifacts and checkpoints
             of other trials. The return value cannot be a path.
-        chdir_to_trial_dir: Deprecated. Use `RAY_CHDIR_TO_TRIAL_DIR=0` instead.
-            Whether to change the working directory of each worker
-            to its corresponding trial directory. Defaults to `True` to prevent
-            contention between workers saving trial-level outputs.
-            If set to `False`, files are accessible with paths relative to the
-            original working directory. However, all workers on the same node now
-            share the same working directory, so be sure to use
-            `ray.train.get_context().get_trial_dir()` as the path to save any outputs.
+        chdir_to_trial_dir: Deprecated. Set the `RAY_CHDIR_TO_TRIAL_DIR` env var instead
         sync_config: Configuration object for syncing. See train.SyncConfig.
         export_formats: List of formats that exported at the end of
             the experiment. Default is None.
@@ -666,16 +659,15 @@ def run(
         )
         checkpoint_config.checkpoint_at_end = checkpoint_at_end
 
+    # TODO(justinvyu): [Deprecated] Remove in 2.11.
     if chdir_to_trial_dir != _DEPRECATED_VALUE:
-        warnings.warn(
-            "`chdir_to_trial_dir` is deprecated and will be removed. "
+        raise DeprecationWarning(
+            "`chdir_to_trial_dir` is deprecated. "
             f"Use the {RAY_CHDIR_TO_TRIAL_DIR} environment variable instead. "
             "Set it to 0 to disable the default behavior of changing the "
             "working directory.",
             DeprecationWarning,
         )
-        if chdir_to_trial_dir is False:
-            os.environ[RAY_CHDIR_TO_TRIAL_DIR] = "0"
 
     if num_samples == -1:
         num_samples = sys.maxsize
