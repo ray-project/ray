@@ -470,7 +470,7 @@ fairscale==0.4.6
     # via -r /ray/ci/../python/requirements/ml/tune-test-requirements.txt
 farama-notifications==0.0.4
     # via gymnasium
-fastapi==0.108.0
+fastapi==0.109.1
     # via
     #   -r /ray/ci/../python/requirements.txt
     #   -r /ray/ci/../python/requirements/test-requirements.txt

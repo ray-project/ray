@@ -17,7 +17,7 @@ cloudpickle==2.2.0
 # Keep in sync with `ci/build/upload_build_info.sh`
 cryptography==38.0.1
 cython==0.29.32
-fastapi==0.108.0
+fastapi==0.109.1
 feather-format==0.4.1
 # Keep compatible with Werkzeug
 flask==2.1.3
