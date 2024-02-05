@@ -612,9 +612,6 @@ class ExecutionPlan:
             stats.dataset_bytes_spilled = 0
 
             def collect_stats(cur_stats):
-                stats.dataset_bytes_spilled += cur_stats.extra_metrics.get(
-                    "obj_store_mem_spilled", 0
-                )
                 for parent in cur_stats.parents:
                     collect_stats(parent)
 

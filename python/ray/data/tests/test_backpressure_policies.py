@@ -181,12 +181,12 @@ class TestStreamOutputBackpressurePolicy(unittest.TestCase):
         name,
         outqueue_num_blocks=0,
         num_active_tasks=0,
-        num_outputs_generated=0,
+        num_task_outputs_generated=0,
     ):
         op = MagicMock()
         op.__str__.return_value = f"Op({name})"
         op.num_active_tasks.return_value = num_active_tasks
-        op.metrics.num_outputs_generated = num_outputs_generated
+        op.metrics.num_task_outputs_generated = num_task_outputs_generated
 
         state = MagicMock()
         state.__str__.return_value = f"OpState({name})"
@@ -251,7 +251,7 @@ class TestStreamOutputBackpressurePolicy(unittest.TestCase):
             }
 
             # down_up now has outputs, so we won't allow up_op to read any more.
-            down_op.metrics.num_outputs_generated = 1
+            down_op.metrics.num_task_outputs_generated = 1
             res = policy.calculate_max_blocks_to_read_per_op(topology)
             assert res == {
                 up_state: 0,

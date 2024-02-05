@@ -227,10 +227,12 @@ class MapOperator(OneToOneOperator, ABC):
         self._metrics.on_input_received(refs)
         # Add RefBundle to the bundler.
         self._block_ref_bundler.add_bundle(refs)
+        self._metrics.on_input_queued(refs)
         if self._block_ref_bundler.has_bundle():
             # If the bundler has a full bundle, add it to the operator's task submission
             # queue.
             bundle = self._block_ref_bundler.get_next_bundle()
+            self._metrics.on_input_dequeued(refs)
             self._add_bundled_input(bundle)
 
     def _get_runtime_ray_remote_args(
@@ -294,10 +296,11 @@ class MapOperator(OneToOneOperator, ABC):
         def _output_ready_callback(task_index, output: RefBundle):
             # Since output is streamed, it should only contain one block.
             assert len(output) == 1
-            self._metrics.on_output_generated(task_index, output)
+            self._metrics.on_task_output_generated(task_index, output)
 
             # Notify output queue that the task has produced an new output.
             self._output_queue.notify_task_output_ready(task_index, output)
+            self._metrics.on_output_queued(output)
 
         def _task_done_callback(task_index: int, exception: Optional[Exception]):
             self._metrics.on_task_finished(task_index, exception)
@@ -362,6 +365,7 @@ class MapOperator(OneToOneOperator, ABC):
     def _get_next_inner(self) -> RefBundle:
         assert self._started
         bundle = self._output_queue.get_next()
+        self._metrics.on_output_dequeued(bundle)
         for _, meta in bundle.blocks:
             self._output_metadata.append(meta)
         self._metrics.on_output_taken(bundle)
@@ -386,7 +390,7 @@ class MapOperator(OneToOneOperator, ABC):
         self._finished_streaming_gens.clear()
 
     @abstractmethod
-    def current_resource_usage(self) -> ExecutionResources:
+    def current_processor_usage(self) -> ExecutionResources:
         raise NotImplementedError
 
     @abstractmethod

@@ -42,7 +42,6 @@ from pandas._typing import Dtype
 from pandas.compat import set_function_name
 from pandas.core.dtypes.generic import ABCDataFrame, ABCSeries
 from pandas.core.indexers import check_array_indexer, validate_indices
-from pandas.io.formats.format import ExtensionArrayFormatter
 
 from ray.air.util.tensor_extensions.utils import (
     _create_possibly_ragged_ndarray,
@@ -167,14 +166,20 @@ def _format_strings_patched_v1_0_0(self) -> List[str]:
 _FORMATTER_ENABLED_ENV_VAR = "TENSOR_COLUMN_EXTENSION_FORMATTER_ENABLED"
 
 if os.getenv(_FORMATTER_ENABLED_ENV_VAR, "1") == "1":
-    ExtensionArrayFormatter._format_strings_orig = (
-        ExtensionArrayFormatter._format_strings
-    )
-    if Version("1.1.0") <= Version(pd.__version__) < Version("1.3.0"):
-        ExtensionArrayFormatter._format_strings = _format_strings_patched
+    if Version(pd.__version__) < Version("2.2.0"):
+        from pandas.io.formats.format import ExtensionArrayFormatter
+
+        formatter_cls = ExtensionArrayFormatter
     else:
-        ExtensionArrayFormatter._format_strings = _format_strings_patched_v1_0_0
-    ExtensionArrayFormatter._patched_by_ray_datasets = True
+        from pandas.io.formats.format import _ExtensionArrayFormatter
+
+        formatter_cls = _ExtensionArrayFormatter
+    formatter_cls._format_strings_orig = formatter_cls._format_strings
+    if Version("1.1.0") <= Version(pd.__version__) < Version("1.3.0"):
+        formatter_cls._format_strings = _format_strings_patched
+    else:
+        formatter_cls._format_strings = _format_strings_patched_v1_0_0
+    formatter_cls._patched_by_ray_datasets = True
 
 ###########################################
 # End patching of ExtensionArrayFormatter #

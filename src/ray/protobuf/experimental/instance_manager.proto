@@ -30,6 +30,8 @@ enum StatusCode {
   UNKNOWN_ERRORS = 3;
   // Unavailable resources or operations. Caller should retry.
   UNAVAILABLE = 4;
+  // Invalid values.
+  INVALID_VALUE = 5;
 }
 
 message Status {
@@ -61,11 +63,11 @@ message Instance {
     RAY_STOPPING = 6;
     // Ray stopped - follows from the RAY_STOPPING state.
     RAY_STOPPED = 7;
-    // The instance is stopping - follows from the RAY_STOPPING state.
-    STOPPING = 8;
-    // The instance is stopped - follows from STOPPING state or any other running
+    // The instance is terminatng - follows from the RAY_STOPPING state.
+    TERMINATING = 8;
+    // The instance is terminated - follows from TERMINATING state or any other running
     // states when instance was preempted.
-    STOPPED = 9;
+    TERMINATED = 9;
     // Error states.
     // The instance allocation failed - follows from the REQUESTED state.
     ALLOCATION_FAILED = 10;

@@ -1,3 +1,4 @@
+import itertools
 import time
 from abc import ABCMeta, abstractmethod
 from typing import TYPE_CHECKING, Dict, Optional
@@ -52,19 +53,14 @@ class ResourceManager:
         # Iterate from last to first operator.
         num_ops_so_far = 0
         num_ops_total = len(self._topology)
-        for op, state in reversed(self._topology.items()):
+        ops = list(self._topology)
+        for op, next_op in reversed(list(itertools.zip_longest(ops, ops[1:]))):
             # Update `self._op_usages`.
-            op_usage = op.current_resource_usage()
-            op_usage.object_store_memory = op._metrics.obj_store_mem_outputs
-            op_usage.object_store_memory += op._metrics.num_tasks_running * 4 * 128 * 1024**2
-            for next_op in op.output_dependencies:
-                op_usage.object_store_memory += next_op._metrics.obj_store_mem_inputs
-            # Don't count input refs towards dynamic memory usage, as they have been
-            # pre-created already outside this execution.
-            if not isinstance(op, InputDataBuffer):
-                op_usage.object_store_memory = (
-                    op_usage.object_store_memory or 0
-                ) + state.outqueue_memory_usage()
+            op_usage = op.current_processor_usage()
+            assert not op_usage.object_store_memory
+            op_usage.object_store_memory = _estimate_object_store_memory(
+                op, self._topology[op], next_op
+            )
             self._op_usages[op] = op_usage
             # Update `self._global_usage`.
             self._global_usage = self._global_usage.add(op_usage)
@@ -211,3 +207,16 @@ class ReservationOpResourceLimiter(OpResourceLimiter):
 
     def get_op_available(self, op: PhysicalOperator) -> ExecutionResources:
         return self._op_limits[op]
+
+
+def _estimate_object_store_memory(op, state, next_op) -> int:
+    object_store_memory = op.metrics.obj_store_mem_internal_outqueue
+    if op.metrics.obj_store_mem_pending_tasks is not None:
+        object_store_memory += op.metrics.obj_store_mem_pending_tasks
+    # Don't count input refs towards dynamic memory usage, as they have been
+    # pre-created already outside this execution.
+    if not isinstance(op, InputDataBuffer):
+        object_store_memory += state.outqueue_memory_usage()
+    if next_op is not None:
+        object_store_memory += next_op.metrics.obj_store_mem_internal_inqueue
+    return object_store_memory

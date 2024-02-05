@@ -377,7 +377,7 @@ class PhysicalOperator(Operator):
         if not self._started:
             raise ValueError("Operator must be started before being shutdown.")
 
-    def current_resource_usage(self) -> ExecutionResources:
+    def current_processor_usage(self) -> ExecutionResources:
         """Returns the current estimated resource usage of this operator.
 
         This method is called by the executor to decide how to allocate resources

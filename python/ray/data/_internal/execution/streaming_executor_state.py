@@ -235,9 +235,7 @@ class OpState:
         queued = self.num_queued() + self.op.internal_queue_size()
         active = self.op.num_active_tasks()
         desc = f"- {self.op.name}: {active} active, {queued} queued"
-        mem = memory_string(
-            resource_manager.get_op_usage(self.op).object_store_memory
-        )
+        mem = memory_string(resource_manager.get_op_usage(self.op).object_store_memory)
         desc += f", {mem} objects"
         suffix = self.op.progress_str()
         if suffix:
