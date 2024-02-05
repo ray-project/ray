@@ -57,15 +57,34 @@ def test_get_current_version(mock_check_output):
     )
 
 
-def _prepare_tmp_file(java: bool = False):
-    file = tempfile.NamedTemporaryFile()
-    with open(file.name, "w") as f:
+def _prepare_file(file_path, java: bool = False):
+    """
+    Print to a file with version in the format of Java or non-Java files.
+    """
+    with open(file_path, "w") as f:
         if java:
             f.write("<version>2.0.0-SNAPSHOT</version>")
         else:
             f.write("version: 2.2.0.dev0")
         f.flush()
-    return file
+
+
+def _make_tmp_directories(tmp_dir):
+    directories = [
+        "ci",
+        "ci/ray_ci",
+        "python",
+        "python/ray",
+        "src",
+        "src/ray",
+        "src/ray/common",
+        "subdir_0",
+        "subdir_1",
+        "subdir_0/subdir_0_0",
+    ]
+    for dir in directories:
+        full_dir_path = os.path.join(tmp_dir, dir)
+        os.mkdir(full_dir_path)
 
 
 def test_upgrade_file_version():
@@ -73,53 +92,94 @@ def test_upgrade_file_version():
     java_version = "2.0.0-SNAPSHOT"
     new_version = "1.1.1"
 
-    # Create temporary files with default version.
-    non_java_file_1 = _prepare_tmp_file()
-    non_java_file_2 = _prepare_tmp_file()
-    java_file_1 = _prepare_tmp_file(java=True)
-    java_file_2 = _prepare_tmp_file(java=True)
+    with tempfile.TemporaryDirectory() as tmp_dir:
+        _make_tmp_directories(tmp_dir)
+        non_java_file_paths = [
+            "ci/ray_ci/utils.py",
+            "python/ray/_version.py",
+            "src/ray/common/constants.h",
+        ]
+        select_java_file_paths = [
+            "pom_template.xml",
+            "subdir_0/pom.xml",
+            "subdir_0/pom_template.xml",
+            "subdir_1/pom.xml",
+            "subdir_1/pom_template.xml",
+            "subdir_0/subdir_0_0/pom.xml",
+        ]
+        non_select_java_file_paths = [
+            "not_pom.xml",
+            "subdir_1/not_pom_template.xml",
+            "subdir_0/subdir_0_0/not_pom_template.xml",
+            "subdir_0/subdir_0_0/not_pom.xml",
+        ]
+        for file_path in select_java_file_paths + non_select_java_file_paths:
+            _prepare_file(os.path.join(tmp_dir, file_path), java=True)
+        for file_path in non_java_file_paths:
+            _prepare_file(os.path.join(tmp_dir, file_path), java=False)
 
-    non_java_files = [non_java_file_1.name, non_java_file_2.name]
-    java_files = [java_file_1.name, java_file_2.name]
-    non_java_files.sort()
-    java_files.sort()
-    upgrade_file_version(
-        non_java_files=non_java_files,
-        java_files=java_files,
-        main_version=main_version,
-        java_version=java_version,
-        new_version=new_version,
-        root_dir=tempfile.gettempdir(),
-    )
+        upgrade_file_version(
+            main_version=main_version,
+            java_version=java_version,
+            new_version=new_version,
+            root_dir=tmp_dir,
+        )
 
-    for file in non_java_files:
-        with open(file, "r") as f:
-            assert f.read() == f"version: {new_version}"
+        for file_path in non_java_file_paths:
+            with open(os.path.join(tmp_dir, file_path), "r") as f:
+                assert f.read() == f"version: {new_version}"
 
-    for file in java_files:
-        with open(file, "r") as f:
-            assert f.read() == f"<version>{new_version}</version>"
+        for file_path in select_java_file_paths:
+            with open(os.path.join(tmp_dir, file_path), "r") as f:
+                assert f.read() == f"<version>{new_version}</version>"
+
+        for file_path in non_select_java_file_paths:
+            with open(os.path.join(tmp_dir, file_path), "r") as f:
+                assert f.read() == f"<version>{java_version}</version>"
 
 
-def test_upgrade_file_version_fail():
+def test_upgrade_file_version_fail_no_file():
+    """
+    Test for failure when there's no file to be found.
+    """
     main_version = "2.2.0.dev0"
     java_version = "2.0.0-SNAPSHOT"
     new_version = "1.1.1"
 
-    non_java_files = []
-    java_files = []
-    non_java_files.sort()
-    java_files.sort()
-
-    with pytest.raises(AssertionError):
+    with pytest.raises(ValueError):
         upgrade_file_version(
-            non_java_files=non_java_files,
-            java_files=java_files,
             main_version=main_version,
             java_version=java_version,
             new_version=new_version,
             root_dir=tempfile.gettempdir(),
         )
+
+
+def test_upgrade_file_version_fail_no_java_file():
+    """
+    Test for failure when there's no java file to be found.
+    """
+    main_version = "2.2.0.dev0"
+    java_version = "2.0.0-SNAPSHOT"
+    new_version = "1.1.1"
+
+    with tempfile.TemporaryDirectory() as tmp_dir:
+        _make_tmp_directories(tmp_dir)
+        non_java_file_paths = [
+            "ci/ray_ci/utils.py",
+            "python/ray/_version.py",
+            "src/ray/common/constants.h",
+        ]
+        for file_path in non_java_file_paths:
+            _prepare_file(os.path.join(tmp_dir, file_path), java=False)
+
+        with pytest.raises(AssertionError):
+            upgrade_file_version(
+                main_version=main_version,
+                java_version=java_version,
+                new_version=new_version,
+                root_dir=tmp_dir,
+            )
 
 
 if __name__ == "__main__":
