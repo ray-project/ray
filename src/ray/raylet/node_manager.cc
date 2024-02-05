@@ -1878,15 +1878,16 @@ void NodeManager::HandleReturnWorker(rpc::ReturnWorkerRequest request,
 void NodeManager::HandleDrainRaylet(rpc::DrainRayletRequest request,
                                     rpc::DrainRayletReply *reply,
                                     rpc::SendReplyCallback send_reply_callback) {
-  RAY_LOG(INFO) << "Drain raylet RPC has received. Drain reason: "
-                << request.reason_message();
+  RAY_LOG(INFO) << "Drain raylet RPC has received. Deadline is " << request.deadline()
+                << ". Drain reason: " << request.reason_message();
 
   if (request.reason() ==
       rpc::autoscaler::DrainNodeReason::DRAIN_NODE_REASON_IDLE_TERMINATION) {
     const bool is_idle =
         cluster_resource_scheduler_->GetLocalResourceManager().IsLocalNodeIdle();
     if (is_idle) {
-      cluster_resource_scheduler_->GetLocalResourceManager().SetLocalNodeDraining();
+      cluster_resource_scheduler_->GetLocalResourceManager().SetLocalNodeDraining(
+          request.deadline());
       reply->set_is_accepted(true);
     } else {
       reply->set_is_accepted(false);
@@ -1895,7 +1896,8 @@ void NodeManager::HandleDrainRaylet(rpc::DrainRayletRequest request,
     // Non-rejectable draining request.
     RAY_CHECK_EQ(request.reason(),
                  rpc::autoscaler::DrainNodeReason::DRAIN_NODE_REASON_PREEMPTION);
-    cluster_resource_scheduler_->GetLocalResourceManager().SetLocalNodeDraining();
+    cluster_resource_scheduler_->GetLocalResourceManager().SetLocalNodeDraining(
+        request.deadline());
     reply->set_is_accepted(true);
   }
 

@@ -122,7 +122,7 @@ class ClusterResourceManager {
 
   bool IsNodeDraining(const scheduling::NodeID &node_id) const {
     const auto &node = map_find_or_die(nodes_, node_id);
-    return node.GetLocalView().is_draining;
+    return node.GetLocalView().IsDraining();
   }
 
   std::string DebugString() const;

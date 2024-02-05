@@ -514,10 +514,12 @@ void raylet::RayletClient::ShutdownRaylet(
 void raylet::RayletClient::DrainRaylet(
     const rpc::autoscaler::DrainNodeReason &reason,
     const std::string &reason_message,
+    int64_t deadline,
     const rpc::ClientCallback<rpc::DrainRayletReply> &callback) {
   rpc::DrainRayletRequest request;
   request.set_reason(reason);
   request.set_reason_message(reason_message);
+  request.set_deadline(deadline);
   grpc_client_->DrainRaylet(request, callback);
 }
 

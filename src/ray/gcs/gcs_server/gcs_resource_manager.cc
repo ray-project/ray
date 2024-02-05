@@ -70,8 +70,10 @@ void GcsResourceManager::HandleGetDrainingNodes(
       continue;
     }
     const auto &node_resources = node_resources_entry.second.GetLocalView();
-    if (node_resources.is_draining) {
-      *reply->add_node_ids() = node_resources_entry.first.Binary();
+    if (node_resources.IsDraining()) {
+      auto draining_node = reply->add_draining_nodes();
+      draining_node->set_node_id(node_resources_entry.first.Binary());
+      draining_node->set_draining_deadline(node_resources.draining_deadline);
     }
   }
   GCS_RPC_SEND_REPLY(send_reply_callback, reply, Status::OK());
@@ -240,7 +242,7 @@ void GcsResourceManager::UpdateNodeResourceUsage(
       snapshot->mutable_node_activity()->CopyFrom(
           resource_view_sync_message.node_activity());
     }
-    if (resource_view_sync_message.is_draining()) {
+    if (resource_view_sync_message.draining_deadline() > 0) {
       snapshot->set_state(rpc::NodeSnapshot::DRAINING);
     }
   }

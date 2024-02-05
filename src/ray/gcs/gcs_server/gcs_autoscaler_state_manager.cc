@@ -217,7 +217,7 @@ void GcsAutoscalerStateManager::UpdateResourceLoadAndUsage(
 
   new_data.set_object_pulls_queued(data.object_pulls_queued());
   new_data.set_idle_duration_ms(data.idle_duration_ms());
-  new_data.set_is_draining(data.is_draining());
+  new_data.set_draining_deadline(data.draining_deadline());
 
   // Last update time
   iter->second.first = absl::Now();
@@ -294,7 +294,7 @@ void GcsAutoscalerStateManager::GetNodeStates(
 
     auto const &node_resource_item = node_resource_iter->second;
     auto const &node_resource_data = node_resource_item.second;
-    if (node_resource_data.is_draining()) {
+    if (node_resource_data.draining_deadline() > 0) {
       node_state_proto->set_status(rpc::autoscaler::NodeStatus::DRAINING);
     } else if (node_resource_data.idle_duration_ms() > 0) {
       // The node was reported idle.
@@ -387,6 +387,12 @@ void GcsAutoscalerStateManager::HandleDrainNode(
     gcs_actor_manager_.SetPreemptedAndPublish(node_id);
   }
 
+  int64_t draining_deadline = request.deadline();
+  RAY_CHECK_GE(draining_deadline, 0);
+  if (draining_deadline == 0) {
+    // TODO(jjyao) Set default value
+  }
+
   rpc::Address raylet_address;
   raylet_address.set_raylet_id(node->node_id());
   raylet_address.set_ip_address(node->node_manager_address());
@@ -396,6 +402,7 @@ void GcsAutoscalerStateManager::HandleDrainNode(
   raylet_client->DrainRaylet(
       request.reason(),
       request.reason_message(),
+      draining_deadline,
       [this, reply, send_reply_callback, node_id](
           const Status &status, const rpc::DrainRayletReply &raylet_reply) {
         reply->set_is_accepted(raylet_reply.is_accepted());

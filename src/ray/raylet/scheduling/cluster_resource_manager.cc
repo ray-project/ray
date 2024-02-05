@@ -96,7 +96,7 @@ bool ClusterResourceManager::UpdateNode(
   // Last update time to the local node resources view.
   local_view.last_resource_update_time = absl::Now();
 
-  local_view.is_draining = resource_view_sync_message.is_draining();
+  local_view.draining_deadline = resource_view_sync_message.draining_deadline();
 
   AddOrUpdateNode(node_id, local_view);
   received_node_resources_[node_id] = std::move(local_view);

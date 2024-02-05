@@ -1,7 +1,7 @@
 import json
 import logging
 from collections import defaultdict
-from typing import Set
+from typing import Map
 
 from google.protobuf.json_format import MessageToDict
 
@@ -807,8 +807,9 @@ class GlobalState:
             node_ip_address
         )
 
-    def get_draining_nodes(self) -> Set[str]:
-        """Get all the hex ids of nodes that are being drained."""
+    def get_draining_nodes(self) -> Map[str, int]:
+        """Get all the hex ids of nodes that are being drained
+        and the corresponding draining deadlines."""
         self._check_connected()
         return self.global_state_accessor.get_draining_nodes()
 
