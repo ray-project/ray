@@ -122,7 +122,8 @@ std::string NodeResources::DebugString() const {
   for (const auto &[key, value] : labels) {
     buffer << "\"" << key << "\":\"" << value << "\",";
   }
-  buffer << "}, \"draining_deadline\": " << draining_deadline << "}";
+  buffer << "}, \"draining_deadline_timestamp_ms\": " << draining_deadline_timestamp_ms
+         << "}";
   return buffer.str();
 }
 

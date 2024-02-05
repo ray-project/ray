@@ -2870,7 +2870,7 @@ cdef class GcsClient:
             node_id: c_string,
             reason: int32_t,
             reason_message: c_string,
-            deadline: int64_t):
+            deadline_timestamp_ms: int64_t):
         """Send the DrainNode request to GCS.
 
         This is only for testing.
@@ -2880,7 +2880,8 @@ cdef class GcsClient:
             c_bool is_accepted = False
         with nogil:
             check_status(self.inner.get().DrainNode(
-                node_id, reason, reason_message, deadline, timeout_ms, is_accepted))
+                node_id, reason, reason_message,
+                deadline_timestamp_ms, timeout_ms, is_accepted))
 
         return is_accepted
 

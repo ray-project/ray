@@ -153,9 +153,11 @@ class LocalResourceManager : public syncer::ReporterInterface {
 
   /// Change the local node to the draining state.
   /// After that, no new tasks can be scheduled onto the local node.
-  void SetLocalNodeDraining(int64_t draining_deadline);
+  void SetLocalNodeDraining(int64_t draining_deadline_timestamp_ms);
 
-  bool IsLocalNodeDraining() const { return local_node_draining_deadline_ > 0; }
+  bool IsLocalNodeDraining() const {
+    return local_node_draining_deadline_timestamp_ms_ > 0;
+  }
 
  private:
   struct ResourceUsage {
@@ -225,7 +227,7 @@ class LocalResourceManager : public syncer::ReporterInterface {
   // > 0 if the node is being drained
   // and the value is the timestamp when
   // the node will be force killed.
-  int64_t local_node_draining_deadline_ = 0;
+  int64_t local_node_draining_deadline_timestamp_ms_ = 0;
 
   FRIEND_TEST(ClusterResourceSchedulerTest, SchedulingUpdateTotalResourcesTest);
   FRIEND_TEST(ClusterResourceSchedulerTest, AvailableResourceInstancesOpsTest);

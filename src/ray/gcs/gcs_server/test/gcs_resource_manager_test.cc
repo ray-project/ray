@@ -51,7 +51,8 @@ class GcsResourceManagerTest : public ::testing::Test {
           resource.second;
     }
     resource_view_sync_message.set_idle_duration_ms(idle_ms);
-    resource_view_sync_message.set_draining_deadline(draining_deadline_timestamp_ms);
+    resource_view_sync_message.set_draining_deadline_timestamp_ms(
+        draining_deadline_timestamp_ms);
     gcs_resource_manager_->UpdateFromResourceView(node_id, resource_view_sync_message);
   }
 

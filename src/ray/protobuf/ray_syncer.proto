@@ -41,7 +41,7 @@ message ResourceViewSyncMessage {
   // node currently has any resource being used, this will be 0.
   int64 idle_duration_ms = 4;
   // Timestamp when the node to be drained will be force killed.
-  int64 draining_deadline = 5;
+  int64 draining_deadline_timestamp_ms = 5;
   // Why the node is not idle.
   repeated string node_activity = 6;
 }

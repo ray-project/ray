@@ -705,7 +705,7 @@ Status NodeResourceInfoAccessor::AsyncGetDrainingNodes(
         std::unordered_map<NodeID, int64_t> draining_nodes;
         for (const auto &draining_node : VectorFromProtobuf(reply.draining_nodes())) {
           draining_nodes[NodeID::FromBinary(draining_node.node_id())] =
-              draining_node.draining_deadline();
+              draining_node.draining_deadline_timestamp_ms();
         }
         callback(draining_nodes);
       });

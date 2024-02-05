@@ -346,7 +346,7 @@ struct Mocker {
       (*resources_data.mutable_resources_total())[resource.first] = resource.second;
     }
     resources_data.set_idle_duration_ms(idle_ms);
-    resources_data.set_draining_deadline(draining_deadline_timestamp_ms);
+    resources_data.set_draining_deadline_timestamp_ms(draining_deadline_timestamp_ms);
   }
 
   static void FillResourcesData(rpc::ResourcesData &data,

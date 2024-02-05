@@ -350,7 +350,7 @@ message DrainRayletRequest {
   string reason_message = 2;
   /// Timestamp when the node to be drained will be force killed.
   /// This is a hint to Ray that it should drain everything before the deadline.
-  int64 deadline = 3;
+  int64 deadline_timestamp_ms = 3;
 }
 
 message DrainRayletReply {

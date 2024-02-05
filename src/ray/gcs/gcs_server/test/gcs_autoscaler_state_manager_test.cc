@@ -156,7 +156,7 @@ class GcsAutoscalerStateManagerTest : public ::testing::Test {
     request.set_node_id(node_id.Binary());
     request.set_reason(reason);
     request.set_reason_message(reason_message);
-    request.set_deadline(deadline_timestamp_ms);
+    request.set_deadline_timestamp_ms(deadline_timestamp_ms);
     rpc::autoscaler::DrainNodeReply reply;
     auto send_reply_callback =
         [](ray::Status status, std::function<void()> f1, std::function<void()> f2) {};

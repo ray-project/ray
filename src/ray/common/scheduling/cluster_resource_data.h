@@ -308,7 +308,7 @@ class NodeResources {
   // > 0 if the node is being drained
   // and the value is the timestamp when
   // the node will be force killed.
-  int64_t draining_deadline = 0;
+  int64_t draining_deadline_timestamp_ms = 0;
 
   // The timestamp of the last resource update if there was a resource report.
   absl::optional<absl::Time> last_resource_update_time = absl::nullopt;
@@ -319,7 +319,7 @@ class NodeResources {
   int64_t latest_resources_normal_task_timestamp = 0;
   bool object_pulls_queued = false;
 
-  bool IsDraining() const { return draining_deadline > 0; }
+  bool IsDraining() const { return draining_deadline_timestamp_ms > 0; }
 
   /// Amongst CPU, memory, and object store memory, calculate the utilization percentage
   /// of each resource and return the highest.

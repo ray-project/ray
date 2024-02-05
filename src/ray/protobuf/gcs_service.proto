@@ -621,7 +621,7 @@ message GetDrainingNodesRequest {}
 message DrainingNode {
   bytes node_id = 1;
   /// Timestamp when the draining node will be force killed.
-  int64 draining_deadline = 2;
+  int64 draining_deadline_timestamp_ms = 2;
 }
 
 message GetDrainingNodesReply {

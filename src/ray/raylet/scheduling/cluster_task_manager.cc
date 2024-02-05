@@ -359,7 +359,8 @@ void ClusterTaskManager::FillResourceUsage(rpc::ResourcesData &data) {
       std::move(resource_view_sync_message.resources_available());
   data.set_object_pulls_queued(resource_view_sync_message.object_pulls_queued());
   data.set_idle_duration_ms(resource_view_sync_message.idle_duration_ms());
-  data.set_draining_deadline(resource_view_sync_message.draining_deadline());
+  data.set_draining_deadline_timestamp_ms(
+      resource_view_sync_message.draining_deadline_timestamp_ms());
 }
 
 bool ClusterTaskManager::AnyPendingTasksForResourceAcquisition(

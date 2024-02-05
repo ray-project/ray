@@ -253,7 +253,8 @@ NodeResources LocalResourceManager::ToNodeResources() const {
   node_resources.available = local_resources_.available.ToNodeResourceSet();
   node_resources.total = local_resources_.total.ToNodeResourceSet();
   node_resources.labels = local_resources_.labels;
-  node_resources.draining_deadline = local_node_draining_deadline_;
+  node_resources.draining_deadline_timestamp_ms =
+      local_node_draining_deadline_timestamp_ms_;
   return node_resources;
 }
 
@@ -326,7 +327,8 @@ void LocalResourceManager::PopulateResourceViewSyncMessage(
         static_cast<int64_t>(1), absl::ToInt64Milliseconds(now - idle_time.value())));
   }
 
-  resource_view_sync_message.set_draining_deadline(local_node_draining_deadline_);
+  resource_view_sync_message.set_draining_deadline_timestamp_ms(
+      local_node_draining_deadline_timestamp_ms_);
 
   for (const auto &iter : last_idle_times_) {
     if (iter.second == absl::nullopt) {
@@ -440,9 +442,9 @@ void LocalResourceManager::RecordMetrics() const {
   }
 }
 
-void LocalResourceManager::SetLocalNodeDraining(int64_t draining_deadline) {
-  RAY_CHECK_GT(draining_deadline, 0);
-  local_node_draining_deadline_ = draining_deadline;
+void LocalResourceManager::SetLocalNodeDraining(int64_t draining_deadline_timestamp_ms) {
+  RAY_CHECK_GT(draining_deadline_timestamp_ms, 0);
+  local_node_draining_deadline_timestamp_ms_ = draining_deadline_timestamp_ms;
   OnResourceOrStateChanged();
 }
 

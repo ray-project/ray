@@ -566,7 +566,7 @@ message ResourcesData {
   // > 0 if the node is being drained
   // and the value is the timestamp when
   // the node will be force killed.
-  int64 draining_deadline = 18;
+  int64 draining_deadline_timestamp_ms = 18;
 }
 
 message ResourceUsageBatchData {
