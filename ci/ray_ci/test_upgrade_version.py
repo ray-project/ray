@@ -138,7 +138,7 @@ def test_upgrade_file_version():
                 assert f.read() == f"<version>{java_version}</version>"
 
 
-def test_upgrade_file_version_fail_no_file():
+def test_upgrade_file_version_fail_no_non_java_file():
     """
     Test for failure when there's no file to be found.
     """
@@ -146,13 +146,25 @@ def test_upgrade_file_version_fail_no_file():
     java_version = "2.0.0-SNAPSHOT"
     new_version = "1.1.1"
 
-    with pytest.raises(ValueError):
-        upgrade_file_version(
-            main_version=main_version,
-            java_version=java_version,
-            new_version=new_version,
-            root_dir=tempfile.gettempdir(),
-        )
+    with tempfile.TemporaryDirectory() as tmp_dir:
+        _make_tmp_directories(tmp_dir)
+        select_java_file_paths = [
+            "pom_template.xml",
+            "subdir_0/pom.xml",
+            "subdir_0/pom_template.xml",
+            "subdir_1/pom.xml",
+            "subdir_1/pom_template.xml",
+            "subdir_0/subdir_0_0/pom.xml",
+        ]
+        for file_path in select_java_file_paths:
+            _prepare_file(os.path.join(tmp_dir, file_path), java=True)
+        with pytest.raises(ValueError):
+            upgrade_file_version(
+                main_version=main_version,
+                java_version=java_version,
+                new_version=new_version,
+                root_dir=tmp_dir,
+            )
 
 
 def test_upgrade_file_version_fail_no_java_file():
