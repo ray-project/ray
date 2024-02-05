@@ -23,6 +23,8 @@ from ray.rllib.utils.metrics import (
     LAST_TARGET_UPDATE_TS,
     NUM_AGENT_STEPS_SAMPLED,
     NUM_ENV_STEPS_SAMPLED,
+    NUM_AGENT_STEPS_TRAINED,
+    NUM_ENV_STEPS_TRAINED,
     SAMPLE_TIMER,
     SYNCH_WORKER_WEIGHTS_TIMER,
 )
@@ -539,6 +541,9 @@ class SAC(DQN):
                     train_batch,
                     reduce_fn=reduce_fn,
                 )
+
+                self._counters[NUM_AGENT_STEPS_TRAINED] += train_batch.agent_steps()
+                self._counters[NUM_ENV_STEPS_TRAINED] += train_batch.env_steps()
 
                 # Update replay buffer priorities.
                 update_priorities_in_episode_replay_buffer(

@@ -14,7 +14,6 @@ config = (
     .training(
         lr=3e-4,
         target_entropy="auto",
-        # TODO (simon): Implement n-step.
         n_step=1,
         tau=0.005,
         train_batch_size=256,
