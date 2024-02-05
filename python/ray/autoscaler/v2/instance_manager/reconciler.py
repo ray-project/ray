@@ -4,14 +4,9 @@ from collections import defaultdict
 from typing import Dict, List, Optional, Set, Tuple
 
 from google.protobuf.json_format import MessageToDict
-from python.ray.autoscaler.v2.instance_manager.config import (
-    AutoscalingConfig,
-    NodeTypeConfig,
-)
-from python.ray.autoscaler.v2.scheduler import SchedulingRequest
-from python.ray.autoscaler.v2.schema import NodeType
 
 from ray.autoscaler.v2.instance_manager.common import InstanceUtil
+from ray.autoscaler.v2.instance_manager.config import AutoscalingConfig, NodeTypeConfig
 from ray.autoscaler.v2.instance_manager.instance_manager import InstanceManager
 from ray.autoscaler.v2.instance_manager.node_provider import (
     CloudInstance,
@@ -22,8 +17,10 @@ from ray.autoscaler.v2.instance_manager.node_provider import (
     TerminateNodeError,
 )
 from ray.autoscaler.v2.instance_manager.ray_installer import RayInstallError
-from ray.autoscaler.v2.scheduler import IResourceScheduler
+from ray.autoscaler.v2.scheduler import IResourceScheduler, SchedulingRequest
+from ray.autoscaler.v2.schema import AutoscalerInstance, NodeType
 from ray.core.generated.autoscaler_pb2 import (
+    AutoscalingState,
     ClusterResourceState,
     NodeState,
     NodeStatus,
@@ -34,7 +31,9 @@ from ray.core.generated.instance_manager_pb2 import (
     InstanceUpdateEvent as IMInstanceUpdateEvent,
 )
 from ray.core.generated.instance_manager_pb2 import (
+    LaunchRequest,
     StatusCode,
+    TerminationRequest,
     UpdateInstanceManagerStateRequest,
 )
 
@@ -57,7 +56,8 @@ class Reconciler:
         non_terminated_cloud_instances: Dict[CloudInstanceId, CloudInstance],
         cloud_provider_errors: List[CloudInstanceProviderError],
         ray_install_errors: List[RayInstallError],
-    ):
+        autoscaling_config: AutoscalingConfig,
+    ) -> AutoscalingState:
         """
         The reconcile method computes InstanceUpdateEvents for the instance manager
         by:
@@ -83,20 +83,24 @@ class Reconciler:
 
         """
         Reconciler._sync_from(
-            instance_manager,
-            ray_cluster_resource_state.node_states,
-            non_terminated_cloud_instances,
-            cloud_provider_errors,
-            ray_install_errors,
+            instance_manager=instance_manager,
+            ray_nodes=ray_cluster_resource_state.node_states,
+            non_terminated_cloud_instances=non_terminated_cloud_instances,
+            cloud_provider_errors=cloud_provider_errors,
+            ray_install_errors=ray_install_errors,
         )
 
+        autoscaling_state = AutoscalingState()
         Reconciler._step_next(
-            instance_manager,
-            scheduler,
-            cloud_provider,
-            ray_cluster_resource_state,
-            non_terminated_cloud_instances,
+            autoscaling_state=autoscaling_state,
+            instance_manager=instance_manager,
+            scheduler=scheduler,
+            cloud_provider=cloud_provider,
+            ray_cluster_resource_state=ray_cluster_resource_state,
+            non_terminated_cloud_instances=non_terminated_cloud_instances,
+            autoscaling_config=autoscaling_config,
         )
+        return autoscaling_state
 
     @staticmethod
     def _sync_from(
@@ -169,23 +173,26 @@ class Reconciler:
 
     @staticmethod
     def _step_next(
+        autoscaling_state: AutoscalingState,
         instance_manager: InstanceManager,
         scheduler: IResourceScheduler,
         cloud_provider: ICloudInstanceProvider,
         ray_cluster_resource_state: ClusterResourceState,
         non_terminated_cloud_instances: Dict[CloudInstanceId, CloudInstance],
+        autoscaling_config: AutoscalingConfig,
     ):
         """
         Step the reconciler to the next state by computing instance status transitions
         that are needed and updating the instance manager's state.
 
         Specifically, we will:
-            1. Shut down extra cloud instances
+            1. Shut down lead cloud instances
               (* -> TERMINATING)
-                a. Leaked cloud instances that are not managed by the instance manager.
+                Leaked cloud instances that are not managed by the instance manager.
+            2. Scale up/down the cluster:
+              (* -> RAY_STOPPING)
                 b. Extra cloud due to max nodes config.
                 c. Cloud instances with outdated configs.
-                d. Stopped ray nodes or failed to install ray nodes.
             2. Create new instances
               (new QUEUED)
                 Create new instances based on the IResourceScheduler's decision for
@@ -194,11 +201,8 @@ class Reconciler:
               (QUEUED -> REQUESTED)
             4. Install ray
               (ALLOCATED -> RAY_INSTALLING)
-                When ray needs to be manually installed.
-            5. Drain ray nodes
-              (RAY_RUNNING -> RAY_STOPPING):
-                a. Idle terminating ray nodes.
-            6. Handle any stuck instances with timeouts.
+                When ray could be installed and launched.
+            5. Handle any stuck instances with timeouts.
 
         Args:
             instance_manager: The instance manager to reconcile.
@@ -215,7 +219,11 @@ class Reconciler:
         )
 
         Reconciler._scale_cluster(
+            autoscaling_state=autoscaling_state,
             instance_manager=instance_manager,
+            ray_state=ray_cluster_resource_state,
+            scheduler=scheduler,
+            autoscaling_config=autoscaling_config,
         )
 
     #######################################################
@@ -279,7 +287,7 @@ class Reconciler:
             updates[instance.instance_id] = update_event
 
         # Update the instance manager for the events.
-        Reconciler._update_instance_manager(instance_manager, updates, version)
+        Reconciler._update_instance_manager(instance_manager, version, updates)
 
     @staticmethod
     def _try_or_fail_allocation(
@@ -368,7 +376,7 @@ class Reconciler:
                 )
 
         # Update the instance manager for the events.
-        Reconciler._update_instance_manager(instance_manager, updates, version)
+        Reconciler._update_instance_manager(instance_manager, version, updates)
 
     @staticmethod
     def _handle_cloud_instance_terminated(
@@ -416,7 +424,7 @@ class Reconciler:
                 )
             )
 
-        Reconciler._update_instance_manager(instance_manager, updates, version)
+        Reconciler._update_instance_manager(instance_manager, version, updates)
 
     @staticmethod
     def _handle_cloud_instance_termination_errors(
@@ -469,7 +477,7 @@ class Reconciler:
                 )
             )
 
-        Reconciler._update_instance_manager(instance_manager, updates, version)
+        Reconciler._update_instance_manager(instance_manager, version, updates)
 
     @staticmethod
     def _get_im_instances(
@@ -485,15 +493,21 @@ class Reconciler:
     @staticmethod
     def _update_instance_manager(
         instance_manager: InstanceManager,
-        updates: Dict[str, IMInstanceUpdateEvent],
         version: int,
+        updates: Dict[str, IMInstanceUpdateEvent],
+        launch_requests: Optional[List[LaunchRequest]] = None,
     ) -> None:
-        if not updates:
+        if not updates and not launch_requests:
             return
+
+        if launch_requests is None:
+            launch_requests = []
+
         reply = instance_manager.update_instance_manager_state(
             request=UpdateInstanceManagerStateRequest(
                 expected_version=version,
                 updates=list(updates.values()),
+                launch_requests=launch_requests,
             )
         )
         assert (
@@ -574,7 +588,7 @@ class Reconciler:
                     )
                 )
 
-        Reconciler._update_instance_manager(instance_manager, updates, version)
+        Reconciler._update_instance_manager(instance_manager, version, updates)
 
     @staticmethod
     def _reconciled_im_status_from_ray_status(
@@ -658,34 +672,84 @@ class Reconciler:
             " matching instance found in instance manager."
         )
 
-        @staticmethod
-        def _scale_cluster(
-            instance_manager: InstanceManager,
-            ray_state: ClusterResourceState,
-            scheduler: IResourceScheduler,
-            autoscaling_config: AutoscalingConfig,
-        ) -> None:
-            """
-            Scale the cluster based on the resource state and the resource scheduler's
-            decision:
+    @staticmethod
+    def _scale_cluster(
+        autoscaling_state: AutoscalingState,
+        instance_manager: InstanceManager,
+        ray_state: ClusterResourceState,
+        scheduler: IResourceScheduler,
+        autoscaling_config: AutoscalingConfig,
+    ) -> None:
+        """
+        Scale the cluster based on the resource state and the resource scheduler's
+        decision:
 
-            - It launches new instances if needed.
-            - It terminates extra ray nodes if they should be shut down (preemption
-                or idle termination)
-            """
+        - It launches new instances if needed.
+        - It terminates extra ray nodes if they should be shut down (preemption
+            or idle termination)
+        """
 
-            # Get the current instance states.
-            im_instances, version = Reconciler._get_im_instances(instance_manager)
+        # Get the current instance states.
+        im_instances, version = Reconciler._get_im_instances(instance_manager)
 
-            # Make the scheduling request.
-            sched_request = SchedulingRequest(
-                node_type_configs=autoscaling_config.get_node_type_configs(),
-                max_num_worker_nodes=autoscaling_config.get_max_num_worker_nodes(),
-                resource_requests=ray_state.pending_resource_requests,
-                gang_resource_requests=ray_state.pending_gang_resource_requests,
-                cluster_resource_constraints=ray_state.cluster_resource_constraints,
-                current_instances=im_instances,
-                current_nodes=ray_state.node_states,
+        autoscaler_instances = []
+        ray_nodes_by_id = {
+            node.node_id.decode(): node for node in ray_state.node_states
+        }
+
+        for im_instance in im_instances:
+            ray_node = ray_nodes_by_id.get(im_instance.node_id)
+            autoscaler_instances.append(
+                AutoscalerInstance(
+                    ray_node=ray_node,
+                    im_instance=im_instance,
+                    cloud_instance_id=im_instance.cloud_instance_id
+                    if im_instance.cloud_instance_id
+                    else None,
+                )
             )
 
-            reply = scheduler.schedule(sched_request)
+        # Make the scheduling request.
+        max_num_worker_nodes = autoscaling_config.get_max_num_worker_nodes()
+        max_num_nodes = (
+            max_num_worker_nodes + 1  # For the head node.
+            if max_num_worker_nodes is not None
+            else None
+        )
+        sched_request = SchedulingRequest(
+            node_type_configs=autoscaling_config.get_node_type_configs(),
+            max_num_nodes=max_num_nodes,
+            resource_requests=ray_state.pending_resource_requests,
+            gang_resource_requests=ray_state.pending_gang_resource_requests,
+            cluster_resource_constraints=ray_state.cluster_resource_constraints,
+            current_instances=autoscaler_instances,
+        )
+
+        # Ask scheduler for updates to the cluster shape.
+        reply = scheduler.schedule(sched_request)
+
+        # Populate the autoscaling state.
+        autoscaling_state.infeasible_resource_requests.extend(
+            reply.infeasible_resource_requests
+        )
+        autoscaling_state.infeasible_gang_resource_requests.extend(
+            reply.infeasible_gang_resource_requests
+        )
+        autoscaling_state.infeasible_cluster_resource_constraints.extend(
+            reply.infeasible_cluster_resource_constraints
+        )
+
+        to_launch = reply.to_launch
+        to_terminate = reply.to_terminate
+
+        terminate_updates = {}
+        for terminate_request in to_terminate:
+            terminate_updates[terminate_request.instance_id] = IMInstanceUpdateEvent(
+                instance_id=terminate_request.instance_id,
+                new_instance_status=IMInstance.RAY_STOPPING,
+                termination_request=terminate_request,
+            )
+
+        Reconciler._update_instance_manager(
+            instance_manager, version, terminate_updates, to_launch
+        )

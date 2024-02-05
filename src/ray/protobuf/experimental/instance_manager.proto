@@ -130,6 +130,8 @@ message InstanceUpdateEvent {
 
   // Cloud instance id for ALLOCATED event.
   optional string cloud_instance_id = 4;
+  // Termination request for RAY_STOPPING event.
+  optional TerminationRequest termination_request = 5;
 }
 
 // Launch request for a node type.
