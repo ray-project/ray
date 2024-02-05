@@ -89,6 +89,8 @@ class CoreWorkerPlasmaStoreProvider {
  public:
   CoreWorkerPlasmaStoreProvider(
       const std::string &store_socket,
+      const plasma::RegisterExperimentalChannelCallback
+          &register_experimental_channel_callback,
       const std::shared_ptr<raylet::RayletClient> raylet_client,
       const std::shared_ptr<ReferenceCounter> reference_counter,
       std::function<Status()> check_signals,
@@ -148,7 +150,6 @@ class CoreWorkerPlasmaStoreProvider {
 
   Status Get(const absl::flat_hash_set<ObjectID> &object_ids,
              int64_t timeout_ms,
-             bool is_experimental_mutable_object,
              const WorkerContext &ctx,
              absl::flat_hash_map<ObjectID, std::shared_ptr<RayObject>> *results,
              bool *got_exception);
@@ -164,6 +165,8 @@ class CoreWorkerPlasmaStoreProvider {
   /// successful.
   Status GetIfLocal(const std::vector<ObjectID> &ids,
                     absl::flat_hash_map<ObjectID, std::shared_ptr<RayObject>> *results);
+
+  Status RegisterExperimentalChannelReader(const ObjectID &object_id);
 
   Status Contains(const ObjectID &object_id, bool *has_object);
 
@@ -242,7 +245,6 @@ class CoreWorkerPlasmaStoreProvider {
       absl::flat_hash_set<ObjectID> &remaining,
       const std::vector<ObjectID> &batch_ids,
       int64_t timeout_ms,
-      bool send_fetch_or_reconstruct_ipc,
       bool fetch_only,
       const TaskID &task_id,
       absl::flat_hash_map<ObjectID, std::shared_ptr<RayObject>> *results,

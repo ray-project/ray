@@ -119,10 +119,12 @@ class PlasmaClient::Impl : public std::enable_shared_from_this<PlasmaClient::Imp
 
   // PlasmaClient method implementations
 
-  Status Connect(const std::string &store_socket_name,
-                 const std::string &manager_socket_name,
-                 int release_delay = 0,
-                 int num_retries = -1);
+  Status Connect(
+      const std::string &store_socket_name,
+      const RegisterExperimentalChannelCallback &register_experimental_channel_callback,
+      const std::string &manager_socket_name,
+      int release_delay = 0,
+      int num_retries = -1);
 
   Status SetClientOptions(const std::string &client_name, int64_t output_memory_quota);
 
@@ -173,6 +175,8 @@ class PlasmaClient::Impl : public std::enable_shared_from_this<PlasmaClient::Imp
              int64_t timeout_ms,
              ObjectBuffer *object_buffers,
              bool is_from_worker);
+
+  Status RegisterExperimentalChannelReader(const ObjectID &object_id);
 
   Status EnsureGetAcquired(std::unique_ptr<ObjectInUseEntry> &object_entry);
 
@@ -247,6 +251,7 @@ class PlasmaClient::Impl : public std::enable_shared_from_this<PlasmaClient::Imp
   instrumented_io_context main_service_;
   /// The connection to the store service.
   std::shared_ptr<StoreConn> store_conn_;
+  plasma::RegisterExperimentalChannelCallback register_experimental_channel_callback_;
   /// Table of dlmalloc buffer files that have been memory mapped so far. This
   /// is a hash table mapping a file descriptor to a struct containing the
   /// address of the corresponding memory-mapped file.
@@ -404,6 +409,22 @@ Status PlasmaClient::Impl::HandleCreateReply(const ObjectID &object_id,
   auto &entry = object_entry->second;
   RAY_CHECK(!entry->is_sealed);
   entry->is_writer = true;
+
+  if (is_experimental_mutable_object) {
+    RAY_CHECK(register_experimental_channel_callback_);
+    auto header = GetPlasmaObjectHeader(entry->object);
+    auto write_buffer = std::make_shared<PlasmaMutableBuffer>(
+        shared_from_this(),
+        GetStoreFdAndMmap(entry->object.store_fd, entry->object.mmap_size) +
+            entry->object.data_offset,
+        entry->object.allocated_size);
+
+    RAY_RETURN_NOT_OK(register_experimental_channel_callback_(object_id,
+                                                              header,
+                                                              entry->object,
+                                                              write_buffer,
+                                                              /*is_write_channel=*/true));
+  }
 
   return Status::OK();
 }
@@ -612,11 +633,6 @@ Status PlasmaClient::Impl::GetBuffers(
           << "Attempting to get an object that this client created but hasn't sealed.";
       all_present = false;
     } else {
-      if (object_entry->second->object.is_experimental_mutable_object) {
-        // Wait for the object to become ready to read.
-        RAY_RETURN_NOT_OK(EnsureGetAcquired(object_entry->second));
-      }
-
       PlasmaObject *object = &object_entry->second->object;
 
       std::shared_ptr<Buffer> physical_buf;
@@ -698,10 +714,6 @@ Status PlasmaClient::Impl::GetBuffers(
       }
       auto &object_entry = objects_in_use_[received_object_ids[i]];
 
-      // Wait for the object to become ready to read.
-      if (object_entry->object.is_experimental_mutable_object) {
-        RAY_RETURN_NOT_OK(EnsureGetAcquired(object_entry));
-      }
       std::shared_ptr<Buffer> physical_buf;
       RAY_LOG(DEBUG) << "Plasma Get " << received_object_ids[i]
                      << ", data size: " << object_entry->object.data_size
@@ -730,6 +742,34 @@ Status PlasmaClient::Impl::GetBuffers(
       RAY_DCHECK(!object_buffers[i].data);
     }
   }
+  return Status::OK();
+}
+
+Status PlasmaClient::Impl::RegisterExperimentalChannelReader(const ObjectID &object_id) {
+  std::unique_lock<std::recursive_mutex> guard(client_mutex_);
+  RAY_CHECK(register_experimental_channel_callback_);
+
+  auto object_entry = objects_in_use_.find(object_id);
+  if (object_entry == objects_in_use_.end()) {
+    return Status::ObjectNotFound(
+        "Object must be in use before registering as an experimental.Channel reader");
+  }
+
+  if (!object_entry->second->object.is_experimental_mutable_object) {
+    return Status::ObjectNotFound(
+        "Cannot register normal plasma objects as experimenal.Channels");
+  }
+
+  const auto &object = object_entry->second->object;
+  auto header = GetPlasmaObjectHeader(object);
+  uint8_t *data = LookupMmappedFile(object.store_fd);
+  auto read_buffer = std::make_shared<SharedMemoryBuffer>(data + object.data_offset,
+                                                          object.allocated_size);
+  register_experimental_channel_callback_(object_id,
+                                          header,
+                                          object,
+                                          read_buffer,
+                                          /*is_write_channel=*/false);
   return Status::OK();
 }
 
@@ -1005,10 +1045,12 @@ Status PlasmaClient::Impl::Evict(int64_t num_bytes, int64_t &num_bytes_evicted) 
   return ReadEvictReply(buffer.data(), buffer.size(), num_bytes_evicted);
 }
 
-Status PlasmaClient::Impl::Connect(const std::string &store_socket_name,
-                                   const std::string &manager_socket_name,
-                                   int release_delay,
-                                   int num_retries) {
+Status PlasmaClient::Impl::Connect(
+    const std::string &store_socket_name,
+    const RegisterExperimentalChannelCallback &register_experimental_channel_callback,
+    const std::string &manager_socket_name,
+    int release_delay,
+    int num_retries) {
   std::lock_guard<std::recursive_mutex> guard(client_mutex_);
 
   /// The local stream socket that connects to store.
@@ -1020,6 +1062,8 @@ Status PlasmaClient::Impl::Connect(const std::string &store_socket_name,
   std::vector<uint8_t> buffer;
   RAY_RETURN_NOT_OK(PlasmaReceive(store_conn_, MessageType::PlasmaConnectReply, &buffer));
   RAY_RETURN_NOT_OK(ReadConnectReply(buffer.data(), buffer.size(), &store_capacity_));
+
+  register_experimental_channel_callback_ = register_experimental_channel_callback;
   return Status::OK();
 }
 
@@ -1059,12 +1103,17 @@ PlasmaClient::PlasmaClient() : impl_(std::make_shared<PlasmaClient::Impl>()) {}
 
 PlasmaClient::~PlasmaClient() {}
 
-Status PlasmaClient::Connect(const std::string &store_socket_name,
-                             const std::string &manager_socket_name,
-                             int release_delay,
-                             int num_retries) {
-  return impl_->Connect(
-      store_socket_name, manager_socket_name, release_delay, num_retries);
+Status PlasmaClient::Connect(
+    const std::string &store_socket_name,
+    const RegisterExperimentalChannelCallback &register_experimental_channel_callback,
+    const std::string &manager_socket_name,
+    int release_delay,
+    int num_retries) {
+  return impl_->Connect(store_socket_name,
+                        register_experimental_channel_callback,
+                        manager_socket_name,
+                        release_delay,
+                        num_retries);
 }
 
 Status PlasmaClient::ExperimentalMutableObjectWriteAcquire(
@@ -1129,6 +1178,10 @@ Status PlasmaClient::Get(const std::vector<ObjectID> &object_ids,
                          std::vector<ObjectBuffer> *object_buffers,
                          bool is_from_worker) {
   return impl_->Get(object_ids, timeout_ms, object_buffers, is_from_worker);
+}
+
+Status PlasmaClient::RegisterExperimentalChannelReader(const ObjectID &object_id) {
+  return impl_->RegisterExperimentalChannelReader(object_id);
 }
 
 Status PlasmaClient::ExperimentalMutableObjectReadRelease(const ObjectID &object_id) {

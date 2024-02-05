@@ -24,6 +24,7 @@
 
 #include "ray/common/buffer.h"
 #include "ray/common/status.h"
+#include "ray/object_manager/common.h"
 #include "ray/object_manager/plasma/common.h"
 #include "ray/util/visibility.h"
 #include "src/ray/protobuf/common.pb.h"
@@ -31,8 +32,16 @@
 namespace plasma {
 
 using ray::Buffer;
+using ray::PlasmaObjectHeader;
 using ray::SharedMemoryBuffer;
 using ray::Status;
+
+using RegisterExperimentalChannelCallback =
+    std::function<Status(const ObjectID &object_id,
+                         PlasmaObjectHeader *header,
+                         const plasma::PlasmaObject &object,
+                         std::shared_ptr<SharedMemoryBuffer> buffer,
+                         bool is_write_channel)>;
 
 /// Object buffer data structure.
 struct ObjectBuffer {
@@ -81,6 +90,8 @@ class PlasmaClientInterface {
                      int64_t timeout_ms,
                      std::vector<ObjectBuffer> *object_buffers,
                      bool is_from_worker) = 0;
+
+  virtual Status RegisterExperimentalChannelReader(const ObjectID &object_id) = 0;
 
   /// Experimental method for mutable objects. Acquires a write lock on the
   /// object that prevents readers from reading until we are done writing. Does
@@ -203,6 +214,8 @@ class PlasmaClient : public PlasmaClientInterface {
   /// \param num_retries number of attempts to connect to IPC socket, default 50
   /// \return The return status.
   Status Connect(const std::string &store_socket_name,
+                 const RegisterExperimentalChannelCallback
+                     &register_experimental_channel_callback = nullptr,
                  const std::string &manager_socket_name = "",
                  int release_delay = 0,
                  int num_retries = -1);
@@ -310,6 +323,8 @@ class PlasmaClient : public PlasmaClientInterface {
              int64_t timeout_ms,
              std::vector<ObjectBuffer> *object_buffers,
              bool is_from_worker);
+
+  Status RegisterExperimentalChannelReader(const ObjectID &object_id);
 
   /// Tell Plasma that the client no longer needs the object. This should be
   /// called after Get() or Create() when the client is done with the object.

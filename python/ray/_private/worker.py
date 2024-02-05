@@ -718,7 +718,7 @@ class Worker:
         value: Any,
         object_ref: Optional["ray.ObjectRef"] = None,
         owner_address: Optional[str] = None,
-        _is_experimental_mutable_object: bool = False,
+        _is_experimental_channel: bool = False,
     ):
         """Put value in the local object store with object reference `object_ref`.
 
@@ -734,7 +734,7 @@ class Worker:
             object_ref: The object ref of the value to be
                 put. If None, one will be generated.
             owner_address: The serialized address of object's owner.
-            _is_experimental_mutable_object: An experimental flag for mutable
+            _is_experimental_channel: An experimental flag for mutable
                 objects. If True, then the returned object will not have a
                 valid value. The object must be written to using the
                 ray.experimental.channel API before readers can read.
@@ -774,7 +774,7 @@ class Worker:
 
         # If the object is mutable, then the raylet should never read the
         # object. Instead, clients will keep the object pinned.
-        pin_object = not _is_experimental_mutable_object
+        pin_object = not _is_experimental_channel
 
         # This *must* be the first place that we construct this python
         # ObjectRef because an entry with 0 local references is created when
@@ -788,7 +788,7 @@ class Worker:
                 object_ref=object_ref,
                 pin_object=pin_object,
                 owner_address=owner_address,
-                _is_experimental_mutable_object=_is_experimental_mutable_object,
+                _is_experimental_channel=_is_experimental_channel,
             ),
             # The initial local reference is already acquired internally.
             skip_adding_local_ref=True,
@@ -814,7 +814,6 @@ class Worker:
         self,
         object_refs: list,
         timeout: Optional[float] = None,
-        _is_experimental_mutable_object: bool = False,
     ):
         """Get the values in the object store associated with the IDs.
 
@@ -831,10 +830,6 @@ class Worker:
             list: List of deserialized objects
             bytes: UUID of the debugger breakpoint we should drop
                 into or b"" if there is no breakpoint.
-            _is_experimental_mutable_object: An experimental flag for mutable
-                objects. If True, then wait until there is a value available to
-                read. The object must also already be local, or else the get
-                call will hang.
         """
         # Make sure that the values are object refs.
         for object_ref in object_refs:
@@ -849,7 +844,6 @@ class Worker:
             object_refs,
             self.current_task_id,
             timeout_ms,
-            _is_experimental_mutable_object,
         )
         debugger_breakpoint = b""
         for data, metadata in data_metadata_pairs:

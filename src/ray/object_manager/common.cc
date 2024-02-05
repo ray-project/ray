@@ -26,6 +26,8 @@ void PlasmaObjectHeader::Init() {
   pthread_mutex_init(&wr_mut, &mutex_attr);
 
   sem_init(&rw_semaphore, PTHREAD_PROCESS_SHARED, 1);
+
+  has_error = false;
 #endif
 }
 

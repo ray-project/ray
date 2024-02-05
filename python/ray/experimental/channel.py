@@ -34,7 +34,7 @@ def _create_channel_ref(
 
     try:
         object_ref = worker.put_object(
-            value, owner_address=None, _is_experimental_mutable_object=True
+            value, owner_address=None, _is_experimental_channel=True
         )
     except ray.exceptions.ObjectStoreFullError:
         logger.info(
@@ -89,6 +89,8 @@ class Channel:
         self._worker = ray._private.worker.global_worker
         self._worker.check_connected()
 
+        self._reader_registered = False
+
     @staticmethod
     def _from_base_ref(base_ref: "ray.ObjectRef", num_readers: int) -> "Channel":
         return Channel(num_readers=num_readers, _base_ref=base_ref)
@@ -126,7 +128,7 @@ class Channel:
             )
             raise TypeError(msg) from e
 
-        self._worker.core_worker.experimental_mutable_object_put_serialized(
+        self._worker.core_worker.experimental_channel_put_serialized(
             serialized_value,
             self._base_ref,
             num_readers,
@@ -144,10 +146,12 @@ class Channel:
         Returns:
             Any: The deserialized value.
         """
-        values, _ = self._worker.get_objects(
-            [self._base_ref], _is_experimental_mutable_object=True
-        )
-        return values[0]
+        if not self._reader_registered:
+            self._worker.core_worker.experimental_channel_register_reader(
+                self._base_ref
+            )
+            self._reader_registered = True
+        return ray.get(self._base_ref)
 
     def end_read(self):
         """
@@ -156,9 +160,7 @@ class Channel:
         If begin_read is not called first, then this call will block until a
         value is written, then drop the value.
         """
-        self._worker.core_worker.experimental_mutable_object_read_release(
-            [self._base_ref]
-        )
+        self._worker.core_worker.experimental_channel_read_release([self._base_ref])
 
     def close(self) -> None:
         """
@@ -168,4 +170,4 @@ class Channel:
         channel is closed.
         """
         logger.debug(f"Setting error bit on channel: {self._base_ref}")
-        self._worker.core_worker.experimental_mutable_object_set_error(self._base_ref)
+        self._worker.core_worker.experimental_channel_set_error(self._base_ref)
