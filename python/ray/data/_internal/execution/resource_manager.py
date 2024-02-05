@@ -48,14 +48,11 @@ class ResourceManager:
         # Iterate from last to first operator.
         num_ops_so_far = 0
         num_ops_total = len(self._topology)
-        ops = list(self._topology)
-        for op, next_op in reversed(list(itertools.zip_longest(ops, ops[1:]))):
+        for op, state in reversed(self._topology.items()):
             # Update `self._op_usages`.
             op_usage = op.current_processor_usage()
             assert not op_usage.object_store_memory
-            op_usage.object_store_memory = _estimate_object_store_memory(
-                op, self._topology[op], next_op
-            )
+            op_usage.object_store_memory = _estimate_object_store_memory(op, state)
             self._op_usages[op] = op_usage
             # Update `self._global_usage`.
             self._global_usage = self._global_usage.add(op_usage)
@@ -123,7 +120,7 @@ class ResourceManager:
         return self._downstream_object_store_memory[op]
 
 
-def _estimate_object_store_memory(op, state, next_op) -> int:
+def _estimate_object_store_memory(op, state) -> int:
     object_store_memory = op.metrics.obj_store_mem_internal_outqueue
     if op.metrics.obj_store_mem_pending_tasks is not None:
         object_store_memory += op.metrics.obj_store_mem_pending_tasks
@@ -131,6 +128,6 @@ def _estimate_object_store_memory(op, state, next_op) -> int:
     # pre-created already outside this execution.
     if not isinstance(op, InputDataBuffer):
         object_store_memory += state.outqueue_memory_usage()
-    if next_op is not None:
+    for next_op in op.output_dependencies:
         object_store_memory += next_op.metrics.obj_store_mem_internal_inqueue
     return object_store_memory
