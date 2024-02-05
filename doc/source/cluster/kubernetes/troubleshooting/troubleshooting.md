@@ -12,7 +12,7 @@ If you don't find an answer to your question here, please don't hesitate to conn
 - [Cluster domain](#cluster-domain)
 - [RayService](#rayservice)
 - [Autoscaler](#autoscaler)
-- [Other questions](#questions)
+- [Other questions](#other-questions)
 
 ## Upgrade KubeRay
 
@@ -76,8 +76,8 @@ One common cause is that the Ray tasks or actors require an amount of resources 
 Note that Ray tasks and actors represent the smallest scheduling units in Ray, and a task or actor should be on a single Ray node.
 Take [kuberay#846](https://github.com/ray-project/kuberay/issues/846) as an example. The user attempts to schedule a Ray task that requires 2 CPUs, but the Ray Pods available for these tasks have only 1 CPU each. Consequently, the Ray Autoscaler decides not to scale up the RayCluster.
 
-(questions)=
-## Questions
+(other-questions)=
+## Other questions
 
 ### Why are changes to the RayCluster or RayJob CR not taking effect?
 
