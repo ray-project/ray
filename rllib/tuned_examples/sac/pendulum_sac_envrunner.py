@@ -8,10 +8,11 @@ config = (
     .rollouts(
         rollout_fragment_length=1,
         env_runner_cls=SingleAgentEnvRunner,
-        num_rollout_workers=1,
+        num_rollout_workers=0,
     )
     .environment(env="Pendulum-v1")
     .training(
+        initial_alpha=1.001,
         lr=3e-4,
         target_entropy="auto",
         n_step=1,
@@ -23,7 +24,6 @@ config = (
         },
         num_steps_sampled_before_learning_starts=256,
         model={
-            "initial_alpha": 1.001,
             "fcnet_hiddens": [256, 256],
             "fcnet_activation": "relu",
             "post_fcnet_hiddens": [],
