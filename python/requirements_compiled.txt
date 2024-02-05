@@ -2097,7 +2097,7 @@ sshpubkeys==3.3.1
     # via moto
 stack-data==0.6.3
     # via ipython
-starlette==0.29.0
+starlette==0.36.2
     # via
     #   -r /ray/ci/../python/requirements.txt
     #   -r /ray/ci/../python/requirements/test-requirements.txt
