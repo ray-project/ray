@@ -92,6 +92,20 @@ class Channel:
         self._writer_registered = False
         self._reader_registered = False
 
+    def _ensure_registered_as_writer(self):
+        if self._writer_registered:
+            return
+
+        self._worker.core_worker.experimental_channel_register_writer(self._base_ref)
+        self._writer_registered = True
+
+    def _ensure_registered_as_reader(self):
+        if self._reader_registered:
+            return
+
+        self._worker.core_worker.experimental_channel_register_reader(self._base_ref)
+        self._reader_registered = True
+
     @staticmethod
     def _from_base_ref(base_ref: "ray.ObjectRef", num_readers: int) -> "Channel":
         return Channel(num_readers=num_readers, _base_ref=base_ref)
@@ -117,11 +131,7 @@ class Channel:
         if num_readers <= 0:
             raise ValueError("``num_readers`` must be a positive integer.")
 
-        if not self._writer_registered:
-            self._worker.core_worker.experimental_channel_register_writer(
-                self._base_ref
-            )
-            self._writer_registered = True
+        self._ensure_registered_as_writer()
 
         try:
             serialized_value = self._worker.get_serialization_context().serialize(value)
@@ -153,11 +163,7 @@ class Channel:
         Returns:
             Any: The deserialized value.
         """
-        if not self._reader_registered:
-            self._worker.core_worker.experimental_channel_register_reader(
-                self._base_ref
-            )
-            self._reader_registered = True
+        self._ensure_registered_as_reader()
         return ray.get(self._base_ref)
 
     def end_read(self):
@@ -177,4 +183,5 @@ class Channel:
         channel is closed.
         """
         logger.debug(f"Setting error bit on channel: {self._base_ref}")
+        self._ensure_registered_as_writer()
         self._worker.core_worker.experimental_channel_set_error(self._base_ref)

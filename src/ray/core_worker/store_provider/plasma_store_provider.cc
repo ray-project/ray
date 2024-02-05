@@ -108,31 +108,6 @@ Status CoreWorkerPlasmaStoreProvider::Put(const RayObject &object,
   return Status::OK();
 }
 
-Status CoreWorkerPlasmaStoreProvider::ExperimentalMutableObjectWriteAcquire(
-    const ObjectID &object_id,
-    const std::shared_ptr<Buffer> &metadata,
-    uint64_t data_size,
-    int64_t num_readers,
-    std::shared_ptr<Buffer> *data) {
-  return store_client_.ExperimentalMutableObjectWriteAcquire(
-      object_id,
-      data_size,
-      metadata ? metadata->Data() : nullptr,
-      metadata ? metadata->Size() : 0,
-      num_readers,
-      data);
-}
-
-Status CoreWorkerPlasmaStoreProvider::ExperimentalMutableObjectWriteRelease(
-    const ObjectID &object_id) {
-  return store_client_.ExperimentalMutableObjectWriteRelease(object_id);
-}
-
-Status CoreWorkerPlasmaStoreProvider::ExperimentalMutableObjectSetError(
-    const ObjectID &object_id) {
-  return store_client_.ExperimentalMutableObjectSetError(object_id);
-}
-
 Status CoreWorkerPlasmaStoreProvider::Create(const std::shared_ptr<Buffer> &metadata,
                                              const size_t data_size,
                                              const ObjectID &object_id,
@@ -275,9 +250,9 @@ Status CoreWorkerPlasmaStoreProvider::GetIfLocal(
   return Status::OK();
 }
 
-Status CoreWorkerPlasmaStoreProvider::GetMutableObject(
+Status CoreWorkerPlasmaStoreProvider::GetExperimentalMutableObject(
     const ObjectID &object_id, std::unique_ptr<plasma::MutableObject> *mutable_object) {
-  return store_client_.GetMutableObject(object_id, mutable_object);
+  return store_client_.GetExperimentalMutableObject(object_id, mutable_object);
 }
 
 Status UnblockIfNeeded(const std::shared_ptr<raylet::RayletClient> &client,
