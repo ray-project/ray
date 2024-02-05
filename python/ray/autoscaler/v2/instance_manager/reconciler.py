@@ -186,23 +186,23 @@ class Reconciler:
         that are needed and updating the instance manager's state.
 
         Specifically, we will:
-            1. Shut down lead cloud instances
-              (* -> TERMINATING)
+            1. Shut down leak cloud instances
                 Leaked cloud instances that are not managed by the instance manager.
-            2. Scale up/down the cluster:
+            2. Terminating instances with ray stopped or ray install failure.
+            3. Scale up/down the cluster:
               (* -> RAY_STOPPING)
                 b. Extra cloud due to max nodes config.
                 c. Cloud instances with outdated configs.
-            2. Create new instances
+            4. Create new instances
               (new QUEUED)
                 Create new instances based on the IResourceScheduler's decision for
                 scaling up.
-            3. Request cloud provider to launch new instances.
+            5. Request cloud provider to launch new instances.
               (QUEUED -> REQUESTED)
-            4. Install ray
+            6. Install ray
               (ALLOCATED -> RAY_INSTALLING)
                 When ray could be installed and launched.
-            5. Handle any stuck instances with timeouts.
+            7. Handle any stuck instances with timeouts.
 
         Args:
             instance_manager: The instance manager to reconcile.
@@ -224,6 +224,10 @@ class Reconciler:
             ray_state=ray_cluster_resource_state,
             scheduler=scheduler,
             autoscaling_config=autoscaling_config,
+        )
+
+        Reconciler._handle_instances_launch(
+            instance_manager=instance_manager, autoscaling_config=autoscaling_config
         )
 
     #######################################################
@@ -716,6 +720,8 @@ class Reconciler:
             if max_num_worker_nodes is not None
             else None
         )
+        # TODO(rickyx): We should probably name it as "Planner" or "Scaler"
+        # or "Cluster"
         sched_request = SchedulingRequest(
             node_type_configs=autoscaling_config.get_node_type_configs(),
             max_num_nodes=max_num_nodes,
@@ -741,7 +747,6 @@ class Reconciler:
 
         to_launch = reply.to_launch
         to_terminate = reply.to_terminate
-
         terminate_updates = {}
         for terminate_request in to_terminate:
             terminate_updates[terminate_request.instance_id] = IMInstanceUpdateEvent(
