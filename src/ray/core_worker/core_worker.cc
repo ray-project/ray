@@ -1416,7 +1416,8 @@ Status CoreWorker::ExperimentalChannelRegisterWriter(const ObjectID &object_id) 
 Status CoreWorker::ExperimentalChannelRegisterWriterOrReader(const ObjectID &object_id,
                                                              bool is_writer) {
   std::unique_ptr<plasma::MutableObject> object = nullptr;
-  RAY_RETURN_NOT_OK(plasma_store_provider_->GetMutableObject(object_id, &object));
+  RAY_RETURN_NOT_OK(
+      plasma_store_provider_->GetExperimentalMutableObject(object_id, &object));
   RAY_CHECK(object);
   if (is_writer) {
     RAY_RETURN_NOT_OK(experimental_channel_manager_->RegisterWriterChannel(
