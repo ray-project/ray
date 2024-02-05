@@ -8,6 +8,7 @@ import pytest
 import yaml
 from click.testing import CliRunner
 
+from ray.serve._private.deploy_provider import DeployOptions
 from ray.serve.schema import ServeApplicationSchema, _skip_validating_runtime_env_uris
 from ray.serve.scripts import convert_args_to_dict, deploy
 from ray.serve.tests.unit.fake_deploy_provider import get_ray_serve_deploy_provider
@@ -44,9 +45,9 @@ class TestDeploy:
                 runtime_env={},
             )
         ]
-        assert deploy_provider.deployed_address == "http://localhost:8265"
-        assert deploy_provider.deployed_name is None
-        assert deploy_provider.deployed_base_image is None
+        assert deploy_provider.deployed_options == DeployOptions(
+            address="http://localhost:8265",
+        )
 
     def test_deploy_with_address(self):
         deploy_provider = get_ray_serve_deploy_provider()
@@ -65,9 +66,9 @@ class TestDeploy:
                 runtime_env={},
             )
         ]
-        assert deploy_provider.deployed_address == "http://magic.com"
-        assert deploy_provider.deployed_name is None
-        assert deploy_provider.deployed_base_image is None
+        assert deploy_provider.deployed_options == DeployOptions(
+            address="http://magic.com",
+        )
 
     def test_deploy_with_name(self):
         deploy_provider = get_ray_serve_deploy_provider()
@@ -86,9 +87,10 @@ class TestDeploy:
                 runtime_env={},
             )
         ]
-        assert deploy_provider.deployed_address == "http://localhost:8265"
-        assert deploy_provider.deployed_name == "test-name"
-        assert deploy_provider.deployed_base_image is None
+        assert deploy_provider.deployed_options == DeployOptions(
+            address="http://localhost:8265",
+            name="test-name",
+        )
 
     def test_deploy_with_base_image(self):
         deploy_provider = get_ray_serve_deploy_provider()
@@ -107,9 +109,10 @@ class TestDeploy:
                 runtime_env={},
             )
         ]
-        assert deploy_provider.deployed_address == "http://localhost:8265"
-        assert deploy_provider.deployed_name is None
-        assert deploy_provider.deployed_base_image == "test-image"
+        assert deploy_provider.deployed_options == DeployOptions(
+            address="http://localhost:8265",
+            base_image="test-image",
+        )
 
     def test_deploy_with_args(self):
         deploy_provider = get_ray_serve_deploy_provider()
@@ -127,9 +130,9 @@ class TestDeploy:
                 runtime_env={},
             )
         ]
-        assert deploy_provider.deployed_address == "http://localhost:8265"
-        assert deploy_provider.deployed_name is None
-        assert deploy_provider.deployed_base_image is None
+        assert deploy_provider.deployed_options == DeployOptions(
+            address="http://localhost:8265",
+        )
 
     @pytest.mark.skipif(sys.platform == "win32", reason="Tempfile not working.")
     @pytest.mark.parametrize(
@@ -177,9 +180,9 @@ class TestDeploy:
                     runtime_env=runtime_env,
                 )
             ]
-        assert deploy_provider.deployed_address == "http://localhost:8265"
-        assert deploy_provider.deployed_name is None
-        assert deploy_provider.deployed_base_image is None
+        assert deploy_provider.deployed_options == DeployOptions(
+            address="http://localhost:8265",
+        )
 
     @pytest.mark.parametrize("supported", [False, True])
     def test_deploy_provider_supports_runtime_env_local_uri(self, supported: bool):
