@@ -49,7 +49,6 @@ def gen_expected_metrics(
             "'num_tasks_have_outputs': N",
             "'num_tasks_finished': N",
             "'num_tasks_failed': Z",
-            "'obj_store_mem_alloc': N",
             "'obj_store_mem_freed': N",
             "'obj_store_mem_cur': Z",
             "'obj_store_mem_peak': N",
@@ -416,7 +415,6 @@ def test_dataset__repr__(ray_start_regular_shared):
         "      num_tasks_have_outputs: N,\n"
         "      num_tasks_finished: N,\n"
         "      num_tasks_failed: Z,\n"
-        "      obj_store_mem_alloc: N,\n"
         "      obj_store_mem_freed: N,\n"
         "      obj_store_mem_cur: Z,\n"
         "      obj_store_mem_peak: N,\n"
@@ -980,10 +978,6 @@ def test_stats_actor_metrics():
     final_metric = update_fn.call_args_list[-1].args[1][-1]
 
     assert final_metric.obj_store_mem_spilled == ds._plan.stats().dataset_bytes_spilled
-    assert (
-        final_metric.obj_store_mem_alloc
-        == ds._plan.stats().extra_metrics["obj_store_mem_alloc"]
-    )
     assert (
         final_metric.obj_store_mem_freed
         == ds._plan.stats().extra_metrics["obj_store_mem_freed"]

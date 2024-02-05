@@ -192,7 +192,6 @@ def test_map_operator_bulk(ray_start_regular_shared, use_actors):
 
     # Check memory stats.
     metrics = op.metrics.as_dict()
-    assert metrics["obj_store_mem_alloc"] == pytest.approx(832200, 0.5), metrics
     assert metrics["obj_store_mem_peak"] == pytest.approx(1688000, 0.5), metrics
     assert metrics["obj_store_mem_freed"] == pytest.approx(832200, 0.5), metrics
 
@@ -226,7 +225,6 @@ def test_map_operator_streamed(ray_start_regular_shared, use_actors):
     # Check equivalent to bulk execution in order.
     assert np.array_equal(output, [[np.ones(1024) * i * 2] for i in range(100)])
     metrics = op.metrics.as_dict()
-    assert metrics["obj_store_mem_alloc"] == pytest.approx(832200, 0.5), metrics
     assert metrics["obj_store_mem_peak"] == pytest.approx(16880, 0.5), metrics
     assert metrics["obj_store_mem_freed"] == pytest.approx(832200, 0.5), metrics
     if use_actors:
@@ -387,7 +385,6 @@ def test_map_operator_actor_locality_stats(ray_start_regular_shared):
     # Check equivalent to bulk execution in order.
     assert np.array_equal(output, [[np.ones(100) * i * 2] for i in range(100)])
     metrics = op.metrics.as_dict()
-    assert metrics["obj_store_mem_alloc"] == pytest.approx(92900, 0.5), metrics
     assert metrics["obj_store_mem_peak"] == pytest.approx(2096, 0.5), metrics
     assert metrics["obj_store_mem_freed"] == pytest.approx(92900, 0.5), metrics
     # Check e2e locality manager working.
@@ -879,7 +876,6 @@ def test_operator_metrics():
         assert metrics.num_tasks_finished == num_tasks_submitted, i
 
         # Check object store metrics
-        assert metrics.obj_store_mem_alloc == metrics.bytes_outputs_taken, i
         assert metrics.obj_store_mem_freed == metrics.bytes_inputs_processed, i
         assert (
             metrics.obj_store_mem_cur
