@@ -92,6 +92,10 @@ class OpRuntimeMetrics:
     obj_store_mem_freed: int = field(
         default=0, metadata={"map_only": True, "export_metric": True}
     )
+    # Spilled memory size in the object store.
+    obj_store_mem_spilled: int = field(
+        default=0, metadata={"map_only": True, "export_metric": True}
+    )
 
     # === Miscellaneous metrics ===
 
@@ -278,6 +282,16 @@ class OpRuntimeMetrics:
         self.num_task_inputs_processed += len(inputs)
         total_input_size = inputs.size_bytes()
         self.bytes_task_inputs_processed += total_input_size
+
+        blocks = [input[0] for input in inputs.blocks]
+        metadata = [input[1] for input in inputs.blocks]
+        ctx = ray.data.context.DataContext.get_current()
+        if ctx.enable_get_object_locations_for_metrics:
+            locations = ray.experimental.get_object_locations(blocks)
+            for block, meta in zip(blocks, metadata):
+                if locations[block].get("did_spill", False):
+                    assert meta.size_bytes is not None
+                    self.obj_store_mem_spilled += meta.size_bytes
 
         self.obj_store_mem_freed += total_input_size
 

@@ -49,6 +49,7 @@ def gen_expected_metrics(
             "'num_tasks_finished': N",
             "'num_tasks_failed': Z",
             "'obj_store_mem_freed': N",
+            f"""'obj_store_mem_spilled': {"N" if spilled else "Z"}""",
             "'block_generation_time': N",
             "'cpu_usage': Z",
             "'gpu_usage': Z",
@@ -402,6 +403,7 @@ def test_dataset__repr__(ray_start_regular_shared):
         "      num_tasks_finished: N,\n"
         "      num_tasks_failed: Z,\n"
         "      obj_store_mem_freed: N,\n"
+        "      obj_store_mem_spilled: Z,\n"
         "      block_generation_time: N,\n"
         "      cpu_usage: Z,\n"
         "      gpu_usage: Z,\n"
@@ -968,6 +970,7 @@ def test_stats_actor_metrics():
     # last emitted metrics from map operator
     final_metric = update_fn.call_args_list[-1].args[1][-1]
 
+    assert final_metric.obj_store_mem_spilled == ds._plan.stats().dataset_bytes_spilled
     assert (
         final_metric.obj_store_mem_freed
         == ds._plan.stats().extra_metrics["obj_store_mem_freed"]
