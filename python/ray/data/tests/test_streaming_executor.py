@@ -289,7 +289,7 @@ def test_debug_dump_topology():
     )
     topo, _ = build_streaming_topology(o3, opt)
     # Just a sanity check to ensure it doesn't crash.
-    _debug_dump_topology(topo)
+    _debug_dump_topology(topo, mock_resource_manager())
 
 
 def test_validate_dag():
