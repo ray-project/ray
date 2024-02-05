@@ -206,7 +206,7 @@ py_test_module_list(
     "test_multiplex.py",
   ],
   size = "medium",
-  tags = ["exclusive", "team:serve"],
+  tags = ["exclusive", "no_windows", "team:serve"],
   deps = ["//python/ray/serve:serve_lib", ":conftest", ":common"],
   data = glob(["test_config_files/**/*"]),
 )
