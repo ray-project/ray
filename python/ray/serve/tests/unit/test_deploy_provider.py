@@ -6,9 +6,11 @@ import pytest
 from ray.serve._private.deploy_provider import (
     DEPLOY_PROVIDER_ENV_VAR,
     AnyscaleDeployProvider,
+    DeployOptions,
     LocalDeployProvider,
     get_deploy_provider,
 )
+from ray.serve.schema import ServeDeploySchema
 from ray.serve.tests.unit.fake_deploy_provider import FakeDeployProvider
 
 
@@ -33,16 +35,17 @@ def test_get_custom_deploy_provider(from_env_var: bool):
         deploy_provider = get_deploy_provider(import_path)
 
     assert isinstance(deploy_provider, FakeDeployProvider)
-    deploy_provider.deploy(
-        {},
+
+    config = ServeDeploySchema(applications=[])
+    options = DeployOptions(
         address="http://localhost:8265",
         name="test-name",
         base_image="test-image",
+        in_place=True,
     )
-    assert deploy_provider.deployed_config == {}
-    assert deploy_provider.deployed_address == "http://localhost:8265"
-    assert deploy_provider.deployed_name == "test-name"
-    assert deploy_provider.deployed_base_image == "test-image"
+    deploy_provider.deploy(config, options=options)
+    assert deploy_provider.deployed_config == config
+    assert deploy_provider.deployed_options == options
 
 
 def test_get_nonexistent_custom_deploy_provider():

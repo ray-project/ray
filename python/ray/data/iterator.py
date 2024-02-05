@@ -180,6 +180,10 @@ class DataIterator(abc.ABC):
             )
 
             dataset_tag = self._get_dataset_tag()
+
+            if stats:
+                stats.iter_initialize_s.add(time.perf_counter() - time_start)
+
             for batch in iterator:
                 yield batch
                 StatsManager.update_iteration_metrics(stats, dataset_tag)
