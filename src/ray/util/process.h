@@ -71,16 +71,17 @@ class Process {
   /// \param[in] argv The command-line of the process to spawn (terminated with NULL).
   /// \param[in] io_service Boost.Asio I/O service (optional).
   /// \param[in] ec Returns any error that occurred when spawning the process.
-  /// \param[in] decouple True iff the parent will not wait for the child to exit.
   /// \param[in] env Additional environment variables to be set on this process besides
   /// the environment variables of the parent process.
   /// \param[in] pipe_to_stdin If true, it creates a pipe and redirect to child process'
   /// stdin. It is used for health checking from a child process.
   /// Child process can read stdin to detect when the current process dies.
+  //
+  // The subprocess is child of this process, so it's caller process's duty to handle
+  // SIGCHLD signal and reap the zombie children.
   explicit Process(const char *argv[],
                    void *io_service,
                    std::error_code &ec,
-                   bool decouple = false,
                    const ProcessEnvironment &env = {},
                    bool pipe_to_stdin = false);
   /// Convenience function to run the given command line and wait for it to finish.
@@ -107,7 +108,6 @@ class Process {
   /// \param pid_file A file to write the PID of the spawned process in.
   static std::pair<Process, std::error_code> Spawn(
       const std::vector<std::string> &args,
-      bool decouple,
       const std::string &pid_file = std::string(),
       const ProcessEnvironment &env = {});
   /// Waits for process to terminate. Not supported for unowned processes.
@@ -138,6 +138,21 @@ std::optional<std::error_code> KillProc(pid_t pid);
 //
 // Currently only supported on Linux. Returns nullopt on other platforms.
 std::optional<std::vector<pid_t>> GetAllProcsWithPpid(pid_t parent_pid);
+
+// Set up a SIGCHLD handler.
+// Note: SIGCHLD is not added to the signal set. Caller must add it.
+//
+// kill_orphan_subprocesses: only supported in Linux. On any other platform, it must be
+// set to false.
+//
+// If kill_orphan_subprocesses is false, simply reap the zombie children.
+//
+// If kill_orphan_subprocesses is true, also sets this process as a subreaper to make all
+// orphaned sub-subprocesses be reparented to this process. Then in the SIGCHLD handler,
+// kill all of them. They are recognized by the fact that those processes are not created
+// via `Process` class.
+void SetupSigchldHandler(bool kill_orphan_subprocesses,
+                         boost::asio::signal_set &sigchld_signals)
 
 }  // namespace ray
 

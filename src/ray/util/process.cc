@@ -30,14 +30,20 @@
 #include <unistd.h>
 #endif
 
+#ifdef __linux__
+#include <sys/prctl.h>
+#endif
+
 #include <string.h>
 
 #include <algorithm>
 #include <atomic>
+#include <boost/asio.hpp>
 #include <fstream>
 #include <string>
 #include <vector>
 
+#include "absl/container/flat_hash_set.h"
 #include "ray/util/filesystem.h"
 #include "ray/util/logging.h"
 #include "ray/util/macros.h"
@@ -62,6 +68,119 @@ int execvpe(const char *program, char *const argv[], char *const envp[]) {
 #endif
 
 namespace ray {
+
+namespace {
+// Global tracker of owned child processes.
+// A pid is added when a spawn is called and removed when the ProcessFD is closed (i.e.
+// it's in dtor and we no longer want to track it).
+std::mutex m;
+absl::flat_hash_set<pid_t> owned_children;
+
+void addOwnedChild(pid_t pid) {
+  std::lock_guard<std::mutex> guard(m);
+  owned_children.insert(pid);
+}
+
+void removeOwnedChild(pid_t pid) {
+  std::lock_guard<std::mutex> guard(m);
+  owned_children.erase(pid);
+}
+
+void KillUnownedChildren() {
+  auto maybe_child_procs = GetAllProcsWithPpid(GetPID());
+
+  // Enumerating child procs is not supported on this platform.
+  if (!maybe_child_procs) {
+    RAY_LOG(WARNING)
+        << "Killing leaked procs not supported on this platform. Only supports Linux";
+    return;
+  }
+
+  std::vector<pid_t> to_kill;
+  to_kill.reserve(maybe_child_procs->size());
+  {
+    std::lock_guard<std::mutex> guard(m);
+    for (auto pid : *maybe_child_procs) {
+      if (owned_children.count(pid) == 0) {
+        to_kill.push_back(pid);
+      }
+    }
+  }
+  for (auto pid : to_kill) {
+    if (owned_children.count(pid) == 0) {
+      RAY_LOG(INFO) << "Killing leaked child process " << pid;
+      auto error = KillProc(pid);
+      if (error) {
+        RAY_LOG(ERROR) << "Failed to kill leaked child process " << pid << " with error "
+                       << error->message();
+      }
+    }
+  }
+}
+
+// Sets up a SIGCHLD handler to waitpid to reap zombie child processes.
+// If kill_orphan_subprocesses is true, this process will become a subreaper and in the
+// handler, it kills all unowned children.
+void SetThisProcessAsSubreaper(bool kill_orphan_subprocesses) {
+  if (kill_orphan_subprocesses) {
+#ifdef __linux__
+    // Set this process as a subreaper.
+    if (prctl(PR_SET_CHILD_SUBREAPER, 1) == -1) {
+      perror("prctl");
+      exit(EXIT_FAILURE);
+    }
+#else
+    RAY_LOG(FATAL) << "Killing orphan subprocesses is only supported on Linux.";
+#endif
+  }
+}
+
+// Register a signal handler for the given signal.
+// The handler will be called with the signal_set and the error code.
+// After the handler is called, the signal will be re-registered.
+void RegisterSignalHandlerLoop(boost::asio::signal_set &signals,
+                               void (*handler)(const boost::system::error_code &, int)) {
+  signals.async_wait(
+      [&signals, handler](const boost::system::error_code &error, int signal_number) {
+        handler(error, signal_number);
+        RegisterSignalHandlerLoop(signals, handler);
+      });
+}
+
+void SigchldHandlerPlain(const boost::system::error_code &error, int signal_number) {
+  if (!error) {
+    // Handle SIGCHLD (e.g., by reaping the child process with waitpid()) here
+    int status;
+    pid_t pid;
+    while ((pid = waitpid(-1, &status, WNOHANG)) > 0) {
+      if (WIFEXITED(status)) {
+        RAY_LOG(INFO) << "Child process " << pid << " exited with status "
+                      << WEXITSTATUS(status);
+      } else if (WIFSIGNALED(status)) {
+        RAY_LOG(INFO) << "Child process " << pid << " exited from signal "
+                      << WTERMSIG(status);
+      }
+    }
+  }
+}
+
+void SigchldHandlerKillOrphanSubprocesses(const boost::system::error_code &error,
+                                          int signal_number) {
+  SigchldHandlerPlain(error, signal_number);
+  KillUnownedChildren();
+}
+
+}  // namespace
+
+void SetupSigchldHandler(bool kill_orphan_subprocesses,
+                         boost::asio::signal_set &sigchld_signals) {
+  if (kill_orphan_subprocesses) {
+    SetThisProcessAsSubreaper();
+    RegisterSignalHandlerLoop(sigchld_signals, SigchldHandlerKillOrphanSubprocesses);
+  } else {
+    RegisterSignalHandlerLoop(sigchld_signals, SigchldHandlerPlain);
+  }
+}
 
 bool EnvironmentVariableLess::operator()(char a, char b) const {
   // TODO(mehrdadn): This is only used on Windows due to current lack of Unicode support.
@@ -101,7 +220,6 @@ class ProcessFD {
   // Fork + exec combo. Returns -1 for the PID on failure.
   static ProcessFD spawnvpe(const char *argv[],
                             std::error_code &ec,
-                            bool decouple,
                             const ProcessEnvironment &env,
                             bool pipe_to_stdin) {
     ec = std::error_code();
@@ -123,7 +241,6 @@ class ProcessFD {
     }
 #ifdef _WIN32
 
-    (void)decouple;  // Windows doesn't require anything particular for decoupling.
     std::vector<std::string> args;
     for (size_t i = 0; argv[i]; ++i) {
       args.push_back(argv[i]);
@@ -223,10 +340,6 @@ class ProcessFD {
     if (pid == 0) {
       // Child process case. Reset the SIGCHLD handler.
       signal(SIGCHLD, SIG_DFL);
-      // If process needs to be decoupled, double-fork to avoid zombies.
-      if (pid_t pid2 = decouple ? fork() : 0) {
-        _exit(pid2 == -1 ? errno : 0);  // Parent of grandchild; must exit
-      }
 
       // Redirect the read pipe to stdin so that child can track the
       // parent lifetime.
@@ -242,21 +355,13 @@ class ProcessFD {
       }
       _exit(errno);  // fork() succeeded and exec() failed, so abort the child
     }
-    if (pid > 0) {
-      // Parent process case
-      if (decouple) {
-        int s;
-        (void)waitpid(pid, &s, 0);  // can't do much if this fails, so ignore return value
-        int r = read(pipefds[0], &pid, sizeof(pid));
-        (void)r;  // can't do much if this fails, so ignore return value
-      }
-    }
     // Use pipe to track process lifetime. (The pipe closes when process terminates.)
     fd = pipefds[0];
     if (pid == -1) {
       ec = std::error_code(errno, std::system_category());
     }
 #endif
+    addOwnedChild(pid);
     return ProcessFD(pid, fd);
   }
 };
@@ -333,7 +438,7 @@ void ProcessFD::CloseFD() {
 #endif
     RAY_CHECK(success) << "error " << errno << " closing process " << pid_ << " FD";
   }
-
+  removeOwnedChild(pid_);
   fd_ = -1;
 }
 
@@ -359,12 +464,11 @@ Process::Process(pid_t pid) { p_ = std::make_shared<ProcessFD>(pid); }
 Process::Process(const char *argv[],
                  void *io_service,
                  std::error_code &ec,
-                 bool decouple,
                  const ProcessEnvironment &env,
                  bool pipe_to_stdin) {
   /// TODO: use io_service with boost asio notify_fork.
   (void)io_service;
-  ProcessFD procfd = ProcessFD::spawnvpe(argv, ec, decouple, env, pipe_to_stdin);
+  ProcessFD procfd = ProcessFD::spawnvpe(argv, ec, env, pipe_to_stdin);
   if (!ec) {
     p_ = std::make_shared<ProcessFD>(std::move(procfd));
   }
@@ -426,7 +530,6 @@ bool Process::IsNull() const { return !p_; }
 bool Process::IsValid() const { return GetId() != -1; }
 
 std::pair<Process, std::error_code> Process::Spawn(const std::vector<std::string> &args,
-                                                   bool decouple,
                                                    const std::string &pid_file,
                                                    const ProcessEnvironment &env) {
   std::vector<const char *> argv;
@@ -435,7 +538,7 @@ std::pair<Process, std::error_code> Process::Spawn(const std::vector<std::string
   }
   argv.push_back(NULL);
   std::error_code error;
-  Process proc(&*argv.begin(), NULL, error, decouple, env);
+  Process proc(&*argv.begin(), NULL, error, env);
   if (!error && !pid_file.empty()) {
     std::ofstream file(pid_file, std::ios_base::out | std::ios_base::trunc);
     file << proc.GetId() << std::endl;

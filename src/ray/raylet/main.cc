@@ -29,6 +29,7 @@
 #include "ray/raylet/raylet.h"
 #include "ray/stats/stats.h"
 #include "ray/util/event.h"
+#include "ray/util/process.h"
 
 using json = nlohmann::json;
 
@@ -71,6 +72,14 @@ DEFINE_string(session_dir, "", "The path of this ray session directory.");
 DEFINE_string(log_dir, "", "The path of the dir where log files are created.");
 DEFINE_string(resource_dir, "", "The path of this ray resource directory.");
 DEFINE_int32(ray_debugger_external, 0, "Make Ray debugger externally accessible.");
+// TODO(ryw): maybe instead of a new flag, we use kill_child_processes_on_worker_exit ?
+DEFINE_bool(kill_orphan_subprocesses,
+#ifndef __linux__
+            true,
+#else
+            false,
+#endif
+            "Kill orphan subprocesses. Only works on Linux. Defaults to True on Linux.");
 // store options
 DEFINE_int64(object_store_memory, -1, "The initial memory of the object store.");
 DEFINE_string(node_name, "", "The user-provided identifier or name for this node.");
@@ -161,6 +170,7 @@ int main(int argc, char *argv[]) {
   const std::string log_dir = FLAGS_log_dir;
   const std::string resource_dir = FLAGS_resource_dir;
   const int ray_debugger_external = FLAGS_ray_debugger_external;
+  const bool kill_orphan_subprocesses = FLAGS_kill_orphan_subprocesses;
   const int64_t object_store_memory = FLAGS_object_store_memory;
   const std::string plasma_directory = FLAGS_plasma_directory;
   const bool huge_pages = FLAGS_huge_pages;
@@ -168,6 +178,11 @@ int main(int argc, char *argv[]) {
   const std::string session_name = FLAGS_session_name;
   const bool is_head_node = FLAGS_head;
   const std::string labels_json_str = FLAGS_labels;
+
+#ifndef __linux__
+  RAY_CHECK(!kill_orphan_subprocesses) << "kill_orphan_subprocesses is only supported on "
+                                       << "Linux.";
+#endif  // __linux__
 
   RAY_CHECK_NE(FLAGS_cluster_id, "") << "Expected cluster ID.";
   ray::ClusterID cluster_id = ray::ClusterID::FromHex(FLAGS_cluster_id);
@@ -384,6 +399,10 @@ int main(int argc, char *argv[]) {
   signals.add(SIGTERM);
 #endif
   signals.async_wait(handler);
+
+  boost::asio::signal_set sigchld_signals(main_service);
+  sigchld_signals.add(SIGCHLD);
+  ray::SetupSigchldHandler(kill_orphan_subprocesses, sigchld_signals);
 
   main_service.run();
 }
