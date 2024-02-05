@@ -280,7 +280,6 @@ class _StatsActor:
         for stats, operator_tag in zip(op_metrics, operator_tags):
             tags = self._create_tags(dataset_tag, operator_tag)
             self.bytes_spilled.set(stats.get("obj_store_mem_spilled", 0), tags)
-            self.bytes_allocated.set(stats.get("obj_store_mem_alloc", 0), tags)
             self.bytes_freed.set(stats.get("obj_store_mem_freed", 0), tags)
             self.bytes_current.set(stats.get("obj_store_mem_cur", 0), tags)
             self.bytes_outputted.set(stats.get("bytes_task_outputs_generated", 0), tags)

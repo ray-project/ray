@@ -83,10 +83,6 @@ class OpRuntimeMetrics:
 
     # === Object store memory metrics ===
 
-    # Allocated memory size in the object store.
-    obj_store_mem_alloc: int = field(
-        default=0, metadata={"map_only": True, "export_metric": True}
-    )
     # Freed memory size in the object store.
     obj_store_mem_freed: int = field(
         default=0, metadata={"map_only": True, "export_metric": True}
@@ -267,7 +263,6 @@ class OpRuntimeMetrics:
         task_info.bytes_outputs += output_bytes
 
         # Update object store metrics.
-        self.obj_store_mem_alloc += output_bytes
         self.obj_store_mem_cur += output_bytes
         if self.obj_store_mem_cur > self.obj_store_mem_peak:
             self.obj_store_mem_peak = self.obj_store_mem_cur
