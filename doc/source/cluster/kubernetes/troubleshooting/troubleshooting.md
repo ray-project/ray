@@ -70,9 +70,9 @@ or Ray Serve configurations (`serveConfigV2`), troubleshooting may be challengin
 (autoscaler)=
 ## Ray Autoscaler
 
-### Ray Autoscaler doesn't scale up, causing the new Ray tasks or actors to remain pending
+### Ray Autoscaler doesn't scale up, causing new Ray tasks or actors to remain pending
 
-One common cause is that each Ray task or actor requires an amount of resources that exceeds what any single Ray node can provide.
+One common cause is that the Ray tasks or actors require an amount of resources that exceeds what any single Ray node can provide.
 Note that Ray tasks and actors represent the smallest scheduling units in Ray, and a task or actor should be on a single Ray node.
 Take [kuberay#846](https://github.com/ray-project/kuberay/issues/846) as an example. The user attempts to schedule a Ray task that requires 2 CPUs, but the Ray Pods available for these tasks have only 1 CPU each. Consequently, the Ray Autoscaler decides not to scale up the RayCluster.
 
