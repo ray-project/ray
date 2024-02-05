@@ -3541,6 +3541,13 @@ cdef class CoreWorker:
         check_status(CCoreWorkerProcess.GetCoreWorker()
                      .ExperimentalChannelSetError(c_object_id))
 
+    def experimental_channel_register_writer(self, ObjectRef object_ref):
+        cdef:
+            CObjectID c_object_id = object_ref.native()
+
+        check_status(CCoreWorkerProcess.GetCoreWorker()
+                     .ExperimentalChannelRegisterWriter(c_object_id))
+
     def experimental_channel_register_reader(self, ObjectRef object_ref):
         cdef:
             CObjectID c_object_id = object_ref.native()

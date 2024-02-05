@@ -89,8 +89,6 @@ class CoreWorkerPlasmaStoreProvider {
  public:
   CoreWorkerPlasmaStoreProvider(
       const std::string &store_socket,
-      const plasma::RegisterExperimentalChannelCallback
-          &register_experimental_channel_callback,
       const std::shared_ptr<raylet::RayletClient> raylet_client,
       const std::shared_ptr<ReferenceCounter> reference_counter,
       std::function<Status()> check_signals,
@@ -166,7 +164,8 @@ class CoreWorkerPlasmaStoreProvider {
   Status GetIfLocal(const std::vector<ObjectID> &ids,
                     absl::flat_hash_map<ObjectID, std::shared_ptr<RayObject>> *results);
 
-  Status RegisterExperimentalChannelReader(const ObjectID &object_id);
+  Status GetMutableObject(const ObjectID &object_id,
+                          std::unique_ptr<plasma::MutableObject> *mutable_object);
 
   Status Contains(const ObjectID &object_id, bool *has_object);
 

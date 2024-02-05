@@ -22,18 +22,14 @@
 namespace ray {
 
 Status ExperimentalChannelManager::RegisterWriterChannel(
-    const ObjectID &object_id,
-    PlasmaObjectHeader *header,
-    const plasma::PlasmaObject &object,
-    std::shared_ptr<SharedMemoryBuffer> write_buffer) {
+    const ObjectID &object_id, std::unique_ptr<plasma::MutableObject> mutable_object) {
 #ifdef __linux__
-  ObjectMetadata meta(object);
-  auto inserted = writer_channels_.emplace(
-      object_id,
-      WriterChannel{.header = header, .meta = meta, .write_buffer = write_buffer});
+  auto inserted =
+      writer_channels_.emplace(object_id, WriterChannel(std::move(mutable_object)));
   if (!inserted.second) {
     return Status::Invalid("Writer channel already registered");
   }
+  RAY_CHECK(inserted.first->second.mutable_object);
   RAY_LOG(DEBUG) << "Registered writer channel " << object_id;
 #endif
   return Status::OK();
@@ -56,20 +52,24 @@ Status ExperimentalChannelManager::WriteAcquire(const ObjectID &object_id,
     return Status::Invalid("Must WriteRelease before writing again to a mutable object");
   }
 
-  if (data_size + metadata_size > channel.meta.allocated_size) {
-    return Status::InvalidArgument("Serialized size of mutable data (" +
-                                   std::to_string(data_size) + ") + metadata size (" +
-                                   std::to_string(metadata_size) +
-                                   ") is larger than allocated buffer size " +
-                                   std::to_string(channel.meta.allocated_size));
+  if (data_size + metadata_size > channel.mutable_object->allocated_size) {
+    return Status::InvalidArgument(
+        "Serialized size of mutable data (" + std::to_string(data_size) +
+        ") + metadata size (" + std::to_string(metadata_size) +
+        ") is larger than allocated buffer size " +
+        std::to_string(channel.mutable_object->allocated_size));
   }
 
   RAY_LOG(DEBUG) << "Write mutable object " << object_id;
-  RAY_RETURN_NOT_OK(channel.header->WriteAcquire(data_size, metadata_size, num_readers));
-  *data = SharedMemoryBuffer::Slice(channel.write_buffer, 0, channel.header->data_size);
+  RAY_RETURN_NOT_OK(channel.mutable_object->header->WriteAcquire(
+      data_size, metadata_size, num_readers));
+  *data = SharedMemoryBuffer::Slice(
+      channel.mutable_object->buffer, 0, channel.mutable_object->header->data_size);
   if (metadata != NULL) {
     // Copy the metadata to the buffer.
-    memcpy((*data)->Data() + channel.header->data_size, metadata, metadata_size);
+    memcpy((*data)->Data() + channel.mutable_object->header->data_size,
+           metadata,
+           metadata_size);
   }
 #endif
   return Status::OK();
@@ -87,7 +87,7 @@ Status ExperimentalChannelManager::WriteRelease(const ObjectID &object_id) {
     return Status::Invalid("Must WriteAcquire before WriteRelease on a mutable object");
   }
 
-  channel.header->WriteRelease();
+  channel.mutable_object->header->WriteRelease();
   channel.is_sealed = true;
 
 #endif
@@ -95,15 +95,10 @@ Status ExperimentalChannelManager::WriteRelease(const ObjectID &object_id) {
 }
 
 Status ExperimentalChannelManager::RegisterReaderChannel(
-    const ObjectID &object_id,
-    PlasmaObjectHeader *header,
-    const plasma::PlasmaObject &object,
-    std::shared_ptr<SharedMemoryBuffer> read_buffer) {
+    const ObjectID &object_id, std::unique_ptr<plasma::MutableObject> mutable_object) {
 #ifdef __linux__
-  ObjectMetadata meta(object);
-  auto inserted = reader_channels_.emplace(
-      object_id,
-      ReaderChannel{.header = header, .meta = meta, .read_buffer = read_buffer});
+  auto inserted =
+      reader_channels_.emplace(object_id, ReaderChannel(std::move(mutable_object)));
   if (!inserted.second) {
     return Status::Invalid("Reader channel already registered");
   }
@@ -127,13 +122,15 @@ Status ExperimentalChannelManager::ReadAcquire(const ObjectID &object_id,
   auto &channel = reader_channel_entry->second;
   RAY_RETURN_NOT_OK(EnsureGetAcquired(channel));
 
-  RAY_CHECK(
-      static_cast<int64_t>(channel.header->data_size + channel.header->metadata_size) <=
-      channel.meta.allocated_size);
-  auto data_buf =
-      SharedMemoryBuffer::Slice(channel.read_buffer, 0, channel.header->data_size);
-  auto metadata_buf = SharedMemoryBuffer::Slice(
-      channel.read_buffer, channel.header->data_size, channel.header->metadata_size);
+  RAY_CHECK(static_cast<int64_t>(channel.mutable_object->header->data_size +
+                                 channel.mutable_object->header->metadata_size) <=
+            channel.mutable_object->allocated_size);
+  auto data_buf = SharedMemoryBuffer::Slice(
+      channel.mutable_object->buffer, 0, channel.mutable_object->header->data_size);
+  auto metadata_buf =
+      SharedMemoryBuffer::Slice(channel.mutable_object->buffer,
+                                channel.mutable_object->header->data_size,
+                                channel.mutable_object->header->metadata_size);
 
   *result = std::make_shared<RayObject>(
       std::move(data_buf), std::move(metadata_buf), std::vector<rpc::ObjectReference>());
@@ -152,7 +149,8 @@ Status ExperimentalChannelManager::ReadRelease(const ObjectID &object_id) {
   auto &channel = reader_channel_entry->second;
   RAY_RETURN_NOT_OK(EnsureGetAcquired(channel));
 
-  RAY_RETURN_NOT_OK(channel.header->ReadRelease(channel.next_version_to_read));
+  RAY_RETURN_NOT_OK(
+      channel.mutable_object->header->ReadRelease(channel.next_version_to_read));
   // The next read needs to read at least this version.
   channel.next_version_to_read++;
   channel.read_acquired = false;
@@ -168,8 +166,8 @@ Status ExperimentalChannelManager::EnsureGetAcquired(ReaderChannel &channel) {
   }
 
   int64_t version_read = 0;
-  RAY_RETURN_NOT_OK(
-      channel.header->ReadAcquire(channel.next_version_to_read, &version_read));
+  RAY_RETURN_NOT_OK(channel.mutable_object->header->ReadAcquire(
+      channel.next_version_to_read, &version_read));
   RAY_CHECK(version_read > 0);
   channel.next_version_to_read = version_read;
   channel.read_acquired = true;
@@ -182,11 +180,11 @@ Status ExperimentalChannelManager::SetError(const ObjectID &object_id) {
   PlasmaObjectHeader *header = nullptr;
   auto reader_channel_entry = reader_channels_.find(object_id);
   if (reader_channel_entry != reader_channels_.end()) {
-    header = reader_channel_entry->second.header;
+    header = reader_channel_entry->second.mutable_object->header;
   } else {
     auto writer_channel_entry = writer_channels_.find(object_id);
     if (writer_channel_entry != writer_channels_.end()) {
-      header = writer_channel_entry->second.header;
+      header = writer_channel_entry->second.mutable_object->header;
     }
   }
 

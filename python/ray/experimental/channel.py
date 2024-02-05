@@ -89,6 +89,7 @@ class Channel:
         self._worker = ray._private.worker.global_worker
         self._worker.check_connected()
 
+        self._writer_registered = False
         self._reader_registered = False
 
     @staticmethod
@@ -115,6 +116,12 @@ class Channel:
             num_readers = self._num_readers
         if num_readers <= 0:
             raise ValueError("``num_readers`` must be a positive integer.")
+
+        if not self._writer_registered:
+            self._worker.core_worker.experimental_channel_register_writer(
+                self._base_ref
+            )
+            self._writer_registered = True
 
         try:
             serialized_value = self._worker.get_serialization_context().serialize(value)

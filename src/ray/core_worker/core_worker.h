@@ -725,6 +725,8 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
 
   Status ExperimentalChannelRegisterReader(const ObjectID &object_id);
 
+  Status ExperimentalChannelRegisterWriter(const ObjectID &object_id);
+
   /// Get a list of objects from the object store. Objects that failed to be retrieved
   /// will be returned as nullptrs.
   ///
@@ -1628,6 +1630,9 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
       intialize_cv_.WaitWithTimeout(&initialize_mutex_, absl::Seconds(1));
     }
   }
+
+  Status ExperimentalChannelRegisterWriterOrReader(const ObjectID &object_id,
+                                                   bool is_writer);
 
   const CoreWorkerOptions options_;
 

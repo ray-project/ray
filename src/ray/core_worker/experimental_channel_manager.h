@@ -25,6 +25,7 @@
 #include "ray/common/buffer.h"
 #include "ray/common/ray_object.h"
 #include "ray/common/status.h"
+#include "ray/object_manager/plasma/client.h"
 #include "ray/object_manager/plasma/common.h"
 #include "ray/object_manager/plasma/plasma.h"
 #include "ray/util/visibility.h"
@@ -37,9 +38,7 @@ class ExperimentalChannelManager {
   ExperimentalChannelManager() {}
 
   Status RegisterWriterChannel(const ObjectID &object_id,
-                               PlasmaObjectHeader *header,
-                               const plasma::PlasmaObject &object,
-                               std::shared_ptr<SharedMemoryBuffer> write_buffer);
+                               std::unique_ptr<plasma::MutableObject> mutable_object);
 
   Status WriteAcquire(const ObjectID &object_id,
                       int64_t data_size,
@@ -51,9 +50,7 @@ class ExperimentalChannelManager {
   Status WriteRelease(const ObjectID &object_id);
 
   Status RegisterReaderChannel(const ObjectID &object_id,
-                               PlasmaObjectHeader *header,
-                               const plasma::PlasmaObject &object,
-                               std::shared_ptr<SharedMemoryBuffer> read_buffer);
+                               std::unique_ptr<plasma::MutableObject> mutable_object);
 
   bool ReaderChannelRegistered(const ObjectID &object_id) const;
 
@@ -64,23 +61,18 @@ class ExperimentalChannelManager {
   Status SetError(const ObjectID &object_id);
 
  private:
-  struct ObjectMetadata {
-    ObjectMetadata(const plasma::PlasmaObject &object)
-        : metadata_offset(object.metadata_offset),
-          allocated_size(object.allocated_size) {}
-
-    const ptrdiff_t metadata_offset;
-    const int64_t allocated_size;
-  };
-
   struct WriterChannel {
+    WriterChannel(std::unique_ptr<plasma::MutableObject> mutable_object_ptr)
+        : mutable_object(std::move(mutable_object_ptr)) {}
+
     bool is_sealed = true;
-    PlasmaObjectHeader *header;
-    ObjectMetadata meta;
-    std::shared_ptr<SharedMemoryBuffer> write_buffer;
+    std::unique_ptr<plasma::MutableObject> mutable_object;
   };
 
   struct ReaderChannel {
+    ReaderChannel(std::unique_ptr<plasma::MutableObject> mutable_object_ptr)
+        : mutable_object(std::move(mutable_object_ptr)) {}
+
     /// The last version that we read. To read again, we must pass a newer
     /// version than this.
     int64_t next_version_to_read = 1;
@@ -90,9 +82,7 @@ class ExperimentalChannelManager {
     /// objects, ReadRelease resets this to false, and ReadAcquire resets to
     /// true.
     bool read_acquired = false;
-    PlasmaObjectHeader *header;
-    ObjectMetadata meta;
-    std::shared_ptr<SharedMemoryBuffer> read_buffer;
+    std::unique_ptr<plasma::MutableObject> mutable_object;
   };
 
   Status EnsureGetAcquired(ReaderChannel &channel);

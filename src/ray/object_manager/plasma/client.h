@@ -36,12 +36,18 @@ using ray::PlasmaObjectHeader;
 using ray::SharedMemoryBuffer;
 using ray::Status;
 
-using RegisterExperimentalChannelCallback =
-    std::function<Status(const ObjectID &object_id,
-                         PlasmaObjectHeader *header,
-                         const plasma::PlasmaObject &object,
-                         std::shared_ptr<SharedMemoryBuffer> buffer,
-                         bool is_write_channel)>;
+struct MutableObject {
+  MutableObject(uint8_t *base_ptr, const PlasmaObject &object_info)
+      : header(
+            reinterpret_cast<PlasmaObjectHeader *>(base_ptr + object_info.header_offset)),
+        buffer(std::make_shared<SharedMemoryBuffer>(base_ptr + object_info.data_offset,
+                                                    object_info.allocated_size)),
+        allocated_size(object_info.allocated_size) {}
+
+  PlasmaObjectHeader *header;
+  std::shared_ptr<SharedMemoryBuffer> buffer;
+  const int64_t allocated_size;
+};
 
 /// Object buffer data structure.
 struct ObjectBuffer {
@@ -91,7 +97,8 @@ class PlasmaClientInterface {
                      std::vector<ObjectBuffer> *object_buffers,
                      bool is_from_worker) = 0;
 
-  virtual Status RegisterExperimentalChannelReader(const ObjectID &object_id) = 0;
+  virtual Status GetMutableObject(const ObjectID &object_id,
+                                  std::unique_ptr<MutableObject> *mutable_object) = 0;
 
   /// Experimental method for mutable objects. Acquires a write lock on the
   /// object that prevents readers from reading until we are done writing. Does
@@ -214,8 +221,6 @@ class PlasmaClient : public PlasmaClientInterface {
   /// \param num_retries number of attempts to connect to IPC socket, default 50
   /// \return The return status.
   Status Connect(const std::string &store_socket_name,
-                 const RegisterExperimentalChannelCallback
-                     &register_experimental_channel_callback = nullptr,
                  const std::string &manager_socket_name = "",
                  int release_delay = 0,
                  int num_retries = -1);
@@ -324,7 +329,8 @@ class PlasmaClient : public PlasmaClientInterface {
              std::vector<ObjectBuffer> *object_buffers,
              bool is_from_worker);
 
-  Status RegisterExperimentalChannelReader(const ObjectID &object_id);
+  Status GetMutableObject(const ObjectID &object_id,
+                          std::unique_ptr<MutableObject> *mutable_object);
 
   /// Tell Plasma that the client no longer needs the object. This should be
   /// called after Get() or Create() when the client is done with the object.

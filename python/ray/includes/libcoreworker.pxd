@@ -259,6 +259,7 @@ cdef extern from "ray/core_worker/core_worker.h" nogil:
         CRayStatus SealExisting(const CObjectID &object_id, c_bool pin_object,
                                 const CObjectID &generator_id,
                                 const unique_ptr[CAddress] &owner_address)
+        CRayStatus ExperimentalChannelRegisterWriter(const CObjectID &object_id)
         CRayStatus ExperimentalChannelRegisterReader(const CObjectID &object_id)
         CRayStatus ExperimentalChannelReadRelease(
                     const c_vector[CObjectID] &object_ids)

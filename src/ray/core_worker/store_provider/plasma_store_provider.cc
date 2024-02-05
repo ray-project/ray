@@ -55,8 +55,6 @@ BufferTracker::UsedObjects() const {
 
 CoreWorkerPlasmaStoreProvider::CoreWorkerPlasmaStoreProvider(
     const std::string &store_socket,
-    const plasma::RegisterExperimentalChannelCallback
-        &register_experimental_channel_callback,
     const std::shared_ptr<raylet::RayletClient> raylet_client,
     const std::shared_ptr<ReferenceCounter> reference_counter,
     std::function<Status()> check_signals,
@@ -72,8 +70,7 @@ CoreWorkerPlasmaStoreProvider::CoreWorkerPlasmaStoreProvider(
   }
   object_store_full_delay_ms_ = RayConfig::instance().object_store_full_delay_ms();
   buffer_tracker_ = std::make_shared<BufferTracker>();
-  RAY_CHECK_OK(
-      store_client_.Connect(store_socket, register_experimental_channel_callback));
+  RAY_CHECK_OK(store_client_.Connect(store_socket));
   if (warmup) {
     RAY_CHECK_OK(WarmupStore());
   }
@@ -278,9 +275,9 @@ Status CoreWorkerPlasmaStoreProvider::GetIfLocal(
   return Status::OK();
 }
 
-Status CoreWorkerPlasmaStoreProvider::RegisterExperimentalChannelReader(
-    const ObjectID &object_id) {
-  return store_client_.RegisterExperimentalChannelReader(object_id);
+Status CoreWorkerPlasmaStoreProvider::GetMutableObject(
+    const ObjectID &object_id, std::unique_ptr<plasma::MutableObject> *mutable_object) {
+  return store_client_.GetMutableObject(object_id, mutable_object);
 }
 
 Status UnblockIfNeeded(const std::shared_ptr<raylet::RayletClient> &client,

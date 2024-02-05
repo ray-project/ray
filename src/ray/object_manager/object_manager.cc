@@ -147,12 +147,8 @@ ObjectManager::ObjectManager(
                                       pin_object,
                                       get_spilled_object_url));
 
-  RAY_CHECK_OK(buffer_pool_store_client_->Connect(
-      config_.store_socket_name.c_str(),
-      /*register_experimental_channel_callback=*/nullptr,
-      "",
-      0,
-      300));
+  RAY_CHECK_OK(
+      buffer_pool_store_client_->Connect(config_.store_socket_name.c_str(), "", 0, 300));
 
   // Start object manager rpc server and send & receive request threads
   StartRpcService();

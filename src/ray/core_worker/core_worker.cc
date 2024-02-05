@@ -330,20 +330,6 @@ CoreWorker::CoreWorker(const CoreWorkerOptions &options, const WorkerID &worker_
 
   plasma_store_provider_.reset(new CoreWorkerPlasmaStoreProvider(
       options_.store_socket,
-      /*register_experimental_channel_callback=*/
-      [this](const ObjectID &object_id,
-             PlasmaObjectHeader *header,
-             const plasma::PlasmaObject &object,
-             std::shared_ptr<SharedMemoryBuffer> buffer,
-             bool is_write_channel) {
-        if (is_write_channel) {
-          return experimental_channel_manager_->RegisterWriterChannel(
-              object_id, header, object, buffer);
-        } else {
-          return experimental_channel_manager_->RegisterReaderChannel(
-              object_id, header, object, buffer);
-        }
-      },
       local_raylet_client_,
       reference_counter_,
       options_.check_signals,
@@ -1420,18 +1406,25 @@ Status CoreWorker::ExperimentalChannelReadRelease(
 }
 
 Status CoreWorker::ExperimentalChannelRegisterReader(const ObjectID &object_id) {
-  bool got_exception = false;
-  // First make sure the object is in scope.
-  absl::flat_hash_map<ObjectID, std::shared_ptr<RayObject>> result_map;
-  RAY_RETURN_NOT_OK(plasma_store_provider_->Get(
-      {object_id}, -1, worker_context_, &result_map, &got_exception));
-  RAY_CHECK(!got_exception);
-  // Then, register the object with the channel manager. This
-  // will also pin the object as in use in the local plasma
-  // client.
-  RAY_RETURN_NOT_OK(plasma_store_provider_->RegisterExperimentalChannelReader(object_id));
-  // Make sure the registration was succesful.
-  RAY_CHECK(experimental_channel_manager_->ReaderChannelRegistered(object_id));
+  return ExperimentalChannelRegisterWriterOrReader(object_id, /*is_writer=*/false);
+}
+
+Status CoreWorker::ExperimentalChannelRegisterWriter(const ObjectID &object_id) {
+  return ExperimentalChannelRegisterWriterOrReader(object_id, /*is_writer=*/true);
+}
+
+Status CoreWorker::ExperimentalChannelRegisterWriterOrReader(const ObjectID &object_id,
+                                                             bool is_writer) {
+  std::unique_ptr<plasma::MutableObject> object = nullptr;
+  RAY_RETURN_NOT_OK(plasma_store_provider_->GetMutableObject(object_id, &object));
+  RAY_CHECK(object);
+  if (is_writer) {
+    RAY_RETURN_NOT_OK(experimental_channel_manager_->RegisterWriterChannel(
+        object_id, std::move(object)));
+  } else {
+    RAY_RETURN_NOT_OK(experimental_channel_manager_->RegisterReaderChannel(
+        object_id, std::move(object)));
+  }
   return Status::OK();
 }
 
