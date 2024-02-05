@@ -115,6 +115,7 @@ void SigchldHandlerPlain(const boost::system::error_code &error, int signal_numb
         RAY_LOG(INFO) << "Child process " << pid << " exited from signal "
                       << WTERMSIG(status);
       }
+      removeOwnedChild(pid);
     }
   }
 }
@@ -441,7 +442,6 @@ void ProcessFD::CloseFD() {
 #endif
     RAY_CHECK(success) << "error " << errno << " closing process " << pid_ << " FD";
   }
-  removeOwnedChild(pid_);
   fd_ = -1;
 }
 
