@@ -1182,22 +1182,22 @@ class IterStatsSummary:
             or self.finalize_batch_time.get()
         ):
             out += "\nDataset iterator time breakdown:\n"
-            if self.block_time.get():
-                out += (
-                    "* Total time user thread is blocked by iter_batches: {}\n".format(
-                        fmt(self.block_time.get())
-                    )
-                )
-            if self.user_time.get():
-                out += "* Total execution time for user thread: {}\n".format(
-                    fmt(self.user_time.get())
-                )
-            if self.initialize_time.get():
-                out += "* Total time in iterator initialization code: {}\n".format(
-                    fmt(self.initialize_time.get())
-                )
             if self.total_time.get():
                 out += "* Total time overall: {}\n".format(fmt(self.total_time.get()))
+            if self.initialize_time.get():
+                out += (
+                    "    * Total time in Ray Data iterator initialization code: "
+                    "{}\n".format(fmt(self.initialize_time.get()))
+                )
+            if self.block_time.get():
+                out += (
+                    "    * Total time user thread is blocked by Ray Data iter_batches: "
+                    "{}\n".format(fmt(self.block_time.get()))
+                )
+            if self.user_time.get():
+                out += "    * Total execution time for user thread: {}\n".format(
+                    fmt(self.user_time.get())
+                )
             out += "* Num blocks local: {}\n".format(self.iter_blocks_local)
             out += "* Num blocks remote: {}\n".format(self.iter_blocks_remote)
             out += "* Num blocks unknown location: {}\n".format(
@@ -1242,7 +1242,7 @@ class IterStatsSummary:
                 )
             if self.finalize_batch_time.get():
                 format_str = (
-                    "   * In host->device transfer: {} min, {} max, {} avg, {} total\n"
+                    "    * In host->device transfer: {} min, {} max, {} avg, {} total\n"
                 )
                 out += format_str.format(
                     fmt(self.finalize_batch_time.min()),

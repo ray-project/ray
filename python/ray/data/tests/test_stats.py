@@ -195,10 +195,10 @@ Operator N split(N, equal=False): \n"""
         f"""* Extra metrics: {extra_metrics}\n"""
         """
 Dataset iterator time breakdown:
-* Total time user thread is blocked by iter_batches: T
-* Total execution time for user thread: T
-* Total time in iterator initialization code: T
 * Total time overall: T
+    * Total time in Ray Data iterator initialization code: T
+    * Total time user thread is blocked by Ray Data iter_batches: T
+    * Total execution time for user thread: T
 * Num blocks local: Z
 * Num blocks remote: Z
 * Num blocks unknown location: N
@@ -308,10 +308,10 @@ def test_dataset_stats_basic(ray_start_regular_shared, enable_auto_log_stats):
         f"* Extra metrics: {STANDARD_EXTRA_METRICS}\n"
         f"\n"
         f"Dataset iterator time breakdown:\n"
-        f"* Total time user thread is blocked by iter_batches: T\n"
-        f"* Total execution time for user thread: T\n"
-        f"* Total time in iterator initialization code: T\n"
         f"* Total time overall: T\n"
+        f"    * Total time in Ray Data iterator initialization code: T\n"
+        f"    * Total time user thread is blocked by Ray Data iter_batches: T\n"
+        f"    * Total execution time for user thread: T\n"
         f"* Num blocks local: Z\n"
         f"* Num blocks remote: Z\n"
         f"* Num blocks unknown location: N\n"
@@ -813,10 +813,10 @@ def test_streaming_stats_full(ray_start_regular_shared, restore_data_context):
 * Extra metrics: {STANDARD_EXTRA_METRICS}
 
 Dataset iterator time breakdown:
-* Total time user thread is blocked by iter_batches: T
-* Total execution time for user thread: T
-* Total time in iterator initialization code: T
 * Total time overall: T
+    * Total time in Ray Data iterator initialization code: T
+    * Total time user thread is blocked by Ray Data iter_batches: T
+    * Total execution time for user thread: T
 * Num blocks local: Z
 * Num blocks remote: Z
 * Num blocks unknown location: N
