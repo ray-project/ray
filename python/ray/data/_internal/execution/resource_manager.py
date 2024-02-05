@@ -1,4 +1,3 @@
-import itertools
 import time
 from typing import TYPE_CHECKING, Dict
 
