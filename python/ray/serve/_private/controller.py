@@ -254,15 +254,31 @@ class ServeController:
     def get_pid(self) -> int:
         return os.getpid()
 
-    def record_autoscaling_metrics(self, data: Dict[str, float], send_timestamp: float):
+    def record_autoscaling_metrics(
+        self, replica_id: str, window_avg: float, send_timestamp: float
+    ):
         logger.debug(
-            f"Received autoscaling metrics: {data} at timestamp {send_timestamp}"
+            f"Received metrics from replica {replica_id}: {window_avg} running requests"
         )
-        self.deployment_state_manager.record_autoscaling_metrics(data, send_timestamp)
+        self.deployment_state_manager.record_autoscaling_metrics(
+            replica_id, window_avg, send_timestamp
+        )
 
-    def record_handle_metrics(self, data, send_timestamp: float):
-        logger.debug(f"Received handle metrics: {data} at timestamp {send_timestamp}")
-        self.deployment_state_manager.record_handle_metrics(data, send_timestamp)
+    def record_handle_metrics(
+        self,
+        deployment_id: str,
+        handle_id: str,
+        queued_requests: float,
+        running_requests: Dict[str, float],
+        send_timestamp: float,
+    ):
+        logger.debug(
+            f"Received metrics from handle {handle_id} for deployment {deployment_id}: "
+            f"{queued_requests} queued requests and {running_requests} running requests"
+        )
+        self.deployment_state_manager.record_handle_metrics(
+            deployment_id, handle_id, queued_requests, running_requests, send_timestamp
+        )
 
     def _dump_autoscaling_metrics_for_testing(self):
         return self.deployment_state_manager.get_autoscaling_metrics()
