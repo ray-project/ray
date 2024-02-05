@@ -853,17 +853,18 @@ def test_operator_metrics():
             inputs[k].size_bytes() for k in range(i + 1)
         ), i
         assert (
-            metrics.num_inputs_processed == num_tasks_submitted * MIN_ROWS_PER_BUNDLE
+            metrics.num_task_inputs_processed
+            == num_tasks_submitted * MIN_ROWS_PER_BUNDLE
         ), i
-        assert metrics.bytes_inputs_processed == sum(
+        assert metrics.bytes_task_inputs_processed == sum(
             inputs[k].size_bytes()
             for k in range(num_tasks_submitted * MIN_ROWS_PER_BUNDLE)
         ), i
 
         # Check outputs metrics
         assert num_outputs_taken == num_tasks_submitted * NUM_BLOCKS_PER_TASK, i
-        assert metrics.num_outputs_generated == num_outputs_taken, i
-        assert metrics.bytes_outputs_generated == bytes_outputs_taken, i
+        assert metrics.num_task_outputs_generated == num_outputs_taken, i
+        assert metrics.bytes_task_outputs_generated == bytes_outputs_taken, i
         assert metrics.num_outputs_taken == num_outputs_taken, i
         assert metrics.bytes_outputs_taken == bytes_outputs_taken, i
         assert metrics.num_outputs_of_finished_tasks == num_outputs_taken, i
@@ -876,12 +877,12 @@ def test_operator_metrics():
         assert metrics.num_tasks_finished == num_tasks_submitted, i
 
         # Check object store metrics
-        assert metrics.obj_store_mem_freed == metrics.bytes_inputs_processed, i
+        assert metrics.obj_store_mem_freed == metrics.bytes_task_inputs_processed, i
         assert (
             metrics.obj_store_mem_cur
             == metrics.bytes_inputs_received
-            - metrics.bytes_inputs_processed
-            + metrics.bytes_outputs_generated
+            - metrics.bytes_task_inputs_processed
+            + metrics.bytes_task_outputs_generated
             - metrics.bytes_outputs_taken
         ), i
 
