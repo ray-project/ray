@@ -173,7 +173,6 @@ class OpState:
         self.inputs_done_called = False
         # Tracks whether `input_done` is called for each input op.
         self.input_done_called = [False] * len(op.input_dependencies)
-        self.dependents_completed_called = False
         # Used for StreamingExecutor to signal exception or end of execution
         self._finished: bool = False
         self._exception: Optional[Exception] = None
@@ -479,17 +478,16 @@ def update_operator_states(topology: Topology) -> None:
             op_state.inputs_done_called = True
 
     # Traverse the topology in reverse topological order.
-    # For each op, if all of its downstream operators don't need any more inputs,
-    # call all_dependents_complete() to also complete this op.
+    # For each op, if all of its downstream operators have completed.
+    # call mark_execution_completed() to also complete this op.
     for op, op_state in reversed(list(topology.items())):
-        if op_state.dependents_completed_called:
+        if op.completed():
             continue
         dependents_completed = len(op.output_dependencies) > 0 and all(
-            not dep.need_more_inputs() for dep in op.output_dependencies
+            dep.completed() for dep in op.output_dependencies
         )
         if dependents_completed:
-            op.all_dependents_complete()
-            op_state.dependents_completed_called = True
+            op.mark_execution_completed()
 
 
 def select_operator_to_run(
@@ -518,11 +516,10 @@ def select_operator_to_run(
     for op, state in topology.items():
         under_resource_limits = _execution_allowed(op, resource_manager)
         if (
-            op.need_more_inputs()
+            under_resource_limits
+            and not op.completed()
             and state.num_queued() > 0
             and op.should_add_input()
-            and under_resource_limits
-            and not op.completed()
             and all(p.can_add_input(op) for p in backpressure_policies)
         ):
             ops.append(op)
@@ -551,7 +548,7 @@ def select_operator_to_run(
         ops = [
             op
             for op, state in topology.items()
-            if op.need_more_inputs() and state.num_queued() > 0 and not op.completed()
+            if state.num_queued() > 0 and not op.completed()
         ]
 
     # Nothing to run.

@@ -133,33 +133,42 @@ def test_process_completed_tasks():
     done_task = MetadataOpTask(0, ray.put("done"), done_task_callback)
     o2.get_active_tasks = MagicMock(return_value=[sleep_task, done_task])
     o2.all_inputs_done = MagicMock()
-    o1.all_dependents_complete = MagicMock()
+    o1.mark_execution_completed = MagicMock()
     process_completed_tasks(topo, [], 0)
     update_operator_states(topo)
     done_task_callback.assert_called_once()
     o2.all_inputs_done.assert_not_called()
-    o1.all_dependents_complete.assert_not_called()
+    o1.mark_execution_completed.assert_not_called()
 
     # Test input finalization.
     done_task_callback = MagicMock()
     done_task = MetadataOpTask(0, ray.put("done"), done_task_callback)
     o2.get_active_tasks = MagicMock(return_value=[done_task])
     o2.all_inputs_done = MagicMock()
-    o1.all_dependents_complete = MagicMock()
+    o1.mark_execution_completed = MagicMock()
     o1.completed = MagicMock(return_value=True)
     topo[o1].outqueue.clear()
     process_completed_tasks(topo, [], 0)
     update_operator_states(topo)
     done_task_callback.assert_called_once()
     o2.all_inputs_done.assert_called_once()
-    o1.all_dependents_complete.assert_not_called()
+    o1.mark_execution_completed.assert_not_called()
 
     # Test dependents completed.
-    o2.need_more_inputs = MagicMock(return_value=False)
-    o1.all_dependents_complete = MagicMock()
+    o1 = InputDataBuffer(inputs)
+    o2 = MapOperator.create(
+        make_map_transformer(lambda block: [b * -1 for b in block]), o1
+    )
+    o3 = MapOperator.create(
+        make_map_transformer(lambda block: [b * -1 for b in block]), o2
+    )
+    topo, _ = build_streaming_topology(o3, ExecutionOptions(verbose_progress=True))
+
+    o3.mark_execution_completed()
+    o2.mark_execution_completed = MagicMock()
     process_completed_tasks(topo, [], 0)
     update_operator_states(topo)
-    o1.all_dependents_complete.assert_called_once()
+    o2.mark_execution_completed.assert_called_once()
 
 
 def test_select_operator_to_run():
