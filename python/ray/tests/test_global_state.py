@@ -461,7 +461,7 @@ def test_get_draining_nodes(ray_start_cluster):
     worker_node_id = ray.get(get_node_id.options(resources={"worker": 1}).remote())
 
     # Initially there is no draining node.
-    assert ray._private.state.state.get_draining_nodes() == set()
+    assert ray._private.state.state.get_draining_nodes() == {}
 
     @ray.remote(num_cpus=1, resources={"worker": 1})
     class Actor:
@@ -478,18 +478,20 @@ def test_get_draining_nodes(ray_start_cluster):
         worker_node_id,
         autoscaler_pb2.DrainNodeReason.Value("DRAIN_NODE_REASON_PREEMPTION"),
         "preemption",
+        2**63 - 2,
     )
     assert is_accepted
 
     wait_for_condition(
-        lambda: ray._private.state.state.get_draining_nodes() == {worker_node_id}
+        lambda: ray._private.state.state.get_draining_nodes()
+        == {worker_node_id: 2**63 - 2}
     )
 
     # Kill the actor running on the draining worker node so
     # that the worker node becomes idle and can be drained.
     ray.kill(actor)
 
-    wait_for_condition(lambda: ray._private.state.state.get_draining_nodes() == set())
+    wait_for_condition(lambda: ray._private.state.state.get_draining_nodes() == {})
 
 
 if __name__ == "__main__":

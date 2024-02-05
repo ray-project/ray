@@ -390,7 +390,11 @@ void GcsAutoscalerStateManager::HandleDrainNode(
   int64_t draining_deadline = request.deadline();
   RAY_CHECK_GE(draining_deadline, 0);
   if (draining_deadline == 0) {
-    // TODO(jjyao) Set default value
+    // Set a default draining deadline if autoscaler doesn't set one.
+    // This is temporary since eventually autoscaler should always set a draining
+    // deadline.
+    draining_deadline =
+        current_sys_time_ms() + RayConfig::instance().default_draining_period_ms();
   }
 
   rpc::Address raylet_address;
