@@ -437,19 +437,36 @@ def _infer_schema_and_transform(dataset: "Dataset"):
     return dataset.map_batches(
         _unwrap_single_value_lists,
         fn_kwargs={"col_lengths": list_sizes["max_list_size"]},
+        batch_format="pyarrow",
     )
 
 
-def _unwrap_single_value_lists(
-    batch: Dict[str, np.ndarray], col_lengths: Dict[str, int]
-):
-    for col in col_lengths:
-        if col_lengths[col] == 1:
-            batch[col] = np.array(
-                [x[0] if isinstance(x, np.ndarray) else x for x in batch[col]]
-            )
+def _unwrap_single_value_lists(batch: pyarrow.Table, col_lengths: Dict[str, int]):
+    """
+    As part of this function we perform two transformations, given that when no
+    schema is provided the ExampleDecoder return large_lists
+        1. We convert the large_list with always a single value to their underlying
+        data type (i.e. pyarrow.int64() and pyarrow.float64())
+        2. We convert large_binary into binary
+    """
+    columns = {}
 
-    return batch
+    for col in col_lengths:
+        value_type = batch[col].type.value_type
+        # to_tf does not support large_binary, so we cast it to binary
+        if value_type == pyarrow.large_binary():
+            value_type = pyarrow.binary()
+
+        if col_lengths[col] == 1:
+            if batch[col]:
+                columns[col] = pyarrow.array(
+                    [x.as_py()[0] if x.as_py() else None for x in batch[col]],
+                    type=value_type,
+                )
+        else:
+            columns[col] = batch[col].cast(pyarrow.list_(value_type))
+
+    return pyarrow.table(columns)
 
 
 class _MaxListSize(AggregateFn):
