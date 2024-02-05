@@ -104,6 +104,54 @@ You can get a list of associated devices with :meth:`ray.train.torch.get_devices
     trainer.fit()
 
 
+(PyTorch) Setting the communication backend 
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+PyTorch Distributed supports multiple `backends <https://pytorch.org/docs/stable/distributed.html#backends>`__
+for communicating tensors across workers. By default Ray Train will use NCCL when ``use_gpu=True`` and Gloo otherwise.
+
+If you explictly want to override this setting, you can configure a :class:`~ray.train.torch.TorchConfig` 
+and pass it into the :class:`~ray.train.torch.TorchTrainer`.
+
+.. testcode::
+    :hide:
+
+    num_training_workers = 1
+
+.. testcode::
+
+    from ray.train.torch import TorchConfig, TorchTrainer
+
+    trainer = TorchTrainer(
+        train_func,
+        scaling_config=ScalingConfig(
+            num_workers=num_training_workers,
+            use_gpu=True, # Defaults to NCCL
+        ),
+        torch_config=TorchConfig(backend="gloo"),
+    )
+
+(NCCL) Setting the communication network interface
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+When using NCCL for distributed training, you can configure the network interface cards
+that are used for communicating between GPUs by setting the 
+`NCCL_SOCKET_IFNAME <https://docs.nvidia.com/deeplearning/nccl/user-guide/docs/env.html#nccl-socket-ifname>`__ 
+environment variable.
+
+To ensure that the environment variable is set for all training workers, you can pass it
+in a :ref:`Ray runtime environment <runtime-environments>`:
+
+.. testcode::
+    :skipif: True
+
+    import ray
+
+    runtime_env = {"env_vars": {"NCCL_SOCKET_IFNAME": "ens5"}}
+    ray.init(runtime_env=runtime_env)
+
+    trainer = TorchTrainer(...)
+
 Setting the resources per worker
 --------------------------------
 If you want to allocate more than one CPU or GPU per training worker, or if you
@@ -144,37 +192,6 @@ will be assigned the same CUDA device.
         use_gpu=True,
     )
 
-
-Setting the communication backend (PyTorch)
--------------------------------------------
-
-.. note::
-
-    This is an advanced setting. In most cases, you don't have to change this setting.
-
-You can set the PyTorch distributed communication backend (e.g. GLOO or NCCL) by passing a
-:class:`~ray.train.torch.TorchConfig` to the :class:`~ray.train.torch.TorchTrainer`.
-
-See the `PyTorch API reference <https://pytorch.org/docs/stable/distributed.html#torch.distributed.init_process_group>`__
-for valid options.
-
-.. testcode::
-    :hide:
-
-    num_training_workers = 1
-
-.. testcode::
-
-    from ray.train.torch import TorchConfig, TorchTrainer
-
-    trainer = TorchTrainer(
-        train_func,
-        scaling_config=ScalingConfig(
-            num_workers=num_training_workers,
-            use_gpu=True,
-        ),
-        torch_config=TorchConfig(backend="gloo"),
-    )
 
 
 .. _train_trainer_resources:
