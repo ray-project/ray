@@ -337,29 +337,28 @@ def test_block_location_nums(ray_start_regular_shared, restore_data_context):
     stats = canonicalize(ds.materialize().stats())
 
     assert stats == (
-        f"""Operator N ReadRange->MapBatches(dummy_map_batches): {EXECUTION_STRING}
-* Remote wall time: T min, T max, T mean, T total
-* Remote cpu time: T min, T max, T mean, T total
-* Peak heap memory usage (MiB): N min, N max, N mean
-* Output num rows per block: N min, N max, N mean, N total
-* Output size bytes per block: N min, N max, N mean, N total
-* Output rows per task: N min, N max, N mean, N tasks used
-* Tasks per node: N min, N max, N mean; N nodes used
-
-Dataset iterator time breakdown:
-* Total time overall: T
-    * Total time in Ray Data iterator initialization code: T
-    * Total time user thread is blocked by Ray Data iter_batches: T
-    * Total execution time for user thread: T
-* Batch iteration time breakdown (summed across prefetch threads):
-    * In ray.get(): T min, T max, T avg, T total
-    * In batch creation: T min, T max, T avg, T total
-    * In batch formatting: T min, T max, T avg, T total
-Block locations:
-    * Num blocks local: Z
-    * Num blocks remote: Z
-    * Num blocks unknown location: N
-"""
+        f"Operator N ReadRange->MapBatches(dummy_map_batches): {EXECUTION_STRING}\n"
+        f"* Remote wall time: T min, T max, T mean, T total\n"
+        f"* Remote cpu time: T min, T max, T mean, T total\n"
+        f"* Peak heap memory usage (MiB): N min, N max, N mean\n"
+        f"* Output num rows per block: N min, N max, N mean, N total\n"
+        f"* Output size bytes per block: N min, N max, N mean, N total\n"
+        f"* Output rows per task: N min, N max, N mean, N tasks used\n"
+        f"* Tasks per node: N min, N max, N mean; N nodes used\n"
+        f"\n"
+        f"Dataset iterator time breakdown:\n"
+        f"* Total time overall: T\n"
+        f"    * Total time in Ray Data iterator initialization code: T\n"
+        f"    * Total time user thread is blocked by Ray Data iter_batches: T\n"
+        f"    * Total execution time for user thread: T\n"
+        f"* Batch iteration time breakdown (summed across prefetch threads):\n"
+        f"    * In ray.get(): T min, T max, T avg, T total\n"
+        f"    * In batch creation: T min, T max, T avg, T total\n"
+        f"    * In batch formatting: T min, T max, T avg, T total\n"
+        f"Block locations:\n"
+        f"    * Num blocks local: Z\n"
+        f"    * Num blocks remote: Z\n"
+        f"    * Num blocks unknown location: N\n"
     )
 
 
