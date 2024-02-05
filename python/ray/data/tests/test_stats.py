@@ -202,9 +202,10 @@ Operator N split(N, equal=False): \n"""
         f"""* Extra metrics: {extra_metrics}\n"""
         """
 Dataset iterator time breakdown:
-* Total time user code is blocked: T
-* Total time in user code: T
 * Total time overall: T
+    * Total time in Ray Data iterator initialization code: T
+    * Total time user thread is blocked by Ray Data iter_batches: T
+    * Total execution time for user thread: T
 * Num blocks local: Z
 * Num blocks remote: Z
 * Num blocks unknown location: N
@@ -318,9 +319,10 @@ def test_dataset_stats_basic(
         f"* Tasks per node: N min, N max, N mean; N nodes used\n"
         f"{gen_extra_metrics_str(STANDARD_EXTRA_METRICS, verbose_stats_logs)}\n"
         f"Dataset iterator time breakdown:\n"
-        f"* Total time user code is blocked: T\n"
-        f"* Total time in user code: T\n"
         f"* Total time overall: T\n"
+        f"    * Total time in Ray Data iterator initialization code: T\n"
+        f"    * Total time user thread is blocked by Ray Data iter_batches: T\n"
+        f"    * Total execution time for user thread: T\n"
         f"* Num blocks local: Z\n"
         f"* Num blocks remote: Z\n"
         f"* Num blocks unknown location: N\n"
@@ -816,9 +818,10 @@ def test_streaming_stats_full(ray_start_regular_shared, restore_data_context):
 * Tasks per node: N min, N max, N mean; N nodes used
 
 Dataset iterator time breakdown:
-* Total time user code is blocked: T
-* Total time in user code: T
 * Total time overall: T
+    * Total time in Ray Data iterator initialization code: T
+    * Total time user thread is blocked by Ray Data iter_batches: T
+    * Total execution time for user thread: T
 * Num blocks local: Z
 * Num blocks remote: Z
 * Num blocks unknown location: N
