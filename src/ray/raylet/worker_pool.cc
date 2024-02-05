@@ -234,7 +234,6 @@ void WorkerPool::AddWorkerProcess(
 
 void WorkerPool::RemoveWorkerProcess(State &state,
                                      const StartupToken &proc_startup_token) {
-  // TODO: kill the whole process group here. killpg
   state.worker_processes.erase(proc_startup_token);
 }
 

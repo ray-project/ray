@@ -20,6 +20,7 @@
 #include <unistd.h>
 #endif
 
+#include <boost/asio.hpp>
 #include <functional>
 #include <map>
 #include <memory>
@@ -152,7 +153,7 @@ std::optional<std::vector<pid_t>> GetAllProcsWithPpid(pid_t parent_pid);
 // kill all of them. They are recognized by the fact that those processes are not created
 // via `Process` class.
 void SetupSigchldHandler(bool kill_orphan_subprocesses,
-                         boost::asio::signal_set &sigchld_signals)
+                         boost::asio::signal_set &sigchld_signals);
 
 }  // namespace ray
 

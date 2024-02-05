@@ -38,7 +38,6 @@
 
 #include <algorithm>
 #include <atomic>
-#include <boost/asio.hpp>
 #include <fstream>
 #include <string>
 #include <vector>
@@ -71,20 +70,56 @@ namespace ray {
 
 namespace {
 // Global tracker of owned child processes.
+// Only tracked in linux.
+//
 // A pid is added when a spawn is called and removed when the ProcessFD is closed (i.e.
 // it's in dtor and we no longer want to track it).
 std::mutex m;
 absl::flat_hash_set<pid_t> owned_children;
 
 void addOwnedChild(pid_t pid) {
+#ifdef __linux__
   std::lock_guard<std::mutex> guard(m);
   owned_children.insert(pid);
+#endif
 }
 
 void removeOwnedChild(pid_t pid) {
+#ifdef __linux__
   std::lock_guard<std::mutex> guard(m);
   owned_children.erase(pid);
+#endif
 }
+
+// Register a signal handler for the given signal.
+// The handler will be called with the signal_set and the error code.
+// After the handler is called, the signal will be re-registered.
+void RegisterSignalHandlerLoop(boost::asio::signal_set &signals,
+                               void (*handler)(const boost::system::error_code &, int)) {
+  signals.async_wait(
+      [&signals, handler](const boost::system::error_code &error, int signal_number) {
+        handler(error, signal_number);
+        RegisterSignalHandlerLoop(signals, handler);
+      });
+}
+
+void SigchldHandlerPlain(const boost::system::error_code &error, int signal_number) {
+  if (!error) {
+    int status;
+    pid_t pid;
+    while ((pid = waitpid(-1, &status, WNOHANG)) > 0) {
+      if (WIFEXITED(status)) {
+        RAY_LOG(INFO) << "Child process " << pid << " exited with status "
+                      << WEXITSTATUS(status);
+      } else if (WIFSIGNALED(status)) {
+        RAY_LOG(INFO) << "Child process " << pid << " exited from signal "
+                      << WTERMSIG(status);
+      }
+    }
+  }
+}
+
+#ifdef __linux__
 
 void KillUnownedChildren() {
   auto maybe_child_procs = GetAllProcsWithPpid(GetPID());
@@ -118,49 +153,11 @@ void KillUnownedChildren() {
   }
 }
 
-// Sets up a SIGCHLD handler to waitpid to reap zombie child processes.
-// If kill_orphan_subprocesses is true, this process will become a subreaper and in the
-// handler, it kills all unowned children.
-void SetThisProcessAsSubreaper(bool kill_orphan_subprocesses) {
-  if (kill_orphan_subprocesses) {
-#ifdef __linux__
-    // Set this process as a subreaper.
-    if (prctl(PR_SET_CHILD_SUBREAPER, 1) == -1) {
-      perror("prctl");
-      exit(EXIT_FAILURE);
-    }
-#else
-    RAY_LOG(FATAL) << "Killing orphan subprocesses is only supported on Linux.";
-#endif
-  }
-}
-
-// Register a signal handler for the given signal.
-// The handler will be called with the signal_set and the error code.
-// After the handler is called, the signal will be re-registered.
-void RegisterSignalHandlerLoop(boost::asio::signal_set &signals,
-                               void (*handler)(const boost::system::error_code &, int)) {
-  signals.async_wait(
-      [&signals, handler](const boost::system::error_code &error, int signal_number) {
-        handler(error, signal_number);
-        RegisterSignalHandlerLoop(signals, handler);
-      });
-}
-
-void SigchldHandlerPlain(const boost::system::error_code &error, int signal_number) {
-  if (!error) {
-    // Handle SIGCHLD (e.g., by reaping the child process with waitpid()) here
-    int status;
-    pid_t pid;
-    while ((pid = waitpid(-1, &status, WNOHANG)) > 0) {
-      if (WIFEXITED(status)) {
-        RAY_LOG(INFO) << "Child process " << pid << " exited with status "
-                      << WEXITSTATUS(status);
-      } else if (WIFSIGNALED(status)) {
-        RAY_LOG(INFO) << "Child process " << pid << " exited from signal "
-                      << WTERMSIG(status);
-      }
-    }
+// Set this process as a subreaper.
+void SetThisProcessAsSubreaper() {
+  if (prctl(PR_SET_CHILD_SUBREAPER, 1) == -1) {
+    perror("prctl");
+    exit(EXIT_FAILURE);
   }
 }
 
@@ -169,14 +166,19 @@ void SigchldHandlerKillOrphanSubprocesses(const boost::system::error_code &error
   SigchldHandlerPlain(error, signal_number);
   KillUnownedChildren();
 }
+#endif
 
 }  // namespace
 
 void SetupSigchldHandler(bool kill_orphan_subprocesses,
                          boost::asio::signal_set &sigchld_signals) {
   if (kill_orphan_subprocesses) {
+#ifdef __linux__
     SetThisProcessAsSubreaper();
     RegisterSignalHandlerLoop(sigchld_signals, SigchldHandlerKillOrphanSubprocesses);
+#else
+    RAY_LOG(FATAL) << "Killing orphan subprocesses is only supported on Linux.";
+#endif
   } else {
     RegisterSignalHandlerLoop(sigchld_signals, SigchldHandlerPlain);
   }
@@ -355,6 +357,7 @@ class ProcessFD {
       }
       _exit(errno);  // fork() succeeded and exec() failed, so abort the child
     }
+    // Parent process case
     // Use pipe to track process lifetime. (The pipe closes when process terminates.)
     fd = pipefds[0];
     if (pid == -1) {
@@ -482,7 +485,7 @@ std::error_code Process::Call(const std::vector<std::string> &args,
   }
   argv.push_back(NULL);
   std::error_code ec;
-  Process proc(&*argv.begin(), NULL, ec, true, env);
+  Process proc(&*argv.begin(), NULL, ec, env);
   if (!ec) {
     int return_code = proc.Wait();
     if (return_code != 0) {
