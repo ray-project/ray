@@ -258,7 +258,10 @@ class StreamingExecutor(Executor, threading.Thread):
         # greater parallelism.
         self._resource_manager.update_usages()
         num_errored_blocks = process_completed_tasks(
-            topology, self._resource_manager, self._backpressure_policies, self._max_errored_blocks
+            topology,
+            self._resource_manager,
+            self._backpressure_policies,
+            self._max_errored_blocks,
         )
         if self._max_errored_blocks > 0:
             self._max_errored_blocks -= num_errored_blocks
@@ -302,7 +305,9 @@ class StreamingExecutor(Executor, threading.Thread):
         if time.time() - self._last_debug_log_time >= DEBUG_LOG_INTERVAL_SECONDS:
             _log_op_metrics(topology)
             if not DEBUG_TRACE_SCHEDULING:
-                _debug_dump_topology(topology, self._resource_manager, log_to_stdout=False)
+                _debug_dump_topology(
+                    topology, self._resource_manager, log_to_stdout=False
+                )
             self._last_debug_log_time = time.time()
 
         # Log metrics of newly completed operators.
@@ -428,7 +433,9 @@ def _validate_dag(dag: PhysicalOperator, limits: ExecutionResources) -> None:
         raise ValueError(error_message.strip())
 
 
-def _debug_dump_topology(topology: Topology, resource_manager, log_to_stdout: bool = True) -> None:
+def _debug_dump_topology(
+    topology: Topology, resource_manager, log_to_stdout: bool = True
+) -> None:
     """Print out current execution state for the topology for debugging.
 
     Args:

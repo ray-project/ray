@@ -5,8 +5,8 @@ if TYPE_CHECKING:
     from ray.data._internal.execution.interfaces.physical_operator import (
         PhysicalOperator,
     )
-    from ray.data._internal.execution.streaming_executor_state import OpState, Topology
     from ray.data._internal.execution.resource_manager import ResourceManager
+    from ray.data._internal.execution.streaming_executor_state import OpState, Topology
 
 
 class BackpressurePolicy(ABC):
