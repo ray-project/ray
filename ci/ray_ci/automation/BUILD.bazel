@@ -49,7 +49,9 @@ py_test(
 py_binary(
     name = "upgrade_version",
     srcs = ["upgrade_version.py"],
+    exec_compatible_with = ["//:hermetic_python"],
     deps = [
+        ci_require("click"),
         ":upgrade_version_lib",
     ],
 )

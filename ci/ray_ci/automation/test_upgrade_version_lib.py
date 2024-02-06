@@ -1,8 +1,9 @@
 from unittest import mock
 import sys
-import pytest
 import tempfile
 import os
+
+import pytest
 
 from ci.ray_ci.automation.upgrade_version_lib import (
     list_java_files,
@@ -98,7 +99,6 @@ def _make_tmp_directories(tmp_dir):
     ],
 )
 def test_upgrade_file_version(main_version, java_version, new_version):
-
     with tempfile.TemporaryDirectory() as tmp_dir:
         _make_tmp_directories(tmp_dir)
         non_java_file_paths = [
