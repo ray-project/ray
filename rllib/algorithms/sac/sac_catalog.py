@@ -10,7 +10,7 @@ from ray.rllib.core.models.configs import (
     MLPEncoderConfig,
     MLPHeadConfig,
 )
-from ray.rllib.core.models.base import Model, Encoder
+from ray.rllib.core.models.base import Encoder, Model
 from ray.rllib.models.torch.torch_distributions import TorchSquashedGaussian
 from ray.rllib.utils.annotations import override, OverrideToImplementCustomLogic
 
@@ -70,7 +70,7 @@ class SACCatalog(Catalog):
         """Builds the Q-function encoder.
 
         In contrast to PPO, SAC needs a different encoder for Pi and
-        Q-function as the Q-function in gthe continuous case has to
+        Q-function as the Q-function in the continuous case has to
         encode actions, too. Therefore the Q-function uses its own
         encoder config.
         Note, the Pi network uses the base encoder from the `Catalog`.
