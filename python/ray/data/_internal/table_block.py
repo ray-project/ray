@@ -8,7 +8,7 @@ from ray.data._internal.block_builder import BlockBuilder
 from ray.data._internal.numpy_support import convert_udf_returns_to_numpy, is_array_like
 from ray.data._internal.size_estimator import SizeEstimator
 from ray.data.block import Block, BlockAccessor
-from ray.data.row import TableRow
+from ray.data.row import _TableRow
 
 if TYPE_CHECKING:
     from ray.data._internal.planner.exchange.sort_task_spec import SortKey
@@ -44,8 +44,8 @@ class TableBlockBuilder(BlockBuilder):
         self._num_compactions = 0
         self._block_type = block_type
 
-    def add(self, item: Union[dict, TableRow, np.ndarray]) -> None:
-        if isinstance(item, TableRow):
+    def add(self, item: Union[dict, _TableRow, np.ndarray]) -> None:
+        if isinstance(item, _TableRow):
             item = item.as_pydict()
         elif isinstance(item, np.ndarray):
             item = {TENSOR_COLUMN_NAME: item}
@@ -150,18 +150,18 @@ class TableBlockBuilder(BlockBuilder):
 
 
 class TableBlockAccessor(BlockAccessor):
-    ROW_TYPE: TableRow = TableRow
+    ROW_TYPE: _TableRow = _TableRow
 
     def __init__(self, table: Any):
         self._table = table
 
-    def _get_row(self, index: int, copy: bool = False) -> Union[TableRow, np.ndarray]:
+    def _get_row(self, index: int, copy: bool = False) -> Union[_TableRow, np.ndarray]:
         base_row = self.slice(index, index + 1, copy=copy)
         row = self.ROW_TYPE(base_row)
         return row
 
     @staticmethod
-    def _build_tensor_row(row: TableRow) -> np.ndarray:
+    def _build_tensor_row(row: _TableRow) -> np.ndarray:
         raise NotImplementedError
 
     def to_default(self) -> Block:
@@ -195,7 +195,7 @@ class TableBlockAccessor(BlockAccessor):
                 self._cur += 1
                 if self._cur < outer.num_rows():
                     row = outer._get_row(self._cur)
-                    if public_row_format and isinstance(row, TableRow):
+                    if public_row_format and isinstance(row, _TableRow):
                         return row.as_pydict()
                     else:
                         return row

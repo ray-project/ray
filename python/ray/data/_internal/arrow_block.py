@@ -34,7 +34,7 @@ from ray.data.block import (
     U,
 )
 from ray.data.context import DataContext
-from ray.data.row import TableRow
+from ray.data.row import _TableRow
 
 try:
     import pyarrow
@@ -67,7 +67,7 @@ def get_concat_and_sort_transform(context: DataContext) -> Callable:
         return transform_pyarrow.concat_and_sort
 
 
-class ArrowRow(TableRow):
+class ArrowRow(_TableRow):
     """
     Row of a tabular Dataset backed by a Arrow Table block.
     """

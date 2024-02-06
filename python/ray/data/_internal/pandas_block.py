@@ -27,7 +27,7 @@ from ray.data.block import (
     U,
 )
 from ray.data.context import DataContext
-from ray.data.row import TableRow
+from ray.data.row import _TableRow
 
 if TYPE_CHECKING:
     import pandas
@@ -50,7 +50,7 @@ def lazy_import_pandas():
     return _pandas
 
 
-class PandasRow(TableRow):
+class PandasRow(_TableRow):
     """
     Row of a tabular Dataset backed by a Pandas DataFrame block.
     """
