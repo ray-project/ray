@@ -547,7 +547,7 @@ class ReplicaActor:
                 ):
                     yield result
             else:
-                return await self._user_callable_wrapper.call_user_method(
+                yield await self._user_callable_wrapper.call_user_method(
                     request_metadata, request_args, request_kwargs
                 )
 
