@@ -1427,7 +1427,7 @@ async def test_queue_len_cache_active_probing(pow_2_scheduler):
     # Add an entry for replica "r1" -- it shouldn't be actively probed.
     r1 = FakeReplicaWrapper("r1")
     s.update_replicas([r1])
-    s.update_queue_len_cache("r1", 0)
+    s.replica_queue_len_cache.update("r1", 0)
 
     task = loop.create_task(s.choose_replica_for_request(fake_pending_request()))
     done, _ = await asyncio.wait([task], timeout=0.1)
@@ -1465,7 +1465,7 @@ async def test_queue_len_cache_replica_at_capacity_is_probed(pow_2_scheduler):
     # Add an entry for replica "r1" -- it shouldn't be actively probed.
     r1 = FakeReplicaWrapper("r1")
     s.update_replicas([r1])
-    s.update_queue_len_cache("r1", DEFAULT_MAX_CONCURRENT_REQUESTS)
+    s.replica_queue_len_cache.update("r1", DEFAULT_MAX_CONCURRENT_REQUESTS)
 
     task = loop.create_task(s.choose_replica_for_request(fake_pending_request()))
     done, _ = await asyncio.wait([task], timeout=0.1)
@@ -1499,7 +1499,7 @@ async def test_queue_len_cache_background_probing(pow_2_scheduler):
     r1 = FakeReplicaWrapper("r1")
     r2 = FakeReplicaWrapper("r2")
     s.update_replicas([r1, r2])
-    s.update_queue_len_cache("r1", 0)
+    s.replica_queue_len_cache.update("r1", 0)
 
     task = loop.create_task(s.choose_replica_for_request(fake_pending_request()))
     done, _ = await asyncio.wait([task], timeout=0.1)
