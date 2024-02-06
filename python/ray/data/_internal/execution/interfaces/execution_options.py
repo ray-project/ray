@@ -24,6 +24,7 @@ class ExecutionResources:
     object_store_memory: Optional[int] = None
 
     ZERO = ExecutionResources(0, 0, 0)
+    INF = ExecutionResources(float("inf"), float("inf"), float("inf"))
 
     def object_store_memory_str(self) -> str:
         """Returns a human-readable string for the object store memory field."""

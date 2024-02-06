@@ -174,37 +174,52 @@ class ReservationOpResourceLimiter(OpResourceLimiter):
         self._eligible_ops = list(
             op for op in self._resource_manager._topology if isinstance(op, MapOperator)
         )
+        self._op_reserved: Dict[PhysicalOperator, ExecutionResources] = {}
+        self._total_shared = ExecutionResources.ZERO
         self._op_available: Dict[PhysicalOperator, ExecutionResources] = {}
         assert 0.0 <= self._reservation_ratio <= 1.0
 
-    def update_usages(self):
+    def on_global_limits_changed(self, global_limits: ExecutionResources):
         num_ops = len(self._eligible_ops)
-        global_limits = self._resource_manager.get_global_limits()
         # Per-op reserved resources.
-        reserved = global_limits.scale(self._reservation_ratio / num_ops)
+        default_reserved = global_limits.scale(self._reservation_ratio / num_ops)
         # Total shared resources.
-        shared = global_limits.scale(1.0 - self._reservation_ratio)
+        self._total_shared = global_limits.scale(1.0 - self._reservation_ratio)
 
-        self._op_available.clear()
-        for op in self._resource_manager._topology:
-            if isinstance(op, InputDataBuffer):
-                continue
-            op_usage = self._resource_manager.get_op_usage(op)
-            op_reserved = reserved.min(op.incremental_resource_usage())
-            op_reserved_remaining = op_reserved.subtract(op_usage).min(
-                ExecutionResources.ZERO
+        for op in self._eligible_ops:
+            self._op_reserved[op] = default_reserved.min(
+                op.incremental_resource_usage()
             )
-            op_reserved_exceeded = op_usage.subtract(op_reserved)
-            self._op_available[op] = op_reserved_remaining
-            shared = shared.subtract(op_reserved_exceeded)
 
-        num_total_ops = len(self._resource_manager._topology) - 1
-        shared_divided = shared.min(ExecutionResources.ZERO).scale(1.0 / num_total_ops)
+    def update_usages(self):
+        self._op_available.clear()
+        shared = self._total_shared
         for op in self._resource_manager._topology:
+            op_usage = self._resource_manager.get_op_usage(op)
+            if op in self._eligible_ops:
+                op_reserved = self._op_reserved[op]
+                op_reserved_remaining = op_reserved.subtract(op_usage).min(
+                    ExecutionResources.ZERO
+                )
+                op_reserved_exceeded = op_usage.subtract(op_reserved).min(
+                    ExecutionResources.ZERO
+                )
+                self._op_available[op] = op_reserved_remaining
+                shared = shared.subtract(op_reserved_exceeded)
+            else:
+                shared = shared.subtract(op_usage)
+
+        shared_divided = shared.min(ExecutionResources.ZERO).scale(
+            1.0 / len(self._eligible_ops)
+        )
+        for op in self._eligible_ops:
             self._op_available[op] = self._op_available[op].add(shared_divided)
             self._op_available[op].gpu = None
 
         return
 
     def get_op_available(self, op: PhysicalOperator) -> ExecutionResources:
-        return self._op_available[op]
+        if op in self._op_available:
+            return self._op_available[op]
+        else:
+            return ExecutionResources.INF
