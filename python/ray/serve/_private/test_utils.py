@@ -26,7 +26,9 @@ STORAGE_ACTOR_NAME = "storage"
 class MockTimer(TimerBase):
     def __init__(self, start_time: Optional[float] = None):
         self._lock = threading.Lock()
+        self.reset(start_time=start_time)
 
+    def reset(self, start_time: Optional[float] = None):
         if start_time is None:
             start_time = time.time()
         self._curr = start_time

@@ -5,6 +5,7 @@ import math
 import random
 import time
 from collections import defaultdict, deque
+from dataclasses import dataclass
 from typing import (
     AsyncGenerator,
     Callable,
@@ -41,6 +42,12 @@ class LocalityScope(str, enum.Enum):
     AVAILABILITY_ZONE = "AVAILABILITY_ZONE"
 
 
+@dataclass(frozen=True)
+class ReplicaQueueLengthCacheEntry:
+    queue_len: int
+    timestamp: float
+
+
 class ReplicaQueueLengthCache:
     def __init__(
         self,
@@ -48,8 +55,7 @@ class ReplicaQueueLengthCache:
         staleness_timeout_s: float = RAY_SERVE_QUEUE_LENGTH_CACHE_STALENESS_TIMEOUT_S,
         get_curr_time_s: Optional[Callable[[], float]] = None,
     ):
-        # Map of replica_id: (queue_len, timestamp).
-        self._cache: Dict[str, Tuple[int, float]] = {}
+        self._cache: Dict[str, ReplicaQueueLengthCacheEntry] = {}
         self._staleness_timeout_s = staleness_timeout_s
         self._get_curr_time_s = (
             get_curr_time_s if get_curr_time_s is not None else time.time
@@ -63,15 +69,17 @@ class ReplicaQueueLengthCache:
 
         Returns `None` if the replica ID is not present or the entry is timed out.
         """
-        replica_info = self._cache.get(replica_id)
-        if replica_info is None or self._is_timed_out(replica_info[1]):
+        entry = self._cache.get(replica_id)
+        if entry is None or self._is_timed_out(entry.timestamp):
             return None
 
-        return replica_info[0]
+        return entry.queue_len
 
     def update(self, replica_id: str, queue_len: int):
         """Set (or update) the queue length for a replica ID."""
-        self._cache[replica_id] = (queue_len, self._get_curr_time_s())
+        self._cache[replica_id] = ReplicaQueueLengthCacheEntry(
+            queue_len, self._get_curr_time_s()
+        )
 
     def remove_inactive_replicas(self, *, active_replica_ids: Set[str]):
         """Removes entries for all replica IDs not in the provided active set."""
@@ -130,6 +138,7 @@ class PowerOfTwoChoicesReplicaScheduler(ReplicaScheduler):
         self_actor_id: Optional[str] = None,
         self_availability_zone: Optional[str] = None,
         use_replica_queue_len_cache: bool = False,
+        get_curr_time_s: Optional[Callable[[], float]] = None,
     ):
         self._loop = event_loop
         self._deployment_id = deployment_id
@@ -143,7 +152,9 @@ class PowerOfTwoChoicesReplicaScheduler(ReplicaScheduler):
         # Updated via `update_replicas`.
         self._replica_id_set: Set[str] = set()
         self._replicas: Dict[str, ReplicaWrapper] = {}
-        self._replica_queue_len_cache = ReplicaQueueLengthCache()
+        self._replica_queue_len_cache = ReplicaQueueLengthCache(
+            get_curr_time_s=get_curr_time_s,
+        )
 
         # NOTE(edoakes): Python 3.10 removed the `loop` parameter to `asyncio.Event`.
         # Now, the `asyncio.Event` will call `get_running_loop` in its constructor to

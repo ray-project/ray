@@ -10,8 +10,12 @@ from typing import Optional, Set, Union
 import pytest
 
 import ray
+from ray._private.test_utils import async_wait_for_condition
 from ray._private.utils import get_or_create_event_loop
 from ray.serve._private.common import DeploymentID, RequestMetadata
+from ray.serve._private.constants import (
+    RAY_SERVE_QUEUE_LENGTH_CACHE_STALENESS_TIMEOUT_S,
+)
 from ray.serve._private.replica_scheduler import (
     PendingRequest,
     PowerOfTwoChoicesReplicaScheduler,
@@ -19,6 +23,8 @@ from ray.serve._private.replica_scheduler import (
 )
 from ray.serve._private.replica_scheduler.pow_2_scheduler import ReplicaQueueLengthCache
 from ray.serve._private.test_utils import MockTimer
+
+TIMER = MockTimer()
 
 DEFAULT_MAX_CONCURRENT_REQUESTS = 10
 SCHEDULER_NODE_ID = "scheduler_node_id"
@@ -121,7 +127,10 @@ def pow_2_scheduler(request) -> PowerOfTwoChoicesReplicaScheduler:
             self_node_id=SCHEDULER_NODE_ID,
             self_actor_id="fake-actor-id",
             self_availability_zone=request.param.get("az", None),
-            use_replica_queue_len_cache=False,
+            use_replica_queue_len_cache=request.param.get(
+                "use_replica_queue_len_cache", False
+            ),
+            get_curr_time_s=TIMER.time,
         )
 
     s = asyncio.new_event_loop().run_until_complete(
@@ -133,6 +142,9 @@ def pow_2_scheduler(request) -> PowerOfTwoChoicesReplicaScheduler:
     os.environ.update({"RAY_SERVE_MULTIPLEXED_MODEL_ID_MATCHING_TIMEOUT_S": "0.01"})
     importlib.reload(ray.serve._private.constants)
     importlib.reload(ray.serve._private.replica_scheduler.pow_2_scheduler)
+
+    # Reset mock timer to avoid state leakage.
+    TIMER.reset()
 
     yield s
 
@@ -1357,11 +1369,12 @@ async def test_replicas_updated_event_on_correct_loop(pow_2_scheduler):
 
 
 @pytest.mark.asyncio
-async def test_replica_queue_length_cache():
-    timer = MockTimer()
+async def test_queue_len_cache():
+    TIMER.reset()
+
     staleness_timeout_s = 10.0
     c = ReplicaQueueLengthCache(
-        staleness_timeout_s=staleness_timeout_s, get_curr_time_s=timer.time
+        staleness_timeout_s=staleness_timeout_s, get_curr_time_s=TIMER.time
     )
 
     # Get nonexistent key.
@@ -1372,7 +1385,7 @@ async def test_replica_queue_length_cache():
     assert c.get("replica-id-1") == 123
 
     # Get timed out key.
-    timer.advance(staleness_timeout_s + 1)
+    TIMER.advance(staleness_timeout_s + 1)
     assert c.get("replica-id-1") is None
 
     # Reset timed out key.
@@ -1395,6 +1408,118 @@ async def test_replica_queue_length_cache():
             c.get("replica-id-4") is None,
         ]
     )
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "pow_2_scheduler",
+    [
+        {"use_replica_queue_len_cache": True},
+    ],
+    indirect=True,
+)
+async def test_queue_len_cache_active_probing(pow_2_scheduler):
+    """
+    Verify that if a replica has a valid queue entry, it is not actively probed.
+    """
+    s = pow_2_scheduler
+    loop = get_or_create_event_loop()
+    staleness_timeout_s = RAY_SERVE_QUEUE_LENGTH_CACHE_STALENESS_TIMEOUT_S
+
+    # Add an entry for replica "r1" -- it shouldn't be actively probed.
+    r1 = FakeReplicaWrapper("r1")
+    s.update_replicas([r1])
+    s.update_queue_len_cache("r1", 0)
+
+    task = loop.create_task(s.choose_replica_for_request(fake_pending_request()))
+    done, _ = await asyncio.wait([task], timeout=0.1)
+    assert len(done) == 1
+    assert (await task) == r1
+    assert len(r1.queue_len_deadline_history) == 0
+
+    # Now time out the entry in the cache -- replica should be probed.
+    TIMER.advance(staleness_timeout_s + 1)
+    r1.set_queue_len_response(0)
+
+    task = loop.create_task(s.choose_replica_for_request(fake_pending_request()))
+    done, _ = await asyncio.wait([task], timeout=0.1)
+    assert len(done) == 1
+    assert (await task) == r1
+    assert len(r1.queue_len_deadline_history) == 1
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "pow_2_scheduler",
+    [
+        {"use_replica_queue_len_cache": True},
+    ],
+    indirect=True,
+)
+async def test_queue_len_cache_replica_at_capacity_is_probed(pow_2_scheduler):
+    """
+    Verify that if a replica has a cache entry but is at max_concurrent_queries, it's
+    actively probed.
+    """
+    s = pow_2_scheduler
+    loop = get_or_create_event_loop()
+
+    # Add an entry for replica "r1" -- it shouldn't be actively probed.
+    r1 = FakeReplicaWrapper("r1")
+    s.update_replicas([r1])
+    s.update_queue_len_cache("r1", DEFAULT_MAX_CONCURRENT_REQUESTS)
+
+    task = loop.create_task(s.choose_replica_for_request(fake_pending_request()))
+    done, _ = await asyncio.wait([task], timeout=0.1)
+    assert len(done) == 0
+    assert len(r1.queue_len_deadline_history) == 1
+
+    # Now let the replica respond and accept the request, it should be scheduled.
+    r1.set_queue_len_response(DEFAULT_MAX_CONCURRENT_REQUESTS - 1)
+    done, _ = await asyncio.wait([task], timeout=0.1)
+    assert len(done) == 1
+    assert (await task) == r1
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "pow_2_scheduler",
+    [
+        {"use_replica_queue_len_cache": True},
+    ],
+    indirect=True,
+)
+async def test_queue_len_cache_background_probing(pow_2_scheduler):
+    """
+    Verify that if there are two replicas, one with a valid queue entry and one without,
+    the one in the queue is chosen and the other is probed in the background.
+    """
+    s = pow_2_scheduler
+    loop = get_or_create_event_loop()
+
+    # Add an entry for replica "r1" -- it shouldn't be actively probed.
+    r1 = FakeReplicaWrapper("r1")
+    r2 = FakeReplicaWrapper("r2")
+    s.update_replicas([r1, r2])
+    s.update_queue_len_cache("r1", 0)
+
+    task = loop.create_task(s.choose_replica_for_request(fake_pending_request()))
+    done, _ = await asyncio.wait([task], timeout=0.1)
+    assert len(done) == 1
+    assert (await task) == r1
+    assert len(r1.queue_len_deadline_history) == 0
+
+    r2.set_queue_len_response(3)
+
+    def r2_was_probed():
+        # Check that r2 was probed and the response was added to the cache.
+        assert (
+            len(r2.queue_len_deadline_history) == 1
+            and s._replica_queue_len_cache.get("r2") == 3
+        )
+        return True
+
+    await async_wait_for_condition(r2_was_probed)
 
 
 if __name__ == "__main__":
