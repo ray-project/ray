@@ -519,7 +519,6 @@ def _fetch_metadata_serialization_wrapper(
         description="fetch metdata",
         match=RETRY_EXCEPTIONS_FOR_META_FETCH_TASK,
         max_attempts=32,
-        max_backoff_s=32,
     )
     return metadata
 
