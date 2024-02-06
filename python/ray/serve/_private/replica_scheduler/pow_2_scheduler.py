@@ -48,7 +48,7 @@ class ReplicaQueueLengthCache:
         staleness_timeout_s: float = RAY_SERVE_QUEUE_LENGTH_CACHE_STALENESS_TIMEOUT_S,
         get_curr_time_s: Optional[Callable[[], float]] = None,
     ):
-        # Map of replica_id: (queue_length, timestamp).
+        # Map of replica_id: (queue_len, timestamp).
         self._cache: Dict[str, Tuple[int, float]] = {}
         self._staleness_timeout_s = staleness_timeout_s
         self._get_curr_time_s = (
@@ -69,9 +69,9 @@ class ReplicaQueueLengthCache:
 
         return replica_info[0]
 
-    def update(self, replica_id: str, queue_length: int):
+    def update(self, replica_id: str, queue_len: int):
         """Set (or update) the queue length for a replica ID."""
-        self._cache[replica_id] = (queue_length, self._get_curr_time_s())
+        self._cache[replica_id] = (queue_len, self._get_curr_time_s())
 
     def remove_inactive_replicas(self, *, active_replica_ids: Set[str]):
         """Removes entries for all replica IDs not in the provided active set."""
@@ -88,7 +88,7 @@ class PowerOfTwoChoicesReplicaScheduler(ReplicaScheduler):
     When a request comes in, two candidate replicas are chosen randomly. Each replica
     is sent a control message to fetch its queue length.
 
-    The replica responds with two items: (queue_length, accepted). Only replicas that
+    The replica responds with two items: (queue_len, accepted). Only replicas that
     accept the request are considered; between those, the one with the lower queue
     length is chosen.
 
@@ -256,6 +256,9 @@ class PowerOfTwoChoicesReplicaScheduler(ReplicaScheduler):
     @property
     def app_name(self) -> str:
         return self._deployment_id.app
+
+    def update_queue_len_cache(self, replica_id: str, queue_len: int):
+        self._replica_queue_len_cache.update(replica_id, queue_len)
 
     def update_replicas(self, replicas: List[ReplicaWrapper]):
         """Update the set of available replicas to be considered for scheduling.

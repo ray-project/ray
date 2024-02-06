@@ -4,10 +4,15 @@ import pickle
 import time
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
-from typing import Any, Dict, List, Optional, Set, Union
+from typing import Any, Dict, List, Optional, Set, Tuple, Union
 
 import ray
-from ray.serve._private.common import RequestMetadata, RunningReplicaInfo
+from ray import ObjectRef, ObjectRefGenerator
+from ray.serve._private.common import (
+    ReplicaQueueLengthInfo,
+    RequestMetadata,
+    RunningReplicaInfo,
+)
 from ray.serve._private.constants import SERVE_LOGGER_NAME
 from ray.serve._private.utils import JavaActorHandleProxy
 from ray.serve.generated.serve_pb2 import RequestMetadata as RequestMetadataProto
@@ -56,9 +61,7 @@ class ReplicaWrapper(ABC):
         """
         pass
 
-    def send_request(
-        self, pr: PendingRequest
-    ) -> Union[ray.ObjectRef, "ray._raylet.ObjectRefGenerator"]:
+    def send_request(self, pr: PendingRequest) -> Union[ObjectRef, ObjectRefGenerator]:
         """Send request to this replica."""
         pass
 
@@ -108,7 +111,7 @@ class ActorReplicaWrapper:
             ray.cancel(obj_ref)
             raise
 
-    def _send_request_java(self, pr: PendingRequest) -> ray.ObjectRef:
+    def _send_request_java(self, pr: PendingRequest) -> ObjectRef:
         """Send the request to a Java replica.
 
         Does not currently support streaming.
@@ -133,7 +136,7 @@ class ActorReplicaWrapper:
 
     def _send_request_python(
         self, pr: PendingRequest, *, with_rejection: bool
-    ) -> Union[ray.ObjectRef, "ray._raylet.ObjectRefGenerator"]:
+    ) -> Union[ray.ObjectRef, ObjectRefGenerator]:
         """Send the request to a Python replica."""
         if with_rejection:
             # Call a separate handler that may reject the request.
@@ -153,11 +156,30 @@ class ActorReplicaWrapper:
 
     def send_request(
         self, pr: PendingRequest, *, with_rejection: bool = False
-    ) -> Union[ray.ObjectRef, "ray._raylet.ObjectRefGenerator"]:
+    ) -> Union[ObjectRef, ObjectRefGenerator]:
         if self._replica_info.is_cross_language:
             return self._send_request_java(pr)
         else:
-            return self._send_request_python(pr, with_rejection=with_rejection)
+            return self._send_request_python(pr)
+
+    async def send_request_with_rejection(
+        self,
+        pr: PendingRequest,
+    ) -> Tuple[Optional[Union[ObjectRef, ObjectRefGenerator]], ReplicaQueueLengthInfo]:
+        assert not self._replica_info.is_cross_language
+        obj_ref_gen = self._send_request_python(pr, with_rejection=True)
+
+        first_ref = await obj_ref_gen.__anext__()
+        queue_len_info: ReplicaQueueLengthInfo = pickle.loads(await first_ref)
+
+        if not queue_len_info.accepted:
+            return None, queue_len_info
+        elif pr.metadata.is_streaming:
+            return obj_ref_gen, queue_len_info
+        else:
+            # For non-streaming requests, resolve the generator to its next
+            # object ref, which will contain the unary response.
+            return await obj_ref_gen.__anext__(), queue_len_info
 
 
 class ReplicaScheduler(ABC):
@@ -176,6 +198,10 @@ class ReplicaScheduler(ABC):
     def update_running_replicas(self, running_replicas: List[RunningReplicaInfo]):
         """Compatibility shim for RunningReplicaInfo datatype."""
         return self.update_replicas([ActorReplicaWrapper(r) for r in running_replicas])
+
+    @abstractmethod
+    def update_queue_len_cache(self, replica_id: str, queue_len: int):
+        pass
 
     @property
     @abstractmethod

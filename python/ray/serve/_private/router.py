@@ -303,9 +303,6 @@ class Router:
         system_response: ReplicaQueueLengthInfo = pickle.loads(
             await system_response_ref
         )
-        self._replica_queue_len_cache.update(
-            replica_id, system_response.num_ongoing_requests
-        )
         return system_response.accepted
 
     async def schedule_and_send_request(
@@ -329,18 +326,17 @@ class Router:
             return replica.send_request(pr, with_rejection=False), replica_id
 
         while True:
-            obj_ref_gen = replica.send_request(pr, with_rejection=True)
-            accepted = await self._handle_system_response(replica_id, obj_ref_gen)
-            if accepted:
-                if pr.metadata.is_streaming:
-                    return obj_ref_gen, replica_id
-                else:
-                    # For non-streaming requests, resolve the generator to its next
-                    # object ref, which will contain the unary response.
-                    return await obj_ref_gen.__anext__(), replica_id
+            obj_ref_or_gen, queue_len_info = await replica.send_request_with_rejection(
+                pr
+            )
+            self._replica_scheduler.update_queue_len_cache(
+                replica_id, queue_len_info.num_ongoing_requests
+            )
+            if queue_len_info.accepted:
+                return obj_ref_or_gen, replica_id
 
-            # If the replica rejects the request, retry the scheduling process.
-            # Place the request on the front of the queue to avoid tail latencies.
+            # If the replica rejects the request, retry the scheduling process. The
+            # request will be placed on the front of the queue to avoid tail latencies.
             # TODO(edoakes): this retry procedure is not perfect because it'll reset the
             # process of choosing candidates replicas (i.e., for locality-awareness).
             replica = await self.choose_replica_for_request(pr, is_retry=True)
