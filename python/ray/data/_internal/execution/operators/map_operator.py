@@ -416,14 +416,36 @@ def _map_task(
     DataContext._set_current(data_context)
     stats = BlockExecStats.builder()
     map_transformer.set_target_max_block_size(ctx.target_max_block_size)
-    for b_out in map_transformer.apply_transform(iter(blocks), ctx):
-        # TODO(Clark): Add input file propagation from input blocks.
-        m_out = BlockAccessor.for_block(b_out).get_metadata([], None)
-        m_out.exec_stats = stats.build()
-        m_out.exec_stats.task_idx = ctx.task_idx
-        yield b_out
-        yield m_out
-        stats = BlockExecStats.builder()
+    try:
+        for b_out in map_transformer.apply_transform(iter(blocks), ctx):
+            # TODO(Clark): Add input file propagation from input blocks.
+            m_out = BlockAccessor.for_block(b_out).get_metadata([], None)
+            m_out.exec_stats = stats.build()
+            m_out.exec_stats.task_idx = ctx.task_idx
+            yield b_out
+            yield m_out
+            stats = BlockExecStats.builder()
+    except Exception as ex:
+        RAY_DATA_INTERNAL_STACKTRACE_PREFIX = "ray/data/_internal"
+        # print("===> exception from udf map:", ex)
+        # print("===> traceback:", ex.__traceback__)
+        # print(str(ex))
+        # print("===> traceback.format_exception:",
+        #     traceback.format_exception(ex, ex, tb=ex.__traceback__)
+        # )
+        import sys
+
+        # TODO(scottjlee): replace sys.exc_info() with ex
+        assert ex is not None
+        ex_cls, ex_val, tb = sys.exc_info()
+        while tb is not None:
+            # print(ex_cls, ex_val, tb.tb_frame)
+            call_path = tb.tb_frame.f_code.co_filename
+            if RAY_DATA_INTERNAL_STACKTRACE_PREFIX not in call_path:
+                raise ex_cls(ex_val).with_traceback(tb) from None
+            print("===> skipping stack frame:", call_path, tb.tb_frame)
+            tb = tb.tb_next
+        raise ex_cls(ex_val)
 
 
 class _BlockRefBundler:
