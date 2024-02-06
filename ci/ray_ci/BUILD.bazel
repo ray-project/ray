@@ -9,6 +9,7 @@ py_library(
             "test_*.py",
             "test_in_docker.py",
             "build_in_docker.py",
+            "upgrade_version.py",
         ],
     ),
     visibility = ["//ci/ray_ci:__subpackages__"],
@@ -214,6 +215,7 @@ py_test(
         ":ray_ci_lib",
         ":ray_ci_lib_test",
         ci_require("pytest"),
+        "upgrade_version",
     ],
 )
 

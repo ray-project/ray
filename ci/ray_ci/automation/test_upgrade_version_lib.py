@@ -4,7 +4,7 @@ import pytest
 import tempfile
 import os
 
-from ci.ray_ci.upgrade_version import (
+from ci.ray_ci.automation.upgrade_version_lib import (
     list_java_files,
     get_current_version,
     upgrade_file_version,
@@ -39,7 +39,7 @@ def test_list_java_files():
         )
 
 
-@mock.patch("ci.ray_ci.upgrade_version.get_check_output")
+@mock.patch("ci.ray_ci.automation.upgrade_version_lib.get_check_output")
 def test_get_current_version_from_master_branch_version(mock_check_output):
     mock_check_output.return_value = (
         "3.0.0.dev0 a123456dc1d2egd345a6789f1e23d45b678c90ed"
@@ -50,7 +50,7 @@ def test_get_current_version_from_master_branch_version(mock_check_output):
     )
 
 
-@mock.patch("ci.ray_ci.upgrade_version.get_check_output")
+@mock.patch("ci.ray_ci.automation.upgrade_version_lib.get_check_output")
 def test_get_current_version_from_changed_version(mock_check_output):
     mock_check_output.return_value = "2.2.0 a123456dc1d2egd345a6789f1e23d45b678c90ed"
 
