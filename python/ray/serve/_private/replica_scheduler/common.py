@@ -4,7 +4,7 @@ import pickle
 import time
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
-from typing import Any, Dict, List, Optional, Set, Tuple, Union
+from typing import Any, Callable, Dict, List, Optional, Set, Tuple, Union
 
 import ray
 from ray import ObjectRef, ObjectRefGenerator
@@ -13,7 +13,10 @@ from ray.serve._private.common import (
     RequestMetadata,
     RunningReplicaInfo,
 )
-from ray.serve._private.constants import SERVE_LOGGER_NAME
+from ray.serve._private.constants import (
+    RAY_SERVE_QUEUE_LENGTH_CACHE_TIMEOUT_S,
+    SERVE_LOGGER_NAME,
+)
 from ray.serve._private.utils import JavaActorHandleProxy
 from ray.serve.generated.serve_pb2 import RequestMetadata as RequestMetadataProto
 
@@ -184,6 +187,53 @@ class ActorReplicaWrapper:
             return await obj_ref_gen.__anext__(), queue_len_info
 
 
+@dataclass(frozen=True)
+class ReplicaQueueLengthCacheEntry:
+    queue_len: int
+    timestamp: float
+
+
+class ReplicaQueueLengthCache:
+    def __init__(
+        self,
+        *,
+        staleness_timeout_s: float = RAY_SERVE_QUEUE_LENGTH_CACHE_TIMEOUT_S,
+        get_curr_time_s: Optional[Callable[[], float]] = None,
+    ):
+        self._cache: Dict[str, ReplicaQueueLengthCacheEntry] = {}
+        self._staleness_timeout_s = staleness_timeout_s
+        self._get_curr_time_s = (
+            get_curr_time_s if get_curr_time_s is not None else time.time
+        )
+
+    def _is_timed_out(self, timestamp_s: int) -> bool:
+        return self._get_curr_time_s() - timestamp_s > self._staleness_timeout_s
+
+    def get(self, replica_id: str) -> Optional[int]:
+        """Get the queue length for a replica ID.
+
+        Returns `None` if the replica ID is not present or the entry is timed out.
+        """
+        entry = self._cache.get(replica_id)
+        if entry is None or self._is_timed_out(entry.timestamp):
+            return None
+
+        return entry.queue_len
+
+    def update(self, replica_id: str, queue_len: int):
+        """Set (or update) the queue length for a replica ID."""
+        self._cache[replica_id] = ReplicaQueueLengthCacheEntry(
+            queue_len, self._get_curr_time_s()
+        )
+
+    def remove_inactive_replicas(self, *, active_replica_ids: Set[str]):
+        """Removes entries for all replica IDs not in the provided active set."""
+        # NOTE: the size of the cache dictionary changes during this loop.
+        for replica_id in list(self._cache.keys()):
+            if replica_id not in active_replica_ids:
+                self._cache.pop(replica_id)
+
+
 class ReplicaScheduler(ABC):
     """Abstract interface for a replica scheduler (how the router calls it)."""
 
@@ -201,8 +251,9 @@ class ReplicaScheduler(ABC):
         """Compatibility shim for RunningReplicaInfo datatype."""
         return self.update_replicas([ActorReplicaWrapper(r) for r in running_replicas])
 
+    @property
     @abstractmethod
-    def update_queue_len_cache(self, replica_id: str, queue_len: int):
+    def replica_queue_len_cache(self) -> ReplicaQueueLengthCache:
         pass
 
     @property

@@ -1,6 +1,5 @@
 import asyncio
 import logging
-import pickle
 import threading
 import time
 from collections import defaultdict
@@ -11,12 +10,7 @@ import ray
 from ray._private.utils import load_class
 from ray.actor import ActorHandle
 from ray.dag.py_obj_scanner import _PyObjScanner
-from ray.serve._private.common import (
-    DeploymentID,
-    ReplicaQueueLengthInfo,
-    RequestMetadata,
-    RunningReplicaInfo,
-)
+from ray.serve._private.common import DeploymentID, RequestMetadata, RunningReplicaInfo
 from ray.serve._private.constants import (
     HANDLE_METRIC_PUSH_INTERVAL_S,
     RAY_SERVE_COLLECT_AUTOSCALING_METRICS_ON_HANDLE,
@@ -292,16 +286,6 @@ class Router:
             # Make the scanner GC-able to avoid memory leaks.
             scanner.clear()
 
-    async def _handle_system_response(
-        self, replica_id: str, obj_ref_gen: "ray._raylet.ObjectRefGenerator"
-    ) -> bool:
-        # TODO: put this in the wrapper maybe?
-        system_response_ref = await obj_ref_gen.__anext__()
-        system_response: ReplicaQueueLengthInfo = pickle.loads(
-            await system_response_ref
-        )
-        return system_response.accepted
-
     async def schedule_and_send_request(
         self, pr: PendingRequest
     ) -> Tuple[Union[ray.ObjectRef, "ray._raylet.ObjectRefGenerator"], str]:
@@ -327,7 +311,7 @@ class Router:
                 pr
             )
             if RAY_SERVE_ENABLE_QUEUE_LENGTH_CACHE:
-                self._replica_scheduler.update_queue_len_cache(
+                self._replica_scheduler.replica_queue_len_cache.update(
                     replica_id, queue_len_info.num_ongoing_requests
                 )
             if queue_len_info.accepted:

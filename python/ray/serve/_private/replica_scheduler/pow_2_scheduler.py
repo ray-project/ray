@@ -5,7 +5,6 @@ import math
 import random
 import time
 from collections import defaultdict, deque
-from dataclasses import dataclass
 from typing import (
     AsyncGenerator,
     Callable,
@@ -23,12 +22,12 @@ from ray.serve._private.common import DeploymentID, RequestMetadata, RunningRepl
 from ray.serve._private.constants import (
     RAY_SERVE_MAX_QUEUE_LENGTH_RESPONSE_DEADLINE_S,
     RAY_SERVE_MULTIPLEXED_MODEL_ID_MATCHING_TIMEOUT_S,
-    RAY_SERVE_QUEUE_LENGTH_CACHE_TIMEOUT_S,
     RAY_SERVE_QUEUE_LENGTH_RESPONSE_DEADLINE_S,
     SERVE_LOGGER_NAME,
 )
 from ray.serve._private.replica_scheduler.common import (
     PendingRequest,
+    ReplicaQueueLengthCache,
     ReplicaScheduler,
     ReplicaWrapper,
 )
@@ -40,53 +39,6 @@ logger = logging.getLogger(SERVE_LOGGER_NAME)
 class LocalityScope(str, enum.Enum):
     NODE = "NODE"
     AVAILABILITY_ZONE = "AVAILABILITY_ZONE"
-
-
-@dataclass(frozen=True)
-class ReplicaQueueLengthCacheEntry:
-    queue_len: int
-    timestamp: float
-
-
-class ReplicaQueueLengthCache:
-    def __init__(
-        self,
-        *,
-        staleness_timeout_s: float = RAY_SERVE_QUEUE_LENGTH_CACHE_TIMEOUT_S,
-        get_curr_time_s: Optional[Callable[[], float]] = None,
-    ):
-        self._cache: Dict[str, ReplicaQueueLengthCacheEntry] = {}
-        self._staleness_timeout_s = staleness_timeout_s
-        self._get_curr_time_s = (
-            get_curr_time_s if get_curr_time_s is not None else time.time
-        )
-
-    def _is_timed_out(self, timestamp_s: int) -> bool:
-        return self._get_curr_time_s() - timestamp_s > self._staleness_timeout_s
-
-    def get(self, replica_id: str) -> Optional[int]:
-        """Get the queue length for a replica ID.
-
-        Returns `None` if the replica ID is not present or the entry is timed out.
-        """
-        entry = self._cache.get(replica_id)
-        if entry is None or self._is_timed_out(entry.timestamp):
-            return None
-
-        return entry.queue_len
-
-    def update(self, replica_id: str, queue_len: int):
-        """Set (or update) the queue length for a replica ID."""
-        self._cache[replica_id] = ReplicaQueueLengthCacheEntry(
-            queue_len, self._get_curr_time_s()
-        )
-
-    def remove_inactive_replicas(self, *, active_replica_ids: Set[str]):
-        """Removes entries for all replica IDs not in the provided active set."""
-        # NOTE: the size of the cache dictionary changes during this loop.
-        for replica_id in list(self._cache.keys()):
-            if replica_id not in active_replica_ids:
-                self._cache.pop(replica_id)
 
 
 class PowerOfTwoChoicesReplicaScheduler(ReplicaScheduler):
@@ -269,8 +221,8 @@ class PowerOfTwoChoicesReplicaScheduler(ReplicaScheduler):
     def app_name(self) -> str:
         return self._deployment_id.app
 
-    def update_queue_len_cache(self, replica_id: str, queue_len: int):
-        self._replica_queue_len_cache.update(replica_id, queue_len)
+    def replica_queue_len_cache(self) -> ReplicaQueueLengthCache:
+        return self._replica_queue_len_cache
 
     def update_replicas(self, replicas: List[ReplicaWrapper]):
         """Update the set of available replicas to be considered for scheduling.
