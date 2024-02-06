@@ -409,7 +409,7 @@ class ReplicaActor:
         """Entrypoint for `stream=False` calls."""
         request_metadata = pickle.loads(pickled_request_metadata)
         with self._wrap_user_method_call(request_metadata):
-            yield await self.handle_request(
+            yield await self._user_callable_wrapper.call_user_method(
                 request_metadata, *request_args, **request_kwargs
             )
 
