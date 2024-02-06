@@ -1,6 +1,7 @@
 import asyncio
 import importlib
 import os
+import random
 import sys
 import time
 import uuid
@@ -140,27 +141,29 @@ def pow_2_scheduler(request) -> PowerOfTwoChoicesReplicaScheduler:
     assert s.num_pending_requests == 0
 
 
-def fake_pending_request() -> PendingRequest:
-    return PendingRequest(
-        args=list(),
-        kwargs=dict(),
-        metadata=RequestMetadata(
-            request_id=str(uuid.uuid4()),
-            endpoint="endpoint",
-        ),
-    )
-
-
-def pending_request_with_model_id(model_id: str) -> PendingRequest:
-    return PendingRequest(
-        args=list(),
-        kwargs=dict(),
-        metadata=RequestMetadata(
-            request_id=str(uuid.uuid4()),
-            endpoint="endpoint",
-            multiplexed_model_id=model_id,
-        ),
-    )
+def fake_pending_request(
+    *, created_at: Optional[float] = None, model_id: str = ""
+) -> PendingRequest:
+    if created_at is not None:
+        return PendingRequest(
+            args=list(),
+            kwargs=dict(),
+            metadata=RequestMetadata(
+                request_id=str(uuid.uuid4()),
+                endpoint="endpoint",
+                multiplexed_model_id=model_id,
+            ),
+            created_at=created_at,
+        )
+        return PendingRequest(
+            args=list(),
+            kwargs=dict(),
+            metadata=RequestMetadata(
+                request_id=str(uuid.uuid4()),
+                endpoint="endpoint",
+                multiplexed_model_id=model_id,
+            ),
+        )
 
 
 @pytest.mark.asyncio
@@ -469,6 +472,51 @@ async def test_tasks_scheduled_fifo(pow_2_scheduler):
         # the list.
         assert done.pop() == tasks[0]
         tasks = tasks[1:]
+
+
+@pytest.mark.asyncio
+async def test_retried_tasks_scheduled_fifo(pow_2_scheduler):
+    """
+    Verify that pending requests whose scheduling is retried are still scheduled in fifo
+    order based on creation time, even if they are inserted in a different order.
+    """
+    s = pow_2_scheduler
+    loop = get_or_create_event_loop()
+
+    start = time.time()
+    pending_requests = [fake_pending_request(created_at=start + i) for i in range(10)]
+
+    random_order_index = list(range(len(pending_requests)))
+    random.shuffle(random_order_index)
+
+    # Schedule the requests in parallel; they cannot be fulfilled yet.
+    tasks = []
+    for idx in random_order_index:
+        tasks.append(
+            loop.create_task(
+                s.choose_replica_for_request(pending_requests[idx], is_retry=True),
+                name=f"request-{idx}",
+            )
+        )
+
+    done, _ = await asyncio.wait(tasks, timeout=0.1)
+    assert len(done) == 0
+
+    # Only a single request will be accepted at a time due to
+    # `reset_after_response=True`.
+    r1 = FakeReplicaWrapper("r1", reset_after_response=True)
+    s.update_replicas([r1])
+
+    # Check that the tasks are scheduled in the order they were created (not the.
+    # order they were retried).
+    for expected_idx in range(len(pending_requests)):
+        r1.set_queue_len_response(0)
+        done, pending = await asyncio.wait(tasks, return_when=asyncio.FIRST_COMPLETED)
+        assert len(done) == 1
+
+        t = done.pop()
+        assert t.get_name() == f"request-{expected_idx}"
+        tasks.remove(t)
 
 
 @pytest.mark.asyncio
@@ -1002,7 +1050,7 @@ class TestModelMultiplexing:
         s.update_replicas([r1, r2, r3])
 
         for _ in range(10):
-            request = pending_request_with_model_id("m2")
+            request = fake_pending_request(model_id="m2")
             task = loop.create_task(s.choose_replica_for_request(request))
             assert (await task) in {r1, r2}
 
@@ -1018,7 +1066,7 @@ class TestModelMultiplexing:
         r2.set_queue_len_response(0)
         s.update_replicas([r1, r2])
         for _ in range(10):
-            request = pending_request_with_model_id("m3")
+            request = fake_pending_request(model_id="m3")
             task = loop.create_task(s.choose_replica_for_request(request))
             assert (await task) == r2
 
@@ -1034,7 +1082,7 @@ class TestModelMultiplexing:
         s.update_replicas([r1])
 
         for _ in range(10):
-            request = pending_request_with_model_id("m1")
+            request = fake_pending_request(model_id="m1")
             task = loop.create_task(s.choose_replica_for_request(request))
             assert (await task) == r1
 
@@ -1055,7 +1103,7 @@ class TestModelMultiplexing:
         s.update_replicas([r1, r2, r3])
 
         for _ in range(10):
-            request = pending_request_with_model_id("m2")
+            request = fake_pending_request(model_id="m2")
             task = loop.create_task(s.choose_replica_for_request(request))
             assert (await task) == r3
 
@@ -1078,22 +1126,22 @@ class TestModelMultiplexing:
         for _ in range(10):
             tasks = [
                 loop.create_task(
-                    s.choose_replica_for_request(pending_request_with_model_id("m1"))
+                    s.choose_replica_for_request(fake_pending_request(model_id="m1"))
                 ),
                 loop.create_task(
-                    s.choose_replica_for_request(pending_request_with_model_id("m2"))
+                    s.choose_replica_for_request(fake_pending_request(model_id="m2"))
                 ),
                 loop.create_task(
-                    s.choose_replica_for_request(pending_request_with_model_id("m3"))
+                    s.choose_replica_for_request(fake_pending_request(model_id="m3"))
                 ),
                 loop.create_task(
-                    s.choose_replica_for_request(pending_request_with_model_id("m1"))
+                    s.choose_replica_for_request(fake_pending_request(model_id="m1"))
                 ),
                 loop.create_task(
-                    s.choose_replica_for_request(pending_request_with_model_id("m2"))
+                    s.choose_replica_for_request(fake_pending_request(model_id="m2"))
                 ),
                 loop.create_task(
-                    s.choose_replica_for_request(pending_request_with_model_id("m3"))
+                    s.choose_replica_for_request(fake_pending_request(model_id="m3"))
                 ),
             ]
 
@@ -1124,7 +1172,7 @@ class TestModelMultiplexing:
 
         tasks = [
             loop.create_task(
-                s.choose_replica_for_request(pending_request_with_model_id("m1"))
+                s.choose_replica_for_request(fake_pending_request(model_id="m1"))
             )
             for _ in range(100)
         ]
@@ -1159,12 +1207,12 @@ class TestModelMultiplexing:
         for _ in range(10):
             m1_tasks.append(
                 loop.create_task(
-                    s.choose_replica_for_request(pending_request_with_model_id("m1"))
+                    s.choose_replica_for_request(fake_pending_request(model_id="m1"))
                 )
             )
             m2_tasks.append(
                 loop.create_task(
-                    s.choose_replica_for_request(pending_request_with_model_id("m2"))
+                    s.choose_replica_for_request(fake_pending_request(model_id="m2"))
                 )
             )
 
