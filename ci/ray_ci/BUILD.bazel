@@ -9,7 +9,6 @@ py_library(
             "test_*.py",
             "test_in_docker.py",
             "build_in_docker.py",
-            "upgrade_version.py",
         ],
     ),
     visibility = ["//ci/ray_ci:__subpackages__"],
@@ -201,25 +200,4 @@ py_test(
         ":ray_ci_lib_test",
         ci_require("pytest"),
     ],
-)
-
-py_test(
-    name = "test_upgrade_version",
-    size = "small",
-    srcs = ["test_upgrade_version.py"],
-    tags = [
-        "ci_unit",
-        "team:ci",
-    ],
-    deps = [
-        ":ray_ci_lib",
-        ":ray_ci_lib_test",
-        ci_require("pytest"),
-        "upgrade_version",
-    ],
-)
-
-py_binary(
-    name = "upgrade_version",
-    srcs = ["upgrade_version.py"],
 )
