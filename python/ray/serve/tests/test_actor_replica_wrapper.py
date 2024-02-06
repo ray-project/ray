@@ -61,7 +61,7 @@ class FakeReplicaActor:
             ):
                 yield result
         else:
-            yield self.handle_request(
+            yield await self.handle_request(
                 request_metadata, *args, **kwargs
             )
 
