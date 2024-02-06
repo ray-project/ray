@@ -353,10 +353,28 @@ void GcsAutoscalerStateManager::HandleDrainNode(
     rpc::autoscaler::DrainNodeRequest request,
     rpc::autoscaler::DrainNodeReply *reply,
     rpc::SendReplyCallback send_reply_callback) {
-  RAY_LOG(INFO) << "HandleDrainNode Request:" << request.DebugString();
   const NodeID node_id = NodeID::FromBinary(request.node_id());
   RAY_LOG(INFO) << "HandleDrainNode " << node_id.Hex()
-                << ", reason: " << request.reason_message();
+                << ", reason: " << request.reason_message()
+                << ", deadline: " << request.deadline_timestamp_ms();
+
+  int64_t draining_deadline_timestamp_ms = request.deadline_timestamp_ms();
+  if (draining_deadline_timestamp_ms < 0) {
+    std::ostringstream stream;
+    stream << "Draining deadline must be non-negative, received "
+           << draining_deadline_timestamp_ms;
+    auto msg = stream.str();
+    RAY_LOG(WARNING) << msg;
+    send_reply_callback(Status::Invalid(msg), nullptr, nullptr);
+    return;
+  }
+  if (draining_deadline_timestamp_ms == 0) {
+    // Set a default draining deadline if autoscaler doesn't set one.
+    // This is temporary since eventually autoscaler should always set a draining
+    // deadline.
+    draining_deadline_timestamp_ms =
+        current_sys_time_ms() + RayConfig::instance().default_draining_period_ms();
+  }
 
   auto maybe_node = gcs_node_manager_.GetAliveNode(node_id);
   if (!maybe_node.has_value()) {
@@ -385,16 +403,6 @@ void GcsAutoscalerStateManager::HandleDrainNode(
   }
   if (RayConfig::instance().enable_reap_actor_death()) {
     gcs_actor_manager_.SetPreemptedAndPublish(node_id);
-  }
-
-  int64_t draining_deadline_timestamp_ms = request.deadline_timestamp_ms();
-  RAY_CHECK_GE(draining_deadline_timestamp_ms, 0);
-  if (draining_deadline_timestamp_ms == 0) {
-    // Set a default draining deadline if autoscaler doesn't set one.
-    // This is temporary since eventually autoscaler should always set a draining
-    // deadline.
-    draining_deadline_timestamp_ms =
-        current_sys_time_ms() + RayConfig::instance().default_draining_period_ms();
   }
 
   rpc::Address raylet_address;
