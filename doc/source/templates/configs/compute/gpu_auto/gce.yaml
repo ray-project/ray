@@ -1,0 +1,7 @@
+head_node_type:
+  name: head_node_type
+  instance_type: n1-standard-8-nvidia-tesla-t4-1
+
+worker_node_types: []
+
+auto_select_worker_config: true
