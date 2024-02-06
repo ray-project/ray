@@ -186,7 +186,10 @@ def test_task_pool_resource_reporting_with_bundling(ray_start_10_cpus_shared):
     assert usage.cpu == 1, usage
     assert usage.gpu == 0, usage
     input_op_usage = resource_manager.get_op_usage(input_op)
-    assert input_op_usage.object_store_memory == 0, input_op_usage
+    # Count input blocks until the task is done.
+    assert input_op_usage.object_store_memory == pytest.approx(
+        2400, rel=0.5
+    ), input_op_usage
 
 
 def test_actor_pool_resource_reporting(ray_start_10_cpus_shared):

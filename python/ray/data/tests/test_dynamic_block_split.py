@@ -10,6 +10,10 @@ import pytest
 import ray
 from ray.data import Dataset
 from ray.data._internal.arrow_block import ArrowBlockAccessor
+from ray.data._internal.execution.backpressure_policy import (
+    ENABLED_BACKPRESSURE_POLICIES_CONFIG_KEY,
+    StreamingOutputBackpressurePolicy,
+)
 from ray.data._internal.lazy_block_list import LazyBlockList
 from ray.data.block import BlockMetadata
 from ray.data.datasource import Datasource
@@ -447,7 +451,6 @@ def _test_write_large_data(
         row_size=block_size,
         use_bytes=use_bytes,
     )
-
     # This should succeed without OOM.
     # https://github.com/ray-project/ray/pull/37966.
     out_dir = os.path.join(tmp_path, ext)
@@ -465,7 +468,15 @@ def _test_write_large_data(
         assert read_fn(out_dir).count() == num_blocks_per_task
 
 
-def test_write_large_data_parquet(shutdown_only, tmp_path):
+def test_write_large_data_parquet(shutdown_only, tmp_path, restore_data_context):
+    data_context = ray.data.DataContext.get_current()
+    data_context.set_config(
+        ENABLED_BACKPRESSURE_POLICIES_CONFIG_KEY,
+        [
+            StreamingOutputBackpressurePolicy,
+        ],
+    )
+
     _test_write_large_data(
         tmp_path,
         "parquet",
