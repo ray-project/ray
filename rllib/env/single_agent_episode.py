@@ -341,7 +341,7 @@ class SingleAgentEpisode:
         assert episode_chunk.id_ == self.id_
         # NOTE (sven): This is what we agreed on. As the replay buffers must be
         # able to concatenate.
-        # assert not self.is_done and not self.is_finalized
+        assert not self.is_done
         # Make sure the timesteps match.
         assert self.t == episode_chunk.t_started
 
