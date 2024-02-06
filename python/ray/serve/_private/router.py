@@ -158,7 +158,7 @@ class Router:
                 and self.num_queued_queries
             ):
                 self.push_metrics_to_controller(
-                    self._get_aggregated_requests(), time.time()
+                    **self._get_aggregated_requests(), send_timestamp=time.time()
                 )
 
             if RAY_SERVE_COLLECT_AUTOSCALING_METRICS_ON_HANDLE:
@@ -200,6 +200,7 @@ class Router:
             )
 
     def _get_aggregated_requests(self):
+        running_requests = dict()
         if RAY_SERVE_COLLECT_AUTOSCALING_METRICS_ON_HANDLE:
             look_back_period = self.autoscaling_config.look_back_period_s
             running_requests = {
@@ -211,14 +212,13 @@ class Router:
                 or num_requests
                 for replica_id, num_requests in self.num_requests_sent_to_replicas.items()  # noqa: E501
             }
-            return (
-                self.deployment_id,
-                self.handle_id,
-                self.num_queued_queries,
-                running_requests,
-            )
-        else:
-            return self.deployment_id, self.handle_id, self.num_queued_queries, dict()
+
+        return {
+            "deployment_id": self.deployment_id,
+            "handle_id": self.handle_id,
+            "queued_requests": self.num_queued_queries,
+            "running_requests": running_requests,
+        }
 
     def process_finished_request(self, replica_tag, *args):
         with self._queries_lock:
@@ -309,7 +309,7 @@ class Router:
             and self.num_queued_queries == 1
         ):
             self.push_metrics_to_controller(
-                self._get_aggregated_requests(), time.time()
+                **self._get_aggregated_requests(), send_timestamp=time.time()
             )
 
         try:

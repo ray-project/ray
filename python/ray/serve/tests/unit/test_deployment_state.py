@@ -2313,7 +2313,8 @@ def test_autoscale(mock_deployment_state_manager_full, target_capacity_direction
 
     for replica in depstate._replicas.get():
         deployment_state_manager.record_autoscaling_metrics(
-            (replica._actor.replica_tag, 2 if target_capacity_direction == "up" else 0),
+            replica._actor.replica_tag,
+            2 if target_capacity_direction == "up" else 0,
             None,
         )
 
@@ -2422,7 +2423,7 @@ def test_update_autoscaling_config(mock_deployment_state_manager_full):
     # Num ongoing requests = 1, status should remain HEALTHY
     for replica in depstate._replicas.get():
         deployment_state_manager.record_autoscaling_metrics(
-            (replica._actor.replica_tag, 1), None
+            replica._actor.replica_tag, 1, None
         )
     check_counts(depstate, total=3, by_state=[(ReplicaState.RUNNING, 3)])
     assert depstate.curr_status_info.status == DeploymentStatus.HEALTHY

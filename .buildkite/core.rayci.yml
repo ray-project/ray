@@ -375,7 +375,6 @@ steps:
     tags:
       - python
       - docker
-      - skip-on-premerge  # podman installation failing.
     instance_type: medium
     commands:
       - bazel run //ci/ray_ci:build_in_docker -- docker --platform cpu
