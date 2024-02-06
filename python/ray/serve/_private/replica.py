@@ -400,70 +400,17 @@ class ReplicaActor:
         if user_exception is not None:
             raise user_exception from None
 
-    async def handle_request_with_rejection(
+    async def handle_request(
         self,
         pickled_request_metadata: bytes,
         *request_args,
         **request_kwargs,
-    ) -> AsyncGenerator[Any, None]:
-        """Entrypoint for all requests with strict max_concurrent_queries enforcement.
-
-        The first response from this generator is always a system message indicating
-        if the request was accepted (the replica has capacity for the request) or
-        rejected (the replica is already at max_concurrent_queries).
-
-        For non-streaming requests, there will only be one more message, the unary
-        result of the user request handler.
-
-        For streaming requests, the subsequent messages will be the results of the
-        user request handler (which must be a generator).
-        """
+    ) -> Tuple[bytes, Any]:
+        """Entrypoint for `stream=False` calls."""
         request_metadata = pickle.loads(pickled_request_metadata)
-        limit = self._deployment_config.max_concurrent_queries
-        num_ongoing_requests = self.get_num_ongoing_requests()
-        if num_ongoing_requests >= limit:
-            logger.warning(
-                f"Replica at capacity of max_concurrent_queries={limit}, "
-                f"rejecting request {request_metadata.request_id}."
-            )
-            yield pickle.dumps(
-                ReplicaQueueLengthInfo(
-                    accepted=False, num_ongoing_requests=num_ongoing_requests
-                )
-            )
-            return
-
-        yield pickle.dumps(
-            ReplicaQueueLengthInfo(
-                accepted=True,
-                # We increment num_ongoing_requests here to include this request,
-                # as it isn't included in the metrics until the handlers below.
-                num_ongoing_requests=num_ongoing_requests + 1,
-            )
-        )
-
-        if request_metadata.is_streaming:
-            async for result in self.handle_request_streaming(
-                request_metadata, *request_args, **request_kwargs
-            ):
-                yield result
-        else:
+        with self._wrap_user_method_call(request_metadata):
             yield await self.handle_request(
                 request_metadata, *request_args, **request_kwargs
-            )
-
-    async def handle_request(
-        self,
-        request_metadata: Union[bytes, RequestMetadata],
-        *request_args,
-        **request_kwargs,
-    ) -> Tuple[bytes, Any]:
-        """Entrypoint for all `stream=False` calls."""
-        if isinstance(request_metadata, bytes):
-            request_metadata = pickle.loads(request_metadata)
-        with self._wrap_user_method_call(request_metadata):
-            return await self._user_callable_wrapper.call_user_method(
-                request_metadata, request_args, request_kwargs
             )
 
     async def _call_user_generator(
@@ -535,13 +482,12 @@ class ReplicaActor:
 
     async def handle_request_streaming(
         self,
-        request_metadata: Union[bytes, RequestMetadata],
+        pickled_request_metadata: bytes,
         *request_args,
         **request_kwargs,
     ) -> AsyncGenerator[Any, None]:
         """Generator that is the entrypoint for all `stream=True` handle calls."""
-        if isinstance(request_metadata, bytes):
-            request_metadata = pickle.loads(request_metadata)
+        request_metadata = pickle.loads(pickled_request_metadata)
         with self._wrap_user_method_call(request_metadata):
             async for result in self._call_user_generator(
                 request_metadata,
@@ -549,6 +495,61 @@ class ReplicaActor:
                 request_kwargs,
             ):
                 yield result
+
+    async def handle_request_with_rejection(
+        self,
+        pickled_request_metadata: bytes,
+        *request_args,
+        **request_kwargs,
+    ) -> AsyncGenerator[Any, None]:
+        """Entrypoint for all requests with strict max_concurrent_queries enforcement.
+
+        The first response from this generator is always a system message indicating
+        if the request was accepted (the replica has capacity for the request) or
+        rejected (the replica is already at max_concurrent_queries).
+
+        For non-streaming requests, there will only be one more message, the unary
+        result of the user request handler.
+
+        For streaming requests, the subsequent messages will be the results of the
+        user request handler (which must be a generator).
+        """
+        request_metadata = pickle.loads(pickled_request_metadata)
+        limit = self._deployment_config.max_concurrent_queries
+        num_ongoing_requests = self.get_num_ongoing_requests()
+        if num_ongoing_requests >= limit:
+            logger.warning(
+                f"Replica at capacity of max_concurrent_queries={limit}, "
+                f"rejecting request {request_metadata.request_id}."
+            )
+            yield pickle.dumps(
+                ReplicaQueueLengthInfo(
+                    accepted=False, num_ongoing_requests=num_ongoing_requests
+                )
+            )
+            return
+
+        with self._wrap_user_method_call(request_metadata):
+            yield pickle.dumps(
+                ReplicaQueueLengthInfo(
+                    accepted=True,
+                    # NOTE(edoakes): `_wrap_user_method_call` will increment the number
+                    # of ongoing requests to include this one, so re-fetch the value.
+                    num_ongoing_requests=self.get_num_ongoing_requests(),
+                )
+            )
+
+            if request_metadata.is_streaming:
+                async for result in self._call_user_generator(
+                    request_metadata,
+                    request_args,
+                    request_kwargs,
+                ):
+                    yield result
+            else:
+                return await self._user_callable_wrapper.call_user_method(
+                    request_metadata, request_args, request_kwargs
+                )
 
     async def handle_request_from_java(
         self,

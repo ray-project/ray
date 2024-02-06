@@ -75,6 +75,7 @@ class ReplicaQueueLengthCache:
 
     def remove_inactive_replicas(self, *, active_replica_ids: Set[str]):
         """Removes entries for all replica IDs not in the provided active set."""
+        # NOTE: the size of the cache dictionary changes during this loop.
         for replica_id in list(self._cache.keys()):
             if replica_id not in active_replica_ids:
                 self._cache.pop(replica_id)

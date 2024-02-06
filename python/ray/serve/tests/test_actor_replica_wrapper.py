@@ -6,8 +6,16 @@ import pytest
 import ray
 from ray import ObjectRef, ObjectRefGenerator
 from ray.actor import ActorHandle
-from ray.serve._private.common import RunningReplicaInfo, ReplicaQueueLengthInfo, RequestMetadata
-from ray.serve._private.replica_scheduler.common import ActorReplicaWrapper, PendingRequest
+from ray.serve._private.common import (
+    ReplicaQueueLengthInfo,
+    RequestMetadata,
+    RunningReplicaInfo,
+)
+from ray.serve._private.replica_scheduler.common import (
+    ActorReplicaWrapper,
+    PendingRequest,
+)
+
 
 @ray.remote(num_cpus=0)
 class FakeReplicaActor:
@@ -61,24 +69,26 @@ class FakeReplicaActor:
             ):
                 yield result
         else:
-            yield await self.handle_request(
-                request_metadata, *args, **kwargs
-            )
+            yield await self.handle_request(request_metadata, *args, **kwargs)
+
 
 @pytest.fixture
 def setup_fake_replica(ray_instance) -> Tuple[ActorReplicaWrapper, ActorHandle]:
     actor_handle = FakeReplicaActor.remote()
-    return ActorReplicaWrapper(
-        RunningReplicaInfo(
-            deployment_name="fake_deployment",
-            replica_tag="fake_replica",
-            node_id=None,
-            availability_zone=None,
-            actor_handle=actor_handle,
-            max_concurrent_queries = 10,
-            is_cross_language = False,
-        )
-    ), actor_handle
+    return (
+        ActorReplicaWrapper(
+            RunningReplicaInfo(
+                deployment_name="fake_deployment",
+                replica_tag="fake_replica",
+                node_id=None,
+                availability_zone=None,
+                actor_handle=actor_handle,
+                max_concurrent_queries=10,
+                is_cross_language=False,
+            )
+        ),
+        actor_handle,
+    )
 
 
 @pytest.mark.asyncio
@@ -105,10 +115,13 @@ async def test_send_request(setup_fake_replica, is_streaming: bool):
         assert isinstance(obj_ref_or_gen, ObjectRef)
         assert await obj_ref_or_gen == "Hello"
 
+
 @pytest.mark.asyncio
 @pytest.mark.parametrize("accepted", [False, True])
 @pytest.mark.parametrize("is_streaming", [False, True])
-async def test_send_request_with_rejection(setup_fake_replica, accepted: bool, is_streaming: bool):
+async def test_send_request_with_rejection(
+    setup_fake_replica, accepted: bool, is_streaming: bool
+):
     replica, actor_handle = setup_fake_replica
     ray.get(
         actor_handle.set_replica_queue_length_info.remote(
