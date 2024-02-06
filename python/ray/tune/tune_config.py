@@ -45,9 +45,7 @@ class TuneConfig:
             when possible. This can drastically speed up experiments that start
             and stop actors often (e.g., PBT in time-multiplexing mode). This
             requires trials to have the same resource requirements.
-            Defaults to ``True`` for function trainables (including most
-            Ray Train Trainers) and ``False`` for class and registered trainables
-            (e.g. RLlib).
+            Defaults to ``False``.
         trial_name_creator: Optional function that takes in a Trial and returns
             its name (i.e. its string representation). Be sure to include some unique
             identifier (such as `Trial.trial_id`) in each trial's name.
@@ -71,7 +69,7 @@ class TuneConfig:
     num_samples: int = 1
     max_concurrent_trials: Optional[int] = None
     time_budget_s: Optional[Union[int, float, datetime.timedelta]] = None
-    reuse_actors: Optional[bool] = None
+    reuse_actors: bool = False
     trial_name_creator: Optional[Callable[[Trial], str]] = None
     trial_dirname_creator: Optional[Callable[[Trial], str]] = None
     chdir_to_trial_dir: bool = _DEPRECATED_VALUE

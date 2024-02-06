@@ -195,12 +195,11 @@ class ReplicaMetricsManager:
             # Collect autoscaling metrics locally periodically.
             self._metrics_pusher.register_or_update_task(
                 self.RECORD_METRICS_TASK_NAME,
-                self.get_num_ongoing_requests,
+                self._add_autoscaling_metrics_point,
                 min(
                     RAY_SERVE_REPLICA_AUTOSCALING_METRIC_RECORD_PERIOD_S,
                     self._autoscaling_config.metrics_interval_s,
                 ),
-                self._add_autoscaling_metrics_point,
             )
 
     def inc_num_ongoing_requests(self) -> int:
@@ -225,16 +224,19 @@ class ReplicaMetricsManager:
         else:
             self._request_counter.inc(tags={"route": route})
 
-    def _collect_autoscaling_metrics(self):
+    def _collect_autoscaling_metrics(self) -> Dict[str, Any]:
         look_back_period = self._autoscaling_config.look_back_period_s
-        return self._replica_tag, self._metrics_store.window_average(
-            self._replica_tag, time.time() - look_back_period
-        )
+        return {
+            "replica_id": self._replica_tag,
+            "window_avg": self._metrics_store.window_average(
+                self._replica_tag, time.time() - look_back_period
+            ),
+        }
 
-    def _add_autoscaling_metrics_point(self, data, send_timestamp: float):
+    def _add_autoscaling_metrics_point(self) -> None:
         self._metrics_store.add_metrics_point(
-            {self._replica_tag: data},
-            send_timestamp,
+            {self._replica_tag: self._num_ongoing_requests},
+            time.time(),
         )
 
     def _set_replica_requests_metrics(self):

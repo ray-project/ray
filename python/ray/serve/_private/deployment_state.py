@@ -2393,16 +2393,23 @@ class DeploymentStateManager:
             self._save_checkpoint_func,
         )
 
-    def record_autoscaling_metrics(self, data, send_timestamp: float):
-        replica_tag, window_avg = data
+    def record_autoscaling_metrics(
+        self, replica_id: str, window_avg: float, send_timestamp: float
+    ):
         if window_avg is not None:
-            replica_name = ReplicaName.from_replica_tag(replica_tag)
+            replica_name = ReplicaName.from_replica_tag(replica_id)
             self._deployment_states[
                 replica_name.deployment_id
-            ].record_autoscaling_metrics(replica_tag, window_avg, send_timestamp)
+            ].record_autoscaling_metrics(replica_id, window_avg, send_timestamp)
 
-    def record_handle_metrics(self, data, send_timestamp: float):
-        deployment_id, handle_id, queued_requests, running_requests = data
+    def record_handle_metrics(
+        self,
+        deployment_id: str,
+        handle_id: str,
+        queued_requests: float,
+        running_requests: Dict[str, float],
+        send_timestamp: float,
+    ):
         # NOTE(zcin): There can be handles to deleted deployments still
         # sending metrics to the controller
         if deployment_id in self._deployment_states:
