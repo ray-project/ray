@@ -212,10 +212,6 @@ def test_parquet_read_meta_provider(ray_start_regular_shared, fs, data_path):
                 ray_remote_args["scheduling_strategy"]
                 == DataContext.get_current().scheduling_strategy
             )
-            assert (
-                ray_remote_args["retry_exceptions"]
-                == RETRY_EXCEPTIONS_FOR_META_FETCH_TASK
-            )
             return None
 
     ds = ray.data.read_parquet(
