@@ -640,7 +640,19 @@ def _execution_allowed(op: PhysicalOperator, resource_manager: ResourceManager) 
         gpu=math.floor(global_usage.gpu or 0),
         object_store_memory=global_usage.object_store_memory,
     )
+    with open("temp2.log", "a") as f:
+        f.write(f"global {op}, {global_floored}\n")
     inc = op.incremental_resource_usage()
+    with open("temp2.log", "a") as f:
+        f.write(f"inc {op}, {inc}\n")
+    with open("temp2.log", "a") as f:
+        f.write(
+            f"tasks {op}, {op.metrics.num_tasks_running} {op.metrics.num_tasks_finished}\n"
+        )
+    with open("temp2.log", "a") as f:
+        f.write(
+            f"met {op}, {op.metrics.obj_store_mem_internal_inqueue} {op.metrics.obj_store_mem_internal_outqueue}\n"
+        )
     if inc.cpu and inc.gpu:
         raise NotImplementedError(
             "Operator incremental resource usage cannot specify both CPU "
@@ -692,4 +704,4 @@ def _execution_allowed(op: PhysicalOperator, resource_manager: ResourceManager) 
     ):
         return True
 
-    return False
+    return global_ok_sans_memory and downstream_memory_ok
