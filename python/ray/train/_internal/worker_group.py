@@ -155,6 +155,12 @@ class WorkerGroup:
                 f"instead."
             )
 
+        if any(v < 0 for v in resources_per_worker.values()):
+            raise ValueError(
+                "The number of resources per worker must not be negative. "
+                f"Received resources_per_worker={resources_per_worker}."
+            )
+
         if (actor_cls_args or actor_cls_kwargs) and not actor_cls:
             raise ValueError(
                 "`actor_cls_args` or `actor_class_kwargs` are "

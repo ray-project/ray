@@ -52,7 +52,7 @@ def test_worker_creation(ray_start_2_cpus):
 
 def test_worker_creation_num_cpus(ray_start_2_cpus):
     assert ray.available_resources()["CPU"] == 2
-    wg = WorkerGroup(num_cpus_per_worker=2)
+    wg = WorkerGroup(resources_per_worker={"CPU": 2})
     time.sleep(1)
     assert len(wg.workers) == 1
     # Make sure both CPUs are being used by the actor.
@@ -61,7 +61,7 @@ def test_worker_creation_num_cpus(ray_start_2_cpus):
 
 
 def test_worker_creation_with_memory(ray_start_2_cpus_and_10kb_memory):
-    wg = WorkerGroup(num_workers=2, additional_resources_per_worker={"memory": 1_000})
+    wg = WorkerGroup(num_workers=2, resources_per_worker={"memory": 1_000})
     assert len(wg.workers) == 2
 
 
@@ -92,7 +92,7 @@ def test_worker_restart(ray_start_2_cpus):
 
 def test_worker_with_gpu_ids(ray_start_2_cpus_and_gpus):
     num_gpus = 2
-    wg = WorkerGroup(num_workers=2, num_gpus_per_worker=1)
+    wg = WorkerGroup(num_workers=2, resources_per_worker={"GPU": 1})
     assert len(wg.workers) == 2
     time.sleep(1)
     assert ray_constants.GPU not in ray.available_resources()
@@ -111,7 +111,7 @@ def test_worker_with_neuron_core_accelerator_ids(
 ):
     num_nc = 2
     wg = WorkerGroup(
-        num_workers=2, additional_resources_per_worker={ray_constants.NEURON_CORES: 1}
+        num_workers=2, resources_per_worker={ray_constants.NEURON_CORES: 1}
     )
     assert len(wg.workers) == 2
     time.sleep(1)
@@ -284,10 +284,13 @@ def test_bad_resources(ray_start_2_cpus):
         WorkerGroup(num_workers=-1)
 
     with pytest.raises(ValueError):
-        WorkerGroup(num_cpus_per_worker=-1)
+        WorkerGroup(resources_per_worker={"CPU": -1})
 
     with pytest.raises(ValueError):
-        WorkerGroup(num_gpus_per_worker=-1)
+        WorkerGroup(resources_per_worker={"GPU": -1})
+
+    with pytest.raises(ValueError):
+        WorkerGroup(resources_per_worker={"memory": -1})
 
 
 def test_placement_group(ray_start_2_cpus):

@@ -90,14 +90,13 @@ class BackendExecutor:
         max_retries: int = 3,
     ):
         if resources_per_worker is None:
-            resources_per_worker = {"CPU": 1}
+            self._resources_per_worker = {"CPU": 1}
         else:
-            resources_per_worker = resources_per_worker.copy()
+            self._resources_per_worker = resources_per_worker.copy()
 
         self._backend_config = backend_config
         self._backend = backend_config.backend_cls()
         self._num_workers = num_workers
-        self._resources_per_worker = resources_per_worker
         self._max_failures = max_retries
         if self._max_failures < 0:
             self._max_failures = float("inf")
