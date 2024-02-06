@@ -38,13 +38,17 @@ def test_list_java_files():
             [os.path.join(tmp_dir, file_path) for file_path in select_file_paths]
         )
 
+
 @mock.patch("ci.ray_ci.upgrade_version.get_check_output")
 def test_get_current_version_from_master_branch_version(mock_check_output):
-    mock_check_output.return_value = "3.0.0.dev0 a123456dc1d2egd345a6789f1e23d45b678c90ed"
+    mock_check_output.return_value = (
+        "3.0.0.dev0 a123456dc1d2egd345a6789f1e23d45b678c90ed"
+    )
     assert get_current_version(tempfile.gettempdir()) == (
         "3.0.0.dev0",
         "2.0.0-SNAPSHOT",
     )
+
 
 @mock.patch("ci.ray_ci.upgrade_version.get_check_output")
 def test_get_current_version_from_changed_version(mock_check_output):
@@ -85,6 +89,7 @@ def _make_tmp_directories(tmp_dir):
         full_dir_path = os.path.join(tmp_dir, dir)
         os.mkdir(full_dir_path)
 
+
 @pytest.mark.parametrize(
     ("main_version", "java_version", "new_version"),
     [
@@ -116,9 +121,13 @@ def test_upgrade_file_version(main_version, java_version, new_version):
             "subdir_0/subdir_0_0/not_pom.xml",
         ]
         for file_path in select_java_file_paths + non_select_java_file_paths:
-            _prepare_file(os.path.join(tmp_dir, file_path), version=java_version, java=True)
+            _prepare_file(
+                os.path.join(tmp_dir, file_path), version=java_version, java=True
+            )
         for file_path in non_java_file_paths:
-            _prepare_file(os.path.join(tmp_dir, file_path), version=main_version, java=False)
+            _prepare_file(
+                os.path.join(tmp_dir, file_path), version=main_version, java=False
+            )
 
         upgrade_file_version(
             main_version=main_version,
@@ -159,7 +168,9 @@ def test_upgrade_file_version_fail_no_non_java_file():
             "subdir_0/subdir_0_0/pom.xml",
         ]
         for file_path in select_java_file_paths:
-            _prepare_file(os.path.join(tmp_dir, file_path), version=java_version, java=True)
+            _prepare_file(
+                os.path.join(tmp_dir, file_path), version=java_version, java=True
+            )
         with pytest.raises(ValueError):
             upgrade_file_version(
                 main_version=main_version,
@@ -185,7 +196,9 @@ def test_upgrade_file_version_fail_no_java_file():
             "src/ray/common/constants.h",
         ]
         for file_path in non_java_file_paths:
-            _prepare_file(os.path.join(tmp_dir, file_path), version=main_version, java=False)
+            _prepare_file(
+                os.path.join(tmp_dir, file_path), version=main_version, java=False
+            )
 
         with pytest.raises(AssertionError):
             upgrade_file_version(
