@@ -1,5 +1,3 @@
-from typing import Dict
-
 import pytest
 
 from ray.data.preprocessors import BatchMapper

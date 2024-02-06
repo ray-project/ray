@@ -1,5 +1,4 @@
-import warnings
-from typing import TYPE_CHECKING, Any, Callable, Dict, Literal, Optional, Union
+from typing import TYPE_CHECKING, Callable, Dict, Literal, Optional, Union
 
 import numpy as np
 
