@@ -98,6 +98,7 @@ DEFAULT_GRACEFUL_SHUTDOWN_WAIT_LOOP_S = 2
 DEFAULT_HEALTH_CHECK_PERIOD_S = 10
 DEFAULT_HEALTH_CHECK_TIMEOUT_S = 30
 DEFAULT_MAX_CONCURRENT_QUERIES = 100
+NEW_DEFAULT_MAX_CONCURRENT_QUERIES = 5
 
 # HTTP Proxy health check configs
 PROXY_HEALTH_CHECK_TIMEOUT_S = (
@@ -163,8 +164,13 @@ DAG_DEPRECATION_MESSAGE = (
     "instead (see https://docs.ray.io/en/latest/serve/model_composition.html)."
 )
 
-# Jsonify the log messages
+# Environment variable name for to specify the encoding of the log messages
+RAY_SERVE_LOG_ENCODING = os.environ.get("RAY_SERVE_LOG_ENCODING", "TEXT")
+
+# Jsonify the log messages. This constant is deprecated and will be removed in the
+# future. Use RAY_SERVE_LOG_ENCODING or 'LoggingConfig' to enable json format.
 RAY_SERVE_ENABLE_JSON_LOGGING = os.environ.get("RAY_SERVE_ENABLE_JSON_LOGGING") == "1"
+
 # Logging format attributes
 SERVE_LOG_REQUEST_ID = "request_id"
 SERVE_LOG_ROUTE = "route"
@@ -198,9 +204,9 @@ RAY_SERVE_ENABLE_NEW_HANDLE_API = (
     os.environ.get("RAY_SERVE_ENABLE_NEW_HANDLE_API", "1") == "1"
 )
 
-# Feature flag to turn on node locality routing for proxies. Off by default.
+# Feature flag to turn on node locality routing for proxies. On by default.
 RAY_SERVE_PROXY_PREFER_LOCAL_NODE_ROUTING = (
-    os.environ.get("RAY_SERVE_PROXY_PREFER_LOCAL_NODE_ROUTING", "0") == "1"
+    os.environ.get("RAY_SERVE_PROXY_PREFER_LOCAL_NODE_ROUTING", "1") == "1"
 )
 
 # Feature flag to turn on AZ locality routing for proxies. On by default.
@@ -268,3 +274,9 @@ RAY_SERVE_MAX_QUEUE_LENGTH_RESPONSE_DEADLINE_S = float(
 
 # The default autoscaling policy to use if none is specified.
 DEFAULT_AUTOSCALING_POLICY = "ray.serve.autoscaling_policy:default_autoscaling_policy"
+
+# Feature flag to enable collecting all queued and ongoing request
+# metrics at handles instead of replicas. OFF by default.
+RAY_SERVE_COLLECT_AUTOSCALING_METRICS_ON_HANDLE = (
+    os.environ.get("RAY_SERVE_COLLECT_AUTOSCALING_METRICS_ON_HANDLE", "0") == "1"
+)

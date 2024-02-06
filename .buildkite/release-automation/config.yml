@@ -1,0 +1,14 @@
+name: ray-release-automation
+artifacts_bucket: ray-ci-artifact-branch-public
+ci_temp: s3://ray-ci-artifact-branch-public/ci-temp/
+ci_work_repo: 029272617770.dkr.ecr.us-west-2.amazonaws.com/rayproject/citemp
+forge_prefix: cr.ray.io/rayproject/
+builder_queues:
+  builder: builder_queue_pr
+runner_queues:
+  default: runner_queue_small_pr
+buildkite_dirs:
+  - .buildkite/release-automation
+env:
+  BUILDKITE_BAZEL_CACHE_URL: https://bazel-cache-dev.s3.us-west-2.amazonaws.com
+  RAYCI_SKIP_UPLOAD: "true"

@@ -111,10 +111,95 @@ std::tuple<int64_t, int64_t> MemoryMonitor::GetMemoryBytes() {
   return std::tuple(system_used_bytes, system_total_bytes);
 }
 
-int64_t MemoryMonitor::GetCGroupV1MemoryUsedBytes(const char *path) {
-  std::ifstream memstat_ifs(path, std::ios::in | std::ios::binary);
+int64_t MemoryMonitor::GetCGroupV1MemoryUsedBytes(const char *stat_path,
+                                                  const char *usage_path) {
+  // How does this function calculate in-used memory from cgroup memory info file?
+  // It reads 2 cgroup files:
+  //  mem stat file: /sys/fs/cgroup/memory/memory.stat
+  //  mem usage file: /sys/fs/cgroup/memory/memory.usage_in_bytes
+  // Formula:
+  //  OS_managed_cache_and_buffer = `memory.stat.total_cache - memory.stat.total_shmem`
+  //  used_memory = `memory.usage_in_bytes` - OS_managed_cache_and_buffer
+  //
+  // This value is consistent with values `MemTotal` `MemAvailable` `MemFree` in
+  // `/proc/meminfo`
+  //  and they have relationship of:
+  //  - `memory.usage_in_bytes` == `MemTotal` - `MemFree`
+  //  - `memory.stat.total_cache` == `MemAvailable` - `MemFree`
+  //  - OS_managed_cache_and_buffer = `memory.stat.total_cache` - `shmem`
+  //
+  // Explanation: What's this part `OS_managed_cache_and_buffer` memory for and why
+  //   we should treat this part memory as "Not-in-used" ?
+  //   Linux OS tries to fully use the whole physical memory size, so that in many
+  //   cases we can observe that the system has very little `MemFree` size,
+  //   but at the same time system might have a large `MemAvailable` size,
+  //   then this part `MemAvailable - MemFree` size is borrowed by Linux OS
+  //   to cache pages / buffers , BUT, once user process requests to allocate memory,
+  //   and there is no sufficient free memory, OS will evict cache data out of this
+  //   part memory and allocate them to user proces.
+  //
+  // Explanation: What's the part of `shmem` and why we should treat it as "in-used" ?
+  //   `shmem` overview: https://man7.org/linux/man-pages/man7/shm_overview.7.html
+  //   Ray object store use `/dev/shm`, which is a `tmpfs` file system,
+  //   In linux, `tmpfs` file system uses `shmem` memory.
+  //   Note that `tmpfs` file system might swap data to disk (when option noswap=False)
+  //   but `shmem` value always means the `tmpfs` data size in physical memory.
+  //   We can read `shmem` value from /proc/meminfo `Shmem` item or from
+  //   /sys/fs/cgroup/memory/memory.stat `total_shmem` item.
+  //
+  // Explanation: Why don't use cgroup
+  //  `memory.stat.total_rss` and `memory.stat.inactive_file_bytes` to compute the
+  // in-used memory ?
+  //   In my test using these values can't calculate out correct used memory number,
+  //   cgroup official doc is fuzzy when describing these values.
+  //   But in my test,
+  //   cgroup `memory.usage_in_bytes` value perfectly matches (`MemTotal` - `MemFree`)
+  //   value, so I am sure that `memory.usage_in_bytes` value is correct. and cgroup
+  //   `memory.stat.total_cache` value also perfectly matches
+  //   (`MemAvailable` - `MemFree`) value,
+  //
+  // Correctness testing criteria:
+  //  - [Check cgroup memory.stat value consistency with /proc/meminfo]
+  //    Ensuring the calculated value is consistent with values computed from
+  //    /proc/meminfo Note that cgroup mem file is consistent with /proc/meminfo file
+  //    unless there is bug in cgroup, i.e. we can read MemTotal / MemAvailable / Shmem
+  //    from /proc/meminfo file, then the calculated value by this function
+  //    should equals to `MemTotal` - (`MemAvailable` - `Shmem`)
+  //
+  //  - [OS_managed_cache_and_buffer test]
+  //    Prepare an idle OS environment that has a large number of `free` memory.
+  //    Use dd command to write a large file to disk, after dd  completes,
+  //    the calculated used_memory value should keep nearly the same with the value
+  //    before dd execution.
+  //    But note that free memory will decrease significantly because OS
+  //    cached the file data as part of "OS_managed_cache_and_buffer" I mentioned above.
+  //
+  //  - [/dev/shm test]
+  //    If we use dd command to write a large file to /dev/shm,
+  //    and no swapping occurs (you can use `free -h` to check whether swap size
+  //    increases), after dd completes, the calculated used-memory value should be nearly
+  //    previous_in_used_memory_bytes + bytes_of_written_file
+  //
+  //  - [Host OS SIGKILL signal test]:
+  //    1. get current "used_memory" by running this `GetCGroupV1MemoryUsedBytes`
+  //    function.
+  //    2. get "swap_space_size" by running `free` command
+  //    3. read "used_swap_size" value by reading "total_swap" item from
+  //    /sys/fs/cgroup/memory/memory.stat
+  //    4. Create a program that gradually requests to allocate memory,
+  //       record that after it gets allocated memory of "oom_size" bytes,
+  //       the process is killed by OS SIGKILL signal.
+  //    The "oom_size" recorded in step-(4) should approximately satisfy the following
+  //    formula: oom_size ~== (total_physical_memory + swap_space_size) - used_memory -
+  //    used_swap_size
+  std::ifstream memstat_ifs(stat_path, std::ios::in | std::ios::binary);
   if (!memstat_ifs.is_open()) {
-    RAY_LOG_EVERY_MS(WARNING, kLogIntervalMs) << " file not found: " << path;
+    RAY_LOG_EVERY_MS(WARNING, kLogIntervalMs) << " file not found: " << stat_path;
+    return kNull;
+  }
+  std::ifstream memusage_ifs(usage_path, std::ios::in | std::ios::binary);
+  if (!memusage_ifs.is_open()) {
+    RAY_LOG_EVERY_MS(WARNING, kLogIntervalMs) << " file not found: " << usage_path;
     return kNull;
   }
 
@@ -122,30 +207,31 @@ int64_t MemoryMonitor::GetCGroupV1MemoryUsedBytes(const char *path) {
   std::string title;
   int64_t value;
 
-  int64_t rss_bytes = kNull;
-  int64_t cache_bytes = kNull;
-  int64_t inactive_file_bytes = kNull;
+  int64_t cgroup_usage_in_bytes;
+  // The content of "/sys/fs/cgroup/memory/memory.usage_in_bytes" file is
+  // an integer representing the total memory usage bytes of the container.
+  std::getline(memusage_ifs, line);
+  std::istringstream iss(line);
+  iss >> cgroup_usage_in_bytes;
+
+  int64_t total_cache_bytes = kNull;
+  int64_t shmem_used_bytes = kNull;
   while (std::getline(memstat_ifs, line)) {
     std::istringstream iss(line);
     iss >> title >> value;
-    if (title == "total_rss") {
-      rss_bytes = value;
-    } else if (title == "total_cache") {
-      cache_bytes = value;
-    } else if (title == "total_inactive_file") {
-      inactive_file_bytes = value;
+    if (title == "total_cache") {
+      total_cache_bytes = value;
+    } else if (title == "total_shmem") {
+      shmem_used_bytes = value;
     }
   }
-  if (rss_bytes == kNull || cache_bytes == kNull || inactive_file_bytes == kNull) {
+  if (total_cache_bytes == kNull || shmem_used_bytes == kNull) {
     RAY_LOG_EVERY_MS(WARNING, kLogIntervalMs)
-        << "Failed to parse cgroup v1 mem stat. rss " << rss_bytes << " cache "
-        << cache_bytes << " inactive " << inactive_file_bytes;
+        << "Failed to parse cgroup v1 mem stat. total cache " << total_cache_bytes
+        << " total_shmem " << shmem_used_bytes;
     return kNull;
   }
-  // Working set, used by cadvisor for cgroup oom killing, is calculcated as (usage -
-  // inactive files)
-  // https://medium.com/@eng.mohamed.m.saeed/memory-working-set-vs-memory-rss-in-kubernetes-which-one-you-should-monitor-8ef77bf0acee
-  int64_t used = rss_bytes + cache_bytes - inactive_file_bytes;
+  int64_t used = cgroup_usage_in_bytes - (total_cache_bytes - shmem_used_bytes);
   return used;
 }
 
@@ -208,7 +294,8 @@ std::tuple<int64_t, int64_t> MemoryMonitor::GetCGroupMemoryBytes() {
     used_bytes =
         GetCGroupV2MemoryUsedBytes(kCgroupsV2MemoryStatPath, kCgroupsV2MemoryUsagePath);
   } else if (std::filesystem::exists(kCgroupsV1MemoryStatPath)) {
-    used_bytes = GetCGroupV1MemoryUsedBytes(kCgroupsV1MemoryStatPath);
+    used_bytes =
+        GetCGroupV1MemoryUsedBytes(kCgroupsV1MemoryStatPath, kCgroupsV1MemoryUsagePath);
   }
 
   /// This can be zero if the memory limit is not set for cgroup v2.

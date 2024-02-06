@@ -4,9 +4,8 @@ import sys
 import time
 from copy import deepcopy
 from tempfile import NamedTemporaryFile
-from typing import List
+from typing import Dict, List, Optional
 
-import click
 import pytest
 import requests
 import yaml
@@ -16,7 +15,7 @@ from ray import serve
 from ray._private.test_utils import wait_for_condition
 from ray.serve._private.common import DeploymentID
 from ray.serve._private.constants import SERVE_DEFAULT_APP_NAME, SERVE_NAMESPACE
-from ray.serve.scripts import convert_args_to_dict, remove_ansi_escape_sequences
+from ray.serve.scripts import remove_ansi_escape_sequences
 from ray.tests.conftest import tmp_working_dir  # noqa: F401, E501
 from ray.util.state import list_actors
 
@@ -32,26 +31,12 @@ def assert_deployments_live(ids: List[DeploymentID]):
         assert any(prefix in actor_name for actor_name in running_actor_names), msg
 
 
-def test_convert_args_to_dict():
-    assert convert_args_to_dict(tuple()) == {}
-
-    with pytest.raises(
-        click.ClickException, match="Invalid application argument 'bad_arg'"
-    ):
-        convert_args_to_dict(("bad_arg",))
-
-    assert convert_args_to_dict(("key1=val1", "key2=val2")) == {
-        "key1": "val1",
-        "key2": "val2",
-    }
-
-
 def test_start_shutdown(ray_start_stop):
     subprocess.check_output(["serve", "start"])
     subprocess.check_output(["serve", "shutdown", "-y"])
 
 
-def check_http_response(json, expected_text):
+def check_http_response(expected_text: str, json: Optional[Dict] = None):
     resp = requests.post("http://localhost:8000/", json=json)
     assert resp.text == expected_text
     return True
@@ -694,6 +679,27 @@ def test_replica_placement_group_options(ray_start_stop):
         return True
 
     wait_for_condition(check_application_status, timeout=15)
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="File path incorrect on Windows.")
+def test_deploy_from_import_path(ray_start_stop):
+    """Test that `deploy` works from an import path."""
+
+    import_path = "ray.serve.tests.test_config_files.arg_builders.build_echo_app"
+
+    subprocess.check_output(["serve", "deploy", import_path])
+    wait_for_condition(
+        check_http_response,
+        expected_text="DEFAULT",
+        timeout=15,
+    )
+
+    subprocess.check_output(["serve", "deploy", import_path, "message=redeployed!"])
+    wait_for_condition(
+        check_http_response,
+        expected_text="redeployed!",
+        timeout=15,
+    )
 
 
 if __name__ == "__main__":
