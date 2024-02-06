@@ -13,9 +13,7 @@ import ray
 from ray._private.test_utils import async_wait_for_condition
 from ray._private.utils import get_or_create_event_loop
 from ray.serve._private.common import DeploymentID, RequestMetadata
-from ray.serve._private.constants import (
-    RAY_SERVE_QUEUE_LENGTH_CACHE_TIMEOUT_S,
-)
+from ray.serve._private.constants import RAY_SERVE_QUEUE_LENGTH_CACHE_TIMEOUT_S
 from ray.serve._private.replica_scheduler import (
     PendingRequest,
     PowerOfTwoChoicesReplicaScheduler,
