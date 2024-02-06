@@ -1,4 +1,5 @@
 import pickle
+import sys
 from typing import Tuple, Union
 
 import pytest
@@ -151,3 +152,7 @@ async def test_send_request_with_rejection(
     else:
         assert isinstance(obj_ref_or_gen, ObjectRef)
         assert await obj_ref_or_gen == "Hello"
+
+
+if __name__ == "__main__":
+    sys.exit(pytest.main(["-v", "-s", __file__]))
