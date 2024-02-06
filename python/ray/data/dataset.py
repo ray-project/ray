@@ -4972,8 +4972,17 @@ class Dataset:
         self._current_executor = None
 
     def __del__(self):
-        if self._current_executor and ray is not None and ray.is_initialized():
-            self._current_executor.shutdown()
+        if not self._current_executor:
+            return
+
+        # When Python shuts down, `ray` might evaluate to `<module None from None>`.
+        # This value is truthy and not `None`, so we use a try-catch in addition to
+        # `if ray is not None`. For more information, see #42382.
+        try:
+            if ray is not None and ray.is_initialized():
+                self._current_executor.shutdown()
+        except TypeError:
+            pass
 
 
 @PublicAPI
