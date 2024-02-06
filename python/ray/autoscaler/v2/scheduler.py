@@ -1,6 +1,5 @@
 import copy
 import logging
-import time
 from abc import ABC, abstractmethod
 from collections import defaultdict
 from dataclasses import dataclass, field
@@ -12,15 +11,16 @@ from google.protobuf.json_format import MessageToDict
 from ray.autoscaler._private.resource_demand_scheduler import UtilizationScore
 from ray.autoscaler.v2.instance_manager.common import InstanceUtil
 from ray.autoscaler.v2.instance_manager.config import NodeTypeConfig
-from ray.autoscaler.v2.schema import AutoscalerInstance, NodeType
+from ray.autoscaler.v2.schema import NodeType
 from ray.autoscaler.v2.utils import resource_requests_by_count
 from ray.core.generated.autoscaler_pb2 import (
     ClusterResourceConstraint,
     GangResourceRequest,
+    NodeState,
     ResourceRequest,
     ResourceRequestByCount,
 )
-from ray.core.generated.instance_manager_pb2 import LaunchRequest, TerminationRequest
+from ray.core.generated.instance_manager_pb2 import Instance
 
 # ============= Resource Scheduling Service API =======================
 #
@@ -37,7 +37,7 @@ class SchedulingRequest:
     # Available node type configs
     node_type_configs: Dict[NodeType, NodeTypeConfig] = field(default_factory=dict)
     # Max number of worker nodes.
-    max_num_nodes: Optional[int] = None
+    max_num_worker_nodes: Optional[int] = None
     # TODO: This prob could be refactored into the ClusterStatus data class later.
     # The current ray resource requests.
     resource_requests: List[ResourceRequestByCount] = field(default_factory=list)
@@ -47,16 +47,22 @@ class SchedulingRequest:
     cluster_resource_constraints: List[ClusterResourceConstraint] = field(
         default_factory=list
     )
-    # The current instances.
-    current_instances: List[AutoscalerInstance] = field(default_factory=list)
+    # The ray nodes
+    current_nodes: List[NodeState] = field(default_factory=list)
+    # The current list of instances.
+    current_instances: List[Instance] = field(default_factory=list)
 
 
 @dataclass
 class SchedulingReply:
-    # Instances to launch.
-    to_launch: List[LaunchRequest] = field(default_factory=list)
-    # To terminate.
-    to_terminate: List[TerminationRequest] = field(default_factory=list)
+    # The target cluster shape, given the current resource demands and instances.
+    # Key is the node type name, value is the number of nodes.
+    # This is needed to prevent autoscaler terminating nodes needed for cluster
+    # constraints.
+    # Note this might be "smaller" than the current cluster shape, since there
+    # could be cluster constraints enforced, e.g. a newly updated max_workers value
+    # would result in a target count smaller than the current count of the node type.
+    target_cluster_shape: Dict[NodeType, int]
     # The infeasible resource bundles.
     infeasible_resource_requests: List[ResourceRequestByCount] = field(
         default_factory=list
@@ -99,8 +105,6 @@ class SchedulingNodeStatus(Enum):
     PENDING = "PENDING"
     # The node is running.
     RUNNING = "RUNNING"
-    # The node is to be terminated.
-    TO_TERMINATE = "TO_TERMINATE"
 
 
 @dataclass
@@ -123,16 +127,10 @@ class SchedulingNode:
     def from_node_config(
         cls,
         node_config: NodeTypeConfig,
-        status: SchedulingNodeStatus,
-        im_instance_id: Optional[str] = None,
+        status: SchedulingNodeStatus = SchedulingNodeStatus.TO_LAUNCH,
     ) -> "SchedulingNode":
         """
         Create a scheduling node from a node config.
-
-        Args:
-            node_config: The node config.
-            status: The status of the node.
-            im_instance_id: The instance id of the im instance.
         """
         return cls(
             node_type=node_config.name,
@@ -140,7 +138,6 @@ class SchedulingNode:
             available_resources=dict(node_config.resources),
             labels=dict(node_config.labels),
             status=status,
-            im_instance_id=im_instance_id,
         )
 
     # Node type name.
@@ -158,16 +155,6 @@ class SchedulingNode:
     # Observability descriptive message for why the node was launched in the
     # first place.
     launch_reason: Optional[str] = None
-    # Termination request, none when the node is not being terminated.
-    termination_request: Optional[TerminationRequest] = None
-    # The instance id of the IM(Instance Manager) instance. None if the node
-    # is not yet in IM.
-    im_instance_id: Optional[str] = None
-    # The ray node id of the ray node. None if the node is not included in
-    # ray cluster's GCS report yet (not running ray yet).
-    ray_node_id: Optional[str] = None
-    # Idle duration in ms. Default not idle.
-    idle_duration_ms: int = 0
 
     def try_schedule(
         self, requests: List[ResourceRequest]
@@ -228,10 +215,6 @@ class SchedulingNode:
     def __repr__(self) -> str:
         return (
             "SchedulingNode(node_type={node_type}, "
-            "instance_id={instance_id},"
-            "ray_node_id={ray_node_id},"
-            "idle_duration_ms={idle_duration_ms},"
-            "termination_request={termination_request},"
             "status={status}, "
             "total_resources={total_resources}, "
             "available_resources={available_resources}, "
@@ -239,12 +222,6 @@ class SchedulingNode:
             "sched_requests={sched_requests})"
         ).format(
             node_type=self.node_type,
-            instance_id=self.im_instance_id,
-            ray_node_id=self.ray_node_id,
-            idle_duration_ms=self.idle_duration_ms,
-            termination_request=str(MessageToDict(self.termination_request))
-            if self.termination_request
-            else None,
             status=self.status,
             total_resources=self.total_resources,
             available_resources=self.available_resources,
@@ -275,8 +252,8 @@ class ResourceDemandScheduler(IResourceScheduler):
 
         # The node type configs for this scheduling request.
         _node_type_configs: Dict[NodeType, NodeTypeConfig]
-        # The max number of nodes for the entire cluster.
-        _max_num_nodes: Optional[int] = None
+        # The max number of workers for the entire cluster.
+        _max_num_worker_nodes: Optional[int] = None
         # The current schedulable nodes (including pending nodes and pending requests).
         _nodes: List[SchedulingNode] = field(default_factory=list)
         # The number of nodes by node types available for launching based on the max
@@ -288,14 +265,14 @@ class ResourceDemandScheduler(IResourceScheduler):
             self,
             nodes: List[SchedulingNode],
             node_type_configs: Dict[NodeType, NodeTypeConfig],
-            max_num_nodes: Optional[int] = None,
+            max_num_worker_nodes: Optional[int] = None,
         ):
             self._nodes = nodes
             self._node_type_configs = node_type_configs
             self._node_type_available = self._compute_available_node_types(
                 nodes, node_type_configs
             )
-            self._max_num_nodes = max_num_nodes
+            self._max_num_worker_nodes = max_num_worker_nodes
 
         @classmethod
         def from_schedule_request(
@@ -313,68 +290,44 @@ class ResourceDemandScheduler(IResourceScheduler):
 
             nodes = []
             node_type_configs = req.node_type_configs
+            # Populate already running nodes.
+            for node in req.current_nodes:
+                nodes.append(
+                    SchedulingNode(
+                        node_type=node.ray_node_type_name,
+                        total_resources=dict(node.total_resources),
+                        available_resources=dict(node.available_resources),
+                        labels=dict(node.dynamic_labels),
+                        status=SchedulingNodeStatus.RUNNING,
+                    )
+                )
 
-            # Initialize the scheduling nodes.
+            # Populate pending nodes.
             for instance in req.current_instances:
-                if instance.ray_node is not None:
-                    # This is a running ray node.
-                    nodes.append(
-                        SchedulingNode(
-                            node_type=instance.ray_node.ray_node_type_name,
-                            total_resources=dict(instance.ray_node.total_resources),
-                            available_resources=dict(
-                                instance.ray_node.available_resources
-                            ),
-                            labels=dict(instance.ray_node.dynamic_labels),
-                            status=SchedulingNodeStatus.RUNNING,
-                            im_instance_id=instance.im_instance.instance_id
-                            if instance.im_instance
-                            else None,
-                            ray_node_id=instance.ray_node.node_id.decode("utf-8"),
-                            idle_duration_ms=instance.ray_node.idle_duration_ms,
-                        )
-                    )
-                elif (
-                    instance.im_instance is not None
-                    and InstanceUtil.is_ray_running_reachable(
-                        instance.im_instance.status
-                    )
-                ):
-                    # This is an im instance that's pending to run ray:
-                    # e.g. allocated, or being requested, or ray is installing.
-                    node_config = node_type_configs.get(
-                        instance.im_instance.instance_type, None
-                    )
+                if not InstanceUtil.is_ray_running_reachable(instance.status):
+                    continue
+                node_config = node_type_configs.get(instance.instance_type, None)
 
-                    if node_config is None:
-                        # Configs might have been updated, and no more
-                        # node_type_configs for this node type.
-                        logger.info(
-                            "Skipping instance {} since no node config found for "
-                            "{}".format(
-                                instance.im_instance.instance_id,
-                                instance.im_instance.instance_type,
-                            )
-                        )
-                        continue
-                    nodes.append(
-                        SchedulingNode.from_node_config(
-                            node_config,
-                            status=SchedulingNodeStatus.PENDING,
-                            im_instance_id=instance.im_instance.instance_id,
+                if node_config is None:
+                    # Configs might have been updated, and no more
+                    # node_type_configs for this node type.
+                    logger.info(
+                        "Skipping instance {} since no node config found".format(
+                            instance.instance_id
                         )
                     )
-                else:
-                    logger.debug(
-                        "Skipping instance {} since it's not pending/running".format(
-                            instance
-                        )
+                    continue
+                nodes.append(
+                    SchedulingNode.from_node_config(
+                        node_config,
+                        status=SchedulingNodeStatus.PENDING,
                     )
+                )
 
             return cls(
                 nodes=nodes,
                 node_type_configs=node_type_configs,
-                max_num_nodes=req.max_num_nodes,
+                max_num_worker_nodes=req.max_num_worker_nodes,
             )
 
         @staticmethod
@@ -409,14 +362,7 @@ class ResourceDemandScheduler(IResourceScheduler):
             return node_type_available
 
         def get_nodes(self) -> List[SchedulingNode]:
-            """
-            Get the current nodes with filter.
-
-            Returns:
-                A list of nodes.
-            """
-            nodes = copy.deepcopy(self._nodes)
-            return nodes
+            return copy.deepcopy(self._nodes)
 
         def get_cluster_shape(self) -> Dict[NodeType, int]:
             cluster_shape = defaultdict(int)
@@ -435,12 +381,6 @@ class ResourceDemandScheduler(IResourceScheduler):
                 self._nodes, self._node_type_configs
             )
 
-        def get_max_num_nodes(self) -> Optional[int]:
-            """
-            Get the max number of nodes for the entire cluster.
-            """
-            return self._max_num_nodes
-
         def get_node_type_configs(self) -> Dict[NodeType, NodeTypeConfig]:
             return self._node_type_configs
 
@@ -449,62 +389,23 @@ class ResourceDemandScheduler(IResourceScheduler):
                 len(self._nodes), self._node_type_available, self._nodes
             )
 
-        def get_launch_requests(self) -> List[LaunchRequest]:
-            """
-            Get the launch requests for the nodes that are to be launched.
-            """
-            launch_by_type = defaultdict(int)
-            for node in self._nodes:
-                if node.status == SchedulingNodeStatus.TO_LAUNCH:
-                    launch_by_type[node.node_type] += 1
-
-            launch_requests = []
-            for instance_type, count in launch_by_type.items():
-                launch_requests.append(
-                    LaunchRequest(
-                        instance_type=instance_type,
-                        count=count,
-                        id=str(time.time_ns()),
-                        request_ts_ms=time.time_ns() // 1000,
-                    )
-                )
-            return launch_requests
-
-        def get_terminate_requests(
-            self,
-        ) -> List[TerminationRequest]:
-            """
-            Get the terminate requests for the nodes that are to be terminated.
-            """
-            return [
-                node.termination_request
-                for node in self._nodes
-                if node.termination_request is not None
-            ]
-
     def schedule(self, request: SchedulingRequest) -> SchedulingReply:
         self._init_context(request)
 
-        # Enforce the minimal count of nodes for each worker node type.
-        self._enforce_min_workers_per_type()
+        # 1. Enforce the minimal count of nodes for each worker node type.
+        self._enforce_min_workers()
 
-        # Enforce the max worker nodes count.
-        self._enforce_max_workers_per_type()
-
-        # Enforce the max worker nodes count globally.
-        self._enforce_max_workers_global()
-
-        # Enforce the cluster resource constraints.
+        # 2. Enforce the cluster resource constraints.
         infeasible_constraints = self._enforce_resource_constraints(
             request.cluster_resource_constraints
         )
 
-        # Schedule the gang resource requests.
+        # 3. Schedule the gang resource requests.
         infeasible_gang_requests = self._sched_gang_resource_requests(
             request.gang_resource_requests
         )
 
-        # Schedule the tasks/actor resource requests
+        # 4. Schedule the tasks/actor resource requests
         infeasible_requests = self._sched_resource_requests(
             request.resource_requests,
         )
@@ -516,8 +417,7 @@ class ResourceDemandScheduler(IResourceScheduler):
             ),
             infeasible_gang_resource_requests=infeasible_gang_requests,
             infeasible_cluster_resource_constraints=infeasible_constraints,
-            to_launch=self._ctx.get_launch_requests(),
-            to_terminate=self._ctx.get_terminate_requests(),
+            target_cluster_shape=self._ctx.get_cluster_shape(),
         )
 
         return reply
@@ -525,215 +425,7 @@ class ResourceDemandScheduler(IResourceScheduler):
     def _init_context(self, request: SchedulingRequest) -> None:
         self._ctx = self.ScheduleContext.from_schedule_request(request)
 
-    def _enforce_max_workers_per_type(self) -> None:
-        """
-        Enforce the max number of workers for each node type.
-        """
-
-        # Get all the nodes by type
-        all_nodes = self._ctx.get_nodes()
-
-        non_terminating_nodes_by_type = defaultdict(list)
-        terminating_nodes = []
-        for node in all_nodes:
-            if node.status == SchedulingNodeStatus.TO_TERMINATE:
-                terminating_nodes.append(node)
-            else:
-                non_terminating_nodes_by_type[node.node_type].append(node)
-
-        terminating_nodes = []
-        # Step 1. Enforce the max number of workers for each node type.
-        for node_type in non_terminating_nodes_by_type.keys():
-            non_terminate_nodes_of_type = non_terminating_nodes_by_type[node_type]
-            node_config = self._ctx.get_node_type_configs().get(node_type, None)
-            num_max_nodes_per_type = node_config.max_worker_nodes if node_config else 0
-            num_extra_nodes = len(non_terminate_nodes_of_type) - num_max_nodes_per_type
-
-            if num_extra_nodes <= 0:
-                # No extra nodes for this type, continue.
-                continue
-
-            # Sort the instances for termination.
-            non_terminate_nodes_of_type.sort(key=self._sort_nodes_for_termination)
-
-            # Terminate the nodes
-            to_terminate, remained_nodes = self._select_nodes_to_terminate(
-                non_terminate_nodes_of_type,
-                num_extra_nodes,
-                TerminationRequest.Cause.MAX_NUM_NODE_PER_TYPE,
-                max_num_nodes_per_type=num_max_nodes_per_type,
-            )
-
-            non_terminating_nodes_by_type[node_type] = remained_nodes
-            terminating_nodes.extend(to_terminate)
-
-        non_terminating_nodes = []
-        for nodes in non_terminating_nodes_by_type.values():
-            non_terminating_nodes.extend(nodes)
-
-        # Update the context
-        assert len(all_nodes) == len(
-            terminating_nodes + non_terminating_nodes
-        ), "The number of nodes should be the same after enforcing max nodes per type."
-
-        self._ctx.update(terminating_nodes + non_terminating_nodes)
-
-        logger.debug(
-            f"Enforced max nodes per type: terminating {len(terminating_nodes)} "
-            "for per node type max num node's constraints."
-        )
-
-    def _enforce_max_workers_global(self) -> None:
-        """
-        Enforce the max number of workers for the entire cluster.
-        """
-        all_nodes = self._ctx.get_nodes()
-
-        terminating_nodes = []
-        non_terminating_nodes = []
-
-        for node in all_nodes:
-            if node.status == SchedulingNodeStatus.TO_TERMINATE:
-                terminating_nodes.append(node)
-            else:
-                non_terminating_nodes.append(node)
-
-        num_max_nodes = self._ctx.get_max_num_nodes()
-
-        num_to_terminate = (
-            max(len(non_terminating_nodes) - num_max_nodes, 0) if num_max_nodes else 0
-        )
-
-        if num_to_terminate <= 0:
-            # No extra nodes needed to terminate.
-            return
-
-        non_terminating_nodes.sort(key=self._sort_nodes_for_termination)
-        # Terminate the nodes
-        to_terminate_nodes, non_terminating_nodes = self._select_nodes_to_terminate(
-            non_terminating_nodes,
-            num_to_terminate,
-            TerminationRequest.Cause.MAX_NUM_NODES,
-            max_num_nodes=num_max_nodes,
-        )
-
-        logger.debug(
-            f"Enforced max nodes: terminating {len(to_terminate_nodes)} "
-            f" for global max num node's constraints({num_max_nodes})"
-        )
-
-        if len(to_terminate_nodes) < num_to_terminate:
-            logger.warning(
-                "Terminating {} nodes, failed to terminate {} nodes to "
-                "satisfy max_num_nodes={}".format(
-                    len(to_terminate_nodes),
-                    num_to_terminate - len(to_terminate_nodes),
-                    num_max_nodes,
-                )
-            )
-
-        # Update the context
-        terminating_nodes.extend(to_terminate_nodes)
-        assert len(all_nodes) == len(
-            terminating_nodes + non_terminating_nodes
-        ), "The number of nodes should be the same after enforcing max nodes."
-
-        all_nodes = terminating_nodes + non_terminating_nodes
-        self._ctx.update(all_nodes)
-        logger.debug(
-            "After enforced max nodes for global num nodes limit : {}".format(self._ctx)
-        )
-
-    @staticmethod
-    def _select_nodes_to_terminate(
-        nodes: List[SchedulingNode],
-        num_to_terminate: int,
-        cause: TerminationRequest.Cause,
-        max_num_nodes: Optional[int] = None,
-        max_num_nodes_per_type: Optional[int] = None,
-        idle_duration_ms: Optional[int] = None,
-    ) -> Tuple[List[SchedulingNode], List[SchedulingNode]]:
-        """
-        Select 'num_to_terminate' of nodes to be terminated
-        from the 'nodes' list.
-
-        Args:
-            nodes: The nodes to be terminated.
-            num_to_terminate: The number of nodes to be terminated.
-            cause: The cause of the termination.
-
-            max_num_nodes: The max number of nodes for the entire cluster only
-                used when the cause is TerminationRequest.Cause.MAX_NUM_NODES.
-            max_num_nodes_per_type: The max number of nodes for each node type.
-                Only used when the cause is
-                TerminationRequest.Cause.MAX_NUM_NODE_PER_TYPE.
-            idle_duration_ms: The idle duration in ms. Only used when the cause is
-                TerminationRequest.Cause.IDLE.
-
-        Returns:
-            A tuple of:
-                - The terminated nodes.
-                - The remained nodes.
-        """
-
-        terminated_nodes, remained_nodes = (
-            nodes[:num_to_terminate],
-            nodes[num_to_terminate:],
-        )
-
-        for node in terminated_nodes:
-            node.status = SchedulingNodeStatus.TO_TERMINATE
-            node.termination_request = TerminationRequest(
-                id=str(time.time_ns()),
-                instance_id=node.im_instance_id,
-                ray_node_id=node.ray_node_id,
-                cause=cause,
-            )
-            if cause == TerminationRequest.Cause.MAX_NUM_NODES:
-                node.termination_request.max_num_nodes = max_num_nodes
-            elif cause == TerminationRequest.Cause.MAX_NUM_NODE_PER_TYPE:
-                node.termination_request.max_num_nodes_per_type = max_num_nodes_per_type
-            elif cause == TerminationRequest.Cause.IDLE:
-                node.termination_request.idle_duration_ms = idle_duration_ms
-            else:
-                raise ValueError("Unknown termination cause: {}".format(cause))
-
-        return terminated_nodes, remained_nodes
-
-    @staticmethod
-    def _sort_nodes_for_termination(node: SchedulingNode) -> Tuple:
-        """
-        Sort the nodes for termination increasingly by:
-
-            1. First if ray hasn't been started yet
-            2. Then if the nodes are idle
-            3. Then with lower resources util nodes first.
-
-        Such that nodes sorted earlier will be terminated first.
-        """
-
-        running_ray = node.status == SchedulingNodeStatus.RUNNING
-        # Reverse the idle duration such that the nodes with the largest idle duration
-        # will be terminated first.
-        idle_dur = -1 * node.idle_duration_ms
-
-        utils_per_resources = {}
-        for resource, total in node.total_resources.items():
-            if total <= 0:
-                continue
-            utils_per_resources[resource] = (
-                total - node.available_resources.get(resource, 0)
-            ) / total
-
-        avg_util = (
-            sum(utils_per_resources.values()) / len(utils_per_resources)
-            if utils_per_resources
-            else 0
-        )
-
-        return (running_ray, idle_dur, avg_util)
-
-    def _enforce_min_workers_per_type(self) -> None:
+    def _enforce_min_workers(self) -> None:
         """
         Enforce the minimal count of nodes for each worker node type.
         """
@@ -761,7 +453,7 @@ class ResourceDemandScheduler(IResourceScheduler):
                     * (min_count - cur_count)
                 )
         # NOTE: we assume the aggregated number of min workers across all node types
-        # should not exceed any globally enforced max_num_nodes
+        # should not exceed any globally enforced max_num_worker_nodes
 
         # Add the new nodes to the existing nodes and update the context.
         self._ctx.update(new_nodes + self._ctx.get_nodes())
