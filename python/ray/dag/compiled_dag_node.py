@@ -495,7 +495,7 @@ class CompiledDAG:
             A list of Channels that can be used to read the DAG result.
         """
         input_channels, output_channels = self._get_or_compile()
-        arg_list = [arg for arg in args] + [v for k, v in kwargs.items()]
+        arg_list = list(args) + list(kwargs.values())
         assert len(input_channels) == len(
             arg_list
         ), f"Number of arguments {len(arg_list)} mistmatches the length of"
