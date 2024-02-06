@@ -5059,7 +5059,18 @@ class Dataset:
         self._current_executor = None
 
     def __del__(self):
-        if self._current_executor and ray is not None and ray.is_initialized():
+        if not self._current_executor:
+            return
+
+        # When Python shuts down, `ray` might evaluate to `<module None from None>`.
+        # This value is truthy and not `None`, so we use a try-catch rather than
+        # something like `if ray is not None`. For more information, see #42382.
+        try:
+            is_ray_initialized = ray.is_initialized()
+        except TypeError:
+            is_ray_initialized = False
+
+        if is_ray_initialized:
             self._current_executor.shutdown()
 
 
