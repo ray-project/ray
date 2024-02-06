@@ -160,7 +160,7 @@ class ActorReplicaWrapper:
         if self._replica_info.is_cross_language:
             return self._send_request_java(pr)
         else:
-            return self._send_request_python(pr)
+            return self._send_request_python(pr, with_rejection=False)
 
     async def send_request_with_rejection(
         self,

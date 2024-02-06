@@ -1,5 +1,5 @@
 import pickle
-from typing import Tuple
+from typing import Tuple, Union
 
 import pytest
 
@@ -17,12 +17,38 @@ class FakeReplicaActor:
     def set_replica_queue_length_info(self, info: ReplicaQueueLengthInfo):
         self._replica_queue_length_info = info
 
-    async def handle_request_with_rejection(
+    async def handle_request(
         self,
-        pickled_request_metadata: bytes,
+        request_metadata: Union[bytes, RequestMetadata],
         message: str,
         *,
         is_streaming: bool,
+    ):
+        if isinstance(request_metadata, bytes):
+            request_metadata = pickle.loads(request_metadata)
+
+        assert not is_streaming and not request_metadata.is_streaming
+        return message
+
+    async def handle_request_streaming(
+        self,
+        request_metadata: Union[bytes, RequestMetadata],
+        message: str,
+        *,
+        is_streaming: bool,
+    ):
+        if isinstance(request_metadata, bytes):
+            request_metadata = pickle.loads(request_metadata)
+
+        assert is_streaming and request_metadata.is_streaming
+        for i in range(5):
+            yield f"{message}-{i}"
+
+    async def handle_request_with_rejection(
+        self,
+        pickled_request_metadata: bytes,
+        *args,
+        **kwargs,
     ):
         yield pickle.dumps(self._replica_queue_length_info)
         if not self._replica_queue_length_info.accepted:
@@ -30,12 +56,14 @@ class FakeReplicaActor:
 
         request_metadata = pickle.loads(pickled_request_metadata)
         if request_metadata.is_streaming:
-            assert is_streaming
-            for i in range(5):
-                yield f"{message}-{i}"
+            async for result in self.handle_request_streaming(
+                request_metadata, *args, **kwargs
+            ):
+                yield result
         else:
-            assert not is_streaming
-            yield message
+            yield self.handle_request(
+                request_metadata, *args, **kwargs
+            )
 
 @pytest.fixture
 def setup_fake_replica(ray_instance) -> Tuple[ActorReplicaWrapper, ActorHandle]:
@@ -51,6 +79,31 @@ def setup_fake_replica(ray_instance) -> Tuple[ActorReplicaWrapper, ActorHandle]:
             is_cross_language = False,
         )
     ), actor_handle
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("is_streaming", [False, True])
+async def test_send_request(setup_fake_replica, is_streaming: bool):
+    replica, _ = setup_fake_replica
+
+    pr = PendingRequest(
+        args=["Hello"],
+        kwargs={"is_streaming": is_streaming},
+        metadata=RequestMetadata(
+            request_id="abc",
+            endpoint="123",
+            is_streaming=is_streaming,
+        ),
+    )
+    obj_ref_or_gen = replica.send_request(pr)
+    if is_streaming:
+        assert isinstance(obj_ref_or_gen, ObjectRefGenerator)
+        for i in range(5):
+            next_obj_ref = await obj_ref_or_gen.__anext__()
+            assert await next_obj_ref == f"Hello-{i}"
+    else:
+        assert isinstance(obj_ref_or_gen, ObjectRef)
+        assert await obj_ref_or_gen == "Hello"
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize("accepted", [False, True])
