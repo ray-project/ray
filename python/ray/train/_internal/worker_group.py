@@ -169,12 +169,14 @@ class WorkerGroup:
                 "`actor_cls_args` or `actor_class_kwargs` are "
                 "passed in but no `actor_cls` is passed in."
             )
-        
+
         self.num_workers = num_workers
         self.num_cpus_per_worker = num_cpus_per_worker
         self.num_gpus_per_worker = num_gpus_per_worker
         self.additional_resources_per_worker = additional_resources_per_worker
-        self.memory_per_worker = self.additional_resources_per_worker.pop("memory", None)
+        self.memory_per_worker = self.additional_resources_per_worker.pop(
+            "memory", None
+        )
 
         self.workers = []
         self._base_cls = create_executable_class(actor_cls)

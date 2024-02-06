@@ -59,9 +59,11 @@ def test_worker_creation_num_cpus(ray_start_2_cpus):
     assert "CPU" not in ray.available_resources()
     wg.shutdown()
 
+
 def test_worker_creation_with_memory(ray_start_2_cpus_and_10kb_memory):
     wg = WorkerGroup(num_workers=2, additional_resources_per_worker={"memory": 1_000})
     assert len(wg.workers) == 2
+
 
 def test_worker_shutdown(ray_start_2_cpus):
     assert ray.available_resources()["CPU"] == 2
