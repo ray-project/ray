@@ -38,7 +38,7 @@ ax-platform==0.3.2
 azure-cli-core==2.40.0
 azure-cli-telemetry==1.0.8
 azure-common==1.1.28
-azure-core==1.29.6
+azure-core==1.29.7
 azure-identity==1.10.0
 azure-mgmt-compute==23.1.0
 azure-mgmt-core==1.4.0
@@ -83,7 +83,7 @@ comm==0.2.0
 commonmark==0.9.1
 conda @ file:///home/conda/feedstock_root/build_artifacts/conda_1701731653463/work
 conda-content-trust @ file:///croot/conda-content-trust_1693490622020/work
-conda-libmamba-solver @ file:///croot/conda-libmamba-solver_1702403194501/work/src
+conda-libmamba-solver @ file:///croot/conda-libmamba-solver_1702997573971/work/src
 conda-package-handling @ file:///croot/conda-package-handling_1690999929514/work
 conda_package_streaming @ file:///croot/conda-package-streaming_1690987966409/work
 configobj==5.0.8
@@ -121,7 +121,7 @@ exceptiongroup==1.2.0
 executing==2.0.1
 fairscale==0.4.6
 Farama-Notifications==0.0.4
-fastapi==0.104.0
+fastapi==0.108.0
 fasteners==0.19
 fastjsonschema==2.19.0
 filelock==3.13.1
@@ -197,7 +197,7 @@ json5==0.9.14
 jsonpatch @ file:///tmp/build/80754af9/jsonpatch_1615747632069/work
 jsonpointer==2.4
 jsonschema==4.17.3
-jsonschema-specifications==2023.11.2
+jsonschema-specifications==2023.12.1
 jupyter-client==7.3.4
 jupyter-events==0.6.3
 jupyter-server==1.24.0
@@ -262,7 +262,7 @@ ninja==1.11.1.1
 notebook==6.5.6
 notebook_shim==0.2.3
 numexpr==2.8.4
-numpy==1.26.2
+numpy==1.26.3
 nvidia-ml-py==12.535.133
 oauth2client==4.1.3
 oauthlib==3.2.2
@@ -355,12 +355,12 @@ PyWavelets==1.4.1
 PyYAML==6.0.1
 pyzmq==24.0.1
 querystring-parser==1.2.4
-ray @ file:///home/ray/ray-2.9.0-cp39-cp39-manylinux2014_x86_64.whl#sha256=f75fa8534ca363282de4e717356db0f93b6bc9f578e6ab7db33cb1d548ca8bba
-ray-cpp==2.9.0
+ray @ file:///home/ray/ray-2.9.2-cp39-cp39-manylinux2014_x86_64.whl#sha256=7e073e8f1c465064c40c9318376b5bd4568589f2c7ae4e3bc5f86a4e7b0b2fe0
+ray-cpp==2.9.2
 raydp==1.7.0b20231020.dev0
 recsim==0.2.4
 redis==3.5.3
-referencing==0.32.0
+referencing==0.33.0
 regex==2023.10.3
 requests @ file:///croot/requests_1690400202158/work
 requests-oauthlib==1.3.1
@@ -371,7 +371,7 @@ retry-decorator==1.1.1
 rfc3339-validator==0.1.4
 rfc3986-validator==0.1.1
 rich==12.6.0
-rpds-py==0.15.2
+rpds-py==0.17.1
 rsa==4.7.2
 ruamel.yaml @ file:///croot/ruamel.yaml_1666304550667/work
 ruamel.yaml.clib @ file:///croot/ruamel.yaml.clib_1666302247304/work
@@ -400,7 +400,7 @@ soupsieve==2.5
 SQLAlchemy==1.4.17
 sqlparse==0.4.4
 stack-data==0.6.3
-starlette==0.27.0
+starlette==0.29.0
 statsmodels==0.14.0
 SuperSuit==3.8.0
 sympy==1.12
@@ -433,10 +433,10 @@ tomli==2.0.1
 toolz==0.12.0
 torch==2.0.1+cu118
 torch-cluster==1.6.1+pt20cu118
-torch-geometric==2.3.1
 torch-scatter==2.1.1+pt20cu118
 torch-sparse==0.6.17+pt20cu118
 torch-spline-conv==1.2.2+pt20cu118
+torch_geometric==2.3.1
 torchdata==0.6.1
 torchmetrics==0.10.3
 torchtext==0.15.2+cpu
@@ -451,7 +451,7 @@ typeguard==2.13.3
 typer==0.9.0
 types-python-dateutil==2.8.19.14
 typing_extensions==4.8.0
-tzdata==2023.3
+tzdata==2023.4
 uri-template==1.3.0
 uritemplate==3.0.1
 urllib3 @ file:///croot/urllib3_1698257533958/work
