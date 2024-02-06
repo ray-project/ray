@@ -12,18 +12,16 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#include "ray/object_manager/common.h"
-
 #include <limits>
 
 #include "absl/random/random.h"
 #include "absl/strings/str_format.h"
 #include "gmock/gmock.h"
 #include "gtest/gtest.h"
+#include "ray/object_manager/common.h"
 
 using namespace ray;
 using namespace testing;
-
 
 namespace {
 
@@ -44,8 +42,10 @@ void Write(uint8_t *object_ptr, int num_writes, int num_readers) {
   }
 }
 
-void Read(uint8_t *object_ptr, int num_reads, std::shared_ptr<std::vector<std::string>>
-    data_results, std::shared_ptr<std::vector<std::string>> metadata_results) {
+void Read(uint8_t *object_ptr,
+          int num_reads,
+          std::shared_ptr<std::vector<std::string>> data_results,
+          std::shared_ptr<std::vector<std::string>> metadata_results) {
   PlasmaObjectHeader *header = reinterpret_cast<ray::PlasmaObjectHeader *>(object_ptr);
   auto data_ptr = object_ptr + sizeof(PlasmaObjectHeader);
 
@@ -77,10 +77,11 @@ void Read(uint8_t *object_ptr, int num_reads, std::shared_ptr<std::vector<std::s
   }
 }
 
-}
+}  // namespace
 
 TEST(MutableObjectTest, TestBasic) {
-  uint8_t *object_ptr = reinterpret_cast<uint8_t *>(malloc(sizeof(PlasmaObjectHeader) + 100));
+  uint8_t *object_ptr =
+      reinterpret_cast<uint8_t *>(malloc(sizeof(PlasmaObjectHeader) + 100));
 
   PlasmaObjectHeader *header = reinterpret_cast<ray::PlasmaObjectHeader *>(object_ptr);
   *header = PlasmaObjectHeader{};
@@ -94,11 +95,11 @@ TEST(MutableObjectTest, TestBasic) {
   for (int i = 0; i < num_reads; i++) {
     std::string data = "hello" + std::to_string(i);
     std::string metadata = std::to_string(data.length());
-    header->WriteAcquire(data.length(), metadata.length(), 1);
+    RAY_CHECK_OK(header->WriteAcquire(data.length(), metadata.length(), 1));
     auto data_ptr = object_ptr + sizeof(PlasmaObjectHeader);
     std::memcpy(data_ptr, data.data(), data.length());
     std::memcpy(data_ptr + data.length(), metadata.data(), metadata.length());
-    header->WriteRelease();
+    RAY_CHECK_OK(header->WriteRelease());
   }
 
   t.join();
@@ -111,7 +112,8 @@ TEST(MutableObjectTest, TestBasic) {
 }
 
 TEST(MutableObjectTest, TestMultipleReaders) {
-  uint8_t *object_ptr = reinterpret_cast<uint8_t *>(malloc(sizeof(PlasmaObjectHeader) + 100));
+  uint8_t *object_ptr =
+      reinterpret_cast<uint8_t *>(malloc(sizeof(PlasmaObjectHeader) + 100));
 
   PlasmaObjectHeader *header = reinterpret_cast<ray::PlasmaObjectHeader *>(object_ptr);
   *header = PlasmaObjectHeader{};
@@ -133,11 +135,11 @@ TEST(MutableObjectTest, TestMultipleReaders) {
   for (int i = 0; i < num_reads; i++) {
     std::string data = "hello" + std::to_string(i);
     std::string metadata = std::to_string(data.length());
-    header->WriteAcquire(data.length(), metadata.length(), num_readers);
+    RAY_CHECK_OK(header->WriteAcquire(data.length(), metadata.length(), num_readers));
     auto data_ptr = object_ptr + sizeof(PlasmaObjectHeader);
     std::memcpy(data_ptr, data.data(), data.length());
     std::memcpy(data_ptr + data.length(), metadata.data(), metadata.length());
-    header->WriteRelease();
+    RAY_CHECK_OK(header->WriteRelease());
   }
 
   for (auto &t : threads) {
@@ -154,7 +156,8 @@ TEST(MutableObjectTest, TestMultipleReaders) {
 }
 
 TEST(MutableObjectTest, TestWriterFails) {
-  uint8_t *object_ptr = reinterpret_cast<uint8_t *>(malloc(sizeof(PlasmaObjectHeader) + 100));
+  uint8_t *object_ptr =
+      reinterpret_cast<uint8_t *>(malloc(sizeof(PlasmaObjectHeader) + 100));
 
   PlasmaObjectHeader *header = reinterpret_cast<ray::PlasmaObjectHeader *>(object_ptr);
   *header = PlasmaObjectHeader{};
@@ -177,7 +180,7 @@ TEST(MutableObjectTest, TestWriterFails) {
   std::thread writer_t(Write, object_ptr, num_reads_success, num_readers);
   writer_t.join();
 
-  header->WriteAcquire(10, 10, num_readers);
+  RAY_CHECK_OK(header->WriteAcquire(10, 10, num_readers));
 
   header->SetErrorUnlocked();
 
@@ -203,7 +206,8 @@ TEST(MutableObjectTest, TestWriterFails) {
 }
 
 TEST(MutableObjectTest, TestWriterFailsAfterAcquire) {
-  uint8_t *object_ptr = reinterpret_cast<uint8_t *>(malloc(sizeof(PlasmaObjectHeader) + 100));
+  uint8_t *object_ptr =
+      reinterpret_cast<uint8_t *>(malloc(sizeof(PlasmaObjectHeader) + 100));
 
   PlasmaObjectHeader *header = reinterpret_cast<ray::PlasmaObjectHeader *>(object_ptr);
   *header = PlasmaObjectHeader{};
@@ -226,7 +230,7 @@ TEST(MutableObjectTest, TestWriterFailsAfterAcquire) {
   std::thread writer_t(Write, object_ptr, num_reads_success, num_readers);
   writer_t.join();
 
-  header->WriteAcquire(10, 10, num_readers);
+  RAY_CHECK_OK(header->WriteAcquire(10, 10, num_readers));
 
   header->SetErrorUnlocked();
 
@@ -252,7 +256,8 @@ TEST(MutableObjectTest, TestWriterFailsAfterAcquire) {
 }
 
 TEST(MutableObjectTest, TestReaderFails) {
-  uint8_t *object_ptr = reinterpret_cast<uint8_t *>(malloc(sizeof(PlasmaObjectHeader) + 100));
+  uint8_t *object_ptr =
+      reinterpret_cast<uint8_t *>(malloc(sizeof(PlasmaObjectHeader) + 100));
 
   PlasmaObjectHeader *header = reinterpret_cast<ray::PlasmaObjectHeader *>(object_ptr);
   *header = PlasmaObjectHeader{};
@@ -268,7 +273,8 @@ TEST(MutableObjectTest, TestReaderFails) {
 
   data_results.push_back(std::make_shared<std::vector<std::string>>());
   metadata_results.push_back(std::make_shared<std::vector<std::string>>());
-  std::thread failed_reader_t(Read, object_ptr, num_reads_success, data_results[0], metadata_results[0]);
+  std::thread failed_reader_t(
+      Read, object_ptr, num_reads_success, data_results[0], metadata_results[0]);
 
   for (int i = 1; i < num_readers; i++) {
     data_results.push_back(std::make_shared<std::vector<std::string>>());
@@ -290,7 +296,7 @@ TEST(MutableObjectTest, TestReaderFails) {
   ASSERT_EQ(data_results[0]->size(), num_reads_success);
   for (int i = 1; i < num_readers; i++) {
     ASSERT_TRUE(data_results[i]->size() == static_cast<size_t>(num_reads_success + 1) ||
-        data_results[i]->size() == static_cast<size_t>(num_reads_success + 2));
+                data_results[i]->size() == static_cast<size_t>(num_reads_success + 2));
   }
   for (int i = 1; i < num_readers; i++) {
     for (int j = 0; j < static_cast<int>(data_results[i]->size()); j++) {
