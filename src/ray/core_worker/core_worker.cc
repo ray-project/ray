@@ -3016,7 +3016,10 @@ Status CoreWorker::ReportGeneratorItemReturns(
   RAY_LOG(DEBUG) << "Write the object ref stream, index: " << item_index
                  << ", id: " << dynamic_return_object.first;
 
-  waiter->IncrementObjectGenerated();
+  if (waiter) {
+    waiter->IncrementObjectGenerated();
+  }
+
   client->ReportGeneratorItemReturns(
       request,
       [waiter, generator_id, item_index](
@@ -3024,32 +3027,41 @@ Status CoreWorker::ReportGeneratorItemReturns(
         RAY_LOG(DEBUG) << "ReportGeneratorItemReturns replied. " << generator_id
                        << "index: " << item_index << ". total_consumed_reported: "
                        << reply.total_num_object_consumed();
-        RAY_CHECK(waiter != nullptr);
-        RAY_LOG(DEBUG) << "Total object consumed: " << waiter->TotalObjectConsumed()
-                       << ". Total object generated: " << waiter->TotalObjectGenerated();
-        if (status.ok()) {
-          /// Since unary gRPC requests are not ordered, it is possible the stale
-          /// total value can be replied. Since total object consumed only can
-          /// increment, we always choose the larger value here.
-          waiter->UpdateTotalObjectConsumed(
-              std::max(waiter->TotalObjectConsumed(), reply.total_num_object_consumed()));
-        } else {
-          // TODO(sang): Handle network error more gracefully.
-          // If the request fails, we should just resume until task finishes without
-          // backpressure.
-          waiter->UpdateTotalObjectConsumed(waiter->TotalObjectGenerated());
-          RAY_LOG(WARNING) << "Failed to send the object ref.";
+        if (waiter) {
+          RAY_LOG(DEBUG) << "Total object consumed: " << waiter->TotalObjectConsumed()
+                         << ". Total object generated: "
+                         << waiter->TotalObjectGenerated();
+          if (status.ok()) {
+            /// Since unary gRPC requests are not ordered, it is possible the stale
+            /// total value can be replied. Since total object consumed only can
+            /// increment, we always choose the larger value here.
+            waiter->UpdateTotalObjectConsumed(std::max(
+                waiter->TotalObjectConsumed(), reply.total_num_object_consumed()));
+          } else {
+            // TODO(sang): Handle network error more gracefully.
+            // If the request fails, we should just resume until task finishes without
+            // backpressure.
+            waiter->UpdateTotalObjectConsumed(waiter->TotalObjectGenerated());
+            RAY_LOG(WARNING) << "Failed to send the object ref.";
+          }
         }
       });
-  // Backpressure if needed. See task_manager.h and search "backpressure" for protocol
-  // details.
-  return waiter->WaitUntilObjectConsumed(/*check_signals*/ [this]() {
+
+  auto check_signals_callback = [this]() {
     if (options_.check_signals) {
       return options_.check_signals();
     } else {
       return Status::OK();
     }
-  });
+  };
+
+  if (waiter) {
+    // Backpressure if needed. See task_manager.h and search "backpressure" for protocol
+    // details.
+    return waiter->WaitUntilObjectConsumed(check_signals_callback);
+  } else {
+    return check_signals_callback();
+  }
 }
 
 void CoreWorker::HandleReportGeneratorItemReturns(
@@ -3907,6 +3919,11 @@ void CoreWorker::HandleKillActor(rpc::KillActorRequest request,
     Exit(rpc::WorkerExitType::INTENDED_SYSTEM_EXIT,
          absl::StrCat("Worker exits because the actor is killed. ", kill_actor_reason));
   }
+}
+
+int64_t CoreWorker::GetLocalMemoryStoreBytesUsed() const {
+  MemoryStoreStats memory_store_stats = memory_store_->GetMemoryStoreStatisticalData();
+  return memory_store_stats.num_local_objects_bytes;
 }
 
 void CoreWorker::HandleGetCoreWorkerStats(rpc::GetCoreWorkerStatsRequest request,

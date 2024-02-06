@@ -1,6 +1,6 @@
 (serve-stable-diffusion-tutorial)=
 
-# Serving a Stable Diffusion Model
+# Serve a Stable Diffusion Model
 This example runs a Stable Diffusion application with Ray Serve.
 
 To run this example, install the following:
@@ -18,13 +18,13 @@ The Serve code is as follows:
 :end-before: __example_code_end__
 ```
 
-Use `serve run stable_diffusion:entrypoint` to start the serve application.
+Use `serve run stable_diffusion:entrypoint` to start the Serve application.
 
 :::{note}
-The autoscaling config sets `min_replicas` to 0, which means the deployment starts with no `ObjectDetection` replicas. These replicas spawn only when a request arrives. When no requests arrive after a certain period, Serve downscales `ObjectDetection` back to 0 replica to save GPU resources.
+The autoscaling config sets `min_replicas` to 0, which means the deployment starts with no `ObjectDetection` replicas. These replicas spawn only when a request arrives. When no requests arrive after a certain period of time, Serve downscales `ObjectDetection` back to 0 replica to save GPU resources.
 :::
 
-These messages are expected in the output:
+You should see these messages in the output:
 ```text
 (ServeController pid=362, ip=10.0.44.233) INFO 2023-03-08 16:44:57,579 controller 362 http_state.py:129 - Starting HTTP proxy with name 'SERVE_CONTROLLER_ACTOR:SERVE_PROXY_ACTOR-7396d5a9efdb59ee01b7befba448433f6c6fc734cfa5421d415da1b3' on node '7396d5a9efdb59ee01b7befba448433f6c6fc734cfa5421d415da1b3' listening on '127.0.0.1:8000'
 (ServeController pid=362, ip=10.0.44.233) INFO 2023-03-08 16:44:57,588 controller 362 http_state.py:129 - Starting HTTP proxy with name 'SERVE_CONTROLLER_ACTOR:SERVE_PROXY_ACTOR-a30ea53938547e0bf88ce8672e578f0067be26a7e26d23465c46300b' on node 'a30ea53938547e0bf88ce8672e578f0067be26a7e26d23465c46300b' listening on '127.0.0.1:8000'
@@ -44,5 +44,5 @@ resp = requests.get(f"http://127.0.0.1:8000/imagine?prompt={input}")
 with open("output.png", 'wb') as f:
     f.write(resp.content)
 ```
-The `output.png` file is saved locally. Check it out!
+The app saves the `output.png` file locally. The following is an example of an output image.
 ![image](https://raw.githubusercontent.com/ray-project/images/master/docs/serve/stable_diffusion_output.png)

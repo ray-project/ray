@@ -1048,7 +1048,7 @@ def append_short_test_summary(rep):
 
     summary_dir = os.environ.get("RAY_TEST_SUMMARY_DIR")
 
-    if platform.system() != "Linux":
+    if platform.system() == "Darwin":
         summary_dir = os.environ.get("RAY_TEST_SUMMARY_DIR_HOST")
 
     if not summary_dir:
@@ -1059,9 +1059,9 @@ def append_short_test_summary(rep):
 
     test_name = rep.nodeid.replace(os.sep, "::")
 
-    if os.name == "nt":
+    if platform.system() == "Windows":
         # ":" is not legal in filenames in windows
-        test_name.replace(":", "$")
+        test_name = test_name.replace(":", "$")
 
     header_file = os.path.join(summary_dir, "000_header.txt")
     summary_file = os.path.join(summary_dir, test_name + ".txt")
@@ -1183,7 +1183,7 @@ def create_ray_logs_for_failed_test(rep):
 
     # We temporarily restrict to Linux until we have artifact dirs
     # for Windows and Mac
-    if platform.system() != "Linux":
+    if platform.system() != "Linux" and platform.system() != "Windows":
         return
 
     # Only archive failed tests after the "call" phase of the test
@@ -1208,6 +1208,9 @@ def create_ray_logs_for_failed_test(rep):
 
     # Write zipped logs to logs archive dir
     test_name = rep.nodeid.replace(os.sep, "::")
+    if platform.system() == "Windows":
+        # ":" is not legal in filenames in windows
+        test_name = test_name.replace(":", "$")
     output_file = os.path.join(archive_dir, f"{test_name}_{time.time():.4f}")
     shutil.make_archive(output_file, "zip", logs_dir)
 
