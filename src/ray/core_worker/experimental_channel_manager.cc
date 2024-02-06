@@ -87,7 +87,7 @@ Status ExperimentalChannelManager::WriteRelease(const ObjectID &object_id) {
     return Status::Invalid("Must WriteAcquire before WriteRelease on a mutable object");
   }
 
-  channel.mutable_object->header->WriteRelease();
+  RAY_RETURN_NOT_OK(channel.mutable_object->header->WriteRelease());
   channel.is_sealed = true;
 
 #endif
