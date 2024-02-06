@@ -49,4 +49,7 @@ py_test(
 py_binary(
     name = "upgrade_version",
     srcs = ["upgrade_version.py"],
+    deps = [
+        ":upgrade_version_lib",
+    ]
 )

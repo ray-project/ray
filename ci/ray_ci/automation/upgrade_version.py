@@ -3,6 +3,10 @@ from ci.ray_ci.automation.upgrade_version_lib import (
     get_current_version,
     upgrade_file_version,
 )
+import os
+
+bazel_workspace_dir = os.environ.get("BUILD_WORKSPACE_DIRECTORY", "")
+
 
 @click.command()
 @click.option("--new_version", required=True, type=str)
