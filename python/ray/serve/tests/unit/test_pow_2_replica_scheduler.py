@@ -155,6 +155,7 @@ def fake_pending_request(
             ),
             created_at=created_at,
         )
+    else:
         return PendingRequest(
             args=list(),
             kwargs=dict(),
