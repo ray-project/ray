@@ -22,7 +22,12 @@ py_binary(
 py_binary(
     name = "filter_tests",
     srcs = ["filter_tests.py"],
-    deps = ["//ci/ray_ci:ray_ci_lib"],
+    exec_compatible_with = ["//:hermetic_python"],
+    deps = [
+        ci_require("click"),
+        "//ci/ray_ci:ray_ci_lib",
+        "//release:ray_release",
+    ],
 )
 
 py_library(
