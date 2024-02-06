@@ -518,7 +518,8 @@ class PowerOfTwoChoicesReplicaScheduler(ReplicaScheduler):
 
         Returns a list of queue lengths in the same order as the replicas passed in.
         Replicas whose RPCs fail or don't respond within the deadline will have a queue
-        length of `None`.
+        length of `None`. Replicas that return a `RayActorError` will be removed from
+        future consideration for requests.
 
         This method also updates the local cache of replica queue lengths according to
         the responses.
@@ -604,7 +605,6 @@ class PowerOfTwoChoicesReplicaScheduler(ReplicaScheduler):
         """
         lowest_queue_len = math.inf
         chosen_replica_id: Optional[str] = None
-
         not_in_cache: List[ReplicaWrapper] = []
         if self._use_replica_queue_len_cache:
             # Populate available queue lens from the cache.
