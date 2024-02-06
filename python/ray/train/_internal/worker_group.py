@@ -112,14 +112,9 @@ class WorkerGroup:
     Args:
         num_workers: The number of workers (Ray actors) to launch.
             Defaults to 1.
-        num_cpus_per_worker: The number of CPUs to reserve for each
-            worker. Fractional values are allowed. Defaults to 1.
-        num_gpus_per_worker: The number of GPUs to reserve for each
-            worker. Fractional values are allowed. Defaults to 0.
-        additional_resources_per_worker (Optional[Dict[str, float]]):
-            Dictionary specifying the extra resources that will be
-            requested for each worker in addition to ``num_cpus_per_worker``
-            and ``num_gpus_per_worker``.
+        resources_per_worker (Optional[Dict[str, float]]):
+            Dictionary specifying the resources that will be
+            requested for each worker. Defaults to {"CPU": 1}.
         actor_cls (Optional[Type]): If specified use this class as the
             remote actors.
         remote_cls_args, remote_cls_kwargs: If ``remote_cls`` is provided,
@@ -142,26 +137,22 @@ class WorkerGroup:
     def __init__(
         self,
         num_workers: int = 1,
-        num_cpus_per_worker: float = 1,
-        num_gpus_per_worker: float = 0,
-        additional_resources_per_worker: Optional[Dict[str, float]] = None,
+        resources_per_worker: Optional[Dict[str, float]] = None,
         actor_cls: Type = None,
         actor_cls_args: Optional[Tuple] = None,
         actor_cls_kwargs: Optional[Dict] = None,
         placement_group: Union[PlacementGroup, str] = "default",
     ):
+        if resources_per_worker is None:
+            resources_per_worker = {"CPU": 1}
+        else:
+            resources_per_worker = resources_per_worker.copy()
+
         if num_workers <= 0:
             raise ValueError(
                 "The provided `num_workers` must be greater "
                 f"than 0. Received num_workers={num_workers} "
                 f"instead."
-            )
-        if num_cpus_per_worker < 0 or num_gpus_per_worker < 0:
-            raise ValueError(
-                "The number of CPUs and GPUs per worker must "
-                "not be negative. Received "
-                f"num_cpus_per_worker={num_cpus_per_worker} and "
-                f"num_gpus_per_worker={num_gpus_per_worker}."
             )
 
         if (actor_cls_args or actor_cls_kwargs) and not actor_cls:
@@ -171,16 +162,9 @@ class WorkerGroup:
             )
 
         self.num_workers = num_workers
-        self.num_cpus_per_worker = num_cpus_per_worker
-        self.num_gpus_per_worker = num_gpus_per_worker
-        self.additional_resources_per_worker = additional_resources_per_worker
-
-        self.memory_per_worker = None
-        if self.additional_resources_per_worker is not None:
-            self.memory_per_worker = self.additional_resources_per_worker.pop(
-                "memory", None
-            )
-
+        self.num_cpus_per_worker = resources_per_worker.pop("CPU", 0)
+        self.num_gpus_per_worker = resources_per_worker.pop("GPU", 0)
+        self.memory_per_worker = resources_per_worker.pop("memory", 0)
         self.workers = []
         self._base_cls = create_executable_class(actor_cls)
         assert issubclass(self._base_cls, RayTrainWorker)
@@ -196,7 +180,7 @@ class WorkerGroup:
             num_cpus=self.num_cpus_per_worker,
             num_gpus=self.num_gpus_per_worker,
             memory=self.memory_per_worker,
-            resources=self.additional_resources_per_worker,
+            resources=resources_per_worker,
         )(self._base_cls)
         self.start()
 
