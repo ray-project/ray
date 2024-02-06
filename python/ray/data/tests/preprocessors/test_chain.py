@@ -4,13 +4,7 @@ import pytest
 import ray
 from ray.air.util.data_batch_conversion import BatchFormat
 from ray.data.preprocessor import Preprocessor
-from ray.data.preprocessors import (
-    BatchMapper,
-    Chain,
-    LabelEncoder,
-    SimpleImputer,
-    StandardScaler,
-)
+from ray.data.preprocessors import Chain, LabelEncoder, SimpleImputer, StandardScaler
 
 
 def test_chain():
