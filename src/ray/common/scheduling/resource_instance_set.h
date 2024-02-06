@@ -18,6 +18,7 @@
 #include "ray/common/scheduling/fixed_point.h"
 #include "ray/common/scheduling/resource_set.h"
 #include "ray/common/scheduling/scheduling_ids.h"
+#include "src/ray/protobuf/common.pb.h"
 
 namespace ray {
 
@@ -27,7 +28,11 @@ class NodeResourceInstanceSet {
   NodeResourceInstanceSet(){};
 
   /// Construct a NodeResourceInstanceSet from a node total resources.
-  NodeResourceInstanceSet(const NodeResourceSet &total);
+  explicit NodeResourceInstanceSet(const NodeResourceSet &total);
+
+  explicit NodeResourceInstanceSet(const absl::flat_hash_map<std::string, double> &total);
+
+  explicit NodeResourceInstanceSet(const rpc::NodeResources &resources);
 
   /// Check whether a particular node resource exist.
   bool Has(ResourceID resource_id) const;
@@ -49,6 +54,8 @@ class NodeResourceInstanceSet {
   /// Check whether two node resource sets are equal meaning
   /// they have the same resources and instances.
   bool operator==(const NodeResourceInstanceSet &other) const;
+
+  bool operator>=(const ResourceSet &resource_demands) const;
 
   std::string DebugString() const;
 
@@ -82,6 +89,11 @@ class NodeResourceInstanceSet {
   /// Convert to node resource set with summed per-instance values.
   NodeResourceSet ToNodeResourceSet() const;
 
+  rpc::NodeResources ToProto() const;
+
+  /// Return all the ids of explicit resources that this set has.
+  std::set<ResourceID> ExplicitResourceIds() const;
+
   /// Only for testing.
   const absl::flat_hash_map<ResourceID, std::vector<FixedPoint>> &Resources() const {
     return resources_;
@@ -107,6 +119,9 @@ class NodeResourceInstanceSet {
   /// \return the allocated instances, if allocation successful. Else, return nullopt.
   std::optional<std::vector<FixedPoint>> TryAllocate(ResourceID resource_id,
                                                      FixedPoint demand);
+
+  std::optional<std::vector<FixedPoint>> TryAllocate(
+      FixedPoint demand, std::vector<FixedPoint> &available) const;
 
   /// Map from the resource IDs to the resource instance values.
   absl::flat_hash_map<ResourceID, std::vector<FixedPoint>> resources_;

@@ -49,16 +49,7 @@ std::optional<absl::Time> ClusterResourceManager::GetNodeResourceModifiedTs(
 }
 
 void ClusterResourceManager::AddOrUpdateNode(
-    scheduling::NodeID node_id,
-    const absl::flat_hash_map<std::string, double> &resources_total,
-    const absl::flat_hash_map<std::string, double> &resources_available) {
-  NodeResources node_resources =
-      ResourceMapToNodeResources(resources_total, resources_available);
-  AddOrUpdateNode(node_id, node_resources);
-}
-
-void ClusterResourceManager::AddOrUpdateNode(scheduling::NodeID node_id,
-                                             const NodeResources &node_resources) {
+    scheduling::NodeID node_id, const NodeResourceInstances &node_resources) {
   RAY_LOG(DEBUG) << "Update node info, node_id: " << node_id.ToInt()
                  << ", node_resources: " << node_resources.DebugString();
   auto it = nodes_.find(node_id);
@@ -78,16 +69,13 @@ bool ClusterResourceManager::UpdateNode(
     return false;
   }
 
-  auto resources_total = MapFromProtobuf(resource_view_sync_message.resources_total());
-  auto resources_available =
-      MapFromProtobuf(resource_view_sync_message.resources_available());
-  NodeResources node_resources =
-      ResourceMapToNodeResources(resources_total, resources_available);
-  NodeResources local_view;
+  NodeResourceInstances local_view;
   RAY_CHECK(GetNodeResources(node_id, &local_view));
 
-  local_view.total = node_resources.total;
-  local_view.available = node_resources.available;
+  local_view.total =
+      NodeResourceInstanceSet(resource_view_sync_message.resources_total());
+  local_view.available =
+      NodeResourceInstanceSet(resource_view_sync_message.resources_available());
   local_view.object_pulls_queued = resource_view_sync_message.object_pulls_queued();
 
   // Update the idle duration for the node in terms of resources usage.
@@ -108,8 +96,8 @@ bool ClusterResourceManager::RemoveNode(scheduling::NodeID node_id) {
   return nodes_.erase(node_id) != 0;
 }
 
-bool ClusterResourceManager::GetNodeResources(scheduling::NodeID node_id,
-                                              NodeResources *ret_resources) const {
+bool ClusterResourceManager::GetNodeResources(
+    scheduling::NodeID node_id, NodeResourceInstances *ret_resources) const {
   auto it = nodes_.find(node_id);
   if (it != nodes_.end()) {
     *ret_resources = it->second.GetLocalView();
@@ -119,39 +107,13 @@ bool ClusterResourceManager::GetNodeResources(scheduling::NodeID node_id,
   }
 }
 
-const NodeResources &ClusterResourceManager::GetNodeResources(
+const NodeResourceInstances &ClusterResourceManager::GetNodeResources(
     scheduling::NodeID node_id) const {
   const auto &node = map_find_or_die(nodes_, node_id);
   return node.GetLocalView();
 }
 
 int64_t ClusterResourceManager::NumNodes() const { return nodes_.size(); }
-
-void ClusterResourceManager::UpdateResourceCapacity(scheduling::NodeID node_id,
-                                                    scheduling::ResourceID resource_id,
-                                                    double resource_total) {
-  auto it = nodes_.find(node_id);
-  if (it == nodes_.end()) {
-    NodeResources node_resources;
-    it = nodes_.emplace(node_id, node_resources).first;
-  }
-
-  auto local_view = it->second.GetMutableLocalView();
-  FixedPoint resource_total_fp(resource_total);
-  auto local_total = local_view->total.Get(resource_id);
-  auto local_available = local_view->available.Get(resource_id);
-  auto diff_capacity = resource_total_fp - local_total;
-  auto total = local_total + diff_capacity;
-  auto available = local_available + diff_capacity;
-  if (total < 0) {
-    total = 0;
-  }
-  if (available < 0) {
-    available = 0;
-  }
-  local_view->total.Set(resource_id, total);
-  local_view->available.Set(resource_id, available);
-}
 
 bool ClusterResourceManager::DeleteResources(
     scheduling::NodeID node_id, const std::vector<scheduling::ResourceID> &resource_ids) {
@@ -162,8 +124,8 @@ bool ClusterResourceManager::DeleteResources(
 
   auto local_view = it->second.GetMutableLocalView();
   for (const auto &resource_id : resource_ids) {
-    local_view->total.Set(resource_id, 0);
-    local_view->available.Set(resource_id, 0);
+    local_view->total.Remove(resource_id);
+    local_view->available.Remove(resource_id);
   }
   return true;
 }
@@ -171,7 +133,7 @@ bool ClusterResourceManager::DeleteResources(
 std::string ClusterResourceManager::GetNodeResourceViewString(
     scheduling::NodeID node_id) const {
   const auto &node = map_find_or_die(nodes_, node_id);
-  return node.GetLocalView().DictString();
+  return node.GetLocalView().DebugString();
 }
 
 const absl::flat_hash_map<scheduling::NodeID, Node>
@@ -179,23 +141,21 @@ const absl::flat_hash_map<scheduling::NodeID, Node>
   return nodes_;
 }
 
-bool ClusterResourceManager::SubtractNodeAvailableResources(
+std::optional<absl::flat_hash_map<ResourceID, std::vector<FixedPoint>>>
+ClusterResourceManager::SubtractNodeAvailableResources(
     scheduling::NodeID node_id, const ResourceRequest &resource_request) {
   auto it = nodes_.find(node_id);
   if (it == nodes_.end()) {
-    return false;
+    return std::nullopt;
   }
 
-  NodeResources *resources = it->second.GetMutableLocalView();
+  NodeResourceInstances *resources = it->second.GetMutableLocalView();
 
-  resources->available -= resource_request.GetResourceSet();
-  resources->available.RemoveNegative();
+  return resources->available.TryAllocate(resource_request.GetResourceSet());
 
   // TODO(swang): We should also subtract object store memory if the task has
   // arguments. Right now we do not modify object_pulls_queued in case of
   // performance regressions in spillback.
-
-  return true;
 }
 
 bool ClusterResourceManager::HasSufficientResource(
@@ -207,7 +167,7 @@ bool ClusterResourceManager::HasSufficientResource(
     return false;
   }
 
-  const NodeResources &resources = it->second.GetLocalView();
+  const NodeResourceInstances &resources = it->second.GetLocalView();
 
   if (!ignore_object_store_memory_requirement && resources.object_pulls_queued &&
       resource_request.RequiresObjectStoreMemory()) {
@@ -217,23 +177,18 @@ bool ClusterResourceManager::HasSufficientResource(
   return resources.available >= resource_request.GetResourceSet();
 }
 
-bool ClusterResourceManager::AddNodeAvailableResources(scheduling::NodeID node_id,
-                                                       const ResourceSet &resource_set) {
+bool ClusterResourceManager::AddNodeAvailableResources(
+    scheduling::NodeID node_id,
+    const absl::flat_hash_map<ResourceID, std::vector<FixedPoint>> &allocations) {
   auto it = nodes_.find(node_id);
   if (it == nodes_.end()) {
     return false;
   }
 
   auto node_resources = it->second.GetMutableLocalView();
-  for (auto &resource_id : resource_set.ResourceIds()) {
+  for (auto &[resource_id, allocation] : allocations) {
     if (node_resources->total.Has(resource_id)) {
-      auto available = node_resources->available.Get(resource_id);
-      auto total = node_resources->total.Get(resource_id);
-      auto new_available = available + resource_set.Get(resource_id);
-      if (new_available > total) {
-        new_available = total;
-      }
-      node_resources->available.Set(resource_id, new_available);
+      node_resources->available.Free(resource_id, allocation);
     }
   }
   return true;
@@ -281,10 +236,21 @@ void ClusterResourceManager::SetNodeLabels(
     const absl::flat_hash_map<std::string, std::string> &labels) {
   auto it = nodes_.find(node_id);
   if (it == nodes_.end()) {
-    NodeResources node_resources;
+    NodeResourceInstances node_resources;
     it = nodes_.emplace(node_id, node_resources).first;
   }
   it->second.GetMutableLocalView()->labels = labels;
+}
+
+void ClusterResourceManager::SetNodeResources(const scheduling::NodeID &node_id,
+                                              const NodeResourceInstanceSet &total) {
+  auto it = nodes_.find(node_id);
+  if (it == nodes_.end()) {
+    NodeResourceInstances node_resources;
+    it = nodes_.emplace(node_id, node_resources).first;
+  }
+  it->second.GetMutableLocalView()->total = total;
+  it->second.GetMutableLocalView()->available = total;
 }
 
 }  // namespace ray

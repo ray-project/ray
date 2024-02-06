@@ -105,9 +105,13 @@ void GcsResourceManager::HandleGetAllAvailableResources(
               {resource_name, resource_iter->second});
         }
       } else {
-        const auto &resource_value = node_resources.available.Get(resource_id);
-        resource.mutable_resources_available()->insert(
-            {resource_name, resource_value.Double()});
+        double resource_value = 0.0;
+        for (const auto &instance : node_resources.available.Get(resource_id)) {
+          resource_value += instance.Double();
+        }
+        if (resource_value > 0.0) {
+          resource.mutable_resources_available()->insert({resource_name, resource_value});
+        }
       }
     }
     reply->add_resources_list()->CopyFrom(resource);
@@ -252,13 +256,21 @@ void GcsResourceManager::UpdateNodeResourceUsage(
     // we are guaranteed that no resource usage will be reported.
     return;
   }
-  if (resource_view_sync_message.resources_total_size() > 0) {
-    (*iter->second.mutable_resources_total()) =
-        resource_view_sync_message.resources_total();
+  if (resource_view_sync_message.resources_total().resources_size() > 0) {
+    iter->second.mutable_resources_total()->clear();
+    for (const auto &[resource_name, instances] :
+         resource_view_sync_message.resources_total().resources()) {
+      (*iter->second.mutable_resources_total())[resource_name] =
+          std::reduce(instances.instances().begin(), instances.instances().end());
+    }
   }
 
-  (*iter->second.mutable_resources_available()) =
-      resource_view_sync_message.resources_available();
+  iter->second.mutable_resources_available()->clear();
+  for (const auto &[resource_name, instances] :
+       resource_view_sync_message.resources_available().resources()) {
+    (*iter->second.mutable_resources_available())[resource_name] =
+        std::reduce(instances.instances().begin(), instances.instances().end());
+  }
 }
 
 void GcsResourceManager::Initialize(const GcsInitData &gcs_init_data) {
@@ -273,10 +285,9 @@ void GcsResourceManager::OnNodeAdd(const rpc::GcsNodeInfo &node) {
   NodeID node_id = NodeID::FromBinary(node.node_id());
   scheduling::NodeID scheduling_node_id(node_id.Binary());
   if (!node.resources_total().empty()) {
-    for (const auto &entry : node.resources_total()) {
-      cluster_resource_manager_.UpdateResourceCapacity(
-          scheduling_node_id, scheduling::ResourceID(entry.first), entry.second);
-    }
+    cluster_resource_manager_.SetNodeResources(
+        scheduling_node_id,
+        NodeResourceInstanceSet(MapFromProtobuf(node.resources_total())));
   } else {
     RAY_LOG(WARNING) << "The registered node " << node_id
                      << " doesn't set the total resources.";

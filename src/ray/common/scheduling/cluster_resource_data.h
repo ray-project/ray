@@ -341,8 +341,35 @@ class NodeResourceInstances {
  public:
   NodeResourceInstanceSet available;
   NodeResourceInstanceSet total;
+
+  /// Resources owned by normal tasks.
+  ResourceSet normal_task_resources;
+  int64_t latest_resources_normal_task_timestamp = 0;
+
   // The key-value labels of this node.
   absl::flat_hash_map<std::string, std::string> labels;
+
+  // The idle duration of the node from resources reported by raylet.
+  int64_t idle_resource_duration_ms = 0;
+
+  // Whether the node is being drained or not.
+  bool is_draining = false;
+
+  // The timestamp of the last resource update if there was a resource report.
+  absl::optional<absl::Time> last_resource_update_time = absl::nullopt;
+
+  bool object_pulls_queued = false;
+
+  /// Returns true if the node's total resources are enough to run the task.
+  bool IsFeasible(const ResourceRequest &resource_request) const;
+
+  /// Returns true if the node has the available resources to run the task.
+  bool IsAvailable(const ResourceRequest &resource_request,
+                   bool ignore_pull_manager_at_capacity = false) const;
+
+  /// Amongst CPU, memory, and object store memory, calculate the utilization percentage
+  /// of each resource and return the highest.
+  float CalculateCriticalResourceUtilization() const;
 
   /// Extract available resource instances.
   const NodeResourceInstanceSet &GetAvailableResourceInstances() const;
@@ -354,16 +381,16 @@ class NodeResourceInstances {
 };
 
 struct Node {
-  Node(const NodeResources &resources) : local_view_(resources) {}
+  Node(const NodeResourceInstances &resources) : local_view_(resources) {}
 
-  NodeResources *GetMutableLocalView() {
+  NodeResourceInstances *GetMutableLocalView() {
     local_view_modified_ts_ = absl::Now();
     return &local_view_;
   }
 
   std::optional<absl::Time> GetViewModifiedTs() const { return local_view_modified_ts_; }
 
-  const NodeResources &GetLocalView() const { return local_view_; }
+  const NodeResourceInstances &GetLocalView() const { return local_view_; }
 
  private:
   /// Our local view of the remote node's resources. This may be dirty
@@ -372,7 +399,7 @@ struct Node {
   /// get overwritten by the last reported view on each heartbeat tick, to
   /// make sure that our local view does not skew too much from the actual
   /// resources when light heartbeats are enabled.
-  NodeResources local_view_;
+  NodeResourceInstances local_view_;
   /// The timestamp this node got updated.
   std::optional<absl::Time> local_view_modified_ts_;
 };

@@ -66,15 +66,6 @@ class ClusterResourceManager {
   /// Get number of nodes in the cluster.
   int64_t NumNodes() const;
 
-  /// Update total capacity of a given resource of a given node.
-  ///
-  /// \param node_id: Node whose resource we want to update.
-  /// \param resource_id: Resource which we want to update.
-  /// \param resource_total: New capacity of the resource.
-  void UpdateResourceCapacity(scheduling::NodeID node_id,
-                              scheduling::ResourceID resource_id,
-                              double resource_total);
-
   /// Delete a given resource from a given node.
   ///
   /// \param node_id: Node whose resource we want to delete.
@@ -87,12 +78,13 @@ class ClusterResourceManager {
   std::string GetNodeResourceViewString(scheduling::NodeID node_id) const;
 
   /// Get local resource.
-  const NodeResources &GetNodeResources(scheduling::NodeID node_id) const;
+  const NodeResourceInstances &GetNodeResources(scheduling::NodeID node_id) const;
 
   /// Subtract available resource from a given node.
   /// Return false if such node doesn't exist.
-  bool SubtractNodeAvailableResources(scheduling::NodeID node_id,
-                                      const ResourceRequest &resource_request);
+  std::optional<absl::flat_hash_map<ResourceID, std::vector<FixedPoint>>>
+  SubtractNodeAvailableResources(scheduling::NodeID node_id,
+                                 const ResourceRequest &resource_request);
 
   /// Check if we have sufficient resource to fullfill resource request for an given node.
   ///
@@ -106,8 +98,9 @@ class ClusterResourceManager {
 
   /// Add available resource to a given node.
   /// Return false if such node doesn't exist.
-  bool AddNodeAvailableResources(scheduling::NodeID node_id,
-                                 const ResourceSet &resource_set);
+  bool AddNodeAvailableResources(
+      scheduling::NodeID node_id,
+      const absl::flat_hash_map<ResourceID, std::vector<FixedPoint>> &allocations);
 
   /// Update node normal task resources.
   /// Return false if such node doesn't exist.
@@ -132,6 +125,9 @@ class ClusterResourceManager {
   void SetNodeLabels(const scheduling::NodeID &node_id,
                      const absl::flat_hash_map<std::string, std::string> &labels);
 
+  void SetNodeResources(const scheduling::NodeID &node_id,
+                        const NodeResourceInstanceSet &total);
+
  private:
   friend class ClusterResourceScheduler;
   friend class gcs::GcsActorSchedulerTest;
@@ -147,23 +143,20 @@ class ClusterResourceManager {
   ///
   /// \param node_id: Node ID.
   /// \param node_resources: Up to date total and available resources of the node.
-  void AddOrUpdateNode(scheduling::NodeID node_id, const NodeResources &node_resources);
-
-  void AddOrUpdateNode(
-      scheduling::NodeID node_id,
-      const absl::flat_hash_map<std::string, double> &resource_map_total,
-      const absl::flat_hash_map<std::string, double> &resource_map_available);
+  void AddOrUpdateNode(scheduling::NodeID node_id,
+                       const NodeResourceInstances &node_resources);
 
   /// Return resources associated to the given node_id in ret_resources.
   /// If node_id not found, return false; otherwise return true.
-  bool GetNodeResources(scheduling::NodeID node_id, NodeResources *ret_resources) const;
+  bool GetNodeResources(scheduling::NodeID node_id,
+                        NodeResourceInstances *ret_resources) const;
 
   /// List of nodes in the clusters and their resources organized as a map.
   /// The key of the map is the node ID.
   absl::flat_hash_map<scheduling::NodeID, Node> nodes_;
 
   /// Resource message updated
-  absl::flat_hash_map<scheduling::NodeID, NodeResources> received_node_resources_;
+  absl::flat_hash_map<scheduling::NodeID, NodeResourceInstances> received_node_resources_;
 
   BundleLocationIndex bundle_location_index_;
 

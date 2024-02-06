@@ -37,6 +37,33 @@ NodeResourceInstanceSet::NodeResourceInstanceSet(const NodeResourceSet &total) {
   }
 }
 
+NodeResourceInstanceSet::NodeResourceInstanceSet(
+    const absl::flat_hash_map<std::string, double> &total) {
+  for (auto &[resource_name, quantity] : total) {
+    std::vector<FixedPoint> instances;
+    ResourceID resource_id(resource_name);
+    if (resource_id.IsUnitInstanceResource()) {
+      size_t num_instances = static_cast<size_t>(quantity);
+      for (size_t i = 0; i < num_instances; i++) {
+        instances.push_back(1.0);
+      };
+    } else {
+      instances.push_back(quantity);
+    }
+    Set(resource_id, instances);
+  }
+}
+
+NodeResourceInstanceSet::NodeResourceInstanceSet(const rpc::NodeResources &resources) {
+  for (const auto &[resource_name, instances] : resources.resources()) {
+    std::vector<FixedPoint> fps;
+    for (const auto &instance : instances.instances()) {
+      fps.emplace_back(instance);
+    }
+    Set(ResourceID(resource_name), fps);
+  }
+}
+
 bool NodeResourceInstanceSet::Has(ResourceID resource_id) const {
   return !(Get(resource_id).empty());
 }
@@ -59,6 +86,16 @@ const std::vector<FixedPoint> &NodeResourceInstanceSet::Get(
   } else {
     return empty;
   }
+}
+
+std::set<ResourceID> NodeResourceInstanceSet::ExplicitResourceIds() const {
+  std::set<ResourceID> result;
+  for (const auto &[id, quantity] : resources_) {
+    if (!id.IsImplicitResource()) {
+      result.emplace(id);
+    }
+  }
+  return result;
 }
 
 NodeResourceInstanceSet &NodeResourceInstanceSet::Set(ResourceID resource_id,
@@ -90,6 +127,16 @@ bool NodeResourceInstanceSet::operator==(const NodeResourceInstanceSet &other) c
   return this->resources_ == other.resources_;
 }
 
+bool NodeResourceInstanceSet::operator>=(const ResourceSet &resource_demands) const {
+  for (auto &entry : resource_demands.Resources()) {
+    std::vector<FixedPoint> available = Get(entry.first);
+    if (!TryAllocate(entry.second, available)) {
+      return false;
+    }
+  }
+  return true;
+}
+
 std::optional<absl::flat_hash_map<ResourceID, std::vector<FixedPoint>>>
 NodeResourceInstanceSet::TryAllocate(const ResourceSet &resource_demands) {
   absl::flat_hash_map<ResourceID, std::vector<FixedPoint>> allocations;
@@ -113,8 +160,7 @@ NodeResourceInstanceSet::TryAllocate(const ResourceSet &resource_demands) {
 }
 
 std::optional<std::vector<FixedPoint>> NodeResourceInstanceSet::TryAllocate(
-    ResourceID resource_id, FixedPoint demand) {
-  std::vector<FixedPoint> available = Get(resource_id);
+    FixedPoint demand, std::vector<FixedPoint> &available) const {
   if (available.empty()) {
     return std::nullopt;
   }
@@ -127,7 +173,6 @@ std::optional<std::vector<FixedPoint>> NodeResourceInstanceSet::TryAllocate(
     if (available[0] >= remaining_demand) {
       available[0] -= remaining_demand;
       allocation[0] = remaining_demand;
-      Set(resource_id, std::move(available));
       return std::make_optional<std::vector<FixedPoint>>(std::move(allocation));
     } else {
       // Not enough capacity.
@@ -182,8 +227,19 @@ std::optional<std::vector<FixedPoint>> NodeResourceInstanceSet::TryAllocate(
     }
   }
 
-  Set(resource_id, std::move(available));
   return std::make_optional<std::vector<FixedPoint>>(std::move(allocation));
+}
+
+std::optional<std::vector<FixedPoint>> NodeResourceInstanceSet::TryAllocate(
+    ResourceID resource_id, FixedPoint demand) {
+  std::vector<FixedPoint> available = Get(resource_id);
+
+  auto allocation = TryAllocate(demand, available);
+  if (allocation) {
+    Set(resource_id, std::move(available));
+  }
+
+  return allocation;
 }
 
 void NodeResourceInstanceSet::Free(ResourceID resource_id,
@@ -263,6 +319,19 @@ NodeResourceSet NodeResourceInstanceSet::ToNodeResourceSet() const {
     node_resource_set.Set(resource_id, FixedPoint::Sum(instances));
   }
   return node_resource_set;
+}
+
+rpc::NodeResources NodeResourceInstanceSet::ToProto() const {
+  rpc::NodeResources node_resources_proto;
+  for (const auto &[resource_id, instances] : resources_) {
+    rpc::NodeResourceInstances node_resource_instances_proto;
+    for (const auto &instance : instances) {
+      node_resource_instances_proto.add_instances(instance.Double());
+    }
+    (*node_resources_proto.mutable_resources())[resource_id.Binary()] =
+        std::move(node_resource_instances_proto);
+  }
+  return node_resources_proto;
 }
 
 }  // namespace ray
