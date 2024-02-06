@@ -221,6 +221,7 @@ class PowerOfTwoChoicesReplicaScheduler(ReplicaScheduler):
     def app_name(self) -> str:
         return self._deployment_id.app
 
+    @property
     def replica_queue_len_cache(self) -> ReplicaQueueLengthCache:
         return self._replica_queue_len_cache
 
