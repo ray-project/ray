@@ -559,6 +559,8 @@ cdef int check_status(const CRayStatus& status) nogil except -1:
 
     if status.IsObjectStoreFull():
         raise ObjectStoreFullError(message)
+    if status.IsInvalid():
+        raise ValueError(message)
     if status.IsInvalidArgument():
         raise ValueError(message)
     elif status.IsOutOfDisk():
