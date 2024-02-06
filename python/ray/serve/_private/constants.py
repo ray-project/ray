@@ -286,8 +286,8 @@ RAY_SERVE_ENABLE_STRICT_MAX_CONCURRENT_QUERIES = (
 )
 
 # Length of time to respect entries in the queue length cache when scheduling requests.
-RAY_SERVE_QUEUE_LENGTH_CACHE_STALENESS_TIMEOUT_S = float(
-    os.environ.get("RAY_SERVE_QUEUE_LENGTH_CACHE_STALENESS_TIMEOUT_S", 10.0)
+RAY_SERVE_QUEUE_LENGTH_CACHE_TIMEOUT_S = float(
+    os.environ.get("RAY_SERVE_QUEUE_LENGTH_CACHE_TIMEOUT_S", 10.0)
 )
 
 # The default autoscaling policy to use if none is specified.

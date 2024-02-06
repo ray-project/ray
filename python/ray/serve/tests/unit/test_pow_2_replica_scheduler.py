@@ -14,7 +14,7 @@ from ray._private.test_utils import async_wait_for_condition
 from ray._private.utils import get_or_create_event_loop
 from ray.serve._private.common import DeploymentID, RequestMetadata
 from ray.serve._private.constants import (
-    RAY_SERVE_QUEUE_LENGTH_CACHE_STALENESS_TIMEOUT_S,
+    RAY_SERVE_QUEUE_LENGTH_CACHE_TIMEOUT_S,
 )
 from ray.serve._private.replica_scheduler import (
     PendingRequest,
@@ -1424,7 +1424,7 @@ async def test_queue_len_cache_active_probing(pow_2_scheduler):
     """
     s = pow_2_scheduler
     loop = get_or_create_event_loop()
-    staleness_timeout_s = RAY_SERVE_QUEUE_LENGTH_CACHE_STALENESS_TIMEOUT_S
+    staleness_timeout_s = RAY_SERVE_QUEUE_LENGTH_CACHE_TIMEOUT_S
 
     # Add an entry for replica "r1" -- it shouldn't be actively probed.
     r1 = FakeReplicaWrapper("r1")

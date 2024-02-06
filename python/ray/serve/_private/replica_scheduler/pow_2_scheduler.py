@@ -23,7 +23,7 @@ from ray.serve._private.common import DeploymentID, RequestMetadata, RunningRepl
 from ray.serve._private.constants import (
     RAY_SERVE_MAX_QUEUE_LENGTH_RESPONSE_DEADLINE_S,
     RAY_SERVE_MULTIPLEXED_MODEL_ID_MATCHING_TIMEOUT_S,
-    RAY_SERVE_QUEUE_LENGTH_CACHE_STALENESS_TIMEOUT_S,
+    RAY_SERVE_QUEUE_LENGTH_CACHE_TIMEOUT_S,
     RAY_SERVE_QUEUE_LENGTH_RESPONSE_DEADLINE_S,
     SERVE_LOGGER_NAME,
 )
@@ -52,7 +52,7 @@ class ReplicaQueueLengthCache:
     def __init__(
         self,
         *,
-        staleness_timeout_s: float = RAY_SERVE_QUEUE_LENGTH_CACHE_STALENESS_TIMEOUT_S,
+        staleness_timeout_s: float = RAY_SERVE_QUEUE_LENGTH_CACHE_TIMEOUT_S,
         get_curr_time_s: Optional[Callable[[], float]] = None,
     ):
         self._cache: Dict[str, ReplicaQueueLengthCacheEntry] = {}
