@@ -98,9 +98,9 @@ def train_func(config):
     if checkpoint:
         with checkpoint.as_directory() as checkpoint_dir:
             checkpoint = torch.load(
-                            os.path.join(checkpoint_dir, "checkpoint.pt"),
-                            # map_location=...,  # Load onto a different device if needed.
-                        )
+                os.path.join(checkpoint_dir, "checkpoint.pt"),
+                # map_location=...,  # Load onto a different device if needed.
+            )
             model_state_dict = checkpoint["model_state_dict"]
             model.module.load_state_dict(model_state_dict)
             optimizer.load_state_dict(checkpoint["optimizer_state_dict"])
@@ -124,10 +124,14 @@ def train_func(config):
             # only the global rank 0 worker needs to save and report the checkpoint
             if train.get_context().get_world_rank() == 0 and should_checkpoint:
                 # === Make sure to save all state needed for resuming training ===
-                torch.save({"model_state_dict": model.module.state_dict(), # NOTE: Unwrap the model.
-                            "optimizer_state_dict": optimizer.state_dict(),
-                            "epoch": epoch}, os.path.join(temp_checkpoint_dir,
-                                                          "checkpoint.pt"))
+                torch.save(
+                    {
+                        "model_state_dict": model.module.state_dict(),  # NOTE: Unwrap the model.
+                        "optimizer_state_dict": optimizer.state_dict(),
+                        "epoch": epoch,
+                    },
+                    os.path.join(temp_checkpoint_dir, "checkpoint.pt"),
+                )
                 # ================================================================
                 checkpoint = Checkpoint.from_directory(temp_checkpoint_dir)
 
