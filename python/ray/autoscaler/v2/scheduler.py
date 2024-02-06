@@ -146,6 +146,8 @@ class SchedulingNode:
 
     # Node type name.
     node_type: NodeType
+    # Resource constraints committed to be placed on this node.
+    sched_constraints: List[ResourceRequest] = field(default_factory=list)
     # Requests committed to be placed on this node.
     sched_requests: List[ResourceRequest] = field(default_factory=list)
     # The node's current resource capacity.
@@ -171,7 +173,7 @@ class SchedulingNode:
     idle_duration_ms: int = 0
 
     def try_schedule(
-        self, requests: List[ResourceRequest]
+        self, requests: List[ResourceRequest], is_constraint: bool = False
     ) -> Tuple[List[ResourceRequest], UtilizationScore]:
         """
         Try to schedule the resource requests on this node.
@@ -210,7 +212,7 @@ class SchedulingNode:
 
         # Sort the requests and try schedule them one by one.
         for r in sorted(requests, key=_sort_resource_request, reverse=True):
-            if not self._try_schedule_one(r):
+            if not self._try_schedule_one(r, is_constraint):
                 unschedulable_requests.append(r)
 
         score = self._compute_score()
@@ -292,7 +294,7 @@ class SchedulingNode:
             else 0,
         )
 
-    def _try_schedule_one(self, request: ResourceRequest) -> bool:
+    def _try_schedule_one(self, request: ResourceRequest, is_constraint: bool) -> bool:
         """
         Try to schedule one resource request on this node.
         If the resource request is schedulable, the node's available resources will be
@@ -314,7 +316,10 @@ class SchedulingNode:
             self.available_resources[k] -= v
 
         # Add the request to the node.
-        self.sched_requests.append(request)
+        if is_constraint:
+            self.sched_constraints.append(request)
+        else:
+            self.sched_requests.append(request)
 
         return True
 
@@ -881,6 +886,49 @@ class ResourceDemandScheduler(IResourceScheduler):
         schedule any resource requests. Instead, it asks if the cluster could be
         upscale to a certain shape to fulfill the constraints.
         """
+
+        # NOTE: we currently only have 1 constraint from a cluster, but
+        # we may have multiple in the future.
+        assert len(constraints) <= 1, "Max 1 cluster resource constraint is supported."
+        if len(constraints) == 0:
+            # No cluster resource constraints - nothing needs to be done.
+            return []
+
+        constraint = constraints[0]
+        min_bundles = constraint.min_bundles
+        # Flatten the requests for iterating through.
+        requests = ResourceRequestUtil.ungroup_by_count(min_bundles)
+
+        # We will make all existing nodes available for scheduling. This is needed since
+        # resource constraints are not actual pending resource requests: only the nodes'
+        # capacity are needed to check if the constraint is satisfied.
+        cur_nodes = self._ctx.get_nodes()
+        cur_nodes_with_usage_cleared = []
+        for node in copy.deepcopy(cur_nodes):
+            node.available_resources = dict(node.total_resources)
+            cur_nodes_with_usage_cleared.append(node)
+
+        # Update the context with the nodes having available resources temporarily
+        # cleared.
+        self._ctx.update(cur_nodes_with_usage_cleared)
+
+        # Pass the empty nodes to schedule.
+        scheduled_nodes, infeasible = self._try_schedule(requests, is_constraint=True)
+
+        if infeasible:
+            # Unable to satisfy the constraint.
+            return [constraint]
+
+        # We are able to satisfy the constraint and thus update the context.
+        # We will merge the newly launched nodes if any in the scheduled nodes with
+        # the existing nodes with available resources correctly set.
+        cur_nodes_id_map = {n.node_id: n for n in cur_nodes}
+        for n in scheduled_nodes:
+            if cur_nodes_id_map.get(n.node_id) is None:
+                # This is a newly launched node.
+                cur_nodes.append(n)
+
+        ctx.update(cur_nodes)
         return []
 
     def _sched_resource_requests(
@@ -934,6 +982,7 @@ class ResourceDemandScheduler(IResourceScheduler):
     def _try_schedule(
         self,
         requests_to_sched: List[ResourceRequest],
+        is_constraint: bool = False,
     ) -> Tuple[List[SchedulingNode], List[ResourceRequest]]:
         """
         Try to schedule the resource requests on the current context.
@@ -944,6 +993,9 @@ class ResourceDemandScheduler(IResourceScheduler):
         Args:
             requests_to_sched: The resource requests to be scheduled.
             ctx: The current scheduling context.
+            is_constraint: Whether the requests are constraints, True
+                if the requests are constraints, False if it's the actual
+                pending resource requests.
 
         Returns:
             - List of scheduled nodes to that have part or all of the requests
@@ -961,7 +1013,7 @@ class ResourceDemandScheduler(IResourceScheduler):
         # Try scheduling resource requests with existing nodes first.
         while len(requests_to_sched) > 0 and len(existing_nodes) > 0:
             best_node, requests_to_sched, existing_nodes = self._sched_best_node(
-                requests_to_sched, existing_nodes
+                requests_to_sched, existing_nodes, is_constraint
             )
             if best_node is None:
                 # No existing nodes can schedule any more requests.
@@ -992,7 +1044,7 @@ class ResourceDemandScheduler(IResourceScheduler):
                 break
 
             best_node, requests_to_sched, node_pools = self._sched_best_node(
-                requests_to_sched, node_pools
+                requests_to_sched, node_pools, is_constraint
             )
             if best_node is None:
                 break
@@ -1012,7 +1064,10 @@ class ResourceDemandScheduler(IResourceScheduler):
         return target_nodes, requests_to_sched
 
     def _sched_best_node(
-        self, requests: List[ResourceRequest], nodes: List[SchedulingNode]
+        self,
+        requests: List[ResourceRequest],
+        nodes: List[SchedulingNode],
+        is_constraint: bool,
     ) -> Tuple[SchedulingNode, List[ResourceRequest], List[SchedulingNode]]:
         """
         Schedule the requests on the best node.
@@ -1054,7 +1109,7 @@ class ResourceDemandScheduler(IResourceScheduler):
         # Iterate through each node and modify the node's available resources
         # if the requests are schedulable.
         for idx, node in enumerate(nodes_copy):
-            remaining, score = node.try_schedule(requests)
+            remaining, score = node.try_schedule(requests, is_constraint)
 
             if len(remaining) == len(requests):
                 # The node cannot schedule any of the requests.
