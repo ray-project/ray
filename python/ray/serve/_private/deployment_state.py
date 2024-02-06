@@ -2051,10 +2051,10 @@ class DeploymentState:
                 ReplicaStartupStatus.PENDING_ALLOCATION,
                 ReplicaStartupStatus.PENDING_INITIALIZATION,
             ]:
-                if start_status == ReplicaStartupStatus.PENDING_INITIALIZATION:
-                    self._deployment_scheduler.on_replica_running(
-                        self._id, replica.replica_tag, replica.actor_node_id
-                    )
+                # if start_status == ReplicaStartupStatus.PENDING_INITIALIZATION:
+                #     self._deployment_scheduler.on_replica_running(
+                #         self._id, replica.replica_tag, replica.actor_node_id
+                #     )
                 is_slow = time.time() - replica._start_time > SLOW_STARTUP_WARNING_S
                 if is_slow:
                     slow_replicas.append((replica, start_status))
@@ -2090,7 +2090,7 @@ class DeploymentState:
             else:
                 self._replicas.add(replica.actor_details.state, replica)
 
-    def _stop_replica(self, replica, graceful_stop=True):
+    def _stop_replica(self, replica: VersionedReplica, graceful_stop=True):
         """Stop replica
         1. Stop the replica.
         2. Change the replica into stopping state.

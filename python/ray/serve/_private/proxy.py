@@ -1159,9 +1159,9 @@ class ProxyActor:
         )
 
         if http_middlewares is None:
-            http_middlewares = [Middleware(RequestIdMiddleware)]
-        else:
-            http_middlewares.append(Middleware(RequestIdMiddleware))
+            http_middlewares = []
+
+        http_middlewares.append(Middleware(RequestIdMiddleware))
 
         if RAY_SERVE_HTTP_PROXY_CALLBACK_IMPORT_PATH:
             logger.info(
