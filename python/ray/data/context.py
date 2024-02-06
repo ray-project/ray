@@ -239,6 +239,8 @@ class DataContext:
         # The max number of blocks that can be buffered at the streaming generator of
         # each `DataOpTask`.
         self._max_num_blocks_in_streaming_gen_buffer = None
+        self.enable_per_op_resource_reservation = False
+        self.op_resource_reservation_ratio = 0.5
 
     @staticmethod
     def get_current() -> "DataContext":

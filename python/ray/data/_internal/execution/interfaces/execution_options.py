@@ -23,6 +23,8 @@ class ExecutionResources:
     # Object store memory usage in bytes.
     object_store_memory: Optional[int] = None
 
+    ZERO = ExecutionResources(0, 0, 0)
+
     def object_store_memory_str(self) -> str:
         """Returns a human-readable string for the object store memory field."""
         if self.object_store_memory is None:
@@ -49,6 +51,35 @@ class ExecutionResources:
                 other.object_store_memory or 0.0
             )
         return total
+
+    def subtract(self, other: "ExecutionResources") -> "ExecutionResources":
+        """Subtracts execution resources.
+
+        Returns:
+            A new ExecutionResource object with subtracted resources.
+        """
+        total = ExecutionResources()
+        if self.cpu is not None or other.cpu is not None:
+            total.cpu = (self.cpu or 0.0) - (other.cpu or 0.0)
+        if self.gpu is not None or other.gpu is not None:
+            total.gpu = (self.gpu or 0.0) - (other.gpu or 0.0)
+        if (
+            self.object_store_memory is not None
+            or other.object_store_memory is not None
+        ):
+            total.object_store_memory = (self.object_store_memory or 0.0) - (
+                other.object_store_memory or 0.0
+            )
+        return total
+
+    def min(self, other: "ExecutionResources") -> "ExecutionResources":
+        """Returns the minimum for each resource type."""
+        return ExecutionResources(
+            cpu=min(self.cpu or float("inf"), other.cpu or float("inf")),
+            gpu=min(self.gpu or float("inf"), other.gpu or float("inf")),
+            object_store_memory=min(self.object_store_memory or float("inf"),
+                                    other.object_store_memory or float("inf")),
+        )
 
     def satisfies_limit(self, limit: "ExecutionResources") -> bool:
         """Return if this resource struct meets the specified limits.

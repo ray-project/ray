@@ -1,5 +1,6 @@
 import time
-from typing import TYPE_CHECKING, Dict
+from abc import ABCMeta, abstractmethod
+from typing import TYPE_CHECKING, Dict, Optional
 
 import ray
 from ray.data._internal.execution.interfaces.execution_options import (
@@ -8,6 +9,8 @@ from ray.data._internal.execution.interfaces.execution_options import (
 )
 from ray.data._internal.execution.interfaces.physical_operator import PhysicalOperator
 from ray.data._internal.execution.operators.input_data_buffer import InputDataBuffer
+from ray.data._internal.execution.operators.map_operator import MapOperator
+from ray.data.context import DataContext
 
 if TYPE_CHECKING:
     from ray.data._internal.execution.streaming_executor_state import Topology
@@ -34,6 +37,13 @@ class ResourceManager:
         self._downstream_fraction: Dict[PhysicalOperator, float] = {}
         self._downstream_object_store_memory: Dict[PhysicalOperator, int] = {}
 
+        self._op_resource_limiter: Optional["OpResourceLimiter"] = None
+        ctx = DataContext.get_current()
+        if ctx.enable_per_op_resource_reservation:
+            self._op_resource_limiter = ReservationOpResourceLimiter(
+                self, ctx.op_resource_reservation_ratio
+            )
+
     def update_usages(self):
         """Recalculate resource usages."""
         # TODO(hchen): This method will be called frequently during the execution loop.
@@ -50,6 +60,12 @@ class ResourceManager:
         for op, state in reversed(self._topology.items()):
             # Update `self._op_usages`.
             op_usage = op.current_resource_usage()
+            op_usage.object_store_memory = op._metrics.obj_store_mem_outputs
+            op_usage.object_store_memory += (
+                op._metrics.num_tasks_running * 4 * 128 * 1024**2
+            )
+            for next_op in op.output_dependencies:
+                op_usage.object_store_memory += next_op._metrics.obj_store_mem_inputs
             # Don't count input refs towards dynamic memory usage, as they have been
             # pre-created already outside this execution.
             if not isinstance(op, InputDataBuffer):
@@ -67,6 +83,9 @@ class ResourceManager:
             self._downstream_object_store_memory[
                 op
             ] = self._global_usage.object_store_memory
+
+        if self._op_resource_limiter is not None:
+            self._op_resource_limiter.update_usages()
 
     def get_global_usage(self) -> ExecutionResources:
         """Return the global resource usage at the current time."""
@@ -121,3 +140,71 @@ class ResourceManager:
     def get_downstream_object_store_memory(self, op: PhysicalOperator) -> int:
         """Return the downstream object store memory usage of the given operator."""
         return self._downstream_object_store_memory[op]
+
+    def per_op_limiting_enabled(self) -> bool:
+        """Return whether per-operator resource limiting is enabled."""
+        return self._op_resource_limiter is not None
+
+    def get_op_available(self, op: PhysicalOperator) -> ExecutionResources:
+        """Return the resource limit of the given operator at the current time."""
+        assert self._op_resource_limiter is not None
+        return self._op_resource_limiter.get_op_available(op)
+
+
+class OpResourceLimiter(metaclass=ABCMeta):
+    def __init__(self, resource_manager: ResourceManager):
+        self._resource_manager = resource_manager
+
+    @abstractmethod
+    def update_usages(self) -> ExecutionResources:
+        """Callback to update resource usages."""
+        ...
+
+    @abstractmethod
+    def get_op_available(self, op: PhysicalOperator) -> ExecutionResources:
+        ...
+
+
+class ReservationOpResourceLimiter(OpResourceLimiter):
+    """A resource limiter that reserves resources for each operator."""
+
+    def __init__(self, resource_manager: ResourceManager, reservation_ratio: float):
+        super().__init__(resource_manager)
+        self._reservation_ratio = reservation_ratio
+        self._eligible_ops = list(
+            op for op in self._resource_manager._topology if isinstance(op, MapOperator)
+        )
+        self._op_available: Dict[PhysicalOperator, ExecutionResources] = {}
+        assert 0.0 <= self._reservation_ratio <= 1.0
+
+    def update_usages(self):
+        num_ops = len(self._eligible_ops)
+        global_limits = self._resource_manager.get_global_limits()
+        # Per-op reserved resources.
+        reserved = global_limits.scale(self._reservation_ratio / num_ops)
+        # Total shared resources.
+        shared = global_limits.scale(1.0 - self._reservation_ratio)
+
+        self._op_available.clear()
+        for op in self._resource_manager._topology:
+            if isinstance(op, InputDataBuffer):
+                continue
+            op_usage = self._resource_manager.get_op_usage(op)
+            op_reserved = reserved.min(op.incremental_resource_usage())
+            op_reserved_remaining = op_reserved.subtract(op_usage).min(
+                ExecutionResources.ZERO
+            )
+            op_reserved_exceeded = op_usage.subtract(op_reserved)
+            self._op_available[op] = op_reserved_remaining
+            shared = shared.subtract(op_reserved_exceeded)
+
+        num_total_ops = len(self._resource_manager._topology) - 1
+        shared_divided = shared.min(ExecutionResources.ZERO).scale(1.0 / num_total_ops)
+        for op in self._resource_manager._topology:
+            self._op_available[op] = self._op_available[op].add(shared_divided)
+            self._op_available[op].gpu = None
+
+        return
+
+    def get_op_available(self, op: PhysicalOperator) -> ExecutionResources:
+        return self._op_available[op]
