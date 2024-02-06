@@ -809,7 +809,10 @@ class GlobalState:
 
     def get_draining_nodes(self) -> Dict[str, int]:
         """Get all the hex ids of nodes that are being drained
-        and the corresponding draining deadline timestamps in ms."""
+        and the corresponding draining deadline timestamps in ms.
+
+        There is no deadline if the timestamp is 0.
+        """
         self._check_connected()
         return self.global_state_accessor.get_draining_nodes()
 

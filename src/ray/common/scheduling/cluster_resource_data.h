@@ -304,11 +304,14 @@ class NodeResources {
   // The idle duration of the node from resources reported by raylet.
   int64_t idle_resource_duration_ms = 0;
 
-  // 0 if the node is not being drained.
-  // > 0 if the node is being drained
-  // and the value is the timestamp when
+  // Whether the node is being drained or not.
+  bool is_draining = false;
+  // This is only meaningful if is_draining
+  // is true.
+  // The value is the timestamp when
   // the node will be force killed.
-  int64_t draining_deadline_timestamp_ms = 0;
+  // 0 if there is no draining deadline.
+  int64_t draining_deadline_timestamp_ms = -1;
 
   // The timestamp of the last resource update if there was a resource report.
   absl::optional<absl::Time> last_resource_update_time = absl::nullopt;
@@ -318,8 +321,6 @@ class NodeResources {
   /// upload is latest.
   int64_t latest_resources_normal_task_timestamp = 0;
   bool object_pulls_queued = false;
-
-  bool IsDraining() const { return draining_deadline_timestamp_ms > 0; }
 
   /// Amongst CPU, memory, and object store memory, calculate the utilization percentage
   /// of each resource and return the highest.

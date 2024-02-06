@@ -40,7 +40,8 @@ class GcsResourceManagerTest : public ::testing::Test {
       const absl::flat_hash_map<std::string, double> &available_resources,
       const absl::flat_hash_map<std::string, double> &total_resources,
       int64_t idle_ms = 0,
-      int64_t draining_deadline_timestamp_ms = 0) {
+      bool is_draining = false,
+      int64_t draining_deadline_timestamp_ms = -1) {
     syncer::ResourceViewSyncMessage resource_view_sync_message;
     for (const auto &resource : available_resources) {
       (*resource_view_sync_message.mutable_resources_available())[resource.first] =
@@ -51,6 +52,7 @@ class GcsResourceManagerTest : public ::testing::Test {
           resource.second;
     }
     resource_view_sync_message.set_idle_duration_ms(idle_ms);
+    resource_view_sync_message.set_is_draining(is_draining);
     resource_view_sync_message.set_draining_deadline_timestamp_ms(
         draining_deadline_timestamp_ms);
     gcs_resource_manager_->UpdateFromResourceView(node_id, resource_view_sync_message);
@@ -230,6 +232,7 @@ TEST_F(GcsResourceManagerTest, TestGetDrainingNodes) {
       {/* available */ {"CPU", 10}},
       /* total*/ {{"CPU", 10}},
       /* idle_duration_ms */ 8,
+      /* is_draining */ true,
       /* draining_deadline_timestamp_ms */ std::numeric_limits<int64_t>::max());
 
   auto node2 = Mocker::GenNodeInfo();
@@ -239,7 +242,8 @@ TEST_F(GcsResourceManagerTest, TestGetDrainingNodes) {
                              {/* available */ {"CPU", 1}},
                              /* total*/ {{"CPU", 1}},
                              /* idle_duration_ms */ 5,
-                             /* draining_deadline_timestamp_ms */ 0);
+                             /* is_draining */ false,
+                             /* draining_deadline_timestamp_ms */ -1);
 
   rpc::GetDrainingNodesRequest request;
   rpc::GetDrainingNodesReply reply;

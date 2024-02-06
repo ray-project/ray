@@ -217,6 +217,7 @@ void GcsAutoscalerStateManager::UpdateResourceLoadAndUsage(
 
   new_data.set_object_pulls_queued(data.object_pulls_queued());
   new_data.set_idle_duration_ms(data.idle_duration_ms());
+  new_data.set_is_draining(data.is_draining());
   new_data.set_draining_deadline_timestamp_ms(data.draining_deadline_timestamp_ms());
 
   // Last update time
@@ -294,7 +295,7 @@ void GcsAutoscalerStateManager::GetNodeStates(
 
     auto const &node_resource_item = node_resource_iter->second;
     auto const &node_resource_data = node_resource_item.second;
-    if (node_resource_data.draining_deadline_timestamp_ms() > 0) {
+    if (node_resource_data.is_draining()) {
       node_state_proto->set_status(rpc::autoscaler::NodeStatus::DRAINING);
     } else if (node_resource_data.idle_duration_ms() > 0) {
       // The node was reported idle.
@@ -367,13 +368,6 @@ void GcsAutoscalerStateManager::HandleDrainNode(
     RAY_LOG(WARNING) << msg;
     send_reply_callback(Status::Invalid(msg), nullptr, nullptr);
     return;
-  }
-  if (draining_deadline_timestamp_ms == 0) {
-    // Set a default draining deadline if autoscaler doesn't set one.
-    // This is temporary since eventually autoscaler should always set a draining
-    // deadline.
-    draining_deadline_timestamp_ms =
-        current_sys_time_ms() + RayConfig::instance().default_draining_period_ms();
   }
 
   auto maybe_node = gcs_node_manager_.GetAliveNode(node_id);

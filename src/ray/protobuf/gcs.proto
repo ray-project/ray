@@ -533,7 +533,7 @@ message ResourceLoad {
 }
 
 message ResourcesData {
-  reserved 3, 8, 16, 17;
+  reserved 3, 8, 17;
   // Node id.
   bytes node_id = 1;
   // Resource capacity currently available on this node manager.
@@ -562,9 +562,11 @@ message ResourcesData {
   // The duration in ms during which all the node's resources are idle. If the
   // node currently has any resource being used, this will be 0.
   int64 idle_duration_ms = 15;
-  // 0 if the node is not being drained.
-  // > 0 if the node is being drained
-  // and the value is the timestamp when
+  // Whether the node is being drained.
+  bool is_draining = 16;
+  // This is only meaningful if is_draining
+  // is true.
+  // The value is the timestamp when
   // the node will be force killed.
   int64 draining_deadline_timestamp_ms = 18;
 }

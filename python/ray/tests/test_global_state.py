@@ -449,7 +449,7 @@ def test_next_job_id(ray_start_regular):
 
 def test_get_draining_nodes(ray_start_cluster):
     cluster = ray_start_cluster
-    cluster.add_node(_system_config={"default_draining_period_ms": 120000})
+    cluster.add_node()
     ray.init(address=cluster.address)
     cluster.add_node(resources={"worker1": 1})
     cluster.add_node(resources={"worker2": 1})
@@ -477,7 +477,6 @@ def test_get_draining_nodes(ray_start_cluster):
 
     gcs_client = GcsClient(address=ray.get_runtime_context().gcs_address)
 
-    drain_request_timestamp_ms = int(time.time() * 1000)
     # Drain the worker nodes.
     is_accepted = gcs_client.drain_node(
         worker1_node_id,
@@ -491,7 +490,6 @@ def test_get_draining_nodes(ray_start_cluster):
         worker2_node_id,
         autoscaler_pb2.DrainNodeReason.Value("DRAIN_NODE_REASON_PREEMPTION"),
         "preemption",
-        # Use the default draining deadline.
         0,
     )
     assert is_accepted
@@ -500,8 +498,7 @@ def test_get_draining_nodes(ray_start_cluster):
         draining_nodes = ray._private.state.state.get_draining_nodes()
         if (
             draining_nodes[worker1_node_id] == (2**63 - 2)
-            and draining_nodes[worker2_node_id] >= (drain_request_timestamp_ms + 120000)
-            and draining_nodes[worker2_node_id] < (drain_request_timestamp_ms + 240000)
+            and draining_nodes[worker2_node_id] == 0
         ):
             return True
         else:

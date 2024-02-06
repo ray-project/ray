@@ -169,13 +169,15 @@ class GcsAutoscalerStateManagerTest : public ::testing::Test {
       const absl::flat_hash_map<std::string, double> &available_resources,
       const absl::flat_hash_map<std::string, double> &total_resources,
       int64_t idle_ms = 0,
-      int64_t draining_deadline_timestamp_ms = 0) {
+      bool is_draining = false,
+      int64_t draining_deadline_timestamp_ms = -1) {
     rpc::ResourcesData resources_data;
     Mocker::FillResourcesData(resources_data,
                               node_id,
                               available_resources,
                               total_resources,
                               idle_ms,
+                              is_draining,
                               draining_deadline_timestamp_ms);
     gcs_autoscaler_state_manager_->UpdateResourceLoadAndUsage(resources_data);
   }
@@ -735,6 +737,7 @@ TEST_F(GcsAutoscalerStateManagerTest, TestDrainingStatus) {
       {/* available */ {"CPU", 2}, {"GPU", 1}},
       /* total*/ {{"CPU", 2}, {"GPU", 1}},
       /* idle_duration_ms */ 10,
+      /* is_draining */ true,
       /* draining_deadline_timestamp_ms */ std::numeric_limits<int64_t>::max());
   {
     const auto &state = GetClusterResourceStateSync();
