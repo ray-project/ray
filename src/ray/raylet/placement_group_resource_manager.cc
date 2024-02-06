@@ -171,11 +171,15 @@ Status NewPlacementGroupResourceManager::ReturnBundle(
   // `ClusterResourceScheduler`.
   const auto &placement_group_resources = bundle_spec.GetFormattedResources();
   auto resource_instances = std::make_shared<TaskResourceInstances>();
-  auto allocated = cluster_resource_scheduler_->GetLocalResourceManager().AllocateLocalTaskResources(
-      placement_group_resources, resource_instances);
+  auto allocated =
+      cluster_resource_scheduler_->GetLocalResourceManager().AllocateLocalTaskResources(
+          placement_group_resources, resource_instances);
 
   if (!allocated) {
-    RAY_LOG(WARNING) << "Bundle resources are still in use. GCS should retry to release a bundle." << bundle_spec.DebugString();
+    RAY_LOG(WARNING) << "Bundle resources are still in use. GCS should retry to release "
+                        "a bundle. It only happens if a scheduler allocated resources, "
+                        "but a worker hasn't been started. "
+                     << bundle_spec.DebugString();
     return Status::Invalid("Bundle resources are still in use. Retry again.");
   } else {
     // Return original resources to resource allocator `ClusterResourceScheduler`.
