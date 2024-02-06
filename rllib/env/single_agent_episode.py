@@ -230,15 +230,15 @@ class SingleAgentEpisode:
         infos = infos or [{} for _ in range(len(observations or []))]
 
         # Observations: t0 (initial obs) to T.
-        self.observation_space = observation_space
+        self._observation_space = None
         if isinstance(observations, InfiniteLookbackBuffer):
             self.observations = observations
         else:
             self.observations = InfiniteLookbackBuffer(
                 data=observations,
                 lookback=len_lookback_buffer,
-                space=observation_space,
             )
+        self.observation_space = observation_space
         # Infos: t0 (initial info) to T.
         if isinstance(infos, InfiniteLookbackBuffer):
             self.infos = infos
@@ -248,15 +248,15 @@ class SingleAgentEpisode:
                 lookback=len_lookback_buffer,
             )
         # Actions: t1 to T.
-        self.action_space = action_space
+        self._action_space = None
         if isinstance(actions, InfiniteLookbackBuffer):
             self.actions = actions
         else:
             self.actions = InfiniteLookbackBuffer(
                 data=actions,
                 lookback=len_lookback_buffer,
-                space=action_space,
             )
+        self.action_space = action_space
         # Rewards: t1 to T.
         if isinstance(rewards, InfiniteLookbackBuffer):
             self.rewards = rewards
@@ -1489,6 +1489,22 @@ class SingleAgentEpisode:
             chunk.
         """
         return sum(self.get_rewards())
+
+    @property
+    def observation_space(self):
+        return self._observation_space
+
+    @observation_space.setter
+    def observation_space(self, value):
+        self._observation_space = self.observations.space = value
+
+    @property
+    def action_space(self):
+        return self._action_space
+
+    @action_space.setter
+    def action_space(self, value):
+        self._action_space = self.actions.space = value
 
     def __len__(self) -> int:
         """Returning the length of an episode.

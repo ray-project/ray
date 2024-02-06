@@ -1,10 +1,10 @@
 import abc
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, Iterator, List, Optional, Union
 
 import gymnasium as gym
 
-from ray.rllib.connectors.input_output_types import INPUT_OUTPUT_TYPES
 from ray.rllib.core.rl_module.rl_module import RLModule
+from ray.rllib.env.single_agent_episode import SingleAgentEpisode
 from ray.rllib.utils.typing import EpisodeType
 from ray.util.annotations import PublicAPI
 
@@ -57,12 +57,12 @@ class ConnectorV2(abc.ABC):
     pipelines) and the Learners (owning the Learner pipelines).
     """
 
-    # Set these in ALL subclasses.
-    # TODO (sven): Irrelevant for single-agent cases. Once multi-agent is supported
-    #  by ConnectorV2, we need to elaborate more on the different input/output types.
-    #  For single-agent, the types should always be just INPUT_OUTPUT_TYPES.DATA.
-    input_type = INPUT_OUTPUT_TYPES.DATA
-    output_type = INPUT_OUTPUT_TYPES.DATA
+    ## Set these in ALL subclasses.
+    ## TODO (sven): Irrelevant for single-agent cases. Once multi-agent is supported
+    ##  by ConnectorV2, we need to elaborate more on the different input/output types.
+    ##  For single-agent, the types should always be just INPUT_OUTPUT_TYPES.DATA.
+    #input_type = INPUT_OUTPUT_TYPES.DATA
+    #output_type = INPUT_OUTPUT_TYPES.DATA
 
     @property
     def observation_space(self):
@@ -72,12 +72,12 @@ class ConnectorV2(abc.ABC):
         otherwise, use the same as the input space, assuming this connector piece
         does not alter the space.
         """
-        return self._observation_space or self.input_observation_space
+        return self.input_observation_space
 
-    @observation_space.setter
-    def observation_space(self, value):
-        """Setter for our (output) observation space."""
-        self._observation_space = value
+    #@observation_space.setter
+    #def observation_space(self, value):
+    #    """Setter for our (output) observation space."""
+    #    self._observation_space = value
 
     @property
     def action_space(self):
@@ -87,16 +87,15 @@ class ConnectorV2(abc.ABC):
         otherwise, use the same as the input space, assuming this connector piece
         does not alter the space.
         """
-        return self._action_space or self.input_action_space
+        return self.input_action_space
 
-    @action_space.setter
-    def action_space(self, value):
-        """Setter for our (output) action space."""
-        self._action_space = value
+    #@action_space.setter
+    #def action_space(self, value):
+    #    """Setter for our (output) action space."""
+    #    self._action_space = value
 
     def __init__(
         self,
-        *,
         input_observation_space: gym.Space,
         input_action_space: gym.Space,
         **kwargs,
@@ -117,8 +116,8 @@ class ConnectorV2(abc.ABC):
         self.input_observation_space = input_observation_space
         self.input_action_space = input_action_space
 
-        self._observation_space = None
-        self._action_space = None
+        #self._observation_space = None
+        #self._action_space = None
 
     @abc.abstractmethod
     def __call__(
@@ -135,9 +134,8 @@ class ConnectorV2(abc.ABC):
 
         Args:
             rl_module: The RLModule object that the connector connects to or from.
-            data: The input data abiding to `self.input_type` to be transformed by
-                this connector. Transformations might either be done in-place or a new
-                structure may be returned that matches `self.output_type`.
+            data: The input data to be transformed by this connector. Transformations
+                might either be done in-place or a new structure may be returned.
             episodes: The list of SingleAgentEpisode or MultiAgentEpisode objects,
                 each corresponding to one slot in the vector env. Note that episodes
                 should always be considered read-only and not be altered.
@@ -149,8 +147,243 @@ class ConnectorV2(abc.ABC):
             kwargs: Forward API-compatibility kwargs.
 
         Returns:
-            The transformed connector output abiding to `self.output_type`.
+            The transformed connector output.
         """
+
+    @staticmethod
+    def single_agent_episode_iterator(
+        episodes: List[EpisodeType],
+        zip_with_batch_column: Optional[Union[List[Any], Dict[tuple, Any]]] = None,
+    ) -> Iterator[SingleAgentEpisode]:
+        """An iterator over a list of episodes yielding always SingleAgentEpisodes.
+
+        In case items in the list are MultiAgentEpisodes, these are broken down
+        into their individual agents' SingleAgentEpisodes and those are then yielded
+        one after the other.
+
+        Useful for connectors that operator on both single-agent and multi-agent
+        episodes.
+
+        Args:
+            episodes: The list of SingleAgent- or MultiAgentEpisode objects.
+            zip_with_batch_column: If provided, must be a list of batch items
+                corresponding to the given `episodes` (single agent case) or a dict
+                mapping (agentID, moduleID) tuples to lists of individual batch items
+                corresponding to this agent/module combination. The iterator will then
+                yield tuples of SingleAgentEpisode objects (1st item) along with the
+                data item (2nd item) that this episode was responsible for generating
+                originally.
+
+        Yields:
+            All SingleAgentEpisodes in the input list, whereby MultiAgentEpisodes will
+            be broken down into their individual SingleAgentEpisode components.
+        """
+        # Single-agent case.
+        if isinstance(episodes[0], SingleAgentEpisode):
+            if zip_with_batch_column is not None:
+                if len(zip_with_batch_column) != len(episodes):
+                    raise ValueError(
+                        "Invalid `zip_with_batch_column` data: Must have the same "
+                        f"length as the list of episodes ({len(episodes)}), but has "
+                        f"length {len(zip_with_batch_column)}!"
+                    )
+                for episode, data in zip(episodes, zip_with_batch_column):
+                    yield episode, data
+            else:
+                for episode in episodes:
+                    yield episode
+            return
+
+        # Multi-agent case.
+        list_indices = defaultdict(int)
+        for episode in episodes:
+            for sa_episode in episodes.agent_episodes.values():
+                if zip_with_batch_column:
+                    key = (sa_episode.agent_id, sa_episode.module_id)
+                    if len(data[key]) <= list_indices[key]:
+                        raise ValueError(
+                            "Invalid `zip_with_batch_column` data: Must structurally "
+                            "match the single-agent contents in the given list of "
+                            "(multi-agent) episodes!"
+                        )
+                    d = data[key][list_indices[key]]
+                    list_indices[key] += 1
+                    yield sa_episode, d
+                else:
+                    yield sa_episode
+
+    @staticmethod
+    def add_batch_item(
+        batch: Dict[str, Any],
+        column: str,
+        item_to_add: Any,
+        single_agent_episode: Optional[SingleAgentEpisode] = None,
+    ) -> None:
+        """Adds a data item under `column` to the given `batch`.
+
+        If `single_agent_episode` is provided and it contains agent ID and module ID
+        information, will store the item in a list under a `([agent_id],[module_id])`
+        key within `column`. In all other cases, will store the item in a list directly
+        under `column`.
+
+        .. testcode::
+
+            from ray.rllib.connectors.connector_v2 import ConnectorV2
+            from ray.rllib.utils.test_utils import check
+
+            batch = {}
+            ConnectorV2.add_batch_item(batch, "test_col", 5)
+
+            check(batch, {"test_col": [5]})
+
+            sa_episode = SingleAgentEpisode(agent_id="ag1", module_id="module_10")
+            ConnectorV2.add_batch_item(batch, "test_col_2", -10, sa_episode)
+
+            check(batch, {
+                "test_col": [5],
+                "test_col_2": {
+                    "ag1:module_10": [-10],
+                },
+            })
+
+        Args:
+            batch: The batch to store `item_to_add` in.
+            column: The column name (str) within the `batch` to store `item_to_add`
+                under.
+            item_to_add: The data item to store in the batch.
+            single_agent_episode: An optional SingleAgentEpisode. If provided and its
+                agent_id and module_id properties are not None, will create a further
+                sub dictionary under `column`, mapping from `([agent_id],[module_id])`
+                (str) to a list of data items. Otherwise, will store `item_to_add`
+                in a list directly under `column`.
+        """
+        sub_key = None
+        if (
+            single_agent_episode
+            and single_agent_episode.agent_id is not None
+            and single_agent_episode.module_id is not None
+        ):
+            sub_key = (single_agent_episode.agent_id, single_agent_episode.module_id)
+
+        if column not in batch:
+            batch[column] = ([] if sub_key is None else {sub_key: []})
+        if sub_key:
+            batch[column][sub_key].append(item_to_add)
+        else:
+            batch[column].append(item_to_add)
+
+    @staticmethod
+    def switch_batch_from_agent_ids_to_module_ids(batch):#, episodes):
+        """Flips the mapping in the given batch from Agent ID based to Module ID based.
+
+        The provided batch must have column names on the top level, then - under each
+        column name - another mapping from AgentIDs to the data items or a list of data
+        items.
+        For example, a valid input batch would look like this:
+
+        .. testcode::
+
+            from ray.rllib.connectors.connectorv2 import ConnectorV2
+            from ray.rllib.env.multi_agent_episode import MultiAgentEpisode
+            from ray.rllib.utils.test_utils import check
+
+            # For simplicity, we only use episodes here that just started (only have
+            # a single reset observation in them). The observation space is
+            # Discrete(10).
+            # Assume that agent_0 is present in the episodes w/ list indices 0, 1,
+            # and 3, and agent_1 is present in the episodes w/ list indices 0 and 2.
+            episodes = [
+                MultiAgentEpisode(observations=[{"agent_0: 0, "agent_1": 0}]),
+                MultiAgentEpisode(observations=[{"agent_0: 1,             }]),
+                MultiAgentEpisode(observations=[{             "agent_1": 1}]),
+                MultiAgentEpisode(observations=[{"agent_0: 2,             }]),
+            ]
+            # Make all our episodes map agent_0 to module_0 and agent_1 to module_1.
+            # Note that in general, agents to modules mapping is N to M, where N is the
+            # number of agents and M is the number of modules and N >= M.
+            for eps in episodes[:-1]:
+                eps.agent_to_module_map = {"agent_0": "module_0", "agent_1": "module_1"}
+            # Only the last episode maps the other way around.
+            episodes[-1].agent_to_module_map = {
+                "agent_0": "module_1", "agent_1": "module_0"
+            }
+
+            # Now, our batch would look like this:
+            batch = {
+                "obs": {
+                    "agent_0": [0, 1, 2],  # <- could also be ndarray of shape (3,)
+                    "agent_1": [0, 1],  # <- could also be ndarray of shape (2,)
+                },
+            }
+            # Note that the data under the different agent IDs might have different
+            # batch dimensions (or a different length in the case of lists) b/c not
+            # every episode might have the same agent ID distribution (some agents
+            # might not even be present in some episodes).
+
+            flipped_batch = ConnectorV2.switch_batch_from_agent_ids_to_module_ids(
+                batch, episodes
+            )
+            check(
+                flipped_batch,
+                {
+                    "obs": {
+                        "module_0": [0, 1],
+                        "module_1": [0, 1, 2],
+                    },
+                },
+            )
+
+        Args:
+            batch: The batch to switch from an agent ID based mapping to a module ID
+                based mapping.
+            #episodes: The list of MultiAgentEpisodes to use to extract agent-to-module
+            #    mapping information. Note that the
+        """
+
+    @staticmethod
+    def switch_batch_from_column_to_module_ids(batch):
+        """Switches the first two levels of a `col -> ModuleID -> data` type batch.
+
+        Assuming that the top level consists of column names as keys and the second
+        level (under these columns) consists of ModuleID keys, the resulting batch
+        will have these two reversed and thus map ModuleIDs to dicts mapping column
+        names to data items.
+
+        .. testcode::
+
+            batch = {
+                "obs": {"module_0": [1, 2, 3]},
+                "actions": {"module_0": [4, 5, 6], "module_1": [7]},
+            }
+            switched_batch = ConnectorV2.switch_batch_from_column_to_module_ids(batch)
+
+            check(
+                switched_batch,
+                {
+                    "module_0": {"obs": [1, 2, 3], "actions": [4, 5, 6]},
+                    "module_1": {"actions": [7]},
+                },
+            )
+
+        Args:
+            batch: The batch to switch from being column name based (then ModuleIDs)
+                to being ModuleID based (then column names).
+        """
+        module_data = {}
+        for column, column_data in batch.items():
+            for module_id, data in column_data.items():
+                module_data[module_id]
+
+    #@staticmethod
+    #def iterate_through_batch_column(batch, column):
+    #    data = batch.get(column)
+    #    if data is None:
+    #        raise ValueError(f"Your `batch` arg does NOT contain column `{column}`!")
+    #    if isinstance(data, list):
+    #        for d in data:
+    #            yield d
+    #    elif isinstance(data, dict):
+
 
     def get_state(self) -> Dict[str, Any]:
         """Returns the current state of this ConnectorV2 as a state dict.

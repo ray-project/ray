@@ -363,6 +363,33 @@ class WorkerSet:
         return self.__worker_manager.total_num_restarts()
 
     @DeveloperAPI
+    def sync_connectors(self):
+        """TODO: (sven) """
+        connector_states = self.foreach_worker(
+            lambda w: (w._env_to_module.get_state(), w._module_to_env.get_state()),
+            healthy_only=True,
+            local_worker=False,
+        )
+        env_to_module_states = [s[0] for s in connector_states]
+        module_to_env_states = [s[1] for s in connector_states]
+
+        self.local_worker()._env_to_module.merge_states(env_to_module_states)
+        ref_env_to_module_state = ray.put(
+            self.local_worker()._env_to_module.get_state()
+        )
+        self.local_worker()._module_to_env.merge_states(module_to_env_states)
+        ref_module_to_env_state = ray.put(
+            self.local_worker()._module_to_env.get_state()
+        )
+
+        def _update(w):
+            w._env_to_module.set_state(ray.get(ref_env_to_module_state))
+            w._module_to_env.set_state(ray.get(ref_module_to_env_state))
+
+        # Broadcast updated states back to all workers.
+        self.foreach_worker(_update, local_worker=False, healthy_only=True)
+
+    @DeveloperAPI
     def sync_weights(
         self,
         policies: Optional[List[PolicyID]] = None,

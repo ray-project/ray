@@ -15,6 +15,7 @@ from ray.rllib.evaluation.metrics import RolloutMetrics
 from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID, SampleBatch
 from ray.rllib.utils.annotations import ExperimentalAPI, override
 from ray.rllib.utils.framework import try_import_tf
+from ray.rllib.utils.spaces.space_utils import unbatch
 from ray.rllib.utils.torch_utils import convert_to_torch_tensor
 from ray.rllib.utils.typing import TensorType
 from ray.tune.registry import ENV_CREATOR, _global_registry
@@ -229,6 +230,7 @@ class SingleAgentEnvRunner(EnvRunner):
             # Reset the environment.
             # TODO (simon): Check, if we need here the seed from the config.
             obs, infos = self.env.reset()
+            obs = unbatch(obs)
             self._cached_to_module = None
 
             # Call `on_episode_start()` callbacks.
@@ -279,6 +281,7 @@ class SingleAgentEnvRunner(EnvRunner):
             actions = to_env.pop(SampleBatch.ACTIONS)
 
             obs, rewards, terminateds, truncateds, infos = self.env.step(actions)
+            obs, actions = unbatch(obs), unbatch(actions)
 
             ts += self.num_envs
 
@@ -304,7 +307,18 @@ class SingleAgentEnvRunner(EnvRunner):
                         truncated=truncateds[env_index],
                         extra_model_outputs=extra_model_output,
                     )
-
+                    # We have to perform an extra env-to-module pass here, just in case
+                    # the user's connector pipeline performs (permanent) transforms
+                    # on each observation (including this final one here). Without such
+                    # a call and in case the structure of the observations change
+                    # sufficiently, the following `finalize()` call on the episode will
+                    # fail.
+                    self._env_to_module(
+                        episodes=[self._episodes[env_index]],
+                        data={},
+                        explore=explore,
+                        rl_module=self.module,
+                    )
                     # Make the `on_episode_step` callback (before finalizing the
                     # episode object).
                     self._make_on_episode_callback("on_episode_step", env_index)

@@ -873,13 +873,11 @@ class AlgorithmConfig(_Config):
                 env, "single_observation_space", env.observation_space
             ),
             input_action_space=getattr(env, "single_action_space", env.action_space),
-            env=env,
         )
         pipeline.append(
             DefaultEnvToModule(
                 input_observation_space=pipeline.observation_space,
                 input_action_space=pipeline.action_space,
-                env=env,
             )
         )
         return pipeline
@@ -914,13 +912,11 @@ class AlgorithmConfig(_Config):
                 env, "single_observation_space", env.observation_space
             ),
             input_action_space=getattr(env, "single_action_space", env.action_space),
-            env=env,
         )
         pipeline.append(
             DefaultModuleToEnv(
                 input_observation_space=pipeline.observation_space,
                 input_action_space=pipeline.action_space,
-                env=env,
                 normalize_actions=self.normalize_actions,
                 clip_actions=self.clip_actions,
             )

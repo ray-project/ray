@@ -17,10 +17,10 @@ class _PrevRewardPrevActionConnector(ConnectorV2):
 
     def __init__(
         self,
-        *,
         # Base class constructor args.
         input_observation_space: gym.Space,
         input_action_space: gym.Space,
+        *,
         # Specific prev. r/a args.
         n_prev_actions: int = 1,
         n_prev_rewards: int = 1,

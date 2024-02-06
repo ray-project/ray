@@ -2544,12 +2544,12 @@ py_test(
 )
 
 py_test(
-    name = "examples/nested_action_spaces_ppo_torch",
+    name = "examples/nested_action_spaces_ppo_torch_envrunner",
     main = "examples/nested_action_spaces.py",
     tags = ["team:rllib", "exclusive", "examples"],
     size = "medium",
     srcs = ["examples/nested_action_spaces.py"],
-    args = ["--as-test", "--framework=torch", "--stop-reward=-600", "--run=PPO"]
+    args = ["--as-test", "--framework=torch", "--stop-reward=-600", "--run=PPO", "--enable-new-api-stack"]
 )
 
 py_test(

@@ -1,3 +1,4 @@
+import argparse
 from collections import Counter
 import copy
 import gymnasium as gym
@@ -59,6 +60,70 @@ if tf1:
 torch, _ = try_import_torch()
 
 logger = logging.getLogger(__name__)
+
+
+def add_rllib_examples_script_args(
+    parser: Optional[argparse.ArgumentParser] = None,
+    default_reward: float = 100.0,
+    default_iters: int = 200,
+    default_timesteps: int = 100000,
+) -> argparse.ArgumentParser:
+    """Adds RLlib-typical (and common) examples scripts command line args to a parser.
+
+    Args:
+        parser: The parser to add the arguments to. If None, create a new one.
+        default_reward: The default value for the --stop-reward option.
+        default_iters: The default value for the --stop-iters option.
+        default_timesteps: The default value for the --stop-timesteps option.
+
+    Returns:
+        The altered (or newly created) parser object.
+    """
+    if parser is None:
+        parser = argparse.ArgumentParser()
+
+    parser.add_argument(
+        "--run", type=str, default="PPO", help="The RLlib-registered algorithm to use."
+    )
+    parser.add_argument(
+        "--enable-new-api-stack",
+        action="store_true",
+        help="Whether to use the _enable_new_api_stack config setting.",
+    )
+    parser.add_argument(
+        "--framework",
+        choices=["tf", "tf2", "torch"],
+        default="torch",
+        help="The DL framework specifier.",
+    )
+    parser.add_argument("--num-cpus", type=int, default=0)
+    parser.add_argument(
+        "--as-test",
+        action="store_true",
+        help="Whether this script should be run as a test. If set, --stop-reward must "
+             "be achieved within --stop-timesteps AND --stop-iters, otherwise this "
+             "script will throw an exception at the end.",
+    )
+    parser.add_argument(
+        "--local-mode",
+        action="store_true",
+        help="Init Ray in local mode for easier debugging.",
+    )
+    parser.add_argument(
+        "--stop-reward", type=float, default=default_reward,
+        help="Reward at which the script should stop training."
+    )
+    parser.add_argument(
+        "--stop-iters",
+        type=int,
+        default=default_iters,
+        help="The number of iterations to train.",
+    )
+    parser.add_argument(
+        "--stop-timesteps", type=int, default=default_timesteps,
+        help="The number of (environment sampling) timesteps to train."
+    )
+    return parser
 
 
 def check(x, y, decimals=5, atol=None, rtol=None, false=False):

@@ -1,5 +1,6 @@
 from typing import Any, List, Optional
 
+import gymnasium as gym
 import numpy as np
 import tree  # pip install dm_tree
 
@@ -33,19 +34,22 @@ class DefaultModuleToEnv(ConnectorV2):
     distribution (deterministically, if we are not exploring, stochastically, if we
     are).
 
-    input_type: INPUT_OUTPUT_TYPES.DICT_OF_MODULE_IDS_TO_DATA
-        Operates per RLModule as it will have to pull the action distribution from each
-        in order to sample actions if necessary. Searches for the ACTIONS and
-        ACTION_DIST_INPUTS keys in a module's outputs and - should ACTIONS not be
-        found - sample actions from the module's action distribution.
-    output_type: INPUT_OUTPUT_TYPES.DICT_OF_MODULE_IDS_TO_DATA (same as input: data in,
-        data out, however, data
-        out might contain an additional ACTIONS key if it was not previously present
-        in the input).
+    #input_type: INPUT_OUTPUT_TYPES.DICT_OF_MODULE_IDS_TO_DATA
+    #    Operates per RLModule as it will have to pull the action distribution from each
+    #    in order to sample actions if necessary. Searches for the ACTIONS and
+    #    ACTION_DIST_INPUTS keys in a module's outputs and - should ACTIONS not be
+    #    found - sample actions from the module's action distribution.
+    #output_type: INPUT_OUTPUT_TYPES.DICT_OF_MODULE_IDS_TO_DATA (same as input: data in,
+    #    data out, however, data
+    #    out might contain an additional ACTIONS key if it was not previously present
+    #    in the input).
     """
 
     def __init__(
         self,
+        # Base class constructor args.
+        input_observation_space: gym.Space,
+        input_action_space: gym.Space,
         *,
         normalize_actions: bool,
         clip_actions: bool,
@@ -73,7 +77,7 @@ class DefaultModuleToEnv(ConnectorV2):
                 from the resulting distribution, then this 0.9 will be clipped to 0.5
                 to fit into the [-0.5 0.5] interval.
         """
-        super().__init__(**kwargs)
+        super().__init__(input_observation_space, input_action_space, **kwargs)
 
         self._action_space_struct = get_base_struct_from_space(self.action_space)
         self.normalize_actions = normalize_actions
@@ -113,7 +117,7 @@ class DefaultModuleToEnv(ConnectorV2):
 
         # Process actions according to Env's action space bounds, if necessary.
         self._normalize_clip_actions(data, is_multi_agent)
-
+        #print(data["actions"])
         return data
 
     def _remove_time_rank_from_data(self, data, rl_module, is_multi_agent):
@@ -145,6 +149,7 @@ class DefaultModuleToEnv(ConnectorV2):
             if SampleBatch.ACTION_DIST_INPUTS in module_data:
                 if explore:
                     action_dist_class = sa_rl_module.get_exploration_action_dist_cls()
+                    #print(action_dist_class)
                 else:
                     action_dist_class = sa_rl_module.get_inference_action_dist_cls()
                 action_dist = action_dist_class.from_logits(
