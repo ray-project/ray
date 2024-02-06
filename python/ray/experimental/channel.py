@@ -173,6 +173,7 @@ class Channel:
         If begin_read is not called first, then this call will block until a
         value is written, then drop the value.
         """
+        self._ensure_registered_as_reader()
         self._worker.core_worker.experimental_channel_read_release([self._base_ref])
 
     def close(self) -> None:
