@@ -465,7 +465,7 @@ def _test_write_large_data(
         assert read_fn(out_dir).count() == num_blocks_per_task
 
 
-def test_write_large_data_parquet(shutdown_only, tmp_path, restore_data_context):
+def test_write_large_data_parquet(shutdown_only, tmp_path):
     _test_write_large_data(
         tmp_path,
         "parquet",
