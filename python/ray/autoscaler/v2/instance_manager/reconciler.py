@@ -40,7 +40,7 @@ class Reconciler:
         transition should only be reflecting the external states of the cloud provider
         and the ray cluster, and should not be actively changing them)
 
-        2. Stepping the instances to the next state by computing instance status
+        2. Stepping the instances to the active states by computing instance status
         transitions that are needed and updating the instance manager's state.
         These transitions should be "active" where the transitions have side effects
         (through InstanceStatusSubscriber) to the cloud provider and the ray cluster.
@@ -121,20 +121,6 @@ class Reconciler:
             ray_install_errors: The errors from RayInstaller.
 
         """
-
-        # Handle 1 & 2 for cloud instance allocation.
-        Reconciler._handle_cloud_instance_allocation(
-            instance_manager,
-            non_terminated_cloud_instances,
-            cloud_provider_errors,
-        )
-        Reconciler._handle_cloud_instance_terminated(
-            instance_manager, non_terminated_cloud_instances, cloud_provider_errors
-        )
-        Reconciler._handle_ray_running(instance_manager, ray_nodes)
-        Reconciler._handle_ray_stopped(instance_manager, ray_nodes)
-        Reconciler._handle_ray_install_failed(instance_manager, ray_install_errors)
-
         pass
 
     @staticmethod
@@ -176,38 +162,4 @@ class Reconciler:
                 the cloud provider.
 
         """
-        pass
-
-    @staticmethod
-    def _handle_cloud_instance_allocation(
-        instance_manager: InstanceManager,
-        non_terminated_cloud_instances: Dict[CloudInstanceId, CloudInstance],
-        cloud_provider_errors: List[CloudInstanceProviderError],
-    ):
-        pass
-
-    @staticmethod
-    def _handle_ray_running(
-        instance_manager: InstanceManager, ray_nodes: List[NodeState]
-    ):
-        pass
-
-    @staticmethod
-    def _handle_ray_stopped(
-        instance_manager: InstanceManager, ray_nodes: List[NodeState]
-    ):
-        pass
-
-    @staticmethod
-    def _handle_ray_install_failed(
-        instance_manager: InstanceManager, ray_install_errors: List[RayInstallError]
-    ):
-        pass
-
-    @staticmethod
-    def _handle_cloud_instance_terminated(
-        instance_manager: InstanceManager,
-        non_terminated_cloud_instances: Dict[CloudInstanceId, CloudInstance],
-        cloud_provider_errors: List[CloudInstanceProviderError],
-    ):
         pass
