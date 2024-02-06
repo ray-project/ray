@@ -18,7 +18,7 @@ from ray.autoscaler.v2.instance_manager.ray_installer import RayInstallError
 from ray.autoscaler.v2.instance_manager.reconciler import Reconciler, logger
 from ray.autoscaler.v2.instance_manager.storage import InMemoryStorage
 from ray.autoscaler.v2.scheduler import IResourceScheduler, SchedulingReply
-from ray.autoscaler.v2.tests.util import create_instance
+from ray.autoscaler.v2.tests.util import MockSubscriber, create_instance
 from ray.core.generated.autoscaler_pb2 import (
     ClusterResourceState,
     GangResourceRequest,
@@ -49,6 +49,12 @@ class MockAutoscalingConfig:
     def get_max_num_worker_nodes(self):
         return self._configs.get("max_num_worker_nodes")
 
+    def get_upscaling_speed(self):
+        return self._configs.get("upscaling_speed", 0.0)
+
+    def get_max_concurrent_launches(self):
+        return self._configs.get("max_concurrent_launches", 100)
+
 
 class MockScheduler(IResourceScheduler):
     def __init__(self, to_launch=None, to_terminate=None):
@@ -68,17 +74,6 @@ class MockScheduler(IResourceScheduler):
         )
 
 
-class MockSubscriber:
-
-    events = []
-
-    def notify(self, events):
-        MockSubscriber.events.extend(events)
-
-    def clear(self):
-        MockSubscriber.events.clear()
-
-
 @pytest.fixture()
 def setup():
     instance_storage = InstanceStorage(
@@ -88,9 +83,9 @@ def setup():
 
     mock_subscriber = MockSubscriber()
 
-    instance_storage.add_status_change_subscribers([mock_subscriber])
     instance_manager = InstanceManager(
         instance_storage=instance_storage,
+        instance_status_update_subscribers=[mock_subscriber],
     )
 
     yield instance_manager, instance_storage, mock_subscriber
@@ -686,7 +681,9 @@ class TestReconciler:
             non_terminated_cloud_instances=cloud_instances,
             cloud_provider_errors=[],
             ray_install_errors=[],
-            autoscaling_config=MockAutoscalingConfig(),
+            autoscaling_config=MockAutoscalingConfig(
+                configs={"max_concurrent_launches": 0}  # don't launch anything.
+            ),
         )
 
         instances, _ = instance_storage.get_instances()
@@ -698,6 +695,92 @@ class TestReconciler:
                 assert instance.status == Instance.QUEUED
 
         assert len(state.infeasible_gang_resource_requests) == 1
+
+    @staticmethod
+    @pytest.mark.parametrize(
+        "max_concurrent_launches,num_allocated,num_requested",
+        [
+            (1, 0, 0),
+            (10, 0, 0),
+            (1, 0, 1),
+            (1, 1, 0),
+            (10, 1, 0),
+            (10, 0, 1),
+            (10, 5, 5),
+        ],
+    )
+    @pytest.mark.parametrize(
+        "upscaling_speed",
+        [0.0, 0.1, 0.5, 1.0, 100.0],
+    )
+    def test_max_concurrent_launches(
+        max_concurrent_launches, num_allocated, num_requested, upscaling_speed, setup
+    ):
+        instance_manager, instance_storage, subscriber = setup
+        next_id = 0
+
+        # Add some allocated instances.
+        cloud_instances = {}
+        for _ in range(num_allocated):
+            instance = create_instance(
+                str(next_id),
+                status=Instance.ALLOCATED,
+                instance_type="type-1",
+                cloud_instance_id=f"c-{next_id}",
+            )
+            next_id += 1
+            cloud_instances[instance.cloud_instance_id] = CloudInstance(
+                instance.cloud_instance_id, "type-1", "", True
+            )
+            TestReconciler._add_instances(instance_storage, [instance])
+
+        # Add some requested instances.
+        for _ in range(num_requested):
+            instance = create_instance(
+                str(next_id), status=Instance.REQUESTED, instance_type="type-1"
+            )
+            TestReconciler._add_instances(instance_storage, [instance])
+            next_id += 1
+
+        # Add many queued instances.
+        queued_instances = [
+            create_instance(
+                str(i + next_id), status=Instance.QUEUED, instance_type="type-1"
+            )
+            for i in range(1000)
+        ]
+        TestReconciler._add_instances(instance_storage, queued_instances)
+
+        num_desired_upscale = max(1, upscaling_speed * (num_requested + num_allocated))
+        expected_launch_num = min(
+            num_desired_upscale,
+            max(0, max_concurrent_launches - num_requested),  # global limit
+        )
+
+        subscriber.clear()
+        Reconciler.reconcile(
+            instance_manager=instance_manager,
+            scheduler=MockScheduler(),
+            cloud_provider=MagicMock(),
+            ray_cluster_resource_state=ClusterResourceState(),
+            non_terminated_cloud_instances=cloud_instances,
+            cloud_provider_errors=[],
+            ray_install_errors=[],
+            autoscaling_config=MockAutoscalingConfig(
+                configs={
+                    "upscaling_speed": upscaling_speed,
+                    "max_concurrent_launches": max_concurrent_launches,
+                }
+            ),
+        )
+        instances, _ = instance_storage.get_instances()
+        assert len(subscriber.events) == expected_launch_num
+        for event in subscriber.events:
+            assert event.new_instance_status == Instance.REQUESTED
+            assert (
+                event.launch_request_id
+                == instances[event.instance_id].launch_request_id
+            )
 
 
 if __name__ == "__main__":

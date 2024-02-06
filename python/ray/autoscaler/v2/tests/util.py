@@ -10,6 +10,17 @@ from ray.core.generated import autoscaler_pb2
 from ray.core.generated.instance_manager_pb2 import Instance
 
 
+class MockSubscriber:
+
+    events = []
+
+    def notify(self, events):
+        MockSubscriber.events.extend(events)
+
+    def clear(self):
+        MockSubscriber.events.clear()
+
+
 def make_autoscaler_instance(
     im_instance: Optional[Instance] = None,
     ray_node: Optional[autoscaler_pb2.NodeState] = None,

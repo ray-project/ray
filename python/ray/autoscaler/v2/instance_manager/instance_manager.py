@@ -1,5 +1,7 @@
 import logging
 import uuid
+from abc import ABC, abstractmethod
+from typing import List, Optional
 
 from ray.autoscaler.v2.instance_manager.common import (
     InstanceUtil,
@@ -17,6 +19,14 @@ from ray.core.generated.instance_manager_pb2 import (
 )
 
 logger = logging.getLogger(__name__)
+
+
+class InstanceUpdatedSubscriber(ABC):
+    """Subscribers to instance status changes."""
+
+    @abstractmethod
+    def notify(self, events: List[InstanceUpdateEvent]) -> None:
+        pass
 
 
 class InstanceManager:
@@ -44,8 +54,13 @@ class InstanceManager:
     Not thread safe, should be used as a singleton.
     """
 
-    def __init__(self, instance_storage: InstanceStorage):
+    def __init__(
+        self,
+        instance_storage: InstanceStorage,
+        instance_status_update_subscribers: Optional[List[InstanceUpdatedSubscriber]],
+    ):
         self._instance_storage = instance_storage
+        self._status_update_subscribers = instance_status_update_subscribers or []
 
     def update_instance_manager_state(
         self, request: UpdateInstanceManagerStateRequest
@@ -95,12 +110,12 @@ class InstanceManager:
 
         # Handle launch requests.
         new_instances = []
-        for request in request.launch_requests:
-            for _ in range(request.count):
+        for launch_request in request.launch_requests:
+            for _ in range(launch_request.count):
                 instance = InstanceUtil.new_instance(
                     instance_id=self._random_instance_id(),
-                    instance_type=request.instance_type,
-                    request_id=request.id,
+                    instance_type=launch_request.instance_type,
+                    request_id=launch_request.id,
                 )
                 new_instances.append(instance)
 
@@ -125,6 +140,8 @@ class InstanceManager:
                 return self._get_update_im_state_reply(
                     StatusCode.UNKNOWN_ERRORS, result.version, err_str
                 )
+
+        self._notify_subscribers(new_instances, request.updates)
 
         return self._get_update_im_state_reply(StatusCode.OK, result.version)
 
@@ -197,3 +214,28 @@ class InstanceManager:
             instance.cloud_instance_id = update.cloud_instance_id
         elif update.new_instance_status == Instance.TERMINATED:
             instance.cloud_instance_id = ""
+        elif update.new_instance_status == Instance.REQUESTED:
+            instance.launch_request_id = update.launch_request_id
+
+    def _notify_subscribers(
+        self, new_instances: List[Instance], updates: List[InstanceUpdateEvent]
+    ):
+        """
+        Notifies the subscribers of the instance status changes.
+
+        Args:
+            new_instances: The new instances.
+            updates: The updates.
+        """
+        events = []
+        for instance in new_instances:
+            events.append(
+                InstanceUpdateEvent(
+                    instance_id=instance.instance_id,
+                    new_instance_status=instance.status,
+                )
+            )
+        for update in updates:
+            events.append(update)
+        for subscriber in self._status_update_subscribers:
+            subscriber.notify(events)

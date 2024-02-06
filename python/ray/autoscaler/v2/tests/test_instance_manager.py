@@ -11,6 +11,7 @@ from mock import MagicMock
 from ray.autoscaler.v2.instance_manager.instance_manager import InstanceManager
 from ray.autoscaler.v2.instance_manager.instance_storage import InstanceStorage
 from ray.autoscaler.v2.instance_manager.storage import InMemoryStorage, StoreStatus
+from ray.autoscaler.v2.tests.util import MockSubscriber
 from ray.core.generated.instance_manager_pb2 import (
     GetInstanceManagerStateRequest,
     Instance,
@@ -24,7 +25,10 @@ from ray.core.generated.instance_manager_pb2 import (
 class InstanceManagerTest(unittest.TestCase):
     def test_instances_version_mismatch(self):
         ins_storage = MagicMock()
-        im = InstanceManager(ins_storage)
+        subscriber = MockSubscriber()
+        im = InstanceManager(
+            ins_storage, instance_status_update_subscribers=[subscriber]
+        )
         # Version mismatch on reading from the storage.
         ins_storage.get_instances.return_value = ({}, 1)
 
@@ -40,6 +44,7 @@ class InstanceManagerTest(unittest.TestCase):
             )
         )
         assert reply.status.code == StatusCode.VERSION_MISMATCH
+        assert len(subscriber.events) == 0
 
         # Version OK.
         reply = im.update_instance_manager_state(
@@ -49,11 +54,14 @@ class InstanceManagerTest(unittest.TestCase):
             )
         )
         assert reply.status.code == StatusCode.OK
+        assert len(subscriber.events) == 1
+        assert subscriber.events[0].new_instance_status == Instance.QUEUED
 
         # Version mismatch when writing to the storage (race happens)
         ins_storage.batch_upsert_instances.return_value = StoreStatus(
             False, 2  # No longer 1
         )
+        subscriber.clear()
         reply = im.update_instance_manager_state(
             UpdateInstanceManagerStateRequest(
                 expected_version=1,
@@ -61,6 +69,7 @@ class InstanceManagerTest(unittest.TestCase):
             )
         )
         assert reply.status.code == StatusCode.VERSION_MISMATCH
+        assert len(subscriber.events) == 0
 
         # Non-version mismatch error.
         ins_storage.batch_upsert_instances.return_value = StoreStatus(
@@ -73,13 +82,17 @@ class InstanceManagerTest(unittest.TestCase):
             )
         )
         assert reply.status.code == StatusCode.UNKNOWN_ERRORS
+        assert len(subscriber.events) == 0
 
     def test_get_and_updates(self):
         ins_storage = InstanceStorage(
             "cluster-id",
             InMemoryStorage(),
         )
-        im = InstanceManager(ins_storage)
+        subscriber = MockSubscriber()
+        im = InstanceManager(
+            ins_storage, instance_status_update_subscribers=[subscriber]
+        )
 
         # Empty storage.
         reply = im.get_instance_manager_state(GetInstanceManagerStateRequest())
@@ -105,6 +118,9 @@ class InstanceManagerTest(unittest.TestCase):
             )
         )
         assert reply.status.code == StatusCode.OK
+        assert len(subscriber.events) == 3
+        for e in subscriber.events:
+            assert e.new_instance_status == Instance.QUEUED
 
         # Get launched nodes.
         reply = im.get_instance_manager_state(GetInstanceManagerStateRequest())
@@ -123,6 +139,7 @@ class InstanceManagerTest(unittest.TestCase):
         assert types_count["type-2"] == 2
 
         # Update node status.
+        subscriber.clear()
         reply = im.update_instance_manager_state(
             UpdateInstanceManagerStateRequest(
                 expected_version=1,
@@ -140,6 +157,9 @@ class InstanceManagerTest(unittest.TestCase):
         )
 
         assert reply.status.code == StatusCode.OK
+        assert len(subscriber.events) == 2
+        for e in subscriber.events:
+            assert e.new_instance_status == Instance.REQUESTED
 
         # Get updated nodes.
         reply = im.get_instance_manager_state(GetInstanceManagerStateRequest())
@@ -155,6 +175,7 @@ class InstanceManagerTest(unittest.TestCase):
                 assert ins.status == Instance.QUEUED
 
         # Invalid instances status update.
+        subscriber.clear()
         reply = im.update_instance_manager_state(
             UpdateInstanceManagerStateRequest(
                 expected_version=2,
@@ -167,6 +188,7 @@ class InstanceManagerTest(unittest.TestCase):
             )
         )
         assert reply.status.code == StatusCode.INVALID_VALUE
+        assert len(subscriber.events) == 0
 
         # Invalid versions.
         reply = im.update_instance_manager_state(
@@ -181,6 +203,7 @@ class InstanceManagerTest(unittest.TestCase):
             )
         )
         assert reply.status.code == StatusCode.VERSION_MISMATCH
+        assert len(subscriber.events) == 0
 
 
 if __name__ == "__main__":

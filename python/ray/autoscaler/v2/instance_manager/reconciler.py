@@ -1,4 +1,5 @@
 import logging
+import math
 import time
 from collections import defaultdict
 from typing import Dict, List, Optional, Set, Tuple
@@ -507,10 +508,12 @@ class Reconciler:
         if launch_requests is None:
             launch_requests = []
 
+        updates = list(updates.values()) or []
+
         reply = instance_manager.update_instance_manager_state(
             request=UpdateInstanceManagerStateRequest(
                 expected_version=version,
-                updates=list(updates.values()),
+                updates=updates,
                 launch_requests=launch_requests,
             )
         )
@@ -758,3 +761,129 @@ class Reconciler:
         Reconciler._update_instance_manager(
             instance_manager, version, terminate_updates, to_launch
         )
+
+    @staticmethod
+    def _handle_instances_launch(
+        instance_manager: InstanceManager, autoscaling_config: AutoscalingConfig
+    ):
+
+        instances, version = Reconciler._get_im_instances(instance_manager)
+
+        queued_instances = []
+        requested_instances = []
+        allocated_instances = []
+
+        for instance in instances:
+            if instance.status == IMInstance.QUEUED:
+                queued_instances.append(instance)
+            elif instance.status == IMInstance.REQUESTED:
+                requested_instances.append(instance)
+            elif instance.cloud_instance_id:
+                allocated_instances.append(instance)
+
+        if not queued_instances:
+            # No QUEUED instances
+            return
+
+        to_launch = Reconciler._compute_to_launch(
+            queued_instances,
+            requested_instances,
+            allocated_instances,
+            autoscaling_config.get_upscaling_speed(),
+            autoscaling_config.get_max_concurrent_launches(),
+        )
+
+        # Transition the instances to REQUESTED for instance launcher to
+        # launch them.
+        updates = {}
+        for instance in to_launch:
+            # Reuse launch request id for any QUEUED instances that have been
+            # requested before due to retry.
+            launch_request_id = (
+                str(time.time_ns())
+                if len(instance.launch_request_id) == 0
+                else instance.launch_request_id
+            )
+            updates[instance.instance_id] = IMInstanceUpdateEvent(
+                instance_id=instance.instance_id,
+                new_instance_status=IMInstance.REQUESTED,
+                launch_request_id=launch_request_id,
+            )
+            logger.debug(
+                "Updating {}({}) with {}".format(
+                    instance.instance_id,
+                    IMInstance.InstanceStatus.Name(instance.status),
+                    MessageToDict(updates[instance.instance_id]),
+                )
+            )
+
+        Reconciler._update_instance_manager(instance_manager, version, updates)
+
+    @staticmethod
+    def _compute_to_launch(
+        queued_instances: List[IMInstance],
+        requested_instances: List[IMInstance],
+        allocated_instances: List[IMInstance],
+        upscaling_speed: float,
+        max_concurrent_launches: int,
+    ) -> List[IMInstance]:
+        def _group_by_type(instances):
+            instances_by_type = defaultdict(list)
+            for instance in instances:
+                instances_by_type[instance.instance_type].append(instance)
+            return instances_by_type
+
+        # Sort the instances by the time they were queued.
+        def _sort_by_earliest_queued(instance: IMInstance) -> List[int]:
+            queue_times = InstanceUtil.get_status_transition_times_ns(
+                instance, IMInstance.QUEUED
+            )
+            return sorted(queue_times)
+
+        queued_instances_by_type = _group_by_type(queued_instances)
+        requested_instances_by_type = _group_by_type(requested_instances)
+        allocated_instances_by_type = _group_by_type(allocated_instances)
+
+        total_num_requested_to_launch = len(requested_instances)
+        all_to_launch = []
+
+        for (
+            instance_type,
+            queued_instances_for_type,
+        ) in queued_instances_by_type.items():
+            requested_instances_for_type = requested_instances_by_type.get(
+                instance_type, []
+            )
+            allocated_instances_for_type = allocated_instances_by_type.get(
+                instance_type, []
+            )
+
+            num_desired_to_upscale = max(
+                1,
+                math.ceil(
+                    upscaling_speed
+                    * (
+                        len(requested_instances_for_type)
+                        + len(allocated_instances_for_type)
+                    )
+                ),
+            )
+
+            # Enforce global limit, at most we can launch `max_concurrent_launches`
+            num_to_launch = min(
+                max_concurrent_launches - total_num_requested_to_launch,
+                num_desired_to_upscale,
+            )
+
+            # Cap both ends 0 <= num_to_launch <= num_queued
+            num_to_launch = max(0, num_to_launch)
+            num_to_launch = min(len(queued_instances_for_type), num_to_launch)
+
+            to_launch = sorted(queued_instances_for_type, key=_sort_by_earliest_queued)[
+                :num_to_launch
+            ]
+
+            all_to_launch.extend(to_launch)
+            total_num_requested_to_launch += num_to_launch
+
+        return all_to_launch
