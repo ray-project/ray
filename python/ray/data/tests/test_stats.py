@@ -34,12 +34,12 @@ def gen_expected_metrics(
         metrics = [
             "'num_inputs_received': N",
             "'bytes_inputs_received': N",
-            "'num_inputs_processed': N",
-            "'bytes_inputs_processed': N",
+            "'num_task_inputs_processed': N",
+            "'bytes_task_inputs_processed': N",
             "'bytes_inputs_of_submitted_tasks': N",
-            "'num_outputs_generated': N",
-            "'bytes_outputs_generated': N",
-            "'rows_outputs_generated': N",
+            "'num_task_outputs_generated': N",
+            "'bytes_task_outputs_generated': N",
+            "'rows_task_outputs_generated': N",
             "'num_outputs_taken': N",
             "'bytes_outputs_taken': N",
             "'num_outputs_of_finished_tasks': N",
@@ -49,7 +49,6 @@ def gen_expected_metrics(
             "'num_tasks_have_outputs': N",
             "'num_tasks_finished': N",
             "'num_tasks_failed': Z",
-            "'obj_store_mem_alloc': N",
             "'obj_store_mem_freed': N",
             "'obj_store_mem_cur': Z",
             "'obj_store_mem_peak': N",
@@ -150,12 +149,6 @@ def map_batches_sleep(x, n):
     return x
 
 
-@pytest.fixture(autouse=True)
-def enable_get_object_locations_flag():
-    ctx = ray.data.context.DataContext.get_current()
-    ctx.enable_get_object_locations_for_metrics = True
-
-
 @contextmanager
 def patch_update_stats_actor():
     with patch(
@@ -202,12 +195,10 @@ Operator N split(N, equal=False): \n"""
         f"""* Extra metrics: {extra_metrics}\n"""
         """
 Dataset iterator time breakdown:
-* Total time user code is blocked: T
-* Total time in user code: T
 * Total time overall: T
-* Num blocks local: Z
-* Num blocks remote: Z
-* Num blocks unknown location: N
+    * Total time in Ray Data iterator initialization code: T
+    * Total time user thread is blocked by Ray Data iter_batches: T
+    * Total execution time for user thread: T
 * Batch iteration time breakdown (summed across prefetch threads):
     * In ray.get(): T min, T max, T avg, T total
     * In batch creation: T min, T max, T avg, T total
@@ -217,7 +208,9 @@ Dataset iterator time breakdown:
 
 
 @pytest.mark.parametrize("verbose_stats_logs", [True, False])
-def test_large_args_scheduling_strategy(ray_start_regular_shared, verbose_stats_logs):
+def test_large_args_scheduling_strategy(
+    ray_start_regular_shared, verbose_stats_logs, restore_data_context
+):
     context = DataContext.get_current()
     context.verbose_stats_logs = verbose_stats_logs
     ds = ray.data.range_tensor(100, shape=(100000,), parallelism=1)
@@ -248,7 +241,10 @@ def test_large_args_scheduling_strategy(ray_start_regular_shared, verbose_stats_
 
 @pytest.mark.parametrize("verbose_stats_logs", [True, False])
 def test_dataset_stats_basic(
-    ray_start_regular_shared, enable_auto_log_stats, verbose_stats_logs
+    ray_start_regular_shared,
+    enable_auto_log_stats,
+    verbose_stats_logs,
+    restore_data_context,
 ):
     context = DataContext.get_current()
     context.verbose_stats_logs = verbose_stats_logs
@@ -318,12 +314,10 @@ def test_dataset_stats_basic(
         f"* Tasks per node: N min, N max, N mean; N nodes used\n"
         f"{gen_extra_metrics_str(STANDARD_EXTRA_METRICS, verbose_stats_logs)}\n"
         f"Dataset iterator time breakdown:\n"
-        f"* Total time user code is blocked: T\n"
-        f"* Total time in user code: T\n"
         f"* Total time overall: T\n"
-        f"* Num blocks local: Z\n"
-        f"* Num blocks remote: Z\n"
-        f"* Num blocks unknown location: N\n"
+        f"    * Total time in Ray Data iterator initialization code: T\n"
+        f"    * Total time user thread is blocked by Ray Data iter_batches: T\n"
+        f"    * Total execution time for user thread: T\n"
         f"* Batch iteration time breakdown (summed across prefetch threads):\n"
         f"    * In ray.get(): T min, T max, T avg, T total\n"
         f"    * In batch creation: T min, T max, T avg, T total\n"
@@ -331,7 +325,45 @@ def test_dataset_stats_basic(
     )
 
 
-def test_dataset__repr__(ray_start_regular_shared):
+def test_block_location_nums(ray_start_regular_shared, restore_data_context):
+    context = DataContext.get_current()
+    context.enable_get_object_locations_for_metrics = True
+    ds = ray.data.range(1000, parallelism=10)
+    ds = ds.map_batches(dummy_map_batches).materialize()
+
+    for batch in ds.iter_batches():
+        pass
+    stats = canonicalize(ds.materialize().stats())
+
+    assert stats == (
+        f"Operator N ReadRange->MapBatches(dummy_map_batches): {EXECUTION_STRING}\n"
+        f"* Remote wall time: T min, T max, T mean, T total\n"
+        f"* Remote cpu time: T min, T max, T mean, T total\n"
+        f"* Peak heap memory usage (MiB): N min, N max, N mean\n"
+        f"* Output num rows per block: N min, N max, N mean, N total\n"
+        f"* Output size bytes per block: N min, N max, N mean, N total\n"
+        f"* Output rows per task: N min, N max, N mean, N tasks used\n"
+        f"* Tasks per node: N min, N max, N mean; N nodes used\n"
+        f"\n"
+        f"Dataset iterator time breakdown:\n"
+        f"* Total time overall: T\n"
+        f"    * Total time in Ray Data iterator initialization code: T\n"
+        f"    * Total time user thread is blocked by Ray Data iter_batches: T\n"
+        f"    * Total execution time for user thread: T\n"
+        f"* Batch iteration time breakdown (summed across prefetch threads):\n"
+        f"    * In ray.get(): T min, T max, T avg, T total\n"
+        f"    * In batch creation: T min, T max, T avg, T total\n"
+        f"    * In batch formatting: T min, T max, T avg, T total\n"
+        f"Block locations:\n"
+        f"    * Num blocks local: Z\n"
+        f"    * Num blocks remote: Z\n"
+        f"    * Num blocks unknown location: N\n"
+    )
+
+
+def test_dataset__repr__(ray_start_regular_shared, restore_data_context):
+    context = DataContext.get_current()
+    context.enable_get_object_locations_for_metrics = True
     n = 100
     ds = ray.data.range(n)
     assert len(ds.take_all()) == n
@@ -401,12 +433,12 @@ def test_dataset__repr__(ray_start_regular_shared):
         "   extra_metrics={\n"
         "      num_inputs_received: N,\n"
         "      bytes_inputs_received: N,\n"
-        "      num_inputs_processed: N,\n"
-        "      bytes_inputs_processed: N,\n"
+        "      num_task_inputs_processed: N,\n"
+        "      bytes_task_inputs_processed: N,\n"
         "      bytes_inputs_of_submitted_tasks: N,\n"
-        "      num_outputs_generated: N,\n"
-        "      bytes_outputs_generated: N,\n"
-        "      rows_outputs_generated: N,\n"
+        "      num_task_outputs_generated: N,\n"
+        "      bytes_task_outputs_generated: N,\n"
+        "      rows_task_outputs_generated: N,\n"
         "      num_outputs_taken: N,\n"
         "      bytes_outputs_taken: N,\n"
         "      num_outputs_of_finished_tasks: N,\n"
@@ -416,7 +448,6 @@ def test_dataset__repr__(ray_start_regular_shared):
         "      num_tasks_have_outputs: N,\n"
         "      num_tasks_finished: N,\n"
         "      num_tasks_failed: Z,\n"
-        "      obj_store_mem_alloc: N,\n"
         "      obj_store_mem_freed: N,\n"
         "      obj_store_mem_cur: Z,\n"
         "      obj_store_mem_peak: N,\n"
@@ -816,12 +847,10 @@ def test_streaming_stats_full(ray_start_regular_shared, restore_data_context):
 * Tasks per node: N min, N max, N mean; N nodes used
 
 Dataset iterator time breakdown:
-* Total time user code is blocked: T
-* Total time in user code: T
 * Total time overall: T
-* Num blocks local: Z
-* Num blocks remote: Z
-* Num blocks unknown location: N
+    * Total time in Ray Data iterator initialization code: T
+    * Total time user thread is blocked by Ray Data iter_batches: T
+    * Total execution time for user thread: T
 * Batch iteration time breakdown (summed across prefetch threads):
     * In ray.get(): T min, T max, T avg, T total
     * In batch creation: T min, T max, T avg, T total
@@ -921,9 +950,10 @@ def test_stats_actor_cap_num_stats(ray_start_cluster):
 
 
 @pytest.mark.parametrize("verbose_stats_logs", [True, False])
-def test_spilled_stats(shutdown_only, verbose_stats_logs):
+def test_spilled_stats(shutdown_only, verbose_stats_logs, restore_data_context):
     context = DataContext.get_current()
     context.verbose_stats_logs = verbose_stats_logs
+    context.enable_get_object_locations_for_metrics = True
     # The object store is about 100MB.
     ray.init(object_store_memory=100e6)
     # The size of dataset is 1000*80*80*4*8B, about 200MB.
@@ -981,15 +1011,13 @@ def test_stats_actor_metrics():
 
     assert final_metric.obj_store_mem_spilled == ds._plan.stats().dataset_bytes_spilled
     assert (
-        final_metric.obj_store_mem_alloc
-        == ds._plan.stats().extra_metrics["obj_store_mem_alloc"]
-    )
-    assert (
         final_metric.obj_store_mem_freed
         == ds._plan.stats().extra_metrics["obj_store_mem_freed"]
     )
-    assert final_metric.bytes_outputs_generated == 1000 * 80 * 80 * 4 * 8  # 8B per int
-    assert final_metric.rows_outputs_generated == 1000 * 80 * 80 * 4
+    assert (
+        final_metric.bytes_task_outputs_generated == 1000 * 80 * 80 * 4 * 8
+    )  # 8B per int
+    assert final_metric.rows_task_outputs_generated == 1000 * 80 * 80 * 4
     # There should be nothing in object store at the end of execution.
     assert final_metric.obj_store_mem_cur == 0
 
