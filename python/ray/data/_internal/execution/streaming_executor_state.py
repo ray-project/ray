@@ -130,8 +130,8 @@ class OpBufferQueue:
                 # Note, the reason why we do indexing here instead of in the append
                 # is because only the last `OpBufferQueue` in the DAG, which will call
                 # pop with output_split_idx, needs indexing.
-                # If we also index the `OpBufferQueue`s in the middle, we cannot preserve
-                # the order of ref bundles with different output splits.
+                # If we also index the `OpBufferQueue`s in the middle, we cannot
+                # preserve the order of ref bundles with different output splits.
                 with self._lock:
                     while len(self._queue) > 0:
                         ref = self._queue.popleft()

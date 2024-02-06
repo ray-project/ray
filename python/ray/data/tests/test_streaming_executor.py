@@ -1,5 +1,3 @@
-import random
-import threading
 import time
 import unittest
 from concurrent.futures import ThreadPoolExecutor
@@ -775,7 +773,7 @@ class OpBufferQueueTest(unittest.TestCase):
             futures = [executor.submit(consume, i) for i in range(num_splits)]
 
         for f in futures:
-            assert f.result() == True, f.result()
+            assert f.result() is True, f.result()
 
 
 def test_exception_concise_stacktrace():
