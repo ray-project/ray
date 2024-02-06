@@ -166,7 +166,9 @@ class ActorReplicaWrapper:
         self,
         pr: PendingRequest,
     ) -> Tuple[Optional[Union[ObjectRef, ObjectRefGenerator]], ReplicaQueueLengthInfo]:
-        assert not self._replica_info.is_cross_language
+        assert (
+            not self._replica_info.is_cross_language
+        ), "Request rejection not supported for Java."
         obj_ref_gen = self._send_request_python(pr, with_rejection=True)
 
         first_ref = await obj_ref_gen.__anext__()
