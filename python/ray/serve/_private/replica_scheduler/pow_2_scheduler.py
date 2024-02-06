@@ -2,11 +2,9 @@ import asyncio
 import enum
 import logging
 import math
-import pickle
 import random
 import time
 from collections import defaultdict, deque
-from dataclasses import dataclass
 from typing import (
     AsyncGenerator,
     Callable,
@@ -17,19 +15,11 @@ from typing import (
     Optional,
     Set,
     Tuple,
-    Union,
 )
 
-import ray
 from ray.exceptions import RayActorError
-from ray.serve._private.common import (
-    DeploymentID,
-    ReplicaQueueLengthInfo,
-    RequestMetadata,
-    RunningReplicaInfo,
-)
+from ray.serve._private.common import DeploymentID, RequestMetadata, RunningReplicaInfo
 from ray.serve._private.constants import (
-    RAY_SERVE_ENABLE_QUEUE_LENGTH_CACHE,
     RAY_SERVE_MAX_QUEUE_LENGTH_RESPONSE_DEADLINE_S,
     RAY_SERVE_MULTIPLEXED_MODEL_ID_MATCHING_TIMEOUT_S,
     RAY_SERVE_QUEUE_LENGTH_CACHE_STALENESS_TIMEOUT_S,
@@ -37,19 +27,13 @@ from ray.serve._private.constants import (
     SERVE_LOGGER_NAME,
 )
 from ray.serve._private.replica_scheduler.common import (
-    Query,
+    PendingRequest,
     ReplicaScheduler,
     ReplicaWrapper,
 )
 from ray.util import metrics
 
 logger = logging.getLogger(SERVE_LOGGER_NAME)
-
-
-@dataclass
-class PendingRequest:
-    future: asyncio.Future
-    metadata: RequestMetadata
 
 
 class LocalityScope(str, enum.Enum):
@@ -62,7 +46,7 @@ class ReplicaQueueLengthCache:
         self,
         *,
         staleness_timeout_s: float = RAY_SERVE_QUEUE_LENGTH_CACHE_STALENESS_TIMEOUT_S,
-        get_curr_time_s: Callable[[], float] = None,
+        get_curr_time_s: Optional[Callable[[], float]] = None,
     ):
         # Map of replica_id: (queue_length, timestamp).
         self._cache: Dict[str, Tuple[int, float]] = {}
@@ -144,7 +128,7 @@ class PowerOfTwoChoicesReplicaScheduler(ReplicaScheduler):
         self_node_id: Optional[str] = None,
         self_actor_id: Optional[str] = None,
         self_availability_zone: Optional[str] = None,
-        use_replica_queue_len_cache: bool = RAY_SERVE_ENABLE_QUEUE_LENGTH_CACHE,
+        use_replica_queue_len_cache: bool = False,
     ):
         self._loop = event_loop
         self._deployment_id = deployment_id
@@ -755,8 +739,8 @@ class PowerOfTwoChoicesReplicaScheduler(ReplicaScheduler):
         if tasks_to_start > 0:
             self.num_scheduling_tasks_gauge.set(self.curr_num_scheduling_tasks)
 
-    async def choose_replica_for_query(
-        self, query: Query, *, emplace_front: bool = False
+    async def choose_replica_for_request(
+        self, pending_request: PendingRequest, *, is_retry: bool = False
     ) -> ReplicaWrapper:
         """Chooses a replica to send the provided request to.
 
@@ -769,14 +753,28 @@ class PowerOfTwoChoicesReplicaScheduler(ReplicaScheduler):
         Upon cancellation (by the caller), the future is cancelled and will be passed
         over when a replica becomes available.
         """
-        pending_request = PendingRequest(asyncio.Future(), query.metadata)
         try:
-            if emplace_front:
-                self._pending_requests_to_fulfill.appendleft(pending_request)
-                self._pending_requests_to_schedule.appendleft(pending_request)
-            else:
+            if not is_retry:
                 self._pending_requests_to_fulfill.append(pending_request)
                 self._pending_requests_to_schedule.append(pending_request)
+            else:
+                index = 0
+                for pr in self._pending_requests_to_fulfill:
+                    if pending_request.created_at < pr.created_at:
+                        break
+
+                    index += 1
+
+                self._pending_requests_to_fulfill.insert(index, pending_request)
+
+                index = 0
+                for pr in self._pending_requests_to_schedule:
+                    if pending_request.created_at < pr.created_at:
+                        break
+
+                    index += 1
+
+                self._pending_requests_to_schedule.insert(index, pending_request)
 
             self.maybe_start_scheduling_tasks()
             replica = await pending_request.future
@@ -786,50 +784,3 @@ class PowerOfTwoChoicesReplicaScheduler(ReplicaScheduler):
             raise e from None
 
         return replica
-
-    async def _handle_system_response(
-        self, replica_id: str, obj_ref_gen: "ray._raylet.ObjectRefGenerator"
-    ) -> bool:
-        # TODO: put this in the wrapper.
-        system_response_ref = await obj_ref_gen.__anext__()
-        system_response: ReplicaQueueLengthInfo = pickle.loads(
-            await system_response_ref
-        )
-        self._replica_queue_len_cache.update(
-            replica_id, system_response.num_ongoing_requests
-        )
-        return system_response.accepted
-
-    async def assign_replica(
-        self, query: Query
-    ) -> Tuple[Union[ray.ObjectRef, "ray._raylet.ObjectRefGenerator"], str]:
-        """Choose a replica for the request and send it.
-
-        This will block indefinitely if no replicas are available to handle the
-        request, so it's up to the caller to time out or cancel the request.
-        """
-        replica = await self.choose_replica_for_query(query)
-        replica_id = replica.replica_id
-
-        # If the queue len cache is disabled or we're sending a request to Java,
-        # then directly send the query and hand the response back. The replica will
-        # never reject requests in this code path.
-        if not self._use_replica_queue_len_cache or replica.is_cross_language:
-            return replica.send_query(query, with_rejection=False), replica_id
-
-        while True:
-            obj_ref_gen = replica.send_query(query, with_rejection=True)
-            accepted = await self._handle_system_response(replica_id, obj_ref_gen)
-            if accepted:
-                if query.metadata.is_streaming:
-                    return obj_ref_gen, replica_id
-                else:
-                    # For non-streaming requests, resolve the generator to its next
-                    # object ref, which will contain the unary response.
-                    return await obj_ref_gen.__anext__(), replica_id
-
-            # If the replica rejects the request, retry the scheduling process.
-            # Place the request on the front of the queue to avoid tail latencies.
-            # TODO(edoakes): this retry procedure is not perfect because it'll reset the
-            # process of choosing candidates replicas (i.e., for locality-awareness).
-            replica = await self.choose_replica_for_query(query, emplace_front=True)

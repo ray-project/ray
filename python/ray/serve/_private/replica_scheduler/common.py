@@ -1,8 +1,9 @@
 import asyncio
 import logging
 import pickle
+import time
 from abc import ABC, abstractmethod
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Any, Dict, List, Optional, Set, Union
 
 import ray
@@ -14,11 +15,17 @@ from ray.serve.generated.serve_pb2 import RequestMetadata as RequestMetadataProt
 logger = logging.getLogger(SERVE_LOGGER_NAME)
 
 
-@dataclass
-class Query:
+@dataclass(frozen=True)
+class PendingRequest:
     args: List[Any]
     kwargs: Dict[Any, Any]
     metadata: RequestMetadata
+    created_at: float = field(default_factory=time.time)
+    future: asyncio.Future = field(default_factory=lambda: asyncio.Future())
+
+    def __eq__(self, other) -> bool:
+        """Request ID is expected to be unique."""
+        return self.metadata.request_id == other.metadata.request_id
 
 
 class ReplicaWrapper(ABC):
@@ -49,10 +56,10 @@ class ReplicaWrapper(ABC):
         """
         pass
 
-    def send_query(
-        self, query: Query
+    def send_request(
+        self, pr: PendingRequest
     ) -> Union[ray.ObjectRef, "ray._raylet.ObjectRefGenerator"]:
-        """Send query to this replica."""
+        """Send request to this replica."""
         pass
 
 
@@ -101,33 +108,33 @@ class ActorReplicaWrapper:
             ray.cancel(obj_ref)
             raise
 
-    def _send_query_java(self, query: Query) -> ray.ObjectRef:
-        """Send the query to a Java replica.
+    def _send_request_java(self, pr: PendingRequest) -> ray.ObjectRef:
+        """Send the request to a Java replica.
 
         Does not currently support streaming.
         """
-        if query.metadata.is_streaming:
+        if pr.metadata.is_streaming:
             raise RuntimeError("Streaming not supported for Java.")
 
-        if len(query.args) != 1:
+        if len(pr.args) != 1:
             raise ValueError("Java handle calls only support a single argument.")
 
         return self._actor_handle.handle_request.remote(
             RequestMetadataProto(
-                request_id=query.metadata.request_id,
-                endpoint=query.metadata.endpoint,
+                request_id=pr.metadata.request_id,
+                endpoint=pr.metadata.endpoint,
                 # Default call method in java is "call," not "__call__" like Python.
                 call_method="call"
-                if query.metadata.call_method == "__call__"
-                else query.metadata.call_method,
+                if pr.metadata.call_method == "__call__"
+                else pr.metadata.call_method,
             ).SerializeToString(),
-            query.args,
+            pr.args,
         )
 
-    def _send_query_python(
-        self, query: Query, *, with_rejection: bool
+    def _send_request_python(
+        self, pr: PendingRequest, *, with_rejection: bool
     ) -> Union[ray.ObjectRef, "ray._raylet.ObjectRefGenerator"]:
-        """Send the query to a Python replica."""
+        """Send the request to a Python replica."""
         if with_rejection:
             # Call a separate handler that may reject the request.
             # This handler is *always* a streaming call and the first message will
@@ -135,31 +142,31 @@ class ActorReplicaWrapper:
             method = self._actor_handle.handle_request_with_rejection.options(
                 num_returns="streaming"
             )
-        elif query.metadata.is_streaming:
+        elif pr.metadata.is_streaming:
             method = self._actor_handle.handle_request_streaming.options(
                 num_returns="streaming"
             )
         else:
             method = self._actor_handle.handle_request
 
-        return method.remote(pickle.dumps(query.metadata), *query.args, **query.kwargs)
+        return method.remote(pickle.dumps(pr.metadata), *pr.args, **pr.kwargs)
 
-    def send_query(
-        self, query: Query, *, with_rejection: bool = False
+    def send_request(
+        self, pr: PendingRequest, *, with_rejection: bool = False
     ) -> Union[ray.ObjectRef, "ray._raylet.ObjectRefGenerator"]:
         if self._replica_info.is_cross_language:
-            return self._send_query_java(query)
+            return self._send_request_java(pr)
         else:
-            return self._send_query_python(query, with_rejection=with_rejection)
+            return self._send_request_python(pr, with_rejection=with_rejection)
 
 
 class ReplicaScheduler(ABC):
     """Abstract interface for a replica scheduler (how the router calls it)."""
 
     @abstractmethod
-    async def assign_replica(
-        self, query: Query
-    ) -> Union[ray.ObjectRef, "ray._raylet.ObjectRefGenerator"]:
+    async def choose_replica_for_request(
+        self, pending_request: PendingRequest, *, is_retry: bool = False
+    ) -> ReplicaWrapper:
         pass
 
     @abstractmethod

@@ -615,7 +615,9 @@ class ProxyStateManager:
         """
         # Ensure head node always has a proxy.
         if proxy_nodes is None:
-            proxy_nodes = {}
+            proxy_nodes = {self._head_node_id}
+        else:
+            proxy_nodes.add(self._head_node_id)
 
         target_nodes = self._get_target_nodes(proxy_nodes)
         target_node_ids = {node_id for node_id, _ in target_nodes}
