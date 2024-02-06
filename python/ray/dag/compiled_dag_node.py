@@ -167,13 +167,13 @@ class CompiledDAG:
 
         # Attributes that are set during preprocessing.
         # Preprocessing identifies the input node and output node.
-        self.input_task_idx: Optional[int] = None
+        self.input_task_idxs: Optional[List[int]] = None
         self.output_task_idx: Optional[int] = None
         self.has_single_output: bool = False
         self.actor_task_count: Dict["ray._raylet.ActorID", int] = defaultdict(int)
 
         # Cached attributes that are set during compilation.
-        self.dag_input_channel: Optional[Channel] = None
+        self.dag_input_channels: Optional[List[Channel]] = None
         self.dag_output_channels: Optional[Channel] = None
         # ObjectRef for each worker's task. The task is an infinite loop that
         # repeatedly executes the method specified in the DAG.
@@ -203,7 +203,7 @@ class CompiledDAG:
             MultiOutputNode,
         )
 
-        self.input_task_idx, self.output_task_idx = None, None
+        self.input_task_idxs, self.output_task_idx = [], None
         self.actor_task_count.clear()
 
         # For each task node, set its upstream and downstream task nodes.
@@ -211,16 +211,11 @@ class CompiledDAG:
             dag_node = task.dag_node
             if not (
                 isinstance(dag_node, InputNode)
+                or isinstance(dag_node, InputAttributeNode)
                 or isinstance(dag_node, MultiOutputNode)
                 or isinstance(dag_node, ClassMethodNode)
             ):
-                if isinstance(dag_node, InputAttributeNode):
-                    # TODO(swang): Support multi args.
-                    raise NotImplementedError(
-                        "Compiled DAGs currently do not support kwargs or "
-                        "multiple args for InputNode"
-                    )
-                elif isinstance(dag_node, FunctionNode):
+                if isinstance(dag_node, FunctionNode):
                     # TODO(swang): Support non-actor tasks.
                     raise NotImplementedError(
                         "Compiled DAGs currently only support actor method nodes"
@@ -253,11 +248,12 @@ class CompiledDAG:
 
         # Find the input node to the DAG.
         for idx, task in self.idx_to_task.items():
-            if isinstance(task.dag_node, InputNode):
-                assert self.input_task_idx is None, "more than one InputNode found"
-                self.input_task_idx = idx
+            if isinstance(task.dag_node, InputNode) or isinstance(
+                task.dag_node, InputAttributeNode
+            ):
+                self.input_task_idxs.append(idx)
         # TODO: Support no-input DAGs (use an empty object to signal).
-        if self.input_task_idx is None:
+        if len(self.input_task_idxs) == 0:
             raise NotImplementedError(
                 "Compiled DAGs currently require exactly one InputNode"
             )
@@ -265,6 +261,13 @@ class CompiledDAG:
         # Find the (multi-)output node to the DAG.
         for idx, task in self.idx_to_task.items():
             if len(task.downstream_node_idxs) == 0:
+                # for multi-arg scenario, input args will go through
+                # InputAttributeNodes, InputNode will not connect to any node
+                if (
+                    isinstance(task.dag_node, InputNode)
+                    and len(self.input_task_idxs) > 0
+                ):
+                    continue
                 assert self.output_task_idx is None, "More than one output node found"
                 self.output_task_idx = idx
 
@@ -282,7 +285,7 @@ class CompiledDAG:
 
     def _get_or_compile(
         self,
-    ) -> Tuple[Channel, Union[Channel, List[Channel]]]:
+    ) -> Tuple[List[Channel], Union[Channel, List[Channel]]]:
         """Compile an execution path. This allocates channels for adjacent
         tasks to send/receive values. An infinite task is submitted to each
         actor in the DAG that repeatedly receives from input channel(s) and
@@ -292,24 +295,30 @@ class CompiledDAG:
         channels.
 
         Returns:
-            A tuple of (input channel, output channel(s)). The input channel
+            A tuple of (input channel(s), output channel(s)). The input channel(s)
             that should be used by the caller to submit a DAG execution. The
             output channel(s) should be read by the caller to get the DAG
             output.
         """
-        from ray.dag import DAGNode, InputNode, MultiOutputNode, ClassMethodNode
+        from ray.dag import (
+            DAGNode,
+            InputNode,
+            InputAttributeNode,
+            MultiOutputNode,
+            ClassMethodNode,
+        )
 
-        if self.input_task_idx is None:
+        if not self.input_task_idxs:
             self._preprocess()
 
-        if self.dag_input_channel is not None:
+        if self.dag_input_channels is not None:
             assert self.dag_output_channels is not None
             return (
-                self.dag_input_channel,
+                self.dag_input_channels,
                 self.dag_output_channels,
             )
 
-        queue = [self.input_task_idx]
+        queue = self.input_task_idxs.copy()
         visited = set()
         # Create output buffers
         while queue:
@@ -331,7 +340,16 @@ class CompiledDAG:
                     )
                 )
                 self.actor_refs.add(task.dag_node._get_actor_handle())
-            elif isinstance(task.dag_node, InputNode):
+            elif isinstance(task.dag_node, InputNode) or isinstance(
+                task.dag_node, InputAttributeNode
+            ):
+                # for multi-arg scenario, input args will go through
+                # InputAttributeNodes, no need to create output channels for InputNode
+                if (
+                    isinstance(task.dag_node, InputNode)
+                    and len(self.input_task_idxs) > 1
+                ):
+                    continue
                 task.output_channel = Channel(
                     buffer_size_bytes=self._buffer_size_bytes,
                     num_readers=task.num_readers,
@@ -343,12 +361,12 @@ class CompiledDAG:
                 queue.append(idx)
 
         for node_idx, task in self.idx_to_task.items():
-            if node_idx == self.input_task_idx:
-                # We don't need to assign an actual task for the input node.
+            if node_idx in self.input_task_idxs:
+                # We don't need to assign an actual task for the input node(s).
                 continue
 
             if node_idx == self.output_task_idx:
-                # We don't need to assign an actual task for the input node.
+                # We don't need to assign an actual task for the output node.
                 continue
 
             resolved_args = []
@@ -380,7 +398,19 @@ class CompiledDAG:
                 )
             )
 
-        self.dag_input_channel = self.idx_to_task[self.input_task_idx].output_channel
+        self.dag_input_channels = []
+        if len(self.input_task_idxs) > 1:
+            for input_task_idx in self.input_task_idxs:
+                if isinstance(
+                    self.idx_to_task[input_task_idx].dag_node, InputAttributeNode
+                ):
+                    self.dag_input_channels.append(
+                        self.idx_to_task[input_task_idx].output_channel
+                    )
+        else:
+            self.dag_input_channels = [
+                self.idx_to_task[self.input_task_idxs[0]].output_channel
+            ]
 
         self.dag_output_channels = []
         for output in self.idx_to_task[self.output_task_idx].args:
@@ -388,7 +418,7 @@ class CompiledDAG:
             output_idx = self.dag_node_to_idx[output]
             self.dag_output_channels.append(self.idx_to_task[output_idx].output_channel)
 
-        assert self.dag_input_channel
+        assert self.dag_input_channels
         assert self.dag_output_channels
         assert [
             output_channel is not None for output_channel in self.dag_output_channels
@@ -402,7 +432,7 @@ class CompiledDAG:
 
         # Driver should ray.put on input, ray.get/release on output
         self._monitor = self._monitor_failures()
-        return (self.dag_input_channel, self.dag_output_channels, self._monitor)
+        return (self.dag_input_channels, self.dag_output_channels, self._monitor)
 
     def _monitor_failures(self):
         outer = self
@@ -464,15 +494,14 @@ class CompiledDAG:
         Returns:
             A list of Channels that can be used to read the DAG result.
         """
-        # These errors should already be caught during compilation, but just in
-        # case.
-        if len(args) != 1:
-            raise NotImplementedError("Compiled DAGs support exactly one InputNode arg")
-        if len(kwargs) != 0:
-            raise NotImplementedError("Compiled DAGs do not support kwargs")
-
-        input_channel, output_channels = self._get_or_compile()
-        input_channel.write(args[0])
+        input_channels, output_channels = self._get_or_compile()
+        arg_list = [arg for arg in args] + [v for k, v in kwargs.items()]
+        assert len(input_channels) == len(
+            arg_list
+        ), f"Number of arguments {len(arg_list)} mistmatches the length of"
+        " input channels {len(input_channels)}"
+        for arg, input_channel in zip(arg_list, input_channels):
+            input_channel.write(arg)
         return output_channels
 
     def teardown(self):
