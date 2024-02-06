@@ -5066,12 +5066,10 @@ class Dataset:
         # This value is truthy and not `None`, so we use a try-catch rather than
         # something like `if ray is not None`. For more information, see #42382.
         try:
-            is_ray_initialized = ray.is_initialized()
+            if ray.is_initialized():
+                self._current_executor.shutdown()
         except TypeError:
-            is_ray_initialized = False
-
-        if is_ray_initialized:
-            self._current_executor.shutdown()
+            pass
 
 
 @PublicAPI
