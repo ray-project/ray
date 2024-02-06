@@ -356,9 +356,11 @@ class Router:
                 request_args, request_kwargs
             )
             ref, replica_tag = await self.schedule_and_send_request(
-                args=list(request_args),
-                kwargs=request_kwargs,
-                metadata=request_meta,
+                PendingRequest(
+                    args=list(request_args),
+                    kwargs=request_kwargs,
+                    metadata=request_meta,
+                ),
             )
 
             # Keep track of requests that have been sent out to replicas
