@@ -21,6 +21,7 @@ from ray.serve._private.constants import (
     HANDLE_METRIC_PUSH_INTERVAL_S,
     RAY_SERVE_COLLECT_AUTOSCALING_METRICS_ON_HANDLE,
     RAY_SERVE_ENABLE_QUEUE_LENGTH_CACHE,
+    RAY_SERVE_ENABLE_STRICT_MAX_CONCURRENT_QUERIES,
     RAY_SERVE_PROXY_PREFER_LOCAL_AZ_ROUTING,
     SERVE_LOGGER_NAME,
 )
@@ -50,7 +51,6 @@ class Router:
         event_loop: asyncio.BaseEventLoop = None,
         _prefer_local_node_routing: bool = False,
         _router_cls: Optional[str] = None,
-        _strictly_enforce_max_concurrent_queries: bool = RAY_SERVE_ENABLE_QUEUE_LENGTH_CACHE,  # noqa: E501
     ):
         """Used to assign requests to downstream replicas for a deployment.
 
@@ -60,9 +60,6 @@ class Router:
         self._event_loop = event_loop
         self.deployment_id = deployment_id
         self.handle_id = handle_id
-        self._strictly_enforce_max_concurrent_queries = (
-            _strictly_enforce_max_concurrent_queries
-        )
 
         if _router_cls:
             self._replica_scheduler = load_class(_router_cls)(
@@ -320,7 +317,7 @@ class Router:
         # then directly send the query and hand the response back. The replica will
         # never reject requests in this code path.
         if (
-            not self._strictly_enforce_max_concurrent_queries
+            not RAY_SERVE_ENABLE_STRICT_MAX_CONCURRENT_QUERIES
             or replica.is_cross_language
         ):
             return replica.send_request(pr, with_rejection=False), replica_id
@@ -329,9 +326,10 @@ class Router:
             obj_ref_or_gen, queue_len_info = await replica.send_request_with_rejection(
                 pr
             )
-            self._replica_scheduler.update_queue_len_cache(
-                replica_id, queue_len_info.num_ongoing_requests
-            )
+            if RAY_SERVE_ENABLE_QUEUE_LENGTH_CACHE:
+                self._replica_scheduler.update_queue_len_cache(
+                    replica_id, queue_len_info.num_ongoing_requests
+                )
             if queue_len_info.accepted:
                 return obj_ref_or_gen, replica_id
 
