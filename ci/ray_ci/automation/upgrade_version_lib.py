@@ -1,4 +1,3 @@
-import click
 import os
 import subprocess
 
@@ -92,23 +91,3 @@ def upgrade_file_version(
         replace_version_in_file(file_path, main_version)
     for file_path in java_files:
         replace_version_in_file(file_path, java_version)
-
-
-@click.command()
-@click.option("--new_version", required=True, type=str)
-def main(new_version: str):
-    """
-    Update the version in the files to the specified version.
-    """
-    main_version, java_version = get_current_version(bazel_workspace_dir)
-
-    upgrade_file_version(
-        main_version,
-        java_version,
-        new_version,
-        bazel_workspace_dir,
-    )
-
-
-if __name__ == "__main__":
-    main()
