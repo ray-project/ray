@@ -692,4 +692,4 @@ def _execution_allowed(op: PhysicalOperator, resource_manager: ResourceManager) 
     ):
         return True
 
-    return global_ok_sans_memory and downstream_memory_ok
+    return False

@@ -244,6 +244,7 @@ class OpRuntimeMetrics:
         self.num_tasks_submitted += 1
         self.num_tasks_running += 1
         self.bytes_inputs_of_submitted_tasks += inputs.size_bytes()
+        self.obj_store_mem_internal_inqueue += inputs.size_bytes()
         self._running_tasks[task_index] = RunningTaskInfo(inputs, 0, 0)
 
     def on_task_output_generated(self, task_index: int, output: RefBundle):
@@ -282,6 +283,7 @@ class OpRuntimeMetrics:
         self.num_task_inputs_processed += len(inputs)
         total_input_size = inputs.size_bytes()
         self.bytes_task_inputs_processed += total_input_size
+        self.obj_store_mem_internal_inqueue -= inputs.size_bytes()
 
         blocks = [input[0] for input in inputs.blocks]
         metadata = [input[1] for input in inputs.blocks]
