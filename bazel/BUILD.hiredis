@@ -16,6 +16,14 @@ COPTS = ["-DUSE_SSL=1"] + select({
     ],
 })
 
+LOPTS = select({
+    "@bazel_tools//src/conditions:windows": [
+        "Crypt32.lib",
+    ],
+    "//conditions:default": [
+    ],
+})
+
 # This library is for internal hiredis use, because hiredis assumes a
 # different include prefix for itself than external libraries do.
 cc_library(
@@ -43,6 +51,7 @@ cc_library(
         "adapters/*.h",
     ]),
     copts = COPTS,
+    additional_linker_inputs = LOPTS,
     include_prefix = "hiredis",
     deps = [
         ":_hiredis",
