@@ -46,6 +46,7 @@ def test_idle_termination(ray_start_cluster):
         worker_node_id,
         autoscaler_pb2.DrainNodeReason.Value("DRAIN_NODE_REASON_IDLE_TERMINATION"),
         "idle for long enough",
+        2**63 - 1,
     )
     assert not is_accepted
 
@@ -57,6 +58,7 @@ def test_idle_termination(ray_start_cluster):
             worker_node_id,
             autoscaler_pb2.DrainNodeReason.Value("DRAIN_NODE_REASON_IDLE_TERMINATION"),
             "idle for long enough",
+            2**63 - 1,
         )
         return is_accepted
 
@@ -72,6 +74,7 @@ def test_idle_termination(ray_start_cluster):
         worker_node_id,
         autoscaler_pb2.DrainNodeReason.Value("DRAIN_NODE_REASON_IDLE_TERMINATION"),
         "idle for long enough",
+        2**63 - 1,
     )
     assert is_accepted
 
@@ -100,11 +103,21 @@ def test_preemption(ray_start_cluster):
 
     gcs_client = GcsClient(address=ray.get_runtime_context().gcs_address)
 
+    with pytest.raises(ray.exceptions.RpcError):
+        # Test invalid draining deadline
+        gcs_client.drain_node(
+            worker_node_id,
+            autoscaler_pb2.DrainNodeReason.Value("DRAIN_NODE_REASON_PREEMPTION"),
+            "preemption",
+            -1,
+        )
+
     # The worker node is not idle but the drain request should be still accepted.
     is_accepted = gcs_client.drain_node(
         worker_node_id,
         autoscaler_pb2.DrainNodeReason.Value("DRAIN_NODE_REASON_PREEMPTION"),
         "preemption",
+        2**63 - 1,
     )
     assert is_accepted
 
@@ -147,6 +160,7 @@ def test_scheduling_placement_groups_during_draining(ray_start_cluster):
         node3_id,
         autoscaler_pb2.DrainNodeReason.Value("DRAIN_NODE_REASON_PREEMPTION"),
         "preemption",
+        2**63 - 1,
     )
     assert is_accepted
 
@@ -203,6 +217,7 @@ def test_scheduling_tasks_and_actors_during_draining(ray_start_cluster):
         worker_node_id,
         autoscaler_pb2.DrainNodeReason.Value("DRAIN_NODE_REASON_PREEMPTION"),
         "preemption",
+        2**63 - 1,
     )
     assert is_accepted
 
@@ -282,6 +297,7 @@ def test_draining_reason(ray_start_cluster, graceful):
         node2_id,
         autoscaler_pb2.DrainNodeReason.Value("DRAIN_NODE_REASON_PREEMPTION"),
         "preemption",
+        2**63 - 1,
     )
     assert is_accepted
 
