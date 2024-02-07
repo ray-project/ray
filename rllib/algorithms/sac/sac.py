@@ -438,7 +438,7 @@ class SAC(DQN):
 
     @override(DQN)
     def training_step(self) -> ResultDict:
-        # If `RolloutWorker` is used, then use as the old stack `training step`
+        # If `RolloutWorker` is used, fall back to the old stack `training step`
         # of `DQN`.
         if not self.config.uses_new_env_runners:
             return super().training_step()
@@ -449,7 +449,6 @@ class SAC(DQN):
 
         # Run multiple sampling iterations.
         for _ in range(store_weight):
-            # Otherwise, we use the new stack.
             with self._timers[SAMPLE_TIMER]:
                 if self.workers.num_remote_workers() <= 0:
                     episodes: List[SingleAgentEpisode] = [
@@ -460,10 +459,6 @@ class SAC(DQN):
                         lambda w: w.sample(),
                         local_worker=False,
                     )
-                # Perform SAC postprocessing (Prio weights) on a (flattened)
-                # list of Episodes.
-                # TODO (simon): Change this to a preprocessing in the learner.
-                # postprocessed_episodes = self.postprocess_episodes(episodes)
 
             episodes = tree.flatten(episodes)
             # TODO (sven): single- vs multi-agent.
@@ -490,28 +485,13 @@ class SAC(DQN):
                     n_step=self.config.n_step,
                     gamma=self.config.gamma,
                 )
-
-                # TODO (sven): This looks a bit ugly, but we have not the same
-                # naming in `SingleAgentEpisode` and `SampleBatch`.
-                # Note, the `SingleAgentEpisode` stores obs_t. action_(t-1),
-                # reward_t, infos_t, while the replay buffer's `sample()`
-                # returns obs_t, action_t, reward_(t-1). So, we take the
-                # reward from the subsequent experience in the episode to
-                # calculate the Q-values.
                 train_batch = SampleBatch(train_dict)
-                # train_batch = SampleBatch(
-                #     {
-                #         SampleBatch.OBS: train_dict[SampleBatch.OBS],
-                #         SampleBatch.NEXT_OBS: train_dict[SampleBatch.NEXT_OBS],
-                #         SampleBatch.ACTIONS: train_dict[SampleBatch.ACTIONS],
-                #         SampleBatch.REWARDS: train_dict[SampleBatch.REWARDS],
-                #         SampleBatch.TERMINATEDS: train_dict["is_terminated"],
-                #         SampleBatch.TRUNCATEDS: train_dict["is_truncated"],
-                #     }
-                # )
+
                 # Convert to multi-agent batch as `LearnerGroup` depends on it.
                 train_batch = train_batch.as_multi_agent()
 
+                # TODO (sven, simon): Streamline the custom metrics reduction
+                # functions via the `Learner`'s `register_metrics()` API.
                 def reduce_fn(results: List[ResultDict]) -> ResultDict:
                     """Reduces all metrics, but the TD-errors."""
                     # First get the single modules' results.
