@@ -60,12 +60,6 @@ class ResourceManager:
         for op, state in reversed(self._topology.items()):
             # Update `self._op_usages`.
             op_usage = op.current_resource_usage()
-            op_usage.object_store_memory = op._metrics.obj_store_mem_outputs
-            op_usage.object_store_memory += (
-                op._metrics.num_tasks_running * 4 * 128 * 1024**2
-            )
-            for next_op in op.output_dependencies:
-                op_usage.object_store_memory += next_op._metrics.obj_store_mem_inputs
             # Don't count input refs towards dynamic memory usage, as they have been
             # pre-created already outside this execution.
             if not isinstance(op, InputDataBuffer):
