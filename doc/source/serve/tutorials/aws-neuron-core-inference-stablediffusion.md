@@ -31,7 +31,7 @@ Use `serve run aws_neuron_core_inference_serve_stablediffusion:entrypoint` to st
 ```
 
 
-You should see the following log messages when a deployment is successful:
+You should see the following log messages when a deployment using RayServe is successful:
 ```text
 2024-02-07 17:53:28,299	INFO worker.py:1715 -- Started a local Ray instance. View the dashboard at http://127.0.0.1:8265 
 (ProxyActor pid=25282) INFO 2024-02-07 17:53:31,751 proxy 172.31.10.188 proxy.py:1128 - Proxy actor fd464602af1e456162edf6f901000000 starting on node 5a8e0c24b22976f1f7672cc54f13ace25af3664a51429d8e332c0679.
