@@ -11,7 +11,16 @@ set -euo pipefail
 
 apt-get update
 apt-get upgrade -y
-apt-get install -y curl zip
+apt-get install -y -qq \
+    curl zip clang-format-12 \
+    clang-tidy-12 clang-12
+
+ln -s /usr/bin/clang-format-12 /usr/bin/clang-format && \
+ln -s /usr/bin/clang-tidy-12 /usr/bin/clang-tidy && \
+ln -s /usr/bin/clang-12 /usr/bin/clang
+
+ENV CC=clang
+ENV CXX=clang++-12
 
 # Install miniconda
 curl -sfL https://repo.anaconda.com/miniconda/Miniconda3-py38_23.1.0-1-Linux-aarch64.sh > /tmp/miniconda.sh
@@ -23,10 +32,8 @@ rm /tmp/miniconda.sh
 curl -L https://github.com/bazelbuild/bazelisk/releases/download/v1.19.0/bazelisk-linux-arm64 --output bazelisk
 chmod +x bazelisk
 
-mkdir -p ~/bin
-mv bazelisk ~/bin/
-cp ~/bin/bazelisk ~/bin/bazel
-export PATH=$PATH:~/bin
+mv bazelisk /usr/bin/
+ln -s /usr/bin/bazelisk /usr/bin/bazel
 export USE_BAZEL_VERSION=5.4.1
 
 EOF
