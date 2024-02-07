@@ -2,6 +2,7 @@ from typing import Iterable, List, Optional
 
 import ray
 import ray.cloudpickle as cloudpickle
+from ray.data._internal.compute import TaskPoolStrategy
 from ray.data._internal.execution.interfaces import PhysicalOperator, RefBundle
 from ray.data._internal.execution.interfaces.task_context import TaskContext
 from ray.data._internal.execution.operators.input_data_buffer import InputDataBuffer
@@ -108,6 +109,7 @@ def plan_read_op(op: Read) -> PhysicalOperator:
         inputs,
         name=op.name,
         target_max_block_size=None,
+        compute_strategy=TaskPoolStrategy(op._concurrency),
         ray_remote_args=op._ray_remote_args,
     )
 

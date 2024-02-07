@@ -181,6 +181,11 @@ def test_parquet_read_basic(ray_start_regular_shared, fs, data_path):
     assert sorted(values) == [1, 2, 3, 4, 5, 6]
     assert ds.schema().names == ["one"]
 
+    # Test concurrency.
+    ds = ray.data.read_parquet(data_path, filesystem=fs, concurrency=1)
+    values = [s["one"] for s in ds.take()]
+    assert sorted(values) == [1, 2, 3, 4, 5, 6]
+
 
 @pytest.mark.parametrize(
     "fs,data_path",
