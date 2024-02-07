@@ -40,6 +40,7 @@ import setproctitle
 from typing import Literal, Protocol
 
 import ray
+import ray._private.worker
 import ray._private.node
 import ray._private.parameter
 import ray._private.profiling as profiling
@@ -426,8 +427,8 @@ class Worker:
         self.mode = None
         self.actors = {}
         # When the worker is constructed. Record the original value of the
-        # (CUDA_VISIBLE_DEVICES, ONEAPI_DEVICE_SELECTOR, NEURON_RT_VISIBLE_CORES,
-        # TPU_VISIBLE_CHIPS, ..) environment variables.
+        # (CUDA_VISIBLE_DEVICES, ONEAPI_DEVICE_SELECTOR, ROCR_VISIBLE_DEVICES,
+        # NEURON_RT_VISIBLE_CORES, TPU_VISIBLE_CHIPS, ..) environment variables.
         self.original_visible_accelerator_ids = (
             ray._private.utils.get_visible_accelerator_ids()
         )
@@ -860,10 +861,16 @@ class Worker:
                     debugger_breakpoint = metadata_fields[1][
                         len(ray_constants.OBJECT_METADATA_DEBUG_PREFIX) :
                     ]
-        return (
-            self.deserialize_objects(data_metadata_pairs, object_refs),
-            debugger_breakpoint,
-        )
+        values = self.deserialize_objects(data_metadata_pairs, object_refs)
+        for i, value in enumerate(values):
+            if isinstance(value, RayError):
+                if isinstance(value, ray.exceptions.ObjectLostError):
+                    global_worker.core_worker.dump_object_store_memory_usage()
+                if isinstance(value, RayTaskError):
+                    raise value.as_instanceof_cause()
+                else:
+                    raise value
+        return values, debugger_breakpoint
 
     def main_loop(self):
         """The main loop a worker runs to receive and execute tasks."""
@@ -959,7 +966,8 @@ class Worker:
         # (CUDA_VISIBLE_DEVICES, ONEAPI_DEVICE_SELECTOR, NEURON_RT_VISIBLE_CORES,
         # TPU_VISIBLE_CHIPS, ..) then respect that in the sense that only IDs
         # that appear in (CUDA_VISIBLE_DEVICES, ONEAPI_DEVICE_SELECTOR,
-        # NEURON_RT_VISIBLE_CORES, TPU_VISIBLE_CHIPS, ..) should be returned.
+        # ROCR_VISIBLE_DEVICES, NEURON_RT_VISIBLE_CORES, TPU_VISIBLE_CHIPS, ..)
+        # should be returned.
         if self.original_visible_accelerator_ids.get(resource_name, None) is not None:
             original_ids = self.original_visible_accelerator_ids[resource_name]
             assigned_ids = {str(original_ids[i]) for i in assigned_ids}
@@ -1159,7 +1167,6 @@ class RayContext(BaseContext, Mapping):
     python_version: str
     ray_version: str
     ray_commit: str
-    protocol_version: Optional[str]
 
     def __init__(self, address_info: Dict[str, Optional[str]]):
         super().__init__()
@@ -1167,9 +1174,6 @@ class RayContext(BaseContext, Mapping):
         self.python_version = "{}.{}.{}".format(*sys.version_info[:3])
         self.ray_version = ray.__version__
         self.ray_commit = ray.__commit__
-        # No client protocol version since this driver was intiialized
-        # directly
-        self.protocol_version = None
         self.address_info = address_info
 
     def __getitem__(self, key):

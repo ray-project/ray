@@ -6,9 +6,6 @@ from ray.actor import ActorHandle
 from ray.data import DataIterator, Dataset, ExecutionOptions, NodeIdStr
 from ray.data._internal.execution.interfaces.execution_options import ExecutionResources
 from ray.data.preprocessor import Preprocessor
-
-# TODO(justinvyu): Fix the circular import error
-from ray.train.constants import TRAIN_DATASET_KEY  # noqa
 from ray.util.annotations import DeveloperAPI, PublicAPI
 
 
@@ -91,6 +88,9 @@ class DataConfig:
         else:
             datasets_to_split = set(self._datasets_to_split)
 
+        locality_hints = (
+            worker_node_ids if self._execution_options.locality_with_output else None
+        )
         for name, ds in datasets.items():
             ds = ds.copy(ds)
             ds.context.execution_options = copy.deepcopy(self._execution_options)
@@ -107,7 +107,7 @@ class DataConfig:
             if name in datasets_to_split:
                 for i, split in enumerate(
                     ds.streaming_split(
-                        world_size, equal=True, locality_hints=worker_node_ids
+                        world_size, equal=True, locality_hints=locality_hints
                     )
                 ):
                     output[i][name] = split

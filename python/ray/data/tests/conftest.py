@@ -339,30 +339,6 @@ def target_max_block_size(request):
     ctx.target_max_block_size = original
 
 
-@pytest.fixture
-def enable_optimizer():
-    ctx = ray.data.context.DataContext.get_current()
-    original_backend = ctx.new_execution_backend
-    original_optimizer = ctx.optimizer_enabled
-    ctx.new_execution_backend = True
-    ctx.optimizer_enabled = True
-    yield
-    ctx.new_execution_backend = original_backend
-    ctx.optimizer_enabled = original_optimizer
-
-
-@pytest.fixture
-def enable_streaming_executor():
-    ctx = ray.data.context.DataContext.get_current()
-    original_backend = ctx.new_execution_backend
-    use_streaming_executor = ctx.use_streaming_executor
-    ctx.new_execution_backend = True
-    ctx.use_streaming_executor = True
-    yield
-    ctx.new_execution_backend = original_backend
-    ctx.use_streaming_executor = use_streaming_executor
-
-
 # ===== Pandas dataset formats =====
 @pytest.fixture(scope="function")
 def ds_pandas_single_column_format(ray_start_regular_shared):
@@ -450,7 +426,7 @@ def disable_pyarrow_version_check():
 
 # ===== Observability & Logging Fixtures =====
 @pytest.fixture
-def stage_two_block():
+def op_two_block():
     block_params = {
         "num_rows": [10000, 5000],
         "size_bytes": [100, 50],
@@ -458,6 +434,7 @@ def stage_two_block():
         "wall_time": [5, 10],
         "cpu_time": [1.2, 3.4],
         "node_id": ["a1", "b2"],
+        "task_idx": [0, 1],
     }
 
     block_delay = 20
@@ -473,6 +450,7 @@ def stage_two_block():
         block_exec_stats.cpu_time_s = block_params["cpu_time"][i]
         block_exec_stats.node_id = block_params["node_id"][i]
         block_exec_stats.max_rss_bytes = block_params["max_rss_bytes"][i]
+        block_exec_stats.task_idx = block_params["task_idx"][i]
         block_meta_list.append(
             BlockMetadata(
                 num_rows=block_params["num_rows"][i],

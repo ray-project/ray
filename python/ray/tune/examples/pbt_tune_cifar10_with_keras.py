@@ -229,6 +229,7 @@ if __name__ == "__main__":
             num_samples=4,
             metric="mean_accuracy",
             mode="max",
+            reuse_actors=True,
         ),
         param_space=space,
     )

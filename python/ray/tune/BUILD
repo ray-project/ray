@@ -133,14 +133,6 @@ py_test(
 )
 
 py_test(
-    name = "test_function_api_legacy",
-    size = "small",
-    srcs = ["tests/test_function_api_legacy.py"],
-    deps = [":tune_lib"],
-    tags = ["team:ml", "exclusive"],
-)
-
-py_test(
     name = "test_integration_pytorch_lightning",
     size = "small",
     srcs = ["tests/test_integration_pytorch_lightning.py"],
@@ -637,6 +629,15 @@ py_test(
     srcs = ["examples/mnist_pytorch_trainable.py"],
     deps = [":tune_lib"],
     tags = ["team:ml", "exclusive", "example", "pytorch"],
+    args = ["--smoke-test"]
+)
+
+py_test(
+    name = "nevergrad_example",
+    size = "small",
+    srcs = ["examples/nevergrad_example.py"],
+    deps = [":tune_lib"],
+    tags = ["team:ml", "exclusive", "example"],
     args = ["--smoke-test"]
 )
 

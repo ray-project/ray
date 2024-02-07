@@ -16,6 +16,13 @@ class EnvError(Exception):
 
 
 @PublicAPI
+class MultiAgentEnvError(Exception):
+    """Error if we encounter an error during MultiAgentEnv stepping/validation."""
+
+    pass
+
+
+@PublicAPI
 class NotSerializable(Exception):
     """Error if we encounter objects that can't be serialized by ray."""
 
@@ -40,9 +47,6 @@ c) Not a valid env class string.
 
 Try one of the following:
 a) For Atari support: `pip install gym[atari] autorom[accept-rom-license]`.
-   For VizDoom support: Install VizDoom
-   (https://github.com/mwydmuch/ViZDoom/blob/master/doc/Building.md) and
-   `pip install vizdoomgym`.
    For PyBullet support: `pip install pybullet`.
 b) To register your custom env, do `from ray import tune;
    tune.register('[name]', lambda cfg: [return env obj from here using cfg])`.

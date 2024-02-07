@@ -1132,20 +1132,11 @@ def test_random_block_order(ray_start_regular_shared, restore_data_context):
     assert results == expected
 
     # Test LazyBlockList.randomize_block_order.
-    context = DataContext.get_current()
-    try:
-        original_optimize_fuse_read_stages = context.optimize_fuse_read_stages
-        context.optimize_fuse_read_stages = False
-
-        lazy_blocklist_ds = ray.data.range(12, parallelism=4)
-        lazy_blocklist_ds = lazy_blocklist_ds.randomize_block_order(seed=0)
-        lazy_blocklist_results = lazy_blocklist_ds.take()
-        lazy_blocklist_expected = named_values(
-            "id", [6, 7, 8, 0, 1, 2, 3, 4, 5, 9, 10, 11]
-        )
-        assert lazy_blocklist_results == lazy_blocklist_expected
-    finally:
-        context.optimize_fuse_read_stages = original_optimize_fuse_read_stages
+    lazy_blocklist_ds = ray.data.range(12, parallelism=4)
+    lazy_blocklist_ds = lazy_blocklist_ds.randomize_block_order(seed=0)
+    lazy_blocklist_results = lazy_blocklist_ds.take()
+    lazy_blocklist_expected = named_values("id", [6, 7, 8, 0, 1, 2, 3, 4, 5, 9, 10, 11])
+    assert lazy_blocklist_results == lazy_blocklist_expected
 
 
 # NOTE: All tests above share a Ray cluster, while the tests below do not. These
@@ -1153,10 +1144,6 @@ def test_random_block_order(ray_start_regular_shared, restore_data_context):
 
 
 def test_random_shuffle(shutdown_only, use_push_based_shuffle):
-    def range(n, parallelism=200):
-        ds = ray.data.range(n, parallelism=parallelism)
-        return ds
-
     r1 = ray.data.range(100).random_shuffle().take(999)
     r2 = ray.data.range(100).random_shuffle().take(999)
     assert r1 != r2, (r1, r2)
@@ -1165,12 +1152,10 @@ def test_random_shuffle(shutdown_only, use_push_based_shuffle):
     r2 = ray.data.range(100, parallelism=1).random_shuffle().take(999)
     assert r1 != r2, (r1, r2)
 
-    # TODO(swang): fix this
-    if not use_push_based_shuffle:
-        assert ray.data.range(100).random_shuffle(num_blocks=1).num_blocks() == 1
-        r1 = ray.data.range(100).random_shuffle(num_blocks=1).take(999)
-        r2 = ray.data.range(100).random_shuffle(num_blocks=1).take(999)
-        assert r1 != r2, (r1, r2)
+    assert ray.data.range(100).random_shuffle().repartition(1).num_blocks() == 1
+    r1 = ray.data.range(100).random_shuffle().repartition(1).take(999)
+    r2 = ray.data.range(100).random_shuffle().repartition(1).take(999)
+    assert r1 != r2, (r1, r2)
 
     r0 = ray.data.range(100, parallelism=5).take(999)
     r1 = ray.data.range(100, parallelism=5).random_shuffle(seed=0).take(999)

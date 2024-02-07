@@ -252,6 +252,8 @@ cdef extern from "ray/core_worker/core_worker.h" nogil:
                                   shared_ptr[CBuffer] *data)
         CRayStatus ExperimentalMutableObjectWriteRelease(
                                   const CObjectID &object_id)
+        CRayStatus ExperimentalMutableObjectSetError(
+                                  const CObjectID &object_id)
         CRayStatus SealOwned(const CObjectID &object_id, c_bool pin_object,
                              const unique_ptr[CAddress] &owner_address)
         CRayStatus SealExisting(const CObjectID &object_id, c_bool pin_object,
@@ -309,7 +311,7 @@ cdef extern from "ray/core_worker/core_worker.h" nogil:
 
         int64_t GetNumLeasesRequested() const
 
-        unordered_map[c_string, c_vector[int64_t]] GetActorCallStats() const
+        int64_t GetLocalMemoryStoreBytesUsed() const
 
         void RecordTaskLogStart(
             const CTaskID &task_id,

@@ -2,9 +2,8 @@
 
 # RayJob Batch Inference Example
 
-This example demonstrates how to use the RayJob custom resource to run a batch inference job on a Ray cluster.
-
-This example uses an image classification workload, which is based on <https://docs.ray.io/en/latest/data/examples/huggingface_vit_batch_prediction.html>. See that page for a full explanation of the code.
+This example demonstrates how to use the RayJob custom resource to run a batch inference job for an image classification workload on a Ray cluster.
+See [Image Classification Batch Inference with HuggingFace Vision Transformer](https://docs.ray.io/en/latest/data/examples/huggingface_vit_batch_prediction.html) for a full explanation of the code.
 
 ## Prerequisites
 
@@ -34,12 +33,11 @@ This example uses four [Nvidia T4](https://cloud.google.com/compute/docs/gpus#nv
 ## Step 1: Install the KubeRay Operator
 
 Follow [this document](kuberay-operator-deploy) to install the latest stable KubeRay operator from the Helm repository.
-
-It should be scheduled on the CPU pod.
+The KubeRay operator Pod must be on the CPU node if you have set up the taint for the GPU node pool correctly.
 
 ## Step 2: Submit the RayJob
 
-Create the RayJob custom resource. The RayJob spec is defined in [ray-job.batch-inference.yaml](https://github.com/ray-project/kuberay/blob/v1.0.0/ray-operator/config/samples/ray-job.batch-inference.yaml).
+Create the RayJob custom resource with [ray-job.batch-inference.yaml](https://github.com/ray-project/kuberay/blob/v1.0.0/ray-operator/config/samples/ray-job.batch-inference.yaml).
 
 Download the file with `curl`:
 
@@ -47,7 +45,7 @@ Download the file with `curl`:
 curl -LO https://raw.githubusercontent.com/ray-project/kuberay/v1.0.0/ray-operator/config/samples/ray-job.batch-inference.yaml
 ```
 
-Note that the `RayJob` spec contains a spec for the `RayCluster` that is to be created for the job. For this tutorial, we use a single-node cluster with 4 GPUs.  For production use cases, we recommend using a multi-node cluster where the head node does not have GPUs, so that Ray can automatically schedule GPU workloads on worker nodes and they won't interfere with critical Ray processes on the head node.
+Note that the `RayJob` spec contains a spec for the `RayCluster`. This tutorial uses a single-node cluster with 4 GPUs. For production use cases, use a multi-node cluster where the head node doesn't have GPUs, so that Ray can automatically schedule GPU workloads on worker nodes which won't interfere with critical Ray processes on the head node.
 
 Note the following fields in the `RayJob` spec, which specify the Ray image and the GPU resources for the Ray node:
 
@@ -86,31 +84,13 @@ Sample output:
 [...]
 Status:
   Dashboard URL:          rayjob-sample-raycluster-j6t8n-head-svc.default.svc.cluster.local:8265
-  End Time:               2023-08-22T22:48:35Z
-  Job Deployment Status:  Running
+  End Time:               ...
+  Job Deployment Status:  Complete
   Job Id:                 rayjob-sample-ft8lh
   Job Status:             SUCCEEDED
   Message:                Job finished successfully.
   Observed Generation:    2
-  Ray Cluster Name:       rayjob-sample-raycluster-j6t8n
-  Ray Cluster Status:
-    Endpoints:
-      Client:        10001
-      Dashboard:     8265
-      Gcs - Server:  6379
-      Metrics:       8080
-    Head:
-      Pod IP:             10.112.1.3
-      Service IP:         10.116.1.93
-    Last Update Time:     2023-08-22T22:47:44Z
-    Observed Generation:  1
-    State:                ready
-  Start Time:             2023-08-22T22:48:02Z
-Events:
-  Type    Reason   Age   From               Message
-  ----    ------   ----  ----               -------
-  Normal  Created  36m   rayjob-controller  Created cluster rayjob-sample-raycluster-j6t8n
-  Normal  Created  32m   rayjob-controller  Created k8s job rayjob-sample
+  ...
 ```
 
 To view the logs, first find the name of the pod running the job with `kubectl get pods`.
@@ -124,7 +104,7 @@ rayjob-sample-raycluster-j6t8n-head-kx2gz   1/1     Running     0          35m
 rayjob-sample-w98c7                         0/1     Completed   0          30m
 ```
 
-The Ray cluster is still running because `shutdownAfterJobFinishes` is not set in the `RayJob` spec. If you set `shutdownAfterJobFinishes` to `true`, the cluster is shut down after the job finishes.
+The Ray cluster is still running because `shutdownAfterJobFinishes` isn't set in the `RayJob` spec. If you set `shutdownAfterJobFinishes` to `true`, the cluster is shut down after the job finishes.
 
 Next, run:
 

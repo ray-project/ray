@@ -17,12 +17,11 @@ py_library(
 py_test_module_list(
   files = [
     "test_advanced.py",
-    "test_autoscaling_metrics.py",
     "test_batching.py",
     "test_constructor_failure.py",
     "test_controller.py",
-    "test_http_util.py",
     "test_proxy_router.py",
+    "test_proxy_actor_wrapper.py",
     "test_deployment_scheduler.py",
     "test_deployment_version.py",
     "test_kv_store.py",
@@ -83,6 +82,17 @@ py_test_module_list(
   size = "medium",
   tags = ["exclusive", "team:serve"],
   deps = ["//python/ray/serve:serve_lib", ":conftest", ":common"],
+)
+
+# Test autoscaling with RAY_SERVE_COLLECT_AUTOSCALING_METRICS_ON_HANDLE set to 1
+py_test(
+    name = "test_autoscaling_metrics_on_handle",
+    size = "medium",
+    main = "test_autoscaling_policy.py",
+    srcs = ["test_autoscaling_policy.py"],
+    tags = ["exclusive", "team:serve", "autoscaling"],
+    deps = ["//python/ray/serve:serve_lib", ":conftest", ":common"],
+    env = {"RAY_SERVE_COLLECT_AUTOSCALING_METRICS_ON_HANDLE": "1"},
 )
 
 py_test_module_list(

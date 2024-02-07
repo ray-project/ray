@@ -116,7 +116,7 @@ class TestSingelAgentEpisode(unittest.TestCase):
         works as intended and the timestep is increased during each step.
         """
         # Create an empty episode and add initial observations.
-        episode = SingleAgentEpisode()
+        episode = SingleAgentEpisode(len_lookback_buffer=10)
         env = gym.make("CartPole-v1")
         # Set the random seed (otherwise the episode will terminate at
         # different points in each test run).
@@ -273,8 +273,9 @@ class TestSingelAgentEpisode(unittest.TestCase):
         check(e1.observations[10], e2.observations[10], false=True)
 
         # TEST #3: Split with lookback buffer (buffer=10, split=20/30).
+        len_lookback_buffer = 10
         episode = self._create_episode(
-            num_data=60, t_started=15, len_lookback_buffer=10
+            num_data=60, t_started=15, len_lookback_buffer=len_lookback_buffer
         )
         self.assertTrue(episode.t == 65 and episode.t_started == 15)
 
@@ -303,24 +304,24 @@ class TestSingelAgentEpisode(unittest.TestCase):
         # Make sure the lookback buffers of both chunks are still working.
         check(
             e1.get_observations(-1, neg_indices_left_of_zero=True),
-            episode.observations.data[episode._len_lookback_buffer - 1],
+            episode.observations.data[len_lookback_buffer - 1],
         )
         check(
             e1.get_actions(-1, neg_indices_left_of_zero=True),
-            episode.actions.data[episode._len_lookback_buffer - 1],
+            episode.actions.data[len_lookback_buffer - 1],
         )
         check(
             e2.get_observations([-5, -2], neg_indices_left_of_zero=True),
             [
-                episode.observations.data[20 + episode._len_lookback_buffer - 5],
-                episode.observations.data[20 + episode._len_lookback_buffer - 2],
+                episode.observations.data[20 + len_lookback_buffer - 5],
+                episode.observations.data[20 + len_lookback_buffer - 2],
             ],
         )
         check(
             e2.get_rewards([-5, -2], neg_indices_left_of_zero=True),
             [
-                episode.rewards.data[20 + episode._len_lookback_buffer - 5],
-                episode.rewards.data[20 + episode._len_lookback_buffer - 2],
+                episode.rewards.data[20 + len_lookback_buffer - 5],
+                episode.rewards.data[20 + len_lookback_buffer - 2],
             ],
         )
 

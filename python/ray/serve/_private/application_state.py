@@ -22,7 +22,10 @@ from ray.serve._private.common import (
     TargetCapacityDirection,
 )
 from ray.serve._private.config import DeploymentConfig
-from ray.serve._private.constants import SERVE_LOGGER_NAME
+from ray.serve._private.constants import (
+    NEW_DEFAULT_MAX_CONCURRENT_QUERIES,
+    SERVE_LOGGER_NAME,
+)
 from ray.serve._private.deploy_utils import (
     deploy_args_to_deployment_info,
     get_app_code_version,
@@ -38,6 +41,7 @@ from ray.serve._private.utils import (
     check_obj_ref_ready_nowait,
     override_runtime_envs_except_env_vars,
 )
+from ray.serve.config import AutoscalingConfig
 from ray.serve.exceptions import RayServeException
 from ray.serve.generated.serve_pb2 import DeploymentLanguage
 from ray.serve.schema import DeploymentDetails, ServeApplicationSchema
@@ -454,38 +458,18 @@ class ApplicationState:
         if self._target_state.deleting:
             return ApplicationStatus.DELETING, ""
 
-        num_healthy_deployments = 0
-        num_autoscaling_deployments = 0
-        num_updating_deployments = 0
-        num_manually_scaling_deployments = 0
-        unhealthy_deployment_names = []
-
-        for deployment_status in self.get_deployments_statuses():
-            if deployment_status.status == DeploymentStatus.UNHEALTHY:
-                unhealthy_deployment_names.append(deployment_status.name)
-            elif deployment_status.status == DeploymentStatus.HEALTHY:
-                num_healthy_deployments += 1
-            elif (
-                deployment_status.status_trigger == DeploymentStatusTrigger.AUTOSCALING
-            ):
-                num_autoscaling_deployments += 1
-            elif deployment_status.status == DeploymentStatus.UPDATING:
-                num_updating_deployments += 1
-            elif (
-                deployment_status.status
-                in [DeploymentStatus.UPSCALING, DeploymentStatus.DOWNSCALING]
-                and deployment_status.status_trigger
-                == DeploymentStatusTrigger.CONFIG_UPDATE_STARTED
-            ):
-                num_manually_scaling_deployments += 1
-            else:
-                raise RuntimeError(
-                    "Found deployment with unexpected status "
-                    f"{deployment_status.status} and status trigger "
-                    f"{deployment_status.status_trigger}."
-                )
-
-        if len(unhealthy_deployment_names):
+        # Get the lowest rank, i.e. highest priority, deployment status info object
+        # The deployment status info with highest priority determines the corresponding
+        # application status to set.
+        lowest_rank_status = min(
+            self.get_deployments_statuses(), key=lambda info: info.rank
+        )
+        if lowest_rank_status.status == DeploymentStatus.UNHEALTHY:
+            unhealthy_deployment_names = [
+                s.name
+                for s in self.get_deployments_statuses()
+                if s.status == DeploymentStatus.UNHEALTHY
+            ]
             status_msg = f"The deployments {unhealthy_deployment_names} are UNHEALTHY."
             if self._status in [
                 ApplicationStatus.DEPLOYING,
@@ -494,17 +478,16 @@ class ApplicationState:
                 return ApplicationStatus.DEPLOY_FAILED, status_msg
             else:
                 return ApplicationStatus.UNHEALTHY, status_msg
-        elif num_updating_deployments + num_manually_scaling_deployments > 0:
-            # If deployments are UPDATING or UPSCALING/DOWNSCALING
-            # with status trigger CONFIG_UPDATE_STARTED, then
-            # application is still DEPLOYING
+        elif lowest_rank_status.status == DeploymentStatus.UPDATING:
+            return ApplicationStatus.DEPLOYING, ""
+        elif (
+            lowest_rank_status.status
+            in [DeploymentStatus.UPSCALING, DeploymentStatus.DOWNSCALING]
+            and lowest_rank_status.status_trigger
+            == DeploymentStatusTrigger.CONFIG_UPDATE_STARTED
+        ):
             return ApplicationStatus.DEPLOYING, ""
         else:
-            # If all deployments are HEALTHY or autoscaling, then
-            # application is RUNNING
-            assert num_healthy_deployments + num_autoscaling_deployments == len(
-                self.target_deployments
-            )
             return ApplicationStatus.RUNNING, ""
 
     def _reconcile_build_app_task(self) -> Tuple[Tuple, BuildAppStatus, str]:
@@ -1055,17 +1038,29 @@ def override_deployment_info(
     for options in deployment_override_options:
         deployment_name = options["name"]
         info = deployment_infos[deployment_name]
+        original_options = info.deployment_config.dict()
+        original_options["user_configured_option_names"].update(set(options))
 
-        if (
-            info.deployment_config.autoscaling_config is not None
-            and info.deployment_config.max_concurrent_queries
-            < info.deployment_config.autoscaling_config.target_num_ongoing_requests_per_replica  # noqa: E501
-        ):
-            logger.warning(
-                "Autoscaling will never happen, "
-                "because 'max_concurrent_queries' is less than "
-                "'target_num_ongoing_requests_per_replica' now."
+        # Override `max_concurrent_queries` and `autoscaling_config` if
+        # `num_replicas="auto"`
+        if options.get("num_replicas") == "auto":
+            options["num_replicas"] = None
+            if (
+                "max_concurrent_queries"
+                not in original_options["user_configured_option_names"]
+            ):
+                options["max_concurrent_queries"] = NEW_DEFAULT_MAX_CONCURRENT_QUERIES
+
+            # If `autoscaling_config` is specified, its values override
+            # the default `num_replicas="auto"` configuration
+            autoscaling_config = (
+                options.get("autoscaling_config")
+                or info.deployment_config.autoscaling_config
             )
+            if autoscaling_config:
+                new_config = AutoscalingConfig.default().dict()
+                new_config.update(autoscaling_config)
+                options["autoscaling_config"] = AutoscalingConfig(**new_config)
 
         # What to pass to info.update
         override_options = dict()
@@ -1115,11 +1110,22 @@ def override_deployment_info(
         override_options["replica_config"] = replica_config
 
         # Override deployment config options
-        original_options = info.deployment_config.dict()
         options.pop("name", None)
         original_options.update(options)
         override_options["deployment_config"] = DeploymentConfig(**original_options)
         deployment_infos[deployment_name] = info.update(**override_options)
+
+        deployment_config = deployment_infos[deployment_name].deployment_config
+        if (
+            deployment_config.autoscaling_config is not None
+            and deployment_config.max_concurrent_queries
+            < deployment_config.autoscaling_config.target_num_ongoing_requests_per_replica  # noqa: E501
+        ):
+            logger.warning(
+                "Autoscaling will never happen, "
+                "because 'max_concurrent_queries' is less than "
+                "'target_num_ongoing_requests_per_replica' now."
+            )
 
     # Overwrite ingress route prefix
     app_route_prefix = config_dict.get("route_prefix", DEFAULT.VALUE)

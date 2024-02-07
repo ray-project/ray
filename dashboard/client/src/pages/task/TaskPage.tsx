@@ -13,6 +13,7 @@ import {
 import {
   TaskCpuProfilingLink,
   TaskCpuStackTraceLink,
+  TaskMemoryProfilingButton,
 } from "../../common/ProfilingLink";
 import { Section } from "../../common/Section";
 import Loading from "../../components/Loading";
@@ -239,6 +240,12 @@ const TaskPageContents = ({
                       attemptNumber={attempt_number}
                       nodeId={node_id}
                     />
+                    <br />
+                    <TaskMemoryProfilingButton
+                      taskId={task_id}
+                      attemptNumber={attempt_number}
+                      nodeId={node_id}
+                    />
                   </React.Fragment>
                 ),
               }
@@ -319,5 +326,11 @@ const TaskLogs = ({
       ? [{ title: "Error stack trace", contents: errorDetails }]
       : []),
   ];
-  return <MultiTabLogViewer tabs={tabs} otherLogsLink={otherLogsLink} />;
+  return (
+    <MultiTabLogViewer
+      tabs={tabs}
+      otherLogsLink={otherLogsLink}
+      contextKey="tasks-page"
+    />
+  );
 };

@@ -99,8 +99,8 @@ class DatabricksUCDatasource(Datasource):
 
         if is_truncated:
             logger.warning(
-                f"The result dataset of '{query!r}' exceeding 100GiB and it is "
-                "truncated."
+                f"The resulting size of the dataset of '{query!r}' exceeds "
+                "100GiB and it is truncated."
             )
 
         chunks = manifest["chunks"]
@@ -180,5 +180,9 @@ class DatabricksUCDatasource(Datasource):
 
         if parallelism > self.num_chunks:
             parallelism = self.num_chunks
+            logger.info(
+                "The parallelism is reduced to chunk number due to "
+                "insufficient chunk parallelism."
+            )
 
         return [self._get_read_task(index, parallelism) for index in range(parallelism)]

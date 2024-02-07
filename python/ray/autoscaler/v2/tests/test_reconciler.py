@@ -11,7 +11,7 @@ from ray.autoscaler._private.node_launcher import BaseNodeLauncher
 from ray.autoscaler._private.node_provider_availability_tracker import (
     NodeProviderAvailabilityTracker,
 )
-from ray.autoscaler.v2.instance_manager.config import NodeProviderConfig
+from ray.autoscaler.v2.instance_manager.config import AutoscalingConfig
 from ray.autoscaler.v2.instance_manager.instance_storage import InstanceStorage
 from ray.autoscaler.v2.instance_manager.node_provider import NodeProviderAdapter
 from ray.autoscaler.v2.instance_manager.storage import InMemoryStorage
@@ -31,11 +31,9 @@ class InstanceReconcilerTest(unittest.TestCase):
             EventSummarizer(),
             self.availability_tracker,
         )
-        self.instance_config_provider = NodeProviderConfig(
-            load_test_config("test_ray_complex.yaml")
-        )
+        self.config = AutoscalingConfig(load_test_config("test_ray_complex.yaml"))
         self.node_provider = NodeProviderAdapter(
-            self.base_provider, self.node_launcher, self.instance_config_provider
+            self.base_provider, self.node_launcher, self.config
         )
 
         self.instance_storage = InstanceStorage(
@@ -67,7 +65,7 @@ class InstanceReconcilerTest(unittest.TestCase):
         instances, _ = self.instance_storage.get_instances(
             instance_ids={instance.instance_id}
         )
-        assert instances[instance.instance_id].status == Instance.STOPPING
+        assert instances[instance.instance_id].status == Instance.TERMINATING
         assert self.base_provider.is_terminated(instance.cloud_instance_id)
 
         # reconciler will detect the node is terminated and update the status.
@@ -75,7 +73,7 @@ class InstanceReconcilerTest(unittest.TestCase):
         instances, _ = self.instance_storage.get_instances(
             instance_ids={instance.instance_id}
         )
-        assert instances[instance.instance_id].status == Instance.STOPPED
+        assert instances[instance.instance_id].status == Instance.TERMINATED
 
 
 if __name__ == "__main__":
