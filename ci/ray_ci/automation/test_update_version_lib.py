@@ -5,10 +5,10 @@ import os
 
 import pytest
 
-from ci.ray_ci.automation.upgrade_version_lib import (
+from ci.ray_ci.automation.update_version_lib import (
     list_java_files,
     get_current_version,
-    upgrade_file_version,
+    update_file_version,
 )
 
 
@@ -40,7 +40,7 @@ def test_list_java_files():
         )
 
 
-@mock.patch("ci.ray_ci.automation.upgrade_version_lib.get_check_output")
+@mock.patch("ci.ray_ci.automation.update_version_lib.get_check_output")
 def test_get_current_version_from_master_branch_version(mock_check_output):
     mock_check_output.return_value = (
         "3.0.0.dev0 a123456dc1d2egd345a6789f1e23d45b678c90ed"
@@ -51,7 +51,7 @@ def test_get_current_version_from_master_branch_version(mock_check_output):
     )
 
 
-@mock.patch("ci.ray_ci.automation.upgrade_version_lib.get_check_output")
+@mock.patch("ci.ray_ci.automation.update_version_lib.get_check_output")
 def test_get_current_version_from_changed_version(mock_check_output):
     mock_check_output.return_value = "2.2.0 a123456dc1d2egd345a6789f1e23d45b678c90ed"
 
@@ -98,7 +98,7 @@ def _make_tmp_directories(tmp_dir):
         ("2.3.2", "2.3.2", "2.3.3"),
     ],
 )
-def test_upgrade_file_version(main_version, java_version, new_version):
+def test_update_file_version(main_version, java_version, new_version):
     with tempfile.TemporaryDirectory() as tmp_dir:
         _make_tmp_directories(tmp_dir)
         non_java_file_paths = [
@@ -129,7 +129,7 @@ def test_upgrade_file_version(main_version, java_version, new_version):
                 os.path.join(tmp_dir, file_path), version=main_version, java=False
             )
 
-        upgrade_file_version(
+        update_file_version(
             main_version=main_version,
             java_version=java_version,
             new_version=new_version,
@@ -149,7 +149,7 @@ def test_upgrade_file_version(main_version, java_version, new_version):
                 assert f.read() == f"<version>{java_version}</version>"
 
 
-def test_upgrade_file_version_fail_no_non_java_file():
+def test_update_file_version_fail_no_non_java_file():
     """
     Test for failure when there's no file to be found.
     """
@@ -172,7 +172,7 @@ def test_upgrade_file_version_fail_no_non_java_file():
                 os.path.join(tmp_dir, file_path), version=java_version, java=True
             )
         with pytest.raises(ValueError):
-            upgrade_file_version(
+            update_file_version(
                 main_version=main_version,
                 java_version=java_version,
                 new_version=new_version,
@@ -180,7 +180,7 @@ def test_upgrade_file_version_fail_no_non_java_file():
             )
 
 
-def test_upgrade_file_version_fail_no_java_file():
+def test_update_file_version_fail_no_java_file():
     """
     Test for failure when there's no java file to be found.
     """
@@ -201,7 +201,7 @@ def test_upgrade_file_version_fail_no_java_file():
             )
 
         with pytest.raises(AssertionError):
-            upgrade_file_version(
+            update_file_version(
                 main_version=main_version,
                 java_version=java_version,
                 new_version=new_version,

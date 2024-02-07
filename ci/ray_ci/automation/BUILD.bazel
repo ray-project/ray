@@ -26,32 +26,32 @@ py_binary(
 )
 
 py_library(
-    name = "upgrade_version_lib",
-    srcs = ["upgrade_version_lib.py"],
+    name = "update_version_lib",
+    srcs = ["update_version_lib.py"],
     visibility = ["//ci/ray_ci/automation:__subpackages__"],
     deps = [],
 )
 
 py_test(
-    name = "test_upgrade_version_lib",
+    name = "test_update_version_lib",
     size = "small",
-    srcs = ["test_upgrade_version_lib.py"],
+    srcs = ["test_update_version_lib.py"],
     tags = [
         "ci_unit",
         "team:ci",
     ],
     deps = [
         ci_require("pytest"),
-        ":upgrade_version_lib",
+        ":update_version_lib",
     ],
 )
 
 py_binary(
-    name = "upgrade_version",
-    srcs = ["upgrade_version.py"],
+    name = "update_version",
+    srcs = ["update_version.py"],
     exec_compatible_with = ["//:hermetic_python"],
     deps = [
         ci_require("click"),
-        ":upgrade_version_lib",
+        ":update_version_lib",
     ],
 )
