@@ -180,6 +180,10 @@ class DataIterator(abc.ABC):
             )
 
             dataset_tag = self._get_dataset_tag()
+
+            if stats:
+                stats.iter_initialize_s.add(time.perf_counter() - time_start)
+
             for batch in iterator:
                 yield batch
                 StatsManager.update_iteration_metrics(stats, dataset_tag)
@@ -335,8 +339,8 @@ class DataIterator(abc.ABC):
 
         from ray.air._internal.torch_utils import (
             convert_ndarray_batch_to_torch_tensor_batch,
-            get_device,
         )
+        from ray.train.torch import get_device
 
         if collate_fn is not None and (dtypes is not None or device != "auto"):
             raise ValueError(

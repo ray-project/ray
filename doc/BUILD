@@ -254,7 +254,7 @@ py_test(
 # --------------------------------------------------------------------
 
 py_test_run_all_subdirectory(
-    size = "large",
+    size = "enormous",
     include = ["external/*.py"],
     exclude = [],
     extra_srcs = [],

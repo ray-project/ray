@@ -1223,6 +1223,19 @@ def test_parquet_bulk_columns(ray_start_regular_shared):
     assert ds.columns() == ["variety"]
 
 
+@pytest.mark.parametrize("num_rows_per_file", [5, 10, 50])
+def test_write_num_rows_per_file(tmp_path, ray_start_regular_shared, num_rows_per_file):
+    import pyarrow.parquet as pq
+
+    ray.data.range(100, parallelism=20).write_parquet(
+        tmp_path, num_rows_per_file=num_rows_per_file
+    )
+
+    for filename in os.listdir(tmp_path):
+        table = pq.read_table(os.path.join(tmp_path, filename))
+        assert len(table) == num_rows_per_file
+
+
 if __name__ == "__main__":
     import sys
 

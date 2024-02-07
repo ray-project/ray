@@ -140,7 +140,7 @@ class ArrowBlockBuilder(TableBlockBuilder):
             ):
                 from ray.data.extensions.tensor_extension import ArrowTensorArray
 
-                columns[col_name] = ArrowTensorArray.from_numpy(col)
+                columns[col_name] = ArrowTensorArray.from_numpy(col, col_name)
         return pyarrow.Table.from_pydict(columns)
 
     @staticmethod
@@ -207,7 +207,7 @@ class ArrowBlockAccessor(TableBlockAccessor):
             col = convert_udf_returns_to_numpy(col)
             # Use Arrow's native *List types for 1-dimensional ndarrays.
             if col.dtype.type is np.object_ or col.ndim > 1:
-                col = ArrowTensorArray.from_numpy(col)
+                col = ArrowTensorArray.from_numpy(col, col_name)
             new_batch[col_name] = col
         return pa.Table.from_pydict(new_batch)
 

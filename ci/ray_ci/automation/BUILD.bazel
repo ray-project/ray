@@ -17,3 +17,10 @@ py_binary(
     srcs = ["weekly_green_metric.py"],
     deps = ["//ci/ray_ci:ray_ci_lib"],
 )
+
+py_binary(
+    name = "filter_tests",
+    srcs = ["filter_tests.py"],
+    deps = ["//ci/ray_ci:ray_ci_lib"],
+)
+

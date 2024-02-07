@@ -1,6 +1,7 @@
 import pandas as pd
 import pytest
 
+import ray
 from ray.data._internal.pandas_block import PandasBlockAccessor
 
 
@@ -14,6 +15,32 @@ def test_append_column(ray_start_regular_shared):
 
     expected_block = pd.DataFrame({"animals": animals, "num_legs": num_legs})
     assert actual_block.equals(expected_block)
+
+
+def test_dict_fallback_to_pandas_block(ray_start_regular_shared):
+    # If the UDF returns a column with dict, this throws
+    # an error during block construction because we cannot cast dicts
+    # to a supported arrow type. This test checks that the block
+    # construction falls back to pandas and still succeeds.
+    def fn(batch):
+        batch["data_dict"] = [{"data": 0} for _ in range(len(batch["id"]))]
+        return batch
+
+    ds = ray.data.range(10).map_batches(fn)
+    ds = ds.materialize()
+    block = ray.get(ds.get_internal_block_refs()[0])
+    # TODO: Once we support converting dict to a supported arrow type,
+    # the block type should be Arrow.
+    assert isinstance(block, pd.DataFrame)
+
+    def fn2(batch):
+        batch["data_none"] = [None for _ in range(len(batch["id"]))]
+        return batch
+
+    ds2 = ray.data.range(10).map_batches(fn2)
+    ds2 = ds2.materialize()
+    block = ray.get(ds2.get_internal_block_refs()[0])
+    assert isinstance(block, pd.DataFrame)
 
 
 if __name__ == "__main__":

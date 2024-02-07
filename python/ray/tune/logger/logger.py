@@ -1,7 +1,7 @@
 import abc
 import json
 import logging
-import os
+from pathlib import Path
 import pyarrow
 
 from typing import TYPE_CHECKING, Dict, Iterable, List, Optional, Set, Type
@@ -168,10 +168,12 @@ class LoggerCallback(Callback):
 
     def _restore_from_remote(self, file_name: str, trial: "Trial") -> None:
         if not trial.checkpoint:
+            # If there's no checkpoint, there's no logging artifacts to restore
+            # since we're starting from scratch.
             return
 
-        local_file = os.path.join(trial.local_path, file_name)
-        remote_file = os.path.join(trial.storage.trial_fs_path, file_name)
+        local_file = Path(trial.local_path, file_name).as_posix()
+        remote_file = Path(trial.storage.trial_fs_path, file_name).as_posix()
 
         try:
             pyarrow.fs.copy_files(
