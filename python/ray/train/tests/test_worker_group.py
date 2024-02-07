@@ -5,6 +5,7 @@ import pytest
 
 import ray
 import ray._private.ray_constants as ray_constants
+from ray.cluster_utils import Cluster
 from ray.train._internal.worker_group import Worker, WorkerGroup, WorkerMetadata
 
 
@@ -40,6 +41,21 @@ def ray_start_2_cpus_and_10kb_memory():
     ray.shutdown()
 
 
+@pytest.fixture
+def ray_start_5_nodes_with_memory():
+    cluster = Cluster()
+    for _ in range(4):
+        cluster.add_node(num_cpus=4, memory=500)
+    cluster.add_node(num_cpus=4, memory=2_000)
+
+    ray.init(address=cluster.address)
+
+    yield
+
+    ray.shutdown()
+    cluster.shutdown()
+
+
 def test_worker_creation(ray_start_2_cpus):
     assert ray.available_resources()["CPU"] == 2
     wg = WorkerGroup(num_workers=2)
@@ -60,9 +76,25 @@ def test_worker_creation_num_cpus(ray_start_2_cpus):
     wg.shutdown()
 
 
-def test_worker_creation_with_memory(ray_start_2_cpus_and_10kb_memory):
-    wg = WorkerGroup(num_workers=2, resources_per_worker={"memory": 1_000})
+def test_worker_creation_with_memory(ray_start_5_nodes_with_memory):
+    resources_per_worker = {"memory": 1_000}
+    wg = WorkerGroup(num_workers=2, resources_per_worker=resources_per_worker)
     assert len(wg.workers) == 2
+
+    nodes = ray.nodes()
+    large_node = [node for node in nodes if node["Resources"]["memory"] == 2_000][0]
+    large_node_id = large_node["NodeID"]
+
+    def validate_scheduling():
+        resources = ray.get_runtime_context().get_assigned_resources()
+        assert resources == resources_per_worker, "Resources should include memory."
+
+        node_id = ray.get_runtime_context().get_node_id()
+        assert (
+            node_id == large_node_id
+        ), "Workers should be scheduled on the large node."
+
+    wg.execute(validate_scheduling)
 
 
 def test_worker_shutdown(ray_start_2_cpus):
