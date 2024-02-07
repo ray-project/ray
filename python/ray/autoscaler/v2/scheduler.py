@@ -922,13 +922,12 @@ class ResourceDemandScheduler(IResourceScheduler):
         # We are able to satisfy the constraint and thus update the context.
         # We will merge the newly launched nodes if any in the scheduled nodes with
         # the existing nodes with available resources correctly set.
-        cur_nodes_id_map = {n.node_id: n for n in cur_nodes}
         for n in scheduled_nodes:
-            if cur_nodes_id_map.get(n.node_id) is None:
+            if n.status == SchedulingNodeStatus.TO_LAUNCH:
                 # This is a newly launched node.
                 cur_nodes.append(n)
 
-        ctx.update(cur_nodes)
+        self._ctx.update(cur_nodes)
         return []
 
     def _sched_resource_requests(

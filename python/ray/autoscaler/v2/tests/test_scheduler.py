@@ -32,7 +32,7 @@ def sched_request(
     max_num_nodes: Optional[int] = None,
     resource_requests: Optional[List[ResourceRequest]] = None,
     gang_resource_requests: Optional[List[GangResourceRequest]] = None,
-    cluster_resource_constraints: Optional[List[ClusterResourceConstraint]] = None,
+    cluster_resource_constraints: Optional[List[ResourceRequest]] = None,
     instances: Optional[List[AutoscalerInstance]] = None,
 ) -> SchedulingRequest:
 
@@ -48,7 +48,9 @@ def sched_request(
     return SchedulingRequest(
         resource_requests=ResourceRequestUtil.group_by_count(resource_requests),
         gang_resource_requests=gang_resource_requests,
-        cluster_resource_constraints=cluster_resource_constraints,
+        cluster_resource_constraints=ClusterResourceConstraint(
+            min_bundles=ResourceRequestUtil.group_by_count(cluster_resource_constraints)
+        ),
         current_instances=instances,
         node_type_configs=node_type_configs,
         max_num_nodes=max_num_nodes,
@@ -674,6 +676,36 @@ def test_multi_node_types_score_with_gpu(monkeypatch):
         reply = scheduler.schedule(request)
         to_launch, _ = _launch_and_terminate(reply)
         assert sorted(to_launch) == sorted({"type_gpu": 1})
+
+
+def test_resource_constrains():
+    scheduler = ResourceDemandScheduler()
+
+    node_type_configs = {
+        "type_cpu": NodeTypeConfig(
+            name="type_cpu",
+            resources={"CPU": 1},
+            min_worker_nodes=1,
+            max_worker_nodes=5,
+        ),
+        "type_gpu": NodeTypeConfig(
+            name="type_gpu",
+            resources={"CPU": 1, "GPU": 2},
+            min_worker_nodes=0,
+            max_worker_nodes=1,
+        ),
+    }
+
+    # Resource constraints should launch nodes
+    request = sched_request(
+        node_type_configs=node_type_configs,
+        cluster_resource_constraints=[
+            ResourceRequestUtil.make({"CPU": 1}),
+        ],
+    )
+    reply = scheduler.schedule(request)
+    to_launch, _ = _launch_and_terminate(reply)
+    assert sorted(to_launch) == sorted({"type_cpu": 1})
 
 
 if __name__ == "__main__":
