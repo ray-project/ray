@@ -25,8 +25,9 @@ chmod +x bazelisk
 
 mkdir -p ~/bin
 mv bazelisk ~/bin/
+cp ~/bin/bazelisk ~/bin/bazel
 export PATH=$PATH:~/bin
-bazelisk
+export USE_BAZEL_VERSION=5.4.1
 
 EOF
 
