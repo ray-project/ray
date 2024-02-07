@@ -14,14 +14,16 @@ from ray.serve._private.common import DeploymentID, RequestMetadata, RunningRepl
 from ray.serve._private.constants import (
     HANDLE_METRIC_PUSH_INTERVAL_S,
     RAY_SERVE_COLLECT_AUTOSCALING_METRICS_ON_HANDLE,
+    RAY_SERVE_ENABLE_QUEUE_LENGTH_CACHE,
+    RAY_SERVE_ENABLE_STRICT_MAX_CONCURRENT_QUERIES,
     RAY_SERVE_PROXY_PREFER_LOCAL_AZ_ROUTING,
     SERVE_LOGGER_NAME,
 )
 from ray.serve._private.long_poll import LongPollClient, LongPollNamespace
 from ray.serve._private.metrics_utils import InMemoryMetricsStore, MetricsPusher
 from ray.serve._private.replica_scheduler import (
+    PendingRequest,
     PowerOfTwoChoicesReplicaScheduler,
-    Query,
 )
 from ray.serve.config import AutoscalingConfig
 from ray.util import metrics
@@ -151,7 +153,7 @@ class Router:
         if self.autoscaling_config:
             # Optimization for autoscaling cold start time. If there are
             # currently 0 replicas for the deployment, and there is at
-            # least one queued query on this router, then immediately
+            # least one queued request on this router, then immediately
             # push handle metric to the controller.
             if (
                 len(self._replica_scheduler.curr_replicas) == 0
@@ -284,13 +286,50 @@ class Router:
             # Make the scanner GC-able to avoid memory leaks.
             scanner.clear()
 
+    async def schedule_and_send_request(
+        self, pr: PendingRequest
+    ) -> Tuple[Union[ray.ObjectRef, "ray._raylet.ObjectRefGenerator"], str]:
+        """Choose a replica for the request and send it.
+
+        This will block indefinitely if no replicas are available to handle the
+        request, so it's up to the caller to time out or cancel the request.
+        """
+        replica = await self._replica_scheduler.choose_replica_for_request(pr)
+        replica_id = replica.replica_id
+
+        # If the queue len cache is disabled or we're sending a request to Java,
+        # then directly send the query and hand the response back. The replica will
+        # never reject requests in this code path.
+        if (
+            not RAY_SERVE_ENABLE_STRICT_MAX_CONCURRENT_QUERIES
+            or replica.is_cross_language
+        ):
+            return replica.send_request(pr), replica_id
+
+        while True:
+            obj_ref_or_gen, queue_len_info = await replica.send_request_with_rejection(
+                pr
+            )
+            if RAY_SERVE_ENABLE_QUEUE_LENGTH_CACHE:
+                self._replica_scheduler.replica_queue_len_cache.update(
+                    replica_id, queue_len_info.num_ongoing_requests
+                )
+            if queue_len_info.accepted:
+                return obj_ref_or_gen, replica_id
+
+            # If the replica rejects the request, retry the scheduling process. The
+            # request will be placed on the front of the queue to avoid tail latencies.
+            # TODO(edoakes): this retry procedure is not perfect because it'll reset the
+            # process of choosing candidates replicas (i.e., for locality-awareness).
+            replica = await self.choose_replica_for_request(pr, is_retry=True)
+
     async def assign_request(
         self,
         request_meta: RequestMetadata,
         *request_args,
         **request_kwargs,
     ) -> Union[ray.ObjectRef, "ray._raylet.ObjectRefGenerator"]:
-        """Assign a query to a replica and return the resulting object_ref."""
+        """Assign a request to a replica and return the resulting object_ref."""
 
         self.num_router_requests.inc(tags={"route": request_meta.route})
         self.num_queued_queries += 1
@@ -298,7 +337,7 @@ class Router:
 
         # Optimization: if there are currently zero replicas for a deployment,
         # push handle metric to controller to allow for fast cold start time.
-        # Only do it for the first query to arrive on the router.
+        # Only do it for the first request to arrive on the router.
         # NOTE(zcin): this is making the assumption that this method DOES
         # NOT give up the async event loop above this conditional. If
         # you need to yield the event loop above this conditional, you
@@ -316,12 +355,13 @@ class Router:
             request_args, request_kwargs = await self._replace_known_types_in_args(
                 request_args, request_kwargs
             )
-            query = Query(
-                args=list(request_args),
-                kwargs=request_kwargs,
-                metadata=request_meta,
+            ref, replica_tag = await self.schedule_and_send_request(
+                PendingRequest(
+                    args=list(request_args),
+                    kwargs=request_kwargs,
+                    metadata=request_meta,
+                ),
             )
-            ref, replica_tag = await self._replica_scheduler.assign_replica(query)
 
             # Keep track of requests that have been sent out to replicas
             if RAY_SERVE_COLLECT_AUTOSCALING_METRICS_ON_HANDLE:
@@ -334,7 +374,7 @@ class Router:
 
             return ref
         finally:
-            # If the query is disconnected before assignment, this coroutine
+            # If the request is disconnected before assignment, this coroutine
             # gets cancelled by the caller and an asyncio.CancelledError is
             # raised. The finally block ensures that num_queued_queries
             # is correctly decremented in this case.
