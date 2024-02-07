@@ -23,8 +23,22 @@ class ExecutionResources:
     # Object store memory usage in bytes.
     object_store_memory: Optional[int] = None
 
-    ZERO = ExecutionResources(0, 0, 0)
-    INF = ExecutionResources(float("inf"), float("inf"), float("inf"))
+    _ZERO = None
+    _INF = None
+
+    @classmethod
+    def zero(cls) -> "ExecutionResources":
+        """Returns an ExecutionResources object with zero resources."""
+        if cls._ZERO is None:
+            cls._ZERO = ExecutionResources(0.0, 0.0, 0)
+        return cls._ZERO
+
+    @classmethod
+    def inf(cls) -> "ExecutionResources":
+        """Returns an ExecutionResources object with infinite resources."""
+        if cls._INF is None:
+            cls._INF = ExecutionResources(float("inf"), float("inf"), float("inf"))
+        return cls._INF
 
     def object_store_memory_str(self) -> str:
         """Returns a human-readable string for the object store memory field."""
@@ -72,6 +86,14 @@ class ExecutionResources:
                 other.object_store_memory or 0.0
             )
         return total
+
+    def max(self, other: "ExecutionResources") -> "ExecutionResources":
+        """Returns the maximum for each resource type."""
+        return ExecutionResources(
+            cpu=max(self.cpu or 0.0, other.cpu or 0.0),
+            gpu=max(self.gpu or 0.0, other.gpu or 0.0),
+            object_store_memory=max(self.object_store_memory or 0, other.object_store_memory or 0),
+        )
 
     def min(self, other: "ExecutionResources") -> "ExecutionResources":
         """Returns the minimum for each resource type."""

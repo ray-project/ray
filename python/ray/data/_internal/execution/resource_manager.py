@@ -29,9 +29,9 @@ class ResourceManager:
     def __init__(self, topology: "Topology", options: ExecutionOptions):
         self._topology = topology
         self._options = options
-        self._global_limits = ExecutionResources.ZERO
+        self._global_limits = ExecutionResources.zero()
         self._global_limits_last_update_time = 0
-        self._global_usage = ExecutionResources.ZERO
+        self._global_usage = ExecutionResources.zero()
         self._op_usages: Dict[PhysicalOperator, ExecutionResources] = {}
 
         self._downstream_fraction: Dict[PhysicalOperator, float] = {}
@@ -153,7 +153,7 @@ class ResourceManager:
         This method can only be called when `op_resource_limiter_enabled` returns True.
         """
         assert self._op_resource_limiter is not None
-        return self._op_resource_limiter.get_op_limit(op)
+        return self._op_resource_limiter.get_op_limits(op)
 
 
 class OpResourceLimiter(metaclass=ABCMeta):
@@ -176,7 +176,7 @@ class OpResourceLimiter(metaclass=ABCMeta):
         ...
 
     @abstractmethod
-    def get_op_limit(self, op: PhysicalOperator) -> ExecutionResources:
+    def get_op_limits(self, op: PhysicalOperator) -> ExecutionResources:
         """Get the limit of resources that the given op can use at the current time."""
         ...
 
@@ -211,7 +211,7 @@ class ReservationOpResourceLimiter(OpResourceLimiter):
         # Per-op reserved resources.
         self._op_reserved: Dict[PhysicalOperator, ExecutionResources] = {}
         # Total shared resources.
-        self._total_shared = ExecutionResources.ZERO
+        self._total_shared = ExecutionResources.zero()
         # Resource limits for each operator.
         self._op_limits: Dict[PhysicalOperator, ExecutionResources] = {}
 
@@ -224,7 +224,7 @@ class ReservationOpResourceLimiter(OpResourceLimiter):
         for op in self._eligible_ops:
             # Make sure the reserved resources are at least to allow
             # one task.
-            self._op_reserved[op] = default_reserved.min(
+            self._op_reserved[op] = default_reserved.max(
                 op.incremental_resource_usage()
             )
 
@@ -237,14 +237,14 @@ class ReservationOpResourceLimiter(OpResourceLimiter):
             if op in self._eligible_ops:
                 op_reserved = self._op_reserved[op]
                 # How much of the reserved resources are remaining.
-                op_reserved_remaining = op_reserved.subtract(op_usage).min(
-                    ExecutionResources.ZERO
+                op_reserved_remaining = op_reserved.subtract(op_usage).max(
+                    ExecutionResources.zero()
                 )
                 self._op_limits[op] = op_reserved_remaining
                 # How much of the reserved resources are exceeded.
                 # If exceeded, we need to subtract from the remaining shared resources.
-                op_reserved_exceeded = op_usage.subtract(op_reserved).min(
-                    ExecutionResources.ZERO
+                op_reserved_exceeded = op_usage.subtract(op_reserved).max(
+                    ExecutionResources.zero()
                 )
                 remaining_shared = remaining_shared.subtract(op_reserved_exceeded)
             else:
@@ -252,7 +252,7 @@ class ReservationOpResourceLimiter(OpResourceLimiter):
                 # their usage from the remaining shared resources.
                 remaining_shared = remaining_shared.subtract(op_usage)
 
-        shared_divided = remaining_shared.min(ExecutionResources.ZERO).scale(
+        shared_divided = remaining_shared.max(ExecutionResources.zero()).scale(
             1.0 / len(self._eligible_ops)
         )
         for op in self._eligible_ops:
@@ -263,8 +263,8 @@ class ReservationOpResourceLimiter(OpResourceLimiter):
 
         return
 
-    def get_op_limit(self, op: PhysicalOperator) -> ExecutionResources:
+    def get_op_limits(self, op: PhysicalOperator) -> ExecutionResources:
         if op in self._op_limits:
             return self._op_limits[op]
         else:
-            return ExecutionResources.INF
+            return ExecutionResources.inf()
