@@ -1524,11 +1524,34 @@ def get_directory_size_bytes(path: Union[str, Path] = ".") -> int:
     return total_size_bytes
 
 
-def check_version_info(cluster_metadata):
+def check_version_info(
+    cluster_metadata,
+    this_process_address,
+    raise_on_mismatch=True,
+    python_version_match_level="patch",
+):
     """Check if the Python and Ray versions stored in GCS matches this process.
     Args:
         cluster_metadata: Ray cluster metadata from GCS.
+        this_process_address: Informational only. The address of this process.
+            e.g. "node address:port" or "Ray Client".
+        raise_on_mismatch: Raise an exception on True, log a warning otherwise.
+        python_version_match_level: "minor" or "patch". To which python version level we
+            try to match. Note if "minor" and the patch is different, we will still log
+            a warning.
 
+    Behavior:
+        - We raise or log a warning, based on raise_on_mismatch, if:
+            - Ray versions do not match; OR
+            - Python (major, minor) versions do not match,
+                if python_version_match_level == 'minor'; OR
+            - Python (major, minor, patch) versions do not match,
+                if python_version_match_level == 'patch'.
+        - We also log a warning if:
+            - Python (major, minor) versions match, AND
+            - Python patch versions do not match, AND
+            - python_version_match_level == 'minor' AND
+            - raise_on_mismatch == False.
     Raises:
         Exception: An exception is raised if there is a version mismatch.
     """
@@ -1536,18 +1559,41 @@ def check_version_info(cluster_metadata):
         cluster_metadata["ray_version"],
         cluster_metadata["python_version"],
     )
-    version_info = compute_version_info()
-    if version_info != cluster_version_info:
-        node_ip_address = ray._private.services.get_node_ip_address()
-        error_message = (
-            "Version mismatch: The cluster was started with:\n"
-            "    Ray: " + cluster_version_info[0] + "\n"
-            "    Python: " + cluster_version_info[1] + "\n"
-            "This process on node " + node_ip_address + " was started with:" + "\n"
-            "    Ray: " + version_info[0] + "\n"
-            "    Python: " + version_info[1] + "\n"
+    my_version_info = compute_version_info()
+
+    # Calculate: ray_matches, python_matches, python_full_matches
+    ray_matches = cluster_version_info[0] == my_version_info[0]
+    python_full_matches = cluster_version_info[1] == my_version_info[1]
+    if python_version_match_level == "patch":
+        python_matches = cluster_version_info[1] == my_version_info[1]
+    elif python_version_match_level == "minor":
+        my_python_versions = my_version_info[1].split(".")
+        cluster_python_versions = cluster_version_info[1].split(".")
+        python_matches = my_python_versions[:2] == cluster_python_versions[:2]
+    else:
+        raise ValueError(
+            f"Invalid python_version_match_level: {python_version_match_level}, "
+            "want: 'minor' or 'patch'"
         )
-        raise RuntimeError(error_message)
+
+    mismatch_msg = (
+        "The cluster was started with:\n"
+        f"    Ray: {cluster_version_info[0]}\n"
+        f"    Python: {cluster_version_info[1]}\n"
+        f"This process on {this_process_address} was started with:\n"
+        f"    Ray: {my_version_info[0]}\n"
+        f"    Python: {my_version_info[1]}\n"
+    )
+
+    if ray_matches and python_matches:
+        if not python_full_matches:
+            logger.warning(f"Python patch version mismatch: {mismatch_msg}")
+    else:
+        error_message = f"Version mismatch: {mismatch_msg}"
+        if raise_on_mismatch:
+            raise RuntimeError(error_message)
+        else:
+            logger.warning(error_message)
 
 
 def get_runtime_env_info(

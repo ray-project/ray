@@ -3,12 +3,12 @@ import unittest
 import gymnasium as gym
 import numpy as np
 
-from ray.rllib.env.utils import BufferWithInfiniteLookback
+from ray.rllib.env.utils.infinite_lookback_buffer import InfiniteLookbackBuffer
 from ray.rllib.utils.spaces.space_utils import batch, get_dummy_batch_for_space
 from ray.rllib.utils.test_utils import check
 
 
-class TestBufferWithInfiniteLookback(unittest.TestCase):
+class TestInfiniteLookbackBuffer(unittest.TestCase):
     space = gym.spaces.Dict(
         {
             "a": gym.spaces.Discrete(4),
@@ -49,7 +49,7 @@ class TestBufferWithInfiniteLookback(unittest.TestCase):
     }
 
     def test_append_and_pop(self):
-        buffer = BufferWithInfiniteLookback(data=[0, 1, 2, 3])
+        buffer = InfiniteLookbackBuffer(data=[0, 1, 2, 3])
         self.assertTrue(len(buffer), 4)
         buffer.append(4)
         self.assertTrue(len(buffer), 5)
@@ -82,9 +82,7 @@ class TestBufferWithInfiniteLookback(unittest.TestCase):
         self.assertTrue(buffer.get(indices=0) == 0)
 
     def test_complex_structs(self):
-        buffer = BufferWithInfiniteLookback(
-            data=[self.space.sample() for _ in range(4)]
-        )
+        buffer = InfiniteLookbackBuffer(data=[self.space.sample() for _ in range(4)])
         self.assertTrue(len(buffer), 4)
         buffer.append(self.space.sample())
         self.assertTrue(len(buffer), 5)
@@ -101,7 +99,7 @@ class TestBufferWithInfiniteLookback(unittest.TestCase):
         self.assertTrue(isinstance(buffer.data["c"][1], np.ndarray))
 
     def test_lookback(self):
-        buffer = BufferWithInfiniteLookback(data=[0, 1, 2, 3], lookback=2)
+        buffer = InfiniteLookbackBuffer(data=[0, 1, 2, 3], lookback=2)
         self.assertTrue(len(buffer), 2)
         data_no_lookback = buffer.get()
         check(data_no_lookback, [2, 3])
@@ -118,7 +116,7 @@ class TestBufferWithInfiniteLookback(unittest.TestCase):
 
     def test_get_with_lookback(self):
         """Tests `get` and `getitem` functionalities with a lookback range > 0."""
-        buffer = BufferWithInfiniteLookback(data=[0, 1, 2, 3, 4], lookback=2)
+        buffer = InfiniteLookbackBuffer(data=[0, 1, 2, 3, 4], lookback=2)
 
         # Test on ongoing and finalized buffer.
         for finalized in [False, True]:
@@ -242,7 +240,7 @@ class TestBufferWithInfiniteLookback(unittest.TestCase):
 
     def test_get_with_lookback_and_fill(self):
         """Tests the `fill` argument of `get` with a lookback range >0."""
-        buffer = BufferWithInfiniteLookback(
+        buffer = InfiniteLookbackBuffer(
             data=[0, 1, 2, 3, 4, 5],
             lookback=3,
             # Specify a space, so we can fill and one-hot discrete data properly.
@@ -299,7 +297,7 @@ class TestBufferWithInfiniteLookback(unittest.TestCase):
 
     def test_get_with_fill_and_neg_indices_into_lookback_buffer(self):
         """Tests the `fill` argument of `get` with a lookback range >0."""
-        buffer = BufferWithInfiniteLookback(
+        buffer = InfiniteLookbackBuffer(
             data=[0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10],
             lookback=4,
             # Specify a space, so we can fill and one-hot discrete data properly.
@@ -415,7 +413,7 @@ class TestBufferWithInfiniteLookback(unittest.TestCase):
 
     def test_get_with_fill_0_and_zero_hot(self):
         """Tests, whether zero-hot is properly done when fill=0."""
-        buffer = BufferWithInfiniteLookback(
+        buffer = InfiniteLookbackBuffer(
             data=[0, 1, 0, 1],
             # Specify a space, so we can fill and one-hot discrete data properly.
             space=gym.spaces.Discrete(2),
@@ -442,7 +440,7 @@ class TestBufferWithInfiniteLookback(unittest.TestCase):
 
     def test_get_with_complex_space(self):
         """Tests, whether zero-hot is properly done when fill=0."""
-        buffer = BufferWithInfiniteLookback(
+        buffer = InfiniteLookbackBuffer(
             data=[
                 get_dummy_batch_for_space(
                     space=self.space,
@@ -508,7 +506,7 @@ class TestBufferWithInfiniteLookback(unittest.TestCase):
             )
 
     def test_set(self):
-        buffer = BufferWithInfiniteLookback(
+        buffer = InfiniteLookbackBuffer(
             data=[0, 1, 2, 3, 4, 5, 6, 7],
             lookback=2,
         )
@@ -584,7 +582,7 @@ class TestBufferWithInfiniteLookback(unittest.TestCase):
 
     def test_set_with_complex_space(self):
         """Tests setting data in a buffer using a complex space."""
-        buffer = BufferWithInfiniteLookback(
+        buffer = InfiniteLookbackBuffer(
             data=[
                 get_dummy_batch_for_space(
                     space=self.space,
