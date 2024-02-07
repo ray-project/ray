@@ -338,7 +338,9 @@ If you were training a stable diffusion model, you could save
 some sample generated images every so often as a training artifact.
 
 By default, the worker's current working directory is set to the local version of the "trial directory."
-For example, ``~/ray_results/experiment_name/TorchTrainer_46367_00000_0_...`` in the example above.
+For example, this would be ``~/ray_results/experiment_name/TorchTrainer_46367_00000_0_...`` in the example above.
+See :ref:`below <train-working-directory>` for how to disable this change in the working directory,
+if you want your training workers to keep their original working directories.
 
 If :class:`RunConfig(SyncConfig(sync_artifacts=True)) <ray.train.SyncConfig>`, then
 all artifacts saved in this directory will be persisted to storage.
@@ -395,6 +397,63 @@ Customize this intermediate local directory with the ``RAY_AIR_LOCAL_CACHE_DIR``
     os.environ["RAY_AIR_LOCAL_CACHE_DIR"] = "/tmp/custom/"
 
     ...
+
+.. _train-working-directory:
+
+Keep the original current working directory
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+To disable the default behavior of Ray Train changing the current working directory,
+set the ``RAY_CHDIR_TO_TRIAL_DIR=0`` environment variable.
+
+This is useful if you want your training workers to access relative paths from the
+directory you launched the training script from.
+
+.. tip::
+
+    When running in a distributed cluster, you will need to make sure that all workers
+    have a mirrored working directory to access the same relative paths.
+
+    One way to achieve this is setting the
+    :ref:`working directory in the Ray runtime environment <workflow-local-files>`.
+
+.. testcode::
+
+    import os
+
+    import ray
+    import ray.train
+    from ray.train.torch import TorchTrainer
+
+    os.environ["RAY_CHDIR_TO_TRIAL_DIR"] = "0"
+
+    # Write some file in the current working directory
+    with open("./data.txt", "w") as f:
+        f.write("some data")
+
+    # Set the working directory in the Ray runtime environment
+    ray.init(runtime_env={"working_dir": "."})
+
+    def train_fn_per_worker(config):
+        # Check that each worker can access the working directory
+        # NOTE: The working directory is copied to each worker and is read only.
+        assert os.path.exists("./data.txt"), os.getcwd()
+
+        # If `SyncConfig(sync_artifacts=True)`, write artifacts that you want to
+        # persist in the trial directory.
+        # Artifacts written in the current working directory will NOT be persisted.
+        ray.train.get_context().get_trial_dir()
+
+    trainer = TorchTrainer(
+        train_fn_per_worker,
+        scaling_config=ray.train.ScalingConfig(num_workers=2),
+        run_config=ray.train.RunConfig(
+            # storage_path=...,
+            sync_config=ray.train.SyncConfig(sync_artifacts=True),
+        ),
+    )
+    trainer.fit()
+
 
 .. _train-ray-storage:
 

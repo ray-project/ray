@@ -97,9 +97,6 @@ TRAIN_ENV_VARS = {
     RAY_TRAIN_COUNT_PREEMPTION_AS_FAILURE,
 }
 
-# Blacklist virtualized networking.
-DEFAULT_NCCL_SOCKET_IFNAME = "^lo,docker,veth"
-
 # Key for AIR Checkpoint metadata in TrainingResult metadata
 CHECKPOINT_METADATA_KEY = "checkpoint_metadata"
 
