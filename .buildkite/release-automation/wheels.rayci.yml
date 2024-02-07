@@ -3,7 +3,7 @@ steps:
   - name: forge
     wanda: .buildkite/release-automation/forge_x86_64.wanda.yaml
 
-  - label: "Verify Python {{matrix}}"
+  - label: "Linux x86_64 Python {{matrix}}"
     depends_on: forge
     commands:
       - export PYTHON_VERSION={{matrix}}
@@ -18,8 +18,9 @@ steps:
     wanda: .buildkite/release-automation/forge_arm64.wanda.yaml
     instance_type: builder-arm64
 
-  - label: "Verify ARM64 Python {{matrix}}"
+  - label: "Linux Arm64 Python {{matrix}}"
     depends_on: forge_arm64
+    instance_type: medium-arm64
     commands:
       - export PYTHON_VERSION={{matrix}}
       - bash -i .buildkite/release-automation/verify-linux-wheels.sh
