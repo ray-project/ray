@@ -1,4 +1,4 @@
-group: Verify wheels
+group: Validate wheels
 steps:
   - name: forge
     wanda: .buildkite/release-automation/forge_x86_64.wanda.yaml
