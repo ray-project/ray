@@ -292,9 +292,9 @@ def read_datasource(
         parallelism: This argument is deprecated. Use ``override_num_blocks`` argument.
         ray_remote_args: kwargs passed to :meth:`ray.remote` in the read tasks.
         concurrency: The maximum number of Ray tasks to run concurrently. Set this
-            less than `parallelism` to control number of tasks to run concurrently.
-            This doesn't change the total number of tasks run. By default, concurrency
-            is dynamically decided based on available resource.
+            to control number of tasks to run concurrently. This doesn't change the
+            total number of tasks run or the total number of output blocks. By default,
+            concurrency is dynamically decided based on available resource.
         override_num_blocks: Override the number of output blocks of read tasks. By
             default, the number of output blocks is dynamically decided based on
             input data size and available resource. You should not need to manually
@@ -686,9 +686,9 @@ def read_parquet(
             stored in the ``'path'`` column.
         file_extensions: A list of file extensions to filter files by.
         concurrency: The maximum number of Ray tasks to run concurrently. Set this
-            less than `parallelism` to control number of tasks to run concurrently.
-            This doesn't change the total number of tasks run. By default, concurrency
-            is dynamically decided based on available resource.
+            to control number of tasks to run concurrently. This doesn't change the
+            total number of tasks run or the total number of output blocks. By default,
+            concurrency is dynamically decided based on available resource.
         override_num_blocks: Override the number of output blocks of read tasks. By
             default, the number of output blocks is dynamically decided based on
             input data size and available resource. You should not need to manually
