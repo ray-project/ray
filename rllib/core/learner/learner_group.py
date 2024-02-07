@@ -151,16 +151,14 @@ class LearnerGroup:
             #  to issues with placement group fragmentation. See
             #  https://github.com/ray-project/ray/issues/35409 for more details.
             num_cpus_per_worker = (
-                (
-                    self.config.num_cpus_per_learner_worker
-                    if not self.config.num_gpus_per_learner_worker
-                    else 0
-                ),
+                self.config.num_cpus_per_learner_worker
+                if not self.config.num_gpus_per_learner_worker
+                else 0
             )
             num_gpus_per_worker = self.config.num_gpus_per_learner_worker
             resources_per_worker = {
                 "CPU": num_cpus_per_worker,
-                "GPU": num_gpus_per_worker,
+                "GPU": num_gpus_per_worker
             }
 
             backend_executor = BackendExecutor(
