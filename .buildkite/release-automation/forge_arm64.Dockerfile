@@ -19,9 +19,6 @@ ln -s /usr/bin/clang-format-12 /usr/bin/clang-format && \
 ln -s /usr/bin/clang-tidy-12 /usr/bin/clang-tidy && \
 ln -s /usr/bin/clang-12 /usr/bin/clang
 
-ENV CC=clang
-ENV CXX=clang++-12
-
 # Install miniconda
 curl -sfL https://repo.anaconda.com/miniconda/Miniconda3-py38_23.1.0-1-Linux-aarch64.sh > /tmp/miniconda.sh
 bash /tmp/miniconda.sh -b -u -p /root/miniconda3
@@ -34,8 +31,11 @@ chmod +x bazelisk
 
 mv bazelisk /usr/bin/
 ln -s /usr/bin/bazelisk /usr/bin/bazel
-export USE_BAZEL_VERSION=5.4.1
 
 EOF
+
+ENV CC=clang
+ENV CXX=clang++-12
+ENV USE_BAZEL_VERSION=5.4.1
 
 CMD ["echo", "ray release-automation forge"]
