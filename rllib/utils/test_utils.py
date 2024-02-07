@@ -29,6 +29,7 @@ import yaml
 
 import ray
 from ray import air, tune
+from ray.air.integrations.wandb import WandbLoggerCallback
 from ray.rllib.env.wrappers.atari_wrappers import is_atari, wrap_deepmind
 from ray.rllib.utils.framework import try_import_jax, try_import_tf, try_import_torch
 from ray.rllib.utils.metrics import (
@@ -83,7 +84,7 @@ def add_rllib_examples_script_args(
         parser = argparse.ArgumentParser()
 
     parser.add_argument(
-        "--run", type=str, default="PPO", help="The RLlib-registered algorithm to use."
+        "--algo", type=str, default="PPO", help="The RLlib-registered algorithm to use."
     )
     parser.add_argument(
         "--enable-new-api-stack",
@@ -122,6 +123,46 @@ def add_rllib_examples_script_args(
     parser.add_argument(
         "--stop-timesteps", type=int, default=default_timesteps,
         help="The number of (environment sampling) timesteps to train."
+    )
+    parser.add_argument(
+        "--no-tune",
+        action="store_true",
+        help="Whether to NOT use tune.Tuner(), but rather a simple for-loop calling "
+             "`algo.train()` repeatedly until one of the stop criteria is met.",
+    )
+    parser.add_argument(
+        "--verbose",
+        type=int,
+        default=2,
+        help="The verbosity level for the `tune.Tuner()` running the experiment.",
+    )
+    parser.add_argument(
+        "--wandb-key",
+        type=str,
+        default=None,
+        help="The WandB API key to use for uploading results.",
+    )
+    parser.add_argument(
+        "--wandb-project",
+        type=str,
+        default=None,
+        help="The WandB project name to use.",
+    )
+    parser.add_argument(
+        "--wandb-run-name",
+        type=str,
+        default=None,
+        help="The WandB run name to use.",
+    )
+    parser.add_argument(
+        "--checkpoint-freq",
+        type=int,
+        default=0,
+        help=(
+            "The frequency (in training iterations) with which to create checkpoints. "
+            "Note that if --wandb-key is provided, these checkpoints will automatically "
+            "be uploaded to WandB."
+        ),
     )
     return parser
 
@@ -1053,6 +1094,59 @@ def run_learning_tests_from_yaml(
     }
 
     return result
+
+
+def run_rllib_examples_script_experiment(config, args):
+
+    stop = {
+        "training_iteration": args.stop_iters,
+        "episode_reward_mean": args.stop_reward,
+        "timesteps_total": args.stop_timesteps,
+    }
+
+    if args.no_tune:
+        algo = config.build()
+        for iter in range(args.stop_iters):
+            results = algo.train()
+            print(f"R={results['episode_reward_mean']}")
+            for key, value in stop.items():
+                if results.get(key, float("-inf")) > value:
+                    print(f"Stop criterium ({key}={value}) reached!")
+                    break
+        return results
+
+    if args.wandb_key is not None:
+        project = args.wandb_project or (
+            args.algo.lower()
+            + "-"
+            + re.sub("\\W+", "-", str(config.env).lower())
+        )
+        callbacks = [
+            WandbLoggerCallback(
+                api_key=args.wandb_key,
+                project=project,
+                upload_checkpoints=True,
+                **({"name": args.wandb_run_name} if args.wandb_run_name else {}),
+            )
+        ]
+
+    results = tune.Tuner(
+        args.algo,
+        param_space=config,
+        run_config=air.RunConfig(
+            stop=stop,
+            verbose=2 if args.verbose else 1,
+            callbacks=callbacks,
+            checkpoint_config=air.CheckpointConfig(
+                checkpoint_frequency=args.checkpoint_freq,
+            ),
+        ),
+    ).fit()
+
+    if args.as_test:
+        check_learning_achieved(results, args.stop_reward)
+
+    return results
 
 
 def check_same_batch(batch1, batch2) -> None:

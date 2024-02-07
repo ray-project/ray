@@ -1,9 +1,7 @@
-import argparse
 from gymnasium.spaces import Dict, Tuple, Box, Discrete, MultiDiscrete
 import os
 
 import ray
-from ray import air, tune
 from ray.tune.registry import register_env
 from ray.rllib.connectors.env_to_module import (
     AddLastObservationToBatch,
@@ -16,16 +14,17 @@ from ray.rllib.examples.env.nested_space_repeat_after_me_env import (
 )
 from ray.rllib.utils.test_utils import (
     add_rllib_examples_script_args,
-    check_learning_achieved,
+    run_rllib_examples_script_experiment,
 )
 from ray.tune.registry import get_trainable_cls
 
 
-parser = add_rllib_example_script_args()
+parser = add_rllib_examples_script_args()
 
 
 if __name__ == "__main__":
     args = parser.parse_args()
+
     ray.init(num_cpus=args.num_cpus or None, local_mode=args.local_mode)
     register_env(
         "NestedSpaceRepeatAfterMeEnv", lambda c: NestedSpaceRepeatAfterMeEnv(c)
@@ -42,7 +41,7 @@ if __name__ == "__main__":
         ]
 
     config = (
-        get_trainable_cls(args.run)
+        get_trainable_cls(args.algo)
         .get_default_config()
         # Use new API stack for PPO only.
         .experimental(_enable_new_api_stack=args.enable_new_api_stack)
@@ -61,9 +60,11 @@ if __name__ == "__main__":
                 ),
                 "space": Dict(
                     {
-                        "a": Box(-10.0, 10.0, (1,)),
+                        "a": Box(-1.0, 1.0, (1,)),
+                        #"b": Discrete(100),
                     }
                 ),
+                "episode_len": 10,
             },
         )
         .framework(args.framework)
@@ -74,12 +75,16 @@ if __name__ == "__main__":
             env_runner_cls=SingleAgentEnvRunner if args.enable_new_api_stack else None,
         )
         # No history in Env (bandit problem).
-        .training(gamma=0.0, lr=0.0005, model={"uses_new_env_runners": True})
+        .training(
+            gamma=0.97,#0.0
+            lr=0.0005,
+            model={"uses_new_env_runners": True},
+        )
         # Use GPUs iff `RLLIB_NUM_GPUS` env var set to > 0.
         .resources(num_gpus=int(os.environ.get("RLLIB_NUM_GPUS", "0")))
     )
 
-    if args.run == "PPO":
+    if args.algo == "PPO":
         config.training(
             # We don't want high entropy in this Env.
             entropy_coeff=0.00005,
@@ -87,22 +92,4 @@ if __name__ == "__main__":
             vf_loss_coeff=0.01,
         )
 
-    stop = {
-        "training_iteration": args.stop_iters,
-        "episode_reward_mean": args.stop_reward,
-        "timesteps_total": args.stop_timesteps,
-    }
-
-    algo = config.build()#TODO
-    for _ in range(1000):
-        results = algo.train()
-        print(results["episode_reward_mean"])
-
-    results = tune.Tuner(
-        args.run, param_space=config, run_config=air.RunConfig(stop=stop, verbose=1)
-    ).fit()
-
-    if args.as_test:
-        check_learning_achieved(results, args.stop_reward)
-
-    ray.shutdown()
+    run_rllib_examples_script_experiment(config, args)

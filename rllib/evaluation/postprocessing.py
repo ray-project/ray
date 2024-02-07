@@ -117,7 +117,7 @@ def compute_advantages(
     ), "use_critic=True but values not found"
     assert use_critic or not use_gae, "Can't use gae without using a value function"
     last_r = convert_to_numpy(last_r)
-
+    #print(last_r)
     if rewards is None:
         rewards = rollout[SampleBatch.REWARDS]
     if vf_preds is None and use_critic:
@@ -132,6 +132,7 @@ def compute_advantages(
         rollout[Postprocessing.VALUE_TARGETS] = (
             rollout[Postprocessing.ADVANTAGES] + vf_preds
         ).astype(np.float32)
+        #print(rollout[Postprocessing.VALUE_TARGETS].mean())
     else:
         rewards_plus_v = np.concatenate([rewards, np.array([last_r])])
         discounted_returns = discount_cumsum(rewards_plus_v, gamma)[:-1].astype(
@@ -219,6 +220,7 @@ def compute_gae_for_sample_batch(
             batch[Postprocessing.ADVANTAGES], axis=1
         )
 
+    #print(batch[Postprocessing.ADVANTAGES].mean())
     return batch
 
 

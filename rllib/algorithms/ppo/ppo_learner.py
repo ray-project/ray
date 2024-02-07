@@ -79,6 +79,13 @@ class PPOLearner(Learner):
         else:
             sa_episodes_list = episodes
 
+        # TEST:
+        actions = []
+        from ray.rllib.utils.spaces.space_utils import unbatch
+        for eps in episodes:
+            actions.extend(np.abs(unbatch(eps.get_actions()["a"])))
+        print(np.mean(actions))#self.register_metric("default_policy", "mean actions", actions)
+
         # Make all episodes one ts longer in order to just have a single batch
         # (and distributed forward pass) for both vf predictions AND the bootstrap
         # vf computations.
@@ -148,11 +155,21 @@ class PPOLearner(Learner):
                 batch[module_id][Postprocessing.VALUE_TARGETS]
                 - batch[module_id][SampleBatch.VF_PREDS]
             )
+            self.register_metric(module_id, "raw_advantages", module_advantages)
+            self.register_metric(module_id, "bootstrap_values", module_vf_preds)
             # Standardize advantages (used for more stable and better weighted
             # policy gradient computations).
             batch[module_id][Postprocessing.ADVANTAGES] = (
                 module_advantages - module_advantages.mean()
             ) / max(1e-4, module_advantages.std())
+
+            self.register_metrics(
+                module_id,
+                {
+                    k: batch[module_id][k]
+                    for k in [Postprocessing.VALUE_TARGETS, Postprocessing.ADVANTAGES]
+                },
+            )
 
         # Remove the extra (artificial) timesteps again at the end of all episodes.
         remove_last_ts_from_episodes_and_restore_truncateds(

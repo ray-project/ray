@@ -22,14 +22,14 @@ config = (
             "vf_share_layers": True,
         },
     )
-    .evaluation(
-        evaluation_num_workers=1,
-        evaluation_interval=1,
-        enable_async_evaluation=True,
-    )
+    #.evaluation(
+    #    evaluation_num_workers=1,
+    #    evaluation_interval=1,
+    #    enable_async_evaluation=True,
+    #)
 )
 
 stop = {
     "timesteps_total": 100000,
-    "evaluation/sampler_results/episode_reward_mean": 150.0,
+    "sampler_results/episode_reward_mean": 150.0,
 }
