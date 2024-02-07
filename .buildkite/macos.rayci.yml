@@ -96,3 +96,29 @@ steps:
     soft_fail: true
     commands:
       - RAY_INSTALL_JAVA=1 ./ci/ray_ci/macos/macos_ci.sh run_ray_cpp_and_java
+
+  - label: ":ray: core: :mac: small & large flaky tests"
+    tags: 
+      - core_cpp
+      - python
+      - macos_wheels
+      - oss
+      - skip_on_premerge
+    job_env: MACOS
+    instance_type: macos
+    soft_fail: true
+    commands:
+      - ./ci/ray_ci/macos/macos_ci.sh run_small_and_large_flaky_tests
+
+  - label: ":ray: core: :mac: medium flaky tests"
+    tags: 
+      - core_cpp
+      - python
+      - macos_wheels
+      - oss
+      - skip_on_premerge
+    job_env: MACOS
+    instance_type: macos
+    soft_fail: true
+    commands:
+      - ./ci/ray_ci/macos/macos_ci.sh run_medium_flaky_tests

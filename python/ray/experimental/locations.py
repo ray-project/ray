@@ -24,7 +24,8 @@ def get_object_locations(
         The location is stored as a dict with following attributes:
 
         - node_ids (List[str]): The hex IDs of the nodes that have a
-          copy of this object.
+          copy of this object. Objects less than 100KB will be in memory
+          store not plasma store and therefore will have nodes_id = [].
 
         - object_size (int): The size of data + metadata in bytes.
 

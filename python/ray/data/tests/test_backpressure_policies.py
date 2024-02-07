@@ -181,12 +181,12 @@ class TestStreamOutputBackpressurePolicy(unittest.TestCase):
         name,
         outqueue_num_blocks=0,
         num_active_tasks=0,
-        num_outputs_generated=0,
+        num_task_outputs_generated=0,
     ):
         op = MagicMock()
         op.__str__.return_value = f"Op({name})"
         op.num_active_tasks.return_value = num_active_tasks
-        op.metrics.num_outputs_generated = num_outputs_generated
+        op.metrics.num_task_outputs_generated = num_task_outputs_generated
 
         state = MagicMock()
         state.__str__.return_value = f"OpState({name})"
@@ -251,7 +251,7 @@ class TestStreamOutputBackpressurePolicy(unittest.TestCase):
             }
 
             # down_up now has outputs, so we won't allow up_op to read any more.
-            down_op.metrics.num_outputs_generated = 1
+            down_op.metrics.num_task_outputs_generated = 1
             res = policy.calculate_max_blocks_to_read_per_op(topology)
             assert res == {
                 up_state: 0,
@@ -333,16 +333,13 @@ class TestStreamOutputBackpressurePolicy(unittest.TestCase):
         )
 
 
-@pytest.mark.skip("Re-enable after enabling StreamingOutputBackpressurePolicy.")
 def test_large_e2e_backpressure(shutdown_only, restore_data_context):  # noqa: F811
     """Test backpressure on a synthetic large-scale workload."""
     # The cluster has 10 CPUs and 200MB object store memory.
     # The dataset will have 200MB * 25% = 50MB memory budget.
     #
     # Each produce task generates 10 blocks, each of which has 10MB data.
-    #
-    # Without any backpressure, the producer tasks will output at most
-    # 10 * 10 * 10MB = 1000MB data.
+    # In total, there will be 10 * 10 * 10MB = 1000MB intermediate data.
     #
     # With StreamingOutputBackpressurePolicy and the following configuration,
     # the executor will still schedule 10 produce tasks, but only the first task is
@@ -350,7 +347,7 @@ def test_large_e2e_backpressure(shutdown_only, restore_data_context):  # noqa: F
     # (10 + 9 * 1 + 1) * 10MB = 200MB, where
     # - 10 is the number of blocks in the first task.
     # - 9 * 1 is the number of blocks pending at the streaming generator level of
-    #   the other 15 tasks.
+    #   the other 9 tasks.
     # - 1 is the number of blocks pending at the output queue.
 
     NUM_CPUS = 10
@@ -365,9 +362,13 @@ def test_large_e2e_backpressure(shutdown_only, restore_data_context):  # noqa: F
         + (NUM_CPUS - 1) * STREMING_GEN_BUFFER_SIZE
         + OP_OUTPUT_QUEUE_SIZE
     ) * BLOCK_SIZE
+    # Set the object store memory to be slightly larger than the pending data
+    # size because object store spilling is triggered at 80% capacity.
+    object_store_memory = max_pending_block_bytes / 0.8 + BLOCK_SIZE
     print(f"max_pending_block_bytes: {max_pending_block_bytes/1024/1024}MB")
+    print(f"object_store_memory: {object_store_memory/1024/1024}MB")
 
-    ray.init(num_cpus=NUM_CPUS, object_store_memory=200 * 1024 * 1024)
+    ray.init(num_cpus=NUM_CPUS, object_store_memory=object_store_memory)
 
     def produce(batch):
         print("Produce task started", batch["id"])
@@ -419,13 +420,10 @@ def test_large_e2e_backpressure(shutdown_only, restore_data_context):  # noqa: F
         last_snapshot = assert_core_execution_metrics_equals(
             CoreExecutionMetrics(
                 object_store_stats={
-                    "spilled_bytes_total": lambda x: x
-                    <= 1.5 * max_created_bytes_per_consumption,
-                    "restored_bytes_total": lambda x: x
-                    <= 1.5 * max_created_bytes_per_consumption,
+                    "spilled_bytes_total": 0,
+                    "restored_bytes_total": 0,
                     "cumulative_created_plasma_bytes": lambda x: x
                     <= 1.5 * max_created_bytes_per_consumption,
-                    "cumulative_created_plasma_objects": lambda _: True,
                 },
             ),
             last_snapshot,
@@ -434,7 +432,5 @@ def test_large_e2e_backpressure(shutdown_only, restore_data_context):  # noqa: F
 
 if __name__ == "__main__":
     import sys
-
-    import pytest
 
     sys.exit(pytest.main(["-v", __file__]))
