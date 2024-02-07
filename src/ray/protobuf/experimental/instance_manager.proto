@@ -111,6 +111,9 @@ message Instance {
   string launch_request_id = 11;
   // The instance STOPPED details.
   string exit_details = 12;
+  // The node config hash when launched. This is used to detect outdated
+  // node, which needs to terminated.
+  string launch_config_hash = 13;
 }
 
 // Update event for an instance.
@@ -145,6 +148,8 @@ message TerminationRequest {
     MAX_NUM_NODE_PER_TYPE = 2;
     // Global max num nodes reached.
     MAX_NUM_NODES = 3;
+    // Outdated node.
+    OUTDATED = 4;
   }
   // id of the request.
   string id = 1;
@@ -156,7 +161,7 @@ message TerminationRequest {
   Cause cause = 4;
 
   // Idle time if the cause is IDLE.
-  optional uint64 idle_time_ms = 5;
+  optional uint64 idle_duration_ms = 5;
   // The per type max instance limit if the cause is MAX_NUM_NODE_PER_TYPE.
   optional uint32 max_num_nodes_per_type = 6;
   // The global max num nodes if the cause is MAX_NUM_NODES.
