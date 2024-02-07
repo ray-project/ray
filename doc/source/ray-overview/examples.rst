@@ -228,6 +228,13 @@ Ray Examples
         :link-type: doc
 
         Serving a Bert Model on AWS NeuronCore
+        
+    .. grid-item-card:: :bdg-secondary:`Code example`
+        :class-item: gallery-item serving inference aws-neuron-core
+        :link: /serve/tutorials/aws-neuron-core-inference-stablediffusion
+        :link-type: doc
+
+        Serving a StableDiffusion Model on AWS NeuronCore    
 
     .. grid-item-card:: :bdg-secondary:`Code example`
         :class-item: gallery-item computer-vision serving
