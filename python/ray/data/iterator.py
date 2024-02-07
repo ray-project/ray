@@ -844,15 +844,6 @@ class DataIterator(abc.ABC):
         )
         return dataset.with_options(options)
 
-    def iter_epochs(self, max_epoch: int = -1) -> None:
-        raise DeprecationWarning(
-            "If you are using Ray Train, ray.train.get_dataset_shard() "
-            "returns a ray.data.DataIterator instead of a "
-            "DatasetPipeline as of Ray 2.3. "
-            "To iterate over one epoch of data, use iter_batches(), "
-            "iter_torch_batches(), or to_tf()."
-        )
-
     def __del__(self):
         # Clear metrics on deletion in case the iterator was not fully consumed.
         StatsManager.clear_iteration_metrics(self._get_dataset_tag())
