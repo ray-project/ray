@@ -95,9 +95,9 @@ def skip_internal_stack_frames(ex: Exception) -> Exception:
     # to the Ray Data log file.
     data_exception_logger.get_logger().error(
         "Exception occured in user code. By default, the Ray Data internal stack "
-        "trace is omitted from stdout, and only written to `ray-data.log`. "
-        "To output the full stack trace to stdout, set "
-        "`DataContext.internal_stack_trace_stdout = True`."
+        "trace is omitted from stdout, and only written to the Ray Data log file at "
+        f"{data_exception_logger._log_path}. To output the full stack trace to stdout, "
+        "set `DataContext.internal_stack_trace_stdout = True`."
     )
     return UserCodeException(*ex.args).with_traceback(ex.__traceback__)
 
@@ -134,6 +134,7 @@ class DatasetLogger:
         self.log_name = log_name
         # Lazily initialized in self._initialize_logger()
         self._logger = None
+        self._log_path = None
 
     def _initialize_logger(self) -> logging.Logger:
         """Internal method to initialize the logger and the extra file handler
@@ -171,6 +172,7 @@ class DatasetLogger:
                 session_dir,
                 DatasetLogger.DEFAULT_DATASET_LOG_PATH,
             )
+            self._log_path = datasets_log_path
             file_log_formatter = logging.Formatter(fmt=LOGGER_FORMAT)
             file_log_handler = logging.FileHandler(datasets_log_path)
             file_log_handler.setLevel(LOGGER_LEVEL.upper())
