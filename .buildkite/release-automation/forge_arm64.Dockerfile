@@ -19,6 +19,15 @@ bash /tmp/miniconda.sh -b -u -p /root/miniconda3
 rm /tmp/miniconda.sh
 /root/miniconda3/bin/conda init bash
 
+# Install Bazelisk
+curl -L https://github.com/bazelbuild/bazelisk/releases/download/v1.19.0/bazelisk-linux-arm64 --output bazelisk
+chmod +x bazelisk
+
+mkdir -p ~/bin
+mv bazelisk ~/bin/
+export PATH=$PATH:~/bin
+bazelisk
+
 EOF
 
 CMD ["echo", "ray release-automation forge"]
