@@ -1,3 +1,4 @@
+from collections import defaultdict
 from functools import partial
 from typing import Any, List, Optional
 
@@ -7,7 +8,12 @@ import tree
 from ray.rllib.connectors.connector_v2 import ConnectorV2
 from ray.rllib.core.models.base import STATE_IN, STATE_OUT
 from ray.rllib.core.rl_module.rl_module import RLModule
-from ray.rllib.policy.sample_batch import SampleBatch
+from ray.rllib.env.multi_agent_episode import MultiAgentEpisode
+from ray.rllib.policy.sample_batch import (
+    DEFAULT_POLICY_ID,
+    MultiAgentBatch,
+    SampleBatch,
+)
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.numpy import convert_to_numpy
 from ray.rllib.utils.typing import EpisodeType
@@ -54,123 +60,158 @@ class DefaultLearnerConnector(ConnectorV2):
         if not episodes:
             return data
 
-        # Get the data dicts for all episodes.
-        data_dicts = [episode.get_data_dict() for episode in episodes]
-
-        state_in = None
-        T = rl_module.config.model_config_dict.get("max_seq_len")
-
-        # RLModule is stateful and STATE_IN is not found in `data` (user's custom
-        # connectors have not provided this information yet) -> Perform separate
-        # handling of STATE_OUT/STATE_IN keys:
-        if rl_module.is_stateful() and STATE_IN not in data:
-            if T is None:
-                raise ValueError(
-                    "You are using a stateful RLModule and are not providing custom "
-                    f"'{STATE_IN}' data through your connector(s)! Therefore, you need "
-                    "to provide the 'max_seq_len' key inside your model config dict. "
-                    "You can set this dict and/or override keys in it via "
-                    "`config.training(model={'max_seq_len': x})`."
-                )
-            # Get model init state.
-            init_state = convert_to_numpy(rl_module.get_initial_state())
-            # Get STATE_OUTs for all episodes and only keep those (as STATE_INs) that
-            # are located at the `max_seq_len` edges (state inputs to RNNs only have a
-            # B-axis, no T-axis).
-            state_ins = []
-            for episode, data_dict in zip(episodes, data_dicts):
-                # Remove state outs (should not be part of the T-axis rearrangements).
-                state_outs = data_dict.pop(STATE_OUT)
-                state_ins.append(
-                    tree.map_structure(
-                        # [::T] = only keep every Tth (max_seq_len) state in.
-                        # [:-1] = shift state outs by one (ignore very last state out,
-                        # but therefore add the init state at the beginning).
-                        lambda i, o: np.concatenate([[i], o[:-1]])[::T],
-                        (
-                            # Episode has a (reset) beginning -> Prepend initial state.
-                            init_state
-                            if episode.t_started == 0
-                            # Episode starts somewhere in the middle (is a cut
-                            # continuation chunk) -> Use previous chunk's last STATE_OUT
-                            # as initial state.
-                            else episode.get_extra_model_outputs(
-                                key=STATE_OUT, indices=-1, neg_indices_left_of_zero=True
-                            )
-                        ),
-                        state_outs,
+        if isinstance(episodes[0], MultiAgentEpisode):
+            # TODO (sven): Support multi-agent cases, in which user defined learner
+            #  connector pieces before this (default) one here.
+            #  Probably the only solution here would be to introduce the connector
+            #  input/output types.
+            # assert not data
+            module_to_episodes = defaultdict(list)
+            for ma_episode in episodes:
+                for agent_id, sa_episode in ma_episode.agent_episodes.items():
+                    module_to_episodes[ma_episode.agent_to_module_map[agent_id]].append(
+                        sa_episode
                     )
-                )
-            # Concatenate the individual episodes' STATE_INs.
-            state_in = tree.map_structure(lambda *s: np.concatenate(s), *state_ins)
-
-            # Before adding anything else to the `data`, add the time axis to existing
-            # data.
-            data = tree.map_structure(
-                lambda s: split_and_pad_single_record(s, episodes, T=T),
-                data,
-            )
-
-            # Set the reduce function for all the data we might still have to extract
-            # from our list of episodes. This function takes a list of data (e.g. obs)
-            # with each item in the list representing one episode and properly
-            # splits along the time axis and zero-pads if necessary (based on
-            # T=max_seq_len).
-            reduce_fn = partial(split_and_pad, T=T)
-
-        # No stateful module, normal batch (w/o T-axis or zero-padding).
         else:
-            # Set the reduce function for all the data we might still have to extract
-            # from our list of episodes. Simply concatenate the data from the different
-            # episodes along the batch axis (axis=0).
-            reduce_fn = np.concatenate
+            module_to_episodes = {DEFAULT_POLICY_ID: episodes}
 
-        # Extract all data from the episodes and add to `data`, if not already in
-        # `data`.
-        for key in [
-            SampleBatch.OBS,
-            SampleBatch.ACTIONS,
-            SampleBatch.REWARDS,
-            SampleBatch.TERMINATEDS,
-            SampleBatch.TRUNCATEDS,
-            SampleBatch.T,  # TODO: remove (normally not needed in train batch)
-            *episodes[0].extra_model_outputs.keys(),
-        ]:
-            if key not in data and key != STATE_OUT:
-                # Concatenate everything together (along B-axis=0).
-                data[key] = tree.map_structure(
-                    lambda *s: reduce_fn(s),
-                    *[d[key] for d in data_dicts],
+        return_data = {}
+        for module_id, episode_list in module_to_episodes.items():
+            # Get the data dicts for all episodes.
+            data_dicts = [eps.get_data_dict() for eps in episode_list]
+            sa_data = data.get(module_id, {})
+
+            state_in = None
+            T = rl_module.config.modules[module_id].model_config_dict.get("max_seq_len")
+
+            # RLModule is stateful and STATE_IN is not found in `data` (user's custom
+            # connectors have not provided this information yet) -> Perform separate
+            # handling of STATE_OUT/STATE_IN keys:
+            if rl_module.is_stateful() and STATE_IN not in sa_data:
+                if T is None:
+                    raise ValueError(
+                        "You are using a stateful RLModule and are not providing "
+                        "custom '{STATE_IN}' data through your connector(s)! "
+                        "Therefore, you need to provide the 'max_seq_len' key inside "
+                        "your model config dict. You can set this dict and/or override "
+                        "keys in it via `config.training(model={'max_seq_len': x})`."
+                    )
+                # Get model init state.
+                init_state = convert_to_numpy(rl_module.get_initial_state())
+                # Get STATE_OUTs for all episodes and only keep those (as STATE_INs)
+                # that are located at the `max_seq_len` edges (state inputs to RNNs only
+                # have a B-axis, no T-axis).
+                state_ins = []
+                for episode, data_dict in zip(episode_list, data_dicts):
+                    # Remove state outs (should not be part of the T-axis
+                    # rearrangements).
+                    state_outs = data_dict.pop(STATE_OUT)
+                    state_ins.append(
+                        tree.map_structure(
+                            # [::T] = only keep every Tth (max_seq_len) state in.
+                            # [:-1] = shift state outs by one (ignore very last state
+                            # out, but therefore add the init state at the beginning).
+                            lambda i, o: np.concatenate([[i], o[:-1]])[::T],
+                            (
+                                # Episode has a (reset) beginning -> Prepend initial
+                                # state.
+                                init_state
+                                if episode.t_started == 0
+                                # Episode starts somewhere in the middle (is a cut
+                                # continuation chunk) -> Use previous chunk's last
+                                # STATE_OUT as initial state.
+                                else episode.get_extra_model_outputs(
+                                    key=STATE_OUT,
+                                    indices=-1,
+                                    neg_indices_left_of_zero=True,
+                                )
+                            ),
+                            state_outs,
+                        )
+                    )
+                # Concatenate the individual episodes' STATE_INs.
+                state_in = tree.map_structure(lambda *s: np.concatenate(s), *state_ins)
+
+                # Before adding anything else to the `data`, add the time axis to
+                # existing data.
+                sa_data = tree.map_structure(
+                    lambda s: split_and_pad_single_record(s, episode_list, T=T),
+                    sa_data,
                 )
 
-        # Handle infos (always lists, not numpy arrays).
-        if SampleBatch.INFOS not in data:
-            data[SampleBatch.INFOS] = sum(
-                [d[SampleBatch.INFOS] for d in data_dicts],
-                [],
-            )
+                # Set the reduce function for all the data we might still have to
+                # extract from our list of episodes. This function takes a list of data
+                # (e.g. obs) with each item in the list representing one episode and
+                # properly splits along the time axis and zero-pads if necessary (based
+                # on T=max_seq_len).
+                reduce_fn = partial(split_and_pad, T=T)
 
-        # Now that all "normal" fields are time-dim'd and zero-padded, add
-        # the STATE_IN column to `data`.
-        if rl_module.is_stateful():
-            data[STATE_IN] = state_in
-            # Also, create the loss mask (b/c of our now possibly zero-padded data) as
-            # well as the seq_lens array and add these to `data` as well.
-            (data["loss_mask"], data[SampleBatch.SEQ_LENS],) = create_mask_and_seq_lens(
-                episode_lens=[len(episode) for episode in episodes],
-                T=T,
-            )
+            # No stateful module, normal batch (w/o T-axis or zero-padding).
+            else:
+                # Set the reduce function for all the data we might still have to
+                # extract from our list of episodes. Simply concatenate the data from
+                # the different episodes along the batch axis (axis=0).
+                reduce_fn = np.concatenate
 
-        # TODO (sven): Convert data to proper tensor formats, depending on framework
-        #  used by the RLModule. We cannot do this right now as the RLModule does NOT
-        #  know its own device. Only the Learner knows the device. Also, on the
-        #  EnvRunner side, we assume that it's always the CPU (even though one could
-        #  imagine a GPU-based EnvRunner + RLModule for sampling).
-        # if rl_module.framework == "torch":
-        #    data = convert_to_torch_tensor(data, device=??)
-        # elif rl_module.framework == "tf2":
-        #    data =
-        return data
+            # Extract all data from the episodes and add to `data`, if not already in
+            # `data`.
+            for key in [
+                SampleBatch.OBS,
+                SampleBatch.ACTIONS,
+                SampleBatch.REWARDS,
+                SampleBatch.TERMINATEDS,
+                SampleBatch.TRUNCATEDS,
+                SampleBatch.T,  # TODO: remove (normally not needed in train batch)
+                *episode_list[0].extra_model_outputs.keys(),
+            ]:
+                if key not in sa_data and key != STATE_OUT:
+                    # Concatenate everything together (along B-axis=0).
+                    sa_data[key] = tree.map_structure(
+                        lambda *s: reduce_fn(s),
+                        *[d[key] for d in data_dicts],
+                    )
+
+            # Handle infos (always lists, not numpy arrays).
+            if SampleBatch.INFOS not in sa_data:
+                sa_data[SampleBatch.INFOS] = sum(
+                    [d[SampleBatch.INFOS] for d in data_dicts],
+                    [],
+                )
+
+            # Now that all "normal" fields are time-dim'd and zero-padded, add
+            # the STATE_IN column to `data`.
+            if rl_module.is_stateful():
+                sa_data[STATE_IN] = state_in
+                # Also, create the loss mask (b/c of our now possibly zero-padded data)
+                # as well as the seq_lens array and add these to `data` as well.
+                (
+                    sa_data["loss_mask"],
+                    sa_data[SampleBatch.SEQ_LENS],
+                ) = create_mask_and_seq_lens(
+                    episode_lens=[len(eps) for eps in episode_list],
+                    T=T,
+                )
+
+            # TODO (sven): Convert data to proper tensor formats, depending on framework
+            #  used by the RLModule. We cannot do this right now as the RLModule does
+            #  NOT know its own device. Only the Learner knows the device. Also, on the
+            #  EnvRunner side, we assume that it's always the CPU (even though one could
+            #  imagine a GPU-based EnvRunner + RLModule for sampling).
+            # if rl_module.framework == "torch":
+            #    sa_data = convert_to_torch_tensor(sa_data, device=??)
+            # elif rl_module.framework == "tf2":
+            #    sa_data =
+
+            return_data[module_id] = sa_data
+
+        # Convert to MultiAgentBatch.
+        return MultiAgentBatch(
+            policy_batches={
+                module_id: SampleBatch(batch)
+                for module_id, batch in return_data.items()
+            },
+            env_steps=sum(len(e) for e in episodes),
+        )
 
 
 def split_and_pad(episodes_data, T):

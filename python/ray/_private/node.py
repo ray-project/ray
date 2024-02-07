@@ -386,7 +386,10 @@ class Node:
 
         if not cluster_metadata:
             return
-        ray._private.utils.check_version_info(cluster_metadata)
+        node_ip_address = ray._private.services.get_node_ip_address()
+        ray._private.utils.check_version_info(
+            cluster_metadata, f"node {node_ip_address}"
+        )
 
     def _register_shutdown_hooks(self):
         # Register the atexit handler. In this case, we shouldn't call sys.exit

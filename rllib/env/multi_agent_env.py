@@ -41,6 +41,9 @@ class MultiAgentEnv(gym.Env):
     """
 
     def __init__(self):
+        # TODO (sven): super init call seems to have been missing. Since forever.
+        # super().__init__()
+
         if not hasattr(self, "observation_space"):
             self.observation_space = None
         if not hasattr(self, "action_space"):
@@ -512,37 +515,15 @@ def make_multi_agent(
                 self.envs = [env_name_or_creator(config) for _ in range(num)]
             self.terminateds = set()
             self.truncateds = set()
-            self.observation_space = self.envs[0].observation_space
-            self.action_space = self.envs[0].action_space
+            self.observation_space = gym.spaces.Dict(
+                {i: self.envs[i].observation_space for i in range(num)}
+            )
+            self._obs_space_in_preferred_format = True
+            self.action_space = gym.spaces.Dict(
+                {i: self.envs[i].action_space for i in range(num)}
+            )
+            self._action_space_in_preferred_format = True
             self._agent_ids = set(range(num))
-
-        @override(MultiAgentEnv)
-        def observation_space_sample(self, agent_ids: list = None) -> MultiAgentDict:
-            if agent_ids is None:
-                agent_ids = list(range(len(self.envs)))
-            obs = {agent_id: self.observation_space.sample() for agent_id in agent_ids}
-
-            return obs
-
-        @override(MultiAgentEnv)
-        def action_space_sample(self, agent_ids: list = None) -> MultiAgentDict:
-            if agent_ids is None:
-                agent_ids = list(range(len(self.envs)))
-            actions = {agent_id: self.action_space.sample() for agent_id in agent_ids}
-
-            return actions
-
-        @override(MultiAgentEnv)
-        def action_space_contains(self, x: MultiAgentDict) -> bool:
-            if not isinstance(x, dict):
-                return False
-            return all(self.action_space.contains(val) for val in x.values())
-
-        @override(MultiAgentEnv)
-        def observation_space_contains(self, x: MultiAgentDict) -> bool:
-            if not isinstance(x, dict):
-                return False
-            return all(self.observation_space.contains(val) for val in x.values())
 
         @override(MultiAgentEnv)
         def reset(self, *, seed: Optional[int] = None, options: Optional[dict] = None):

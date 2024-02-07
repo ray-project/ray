@@ -16,6 +16,13 @@ class EnvError(Exception):
 
 
 @PublicAPI
+class MultiAgentEnvError(Exception):
+    """Error if we encounter an error during MultiAgentEnv stepping/validation."""
+
+    pass
+
+
+@PublicAPI
 class NotSerializable(Exception):
     """Error if we encounter objects that can't be serialized by ray."""
 

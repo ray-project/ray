@@ -195,15 +195,11 @@ def wait_for_nodes(
 
 
 def start_run(
-    no_syncer: bool,
     storage_path: Optional[str] = None,
     experiment_name: str = "cloud_test",
     indicator_file: str = "/tmp/tune_cloud_indicator",
 ) -> subprocess.Popen:
     args = []
-    if no_syncer:
-        args.append("--no-syncer")
-
     if storage_path:
         args.extend(["--storage-path", storage_path])
 
@@ -297,13 +293,11 @@ def run_tune_script_for_time(
     run_time: int,
     experiment_name: str,
     indicator_file: str,
-    no_syncer: bool,
     storage_path: Optional[str],
     run_start_timeout: int = 30,
 ):
     # Start run
     process = start_run(
-        no_syncer=no_syncer,
         storage_path=storage_path,
         experiment_name=experiment_name,
         indicator_file=indicator_file,
@@ -327,7 +321,6 @@ def run_tune_script_for_time(
 def run_resume_flow(
     experiment_name: str,
     indicator_file: str,
-    no_syncer: bool,
     storage_path: Optional[str],
     first_run_time: int = 33,
     second_run_time: int = 33,
@@ -365,7 +358,6 @@ def run_resume_flow(
         run_time=first_run_time,
         experiment_name=experiment_name,
         indicator_file=indicator_file,
-        no_syncer=no_syncer,
         storage_path=storage_path,
         run_start_timeout=run_start_timeout,
     )
@@ -385,7 +377,6 @@ def run_resume_flow(
         run_time=second_run_time,
         experiment_name=experiment_name,
         indicator_file=indicator_file,
-        no_syncer=no_syncer,
         storage_path=storage_path,
     )
 
@@ -1011,7 +1002,6 @@ def test_durable_upload(bucket: str):
     run_resume_flow(
         experiment_name=experiment_name,
         indicator_file=indicator_file,
-        no_syncer=False,
         storage_path=bucket,
         first_run_time=run_time,
         second_run_time=run_time,
