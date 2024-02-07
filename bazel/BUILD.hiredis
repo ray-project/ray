@@ -18,7 +18,7 @@ COPTS = ["-DUSE_SSL=1"] + select({
 
 LOPTS = select({
     "@bazel_tools//src/conditions:windows": [
-        "Crypt32.lib",
+        "-DefaultLib:" + "Crypt32.lib",
     ],
     "//conditions:default": [
     ],
@@ -51,7 +51,7 @@ cc_library(
         "adapters/*.h",
     ]),
     copts = COPTS,
-    additional_linker_inputs = LOPTS,
+    linkopts = LOPTS,
     include_prefix = "hiredis",
     deps = [
         ":_hiredis",
