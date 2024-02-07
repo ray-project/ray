@@ -39,7 +39,7 @@ class ResourceManager:
 
         self._op_resource_limiter: Optional["OpResourceLimiter"] = None
         ctx = DataContext.get_current()
-        if ctx.enable_per_op_resource_reservation:
+        if ctx.op_resource_reservation_enabled:
             self._op_resource_limiter = ReservationOpResourceLimiter(
                 self, ctx.op_resource_reservation_ratio
             )
@@ -186,12 +186,18 @@ class ReservationOpResourceLimiter(OpResourceLimiter):
 
     This class reserves memory and CPU resources for map operators, and consider runtime
     resource usages to limit the resources that each operator can use.
+
     It works in the following way:
     1. Currently we only limit map operators. Non-map operators get unlimited resources.
     2. For each map operator, we reserve `reservation_ratio * global_resources /
         num_map_ops` resources. The remaining are shared among all map operators.
     3. In each scheduling iteration, each map operator will get "remaining of their own
        reserved resources" + "remaining of shared resources / num_map_ops" resources.
+
+    The `reservation_ratio` is set to 50% by default. Users can tune this value to
+    adjust how aggressive or conservative the resource allocation is. A higher value will
+    make the resource allocation more even, but may lead to underutilization and worse
+    performance. And vice versa.
     """
 
     def __init__(self, resource_manager: ResourceManager, reservation_ratio: float):
