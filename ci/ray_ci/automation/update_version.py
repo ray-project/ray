@@ -1,9 +1,11 @@
-import click
-from ci.ray_ci.automation.upgrade_version_lib import (
-    get_current_version,
-    upgrade_file_version,
-)
 import os
+
+import click
+
+from ci.ray_ci.automation.update_version_lib import (
+    get_current_version,
+    update_file_version,
+)
 
 bazel_workspace_dir = os.environ.get("BUILD_WORKSPACE_DIRECTORY", "")
 
@@ -16,7 +18,7 @@ def main(new_version: str):
     """
     main_version, java_version = get_current_version(bazel_workspace_dir)
 
-    upgrade_file_version(
+    update_file_version(
         main_version,
         java_version,
         new_version,

@@ -43,7 +43,7 @@ def get_current_version(root_dir: str):
     return MASTER_BRANCH_VERSION, MASTER_BRANCH_JAVA_VERSION
 
 
-def upgrade_file_version(
+def update_file_version(
     main_version: str,
     java_version: str,
     new_version: str,
