@@ -158,7 +158,7 @@ class ActorReplicaWrapper:
         return method.remote(pickle.dumps(pr.metadata), *pr.args, **pr.kwargs)
 
     def send_request(
-        self, pr: PendingRequest, *, with_rejection: bool = False
+        self, pr: PendingRequest
     ) -> Union[ObjectRef, ObjectRefGenerator]:
         if self._replica_info.is_cross_language:
             return self._send_request_java(pr)
