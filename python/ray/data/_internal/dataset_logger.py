@@ -5,6 +5,14 @@ import ray
 from ray._private.ray_constants import LOGGER_FORMAT, LOGGER_LEVEL
 
 
+class UserCodeException(Exception):
+    pass
+
+
+class RayDataInternalException(Exception):
+    pass
+
+
 def skip_internal_stack_frames(ex: Exception) -> Exception:
     """
     For the given Exception, skip stack frames which belong to
@@ -19,20 +27,30 @@ def skip_internal_stack_frames(ex: Exception) -> Exception:
 
     if ex is None:
         return ex
+    orig_tb = ex.__traceback__
 
     tb = ex.__traceback__
+    last_traceback_was_skipped = False
     while tb is not None:
         call_path = tb.tb_frame.f_code.co_filename
         if (
             RAY_DATA_INTERNAL_STACKTRACE_PREFIX in call_path
             or RAY_CORE_PRIVATE_STACKTRACE_PREFIX in call_path
         ):
-            print("===> skipping stack frame:", call_path, tb.tb_frame)
+            # print("===> skipping stack frame:", call_path, tb.tb_frame)
             # TODO(scottjlee): send the skipped frames to ray-data.log,
             # or also leave it gated on DataContext
             ex.__traceback__ = tb.tb_next
+            last_traceback_was_skipped = True
+        else:
+            last_traceback_was_skipped = False
         tb = tb.tb_next
-    return ex
+    if last_traceback_was_skipped:
+        if not isinstance(ex, UserCodeException):
+            return RayDataInternalException(*ex.args).with_traceback(orig_tb)
+        return ex
+
+    return UserCodeException(*ex.args).with_traceback(ex.__traceback__)
 
 
 class DatasetLogger:

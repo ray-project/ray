@@ -30,6 +30,7 @@ from ray._private.usage import usage_lib
 from ray.air.util.tensor_extensions.utils import _create_possibly_ragged_ndarray
 from ray.data._internal.block_list import BlockList
 from ray.data._internal.compute import ComputeStrategy
+from ray.data._internal.dataset_logger import skip_internal_stack_frames
 from ray.data._internal.delegating_block_builder import DelegatingBlockBuilder
 from ray.data._internal.equalize import _equalize
 from ray.data._internal.execution.interfaces import RefBundle
@@ -1329,8 +1330,10 @@ class Dataset:
                 raise ValueError(
                     "locality_hints must not contain duplicate actor handles"
                 )
-
-        blocks = self._plan.execute()
+        try:
+            blocks = self._plan.execute()
+        except Exception as ex:
+            raise skip_internal_stack_frames(ex)
         owned_by_consumer = blocks._owned_by_consumer
         stats = self._plan.stats()
         block_refs, metadata = zip(*blocks.get_blocks_with_metadata())
@@ -1529,7 +1532,10 @@ class Dataset:
         if indices[0] < 0:
             raise ValueError("indices must be positive")
         start_time = time.perf_counter()
-        block_list = self._plan.execute()
+        try:
+            block_list = self._plan.execute()
+        except Exception as ex:
+            raise skip_internal_stack_frames(ex)
         blocks, metadata = _split_at_indices(
             block_list.get_blocks_with_metadata(),
             indices,
@@ -1733,16 +1739,19 @@ class Dataset:
         """
 
         start_time = time.perf_counter()
+        try:
+            owned_by_consumer = self._plan.execute()._owned_by_consumer
+            datasets = [self] + list(other)
+            bls: List[BlockList] = []
+            has_nonlazy = False
+            for ds in datasets:
+                bl = ds._plan.execute()
+                if not isinstance(bl, LazyBlockList):
+                    has_nonlazy = True
+                bls.append(bl)
+        except Exception as ex:
+            raise skip_internal_stack_frames(ex)
 
-        owned_by_consumer = self._plan.execute()._owned_by_consumer
-        datasets = [self] + list(other)
-        bls: List[BlockList] = []
-        has_nonlazy = False
-        for ds in datasets:
-            bl = ds._plan.execute()
-            if not isinstance(bl, LazyBlockList):
-                has_nonlazy = True
-            bls.append(bl)
         if has_nonlazy:
             blocks = []
             metadata = []
@@ -2631,7 +2640,11 @@ class Dataset:
             The in-memory size of the dataset in bytes, or None if the
             in-memory size is not known.
         """
-        metadata = self._plan.execute().get_metadata()
+        try:
+            metadata = self._plan.execute().get_metadata()
+        except Exception as ex:
+            raise skip_internal_stack_frames(ex)
+
         if not metadata or metadata[0].size_bytes is None:
             return None
         return sum(m.size_bytes for m in metadata)
@@ -2652,7 +2665,11 @@ class Dataset:
             The list of input files used to create the dataset, or an empty
             list if the input files is not known.
         """
-        metadata = self._plan.execute().get_metadata()
+        try:
+            metadata = self._plan.execute().get_metadata()
+        except Exception as e:
+            raise skip_internal_stack_frames(e)
+
         files = set()
         for m in metadata:
             for f in m.input_files:
@@ -3500,7 +3517,7 @@ class Dataset:
             datasource.on_write_complete(write_results, **write_args)
         except Exception as e:
             datasource.on_write_failed([], e)
-            raise
+            raise skip_internal_stack_frames(e)
 
     @ConsumptionAPI(pattern="Time complexity:")
     def write_datasink(
@@ -3554,7 +3571,7 @@ class Dataset:
             datasink.on_write_complete(write_results)
         except Exception as e:
             datasink.on_write_failed(e)
-            raise
+            raise skip_internal_stack_frames(e)
 
     @ConsumptionAPI(
         delegate=(
@@ -4590,7 +4607,10 @@ class Dataset:
             A MaterializedDataset holding the materialized data blocks.
         """
         copy = Dataset.copy(self, _deep_copy=True, _as=MaterializedDataset)
-        copy._plan.execute(force_read=True)
+        try:
+            copy._plan.execute(force_read=True)
+        except Exception as ex:
+            raise skip_internal_stack_frames(ex)
 
         blocks = copy._plan._snapshot_blocks
         blocks_with_metadata = blocks.get_blocks_with_metadata() if blocks else []
@@ -4615,7 +4635,11 @@ class Dataset:
             ),
             logical_plan,
         )
-        output._plan.execute()  # No-op that marks the plan as fully executed.
+        try:
+            # No-op that marks the plan as fully executed.
+            output._plan.execute()
+        except Exception as ex:
+            raise skip_internal_stack_frames(ex)
         # Metrics are tagged with `copy`s uuid, update the output uuid with
         # this so the user can access the metrics label.
         output._set_uuid(copy._get_uuid())
@@ -4678,7 +4702,11 @@ class Dataset:
         Returns:
             A list of references to this dataset's blocks.
         """
-        blocks = self._plan.execute().get_blocks()
+        try:
+            blocks = self._plan.execute().get_blocks()
+        except Exception as ex:
+            raise skip_internal_stack_frames(ex)
+
         self._synchronize_progress_bar()
         return blocks
 
@@ -4841,7 +4869,11 @@ class Dataset:
         return self._plan._context
 
     def _divide(self, block_idx: int) -> ("Dataset", "Dataset"):
-        block_list = self._plan.execute()
+        try:
+            block_list = self._plan.execute()
+        except Exception as ex:
+            raise skip_internal_stack_frames(ex)
+
         left, right = block_list.divide(block_idx)
         l_ds = Dataset(
             ExecutionPlan(
