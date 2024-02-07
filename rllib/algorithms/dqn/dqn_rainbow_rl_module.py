@@ -15,8 +15,15 @@ class DQNRainbowRLModule(RLModule, RLModuleWithTargetNetworksInterface):
         # Get the DQN Rainbow catalog.
         catalog = self.config.get_catalog()
 
+        # If a dueling architecture is used.
+        self.is_dueling = self.config.dueling
+        # The number of atoms for a distribution support.
+        self.num_atoms = self.config.num_atoms
+
         # Build the encoder for the advantage and value streams. Note,
         # the same encoder is used, if no dueling setting is used.
+        # Note further, by using the base encoder the correct encoder
+        # is chosen for the observation space used.
         self.base_encoder = catalog.build_encoder()
         # Build the same encoder for the target network(s).
         self.base_target_encoder = catalog.build_encoder()
@@ -25,17 +32,20 @@ class DQNRainbowRLModule(RLModule, RLModuleWithTargetNetworksInterface):
         # TODO (simon): Implement noisy linear layers.
         # TODO (simon): Implement dueling=False.
         self.af = catalog.build_af_head(framework=self.framework)
-        self.vf = catalog.build_vf_head(framework=self.framework)
+        if self.is_dueling:
+            self.vf = catalog.build_vf_head(framework=self.framework)
         # Implement the same heads for the target network(s).
         self.af_target = catalog.build_af_head(framework=self.framework)
-        self.vf_target = catalog.build_vf_head(framework=self.framework)
+        if self.is_dueling:
+            self.vf_target = catalog.build_vf_head(framework=self.framework)
 
         # TODO (simon): Implement double q.
 
         # We do not want to train the target networks.
         self.base_target_encoder.trainable = False
         self.af_target.trainable = False
-        self.vf_target.trainable = False
+        if self.is_dueling:
+            self.vf_target.trainable = False
 
     # TODO (simon): DQN Rainbow does not support RNNs, yet.
     @override(RLModule)
