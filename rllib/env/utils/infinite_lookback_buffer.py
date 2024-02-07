@@ -399,8 +399,6 @@ class InfiniteLookbackBuffer:
 
                 tree.map_structure(__set, self.data, new_data)
             else:
-                if self.space:
-                    assert self.space.contains(new_data[0])
                 assert len(self.data[slice_]) == len(new_data)
                 self.data[slice_] = new_data
         except AssertionError:
@@ -483,8 +481,6 @@ class InfiniteLookbackBuffer:
 
                 tree.map_structure(__set, self.data, new_data)
             else:
-                if self.space:
-                    assert self.space.contains(new_data), new_data
                 self.data[actual_idx] = new_data
         except IndexError:
             raise IndexError(
