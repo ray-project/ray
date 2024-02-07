@@ -22,6 +22,7 @@ from ray.serve import metrics
 from ray.serve._private.common import (
     DeploymentID,
     ReplicaName,
+    ReplicaQueueLengthInfo,
     ReplicaTag,
     RequestMetadata,
     ServeComponentType,
@@ -407,7 +408,7 @@ class ReplicaActor:
         *request_args,
         **request_kwargs,
     ) -> Tuple[bytes, Any]:
-        """Entrypoint for all `stream=False` calls."""
+        """Entrypoint for `stream=False` calls."""
         request_metadata = pickle.loads(pickled_request_metadata)
         with self._wrap_user_method_call(request_metadata):
             return await self._user_callable_wrapper.call_user_method(
@@ -496,6 +497,61 @@ class ReplicaActor:
                 request_kwargs,
             ):
                 yield result
+
+    async def handle_request_with_rejection(
+        self,
+        pickled_request_metadata: bytes,
+        *request_args,
+        **request_kwargs,
+    ) -> AsyncGenerator[Any, None]:
+        """Entrypoint for all requests with strict max_concurrent_queries enforcement.
+
+        The first response from this generator is always a system message indicating
+        if the request was accepted (the replica has capacity for the request) or
+        rejected (the replica is already at max_concurrent_queries).
+
+        For non-streaming requests, there will only be one more message, the unary
+        result of the user request handler.
+
+        For streaming requests, the subsequent messages will be the results of the
+        user request handler (which must be a generator).
+        """
+        request_metadata = pickle.loads(pickled_request_metadata)
+        limit = self._deployment_config.max_concurrent_queries
+        num_ongoing_requests = self.get_num_ongoing_requests()
+        if num_ongoing_requests >= limit:
+            logger.warning(
+                f"Replica at capacity of max_concurrent_queries={limit}, "
+                f"rejecting request {request_metadata.request_id}."
+            )
+            yield pickle.dumps(
+                ReplicaQueueLengthInfo(
+                    accepted=False, num_ongoing_requests=num_ongoing_requests
+                )
+            )
+            return
+
+        with self._wrap_user_method_call(request_metadata):
+            yield pickle.dumps(
+                ReplicaQueueLengthInfo(
+                    accepted=True,
+                    # NOTE(edoakes): `_wrap_user_method_call` will increment the number
+                    # of ongoing requests to include this one, so re-fetch the value.
+                    num_ongoing_requests=self.get_num_ongoing_requests(),
+                )
+            )
+
+            if request_metadata.is_streaming:
+                async for result in self._call_user_generator(
+                    request_metadata,
+                    request_args,
+                    request_kwargs,
+                ):
+                    yield result
+            else:
+                yield await self._user_callable_wrapper.call_user_method(
+                    request_metadata, request_args, request_kwargs
+                )
 
     async def handle_request_from_java(
         self,
