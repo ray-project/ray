@@ -1,6 +1,6 @@
 import logging
 import psutil
-from typing import Optional, Any
+from typing import Any, Optional, TYPE_CHECKING
 
 import numpy as np
 
@@ -10,7 +10,9 @@ from ray.rllib.utils.deprecation import DEPRECATED_VALUE
 from ray.rllib.utils.from_config import from_config
 from ray.rllib.utils.metrics.learner_info import LEARNER_STATS_KEY
 from ray.rllib.utils.replay_buffers import (
+    EpisodeReplayBuffer,
     MultiAgentPrioritizedReplayBuffer,
+    PrioritizedEpisodeReplayBuffer,
     ReplayBuffer,
     MultiAgentReplayBuffer,
 )
@@ -18,7 +20,42 @@ from ray.rllib.policy.sample_batch import concat_samples, MultiAgentBatch, Sampl
 from ray.rllib.utils.typing import ResultDict, SampleBatchType, AlgorithmConfigDict
 from ray.util import log_once
 
+if TYPE_CHECKING:
+    from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
+
 logger = logging.getLogger(__name__)
+
+
+def update_priorities_in_episode_replay_buffer(
+    replay_buffer: EpisodeReplayBuffer,
+    config: "AlgorithmConfig",
+    train_batch: SampleBatchType,
+    train_results: ResultDict,
+) -> None:
+    # Only update priorities, if the buffer supports them.
+    if isinstance(replay_buffer, PrioritizedEpisodeReplayBuffer):
+
+        # The `ResultDict` will be multi-agent.
+        for module_id, result_dict in train_results.items():
+            # Get the TD-error from the results.
+            td_error = result_dict.get("td_error", None)
+
+            if td_error is None:
+                if log_once(
+                    "no_td_error_in_train_results_from_module_{}".format(module_id)
+                ):
+                    logger.warning(
+                        "Trying to update priorities for module with ID "
+                        f"`{module_id}` in prioritized episode replay buffer without "
+                        "providing `td_errors` in train_results. Priority update for "
+                        "this policy is being skipped."
+                    )
+                continue
+            # TODO (simon): Implement multi-agent version.
+            assert len(td_error) == len(replay_buffer._last_sampled_indices)
+            # TODO (simon): Implement for stateful modules.
+
+            replay_buffer.update_priorities(td_error)
 
 
 @DeveloperAPI

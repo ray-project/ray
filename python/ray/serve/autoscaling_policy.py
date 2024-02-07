@@ -1,6 +1,6 @@
 import logging
 import math
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, Optional
 
 from ray.serve._private.constants import CONTROL_LOOP_PERIOD_S, SERVE_LOGGER_NAME
 from ray.serve.config import AutoscalingConfig
@@ -11,7 +11,8 @@ logger = logging.getLogger(SERVE_LOGGER_NAME)
 
 def _calculate_desired_num_replicas(
     autoscaling_config: AutoscalingConfig,
-    current_num_ongoing_requests: List[float],
+    total_num_requests: int,
+    num_running_replicas: int,
     override_min_replicas: Optional[float] = None,
     override_max_replicas: Optional[float] = None,
 ) -> int:
@@ -33,21 +34,16 @@ def _calculate_desired_num_replicas(
             on the input metrics and the current number of replicas.
 
     """
-    current_num_replicas = len(current_num_ongoing_requests)
-    if current_num_replicas == 0:
+    if num_running_replicas == 0:
         raise ValueError("Number of replicas cannot be zero")
-
-    # The number of ongoing requests per replica, averaged over all replicas.
-    num_ongoing_requests_per_replica: float = sum(current_num_ongoing_requests) / len(
-        current_num_ongoing_requests
-    )
 
     # Example: if error_ratio == 2.0, we have two times too many ongoing
     # requests per replica, so we desire twice as many replicas.
-    error_ratio: float = (
-        num_ongoing_requests_per_replica
-        / autoscaling_config.target_num_ongoing_requests_per_replica
+    target_num_requests = (
+        autoscaling_config.target_num_ongoing_requests_per_replica
+        * num_running_replicas
     )
+    error_ratio: float = total_num_requests / target_num_requests
 
     # If error ratio >= 1, then the number of ongoing requests per
     # replica exceeds the target and we will make an upscale decision,
@@ -62,16 +58,14 @@ def _calculate_desired_num_replicas(
 
     # Multiply the distance to 1 by the smoothing ("gain") factor (default=1).
     smoothed_error_ratio = 1 + ((error_ratio - 1) * smoothing_factor)
-    desired_num_replicas = math.ceil(current_num_replicas * smoothed_error_ratio)
+    desired_num_replicas = math.ceil(num_running_replicas * smoothed_error_ratio)
 
-    # If error_ratio = 0, meaning there is no more traffic, and desired
-    # num replicas is stuck at a positive number due to the math.ceil
-    # above, decrease desired_num_replicas by one so that the deployment
-    # can eventually scale to 0.
+    # If desired num replicas is "stuck" because of the smoothing factor
+    # (meaning the traffic is low enough for the replicas to downscale
+    # without the smoothing factor), decrease desired_num_replicas by 1.
     if (
-        error_ratio == 0
-        and desired_num_replicas == current_num_replicas
-        and desired_num_replicas >= 1
+        math.ceil(num_running_replicas * error_ratio) < num_running_replicas
+        and desired_num_replicas == num_running_replicas
     ):
         desired_num_replicas -= 1
 
@@ -91,8 +85,8 @@ def _calculate_desired_num_replicas(
 @PublicAPI(stability="alpha")
 def replica_queue_length_autoscaling_policy(
     curr_target_num_replicas: int,
-    current_num_ongoing_requests: List[float],
-    current_handle_queued_queries: float,
+    total_num_requests: int,
+    num_running_replicas: int,
     config: Optional[AutoscalingConfig],
     capacity_adjusted_min_replicas: int,
     capacity_adjusted_max_replicas: int,
@@ -108,9 +102,9 @@ def replica_queue_length_autoscaling_policy(
     seconds.
     """
     decision_counter = policy_state.get("decision_counter", 0)
-    if len(current_num_ongoing_requests) == 0:
+    if num_running_replicas == 0:
         # When 0 replicas and queries are queued, scale up the replicas
-        if current_handle_queued_queries > 0:
+        if total_num_requests > 0:
             return max(
                 math.ceil(1 * config.get_upscale_smoothing_factor()),
                 curr_target_num_replicas,
@@ -121,7 +115,8 @@ def replica_queue_length_autoscaling_policy(
 
     desired_num_replicas = _calculate_desired_num_replicas(
         config,
-        current_num_ongoing_requests,
+        total_num_requests,
+        num_running_replicas=num_running_replicas,
         override_min_replicas=capacity_adjusted_min_replicas,
         override_max_replicas=capacity_adjusted_max_replicas,
     )

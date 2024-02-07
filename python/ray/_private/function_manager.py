@@ -173,10 +173,6 @@ class FunctionActorManager:
                     > 0
                 ):
                     break
-        # Notify all subscribers that there is a new function exported. Note
-        # that the notification doesn't include any actual data.
-        # TODO(mwtian) implement per-job notification here.
-        self._worker.gcs_publisher.publish_function_key(key)
 
     def export_setup_func(
         self, setup_func: Callable, timeout: Optional[int] = None

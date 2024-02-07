@@ -65,8 +65,10 @@ from ray.serve.generated.serve_pb2 import EndpointInfo as EndpointInfoProto
 from ray.serve.generated.serve_pb2 import EndpointSet
 from ray.serve.schema import (
     ApplicationDetails,
+    DeploymentDetails,
     HTTPOptionsSchema,
     LoggingConfig,
+    ProxyDetails,
     ServeActorDetails,
     ServeApplicationSchema,
     ServeDeploySchema,
@@ -252,14 +254,31 @@ class ServeController:
     def get_pid(self) -> int:
         return os.getpid()
 
-    def record_autoscaling_metrics(self, data: Dict[str, float], send_timestamp: float):
+    def record_autoscaling_metrics(
+        self, replica_id: str, window_avg: float, send_timestamp: float
+    ):
         logger.debug(
-            f"Received autoscaling metrics: {data} at timestamp {send_timestamp}"
+            f"Received metrics from replica {replica_id}: {window_avg} running requests"
         )
-        self.deployment_state_manager.record_autoscaling_metrics(data, send_timestamp)
+        self.deployment_state_manager.record_autoscaling_metrics(
+            replica_id, window_avg, send_timestamp
+        )
 
-    def record_handle_metrics(self, data: Dict[str, float], send_timestamp: float):
-        self.deployment_state_manager.record_handle_metrics(data, send_timestamp)
+    def record_handle_metrics(
+        self,
+        deployment_id: str,
+        handle_id: str,
+        queued_requests: float,
+        running_requests: Dict[str, float],
+        send_timestamp: float,
+    ):
+        logger.debug(
+            f"Received metrics from handle {handle_id} for deployment {deployment_id}: "
+            f"{queued_requests} queued requests and {running_requests} running requests"
+        )
+        self.deployment_state_manager.record_handle_metrics(
+            deployment_id, handle_id, queued_requests, running_requests, send_timestamp
+        )
 
     def _dump_autoscaling_metrics_for_testing(self):
         return self.deployment_state_manager.get_autoscaling_metrics()
@@ -535,6 +554,47 @@ class ServeController:
         """
 
         return self.deployment_state_manager.get_running_replica_infos()
+
+    def get_actor_details(self) -> ServeActorDetails:
+        """Returns the actor details for this controller.
+
+        Currently used for test only.
+        """
+        return self._actor_details
+
+    def get_proxy_details(self, node_id: str) -> Optional[ProxyDetails]:
+        """Returns the proxy details for the proxy on the given node.
+
+        Currently used for test only. Will return None if the proxy doesn't exist on
+        the given node.
+        """
+        if self.proxy_state_manager is None:
+            return None
+
+        return self.proxy_state_manager.get_proxy_details().get(node_id)
+
+    def get_deployment_timestamps(self, app_name: str) -> float:
+        """Returns the deployment timestamp for the given app.
+
+        Currently used for test only.
+        """
+        for (
+            _app_name,
+            app_status_info,
+        ) in self.application_state_manager.list_app_statuses().items():
+            if app_name == _app_name:
+                return app_status_info.deployment_timestamp
+
+    def get_deployment_details(
+        self, app_name: str, deployment_name: str
+    ) -> DeploymentDetails:
+        """Returns the deployment details for the app and deployment.
+
+        Currently used for test only.
+        """
+        return self.application_state_manager.list_deployment_details(app_name)[
+            deployment_name
+        ]
 
     def get_http_config(self) -> HTTPOptions:
         """Return the HTTP proxy configuration."""
@@ -939,7 +999,7 @@ class ServeController:
             if self.proxy_state_manager
             else None,
             applications=applications,
-        ).dict(exclude_unset=True)
+        )._get_user_facing_json_serializable_dict(exclude_unset=True)
 
     def get_serve_status(self, name: str = SERVE_DEFAULT_APP_NAME) -> bytes:
         """Return application status

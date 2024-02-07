@@ -16,6 +16,18 @@ from ci.ray_ci.tester import (
     _get_flaky_test_targets,
     _get_tag_matcher,
 )
+from ray_release.test import Test, TestState
+
+
+def _stub_test(val: dict) -> Test:
+    test = Test(
+        {
+            "name": "test",
+            "cluster": {},
+        }
+    )
+    test.update(val)
+    return test
 
 
 def test_get_tag_matcher() -> None:
@@ -85,6 +97,9 @@ def test_get_test_targets() -> None:
         ), mock.patch(
             "ci.ray_ci.linux_tester_container.LinuxTesterContainer.install_ray",
             return_value=None,
+        ), mock.patch(
+            "ray_release.test.Test.gen_from_s3",
+            return_value=[],
         ):
             assert set(
                 _get_test_targets(
@@ -142,13 +157,111 @@ def test_get_all_test_query() -> None:
 
 
 def test_get_flaky_test_targets() -> None:
-    _TEST_YAML = "flaky_tests: [windows://t1, //t2]"
-
-    with TemporaryDirectory() as tmp:
-        with open(os.path.join(tmp, "core.tests.yml"), "w") as f:
-            f.write(_TEST_YAML)
-        assert _get_flaky_test_targets("core", "windows", yaml_dir=tmp) == ["//t1"]
-        assert _get_flaky_test_targets("core", "linux", yaml_dir=tmp) == ["//t2"]
+    test_harness = [
+        {
+            "input": {
+                "core_test_yaml": "flaky_tests: [//t1, windows://t2]",
+                "s3": [
+                    _stub_test(
+                        {
+                            "name": "windows://t1_s3",
+                            "team": "core",
+                            "state": TestState.FLAKY,
+                        }
+                    ),
+                    _stub_test(
+                        {
+                            "name": "linux://t2_s3",
+                            "team": "ci",
+                            "state": TestState.FLAKY,
+                        }
+                    ),
+                    _stub_test(
+                        {
+                            "name": "linux://t3_s3",
+                            "team": "core",
+                            "state": TestState.FLAKY,
+                        }
+                    ),
+                ],
+            },
+            "output": {
+                "linux": ["//t1", "//t3_s3"],
+                "windows": ["//t1_s3", "//t2"],
+            },
+        },
+        {
+            "input": {
+                "core_test_yaml": "flaky_tests: [//t1, windows://t2]",
+                "s3": [],
+            },
+            "output": {
+                "linux": ["//t1"],
+                "windows": ["//t2"],
+            },
+        },
+        {
+            "input": {
+                "core_test_yaml": "flaky_tests: []",
+                "s3": [
+                    _stub_test(
+                        {
+                            "name": "windows://t1_s3",
+                            "team": "core",
+                            "state": TestState.FLAKY,
+                        }
+                    ),
+                    _stub_test(
+                        {
+                            "name": "linux://t2_s3",
+                            "team": "ci",
+                            "state": TestState.FLAKY,
+                        }
+                    ),
+                    _stub_test(
+                        {
+                            "name": "linux://t3_s3",
+                            "team": "core",
+                            "state": TestState.FLAKY,
+                        }
+                    ),
+                    _stub_test(
+                        {
+                            "name": "linux://t4_s3",
+                            "team": "core",
+                            "state": TestState.PASSING,
+                        }
+                    ),
+                ],
+            },
+            "output": {
+                "linux": ["//t3_s3"],
+                "windows": ["//t1_s3"],
+            },
+        },
+        {
+            "input": {
+                "core_test_yaml": "flaky_tests: []",
+                "s3": [],
+            },
+            "output": {
+                "linux": [],
+                "windows": [],
+            },
+        },
+    ]
+    for test in test_harness:
+        with TemporaryDirectory() as tmp, mock.patch(
+            "ray_release.test.Test.gen_from_s3",
+            return_value=test["input"]["s3"],
+        ):
+            with open(os.path.join(tmp, "core.tests.yml"), "w") as f:
+                f.write(test["input"]["core_test_yaml"])
+            for os_name in ["linux", "windows"]:
+                assert (
+                    _get_flaky_test_targets("core", os_name, yaml_dir=tmp)
+                    == test["output"][os_name]
+                )
 
 
 if __name__ == "__main__":

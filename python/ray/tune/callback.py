@@ -1,6 +1,6 @@
 from abc import ABCMeta
 import glob
-import os
+from pathlib import Path
 from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple
 import warnings
 
@@ -30,14 +30,12 @@ class _CallbackMeta(ABCMeta):
     def need_check(
         mcs, cls: type, name: str, bases: Tuple[type], attrs: Dict[str, Any]
     ) -> bool:
-
         return attrs.get("IS_CALLBACK_CONTAINER", False)
 
     @classmethod
     def check(
         mcs, cls: type, name: str, bases: Tuple[type], attrs: Dict[str, Any]
     ) -> None:
-
         methods = set()
         for base in bases:
             methods.update(
@@ -503,8 +501,8 @@ class CallbackList(Callback):
             can_restore: True if the checkpoint_dir contains a file of the
                 format `CKPT_FILE_TMPL`. False otherwise.
         """
-        return bool(
-            glob.glob(os.path.join(checkpoint_dir, self.CKPT_FILE_TMPL.format("*")))
+        return any(
+            glob.iglob(Path(checkpoint_dir, self.CKPT_FILE_TMPL.format("*")).as_posix())
         )
 
     def __len__(self) -> int:

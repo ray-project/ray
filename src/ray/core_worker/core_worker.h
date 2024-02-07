@@ -1178,6 +1178,8 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   std::vector<ObjectID> GetCurrentReturnIds(int num_returns,
                                             const ActorID &callee_actor_id);
 
+  int64_t GetLocalMemoryStoreBytesUsed() const;
+
   /// The following methods are handlers for the core worker's gRPC server, which follow
   /// a macro-generated call convention. These are executed on the io_service_ and
   /// post work to the appropriate event loop.
@@ -1329,12 +1331,6 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
 
   /// Mark this worker is exiting.
   void SetIsExiting();
-
-  /// Retrieve the current statistics about tasks being received and executing.
-  /// \return an unordered_map mapping function name to list of (num_received,
-  /// num_executing, num_executed). It is a std map instead of absl due to its
-  /// interface with language bindings.
-  std::unordered_map<std::string, std::vector<int64_t>> GetActorCallStats() const;
 
   /// Add task log info for a task when it starts executing.
   ///

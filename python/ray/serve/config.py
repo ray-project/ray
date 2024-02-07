@@ -93,18 +93,31 @@ class AutoscalingConfig(BaseModel):
         return max_replicas
 
     @validator("policy", always=True)
-    def serialize_policy(cls, policy, values) -> Callable:
+    def serialize_policy(cls, policy, values) -> str:
         """Serialize policy with cloudpickle.
 
         Import the policy if it's passed in as a string import path. Then cloudpickle
         the policy and set `serialized_policy_def` if it's empty.
         """
-        if isinstance(policy, str):
-            policy = import_attr(policy)
+        if isinstance(policy, Callable):
+            policy = f"{policy.__module__}.{policy.__name__}"
+
+        if not policy:
+            policy = DEFAULT_AUTOSCALING_POLICY
+
+        policy_path = policy
+        policy = import_attr(policy)
 
         if not values.get("serialized_policy_def"):
             values["serialized_policy_def"] = cloudpickle.dumps(policy)
-        return policy
+
+        return policy_path
+
+    @classmethod
+    def default(cls):
+        return cls(
+            min_replicas=1, max_replicas=100, target_num_ongoing_requests_per_replica=2
+        )
 
     def get_policy(self) -> Callable:
         """Deserialize policy from cloudpickled bytes."""

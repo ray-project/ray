@@ -151,16 +151,6 @@ py_test(
 
 # APPO
 py_test(
-    name = "learning_tests_cartpole_appo_no_vtrace",
-    main = "tests/run_regression_tests.py",
-    tags = ["team:rllib", "exclusive", "learning_tests", "learning_tests_cartpole", "learning_tests_discrete"],
-    size = "medium", # bazel may complain about it being too long sometimes - medium is on purpose as some frameworks take longer
-    srcs = ["tests/run_regression_tests.py"],
-    data = ["tuned_examples/appo/cartpole-appo.yaml"],
-    args = ["--dir=tuned_examples/appo"]
-)
-
-py_test(
     name = "learning_tests_cartpole_appo_w_rl_modules_and_learner",
     main = "tests/run_regression_tests.py",
     tags = ["team:rllib", "exclusive", "learning_tests", "learning_tests_cartpole", "learning_tests_discrete", "no_tf_static_graph"],
@@ -177,7 +167,7 @@ py_test(
     size = "medium",
     srcs = ["tests/run_regression_tests.py"],
     data = [
-        "tuned_examples/appo/cartpole-appo-vtrace-separate-losses.py"
+        "tuned_examples/appo/cartpole-appo-separate-losses.py"
     ],
     args = ["--dir=tuned_examples/appo"]
 )
@@ -208,17 +198,17 @@ py_test(
     tags = ["team:rllib", "exclusive", "learning_tests", "learning_tests_cartpole", "learning_tests_discrete", "fake_gpus"],
     size = "medium",
     srcs = ["tests/run_regression_tests.py"],
-    data = ["tuned_examples/appo/cartpole-appo-vtrace-fake-gpus.yaml"],
+    data = ["tuned_examples/appo/cartpole-appo-fake-gpus.yaml"],
     args = ["--dir=tuned_examples/appo"]
 )
 
 py_test(
-    name = "learning_tests_stateless_cartpole_appo_vtrace",
+    name = "learning_tests_stateless_cartpole_appo",
     main = "tests/run_regression_tests.py",
     tags = ["team:rllib", "exclusive", "learning_tests", "learning_tests_cartpole", "learning_tests_discrete"],
     size = "enormous",
     srcs = ["tests/run_regression_tests.py"],
-    data = ["tuned_examples/appo/stateless-cartpole-appo-vtrace.py"],
+    data = ["tuned_examples/appo/stateless_cartpole_appo.py"],
     args = ["--dir=tuned_examples/appo"]
 )
 
@@ -361,7 +351,7 @@ py_test(
     tags = ["team:rllib", "exclusive", "learning_tests", "learning_tests_cartpole", "learning_tests_discrete", "no_tf_static_graph"],
     size = "large",
     srcs = ["tests/run_regression_tests.py"],
-    data = ["tuned_examples/ppo/cartpole-ppo-envrunner.py"],
+    data = ["tuned_examples/ppo/cartpole_ppo_envrunner.py"],
     args = ["--dir=tuned_examples/ppo"]
 )
 
@@ -372,7 +362,7 @@ py_test(
     tags = ["torch_only", "team:rllib", "exclusive", "learning_tests", "learning_tests_pendulum", "learning_tests_continuous"],
     size = "large",
     srcs = ["tests/run_regression_tests.py"],
-    data = ["tuned_examples/ppo/pendulum-ppo-envrunner.py"],
+    data = ["tuned_examples/ppo/pendulum_ppo_envrunner.py"],
     args = ["--dir=tuned_examples/ppo"]
 )
 
@@ -383,7 +373,7 @@ py_test(
     tags = ["team:rllib", "exclusive", "learning_tests", "learning_tests_cartpole", "learning_tests_discrete", "no_tf_static_graph"],
     size = "large",
     srcs = ["tests/run_regression_tests.py"],
-    data = ["tuned_examples/ppo/cartpole-truncated-ppo.py"],
+    data = ["tuned_examples/ppo/cartpole_truncated_ppo.py"],
     args = ["--dir=tuned_examples/ppo"]
 )
 
@@ -397,15 +387,15 @@ py_test(
     args = ["--dir=tuned_examples/ppo"]
 )
 
-py_test(
-    name = "learning_tests_multi_agent_pendulum_ppo",
-    main = "tests/run_regression_tests.py",
-    tags = ["team:rllib", "exclusive", "learning_tests", "learning_tests_pendulum", "learning_tests_continuous", "no_tf_static_graph"],
-    size = "large", # bazel may complain about it being too long sometimes - large is on purpose as some frameworks take longer
-    srcs = ["tests/run_regression_tests.py"],
-    data = ["tuned_examples/ppo/multi_agent_pendulum_ppo.py"],
-    args = ["--dir=tuned_examples/ppo"]
-)
+# py_test(
+#    name = "learning_tests_multi_agent_pendulum_ppo_envrunner",
+#    main = "tests/run_regression_tests.py",
+#    tags = ["team:rllib", "exclusive", "learning_tests", "learning_tests_pendulum", "learning_tests_continuous", "no_tf_static_graph"],
+#    size = "large", # bazel may complain about it being too long sometimes - large is on purpose as some frameworks take longer
+#    srcs = ["tests/run_regression_tests.py"],
+#    data = ["tuned_examples/ppo/multi_agent_pendulum_ppo_envrunner.py"],
+#    args = ["--dir=tuned_examples/ppo"]
+# )
 
 py_test(
     name = "learning_tests_transformed_actions_pendulum_ppo",
@@ -743,7 +733,7 @@ py_test(
     main = "utils/tests/run_memory_leak_tests.py",
     size = "large",
     srcs = ["utils/tests/run_memory_leak_tests.py"],
-    data = ["tuned_examples/ppo/memory-leak-test-ppo-new-stack.py"],
+    data = ["tuned_examples/ppo/memory_leak_test_ppo_new_stack.py"],
     args = ["--dir=tuned_examples/ppo", "--to-check=rollout_worker"]
 )
 
@@ -808,6 +798,13 @@ py_test(
 # Tag: env
 # --------------------------------------------------------------------
 
+py_test(
+    name = "env/tests/test_infinite_lookback_buffer",
+    tags = ["team:rllib", "env"],
+    size = "small",
+    srcs = ["env/tests/test_infinite_lookback_buffer.py"]
+)
+
 sh_test(
     name = "env/tests/test_local_inference_cartpole",
     tags = ["team:rllib", "env"],
@@ -844,12 +841,19 @@ py_test(
     srcs = ["env/tests/test_multi_agent_env.py"]
 )
 
-# py_test(
-#    name = "env/tests/test_multi_agent_episode",
-#    tags = ["team:rllib", "env"],
-#    size = "medium",
-#    srcs = ["env/tests/test_multi_agent_episode.py"]
-# )
+py_test(
+    name = "env/tests/test_multi_agent_env_runner",
+    tags = ["team:rllib", "env"],
+    size = "medium",
+    srcs = ["env/tests/test_multi_agent_env_runner.py"]
+)
+
+py_test(
+    name = "env/tests/test_multi_agent_episode",
+    tags = ["team:rllib", "env"],
+    size = "medium",
+    srcs = ["env/tests/test_multi_agent_episode.py"]
+)
 
 sh_test(
     name = "env/tests/test_remote_inference_cartpole",
@@ -901,13 +905,6 @@ py_test(
     tags = ["team:rllib", "env"],
     size = "small",
     srcs = ["env/tests/test_single_agent_episode.py"]
-)
-
-py_test(
-    name = "env/tests/test_lookback_buffer",
-    tags = ["team:rllib", "env"],
-    size = "small",
-    srcs = ["env/tests/test_lookback_buffer.py"]
 )
 
 py_test(
@@ -1454,6 +1451,13 @@ py_test(
 )
 
 py_test(
+    name = "test_value_predictions",
+    tags = ["team:rllib", "utils"],
+    size = "small",
+    srcs = ["utils/postprocessing/tests/test_value_predictions.py"]
+)
+
+py_test(
     name = "test_random_encoder",
     tags = ["team:rllib", "utils"],
     size = "large",
@@ -1461,7 +1465,7 @@ py_test(
 )
 
 py_test(
-    name = "utils/tests/test_torch_utils",
+    name = "test_torch_utils",
     tags = ["team:rllib", "utils", "gpu"],
     size = "medium",
     srcs = ["utils/tests/test_torch_utils.py"]
@@ -1526,6 +1530,13 @@ py_test(
     tags = ["team:rllib", "utils"],
     size = "small",
     srcs = ["utils/replay_buffers/tests/test_multi_agent_replay_buffer.py"]
+)
+
+py_test(
+    name = "test_prioritized_episode_replay_buffer",
+    tags = ["team::rllib", "utils"],
+    size = "small",
+    srcs = ["utils/replay_buffers/tests/test_prioritized_episode_replay_buffer.py"]
 )
 
 py_test(
@@ -3016,7 +3027,6 @@ py_test(
 py_test_module_list(
   files = [
     "env/wrappers/tests/test_kaggle_wrapper.py",
-    "env/tests/test_multi_agent_episode.py",
     "examples/env/tests/test_cliff_walking_wall_env.py",
     "examples/env/tests/test_coin_game_non_vectorized_env.py",
     "examples/env/tests/test_coin_game_vectorized_env.py",
