@@ -304,7 +304,7 @@ class Router:
             not RAY_SERVE_ENABLE_STRICT_MAX_CONCURRENT_QUERIES
             or replica.is_cross_language
         ):
-            return replica.send_request(pr, with_rejection=False), replica_id
+            return replica.send_request(pr), replica_id
 
         while True:
             obj_ref_or_gen, queue_len_info = await replica.send_request_with_rejection(
