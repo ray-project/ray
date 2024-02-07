@@ -1,7 +1,7 @@
 import json
 import logging
 from collections import defaultdict
-from typing import Set
+from typing import Dict
 
 from google.protobuf.json_format import MessageToDict
 
@@ -807,8 +807,12 @@ class GlobalState:
             node_ip_address
         )
 
-    def get_draining_nodes(self) -> Set[str]:
-        """Get all the hex ids of nodes that are being drained."""
+    def get_draining_nodes(self) -> Dict[str, int]:
+        """Get all the hex ids of nodes that are being drained
+        and the corresponding draining deadline timestamps in ms.
+
+        There is no deadline if the timestamp is 0.
+        """
         self._check_connected()
         return self.global_state_accessor.get_draining_nodes()
 

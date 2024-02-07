@@ -118,12 +118,12 @@ std::vector<std::string> GlobalStateAccessor::GetAllAvailableResources() {
   return available_resources;
 }
 
-std::vector<NodeID> GlobalStateAccessor::GetDrainingNodes() {
-  std::promise<std::vector<NodeID>> promise;
+std::unordered_map<NodeID, int64_t> GlobalStateAccessor::GetDrainingNodes() {
+  std::promise<std::unordered_map<NodeID, int64_t>> promise;
   {
     absl::ReaderMutexLock lock(&mutex_);
     RAY_CHECK_OK(gcs_client_->NodeResources().AsyncGetDrainingNodes(
-        [&promise](const std::vector<NodeID> &draining_nodes) {
+        [&promise](const std::unordered_map<NodeID, int64_t> &draining_nodes) {
           promise.set_value(draining_nodes);
         }));
   }

@@ -67,7 +67,7 @@ class Reconciler:
         transition should only be reflecting the external states of the cloud provider
         and the ray cluster, and should not be actively changing them)
 
-        2. Stepping the instances to the next state by computing instance status
+        2. Stepping the instances to the active states by computing instance status
         transitions that are needed and updating the instance manager's state.
         These transitions should be "active" where the transitions have side effects
         (through InstanceStatusSubscriber) to the cloud provider and the ray cluster.

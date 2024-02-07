@@ -111,7 +111,7 @@ class StreamingOutputBackpressurePolicy(BackpressurePolicy):
             if op.num_active_tasks() == 0:
                 downstream_idle = True
             else:
-                cur_num_outputs = state.op.metrics.num_outputs_generated
+                cur_num_outputs = state.op.metrics.num_task_outputs_generated
                 cur_time = time.time()
                 last_num_outputs, last_time = self._last_num_outputs_and_time[state.op]
                 if cur_num_outputs > last_num_outputs:
