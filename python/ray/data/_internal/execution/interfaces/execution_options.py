@@ -92,7 +92,9 @@ class ExecutionResources:
         return ExecutionResources(
             cpu=max(self.cpu or 0.0, other.cpu or 0.0),
             gpu=max(self.gpu or 0.0, other.gpu or 0.0),
-            object_store_memory=max(self.object_store_memory or 0, other.object_store_memory or 0),
+            object_store_memory=max(
+                self.object_store_memory or 0, other.object_store_memory or 0
+            ),
         )
 
     def min(self, other: "ExecutionResources") -> "ExecutionResources":
@@ -100,8 +102,10 @@ class ExecutionResources:
         return ExecutionResources(
             cpu=min(self.cpu or float("inf"), other.cpu or float("inf")),
             gpu=min(self.gpu or float("inf"), other.gpu or float("inf")),
-            object_store_memory=min(self.object_store_memory or float("inf"),
-                                    other.object_store_memory or float("inf")),
+            object_store_memory=min(
+                self.object_store_memory or float("inf"),
+                other.object_store_memory or float("inf"),
+            ),
         )
 
     def satisfies_limit(self, limit: "ExecutionResources") -> bool:

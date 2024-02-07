@@ -147,11 +147,8 @@ class TestResourceManager(unittest.TestCase):
 
 
 class TestReservationOpResourceLimiter:
-
     def test_basic(self, restore_data_context):
         DataContext.get_current().op_resource_reservation_enabled = True
-
-        global_limits = ExecutionResources(cpu=16, gpu=0, object_store_memory=1000)
 
         o1 = InputDataBuffer([])
         o2 = MapOperator.create(MagicMock(), o1)
@@ -164,13 +161,13 @@ class TestReservationOpResourceLimiter:
 
         resource_manager = ResourceManager(topo, ExecutionOptions())
         resource_manager.get_op_usage = MagicMock(side_effect=lambda op: op_usages[op])
-        resource_manager.get_global_limits = MagicMock(return_value=global_limits)
 
         assert resource_manager.op_resource_limiter_enabled()
         op_resource_limiter = resource_manager._op_resource_limiter
         assert isinstance(op_resource_limiter, ReservationOpResourceLimiter)
 
         # Test initial state when no resources are used.
+        global_limits = ExecutionResources(cpu=16, gpu=0, object_store_memory=1000)
         op_resource_limiter.on_global_limits_updated(global_limits)
         op_resource_limiter.update_usages()
         assert o1 not in op_resource_limiter._op_reserved
@@ -207,5 +204,21 @@ class TestReservationOpResourceLimiter:
 
         assert op_resource_limiter.get_op_limits(o1) == ExecutionResources.inf()
         assert op_resource_limiter.get_op_limits(o4) == ExecutionResources.inf()
-        assert op_resource_limiter.get_op_limits(o2) == ExecutionResources(1.5, None, 25)
-        assert op_resource_limiter.get_op_limits(o3) == ExecutionResources(2.5, None, 100)
+        assert op_resource_limiter.get_op_limits(o2) == ExecutionResources(
+            1.5, None, 25
+        )
+        assert op_resource_limiter.get_op_limits(o3) == ExecutionResources(
+            2.5, None, 100
+        )
+
+        # Test global_limits exceeded.
+        op_usages[o4] = ExecutionResources(0, 0, 150)
+        op_resource_limiter.update_usages()
+        assert op_resource_limiter.get_op_limits(o1) == ExecutionResources.inf()
+        assert op_resource_limiter.get_op_limits(o4) == ExecutionResources.inf()
+        assert op_resource_limiter.get_op_limits(o2) == ExecutionResources(1.5, None, 0)
+        # o3 still has object_store_memory in its reserved resources,
+        # even if the global limits are already exceeded.
+        assert op_resource_limiter.get_op_limits(o3) == ExecutionResources(
+            2.5, None, 75
+        )

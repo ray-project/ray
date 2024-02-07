@@ -195,9 +195,9 @@ class ReservationOpResourceLimiter(OpResourceLimiter):
        reserved resources" + "remaining of shared resources / num_map_ops" resources.
 
     The `reservation_ratio` is set to 50% by default. Users can tune this value to
-    adjust how aggressive or conservative the resource allocation is. A higher value will
-    make the resource allocation more even, but may lead to underutilization and worse
-    performance. And vice versa.
+    adjust how aggressive or conservative the resource allocation is. A higher value
+    will make the resource allocation more even, but may lead to underutilization and
+    worse performance. And vice versa.
     """
 
     def __init__(self, resource_manager: ResourceManager, reservation_ratio: float):
@@ -205,9 +205,9 @@ class ReservationOpResourceLimiter(OpResourceLimiter):
         self._reservation_ratio = reservation_ratio
         assert 0.0 <= self._reservation_ratio <= 1.0
         # We only limit map operators.
-        self._eligible_ops = list(
+        self._eligible_ops = [
             op for op in self._resource_manager._topology if isinstance(op, MapOperator)
-        )
+        ]
         # Per-op reserved resources.
         self._op_reserved: Dict[PhysicalOperator, ExecutionResources] = {}
         # Total shared resources.
