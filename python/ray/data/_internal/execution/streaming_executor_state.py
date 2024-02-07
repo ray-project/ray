@@ -11,7 +11,7 @@ from dataclasses import dataclass
 from typing import Dict, List, Optional, Tuple
 
 import ray
-from ray.data._internal.dataset_logger import DatasetLogger
+from ray.data._internal.dataset_logger import DatasetLogger, skip_internal_stack_frames
 from ray.data._internal.execution.autoscaling_requester import (
     get_or_create_autoscaling_requester_actor,
 )
@@ -267,7 +267,8 @@ class OpState:
         while True:
             # Check if StreamingExecutor has caught an exception or is done execution.
             if self._exception is not None:
-                raise self._exception
+                raise skip_internal_stack_frames(self._exception)
+                # raise self._exception
             elif self._finished and not self.outqueue.has_next(output_split_idx):
                 raise StopIteration()
             ref = self.outqueue.pop(output_split_idx)

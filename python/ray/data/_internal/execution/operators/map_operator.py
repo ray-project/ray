@@ -13,6 +13,7 @@ from ray.data._internal.compute import (
     ComputeStrategy,
     TaskPoolStrategy,
 )
+from ray.data._internal.dataset_logger import skip_internal_stack_frames
 from ray.data._internal.execution.interfaces import (
     ExecutionOptions,
     ExecutionResources,
@@ -413,10 +414,10 @@ def _map_task(
         A generator of blocks, followed by the list of BlockMetadata for the blocks
         as the last generator return.
     """
-    DataContext._set_current(data_context)
-    stats = BlockExecStats.builder()
-    map_transformer.set_target_max_block_size(ctx.target_max_block_size)
     try:
+        DataContext._set_current(data_context)
+        stats = BlockExecStats.builder()
+        map_transformer.set_target_max_block_size(ctx.target_max_block_size)
         for b_out in map_transformer.apply_transform(iter(blocks), ctx):
             # TODO(Clark): Add input file propagation from input blocks.
             m_out = BlockAccessor.for_block(b_out).get_metadata([], None)
@@ -426,26 +427,7 @@ def _map_task(
             yield m_out
             stats = BlockExecStats.builder()
     except Exception as ex:
-        RAY_DATA_INTERNAL_STACKTRACE_PREFIX = "ray/data/_internal"
-        # print("===> exception from udf map:", ex)
-        # print("===> traceback:", ex.__traceback__)
-        # print(str(ex))
-        # print("===> traceback.format_exception:",
-        #     traceback.format_exception(ex, ex, tb=ex.__traceback__)
-        # )
-        import sys
-
-        # TODO(scottjlee): replace sys.exc_info() with ex
-        assert ex is not None
-        ex_cls, ex_val, tb = sys.exc_info()
-        while tb is not None:
-            # print(ex_cls, ex_val, tb.tb_frame)
-            call_path = tb.tb_frame.f_code.co_filename
-            if RAY_DATA_INTERNAL_STACKTRACE_PREFIX not in call_path:
-                raise ex_cls(ex_val).with_traceback(tb) from None
-            print("===> skipping stack frame:", call_path, tb.tb_frame)
-            tb = tb.tb_next
-        raise ex_cls(ex_val)
+        raise skip_internal_stack_frames(ex)
 
 
 class _BlockRefBundler:

@@ -5,6 +5,36 @@ import ray
 from ray._private.ray_constants import LOGGER_FORMAT, LOGGER_LEVEL
 
 
+def skip_internal_stack_frames(ex: Exception) -> Exception:
+    """
+    For the given Exception, skip stack frames which belong to
+    Ray Data internal or Ray Core private code paths. By default,
+    these skipped frames be omitted from stdout output, but will
+    still be emitted to the Ray Data specific log file, under
+    `logs/ray-data.log`. To emit all stack frames to stdout, set
+    `DataContext.internal_stack_trace_stdout` to True.
+    """
+    RAY_DATA_INTERNAL_STACKTRACE_PREFIX = "ray/data/_internal"
+    RAY_CORE_PRIVATE_STACKTRACE_PREFIX = "ray/_private"
+
+    if ex is None:
+        return ex
+
+    tb = ex.__traceback__
+    while tb is not None:
+        call_path = tb.tb_frame.f_code.co_filename
+        if (
+            RAY_DATA_INTERNAL_STACKTRACE_PREFIX in call_path
+            or RAY_CORE_PRIVATE_STACKTRACE_PREFIX in call_path
+        ):
+            print("===> skipping stack frame:", call_path, tb.tb_frame)
+            # TODO(scottjlee): send the skipped frames to ray-data.log,
+            # or also leave it gated on DataContext
+            ex.__traceback__ = tb.tb_next
+        tb = tb.tb_next
+    return ex
+
+
 class DatasetLogger:
     """Logger for Ray Datasets which writes logs to a separate log file
     at `DatasetLogger.DEFAULT_DATASET_LOG_PATH`. Can optionally turn off

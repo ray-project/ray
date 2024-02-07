@@ -17,6 +17,7 @@ from typing import (
 import numpy as np
 
 from ray.data._internal.block_batching.iter_batches import iter_batches
+from ray.data._internal.dataset_logger import skip_internal_stack_frames
 from ray.data._internal.stats import DatasetStats, StatsManager
 from ray.data.block import (
     Block,
@@ -161,7 +162,14 @@ class DataIterator(abc.ABC):
             # _iterator_gen is called.
             # This allows multiple iterations of the dataset without
             # needing to explicitly call `iter_batches()` multiple times.
-            block_iterator, stats, blocks_owned_by_consumer = self._to_block_iterator()
+            try:
+                (
+                    block_iterator,
+                    stats,
+                    blocks_owned_by_consumer,
+                ) = self._to_block_iterator()
+            except Exception as ex:
+                raise skip_internal_stack_frames(ex)
 
             iterator = iter(
                 iter_batches(

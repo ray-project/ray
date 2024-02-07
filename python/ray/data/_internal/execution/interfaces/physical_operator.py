@@ -99,14 +99,6 @@ class DataOpTask(OpTask):
                     assert False, "Above ray.get should raise an exception."
                 except Exception as ex:
                     self._task_done_callback(ex)
-                    # print("===> ex is:", type(ex), str(ex), "---\n")
-                    # import traceback
-                    # frame = ex.__traceback__.tb_frame
-                    # print("===> traceback.tb_frame:", frame)
-                    # print("===> .tb_next:",
-                    #     ex.__traceback__.tb_next,
-                    #     ex.__traceback__.tb_next is None
-                    # )
                     raise ex from None
             self._output_ready_callback(
                 RefBundle([(block_ref, meta)], owns_blocks=True)
