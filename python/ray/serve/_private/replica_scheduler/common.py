@@ -31,9 +31,12 @@ class PendingRequest:
     created_at: float = field(default_factory=time.time)
     future: asyncio.Future = field(default_factory=lambda: asyncio.Future())
 
-    def __eq__(self, other) -> bool:
+    def __eq__(self, other: Any) -> bool:
         """Request ID is expected to be unique."""
-        return self.metadata.request_id == other.metadata.request_id
+        if isinstance(other, PendingRequest):
+            return self.metadata.request_id == other.metadata.request_id
+
+        return False
 
 
 class ReplicaWrapper(ABC):
@@ -157,9 +160,7 @@ class ActorReplicaWrapper:
 
         return method.remote(pickle.dumps(pr.metadata), *pr.args, **pr.kwargs)
 
-    def send_request(
-        self, pr: PendingRequest
-    ) -> Union[ObjectRef, ObjectRefGenerator]:
+    def send_request(self, pr: PendingRequest) -> Union[ObjectRef, ObjectRefGenerator]:
         if self._replica_info.is_cross_language:
             return self._send_request_java(pr)
         else:

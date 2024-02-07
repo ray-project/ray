@@ -278,7 +278,7 @@ RAY_SERVE_ENABLE_QUEUE_LENGTH_CACHE = (
 )
 
 # Feature flag for strictly enforcing max_concurrent_queries (replicas will reject
-# requests)..
+# requests).
 RAY_SERVE_ENABLE_STRICT_MAX_CONCURRENT_QUERIES = (
     os.environ.get("RAY_SERVE_ENABLE_STRICT_MAX_CONCURRENT_QUERIES", "0") == "1"
     # Strict enforcement path must be enabled for the queue length cache.
