@@ -238,7 +238,16 @@ void GcsPlacementGroupScheduler::CancelResourceReserve(
                   << " has already removed. Cancellation request will be ignored.";
     return;
   }
+
   auto node_id = NodeID::FromBinary(node.value()->node_id());
+
+  if (max_retry == current_retry_cnt) {
+    RAY_LOG(INFO) << "Failed to cancel resource reserved for bundle because the max "
+                     "retry count is reached. "
+                  << bundle_spec->DebugString() << " at node " << node_id;
+    return;
+  }
+
   RAY_LOG(DEBUG) << "Cancelling the resource reserved for bundle: "
                  << bundle_spec->DebugString() << " at node " << node_id;
   const auto return_client = GetLeaseClientFromNode(node.value());
