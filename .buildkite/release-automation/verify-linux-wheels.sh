@@ -8,7 +8,7 @@ export PYTHON_VERSION="${PYTHON_VERSION:-3.8}"
 export RAY_VERSION="${RAY_VERSION:-2.9.1}"
 export RAY_HASH="${RAY_HASH:-cfbf98c315cfb2710c56039a3c96477d196de049}"
 
-export PATH="/root/bin:/root/miniconda3/bin:$PATH"
+export PATH="/root/miniconda3/bin:$PATH"
 
 conda create -n rayio python="${PYTHON_VERSION}" -y
 
