@@ -5,6 +5,7 @@ steps:
 
   - label: "Linux x86_64 Python {{matrix}}"
     depends_on: forge
+    job_env: forge
     commands:
       - export PYTHON_VERSION={{matrix}}
       - bash -i .buildkite/release-automation/verify-linux-wheels.sh
@@ -21,6 +22,7 @@ steps:
   - label: "Linux Arm64 Python {{matrix}}"
     depends_on: forge_arm64
     instance_type: medium-arm64
+    job_env: forge-arm64
     commands:
       - export PYTHON_VERSION={{matrix}}
       - bash -i .buildkite/release-automation/verify-linux-wheels.sh
