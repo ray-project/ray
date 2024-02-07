@@ -564,6 +564,11 @@ message ResourcesData {
   int64 idle_duration_ms = 15;
   // Whether the node is being drained.
   bool is_draining = 16;
+  // This is only meaningful if is_draining
+  // is true.
+  // The value is the timestamp when
+  // the node will be force killed.
+  int64 draining_deadline_timestamp_ms = 18;
 }
 
 message ResourceUsageBatchData {

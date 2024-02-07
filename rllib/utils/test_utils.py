@@ -61,99 +61,6 @@ torch, _ = try_import_torch()
 logger = logging.getLogger(__name__)
 
 
-def framework_iterator(
-    config: Optional["AlgorithmConfig"] = None,
-    frameworks: Sequence[str] = ("tf2", "tf", "torch"),
-    session: bool = False,
-    time_iterations: Optional[dict] = None,
-) -> Union[str, Tuple[str, Optional["tf1.Session"]]]:
-    """An generator that allows for looping through n frameworks for testing.
-
-    Provides the correct config entries ("framework") as well
-    as the correct eager/non-eager contexts for tf/tf2.
-
-    Args:
-        config: An optional config dict or AlgorithmConfig object. This will be modified
-            (value for "framework" changed) depending on the iteration.
-        frameworks: A list/tuple of the frameworks to be tested.
-            Allowed are: "tf2", "tf", "torch", and None.
-        session: If True and only in the tf-case: Enter a tf.Session()
-            and yield that as second return value (otherwise yield (fw, None)).
-            Also sets a seed (42) on the session to make the test
-            deterministic.
-        time_iterations: If provided, will write to the given dict (by
-            framework key) the times in seconds that each (framework's)
-            iteration takes.
-
-    Yields:
-        If `session` is False: The current framework [tf2|tf|torch] used.
-        If `session` is True: A tuple consisting of the current framework
-        string and the tf1.Session (if fw="tf", otherwise None).
-    """
-    config = config or {}
-    frameworks = [frameworks] if isinstance(frameworks, str) else list(frameworks)
-
-    for fw in frameworks:
-        # Skip tf if on new API stack.
-        if fw == "tf" and config.get("_enable_new_api_stack", False):
-            logger.warning("framework_iterator skipping tf (new API stack configured)!")
-            continue
-
-        # Skip non-installed frameworks.
-        if fw == "torch" and not torch:
-            logger.warning("framework_iterator skipping torch (not installed)!")
-            continue
-        if fw != "torch" and not tf:
-            logger.warning(
-                "framework_iterator skipping {} (tf not installed)!".format(fw)
-            )
-            continue
-        elif fw == "tf2" and tfv != 2:
-            logger.warning("framework_iterator skipping tf2.x (tf version is < 2.0)!")
-            continue
-        elif fw == "jax" and not jax:
-            logger.warning("framework_iterator skipping JAX (not installed)!")
-            continue
-        assert fw in ["tf2", "tf", "torch", "jax", None]
-
-        # Do we need a test session?
-        sess = None
-        if fw == "tf" and session is True:
-            sess = tf1.Session()
-            sess.__enter__()
-            tf1.set_random_seed(42)
-
-        if isinstance(config, dict):
-            config["framework"] = fw
-        else:
-            config.framework(fw)
-
-        eager_ctx = None
-        # Enable eager mode for tf2.
-        if fw == "tf2":
-            eager_ctx = eager_mode()
-            eager_ctx.__enter__()
-            assert tf1.executing_eagerly()
-        # Make sure, eager mode is off.
-        elif fw == "tf":
-            assert not tf1.executing_eagerly()
-
-        # Yield current framework + tf-session (if necessary).
-        print(f"framework={fw}")
-        time_started = time.time()
-        yield fw if session is False else (fw, sess)
-        if time_iterations is not None:
-            time_total = time.time() - time_started
-            time_iterations[fw] = time_total
-            print(f".. took {time_total}sec")
-
-        # Exit any context we may have entered.
-        if eager_ctx:
-            eager_ctx.__exit__(None, None, None)
-        elif sess:
-            sess.__exit__(None, None, None)
-
-
 def check(x, y, decimals=5, atol=None, rtol=None, false=False):
     """
     Checks two structures (dict, tuple, list,
@@ -191,7 +98,7 @@ def check(x, y, decimals=5, atol=None, rtol=None, false=False):
     elif isinstance(x, (tuple, list)):
         assert isinstance(
             y, (tuple, list)
-        ), "ERROR: If x is tuple, y needs to be a tuple as well!"
+        ), "ERROR: If x is tuple/list, y needs to be a tuple/list as well!"
         assert len(y) == len(
             x
         ), "ERROR: y does not have the same length as x ({} vs {})!".format(
@@ -703,6 +610,99 @@ def check_train_results(train_results: ResultDict):
                 assert np.isscalar(value), f"'key' value not a scalar ({value})!"
 
     return train_results
+
+
+def framework_iterator(
+    config: Optional["AlgorithmConfig"] = None,
+    frameworks: Sequence[str] = ("tf2", "tf", "torch"),
+    session: bool = False,
+    time_iterations: Optional[dict] = None,
+) -> Union[str, Tuple[str, Optional["tf1.Session"]]]:
+    """An generator that allows for looping through n frameworks for testing.
+
+    Provides the correct config entries ("framework") as well
+    as the correct eager/non-eager contexts for tf/tf2.
+
+    Args:
+        config: An optional config dict or AlgorithmConfig object. This will be modified
+            (value for "framework" changed) depending on the iteration.
+        frameworks: A list/tuple of the frameworks to be tested.
+            Allowed are: "tf2", "tf", "torch", and None.
+        session: If True and only in the tf-case: Enter a tf.Session()
+            and yield that as second return value (otherwise yield (fw, None)).
+            Also sets a seed (42) on the session to make the test
+            deterministic.
+        time_iterations: If provided, will write to the given dict (by
+            framework key) the times in seconds that each (framework's)
+            iteration takes.
+
+    Yields:
+        If `session` is False: The current framework [tf2|tf|torch] used.
+        If `session` is True: A tuple consisting of the current framework
+        string and the tf1.Session (if fw="tf", otherwise None).
+    """
+    config = config or {}
+    frameworks = [frameworks] if isinstance(frameworks, str) else list(frameworks)
+
+    for fw in frameworks:
+        # Skip tf if on new API stack.
+        if fw == "tf" and config.get("_enable_new_api_stack", False):
+            logger.warning("framework_iterator skipping tf (new API stack configured)!")
+            continue
+
+        # Skip non-installed frameworks.
+        if fw == "torch" and not torch:
+            logger.warning("framework_iterator skipping torch (not installed)!")
+            continue
+        if fw != "torch" and not tf:
+            logger.warning(
+                "framework_iterator skipping {} (tf not installed)!".format(fw)
+            )
+            continue
+        elif fw == "tf2" and tfv != 2:
+            logger.warning("framework_iterator skipping tf2.x (tf version is < 2.0)!")
+            continue
+        elif fw == "jax" and not jax:
+            logger.warning("framework_iterator skipping JAX (not installed)!")
+            continue
+        assert fw in ["tf2", "tf", "torch", "jax", None]
+
+        # Do we need a test session?
+        sess = None
+        if fw == "tf" and session is True:
+            sess = tf1.Session()
+            sess.__enter__()
+            tf1.set_random_seed(42)
+
+        if isinstance(config, dict):
+            config["framework"] = fw
+        else:
+            config.framework(fw)
+
+        eager_ctx = None
+        # Enable eager mode for tf2.
+        if fw == "tf2":
+            eager_ctx = eager_mode()
+            eager_ctx.__enter__()
+            assert tf1.executing_eagerly()
+        # Make sure, eager mode is off.
+        elif fw == "tf":
+            assert not tf1.executing_eagerly()
+
+        # Yield current framework + tf-session (if necessary).
+        print(f"framework={fw}")
+        time_started = time.time()
+        yield fw if session is False else (fw, sess)
+        if time_iterations is not None:
+            time_total = time.time() - time_started
+            time_iterations[fw] = time_total
+            print(f".. took {time_total}sec")
+
+        # Exit any context we may have entered.
+        if eager_ctx:
+            eager_ctx.__exit__(None, None, None)
+        elif sess:
+            sess.__exit__(None, None, None)
 
 
 def run_learning_tests_from_yaml(
