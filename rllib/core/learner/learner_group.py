@@ -158,7 +158,7 @@ class LearnerGroup:
             num_gpus_per_worker = self.config.num_gpus_per_learner_worker
             resources_per_worker = {
                 "CPU": num_cpus_per_worker,
-                "GPU": num_gpus_per_worker
+                "GPU": num_gpus_per_worker,
             }
 
             backend_executor = BackendExecutor(
