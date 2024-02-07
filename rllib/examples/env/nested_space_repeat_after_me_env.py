@@ -40,8 +40,8 @@ class NestedSpaceRepeatAfterMeEnv(gym.Env):
             # Discrete: +1.0 if exact match.
             if isinstance(space, gym.spaces.Discrete):
                 reward += 1.0 if a == o else 0.0
-        done = truncated = self.steps >= self.episode_len
-        return self._next_obs(), reward, done, truncated, {}
+        truncated = self.steps >= self.episode_len
+        return self._next_obs(), reward, False, truncated, {}
 
     def _next_obs(self):
         self.current_obs = self.observation_space.sample()

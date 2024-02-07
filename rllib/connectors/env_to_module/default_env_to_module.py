@@ -80,6 +80,12 @@ class DefaultEnvToModule(ConnectorV2):
                 data = self._perform_agent_to_module_mapping(
                     data, episodes, shared_data
                 )
+        # In the single-agent case, we should make sure that lists of data items under
+        # the individual columns are batched, if necessary.
+        else:
+            for column, column_data in data.items():
+                if isinstance(column_data, list):
+                    data[column] = batch(column_data)
 
         # Convert data to proper tensor formats, depending on framework used by the
         # RLModule.
