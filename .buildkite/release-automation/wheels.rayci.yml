@@ -1,0 +1,15 @@
+group: verify wheels
+steps:
+  - name: forge
+    wanda: .buildkite/release-automation/forge.wanda.yaml
+
+  - label: "Verify Linux AMD64 wheels - Python {{matrix}}"
+    depends_on: forge
+    commands:
+      - export PYTHON_VERSION={{matrix}}
+      - bash -i .buildkite/release-automation/verify-linux-wheels.sh
+    matrix:
+      - "3.8"
+      - "3.9"
+      - "3.10"
+      - "3.11"

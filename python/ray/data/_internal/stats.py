@@ -280,7 +280,6 @@ class _StatsActor:
         for stats, operator_tag in zip(op_metrics, operator_tags):
             tags = self._create_tags(dataset_tag, operator_tag)
             self.bytes_spilled.set(stats.get("obj_store_mem_spilled", 0), tags)
-            self.bytes_allocated.set(stats.get("obj_store_mem_alloc", 0), tags)
             self.bytes_freed.set(stats.get("obj_store_mem_freed", 0), tags)
             self.bytes_current.set(stats.get("obj_store_mem_cur", 0), tags)
             self.bytes_outputted.set(stats.get("bytes_task_outputs_generated", 0), tags)
@@ -1198,11 +1197,6 @@ class IterStatsSummary:
                 out += "    * Total execution time for user thread: {}\n".format(
                     fmt(self.user_time.get())
                 )
-            out += "* Num blocks local: {}\n".format(self.iter_blocks_local)
-            out += "* Num blocks remote: {}\n".format(self.iter_blocks_remote)
-            out += "* Num blocks unknown location: {}\n".format(
-                self.iter_unknown_location
-            )
             out += (
                 "* Batch iteration time breakdown (summed across prefetch threads):\n"
             )
@@ -1249,6 +1243,13 @@ class IterStatsSummary:
                     fmt(self.finalize_batch_time.max()),
                     fmt(self.finalize_batch_time.avg()),
                     fmt(self.finalize_batch_time.get()),
+                )
+            if DataContext.get_current().enable_get_object_locations_for_metrics:
+                out += "Block locations:\n"
+                out += "    * Num blocks local: {}\n".format(self.iter_blocks_local)
+                out += "    * Num blocks remote: {}\n".format(self.iter_blocks_remote)
+                out += "    * Num blocks unknown location: {}\n".format(
+                    self.iter_unknown_location
                 )
 
         return out

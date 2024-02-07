@@ -22,6 +22,7 @@ from ray.serve import metrics
 from ray.serve._private.common import (
     DeploymentID,
     ReplicaName,
+    ReplicaQueueLengthInfo,
     ReplicaTag,
     RequestMetadata,
     ServeComponentType,
@@ -195,12 +196,11 @@ class ReplicaMetricsManager:
             # Collect autoscaling metrics locally periodically.
             self._metrics_pusher.register_or_update_task(
                 self.RECORD_METRICS_TASK_NAME,
-                self.get_num_ongoing_requests,
+                self._add_autoscaling_metrics_point,
                 min(
                     RAY_SERVE_REPLICA_AUTOSCALING_METRIC_RECORD_PERIOD_S,
                     self._autoscaling_config.metrics_interval_s,
                 ),
-                self._add_autoscaling_metrics_point,
             )
 
     def inc_num_ongoing_requests(self) -> int:
@@ -225,16 +225,19 @@ class ReplicaMetricsManager:
         else:
             self._request_counter.inc(tags={"route": route})
 
-    def _collect_autoscaling_metrics(self):
+    def _collect_autoscaling_metrics(self) -> Dict[str, Any]:
         look_back_period = self._autoscaling_config.look_back_period_s
-        return self._replica_tag, self._metrics_store.window_average(
-            self._replica_tag, time.time() - look_back_period
-        )
+        return {
+            "replica_id": self._replica_tag,
+            "window_avg": self._metrics_store.window_average(
+                self._replica_tag, time.time() - look_back_period
+            ),
+        }
 
-    def _add_autoscaling_metrics_point(self, data, send_timestamp: float):
+    def _add_autoscaling_metrics_point(self) -> None:
         self._metrics_store.add_metrics_point(
-            {self._replica_tag: data},
-            send_timestamp,
+            {self._replica_tag: self._num_ongoing_requests},
+            time.time(),
         )
 
     def _set_replica_requests_metrics(self):
@@ -405,7 +408,7 @@ class ReplicaActor:
         *request_args,
         **request_kwargs,
     ) -> Tuple[bytes, Any]:
-        """Entrypoint for all `stream=False` calls."""
+        """Entrypoint for `stream=False` calls."""
         request_metadata = pickle.loads(pickled_request_metadata)
         with self._wrap_user_method_call(request_metadata):
             return await self._user_callable_wrapper.call_user_method(
@@ -494,6 +497,61 @@ class ReplicaActor:
                 request_kwargs,
             ):
                 yield result
+
+    async def handle_request_with_rejection(
+        self,
+        pickled_request_metadata: bytes,
+        *request_args,
+        **request_kwargs,
+    ) -> AsyncGenerator[Any, None]:
+        """Entrypoint for all requests with strict max_concurrent_queries enforcement.
+
+        The first response from this generator is always a system message indicating
+        if the request was accepted (the replica has capacity for the request) or
+        rejected (the replica is already at max_concurrent_queries).
+
+        For non-streaming requests, there will only be one more message, the unary
+        result of the user request handler.
+
+        For streaming requests, the subsequent messages will be the results of the
+        user request handler (which must be a generator).
+        """
+        request_metadata = pickle.loads(pickled_request_metadata)
+        limit = self._deployment_config.max_concurrent_queries
+        num_ongoing_requests = self.get_num_ongoing_requests()
+        if num_ongoing_requests >= limit:
+            logger.warning(
+                f"Replica at capacity of max_concurrent_queries={limit}, "
+                f"rejecting request {request_metadata.request_id}."
+            )
+            yield pickle.dumps(
+                ReplicaQueueLengthInfo(
+                    accepted=False, num_ongoing_requests=num_ongoing_requests
+                )
+            )
+            return
+
+        with self._wrap_user_method_call(request_metadata):
+            yield pickle.dumps(
+                ReplicaQueueLengthInfo(
+                    accepted=True,
+                    # NOTE(edoakes): `_wrap_user_method_call` will increment the number
+                    # of ongoing requests to include this one, so re-fetch the value.
+                    num_ongoing_requests=self.get_num_ongoing_requests(),
+                )
+            )
+
+            if request_metadata.is_streaming:
+                async for result in self._call_user_generator(
+                    request_metadata,
+                    request_args,
+                    request_kwargs,
+                ):
+                    yield result
+            else:
+                yield await self._user_callable_wrapper.call_user_method(
+                    request_metadata, request_args, request_kwargs
+                )
 
     async def handle_request_from_java(
         self,

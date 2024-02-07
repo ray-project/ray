@@ -360,6 +360,8 @@ void ClusterTaskManager::FillResourceUsage(rpc::ResourcesData &data) {
   data.set_object_pulls_queued(resource_view_sync_message.object_pulls_queued());
   data.set_idle_duration_ms(resource_view_sync_message.idle_duration_ms());
   data.set_is_draining(resource_view_sync_message.is_draining());
+  data.set_draining_deadline_timestamp_ms(
+      resource_view_sync_message.draining_deadline_timestamp_ms());
 }
 
 bool ClusterTaskManager::AnyPendingTasksForResourceAcquisition(
