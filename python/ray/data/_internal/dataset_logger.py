@@ -7,10 +7,24 @@ from ray.data.context import DataContext
 
 
 class UserCodeException(Exception):
+    """Represents an Exception originating from user code, e.g.
+    user-specified UDF used in a Ray Data transformation."""
+
     pass
 
 
 class RayDataInternalException(Exception):
+    """Represents an Exception originating from Ray Data internal code
+    or Ray Core private code paths, as opposed to user code. When
+    Exceptions of this form are raised, it likely indicate a bug
+    in Ray Data or Ray Core.
+
+    By default, the stack trace for these exceptions is omitted from
+    stdout, but will still be emitted to the Ray Data specific log file.
+    To emit all stack frames to stdout, set `DataContext.internal_stack_trace_stdout`
+    to True.
+    """
+
     pass
 
 
@@ -32,6 +46,8 @@ def skip_internal_stack_frames(ex: Exception) -> Exception:
 
     tb = ex.__traceback__
     if tb is not None:
+        # Always log the full traceback, including internal code paths,
+        # to the Ray Data log file.
         try:
             raise ex
         except Exception:
@@ -46,12 +62,17 @@ def skip_internal_stack_frames(ex: Exception) -> Exception:
             RAY_DATA_INTERNAL_STACKTRACE_PREFIX in call_path
             or RAY_CORE_PRIVATE_STACKTRACE_PREFIX in call_path
         ):
+            # Current frame is from Ray Data internal or Ray Core private code,
+            # so skip it in the output Exception.
             ex.__traceback__ = tb.tb_next
             last_traceback_was_skipped = True
         else:
             last_traceback_was_skipped = False
         tb = tb.tb_next
     if last_traceback_was_skipped:
+        # If the bottom-most stack frame was skipped, and there was no previous
+        # user code error encountered, this indicates that the
+        # error originated from Ray Data internal or Ray Core private code.
         if not isinstance(ex, UserCodeException):
             data_exception_logger.get_logger().error(
                 "Exception occured in Ray Data or Ray Core internal code. "
@@ -70,6 +91,8 @@ def skip_internal_stack_frames(ex: Exception) -> Exception:
         )
         return ex_with_full_tb
 
+    # By default, raise the stripped Exception, and log the full stack trace
+    # to the Ray Data log file.
     data_exception_logger.get_logger().error(
         "Exception occured in user code. By default, the Ray Data internal stack "
         "trace is omitted from stdout, and only written to `ray-data.log`. "
@@ -175,4 +198,5 @@ class DatasetLogger:
         return self._logger
 
 
+# Logger used by Ray Data to log Exceptions while skip internal stack frames.
 data_exception_logger = DatasetLogger(__name__)
