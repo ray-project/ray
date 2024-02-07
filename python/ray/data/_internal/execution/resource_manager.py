@@ -29,9 +29,9 @@ class ResourceManager:
     def __init__(self, topology: "Topology", options: ExecutionOptions):
         self._topology = topology
         self._options = options
-        self._global_limits = ExecutionResources()
+        self._global_limits = ExecutionResources.ZERO
         self._global_limits_last_update_time = 0
-        self._global_usage = ExecutionResources(0, 0, 0)
+        self._global_usage = ExecutionResources.ZERO
         self._op_usages: Dict[PhysicalOperator, ExecutionResources] = {}
 
         self._downstream_fraction: Dict[PhysicalOperator, float] = {}
@@ -127,6 +127,8 @@ class ResourceManager:
             gpu=gpu,
             object_store_memory=object_store_memory,
         )
+        if self._op_resource_limiter is not None:
+            self._op_resource_limiter.on_global_limits_updated(self._global_limits)
         return self._global_limits
 
     def get_op_usage(self, op: PhysicalOperator) -> ExecutionResources:
@@ -141,19 +143,32 @@ class ResourceManager:
         """Return the downstream object store memory usage of the given operator."""
         return self._downstream_object_store_memory[op]
 
-    def per_op_limiting_enabled(self) -> bool:
-        """Return whether per-operator resource limiting is enabled."""
+    def op_resource_limiter_enabled(self) -> bool:
+        """Return whether OpResourceLimiter is enabled."""
         return self._op_resource_limiter is not None
 
-    def get_op_available(self, op: PhysicalOperator) -> ExecutionResources:
-        """Return the resource limit of the given operator at the current time."""
+    def get_op_limit(self, op: PhysicalOperator) -> ExecutionResources:
+        """Get the limit of resources that the given op can use at the current time.
+
+        This method can only be called when `op_resource_limiter_enabled` returns True.
+        """
         assert self._op_resource_limiter is not None
-        return self._op_resource_limiter.get_op_available(op)
+        return self._op_resource_limiter.get_op_limit(op)
 
 
 class OpResourceLimiter(metaclass=ABCMeta):
+    """Interface for limiting resources for each operator.
+
+    This interface allows limit the resources that each operator can use, in each
+    scheduling iteration.
+    """
+
     def __init__(self, resource_manager: ResourceManager):
         self._resource_manager = resource_manager
+
+    def on_global_limits_updated(self, global_limits: ExecutionResources):
+        """Callback when the global limits are updated."""
+        pass
 
     @abstractmethod
     def update_usages(self) -> ExecutionResources:
@@ -161,65 +176,89 @@ class OpResourceLimiter(metaclass=ABCMeta):
         ...
 
     @abstractmethod
-    def get_op_available(self, op: PhysicalOperator) -> ExecutionResources:
+    def get_op_limit(self, op: PhysicalOperator) -> ExecutionResources:
+        """Get the limit of resources that the given op can use at the current time."""
         ...
 
 
 class ReservationOpResourceLimiter(OpResourceLimiter):
-    """A resource limiter that reserves resources for each operator."""
+    """An OpResourceLimiter implementation that reserves resources for each operator.
+
+    This class reserves memory and CPU resources for map operators, and consider runtime
+    resource usages to limit the resources that each operator can use.
+    It works in the following way:
+    1. Currently we only limit map operators. Non-map operators get unlimited resources.
+    2. For each map operator, we reserve `reservation_ratio * global_resources /
+        num_map_ops` resources. The remaining are shared among all map operators.
+    3. In each scheduling iteration, each map operator will get "remaining of their own
+       reserved resources" + "remaining of shared resources / num_map_ops" resources.
+    """
 
     def __init__(self, resource_manager: ResourceManager, reservation_ratio: float):
         super().__init__(resource_manager)
         self._reservation_ratio = reservation_ratio
+        assert 0.0 <= self._reservation_ratio <= 1.0
+        # We only limit map operators.
         self._eligible_ops = list(
             op for op in self._resource_manager._topology if isinstance(op, MapOperator)
         )
-        self._op_reserved: Dict[PhysicalOperator, ExecutionResources] = {}
-        self._total_shared = ExecutionResources.ZERO
-        self._op_available: Dict[PhysicalOperator, ExecutionResources] = {}
-        assert 0.0 <= self._reservation_ratio <= 1.0
-
-    def on_global_limits_changed(self, global_limits: ExecutionResources):
-        num_ops = len(self._eligible_ops)
         # Per-op reserved resources.
-        default_reserved = global_limits.scale(self._reservation_ratio / num_ops)
+        self._op_reserved: Dict[PhysicalOperator, ExecutionResources] = {}
         # Total shared resources.
+        self._total_shared = ExecutionResources.ZERO
+        # Resource limits for each operator.
+        self._op_limits: Dict[PhysicalOperator, ExecutionResources] = {}
+
+    def on_global_limits_updated(self, global_limits: ExecutionResources):
         self._total_shared = global_limits.scale(1.0 - self._reservation_ratio)
 
+        default_reserved = global_limits.scale(
+            self._reservation_ratio / len(self._eligible_ops)
+        )
         for op in self._eligible_ops:
+            # Make sure the reserved resources are at least to allow
+            # one task.
             self._op_reserved[op] = default_reserved.min(
                 op.incremental_resource_usage()
             )
 
     def update_usages(self):
-        self._op_available.clear()
-        shared = self._total_shared
+        self._op_limits.clear()
+        # Remaining of shared resources.
+        remaining_shared = self._total_shared
         for op in self._resource_manager._topology:
             op_usage = self._resource_manager.get_op_usage(op)
             if op in self._eligible_ops:
                 op_reserved = self._op_reserved[op]
+                # How much of the reserved resources are remaining.
                 op_reserved_remaining = op_reserved.subtract(op_usage).min(
                     ExecutionResources.ZERO
                 )
+                self._op_limits[op] = op_reserved_remaining
+                # How much of the reserved resources are exceeded.
+                # If exceeded, we need to subtract from the remaining shared resources.
                 op_reserved_exceeded = op_usage.subtract(op_reserved).min(
                     ExecutionResources.ZERO
                 )
-                self._op_available[op] = op_reserved_remaining
-                shared = shared.subtract(op_reserved_exceeded)
+                remaining_shared = remaining_shared.subtract(op_reserved_exceeded)
             else:
-                shared = shared.subtract(op_usage)
+                # For non-eligible ops, we still need to subtract
+                # their usage from the remaining shared resources.
+                remaining_shared = remaining_shared.subtract(op_usage)
 
-        shared_divided = shared.min(ExecutionResources.ZERO).scale(
+        shared_divided = remaining_shared.min(ExecutionResources.ZERO).scale(
             1.0 / len(self._eligible_ops)
         )
         for op in self._eligible_ops:
-            self._op_available[op] = self._op_available[op].add(shared_divided)
-            self._op_available[op].gpu = None
+            self._op_limits[op] = self._op_limits[op].add(shared_divided)
+            # We don't limit GPU resources, as not all operators
+            # use GPU resources.
+            self._op_limits[op].gpu = None
 
         return
 
-    def get_op_available(self, op: PhysicalOperator) -> ExecutionResources:
-        if op in self._op_available:
-            return self._op_available[op]
+    def get_op_limit(self, op: PhysicalOperator) -> ExecutionResources:
+        if op in self._op_limits:
+            return self._op_limits[op]
         else:
             return ExecutionResources.INF
