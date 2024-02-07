@@ -13,7 +13,6 @@ from ray.air.constants import MAX_REPR_LENGTH
 from ray.air.util.data_batch_conversion import BatchFormat
 from ray.data.preprocessor import Preprocessor
 from ray.data.preprocessors import (
-    BatchMapper,
     Categorizer,
     Chain,
     Concatenator,
@@ -85,7 +84,6 @@ def create_dummy_preprocessors():
 @pytest.mark.parametrize(
     "preprocessor",
     [
-        BatchMapper(fn=lambda x: x, batch_format="pandas"),
         Categorizer(columns=["X"]),
         CountVectorizer(columns=["X"]),
         Chain(StandardScaler(columns=["X"]), MinMaxScaler(columns=["X"])),
