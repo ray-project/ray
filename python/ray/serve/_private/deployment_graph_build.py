@@ -161,7 +161,7 @@ def transform_ray_dag_to_serve_dag(
             if isinstance(node, DeploymentNode) or isinstance(
                 node, DeploymentFunctionNode
             ):
-                return DeploymentHandle(node._deployment.name, app_name, sync=False)
+                return DeploymentHandle(node._deployment.name, app_name)
             elif isinstance(node, DeploymentExecutorNode):
                 return node._deployment_handle
 
