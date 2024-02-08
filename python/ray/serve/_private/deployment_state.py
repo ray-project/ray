@@ -46,7 +46,7 @@ from ray.serve._private.deployment_scheduler import (
     DeploymentDownscaleRequest,
     DeploymentScheduler,
     ReplicaSchedulingRequest,
-    SpreadDeploymentSchedulingPolicy,
+    SpreadDeploymentSchedulingPolicy
 )
 from ray.serve._private.long_poll import LongPollHost, LongPollNamespace
 from ray.serve._private.storage.kv_store import KVStoreBase
@@ -2365,13 +2365,12 @@ class DeploymentStateManager:
         all_current_actor_names: List[str],
         all_current_placement_group_names: List[str],
         cluster_node_info_cache: ClusterNodeInfoCache,
+        deployment_scheduler: DeploymentScheduler,
     ):
         self._kv_store = kv_store
         self._long_poll_host = long_poll_host
         self._cluster_node_info_cache = cluster_node_info_cache
-        self._deployment_scheduler = default_impl.create_deployment_scheduler(
-            cluster_node_info_cache
-        )
+        self._deployment_scheduler = deployment_scheduler
 
         self._deployment_states: Dict[DeploymentID, DeploymentState] = dict()
 

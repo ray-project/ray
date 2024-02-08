@@ -112,7 +112,13 @@ class DeploymentScheduler(ABC):
 
 
 class DefaultDeploymentScheduler(DeploymentScheduler):
-    def __init__(self, cluster_node_info_cache: ClusterNodeInfoCache):
+
+    def __init__(
+        self,
+        cluster_node_info_cache: ClusterNodeInfoCache,
+        *,
+        head_node_id_override: Optional[str] = None,
+    ):
         # {deployment_id: scheduling_policy}
         self._deployments = {}
         # Replicas that are waiting to be scheduled.
@@ -133,7 +139,7 @@ class DefaultDeploymentScheduler(DeploymentScheduler):
 
         self._cluster_node_info_cache = cluster_node_info_cache
 
-        self._head_node_id = get_head_node_id()
+        self._head_node_id = head_node_id_override or get_head_node_id()
 
     def on_deployment_created(
         self,
