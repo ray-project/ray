@@ -576,6 +576,7 @@ class Reconciler:
                     details="Reconciled from ray node status "
                     f"{NodeStatus.Name(ray_node.status)} "
                     f"for ray node {ray_node.node_id.decode()}",
+                    ray_node_id=ray_node.node_id.decode(),
                 )
                 logger.debug(
                     "Updating {}({}) with {}.".format(

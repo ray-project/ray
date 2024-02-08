@@ -214,6 +214,8 @@ class InstanceManager:
             instance.cloud_instance_id = update.cloud_instance_id
         elif update.new_instance_status == Instance.TERMINATED:
             instance.cloud_instance_id = ""
+        elif update.new_instance_status == Instance.RAY_RUNNING:
+            instance.node_id = update.ray_node_id
         elif update.new_instance_status == Instance.REQUESTED:
             instance.launch_request_id = update.launch_request_id
 
