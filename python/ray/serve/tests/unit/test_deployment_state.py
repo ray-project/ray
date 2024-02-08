@@ -337,8 +337,6 @@ def mock_deployment_state() -> Tuple[DeploymentState, Mock, Mock]:
         "ray.serve._private.deployment_state.ActorReplicaWrapper",
         new=MockReplicaActorWrapper,
     ), patch("time.time", new=timer.time), patch(
-        "ray.serve._private.deployment_scheduler.get_head_node_id",
-    ) as mock_get_head_node_id, patch(
         "ray.serve._private.long_poll.LongPollHost"
     ) as mock_long_poll:
 
@@ -347,12 +345,13 @@ def mock_deployment_state() -> Tuple[DeploymentState, Mock, Mock]:
 
         cluster_node_info_cache = MockClusterNodeInfoCache()
 
-        mock_get_head_node_id.return_value = "mock-head-node-id"
-
         deployment_state = DeploymentState(
             DeploymentID("name", "my_app"),
             mock_long_poll,
-            DefaultDeploymentScheduler(cluster_node_info_cache),
+            DefaultDeploymentScheduler(
+                cluster_node_info_cache,
+                head_node_id_override="fake-head-node-id"
+            ),
             cluster_node_info_cache,
             mock_save_checkpoint_fn,
         )
@@ -3127,16 +3126,12 @@ def mock_deployment_state_manager_full(
         "ray.serve._private.deployment_state.ActorReplicaWrapper",
         new=MockReplicaActorWrapper,
     ), patch(
-        "ray.serve._private.default_impl.create_deployment_scheduler",
-    ) as mock_create_deployment_scheduler, patch(
         "time.time", new=timer.time
     ), patch(
         "ray.serve._private.long_poll.LongPollHost"
     ) as mock_long_poll, patch(
         "ray.get_runtime_context"
-    ), patch(
-        "ray.serve._private.deployment_scheduler.get_head_node_id",
-    ) as mock_get_head_node_id:
+    ):
         kv_store = MockKVStore()
         cluster_node_info_cache = MockClusterNodeInfoCache()
 
@@ -3149,18 +3144,16 @@ def mock_deployment_state_manager_full(
             if placement_group_names is None:
                 placement_group_names = []
 
-            mock_get_head_node_id.return_value = "mock-head-node-id"
-
-            mock_create_deployment_scheduler.return_value = DefaultDeploymentScheduler(
-                cluster_node_info_cache
-            )
-
             return DeploymentStateManager(
                 kv_store,
                 mock_long_poll,
                 actor_names,
                 placement_group_names,
                 cluster_node_info_cache,
+                DefaultDeploymentScheduler(
+                    cluster_node_info_cache,
+                    head_node_id_override="fake-head-node-id",
+                ),
             )
 
         yield create_deployment_state_manager, timer, cluster_node_info_cache
@@ -3433,17 +3426,12 @@ def mock_deployment_state_manager(request) -> Tuple[DeploymentStateManager, Mock
         "ray.serve._private.deployment_state.ActorReplicaWrapper",
         new=MockReplicaActorWrapper,
     ), patch(
-        "ray.serve._private.default_impl.create_deployment_scheduler",
-    ) as mock_create_deployment_scheduler, patch(
         "time.time", new=timer.time
     ), patch(
         "ray.serve._private.long_poll.LongPollHost"
     ) as mock_long_poll:
         kv_store = MockKVStore()
         cluster_node_info_cache = MockClusterNodeInfoCache()
-        mock_create_deployment_scheduler.return_value = DefaultDeploymentScheduler(
-            cluster_node_info_cache
-        )
         all_current_actor_names = []
         all_current_placement_group_names = []
         deployment_state_manager = DeploymentStateManager(
@@ -3452,6 +3440,10 @@ def mock_deployment_state_manager(request) -> Tuple[DeploymentStateManager, Mock
             all_current_actor_names,
             all_current_placement_group_names,
             cluster_node_info_cache,
+            DefaultDeploymentScheduler(
+                cluster_node_info_cache,
+                head_node_id_override="fake-head-node-id",
+            ),
         )
 
         yield deployment_state_manager, timer, cluster_node_info_cache
