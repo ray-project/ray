@@ -614,10 +614,10 @@ class ProxyStateManager:
         that are no longer exist. Update all proxy states. Kill and restart
         unhealthy proxies.
         """
-        # Ensure head node always has a proxy.
         if proxy_nodes is None:
             proxy_nodes = set()
 
+        # Ensure head node always has a proxy (unless FF'd off).
         if RAY_SERVE_ALWAYS_RUN_PROXY_ON_HEAD_NODE:
             proxy_nodes.add(self._head_node_id)
 
