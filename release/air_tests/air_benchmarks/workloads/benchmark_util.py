@@ -7,7 +7,7 @@ from pathlib import Path
 from ray.air.util.node import _force_on_node
 
 import ray
-from typing import Any, List, Dict, Union, Callable
+from typing import List, Dict, Union, Callable
 
 
 def schedule_remote_fn_on_all_nodes(
@@ -77,15 +77,11 @@ class CommandRunner:
 def create_actors_with_options(
     num_actors: int,
     resources: Dict[str, Union[float, int]],
-    runtime_env: Dict[str, Any] = None,
 ) -> List[ray.actor.ActorHandle]:
     num_cpus = resources.pop("CPU", 1)
     num_gpus = resources.pop("GPU", 0)
 
     options = {"num_cpus": num_cpus, "num_gpus": num_gpus, "resources": resources}
-
-    if runtime_env:
-        options["runtime_env"] = runtime_env
 
     return [CommandRunner.options(**options).remote() for _ in range(num_actors)]
 

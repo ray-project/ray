@@ -13,7 +13,6 @@ from ray.data._internal.execution.interfaces import (
 from ray.data._internal.progress_bar import set_progress_bars
 from ray.data.context import DataContext, DatasetContext
 from ray.data.dataset import Dataset, Schema
-from ray.data.dataset_pipeline import DatasetPipeline
 from ray.data.datasource import (
     BlockBasedFileDatasink,
     Datasink,
@@ -95,7 +94,6 @@ __all__ = [
     "DatasetContext",  # Backwards compatibility alias.
     "DataIterator",
     "DatasetIterator",  # Backwards compatibility alias.
-    "DatasetPipeline",
     "Datasink",
     "Datasource",
     "ExecutionOptions",

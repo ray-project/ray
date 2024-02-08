@@ -322,7 +322,8 @@ class BaseTrainer(abc.ABC):
                 "`trainer.fit()`."
             )
         fs, fs_path = get_fs_and_path(path, storage_filesystem)
-        with fs.open_input_file(os.path.join(fs_path, _TRAINER_PKL)) as f:
+        trainer_pkl_path = Path(fs_path, _TRAINER_PKL).as_posix()
+        with fs.open_input_file(trainer_pkl_path) as f:
             trainer_cls, param_dict = pickle.loads(f.readall())
 
         if trainer_cls is not cls:
@@ -392,7 +393,8 @@ class BaseTrainer(abc.ABC):
             bool: Whether this path exists and contains the trainer state to resume from
         """
         fs, fs_path = get_fs_and_path(path, storage_filesystem)
-        return _exists_at_fs_path(fs, os.path.join(fs_path, _TRAINER_PKL))
+        trainer_pkl_path = Path(fs_path, _TRAINER_PKL).as_posix()
+        return _exists_at_fs_path(fs, trainer_pkl_path)
 
     def __repr__(self):
         # A dictionary that maps parameters to their default values.
@@ -733,7 +735,7 @@ class BaseTrainer(abc.ABC):
         # stdout messages and the results directory.
         train_func.__name__ = trainer_cls.__name__
 
-        trainable_cls = wrap_function(train_func, warn=False)
+        trainable_cls = wrap_function(train_func)
         has_base_dataset = bool(self.datasets)
         if has_base_dataset:
             from ray.data.context import DataContext
