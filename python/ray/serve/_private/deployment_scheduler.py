@@ -112,7 +112,6 @@ class DeploymentScheduler(ABC):
 
 
 class DefaultDeploymentScheduler(DeploymentScheduler):
-
     def __init__(
         self,
         cluster_node_info_cache: ClusterNodeInfoCache,

@@ -16,7 +16,6 @@ from ray import ObjectRef, cloudpickle
 from ray.actor import ActorHandle
 from ray.exceptions import RayActorError, RayError, RayTaskError, RuntimeEnvSetupError
 from ray.serve import metrics
-from ray.serve._private import default_impl
 from ray.serve._private.autoscaling_policy import AutoscalingPolicyManager
 from ray.serve._private.cluster_node_info_cache import ClusterNodeInfoCache
 from ray.serve._private.common import (
@@ -46,7 +45,7 @@ from ray.serve._private.deployment_scheduler import (
     DeploymentDownscaleRequest,
     DeploymentScheduler,
     ReplicaSchedulingRequest,
-    SpreadDeploymentSchedulingPolicy
+    SpreadDeploymentSchedulingPolicy,
 )
 from ray.serve._private.long_poll import LongPollHost, LongPollNamespace
 from ray.serve._private.storage.kv_store import KVStoreBase

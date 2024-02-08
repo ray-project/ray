@@ -349,8 +349,7 @@ def mock_deployment_state() -> Tuple[DeploymentState, Mock, Mock]:
             DeploymentID("name", "my_app"),
             mock_long_poll,
             DefaultDeploymentScheduler(
-                cluster_node_info_cache,
-                head_node_id_override="fake-head-node-id"
+                cluster_node_info_cache, head_node_id_override="fake-head-node-id"
             ),
             cluster_node_info_cache,
             mock_save_checkpoint_fn,
@@ -2351,10 +2350,11 @@ def test_basic_autoscaling(
 
 
 @pytest.mark.parametrize(
-    "target_startup_status", [
+    "target_startup_status",
+    [
         ReplicaStartupStatus.PENDING_ALLOCATION,
         ReplicaStartupStatus.PENDING_INITIALIZATION,
-    ]
+    ],
 )
 def test_downscaling_reclaiming_starting_replicas_first(
     target_startup_status,
@@ -2468,8 +2468,9 @@ def test_downscaling_reclaiming_starting_replicas_first(
             "Deployment 'deployment_with_slow_to_start_replicas' in application "
             "'test_app' 3 replicas that have taken more than 30s to be scheduled. This "
             "may be due to waiting for the cluster to auto-scale or for a runtime "
-            "environment to be installed. Resources required for each replica: {\"CPU\": 0.1}, "
-            "total resources available: {}. Use `ray status` for more details."
+            "environment to be installed. Resources required for each replica: "
+            '{"CPU": 0.1}, total resources available: {}. Use `ray status` for '
+            "more details."
         )
     else:
         raise RuntimeError(f"Got unexpected status: {target_startup_status}")
@@ -3149,9 +3150,7 @@ def mock_deployment_state_manager_full(
     with patch(
         "ray.serve._private.deployment_state.ActorReplicaWrapper",
         new=MockReplicaActorWrapper,
-    ), patch(
-        "time.time", new=timer.time
-    ), patch(
+    ), patch("time.time", new=timer.time), patch(
         "ray.serve._private.long_poll.LongPollHost"
     ) as mock_long_poll, patch(
         "ray.get_runtime_context"
@@ -3449,9 +3448,7 @@ def mock_deployment_state_manager(request) -> Tuple[DeploymentStateManager, Mock
     with patch(
         "ray.serve._private.deployment_state.ActorReplicaWrapper",
         new=MockReplicaActorWrapper,
-    ), patch(
-        "time.time", new=timer.time
-    ), patch(
+    ), patch("time.time", new=timer.time), patch(
         "ray.serve._private.long_poll.LongPollHost"
     ) as mock_long_poll:
         kv_store = MockKVStore()
