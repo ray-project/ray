@@ -207,9 +207,16 @@ class DefaultModuleToEnv(ConnectorV2):
         return agent_data
 
     def _normalize_clip_actions(self, data, is_multi_agent):
+        """Based on settings, will normalize (unsquash) and/or clip computed actions.
+
+        This is such that the final actions (to be sent to the env) match the
+        environment's action space and thus don't lead to an error.
+        """
+        actions = None
+
         if is_multi_agent:
             if self.normalize_actions:
-                data[SampleBatch.ACTIONS] = [
+                 actions = [
                     unsquash_action(
                         a,
                         {k: v for k, v in self._action_space_struct.items() if k in a},
@@ -217,7 +224,7 @@ class DefaultModuleToEnv(ConnectorV2):
                     for a in data[SampleBatch.ACTIONS]
                 ]
             elif self.clip_actions:
-                data[SampleBatch.ACTIONS] = [
+                actions = [
                     clip_action(
                         a,
                         {k: v for k, v in self._action_space_struct.items() if k in a},
@@ -226,10 +233,13 @@ class DefaultModuleToEnv(ConnectorV2):
                 ]
         else:
             if self.normalize_actions:
-                data[SampleBatch.ACTIONS] = unsquash_action(
+                actions = unsquash_action(
                     data[SampleBatch.ACTIONS], self._action_space_struct
                 )
             elif self.clip_actions:
-                data[SampleBatch.ACTIONS] = clip_action(
+                actions = clip_action(
                     data[SampleBatch.ACTIONS], self._action_space_struct
                 )
+
+        if actions is not None:
+            data[SampleBatch.ACTIONS_FOR_ENV] = actions

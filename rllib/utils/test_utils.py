@@ -1100,7 +1100,7 @@ def run_learning_tests_from_yaml(
 
 
 def run_rllib_examples_script_experiment(
-    config: AlgorithmConfig,
+    config: "AlgorithmConfig",
     args: argparse.Namespace,
 ) -> Union[ResultDict, tune.result_grid.ResultGrid]:
     """Given an algorithm config and some command line args, runs an experiment.
