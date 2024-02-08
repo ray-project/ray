@@ -1446,10 +1446,13 @@ def test_stop_replicas_on_draining_nodes(mock_deployment_state):
     deployment_state.update()
     check_counts(deployment_state, total=2, by_state=[(ReplicaState.STARTING, 2)])
 
-    deployment_state._replicas.get()[0]._actor.set_ready()
-    deployment_state._replicas.get()[0]._actor.set_node_id("node-1")
-    deployment_state._replicas.get()[1]._actor.set_ready()
-    deployment_state._replicas.get()[1]._actor.set_node_id("node-2")
+    one_replica, another_replica = deployment_state._replicas.get()
+
+    one_replica._actor.set_node_id("node-1")
+    one_replica._actor.set_ready()
+
+    another_replica._actor.set_node_id("node-2")
+    another_replica._actor.set_ready()
 
     # The replica running on node-2 will be drained.
     deployment_state.update()
@@ -1467,7 +1470,7 @@ def test_stop_replicas_on_draining_nodes(mock_deployment_state):
     }
 
     # The draining replica is stopped and a new one will be started.
-    deployment_state._replicas.get()[1]._actor.set_done_stopping()
+    another_replica._actor.set_done_stopping()
     deployment_state_update_result = deployment_state.update()
     deployment_state._deployment_scheduler.schedule(
         {deployment_state._id: deployment_state_update_result.upscale}, {}
