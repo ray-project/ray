@@ -490,7 +490,7 @@ class TaskSpecification : public MessageWrapper<rpc::TaskSpec> {
   void EmitTaskMetrics() const;
 
   /// \return true if task events from this task should be reported.
-  bool ShouldReportTaskEvents() const;
+  bool TaskTracingEnabled() const;
 
  private:
   void ComputeResources();

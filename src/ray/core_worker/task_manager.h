@@ -580,8 +580,8 @@ class TaskManager : public TaskFinisherInterface, public TaskResubmissionInterfa
   /// \param state_update optional task state updates.
   /// \return true if the event is recorded, false otherwise.
   bool RecordTaskStatusEventIfNeeded(
-      const TaskID&task_id,
-      const JobID& job_id,
+      const TaskID &task_id,
+      const JobID &job_id,
       int32_t attempt_number,
       const TaskSpecification &spec,
       rpc::TaskStatus status,

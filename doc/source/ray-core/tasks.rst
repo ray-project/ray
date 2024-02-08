@@ -287,6 +287,15 @@ You can change this behavior by setting
 in :func:`ray.remote() <ray.remote>` and :meth:`.options() <ray.remote_function.RemoteFunction.options>`.
 See :ref:`Ray fault tolerance <fault-tolerance>` for more details.
 
+Task Tracing
+------------
+
+By default, Ray will trace the execution of tasks, and reporting task status events and profiling events
+to the Ray Dashboard. See more from :ref:`State API <state-api-overview-ref>` for more details. 
+You could change this behavior by setting ``task_tracing`` options in :func:`ray.remote() <ray.remote>` and :meth:`.options() <ray.remote_function.RemoteFunction.options>`
+to disable task tracing, which would not only reduce the overhead of task execution, but also reduce the amount of data sent to the Ray Dashboard.
+Nested tasks don't inherit the task tracing settings from the parent task, you need to set the task tracing settings for each task separately.
+
 
 More about Ray Tasks
 --------------------

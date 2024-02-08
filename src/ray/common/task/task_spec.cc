@@ -382,9 +382,7 @@ const std::string TaskSpecification::GetSerializedRetryExceptionAllowlist() cons
   return message_->serialized_retry_exception_allowlist();
 }
 
-bool TaskSpecification::ShouldReportTaskEvents() const {
-  return message_->report_task_events();
-}
+bool TaskSpecification::TaskTracingEnabled() const { return message_->task_tracing(); }
 
 // === Below are getter methods specific to actor creation tasks.
 

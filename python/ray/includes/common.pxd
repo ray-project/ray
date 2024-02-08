@@ -332,7 +332,7 @@ cdef extern from "ray/core_worker/common.h" nogil:
                      unordered_map[c_string, double] &resources,
                      c_string concurrency_group_name,
                      int64_t generator_backpressure_num_objects,
-                     c_string serialized_runtime_env, c_bool report_task_events)
+                     c_string serialized_runtime_env, c_bool task_tracing)
 
     cdef cppclass CActorCreationOptions "ray::core::ActorCreationOptions":
         CActorCreationOptions()
@@ -349,7 +349,8 @@ cdef extern from "ray/core_worker/common.h" nogil:
             c_string serialized_runtime_env,
             const c_vector[CConcurrencyGroup] &concurrency_groups,
             c_bool execute_out_of_order,
-            int32_t max_pending_calls)
+            int32_t max_pending_calls,
+            c_bool task_tracing)
 
     cdef cppclass CPlacementGroupCreationOptions \
             "ray::core::PlacementGroupCreationOptions":

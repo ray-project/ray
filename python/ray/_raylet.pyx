@@ -3812,7 +3812,8 @@ cdef class CoreWorker:
                     scheduling_strategy,
                     c_string debugger_breakpoint,
                     c_string serialized_runtime_env_info,
-                    int64_t generator_backpressure_num_objects
+                    int64_t generator_backpressure_num_objects,
+                    c_bool task_tracing
                     ):
         cdef:
             unordered_map[c_string, double] c_resources
@@ -3845,7 +3846,8 @@ cdef class CoreWorker:
                 name, num_returns, c_resources,
                 b"",
                 generator_backpressure_num_objects,
-                serialized_runtime_env_info)
+                serialized_runtime_env_info,
+                task_tracing)
 
             current_c_task_id = current_task.native()
 
@@ -3890,7 +3892,7 @@ cdef class CoreWorker:
                      concurrency_groups_dict,
                      int32_t max_pending_calls,
                      scheduling_strategy,
-                     c_bool report_task_events,
+                     c_bool task_tracing,
                      ):
         cdef:
             CRayFunction ray_function
@@ -3937,7 +3939,8 @@ cdef class CoreWorker:
                         # execute out of order for
                         # async or threaded actors.
                         is_asyncio or max_concurrency > 1,
-                        max_pending_calls),
+                        max_pending_calls,
+                        task_tracing),
                     extension_data,
                     &c_actor_id)
 
@@ -4029,7 +4032,7 @@ cdef class CoreWorker:
                           double num_method_cpus,
                           c_string concurrency_group_name,
                           int64_t generator_backpressure_num_objects,
-                          c_bool report_task_events):
+                          c_bool task_tracing):
 
         cdef:
             CActorID c_actor_id = actor_id.native()
@@ -4070,7 +4073,7 @@ cdef class CoreWorker:
                         concurrency_group_name,
                         generator_backpressure_num_objects,
                         serialized_runtime_env,
-                        report_task_events),
+                        task_tracing),
                     max_retries,
                     retry_exceptions,
                     serialized_retry_exception_allowlist,
