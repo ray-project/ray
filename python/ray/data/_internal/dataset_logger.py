@@ -74,9 +74,7 @@ def skip_internal_stack_frames(ex: Exception) -> Tuple[Exception, Exception]:
         # If the bottom-most stack frame was skipped, and there was no previous
         # user code error encountered, this indicates that the
         # error originated from Ray Data internal or Ray Core private code.
-
-        # if not isinstance(ex, UserCodeException):
-        if "UserCodeException" not in str(ex):
+        if UserCodeException.__name__ not in str(ex):
             data_exception_logger.get_logger().error(
                 "Exception occured in Ray Data or Ray Core internal code. "
                 "If you continue to see this error, please open an issue on "
