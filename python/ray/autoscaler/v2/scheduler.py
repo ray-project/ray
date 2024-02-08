@@ -318,7 +318,22 @@ class SchedulingNode:
             True if the resource request is scheduled on this node.
         """
 
-        # TODO: add labels when implementing the gang scheduling.
+        # Check if there's placement constraints that are not satisfied.
+        for constraint in request.placement_constraints:
+            if constraint.HasField("anti_affinity"):
+                anti_affinity = constraint.anti_affinity
+                if (
+                    anti_affinity.label_name in self.labels
+                    and anti_affinity.label_value
+                    == self.labels[anti_affinity.label_name]
+                ):
+                    # The node already has a label that matches the anti-affinity
+                    return False
+
+            # We don't need to check for affinity constraints here since
+            # affinity doesn't affect if a request can be scheduled on a node.
+            # Affinity constraints are only used for scoring.
+            pass
 
         available_resources_dict = (
             self.available_resources
@@ -341,7 +356,32 @@ class SchedulingNode:
         else:
             self.sched_constraints.append(request)
 
+        # Update the dynamic labels if there's any
+        for constraint in request.placement_constraints:
+            if constraint.HasField("affinity"):
+                affinity = constraint.affinity
+                self._add_label(affinity.label_name, affinity.label_value)
+
+            if constraint.HasField("anti_affinity"):
+                anti_affinity = constraint.anti_affinity
+                self._add_label(anti_affinity.label_name, anti_affinity.label_value)
+
         return True
+
+    def _add_label(self, label_name: str, label_value: str):
+        """
+        Add a label to the node.
+        This assumes a label key can only have one value.
+        """
+        assert (
+            self.labels.get(label_name) is None
+            or self.labels[label_name] == label_value
+        ), (
+            f"Label {label_name} already exists with value "
+            f"{self.labels[label_name]}, cannot set to "
+            f"{label_value}"
+        )
+        self.labels[label_name] = label_value
 
     def __repr__(self) -> str:
         return (
@@ -1016,7 +1056,40 @@ class ResourceDemandScheduler(IResourceScheduler):
         Returns:
             A list of infeasible gang resource requests.
         """
-        return []
+
+        def _sort_gang_resource_requests(req: GangResourceRequest) -> Tuple:
+            """
+            Key function for sorting the gang resource request by:
+                1. the number of placement constraints in the gang request.
+                2. the number of resource requests in the gang request.
+            """
+            total_placement_constraints = 0
+            for rr in req.requests:
+                total_placement_constraints += len(rr.placement_constraints)
+
+            return (total_placement_constraints, len(req.requests))
+
+        infeasible_gang_requests = []
+        # Try fulfilling the gang requests one by one.
+        for gang_req in sorted(
+            gang_requests, key=_sort_gang_resource_requests, reverse=True
+        ):
+            requests = gang_req.requests
+            # Try to combine requests with affinity constraints into the same request.
+            requests = ResourceRequestUtil.combine_requests_with_affinity(requests)
+
+            nodes, infeasible = self._try_schedule(requests, is_constraint=False)
+
+            if infeasible:
+                # Unable to satisfy the constraint. We will skip the gang request.
+                # Don't update the context.
+                infeasible_gang_requests.append(gang_req)
+                continue
+
+            # We are able to satisfy the constraint and thus update the context.
+            self._ctx.update(nodes)
+
+        return infeasible_gang_requests
 
     def _try_schedule(
         self,
