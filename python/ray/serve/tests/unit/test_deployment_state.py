@@ -1,5 +1,4 @@
 import sys
-from collections import defaultdict
 from copy import deepcopy
 from typing import Any, Dict, List, Optional, Tuple
 from unittest.mock import Mock, patch
@@ -24,9 +23,12 @@ from ray.serve._private.constants import (
     DEFAULT_MAX_CONCURRENT_QUERIES,
 )
 from ray.serve._private.deployment_info import DeploymentInfo
-from ray.serve._private.deployment_scheduler import ReplicaSchedulingRequest, DeploymentScheduler, \
-    DefaultDeploymentScheduler
+from ray.serve._private.deployment_scheduler import (
+    DefaultDeploymentScheduler,
+    ReplicaSchedulingRequest,
+)
 from ray.serve._private.deployment_state import (
+    SLOW_STARTUP_WARNING_S,
     ActorReplicaWrapper,
     DeploymentReplica,
     DeploymentState,
@@ -34,7 +36,7 @@ from ray.serve._private.deployment_state import (
     DeploymentVersion,
     ReplicaStartupStatus,
     ReplicaStateContainer,
-    VersionedReplica, SLOW_STARTUP_WARNING_S,
+    VersionedReplica,
 )
 from ray.serve._private.test_utils import MockKVStore, MockTimer
 from ray.serve._private.utils import (
@@ -209,7 +211,11 @@ class MockReplicaActorWrapper:
         self.started = True
 
         def _on_scheduled_stub(*args, **kwargs):
-            print(f"ReplicaSchedulingRequest.on_scheduled was invoked with:\nargs={args}\nkwargs={kwargs}")
+            print(
+                f"ReplicaSchedulingRequest.on_scheduled was invoked with:\n"
+                f"args={args}\n"
+                f"kwargs={kwargs}"
+            )
             pass
 
         return ReplicaSchedulingRequest(
@@ -340,6 +346,8 @@ def mock_deployment_state() -> Tuple[DeploymentState, Mock, Mock]:
             pass
 
         cluster_node_info_cache = MockClusterNodeInfoCache()
+
+        mock_get_head_node_id.return_value = "mock-head-node-id"
 
         deployment_state = DeploymentState(
             DeploymentID("name", "my_app"),
@@ -2221,7 +2229,9 @@ def test_scale_num_replicas(
 
 
 @pytest.mark.parametrize("target_capacity_direction", ["up", "down"])
-def test_basic_autoscaling(mock_deployment_state_manager_full, target_capacity_direction):
+def test_basic_autoscaling(
+    mock_deployment_state_manager_full, target_capacity_direction
+):
     """Test autoscaling up and down.
 
     Upscaling version:
@@ -2338,7 +2348,9 @@ def test_basic_autoscaling(mock_deployment_state_manager_full, target_capacity_d
     )
 
 
-def test_downscaling_reclaiming_starting_replicas_first(mock_deployment_state_manager_full):
+def test_downscaling_reclaiming_starting_replicas_first(
+    mock_deployment_state_manager_full,
+):
     """This test asserts that when downscaling first any non-running replicas are
     scavenged, before stopping fully running replicas
 
@@ -2369,9 +2381,7 @@ def test_downscaling_reclaiming_starting_replicas_first(mock_deployment_state_ma
 
     dsm.deploy(deployment_id, info)
 
-    deployment_state: DeploymentState = dsm._deployment_states[
-        deployment_id
-    ]
+    deployment_state: DeploymentState = dsm._deployment_states[deployment_id]
 
     # status=UPDATING, status_trigger=DEPLOY
     dsm.update()
@@ -2456,7 +2466,9 @@ def test_downscaling_reclaiming_starting_replicas_first(mock_deployment_state_ma
     )
 
     # Assert that no RUNNING replicas are being stopped
-    assert running_replicas == deployment_state._replicas.get(states=[ReplicaState.RUNNING])
+    assert running_replicas == deployment_state._replicas.get(
+        states=[ReplicaState.RUNNING]
+    )
 
     assert deployment_state.curr_status_info.status == DeploymentStatus.DOWNSCALING
     assert (
@@ -2470,7 +2482,10 @@ def test_downscaling_reclaiming_starting_replicas_first(mock_deployment_state_ma
     # status=HEALTHY, status_trigger=UPSCALE/DOWNSCALE
     dsm.update()
     assert deployment_state.curr_status_info.status == DeploymentStatus.HEALTHY
-    assert deployment_state.curr_status_info.status_trigger == DeploymentStatusTrigger.DOWNSCALE_COMPLETED
+    assert (
+        deployment_state.curr_status_info.status_trigger
+        == DeploymentStatusTrigger.DOWNSCALE_COMPLETED
+    )
 
 
 def test_update_autoscaling_config(mock_deployment_state_manager_full):
@@ -3426,7 +3441,9 @@ def mock_deployment_state_manager(request) -> Tuple[DeploymentStateManager, Mock
     ) as mock_long_poll:
         kv_store = MockKVStore()
         cluster_node_info_cache = MockClusterNodeInfoCache()
-        mock_create_deployment_scheduler.return_value = DefaultDeploymentScheduler(cluster_node_info_cache)
+        mock_create_deployment_scheduler.return_value = DefaultDeploymentScheduler(
+            cluster_node_info_cache
+        )
         all_current_actor_names = []
         all_current_placement_group_names = []
         deployment_state_manager = DeploymentStateManager(

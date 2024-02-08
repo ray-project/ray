@@ -1012,9 +1012,11 @@ class DeploymentReplica(VersionedReplica):
 
         Should handle the case where the replica is already stopped.
         """
+        state = self._actor_details.state
         logger.info(
-            f"Stopping replica {self.replica_tag} (currently {self._actor_details.state})"
-            f" for deployment '{self.deployment_name}' in application '{self.app_name}'.",
+            f"Stopping replica {self.replica_tag} (currently {state}) "
+            f"for deployment '{self.deployment_name}' "
+            f"in application '{self.app_name}'.",
             extra={"log_to_stderr": False},
         )
         timeout_s = self._actor.graceful_stop()
@@ -2235,10 +2237,11 @@ class DeploymentState:
             states=[ReplicaState.UPDATING, ReplicaState.RUNNING]
         ):
             if replica.actor_node_id in draining_nodes:
+                state = self._actor_details.state
                 logger.info(
-                    f"Stopping replica {replica.replica_tag} (currently {self._actor_details.state}) "
-                    f"of deployment '{self.deployment_name}' in application '{self.app_name}' on "
-                    f"draining node {replica.actor_node_id}."
+                    f"Stopping replica {replica.replica_tag} (currently {state}) "
+                    f"of deployment '{self.deployment_name}' in application "
+                    f"'{self.app_name}' on draining node {replica.actor_node_id}."
                 )
                 self._stop_replica(replica, graceful_stop=True)
             else:
