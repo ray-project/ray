@@ -625,7 +625,12 @@ class MultiAgentEnvRunner(EnvRunner):
         # TODO (sven, simon): We have to rebuild the `AlgorithmConfig` to work on
         # `RLModule`s and not `Policy`s. Like here `policies`->`modules`
         try:
-            policy_dict, _ = self.config.get_multi_agent_setup(env=self.env)
+            policy_dict, _ = self.config.get_multi_agent_setup(
+                spaces={
+                    mid: (o, self._env_to_module.action_space[mid])
+                    for mid, o in self._env_to_module.observation_space.spaces.items()
+                },
+            )
             ma_rlm_spec: MultiAgentRLModuleSpec = self.config.get_marl_module_spec(
                 policy_dict=policy_dict
             )

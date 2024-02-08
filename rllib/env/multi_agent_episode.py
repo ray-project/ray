@@ -274,6 +274,7 @@ class MultiAgentEpisode:
             # Create SingleAgentEpisode, if necessary.
             if agent_id not in self.agent_episodes:
                 self.agent_episodes[agent_id] = SingleAgentEpisode(
+                    agent_id=agent_id,
                     observation_space=self.observation_space.get(agent_id),
                     action_space=self.action_space.get(agent_id),
                 )
@@ -374,6 +375,7 @@ class MultiAgentEpisode:
         for agent_id in agent_ids_with_data:
             if agent_id not in self.agent_episodes:
                 self.agent_episodes[agent_id] = SingleAgentEpisode(
+                    agent_id=agent_id,
                     observation_space=self.observation_space.get(agent_id),
                     action_space=self.action_space.get(agent_id),
                 )
@@ -806,7 +808,7 @@ class MultiAgentEpisode:
 
     @property
     def agent_episode_ids(self) -> MultiAgentDict:
-        """Returns ids from each agent's `SIngleAgentEpisode`."""
+        """Returns ids from each agent's `SingleAgentEpisode`."""
 
         return {
             agent_id: agent_eps.id_
@@ -1497,6 +1499,7 @@ class MultiAgentEpisode:
                     if agent_episode_ids is not None
                     else None
                 ),
+                agent_id=agent_id,
                 observations=agent_obs,
                 observation_space=self.observation_space.get(agent_id),
                 infos=infos_per_agent[agent_id],

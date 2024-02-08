@@ -41,10 +41,6 @@ class Filter:
     def as_serializable(self) -> "Filter":
         raise NotImplementedError
 
-    @Deprecated(new="Filter.reset_buffer()", error=True)
-    def clear_buffer(self):
-        pass
-
 
 @DeveloperAPI
 class NoFilter(Filter):
@@ -312,10 +308,9 @@ class MeanStdFilter(Filter):
         self.demean = other.demean
         self.destd = other.destd
         self.clip = other.clip
-        # TODO: Remove these safe-guards if not needed anymore.
         self.running_stats = tree.map_structure(
             lambda rs: rs.copy(),
-            other.running_stats if hasattr(other, "running_stats") else other.rs,
+            other.running_stats,
         )
         self.buffer = tree.map_structure(lambda b: b.copy(), other.buffer)
 

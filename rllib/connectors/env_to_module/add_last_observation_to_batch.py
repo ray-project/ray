@@ -6,6 +6,7 @@ from ray.rllib.connectors.connector_v2 import ConnectorV2
 from ray.rllib.core.rl_module.rl_module import RLModule
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils.annotations import override
+from ray.rllib.utils.spaces.space_utils import batch
 from ray.rllib.utils.typing import EpisodeType
 
 
@@ -59,14 +60,23 @@ class AddLastObservationToBatch(ConnectorV2):
         **kwargs,
     ) -> Any:
 
-        prev_n_o = []
-        for episode in episodes:
+        for sa_episode in self.single_agent_episode_iterator(episodes):
             if self._as_learner_connector:
-                for ts in range(len(episode)):
-                    prev_n_o.append(episode.get_observations(indices=ts, fill=0.0))
+                prev_n_o = []
+                for ts in range(len(sa_episode)):
+                    prev_n_o.append(sa_episode.get_observations(indices=ts, fill=0.0))
+                self.add_batch_item(
+                    data,
+                    SampleBatch.OBS,
+                    batch(prev_n_o),
+                    sa_episode,
+                )
             else:
-                assert not episode.is_finalized
-                prev_n_o.append(episode.get_observations(indices=-1, fill=0.0))
-
-        data[SampleBatch.OBS] = prev_n_o
+                assert not sa_episode.is_finalized
+                self.add_batch_item(
+                    data,
+                    SampleBatch.OBS,
+                    sa_episode.get_observations(indices=-1, fill=0.0),
+                    sa_episode,
+                )
         return data

@@ -10,8 +10,10 @@ from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.spaces.space_utils import batch
 from ray.rllib.utils.typing import EpisodeType
+from ray.util.annotations import PublicAPI
 
 
+@PublicAPI(stability="alpha")
 class _PrevRewardPrevActionConnector(ConnectorV2):
     """A connector piece that adds previous rewards and actions to the input."""
 

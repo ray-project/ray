@@ -63,7 +63,7 @@ torch, _ = try_import_torch()
 logger = logging.getLogger(__name__)
 
 
-def add_rllib_examples_script_args(
+def add_rllib_example_script_args(
     parser: Optional[argparse.ArgumentParser] = None,
     default_reward: float = 100.0,
     default_iters: int = 200,
@@ -99,6 +99,15 @@ def add_rllib_examples_script_args(
         choices=["tf", "tf2", "torch"],
         default="torch",
         help="The DL framework specifier.",
+    )
+    parser.add_argument(
+        "--num-agents",
+        type=int,
+        default=0,
+        help="If 0 (default), will run as single-agent. If > 0, will run as "
+        "multi-agent with the environment simply cloned n times and each agent acting "
+        "independently at every single timestep. The overall reward for this "
+        "experiment is then the sum over all individual agents' rewards.",
     )
     parser.add_argument("--num-cpus", type=int, default=0)
     parser.add_argument(
@@ -1103,7 +1112,7 @@ def run_learning_tests_from_yaml(
     return result
 
 
-def run_rllib_examples_script_experiment(
+def run_rllib_example_script_experiment(
     config: "AlgorithmConfig",
     args: argparse.Namespace,
 ) -> Union[ResultDict, tune.result_grid.ResultGrid]:

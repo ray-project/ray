@@ -17,8 +17,10 @@ from ray.rllib.policy.sample_batch import (
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.numpy import convert_to_numpy
 from ray.rllib.utils.typing import EpisodeType
+from ray.util.annotations import PublicAPI
 
 
+@PublicAPI(stability="alpha")
 class DefaultLearnerConnector(ConnectorV2):
     """Connector added by default by RLlib to the end of any learner connector pipeline.
 

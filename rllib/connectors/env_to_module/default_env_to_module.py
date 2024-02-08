@@ -1,6 +1,7 @@
 from collections import defaultdict
 from typing import Any, List, Optional
 
+import gymnasium as gym
 import numpy as np
 
 import tree
@@ -29,6 +30,31 @@ class DefaultEnvToModule(ConnectorV2):
     The connector will not add any new data in case other connector pieces in the
     pipeline already take care of populating these fields (obs and state in).
     """
+
+    @property
+    @override(ConnectorV2)
+    def observation_space(self):
+        return self._map_space_if_necessary(self.input_observation_space)
+
+    @property
+    @override(ConnectorV2)
+    def action_space(self):
+        return self._map_space_if_necessary(self.input_action_space)
+
+    def __init__(
+        self,
+        input_observation_space,
+        input_action_space,
+        *,
+        multi_agent: bool = False,
+        modules=None,
+        agent_to_module_mapping_fn=None,
+    ):
+        super().__init__(input_observation_space, input_action_space)
+
+        self._multi_agent = multi_agent
+        self._modules = modules
+        self._agent_to_module_mapping_fn = agent_to_module_mapping_fn
 
     @override(ConnectorV2)
     def __call__(
@@ -97,6 +123,9 @@ class DefaultEnvToModule(ConnectorV2):
 
     @staticmethod
     def _add_most_recent_obs_to_data(data, episodes, is_multi_agent):
+        # TODO (sven): Simply use the new `single_agent_episode_iterator` to shrink this
+        #  code below:
+
         # Single-agent case:
         # Construct:
         #  {"obs": [batch across all single-agent episodes]}
@@ -104,7 +133,8 @@ class DefaultEnvToModule(ConnectorV2):
             observations = []
             for sa_episode in episodes:
                 # Get most-recent observations from episode.
-                observations.append(sa_episode.get_observations(indices=-1))
+                if not sa_episode.is_done:
+                    observations.append(sa_episode.get_observations(indices=-1))
             # Batch all collected observations together.
             data[SampleBatch.OBS] = batch(observations)
         # Multi-agent case:
@@ -218,17 +248,17 @@ class DefaultEnvToModule(ConnectorV2):
 
         shared_data[
             "module_to_episode_agents_mapping"
-        ] = module_to_episode_agents_mapping
+        ] = dict(module_to_episode_agents_mapping)
 
         # Mapping from ModuleID to column data.
         module_data = {}
 
         # Iterating over each column in the original data:
         for column, agent_data in data.items():
-            for agent_id, values_batch_or_list in agent_data.items():
+            for (agent_id, module_id), values_batch_or_list in agent_data.items():
                 for i, value in enumerate(values_batch_or_list):
-                    # Retrieve the correct ModuleID.
-                    module_id = agent_to_module_mappings[agent_id][i]
+                    ## Retrieve the correct ModuleID.
+                    #module_id = agent_to_module_mappings[agent_id][i]
                     #
                     if module_id not in module_data:
                         module_data[module_id] = {column: []}
@@ -244,3 +274,50 @@ class DefaultEnvToModule(ConnectorV2):
                 module_data[module_id][column] = batch(values)
 
         return module_data
+
+    def _map_space_if_necessary(self, space):
+        if not self._multi_agent:
+            return space
+
+        # Analyze input observation space to check, whether the user has already taken
+        # care of the agent to module mapping.
+        if set(self._modules) == set(space.spaces.keys()):
+            return space
+
+        # We need to take care of agent to module mapping. Figure out the resulting
+        # observation space here.
+        dummy_eps = MultiAgentEpisode()
+
+        ret_space = {}
+        for module_id in self._modules:
+            # Need to reverse map spaces (for the different agents) to certain
+            # module IDs (using a dummy MultiAgentEpisode).
+            one_space = next(iter(space.spaces.values()))
+            # If all obs spaces are the same anyway, just use the first
+            # single-agent space.
+            if all(s == one_space for s in space.spaces.values()):
+                ret_space[module_id] = one_space
+            # Otherwise, we have to match the policy ID with all possible
+            # agent IDs and find the agent ID that matches.
+            else:
+                match_aid = None
+                for aid in space.spaces.keys():
+                    # Match: Assign spaces for this agentID to the PolicyID.
+                    if self._agent_to_module_mapping_fn(aid, dummy_eps) == module_id:
+                        # Make sure, different agents that map to the same
+                        # policy don't have different spaces.
+                        if (
+                                module_id in ret_space
+                                and space[aid] != ret_space[module_id]
+                        ):
+                            raise ValueError(
+                                f"Two agents ({aid} and {match_aid}) in your "
+                                "environment map to the same ModuleID (as per your "
+                                "`agent_to_module_mapping_fn`), however, these agents "
+                                "also have different observation spaces as per the env!"
+                            )
+                        ret_space[module_id] = space[aid]
+                        match_aid = aid
+
+        return gym.spaces.Dict(ret_space)
+

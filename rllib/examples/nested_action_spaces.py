@@ -13,33 +13,36 @@ from ray.rllib.examples.env.nested_space_repeat_after_me_env import (
     NestedSpaceRepeatAfterMeEnv,
 )
 from ray.rllib.utils.test_utils import (
-    add_rllib_examples_script_args,
-    run_rllib_examples_script_experiment,
+    add_rllib_example_script_args,
+    run_rllib_example_script_experiment,
 )
 from ray.tune.registry import get_trainable_cls
 
 
-parser = add_rllib_examples_script_args(default_timesteps=200000, default_reward=-500.0)
+# Read in common example script command line arguments.
+parser = add_rllib_example_script_args(default_timesteps=200000, default_reward=-500.0)
 
 
 if __name__ == "__main__":
     args = parser.parse_args()
 
     ray.init(num_cpus=args.num_cpus or None, local_mode=args.local_mode)
+
+    # Define env-to-module-connector pipeline for the new stack.
+    def _env_to_module_pipeline(env):
+        c1 = AddLastObservationToBatch(
+            env.single_observation_space, env.single_action_space
+        )
+        c2 = FlattenObservations(c1.observation_space, c1.action_space)
+        c3 = WriteObservationsToEpisodes(c2.observation_space, c2.action_space)
+        return [c1, c2, c3]
+
+    # Register our environment with tune.
     register_env(
         "NestedSpaceRepeatAfterMeEnv", lambda c: NestedSpaceRepeatAfterMeEnv(c)
     )
 
-    # Define env-to-module-connector pipeline for the new stack.
-    def _env_to_module_pipeline(env):
-        obs_space = env.single_observation_space
-        act_space = env.single_action_space
-        return [
-            AddLastObservationToBatch(obs_space, act_space),
-            FlattenObservations(obs_space, act_space),
-            WriteObservationsToEpisodes(obs_space, act_space),
-        ]
-
+    # Define the AlgorithmConfig used.
     config = (
         get_trainable_cls(args.algo)
         .get_default_config()
@@ -81,6 +84,7 @@ if __name__ == "__main__":
         .resources(num_gpus=int(os.environ.get("RLLIB_NUM_GPUS", "0")))
     )
 
+    # Fix some PPO-specific settings.
     if args.algo == "PPO":
         config.training(
             # We don't want high entropy in this Env.
@@ -89,4 +93,5 @@ if __name__ == "__main__":
             vf_loss_coeff=0.01,
         )
 
-    run_rllib_examples_script_experiment(config, args)
+    # Run everything as configured.
+    run_rllib_example_script_experiment(config, args)

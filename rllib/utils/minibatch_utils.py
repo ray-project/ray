@@ -58,7 +58,6 @@ class MiniBatchCyclicIterator(MiniBatchIteratorBase):
 
     def __iter__(self):
         while min(self._num_covered_epochs.values()) < self._num_iters:
-
             minibatch = {}
             for module_id, module_batch in self._batch.policy_batches.items():
 
@@ -78,7 +77,7 @@ class MiniBatchCyclicIterator(MiniBatchIteratorBase):
                 #  these setups require sequencing, BUT their batches are not yet time-
                 #  ranked (this is done only in their loss functions via the
                 #  `make_time_major` utility).
-                n_steps = self._minibatch_size
+                # n_steps = self._minibatch_size
 
                 samples_to_concat = []
 
@@ -96,7 +95,13 @@ class MiniBatchCyclicIterator(MiniBatchIteratorBase):
                     def get_len(b):
                         return len(b[SampleBatch.SEQ_LENS])
 
+                    n_steps = int(
+                        get_len(module_batch)
+                        * (self._minibatch_size / len(module_batch))
+                    )
+
                 else:
+                    n_steps = self._minibatch_size
 
                     def get_len(b):
                         return len(b)
