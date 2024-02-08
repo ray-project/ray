@@ -13,7 +13,6 @@ from ray.air.constants import MAX_REPR_LENGTH
 from ray.air.util.data_batch_conversion import BatchFormat
 from ray.data.preprocessor import Preprocessor
 from ray.data.preprocessors import (
-    BatchMapper,
     Categorizer,
     Chain,
     Concatenator,
@@ -85,7 +84,6 @@ def create_dummy_preprocessors():
 @pytest.mark.parametrize(
     "preprocessor",
     [
-        BatchMapper(fn=lambda x: x, batch_format="pandas"),
         Categorizer(columns=["X"]),
         CountVectorizer(columns=["X"]),
         Chain(StandardScaler(columns=["X"]), MinMaxScaler(columns=["X"])),
@@ -404,13 +402,6 @@ def test_numpy_pandas_support_transform_batch_tensor(create_dummy_preprocessors)
     assert isinstance(
         with_pandas_and_numpy_preferred.transform_batch(np_multi_column), dict
     )
-
-
-def test_transform_stats_raises_deprecation_warning(create_dummy_preprocessors):
-    with_nothing, _, _, _, _ = create_dummy_preprocessors
-
-    with pytest.raises(DeprecationWarning):
-        with_nothing.transform_stats()
 
 
 if __name__ == "__main__":
