@@ -696,7 +696,8 @@ def get_multiplexed_model_id() -> str:
             # headers when sending requests to the http proxy.
             requests.get("http://localhost:8000",
                 headers={"ray_serve_multiplexed_model_id": "model_1"})
-            # This can also be set when using `RayServeHandle`.
+
+            # This can also be set when using `DeploymentHandle`.
             handle.options(multiplexed_model_id="model_1").remote("blablabla")
 
             # In your deployment code, you can retrieve the model id from
@@ -768,9 +769,7 @@ def get_app_handle(name: str) -> DeploymentHandle:
         raise RayServeException(f"Application '{name}' does not exist.")
 
     ServeUsageTag.SERVE_GET_APP_HANDLE_API_USED.record("1")
-    # Default to async within a deployment and sync outside a deployment.
-    sync = _get_internal_replica_context() is None
-    return client.get_handle(ingress, name, sync=sync)
+    return client.get_handle(ingress, name)
 
 
 @DeveloperAPI
@@ -864,6 +863,4 @@ def get_deployment_handle(
             app_name = internal_replica_context.app_name
 
     ServeUsageTag.SERVE_GET_DEPLOYMENT_HANDLE_API_USED.record("1")
-    # Default to async within a deployment and sync outside a deployment.
-    sync = internal_replica_context is None
-    return client.get_handle(deployment_name, app_name, sync=sync)
+    return client.get_handle(deployment_name, app_name)

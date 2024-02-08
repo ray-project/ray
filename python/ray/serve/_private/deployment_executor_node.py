@@ -1,9 +1,10 @@
-from typing import Any, Dict, List
+from typing import Any, Callable, Dict, List
 
+from ray import ObjectRef
 from ray.dag import DAGNode
 from ray.dag.constants import DAGNODE_TYPE_KEY
 from ray.dag.format_utils import get_dag_node_str
-from ray.serve.handle import RayServeHandle
+from ray.serve.handle import DeploymentHandle
 
 
 class DeploymentExecutorNode(DAGNode):
@@ -22,7 +23,7 @@ class DeploymentExecutorNode(DAGNode):
 
     def __init__(
         self,
-        deployment_handle,
+        deployment_handle: DeploymentHandle,
         dag_args,  # Not deployment init args
         dag_kwargs,  # Not deployment init kwargs
     ):
@@ -42,12 +43,12 @@ class DeploymentExecutorNode(DAGNode):
             new_kwargs,
         )
 
-    def _execute_impl(self, *args, **kwargs) -> RayServeHandle:
+    def _execute_impl(self, *args, **kwargs) -> Callable[[], ObjectRef]:
         """Does not call into anything or produce a new value, as the time
         this function gets called, all child nodes are already resolved to
         ObjectRefs.
         """
-        return self._deployment_handle.options(use_new_handle_api=False)
+        return lambda: self._deployment_handle.remote()._to_object_ref_sync()
 
     def __str__(self) -> str:
         return get_dag_node_str(self, str(self._deployment_handle))

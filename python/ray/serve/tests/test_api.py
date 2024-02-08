@@ -17,7 +17,7 @@ from ray.serve._private.common import DeploymentID
 from ray.serve._private.constants import SERVE_DEFAULT_APP_NAME
 from ray.serve.deployment import Application
 from ray.serve.exceptions import RayServeException
-from ray.serve.handle import DeploymentHandle, RayServeHandle
+from ray.serve.handle import DeploymentHandle
 
 
 @pytest.fixture
@@ -986,7 +986,7 @@ def test_deployment_handle_nested_in_obj(serve_instance):
     """Test binding a handle within a custom object."""
 
     class HandleWrapper:
-        def __init__(self, handle: RayServeHandle):
+        def __init__(self, handle: DeploymentHandle):
             self._handle = handle
 
         def get(self) -> DeploymentHandle:

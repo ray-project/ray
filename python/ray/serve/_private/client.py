@@ -35,7 +35,7 @@ from ray.serve.generated.serve_pb2 import (
     DeploymentStatusInfo as DeploymentStatusInfoProto,
 )
 from ray.serve.generated.serve_pb2 import StatusOverview as StatusOverviewProto
-from ray.serve.handle import DeploymentHandle, RayServeHandle, RayServeSyncHandle
+from ray.serve.handle import DeploymentHandle
 from ray.serve.schema import LoggingConfig, ServeApplicationSchema, ServeDeploySchema
 
 logger = logging.getLogger(__file__)
@@ -472,8 +472,7 @@ class ServeControllerClient:
         deployment_name: str,
         app_name: Optional[str] = "default",
         missing_ok: Optional[bool] = False,
-        sync: bool = True,
-    ) -> Union[DeploymentHandle, RayServeHandle, RayServeSyncHandle]:
+    ) -> DeploymentHandle:
         """Construct a handle for the specified deployment.
 
         Args:
@@ -481,14 +480,11 @@ class ServeControllerClient:
             app_name: Application name.
             missing_ok: If true, then Serve won't check the deployment
                 is registered. False by default.
-            sync: If true, then Serve will return a ServeHandle that
-                works everywhere. Otherwise, Serve will return a ServeHandle
-                that's only usable in asyncio loop.
 
         Returns:
-            RayServeHandle
+            DeploymentHandle
         """
-        cache_key = (deployment_name, app_name, missing_ok, sync)
+        cache_key = (deployment_name, app_name, missing_ok)
         if cache_key in self.handle_cache:
             return self.handle_cache[cache_key]
 

@@ -127,9 +127,6 @@ PROXY_DRAIN_CHECK_PERIOD_S = 5
 #: being marked unhealthy.
 REPLICA_HEALTH_CHECK_UNHEALTHY_THRESHOLD = 3
 
-# Key used to idenfity given json represents a serialized RayServeHandle
-SERVE_HANDLE_JSON_KEY = "__SerializedServeHandle__"
-
 # The time in seconds that the Serve client waits before rechecking deployment state
 CLIENT_POLLING_INTERVAL_S: float = 1
 

@@ -1,10 +1,10 @@
-from typing import Any, Dict, List, Union
+from typing import Any, Dict, List
 
 from ray import ObjectRef
 from ray.dag import DAGNode
 from ray.dag.constants import DAGNODE_TYPE_KEY
 from ray.dag.format_utils import get_dag_node_str
-from ray.serve.handle import RayServeHandle, RayServeSyncHandle
+from ray.serve.handle import DeploymentHandle
 
 
 class DeploymentFunctionExecutorNode(DAGNode):
@@ -23,7 +23,7 @@ class DeploymentFunctionExecutorNode(DAGNode):
 
     def __init__(
         self,
-        deployment_function_handle: Union[RayServeSyncHandle, RayServeHandle],
+        deployment_function_handle: DeploymentHandle,
         func_args,
         func_kwargs,
         other_args_to_resolve=None,
