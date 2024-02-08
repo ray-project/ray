@@ -19,7 +19,7 @@ from ray.rllib.utils.test_utils import (
 from ray.tune.registry import get_trainable_cls
 
 
-parser = add_rllib_examples_script_args()
+parser = add_rllib_examples_script_args(default_timesteps=200000, default_reward=-500.0)
 
 
 if __name__ == "__main__":
@@ -48,7 +48,7 @@ if __name__ == "__main__":
         .environment(
             "NestedSpaceRepeatAfterMeEnv",
             env_config={
-                "space_orig": Dict(
+                "space": Dict(
                     {
                         "a": Tuple(
                             [Dict({"d": Box(-10.0, 10.0, ()), "e": Discrete(3)})]
@@ -58,13 +58,7 @@ if __name__ == "__main__":
                         "d": Discrete(2),
                     }
                 ),
-                "space": Dict(
-                    {
-                        "a": Box(-1.0, 1.0, (1,)),
-                        #"b": Discrete(100),
-                    }
-                ),
-                "episode_len": 10,
+                "episode_len": 100,
             },
         )
         .framework(args.framework)
@@ -76,9 +70,12 @@ if __name__ == "__main__":
         )
         # No history in Env (bandit problem).
         .training(
-            gamma=0.97,#0.0
+            gamma=0.0,
             lr=0.0005,
-            model={"uses_new_env_runners": True},
+            model=(
+                {} if not args.enable_new_api_stack
+                else {"uses_new_env_runners": True}
+            ),
         )
         # Use GPUs iff `RLLIB_NUM_GPUS` env var set to > 0.
         .resources(num_gpus=int(os.environ.get("RLLIB_NUM_GPUS", "0")))

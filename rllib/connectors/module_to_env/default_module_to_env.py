@@ -237,10 +237,10 @@ class DefaultModuleToEnv(ConnectorV2):
                 ]
         else:
             if self.normalize_actions:
-                data[SampleBatch.ACTIONS] = unsquash_action(
+                data["actions_to_send"] = unsquash_action(
                     data[SampleBatch.ACTIONS], self._action_space_struct
                 )
             elif self.clip_actions:
-                data[SampleBatch.ACTIONS] = clip_action(
+                data["actions_to_send"] = clip_action(
                     data[SampleBatch.ACTIONS], self._action_space_struct
                 )

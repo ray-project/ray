@@ -278,7 +278,7 @@ class SingleAgentEnvRunner(EnvRunner):
                     explore=explore,
                 )
 
-            actions = to_env.pop(SampleBatch.ACTIONS)
+            actions = to_env.pop("actions_to_send")
 
             obs, rewards, terminateds, truncateds, infos = self.env.step(actions)
             obs, actions = unbatch(obs), unbatch(actions)

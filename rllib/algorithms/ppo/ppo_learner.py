@@ -79,13 +79,6 @@ class PPOLearner(Learner):
         else:
             sa_episodes_list = episodes
 
-        # TEST:
-        actions = []
-        from ray.rllib.utils.spaces.space_utils import unbatch
-        for eps in episodes:
-            actions.extend(np.abs(unbatch(eps.get_actions()["a"])))
-        print(np.mean(actions))#self.register_metric("default_policy", "mean actions", actions)
-
         # Make all episodes one ts longer in order to just have a single batch
         # (and distributed forward pass) for both vf predictions AND the bootstrap
         # vf computations.
