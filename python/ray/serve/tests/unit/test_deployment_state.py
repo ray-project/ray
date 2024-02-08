@@ -24,7 +24,8 @@ from ray.serve._private.constants import (
     DEFAULT_MAX_CONCURRENT_QUERIES,
 )
 from ray.serve._private.deployment_info import DeploymentInfo
-from ray.serve._private.deployment_scheduler import ReplicaSchedulingRequest
+from ray.serve._private.deployment_scheduler import ReplicaSchedulingRequest, DeploymentScheduler, \
+    DefaultDeploymentScheduler
 from ray.serve._private.deployment_state import (
     ActorReplicaWrapper,
     DeploymentReplica,
@@ -33,7 +34,7 @@ from ray.serve._private.deployment_state import (
     DeploymentVersion,
     ReplicaStartupStatus,
     ReplicaStateContainer,
-    VersionedReplica,
+    VersionedReplica, SLOW_STARTUP_WARNING_S,
 )
 from ray.serve._private.test_utils import MockKVStore, MockTimer
 from ray.serve._private.utils import (
@@ -203,14 +204,19 @@ class MockReplicaActorWrapper:
 
     def start(self, deployment_info: DeploymentInfo):
         self.started = True
+
+        def _on_scheduled_stub(*args, **kwargs):
+            print(f"ReplicaSchedulingRequest.on_scheduled was invoked with:\nargs={args}\nkwargs={kwargs}")
+            pass
+
         return ReplicaSchedulingRequest(
             deployment_id=self._deployment_id,
             replica_name=self._replica_tag,
-            actor_def=None,
+            actor_def=Mock(),
             actor_resources=None,
-            actor_options=None,
-            actor_init_args=None,
-            on_scheduled=None,
+            actor_options={},
+            actor_init_args=(),
+            on_scheduled=_on_scheduled_stub,
         )
 
     def reconfigure(self, version: DeploymentVersion):
@@ -263,51 +269,6 @@ class MockReplicaActorWrapper:
     def check_health(self):
         self.health_check_called = True
         return self.healthy
-
-
-class MockDeploymentScheduler:
-    def __init__(self, cluster_node_info_cache):
-        self.deployments = set()
-        self.replicas = defaultdict(set)
-
-    def on_deployment_created(self, deployment_id, scheduling_strategy):
-        assert deployment_id not in self.deployments
-        self.deployments.add(deployment_id)
-
-    def on_deployment_deleted(self, deployment_id):
-        assert deployment_id in self.deployments
-        self.deployments.remove(deployment_id)
-
-    def on_replica_stopping(self, deployment_id, replica_name):
-        assert replica_name in self.replicas[deployment_id]
-        self.replicas[deployment_id].remove(replica_name)
-
-    def on_replica_running(self, deployment_id, replica_name, node_id):
-        assert replica_name in self.replicas[deployment_id]
-
-    def on_replica_recovering(self, deployment_id, replica_name):
-        assert replica_name not in self.replicas[deployment_id]
-        self.replicas[deployment_id].add(replica_name)
-
-    def schedule(self, upscales, downscales):
-        for upscale in upscales.values():
-            for replica_scheduling_request in upscale:
-                assert (
-                    replica_scheduling_request.replica_name
-                    not in self.replicas[replica_scheduling_request.deployment_id]
-                )
-                self.replicas[replica_scheduling_request.deployment_id].add(
-                    replica_scheduling_request.replica_name
-                )
-
-        deployment_to_replicas_to_stop = defaultdict(set)
-        for downscale in downscales.values():
-            replica_iter = iter(self.replicas[downscale.deployment_id])
-            for _ in range(downscale.num_to_stop):
-                deployment_to_replicas_to_stop[downscale.deployment_id].add(
-                    next(replica_iter)
-                )
-        return deployment_to_replicas_to_stop
 
 
 def deployment_info(
@@ -367,6 +328,8 @@ def mock_deployment_state() -> Tuple[DeploymentState, Mock, Mock]:
         "ray.serve._private.deployment_state.ActorReplicaWrapper",
         new=MockReplicaActorWrapper,
     ), patch("time.time", new=timer.time), patch(
+        "ray.serve._private.deployment_scheduler.get_head_node_id",
+    ) as mock_get_head_node_id, patch(
         "ray.serve._private.long_poll.LongPollHost"
     ) as mock_long_poll:
 
@@ -378,7 +341,7 @@ def mock_deployment_state() -> Tuple[DeploymentState, Mock, Mock]:
         deployment_state = DeploymentState(
             DeploymentID("name", "my_app"),
             mock_long_poll,
-            MockDeploymentScheduler(cluster_node_info_cache),
+            DefaultDeploymentScheduler(cluster_node_info_cache),
             cluster_node_info_cache,
             mock_save_checkpoint_fn,
         )
@@ -2998,7 +2961,7 @@ def test_exponential_backoff(mock_deployment_state):
 @pytest.fixture
 def mock_deployment_state_manager_full(
     request,
-) -> Tuple[DeploymentStateManager, Mock, Mock]:
+) -> Tuple[DeploymentStateManager, MockTimer, Mock]:
     """Fully mocked deployment state manager.
 
     i.e kv store and gcs client is mocked so we don't need to initialize
@@ -3018,7 +2981,9 @@ def mock_deployment_state_manager_full(
         "ray.serve._private.long_poll.LongPollHost"
     ) as mock_long_poll, patch(
         "ray.get_runtime_context"
-    ):
+    ), patch(
+        "ray.serve._private.deployment_scheduler.get_head_node_id",
+    ) as mock_get_head_node_id:
         kv_store = MockKVStore()
         cluster_node_info_cache = MockClusterNodeInfoCache()
 
@@ -3031,7 +2996,9 @@ def mock_deployment_state_manager_full(
             if placement_group_names is None:
                 placement_group_names = []
 
-            mock_create_deployment_scheduler.return_value = MockDeploymentScheduler(
+            mock_get_head_node_id.return_value = "mock-head-node-id"
+
+            mock_create_deployment_scheduler.return_value = DefaultDeploymentScheduler(
                 cluster_node_info_cache
             )
 
@@ -3321,9 +3288,7 @@ def mock_deployment_state_manager(request) -> Tuple[DeploymentStateManager, Mock
     ) as mock_long_poll:
         kv_store = MockKVStore()
         cluster_node_info_cache = MockClusterNodeInfoCache()
-        mock_create_deployment_scheduler.return_value = MockDeploymentScheduler(
-            cluster_node_info_cache
-        )
+        mock_create_deployment_scheduler.return_value = DefaultDeploymentScheduler(cluster_node_info_cache)
         all_current_actor_names = []
         all_current_placement_group_names = []
         deployment_state_manager = DeploymentStateManager(
