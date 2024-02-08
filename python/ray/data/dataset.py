@@ -1333,7 +1333,8 @@ class Dataset:
         try:
             blocks = self._plan.execute()
         except Exception as ex:
-            raise skip_internal_stack_frames(ex)
+            ex, ex_cause = skip_internal_stack_frames(ex)
+            raise ex from ex_cause
         owned_by_consumer = blocks._owned_by_consumer
         stats = self._plan.stats()
         block_refs, metadata = zip(*blocks.get_blocks_with_metadata())
@@ -1535,7 +1536,8 @@ class Dataset:
         try:
             block_list = self._plan.execute()
         except Exception as ex:
-            raise skip_internal_stack_frames(ex)
+            ex, ex_cause = skip_internal_stack_frames(ex)
+            raise ex from ex_cause
         blocks, metadata = _split_at_indices(
             block_list.get_blocks_with_metadata(),
             indices,
@@ -1750,7 +1752,8 @@ class Dataset:
                     has_nonlazy = True
                 bls.append(bl)
         except Exception as ex:
-            raise skip_internal_stack_frames(ex)
+            ex, ex_cause = skip_internal_stack_frames(ex)
+            raise ex from ex_cause
 
         if has_nonlazy:
             blocks = []
@@ -2643,7 +2646,8 @@ class Dataset:
         try:
             metadata = self._plan.execute().get_metadata()
         except Exception as ex:
-            raise skip_internal_stack_frames(ex)
+            ex, ex_cause = skip_internal_stack_frames(ex)
+            raise ex from ex_cause
 
         if not metadata or metadata[0].size_bytes is None:
             return None
@@ -2668,7 +2672,8 @@ class Dataset:
         try:
             metadata = self._plan.execute().get_metadata()
         except Exception as e:
-            raise skip_internal_stack_frames(e)
+            e, ex_cause = skip_internal_stack_frames(e)
+            raise e from ex_cause
 
         files = set()
         for m in metadata:
@@ -3517,7 +3522,8 @@ class Dataset:
             datasource.on_write_complete(write_results, **write_args)
         except Exception as e:
             datasource.on_write_failed([], e)
-            raise skip_internal_stack_frames(e)
+            e, ex_cause = skip_internal_stack_frames(e)
+            raise e from ex_cause
 
     @ConsumptionAPI(pattern="Time complexity:")
     def write_datasink(
@@ -3571,7 +3577,8 @@ class Dataset:
             datasink.on_write_complete(write_results)
         except Exception as e:
             datasink.on_write_failed(e)
-            raise skip_internal_stack_frames(e)
+            e, ex_cause = skip_internal_stack_frames(e)
+            raise e from ex_cause
 
     @ConsumptionAPI(
         delegate=(
@@ -4523,7 +4530,8 @@ class Dataset:
         try:
             copy._plan.execute(force_read=True)
         except Exception as ex:
-            raise skip_internal_stack_frames(ex)
+            ex, ex_cause = skip_internal_stack_frames(ex)
+            raise ex from ex_cause
 
         blocks = copy._plan._snapshot_blocks
         blocks_with_metadata = blocks.get_blocks_with_metadata() if blocks else []
@@ -4552,7 +4560,8 @@ class Dataset:
             # No-op that marks the plan as fully executed.
             output._plan.execute()
         except Exception as ex:
-            raise skip_internal_stack_frames(ex)
+            ex, ex_cause = skip_internal_stack_frames(ex)
+            raise ex from ex_cause
         # Metrics are tagged with `copy`s uuid, update the output uuid with
         # this so the user can access the metrics label.
         output._set_uuid(copy._get_uuid())
@@ -4618,7 +4627,8 @@ class Dataset:
         try:
             blocks = self._plan.execute().get_blocks()
         except Exception as ex:
-            raise skip_internal_stack_frames(ex)
+            ex, ex_cause = skip_internal_stack_frames(ex)
+            raise ex from ex_cause
 
         self._synchronize_progress_bar()
         return blocks
@@ -4785,7 +4795,8 @@ class Dataset:
         try:
             block_list = self._plan.execute()
         except Exception as ex:
-            raise skip_internal_stack_frames(ex)
+            ex, ex_cause = skip_internal_stack_frames(ex)
+            raise ex from ex_cause
 
         left, right = block_list.divide(block_idx)
         l_ds = Dataset(

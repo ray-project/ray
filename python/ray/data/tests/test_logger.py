@@ -11,8 +11,8 @@ from ray.data._internal.dataset_logger import (
     DatasetLogger,
     RayDataInternalException,
     UserCodeException,
-    skip_internal_stack_frames,
 )
+from ray.exceptions import RayTaskError
 from ray.tests.conftest import *  # noqa
 
 
@@ -54,11 +54,10 @@ def test_skip_internal_stack_frames(ray_start_regular_shared):
         1 / 0
         return x
 
-    try:
+    with pytest.raises(ZeroDivisionError) as exc_info:
         ray.data.range(10).map(f).take_all()
-    except Exception as e:
-        ex_internal_skipped = skip_internal_stack_frames(e)
-        assert isinstance(ex_internal_skipped, UserCodeException), ex_internal_skipped
+        assert exc_info.type == RayTaskError
+        assert exc_info.type == UserCodeException
 
     # Mock `ExecutionPlan.execute()`` to raise an exception, to emulate
     # an error in internal Ray Data code.
@@ -66,22 +65,9 @@ def test_skip_internal_stack_frames(ray_start_regular_shared):
         "ray.data._internal.plan.ExecutionPlan.execute",
         side_effect=Exception("fake exception"),
     ):
-        # Ideally, we would check that `RayDataInternalException` is raised, but the
-        # patch above unfortunately cannot trick `skip_internal_stack_frames` into
-        # thinking the side_effect comes from the actual `ExecutionPlan.execute()`
-        # method, and still believes it's from user code.
-        # Instead, we can check that the mocked exception is raised from the
-        # side effect message, and confirm the type of the stripped exception
-        # is `RayDataInternalException`.
-        with pytest.raises(Exception, match="fake exception"):
-            try:
-                ray.data.range(10).materialize()
-            except Exception as e:
-                ex_internal_skipped = skip_internal_stack_frames(e)
-                assert isinstance(
-                    ex_internal_skipped, RayDataInternalException
-                ), ex_internal_skipped
-                raise ex_internal_skipped
+        with pytest.raises(Exception, match="fake exception") as exc_info:
+            ray.data.range(10).materialize()
+            assert exc_info.type == RayDataInternalException
 
 
 if __name__ == "__main__":

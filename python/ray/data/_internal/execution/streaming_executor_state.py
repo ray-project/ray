@@ -274,7 +274,8 @@ class OpState:
         while True:
             # Check if StreamingExecutor has caught an exception or is done execution.
             if self._exception is not None:
-                raise skip_internal_stack_frames(self._exception)
+                ex, ex_cause = skip_internal_stack_frames(self._exception)
+                raise ex from ex_cause
             elif self._finished and not self.outqueue.has_next(output_split_idx):
                 raise StopIteration()
             ref = self.outqueue.pop(output_split_idx)

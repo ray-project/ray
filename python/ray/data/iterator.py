@@ -169,7 +169,8 @@ class DataIterator(abc.ABC):
                     blocks_owned_by_consumer,
                 ) = self._to_block_iterator()
             except Exception as ex:
-                raise skip_internal_stack_frames(ex)
+                ex, ex_cause = skip_internal_stack_frames(ex)
+                raise ex from ex_cause
 
             iterator = iter(
                 iter_batches(

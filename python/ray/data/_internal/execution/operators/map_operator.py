@@ -427,7 +427,8 @@ def _map_task(
             yield m_out
             stats = BlockExecStats.builder()
     except Exception as ex:
-        raise skip_internal_stack_frames(ex)
+        ex, ex_cause = skip_internal_stack_frames(ex)
+        raise ex from ex_cause
 
 
 class _BlockRefBundler:
