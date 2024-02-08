@@ -1,9 +1,9 @@
 import asyncio
-import json
 import logging
 import os
 import pickle
 import socket
+import json
 import time
 import uuid
 from abc import ABC, abstractmethod
@@ -399,7 +399,8 @@ class GenericProxy(ABC):
                 route_path = proxy_request.route_path
                 if route_prefix != "/" and self.protocol == RequestProtocol.HTTP:
                     assert not route_prefix.endswith("/")
-                    proxy_request.set_path(route_path.replace(route_prefix, "", 1))
+                    # XXX: comment.
+                    # proxy_request.set_path(route_path.replace(route_prefix, "", 1))
                     proxy_request.set_root_path(proxy_request.root_path + route_prefix)
 
                 handle, request_id = self.setup_request_context_and_handle(
