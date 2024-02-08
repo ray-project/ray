@@ -96,7 +96,7 @@ class MockReplicaActorWrapper:
         # Will be set when `start()` is called.
         self.version = version
         # Initial state for a replica is PENDING_ALLOCATION.
-        self.ready = ReplicaStartupStatus.PENDING_ALLOCATION
+        self.status = ReplicaStartupStatus.PENDING_ALLOCATION
         # Will be set when `graceful_stop()` is called.
         self.stopped = False
         # Expected to be set in the test.
@@ -160,7 +160,7 @@ class MockReplicaActorWrapper:
     def node_id(self) -> Optional[str]:
         if self._node_id_is_set:
             return self._node_id
-        if self.ready == ReplicaStartupStatus.SUCCEEDED or self.started:
+        if self.status == ReplicaStartupStatus.SUCCEEDED or self.started:
             return "node-id"
         return None
 
@@ -180,18 +180,18 @@ class MockReplicaActorWrapper:
     def placement_group_bundles(self) -> Optional[List[Dict[str, float]]]:
         return None
 
-    def set_pending_init(self):
-        self.ready = ReplicaStartupStatus.PENDING_INITIALIZATION
+    def set_status(self, status: ReplicaStartupStatus):
+        self.status = status
 
     def set_ready(self, version: DeploymentVersion = None):
-        self.ready = ReplicaStartupStatus.SUCCEEDED
+        self.status = ReplicaStartupStatus.SUCCEEDED
         if version:
             self.version_to_be_fetched_from_actor = version
         else:
             self.version_to_be_fetched_from_actor = self.version
 
     def set_failed_to_start(self):
-        self.ready = ReplicaStartupStatus.FAILED
+        self.status = ReplicaStartupStatus.FAILED
 
     def set_done_stopping(self):
         self.done_stopping = True
@@ -243,8 +243,8 @@ class MockReplicaActorWrapper:
         return True
 
     def check_ready(self) -> ReplicaStartupStatus:
-        ready = self.ready
-        self.ready = ReplicaStartupStatus.PENDING_INITIALIZATION
+        ready = self.status
+        self.status = ReplicaStartupStatus.PENDING_INITIALIZATION
         if ready == ReplicaStartupStatus.SUCCEEDED and self.recovering:
             self.recovering = False
             self.started = True
@@ -2347,7 +2347,14 @@ def test_basic_autoscaling(
     )
 
 
+@pytest.mark.parametrize(
+    "target_startup_status", [
+        ReplicaStartupStatus.PENDING_ALLOCATION,
+        ReplicaStartupStatus.PENDING_INITIALIZATION,
+    ]
+)
 def test_downscaling_reclaiming_starting_replicas_first(
+    target_startup_status,
     mock_deployment_state_manager_full,
 ):
     """This test asserts that when downscaling first any non-running replicas are
@@ -2426,7 +2433,7 @@ def test_downscaling_reclaiming_starting_replicas_first(
     # Set replicas as PENDING_INITIALIZATION: actors have been successfully allocated,
     # but replicas are still pending successful initialization
     for replica in deployment_state._replicas.get():
-        replica._actor.set_pending_init()
+        replica._actor.set_status(target_startup_status)
 
     # Advance timer by 60 seconds; this should exceed the slow startup
     # warning threshold. The message should be updated, but the status
@@ -2444,13 +2451,27 @@ def test_downscaling_reclaiming_starting_replicas_first(
         deployment_state.curr_status_info.status_trigger
         == DeploymentStatusTrigger.AUTOSCALING
     )
-    assert (
-        f"Deployment '{deployment_name}' in application "
-        f"'{app_name}' has 3 replicas "
-        f"that have taken more than {SLOW_STARTUP_WARNING_S}s to "
-        "initialize. This may be caused by a slow __init__ or reconfigure "
-        "method." == deployment_state.curr_status_info.message
-    )
+
+    if target_startup_status == ReplicaStartupStatus.PENDING_INITIALIZATION:
+        expected_message = (
+            f"Deployment '{deployment_name}' in application "
+            f"'{app_name}' has 3 replicas "
+            f"that have taken more than {SLOW_STARTUP_WARNING_S}s to "
+            "initialize. This may be caused by a slow __init__ or reconfigure "
+            "method."
+        )
+    elif target_startup_status == ReplicaStartupStatus.PENDING_ALLOCATION:
+        expected_message = (
+            "Deployment 'deployment_with_slow_to_start_replicas' in application "
+            "'test_app' 3 replicas that have taken more than 30s to be scheduled. This "
+            "may be due to waiting for the cluster to auto-scale or for a runtime "
+            "environment to be installed. Resources required for each replica: {\"CPU\": 0.1}, "
+            "total resources available: {}. Use `ray status` for more details."
+        )
+    else:
+        raise RuntimeError(f"Got unexpected status: {target_startup_status}")
+
+    assert expected_message == deployment_state.curr_status_info.message
 
     # Now, trigger downscaling attempting to reclaim half (3) of the replicas
     for replica in deployment_state._replicas.get(states=[ReplicaState.RUNNING]):
