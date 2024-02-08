@@ -178,6 +178,9 @@ class MockReplicaActorWrapper:
     def placement_group_bundles(self) -> Optional[List[Dict[str, float]]]:
         return None
 
+    def set_pending_init(self):
+        self.ready = ReplicaStartupStatus.PENDING_INITIALIZATION
+
     def set_ready(self, version: DeploymentVersion = None):
         self.ready = ReplicaStartupStatus.SUCCEEDED
         if version:
@@ -2218,7 +2221,7 @@ def test_scale_num_replicas(
 
 
 @pytest.mark.parametrize("target_capacity_direction", ["up", "down"])
-def test_autoscale(mock_deployment_state_manager_full, target_capacity_direction):
+def test_basic_autoscaling(mock_deployment_state_manager_full, target_capacity_direction):
     """Test autoscaling up and down.
 
     Upscaling version:
@@ -2333,6 +2336,141 @@ def test_autoscale(mock_deployment_state_manager_full, target_capacity_direction
         if target_capacity_direction == "up"
         else DeploymentStatusTrigger.DOWNSCALE_COMPLETED
     )
+
+
+def test_downscaling_reclaiming_starting_replicas_first(mock_deployment_state_manager_full):
+    """This test asserts that when downscaling first any non-running replicas are
+    scavenged, before stopping fully running replicas
+
+    More context on the issue could be found in:
+    https://github.com/ray-project/ray/issues/43034
+    """
+
+    app_name = "test_app"
+    deployment_name = "deployment_with_slow_to_start_replicas"
+
+    deployment_id = DeploymentID(deployment_name, app_name)
+
+    # Create deployment state manager
+    create_deployment_state_manager, timer, _ = mock_deployment_state_manager_full
+    dsm: DeploymentStateManager = create_deployment_state_manager()
+
+    # Deploy deployment with 3 replicas
+    info, _ = deployment_info(
+        autoscaling_config={
+            "target_num_ongoing_requests_per_replica": 1,
+            "min_replicas": 0,
+            "max_replicas": 6,
+            "initial_replicas": 3,
+            "upscale_delay_s": 0,
+            "downscale_delay_s": 0,
+        }
+    )
+
+    dsm.deploy(deployment_id, info)
+
+    deployment_state: DeploymentState = dsm._deployment_states[
+        deployment_id
+    ]
+
+    # status=UPDATING, status_trigger=DEPLOY
+    dsm.update()
+    check_counts(deployment_state, total=3, by_state=[(ReplicaState.STARTING, 3)])
+    assert deployment_state.curr_status_info.status == DeploymentStatus.UPDATING
+    assert (
+        deployment_state.curr_status_info.status_trigger
+        == DeploymentStatusTrigger.CONFIG_UPDATE_STARTED
+    )
+
+    # Set replicas as SUCCESSFUL and check statuses
+    for replica in deployment_state._replicas.get():
+        replica._actor.set_ready()
+
+    # status=HEALTHY, status_trigger=DEPLOY
+    dsm.update()
+    check_counts(deployment_state, total=3, by_state=[(ReplicaState.RUNNING, 3)])
+    assert deployment_state.curr_status_info.status == DeploymentStatus.HEALTHY
+    assert (
+        deployment_state.curr_status_info.status_trigger
+        == DeploymentStatusTrigger.CONFIG_UPDATE_COMPLETED
+    )
+
+    # Fetch all currently running replicas
+    running_replicas = deployment_state._replicas.get(states=[ReplicaState.RUNNING])
+
+    for replica in deployment_state._replicas.get():
+        dsm.record_autoscaling_metrics(replica._actor.replica_tag, 2, timer.time())
+
+    # status=UPSCALING, status_trigger=AUTOSCALE
+    dsm.update()
+    check_counts(
+        deployment_state,
+        total=6,
+        by_state=[(ReplicaState.RUNNING, 3), (ReplicaState.STARTING, 3)],
+    )
+    assert deployment_state.curr_status_info.status == DeploymentStatus.UPSCALING
+    assert (
+        deployment_state.curr_status_info.status_trigger
+        == DeploymentStatusTrigger.AUTOSCALING
+    )
+
+    # Set replicas as PENDING_INITIALIZATION: actors have been successfully allocated,
+    # but replicas are still pending successful initialization
+    for replica in deployment_state._replicas.get():
+        replica._actor.set_pending_init()
+
+    # Advance timer by 60 seconds; this should exceed the slow startup
+    # warning threshold. The message should be updated, but the status
+    # should remain upscaling/autoscaling
+    timer.advance(60)
+    dsm.update()
+    check_counts(
+        deployment_state,
+        total=6,
+        by_state=[(ReplicaState.RUNNING, 3), (ReplicaState.STARTING, 3)],
+    )
+
+    assert deployment_state.curr_status_info.status == DeploymentStatus.UPSCALING
+    assert (
+        deployment_state.curr_status_info.status_trigger
+        == DeploymentStatusTrigger.AUTOSCALING
+    )
+    assert (
+        f"Deployment '{deployment_name}' in application "
+        f"'{app_name}' has 3 replicas "
+        f"that have taken more than {SLOW_STARTUP_WARNING_S}s to "
+        "initialize. This may be caused by a slow __init__ or reconfigure "
+        "method." == deployment_state.curr_status_info.message
+    )
+
+    # Now, trigger downscaling attempting to reclaim half (3) of the replicas
+    for replica in deployment_state._replicas.get(states=[ReplicaState.RUNNING]):
+        dsm.record_autoscaling_metrics(replica._actor.replica_tag, 1, timer.time())
+
+    # status=DOWNSCALING, status_trigger=AUTOSCALE
+    dsm.update()
+    check_counts(
+        deployment_state,
+        total=6,
+        by_state=[(ReplicaState.RUNNING, 3), (ReplicaState.STOPPING, 3)],
+    )
+
+    # Assert that no RUNNING replicas are being stopped
+    assert running_replicas == deployment_state._replicas.get(states=[ReplicaState.RUNNING])
+
+    assert deployment_state.curr_status_info.status == DeploymentStatus.DOWNSCALING
+    assert (
+        deployment_state.curr_status_info.status_trigger
+        == DeploymentStatusTrigger.AUTOSCALING
+    )
+
+    for replica in deployment_state._replicas.get():
+        replica._actor.set_done_stopping()
+
+    # status=HEALTHY, status_trigger=UPSCALE/DOWNSCALE
+    dsm.update()
+    assert deployment_state.curr_status_info.status == DeploymentStatus.HEALTHY
+    assert deployment_state.curr_status_info.status_trigger == DeploymentStatusTrigger.DOWNSCALE_COMPLETED
 
 
 def test_update_autoscaling_config(mock_deployment_state_manager_full):
