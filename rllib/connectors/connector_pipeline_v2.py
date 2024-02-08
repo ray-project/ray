@@ -22,14 +22,16 @@ class ConnectorPipelineV2(ConnectorV2):
     def observation_space(self):
         return (
             self.connectors[-1].observation_space
-            if len(self.connectors) > 0 else self.input_observation_space
+            if len(self.connectors) > 0
+            else self.input_observation_space
         )
 
     @property
     def action_space(self):
         return (
             self.connectors[-1].action_space
-            if len(self.connectors) > 0 else self.input_action_space
+            if len(self.connectors) > 0
+            else self.input_action_space
         )
 
     def __init__(

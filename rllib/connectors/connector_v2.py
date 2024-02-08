@@ -1,4 +1,5 @@
 import abc
+from collections import defaultdict
 from typing import Any, Dict, Iterator, List, Optional, Union
 
 import gymnasium as gym
@@ -141,7 +142,7 @@ class ConnectorV2(abc.ABC):
         into their individual agents' SingleAgentEpisodes and those are then yielded
         one after the other.
 
-        Useful for connectors that operator on both single-agent and multi-agent
+        Useful for connectors that operate on both single-agent and multi-agent
         episodes.
 
         Args:
@@ -246,14 +247,14 @@ class ConnectorV2(abc.ABC):
             sub_key = (single_agent_episode.agent_id, single_agent_episode.module_id)
 
         if column not in batch:
-            batch[column] = ([] if sub_key is None else {sub_key: []})
+            batch[column] = [] if sub_key is None else {sub_key: []}
         if sub_key:
             batch[column][sub_key].append(item_to_add)
         else:
             batch[column].append(item_to_add)
 
     @staticmethod
-    def switch_batch_from_agent_ids_to_module_ids(batch):#, episodes):
+    def switch_batch_from_agent_ids_to_module_ids(batch):  # , episodes):
         """Flips the mapping in the given batch from Agent ID based to Module ID based.
 
         The provided batch must have column names on the top level, then - under each

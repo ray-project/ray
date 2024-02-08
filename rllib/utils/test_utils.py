@@ -105,8 +105,8 @@ def add_rllib_examples_script_args(
         "--as-test",
         action="store_true",
         help="Whether this script should be run as a test. If set, --stop-reward must "
-             "be achieved within --stop-timesteps AND --stop-iters, otherwise this "
-             "script will throw an exception at the end.",
+        "be achieved within --stop-timesteps AND --stop-iters, otherwise this "
+        "script will throw an exception at the end.",
     )
     parser.add_argument(
         "--local-mode",
@@ -114,8 +114,10 @@ def add_rllib_examples_script_args(
         help="Init Ray in local mode for easier debugging.",
     )
     parser.add_argument(
-        "--stop-reward", type=float, default=default_reward,
-        help="Reward at which the script should stop training."
+        "--stop-reward",
+        type=float,
+        default=default_reward,
+        help="Reward at which the script should stop training.",
     )
     parser.add_argument(
         "--stop-iters",
@@ -124,14 +126,16 @@ def add_rllib_examples_script_args(
         help="The number of iterations to train.",
     )
     parser.add_argument(
-        "--stop-timesteps", type=int, default=default_timesteps,
-        help="The number of (environment sampling) timesteps to train."
+        "--stop-timesteps",
+        type=int,
+        default=default_timesteps,
+        help="The number of (environment sampling) timesteps to train.",
     )
     parser.add_argument(
         "--no-tune",
         action="store_true",
         help="Whether to NOT use tune.Tuner(), but rather a simple for-loop calling "
-             "`algo.train()` repeatedly until one of the stop criteria is met.",
+        "`algo.train()` repeatedly until one of the stop criteria is met.",
     )
     parser.add_argument(
         "--verbose",
@@ -163,8 +167,8 @@ def add_rllib_examples_script_args(
         default=0,
         help=(
             "The frequency (in training iterations) with which to create checkpoints. "
-            "Note that if --wandb-key is provided, these checkpoints will automatically "
-            "be uploaded to WandB."
+            "Note that if --wandb-key is provided, these checkpoints will "
+            "automatically be uploaded to WandB."
         ),
     )
     return parser
@@ -1139,9 +1143,7 @@ def run_rllib_examples_script_experiment(
     callbacks = None
     if hasattr(args, "wandb_key") and args.wandb_key is not None:
         project = args.wandb_project or (
-            args.algo.lower()
-            + "-"
-            + re.sub("\\W+", "-", str(config.env).lower())
+            args.algo.lower() + "-" + re.sub("\\W+", "-", str(config.env).lower())
         )
         callbacks = [
             WandbLoggerCallback(

@@ -216,7 +216,7 @@ class DefaultModuleToEnv(ConnectorV2):
 
         if is_multi_agent:
             if self.normalize_actions:
-                 actions = [
+                actions = [
                     unsquash_action(
                         a,
                         {k: v for k, v in self._action_space_struct.items() if k in a},
