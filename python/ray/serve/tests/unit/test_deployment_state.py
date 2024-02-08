@@ -349,7 +349,7 @@ def mock_deployment_state() -> Tuple[DeploymentState, Mock, Mock]:
             DeploymentID("name", "my_app"),
             mock_long_poll,
             DefaultDeploymentScheduler(
-                cluster_node_info_cache, head_node_id_override="fake-head-node-id"
+                cluster_node_info_cache, head_node_id="fake-head-node-id"
             ),
             cluster_node_info_cache,
             mock_save_checkpoint_fn,
@@ -3173,10 +3173,7 @@ def mock_deployment_state_manager_full(
                 actor_names,
                 placement_group_names,
                 cluster_node_info_cache,
-                DefaultDeploymentScheduler(
-                    cluster_node_info_cache,
-                    head_node_id_override="fake-head-node-id",
-                ),
+                head_node_id_override="fake-head-node-id",
             )
 
         yield create_deployment_state_manager, timer, cluster_node_info_cache
@@ -3461,10 +3458,7 @@ def mock_deployment_state_manager(request) -> Tuple[DeploymentStateManager, Mock
             all_current_actor_names,
             all_current_placement_group_names,
             cluster_node_info_cache,
-            DefaultDeploymentScheduler(
-                cluster_node_info_cache,
-                head_node_id_override="fake-head-node-id",
-            ),
+            head_node_id_override="fake-head-node-id",
         )
 
         yield deployment_state_manager, timer, cluster_node_info_cache

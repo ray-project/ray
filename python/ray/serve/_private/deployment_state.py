@@ -16,6 +16,7 @@ from ray import ObjectRef, cloudpickle
 from ray.actor import ActorHandle
 from ray.exceptions import RayActorError, RayError, RayTaskError, RuntimeEnvSetupError
 from ray.serve import metrics
+from ray.serve._private import default_impl
 from ray.serve._private.autoscaling_policy import AutoscalingPolicyManager
 from ray.serve._private.cluster_node_info_cache import ClusterNodeInfoCache
 from ray.serve._private.common import (
@@ -2364,12 +2365,15 @@ class DeploymentStateManager:
         all_current_actor_names: List[str],
         all_current_placement_group_names: List[str],
         cluster_node_info_cache: ClusterNodeInfoCache,
-        deployment_scheduler: DeploymentScheduler,
+        head_node_id_override: Optional[str] = None,
     ):
         self._kv_store = kv_store
         self._long_poll_host = long_poll_host
         self._cluster_node_info_cache = cluster_node_info_cache
-        self._deployment_scheduler = deployment_scheduler
+        self._deployment_scheduler = default_impl.create_deployment_scheduler(
+            cluster_node_info_cache,
+            head_node_id_override,
+        )
 
         self._deployment_states: Dict[DeploymentID, DeploymentState] = dict()
 

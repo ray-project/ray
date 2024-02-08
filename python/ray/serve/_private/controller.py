@@ -36,7 +36,6 @@ from ray.serve._private.constants import (
 from ray.serve._private.default_impl import create_cluster_node_info_cache
 from ray.serve._private.deploy_utils import deploy_args_to_deployment_info
 from ray.serve._private.deployment_info import DeploymentInfo
-from ray.serve._private.deployment_scheduler import DefaultDeploymentScheduler
 from ray.serve._private.deployment_state import DeploymentStateManager
 from ray.serve._private.endpoint_state import EndpointState
 from ray.serve._private.logging_utils import (
@@ -185,7 +184,6 @@ class ServeController:
             all_serve_actor_names,
             get_all_live_placement_group_names(),
             self.cluster_node_info_cache,
-            DefaultDeploymentScheduler(self.cluster_node_info_cache),
         )
 
         # Manage all applications' state
