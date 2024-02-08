@@ -27,9 +27,7 @@ class TestMetricsPusher:
         assert len(metrics_pusher.tasks) == 0
         assert metrics_pusher.pusher_thread.is_alive()
 
-        metrics_pusher.register_or_update_task(
-            "inc", inc, 0.01
-        )
+        metrics_pusher.register_or_update_task("inc", inc, 0.01)
 
         wait_for_condition(lambda: val > 0, timeout=10)
 
