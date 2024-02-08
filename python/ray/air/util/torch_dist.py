@@ -18,11 +18,6 @@ from ray.actor import ActorHandle
 from ray.train._internal.utils import get_address_and_port
 from ray.train.constants import DEFAULT_NCCL_SOCKET_IFNAME
 from ray.air._internal.torch_utils import get_devices
-from ray._private.accelerators.hpu import HPU_PACKAGE_AVAILABLE
-
-if HPU_PACKAGE_AVAILABLE:
-    import habana_frameworks.torch.core as htcore  # noqa: F401
-    import habana_frameworks.torch.distributed.hccl as hpu_dist
 
 
 class TorchDistributedWorker(ABC):
@@ -76,10 +71,6 @@ def _init_torch_distributed(
         os.environ["CUDA_VISIBLE_DEVICES"] = ",".join(str(gid) for gid in gpu_ids)
         if "NCCL_SOCKET_IFNAME" not in os.environ:
             os.environ["NCCL_SOCKET_IFNAME"] = DEFAULT_NCCL_SOCKET_IFNAME
-    elif HPU_PACKAGE_AVAILABLE and backend == "hccl":
-        hpu_dist.initialize_distributed_hpu(
-            world_size=world_size, rank=rank, local_rank=local_rank
-        )
 
     init_process_group_kwargs.update(
         dict(

@@ -10,10 +10,6 @@ import ray
 from ray import serve
 from ray.util.queue import Queue
 from ray.runtime_env import RuntimeEnv
-from ray.air.util.torch_dist import (
-    init_torch_dist_process_group,
-    TorchDistributedWorker,
-)
 
 
 @ray.remote(num_cpus=8, resources={"HPU": 1})
@@ -55,6 +51,11 @@ class DeepSpeedInferenceWorker(TorchDistributedWorker):
         self.tokenizer.padding_side = "left"
         if self.tokenizer.pad_token is None:
             self.tokenizer.pad_token = self.tokenizer.eos_token
+        
+        import habana_frameworks.torch.distributed.hccl as hccl
+        # Initialize distributed backend
+        hccl.initialize_distributed_hpu(world_size=world_size, rank=local_rank, local_rank=local_rank)
+        torch.distributed.init_process_group(backend='hccl')
 
     def load_model(self):
         """Load the model to HPU and initialize the DeepSpeed inference engine."""
@@ -187,9 +188,6 @@ class DeepSpeedLlamaModel:
                     runtime_env=RuntimeEnv(env_vars=HABANA_ENVS)
                 ).remote(model_id_or_path, world_size, i)
             )
-
-        # Initialize communication using HCCL backend
-        init_torch_dist_process_group(self.deepspeed_workers, backend="hccl")
 
         # Load model in all workers
         for worker in self.deepspeed_workers:
