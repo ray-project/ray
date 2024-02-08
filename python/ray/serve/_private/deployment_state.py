@@ -2237,7 +2237,7 @@ class DeploymentState:
             states=[ReplicaState.UPDATING, ReplicaState.RUNNING]
         ):
             if replica.actor_node_id in draining_nodes:
-                state = self._actor_details.state
+                state = replica._actor_details.state
                 logger.info(
                     f"Stopping replica {replica.replica_tag} (currently {state}) "
                     f"of deployment '{self.deployment_name}' in application "
