@@ -119,12 +119,14 @@ void ObjectBufferPool::WriteChunk(const ObjectID &object_id,
                                   uint64_t metadata_size,
                                   const uint64_t chunk_index,
                                   const std::string &data) {
+
+
   absl::MutexLock lock(&pool_mutex_);
   auto it = create_buffer_state_.find(object_id);
   if (it == create_buffer_state_.end() || chunk_index >= it->second.chunk_state.size() ||
       it->second.chunk_state.at(chunk_index) != CreateChunkState::REFERENCED) {
     RAY_LOG(DEBUG) << "Object " << object_id << " aborted before chunk " << chunk_index
-                   << " could be sealed";
+                  << " could be sealed";
     return;
   }
   if (it->second.data_size != data_size || it->second.metadata_size != metadata_size) {
@@ -136,7 +138,24 @@ void ObjectBufferPool::WriteChunk(const ObjectID &object_id,
   RAY_CHECK(data.size() == chunk_info.buffer_length)
       << "size mismatch!  data size: " << data.size()
       << " chunk size: " << chunk_info.buffer_length;
-  std::memcpy(chunk_info.data, data.data(), chunk_info.buffer_length);
+
+  uint8_t* data_ptr = chunk_info.data;
+  uint64_t data_size_bytes = chunk_info.buffer_length;
+  
+  // Release pool_mutex_ during the copy call
+  pool_mutex_.Unlock();
+  std::memcpy(data_ptr, data.data(), data_size_bytes);
+  pool_mutex_.Lock();
+
+  // Itertor needs to be re-created after the lock release
+  it = create_buffer_state_.find(object_id);
+  if (it == create_buffer_state_.end() || chunk_index >= it->second.chunk_state.size() ||
+      it->second.chunk_state.at(chunk_index) != CreateChunkState::REFERENCED) {
+    RAY_LOG(DEBUG) << "Object " << object_id << " aborted before chunk " << chunk_index
+                  << " could be sealed";
+    return;
+  }
+
   it->second.chunk_state.at(chunk_index) = CreateChunkState::SEALED;
   it->second.num_seals_remaining--;
   if (it->second.num_seals_remaining == 0) {
