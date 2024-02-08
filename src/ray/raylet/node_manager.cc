@@ -1831,10 +1831,12 @@ void NodeManager::HandleCancelResourceReserve(
     DestroyWorker(worker, rpc::WorkerExitType::INTENDED_SYSTEM_EXIT, message);
   }
 
-  // Return bundle resources.
-  placement_group_resource_manager_->ReturnBundle(bundle_spec);
+  // Return bundle resources. If it fails to return a bundle,
+  // it will return none-ok status. They are transient state,
+  // and GCS should retry.
+  auto status = placement_group_resource_manager_->ReturnBundle(bundle_spec);
   cluster_task_manager_->ScheduleAndDispatchTasks();
-  send_reply_callback(Status::OK(), nullptr, nullptr);
+  send_reply_callback(status, nullptr, nullptr);
 }
 
 void NodeManager::HandleReturnWorker(rpc::ReturnWorkerRequest request,
