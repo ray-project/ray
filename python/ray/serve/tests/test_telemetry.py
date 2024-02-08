@@ -391,16 +391,10 @@ def test_handle_apis_detected(manage_ray_with_telemetry, call_in_deployment):
     def check_telemetry():
         report = ray.get(storage_handle.get_report.remote())
         print(report["extra_usage_tags"])
-        if call_in_deployment:
-            assert (
-                ServeUsageTag.RAY_SERVE_HANDLE_API_USED.get_value_from_report(report)
-                == "1"
-            )
-        else:
-            assert (
-                ServeUsageTag.DEPLOYMENT_HANDLE_API_USED.get_value_from_report(report)
-                == "1"
-            )
+        assert (
+            ServeUsageTag.DEPLOYMENT_HANDLE_API_USED.get_value_from_report(report)
+            == "1"
+        )
         return True
 
     wait_for_condition(check_telemetry)
