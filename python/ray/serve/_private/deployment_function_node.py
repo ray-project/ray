@@ -4,7 +4,7 @@ from ray.dag.dag_node import DAGNode
 from ray.dag.format_utils import get_dag_node_str
 from ray.serve._private.config import DeploymentConfig, ReplicaConfig
 from ray.serve.deployment import Deployment, schema_to_deployment
-from ray.serve.handle import DeploymentHandle, RayServeHandle
+from ray.serve.handle import DeploymentHandle
 from ray.serve.schema import DeploymentSchema
 
 
@@ -69,7 +69,7 @@ class DeploymentFunctionNode(DAGNode):
             )
 
         self._deployment_handle = DeploymentHandle(
-            self._deployment.name, self._app_name, sync=False
+            self._deployment.name, self._app_name
         )
 
     def _copy_impl(

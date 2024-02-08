@@ -10,8 +10,6 @@ from ray.serve.handle import (
     DeploymentHandle,
     DeploymentResponse,
     DeploymentResponseGenerator,
-    RayServeHandle,
-    RayServeSyncHandle,
 )
 
 
@@ -65,7 +63,7 @@ def test_get_app_and_deployment_handle(serve_instance):
 
     @serve.deployment
     class Deployment:
-        def __init__(self, handle: RayServeHandle):
+        def __init__(self, handle: DeploymentHandle):
             pass
 
         async def check_get_deployment_handle(self):
@@ -99,7 +97,7 @@ def test_compose_deployments_in_app(serve_instance):
 
     @serve.deployment
     class Deployment:
-        def __init__(self, handle1: RayServeHandle, handle2: RayServeHandle):
+        def __init__(self, handle1: DeploymentHandle, handle2: DeploymentHandle):
             self._handle1 = handle1
             self._handle2 = handle2
 
@@ -146,7 +144,7 @@ def test_convert_to_object_ref(serve_instance):
 
     @serve.deployment
     class Deployment:
-        def __init__(self, handle: RayServeHandle):
+        def __init__(self, handle: DeploymentHandle):
             self._handle = handle
 
         async def __call__(self):
@@ -169,7 +167,7 @@ def test_generators(serve_instance):
 
     @serve.deployment
     class Deployment:
-        def __init__(self, handle: RayServeHandle):
+        def __init__(self, handle: DeploymentHandle):
             self._handle = handle.options(stream=True)
 
         async def __call__(self):
@@ -195,7 +193,7 @@ def test_convert_to_object_ref_gen(serve_instance):
 
     @serve.deployment
     class Deployment:
-        def __init__(self, handle: RayServeHandle):
+        def __init__(self, handle: DeploymentHandle):
             self._handle = handle.options(stream=True)
 
         async def __call__(self):
@@ -232,7 +230,7 @@ def test_sync_response_methods_fail_in_deployment(serve_instance, stream: bool):
 
     @serve.deployment
     class Deployment:
-        def __init__(self, handle: RayServeHandle):
+        def __init__(self, handle: DeploymentHandle):
             self._handle = handle.options(stream=stream)
 
         async def __call__(self):
@@ -266,7 +264,7 @@ def test_handle_eager_execution(serve_instance):
 
     @serve.deployment
     class Deployment:
-        def __init__(self, handle: RayServeHandle):
+        def __init__(self, handle: DeploymentHandle):
             self._handle = handle
 
         async def __call__(self):

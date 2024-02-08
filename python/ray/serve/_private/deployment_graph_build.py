@@ -14,7 +14,7 @@ from ray.serve._private.deployment_function_executor_node import (
 from ray.serve._private.deployment_function_node import DeploymentFunctionNode
 from ray.serve._private.deployment_node import DeploymentNode
 from ray.serve.deployment import Deployment, schema_to_deployment
-from ray.serve.handle import DeploymentHandle, RayServeHandle
+from ray.serve.handle import DeploymentHandle
 from ray.serve.schema import DeploymentSchema
 
 

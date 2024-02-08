@@ -1,16 +1,14 @@
 import pytest
 import requests
 
-import ray
 from ray import serve
 from ray.dag.utils import _DAGNodeNameGenerator
-from ray.serve._private import api as _private_api
 from ray.serve._private.deployment_graph_build import (
     extract_deployments_from_serve_dag,
     transform_ray_dag_to_serve_dag,
 )
 from ray.serve.handle import DeploymentHandle
-from ray.serve.tests.common.test_modules import NESTED_HANDLE_KEY, Combine, Model
+from ray.serve.tests.common.test_modules import Combine, Model
 
 
 def test_unique_name_reset_upon_build(serve_instance):

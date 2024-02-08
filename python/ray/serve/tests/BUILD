@@ -62,7 +62,7 @@ py_test_module_list(
     "test_failure.py",
     "test_handle.py",
     "test_handle_streaming.py",
-    "test_new_handle_api.py",
+    "test_handle_api.py",
     "test_regression.py",
     "test_request_timeout.py",
     "test_cluster.py",
