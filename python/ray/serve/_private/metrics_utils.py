@@ -68,9 +68,6 @@ class MetricsPusher:
         fair timeshare to execute and run.
         """
 
-        if len(self.tasks) == 0:
-            raise ValueError("MetricsPusher has zero tasks registered.")
-
         if self.pusher_thread and self.pusher_thread.is_alive():
             return
 
@@ -100,8 +97,9 @@ class MetricsPusher:
 
                 # For all tasks, check when the task should be executed
                 # next. Sleep until the next closest time.
+                # If there are no tasks registered, default to sleeping for 1s.
                 least_interval_s = math.inf
-                for task in self.tasks.values():
+                for task in self.tasks.values() if self.tasks else [1]:
                     time_until_next_push = task.interval_s - (
                         time.time() - task.last_call_succeeded_time
                     )
