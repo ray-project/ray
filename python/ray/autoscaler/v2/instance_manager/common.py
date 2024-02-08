@@ -30,6 +30,13 @@ class InstanceUtil:
     in instance_manager.proto
     """
 
+    # Memoized reachable from sets, where the key is the instance status, and
+    # the value is the set of instance status that is reachable from the key
+    # instance status.
+    _reachable_from: Optional[
+        Dict["Instance.InstanceStatus", Set["Instance.InstanceStatus"]]
+    ] = None
+
     @staticmethod
     def new_instance(
         instance_id: str,
@@ -60,8 +67,9 @@ class InstanceUtil:
             Instance.RAY_RUNNING,
             Instance.RAY_STOPPING,
             Instance.RAY_STOPPED,
-            Instance.STOPPING,
+            Instance.TERMINATING,
             Instance.RAY_INSTALL_FAILED,
+            Instance.TERMINATION_FAILED,
         }
 
     @staticmethod
@@ -70,14 +78,9 @@ class InstanceUtil:
         Returns True if the instance is in a status where it may transition
         to RAY_RUNNING status.
         """
-        assert instance_status != Instance.UNKNOWN
-        return instance_status in [
-            Instance.UNKNOWN,
-            Instance.QUEUED,
-            Instance.REQUESTED,
-            Instance.ALLOCATED,
-            Instance.RAY_INSTALLING,
-        ]
+        return Instance.RAY_RUNNING in InstanceUtil.get_reachable_statuses(
+            instance_status
+        )
 
     @staticmethod
     def set_status(
@@ -159,16 +162,16 @@ class InstanceUtil:
                 # For node provider that manages the ray installation and launching,
                 # this state is skipped.
                 Instance.RAY_INSTALLING,
-                # Ray is already installed and running on the provisioned cloud
-                # instance. This happens when a ray node joins the ray cluster,
-                # and the instance is discovered in the set of running ray nodes
-                # from the Ray cluster.
+                # Ray is already installed on the provisioned cloud
+                # instance. It could be any valid ray status.
                 Instance.RAY_RUNNING,
+                Instance.RAY_STOPPING,
+                Instance.RAY_STOPPED,
                 # Instance is requested to be stopped, e.g. instance leaked: no matching
                 # Instance with the same type is found in the autoscaler's state.
-                Instance.STOPPING,
+                Instance.TERMINATING,
                 # cloud instance somehow failed.
-                Instance.STOPPED,
+                Instance.TERMINATED,
             },
             # Ray process is being installed and started on the cloud instance.
             # This status is skipped for node provider that manages the ray
@@ -187,7 +190,7 @@ class InstanceUtil:
                 # transition was skipped.
                 Instance.RAY_STOPPED,
                 # cloud instance somehow failed during the installation process.
-                Instance.STOPPED,
+                Instance.TERMINATED,
             },
             # Ray process is installed and running on the cloud instance. When in this
             # status, a ray node must be present in the ray cluster.
@@ -198,7 +201,7 @@ class InstanceUtil:
                 # Ray is already stopped, as reported by the ray cluster.
                 Instance.RAY_STOPPED,
                 # cloud instance somehow failed.
-                Instance.STOPPED,
+                Instance.TERMINATED,
             },
             # When in this status, the ray process is requested to be stopped to the
             # ray cluster, but not yet present in the dead ray node list reported by
@@ -208,36 +211,44 @@ class InstanceUtil:
                 # reported by the ray cluster.
                 Instance.RAY_STOPPED,
                 # cloud instance somehow failed.
-                Instance.STOPPED,
+                Instance.TERMINATED,
             },
             # When in this status, the ray process is stopped, and the ray node is
             # present in the dead ray node list reported by the ray cluster.
             Instance.RAY_STOPPED: {
                 # cloud instance is requested to be stopped.
-                Instance.STOPPING,
+                Instance.TERMINATING,
                 # cloud instance somehow failed.
-                Instance.STOPPED,
+                Instance.TERMINATED,
             },
             # When in this status, the cloud instance is requested to be stopped to
             # the node provider.
-            Instance.STOPPING: {
+            Instance.TERMINATING: {
                 # When a cloud instance no longer appears in the list of running cloud
                 # instances from the node provider.
-                Instance.STOPPED
+                Instance.TERMINATED,
+                # When the cloud instance failed to be terminated.
+                Instance.TERMINATION_FAILED,
+            },
+            # When in this status, the cloud instance failed to be terminated by the
+            # node provider. We will keep retrying.
+            Instance.TERMINATION_FAILED: {
+                # Retry the termination, become terminating again.
+                Instance.TERMINATING,
             },
             # Whenever a cloud instance disappears from the list of running cloud
             # instances from the node provider, the instance is marked as stopped. Since
             # we guarantee 1:1 mapping of a Instance to a cloud instance, this is a
             # terminal state.
-            Instance.STOPPED: set(),  # Terminal state.
+            Instance.TERMINATED: set(),  # Terminal state.
             # When in this status, the cloud instance failed to be allocated by the
             # node provider.
             Instance.ALLOCATION_FAILED: set(),  # Terminal state.
             Instance.RAY_INSTALL_FAILED: {
                 # Autoscaler requests to shutdown the instance when ray install failed.
-                Instance.STOPPING,
+                Instance.TERMINATING,
                 # cloud instance somehow failed.
-                Instance.STOPPED,
+                Instance.TERMINATED,
             },
             # Initial state before the instance is created. Should never be used.
             Instance.UNKNOWN: set(),
@@ -269,3 +280,49 @@ class InstanceUtil:
             ts_list.append(status_update.timestamp_ns)
 
         return ts_list
+
+    @classmethod
+    def get_reachable_statuses(
+        cls,
+        instance_status: Instance.InstanceStatus,
+    ) -> Set["Instance.InstanceStatus"]:
+        """
+        Returns the set of instance status that is reachable from the given
+        instance status following the status transitions.
+        This method is memoized.
+        Args:
+            instance_status: The instance status to start from.
+        Returns:
+            The set of instance status that is reachable from the given instance
+            status.
+        """
+        if cls._reachable_from is None:
+            cls._compute_reachable()
+        return cls._reachable_from[instance_status]
+
+    @classmethod
+    def _compute_reachable(cls):
+        """
+        Computes and memorize the from status sets for each status machine with
+        a DFS search.
+        """
+        valid_transitions = cls.get_valid_transitions()
+
+        def dfs(graph, start, visited):
+            """
+            Regular DFS algorithm to find all reachable nodes from a given node.
+            """
+            for next_node in graph[start]:
+                if next_node not in visited:
+                    # We delay adding the visited set here so we could capture
+                    # the self loop.
+                    visited.add(next_node)
+                    dfs(graph, next_node, visited)
+            return visited
+
+        # Initialize the graphs
+        cls._reachable_from = {}
+        for status in Instance.InstanceStatus.values():
+            # All nodes reachable from 'start'
+            visited = set()
+            cls._reachable_from[status] = dfs(valid_transitions, status, visited)

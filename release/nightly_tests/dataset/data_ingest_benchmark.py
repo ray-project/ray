@@ -6,7 +6,6 @@ import argparse
 from benchmark import Benchmark
 import ray
 from ray.data import Dataset
-from ray.data import DatasetPipeline
 
 import pandas as pd
 import torch
@@ -51,10 +50,7 @@ def do_consume(
     batch_delays = []
 
     def generate_epochs(data, epochs: int):
-        if isinstance(data, DatasetPipeline):
-            for epoch in data.iter_epochs(epochs):
-                yield epoch
-        elif isinstance(data, Dataset):
+        if isinstance(data, Dataset):
             # Dataset
             for _ in range(epochs):
                 yield data
@@ -66,21 +62,16 @@ def do_consume(
         epochs_read += 1
         batch_start = time.perf_counter()
 
-        if isinstance(split, DatasetPipeline):
+        if not use_gpu:
             batch_iterator = epoch_data.iter_batches(
-                prefetch_blocks=prefetch_batches, batch_size=batch_size
+                prefetch_batches=prefetch_batches, batch_size=batch_size
             )
         else:
-            if not use_gpu:
-                batch_iterator = epoch_data.iter_batches(
-                    prefetch_batches=prefetch_batches, batch_size=batch_size
-                )
-            else:
-                batch_iterator = epoch_data.iter_torch_batches(
-                    prefetch_batches=prefetch_batches,
-                    batch_size=batch_size,
-                    device="cuda",
-                )
+            batch_iterator = epoch_data.iter_torch_batches(
+                prefetch_batches=prefetch_batches,
+                batch_size=batch_size,
+                device="cuda",
+            )
 
         for batch in batch_iterator:
             batch_delay = time.perf_counter() - batch_start

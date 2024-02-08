@@ -306,6 +306,7 @@ def test_preemption_handling(
         node_id,
         autoscaler_pb2.DrainNodeReason.Value("DRAIN_NODE_REASON_PREEMPTION"),
         "preemption",
+        0,
     )
     assert is_accepted
     print("Killing node...")

@@ -2,6 +2,7 @@ import logging
 import os
 import shutil
 import tempfile
+from pathlib import Path
 from typing import Any, Dict
 
 import torch
@@ -233,7 +234,7 @@ class RayTrainReportCallback(pl.callbacks.Callback):
         super().__init__()
         self.trial_name = train.get_context().get_trial_name()
         self.local_rank = train.get_context().get_local_rank()
-        self.tmpdir_prefix = os.path.join(tempfile.gettempdir(), self.trial_name)
+        self.tmpdir_prefix = Path(tempfile.gettempdir(), self.trial_name).as_posix()
         if os.path.isdir(self.tmpdir_prefix) and self.local_rank == 0:
             shutil.rmtree(self.tmpdir_prefix)
 
@@ -241,7 +242,7 @@ class RayTrainReportCallback(pl.callbacks.Callback):
 
     def on_train_epoch_end(self, trainer, pl_module) -> None:
         # Creates a checkpoint dir with fixed name
-        tmpdir = os.path.join(self.tmpdir_prefix, str(trainer.current_epoch))
+        tmpdir = Path(self.tmpdir_prefix, str(trainer.current_epoch)).as_posix()
         os.makedirs(tmpdir, exist_ok=True)
 
         # Fetch metrics
@@ -253,7 +254,7 @@ class RayTrainReportCallback(pl.callbacks.Callback):
         metrics["step"] = trainer.global_step
 
         # Save checkpoint to local
-        ckpt_path = os.path.join(tmpdir, self.CHECKPOINT_NAME)
+        ckpt_path = Path(tmpdir, self.CHECKPOINT_NAME).as_posix()
         trainer.save_checkpoint(ckpt_path, weights_only=False)
 
         # Report to train session
@@ -261,7 +262,7 @@ class RayTrainReportCallback(pl.callbacks.Callback):
         train.report(metrics=metrics, checkpoint=checkpoint)
 
         # Add a barrier to ensure all workers finished reporting here
-        torch.distributed.barrier()
+        trainer.strategy.barrier()
 
         if self.local_rank == 0:
             shutil.rmtree(tmpdir)

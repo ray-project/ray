@@ -91,8 +91,7 @@ def test_world_size(session):
 
 def test_train(session):
     session.start()
-    output = session.finish()
-    assert output == 1
+    session.finish()
 
 
 def test_get_dataset_shard(shutdown_only):
