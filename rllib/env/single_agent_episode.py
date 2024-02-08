@@ -9,6 +9,7 @@ from typing import Any, Dict, List, Optional, SupportsFloat, Union
 
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.env.utils.infinite_lookback_buffer import InfiniteLookbackBuffer
+from ray.rllib.utils.typing import AgentID, ModuleID
 
 
 class SingleAgentEpisode:
@@ -157,6 +158,8 @@ class SingleAgentEpisode:
         render_images: Optional[List[np.ndarray]] = None,
         t_started: Optional[int] = None,
         len_lookback_buffer: Union[int, str] = "auto",
+        agent_id: Optional[AgentID] = None,
+        module_id: Optional[ModuleID] = None,
     ):
         """Initializes a SingleAgentEpisode instance.
 
@@ -217,8 +220,18 @@ class SingleAgentEpisode:
                 chunk's data.
                 If `len_lookback_buffer` is "auto" (default), will interpret all
                 provided data in the constructor as part of the lookback buffers.
+            agent_id: An optional AgentID indicating which agent this episode belongs
+                to. This information is stored under `self.agent_id` and only serves
+                reference purposes.
+            module_id: An optional ModuleID indicating which RLModule this episode
+                belongs to. Normally, this information is obtained by querying an
+                `agent_to_module_mapping_fn` with a given agent ID. This information
+                is stored under `self.module_id` and only serves reference purposes.
         """
         self.id_ = id_ or uuid.uuid4().hex
+
+        self.agent_id = agent_id
+        self.module_id = module_id
 
         # Lookback buffer length is not provided. Interpret already given data as
         # lookback buffer lengths for all data types.

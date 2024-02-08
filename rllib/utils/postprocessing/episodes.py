@@ -109,12 +109,8 @@ def remove_last_ts_from_data(
     # Compiling return data by slicing off one timestep at the end of
     # each episode.
     ret = []
-    for i, d in enumerate(data):
+    for d in data:
         ret.append(np.concatenate([d[s] for s in slices]))
-        #TEST
-        #if i == 0: #vf_preds
-        #    for s in slices:
-        #        print(d[s.stop])
     return tuple(ret)
 
 

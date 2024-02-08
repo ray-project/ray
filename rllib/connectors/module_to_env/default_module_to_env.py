@@ -33,16 +33,6 @@ class DefaultModuleToEnv(ConnectorV2):
     distribution using the RLModule in the connector context and sample from this
     distribution (deterministically, if we are not exploring, stochastically, if we
     are).
-
-    #input_type: INPUT_OUTPUT_TYPES.DICT_OF_MODULE_IDS_TO_DATA
-    #    Operates per RLModule as it will have to pull the action distribution from each
-    #    in order to sample actions if necessary. Searches for the ACTIONS and
-    #    ACTION_DIST_INPUTS keys in a module's outputs and - should ACTIONS not be
-    #    found - sample actions from the module's action distribution.
-    #output_type: INPUT_OUTPUT_TYPES.DICT_OF_MODULE_IDS_TO_DATA (same as input: data in,
-    #    data out, however, data
-    #    out might contain an additional ACTIONS key if it was not previously present
-    #    in the input).
     """
 
     def __init__(
@@ -117,7 +107,7 @@ class DefaultModuleToEnv(ConnectorV2):
 
         # Process actions according to Env's action space bounds, if necessary.
         self._normalize_clip_actions(data, is_multi_agent)
-        #print(data["actions"])
+
         return data
 
     def _remove_time_rank_from_data(self, data, rl_module, is_multi_agent):
@@ -149,7 +139,6 @@ class DefaultModuleToEnv(ConnectorV2):
             if SampleBatch.ACTION_DIST_INPUTS in module_data:
                 if explore:
                     action_dist_class = sa_rl_module.get_exploration_action_dist_cls()
-                    #print(action_dist_class)
                 else:
                     action_dist_class = sa_rl_module.get_inference_action_dist_cls()
                 action_dist = action_dist_class.from_logits(
@@ -218,9 +207,16 @@ class DefaultModuleToEnv(ConnectorV2):
         return agent_data
 
     def _normalize_clip_actions(self, data, is_multi_agent):
+        """Based on settings, will normalize (unsquash) and/or clip computed actions.
+
+        This is such that the final actions (to be sent to the env) match the
+        environment's action space and thus don't lead to an error.
+        """
+        actions = None
+
         if is_multi_agent:
             if self.normalize_actions:
-                data[SampleBatch.ACTIONS] = [
+                actions = [
                     unsquash_action(
                         a,
                         {k: v for k, v in self._action_space_struct.items() if k in a},
@@ -228,7 +224,7 @@ class DefaultModuleToEnv(ConnectorV2):
                     for a in data[SampleBatch.ACTIONS]
                 ]
             elif self.clip_actions:
-                data[SampleBatch.ACTIONS] = [
+                actions = [
                     clip_action(
                         a,
                         {k: v for k, v in self._action_space_struct.items() if k in a},
@@ -237,10 +233,13 @@ class DefaultModuleToEnv(ConnectorV2):
                 ]
         else:
             if self.normalize_actions:
-                data["actions_to_send"] = unsquash_action(
+                actions = unsquash_action(
                     data[SampleBatch.ACTIONS], self._action_space_struct
                 )
             elif self.clip_actions:
-                data["actions_to_send"] = clip_action(
+                actions = clip_action(
                     data[SampleBatch.ACTIONS], self._action_space_struct
                 )
+
+        if actions is not None:
+            data[SampleBatch.ACTIONS_FOR_ENV] = actions

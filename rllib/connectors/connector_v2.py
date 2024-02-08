@@ -1,4 +1,5 @@
 import abc
+from collections import defaultdict
 from typing import Any, Dict, Iterator, List, Optional, Union
 
 import gymnasium as gym
@@ -57,13 +58,6 @@ class ConnectorV2(abc.ABC):
     pipelines) and the Learners (owning the Learner pipelines).
     """
 
-    ## Set these in ALL subclasses.
-    ## TODO (sven): Irrelevant for single-agent cases. Once multi-agent is supported
-    ##  by ConnectorV2, we need to elaborate more on the different input/output types.
-    ##  For single-agent, the types should always be just INPUT_OUTPUT_TYPES.DATA.
-    #input_type = INPUT_OUTPUT_TYPES.DATA
-    #output_type = INPUT_OUTPUT_TYPES.DATA
-
     @property
     def observation_space(self):
         """Getter for our (output) observation space.
@@ -74,11 +68,6 @@ class ConnectorV2(abc.ABC):
         """
         return self.input_observation_space
 
-    #@observation_space.setter
-    #def observation_space(self, value):
-    #    """Setter for our (output) observation space."""
-    #    self._observation_space = value
-
     @property
     def action_space(self):
         """Getter for our (output) action space.
@@ -88,11 +77,6 @@ class ConnectorV2(abc.ABC):
         does not alter the space.
         """
         return self.input_action_space
-
-    #@action_space.setter
-    #def action_space(self, value):
-    #    """Setter for our (output) action space."""
-    #    self._action_space = value
 
     def __init__(
         self,
@@ -115,9 +99,6 @@ class ConnectorV2(abc.ABC):
         """
         self.input_observation_space = input_observation_space
         self.input_action_space = input_action_space
-
-        #self._observation_space = None
-        #self._action_space = None
 
     @abc.abstractmethod
     def __call__(
@@ -161,7 +142,7 @@ class ConnectorV2(abc.ABC):
         into their individual agents' SingleAgentEpisodes and those are then yielded
         one after the other.
 
-        Useful for connectors that operator on both single-agent and multi-agent
+        Useful for connectors that operate on both single-agent and multi-agent
         episodes.
 
         Args:
@@ -266,14 +247,14 @@ class ConnectorV2(abc.ABC):
             sub_key = (single_agent_episode.agent_id, single_agent_episode.module_id)
 
         if column not in batch:
-            batch[column] = ([] if sub_key is None else {sub_key: []})
+            batch[column] = [] if sub_key is None else {sub_key: []}
         if sub_key:
             batch[column][sub_key].append(item_to_add)
         else:
             batch[column].append(item_to_add)
 
     @staticmethod
-    def switch_batch_from_agent_ids_to_module_ids(batch):#, episodes):
+    def switch_batch_from_agent_ids_to_module_ids(batch):
         """Flips the mapping in the given batch from Agent ID based to Module ID based.
 
         The provided batch must have column names on the top level, then - under each
@@ -373,17 +354,6 @@ class ConnectorV2(abc.ABC):
         for column, column_data in batch.items():
             for module_id, data in column_data.items():
                 module_data[module_id]
-
-    #@staticmethod
-    #def iterate_through_batch_column(batch, column):
-    #    data = batch.get(column)
-    #    if data is None:
-    #        raise ValueError(f"Your `batch` arg does NOT contain column `{column}`!")
-    #    if isinstance(data, list):
-    #        for d in data:
-    #            yield d
-    #    elif isinstance(data, dict):
-
 
     def get_state(self) -> Dict[str, Any]:
         """Returns the current state of this ConnectorV2 as a state dict.

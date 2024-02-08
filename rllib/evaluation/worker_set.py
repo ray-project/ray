@@ -363,8 +363,21 @@ class WorkerSet:
         return self.__worker_manager.total_num_restarts()
 
     @DeveloperAPI
-    def sync_connectors(self):
-        """TODO: (sven) """
+    def sync_connectors(self) -> None:
+        """Synchronizes the connectors of this WorkerSet's EnvRunners.
+
+        The exact procedure works as follows:
+        - Get all remote EnvRunners' ConnectorV2 states.
+        - Merge them into a resulting state.
+        - Broadcast the resulting state back to all remote EnvRunners AND the local
+        EnvRunner.
+        """
+        # Early out if the number of (healthy) remote workers is 0. In this case, the
+        # local worker is the only operating worker and thus of course always holds
+        # the reference connector state.
+        if self.num_healthy_remote_workers() == 0:
+            return
+
         connector_states = self.foreach_worker(
             lambda w: (w._env_to_module.get_state(), w._module_to_env.get_state()),
             healthy_only=True,

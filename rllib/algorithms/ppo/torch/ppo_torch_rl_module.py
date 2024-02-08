@@ -26,11 +26,9 @@ class PPOTorchRLModule(TorchRLModule, PPORLModule):
             output[STATE_OUT] = encoder_outs[STATE_OUT]
 
         # Pi head.
-        action_logits = self.pi(
+        output[SampleBatch.ACTION_DIST_INPUTS] = self.pi(
             encoder_outs[ENCODER_OUT][ACTOR]
         )
-        output[SampleBatch.ACTION_DIST_INPUTS] = action_logits
-        #print(action_logits)
 
         return output
 
@@ -42,7 +40,6 @@ class PPOTorchRLModule(TorchRLModule, PPORLModule):
         the policy distribution to be used for computing KL divergence between the old
         policy and the new policy during training.
         """
-        #print(torch.mean(torch.abs(batch["obs"])))
         # TODO (sven): Make this the only behavior once PPO has been migrated
         #  to new API stack (including EnvRunners).
         if self.config.model_config_dict.get("uses_new_env_runners"):
@@ -62,16 +59,12 @@ class PPOTorchRLModule(TorchRLModule, PPORLModule):
         # Policy head
         action_logits = self.pi(encoder_outs[ENCODER_OUT][ACTOR])
         output[SampleBatch.ACTION_DIST_INPUTS] = action_logits
-        #print(action_logits)
 
         return output
 
     @override(RLModule)
     def _forward_train(self, batch: NestedDict) -> Dict[str, Any]:
         output = {}
-
-        actions = []
-        #print(torch.mean(torch.abs(batch["actions"])))
 
         # Shared encoder.
         encoder_outs = self.encoder(batch)

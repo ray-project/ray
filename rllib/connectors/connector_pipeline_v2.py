@@ -22,14 +22,16 @@ class ConnectorPipelineV2(ConnectorV2):
     def observation_space(self):
         return (
             self.connectors[-1].observation_space
-            if len(self.connectors) > 0 else self.input_observation_space
+            if len(self.connectors) > 0
+            else self.input_observation_space
         )
 
     @property
     def action_space(self):
         return (
             self.connectors[-1].action_space
-            if len(self.connectors) > 0 else self.input_action_space
+            if len(self.connectors) > 0
+            else self.input_action_space
         )
 
     def __init__(
@@ -217,6 +219,15 @@ class ConnectorPipelineV2(ConnectorV2):
             if key not in state:
                 raise KeyError(f"No state found in `state` for connector piece: {key}!")
             connector.set_state(state[key])
+
+    @override(ConnectorV2)
+    def merge_states(self, states: List[Dict[str, Any]]) -> Dict[str, Any]:
+        merged_states = {}
+        for i, (key, item) in enumerate(states[0].items()):
+            state_list = [state[key] for state in states]
+            conn = self.connectors[i]
+            merged_states[key] = conn.merge_states(state_list)
+        return merged_states
 
     def __repr__(self, indentation: int = 0):
         return "\n".join(

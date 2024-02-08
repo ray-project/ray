@@ -392,7 +392,6 @@ class EnvRunnerV2:
             eval_results=eval_results,
             off_policy_actions=off_policy_actions,
         )
-        #print(actions_to_send)#TODO
         self._perf_stats.incr("action_processing_time", time.time() - t3)
 
         # Return computed actions to ready envs. We also send to envs that have

@@ -263,8 +263,14 @@ class MultiAgentEnvRunner(EnvRunner):
                     shared_data=shared_data,
                 )
 
-            # Extract the (vectorized) actions from the module/connector output.
-            actions = to_env.pop(SampleBatch.ACTIONS)
+            # Extract the (vectorized) actions (to be sent to the env) from the
+            # module/connector output. Note that these actions are fully ready (e.g.
+            # already clipped) to be sent to the environment) and might not be
+            # identical to the actions produced by the RLModule/distribution, which are
+            # the ones stored permanently in the episode objects.
+            actions = to_env.pop(
+                SampleBatch.ACTIONS_FOR_ENV, to_env.get(SampleBatch.ACTIONS)
+            )
 
             # TODO (sven): [0] = actions is vectorized, but env is NOT a vector Env.
             #  Support vectorized multi-agent envs.
