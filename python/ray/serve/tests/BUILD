@@ -34,7 +34,8 @@ py_test_module_list(
     "test_deployment_graph_handle_serde.py",
     "test_websockets.py",
     "test_deployment_node.py",
-    "test_expected_versions.py"
+    "test_expected_versions.py",
+    "test_actor_replica_wrapper.py",
   ],
   size = "small",
   tags = ["exclusive", "team:serve"],
@@ -192,4 +193,21 @@ py_test(
     size = "medium",
     tags = ["exclusive", "team:serve", "ha_integration"],
     deps = ["//python/ray/serve:serve_lib", ":conftest", ":common"],
+)
+
+# Tests enabling queue len caching feature flag.
+# TODO(edoakes): remove this after it's on by default.
+py_test_module_list(
+  name_suffix="_with_queue_len_cache_enabled",
+  env={"RAY_SERVE_ENABLE_QUEUE_LEN_CACHE": "1"},
+  files = [
+    "test_autoscaling_policy.py",
+    "test_handle.py",
+    "test_handle_streaming.py",
+    "test_multiplex.py",
+  ],
+  size = "medium",
+  tags = ["exclusive", "no_windows", "team:serve"],
+  deps = ["//python/ray/serve:serve_lib", ":conftest", ":common"],
+  data = glob(["test_config_files/**/*"]),
 )
