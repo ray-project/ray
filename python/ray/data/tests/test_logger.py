@@ -2,11 +2,17 @@ import logging
 import os
 import re
 from datetime import datetime
+from unittest.mock import patch
 
 import pytest
 
 import ray
-from ray.data._internal.dataset_logger import DatasetLogger
+from ray.data._internal.dataset_logger import (
+    DatasetLogger,
+    RayDataInternalException,
+    UserCodeException,
+    skip_internal_stack_frames,
+)
 from ray.tests.conftest import *  # noqa
 
 
@@ -41,6 +47,41 @@ def test_dataset_logger(shutdown_only):
     assert logged_level == logging.getLevelName(logging.INFO)
     assert re.match(r"test_logger.py:\d+", logged_filepath)
     assert logged_msg == msg
+
+
+def test_skip_internal_stack_frames(ray_start_regular_shared):
+    def f(x):
+        1 / 0
+        return x
+
+    try:
+        ray.data.range(10).map(f).take_all()
+    except Exception as e:
+        ex_internal_skipped = skip_internal_stack_frames(e)
+        assert isinstance(ex_internal_skipped, UserCodeException), ex_internal_skipped
+
+    # Mock `ExecutionPlan.execute()`` to raise an exception, to emulate
+    # an error in internal Ray Data code.
+    with patch(
+        "ray.data._internal.plan.ExecutionPlan.execute",
+        side_effect=Exception("fake exception"),
+    ):
+        # Ideally, we would check that `RayDataInternalException` is raised, but the
+        # patch above unfortunately cannot trick `skip_internal_stack_frames` into
+        # thinking the side_effect comes from the actual `ExecutionPlan.execute()`
+        # method, and still believes it's from user code.
+        # Instead, we can check that the mocked exception is raised from the
+        # side effect message, and confirm the type of the stripped exception
+        # is `RayDataInternalException`.
+        with pytest.raises(Exception, match="fake exception"):
+            try:
+                ray.data.range(10).materialize()
+            except Exception as e:
+                ex_internal_skipped = skip_internal_stack_frames(e)
+                assert isinstance(
+                    ex_internal_skipped, RayDataInternalException
+                ), ex_internal_skipped
+                raise ex_internal_skipped
 
 
 if __name__ == "__main__":
