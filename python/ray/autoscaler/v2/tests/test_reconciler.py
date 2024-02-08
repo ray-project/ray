@@ -326,6 +326,7 @@ class TestReconciler:
         instances, _ = instance_storage.get_instances()
         assert len(instances) == 1
         assert instances["i-1"].status == Instance.RAY_RUNNING
+        assert instances["i-1"].node_id == "r-1"
 
     @staticmethod
     def test_ray_reconciler_already_ray_running(setup):
