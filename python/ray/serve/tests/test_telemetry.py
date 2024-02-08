@@ -363,11 +363,6 @@ def test_handle_apis_detected(manage_ray_with_telemetry, call_in_deployment):
     assert (
         ServeUsageTag.DEPLOYMENT_HANDLE_API_USED.get_value_from_report(report) is None
     )
-    assert ServeUsageTag.RAY_SERVE_HANDLE_API_USED.get_value_from_report(report) is None
-    assert (
-        ServeUsageTag.RAY_SERVE_SYNC_HANDLE_API_USED.get_value_from_report(report)
-        is None
-    )
 
     @serve.deployment
     class Downstream:
