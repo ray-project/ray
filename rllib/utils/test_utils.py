@@ -86,6 +86,7 @@ def add_rllib_example_script_args(
     if parser is None:
         parser = argparse.ArgumentParser()
 
+    # Algo and Algo config options.
     parser.add_argument(
         "--algo", type=str, default="PPO", help="The RLlib-registered algorithm to use."
     )
@@ -101,6 +102,12 @@ def add_rllib_example_script_args(
         help="The DL framework specifier.",
     )
     parser.add_argument(
+        "--num-env-runners",
+        type=int,
+        default=2,
+        help="The number of (remote) EnvRunners to use for the experiment.",
+    )
+    parser.add_argument(
         "--num-agents",
         type=int,
         default=0,
@@ -109,19 +116,59 @@ def add_rllib_example_script_args(
         "independently at every single timestep. The overall reward for this "
         "experiment is then the sum over all individual agents' rewards.",
     )
-    parser.add_argument("--num-cpus", type=int, default=0)
+
+    # tune.Tuner options.
     parser.add_argument(
-        "--as-test",
+        "--no-tune",
         action="store_true",
-        help="Whether this script should be run as a test. If set, --stop-reward must "
-        "be achieved within --stop-timesteps AND --stop-iters, otherwise this "
-        "script will throw an exception at the end.",
+        help="Whether to NOT use tune.Tuner(), but rather a simple for-loop calling "
+        "`algo.train()` repeatedly until one of the stop criteria is met.",
     )
     parser.add_argument(
-        "--local-mode",
-        action="store_true",
-        help="Init Ray in local mode for easier debugging.",
+        "--num-samples",
+        type=int,
+        default=1,
+        help="How many (tune.Tuner.fit()) experiments to execute - if possible in "
+        "parallel.",
     )
+    parser.add_argument(
+        "--verbose",
+        type=int,
+        default=2,
+        help="The verbosity level for the `tune.Tuner()` running the experiment.",
+    )
+    parser.add_argument(
+        "--checkpoint-freq",
+        type=int,
+        default=0,
+        help=(
+            "The frequency (in training iterations) with which to create checkpoints. "
+            "Note that if --wandb-key is provided, these checkpoints will "
+            "automatically be uploaded to WandB."
+        ),
+    )
+
+    # WandB logging options.
+    parser.add_argument(
+        "--wandb-key",
+        type=str,
+        default=None,
+        help="The WandB API key to use for uploading results.",
+    )
+    parser.add_argument(
+        "--wandb-project",
+        type=str,
+        default=None,
+        help="The WandB project name to use.",
+    )
+    parser.add_argument(
+        "--wandb-run-name",
+        type=str,
+        default=None,
+        help="The WandB run name to use.",
+    )
+
+    # Experiment stopping and testing criteria.
     parser.add_argument(
         "--stop-reward",
         type=float,
@@ -141,44 +188,19 @@ def add_rllib_example_script_args(
         help="The number of (environment sampling) timesteps to train.",
     )
     parser.add_argument(
-        "--no-tune",
+        "--as-test",
         action="store_true",
-        help="Whether to NOT use tune.Tuner(), but rather a simple for-loop calling "
-        "`algo.train()` repeatedly until one of the stop criteria is met.",
+        help="Whether this script should be run as a test. If set, --stop-reward must "
+        "be achieved within --stop-timesteps AND --stop-iters, otherwise this "
+        "script will throw an exception at the end.",
     )
+
+    # Ray init options.
+    parser.add_argument("--num-cpus", type=int, default=0)
     parser.add_argument(
-        "--verbose",
-        type=int,
-        default=2,
-        help="The verbosity level for the `tune.Tuner()` running the experiment.",
-    )
-    parser.add_argument(
-        "--wandb-key",
-        type=str,
-        default=None,
-        help="The WandB API key to use for uploading results.",
-    )
-    parser.add_argument(
-        "--wandb-project",
-        type=str,
-        default=None,
-        help="The WandB project name to use.",
-    )
-    parser.add_argument(
-        "--wandb-run-name",
-        type=str,
-        default=None,
-        help="The WandB run name to use.",
-    )
-    parser.add_argument(
-        "--checkpoint-freq",
-        type=int,
-        default=0,
-        help=(
-            "The frequency (in training iterations) with which to create checkpoints. "
-            "Note that if --wandb-key is provided, these checkpoints will "
-            "automatically be uploaded to WandB."
-        ),
+        "--local-mode",
+        action="store_true",
+        help="Init Ray in local mode for easier debugging.",
     )
     return parser
 
@@ -1145,8 +1167,8 @@ def run_rllib_example_script_experiment(
             print(f"R={results['episode_reward_mean']}")
             for key, value in stop.items():
                 if results.get(key, float("-inf")) > value:
-                    print(f"Stop criterium ({key}={value}) reached!")
-                    break
+                    print(f"Stop criterium ({key}={value}) fulfilled!")
+                    return results
         return results
 
     callbacks = None
@@ -1174,6 +1196,7 @@ def run_rllib_example_script_experiment(
                 checkpoint_frequency=args.checkpoint_freq,
             ),
         ),
+        tune_config=tune.TuneConfig(num_samples=args.num_samples),
     ).fit()
 
     if args.as_test:

@@ -79,7 +79,6 @@ if __name__ == "__main__":
                 else MultiAgentEnvRunner
             ),
         )
-        # No history in Env (bandit problem).
         .training(
             gamma=0.99,
             lr=0.0003,

@@ -15,7 +15,8 @@ class NestedSpaceRepeatAfterMeEnv(gym.Env):
     as close as possible for Box sub-actions.
     """
 
-    def __init__(self, config):
+    def __init__(self, config=None):
+        config = config or {}
         self.observation_space = config.get(
             "space", Tuple([Discrete(2), Dict({"a": Box(-1.0, 1.0, (2,))})])
         )

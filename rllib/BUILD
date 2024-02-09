@@ -2553,6 +2553,15 @@ py_test(
 )
 
 py_test(
+    name = "examples/nested_action_spaces_multi_agent_ppo_torch_envrunner",
+    main = "examples/nested_action_spaces.py",
+    tags = ["team:rllib", "exclusive", "examples"],
+    size = "medium",
+    srcs = ["examples/nested_action_spaces.py"],
+    args = ["--as-test", "--num-agents=2", "--framework=torch", "--stop-reward=-1000.0", "--run=PPO", "--enable-new-api-stack"]
+)
+
+py_test(
     name = "examples/parallel_evaluation_and_training_13_episodes_tf",
     main = "examples/parallel_evaluation_and_training.py",
     tags = ["team:rllib", "exclusive", "examples"],
@@ -2814,21 +2823,21 @@ py_test(
 # new connector examples
 # ----------------------
 py_test(
-    name = "examples/connectors/connector_v2_nested_observation_spaces_ppo_single_agent",
+    name = "examples/connectors/connector_v2_nested_observation_spaces_ppo",
     main = "examples/connectors/connector_v2_nested_observation_spaces.py",
     tags = ["team:rllib", "exclusive", "examples"],
     size = "medium",
     srcs = ["examples/connectors/connector_v2_nested_observation_spaces.py"],
-    args = ["--enable-new-api-stack", "--as-test", "--framework=torch", "--algo=PPO"]
+    args = ["--enable-new-api-stack", "--as-test", "--stop-reward=400.0", "--framework=torch", "--algo=PPO"]
 )
 
 py_test(
-    name = "examples/connectors/connector_v2_nested_observation_spaces_ppo_multi_agent",
+    name = "examples/connectors/connector_v2_nested_observation_spaces_multi_agent_ppo",
     main = "examples/connectors/connector_v2_nested_observation_spaces.py",
     tags = ["team:rllib", "exclusive", "examples"],
     size = "medium",
     srcs = ["examples/connectors/connector_v2_nested_observation_spaces.py"],
-    args = ["--enable-new-api-stack", "--as-test", "--framework=torch", "--algo=PPO", "--multi-agent"]
+    args = ["--enable-new-api-stack", "--as-test", "--stop-reward=800.0", "--framework=torch", "--algo=PPO", "--num-agents=2"]
 )
 
 # ----------------------

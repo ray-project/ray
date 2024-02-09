@@ -235,10 +235,10 @@ class DefaultEnvToModule(ConnectorV2):
 
         for episode_idx, ma_episode in enumerate(episodes):
             for agent_id in ma_episode.get_agents_to_act():
-                module_id = ma_episode.agent_to_module_map.get(agent_id)
+                module_id = ma_episode.agent_episodes[agent_id].module_id
                 if module_id is None:
                     module_id = agent_to_module_mapping_fn(agent_id, ma_episode)
-                    ma_episode.agent_to_module_map[agent_id] = module_id
+                    ma_episode.agent_episodes[agent_id].module_id = module_id
                 agent_to_module_mappings[agent_id].append(module_id)
                 # Store (in the correct order) which episode+agentID belongs to which
                 # batch item in a module IDs forward batch.

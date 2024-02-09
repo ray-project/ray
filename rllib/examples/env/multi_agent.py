@@ -7,8 +7,10 @@ from ray.rllib.examples.env.cartpole_with_dict_observation_space import (
     CartPoleWithDictObservationSpace,
 )
 from ray.rllib.examples.env.mock_env import MockEnv, MockEnv2
+from ray.rllib.examples.env.nested_space_repeat_after_me_env import (
+    NestedSpaceRepeatAfterMeEnv
+)
 from ray.rllib.examples.env.stateless_cartpole import StatelessCartPole
-from ray.rllib.utils.deprecation import Deprecated
 
 
 MultiAgentCartPole = make_multi_agent("CartPole-v1")
@@ -17,6 +19,9 @@ MultiAgentPendulum = make_multi_agent("Pendulum-v1")
 MultiAgentStatelessCartPole = make_multi_agent(lambda config: StatelessCartPole(config))
 MultiAgentCartPoleWithDictObservationSpace = make_multi_agent(
     lambda config: CartPoleWithDictObservationSpace(config)
+)
+MultiAgentNestedSpaceRepeatAfterMeEnv = make_multi_agent(
+    lambda config: NestedSpaceRepeatAfterMeEnv(config)
 )
 
 

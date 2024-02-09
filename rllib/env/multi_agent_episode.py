@@ -158,7 +158,7 @@ class MultiAgentEpisode:
         # self._agent_ids: Set[AgentID] = set([] if agent_ids is None else agent_ids)
         # Container class to keep information on which agent maps to which module
         # (always for the duration of this episode).
-        self.agent_to_module_map: Dict[AgentID, ModuleID] = {}
+        #self.agent_to_module_map: Dict[AgentID, ModuleID] = {}
 
         # The global last timestep of the episode and the timesteps when this chunk
         # started (excluding a possible lookback buffer).
@@ -1349,6 +1349,21 @@ class MultiAgentEpisode:
             for aid in self.get_observations(-1).keys()
             if not self.agent_episodes[aid].is_done
         }
+
+    def get_agents_that_stepped(self) -> Set[AgentID]:
+        """Returns a set of agent IDs of those agents that just finished stepping.
+        
+        These are all the agents that have an observation logged at the last env
+        timestep, which may include agents, whose single agent episode just terminated
+        or truncated.
+        
+        Returns:
+            A set of AgentIDs of those agents that just finished stepping (that have a
+            most recent observation on the env timestep scale), regardless of whether
+            their single agent episodes are done or not. 
+        """
+        return set(self.get_observations(-1).keys())
+
 
     # TODO (sven, simon): This function can only deal with data if it does not contain
     #  terminated or truncated agents (i.e. you have to provide ONLY alive agents in the

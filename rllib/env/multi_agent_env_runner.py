@@ -102,6 +102,7 @@ class MultiAgentEnvRunner(EnvRunner):
         # This should be the default.
         self._needs_initial_reset: bool = True
         self._episode: Optional[MultiAgentEpisode] = None
+        self._shared_data = None
 
         self._done_episodes_for_metrics: List[MultiAgentEpisode] = []
         self._ongoing_episodes_for_metrics: DefaultDict[
@@ -214,10 +215,9 @@ class MultiAgentEnvRunner(EnvRunner):
             # Set the initial observations in the episodes.
             self._episode.add_env_reset(observations=obs, infos=infos)
 
-        # TODO (sven): figure out how often we should reset the shared data dict.
-        shared_data = {
-            "agent_to_module_mapping_fn": self.config.policy_mapping_fn,
-        }
+            self._shared_data = {
+                "agent_to_module_mapping_fn": self.config.policy_mapping_fn,
+            }
 
         # Loop through timesteps.
         ts = 0
@@ -246,7 +246,7 @@ class MultiAgentEnvRunner(EnvRunner):
                     rl_module=self.module,
                     episodes=[self._episode],
                     explore=explore,
-                    shared_data=shared_data,
+                    shared_data=self._shared_data,
                 )
                 self._cached_to_module = None
                 # Explore or not.
@@ -260,7 +260,7 @@ class MultiAgentEnvRunner(EnvRunner):
                     data=to_env,
                     episodes=[self._episode],
                     explore=explore,
-                    shared_data=shared_data,
+                    shared_data=self._shared_data,
                 )
 
             # Extract the (vectorized) actions (to be sent to the env) from the
@@ -310,22 +310,32 @@ class MultiAgentEnvRunner(EnvRunner):
                 extra_model_outputs=extra_model_outputs,
             )
 
-            # Make the `on_episode_step` callback.
-            self._make_on_episode_callback("on_episode_step")
-
-            # TODO (sven, simon): We have to check, if we need this elaborate
-            # function here or if the `MultiAgentEnv` defines the cases that
-            # can happen.
-            # Right now we have:
-            #   1. Most times only agents that step get `terminated`, `truncated`
-            #       i.e. the rest we have to check in the episode.
-            #   2. There are edge cases like, some agents terminated, all others
-            #       truncated and vice versa.
-            # See also `MultiAgentEpisode` for handling the `__all__`.
+            # Episode is done for all agents. Wrap up the old one and create a new
+            # one (and reset it) to continue.
             if self._all_agents_done(terminateds, truncateds):
+                # We have to perform an extra env-to-module pass here, just in case
+                # the user's connector pipeline performs (permanent) transforms
+                # on each observation (including this final one here). Without such
+                # a call and in case the structure of the observations change
+                # sufficiently, the following `finalize()` call on the episode will
+                # fail.
+                self._env_to_module(
+                    episodes=[self._episode],
+                    explore=explore,
+                    rl_module=self.module,
+                    shared_data=self._shared_data,
+                )
+
+                # Make the `on_episode_step` callback.
+                self._make_on_episode_callback("on_episode_step")
                 # Finalize (numpy'ize) the episode.
                 self._episode.finalize()
                 done_episodes_to_return.append(self._episode)
+
+                # Make the `on_episode_env` callback (after having finalized the
+                # episode object).
+                self._make_on_episode_callback("on_episode_end")
+
                 # Create a new episode instance.
                 self._episode = MultiAgentEpisode()
                 # Reset the environment.
@@ -333,17 +343,22 @@ class MultiAgentEnvRunner(EnvRunner):
                 # Add initial observations and infos.
                 self._episode.add_env_reset(observations=obs, infos=infos)
 
+                # Make the `on_episode_start` callback.
+                self._make_on_episode_callback("on_episode_start")
+
+            else:
+                # Make the `on_episode_step` callback.
+                self._make_on_episode_callback("on_episode_step")
+
         # Already perform env-to-module connector call for next call to
         # `_sample_timesteps()`. See comment in c'tor for `self._cached_to_module`.
-        # TODO (sven): Figure out shared_data problem. We will have to store that as
-        #  well (in between `self._sample_timesteps()` calls).
-        # if self.module is not None:
-        #    self._cached_to_module = self._env_to_module(
-        #        rl_module=self.module,
-        #        episodes=[self._episode],
-        #        explore=explore,
-        #        shared_data=shared_data,
-        #    )
+        if self.module is not None:
+            self._cached_to_module = self._env_to_module(
+                rl_module=self.module,
+                episodes=[self._episode],
+                explore=explore,
+                shared_data=self._shared_data,
+            )
 
         # Store done episodes for metrics.
         self._done_episodes_for_metrics.extend(done_episodes_to_return)
@@ -393,6 +408,9 @@ class MultiAgentEnvRunner(EnvRunner):
         # Create a new multi-agent episode.
         _episode = MultiAgentEpisode()
         self._make_on_episode_callback("on_episode_created", _episode)
+        shared_data = {
+            "agent_to_module_mapping_fn": self.config.policy_mapping_fn,
+        }
 
         # Initialize image rendering if needed.
         render_image = None
@@ -402,11 +420,6 @@ class MultiAgentEnvRunner(EnvRunner):
         # Set initial obs and infos in the episodes.
         _episode.add_env_reset(observations=obs, infos=infos, render_image=render_image)
         self._make_on_episode_callback("on_episode_start", _episode)
-
-        # TODO (sven): figure out how often we should reset the shared data dict.
-        shared_data = {
-            "agent_to_module_mapping_fn": self.config.policy_mapping_fn,
-        }
 
         # Loop over episodes.
         eps = 0

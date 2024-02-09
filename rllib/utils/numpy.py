@@ -524,7 +524,6 @@ def one_hot(
             r = np.tile(r, tiles)
         indices.append(r)
     indices.append(x)
-    print(indices)
     out[tuple(indices)] = on_value
     return out.astype(dtype)
 

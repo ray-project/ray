@@ -14,6 +14,7 @@ from ray.rllib.utils.numpy import convert_to_numpy
 from ray.rllib.utils.spaces.space_utils import (
     clip_action,
     get_base_struct_from_space,
+    unbatch,
     unsquash_action,
 )
 from ray.rllib.utils.typing import EpisodeType
@@ -208,7 +209,7 @@ class DefaultModuleToEnv(ConnectorV2):
             for column, values_batch in module_data.items():
                 if column not in agent_data:
                     agent_data[column] = [{} for _ in range(len(episodes))]
-                for i, val in enumerate(values_batch):
+                for i, val in enumerate(unbatch(values_batch)):
                     eps_idx, agent_id = module_to_episode_agents_mapping[module_id][i]
                     agent_data[column][eps_idx][agent_id] = val
 

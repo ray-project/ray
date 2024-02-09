@@ -411,7 +411,6 @@ class AlgorithmConfig(_Config):
         # `self.algorithm_config_overrides_per_module`.
         self._per_module_overrides: Dict[ModuleID, "AlgorithmConfig"] = {}
         self.count_steps_by = "env_steps"
-        # self.agent_to_module_mapping_fn = self.DEFAULT_AGENT_TO_MODULE_MAPPING_FN
         # Soon to be Deprecated.
         self.policies = {DEFAULT_POLICY_ID: PolicySpec()}
         self.policy_map_capacity = 100

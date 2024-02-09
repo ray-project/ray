@@ -133,6 +133,7 @@ class ConnectorV2(abc.ABC):
     @staticmethod
     def single_agent_episode_iterator(
         episodes: List[EpisodeType],
+        agents_that_stepped_only: bool = True,
         zip_with_batch_column: Optional[Union[List[Any], Dict[tuple, Any]]] = None,
     ) -> Iterator[SingleAgentEpisode]:
         """An iterator over a list of episodes yielding always SingleAgentEpisodes.
@@ -146,6 +147,12 @@ class ConnectorV2(abc.ABC):
 
         Args:
             episodes: The list of SingleAgent- or MultiAgentEpisode objects.
+            agents_that_stepped_only: If True (and multi-agent setup), will only place
+                items of those agents into the batch that have just stepped in the
+                actual MultiAgentEpisode (this is checked via a
+                `MultiAgentEpside.episode.get_agents_to_act()`). Note that this setting
+                is ignored in a single-agent setups b/c the agent steps at each timestep
+                regardless.
             zip_with_batch_column: If provided, must be a list of batch items
                 corresponding to the given `episodes` (single agent case) or a dict
                 mapping (agentID, moduleID) tuples to lists of individual batch items
@@ -177,7 +184,13 @@ class ConnectorV2(abc.ABC):
         # Multi-agent case.
         list_indices = defaultdict(int)
         for episode in episodes:
-            for sa_episode in episode.agent_episodes.values():
+            agent_ids = (
+                episode.get_agents_that_stepped() if agents_that_stepped_only
+                else episode.agent_ids
+            )
+            for agent_id in agent_ids:
+                sa_episode = episode.agent_episodes[agent_id]
+                #for sa_episode in episode.agent_episodes.values():
                 if zip_with_batch_column is not None:
                     key = (sa_episode.agent_id, sa_episode.module_id)
                     if len(zip_with_batch_column[key]) <= list_indices[key]:
@@ -289,11 +302,11 @@ class ConnectorV2(abc.ABC):
             # Note that in general, agents to modules mapping is N to M, where N is the
             # number of agents and M is the number of modules and N >= M.
             for eps in episodes[:-1]:
-                eps.agent_to_module_map = {"agent_0": "module_0", "agent_1": "module_1"}
+                eps.agent_episodes["agent_0"].module_id = "module_0"
+                eps.agent_episodes["agent_1"].module_id = "module_1"
             # Only the last episode maps the other way around.
-            episodes[-1].agent_to_module_map = {
-                "agent_0": "module_1", "agent_1": "module_0"
-            }
+            episodes[-1].agent_episodes["agent_0"].module_id = "module_1"
+            episodes[-1].agent_episodes["agent_1"].module_id = "module_0"
 
             # Now, our batch would look like this:
             batch = {

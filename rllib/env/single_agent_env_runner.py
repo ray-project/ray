@@ -322,7 +322,6 @@ class SingleAgentEnvRunner(EnvRunner):
                     # fail.
                     self._env_to_module(
                         episodes=[self._episodes[env_index]],
-                        data={},
                         explore=explore,
                         rl_module=self.module,
                     )
