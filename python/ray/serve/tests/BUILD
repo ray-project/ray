@@ -72,7 +72,6 @@ py_test_module_list(
     "test_controller_recovery.py",
     "test_replica_placement_group.py",
     "test_max_replicas_per_node.py",
-    "test_deployment_graph_build.py",
     "test_grpc.py",
     "test_multiplex.py",
     "test_callback.py",
