@@ -442,7 +442,7 @@ py_test(
 py_test(
     name = "pendulum_sac_envrunner",
     main = "tests/run_regression_tests.py",
-    tags = ["team:rllib", "exclusive", "learning_tests", "pendulum_sac_envrunner", "learning_tests_discrete"],
+    tags = ["team:rllib", "exclusive", "learning_tests", "torch_only", "pendulum_sac_envrunner", "learning_tests_discrete"],
     size = "large",
     srcs = ["tests/run_regression_tests.py"],
     data = ["tuned_examples/sac/pendulum_sac_envrunner.py"],
