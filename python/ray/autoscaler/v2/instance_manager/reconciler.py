@@ -5,6 +5,7 @@ from collections import defaultdict
 from typing import Dict, List, Optional, Set, Tuple
 
 from google.protobuf.json_format import MessageToDict
+from ray.autoscaler.v2.instance_manager.config import InstanceReconcileConfig
 
 from ray.autoscaler.v2.instance_manager.common import InstanceUtil
 from ray.autoscaler.v2.instance_manager.config import AutoscalingConfig
@@ -56,6 +57,7 @@ class Reconciler:
         cloud_provider_errors: List[CloudInstanceProviderError],
         ray_install_errors: List[RayInstallError],
         autoscaling_config: AutoscalingConfig,
+        _logger: Optional[logging.Logger] = None,
     ) -> AutoscalingState:
         """
         The reconcile method computes InstanceUpdateEvents for the instance manager
@@ -98,6 +100,7 @@ class Reconciler:
             ray_cluster_resource_state=ray_cluster_resource_state,
             non_terminated_cloud_instances=non_terminated_cloud_instances,
             autoscaling_config=autoscaling_config,
+            _logger=_logger,
         )
         return autoscaling_state
 
@@ -179,6 +182,7 @@ class Reconciler:
         ray_cluster_resource_state: ClusterResourceState,
         non_terminated_cloud_instances: Dict[CloudInstanceId, CloudInstance],
         autoscaling_config: AutoscalingConfig,
+        _logger: Optional[logging.Logger] = None,
     ):
         """
         Step the reconciler to the next state by computing instance status transitions
@@ -215,6 +219,12 @@ class Reconciler:
             instance_manager=instance_manager,
             cloud_provider=cloud_provider,
             non_terminated_cloud_instances=non_terminated_cloud_instances,
+        )
+
+        Reconciler._handle_stuck_instances(
+            instance_manager=instance_manager,
+            reconcile_config=autoscaling_config.get_instance_reconcile_config(),
+            _logger=_logger or logger,
         )
 
         Reconciler._handle_instances_launch(
@@ -795,3 +805,238 @@ class Reconciler:
             total_num_requested_to_launch += num_to_launch
 
         return all_to_launch
+
+    @staticmethod
+    def _handle_stuck_instances(
+        instance_manager: InstanceManager,
+        reconcile_config: InstanceReconcileConfig,
+        _logger: logging.Logger,
+    ):
+        """
+        Handle stuck instances with timeouts.
+
+        Instances could be stuck in the following status and needs to be updated:
+            - REQUESTED: cloud provider is slow/fails to launch instances.
+            - ALLOCATED: ray fails to be started on the instance.
+            - RAY_INSTALLING: ray fails to be installed on the instance.
+            - TERMINATING: cloud provider is slow/fails to terminate instances.
+
+        Instances could be in the following status which could be unbounded or
+        transient, and we don't have a timeout mechanism to handle them. We would
+        warn if they are stuck for too long:
+            - RAY_STOPPING: ray taking time to drain.
+            - QUEUED: cloud provider is slow to launch instances, resulting in long
+                queue.
+
+            Reconciler should handle below statuses, if not, could be slow
+                reconcilation loop or a bug:
+            - RAY_INSTALL_FAILED
+            - RAY_STOPPED
+            - TERMINATION_FAILED
+
+
+        Args:
+            instance_manager: The instance manager to reconcile.
+            reconcile_config: The instance reconcile config.
+            _logger: The logger to log the warning messages. It's used for testing.
+
+        """
+        instances, version = Reconciler._get_im_instances(instance_manager)
+
+        instances_by_status = defaultdict(list)
+        for instance in instances:
+            instances_by_status[instance.status].append(instance)
+
+        # Fail or retry the cloud instance allocation if it's stuck
+        # in the REQUESTED state.
+        im_updates = {}
+        im_updates.update(
+            Reconciler._handle_requested_timeout(
+                instances_by_status[IMInstance.REQUESTED],
+                request_status_timeout_s=reconcile_config.request_status_timeout_s,
+                max_num_request_to_allocate=reconcile_config.max_num_retry_request_to_allocate,  # noqa
+            )
+        )
+
+        # Handle the timeout for the following statuses.
+        for cur_status, next_status, timeout in [
+            # Leaked ALLOCATED instances should be terminated.
+            # This usually happens when ray fails to be started on the instance, so
+            # it's unable to be RAY_RUNNING after a long time.
+            (
+                IMInstance.ALLOCATED,
+                IMInstance.TERMINATING,
+                reconcile_config.allocate_status_timeout_s,
+            ),
+            # Fail the installation if it's stuck in RAY_INSTALLING for too long.
+            # If RAY_INSTALLING is stuck for too long, it's likely that the instance
+            # is not able to install ray, so we should also fail the installation.
+            (
+                IMInstance.RAY_INSTALLING,
+                IMInstance.RAY_INSTALL_FAILED,
+                reconcile_config.ray_install_status_timeout_s,
+            ),
+            # If we tried to terminate the instance, but it doesn't terminate (disappear
+            # from the cloud provider) after a long time, we fail the termination.
+            # This will trigger another attempt to terminate the instance.
+            (
+                IMInstance.TERMINATING,
+                IMInstance.TERMINATION_FAILED,
+                reconcile_config.terminating_status_timeout_s,
+            ),
+        ]:
+            im_updates.update(
+                Reconciler._handle_timeout(
+                    instances_by_status[cur_status],
+                    status_timeout_s=timeout,
+                    cur_status=cur_status,
+                    new_status=next_status,
+                )
+            )
+
+        # These statues could be unbounded or transient, and we don't have a timeout
+        # mechanism to handle them. We only warn if they are stuck for too long.
+        for status in [
+            # Ray taking time to drain. We could also have a timeout when Drain protocol
+            # supports timeout.
+            IMInstance.RAY_STOPPING,
+            # These should just be transient, we will terminate instances with this
+            # status in the next reconciler step.
+            IMInstance.RAY_INSTALL_FAILED,
+            IMInstance.RAY_STOPPED,
+            IMInstance.TERMINATION_FAILED,
+            # Instances could be in the QUEUED status for a long time if the cloud
+            # provider is slow to launch instances.
+            IMInstance.QUEUED,
+        ]:
+            Reconciler._warn_stuck_instances(
+                instances_by_status[status],
+                status=status,
+                warn_interval_s=reconcile_config.transient_status_warn_interval_s,
+                logger=_logger,
+            )
+
+        Reconciler._update_instance_manager(instance_manager, version, im_updates)
+
+    @staticmethod
+    def _handle_requested_timeout(
+        instances: List[IMInstance],
+        request_status_timeout_s: int,
+        max_num_request_to_allocate: int,
+    ) -> Dict[str, IMInstanceUpdateEvent]:
+        """Change REQUESTED instances to QUEUED if they are stuck in REQUESTED state,
+        or fail the allocation (ALLOCATION_FAILED) if retry too many times.
+        """
+
+        def _retry_or_fail_allocation(
+            instance: IMInstance,
+        ) -> Optional[IMInstanceUpdateEvent]:
+            all_request_times_ns = sorted(
+                InstanceUtil.get_status_transition_times_ns(
+                    instance, select_instance_status=IMInstance.REQUESTED
+                )
+            )
+            assert len(all_request_times_ns) >= 1, (
+                f"instance {instance.instance_id} has {len(all_request_times_ns)} "
+                f"{IMInstance.InstanceStatus.Name(IMInstance.REQUESTED)} status"
+            )
+            # Retry the allocation if we have waited for too long.
+            last_request_time_ns = all_request_times_ns[-1]
+            if time.time_ns() - last_request_time_ns <= request_status_timeout_s * 1e9:
+                # We have not waited for too long. Be patient.
+                return None
+
+            # Fail the allocation if we have tried too many times.
+            if len(all_request_times_ns) >= max_num_request_to_allocate:
+                return IMInstanceUpdateEvent(
+                    instance_id=instance.instance_id,
+                    new_instance_status=IMInstance.ALLOCATION_FAILED,
+                    details=(
+                        "Failed to allocate cloud instance after "
+                        f"{len(all_request_times_ns)} attempts"
+                    ),
+                )
+
+            # Retry the allocation if we could by transitioning to QUEUED again.
+            return IMInstanceUpdateEvent(
+                instance_id=instance.instance_id,
+                new_instance_status=IMInstance.QUEUED,
+                details=f"QUEUED again after timeout={request_status_timeout_s}s",
+            )
+
+        updates = {}
+        for ins in instances:
+            update = _retry_or_fail_allocation(ins)
+            if update:
+                logger.info(
+                    "Updating {}({}) with {}".format(
+                        ins.instance_id,
+                        IMInstance.InstanceStatus.Name(ins.status),
+                        MessageToDict(update),
+                    )
+                )
+                updates[ins.instance_id] = update
+
+        return updates
+
+    @staticmethod
+    def _handle_timeout(
+        instances: List[IMInstance],
+        status_timeout_s: int,
+        cur_status: IMInstance.InstanceStatus,
+        new_status: IMInstance.InstanceStatus,
+    ) -> Dict[str, IMInstanceUpdateEvent]:
+        """Change any instances that have not transitioned to the new status
+        to the new status."""
+        updates = {}
+        for instance in instances:
+            status_times_ns = InstanceUtil.get_status_transition_times_ns(
+                instance, select_instance_status=cur_status
+            )
+            assert len(status_times_ns) >= 1, (
+                f"instance {instance.instance_id} has {len(status_times_ns)} "
+                f"{IMInstance.InstanceStatus.Name(cur_status)} status"
+            )
+            status_time_ns = sorted(status_times_ns)[-1]
+            if time.time_ns() - status_time_ns > (status_timeout_s * 1e9):
+                updates[instance.instance_id] = IMInstanceUpdateEvent(
+                    instance_id=instance.instance_id,
+                    new_instance_status=new_status,
+                    details=f"Timeout={status_timeout_s}s",
+                )
+                logger.info(
+                    "Updating {}({}) with {}".format(
+                        instance.instance_id,
+                        IMInstance.InstanceStatus.Name(instance.status),
+                        MessageToDict(updates[instance.instance_id]),
+                    )
+                )
+
+        return updates
+
+    @staticmethod
+    def _warn_stuck_instances(
+        instances: List[IMInstance],
+        status: IMInstance.InstanceStatus,
+        warn_interval_s: int,
+        logger: logging.Logger,
+    ):
+        """Warn if any instance is stuck in a transient/unbounded status for too
+        long.
+        """
+        for instance in instances:
+            status_times_ns = InstanceUtil.get_status_transition_times_ns(
+                instance, select_instance_status=status
+            )
+            assert len(status_times_ns) >= 1
+            status_time_ns = sorted(status_times_ns)[-1]
+
+            if time.time_ns() - status_time_ns > warn_interval_s * 1e9:
+                logger.warning(
+                    "Instance {}({}) is stuck in {} for {} seconds.".format(
+                        instance.instance_id,
+                        IMInstance.InstanceStatus.Name(instance.status),
+                        IMInstance.InstanceStatus.Name(status),
+                        (time.time_ns() - status_time_ns) // 1e9,
+                    )
+                )
