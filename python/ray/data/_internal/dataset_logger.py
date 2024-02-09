@@ -75,12 +75,13 @@ def skip_internal_stack_frames(ex: Exception) -> Tuple[Exception, Exception]:
         # user code error encountered, this indicates that the
         # error originated from Ray Data internal or Ray Core private code.
         if UserCodeException.__name__ not in str(ex):
-            data_exception_logger.get_logger().error(
-                "Exception occured in Ray Data or Ray Core internal code. "
-                "If you continue to see this error, please open an issue on "
-                "the Ray project GitHub page with the full stack trace below: "
-                "https://github.com/ray-project/ray/issues/new/choose"
-            )
+            if ray.util.log_once("ray_data_internal_exception"):
+                data_exception_logger.get_logger().error(
+                    "Exception occured in Ray Data or Ray Core internal code. "
+                    "If you continue to see this error, please open an issue on "
+                    "the Ray project GitHub page with the full stack trace below: "
+                    "https://github.com/ray-project/ray/issues/new/choose"
+                )
             return RayDataInternalException().with_traceback(orig_tb), ex
         return ex, UserCodeException().with_traceback(ex.__traceback__)
 
@@ -93,12 +94,13 @@ def skip_internal_stack_frames(ex: Exception) -> Tuple[Exception, Exception]:
 
     # By default, raise the stripped Exception, and log the full stack trace
     # to the Ray Data log file.
-    data_exception_logger.get_logger().error(
-        "Exception occured in user code. By default, the Ray Data internal stack "
-        "trace is omitted from stdout, and only written to the Ray Data log file at "
-        f"{data_exception_logger._log_path}. To output the full stack trace to stdout, "
-        "set `DataContext.internal_stack_trace_stdout = True`."
-    )
+    if ray.util.log_once("user_code_exception"):
+        data_exception_logger.get_logger().error(
+            "Exception occured in user code. By default, the Ray Data internal stack "
+            "trace is omitted from stdout, and only written to the Ray Data log file "
+            f"at {data_exception_logger._log_path}. To output the full stack trace "
+            "to stdout, set `DataContext.internal_stack_trace_stdout = True`."
+        )
     return ex, UserCodeException().with_traceback(ex.__traceback__)
 
 
