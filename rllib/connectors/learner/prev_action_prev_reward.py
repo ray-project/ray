@@ -1,6 +1,6 @@
 from functools import partial
 
-from ray.rllib.connectors.env_to_module.prev_action_prev_reward import (
+from ray.rllib.connectors.common.prev_action_prev_reward import (
     _PrevRewardPrevActionConnector,
 )
 

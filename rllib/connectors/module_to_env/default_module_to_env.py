@@ -38,7 +38,6 @@ class DefaultModuleToEnv(ConnectorV2):
 
     def __init__(
         self,
-        # Base class constructor args.
         input_observation_space: gym.Space,
         input_action_space: gym.Space,
         *,

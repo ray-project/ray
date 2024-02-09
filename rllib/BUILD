@@ -2837,7 +2837,25 @@ py_test(
     tags = ["team:rllib", "exclusive", "examples"],
     size = "medium",
     srcs = ["examples/connectors/connector_v2_nested_observation_spaces.py"],
-    args = ["--enable-new-api-stack", "--as-test", "--stop-reward=800.0", "--framework=torch", "--algo=PPO", "--num-agents=2"]
+    args = ["--enable-new-api-stack", "--num-agents=2", "--as-test", "--stop-reward=800.0", "--framework=torch", "--algo=PPO"]
+)
+
+py_test(
+    name = "examples/connectors/connector_v2_prev_rewards_actions_inputs_ppo",
+    main = "examples/connectors/connector_v2_prev_rewards_actions_inputs.py",
+    tags = ["team:rllib", "exclusive", "examples"],
+    size = "medium",
+    srcs = ["examples/connectors/connector_v2_prev_rewards_actions_inputs.py"],
+    args = ["--enable-new-api-stack", "--as-test", "--stop-reward=400.0", "--framework=torch", "--algo=PPO"]
+)
+
+py_test(
+    name = "examples/connectors/connector_v2_prev_rewards_actions_inputs_multi_agent_ppo",
+    main = "examples/connectors/connector_v2_prev_rewards_actions_inputs.py",
+    tags = ["team:rllib", "exclusive", "examples"],
+    size = "medium",
+    srcs = ["examples/connectors/connector_v2_prev_rewards_actions_inputs.py"],
+    args = ["--enable-new-api-stack", "--num-agents=2", "--as-test", "--stop-reward=800.0", "--framework=torch", "--algo=PPO"]
 )
 
 # ----------------------

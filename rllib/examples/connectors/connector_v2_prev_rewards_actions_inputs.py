@@ -78,7 +78,7 @@ if __name__ == "__main__":
     config = (
         PPOConfig()
         # Use new API stack.
-        .experimental(_enable_new_api_stack=True)
+        .experimental(_enable_new_api_stack=args.enable_new_api_stack)
         .environment("env")
         .rl_module(rl_module_spec=rlm_spec)
         # And new EnvRunner.
