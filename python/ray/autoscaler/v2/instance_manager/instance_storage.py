@@ -1,6 +1,5 @@
 import copy
 import logging
-from abc import ABCMeta, abstractmethod
 from typing import Dict, List, Optional, Set, Tuple
 
 from ray.autoscaler.v2.instance_manager.storage import Storage, StoreStatus

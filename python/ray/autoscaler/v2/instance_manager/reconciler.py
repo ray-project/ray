@@ -5,10 +5,12 @@ from collections import defaultdict
 from typing import Dict, List, Optional, Set, Tuple
 
 from google.protobuf.json_format import MessageToDict
-from ray.autoscaler.v2.instance_manager.config import InstanceReconcileConfig
 
 from ray.autoscaler.v2.instance_manager.common import InstanceUtil
-from ray.autoscaler.v2.instance_manager.config import AutoscalingConfig
+from ray.autoscaler.v2.instance_manager.config import (
+    AutoscalingConfig,
+    InstanceReconcileConfig,
+)
 from ray.autoscaler.v2.instance_manager.instance_manager import InstanceManager
 from ray.autoscaler.v2.instance_manager.node_provider import (
     CloudInstance,

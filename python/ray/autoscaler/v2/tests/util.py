@@ -1,6 +1,6 @@
 import abc
-import time
 import operator
+import time
 from abc import abstractmethod
 from typing import Dict, List, Optional, Tuple
 

@@ -7,8 +7,8 @@ import pytest
 
 import mock
 from mock import MagicMock
-from ray.autoscaler.v2.instance_manager.config import InstanceReconcileConfig
 
+from ray.autoscaler.v2.instance_manager.config import InstanceReconcileConfig
 from ray.autoscaler.v2.instance_manager.instance_manager import InstanceManager
 from ray.autoscaler.v2.instance_manager.instance_storage import InstanceStorage
 from ray.autoscaler.v2.instance_manager.node_provider import (  # noqa
@@ -26,9 +26,7 @@ from ray.core.generated.autoscaler_pb2 import (
     NodeState,
     NodeStatus,
 )
-from ray.core.generated.instance_manager_pb2 import (
-    Instance,
-)
+from ray.core.generated.instance_manager_pb2 import Instance
 
 s_to_ns = 1 * 1_000_000_000
 
