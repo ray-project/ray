@@ -25,12 +25,14 @@ from ray.core.generated.autoscaler_pb2 import (
     ClusterResourceState,
     NodeState,
     NodeStatus,
-    LaunchRequest,
-    TerminationRequest,
     GangResourceRequest,
     ResourceRequest,
 )
-from ray.core.generated.instance_manager_pb2 import Instance
+from ray.core.generated.instance_manager_pb2 import (
+    Instance,
+    LaunchRequest,
+    TerminationRequest,
+)
 
 s_to_ns = 1 * 1_000_000_000
 
