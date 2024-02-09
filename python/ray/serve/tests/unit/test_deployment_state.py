@@ -2404,7 +2404,7 @@ def test_downscaling_reclaiming_starting_replicas_first(
     running_replicas = deployment_state._replicas.get(states=[ReplicaState.RUNNING])
 
     for replica in deployment_state._replicas.get():
-        dsm.record_autoscaling_metrics(replica._actor.replica_tag, 2, timer.time())
+        dsm.record_autoscaling_metrics((replica._actor.replica_tag, 2), timer.time())
 
     # status=UPSCALING, status_trigger=AUTOSCALE
     dsm.update()
@@ -2465,7 +2465,7 @@ def test_downscaling_reclaiming_starting_replicas_first(
 
     # Now, trigger downscaling attempting to reclaim half (3) of the replicas
     for replica in deployment_state._replicas.get(states=[ReplicaState.RUNNING]):
-        dsm.record_autoscaling_metrics(replica._actor.replica_tag, 1, timer.time())
+        dsm.record_autoscaling_metrics((replica._actor.replica_tag, 1), timer.time())
 
     # status=DOWNSCALING, status_trigger=AUTOSCALE
     dsm.update()
