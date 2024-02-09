@@ -5,6 +5,8 @@ from collections import defaultdict
 from typing import Dict, List, Optional, Set, Tuple
 
 from google.protobuf.json_format import MessageToDict
+from ray.autoscaler.v2.scheduler import SchedulingRequest
+from ray.autoscaler.v2.schema import AutoscalerInstance
 
 from ray.autoscaler.v2.instance_manager.common import InstanceUtil
 from ray.autoscaler.v2.instance_manager.config import (
@@ -1042,3 +1044,86 @@ class Reconciler:
                         (time.time_ns() - status_time_ns) // 1e9,
                     )
                 )
+
+    @staticmethod
+    def _scale_cluster(
+        autoscaling_state: AutoscalingState,
+        instance_manager: InstanceManager,
+        ray_state: ClusterResourceState,
+        scheduler: IResourceScheduler,
+        autoscaling_config: AutoscalingConfig,
+    ) -> None:
+        """
+        Scale the cluster based on the resource state and the resource scheduler's
+        decision:
+
+        - It launches new instances if needed.
+        - It terminates extra ray nodes if they should be shut down (preemption
+            or idle termination)
+        """
+
+        # Get the current instance states.
+        im_instances, version = Reconciler._get_im_instances(instance_manager)
+
+        autoscaler_instances = []
+        ray_nodes_by_id = {
+            node.node_id.decode(): node for node in ray_state.node_states
+        }
+
+        for im_instance in im_instances:
+            ray_node = ray_nodes_by_id.get(im_instance.node_id)
+            autoscaler_instances.append(
+                AutoscalerInstance(
+                    ray_node=ray_node,
+                    im_instance=im_instance,
+                    cloud_instance_id=im_instance.cloud_instance_id
+                    if im_instance.cloud_instance_id
+                    else None,
+                )
+            )
+
+        # Make the scheduling request.
+        max_num_worker_nodes = autoscaling_config.get_max_num_worker_nodes()
+        max_num_nodes = (
+            max_num_worker_nodes + 1  # For the head node.
+            if max_num_worker_nodes is not None
+            else None
+        )
+        # TODO(rickyx): We should probably name it as "Planner" or "Scaler"
+        # or "Cluster"
+        sched_request = SchedulingRequest(
+            node_type_configs=autoscaling_config.get_node_type_configs(),
+            max_num_nodes=max_num_nodes,
+            resource_requests=ray_state.pending_resource_requests,
+            gang_resource_requests=ray_state.pending_gang_resource_requests,
+            cluster_resource_constraints=ray_state.cluster_resource_constraints,
+            current_instances=autoscaler_instances,
+        )
+
+        # Ask scheduler for updates to the cluster shape.
+        reply = scheduler.schedule(sched_request)
+
+        # Populate the autoscaling state.
+        autoscaling_state.infeasible_resource_requests.extend(
+            reply.infeasible_resource_requests
+        )
+        autoscaling_state.infeasible_gang_resource_requests.extend(
+            reply.infeasible_gang_resource_requests
+        )
+        autoscaling_state.infeasible_cluster_resource_constraints.extend(
+            reply.infeasible_cluster_resource_constraints
+        )
+
+        to_launch = reply.to_launch
+        to_terminate = reply.to_terminate
+        terminate_updates = {}
+        for terminate_request in to_terminate:
+            terminate_updates[terminate_request.instance_id] = IMInstanceUpdateEvent(
+                instance_id=terminate_request.instance_id,
+                new_instance_status=IMInstance.RAY_STOPPING,
+                termination_request=terminate_request,
+            )
+
+        Reconciler._update_instance_manager(
+            instance_manager, version, terminate_updates, to_launch
+        )
