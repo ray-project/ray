@@ -320,12 +320,12 @@ class SingleAgentEnvRunner(EnvRunner):
                     # a call and in case the structure of the observations change
                     # sufficiently, the following `finalize()` call on the episode will
                     # fail.
-                    self._env_to_module(
-                        episodes=[self._episodes[env_index]],
-                        data={},
-                        explore=explore,
-                        rl_module=self.module,
-                    )
+                    if self.module is not None:
+                        self._env_to_module(
+                            episodes=[self._episodes[env_index]],
+                            explore=explore,
+                            rl_module=self.module,
+                        )
                     # Make the `on_episode_step` callback (before finalizing the
                     # episode object).
                     self._make_on_episode_callback("on_episode_step", env_index)
