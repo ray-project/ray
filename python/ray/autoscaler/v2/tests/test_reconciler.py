@@ -987,7 +987,11 @@ class TestReconciler:
         "skip_ray_install",
         [True, False],
     )
-    def test_ray_install(skip_ray_install, setup):
+    @pytest.mark.parametrize(
+        "cloud_instance_running",
+        [True, False],
+    )
+    def test_ray_install(skip_ray_install, cloud_instance_running, setup):
         instance_manager, instance_storage, subscriber = setup
 
         instances = [
@@ -1001,7 +1005,7 @@ class TestReconciler:
         ]
 
         cloud_instances = {
-            "c-1": CloudInstance("c-1", "type-1", "", True),
+            "c-1": CloudInstance("c-1", "type-1", "", cloud_instance_running),
         }
 
         TestReconciler._add_instances(instance_storage, instances)
@@ -1022,10 +1026,10 @@ class TestReconciler:
         )
 
         instances, _ = instance_storage.get_instances()
-        expected_status = (
-            Instance.ALLOCATED if skip_ray_install else Instance.RAY_INSTALLING
-        )
-        assert instances["i-1"].status == expected_status
+        if skip_ray_install or not cloud_instance_running:
+            assert instances["i-1"].status == Instance.ALLOCATED
+        else:
+            assert instances["i-1"].status == Instance.RAY_INSTALLING
 
 
 if __name__ == "__main__":
