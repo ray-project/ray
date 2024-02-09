@@ -241,7 +241,7 @@ class TestReconciler:
     @staticmethod
     def test_reconcile_terminated_cloud_instances(setup):
 
-        instance_manager, instance_storage, _ = setup
+        instance_manager, instance_storage, subscriber = setup
 
         instances = [
             create_instance(
@@ -272,7 +272,7 @@ class TestReconciler:
                 request_id="t1",
             )
         ]
-
+        subscriber.clear()
         Reconciler.reconcile(
             instance_manager,
             scheduler=MockScheduler(),
@@ -288,7 +288,11 @@ class TestReconciler:
         assert len(instances) == 2
         assert instances["i-1"].status == Instance.TERMINATED
         assert not instances["i-1"].cloud_instance_id
-        assert instances["i-2"].status == Instance.TERMINATION_FAILED
+        assert instances["i-2"].status == Instance.TERMINATING
+        events = subscriber.events_by_id("i-2")
+        assert len(events) == 2
+        assert events[0].new_instance_status == Instance.TERMINATION_FAILED
+        assert events[1].new_instance_status == Instance.TERMINATING
 
     @staticmethod
     def test_ray_reconciler_no_op(setup):
@@ -781,7 +785,7 @@ class TestReconciler:
         [
             (Instance.ALLOCATED, Instance.TERMINATING),
             (Instance.RAY_INSTALLING, Instance.TERMINATING),
-            (Instance.TERMINATING, Instance.TERMINATION_FAILED),
+            (Instance.TERMINATING, Instance.TERMINATING),
         ],
     )
     def test_stuck_instances(mock_time_ns, cur_status, expect_status, setup):
@@ -958,11 +962,17 @@ class TestReconciler:
                 status=Instance.RAY_INSTALL_FAILED,
                 cloud_instance_id="c-2",
             ),
+            create_instance(
+                "i-3",
+                status=Instance.TERMINATION_FAILED,
+                cloud_instance_id="c-3",
+            ),
         ]
 
         cloud_instances = {
             "c-1": CloudInstance("c-1", "type-1", "", True),
             "c-2": CloudInstance("c-2", "type-2", "", True),
+            "c-3": CloudInstance("c-3", "type-3", "", True),
         }
 
         TestReconciler._add_instances(instance_storage, instances)
@@ -981,6 +991,7 @@ class TestReconciler:
         instances, _ = instance_storage.get_instances()
         assert instances["i-1"].status == Instance.TERMINATING
         assert instances["i-2"].status == Instance.TERMINATING
+        assert instances["i-3"].status == Instance.TERMINATING
 
     @staticmethod
     @pytest.mark.parametrize(

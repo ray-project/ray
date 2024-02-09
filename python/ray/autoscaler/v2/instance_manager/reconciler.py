@@ -1053,7 +1053,12 @@ class Reconciler:
     @staticmethod
     def _terminate_instances(instance_manager: InstanceManager):
         """
-        Terminate instances with RAY_STOPPED or RAY_INSTALL_FAILED status.
+        Terminate instances with the below statuses:
+            - RAY_STOPPED: ray was stopped on the cloud instance.
+            - RAY_INSTALL_FAILED: ray installation failed on the cloud instance,
+                we will not retry.
+            - TERMINATION_FAILED: cloud provider failed to terminate the instance
+                or timeout for termination happened, we will retry again.
 
         Args:
             instance_manager: The instance manager to reconcile.
@@ -1065,6 +1070,7 @@ class Reconciler:
             if instance.status not in [
                 IMInstance.RAY_STOPPED,
                 IMInstance.RAY_INSTALL_FAILED,
+                IMInstance.TERMINATION_FAILED,
             ]:
                 continue
 
@@ -1086,7 +1092,11 @@ class Reconciler:
         non_terminated_cloud_instances: Dict[CloudInstanceId, CloudInstance],
     ):
         """
-        Install ray on the allocated instances.
+        Install ray on the allocated instances when it's ready (cloud instance
+        should be running)
+
+        This is needed if ray installation needs to be performed by
+        the instance manager.
 
         Args:
             instance_manager: The instance manager to reconcile.

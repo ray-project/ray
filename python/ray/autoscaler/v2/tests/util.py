@@ -21,6 +21,9 @@ class MockSubscriber:
     def clear(self):
         MockSubscriber.events.clear()
 
+    def events_by_id(self, instance_id):
+        return [e for e in self.events if e.instance_id == instance_id]
+
 
 def make_autoscaler_instance(
     im_instance: Optional[Instance] = None,
