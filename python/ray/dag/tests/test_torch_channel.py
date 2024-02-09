@@ -44,15 +44,21 @@ def test_basic(ray_start_regular):
 
         compiled_dag = dag.experimental_compile(buffer_size_bytes=1000)
 
-        for i in range(3):
+        it = 10000
+        s = time.time()
+        for i in range(it):
             output_channel = compiled_dag.execute(b"input")
             result = output_channel.begin_read()
             assert result == b"value"
             output_channel.end_read()
+        elapsed_s = (time.time() - s)
 
         compiled_dag.teardown()
 
-    ray.get(f.remote())
+        return  it / elapsed_s
+
+    throughput = ray.get(f.remote())
+    print("throughput: ", throughput, "it/s")
 
 
 def test_broadcast(ray_start_regular):
@@ -68,16 +74,21 @@ def test_broadcast(ray_start_regular):
 
         compiled_dag = dag.experimental_compile(buffer_size_bytes=1000)
 
-        for i in range(3):
+        it = 10000
+        s = time.time()
+        for i in range(it):
             output_channels = compiled_dag.execute(b"input")
             results = [chan.begin_read() for chan in output_channels]
             assert results == [b"value"] * 4
             for chan in output_channels:
                 chan.end_read()
+        elapsed_s = (time.time() - s)
 
         compiled_dag.teardown()
+        return  it / elapsed_s
 
-    ray.get(f.remote())
+    throughput = ray.get(f.remote())
+    print("throughput: ", throughput, "it/s")
 
 
 if __name__ == "__main__":
