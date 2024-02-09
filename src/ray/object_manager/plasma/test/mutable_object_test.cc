@@ -84,7 +84,6 @@ TEST(MutableObjectTest, TestBasic) {
       reinterpret_cast<uint8_t *>(malloc(sizeof(PlasmaObjectHeader) + 100));
 
   PlasmaObjectHeader *header = reinterpret_cast<ray::PlasmaObjectHeader *>(object_ptr);
-  *header = PlasmaObjectHeader{};
   header->Init();
 
   auto data_results = std::make_shared<std::vector<std::string>>();
@@ -116,7 +115,6 @@ TEST(MutableObjectTest, TestMultipleReaders) {
       reinterpret_cast<uint8_t *>(malloc(sizeof(PlasmaObjectHeader) + 100));
 
   PlasmaObjectHeader *header = reinterpret_cast<ray::PlasmaObjectHeader *>(object_ptr);
-  *header = PlasmaObjectHeader{};
   header->Init();
 
   int num_reads = 10000;
@@ -160,7 +158,6 @@ TEST(MutableObjectTest, TestWriterFails) {
       reinterpret_cast<uint8_t *>(malloc(sizeof(PlasmaObjectHeader) + 100));
 
   PlasmaObjectHeader *header = reinterpret_cast<ray::PlasmaObjectHeader *>(object_ptr);
-  *header = PlasmaObjectHeader{};
   header->Init();
 
   int num_reads = 10000;
@@ -210,7 +207,6 @@ TEST(MutableObjectTest, TestWriterFailsAfterAcquire) {
       reinterpret_cast<uint8_t *>(malloc(sizeof(PlasmaObjectHeader) + 100));
 
   PlasmaObjectHeader *header = reinterpret_cast<ray::PlasmaObjectHeader *>(object_ptr);
-  *header = PlasmaObjectHeader{};
   header->Init();
 
   int num_reads = 10000;
@@ -260,7 +256,6 @@ TEST(MutableObjectTest, TestReaderFails) {
       reinterpret_cast<uint8_t *>(malloc(sizeof(PlasmaObjectHeader) + 100));
 
   PlasmaObjectHeader *header = reinterpret_cast<ray::PlasmaObjectHeader *>(object_ptr);
-  *header = PlasmaObjectHeader{};
   header->Init();
 
   int num_reads = 10000;
