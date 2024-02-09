@@ -25,6 +25,10 @@ from ray.core.generated.autoscaler_pb2 import (
     ClusterResourceState,
     NodeState,
     NodeStatus,
+    LaunchRequest,
+    TerminationRequest,
+    GangResourceRequest,
+    ResourceRequest,
 )
 from ray.core.generated.instance_manager_pb2 import Instance
 
@@ -942,6 +946,73 @@ class TestReconciler:
 
         assert subscriber.events == []
         assert mock_logger.warning.call_count == 0
+
+    @staticmethod
+    def test_scaling_updates(setup):
+        """
+        Tests that new instances should be launched due to autoscaling
+        decisions, and existing instances should be terminated if needed.
+        """
+        instance_manager, instance_storage, _ = setup
+
+        im_instances = [
+            create_instance(
+                "i-1", status=Instance.RAY_RUNNING, cloud_instance_id="c-1"
+            ),  # To be reconciled.
+        ]
+        TestReconciler._add_instances(instance_storage, im_instances)
+
+        ray_nodes = [
+            NodeState(node_id=b"r-1", status=NodeStatus.RUNNING, instance_id="c-1"),
+        ]
+
+        cloud_instances = {
+            "c-1": CloudInstance("c-1", "type-1", "", True),
+        }
+
+        mock_scheduler = MagicMock()
+        mock_scheduler.schedule.return_value = SchedulingReply(
+            to_launch=[
+                LaunchRequest(instance_type="type-1", count=1),
+            ],
+            to_terminate=[
+                TerminationRequest(
+                    id="t1",
+                    ray_node_id="r-1",
+                    instance_id="i-1",
+                    cause=TerminationRequest.Cause.IDLE,
+                    idle_time_ms=1000,
+                )
+            ],
+            infeasible_gang_resource_requests=[
+                GangResourceRequest(
+                    requests=[ResourceRequest(resources_bundle={"CPU": 1})]
+                )
+            ],
+        )
+
+        state = Reconciler.reconcile(
+            instance_manager=instance_manager,
+            scheduler=mock_scheduler,
+            cloud_provider=MagicMock(),
+            ray_cluster_resource_state=ClusterResourceState(node_states=ray_nodes),
+            non_terminated_cloud_instances=cloud_instances,
+            cloud_provider_errors=[],
+            ray_install_errors=[],
+            autoscaling_config=MockAutoscalingConfig(
+                configs={"max_concurrent_launches": 0}  # don't launch anything.
+            ),
+        )
+
+        instances, _ = instance_storage.get_instances()
+        assert len(instances) == 2
+        for id, instance in instances.items():
+            if id == "i-1":
+                assert instance.status == Instance.RAY_STOPPING
+            else:
+                assert instance.status == Instance.QUEUED
+
+        assert len(state.infeasible_gang_resource_requests) == 1
 
 
 if __name__ == "__main__":
