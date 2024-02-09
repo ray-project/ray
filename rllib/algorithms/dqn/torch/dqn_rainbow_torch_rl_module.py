@@ -1,4 +1,4 @@
-from typing import Dict
+from typing import Dict, List, Tuple
 
 from ray.rllib.algorithms.dqn.dqn_rainbow_rl_module import DQNRainbowRLModule
 from ray.rllib.algorithms.sac.sac_rl_module import QF_PREDS
@@ -7,6 +7,7 @@ from ray.rllib.core.rl_module.torch.torch_rl_module import TorchRLModule
 from ray.rllib.core.rl_module.rl_module import RLModule
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.framework import try_import_torch
+from ray.rllib.utils.typing import NetworkType
 
 torch, nn = try_import_torch()
 
@@ -111,3 +112,22 @@ class DQNRainbowTorchRLModule(TorchRLModule, DQNRainbowRLModule):
             output[QF_PREDS] = batch
 
         return output
+
+    @override(DQNRainbowRLModule)
+    def get_target_network_pairs(self) -> List[Tuple[NetworkType, NetworkType]]:
+        """Returns target Q and Q network(s) to update the target network(s)."""
+        # TODO (simon): Implement double Q.
+        return [
+            (self.base_target_encoder, self.base_encoder),
+            (self.af_target, self.af),
+        ] + (
+            # If we have a dueling architecture we need to update value stream 
+            # target, too.
+            [
+                (self.vf_target, self.vf),
+            ]
+            if self.is_dueling
+            else []
+        )
+        
+
