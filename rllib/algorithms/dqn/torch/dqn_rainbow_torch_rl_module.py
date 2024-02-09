@@ -121,7 +121,7 @@ class DQNRainbowTorchRLModule(TorchRLModule, DQNRainbowRLModule):
             (self.base_target_encoder, self.base_encoder),
             (self.af_target, self.af),
         ] + (
-            # If we have a dueling architecture we need to update value stream 
+            # If we have a dueling architecture we need to update value stream
             # target, too.
             [
                 (self.vf_target, self.vf),
@@ -129,5 +129,3 @@ class DQNRainbowTorchRLModule(TorchRLModule, DQNRainbowRLModule):
             if self.is_dueling
             else []
         )
-        
-
