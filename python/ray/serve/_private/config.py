@@ -13,6 +13,7 @@ from ray._private.pydantic_compat import (
     NonNegativeFloat,
     NonNegativeInt,
     PositiveFloat,
+    PositiveInt,
     validator,
 )
 from ray._private.serialization import pickle_dumps
@@ -24,6 +25,7 @@ from ray.serve._private.constants import (
     DEFAULT_HEALTH_CHECK_TIMEOUT_S,
     DEFAULT_MAX_CONCURRENT_QUERIES,
     MAX_REPLICAS_PER_NODE_MAX_VALUE,
+    NEW_DEFAULT_MAX_CONCURRENT_QUERIES,
 )
 from ray.serve._private.utils import DEFAULT, DeploymentOptionUpdateType
 from ray.serve.config import AutoscalingConfig
@@ -81,34 +83,36 @@ class DeploymentConfig(BaseModel):
     """Internal datastructure wrapping config options for a deployment.
 
     Args:
-        num_replicas (Optional[int]): The number of processes to start up that
+        num_replicas: The number of processes to start up that
             handles requests to this deployment. Defaults to 1.
-        max_concurrent_queries (Optional[int]): The maximum number of queries
+        max_concurrent_queries: The maximum number of queries
             that is sent to a replica of this deployment without receiving
             a response. Defaults to 100.
-        user_config (Optional[Any]): Arguments to pass to the reconfigure
+        user_config: Arguments to pass to the reconfigure
             method of the deployment. The reconfigure method is called if
             user_config is not None. Must be JSON-serializable.
-        graceful_shutdown_wait_loop_s (Optional[float]): Duration
+        graceful_shutdown_wait_loop_s: Duration
             that deployment replicas wait until there is no more work to
             be done before shutting down.
-        graceful_shutdown_timeout_s (Optional[float]):
-            Controller waits for this duration to forcefully kill the replica
-            for shutdown.
-        health_check_period_s (Optional[float]):
-            Frequency at which the controller health checks replicas.
-        health_check_timeout_s (Optional[float]):
-            Timeout that the controller waits for a response from the
-            replica's health check before marking it unhealthy.
-        user_configured_option_names (Set[str]):
-            The names of options manually configured by the user.
+        graceful_shutdown_timeout_s: Controller waits for this duration
+            to forcefully kill the replica for shutdown.
+        health_check_period_s: Frequency at which the controller health
+            checks replicas.
+        health_check_timeout_s: Timeout that the controller waits for a
+            response from the replica's health check before marking it
+            unhealthy.
+        autoscaling_config: Autoscaling configuration.
+        logging_config: Configuration for deployment logs.
+        user_configured_option_names: The names of options manually
+            configured by the user.
     """
 
-    num_replicas: NonNegativeInt = Field(
+    num_replicas: Optional[NonNegativeInt] = Field(
         default=1, update_type=DeploymentOptionUpdateType.LightWeight
     )
-    max_concurrent_queries: Optional[int] = Field(
-        default=None, update_type=DeploymentOptionUpdateType.NeedsReconfigure
+    max_concurrent_queries: PositiveInt = Field(
+        default=DEFAULT_MAX_CONCURRENT_QUERIES,
+        update_type=DeploymentOptionUpdateType.NeedsReconfigure,
     )
     user_config: Any = Field(
         default=None, update_type=DeploymentOptionUpdateType.NeedsActorReconfigure
@@ -160,16 +164,6 @@ class DeploymentConfig(BaseModel):
     class Config:
         validate_assignment = True
         arbitrary_types_allowed = True
-
-    # Dynamic default for max_concurrent_queries
-    @validator("max_concurrent_queries", always=True)
-    def set_max_queries_by_mode(cls, v, values):  # noqa 805
-        if v is None:
-            v = DEFAULT_MAX_CONCURRENT_QUERIES
-        else:
-            if v <= 0:
-                raise ValueError("max_concurrent_queries must be >= 0")
-        return v
 
     @validator("user_config", always=True)
     def user_config_json_serializable(cls, v):
@@ -302,6 +296,45 @@ class DeploymentConfig(BaseModel):
             config.__setattr__(key, val)
 
         return config
+
+
+def handle_num_replicas_auto(
+    max_concurrent_queries: Union[int, DEFAULT],
+    autoscaling_config: Optional[Union[Dict, AutoscalingConfig, DEFAULT]],
+):
+    """Return modified `max_concurrent_queries` and `autoscaling_config`
+    for when num_replicas="auto".
+
+    If `max_concurrent_queries` is unspecified (DEFAULT.VALUE), returns
+    the modified value NEW_DEFAULT_MAX_CONCURRENT_QUERIES. Otherwise,
+    doesn't change `max_concurrent_queries`.
+
+    If `autoscaling_config` is unspecified, returns the modified value
+    AutoscalingConfig.default().
+    If it is specified, the specified fields in `autoscaling_config`
+    override that of AutoscalingConfig.default().
+    """
+
+    if max_concurrent_queries is DEFAULT.VALUE:
+        max_concurrent_queries = NEW_DEFAULT_MAX_CONCURRENT_QUERIES
+
+    if autoscaling_config in [DEFAULT.VALUE, None]:
+        # If autoscaling config wasn't specified, use default
+        # configuration
+        autoscaling_config = AutoscalingConfig.default()
+    else:
+        # If autoscaling config was specified, values specified in
+        # autoscaling config overrides the default configuration
+        default_config = AutoscalingConfig.default().dict(exclude_unset=True)
+        autoscaling_config = (
+            autoscaling_config
+            if isinstance(autoscaling_config, dict)
+            else autoscaling_config.dict(exclude_unset=True)
+        )
+        default_config.update(autoscaling_config)
+        autoscaling_config = AutoscalingConfig(**default_config)
+
+    return max_concurrent_queries, autoscaling_config
 
 
 class ReplicaConfig:

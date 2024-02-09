@@ -13,7 +13,6 @@ from typing import (
     TYPE_CHECKING,
     Any,
     Callable,
-    Dict,
     Iterable,
     Iterator,
     List,
@@ -35,7 +34,7 @@ if TYPE_CHECKING:
     import pyarrow
 
     from ray.data._internal.compute import ComputeStrategy
-    from ray.data._internal.sort import SortKey
+    from ray.data._internal.planner.exchange.sort_task_spec import SortKey
     from ray.data.block import Block, BlockMetadata, UserDefinedFunction
     from ray.data.datasource import Datasource, Reader
     from ray.util.placement_group import PlacementGroup
@@ -54,25 +53,6 @@ _EXAMPLE_SCHEME = "example"
 
 LazyModule = Union[None, bool, ModuleType]
 _pyarrow_dataset: LazyModule = None
-
-
-cached_cluster_resources = {}
-cluster_resources_last_fetch_time = 0
-CLUSTER_RESOURCES_FETCH_INTERVAL_SECONDS = 10
-
-
-def cluster_resources() -> Dict[str, float]:
-    """Fetch Ray cluster resources with cache."""
-    global cached_cluster_resources
-    global cluster_resources_last_fetch_time
-    now = time.time()
-    if (
-        now - cluster_resources_last_fetch_time
-        > CLUSTER_RESOURCES_FETCH_INTERVAL_SECONDS
-    ):
-        cached_cluster_resources = ray.cluster_resources()
-        cluster_resources_last_fetch_time = now
-    return cached_cluster_resources
 
 
 def _lazy_import_pyarrow_dataset() -> LazyModule:
@@ -587,32 +567,32 @@ def get_compute_strategy(
             )
         return compute
     elif concurrency is not None:
-        if not is_callable_class:
-            # Currently do not support concurrency control with function,
-            # i.e., running with Ray Tasks (`TaskPoolMapOperator`).
-            logger.warning(
-                "``concurrency`` is set, but ``fn`` is not a callable class: "
-                f"{fn}. ``concurrency`` are currently only supported when "
-                "``fn`` is a callable class."
-            )
-            return TaskPoolStrategy()
-
         if isinstance(concurrency, tuple):
             if (
                 len(concurrency) == 2
                 and isinstance(concurrency[0], int)
                 and isinstance(concurrency[1], int)
             ):
-                return ActorPoolStrategy(
-                    min_size=concurrency[0], max_size=concurrency[1]
-                )
+                if is_callable_class:
+                    return ActorPoolStrategy(
+                        min_size=concurrency[0], max_size=concurrency[1]
+                    )
+                else:
+                    raise ValueError(
+                        "``concurrency`` is set as a tuple of integers, but ``fn`` "
+                        f"is not a callable class: {fn}. Use ``concurrency=n`` to "
+                        "control maximum number of workers to use."
+                    )
             else:
                 raise ValueError(
                     "``concurrency`` is expected to be set as a tuple of "
                     f"integers, but got: {concurrency}."
                 )
         elif isinstance(concurrency, int):
-            return ActorPoolStrategy(size=concurrency)
+            if is_callable_class:
+                return ActorPoolStrategy(size=concurrency)
+            else:
+                return TaskPoolStrategy(size=concurrency)
         else:
             raise ValueError(
                 "``concurrency`` is expected to be set as an integer or a "
@@ -1002,3 +982,13 @@ def create_dataset_tag(dataset_name: Optional[str], *args):
     for arg in args:
         tag += f"_{arg}"
     return tag
+
+
+def convert_bytes_to_human_readable_str(num_bytes: int) -> str:
+    if num_bytes >= 1e9:
+        num_bytes_str = f"{round(num_bytes / 1e9)}GB"
+    elif num_bytes >= 1e6:
+        num_bytes_str = f"{round(num_bytes / 1e6)}MB"
+    else:
+        num_bytes_str = f"{round(num_bytes / 1e3)}KB"
+    return num_bytes_str
