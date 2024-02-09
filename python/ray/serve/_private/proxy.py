@@ -1,9 +1,9 @@
 import asyncio
+import json
 import logging
 import os
 import pickle
 import socket
-import json
 import time
 import uuid
 from abc import ABC, abstractmethod
@@ -399,8 +399,11 @@ class GenericProxy(ABC):
                 route_path = proxy_request.route_path
                 if route_prefix != "/" and self.protocol == RequestProtocol.HTTP:
                     assert not route_prefix.endswith("/")
-                    # XXX: comment.
-                    # proxy_request.set_path(route_path.replace(route_prefix, "", 1))
+                    # NOTE(edoakes): starlette<0.33.0 expected the ASGI 'root_prefix'
+                    # to be stripped from the 'path', which wasn't technically following
+                    # the standard. See https://github.com/encode/starlette/pull/2352.
+                    if version.parse(starlette.__version__) < version.parse("0.33.0"):
+                        proxy_request.set_path(route_path.replace(route_prefix, "", 1))
                     proxy_request.set_root_path(proxy_request.root_path + route_prefix)
 
                 handle, request_id = self.setup_request_context_and_handle(
