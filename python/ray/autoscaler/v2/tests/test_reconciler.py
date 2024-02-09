@@ -992,7 +992,7 @@ class TestReconciler:
         [True, False],
     )
     def test_ray_install(skip_ray_install, cloud_instance_running, setup):
-        instance_manager, instance_storage, subscriber = setup
+        instance_manager, instance_storage, _ = setup
 
         instances = [
             create_instance(
