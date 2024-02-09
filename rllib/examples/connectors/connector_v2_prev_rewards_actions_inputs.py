@@ -96,23 +96,28 @@ if __name__ == "__main__":
         .resources(num_learner_workers=0)
         .training(
             learner_connector=_learner_connector,
-            num_sgd_iter=5,
-            vf_loss_coeff=0.0001,
-            train_batch_size=512,
+            num_sgd_iter=6,
+            vf_loss_coeff=0.01,
+            train_batch_size=4000,
             model=dict({
                 "use_lstm": True,
-                "lstm_cell_size": 32,
                 "fcnet_weights_initializer": torch.nn.init.xavier_uniform_,
                 "fcnet_bias_initializer": (
                     functools.partial(torch.nn.init.constant_, val=0.0)
                 ),
                 "vf_share_layers": True,
-                "uses_new_env_runners": True,
             }, **(
                 {} if not args.enable_new_api_stack
                 else {"uses_new_env_runners": True}
             )),
         )
     )
+
+    # Add a simple multi-agent setup.
+    if args.num_agents > 0:
+        config.multi_agent(
+            policies={f"p{i}" for i in range(args.num_agents)},
+            policy_mapping_fn=lambda aid, *a, **kw: f"p{aid}",
+        )
 
     run_rllib_example_script_experiment(config, args)
