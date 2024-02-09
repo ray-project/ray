@@ -676,6 +676,8 @@ class DataIterator(abc.ABC):
         drop_last: bool = False,
         local_shuffle_buffer_size: Optional[int] = None,
         local_shuffle_seed: Optional[int] = None,
+        feature_type_spec: Union["tf.TypeSpec", Dict[str, "tf.TypeSpec"]] = None,
+        label_type_spec: Union["tf.TypeSpec", Dict[str, "tf.TypeSpec"]] = None,
         # Deprecated.
         prefetch_blocks: int = 0,
     ) -> "tf.data.Dataset":
@@ -761,6 +763,14 @@ class DataIterator(abc.ABC):
                 therefore ``batch_size`` must also be specified when using local
                 shuffling.
             local_shuffle_seed: The seed to use for the local random shuffle.
+            feature_type_spec: The `tf.TypeSpec` of `feature_columns`. If there is
+                only one column, specify a `tf.TypeSpec`. If there are multiple columns,
+                specify a ``dict`` that maps column names to their `tf.TypeSpec`.
+                Default is `None` to automatically infer the type of each column.
+            label_type_spec: The `tf.TypeSpec` of `label_columns`. If there is
+                only one column, specify a `tf.TypeSpec`. If there are multiple columns,
+                specify a ``dict`` that maps column names to their `tf.TypeSpec`.
+                Default is `None` to automatically infer the type of each column.
 
         Returns:
             A ``tf.data.Dataset`` that yields inputs and targets.
@@ -776,9 +786,6 @@ class DataIterator(abc.ABC):
         except ImportError:
             raise ValueError("tensorflow must be installed!")
 
-        schema = self.schema()
-        valid_columns = schema.names
-
         def validate_column(column: str) -> None:
             if column not in valid_columns:
                 raise ValueError(
@@ -793,9 +800,6 @@ class DataIterator(abc.ABC):
                     validate_column(column)
             else:
                 validate_column(columns)
-
-        validate_columns(feature_columns)
-        validate_columns(label_columns)
 
         def convert_batch_to_tensors(
             batch: Dict[str, np.ndarray],
@@ -830,12 +834,16 @@ class DataIterator(abc.ABC):
                 )
                 yield features, labels
 
-        feature_type_spec = get_type_spec(schema, columns=feature_columns)
-        label_type_spec = get_type_spec(schema, columns=label_columns)
-        output_signature = (feature_type_spec, label_type_spec)
+        if feature_type_spec is None or label_type_spec is None:
+            schema = self.schema()
+            valid_columns = schema.names
+            validate_columns(feature_columns)
+            validate_columns(label_columns)
+            feature_type_spec = get_type_spec(schema, columns=feature_columns)
+            label_type_spec = get_type_spec(schema, columns=label_columns)
 
         dataset = tf.data.Dataset.from_generator(
-            generator, output_signature=output_signature
+            generator, output_signature=(feature_type_spec, label_type_spec)
         )
 
         options = tf.data.Options()
