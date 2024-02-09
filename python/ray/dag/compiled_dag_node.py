@@ -40,7 +40,8 @@ def _make_channel(
     buffer_size_bytes: int, reader_ranks: int, writer_rank: int, strategy: str
 ):
     if USE_TORCH_CHANNEL:
-        return TorchChannel(buffer_size_bytes, reader_ranks, writer_rank, strategy)
+        chan = TorchChannel(buffer_size_bytes, reader_ranks, writer_rank, strategy)
+        return chan
     else:
         return Channel(buffer_size_bytes, len(reader_ranks))
 
@@ -48,13 +49,13 @@ def _make_channel(
 def torch_init(self, rank, world_size):
     import torch
 
-    # TODO(ekl): assign these in a better way
-    os.environ["MASTER_ADDR"] = ray._private.services.get_node_ip_address()
-    os.environ["MASTER_PORT"] = "26254"
-
-    torch.distributed.init_process_group(
-        backend="gloo", world_size=world_size, rank=rank
-    )
+    if not torch.distributed.is_initialized():
+        # TODO(sang): assign these in a better way
+        os.environ["MASTER_ADDR"] = ray._private.services.get_node_ip_address()
+        os.environ["MASTER_PORT"] = "26254"
+        torch.distributed.init_process_group(
+            backend="gloo", world_size=world_size, rank=rank
+        )
 
 
 @DeveloperAPI
@@ -369,7 +370,7 @@ class CompiledDAG:
                 self.actor_ranks[task.dag_node._get_actor_handle()] = task.idx
             elif isinstance(task.dag_node, InputNode):
                 if len(task.downstream_node_idxs) > 1 and USE_TORCH_BROADCAST:
-                    # TODO(ekl): this assumes we send to all actors
+                    # TODO(sang): It should be automatically detected.
                     strategy = "broadcast"
                 else:
                     strategy = "isend"
@@ -385,8 +386,11 @@ class CompiledDAG:
             for idx in task.downstream_node_idxs:
                 queue.append(idx)
 
+        self.dag_input_channel = self.idx_to_task[self.input_task_idx].output_channel
+
         if USE_TORCH_CHANNEL:
             self._torch_init()
+
         for node_idx, task in self.idx_to_task.items():
             if node_idx == self.input_task_idx:
                 # We don't need to assign an actual task for the input node.
@@ -425,7 +429,7 @@ class CompiledDAG:
                 )
             )
 
-        self.dag_input_channel = self.idx_to_task[self.input_task_idx].output_channel
+        # self.dag_input_channel = self.idx_to_task[self.input_task_idx].output_channel
 
         self.dag_output_channels = []
         for output in self.idx_to_task[self.output_task_idx].args:
