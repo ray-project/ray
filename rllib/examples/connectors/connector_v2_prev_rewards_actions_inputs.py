@@ -84,6 +84,7 @@ if __name__ == "__main__":
         # And new EnvRunner.
         .rollouts(
             env_to_module_connector=_env_to_module,
+            num_rollout_workers=args.num_env_runners,
             # Setup the correct env-runner to use depending on
             # old-stack/new-stack and multi-agent settings.
             env_runner_cls=(
@@ -92,9 +93,7 @@ if __name__ == "__main__":
                 else MultiAgentEnvRunner
             ),
         )
-        .resources(
-            num_learner_workers=0,
-        )
+        .resources(num_learner_workers=0)
         .training(
             learner_connector=_learner_connector,
             num_sgd_iter=5,

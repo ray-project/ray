@@ -76,13 +76,13 @@ class DefaultEnvToModule(ConnectorV2):
         # If observations cannot be found in `input`, add the most recent ones (from all
         # episodes).
         if SampleBatch.OBS not in data:
-            self._add_most_recent_obs_to_data(data, episodes, is_multi_agent)
+            data = self._add_most_recent_obs_to_data(data, episodes, is_multi_agent)
 
         # If our module is stateful:
         # - Add the most recent STATE_OUTs to `data`.
         # - Make all data in `data` have a time rank (T=1).
         if rl_module.is_stateful():
-            self._add_most_recent_states_and_time_rank_to_data(
+            data = self._add_most_recent_states_and_time_rank_to_data(
                 data, episodes, rl_module, is_multi_agent
             )
 
@@ -133,8 +133,8 @@ class DefaultEnvToModule(ConnectorV2):
             observations = []
             for sa_episode in episodes:
                 # Get most-recent observations from episode.
-                if not sa_episode.is_done:
-                    observations.append(sa_episode.get_observations(indices=-1))
+                #if not sa_episode.is_done:
+                observations.append(sa_episode.get_observations(indices=-1))
             # Batch all collected observations together.
             data[SampleBatch.OBS] = batch(observations)
         # Multi-agent case:
@@ -149,10 +149,12 @@ class DefaultEnvToModule(ConnectorV2):
             for ma_episode in episodes:
                 # Collect all most-recent observations from given episodes.
                 for agent_id, obs in ma_episode.get_observations(-1).items():
-                    if not ma_episode.agent_episodes[agent_id].is_done:
-                        observations_per_agent[agent_id].append(obs)
+                    #if not ma_episode.agent_episodes[agent_id].is_done:
+                    observations_per_agent[agent_id].append(obs)
             # Batch all collected observations together (separately per agent).
             data[SampleBatch.OBS] = observations_per_agent
+
+        return data
 
     @staticmethod
     def _add_most_recent_states_and_time_rank_to_data(
@@ -207,6 +209,8 @@ class DefaultEnvToModule(ConnectorV2):
         # Batch states (from list of individual vector sub-env states).
         # Note that state ins should NOT have the extra time dimension.
         data[STATE_IN] = state_in
+
+        return data
 
     @staticmethod
     def _perform_agent_to_module_mapping(data, episodes, shared_data):
