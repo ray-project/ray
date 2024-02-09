@@ -82,7 +82,7 @@ def skip_internal_stack_frames(ex: Exception) -> Tuple[Exception, Exception]:
                     "the Ray project GitHub page with the full stack trace below: "
                     "https://github.com/ray-project/ray/issues/new/choose"
                 )
-            return RayDataInternalException().with_traceback(orig_tb), ex
+            return ex, RayDataInternalException().with_traceback(orig_tb)
         return ex, UserCodeException().with_traceback(ex.__traceback__)
 
     if DataContext.get_current().internal_stack_trace_stdout:
