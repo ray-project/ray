@@ -350,10 +350,11 @@ class ConnectorV2(abc.ABC):
             batch: The batch to switch from being column name based (then ModuleIDs)
                 to being ModuleID based (then column names).
         """
-        module_data = {}
+        module_data = defaultdict(dict)
         for column, column_data in batch.items():
             for module_id, data in column_data.items():
-                module_data[module_id]
+                module_data[module_id][column] = data
+        return dict(module_data)
 
     def get_state(self) -> Dict[str, Any]:
         """Returns the current state of this ConnectorV2 as a state dict.
