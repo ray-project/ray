@@ -6,7 +6,7 @@ import gymnasium as gym
 
 from ray.rllib.core.rl_module.rl_module import RLModule
 from ray.rllib.env.single_agent_episode import SingleAgentEpisode
-from ray.rllib.utils.typing import EpisodeType
+from ray.rllib.utils.typing import EpisodeType, ModuleID
 from ray.util.annotations import PublicAPI
 
 
@@ -149,7 +149,7 @@ class ConnectorV2(abc.ABC):
             episodes: The list of SingleAgent- or MultiAgentEpisode objects.
             zip_with_batch_column: If provided, must be a list of batch items
                 corresponding to the given `episodes` (single agent case) or a dict
-                mapping (agentID, moduleID) tuples to lists of individual batch items
+                mapping (AgentID, ModuleID) tuples to lists of individual batch items
                 corresponding to this agent/module combination. The iterator will then
                 yield tuples of SingleAgentEpisode objects (1st item) along with the
                 data item (2nd item) that this episode was responsible for generating
@@ -322,7 +322,9 @@ class ConnectorV2(abc.ABC):
         """
 
     @staticmethod
-    def switch_batch_from_column_to_module_ids(batch):
+    def switch_batch_from_column_to_module_ids(
+        batch: Dict[str, Dict[ModuleID, Any]]
+    ) -> Dict[ModuleID, Dict[str, Any]]:
         """Switches the first two levels of a `col -> ModuleID -> data` type batch.
 
         Assuming that the top level consists of column names as keys and the second
@@ -337,7 +339,6 @@ class ConnectorV2(abc.ABC):
                 "actions": {"module_0": [4, 5, 6], "module_1": [7]},
             }
             switched_batch = ConnectorV2.switch_batch_from_column_to_module_ids(batch)
-
             check(
                 switched_batch,
                 {
@@ -349,6 +350,10 @@ class ConnectorV2(abc.ABC):
         Args:
             batch: The batch to switch from being column name based (then ModuleIDs)
                 to being ModuleID based (then column names).
+
+        Returns:
+            A new batch dict mapping ModuleIDs to dicts mapping column names (e.g.
+            "obs") to data.
         """
         module_data = defaultdict(dict)
         for column, column_data in batch.items():
