@@ -9,10 +9,10 @@ from ray.rllib.algorithms.sac.sac_learner import (
     QF_MEAN_KEY,
     QF_MAX_KEY,
     QF_MIN_KEY,
-    TD_ERROR_KEY,
     QF_PREDS,
     QF_TWIN_LOSS_KEY,
     QF_TWIN_PREDS,
+    TD_ERROR_KEY,
     SACLearner,
 )
 from ray.rllib.core.learner.learner import (
@@ -67,7 +67,7 @@ class SACTorchLearner(SACLearner, TorchLearner):
 
             self.register_optimizer(
                 module_id=module_id,
-                optimizer_name="qf",
+                optimizer_name="qf_twin",
                 optimizer=optim_twin_critic,
                 params=params_twin_critic,
                 lr_or_lr_schedule=self.config.lr,
@@ -199,7 +199,7 @@ class SACTorchLearner(SACLearner, TorchLearner):
             q_twin_curr = self.module[module_id]._qf_twin_forward_train(q_batch_curr)[
                 QF_PREDS
             ]
-            q_curr = torch.min(q_curr, q_twin_curr, dim=-1)
+            q_curr = torch.min(q_curr, q_twin_curr)
 
         # Compute Q-values from the target Q network for the next state with the
         # sampled actions for the next state.
@@ -217,31 +217,21 @@ class SACTorchLearner(SACLearner, TorchLearner):
         if self.config.twin_q:
             q_target_twin_next = self.module[module_id]._qf_target_twin_forward_train(
                 q_batch_next
-            )
-            q_target_next = torch.min(q_target_next, q_target_twin_next, dim=-1)
+            )[QF_PREDS]
+            q_target_next = torch.min(q_target_next, q_target_twin_next)
 
         # Compute value function for next state (see eq. (3) in Haarnoja et al. (2018)).
         # Note, we use here the sampled actions in the log probabilities.
         q_target_next -= alpha * logps_next
         # Now mask all Q-values with terminated next states in the targets.
-        q_next_masked = (
-            (1.0 - batch[SampleBatch.TERMINATEDS].float())
-            # If the current experience is the last in the episode we neglect it as
-            # otherwise the next value would be from a new episode's reset observation.
-            # See for more information the `EpisodeReplayBuffer.sample()` with
-            # `batch_length_T > 0`.
-            * (1.0 - batch["is_last"].float())
-            * q_target_next
-        )
+        q_next_masked = (1.0 - batch[SampleBatch.TERMINATEDS].float()) * q_target_next
 
         # Compute the right hand side of the Bellman equation.
         # Detach this node from the computation graph as we do not want to
         # backpropagate through the target network when optimizing the Q loss.
         q_selected_target = (
             batch[SampleBatch.REWARDS]
-            # TODO (simon): Implement n-step adjustment.
-            # + (self.config["gamma"] ** self.config["n_step"]) * q_next_masked
-            + self.config.gamma * q_next_masked
+            + (self.config.gamma**self.config.n_step) * q_next_masked
         ).detach()
 
         # Calculate the TD-error. Note, this is needed for the priority weights in
@@ -249,7 +239,7 @@ class SACTorchLearner(SACLearner, TorchLearner):
         td_error = torch.abs(q_selected - q_selected_target)
         # If a twin Q network should be used, add the TD error of the twin Q network.
         if self.config.twin_q:
-            td_error += torch.abs(q_twin_selected, q_selected_target)
+            td_error += torch.abs(q_twin_selected - q_selected_target)
             # Rescale the TD error.
             td_error *= 0.5
 
@@ -260,7 +250,8 @@ class SACTorchLearner(SACLearner, TorchLearner):
         critic_loss = torch.mean(
             # TODO (simon): Introduce priority weights when episode buffer is ready.
             # batch[PRIO_WEIGHTS] *
-            torch.nn.HuberLoss(reduction="none", delta=1.0)(
+            batch["weights"]
+            * torch.nn.HuberLoss(reduction="none", delta=1.0)(
                 q_selected, q_selected_target
             )
         )
@@ -269,7 +260,8 @@ class SACTorchLearner(SACLearner, TorchLearner):
             critic_twin_loss = torch.mean(
                 # TODO (simon): Introduce priority weights when episode buffer is ready.
                 # batch[PRIO_WEIGHTS] *
-                torch.nn.HuberLoss(reduction="none", delta=1.0)(
+                batch["weights"]
+                * torch.nn.HuberLoss(reduction="none", delta=1.0)(
                     q_twin_selected, q_selected_target
                 )
             )
@@ -282,8 +274,8 @@ class SACTorchLearner(SACLearner, TorchLearner):
 
         # Optimize also the hyperparameter alpha by using the current policy
         # evaluated at the current state (sampled values).
-        # TODO (simon): Check, if this is indeed log(alpha), prob. just better
-        # to optimize and monotonic function.
+        # TODO (simon): Check, why log(alpha) is used, prob. just better
+        # to optimize and monotonic function. Original equation uses alpha.
         alpha_loss = -torch.mean(
             self.curr_log_alpha[module_id]
             * (logps_curr.detach() + self.target_entropy[module_id])
