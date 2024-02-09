@@ -13,6 +13,15 @@ from ray.rllib.utils.spaces.space_utils import (
 
 
 class InfiniteLookbackBuffer:
+    @property
+    def space(self):
+        return self._space
+
+    @space.setter
+    def space(self, value):
+        self._space = value
+        self.space_struct = get_base_struct_from_space(value)
+
     def __init__(
         self,
         data: Optional[Union[List, np.ndarray]] = None,
@@ -22,8 +31,8 @@ class InfiniteLookbackBuffer:
         self.data = data if data is not None else []
         self.lookback = min(lookback, len(self.data))
         self.finalized = not isinstance(self.data, list)
+        self.space_struct = None
         self.space = space
-        self.space_struct = get_base_struct_from_space(self.space)
 
     def append(self, item) -> None:
         """Appends the given item to the end of this buffer."""

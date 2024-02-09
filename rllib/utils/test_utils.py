@@ -1154,6 +1154,8 @@ def run_rllib_example_script_experiment(
         The last ResultDict from a --no-tune run OR the tune.Tuner.fit()
         results.
     """
+    ray.init(num_cpus=args.num_cpus or None, local_mode=args.local_mode)
+
     stop = {
         "training_iteration": args.stop_iters,
         "episode_reward_mean": args.stop_reward,

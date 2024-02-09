@@ -48,6 +48,7 @@ class MultiAgentEpisode:
         id_: Optional[str] = None,
         agent_ids: Optional[Collection[AgentID]] = None,
         agent_episode_ids: Optional[Dict[AgentID, str]] = None,
+        agent_module_ids: Optional[Dict[AgentID, ModuleID]] = None,
         *,
         observations: Optional[List[MultiAgentDict]] = None,
         observation_space: Optional[gym.Space] = None,
@@ -72,7 +73,10 @@ class MultiAgentEpisode:
                 concatenated via this string.
             agent_ids: A list of strings containing the agent IDs.
                 These have to be provided at initialization.
-            agent_episode_ids: An optional dictionary mapping agent IDs
+            agent_module_ids: An optional dict mapping AgentIDs to their respective
+                ModuleIDs (these mapping are alway s valid for an entire episode and
+                thus won't change during the course of this episode).
+            agent_episode_ids: An optional dict mapping AgentIDs
                 to their corresponding `SingleAgentEpisode`. If None, each
                 `SingleAgentEpisode` in `MultiAgentEpisode.agent_episodes`
                 will generate a hexadecimal code. If a dictionary is provided
@@ -213,6 +217,7 @@ class MultiAgentEpisode:
         # The individual agent SingleAgentEpisode objects.
         self.agent_episodes: Dict[AgentID, SingleAgentEpisode] = {}
         self._init_single_agent_episodes(
+            agent_module_ids=agent_module_ids,
             agent_episode_ids=agent_episode_ids,
             observations=observations,
             infos=infos,
@@ -770,6 +775,9 @@ class MultiAgentEpisode:
             agent_ids=self.agent_ids,
             # Same single agents' episode IDs.
             agent_episode_ids=self.agent_episode_ids,
+            agent_module_ids={
+                aid: self.agent_episodes[aid].module_id for aid in self.agent_ids
+            },
             observations=self.get_observations(
                 indices=indices_obs_and_infos, return_list=True
             ),
@@ -1371,7 +1379,8 @@ class MultiAgentEpisode:
     def _init_single_agent_episodes(
         self,
         *,
-        agent_episode_ids: Optional[Dict[str, str]] = None,
+        agent_module_ids: Optional[Dict[AgentID, ModuleID]] = None,
+        agent_episode_ids: Optional[Dict[AgentID, str]] = None,
         observations: Optional[List[MultiAgentDict]] = None,
         actions: Optional[List[MultiAgentDict]] = None,
         rewards: Optional[List[MultiAgentDict]] = None,
@@ -1403,6 +1412,7 @@ class MultiAgentEpisode:
         all_agent_ids = set(
             agent_episode_ids.keys() if agent_episode_ids is not None else []
         )
+        agent_module_ids = agent_module_ids or {}
 
         # Step through all observations and interpret these as the (global) env steps.
         env_t = self.env_t - len_lookback_buffer
@@ -1515,6 +1525,7 @@ class MultiAgentEpisode:
                     else None
                 ),
                 agent_id=agent_id,
+                module_id=agent_module_ids.get(agent_id),
                 observations=agent_obs,
                 observation_space=self.observation_space.get(agent_id),
                 infos=infos_per_agent[agent_id],

@@ -1,4 +1,3 @@
-import argparse
 import functools
 
 import torch.nn.init
@@ -10,51 +9,46 @@ from ray.rllib.connectors.learner.prev_action_prev_reward import (
     PrevRewardPrevActionLearner,
 )
 from ray.rllib.core.rl_module.rl_module import SingleAgentRLModuleSpec
+from ray.rllib.env.multi_agent_env_runner import MultiAgentEnvRunner
 from ray.rllib.env.single_agent_env_runner import SingleAgentEnvRunner
 from ray.rllib.examples.env.stateless_cartpole import StatelessCartPole
+from ray.rllib.examples.env.multi_agent import MultiAgentStatelessCartPole
 from ray.rllib.examples.rl_module.lstm_w_prev_actions_rewards_rlm import (
     TorchLSTMwPrevRewardsActionsRLM
 )
-from ray.rllib.utils.test_utils import check_learning_achieved
+from ray.rllib.utils.test_utils import (
+    add_rllib_example_script_args,
+    run_rllib_example_script_experiment,
+)
+from ray.tune import register_env
 
 
-parser = argparse.ArgumentParser()
-parser.add_argument("--num-cpus", type=int, default=0)
+parser = add_rllib_example_script_args(
+    default_reward=400.0, default_timesteps=1000000, default_iters=2000
+)
 parser.add_argument("--n-prev-rewards", type=int, default=1)
 parser.add_argument("--n-prev-actions", type=int, default=1)
-parser.add_argument(
-    "--as-test",
-    action="store_true",
-    help="Whether this script should be run as a test: --stop-reward must "
-    "be achieved within --stop-timesteps AND --stop-iters.",
-)
-parser.add_argument(
-    "--stop-iters", type=int, default=2000, help="Number of iterations to train."
-)
-parser.add_argument(
-    "--stop-timesteps", type=int, default=1000000, help="Number of timesteps to train."
-)
-parser.add_argument(
-    "--stop-reward", type=float, default=400.0, help="Reward at which we stop training."
-)
 
 
 if __name__ == "__main__":
-    import ray
-    from ray import air, tune
-
     args = parser.parse_args()
-
-    ray.init()
 
     # Define our custom connector pipelines.
     def _env_to_module(env):
+        obs = (
+            env.single_observation_space if args.num_agents == 0
+            else env.observation_space
+        )
+        act = (
+            env.single_action_space if args.num_agents == 0
+            else env.action_space
+        )
         # Create the env-to-module connector. We return an individual connector piece
         # here, which RLlib will then automatically integrate into a pipeline (and
         # add its default connector piece to the end of that pipeline).
         return PrevRewardPrevActionEnvToModule(
-            input_observation_space=env.single_observation_space,
-            input_action_space=env.single_action_space,
+            obs,
+            act,
             n_prev_rewards=args.n_prev_rewards,
             n_prev_actions=args.n_prev_actions,
         )
@@ -62,11 +56,22 @@ if __name__ == "__main__":
     def _learner_connector(input_observation_space, input_action_space):
         # Create the learner connector.
         return PrevRewardPrevActionLearner(
-            input_observation_space=input_observation_space,
-            input_action_space=input_action_space,
+            input_observation_space,
+            input_action_space,
             n_prev_rewards=args.n_prev_rewards,
             n_prev_actions=args.n_prev_actions,
         )
+
+    # Register our environment with tune.
+    if args.num_agents > 0:
+        register_env(
+            "env",
+            lambda _: MultiAgentStatelessCartPole(
+                config={"num_agents": args.num_agents}
+            ),
+        )
+    else:
+        register_env("env", lambda _: StatelessCartPole())
 
     rlm_spec = SingleAgentRLModuleSpec(module_class=TorchLSTMwPrevRewardsActionsRLM)
 
@@ -74,12 +79,18 @@ if __name__ == "__main__":
         PPOConfig()
         # Use new API stack.
         .experimental(_enable_new_api_stack=True)
-        .environment(StatelessCartPole)
+        .environment("env")
         .rl_module(rl_module_spec=rlm_spec)
         # And new EnvRunner.
         .rollouts(
-            env_runner_cls=SingleAgentEnvRunner,
             env_to_module_connector=_env_to_module,
+            # Setup the correct env-runner to use depending on
+            # old-stack/new-stack and multi-agent settings.
+            env_runner_cls=(
+                None if not args.enable_new_api_stack
+                else SingleAgentEnvRunner if args.num_agents == 0
+                else MultiAgentEnvRunner
+            ),
         )
         .resources(
             num_learner_workers=0,
@@ -89,7 +100,7 @@ if __name__ == "__main__":
             num_sgd_iter=5,
             vf_loss_coeff=0.0001,
             train_batch_size=512,
-            model={
+            model=dict({
                 "use_lstm": True,
                 "lstm_cell_size": 32,
                 "fcnet_weights_initializer": torch.nn.init.xavier_uniform_,
@@ -98,29 +109,11 @@ if __name__ == "__main__":
                 ),
                 "vf_share_layers": True,
                 "uses_new_env_runners": True,
-            },
+            }, **(
+                {} if not args.enable_new_api_stack
+                else {"uses_new_env_runners": True}
+            )),
         )
     )
 
-    stop = {
-        "training_iteration": args.stop_iters,
-        "timesteps_total": args.stop_timesteps,
-        "episode_reward_mean": args.stop_reward,
-    }
-
-    tuner = tune.Tuner(
-        config.algo_class,
-        param_space=config,
-        run_config=air.RunConfig(
-            stop=stop,
-            verbose=1,
-            checkpoint_config=air.CheckpointConfig(checkpoint_at_end=False),
-        ),
-        tune_config=tune.TuneConfig(num_samples=1),
-    )
-    results = tuner.fit()
-
-    if args.as_test:
-        check_learning_achieved(results, args.stop_reward)
-
-    ray.shutdown()
+    run_rllib_example_script_experiment(config, args)

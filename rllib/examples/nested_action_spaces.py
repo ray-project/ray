@@ -28,8 +28,6 @@ parser = add_rllib_example_script_args(default_timesteps=200000, default_reward=
 if __name__ == "__main__":
     args = parser.parse_args()
 
-    ray.init(num_cpus=args.num_cpus or None, local_mode=args.local_mode)
-
     # Define env-to-module-connector pipeline for the new stack.
     def _env_to_module_pipeline(env):
         obs = (
