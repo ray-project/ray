@@ -233,6 +233,13 @@ class Reconciler:
             instance_manager=instance_manager, autoscaling_config=autoscaling_config
         )
 
+        Reconciler._terminate_instances(instance_manager=instance_manager)
+        if not autoscaling_config.skip_ray_install():
+            Reconciler._install_ray(
+                instance_manager=instance_manager,
+                non_terminated_cloud_instances=non_terminated_cloud_instances,
+            )
+
     #######################################################
     # Private methods for reconciling instance states.
     #######################################################
@@ -1042,3 +1049,78 @@ class Reconciler:
                         (time.time_ns() - status_time_ns) // 1e9,
                     )
                 )
+
+    @staticmethod
+    def _terminate_instances(instance_manager: InstanceManager):
+        """
+        Terminate instances with RAY_STOPPED or RAY_INSTALL_FAILED status.
+
+        Args:
+            instance_manager: The instance manager to reconcile.
+        """
+
+        im_instances, version = Reconciler._get_im_instances(instance_manager)
+        updates = {}
+        for instance in im_instances:
+            if instance.status not in [
+                IMInstance.RAY_STOPPED,
+                IMInstance.RAY_INSTALL_FAILED,
+            ]:
+                continue
+
+            # Terminate the instance.
+            logger.info(
+                f"Terminating instance {instance.instance_id} with status "
+                f"{IMInstance.InstanceStatus.Name(instance.status)}"
+            )
+            updates[instance.instance_id] = IMInstanceUpdateEvent(
+                instance_id=instance.instance_id,
+                new_instance_status=IMInstance.TERMINATING,
+            )
+
+        Reconciler._update_instance_manager(instance_manager, version, updates)
+
+    @staticmethod
+    def _install_ray(
+        instance_manager: InstanceManager,
+        non_terminated_cloud_instances: Dict[CloudInstanceId, CloudInstance],
+    ):
+        """
+        Install ray on the allocated instances.
+
+        Args:
+            instance_manager: The instance manager to reconcile.
+        """
+        im_instances, version = Reconciler._get_im_instances(instance_manager)
+        updates = {}
+        for instance in im_instances:
+            if instance.status != IMInstance.ALLOCATED:
+                continue
+
+            cloud_instance = non_terminated_cloud_instances.get(
+                instance.cloud_instance_id
+            )
+
+            assert cloud_instance, (
+                f"Cloud instance {instance.cloud_instance_id} is not found "
+                "in non_terminated_cloud_instances."
+            )
+
+            if not cloud_instance.is_running:
+                # It might still be pending (e.g. setting up ssh)
+                continue
+
+            # Install ray on the running cloud instance
+            updates[instance.instance_id] = IMInstanceUpdateEvent(
+                instance_id=instance.instance_id,
+                new_instance_status=IMInstance.RAY_INSTALLING,
+            )
+            logger.info(
+                "Updating {}({}) with {}".format(
+                    instance.instance_id,
+                    IMInstance.InstanceStatus.Name(instance.status),
+                    MessageToDict(updates[instance.instance_id]),
+                )
+            )
+
+        Reconciler._update_instance_manager(instance_manager, version, updates)

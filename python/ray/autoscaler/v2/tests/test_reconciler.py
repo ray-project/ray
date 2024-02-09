@@ -55,7 +55,7 @@ class MockAutoscalingConfig:
         return self._configs.get("instance_reconcile_config", InstanceReconcileConfig())
 
     def skip_ray_install(self):
-        return self._configs.get("skip_ray_install", False)
+        return self._configs.get("skip_ray_install", True)
 
 
 class MockScheduler(IResourceScheduler):
@@ -507,8 +507,8 @@ class TestReconciler:
 
         instances, _ = instance_storage.get_instances()
         assert len(instances) == 3
-        assert instances["i-1"].status == Instance.RAY_STOPPED
-        assert instances["i-2"].status == Instance.RAY_STOPPED
+        assert instances["i-1"].status == Instance.TERMINATING
+        assert instances["i-2"].status == Instance.TERMINATING
         assert instances["i-3"].status == Instance.TERMINATING
 
     @staticmethod
@@ -547,7 +547,7 @@ class TestReconciler:
 
         instances, _ = instance_storage.get_instances()
         assert len(instances) == 1
-        assert instances["i-1"].status == Instance.RAY_INSTALL_FAILED
+        assert instances["i-1"].status == Instance.TERMINATING
 
     @staticmethod
     def test_draining_ray_node_also_terminated(setup):
@@ -780,7 +780,7 @@ class TestReconciler:
         "cur_status,expect_status",
         [
             (Instance.ALLOCATED, Instance.TERMINATING),
-            (Instance.RAY_INSTALLING, Instance.RAY_INSTALL_FAILED),
+            (Instance.RAY_INSTALLING, Instance.TERMINATING),
             (Instance.TERMINATING, Instance.TERMINATION_FAILED),
         ],
     )
@@ -942,6 +942,90 @@ class TestReconciler:
 
         assert subscriber.events == []
         assert mock_logger.warning.call_count == 0
+
+    @staticmethod
+    def test_terminating_instances(setup):
+        instance_manager, instance_storage, subscriber = setup
+
+        instances = [
+            create_instance(
+                "i-1",
+                status=Instance.RAY_STOPPED,
+                cloud_instance_id="c-1",
+            ),
+            create_instance(
+                "i-2",
+                status=Instance.RAY_INSTALL_FAILED,
+                cloud_instance_id="c-2",
+            ),
+        ]
+
+        cloud_instances = {
+            "c-1": CloudInstance("c-1", "type-1", "", True),
+            "c-2": CloudInstance("c-2", "type-2", "", True),
+        }
+
+        TestReconciler._add_instances(instance_storage, instances)
+
+        Reconciler.reconcile(
+            instance_manager=instance_manager,
+            scheduler=MockScheduler(),
+            cloud_provider=MagicMock(),
+            ray_cluster_resource_state=ClusterResourceState(),
+            non_terminated_cloud_instances=cloud_instances,
+            cloud_provider_errors=[],
+            ray_install_errors=[],
+            autoscaling_config=MockAutoscalingConfig(),
+        )
+
+        instances, _ = instance_storage.get_instances()
+        assert instances["i-1"].status == Instance.TERMINATING
+        assert instances["i-2"].status == Instance.TERMINATING
+
+    @staticmethod
+    @pytest.mark.parametrize(
+        "skip_ray_install",
+        [True, False],
+    )
+    def test_ray_install(skip_ray_install, setup):
+        instance_manager, instance_storage, subscriber = setup
+
+        instances = [
+            create_instance(
+                "i-1",
+                status=Instance.ALLOCATED,
+                instance_type="type-1",
+                launch_request_id="l1",
+                cloud_instance_id="c-1",
+            ),
+        ]
+
+        cloud_instances = {
+            "c-1": CloudInstance("c-1", "type-1", "", True),
+        }
+
+        TestReconciler._add_instances(instance_storage, instances)
+
+        Reconciler.reconcile(
+            instance_manager=instance_manager,
+            scheduler=MockScheduler(),
+            cloud_provider=MagicMock(),
+            ray_cluster_resource_state=ClusterResourceState(),
+            non_terminated_cloud_instances=cloud_instances,
+            cloud_provider_errors=[],
+            ray_install_errors=[],
+            autoscaling_config=MockAutoscalingConfig(
+                configs={
+                    "skip_ray_install": skip_ray_install,
+                }
+            ),
+        )
+
+        instances, _ = instance_storage.get_instances()
+        expected_status = (
+            Instance.ALLOCATED if skip_ray_install else Instance.RAY_INSTALLING
+        )
+        assert instances["i-1"].status == expected_status
 
 
 if __name__ == "__main__":
