@@ -98,7 +98,7 @@ This service can be queried directly from inside the cluster, but to access it f
 
 ```console
 $ kubectl port-forward service/rayservice-sample-serve-svc 8000
-$ curl -X POST -H "Content-Type: application/json" localhost:8000 -d '"It was the best of times, it was the worst of times, it was the age of wisdom, it was the age of foolishness, it was the epoch of belief"'
+$ curl -X POST -H "Content-Type: application/json" localhost:8000/summarize_translate -d '"It was the best of times, it was the worst of times, it was the age of wisdom, it was the age of foolishness, it was the epoch of belief"'
 c'était le meilleur des temps, c'était le pire des temps .
 ```
 
@@ -187,7 +187,7 @@ $ kubectl describe rayservice rayservice-sample
 Query the application to see a different translation in German:
 
 ```console
-$ curl -X POST -H "Content-Type: application/json" localhost:8000 -d '"It was the best of times, it was the worst of times, it was the age of wisdom, it was the age of foolishness, it was the epoch of belief"'
+$ curl -X POST -H "Content-Type: application/json" localhost:8000/summarize_translate -d '"It was the best of times, it was the worst of times, it was the age of wisdom, it was the age of foolishness, it was the epoch of belief"'
 Es war die beste Zeit, es war die schlimmste Zeit .
 ```
 
