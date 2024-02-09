@@ -1409,7 +1409,7 @@ class Learner:
             # TODO (sven): Figure out whether `compile_results` should be forced
             #  to return all numpy/python data, then we can skip this conversion
             #  step here.
-            results.append(convert_to_numpy(result))
+            results.append(result)
 
         self._set_slicing_by_batch_id(batch, value=False)
 
