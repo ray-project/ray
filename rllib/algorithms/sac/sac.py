@@ -450,6 +450,7 @@ class SAC(DQN):
         # Run multiple sampling iterations.
         for _ in range(store_weight):
             with self._timers[SAMPLE_TIMER]:
+                # TODO (simon): Use `sychnronous_parallel_sample()` here.
                 if self.workers.num_remote_workers() <= 0:
                     episodes: List[SingleAgentEpisode] = [
                         self.workers.local_worker().sample()
