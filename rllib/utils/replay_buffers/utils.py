@@ -37,9 +37,14 @@ def update_priorities_in_episode_replay_buffer(
 
         # The `ResultDict` will be multi-agent.
         for module_id, result_dict in train_results.items():
+            # Skip the `"__all__"` key.
+            if module_id == "__all__":
+                continue
+
             # Get the TD-error from the results.
             td_error = result_dict.get("td_error", None)
 
+            # Warn once, if we have no TD-errors to update priorities.
             if td_error is None:
                 if log_once(
                     "no_td_error_in_train_results_from_module_{}".format(module_id)
