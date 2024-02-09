@@ -158,6 +158,8 @@ int64_t MemoryMonitor::GetCGroupMemoryUsedBytes(const char *stat_path,
         << active_file_bytes;
     return kNull;
   }
+  // The total file cache is inactive + active per
+  // https://access.redhat.com/documentation/en-us/red_hat_enterprise_linux/6/html/resource_management_guide/sec-memory
   return current_usage_bytes - inactive_file_bytes - active_file_bytes;
 }
 
