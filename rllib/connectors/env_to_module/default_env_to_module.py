@@ -76,7 +76,13 @@ class DefaultEnvToModule(ConnectorV2):
         # If observations cannot be found in `input`, add the most recent ones (from all
         # episodes).
         if SampleBatch.OBS not in data:
-            data = self._add_most_recent_obs_to_data(data, episodes, is_multi_agent)
+            for sa_episode in self.single_agent_episode_iterator(episodes):
+                self.add_batch_item(
+                    batch=data,
+                    column=SampleBatch.OBS,
+                    item_to_add=sa_episode.get_observations(-1),
+                    single_agent_episode=sa_episode,
+                )
 
         # If our module is stateful:
         # - Add the most recent STATE_OUTs to `data`.
@@ -118,41 +124,6 @@ class DefaultEnvToModule(ConnectorV2):
         # TODO (sven): Support GPU-based EnvRunners + RLModules for sampling. Right
         #  now we assume EnvRunners are always only on the CPU.
         data = convert_to_tensor(data, rl_module.framework)
-
-        return data
-
-    @staticmethod
-    def _add_most_recent_obs_to_data(data, episodes, is_multi_agent):
-        # TODO (sven): Simply use the new `single_agent_episode_iterator` to shrink this
-        #  code below:
-
-        # Single-agent case:
-        # Construct:
-        #  {"obs": [batch across all single-agent episodes]}
-        if not is_multi_agent:
-            observations = []
-            for sa_episode in episodes:
-                # Get most-recent observations from episode.
-                #if not sa_episode.is_done:
-                observations.append(sa_episode.get_observations(indices=-1))
-            # Batch all collected observations together.
-            data[SampleBatch.OBS] = batch(observations)
-        # Multi-agent case:
-        # Construct:
-        #  {"obs: {"ag1": [list of all ag1 obs], "ag2": [list of all ag2 obs]}}
-        #  Note that we don't batch yet due to the fact that even under the same
-        #  AgentID, data may be split up to different ModuleIDs (an agent may map to
-        #  one module in one episode, but to another one in a different episode given
-        #  e.g. a stochastic mapping function).
-        else:
-            observations_per_agent = defaultdict(list)
-            for ma_episode in episodes:
-                # Collect all most-recent observations from given episodes.
-                for agent_id, obs in ma_episode.get_observations(-1).items():
-                    #if not ma_episode.agent_episodes[agent_id].is_done:
-                    observations_per_agent[agent_id].append(obs)
-            # Batch all collected observations together (separately per agent).
-            data[SampleBatch.OBS] = observations_per_agent
 
         return data
 
