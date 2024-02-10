@@ -1085,6 +1085,14 @@ class Reconciler:
         - It launches new instances if needed.
         - It terminates extra ray nodes if they should be shut down (preemption
             or idle termination)
+
+        Args:
+            autoscaling_state: The autoscaling state to reconcile.
+            instance_manager: The instance manager to reconcile.
+            ray_state: The ray cluster's resource state.
+            scheduler: The resource scheduler to make scaling decisions.
+            autoscaling_config: The autoscaling config.
+
         """
 
         # Get the current instance states.
