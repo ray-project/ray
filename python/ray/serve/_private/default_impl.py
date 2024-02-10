@@ -45,6 +45,7 @@ def create_cluster_node_info_cache(  # noqa: F811
 
 def create_deployment_scheduler(  # noqa: F811
     cluster_node_info_cache: ClusterNodeInfoCache,
+    head_node_id_override: Optional[str] = None,
 ) -> DeploymentScheduler:
     from ray.anyscale.serve._private.constants import (
         ANYSCALE_RAY_SERVE_ENABLE_PROPRIETARY_DEPLOYMENT_SCHEDULER,
