@@ -70,7 +70,10 @@ class ComputeEpisodeCostCallback(DefaultCallbacks):
     def on_train_result(self, *, algorithm, result: dict, **kwargs):
         result["callback_ok"] = True
 
-        cost = result["custom_metrics"].get("episode_cost", 0)
+        cost = result["custom_metrics"].get("episode_cost", [0])
         result["custom_metrics"]["episode_cost_min"] = min(cost)
         result["custom_metrics"]["episode_cost_max"] = max(cost)
         result["custom_metrics"]["episode_cost_mean"] = mean(cost)
+        result["custom_metrics"]["acc_cost"] = sum(cost)
+        num_steps = sum(result['sampler_results']['hist_stats']['episode_lengths'])
+        result["custom_metrics"]["num_steps"] = num_steps
