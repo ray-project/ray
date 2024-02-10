@@ -1260,7 +1260,7 @@ ray_cc_test(
     srcs = [
         "src/ray/object_manager/plasma/test/mutable_object_test.cc",
     ],
-    tags = ["team:core"],
+    tags = ["team:core", "no_windows"],
     deps = [
         ":plasma_store_server_lib",
         "@com_google_absl//absl/random",
