@@ -47,7 +47,7 @@ SERVE_GRAFANA_PANELS = [
         ],
         fill=0,
         stack=False,
-        grid_pos=GridPos(0, 0, 8, 8),
+        grid_pos=GridPos(0, 0, 12, 8),
     ),
     Panel(
         id=7,
@@ -64,7 +64,7 @@ SERVE_GRAFANA_PANELS = [
                 legend="{{application, method}}",
             ),
         ],
-        grid_pos=GridPos(8, 0, 8, 8),
+        grid_pos=GridPos(12, 0, 12, 8),
     ),
     Panel(
         id=8,
@@ -81,7 +81,24 @@ SERVE_GRAFANA_PANELS = [
                 legend="{{application, method}}",
             ),
         ],
-        grid_pos=GridPos(16, 0, 8, 8),
+        grid_pos=GridPos(0, 1, 12, 8),
+    ),
+    Panel(
+        id=17,
+        title="Error QPS per application per error code",
+        description="Error QPS for each selected application.",
+        unit="qps",
+        targets=[
+            Target(
+                expr='sum(rate(ray_serve_num_http_error_requests{{application=~"$Application",application!~"",route=~"$HTTP_Route",route!~"/-/.*",{global_filters}}}[5m])) by (application, route, error_code)',
+                legend="{{application, route, error_code}}",
+            ),
+            Target(
+                expr='sum(rate(ray_serve_num_grpc_error_requests{{application=~"$Application",application!~"",method=~"$gRPC_Method",{global_filters}}}[5m])) by (application, method, error_code)',
+                legend="{{application, method, error_code}}",
+            ),
+        ],
+        grid_pos=GridPos(12, 1, 12, 8),
     ),
     Panel(
         id=12,
@@ -104,7 +121,7 @@ SERVE_GRAFANA_PANELS = [
         ],
         fill=0,
         stack=False,
-        grid_pos=GridPos(0, 1, 8, 8),
+        grid_pos=GridPos(0, 2, 8, 8),
     ),
     Panel(
         id=15,
@@ -127,7 +144,7 @@ SERVE_GRAFANA_PANELS = [
         ],
         fill=0,
         stack=False,
-        grid_pos=GridPos(8, 1, 8, 8),
+        grid_pos=GridPos(8, 2, 8, 8),
     ),
     Panel(
         id=16,
@@ -150,7 +167,7 @@ SERVE_GRAFANA_PANELS = [
         ],
         fill=0,
         stack=False,
-        grid_pos=GridPos(16, 1, 8, 8),
+        grid_pos=GridPos(16, 2, 8, 8),
     ),
     Panel(
         id=2,
@@ -163,7 +180,7 @@ SERVE_GRAFANA_PANELS = [
                 legend="{{application, deployment}}",
             ),
         ],
-        grid_pos=GridPos(0, 2, 8, 8),
+        grid_pos=GridPos(0, 3, 8, 8),
     ),
     Panel(
         id=13,
@@ -176,7 +193,7 @@ SERVE_GRAFANA_PANELS = [
                 legend="{{application, deployment}}",
             ),
         ],
-        grid_pos=GridPos(8, 2, 8, 8),
+        grid_pos=GridPos(8, 3, 8, 8),
     ),
     Panel(
         id=14,
@@ -189,7 +206,7 @@ SERVE_GRAFANA_PANELS = [
                 legend="{{application, deployment}}",
             ),
         ],
-        grid_pos=GridPos(16, 2, 8, 8),
+        grid_pos=GridPos(16, 3, 8, 8),
     ),
     Panel(
         id=9,
@@ -208,7 +225,7 @@ SERVE_GRAFANA_PANELS = [
         ],
         fill=0,
         stack=False,
-        grid_pos=GridPos(0, 3, 8, 8),
+        grid_pos=GridPos(0, 4, 8, 8),
     ),
     Panel(
         id=10,
@@ -227,7 +244,7 @@ SERVE_GRAFANA_PANELS = [
         ],
         fill=0,
         stack=False,
-        grid_pos=GridPos(8, 3, 8, 8),
+        grid_pos=GridPos(8, 4, 8, 8),
     ),
     Panel(
         id=11,
@@ -246,7 +263,7 @@ SERVE_GRAFANA_PANELS = [
         ],
         fill=0,
         stack=False,
-        grid_pos=GridPos(16, 3, 8, 8),
+        grid_pos=GridPos(16, 4, 8, 8),
     ),
     Panel(
         id=3,
@@ -261,7 +278,7 @@ SERVE_GRAFANA_PANELS = [
         ],
         fill=0,
         stack=False,
-        grid_pos=GridPos(0, 4, 8, 8),
+        grid_pos=GridPos(0, 5, 8, 8),
     ),
     Panel(
         id=4,
@@ -283,7 +300,7 @@ SERVE_GRAFANA_PANELS = [
                 legend="Pending Nodes: {{NodeType}}",
             ),
         ],
-        grid_pos=GridPos(8, 4, 8, 8),
+        grid_pos=GridPos(8, 5, 8, 8),
     ),
     Panel(
         id=6,
@@ -303,7 +320,7 @@ SERVE_GRAFANA_PANELS = [
         fill=1,
         linewidth=2,
         stack=False,
-        grid_pos=GridPos(16, 4, 8, 8),
+        grid_pos=GridPos(16, 5, 8, 8),
     ),
 ]
 

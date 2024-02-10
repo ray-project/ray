@@ -151,6 +151,7 @@ class Reconciler:
             instance_manager, non_terminated_cloud_instances
         )
         Reconciler._handle_ray_status_transition(instance_manager, ray_nodes)
+
         Reconciler._handle_cloud_instance_termination_errors(
             instance_manager, cloud_provider_errors
         )
@@ -200,7 +201,7 @@ class Reconciler:
         pass
 
     #######################################################
-    # Private methods for reconciling instance states.
+    # Utility methods for reconciling instance states.
     #######################################################
 
     @staticmethod
@@ -244,7 +245,7 @@ class Reconciler:
         # For each instance, try to allocate or fail the allocation.
         for instance in instances_with_launch_requests:
             # Try allocate or fail with errors.
-            update_event = Reconciler._try_or_fail_allocation(
+            update_event = Reconciler._try_resolve_pending_allocation(
                 instance, unassigned_cloud_instances_by_type, launch_errors
             )
             if not update_event:
@@ -263,7 +264,7 @@ class Reconciler:
         Reconciler._update_instance_manager(instance_manager, updates, version)
 
     @staticmethod
-    def _try_or_fail_allocation(
+    def _try_resolve_pending_allocation(
         im_instance: IMInstance,
         unassigned_cloud_instances_by_type: Dict[str, List[CloudInstance]],
         launch_errors: Dict[str, LaunchNodeError],
@@ -477,6 +478,15 @@ class Reconciler:
                 updates=list(updates.values()),
             )
         )
+        # TODO: While it's possible that a version mismatch
+        # happens, or some other failures could happen. But given
+        # the current implementation:
+        #   1. There's only 1 writer (the reconciler) for updating the instance
+        #       manager states, so there shouldn't be version mismatch.
+        #   2. Any failures in one reconciler step should be caught at a higher
+        #       level and be retried in the next reconciler step. If the IM
+        #       fails to be updated, we don't have sufficient info to handle it
+        #       here.
         assert (
             reply.status.code == StatusCode.OK
         ), f"Failed to update instance manager: {reply}"
