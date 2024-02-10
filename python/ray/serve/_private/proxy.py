@@ -23,7 +23,12 @@ from ray import serve
 from ray._private.utils import get_or_create_event_loop
 from ray.actor import ActorHandle
 from ray.exceptions import RayActorError, RayTaskError
-from ray.serve._private.common import EndpointInfo, EndpointTag, NodeId, RequestProtocol
+from ray.serve._private.common import (
+    DeploymentID,
+    EndpointInfo,
+    NodeId,
+    RequestProtocol,
+)
 from ray.serve._private.constants import (
     DEFAULT_LATENCY_BUCKET_MS,
     DEFAULT_UVICORN_KEEP_ALIVE_TIMEOUT_S,
@@ -131,7 +136,7 @@ class GenericProxy(ABC):
 
     The proxy subclass need to implement the following methods:
       - `protocol()`
-      - `not_found()`
+      - `not_found_response()`
       - `routes_response()`
       - `health_response()`
       - `setup_request_context_and_handle()`
@@ -144,28 +149,22 @@ class GenericProxy(ABC):
         node_ip_address: str,
         proxy_router_class: Type[ProxyRouter],
         request_timeout_s: Optional[float] = None,
-        controller_actor: Optional[ActorHandle] = None,
     ):
         self.request_timeout_s = request_timeout_s
         if self.request_timeout_s is not None and self.request_timeout_s < 0:
             self.request_timeout_s = None
 
         self._node_id = node_id
+
+        # Flipped to `True` once the route table has been updated at least once.
+        # Health checks will not pass until the route table is populated.
         self._route_table_populated = False
 
         # Used only for displaying the route table.
-        self.route_info: Dict[str, EndpointTag] = dict()
+        self.route_info: Dict[str, DeploymentID] = dict()
 
         self.proxy_router = proxy_router_class(
             serve.get_deployment_handle, self.protocol
-        )
-        self.long_poll_client = LongPollClient(
-            controller_actor
-            or ray.get_actor(SERVE_CONTROLLER_NAME, namespace=SERVE_NAMESPACE),
-            {
-                LongPollNamespace.ROUTE_TABLE: self._update_routes,
-            },
-            call_in_event_loop=get_or_create_event_loop(),
         )
         self.request_counter = metrics.Counter(
             f"serve_num_{self.protocol.lower()}_requests",
@@ -247,13 +246,13 @@ class GenericProxy(ABC):
         """Whether is proxy actor is in the draining status or not."""
         return self._draining_start_time is not None
 
-    def _update_routes(self, endpoints: Dict[EndpointTag, EndpointInfo]) -> None:
+    def update_routes(self, endpoints: Dict[DeploymentID, EndpointInfo]):
         self._route_table_populated = True
 
-        self.route_info: Dict[str, EndpointTag] = dict()
-        for endpoint, info in endpoints.items():
+        self.route_info: Dict[str, DeploymentID] = dict()
+        for deployment_id, info in endpoints.items():
             route = info.route
-            self.route_info[route] = endpoint
+            self.route_info[route] = deployment_id
 
         self.proxy_router.update_routes(endpoints)
 
@@ -292,7 +291,9 @@ class GenericProxy(ABC):
             self._draining_start_time = None
 
     @abstractmethod
-    async def not_found(self, proxy_request: ProxyRequest) -> ResponseGenerator:
+    async def not_found_response(
+        self, proxy_request: ProxyRequest
+    ) -> ResponseGenerator:
         raise NotImplementedError
 
     @abstractmethod
@@ -371,7 +372,7 @@ class GenericProxy(ABC):
 
         if matched_route is None:
             return ResponseHandlerInfo(
-                response_generator=self.not_found(proxy_request),
+                response_generator=self.not_found_response(proxy_request),
                 metadata=HandlerMetadata(
                     route=proxy_request.route_path,
                 ),
@@ -539,13 +540,15 @@ class gRPCProxy(GenericProxy):
     def protocol(self) -> RequestProtocol:
         return RequestProtocol.GRPC
 
-    async def not_found(self, proxy_request: ProxyRequest) -> ResponseGenerator:
+    async def not_found_response(
+        self, proxy_request: ProxyRequest
+    ) -> ResponseGenerator:
         if not proxy_request.app_name:
             application_message = "Application metadata not set."
         else:
             application_message = f"Application '{proxy_request.app_name}' not found."
         not_found_message = (
-            f"{application_message} Please ping "
+            f"{application_message} Ping "
             "/ray.serve.RayServeAPIService/ListApplications for available applications."
         )
 
@@ -744,7 +747,6 @@ class HTTPProxy(GenericProxy):
         node_ip_address: str,
         proxy_router_class: Type[ProxyRouter],
         request_timeout_s: Optional[float] = None,
-        controller_actor: Optional[ActorHandle] = None,
         proxy_actor: Optional[ActorHandle] = None,
     ):
         super().__init__(
@@ -752,7 +754,6 @@ class HTTPProxy(GenericProxy):
             node_ip_address,
             proxy_router_class,
             request_timeout_s=request_timeout_s,
-            controller_actor=controller_actor,
         )
         self.self_actor_handle = proxy_actor or ray.get_runtime_context().current_actor
         self.asgi_receive_queues: Dict[str, MessageQueue] = dict()
@@ -761,11 +762,13 @@ class HTTPProxy(GenericProxy):
     def protocol(self) -> RequestProtocol:
         return RequestProtocol.HTTP
 
-    async def not_found(self, proxy_request: ProxyRequest) -> ResponseGenerator:
+    async def not_found_response(
+        self, proxy_request: ProxyRequest
+    ) -> ResponseGenerator:
         status_code = 404
         for message in convert_object_to_asgi_messages(
             f"Path '{proxy_request.path}' not found. "
-            "Please ping http://.../-/routes for route table.",
+            "Ping http://.../-/routes for available routes.",
             status_code=status_code,
         ):
             yield message
@@ -792,20 +795,21 @@ class HTTPProxy(GenericProxy):
                 # For 2.x deployments, return {route -> app name}
                 if endpoint.app:
                     response[route] = endpoint.app
-                # Keep compatibility with 1.x deployments: return {route -> deployment name}
+                # Keep compatibility with 1.x deployments.
                 else:
                     response[route] = endpoint.name
         else:
             response = message
 
-        for message in convert_object_to_asgi_messages(
+        for asgi_message in convert_object_to_asgi_messages(
             response,
             status_code=status_code,
         ):
-            yield message
+            yield asgi_message
 
         yield ResponseStatus(
             code=status_code,
+            message=message,
             is_error=not healthy,
         )
 
@@ -813,15 +817,16 @@ class HTTPProxy(GenericProxy):
         self, *, healthy: bool, message: str = ""
     ) -> ResponseGenerator:
         status_code = 200 if healthy else 503
-        for message in convert_object_to_asgi_messages(
+        for asgi_message in convert_object_to_asgi_messages(
             message,
             status_code=status_code,
         ):
-            yield message
+            yield asgi_message
 
         yield ResponseStatus(
             code=status_code,
             is_error=not healthy,
+            message=message,
         )
 
     async def receive_asgi_messages(self, request_id: str) -> ResponseGenerator:
@@ -1113,6 +1118,7 @@ class ProxyActor:
             ray.get_actor(SERVE_CONTROLLER_NAME, namespace=SERVE_NAMESPACE),
             {
                 LongPollNamespace.GLOBAL_LOGGING_CONFIG: self._update_logging_config,
+                LongPollNamespace.ROUTE_TABLE: self._update_routes_in_proxies,
             },
             call_in_event_loop=get_or_create_event_loop(),
         )
@@ -1217,6 +1223,11 @@ class ProxyActor:
         self.running_task_grpc = get_or_create_event_loop().create_task(
             self.run_grpc_server()
         )
+
+    def _update_routes_in_proxies(self, endpoints: Dict[DeploymentID, EndpointInfo]):
+        self.http_proxy.update_routes(endpoints)
+        if self.grpc_proxy is not None:
+            self.grpc_proxy.update_routes(endpoints)
 
     def _update_logging_config(self, logging_config: LoggingConfig):
         configure_component_logger(

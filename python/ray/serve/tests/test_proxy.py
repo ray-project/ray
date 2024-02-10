@@ -1,7 +1,7 @@
 import asyncio
 import pickle
 import sys
-from typing import Dict
+from typing import Dict, List, Tuple
 from unittest.mock import AsyncMock
 
 import grpc
@@ -15,7 +15,15 @@ from ray.serve._private.constants import (
     DEFAULT_UVICORN_KEEP_ALIVE_TIMEOUT_S,
     SERVE_NAMESPACE,
 )
-from ray.serve._private.proxy import HTTPProxy, ResponseStatus, gRPCProxy
+from ray.serve._private.proxy import (
+    DRAINING_MESSAGE,
+    HEALTHY_MESSAGE,
+    NO_ROUTES_MESSAGE,
+    HTTPProxy,
+    ResponseGenerator,
+    ResponseStatus,
+    gRPCProxy,
+)
 from ray.serve._private.proxy_request_response import ProxyRequest
 from ray.serve._private.proxy_router import ProxyRouter
 from ray.serve._private.test_utils import FakeGrpcContext
@@ -50,18 +58,7 @@ class FakeRef:
         pass
 
 
-class FakeActorHandler:
-    def __init__(self, actor_id):
-        self._actor_id = actor_id
-
-    @property
-    def listen_for_change(self):
-        class FakeListenForChangeActorMethod:
-            def remote(self, snapshot_ids):
-                return FakeRef()
-
-        return FakeListenForChangeActorMethod()
-
+class FakeActorHandle:
     @property
     def receive_asgi_messages(self):
         class FakeReceiveASGIMessagesActorMethod:
@@ -125,22 +122,39 @@ class FakeProxyRouter(ProxyRouter):
 
 
 class FakeProxyRequest(ProxyRequest):
-    def __init__(self):
-        self._request_type = ""
-        self._method = ""
-        self._route_path = ""
-        self._is_route_request = False
-        self._is_health_request = False
-        self.app_name = ""
-        self.path = ""
+    def __init__(
+        self,
+        app_name: str = "",
+        method: str = "",
+        request_type: str = "",
+        path: str = "",
+        route_path: str = "",
+        is_health_request: bool = False,
+        is_route_request: bool = False,
+    ):
+        self._app_name = app_name
+        self._method = method
+        self._request_type = request_type
+        self._path = path
+        self._route_path = route_path
+        self._is_route_request = is_route_request
+        self._is_health_request = is_health_request
+
+    @property
+    def app_name(self) -> str:
+        return self._app_name
+
+    @property
+    def method(self) -> str:
+        return self._method
 
     @property
     def request_type(self) -> str:
         return self._request_type
 
     @property
-    def method(self) -> str:
-        return self._method
+    def path(self) -> str:
+        return self._path
 
     @property
     def route_path(self) -> str:
@@ -186,6 +200,21 @@ class FakeHttpSend:
         self.messages.append(message)
 
 
+async def _consume_proxy_generator(
+    gen: ResponseGenerator,
+) -> Tuple[ResponseStatus, List]:
+    status = None
+    messages = []
+    async for message in gen:
+        if isinstance(message, ResponseStatus):
+            status = message
+        else:
+            messages.append(message)
+
+    assert status is not None
+    return status, messages
+
+
 class TestgRPCProxy:
     """Test methods implemented on gRPCProxy"""
 
@@ -196,103 +225,129 @@ class TestgRPCProxy:
             node_id=node_id,
             node_ip_address=node_ip_address,
             proxy_router_class=FakeProxyRouter,
-            controller_actor=FakeActorHandler("fake_controller_actor"),
         )
 
     @pytest.mark.asyncio
-    async def test_not_found(self):
-        """Test gRPCProxy set up the correct not found response."""
+    async def test_not_found_response(self):
+        """Test gRPCProxy returns the correct not found response."""
         grpc_proxy = self.create_grpc_proxy()
+        grpc_proxy.update_routes({})
 
-        # Application name isn't provided.
-        proxy_request = FakeProxyRequest()
-        proxy_request.app_name = ""
-        gen = grpc_proxy.not_found(proxy_request)
-        status = await gen.__anext__()
-        with pytest.raises(StopAsyncIteration):
-            await gen.__anext__()
+        # Application name not provided.
+        status, _ = await _consume_proxy_generator(
+            grpc_proxy.proxy_request(
+                FakeProxyRequest(request_type="grpc", app_name=""),
+            )
+        )
 
-        assert isinstance(status, ResponseStatus)
         assert status.code == grpc.StatusCode.NOT_FOUND
         assert "Application metadata not set" in status.message
         assert status.is_error is True
 
         # Application name is provided but wasn't found.
-        proxy_request.app_name = "foobar"
-        gen = grpc_proxy.not_found(proxy_request)
-        status = await gen.__anext__()
-        with pytest.raises(StopAsyncIteration):
-            await gen.__anext__()
+        status, _ = await _consume_proxy_generator(
+            grpc_proxy.proxy_request(
+                FakeProxyRequest(request_type="grpc", app_name="foobar"),
+            )
+        )
 
-        assert isinstance(status, ResponseStatus)
         assert status.code == grpc.StatusCode.NOT_FOUND
         assert "Application 'foobar' not found" in status.message
         assert status.is_error is True
 
     @pytest.mark.asyncio
-    @pytest.mark.parametrize("healthy", [False, True])
-    async def test_routes_response(self, healthy: bool):
-        """Test gRPCProxy set up the correct routes response."""
+    @pytest.mark.parametrize("is_draining", [False, True])
+    @pytest.mark.parametrize("routes_updated", [False, True])
+    async def test_routes_response(self, is_draining: bool, routes_updated: bool):
+        """Test responses to the routes method.
+
+        The response should be an OK success unless:
+            - the route table hasn't been updated yet.
+            - the proxy is draining.
+        """
         grpc_proxy = self.create_grpc_proxy()
-        endpoint = EndpointTag("endpoint", "app1")
-        route_info = {"/route": endpoint}
-        grpc_proxy.route_info = route_info
+        if is_draining:
+            grpc_proxy.update_draining(True)
+        if routes_updated:
+            grpc_proxy.update_routes(
+                {DeploymentID(app="app", name="deployment"): EndpointInfo("/route")},
+            )
 
-        gen = grpc_proxy.routes_response(
-            healthy=healthy,
-            message="healthy" if healthy else "unhealthy",
+        status, [response_bytes] = await _consume_proxy_generator(
+            grpc_proxy.proxy_request(
+                FakeProxyRequest(
+                    request_type="grpc",
+                    is_route_request=True,
+                ),
+            )
         )
-        response = await gen.__anext__()
-        status = await gen.__anext__()
-        with pytest.raises(StopAsyncIteration):
-            await gen.__anext__()
 
-        assert isinstance(response, bytes)
         assert isinstance(status, ResponseStatus)
-        response_proto = serve_pb2.ListApplicationsResponse()
-        response_proto.ParseFromString(response)
+        response = serve_pb2.ListApplicationsResponse()
+        response.ParseFromString(response_bytes)
 
-        if healthy:
+        if not is_draining and routes_updated:
             assert status.code == grpc.StatusCode.OK
-            assert status.message == "healthy"
+            assert status.message == HEALTHY_MESSAGE
             assert status.is_error is False
-            assert response_proto.application_names == [endpoint.app]
+            assert response.application_names == ["app"]
+        elif not routes_updated:
+            assert status.code == grpc.StatusCode.UNAVAILABLE
+            assert status.message == NO_ROUTES_MESSAGE
+            assert status.is_error is True
+            assert response.application_names == []
         else:
             assert status.code == grpc.StatusCode.UNAVAILABLE
-            assert status.message == "unhealthy"
+            assert status.message == DRAINING_MESSAGE
             assert status.is_error is True
-            assert response_proto.application_names == []
+            assert response.application_names == []
 
     @pytest.mark.asyncio
-    @pytest.mark.parametrize("healthy", [False, True])
-    async def test_health_response(self, healthy: bool):
-        """Test gRPCProxy set up the correct health response."""
+    @pytest.mark.parametrize("is_draining", [False, True])
+    @pytest.mark.parametrize("routes_updated", [False, True])
+    async def test_health_response(self, is_draining: bool, routes_updated: bool):
+        """Test responses to the health method.
+
+        The response should be an OK success unless:
+            - the route table hasn't been updated yet.
+            - the proxy is draining.
+        """
         grpc_proxy = self.create_grpc_proxy()
+        if is_draining:
+            grpc_proxy.update_draining(True)
+        if routes_updated:
+            grpc_proxy.update_routes(
+                {},
+            )
 
-        gen = grpc_proxy.health_response(
-            healthy=healthy,
-            message="healthy" if healthy else "unhealthy",
+        status, [response_bytes] = await _consume_proxy_generator(
+            grpc_proxy.proxy_request(
+                FakeProxyRequest(
+                    request_type="grpc",
+                    is_health_request=True,
+                ),
+            )
         )
-        response = await gen.__anext__()
-        status = await gen.__anext__()
-        with pytest.raises(StopAsyncIteration):
-            await gen.__anext__()
 
-        assert isinstance(response, bytes)
         assert isinstance(status, ResponseStatus)
+        response = serve_pb2.HealthzResponse()
+        response.ParseFromString(response_bytes)
 
-        response_proto = serve_pb2.HealthzResponse()
-        response_proto.ParseFromString(response)
-        if healthy:
+        if not is_draining and routes_updated:
             assert status.code == grpc.StatusCode.OK
-            assert status.message == "healthy"
+            assert status.message == HEALTHY_MESSAGE
             assert status.is_error is False
-            assert response_proto.message == "healthy"
+            assert response.message == HEALTHY_MESSAGE
+        elif not routes_updated:
+            assert status.code == grpc.StatusCode.UNAVAILABLE
+            assert status.message == NO_ROUTES_MESSAGE
+            assert status.is_error is True
+            assert response.message == NO_ROUTES_MESSAGE
         else:
             assert status.code == grpc.StatusCode.UNAVAILABLE
-            assert status.message == "unhealthy"
+            assert status.message == DRAINING_MESSAGE
             assert status.is_error is True
-            assert response_proto.message == "unhealthy"
+            assert response.message == DRAINING_MESSAGE
 
     @pytest.mark.asyncio
     async def test_service_handler_factory(self):
@@ -346,6 +401,13 @@ class TestgRPCProxy:
 class TestHTTPProxy:
     """Test methods implemented on HTTPProxy"""
 
+    def _check_asgi_messages(
+        self, messages: List[Dict], *, status_code: int, body: str
+    ):
+        assert messages[0]["headers"] is not None
+        assert messages[0]["status"] == status_code
+        assert messages[1]["body"].decode("utf-8") == body
+
     def create_http_proxy(self):
         node_id = "fake-node_id"
         node_ip_address = "fake-node_ip_address"
@@ -353,32 +415,30 @@ class TestHTTPProxy:
             node_id=node_id,
             node_ip_address=node_ip_address,
             proxy_router_class=FakeProxyRouter,
-            controller_actor=FakeActorHandler("fake_controller_actor"),
-            proxy_actor=FakeActorHandler("fake_proxy_actor"),
+            proxy_actor=FakeActorHandle(),
         )
 
     @pytest.mark.asyncio
-    async def test_not_found(self):
-        """Test HTTPProxy set up the correct not found response."""
+    async def test_not_found_response(self):
+        """Test the response returned when a route is not found."""
         http_proxy = self.create_http_proxy()
-        proxy_request = FakeProxyRequest()
-        proxy_request.path = "/test"
-        gen = http_proxy.not_found(proxy_request)
-        status = None
-        messages = []
-        async for message in gen:
-            if isinstance(message, ResponseStatus):
-                status = message
-            else:
-                messages.append(message)
+        http_proxy.update_routes({})
 
-        assert messages[0]["headers"] is not None
-        assert messages[1]["body"] == (
-            b"Path '/test' not found. Please ping http://.../-/routes for route table."
+        status, messages = await _consume_proxy_generator(
+            http_proxy.proxy_request(
+                FakeProxyRequest(request_type="http", path="/not-found"),
+            )
         )
-        assert isinstance(status, ResponseStatus)
         assert status.code == 404
         assert status.is_error is True
+        self._check_asgi_messages(
+            messages,
+            status_code=404,
+            body=(
+                "Path '/not-found' not found. "
+                "Ping http://.../-/routes for available routes."
+            ),
+        )
 
     @pytest.mark.asyncio
     async def test_timeout_response(self):
@@ -407,68 +467,89 @@ class TestHTTPProxy:
         assert status.is_error is True
 
     @pytest.mark.asyncio
-    @pytest.mark.parametrize("healthy", [False, True])
-    async def test_routes_response(self, healthy: bool):
-        """Test HTTPProxy set up the correct routes response."""
+    @pytest.mark.parametrize("is_draining", [False, True])
+    @pytest.mark.parametrize("routes_updated", [False, True])
+    async def test_routes_response(self, is_draining: bool, routes_updated: bool):
+        """Test responses to the routes method.
+
+        The response should be a 200 success unless:
+            - the route table hasn't been updated yet.
+            - the proxy is draining.
+        """
         http_proxy = self.create_http_proxy()
-        endpoint = EndpointTag("endpoint", "app1")
-        route_info = {"/route": endpoint}
-        http_proxy.route_info = route_info
-        gen = http_proxy.routes_response(
-            healthy=healthy, message="healthy" if healthy else "unhealthy"
+        if is_draining:
+            http_proxy.update_draining(True)
+        if routes_updated:
+            http_proxy.update_routes(
+                {DeploymentID(app="app", name="deployment"): EndpointInfo("/route")},
+            )
+
+        status, messages = await _consume_proxy_generator(
+            http_proxy.proxy_request(
+                FakeProxyRequest(
+                    request_type="http",
+                    is_route_request=True,
+                ),
+            )
         )
 
-        status = None
-        messages = []
-        async for message in gen:
-            if isinstance(message, ResponseStatus):
-                status = message
-            else:
-                messages.append(message)
-
-        assert isinstance(status, ResponseStatus)
-        assert messages[0]["headers"] is not None
-
-        if healthy:
-            assert '{"/route":"app1"}' in str(messages[1]["body"])
+        if not is_draining and routes_updated:
             assert status.code == 200
             assert status.is_error is False
-        else:
-            assert messages[1]["body"] == b"unhealthy"
+            assert status.message == HEALTHY_MESSAGE
+            self._check_asgi_messages(
+                messages, status_code=200, body='{"/route":"app"}'
+            )
+        elif not routes_updated:
             assert status.code == 503
             assert status.is_error is True
+            assert status.message == NO_ROUTES_MESSAGE
+            self._check_asgi_messages(messages, status_code=503, body=NO_ROUTES_MESSAGE)
+        else:
+            assert status.code == 503
+            assert status.is_error is True
+            assert status.message == DRAINING_MESSAGE
+            self._check_asgi_messages(messages, status_code=503, body=DRAINING_MESSAGE)
 
     @pytest.mark.asyncio
-    @pytest.mark.parametrize("healthy", [False, True])
-    async def test_health_response(self, healthy: bool):
-        """Test HTTPProxy set up the correct health response."""
+    @pytest.mark.parametrize("is_draining", [False, True])
+    @pytest.mark.parametrize("routes_updated", [False, True])
+    async def test_health_response(self, is_draining: bool, routes_updated: bool):
+        """Test responses to the health check method.
+
+        The response should be a 200 success unless:
+            - the route table hasn't been updated yet.
+            - the proxy is draining.
+        """
         http_proxy = self.create_http_proxy()
+        if is_draining:
+            http_proxy.update_draining(True)
+        if routes_updated:
+            http_proxy.update_routes({})
 
-        gen = http_proxy.health_response(
-            healthy=healthy,
-            message="healthy" if healthy else "unhealthy",
+        status, messages = await _consume_proxy_generator(
+            http_proxy.proxy_request(
+                FakeProxyRequest(
+                    request_type="http",
+                    is_health_request=True,
+                ),
+            )
         )
-
-        status = None
-        messages = []
-        async for message in gen:
-            if isinstance(message, ResponseStatus):
-                status = message
-            else:
-                messages.append(message)
-
-        assert isinstance(status, ResponseStatus)
-        assert messages[0]["headers"] is not None
-
-        if healthy:
+        if not is_draining and routes_updated:
             assert status.code == 200
             assert status.is_error is False
-            assert messages[0]["status"] == 200
-            assert messages[0]["headers"] is not None
-            assert messages[1]["body"] == b"healthy"
+            assert status.message == HEALTHY_MESSAGE
+            self._check_asgi_messages(messages, status_code=200, body=HEALTHY_MESSAGE)
+        elif not routes_updated:
+            assert status.code == 503
+            assert status.is_error is True
+            assert status.message == NO_ROUTES_MESSAGE
+            self._check_asgi_messages(messages, status_code=503, body=NO_ROUTES_MESSAGE)
         else:
-            assert messages[0]["status"] == 503
-            assert messages[1]["body"] == b"unhealthy"
+            assert status.code == 503
+            assert status.is_error is True
+            assert status.message == DRAINING_MESSAGE
+            self._check_asgi_messages(messages, status_code=503, body=DRAINING_MESSAGE)
 
     @pytest.mark.asyncio
     async def test_receive_asgi_messages(self):
@@ -597,6 +678,34 @@ class TestHTTPProxy:
         )
         # Ensure after calling __call__, send.messages should be expected messages.
         assert send.messages == expected_messages
+
+    @pytest.mark.asyncio
+    async def test_health_request_errors_until_route_table_updated(self):
+        """Health endpoint should error until `update_routes` has been called."""
+        http_proxy = self.create_http_proxy()
+        proxy_request = FakeProxyRequest(
+            request_type="http",
+            is_health_request=True,
+        )
+
+        status, messages = await _consume_proxy_generator(
+            http_proxy.proxy_request(proxy_request)
+        )
+        assert status.code == 503
+        assert status.is_error is True
+        assert status.message == NO_ROUTES_MESSAGE
+        self._check_asgi_messages(messages, status_code=503, body=NO_ROUTES_MESSAGE)
+
+        # Update route table, response should no longer error (even if empty).
+        http_proxy.update_routes({})
+
+        status, messages = await _consume_proxy_generator(
+            http_proxy.proxy_request(proxy_request)
+        )
+        assert status.code == 200
+        assert status.is_error is False
+        assert status.message == HEALTHY_MESSAGE
+        self._check_asgi_messages(messages, status_code=200, body=HEALTHY_MESSAGE)
 
 
 class TestTimeoutKeepAliveConfig:
