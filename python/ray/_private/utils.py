@@ -603,7 +603,10 @@ def get_num_cpus(
 
 # TODO(clarng): merge code with c++
 def get_cgroup_used_memory(
-    memory_stat_filename, memory_usage_filename, inactive_file_key, active_file_key
+    memory_stat_filename: str,
+    memory_usage_filename: str,
+    inactive_file_key: str,
+    active_file_key: str,
 ):
     """
     The calculation logic is the same with `GetCGroupMemoryUsedBytes`
