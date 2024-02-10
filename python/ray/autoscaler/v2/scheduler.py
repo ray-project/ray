@@ -579,29 +579,32 @@ class ResourceDemandScheduler(IResourceScheduler):
             ]
 
     def schedule(self, request: SchedulingRequest) -> SchedulingReply:
-        self._init_context(request)
+        ctx = ResourceDemandScheduler.ScheduleContext.from_schedule_request(request)
 
         # Enforce the minimal count of nodes for each worker node type.
-        self._enforce_min_workers_per_type()
+        ResourceDemandScheduler._enforce_min_workers_per_type(ctx)
 
         # Enforce the max worker nodes count.
-        self._enforce_max_workers_per_type()
+        ResourceDemandScheduler._enforce_max_workers_per_type(ctx)
 
         # Enforce the max worker nodes count globally.
-        self._enforce_max_workers_global()
+        ResourceDemandScheduler._enforce_max_workers_global(ctx)
 
         # Enforce the cluster resource constraints.
-        infeasible_constraints = self._enforce_resource_constraints(
-            request.cluster_resource_constraints
+        infeasible_constraints = ResourceDemandScheduler._enforce_resource_constraints(
+            ctx, request.cluster_resource_constraints
         )
 
         # Schedule the gang resource requests.
-        infeasible_gang_requests = self._sched_gang_resource_requests(
-            request.gang_resource_requests
+        infeasible_gang_requests = (
+            ResourceDemandScheduler._sched_gang_resource_requests(
+                ctx, request.gang_resource_requests
+            )
         )
 
         # Schedule the tasks/actor resource requests
-        infeasible_requests = self._sched_resource_requests(
+        infeasible_requests = ResourceDemandScheduler._sched_resource_requests(
+            ctx,
             request.resource_requests,
         )
 
@@ -612,22 +615,22 @@ class ResourceDemandScheduler(IResourceScheduler):
             ),
             infeasible_gang_resource_requests=infeasible_gang_requests,
             infeasible_cluster_resource_constraints=infeasible_constraints,
-            to_launch=self._ctx.get_launch_requests(),
-            to_terminate=self._ctx.get_terminate_requests(),
+            to_launch=ctx.get_launch_requests(),
+            to_terminate=ctx.get_terminate_requests(),
         )
 
         return reply
 
-    def _init_context(self, request: SchedulingRequest) -> None:
-        self._ctx = self.ScheduleContext.from_schedule_request(request)
-
-    def _enforce_max_workers_per_type(self) -> None:
+    @staticmethod
+    def _enforce_max_workers_per_type(
+        ctx: "ResourceDemandScheduler.ScheduleContext",
+    ) -> None:
         """
         Enforce the max number of workers for each node type.
         """
 
         # Get all the nodes by type
-        all_nodes = self._ctx.get_nodes()
+        all_nodes = ctx.get_nodes()
 
         non_terminating_nodes_by_type = defaultdict(list)
         terminating_nodes = []
@@ -641,7 +644,7 @@ class ResourceDemandScheduler(IResourceScheduler):
         # Step 1. Enforce the max number of workers for each node type.
         for node_type in non_terminating_nodes_by_type.keys():
             non_terminate_nodes_of_type = non_terminating_nodes_by_type[node_type]
-            node_config = self._ctx.get_node_type_configs().get(node_type, None)
+            node_config = ctx.get_node_type_configs().get(node_type, None)
             num_max_nodes_per_type = node_config.max_worker_nodes if node_config else 0
             num_extra_nodes = len(non_terminate_nodes_of_type) - num_max_nodes_per_type
 
@@ -649,11 +652,11 @@ class ResourceDemandScheduler(IResourceScheduler):
                 # No extra nodes for this type, continue.
                 continue
 
-            # Sort the instances for termination.
-            non_terminate_nodes_of_type.sort(key=self._sort_nodes_for_termination)
-
             # Terminate the nodes
-            to_terminate, remained_nodes = self._select_nodes_to_terminate(
+            (
+                to_terminate,
+                remained_nodes,
+            ) = ResourceDemandScheduler._select_nodes_to_terminate(
                 non_terminate_nodes_of_type,
                 num_extra_nodes,
                 TerminationRequest.Cause.MAX_NUM_NODE_PER_TYPE,
@@ -672,18 +675,21 @@ class ResourceDemandScheduler(IResourceScheduler):
             terminating_nodes + non_terminating_nodes
         ), "The number of nodes should be the same after enforcing max nodes per type."
 
-        self._ctx.update(terminating_nodes + non_terminating_nodes)
+        ctx.update(terminating_nodes + non_terminating_nodes)
 
         logger.debug(
             f"Enforced max nodes per type: terminating {len(terminating_nodes)} "
             "for per node type max num node's constraints."
         )
 
-    def _enforce_max_workers_global(self) -> None:
+    @staticmethod
+    def _enforce_max_workers_global(
+        ctx: "ResourceDemandScheduler.ScheduleContext",
+    ) -> None:
         """
         Enforce the max number of workers for the entire cluster.
         """
-        all_nodes = self._ctx.get_nodes()
+        all_nodes = ctx.get_nodes()
 
         terminating_nodes = []
         non_terminating_nodes = []
@@ -694,7 +700,7 @@ class ResourceDemandScheduler(IResourceScheduler):
             else:
                 non_terminating_nodes.append(node)
 
-        num_max_nodes = self._ctx.get_max_num_nodes()
+        num_max_nodes = ctx.get_max_num_nodes()
 
         num_to_terminate = (
             max(len(non_terminating_nodes) - num_max_nodes, 0) if num_max_nodes else 0
@@ -704,9 +710,11 @@ class ResourceDemandScheduler(IResourceScheduler):
             # No extra nodes needed to terminate.
             return
 
-        non_terminating_nodes.sort(key=self._sort_nodes_for_termination)
         # Terminate the nodes
-        to_terminate_nodes, non_terminating_nodes = self._select_nodes_to_terminate(
+        (
+            to_terminate_nodes,
+            non_terminating_nodes,
+        ) = ResourceDemandScheduler._select_nodes_to_terminate(
             non_terminating_nodes,
             num_to_terminate,
             TerminationRequest.Cause.MAX_NUM_NODES,
@@ -735,9 +743,9 @@ class ResourceDemandScheduler(IResourceScheduler):
         ), "The number of nodes should be the same after enforcing max nodes."
 
         all_nodes = terminating_nodes + non_terminating_nodes
-        self._ctx.update(all_nodes)
+        ctx.update(all_nodes)
         logger.debug(
-            "After enforced max nodes for global num nodes limit : {}".format(self._ctx)
+            "After enforced max nodes for global num nodes limit : {}".format(ctx)
         )
 
     @staticmethod
@@ -771,6 +779,9 @@ class ResourceDemandScheduler(IResourceScheduler):
                 - The terminated nodes.
                 - The remained nodes.
         """
+
+        # Sort the nodes for termination.
+        nodes.sort(key=ResourceDemandScheduler._sort_nodes_for_termination)
 
         terminated_nodes, remained_nodes = (
             nodes[:num_to_terminate],
@@ -829,21 +840,24 @@ class ResourceDemandScheduler(IResourceScheduler):
 
         return (running_ray, idle_dur, avg_util)
 
-    def _enforce_min_workers_per_type(self) -> None:
+    @staticmethod
+    def _enforce_min_workers_per_type(
+        ctx: "ResourceDemandScheduler.ScheduleContext",
+    ) -> None:
         """
         Enforce the minimal count of nodes for each worker node type.
         """
 
         # Count the existing nodes by type
-        count_by_node_type = self._ctx.get_cluster_shape()
-        logger.debug("Enforcing min workers: {}".format(self._ctx))
+        count_by_node_type = ctx.get_cluster_shape()
+        logger.debug("Enforcing min workers: {}".format(ctx))
 
         new_nodes = []
         # Launch new nodes to satisfy min count for each node type.
         for (
             node_type,
             node_type_config,
-        ) in self._ctx.get_node_type_configs().items():
+        ) in ctx.get_node_type_configs().items():
             cur_count = count_by_node_type.get(node_type, 0)
             min_count = node_type_config.min_worker_nodes
             if cur_count < min_count:
@@ -860,17 +874,19 @@ class ResourceDemandScheduler(IResourceScheduler):
         # should not exceed any globally enforced max_num_nodes
 
         # Add the new nodes to the existing nodes and update the context.
-        self._ctx.update(new_nodes + self._ctx.get_nodes())
-        logger.debug("After enforced min workers: {}".format(self._ctx))
+        ctx.update(new_nodes + ctx.get_nodes())
+        logger.debug("After enforced min workers: {}".format(ctx))
 
+    @staticmethod
     def _enforce_resource_constraints(
-        self,
+        ctx: "ResourceDemandScheduler.ScheduleContext",
         constraints: List[ClusterResourceConstraint],
     ) -> List[ClusterResourceConstraint]:
         """
         Enforce the cluster resource constraints.
 
         Args:
+            ctx: The schedule context.
             constraints: The cluster resource constraints.
 
         Returns:
@@ -883,14 +899,16 @@ class ResourceDemandScheduler(IResourceScheduler):
         """
         return []
 
+    @staticmethod
     def _sched_resource_requests(
-        self,
+        ctx: "ResourceDemandScheduler.ScheduleContext",
         requests_by_count: List[ResourceRequestByCount],
     ) -> List[ResourceRequest]:
         """
         Schedule the resource requests.
 
         Args:
+            ctx: The schedule context.
             requests_by_count: The resource requests.
 
         Returns:
@@ -913,8 +931,9 @@ class ResourceDemandScheduler(IResourceScheduler):
         )
         return infeasible
 
+    @staticmethod
     def _sched_gang_resource_requests(
-        self,
+        ctx: "ResourceDemandScheduler.ScheduleContext",
         gang_requests: List[GangResourceRequest],
     ) -> List[GangResourceRequest]:
         """
@@ -924,6 +943,7 @@ class ResourceDemandScheduler(IResourceScheduler):
         requests in a gang request are scheduled or none of them are scheduled.
 
         Args:
+            ctx: The schedule context.
             gang_requests: The gang resource requests.
 
         Returns:
