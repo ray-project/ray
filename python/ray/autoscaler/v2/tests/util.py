@@ -15,6 +15,13 @@ def make_autoscaler_instance(
     ray_node: Optional[autoscaler_pb2.NodeState] = None,
     cloud_instance_id: Optional[str] = None,
 ) -> AutoscalerInstance:
+
+    if cloud_instance_id:
+        if im_instance:
+            im_instance.cloud_instance_id = cloud_instance_id
+        if ray_node:
+            ray_node.instance_id = cloud_instance_id
+
     return AutoscalerInstance(
         im_instance=im_instance,
         ray_node=ray_node,
@@ -41,6 +48,7 @@ def create_instance(
     status_times: List[Tuple["Instance.InstanceStatus", int]] = None,
     launch_request_id="",
     version=0,
+    cloud_instance_id="",
 ):
     return Instance(
         instance_id=instance_id,
@@ -54,6 +62,7 @@ def create_instance(
         ]
         if status_times
         else [],
+        cloud_instance_id=cloud_instance_id,
     )
 
 
