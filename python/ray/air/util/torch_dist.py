@@ -16,8 +16,7 @@ from typing import Callable, List, T
 import ray
 from ray.actor import ActorHandle
 from ray.train._internal.utils import get_address_and_port
-from ray.train.constants import DEFAULT_NCCL_SOCKET_IFNAME
-from ray.air._internal.torch_utils import get_device
+from ray.air._internal.torch_utils import get_devices
 
 
 class TorchDistributedWorker(ABC):
@@ -69,8 +68,6 @@ def _init_torch_distributed(
         # All workers on a same node should share the same set of
         # visible GPUs. Otherwise they can't talk among themselves.
         os.environ["CUDA_VISIBLE_DEVICES"] = ",".join(str(gid) for gid in gpu_ids)
-        if "NCCL_SOCKET_IFNAME" not in os.environ:
-            os.environ["NCCL_SOCKET_IFNAME"] = DEFAULT_NCCL_SOCKET_IFNAME
 
     init_process_group_kwargs.update(
         dict(
@@ -183,9 +180,7 @@ def _shutdown_torch_distributed():
         return
 
     # Clean up cuda memory.
-    devices = get_device()
-    if not isinstance(devices, list):
-        devices = [devices]
+    devices = get_devices()
     for device in devices:
         with torch.cuda.device(device):
             torch.cuda.empty_cache()
