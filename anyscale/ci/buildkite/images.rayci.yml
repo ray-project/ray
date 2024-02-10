@@ -1,0 +1,135 @@
+group: runtime images
+steps:
+  - label: ":tapioca: go download helper"
+    key: runtime-helper
+    instance_type: small
+    commands:
+      - bash anyscale/go/build-on-buildkite.sh
+    depends_on:
+      - forge
+    job_env: forge
+    tags: docker
+
+  - label: ":tapioca: runtime py{{matrix}} wheel"
+    key: runtime-wheels
+    commands:
+      - bazel run //ci/ray_ci:build_in_docker -- wheel --python-version {{matrix}}
+      - bash anyscale/ci/upload-wheels.sh
+    instance_type: medium
+    depends_on:
+      - manylinux
+      - forge
+    job_env: forge
+    tags: docker
+    matrix:
+      - "3.8"
+      - "3.9"
+      - "3.10"
+      - "3.11"
+
+  - label: ":tapioca: runtime py{{matrix.py}} {{matrix.base}} image"
+    tags: docker
+    commands:
+      - bash anyscale/ci/build-ray-image.sh {{matrix.py}} {{matrix.base}}
+    instance_type: medium
+    depends_on:
+      - runtime-wheels
+      - runtime-helper
+      - raycpubase
+      - raycudabase
+    job_env: forge
+    mount_buildkite_agent: true
+    matrix:
+      setup:
+        py:
+          - "3.8"
+          - "3.9"
+          - "3.10"
+          - "3.11"
+        base:
+          - "cpu"
+          - "cu11.8.0"
+          - "cu12.1.1"
+
+  - label: ":tapioca: runtime py{{matrix.py}} {{matrix.base}} image"
+    if: build.env("RUNTIME_BUILD_ALL") == "true"
+    tags: docker
+    commands:
+      - bash anyscale/ci/build-ray-image.sh {{matrix.py}} {{matrix.base}}
+    instance_type: medium
+    depends_on:
+      - runtime-wheels
+      - runtime-helper
+      - raycpubase
+      - raycudabase
+    job_env: forge
+    mount_buildkite_agent: true
+    matrix:
+      setup:
+        py:
+          - "3.8"
+          - "3.9"
+          - "3.10"
+          - "3.11"
+        base:
+          - "cu11.5.2"
+          - "cu11.6.2"
+          - "cu11.7.1"
+
+  - label: ":tapioca: runtime ml py{{matrix.py}} {{matrix.base}} image"
+    tags: docker
+    commands:
+      - bash anyscale/ci/build-ray-image.sh {{matrix.py}} {{matrix.base}} ray-ml
+    instance_type: medium
+    depends_on:
+      - runtime-wheels
+      - runtime-helper
+      - ray-mlcpubase
+      - ray-mlcudabase
+    job_env: forge
+    mount_buildkite_agent: true
+    matrix:
+      setup:
+        py:
+          - "3.8"
+          - "3.9"
+          - "3.10"
+        base:
+          - "cpu"
+          - "cu11.8.0"
+
+  - wait: ~
+    tags: docker
+
+  - label: ":tapioca: check runtime site package tarball"
+    tags: docker
+    commands:
+      - bash anyscale/ci/check-ray-site-pkg.sh
+    instance_type: small
+    job_env: forge
+
+  - wait: ~
+    tags: docker
+
+  # We skip production and predeploy; will copy them on final image
+  # building. We need to copy to staging for release tests to run.
+  - label: ":tapioca: upload runtime site package tarball {{matrix}}"
+    tags: docker
+    commands:
+      - bash anyscale/ci/upload-ray-site-pkg.sh {{matrix}}
+    instance_type: small
+    job_env: forge
+    matrix:
+      - development
+      - staging
+
+  - label: ":tapioca: upload runtime site package tarball {{matrix}}"
+    if: build.env("RUNTIME_BUILD_ALL") == "true"
+    tags: docker
+    commands:
+      - bash anyscale/ci/upload-ray-site-pkg.sh {{matrix}}
+    instance_type: small
+    job_env: forge
+    matrix:
+      - predeploy
+      - production
