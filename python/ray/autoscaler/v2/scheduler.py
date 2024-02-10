@@ -177,9 +177,8 @@ class SchedulingNode:
         Try to schedule the resource requests on this node.
 
         This modifies the node's available resources if the requests are schedulable.
-        When iterating through the requests, the requests are sorted by the
-        `_sort_resource_request` function. The requests are scheduled one by one in
-        the sorted order, and no backtracking is done.
+        The requests are scheduled one by one in the sorted order, and no
+        backtracking is done.
 
         Args:
             requests: The resource requests to be scheduled.
@@ -193,23 +192,8 @@ class SchedulingNode:
         # Track the resource requests that cannot be scheduled on this node.
         unschedulable_requests = []
 
-        def _sort_resource_request(req: ResourceRequest) -> Tuple:
-            """
-            Sort the resource requests by:
-                1. The length of it's placement constraints.
-                2. The number of resources it requests.
-                3. The values of resources it requests.
-                4. lexicographically for each resource (for stable ordering)
-            """
-            return (
-                len(req.placement_constraints),
-                len(req.resources_bundle.values()),
-                sum(req.resources_bundle.values()),
-                sorted(req.resources_bundle.items()),
-            )
-
         # Sort the requests and try schedule them one by one.
-        for r in sorted(requests, key=_sort_resource_request, reverse=True):
+        for r in requests:
             if not self._try_schedule_one(r):
                 unschedulable_requests.append(r)
 
@@ -920,13 +904,14 @@ class ResourceDemandScheduler(IResourceScheduler):
             )
         )
         requests = ResourceRequestUtil.ungroup_by_count(requests_by_count)
-        nodes, infeasible = self._try_schedule(requests)
+
+        nodes, infeasible = ResourceDemandScheduler._try_schedule(ctx, requests)
 
         # Regardless if there's feasible, we will update the context for schedule nodes.
-        self._ctx.update(nodes)
+        ctx.update(nodes)
 
         logger.info(
-            f"Resource requests scheduled: {self._ctx}, "
+            f"Resource requests scheduled: {ctx}, "
             f"infeasible: {ResourceRequestUtil.to_dict_list(infeasible)}"
         )
         return infeasible
@@ -951,8 +936,9 @@ class ResourceDemandScheduler(IResourceScheduler):
         """
         return []
 
+    @staticmethod
     def _try_schedule(
-        self,
+        ctx: "ResourceDemandScheduler.ScheduleContext",
         requests_to_sched: List[ResourceRequest],
     ) -> Tuple[List[SchedulingNode], List[ResourceRequest]]:
         """
@@ -970,8 +956,32 @@ class ResourceDemandScheduler(IResourceScheduler):
                 scheduled.
             - List of infeasible requests remained that cannot be scheduled.
         """
-        existing_nodes = self._ctx.get_nodes()
-        node_type_available = self._ctx.get_node_type_available()
+        # First sort the requests.
+        def _sort_resource_request(req: ResourceRequest) -> Tuple:
+            """
+            Sort the resource requests by:
+                1. The length of it's placement constraints.
+                2. The number of resources it requests.
+                3. The values of resources it requests.
+                4. lexicographically for each resource (for stable ordering)
+
+            This is a legacy sorting function for the autoscaler's binpacking
+            algo - we do this so that we could have a deterministic scheduling
+            results with reasonable fragmentation.
+            """
+            return (
+                len(req.placement_constraints),
+                len(req.resources_bundle.values()),
+                sum(req.resources_bundle.values()),
+                sorted(req.resources_bundle.items()),
+            )
+
+        requests_to_sched = sorted(
+            requests_to_sched, key=_sort_resource_request, reverse=True
+        )
+
+        existing_nodes = ctx.get_nodes()
+        node_type_available = ctx.get_node_type_available()
 
         # A list of nodes that are either:
         #   1. existing nodes in the cluster. or
@@ -980,7 +990,11 @@ class ResourceDemandScheduler(IResourceScheduler):
 
         # Try scheduling resource requests with existing nodes first.
         while len(requests_to_sched) > 0 and len(existing_nodes) > 0:
-            best_node, requests_to_sched, existing_nodes = self._sched_best_node(
+            (
+                best_node,
+                requests_to_sched,
+                existing_nodes,
+            ) = ResourceDemandScheduler._sched_best_node(
                 requests_to_sched, existing_nodes
             )
             if best_node is None:
@@ -995,7 +1009,7 @@ class ResourceDemandScheduler(IResourceScheduler):
         # Try scheduling resource requests with new nodes.
         node_pools = [
             SchedulingNode.from_node_config(
-                self._ctx.get_node_type_configs()[node_type],
+                ctx.get_node_type_configs()[node_type],
                 status=SchedulingNodeStatus.TO_LAUNCH,
             )
             for node_type, num_available in node_type_available.items()
@@ -1003,7 +1017,7 @@ class ResourceDemandScheduler(IResourceScheduler):
         ]
         while len(requests_to_sched) > 0 and len(node_pools) > 0:
             # Max number of nodes reached.
-            max_num_nodes = self._ctx.get_max_num_nodes()
+            max_num_nodes = ctx.get_max_num_nodes()
             if max_num_nodes is not None and len(target_nodes) >= max_num_nodes:
                 logger.debug(
                     "Max number of nodes reached: {}, "
@@ -1011,9 +1025,11 @@ class ResourceDemandScheduler(IResourceScheduler):
                 )
                 break
 
-            best_node, requests_to_sched, node_pools = self._sched_best_node(
-                requests_to_sched, node_pools
-            )
+            (
+                best_node,
+                requests_to_sched,
+                node_pools,
+            ) = ResourceDemandScheduler._sched_best_node(requests_to_sched, node_pools)
             if best_node is None:
                 break
 
@@ -1024,15 +1040,17 @@ class ResourceDemandScheduler(IResourceScheduler):
             if node_type_available[best_node.node_type] > 0:
                 node_pools.append(
                     SchedulingNode.from_node_config(
-                        self._ctx.get_node_type_configs()[best_node.node_type],
+                        ctx.get_node_type_configs()[best_node.node_type],
                         status=SchedulingNodeStatus.TO_LAUNCH,
                     )
                 )
 
         return target_nodes, requests_to_sched
 
+    @staticmethod
     def _sched_best_node(
-        self, requests: List[ResourceRequest], nodes: List[SchedulingNode]
+        requests: List[ResourceRequest],
+        nodes: List[SchedulingNode],
     ) -> Tuple[SchedulingNode, List[ResourceRequest], List[SchedulingNode]]:
         """
         Schedule the requests on the best node.
