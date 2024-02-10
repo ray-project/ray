@@ -15,13 +15,7 @@ from ray.serve._private.constants import (
     DEFAULT_UVICORN_KEEP_ALIVE_TIMEOUT_S,
     SERVE_NAMESPACE,
 )
-from ray.serve._private.proxy import (
-    DRAINED_MESSAGE,
-    HEALTH_CHECK_SUCCESS_MESSAGE,
-    HTTPProxy,
-    ResponseStatus,
-    gRPCProxy,
-)
+from ray.serve._private.proxy import HTTPProxy, ResponseStatus, gRPCProxy
 from ray.serve._private.proxy_request_response import ProxyRequest
 from ray.serve._private.proxy_router import ProxyRouter
 from ray.serve._private.test_utils import FakeGrpcContext
@@ -236,67 +230,69 @@ class TestgRPCProxy:
         assert status.is_error is True
 
     @pytest.mark.asyncio
-    async def test_draining_response(self):
-        """Test gRPCProxy set up the correct draining response."""
-        grpc_proxy = self.create_grpc_proxy()
-        proxy_request = FakeProxyRequest()
-        proxy_request.app_name = ""
-
-        gen = grpc_proxy.draining_response(proxy_request)
-        message = await gen.__anext__()
-        status = await gen.__anext__()
-        with pytest.raises(StopAsyncIteration):
-            await gen.__anext__()
-
-        assert isinstance(message, bytes)
-        assert isinstance(status, ResponseStatus)
-        assert status.code == grpc.StatusCode.UNAVAILABLE
-        assert status.message == DRAINED_MESSAGE
-        assert status.is_error is True
-
-    @pytest.mark.asyncio
-    async def test_routes_response(self):
+    @pytest.mark.parametrize("healthy", [False, True])
+    async def test_routes_response(self, healthy: bool):
         """Test gRPCProxy set up the correct routes response."""
         grpc_proxy = self.create_grpc_proxy()
         endpoint = EndpointTag("endpoint", "app1")
         route_info = {"/route": endpoint}
         grpc_proxy.route_info = route_info
-        proxy_request = FakeProxyRequest()
 
-        gen = grpc_proxy.routes_response(proxy_request)
-        message = await gen.__anext__()
+        gen = grpc_proxy.routes_response(
+            healthy=healthy,
+            message="healthy" if healthy else "unhealthy",
+        )
+        response = await gen.__anext__()
         status = await gen.__anext__()
         with pytest.raises(StopAsyncIteration):
             await gen.__anext__()
 
-        assert isinstance(message, bytes)
+        assert isinstance(response, bytes)
         assert isinstance(status, ResponseStatus)
-        assert status.code == grpc.StatusCode.OK
-        assert status.message == HEALTH_CHECK_SUCCESS_MESSAGE
-        assert status.is_error is False
         response_proto = serve_pb2.ListApplicationsResponse()
-        response_proto.ParseFromString(message)
-        assert response_proto.application_names == [endpoint.app]
+        response_proto.ParseFromString(response)
+
+        if healthy:
+            assert status.code == grpc.StatusCode.OK
+            assert status.message == "healthy"
+            assert status.is_error is False
+            assert response_proto.application_names == [endpoint.app]
+        else:
+            assert status.code == grpc.StatusCode.UNAVAILABLE
+            assert status.message == "unhealthy"
+            assert status.is_error is True
+            assert response_proto.application_names == []
 
     @pytest.mark.asyncio
-    async def test_health_response(self):
+    @pytest.mark.parametrize("healthy", [False, True])
+    async def test_health_response(self, healthy: bool):
         """Test gRPCProxy set up the correct health response."""
         grpc_proxy = self.create_grpc_proxy()
-        proxy_request = FakeProxyRequest()
-        gen = grpc_proxy.health_response(proxy_request)
-        message = await gen.__anext__()
+
+        gen = grpc_proxy.health_response(
+            healthy=healthy,
+            message="healthy" if healthy else "unhealthy",
+        )
+        response = await gen.__anext__()
         status = await gen.__anext__()
         with pytest.raises(StopAsyncIteration):
             await gen.__anext__()
 
-        assert isinstance(message, bytes)
+        assert isinstance(response, bytes)
         assert isinstance(status, ResponseStatus)
-        assert status.code == grpc.StatusCode.OK
-        assert status.message == HEALTH_CHECK_SUCCESS_MESSAGE
-        assert status.is_error is False
+
         response_proto = serve_pb2.HealthzResponse()
-        response_proto.ParseFromString(message)
-        assert response_proto.message == HEALTH_CHECK_SUCCESS_MESSAGE
+        response_proto.ParseFromString(response)
+        if healthy:
+            assert status.code == grpc.StatusCode.OK
+            assert status.message == "healthy"
+            assert status.is_error is False
+            assert response_proto.message == "healthy"
+        else:
+            assert status.code == grpc.StatusCode.UNAVAILABLE
+            assert status.message == "unhealthy"
+            assert status.is_error is True
+            assert response_proto.message == "unhealthy"
 
     @pytest.mark.asyncio
     async def test_service_handler_factory(self):
@@ -366,6 +362,7 @@ class TestHTTPProxy:
         """Test HTTPProxy set up the correct not found response."""
         http_proxy = self.create_http_proxy()
         proxy_request = FakeProxyRequest()
+        proxy_request.path = "/test"
         gen = http_proxy.not_found(proxy_request)
         status = None
         messages = []
@@ -375,45 +372,20 @@ class TestHTTPProxy:
             else:
                 messages.append(message)
 
-        not_found_message = "Please ping http://.../-/routes for route table."
-        assert any([message.get("headers") is not None for message in messages])
-        assert any(
-            [not_found_message in str(message.get("body")) for message in messages]
+        assert messages[0]["headers"] is not None
+        assert messages[1]["body"] == (
+            b"Path '/test' not found. Please ping http://.../-/routes for route table."
         )
         assert isinstance(status, ResponseStatus)
         assert status.code == 404
         assert status.is_error is True
 
     @pytest.mark.asyncio
-    async def test_draining_response(self):
-        """Test HTTPProxy set up the correct draining response."""
-        http_proxy = self.create_http_proxy()
-        proxy_request = FakeProxyRequest()
-        gen = http_proxy.draining_response(proxy_request)
-        status = None
-        messages = []
-        async for message in gen:
-            if isinstance(message, ResponseStatus):
-                status = message
-            else:
-                messages.append(message)
-
-        assert any([message.get("headers") is not None for message in messages])
-        assert any(
-            [DRAINED_MESSAGE in str(message.get("body")) for message in messages]
-        )
-        assert isinstance(status, ResponseStatus)
-        assert status.code == 503
-        assert status.is_error is True
-
-    @pytest.mark.asyncio
     async def test_timeout_response(self):
         """Test HTTPProxy set up the correct timeout response."""
         http_proxy = self.create_http_proxy()
-        proxy_request = FakeProxyRequest()
         request_id = "fake_request_id"
         gen = http_proxy.timeout_response(
-            proxy_request=proxy_request,
             request_id=request_id,
         )
         status = None
@@ -424,26 +396,28 @@ class TestHTTPProxy:
             else:
                 messages.append(message)
 
-        assert any([message.get("headers") is not None for message in messages])
-        assert any(
-            [
-                f"Request {request_id} timed out after" in str(message.get("body"))
-                for message in messages
-            ]
+        assert messages[0]["headers"] is not None
+        assert (
+            messages[1]["body"]
+            .decode("utf-8")
+            .startswith(f"Request {request_id} timed out after")
         )
         assert isinstance(status, ResponseStatus)
         assert status.code == 408
         assert status.is_error is True
 
     @pytest.mark.asyncio
-    async def test_routes_response(self):
+    @pytest.mark.parametrize("healthy", [False, True])
+    async def test_routes_response(self, healthy: bool):
         """Test HTTPProxy set up the correct routes response."""
         http_proxy = self.create_http_proxy()
         endpoint = EndpointTag("endpoint", "app1")
         route_info = {"/route": endpoint}
         http_proxy.route_info = route_info
-        proxy_request = FakeProxyRequest()
-        gen = http_proxy.routes_response(proxy_request=proxy_request)
+        gen = http_proxy.routes_response(
+            healthy=healthy, message="healthy" if healthy else "unhealthy"
+        )
+
         status = None
         messages = []
         async for message in gen:
@@ -452,20 +426,29 @@ class TestHTTPProxy:
             else:
                 messages.append(message)
 
-        assert any([message.get("headers") is not None for message in messages])
-        assert any(
-            ['{"/route":"app1"}' in str(message.get("body")) for message in messages]
-        )
         assert isinstance(status, ResponseStatus)
-        assert status.code == 200
-        assert status.is_error is False
+        assert messages[0]["headers"] is not None
+
+        if healthy:
+            assert '{"/route":"app1"}' in str(messages[1]["body"])
+            assert status.code == 200
+            assert status.is_error is False
+        else:
+            assert messages[1]["body"] == b"unhealthy"
+            assert status.code == 503
+            assert status.is_error is True
 
     @pytest.mark.asyncio
-    async def test_health_response(self):
+    @pytest.mark.parametrize("healthy", [False, True])
+    async def test_health_response(self, healthy: bool):
         """Test HTTPProxy set up the correct health response."""
         http_proxy = self.create_http_proxy()
-        proxy_request = FakeProxyRequest()
-        gen = http_proxy.health_response(proxy_request=proxy_request)
+
+        gen = http_proxy.health_response(
+            healthy=healthy,
+            message="healthy" if healthy else "unhealthy",
+        )
+
         status = None
         messages = []
         async for message in gen:
@@ -474,16 +457,18 @@ class TestHTTPProxy:
             else:
                 messages.append(message)
 
-        assert any([message.get("headers") is not None for message in messages])
-        assert any(
-            [
-                HEALTH_CHECK_SUCCESS_MESSAGE in str(message.get("body"))
-                for message in messages
-            ]
-        )
         assert isinstance(status, ResponseStatus)
-        assert status.code == 200
-        assert status.is_error is False
+        assert messages[0]["headers"] is not None
+
+        if healthy:
+            assert status.code == 200
+            assert status.is_error is False
+            assert messages[0]["status"] == 200
+            assert messages[0]["headers"] is not None
+            assert messages[1]["body"] == b"healthy"
+        else:
+            assert messages[0]["status"] == 503
+            assert messages[1]["body"] == b"unhealthy"
 
     @pytest.mark.asyncio
     async def test_receive_asgi_messages(self):
