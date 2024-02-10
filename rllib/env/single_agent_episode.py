@@ -141,6 +141,22 @@ class SingleAgentEpisode:
         prev_4_actions_col = batch(prev_4_a)
     """
 
+    __slots__ = (
+        "id_",
+        "observation_space",
+        "observations",
+        "infos",
+        "action_space",
+        "actions",
+        "rewards",
+        "is_terminated",
+        "is_truncated",
+        "extra_model_outputs",
+        "render_images",
+        "t_started",
+        "t",
+    )
+
     def __init__(
         self,
         id_: Optional[str] = None,
@@ -323,7 +339,9 @@ class SingleAgentEpisode:
             from both episodes.
         """
         assert episode_chunk.id_ == self.id_
-        assert not self.is_done and not self.is_finalized
+        # NOTE (sven): This is what we agreed on. As the replay buffers must be
+        # able to concatenate.
+        assert not self.is_done
         # Make sure the timesteps match.
         assert self.t == episode_chunk.t_started
 
