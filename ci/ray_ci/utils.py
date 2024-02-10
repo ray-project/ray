@@ -103,26 +103,41 @@ def get_flaky_test_names(prefix: str) -> List[str]:
     return test_names
 
 
-def filter_out_flaky_tests(input: io.TextIOBase, output: io.TextIOBase, prefix: str):
+def filter_tests(
+    input: io.TextIOBase, output: io.TextIOBase, prefix: str, state_filter: str
+):
     """
-    Filter out flaky tests from list of test targets.
+    Filter flaky tests from list of test targets.
 
     Args:
         input: Input stream, each test name in one line.
         output: Output stream, each test name in one line.
         prefix: Prefix to query tests with.
+        state_filter: Options to filter tests: "flaky" or "-flaky" tests.
     """
+    # Valid prefix check
+    if prefix not in ["darwin:", "linux:", "windows:"]:
+        raise ValueError("Prefix must be one of 'darwin:', 'linux:', or 'windows:'.")
+
+    # Valid filter choices check
+    if state_filter not in ["flaky", "-flaky"]:
+        raise ValueError("Filter option must be one of 'flaky' or '-flaky'.")
+
     # Obtain all existing tests with specified test state
     flaky_tests = set(get_flaky_test_names(prefix))
 
-    # Filter out these test from list of test targets
+    # Filter these test from list of test targets based on user condition.
     for t in input:
         t = t.strip()
         if not t:
             continue
-        if t in flaky_tests:
-            continue
-        output.write(f"{t}\n")
+
+        hit = t in flaky_tests
+        if state_filter == "-flaky":
+            hit = not hit
+
+        if hit:
+            output.write(f"{t}\n")
 
 
 logger = logging.getLogger()
