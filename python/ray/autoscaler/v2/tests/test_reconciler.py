@@ -23,9 +23,9 @@ from ray.autoscaler.v2.scheduler import IResourceScheduler, SchedulingReply
 from ray.autoscaler.v2.tests.util import MockSubscriber, create_instance
 from ray.core.generated.autoscaler_pb2 import (
     ClusterResourceState,
+    GangResourceRequest,
     NodeState,
     NodeStatus,
-    GangResourceRequest,
     ResourceRequest,
 )
 from ray.core.generated.instance_manager_pb2 import (
