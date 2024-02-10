@@ -6574,9 +6574,7 @@
 - name: gcp_cluster_launcher_minimal
   group: cluster-launcher-test
   working_dir: ../python/ray/autoscaler/
-
   stable: true
-
   env: gce
   frequency: nightly
   team: clusters
