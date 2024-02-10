@@ -256,6 +256,8 @@ class SchedulingNode:
         # resource bundle.
         gpu_ok = True
         if AUTOSCALER_CONSERVE_GPU_NODES:
+            # TODO: we should also generalize this optimization for accelerators.
+            # https://github.com/ray-project/ray/issues/43079
             is_gpu_node = self.total_resources.get("GPU", 0) > 0
             any_gpu_requests = any(
                 "GPU" in r.resources_bundle for r in self.sched_requests
