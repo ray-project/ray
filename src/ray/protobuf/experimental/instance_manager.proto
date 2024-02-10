@@ -134,6 +134,8 @@ message InstanceUpdateEvent {
   optional string ray_node_id = 5;
   // Launch request id for REQUESTED event.
   optional string launch_request_id = 6;
+  // Termination request for RAY_STOPPING event.
+  optional TerminationRequest termination_request = 7;
 }
 
 // Launch request for a node type.
@@ -146,6 +148,34 @@ message LaunchRequest {
   string id = 3;
   // request time in milliseconds.
   int64 request_ts_ms = 4;
+}
+
+// Termination request for an instance.
+message TerminationRequest {
+  enum Cause {
+    UNKNOWN = 0;
+    // Idle termination.
+    IDLE = 1;
+    // Per type max instance limit reached.
+    MAX_NUM_NODE_PER_TYPE = 2;
+    // Global max num nodes reached.
+    MAX_NUM_NODES = 3;
+  }
+  // id of the request.
+  string id = 1;
+  // The ray node id of the instance that's terminated.
+  string ray_node_id = 2;
+  // the instance id of the instance that's terminated.
+  string instance_id = 3;
+  // the reason of the termination.
+  Cause cause = 4;
+
+  // Idle time if the cause is IDLE.
+  optional uint64 idle_time_ms = 5;
+  // The per type max instance limit if the cause is MAX_NUM_NODE_PER_TYPE.
+  optional uint32 max_num_nodes_per_type = 6;
+  // The global max num nodes if the cause is MAX_NUM_NODES.
+  optional uint32 max_num_nodes = 7;
 }
 
 message UpdateInstanceManagerStateRequest {

@@ -299,6 +299,12 @@ class AutoscalingConfig:
     def get_max_num_worker_nodes(self) -> Optional[int]:
         return self.get_config("max_workers", None)
 
+    def get_max_num_nodes(self) -> Optional[int]:
+        max_num_workers = self.get_max_num_worker_nodes()
+        if max_num_workers is not None:
+            return max_num_workers + 1  # For head node
+        return None
+
     def get_raw_config_mutable(self) -> Dict[str, Any]:
         return self._configs
 

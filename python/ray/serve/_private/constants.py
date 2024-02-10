@@ -298,3 +298,8 @@ DEFAULT_AUTOSCALING_POLICY = "ray.serve.autoscaling_policy:default_autoscaling_p
 RAY_SERVE_COLLECT_AUTOSCALING_METRICS_ON_HANDLE = (
     os.environ.get("RAY_SERVE_COLLECT_AUTOSCALING_METRICS_ON_HANDLE", "0") == "1"
 )
+
+# Feature flag to always run a proxy on the head node even if it has no replicas.
+RAY_SERVE_ALWAYS_RUN_PROXY_ON_HEAD_NODE = (
+    os.environ.get("RAY_SERVE_ALWAYS_RUN_PROXY_ON_HEAD_NODE", "1") == "1"
+)
