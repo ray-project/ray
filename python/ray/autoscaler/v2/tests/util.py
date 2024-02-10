@@ -41,6 +41,7 @@ def create_instance(
     status_times: List[Tuple["Instance.InstanceStatus", int]] = None,
     launch_request_id="",
     version=0,
+    cloud_instance_id="",
 ):
     return Instance(
         instance_id=instance_id,
@@ -54,6 +55,7 @@ def create_instance(
         ]
         if status_times
         else [],
+        cloud_instance_id=cloud_instance_id,
     )
 
 
