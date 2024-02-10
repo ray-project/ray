@@ -186,12 +186,12 @@ class SchedulingNode:
         Try to schedule the resource requests on this node.
 
         This modifies the node's available resources if the requests are schedulable.
-        When iterating through the requests, the requests are sorted by the
-        `_sort_resource_request` function. The requests are scheduled one by one in
-        the sorted order, and no backtracking is done.
+        The requests are scheduled one by one in the sorted order, and no
+        backtracking is done.
 
         Args:
             requests: The resource requests to be scheduled.
+            is_constraint: Whether the requests are from cluster constraints.
 
         Returns:
             A tuple of:
@@ -202,23 +202,8 @@ class SchedulingNode:
         # Track the resource requests that cannot be scheduled on this node.
         unschedulable_requests = []
 
-        def _sort_resource_request(req: ResourceRequest) -> Tuple:
-            """
-            Sort the resource requests by:
-                1. The length of it's placement constraints.
-                2. The number of resources it requests.
-                3. The values of resources it requests.
-                4. lexicographically for each resource (for stable ordering)
-            """
-            return (
-                len(req.placement_constraints),
-                len(req.resources_bundle.values()),
-                sum(req.resources_bundle.values()),
-                sorted(req.resources_bundle.items()),
-            )
-
         # Sort the requests and try schedule them one by one.
-        for r in sorted(requests, key=_sort_resource_request, reverse=True):
+        for r in requests:
             if not self._try_schedule_one(r, is_constraint):
                 unschedulable_requests.append(r)
 
@@ -281,6 +266,8 @@ class SchedulingNode:
         # resource bundle.
         gpu_ok = True
         if AUTOSCALER_CONSERVE_GPU_NODES:
+            # TODO: we should also generalize this optimization for accelerators.
+            # https://github.com/ray-project/ray/issues/43079
             is_gpu_node = self.total_resources.get("GPU", 0) > 0
             any_gpu_requests = any(
                 "GPU" in r.resources_bundle for r in self.sched_requests
@@ -630,53 +617,6 @@ class ResourceDemandScheduler(IResourceScheduler):
             ]
 
     def schedule(self, request: SchedulingRequest) -> SchedulingReply:
-        self._init_context(request)
-
-        # Enforce outdate nodes.
-        self._terminate_outdated_nodes()
-
-        # Enforce the minimal count of nodes for each worker node type.
-        self._enforce_min_workers_per_type()
-
-        # Enforce the max worker nodes count.
-        self._enforce_max_workers_per_type()
-
-        # Enforce the max worker nodes count globally.
-        self._enforce_max_workers_global()
-
-        # Enforce the cluster resource constraints.
-        infeasible_constraints = self._enforce_resource_constraints(
-            request.cluster_resource_constraints
-        )
-
-        # Schedule the gang resource requests.
-        infeasible_gang_requests = self._sched_gang_resource_requests(
-            request.gang_resource_requests
-        )
-
-        # Schedule the tasks/actor resource requests
-        infeasible_requests = self._sched_resource_requests(
-            request.resource_requests,
-        )
-
-        # Shutdown any idle nodes that's not needed (e.g. no resource constraints.
-        # not needed by min_worker count, etc.)
-        self._enforce_idle_termination()
-
-        # Compute the number of nodes to launch.
-        reply = SchedulingReply(
-            infeasible_resource_requests=ResourceRequestUtil.group_by_count(
-                infeasible_requests
-            ),
-            infeasible_gang_resource_requests=infeasible_gang_requests,
-            infeasible_cluster_resource_constraints=infeasible_constraints,
-            to_launch=self._ctx.get_launch_requests(),
-            to_terminate=self._ctx.get_terminate_requests(),
-        )
-
-        return reply
-
-    def _init_context(self, request: SchedulingRequest) -> None:
         logger.info(
             "Scheduling for request: resource_request={}, gang_resource_request={}, "
             "cluster_constraint={}".format(
@@ -685,15 +625,66 @@ class ResourceDemandScheduler(IResourceScheduler):
                 ProtobufUtil.to_dict_list(request.cluster_resource_constraints),
             )
         )
-        self._ctx = self.ScheduleContext.from_schedule_request(request)
 
-    def _enforce_max_workers_per_type(self) -> None:
+        ctx = ResourceDemandScheduler.ScheduleContext.from_schedule_request(request)
+
+        # Enforce outdate nodes.
+        ResourceDemandScheduler._terminate_outdated_nodes(ctx)
+
+        # Enforce the minimal count of nodes for each worker node type.
+        ResourceDemandScheduler._enforce_min_workers_per_type(ctx)
+
+        # Enforce the max worker nodes count.
+        ResourceDemandScheduler._enforce_max_workers_per_type(ctx)
+
+        # Enforce the max worker nodes count globally.
+        ResourceDemandScheduler._enforce_max_workers_global(ctx)
+
+        # Enforce the cluster resource constraints.
+        infeasible_constraints = ResourceDemandScheduler._enforce_resource_constraints(
+            ctx, request.cluster_resource_constraints
+        )
+
+        # Schedule the gang resource requests.
+        infeasible_gang_requests = (
+            ResourceDemandScheduler._sched_gang_resource_requests(
+                ctx, request.gang_resource_requests
+            )
+        )
+
+        # Schedule the tasks/actor resource requests
+        infeasible_requests = ResourceDemandScheduler._sched_resource_requests(
+            ctx,
+            request.resource_requests,
+        )
+
+        # Shutdown any idle nodes that's not needed (e.g. no resource constraints.
+        # not needed by min_worker count, etc.)
+        ResourceDemandScheduler._enforce_idle_termination(ctx)
+
+        # Compute the number of nodes to launch.
+        reply = SchedulingReply(
+            infeasible_resource_requests=ResourceRequestUtil.group_by_count(
+                infeasible_requests
+            ),
+            infeasible_gang_resource_requests=infeasible_gang_requests,
+            infeasible_cluster_resource_constraints=infeasible_constraints,
+            to_launch=ctx.get_launch_requests(),
+            to_terminate=ctx.get_terminate_requests(),
+        )
+
+        return reply
+
+    @staticmethod
+    def _enforce_max_workers_per_type(
+        ctx: "ResourceDemandScheduler.ScheduleContext",
+    ) -> None:
         """
         Enforce the max number of workers for each node type.
         """
 
         # Get all the nodes by type
-        all_nodes = self._ctx.get_nodes()
+        all_nodes = ctx.get_nodes()
 
         non_terminating_nodes_by_type = defaultdict(list)
         terminating_nodes = []
@@ -706,7 +697,7 @@ class ResourceDemandScheduler(IResourceScheduler):
         # Step 1. Enforce the max number of workers for each node type.
         for node_type in non_terminating_nodes_by_type.keys():
             non_terminate_nodes_of_type = non_terminating_nodes_by_type[node_type]
-            node_config = self._ctx.get_node_type_configs().get(node_type, None)
+            node_config = ctx.get_node_type_configs().get(node_type, None)
             num_max_nodes_per_type = node_config.max_worker_nodes if node_config else 0
             num_extra_nodes = len(non_terminate_nodes_of_type) - num_max_nodes_per_type
 
@@ -714,11 +705,11 @@ class ResourceDemandScheduler(IResourceScheduler):
                 # No extra nodes for this type, continue.
                 continue
 
-            # Sort the instances for termination.
-            non_terminate_nodes_of_type.sort(key=self._sort_nodes_for_termination)
-
             # Terminate the nodes
-            to_terminate, remained_nodes = self._select_nodes_to_terminate(
+            (
+                to_terminate,
+                remained_nodes,
+            ) = ResourceDemandScheduler._select_nodes_to_terminate(
                 non_terminate_nodes_of_type,
                 num_extra_nodes,
                 TerminationRequest.Cause.MAX_NUM_NODE_PER_TYPE,
@@ -737,7 +728,7 @@ class ResourceDemandScheduler(IResourceScheduler):
             terminating_nodes + non_terminating_nodes
         ), "The number of nodes should be the same after enforcing max nodes per type."
 
-        self._ctx.update(terminating_nodes + non_terminating_nodes)
+        ctx.update(terminating_nodes + non_terminating_nodes)
 
         if terminating_nodes:
             logger.debug(
@@ -745,11 +736,14 @@ class ResourceDemandScheduler(IResourceScheduler):
                 "nodes for per node type max num node's constraints."
             )
 
-    def _enforce_max_workers_global(self) -> None:
+    @staticmethod
+    def _enforce_max_workers_global(
+        ctx: "ResourceDemandScheduler.ScheduleContext",
+    ) -> None:
         """
         Enforce the max number of workers for the entire cluster.
         """
-        all_nodes = self._ctx.get_nodes()
+        all_nodes = ctx.get_nodes()
 
         terminating_nodes = []
         non_terminating_nodes = []
@@ -760,7 +754,7 @@ class ResourceDemandScheduler(IResourceScheduler):
             else:
                 non_terminating_nodes.append(node)
 
-        num_max_nodes = self._ctx.get_max_num_nodes()
+        num_max_nodes = ctx.get_max_num_nodes()
 
         num_to_terminate = (
             max(len(non_terminating_nodes) - num_max_nodes, 0) if num_max_nodes else 0
@@ -770,9 +764,11 @@ class ResourceDemandScheduler(IResourceScheduler):
             # No extra nodes needed to terminate.
             return
 
-        non_terminating_nodes.sort(key=self._sort_nodes_for_termination)
         # Terminate the nodes
-        to_terminate_nodes, non_terminating_nodes = self._select_nodes_to_terminate(
+        (
+            to_terminate_nodes,
+            non_terminating_nodes,
+        ) = ResourceDemandScheduler._select_nodes_to_terminate(
             non_terminating_nodes,
             num_to_terminate,
             TerminationRequest.Cause.MAX_NUM_NODES,
@@ -796,7 +792,7 @@ class ResourceDemandScheduler(IResourceScheduler):
         ), "The number of nodes should be the same after enforcing max nodes."
 
         all_nodes = terminating_nodes + non_terminating_nodes
-        self._ctx.update(all_nodes)
+        ctx.update(all_nodes)
 
     @staticmethod
     def _select_nodes_to_terminate(
@@ -828,6 +824,9 @@ class ResourceDemandScheduler(IResourceScheduler):
                 - The terminated nodes.
                 - The remained nodes.
         """
+
+        # Sort the nodes for termination.
+        nodes.sort(key=ResourceDemandScheduler._sort_nodes_for_termination)
 
         terminated_nodes, remained_nodes = (
             nodes[:num_to_terminate],
@@ -896,20 +895,23 @@ class ResourceDemandScheduler(IResourceScheduler):
 
         return (running_ray, idle_dur, avg_util)
 
-    def _enforce_min_workers_per_type(self) -> None:
+    @staticmethod
+    def _enforce_min_workers_per_type(
+        ctx: "ResourceDemandScheduler.ScheduleContext",
+    ) -> None:
         """
         Enforce the minimal count of nodes for each worker node type.
         """
 
         # Count the existing nodes by type
-        count_by_node_type = self._ctx.get_cluster_shape()
+        count_by_node_type = ctx.get_cluster_shape()
 
         new_nodes = []
         # Launch new nodes to satisfy min count for each node type.
         for (
             node_type,
             node_type_config,
-        ) in self._ctx.get_node_type_configs().items():
+        ) in ctx.get_node_type_configs().items():
             cur_count = count_by_node_type.get(node_type, 0)
             min_count = node_type_config.min_worker_nodes
             if cur_count < min_count:
@@ -931,16 +933,18 @@ class ResourceDemandScheduler(IResourceScheduler):
         # should not exceed any globally enforced max_num_nodes
 
         # Add the new nodes to the existing nodes and update the context.
-        self._ctx.update(new_nodes + self._ctx.get_nodes())
+        ctx.update(new_nodes + ctx.get_nodes())
 
+    @staticmethod
     def _enforce_resource_constraints(
-        self,
+        ctx: "ResourceDemandScheduler.ScheduleContext",
         constraints: List[ClusterResourceConstraint],
     ) -> List[ClusterResourceConstraint]:
         """
         Enforce the cluster resource constraints.
 
         Args:
+            ctx: The schedule context.
             constraints: The cluster resource constraints.
 
         Returns:
@@ -965,23 +969,27 @@ class ResourceDemandScheduler(IResourceScheduler):
         requests = ResourceRequestUtil.ungroup_by_count(min_bundles)
 
         # Pass the empty nodes to schedule.
-        scheduled_nodes, infeasible = self._try_schedule(requests, is_constraint=True)
+        scheduled_nodes, infeasible = ResourceDemandScheduler._try_schedule(
+            ctx, requests, is_constraint=True
+        )
 
         if infeasible:
             # Unable to satisfy the constraint.
             return [constraint]
 
-        self._ctx.update(scheduled_nodes)
+        ctx.update(scheduled_nodes)
         return []
 
+    @staticmethod
     def _sched_resource_requests(
-        self,
+        ctx: "ResourceDemandScheduler.ScheduleContext",
         requests_by_count: List[ResourceRequestByCount],
     ) -> List[ResourceRequest]:
         """
         Schedule the resource requests.
 
         Args:
+            ctx: The schedule context.
             requests_by_count: The resource requests.
 
         Returns:
@@ -993,15 +1001,18 @@ class ResourceDemandScheduler(IResourceScheduler):
             )
         )
         requests = ResourceRequestUtil.ungroup_by_count(requests_by_count)
-        nodes, infeasible = self._try_schedule(requests, is_constraint=False)
+        nodes, infeasible = ResourceDemandScheduler._try_schedule(
+            ctx, requests, is_constraint=False
+        )
 
         # Regardless if there's feasible, we will update the context for schedule nodes.
-        self._ctx.update(nodes)
+        ctx.update(nodes)
 
         return infeasible
 
+    @staticmethod
     def _sched_gang_resource_requests(
-        self,
+        ctx: "ResourceDemandScheduler.ScheduleContext",
         gang_requests: List[GangResourceRequest],
     ) -> List[GangResourceRequest]:
         """
@@ -1011,6 +1022,7 @@ class ResourceDemandScheduler(IResourceScheduler):
         requests in a gang request are scheduled or none of them are scheduled.
 
         Args:
+            ctx: The schedule context.
             gang_requests: The gang resource requests.
 
         Returns:
@@ -1018,8 +1030,9 @@ class ResourceDemandScheduler(IResourceScheduler):
         """
         return []
 
+    @staticmethod
     def _try_schedule(
-        self,
+        ctx: "ResourceDemandScheduler.ScheduleContext",
         requests_to_sched: List[ResourceRequest],
         is_constraint: bool = False,
     ) -> Tuple[List[SchedulingNode], List[ResourceRequest]]:
@@ -1041,8 +1054,32 @@ class ResourceDemandScheduler(IResourceScheduler):
                 scheduled.
             - List of infeasible requests remained that cannot be scheduled.
         """
-        existing_nodes = self._ctx.get_nodes()
-        node_type_available = self._ctx.get_node_type_available()
+        # First sort the requests.
+        def _sort_resource_request(req: ResourceRequest) -> Tuple:
+            """
+            Sort the resource requests by:
+                1. The length of it's placement constraints.
+                2. The number of resources it requests.
+                3. The values of resources it requests.
+                4. lexicographically for each resource (for stable ordering)
+
+            This is a legacy sorting function for the autoscaler's binpacking
+            algo - we do this so that we could have a deterministic scheduling
+            results with reasonable fragmentation.
+            """
+            return (
+                len(req.placement_constraints),
+                len(req.resources_bundle.values()),
+                sum(req.resources_bundle.values()),
+                sorted(req.resources_bundle.items()),
+            )
+
+        requests_to_sched = sorted(
+            requests_to_sched, key=_sort_resource_request, reverse=True
+        )
+
+        existing_nodes = ctx.get_nodes()
+        node_type_available = ctx.get_node_type_available()
 
         # A list of nodes that are either:
         #   1. existing nodes in the cluster. or
@@ -1051,7 +1088,11 @@ class ResourceDemandScheduler(IResourceScheduler):
 
         # Try scheduling resource requests with existing nodes first.
         while len(requests_to_sched) > 0 and len(existing_nodes) > 0:
-            best_node, requests_to_sched, existing_nodes = self._sched_best_node(
+            (
+                best_node,
+                requests_to_sched,
+                existing_nodes,
+            ) = ResourceDemandScheduler._sched_best_node(
                 requests_to_sched, existing_nodes, is_constraint
             )
             if best_node is None:
@@ -1066,7 +1107,7 @@ class ResourceDemandScheduler(IResourceScheduler):
         # Try scheduling resource requests with new nodes.
         node_pools = [
             SchedulingNode.from_node_config(
-                self._ctx.get_node_type_configs()[node_type],
+                ctx.get_node_type_configs()[node_type],
                 status=SchedulingNodeStatus.TO_LAUNCH,
             )
             for node_type, num_available in node_type_available.items()
@@ -1074,7 +1115,7 @@ class ResourceDemandScheduler(IResourceScheduler):
         ]
         while len(requests_to_sched) > 0 and len(node_pools) > 0:
             # Max number of nodes reached.
-            max_num_nodes = self._ctx.get_max_num_nodes()
+            max_num_nodes = ctx.get_max_num_nodes()
             if max_num_nodes is not None and len(target_nodes) >= max_num_nodes:
                 logger.debug(
                     "Max number of nodes reached: {}, "
@@ -1082,7 +1123,11 @@ class ResourceDemandScheduler(IResourceScheduler):
                 )
                 break
 
-            best_node, requests_to_sched, node_pools = self._sched_best_node(
+            (
+                best_node,
+                requests_to_sched,
+                node_pools,
+            ) = ResourceDemandScheduler._sched_best_node(
                 requests_to_sched, node_pools, is_constraint
             )
             if best_node is None:
@@ -1097,15 +1142,15 @@ class ResourceDemandScheduler(IResourceScheduler):
             if node_type_available[best_node.node_type] > 0:
                 node_pools.append(
                     SchedulingNode.from_node_config(
-                        self._ctx.get_node_type_configs()[best_node.node_type],
+                        ctx.get_node_type_configs()[best_node.node_type],
                         status=SchedulingNodeStatus.TO_LAUNCH,
                     )
                 )
 
         return target_nodes, requests_to_sched
 
+    @staticmethod
     def _sched_best_node(
-        self,
         requests: List[ResourceRequest],
         nodes: List[SchedulingNode],
         is_constraint: bool,
@@ -1125,6 +1170,10 @@ class ResourceDemandScheduler(IResourceScheduler):
             nodes: The node candidates to be scheduled on. The nodes will be updated
                 after the scheduling attempt, i.e. the node that is scheduled will be
                 removed from the list.
+            is_constraint: Whether the requests are constraints, True
+                if the requests are constraints, False if it's the actual
+                pending resource requests.
+
         Returns:
             best_node: The best node to schedule the requests.
             infeasible: The infeasible requests that cannot be scheduled on the best
@@ -1182,19 +1231,25 @@ class ResourceDemandScheduler(IResourceScheduler):
         )
         return best_result.node, best_result.infeasible_requests, nodes
 
-    def _terminate_outdated_nodes(self) -> None:
+    @staticmethod
+    def _terminate_outdated_nodes(
+        ctx: "ResourceDemandScheduler.ScheduleContext",
+    ) -> None:
         """
         Terminate the nodes that are outdated, i.e. the node type config has been
         updated or the node's launch config hash is outdated.
+
+        Args:
+            ctx: The schedule context.
         """
-        nodes = self._ctx.get_nodes()
+        nodes = ctx.get_nodes()
 
         for node in nodes:
             if node.status != SchedulingNodeStatus.RUNNING:
                 # We don't need to care about the non-running nodes.
                 continue
             node_type = node.node_type
-            node_type_config = self._ctx.get_node_type_configs().get(node_type)
+            node_type_config = ctx.get_node_type_configs().get(node_type)
             if node_type_config is None or (
                 node_type_config.launch_config_hash
                 and node_type_config.launch_config_hash != node.launch_config_hash
@@ -1214,24 +1269,38 @@ class ResourceDemandScheduler(IResourceScheduler):
                     cause=TerminationRequest.Cause.OUTDATED,
                 )
 
-        self._ctx.update(nodes)
+        ctx.update(nodes)
 
-    def _enforce_idle_termination(self) -> None:
+    @staticmethod
+    def _enforce_idle_termination(
+        ctx: "ResourceDemandScheduler.ScheduleContext",
+    ) -> None:
         """
         Enforce the idle termination for the nodes that are not needed by the resource
         constraints and idle for too long.
+
+        Args:
+            ctx: The schedule context.
         """
-        nodes = self._ctx.get_nodes()
+        nodes = ctx.get_nodes()
         s_to_ms = 1000
         for node in nodes:
             if node.status != SchedulingNodeStatus.RUNNING:
                 # We don't need to care about the non-running nodes.
                 continue
+            idle_timeout_s = ctx.get_idle_timeout_s()
+            if idle_timeout_s is None:
+                # No idle timeout is set, skip the idle termination.
+                continue
+
+            if node.idle_duration_ms <= idle_timeout_s * s_to_ms:
+                # The node is not idle for too long, skip it.
+                continue
 
             if len(node.sched_constraints) > 0:
                 # The node is needed by the resource constraints.
                 # Skip it.
-                if node.idle_duration_ms > self._ctx.get_idle_timeout_s() * s_to_ms:
+                if node.idle_duration_ms > ctx.get_idle_timeout_s() * s_to_ms:
                     logger.debug(
                         "Node {}(idle for {} secs) is needed by the constraints, "
                         "skip idle termination.".format(
@@ -1240,24 +1309,22 @@ class ResourceDemandScheduler(IResourceScheduler):
                     )
                 continue
 
-            idle_timeout_s = self._ctx.get_idle_timeout_s()
-            if idle_timeout_s and node.idle_duration_ms > idle_timeout_s * s_to_ms:
-                # The node is idle for too long, terminate it.
-                logger.info(
-                    "Terminating instance={}(ray={}) since it's idle for {} secs.".format(  # noqa
-                        node.im_instance_id,
-                        node.ray_node_id,
-                        node.idle_duration_ms / s_to_ms,
-                    )
+            # The node is idle for too long, terminate it.
+            logger.info(
+                "Terminating instance={}(ray={}) since it's idle for {} secs.".format(  # noqa
+                    node.im_instance_id,
+                    node.ray_node_id,
+                    node.idle_duration_ms / s_to_ms,
                 )
+            )
 
-                node.status = SchedulingNodeStatus.TO_TERMINATE
-                node.termination_request = TerminationRequest(
-                    id=str(time.time_ns()),
-                    instance_id=node.im_instance_id,
-                    ray_node_id=node.ray_node_id,
-                    cause=TerminationRequest.Cause.IDLE,
-                    idle_duration_ms=node.idle_duration_ms,
-                )
+            node.status = SchedulingNodeStatus.TO_TERMINATE
+            node.termination_request = TerminationRequest(
+                id=str(time.time_ns()),
+                instance_id=node.im_instance_id,
+                ray_node_id=node.ray_node_id,
+                cause=TerminationRequest.Cause.IDLE,
+                idle_duration_ms=node.idle_duration_ms,
+            )
 
-        self._ctx.update(nodes)
+        ctx.update(nodes)
