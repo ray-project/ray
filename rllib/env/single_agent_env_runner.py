@@ -310,7 +310,7 @@ class SingleAgentEnvRunner(EnvRunner):
                     self._make_on_episode_callback("on_episode_step", env_index)
                     done_episodes_to_return.append(self._episodes[env_index].finalize())
 
-                    # Make the `on_episode_env` callback (after having finalized the
+                    # Make the `on_episode_end` callback (after having finalized the
                     # episode object).
                     self._make_on_episode_callback("on_episode_end", env_index)
 

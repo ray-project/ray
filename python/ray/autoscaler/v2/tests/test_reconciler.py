@@ -234,7 +234,6 @@ class TestReconciler:
 
     @staticmethod
     def test_reconcile_terminated_cloud_instances(setup):
-
         instance_manager, instance_storage, _ = setup
 
         instances = [
