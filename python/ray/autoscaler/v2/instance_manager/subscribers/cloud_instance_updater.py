@@ -19,6 +19,9 @@ class CloudInstanceUpdater(InstanceUpdatedSubscriber):
 
     It requests the cloud instance provider to launch new instances when
     there are new instance requests (with REQUESTED status change).
+
+    It requests the cloud instance provider to terminate instances when
+    there are new instance terminations (with TERMINATING status change).
     """
 
     def __init__(
@@ -37,10 +40,8 @@ class CloudInstanceUpdater(InstanceUpdatedSubscriber):
             for event in events
             if event.new_instance_status == Instance.TERMINATING
         ]
-        fut = self._executor.submit(self._launch_new_instances, new_requests)
-        fut.result()
-        fut = self._executor.submit(self._terminate_instances, new_terminations)
-        fut.result()
+        self._executor.submit(self._launch_new_instances, new_requests)
+        self._executor.submit(self._terminate_instances, new_terminations)
 
     def _terminate_instances(self, new_terminations: List[InstanceUpdateEvent]):
         """
