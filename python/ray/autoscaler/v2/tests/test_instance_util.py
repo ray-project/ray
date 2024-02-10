@@ -73,6 +73,8 @@ class InstanceUtilTest(unittest.TestCase):
         assert g[Instance.ALLOCATED] == {
             Instance.RAY_INSTALLING,
             Instance.RAY_RUNNING,
+            Instance.RAY_STOPPING,
+            Instance.RAY_STOPPED,
             Instance.TERMINATING,
             Instance.TERMINATED,
         }
@@ -99,8 +101,14 @@ class InstanceUtilTest(unittest.TestCase):
         assert g[Instance.RAY_STOPPED] == {Instance.TERMINATED, Instance.TERMINATING}
         all_status.remove(Instance.RAY_STOPPED)
 
-        assert g[Instance.TERMINATING] == {Instance.TERMINATED}
+        assert g[Instance.TERMINATING] == {
+            Instance.TERMINATED,
+            Instance.TERMINATION_FAILED,
+        }
         all_status.remove(Instance.TERMINATING)
+
+        assert g[Instance.TERMINATION_FAILED] == {Instance.TERMINATING}
+        all_status.remove(Instance.TERMINATION_FAILED)
 
         assert g[Instance.TERMINATED] == set()
         all_status.remove(Instance.TERMINATED)
@@ -161,6 +169,7 @@ class InstanceUtilTest(unittest.TestCase):
             Instance.RAY_STOPPING,
             Instance.RAY_STOPPED,
             Instance.TERMINATING,
+            Instance.TERMINATION_FAILED,
         }
         for s in positive_status:
             instance.status = s
@@ -197,6 +206,46 @@ class InstanceUtilTest(unittest.TestCase):
             assert not InstanceUtil.is_ray_running_reachable(instance.status)
             assert not exists_path(
                 s, Instance.RAY_RUNNING, InstanceUtil.get_valid_transitions()
+            )
+
+    def test_reachable_from(self):
+        def add_reachable_from(reachable, src, transitions):
+            reachable[src] = set()
+            for dst in transitions[src]:
+                reachable[src].add(dst)
+                reachable[src] |= (
+                    reachable[dst] if reachable[dst] is not None else set()
+                )
+
+        expected_reachable = {s: None for s in Instance.InstanceStatus.values()}
+
+        # Error status and terminal status.
+        expected_reachable[Instance.ALLOCATION_FAILED] = set()
+        expected_reachable[Instance.UNKNOWN] = set()
+        expected_reachable[Instance.TERMINATED] = set()
+
+        transitions = InstanceUtil.get_valid_transitions()
+
+        # Recursively build the reachable set from terminal statuses.
+        add_reachable_from(expected_reachable, Instance.TERMINATION_FAILED, transitions)
+        add_reachable_from(expected_reachable, Instance.TERMINATING, transitions)
+        # Add TERMINATION_FAILED again since it's also reachable from TERMINATING.
+        add_reachable_from(expected_reachable, Instance.TERMINATION_FAILED, transitions)
+        add_reachable_from(expected_reachable, Instance.RAY_STOPPED, transitions)
+        add_reachable_from(expected_reachable, Instance.RAY_STOPPING, transitions)
+        add_reachable_from(expected_reachable, Instance.RAY_RUNNING, transitions)
+        add_reachable_from(expected_reachable, Instance.RAY_INSTALL_FAILED, transitions)
+        add_reachable_from(expected_reachable, Instance.RAY_INSTALLING, transitions)
+        add_reachable_from(expected_reachable, Instance.ALLOCATED, transitions)
+        add_reachable_from(expected_reachable, Instance.REQUESTED, transitions)
+        add_reachable_from(expected_reachable, Instance.QUEUED, transitions)
+        # Add REQUESTED again since it's also reachable from QUEUED.
+        add_reachable_from(expected_reachable, Instance.REQUESTED, transitions)
+
+        for s, expected_reachable in expected_reachable.items():
+            assert InstanceUtil.get_reachable_statuses(s) == expected_reachable, (
+                f"reachable_from({s}) = {InstanceUtil.get_reachable_statuses(s)} "
+                f"!= {expected_reachable}"
             )
 
 

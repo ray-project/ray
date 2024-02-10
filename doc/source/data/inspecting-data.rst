@@ -182,7 +182,7 @@ To view stats about your :class:`Datasets <ray.data.Dataset>`, call :meth:`Datas
     * Output num rows: 150 min, 150 max, 150 mean, 150 total
     * Output size bytes: 6000 min, 6000 max, 6000 mean, 6000 total
     * Tasks per node: 1 min, 1 max, 1 mean; 1 nodes used
-    * Extra metrics: {'obj_store_mem_alloc': 6000, 'obj_store_mem_freed': 5761, 'obj_store_mem_peak': 6000}
+    * Extra metrics: {'obj_store_mem_freed': 5761, 'obj_store_mem_peak': 6000}
 
     Dataset iterator time breakdown:
     * Total time user code is blocked: 5.68ms
