@@ -1,16 +1,17 @@
-from concurrent.futures import ThreadPoolExecutor
 import logging
+from concurrent.futures import ThreadPoolExecutor
 from typing import List
+
+from ray._raylet import GcsClient
 from ray.autoscaler.v2.instance_manager.instance_manager import (
     InstanceUpdatedSubscriber,
 )
-from ray._raylet import GcsClient
+from ray.core.generated.autoscaler_pb2 import DrainNodeReason
 from ray.core.generated.instance_manager_pb2 import (
-    InstanceUpdateEvent,
     Instance,
+    InstanceUpdateEvent,
     TerminationRequest,
 )
-from ray.core.generated.autoscaler_pb2 import DrainNodeRequest, DrainNodeReason
 
 logger = logging.getLogger(__name__)
 
@@ -24,7 +25,7 @@ class RayStopper(InstanceUpdatedSubscriber):
 
     def notify(self, events: List[InstanceUpdateEvent]) -> None:
         for event in events:
-            if event.new_instance_status == Instance.RAY_STOPPED:
+            if event.new_instance_status == Instance.RAY_STOPPING:
                 self._executor.submit(self._stop_ray, event)
 
     def _stop_ray(self, event: InstanceUpdateEvent) -> None:

@@ -1,20 +1,21 @@
 # coding: utf-8
 import os
 import sys
-import mock
 
 import pytest
 
-from ray.autoscaler.v2.instance_manager.subscribers.ray_stopper import (
+import mock
+
+from ray._private.test_utils import wait_for_condition
+from ray.autoscaler.v2.instance_manager.subscribers.ray_stopper import (  # noqa
     RayStopper,
-)  # noqa
+)
+from ray.core.generated.autoscaler_pb2 import DrainNodeReason, DrainNodeReply
 from ray.core.generated.instance_manager_pb2 import (
     Instance,
     InstanceUpdateEvent,
     TerminationRequest,
 )
-from ray.core.generated.autoscaler_pb2 import DrainNodeReason, DrainNodeReply
-from ray._private.test_utils import wait_for_condition
 
 
 class TestRayStopper:
@@ -42,7 +43,7 @@ class TestRayStopper:
             [
                 InstanceUpdateEvent(
                     instance_id="test_id",
-                    new_instance_status=Instance.RAY_STOPPED,
+                    new_instance_status=Instance.RAY_STOPPING,
                     termination_request=TerminationRequest(
                         cause=TerminationRequest.Cause.IDLE,
                         idle_time_ms=1000,
@@ -77,7 +78,7 @@ class TestRayStopper:
             [
                 InstanceUpdateEvent(
                     instance_id="i-1",
-                    new_instance_status=Instance.RAY_STOPPED,
+                    new_instance_status=Instance.RAY_STOPPING,
                     termination_request=TerminationRequest(
                         cause=TerminationRequest.Cause.MAX_NUM_NODE_PER_TYPE,
                         max_num_nodes_per_type=10,
@@ -86,7 +87,7 @@ class TestRayStopper:
                 ),
                 InstanceUpdateEvent(
                     instance_id="i-2",
-                    new_instance_status=Instance.RAY_STOPPED,
+                    new_instance_status=Instance.RAY_STOPPING,
                     termination_request=TerminationRequest(
                         cause=TerminationRequest.Cause.MAX_NUM_NODES,
                         max_num_nodes=100,
@@ -102,7 +103,9 @@ class TestRayStopper:
                     mock.call(
                         node_id=b"id1",
                         reason=DrainNodeReason.DRAIN_NODE_REASON_PREEMPTION,
-                        reason_message="Preempted due to max number of nodes per type=10.",
+                        reason_message=(
+                            "Preempted due to max number of nodes per type=10."
+                        ),
                         deadline_timestamp_ms=0,
                     ),
                     mock.call(
