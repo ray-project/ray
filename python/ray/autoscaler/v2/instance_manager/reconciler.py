@@ -87,6 +87,7 @@ class Reconciler:
             ray_install_errors: The errors from RayInstaller.
 
         """
+        autoscaling_state = AutoscalingState()
         Reconciler._sync_from(
             instance_manager=instance_manager,
             ray_nodes=ray_cluster_resource_state.node_states,
@@ -95,7 +96,6 @@ class Reconciler:
             ray_install_errors=ray_install_errors,
         )
 
-        autoscaling_state = AutoscalingState()
         Reconciler._step_next(
             autoscaling_state=autoscaling_state,
             instance_manager=instance_manager,
@@ -229,6 +229,14 @@ class Reconciler:
             instance_manager=instance_manager,
             reconcile_config=autoscaling_config.get_instance_reconcile_config(),
             _logger=_logger or logger,
+        )
+
+        Reconciler._scale_cluster(
+            autoscaling_state=autoscaling_state,
+            instance_manager=instance_manager,
+            ray_state=ray_cluster_resource_state,
+            scheduler=scheduler,
+            autoscaling_config=autoscaling_config,
         )
 
         Reconciler._handle_instances_launch(
