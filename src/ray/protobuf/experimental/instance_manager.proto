@@ -130,6 +130,10 @@ message InstanceUpdateEvent {
 
   // Cloud instance id for ALLOCATED event.
   optional string cloud_instance_id = 4;
+  // Launch request id for REQUESTED event.
+  optional string launch_request_id = 5;
+  // Instance type for REQUESTED event.
+  optional string instance_type = 6;
 }
 
 // Launch request for a node type.
