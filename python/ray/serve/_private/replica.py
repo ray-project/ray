@@ -35,7 +35,6 @@ from ray.serve._private.constants import (
     GRPC_CONTEXT_ARG_NAME,
     HEALTH_CHECK_METHOD,
     RAY_SERVE_COLLECT_AUTOSCALING_METRICS_ON_HANDLE,
-    RAY_SERVE_GAUGE_METRIC_SET_PERIOD_S,
     RAY_SERVE_REPLICA_AUTOSCALING_METRIC_RECORD_PERIOD_S,
     RECONFIGURE_METHOD,
     SERVE_CONTROLLER_NAME,
@@ -150,21 +149,9 @@ class ReplicaMetricsManager:
             tag_keys=("route",),
         )
 
-        # User-facing Prometheus gauges.
-        self._num_pending_items = metrics.Gauge(
-            "serve_replica_pending_queries",
-            description="The current number of pending queries.",
-        )
-        self._num_processing_items = metrics.Gauge(
+        self._num_ongoing_requests_gauge = metrics.Gauge(
             "serve_replica_processing_queries",
             description="The current number of queries being processed.",
-        )
-
-        # Set user-facing gauges periodically.
-        self._metrics_pusher.register_or_update_task(
-            self.SET_REPLICA_REQUEST_METRIC_GAUGE_TASK_NAME,
-            self._set_replica_requests_metrics,
-            RAY_SERVE_GAUGE_METRIC_SET_PERIOD_S,
         )
 
         self.set_autoscaling_config(autoscaling_config)
@@ -206,10 +193,12 @@ class ReplicaMetricsManager:
     def inc_num_ongoing_requests(self) -> int:
         """Increment the current total queue length of requests for this replica."""
         self._num_ongoing_requests += 1
+        self._num_ongoing_requests_gauge.set(self._num_ongoing_requests)
 
     def dec_num_ongoing_requests(self) -> int:
         """Decrement the current total queue length of requests for this replica."""
         self._num_ongoing_requests -= 1
+        self._num_ongoing_requests_gauge.set(self._num_ongoing_requests)
 
     def get_num_ongoing_requests(self) -> int:
         """Get current total queue length of requests for this replica."""
@@ -239,9 +228,6 @@ class ReplicaMetricsManager:
             {self._replica_tag: self._num_ongoing_requests},
             time.time(),
         )
-
-    def _set_replica_requests_metrics(self):
-        self._num_processing_items.set(self.get_num_ongoing_requests())
 
 
 class ReplicaActor:
