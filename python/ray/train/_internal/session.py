@@ -228,11 +228,10 @@ class _TrainSession:
         """Ignore all future ``session.report()`` calls."""
         self.ignore_report = True
 
-    def finish(self, timeout: Optional[float] = None):
+    def finish(self, timeout: Optional[float] = None) -> Optional[Any]:
         """Finishes the training thread.
 
-        Either returns the output from training or raises any Exception from
-        training.
+        Raises any Exception from training.
         """
         # Set the stop event for the training thread to gracefully exit.
         self.stop_event.set()
@@ -244,11 +243,13 @@ class _TrainSession:
         self.storage.persist_artifacts(force=True)
 
         # Wait for training to finish.
-        # This will raise any errors that occur during training, including
-        # SystemError
-        func_output = self.training_thread.join(timeout=timeout)
-        # If training finished successfully, then return results.
-        return func_output
+        # This will raise any errors that occur during training, including SystemError
+        # This returns the result of the training function.
+        output = None
+        if self.training_started:
+            output = self.training_thread.join(timeout=timeout)
+
+        return output
 
     def get_next(self) -> Optional[_TrainingResult]:
         """Gets the next ``_TrainingResult`` from the result queue.

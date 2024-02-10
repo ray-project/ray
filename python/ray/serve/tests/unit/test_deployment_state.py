@@ -1,5 +1,4 @@
 import sys
-from collections import defaultdict
 from copy import deepcopy
 from typing import Any, Dict, List, Optional, Tuple
 from unittest.mock import Mock, patch
@@ -24,8 +23,12 @@ from ray.serve._private.constants import (
     DEFAULT_MAX_CONCURRENT_QUERIES,
 )
 from ray.serve._private.deployment_info import DeploymentInfo
-from ray.serve._private.deployment_scheduler import ReplicaSchedulingRequest
+from ray.serve._private.deployment_scheduler import (
+    DefaultDeploymentScheduler,
+    ReplicaSchedulingRequest,
+)
 from ray.serve._private.deployment_state import (
+    SLOW_STARTUP_WARNING_S,
     ActorReplicaWrapper,
     DeploymentReplica,
     DeploymentState,
@@ -93,7 +96,7 @@ class MockReplicaActorWrapper:
         # Will be set when `start()` is called.
         self.version = version
         # Initial state for a replica is PENDING_ALLOCATION.
-        self.ready = ReplicaStartupStatus.PENDING_ALLOCATION
+        self.status = ReplicaStartupStatus.PENDING_ALLOCATION
         # Will be set when `graceful_stop()` is called.
         self.stopped = False
         # Expected to be set in the test.
@@ -157,7 +160,7 @@ class MockReplicaActorWrapper:
     def node_id(self) -> Optional[str]:
         if self._node_id_is_set:
             return self._node_id
-        if self.ready == ReplicaStartupStatus.SUCCEEDED or self.started:
+        if self.status == ReplicaStartupStatus.SUCCEEDED or self.started:
             return "node-id"
         return None
 
@@ -177,15 +180,18 @@ class MockReplicaActorWrapper:
     def placement_group_bundles(self) -> Optional[List[Dict[str, float]]]:
         return None
 
+    def set_status(self, status: ReplicaStartupStatus):
+        self.status = status
+
     def set_ready(self, version: DeploymentVersion = None):
-        self.ready = ReplicaStartupStatus.SUCCEEDED
+        self.status = ReplicaStartupStatus.SUCCEEDED
         if version:
             self.version_to_be_fetched_from_actor = version
         else:
             self.version_to_be_fetched_from_actor = self.version
 
     def set_failed_to_start(self):
-        self.ready = ReplicaStartupStatus.FAILED
+        self.status = ReplicaStartupStatus.FAILED
 
     def set_done_stopping(self):
         self.done_stopping = True
@@ -203,14 +209,23 @@ class MockReplicaActorWrapper:
 
     def start(self, deployment_info: DeploymentInfo):
         self.started = True
+
+        def _on_scheduled_stub(*args, **kwargs):
+            print(
+                f"ReplicaSchedulingRequest.on_scheduled was invoked with:\n"
+                f"args={args}\n"
+                f"kwargs={kwargs}"
+            )
+            pass
+
         return ReplicaSchedulingRequest(
             deployment_id=self._deployment_id,
             replica_name=self._replica_tag,
-            actor_def=None,
+            actor_def=Mock(),
             actor_resources=None,
-            actor_options=None,
-            actor_init_args=None,
-            on_scheduled=None,
+            actor_options={},
+            actor_init_args=(),
+            on_scheduled=_on_scheduled_stub,
         )
 
     def reconfigure(self, version: DeploymentVersion):
@@ -228,8 +243,8 @@ class MockReplicaActorWrapper:
         return True
 
     def check_ready(self) -> ReplicaStartupStatus:
-        ready = self.ready
-        self.ready = ReplicaStartupStatus.PENDING_INITIALIZATION
+        ready = self.status
+        self.status = ReplicaStartupStatus.PENDING_INITIALIZATION
         if ready == ReplicaStartupStatus.SUCCEEDED and self.recovering:
             self.recovering = False
             self.started = True
@@ -263,51 +278,6 @@ class MockReplicaActorWrapper:
     def check_health(self):
         self.health_check_called = True
         return self.healthy
-
-
-class MockDeploymentScheduler:
-    def __init__(self, cluster_node_info_cache):
-        self.deployments = set()
-        self.replicas = defaultdict(set)
-
-    def on_deployment_created(self, deployment_id, scheduling_strategy):
-        assert deployment_id not in self.deployments
-        self.deployments.add(deployment_id)
-
-    def on_deployment_deleted(self, deployment_id):
-        assert deployment_id in self.deployments
-        self.deployments.remove(deployment_id)
-
-    def on_replica_stopping(self, deployment_id, replica_name):
-        assert replica_name in self.replicas[deployment_id]
-        self.replicas[deployment_id].remove(replica_name)
-
-    def on_replica_running(self, deployment_id, replica_name, node_id):
-        assert replica_name in self.replicas[deployment_id]
-
-    def on_replica_recovering(self, deployment_id, replica_name):
-        assert replica_name not in self.replicas[deployment_id]
-        self.replicas[deployment_id].add(replica_name)
-
-    def schedule(self, upscales, downscales):
-        for upscale in upscales.values():
-            for replica_scheduling_request in upscale:
-                assert (
-                    replica_scheduling_request.replica_name
-                    not in self.replicas[replica_scheduling_request.deployment_id]
-                )
-                self.replicas[replica_scheduling_request.deployment_id].add(
-                    replica_scheduling_request.replica_name
-                )
-
-        deployment_to_replicas_to_stop = defaultdict(set)
-        for downscale in downscales.values():
-            replica_iter = iter(self.replicas[downscale.deployment_id])
-            for _ in range(downscale.num_to_stop):
-                deployment_to_replicas_to_stop[downscale.deployment_id].add(
-                    next(replica_iter)
-                )
-        return deployment_to_replicas_to_stop
 
 
 def deployment_info(
@@ -378,7 +348,9 @@ def mock_deployment_state() -> Tuple[DeploymentState, Mock, Mock]:
         deployment_state = DeploymentState(
             DeploymentID("name", "my_app"),
             mock_long_poll,
-            MockDeploymentScheduler(cluster_node_info_cache),
+            DefaultDeploymentScheduler(
+                cluster_node_info_cache, head_node_id="fake-head-node-id"
+            ),
             cluster_node_info_cache,
             mock_save_checkpoint_fn,
         )
@@ -1473,10 +1445,13 @@ def test_stop_replicas_on_draining_nodes(mock_deployment_state):
     deployment_state.update()
     check_counts(deployment_state, total=2, by_state=[(ReplicaState.STARTING, 2)])
 
-    deployment_state._replicas.get()[0]._actor.set_ready()
-    deployment_state._replicas.get()[0]._actor.set_node_id("node-1")
-    deployment_state._replicas.get()[1]._actor.set_ready()
-    deployment_state._replicas.get()[1]._actor.set_node_id("node-2")
+    one_replica, another_replica = deployment_state._replicas.get()
+
+    one_replica._actor.set_node_id("node-1")
+    one_replica._actor.set_ready()
+
+    another_replica._actor.set_node_id("node-2")
+    another_replica._actor.set_ready()
 
     # The replica running on node-2 will be drained.
     deployment_state.update()
@@ -1494,7 +1469,7 @@ def test_stop_replicas_on_draining_nodes(mock_deployment_state):
     }
 
     # The draining replica is stopped and a new one will be started.
-    deployment_state._replicas.get()[1]._actor.set_done_stopping()
+    another_replica._actor.set_done_stopping()
     deployment_state_update_result = deployment_state.update()
     deployment_state._deployment_scheduler.schedule(
         {deployment_state._id: deployment_state_update_result.upscale}, {}
@@ -2255,7 +2230,9 @@ def test_scale_num_replicas(
 
 
 @pytest.mark.parametrize("target_capacity_direction", ["up", "down"])
-def test_autoscale(mock_deployment_state_manager_full, target_capacity_direction):
+def test_basic_autoscaling(
+    mock_deployment_state_manager_full, target_capacity_direction
+):
     """Test autoscaling up and down.
 
     Upscaling version:
@@ -2313,7 +2290,8 @@ def test_autoscale(mock_deployment_state_manager_full, target_capacity_direction
 
     for replica in depstate._replicas.get():
         deployment_state_manager.record_autoscaling_metrics(
-            (replica._actor.replica_tag, 2 if target_capacity_direction == "up" else 0),
+            replica._actor.replica_tag,
+            2 if target_capacity_direction == "up" else 0,
             None,
         )
 
@@ -2371,6 +2349,169 @@ def test_autoscale(mock_deployment_state_manager_full, target_capacity_direction
     )
 
 
+@pytest.mark.parametrize(
+    "target_startup_status",
+    [
+        ReplicaStartupStatus.PENDING_ALLOCATION,
+        ReplicaStartupStatus.PENDING_INITIALIZATION,
+    ],
+)
+def test_downscaling_reclaiming_starting_replicas_first(
+    target_startup_status,
+    mock_deployment_state_manager_full,
+):
+    """This test asserts that when downscaling first any non-running replicas are
+    scavenged, before stopping fully running replicas
+
+    More context on the issue could be found in:
+    https://github.com/ray-project/ray/issues/43034
+    """
+
+    app_name = "test_app"
+    deployment_name = "deployment_with_slow_to_start_replicas"
+
+    deployment_id = DeploymentID(deployment_name, app_name)
+
+    # Create deployment state manager
+    create_deployment_state_manager, timer, _ = mock_deployment_state_manager_full
+    dsm: DeploymentStateManager = create_deployment_state_manager()
+
+    # Deploy deployment with 3 replicas
+    info, _ = deployment_info(
+        autoscaling_config={
+            "target_num_ongoing_requests_per_replica": 1,
+            "min_replicas": 0,
+            "max_replicas": 6,
+            "initial_replicas": 3,
+            "upscale_delay_s": 0,
+            "downscale_delay_s": 0,
+        }
+    )
+
+    dsm.deploy(deployment_id, info)
+
+    deployment_state: DeploymentState = dsm._deployment_states[deployment_id]
+
+    # status=UPDATING, status_trigger=DEPLOY
+    dsm.update()
+    check_counts(deployment_state, total=3, by_state=[(ReplicaState.STARTING, 3)])
+    assert deployment_state.curr_status_info.status == DeploymentStatus.UPDATING
+    assert (
+        deployment_state.curr_status_info.status_trigger
+        == DeploymentStatusTrigger.CONFIG_UPDATE_STARTED
+    )
+
+    # Set replicas as SUCCESSFUL and check statuses
+    for replica in deployment_state._replicas.get():
+        replica._actor.set_ready()
+
+    # status=HEALTHY, status_trigger=DEPLOY
+    dsm.update()
+    check_counts(deployment_state, total=3, by_state=[(ReplicaState.RUNNING, 3)])
+    assert deployment_state.curr_status_info.status == DeploymentStatus.HEALTHY
+    assert (
+        deployment_state.curr_status_info.status_trigger
+        == DeploymentStatusTrigger.CONFIG_UPDATE_COMPLETED
+    )
+
+    # Fetch all currently running replicas
+    running_replicas = deployment_state._replicas.get(states=[ReplicaState.RUNNING])
+
+    for replica in deployment_state._replicas.get():
+        dsm.record_autoscaling_metrics(replica._actor.replica_tag, 2, timer.time())
+
+    # status=UPSCALING, status_trigger=AUTOSCALE
+    dsm.update()
+    check_counts(
+        deployment_state,
+        total=6,
+        by_state=[(ReplicaState.RUNNING, 3), (ReplicaState.STARTING, 3)],
+    )
+    assert deployment_state.curr_status_info.status == DeploymentStatus.UPSCALING
+    assert (
+        deployment_state.curr_status_info.status_trigger
+        == DeploymentStatusTrigger.AUTOSCALING
+    )
+
+    # Set replicas as PENDING_INITIALIZATION: actors have been successfully allocated,
+    # but replicas are still pending successful initialization
+    for replica in deployment_state._replicas.get():
+        replica._actor.set_status(target_startup_status)
+
+    # Advance timer by 60 seconds; this should exceed the slow startup
+    # warning threshold. The message should be updated, but the status
+    # should remain upscaling/autoscaling
+    timer.advance(60)
+    dsm.update()
+    check_counts(
+        deployment_state,
+        total=6,
+        by_state=[(ReplicaState.RUNNING, 3), (ReplicaState.STARTING, 3)],
+    )
+
+    assert deployment_state.curr_status_info.status == DeploymentStatus.UPSCALING
+    assert (
+        deployment_state.curr_status_info.status_trigger
+        == DeploymentStatusTrigger.AUTOSCALING
+    )
+
+    if target_startup_status == ReplicaStartupStatus.PENDING_INITIALIZATION:
+        expected_message = (
+            f"Deployment '{deployment_name}' in application "
+            f"'{app_name}' has 3 replicas "
+            f"that have taken more than {SLOW_STARTUP_WARNING_S}s to "
+            "initialize. This may be caused by a slow __init__ or reconfigure "
+            "method."
+        )
+    elif target_startup_status == ReplicaStartupStatus.PENDING_ALLOCATION:
+        expected_message = (
+            "Deployment 'deployment_with_slow_to_start_replicas' in application "
+            "'test_app' 3 replicas that have taken more than 30s to be scheduled. This "
+            "may be due to waiting for the cluster to auto-scale or for a runtime "
+            "environment to be installed. Resources required for each replica: "
+            '{"CPU": 0.1}, total resources available: {}. Use `ray status` for '
+            "more details."
+        )
+    else:
+        raise RuntimeError(f"Got unexpected status: {target_startup_status}")
+
+    assert expected_message == deployment_state.curr_status_info.message
+
+    # Now, trigger downscaling attempting to reclaim half (3) of the replicas
+    for replica in deployment_state._replicas.get(states=[ReplicaState.RUNNING]):
+        dsm.record_autoscaling_metrics(replica._actor.replica_tag, 1, timer.time())
+
+    # status=DOWNSCALING, status_trigger=AUTOSCALE
+    dsm.update()
+    check_counts(
+        deployment_state,
+        total=6,
+        by_state=[(ReplicaState.RUNNING, 3), (ReplicaState.STOPPING, 3)],
+    )
+
+    # Assert that no RUNNING replicas are being stopped
+    assert running_replicas == deployment_state._replicas.get(
+        states=[ReplicaState.RUNNING]
+    )
+
+    assert deployment_state.curr_status_info.status == DeploymentStatus.DOWNSCALING
+    assert (
+        deployment_state.curr_status_info.status_trigger
+        == DeploymentStatusTrigger.AUTOSCALING
+    )
+
+    for replica in deployment_state._replicas.get():
+        replica._actor.set_done_stopping()
+
+    # status=HEALTHY, status_trigger=UPSCALE/DOWNSCALE
+    dsm.update()
+    assert deployment_state.curr_status_info.status == DeploymentStatus.HEALTHY
+    assert (
+        deployment_state.curr_status_info.status_trigger
+        == DeploymentStatusTrigger.DOWNSCALE_COMPLETED
+    )
+
+
 def test_update_autoscaling_config(mock_deployment_state_manager_full):
     """Test updating the autoscaling config.
 
@@ -2422,7 +2563,7 @@ def test_update_autoscaling_config(mock_deployment_state_manager_full):
     # Num ongoing requests = 1, status should remain HEALTHY
     for replica in depstate._replicas.get():
         deployment_state_manager.record_autoscaling_metrics(
-            (replica._actor.replica_tag, 1), None
+            replica._actor.replica_tag, 1, None
         )
     check_counts(depstate, total=3, by_state=[(ReplicaState.RUNNING, 3)])
     assert depstate.curr_status_info.status == DeploymentStatus.HEALTHY
@@ -2997,7 +3138,7 @@ def test_exponential_backoff(mock_deployment_state):
 @pytest.fixture
 def mock_deployment_state_manager_full(
     request,
-) -> Tuple[DeploymentStateManager, Mock, Mock]:
+) -> Tuple[DeploymentStateManager, MockTimer, Mock]:
     """Fully mocked deployment state manager.
 
     i.e kv store and gcs client is mocked so we don't need to initialize
@@ -3009,11 +3150,7 @@ def mock_deployment_state_manager_full(
     with patch(
         "ray.serve._private.deployment_state.ActorReplicaWrapper",
         new=MockReplicaActorWrapper,
-    ), patch(
-        "ray.serve._private.default_impl.create_deployment_scheduler",
-    ) as mock_create_deployment_scheduler, patch(
-        "time.time", new=timer.time
-    ), patch(
+    ), patch("time.time", new=timer.time), patch(
         "ray.serve._private.long_poll.LongPollHost"
     ) as mock_long_poll, patch(
         "ray.get_runtime_context"
@@ -3030,16 +3167,13 @@ def mock_deployment_state_manager_full(
             if placement_group_names is None:
                 placement_group_names = []
 
-            mock_create_deployment_scheduler.return_value = MockDeploymentScheduler(
-                cluster_node_info_cache
-            )
-
             return DeploymentStateManager(
                 kv_store,
                 mock_long_poll,
                 actor_names,
                 placement_group_names,
                 cluster_node_info_cache,
+                head_node_id_override="fake-head-node-id",
             )
 
         yield create_deployment_state_manager, timer, cluster_node_info_cache
@@ -3311,18 +3445,11 @@ def mock_deployment_state_manager(request) -> Tuple[DeploymentStateManager, Mock
     with patch(
         "ray.serve._private.deployment_state.ActorReplicaWrapper",
         new=MockReplicaActorWrapper,
-    ), patch(
-        "ray.serve._private.default_impl.create_deployment_scheduler",
-    ) as mock_create_deployment_scheduler, patch(
-        "time.time", new=timer.time
-    ), patch(
+    ), patch("time.time", new=timer.time), patch(
         "ray.serve._private.long_poll.LongPollHost"
     ) as mock_long_poll:
         kv_store = MockKVStore()
         cluster_node_info_cache = MockClusterNodeInfoCache()
-        mock_create_deployment_scheduler.return_value = MockDeploymentScheduler(
-            cluster_node_info_cache
-        )
         all_current_actor_names = []
         all_current_placement_group_names = []
         deployment_state_manager = DeploymentStateManager(
@@ -3331,6 +3458,7 @@ def mock_deployment_state_manager(request) -> Tuple[DeploymentStateManager, Mock
             all_current_actor_names,
             all_current_placement_group_names,
             cluster_node_info_cache,
+            head_node_id_override="fake-head-node-id",
         )
 
         yield deployment_state_manager, timer, cluster_node_info_cache

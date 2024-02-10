@@ -316,6 +316,22 @@ class TestDeploymentSchema:
         with pytest.raises(ValueError):
             DeploymentSchema.parse_obj(deployment_schema)
 
+    def test_num_replicas_auto(self):
+        deployment_schema = self.get_minimal_deployment_schema()
+
+        deployment_schema["num_replicas"] = "auto"
+        deployment_schema["autoscaling_config"] = None
+        DeploymentSchema.parse_obj(deployment_schema)
+
+        deployment_schema["num_replicas"] = "auto"
+        deployment_schema["autoscaling_config"] = {"max_replicas": 99}
+        DeploymentSchema.parse_obj(deployment_schema)
+
+        deployment_schema["num_replicas"] = "random_str"
+        deployment_schema["autoscaling_config"] = None
+        with pytest.raises(ValueError):
+            DeploymentSchema.parse_obj(deployment_schema)
+
     def test_extra_fields_invalid_deployment_schema(self):
         # Undefined fields should be forbidden in the schema
 
