@@ -1090,7 +1090,9 @@ class ResourceDemandScheduler(IResourceScheduler):
             # Try to combine requests with affinity constraints into the same request.
             requests = ResourceRequestUtil.combine_requests_with_affinity(requests)
 
-            nodes, infeasible = self._try_schedule(requests, is_constraint=False)
+            nodes, infeasible = ResourceDemandScheduler._try_schedule(
+                ctx, requests, is_constraint=False
+            )
 
             if infeasible:
                 # Unable to satisfy the constraint. We will skip the gang request.
@@ -1099,7 +1101,7 @@ class ResourceDemandScheduler(IResourceScheduler):
                 continue
 
             # We are able to satisfy the constraint and thus update the context.
-            self._ctx.update(nodes)
+            ctx.update(nodes)
 
         return infeasible_gang_requests
 
