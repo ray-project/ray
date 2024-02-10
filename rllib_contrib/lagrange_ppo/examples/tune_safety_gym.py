@@ -8,7 +8,7 @@ from ray import air, tune
 
 if __name__ == "__main__":
 
-    max_concurrent_trials, num_samples, num_gpus, num_cpus = 1, 1, 1, 2
+    max_concurrent_trials, num_samples, num_gpus, num_cpus = 1, 1, 1, 5
     ray.init(num_gpus=num_gpus, num_cpus=num_cpus)
     stop = {
         "num_agent_steps_sampled": 1e7,
@@ -53,8 +53,9 @@ if __name__ == "__main__":
             "max_penalty_coeff": 100.0,
             "p_coeff": 0.0,
             "d_coeff": 0.0,
+            "track_debuging_values": True,
         },
-        "seed": tune.grid_search([44, 45, 46]),
+        "seed": tune.grid_search([42, 43, 44]),
     }
 
     tuner = tune.Tuner(

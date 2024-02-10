@@ -9,8 +9,8 @@ from ray import air, tune
 if __name__ == "__main__":
 
     max_concurrent_trials, num_samples, num_gpus, num_cpus = 1, 1, 1, 5
-    ray.init(num_cpus=num_cpus, num_gpus=num_gpus)
-    stop = {"iterations_since_restore": 200}
+    ray.init(num_cpus=num_cpus, num_gpus=num_gpus, local_mode=True)
+    stop = {"iterations_since_restore": 1000}
     cost_lim = 20.0
     max_ep_len = 200
     cost_gamma = 0.95
@@ -22,7 +22,7 @@ if __name__ == "__main__":
         "observation_filter": "MeanStdFilter",
         "enable_connectors": True,
         "model": {"vf_share_layers": False, "fcnet_activation": "relu"},
-        "env": "SafePendulum-v0",
+        "env": tune.grid_search(["SafePendulum-v0"]),
         "env_config": dict(
             cost_lim=cost_lim, max_ep_len=max_ep_len, cost_gamma=cost_gamma
         ),
@@ -32,8 +32,8 @@ if __name__ == "__main__":
         "clip_param": 0.2,
         "sgd_minibatch_size": 4000,
         "lr": 1e-3,
-        "lambda": 0.95,
-        "num_sgd_iter": 80,
+        "lambda": 0.97,
+        "num_sgd_iter": 10,
         # safety parameters
         "learn_penalty_coeff": True,
         "cost_lambda_": 0.97,
@@ -42,15 +42,13 @@ if __name__ == "__main__":
             "cost_limit": cost_lim,
             "cvf_clip_param": 10000.0,
             "init_penalty_coeff": 0.3,
-            "polyak_coeff": 0.2,
-            "penalty_coeff_lr": 1e-2,
+            "polyak_coeff": 0.01,  # tune.grid_search([0.01, 0.1, 1.0]),
+            "penalty_coeff_lr":  5e-3,  # tune.grid_search([1e-3, 5e-3, 1e-2, 5e-2]),
             "max_penalty_coeff": 100.0,
-            "p_coeff": 1e-1,
+            "p_coeff": 1e-3,  # tune.grid_search([1e-3, 1e-2, 1e-1]),
             "d_coeff": 0.0,
         },
-        "seed": tune.choice(
-            [42, 43, 44, 45, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60]
-        ),
+        "seed": 43,
     }
     tuner = tune.Tuner(
         PPOLagrange,

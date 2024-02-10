@@ -272,7 +272,7 @@ class PPOLagrangeTorchLearner(PPOLagrangeLearner, TorchLearner):
             lagrange_grad = 1 - torch.exp(-penalty.data)
             # I part
             i_part.data += (
-                hps.penalty_coeff_lr * new_smoothed_violation
+                hps.penalty_coeff_lr * mean_constraint_violation
             ) * lagrange_grad
             # P part computation
             p_part = hps.p_coeff * new_smoothed_violation * lagrange_grad
