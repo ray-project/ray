@@ -300,7 +300,7 @@ class TestgRPCProxy:
             assert status.code == grpc.StatusCode.UNAVAILABLE
             assert status.message == DRAINING_MESSAGE
             assert status.is_error is True
-            assert response.application_names == []
+            assert response.application_names == ["app"]
 
     @pytest.mark.asyncio
     @pytest.mark.parametrize("is_draining", [False, True])
