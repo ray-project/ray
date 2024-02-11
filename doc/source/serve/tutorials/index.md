@@ -13,7 +13,7 @@ stable-diffusion
 text-classification
 object-detection
 aws-neuron-core-inference
-aws-neuron-core-inference-stablediffusion
+aws-neuron-core-inference-stable-diffusion
 gradio-integration
 batch
 streaming

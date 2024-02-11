@@ -1,3 +1,4 @@
+# __neuron_serve_code_start__
 from io import BytesIO
 from PIL import Image
 from fastapi import FastAPI
@@ -55,3 +56,5 @@ class StableDiffusionV2:
 
 
 entrypoint = APIIngress.bind(StableDiffusionV2.bind())
+
+# __neuron_serve_code_end__

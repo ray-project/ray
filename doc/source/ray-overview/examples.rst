@@ -231,10 +231,10 @@ Ray Examples
         
     .. grid-item-card:: :bdg-secondary:`Code example`
         :class-item: gallery-item serving inference aws-neuron-core
-        :link: /serve/tutorials/aws-neuron-core-inference-stablediffusion
+        :link: /serve/tutorials/aws-neuron-core-inference-stable-diffusion
         :link-type: doc
 
-        Serving a StableDiffusion Model on AWS NeuronCore    
+        Serving a Stable Diffusion Model on AWS NeuronCore    
 
     .. grid-item-card:: :bdg-secondary:`Code example`
         :class-item: gallery-item computer-vision serving

@@ -1,7 +1,7 @@
-(aws-neuron-core-inference-stablediffusion-tutorial)=
+(aws-neuron-core-inference-stable-diffusion-tutorial)=
 
-# Serve Inference on StableDiffusion Model on AWS NeuronCores Using FastAPI
-This example uses a precompiled StableDiffusion XL model and deploys on an AWS Inferentia2 (Inf2)
+# Serve Inference on Stable Diffusion Model on AWS NeuronCores Using FastAPI
+This example uses a precompiled Stable Diffusion XL model and deploys on an AWS Inferentia2 (Inf2)
 instance using Ray Serve and FastAPI.
 
 
@@ -17,14 +17,14 @@ pip install "optimum-neuron==0.0.13" "diffusers==0.21.4"
 pip install "ray[serve]" requests transformers
 ```
 
-This example uses the [StableDiffusion-XL](https://huggingface.co/aws-neuron/stable-diffusion-xl-base-1-0-1024x1024) model and [FastAPI](https://fastapi.tiangolo.com/).
+This example uses the [Stable Diffusion-XL](https://huggingface.co/aws-neuron/stable-diffusion-xl-base-1-0-1024x1024) model and [FastAPI](https://fastapi.tiangolo.com/).
 This model is compiled with aws neuron and is ready to run inference. However, one can choose a different Stable Diffusion model and compile it to be compatible for running inference on AWS Inferentia2
 instances.
 
-The model we're using in this example is ready for deployment. Save the following code to a file named aws_neuron_core_inference_serve_stablediffusion.py.
+The model we're using in this example is ready for deployment. Save the following code to a file named aws_neuron_core_inference_serve_stable_diffusion.py.
 
-Use `serve run aws_neuron_core_inference_serve_stablediffusion:entrypoint` to start the Serve application.
-```{literalinclude} ../doc_code/aws_neuron_core_inference_serve_stablediffusion.py
+Use `serve run aws_neuron_core_inference_serve_stable_diffusion:entrypoint` to start the Serve application.
+```{literalinclude} ../doc_code/aws_neuron_core_inference_serve_stable_diffusion.py
 :language: python
 :start-after: __neuron_serve_code_start__
 :end-before: __neuron_serve_code_end__
