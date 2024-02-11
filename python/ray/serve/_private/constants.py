@@ -222,8 +222,7 @@ RAY_SERVE_HTTP_PROXY_CALLBACK_IMPORT_PATH = os.environ.get(
 RAY_SERVE_CONTROLLER_CALLBACK_IMPORT_PATH = os.environ.get(
     "RAY_SERVE_CONTROLLER_CALLBACK_IMPORT_PATH", None
 )
-# Serve gauge metric set period.
-RAY_SERVE_GAUGE_METRIC_SET_PERIOD_S = 1
+
 # How often autoscaling metrics are recorded on Serve replicas.
 RAY_SERVE_REPLICA_AUTOSCALING_METRIC_RECORD_PERIOD_S = 0.5
 
@@ -297,4 +296,9 @@ DEFAULT_AUTOSCALING_POLICY = "ray.serve.autoscaling_policy:default_autoscaling_p
 # metrics at handles instead of replicas. OFF by default.
 RAY_SERVE_COLLECT_AUTOSCALING_METRICS_ON_HANDLE = (
     os.environ.get("RAY_SERVE_COLLECT_AUTOSCALING_METRICS_ON_HANDLE", "0") == "1"
+)
+
+# Feature flag to always run a proxy on the head node even if it has no replicas.
+RAY_SERVE_ALWAYS_RUN_PROXY_ON_HEAD_NODE = (
+    os.environ.get("RAY_SERVE_ALWAYS_RUN_PROXY_ON_HEAD_NODE", "1") == "1"
 )
