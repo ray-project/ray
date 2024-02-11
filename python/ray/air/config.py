@@ -120,8 +120,8 @@ class ScalingConfig:
         placement_strategy: The placement strategy to use for the
             placement group of the Ray actors. See :ref:`Placement Group
             Strategies <pgroup-strategy>` for the possible options.
-        accelerator_type: [Experimental] If specified, Ray Train launches trainer and
-            workers on the nodes with the specified type of accelerators.
+        accelerator_type: [Experimental] If specified, Ray Train will launch trainer
+            and workers on the nodes with the specified type of accelerators.
             See :ref:`accelerator types <accelerator_types>`.
 
     Example:
