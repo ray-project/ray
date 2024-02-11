@@ -128,6 +128,7 @@ class GBDTTrainer(BaseTrainer):
         "resources_per_worker",
         "use_gpu",
         "placement_strategy",
+        "accelerator_type",
     ]
     _handles_checkpoint_freq = True
     _handles_checkpoint_at_end = True

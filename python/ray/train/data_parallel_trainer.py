@@ -213,6 +213,7 @@ class DataParallelTrainer(BaseTrainer):
         "resources_per_worker",
         "use_gpu",
         "placement_strategy",
+        "accelerator_type",
     ]
 
     # For backwards compatibility with the legacy dataset config API.
