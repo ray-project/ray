@@ -2551,7 +2551,7 @@ py_test(
     tags = ["team:rllib", "exclusive", "examples"],
     size = "medium",
     srcs = ["examples/nested_action_spaces.py"],
-    args = ["--as-test", "--framework=tf", "--stop-reward=-600", "--run=PPO"]
+    args = ["--as-test", "--framework=tf", "--stop-reward=-600", "--algo=PPO"]
 )
 
 py_test(
@@ -2560,7 +2560,7 @@ py_test(
     tags = ["team:rllib", "exclusive", "examples"],
     size = "medium",
     srcs = ["examples/nested_action_spaces.py"],
-    args = ["--as-test", "--framework=torch", "--stop-reward=-500.0", "--run=PPO", "--enable-new-api-stack"]
+    args = ["--as-test", "--framework=torch", "--stop-reward=-500.0", "--algo=PPO", "--enable-new-api-stack"]
 )
 
 py_test(
@@ -2569,7 +2569,7 @@ py_test(
     tags = ["team:rllib", "exclusive", "examples"],
     size = "medium",
     srcs = ["examples/nested_action_spaces.py"],
-    args = ["--as-test", "--num-agents=2", "--framework=torch", "--stop-reward=-1000.0", "--run=PPO", "--enable-new-api-stack"]
+    args = ["--as-test", "--num-agents=2", "--framework=torch", "--stop-reward=-1000.0", "--algo=PPO", "--enable-new-api-stack"]
 )
 
 py_test(
