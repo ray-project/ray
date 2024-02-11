@@ -247,6 +247,16 @@ class FakeMultiNodeProvider(NodeProvider):
         head_node_id=None,
         launch_multiple=False,
     ):
+        """
+        Args:
+            provider_config: Configuration for the provider.
+            cluster_name: Name of the cluster.
+            gcs_address: Address of the GCS server for the head node.
+            head_node_id: ID of the head node.
+            launch_multiple: Whether to launch multiple nodes at once or
+                one by one when create_node is called.
+        """
+
         NodeProvider.__init__(self, provider_config, cluster_name)
         self.lock = RLock()
         if "RAY_FAKE_CLUSTER" not in os.environ:
@@ -400,9 +410,12 @@ class FakeMultiNodeProvider(NodeProvider):
     # Test only methods
     ############################
     def _test_add_error_creates(self, e: Exception):
+        """Set an error that will be raised on
+        create_node_with_resources_and_labels."""
         self._error_creates = e
 
     def _test_add_error_terminates(self, e: Exception):
+        """Set an error that will be raised on terminate_node."""
         self._error_terminates = e
 
 
