@@ -1,7 +1,9 @@
-# coding: utf-8
 import os
 import sys
 import time
+
+# coding: utf-8
+from collections import defaultdict
 
 import pytest
 
@@ -1214,7 +1216,11 @@ class TestReconciler:
             non_terminated_cloud_instances=cloud_instances,
             cloud_provider_errors=[],
             ray_install_errors=[],
-            autoscaling_config=MockAutoscalingConfig(),
+            autoscaling_config=MockAutoscalingConfig(
+                configs={
+                    "max_concurrent_launches": 0,  # don't launch anything.
+                }
+            ),
         )
 
         assert autoscaling_state.last_seen_cluster_resource_state_version == 1
@@ -1223,6 +1229,14 @@ class TestReconciler:
         assert len(autoscaling_state.pending_instances) == 2
         pending_instances = {i.instance_id for i in autoscaling_state.pending_instances}
         assert pending_instances == {"i-1", "i-5"}
+        pending_instance_requests = defaultdict(int)
+        for r in autoscaling_state.pending_instance_requests:
+            pending_instance_requests[r.ray_node_type_name] += r.count
+        failed_instance_requests = defaultdict(int)
+        for r in autoscaling_state.failed_instance_requests:
+            failed_instance_requests[r.ray_node_type_name] += r.count
+        assert pending_instance_requests == {"type-2": 1, "type-3": 1}
+        assert failed_instance_requests == {"type-4": 1}
 
 
 if __name__ == "__main__":

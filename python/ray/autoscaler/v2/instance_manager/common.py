@@ -291,6 +291,7 @@ class InstanceUtil:
                 status update.
         """
         history = InstanceUtil.get_status_transitions(instance, select_instance_status)
+        history.sort(key=lambda x: x.timestamp_ns)
         if history:
             return history[-1]
         return None
