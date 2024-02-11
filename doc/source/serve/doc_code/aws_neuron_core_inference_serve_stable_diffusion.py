@@ -9,6 +9,7 @@ app = FastAPI()
 
 neuron_cores = 2
 
+
 @serve.deployment(num_replicas=1, route_prefix="/")
 @serve.ingress(app)
 class APIIngress:
@@ -30,16 +31,17 @@ class APIIngress:
 
 
 @serve.deployment(
-    ray_actor_options={
-        "resources": {"neuron_cores": neuron_cores}
-    },
+    ray_actor_options={"resources": {"neuron_cores": neuron_cores}},
     autoscaling_config={"min_replicas": 1, "max_replicas": 2},
 )
 class StableDiffusionV2:
     def __init__(self):
         from optimum.neuron import NeuronStableDiffusionXLPipeline
+
         compiled_model_id = "aws-neuron/stable-diffusion-xl-base-1-0-1024x1024"
-        self.pipe = NeuronStableDiffusionXLPipeline.from_pretrained(compiled_model_id, device_ids=[0, 1])
+        self.pipe = NeuronStableDiffusionXLPipeline.from_pretrained(
+            compiled_model_id, device_ids=[0, 1]
+        )
 
     async def generate(self, prompt: str):
 
@@ -65,7 +67,6 @@ if __name__ == "__main__":
 
     print("Write the response to `output.png`.")
     with open("output.png", "wb") as f:
-      f.write(resp.content)
+        f.write(resp.content)
 
     assert resp.status_code == 200
-    
