@@ -989,7 +989,7 @@ class TestReconciler:
                     ray_node_id="r-1",
                     instance_id="i-1",
                     cause=TerminationRequest.Cause.IDLE,
-                    idle_time_ms=1000,
+                    idle_duration_ms=1000,
                 )
             ],
             infeasible_gang_resource_requests=[

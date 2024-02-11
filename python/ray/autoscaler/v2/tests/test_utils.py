@@ -19,12 +19,71 @@ from ray.autoscaler.v2.schema import (
     ResourceUsage,
     Stats,
 )
-from ray.autoscaler.v2.utils import ClusterStatusFormatter, ClusterStatusParser
+from ray.autoscaler.v2.utils import (
+    ClusterStatusFormatter,
+    ClusterStatusParser,
+    ResourceRequestUtil,
+)
 from ray.core.generated.autoscaler_pb2 import GetClusterStatusReply
 
 
 def _gen_cluster_status_reply(data: Dict):
     return ParseDict(data, GetClusterStatusReply())
+
+
+class TestResourceRequestUtil:
+    @staticmethod
+    def test_combine_requests_with_affinity():
+
+        AFFINITY = ResourceRequestUtil.PlacementConstraintType.AFFINITY
+        ANTI_AFFINITY = ResourceRequestUtil.PlacementConstraintType.ANTI_AFFINITY
+
+        rq1 = ResourceRequestUtil.make(
+            {"CPU": 1},
+            [(AFFINITY, "1", "1"), (ANTI_AFFINITY, "2", "2")],
+        )
+
+        rq2 = ResourceRequestUtil.make(
+            {"CPU": 1, "GPU": 1},
+            [(AFFINITY, "1", "1"), (ANTI_AFFINITY, "3", "3")],
+        )
+
+        rq_result = ResourceRequestUtil.combine_requests_with_affinity([rq1, rq2])
+        assert len(rq_result) == 1
+        assert ResourceRequestUtil.to_dict(rq_result[0]) == ResourceRequestUtil.to_dict(
+            ResourceRequestUtil.make(
+                {"CPU": 2, "GPU": 1},  # Combined
+                [
+                    (AFFINITY, "1", "1"),
+                    (ANTI_AFFINITY, "2", "2"),
+                    (ANTI_AFFINITY, "3", "3"),
+                ],
+            )
+        )
+
+        # Affinities should also be combined
+        rq3 = ResourceRequestUtil.make({"CPU": 1}, [(AFFINITY, "4", "4")])
+
+        rq_result = ResourceRequestUtil.combine_requests_with_affinity([rq1, rq2, rq3])
+        assert len(rq_result) == 2
+        assert ResourceRequestUtil.to_dict_list(rq_result) == [
+            ResourceRequestUtil.to_dict(
+                ResourceRequestUtil.make(
+                    {"CPU": 2, "GPU": 1},  # Combined
+                    [
+                        (AFFINITY, "1", "1"),
+                        (ANTI_AFFINITY, "2", "2"),
+                        (ANTI_AFFINITY, "3", "3"),
+                    ],
+                )
+            ),
+            ResourceRequestUtil.to_dict(
+                ResourceRequestUtil.make(
+                    {"CPU": 1},  # Combined
+                    [(AFFINITY, "4", "4")],
+                )
+            ),
+        ]
 
 
 def test_cluster_status_parser_cluster_resource_state():
