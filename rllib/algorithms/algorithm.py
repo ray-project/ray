@@ -1396,7 +1396,7 @@ class Algorithm(Trainable, AlgorithmBase):
             )
             # Pass in the weights reference object and the sequence number
             # to avoid synching the weights too often.
-            metrics = self.config.custom_evaluation_function(
+            metrics = self.config.custom_async_evaluation_function(
                 self,
                 self.evaluation_workers,
                 weights_ref=weights_ref,

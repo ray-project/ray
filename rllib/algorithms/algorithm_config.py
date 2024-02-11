@@ -3946,7 +3946,8 @@ class AlgorithmConfig(_Config):
 
         First, it is checked, if the passed in element is indeed a function.
         Then it is checked, if the signature contains the required number of
-        arguments, i.e. `eval_workers`, `weights_ref`, and `weights_seq_no`.
+        arguments, i.e. `algorithm`, `eval_workers`, `weights_ref`, and
+        `weights_seq_no`.
         Finally, the source code of the element is checked for the usage of
         `foreach_worker_async`.
 
@@ -3972,11 +3973,11 @@ class AlgorithmConfig(_Config):
         # Check, if the signature is correct, i.e. three arguments:
         #   eval_workers, weights_ref, weights_seq_no
         func_signature = signature(func)
-        if len(func_signature) != 3:
+        if len(func_signature.parameters) != 4:
             raise ValueError(
-                "`custom_async_eval_function` expects a callable with three "
-                "arguments, namely `eval_workers`, `weights_ref`, and "
-                f"`weights_seq_no`, but received signature {func_signature}."
+                "`custom_async_eval_function` expects a callable with four "
+                "arguments, namely `algorithm`, `eval_workers`, `weights_ref`, "
+                f"and `weights_seq_no`, but received signature {func_signature}."
             )
         # Check, if `foreach_worker_async` is indeed used inside of the
         # custom evaluation routine.
