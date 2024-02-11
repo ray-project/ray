@@ -239,7 +239,24 @@ class FakeMultiNodeProvider(NodeProvider):
 
     This is used for laptop mode testing of autoscaling functionality."""
 
-    def __init__(self, provider_config, cluster_name):
+    def __init__(
+        self,
+        provider_config,
+        cluster_name,
+        gcs_address=None,
+        head_node_id=None,
+        launch_multiple=False,
+    ):
+        """
+        Args:
+            provider_config: Configuration for the provider.
+            cluster_name: Name of the cluster.
+            gcs_address: Address of the GCS server for the head node.
+            head_node_id: ID of the head node.
+            launch_multiple: Whether to launch multiple nodes at once or
+                one by one when create_node is called.
+        """
+
         NodeProvider.__init__(self, provider_config, cluster_name)
         self.lock = RLock()
         if "RAY_FAKE_CLUSTER" not in os.environ:
@@ -247,13 +264,18 @@ class FakeMultiNodeProvider(NodeProvider):
                 "FakeMultiNodeProvider requires ray to be started with "
                 "RAY_FAKE_CLUSTER=1 ray start ..."
             )
+        self._gcs_address = gcs_address
+        self._head_node_id = head_node_id or FAKE_HEAD_NODE_ID
+        self._launch_multiple = launch_multiple
+        self._error_creates = None
+        self._error_terminates = None
 
         self._nodes = {
-            FAKE_HEAD_NODE_ID: {
+            self._head_node_id: {
                 "tags": {
                     TAG_RAY_NODE_KIND: NODE_KIND_HEAD,
                     TAG_RAY_USER_NODE_TYPE: FAKE_HEAD_NODE_TYPE,
-                    TAG_RAY_NODE_NAME: FAKE_HEAD_NODE_ID,
+                    TAG_RAY_NODE_NAME: self._head_node_id,
                     TAG_RAY_NODE_STATUS: STATUS_UP_TO_DATE,
                 }
             },
@@ -306,6 +328,22 @@ class FakeMultiNodeProvider(NodeProvider):
     def create_node_with_resources_and_labels(
         self, node_config, tags, count, resources, labels
     ):
+        if self._error_creates:
+            raise self._error_creates
+
+        if self._launch_multiple:
+            for _ in range(count):
+                self._create_node_with_resources_and_labels(
+                    node_config, tags, count, resources, labels
+                )
+        else:
+            self._create_node_with_resources_and_labels(
+                node_config, tags, count, resources, labels
+            )
+
+    def _create_node_with_resources_and_labels(
+        self, node_config, tags, count, resources, labels
+    ):
         with self.lock:
             node_type = tags[TAG_RAY_USER_NODE_TYPE]
             next_id = self._next_hex_node_id()
@@ -320,10 +358,14 @@ class FakeMultiNodeProvider(NodeProvider):
                 labels=labels,
                 redis_address="{}:6379".format(
                     ray._private.services.get_node_ip_address()
-                ),
+                )
+                if not self._gcs_address
+                else self._gcs_address,
                 gcs_address="{}:6379".format(
                     ray._private.services.get_node_ip_address()
-                ),
+                )
+                if not self._gcs_address
+                else self._gcs_address,
                 env_vars={
                     "RAY_OVERRIDE_NODE_ID_FOR_TESTING": next_id,
                     ray_constants.RESOURCES_ENVIRONMENT_VARIABLE: json.dumps(resources),
@@ -333,18 +375,23 @@ class FakeMultiNodeProvider(NodeProvider):
             node = ray._private.node.Node(
                 ray_params, head=False, shutdown_at_exit=False, spawn_reaper=False
             )
+            all_tags = {
+                TAG_RAY_NODE_KIND: NODE_KIND_WORKER,
+                TAG_RAY_USER_NODE_TYPE: node_type,
+                TAG_RAY_NODE_NAME: next_id,
+                TAG_RAY_NODE_STATUS: STATUS_UP_TO_DATE,
+            }
+            all_tags.update(tags)
             self._nodes[next_id] = {
-                "tags": {
-                    TAG_RAY_NODE_KIND: NODE_KIND_WORKER,
-                    TAG_RAY_USER_NODE_TYPE: node_type,
-                    TAG_RAY_NODE_NAME: next_id,
-                    TAG_RAY_NODE_STATUS: STATUS_UP_TO_DATE,
-                },
+                "tags": all_tags,
                 "node": node,
             }
 
     def terminate_node(self, node_id):
         with self.lock:
+            if self._error_terminates:
+                raise self._error_terminates
+
             try:
                 node = self._nodes.pop(node_id)
             except Exception as e:
@@ -358,6 +405,18 @@ class FakeMultiNodeProvider(NodeProvider):
     @staticmethod
     def bootstrap_config(cluster_config):
         return cluster_config
+
+    ############################
+    # Test only methods
+    ############################
+    def _test_add_error_creates(self, e: Exception):
+        """Set an error that will be raised on
+        create_node_with_resources_and_labels."""
+        self._error_creates = e
+
+    def _test_add_error_terminates(self, e: Exception):
+        """Set an error that will be raised on terminate_node."""
+        self._error_terminates = e
 
 
 class FakeMultiNodeDockerProvider(FakeMultiNodeProvider):
