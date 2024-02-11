@@ -224,8 +224,6 @@ class TestReconciler:
                 count=1,  # The request failed.
                 node_type="type-2",
                 timestamp_ns=1,
-                exception=None,
-                details="nooooo",
             )
         ]
 
@@ -279,8 +277,6 @@ class TestReconciler:
             TerminateNodeError(
                 cloud_instance_id="c-2",
                 timestamp_ns=1,
-                exception=None,
-                details="nooooo",
                 request_id="t1",
             )
         ]
