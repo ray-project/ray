@@ -652,7 +652,7 @@ graphviz==0.20.1
     # via catboost
 greenlet==3.0.1
     # via sqlalchemy
-grpcio==1.59.3 ; sys_platform != "darwin"
+grpcio==1.54.3 ; sys_platform != "darwin"
     # via
     #   -r /ray/ci/../python/requirements.txt
     #   -r /ray/ci/../python/requirements/anyscale-requirements.txt

@@ -20,7 +20,7 @@ requests
 watchfiles
 
 # Python version-specific requirements
-grpcio == 1.54.2; sys_platform == "darwin"
+grpcio == 1.54.3; sys_platform == "darwin"
 grpcio >= 1.54.2; sys_platform != "darwin"
 numpy>=1.16; python_version < '3.9'
 numpy>=1.19.3; python_version >= '3.9'
