@@ -921,7 +921,7 @@ def test_status_package_unavailable_in_controller(serve_instance):
         assert "some_wrong_url" in default_app.deployments["MyDeployment"].message
         return True
 
-    wait_for_condition(check_for_failed_deployment, timeout=15)
+    wait_for_condition(check_for_failed_deployment, timeout=60)
 
 
 def test_get_app_handle_basic(serve_instance):

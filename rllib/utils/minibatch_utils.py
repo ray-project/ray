@@ -69,6 +69,15 @@ class MiniBatchCyclicIterator(MiniBatchIteratorBase):
                         "the same number of samples for each module_id."
                     )
                 s = self._start[module_id]  # start
+                # TODO (sven): Fix this bug for LSTMs:
+                #  In an RNN-setting, the Learner connector already has zero-padded
+                #  and added a timerank to the batch. Thus, n_step would still be based
+                #  on the BxT dimension, rather than the new B dimension (excluding T),
+                #  which then leads to minibatches way too large.
+                #  However, changing this already would break APPO/IMPALA w/o LSTMs as
+                #  these setups require sequencing, BUT their batches are not yet time-
+                #  ranked (this is done only in their loss functions via the
+                #  `make_time_major` utility).
                 n_steps = self._minibatch_size
 
                 samples_to_concat = []

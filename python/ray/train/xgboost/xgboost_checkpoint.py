@@ -1,5 +1,5 @@
-import os
 import tempfile
+from pathlib import Path
 from typing import TYPE_CHECKING, Optional
 
 import xgboost
@@ -51,7 +51,7 @@ class XGBoostCheckpoint(FrameworkCheckpoint):
 
         """
         tmpdir = tempfile.mkdtemp()
-        booster.save_model(os.path.join(tmpdir, cls.MODEL_FILENAME))
+        booster.save_model(Path(tmpdir, cls.MODEL_FILENAME).as_posix())
 
         checkpoint = cls.from_directory(tmpdir)
         if preprocessor:
@@ -62,5 +62,5 @@ class XGBoostCheckpoint(FrameworkCheckpoint):
         """Retrieve the XGBoost model stored in this checkpoint."""
         with self.as_directory() as checkpoint_path:
             booster = xgboost.Booster()
-            booster.load_model(os.path.join(checkpoint_path, self.MODEL_FILENAME))
+            booster.load_model(Path(checkpoint_path, self.MODEL_FILENAME).as_posix())
             return booster

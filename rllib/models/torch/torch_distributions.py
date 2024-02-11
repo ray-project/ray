@@ -13,6 +13,7 @@ import abc
 from ray.rllib.models.distributions import Distribution
 from ray.rllib.utils.annotations import override, DeveloperAPI
 from ray.rllib.utils.framework import try_import_torch
+from ray.rllib.utils.numpy import MAX_LOG_NN_OUTPUT, MIN_LOG_NN_OUTPUT, SMALL_NUMBER
 from ray.rllib.utils.typing import TensorType, Union, Tuple
 
 torch, nn = try_import_torch()
@@ -225,6 +226,102 @@ class TorchDiagGaussian(TorchDistribution):
         return TorchDiagGaussian(loc=loc, scale=scale)
 
     def to_deterministic(self) -> "TorchDeterministic":
+        return TorchDeterministic(loc=self.loc)
+
+
+@DeveloperAPI
+class TorchSquashedGaussian(TorchDistribution):
+    @override(TorchDistribution)
+    def __init__(
+        self,
+        loc: Union[float, torch.Tensor],
+        scale: Optional[Union[float, torch.Tensor]] = 1.0,
+        low: float = -1.0,
+        high: float = 1.0,
+    ):
+        self.loc = loc
+        self.low = low
+        self.high = high
+
+        super().__init__(loc=loc, scale=scale)
+
+    def _get_torch_distribution(self, loc, scale) -> "torch.distributions.Distribution":
+        return torch.distributions.normal.Normal(loc, scale)
+
+    @override(TorchDistribution)
+    def sample(
+        self, *, sample_shape=torch.Size()
+    ) -> Union[TensorType, Tuple[TensorType, TensorType]]:
+        # Sample from the Normal distribution.
+        sample = super().sample(sample_shape=sample_shape)
+        # Return the squashed sample.
+        return self._squash(sample)
+
+    @override(TorchDistribution)
+    def rsample(
+        self, *, sample_shape=torch.Size()
+    ) -> Union[TensorType, Tuple[TensorType, TensorType]]:
+        # Sample from the Normal distribution.
+        sample = super().rsample(sample_shape=sample_shape)
+        # Return the squashed sample.
+        return self._squash(sample)
+
+    @override(TorchDistribution)
+    def logp(self, value: TensorType, **kwargs) -> TensorType:
+        # Unsquash value.
+        value = self._unsquash(value)
+        # Get log-probabilities from Normal distribution.
+        logp = super().logp(value, **kwargs)
+        # Clip the log probabilities as a safeguard and sum.
+        logp = torch.clamp(logp, -100, 100).sum(-1)
+        # Return the log probabilities for squashed Normal.
+        value = torch.tanh(value)
+        return logp - torch.log(1 - value**2 + SMALL_NUMBER).sum(-1)
+
+    @override(TorchDistribution)
+    def entropy(self) -> TensorType:
+        raise ValueError("ENtropy not defined for `TorchSquashedGaussian`.")
+
+    @override(TorchDistribution)
+    def kl(self, other: Distribution) -> TensorType:
+        raise ValueError("KL not defined for `TorchSquashedGaussian`.")
+
+    def _squash(self, sample: TensorType) -> TensorType:
+        # Rescale the sample to interval given by the bounds (including the bounds).
+        sample = ((torch.tanh(sample) + 1.0) / 2.0) * (self.high - self.low) + self.low
+        # Return a clipped sample to comply with the bounds.
+        return torch.clamp(sample, self.low, self.high)
+
+    def _unsquash(self, sample: TensorType) -> TensorType:
+        # Rescale to [-1.0, 1.0].
+        sample = (sample - self.low) / (self.high - self.low) * 2.0 - 1.0
+        # Stabilize input to atanh function.
+        sample = torch.clamp(sample, -1.0 + SMALL_NUMBER, 1.0 - SMALL_NUMBER)
+        return torch.atanh(sample)
+
+    @staticmethod
+    @override(Distribution)
+    def required_input_dim(space: gym.Space, **kwargs) -> int:
+        assert isinstance(space, gym.spaces.Box)
+        return int(np.prod(space.shape, dtype=np.int32) * 2)
+
+    @classmethod
+    @override(TorchDistribution)
+    def from_logits(
+        cls, logits: TensorType, low: float = -1.0, high: float = 1.0, **kwargs
+    ) -> "TorchSquashedGaussian":
+        loc, log_std = logits.chunk(2, dim=-1)
+        # Clip the `scale` values (coming from the `RLModule.forward()`) to
+        # reasonable values.
+        log_std = torch.clamp(log_std, MIN_LOG_NN_OUTPUT, MAX_LOG_NN_OUTPUT)
+        scale = log_std.exp()
+
+        # Assert that `low` is smaller than `high`.
+        assert np.all(np.less(low, high))
+        # Return class instance.
+        return TorchSquashedGaussian(loc=loc, scale=scale, low=low, high=high)
+
+    def to_deterministic(self) -> Distribution:
         return TorchDeterministic(loc=self.loc)
 
 

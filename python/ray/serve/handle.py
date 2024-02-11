@@ -8,9 +8,9 @@ from typing import Any, AsyncIterator, Dict, Iterator, Optional, Tuple, Union
 import ray
 from ray import serve
 from ray._raylet import GcsClient, ObjectRefGenerator
-from ray.serve._private.common import DeploymentID, RequestProtocol
+from ray.serve._private.common import DeploymentID, RequestMetadata, RequestProtocol
 from ray.serve._private.default_impl import create_cluster_node_info_cache
-from ray.serve._private.router import RequestMetadata, Router
+from ray.serve._private.router import Router
 from ray.serve._private.usage import ServeUsageTag
 from ray.serve._private.utils import (
     DEFAULT,
@@ -108,8 +108,9 @@ class _DeploymentHandleBase:
         self._recorded_telemetry = _recorded_telemetry
         self._sync = sync
 
+        self.handle_id = get_random_string()
         self.request_counter = _request_counter or self._create_request_counter(
-            app_name, deployment_name
+            app_name, deployment_name, self.handle_id
         )
 
         self._router: Optional[Router] = _router
@@ -150,6 +151,7 @@ class _DeploymentHandleBase:
             self._router = Router(
                 serve.context._get_global_client()._controller,
                 self.deployment_id,
+                self.handle_id,
                 node_id,
                 get_current_actor_id(),
                 availability_zone,
@@ -168,7 +170,9 @@ class _DeploymentHandleBase:
             return f"{deployment_name}#{handle_id}"
 
     @classmethod
-    def _create_request_counter(cls, app_name, deployment_name):
+    def _create_request_counter(
+        cls, app_name: str, deployment_name: str, handle_id: str
+    ):
         return metrics.Counter(
             "serve_handle_request_counter",
             description=(
@@ -177,10 +181,9 @@ class _DeploymentHandleBase:
             ),
             tag_keys=("handle", "deployment", "route", "application"),
         ).set_default_tags(
-            # TODO(zcin): Separate deployment_id into deployment and application tags
             {
                 "handle": cls._gen_handle_tag(
-                    app_name, deployment_name, handle_id=get_random_string()
+                    app_name, deployment_name, handle_id=handle_id
                 ),
                 "deployment": deployment_name,
                 "application": app_name,

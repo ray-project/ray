@@ -1,8 +1,14 @@
 from typing import Any, Dict, List, Optional, Tuple, Union
 
+import ray._private.worker
+from ray.data._internal.dataset_logger import DatasetLogger
 from ray.data._internal.execution.interfaces import RefBundle
 from ray.data._internal.stats import StatsDict
+from ray.data._internal.util import convert_bytes_to_human_readable_str
 from ray.data.block import Block, BlockMetadata
+from ray.data.context import DataContext
+
+logger = DatasetLogger(__name__)
 
 
 class ExchangeTaskSpec:
@@ -75,6 +81,12 @@ class ExchangeTaskScheduler:
             exchange_spec: The implementation of exchange tasks to execute.
         """
         self._exchange_spec = exchange_spec
+        # If driver memory exceeds this threshold, warn the user. For now, this
+        # only applies to shuffle ops because most other ops are unlikely to use as
+        # much driver memory.
+        self.warn_on_driver_memory_usage_bytes: Optional[
+            int
+        ] = DataContext.get_current().warn_on_driver_memory_usage_bytes
 
     def execute(
         self,
@@ -82,8 +94,37 @@ class ExchangeTaskScheduler:
         output_num_blocks: int,
         map_ray_remote_args: Optional[Dict[str, Any]] = None,
         reduce_ray_remote_args: Optional[Dict[str, Any]] = None,
+        warn_on_driver_memory_usage: Optional[int] = None,
     ) -> Tuple[List[RefBundle], StatsDict]:
         """
         Execute the exchange tasks on input `refs`.
         """
         raise NotImplementedError
+
+    def warn_on_high_local_memory_store_usage(self) -> None:
+        ray_core_worker = ray._private.worker.global_worker.core_worker
+        local_memory_store_bytes_used = (
+            ray_core_worker.get_local_memory_store_bytes_used()
+        )
+        self.warn_on_driver_memory_usage(
+            local_memory_store_bytes_used,
+            "More than "
+            f"{convert_bytes_to_human_readable_str(local_memory_store_bytes_used)} "
+            "of driver memory used to store Ray Data block data and metadata. "
+            "This job may exit if driver memory is insufficient.\n\n"
+            "This can happen when many tiny blocks are created. "
+            "Check the block size using Dataset.stats() and see "
+            "https://docs.ray.io/en/latest/data/performance-tips.html"
+            "#TODO for mitigation.",
+        )
+
+    def warn_on_driver_memory_usage(
+        self, memory_usage_bytes: int, log_str: str
+    ) -> None:
+        if self.warn_on_driver_memory_usage_bytes is None:
+            return
+
+        if memory_usage_bytes > self.warn_on_driver_memory_usage_bytes:
+            logger.get_logger().warn(log_str)
+            # Double the threshold to avoid verbose warnings.
+            self.warn_on_driver_memory_usage_bytes = memory_usage_bytes * 2
