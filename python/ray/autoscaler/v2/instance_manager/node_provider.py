@@ -2,10 +2,10 @@ import logging
 import math
 import time
 from abc import ABC, abstractmethod
-from concurrent.futures import Future, ThreadPoolExecutor, as_completed
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 from queue import Queue
-from typing import Any, Dict, List, Optional, Union
+from typing import Any, Dict, List, Optional
 
 from ray.autoscaler._private.constants import (
     AUTOSCALER_MAX_CONCURRENT_LAUNCHES,
@@ -409,9 +409,9 @@ class NodeProviderAdapter(ICloudInstanceProvider):
 
             # This is to be compatible with the v1 node launcher.
             # See more in https://github.com/ray-project/ray/blob/6f5a189bc463e52c51a70f8aea41fb2950b443e8/python/ray/autoscaler/_private/node_launcher.py#L78-L85 # noqa
-            # TODO: this should be synced with what's stored in the IM, it should probably
-            # be made as a metadata field in the cloud instance. This is another
-            # incompatibility with KubeRay.
+            # TODO: this should be synced with what's stored in the IM, it should
+            # probably be made as a metadata field in the cloud instance. This is
+            # another incompatibility with KubeRay.
             launch_hash = hash_launch_conf(launch_config, config.get_config("auth", {}))
             node_tags = {
                 TAG_RAY_NODE_NAME: "ray-{}-worker".format(
