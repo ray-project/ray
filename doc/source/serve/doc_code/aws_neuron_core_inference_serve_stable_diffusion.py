@@ -48,6 +48,6 @@ class StableDiffusionV2:
         return image
 
 
-entrypoint = APIIngress.bind(StableDiffusionV2.bind(pizza))
+entrypoint = APIIngress.bind(StableDiffusionV2.bind())
 
 # __neuron_serve_code_end__
