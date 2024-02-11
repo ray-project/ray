@@ -38,6 +38,10 @@ class MetricsPusher:
     Metrics pusher is a background thread that run the registered tasks in a loop.
     """
 
+    # If no tasks are registered, sleep for 1s between iterations (until one is
+    # registered).
+    NO_TASKS_REGISTERED_INTERVAL_S = 1
+
     def __init__(
         self,
     ):
@@ -67,9 +71,6 @@ class MetricsPusher:
         consistently metrics delivery. Python GIL will ensure that this thread gets
         fair timeshare to execute and run.
         """
-
-        if len(self.tasks) == 0:
-            raise ValueError("MetricsPusher has zero tasks registered.")
 
         if self.pusher_thread and self.pusher_thread.is_alive():
             return
@@ -101,11 +102,15 @@ class MetricsPusher:
                 # For all tasks, check when the task should be executed
                 # next. Sleep until the next closest time.
                 least_interval_s = math.inf
-                for task in self.tasks.values():
-                    time_until_next_push = task.interval_s - (
-                        time.time() - task.last_call_succeeded_time
-                    )
-                    least_interval_s = min(least_interval_s, time_until_next_push)
+                if self.tasks:
+                    for task in self.tasks.values():
+                        time_until_next_push = task.interval_s - (
+                            time.time() - task.last_call_succeeded_time
+                        )
+                        least_interval_s = min(least_interval_s, time_until_next_push)
+                else:
+                    # If there are no tasks registered, fall back to the default.
+                    least_interval_s = self.NO_TASKS_REGISTERED_INTERVAL_S
 
                 time.sleep(max(least_interval_s, 0))
 
