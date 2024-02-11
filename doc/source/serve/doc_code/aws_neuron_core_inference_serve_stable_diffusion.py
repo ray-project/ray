@@ -1,14 +1,7 @@
 # __neuron_serve_code_start__
 from io import BytesIO
-from PIL import Image
 from fastapi import FastAPI
 from fastapi.responses import Response
-import torch
-import torch_neuronx
-import os
-import base64
-
-import ray
 from ray import serve
 
 
@@ -55,6 +48,6 @@ class StableDiffusionV2:
         return image
 
 
-entrypoint = APIIngress.bind(StableDiffusionV2.bind())
+entrypoint = APIIngress.bind(StableDiffusionV2.bind(pizza))
 
 # __neuron_serve_code_end__
