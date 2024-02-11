@@ -253,7 +253,7 @@ class TestMultiAgentEpisode(unittest.TestCase):
         # is all part of the lookback buffer and the episode (chunk) started at the
         # end of that lookback buffer data.
         episode = MultiAgentEpisode(
-            agent_ids=list(env.get_agent_ids()),
+            #agent_ids=list(env.get_agent_ids()),
             observations=observations,
             actions=actions,
             rewards=rewards,
@@ -280,7 +280,7 @@ class TestMultiAgentEpisode(unittest.TestCase):
 
         # Test now initializing an episode and setting its starting timestep.
         episode = MultiAgentEpisode(
-            agent_ids=list(env._agents_alive) + ["agent_5"],
+            #agent_ids=list(env._agents_alive) + ["agent_5"],
             observations=observations[-11:],
             actions=actions[-10:],
             rewards=rewards[-10:],
@@ -349,7 +349,7 @@ class TestMultiAgentEpisode(unittest.TestCase):
         # Generate an empty multi-agent episode. Note. we have to provide the
         # agent ids.
         episode = MultiAgentEpisode(
-            agent_ids=env.get_agent_ids(),
+            #agent_ids=env.get_agent_ids(),
             observation_space=env.observation_space,
             action_space=env.action_space,
         )
@@ -385,7 +385,7 @@ class TestMultiAgentEpisode(unittest.TestCase):
     def test_add_env_step(self):
         # Create an environment and add the initial observations and infos.
         env = MultiAgentTestEnv()
-        episode = MultiAgentEpisode(agent_ids=env.get_agent_ids())
+        episode = MultiAgentEpisode()#agent_ids=env.get_agent_ids())
 
         agent_0_steps = []
         agent_0_num_steps = 0
@@ -483,7 +483,7 @@ class TestMultiAgentEpisode(unittest.TestCase):
         ) = self._mock_multi_agent_records()
 
         episode = MultiAgentEpisode(
-            agent_ids=["agent_1", "agent_2", "agent_3", "agent_4", "agent_5"],
+            #agent_ids=["agent_1", "agent_2", "agent_3", "agent_4", "agent_5"],
             observations=observations,
             actions=actions,
             rewards=rewards,
@@ -535,7 +535,7 @@ class TestMultiAgentEpisode(unittest.TestCase):
 
         # Create a multi-agent episode.
         episode = MultiAgentEpisode(
-            agent_ids=agent_ids,
+            #agent_ids=agent_ids,
             observations=observations,
             actions=actions,
             rewards=rewards,
@@ -690,7 +690,7 @@ class TestMultiAgentEpisode(unittest.TestCase):
         )
 
         # Test with initial observations only.
-        episode = MultiAgentEpisode(agent_ids=agent_ids)
+        episode = MultiAgentEpisode()#agent_ids=agent_ids)
         episode.add_env_reset(
             observations=observations[0],
             infos=infos[0],
@@ -723,7 +723,7 @@ class TestMultiAgentEpisode(unittest.TestCase):
 
         # Create a multi-agent episode.
         episode = MultiAgentEpisode(
-            agent_ids=agent_ids,
+            #agent_ids=agent_ids,
             observations=observations,
             actions=actions,
             rewards=rewards,
@@ -946,7 +946,7 @@ class TestMultiAgentEpisode(unittest.TestCase):
         )
 
         # Test with initial infos only.
-        episode = MultiAgentEpisode(agent_ids=agent_ids)
+        episode = MultiAgentEpisode()#agent_ids=agent_ids)
         episode.add_env_reset(
             observations=observations[0],
             infos=infos[0],
@@ -1036,7 +1036,7 @@ class TestMultiAgentEpisode(unittest.TestCase):
 
         # Create a multi-agent episode.
         episode = MultiAgentEpisode(
-            agent_ids=agent_ids,
+            #agent_ids=agent_ids,
             observations=observations,
             actions=actions,
             rewards=rewards,
@@ -1173,7 +1173,7 @@ class TestMultiAgentEpisode(unittest.TestCase):
         self.assertTrue(act == {})
 
         # Test with initial actions only.
-        episode = MultiAgentEpisode(agent_ids=agent_ids)
+        episode = MultiAgentEpisode()#agent_ids=agent_ids)
         episode.add_env_reset(observations=observations[0], infos=infos[0])
         # Get the last action for agents and assert that it's correct.
         act = episode.get_actions()
@@ -1262,7 +1262,7 @@ class TestMultiAgentEpisode(unittest.TestCase):
 
         # Create a multi-agent episode.
         episode = MultiAgentEpisode(
-            agent_ids=agent_ids,
+            #agent_ids=agent_ids,
             observations=observations,
             actions=actions,
             rewards=rewards,
@@ -1418,7 +1418,7 @@ class TestMultiAgentEpisode(unittest.TestCase):
         self.assertTrue(rew == {})
 
         # Test with initial rewards only.
-        episode = MultiAgentEpisode(agent_ids=agent_ids)
+        episode = MultiAgentEpisode()#agent_ids=agent_ids)
         episode.add_env_reset(observations=observations[0], infos=infos[0])
         # Get the last action for agents and assert that it's correct.
         rew = episode.get_rewards()
@@ -1454,7 +1454,7 @@ class TestMultiAgentEpisode(unittest.TestCase):
 
         # Create a multi-agent episode.
         episode = MultiAgentEpisode(
-            agent_ids=agent_ids,
+            #agent_ids=agent_ids,
             observations=observations,
             actions=actions,
             rewards=rewards,
@@ -1627,7 +1627,7 @@ class TestMultiAgentEpisode(unittest.TestCase):
         # Create an environment.
         env = MultiAgentTestEnv()
         # Create an empty episode.
-        episode_1 = MultiAgentEpisode(agent_ids=env.agent_ids)
+        episode_1 = MultiAgentEpisode()#agent_ids=env.agent_ids)
 
         # Generate initial observation and info.
         obs, info = env.reset(seed=42)
@@ -2450,7 +2450,7 @@ class TestMultiAgentEpisode(unittest.TestCase):
 
         # Create the episode.
         episode_1 = MultiAgentEpisode(
-            agent_ids=["agent_1", "agent_2", "agent_3", "agent_4", "agent_5"],
+            #agent_ids=["agent_1", "agent_2", "agent_3", "agent_4", "agent_5"],
             observations=observations,
             actions=actions,
             rewards=rewards,
@@ -2760,6 +2760,7 @@ class TestMultiAgentEpisode(unittest.TestCase):
     def test_get_return(self):
         # Generate an empty episode and ensure that the return is zero.
         episode = MultiAgentEpisode()
+        check(episode.get_return())
         # Now sample 100 timesteps.
         episode, env = self._mock_multi_agent_records_from_env()
         ret = episode.get_return()
@@ -2879,7 +2880,7 @@ class TestMultiAgentEpisode(unittest.TestCase):
             self.assertTrue(batch[agent_id]["truncateds"][-1])
 
         # Finally, test that an empty episode, gives an empty batch.
-        episode = MultiAgentEpisode(agent_ids=env.get_agent_ids())
+        episode = MultiAgentEpisode()#agent_ids=env.get_agent_ids())
         # Convert now to sample batch.
         batch = episode.get_sample_batch()
         # Ensure that this batch is empty.
@@ -2899,7 +2900,7 @@ class TestMultiAgentEpisode(unittest.TestCase):
 
         # If no episode is given, construct one.
         # We give it the `agent_ids` to make it create all objects.
-        episode = episode or MultiAgentEpisode(agent_ids=env.get_agent_ids())
+        episode = episode or MultiAgentEpisode()#agent_ids=env.get_agent_ids())
 
         # We initialize the episode, if requested.
         if init:

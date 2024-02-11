@@ -1,6 +1,16 @@
 from collections import defaultdict
 import copy
-from typing import Any, Collection, DefaultDict, Dict, List, Optional, Set, Union
+from typing import (
+    Any,
+    Callable,
+    Collection,
+    DefaultDict,
+    Dict,
+    List,
+    Optional,
+    Set,
+    Union,
+)
 import uuid
 
 import gymnasium as gym
@@ -18,14 +28,6 @@ from ray.rllib.utils.typing import AgentID, ModuleID, MultiAgentDict
 
 # TODO (simon): Include cases in which the number of agents in an
 # episode are shrinking or growing during the episode itself.
-# Note, recorded `terminateds`/`truncateds` come as simple
-# `MultiAgentDict`s and have no assingment to a certain timestep.
-# Instead we assign it to the last observation recorded.
-# Theoretically, there could occur edge cases in some environments
-# where an agent receives partial rewards and then terminates without
-# a last observation. In these cases, we duplicate the last observation.
-# If no initial observation, but only partial rewards occurred,
-# we delete the agent data b/c there is nothing to learn.
 class MultiAgentEpisode:
     """Stores multi-agent episode data.
 
@@ -35,10 +37,24 @@ class MultiAgentEpisode:
 
     Each AgentID in the `MultiAgentEpisode` has its own `SingleAgentEpisode` object
     in which this agent's data is stored. Together with the env_t_to_agent_t mapping,
-    we can thus extract information either on any individual agent's time scale or from
-    a global (multi agent environment) context. Extraction of data from a
-    MultiAgentEpisode happens via the getter APIs, e.g. `get_observations()`, which
-    work analogous to the ones implemented in the `SingleAgentEpisode` class.
+    we can extract information either on any individual agent's time scale or from
+    the (global) multi-agent environment time scale.
+
+    Extraction of data from a MultiAgentEpisode happens via the getter APIs, e.g.
+    `get_observations()`, which work analogous to the ones implemented in the
+    `SingleAgentEpisode` class.
+
+    Note that recorded `terminateds`/`truncateds` come as simple
+    `MultiAgentDict`s mapping AgentID to bools and thus have no assignment to a
+    certain timestep (analogous to a SingleAgentEpisode's single `terminated/truncated`
+    boolean flag). Instead we assign it to the last observation recorded.
+    Theoretically, there could occur edge cases in some environments
+    where an agent receives partial rewards and then terminates without
+    a last observation. In these cases, we duplicate the last observation.
+
+    Also, if no initial observation has been received yet for an agent, but
+    some  rewards for this same agent already occurred, we delete the agent's data
+    up to here, b/c there is nothing to learn from these "premature" rewards.
     """
 
     SKIP_ENV_TS_TAG = "S"
@@ -46,9 +62,7 @@ class MultiAgentEpisode:
     def __init__(
         self,
         id_: Optional[str] = None,
-        agent_ids: Optional[Collection[AgentID]] = None,
-        agent_episode_ids: Optional[Dict[AgentID, str]] = None,
-        agent_module_ids: Optional[Dict[AgentID, ModuleID]] = None,
+        #agent_ids: Optional[Collection[AgentID]] = None,
         *,
         observations: Optional[List[MultiAgentDict]] = None,
         observation_space: Optional[gym.Space] = None,
@@ -63,7 +77,12 @@ class MultiAgentEpisode:
         env_t_started: Optional[int] = None,
         agent_t_started: Optional[Dict[AgentID, int]] = None,
         len_lookback_buffer: Union[int, str] = "auto",
-    ) -> "MultiAgentEpisode":
+        agent_episode_ids: Optional[Dict[AgentID, str]] = None,
+        agent_module_ids: Optional[Dict[AgentID, ModuleID]] = None,
+        agent_to_module_mapping_fn: Optional[
+            Callable[[AgentID, "MultiAgentEpisode"], ModuleID]
+        ] = None,
+    ):
         """Initializes a `MultiAgentEpisode`.
 
         Args:
@@ -71,11 +90,20 @@ class MultiAgentEpisode:
                 If None, a hexadecimal id is created. In case of providing
                 a string, make sure that it is unique, as episodes get
                 concatenated via this string.
-            agent_ids: A list of strings containing the agent IDs.
-                These have to be provided at initialization.
+            #agent_ids: A list of strings containing the agent IDs.
+            #    These have to be provided at initialization.
             agent_module_ids: An optional dict mapping AgentIDs to their respective
-                ModuleIDs (these mapping are alway s valid for an entire episode and
-                thus won't change during the course of this episode).
+                ModuleIDs (these mapping are always valid for an entire episode and
+                thus won't change during the course of this episode). If a mapping from
+                agent to module has already been provided via this dict, the (optional)
+                `agent_to_module_mapping_fn` will NOT be used again to map the same
+                agent (agents do not change their assigned module in the course of
+                one episode).
+            agent_to_module_mapping_fn: A callable taking an AgentID and a
+                MultiAgentEpisode as args and returning a ModuleID. Used to map agents
+                that have not been mapped yet (because they just entered this episode)
+                to a ModuleID. The resulting ModuleID is only stored inside the agent's
+                SingleAgentEpisode object.
             agent_episode_ids: An optional dict mapping AgentIDs
                 to their corresponding `SingleAgentEpisode`. If None, each
                 `SingleAgentEpisode` in `MultiAgentEpisode.agent_episodes`
@@ -144,6 +172,12 @@ class MultiAgentEpisode:
                 provided data in the constructor as part of the lookback buffers.
         """
         self.id_: str = id_ or uuid.uuid4().hex
+        if agent_to_module_mapping_fn is None:
+            from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
+            agent_to_module_mapping_fn = (
+                AlgorithmConfig.DEFAULT_AGENT_TO_MODULE_MAPPING_FN
+            )
+        self.agent_to_module_mapping_fn = agent_to_module_mapping_fn
 
         # Lookback buffer length is not provided. Interpret all provided data as
         # lookback buffer.
@@ -280,6 +314,7 @@ class MultiAgentEpisode:
             if agent_id not in self.agent_episodes:
                 self.agent_episodes[agent_id] = SingleAgentEpisode(
                     agent_id=agent_id,
+                    module_id=self.agent_to_module_mapping_fn(agent_id, self),
                     observation_space=self.observation_space.get(agent_id),
                     action_space=self.action_space.get(agent_id),
                 )
@@ -381,6 +416,7 @@ class MultiAgentEpisode:
             if agent_id not in self.agent_episodes:
                 self.agent_episodes[agent_id] = SingleAgentEpisode(
                     agent_id=agent_id,
+                    module_id=self.agent_to_module_mapping_fn(agent_id, self),
                     observation_space=self.observation_space.get(agent_id),
                     action_space=self.action_space.get(agent_id),
                 )
@@ -661,7 +697,7 @@ class MultiAgentEpisode:
             agent_ids = ["agent_1", "agent_2", "agent_3", "agent_4", "agent_5"]
 
             episode = MultiAgentEpisode(
-                agent_ids=agent_ids,
+                #agent_ids=agent_ids,
                 observations=observations,
                 infos=infos,
                 actions=actions,
@@ -772,12 +808,13 @@ class MultiAgentEpisode:
             # Same ID.
             id_=self.id_,
             # Same agent IDs.
-            agent_ids=self.agent_ids,
+            #agent_ids=self.agent_ids,
             # Same single agents' episode IDs.
             agent_episode_ids=self.agent_episode_ids,
             agent_module_ids={
                 aid: self.agent_episodes[aid].module_id for aid in self.agent_ids
             },
+            agent_to_module_mapping_fn=self.agent_to_module_mapping_fn,
             observations=self.get_observations(
                 indices=indices_obs_and_infos, return_list=True
             ),
@@ -1389,7 +1426,7 @@ class MultiAgentEpisode:
         truncateds: Union[MultiAgentDict, bool] = False,
         extra_model_outputs: Optional[List[MultiAgentDict]] = None,
         len_lookback_buffer: int,
-    ) -> Dict[AgentID, SingleAgentEpisode]:
+    ):
 
         if observations is None:
             return
@@ -1518,6 +1555,11 @@ class MultiAgentEpisode:
                     neg_indices_left_of_zero=True,
                 )
             )
+            # Try to figure out the module ID for this agent.
+            # If not provided explicitly, try the mapping function (if provided).
+            module_id = agent_module_ids.get(
+                agent_id, self.agent_to_module_mapping_fn(agent_id, self)
+            )
             sa_episode = SingleAgentEpisode(
                 id_=(
                     agent_episode_ids.get(agent_id)
@@ -1525,7 +1567,7 @@ class MultiAgentEpisode:
                     else None
                 ),
                 agent_id=agent_id,
-                module_id=agent_module_ids.get(agent_id),
+                module_id=module_id,
                 observations=agent_obs,
                 observation_space=self.observation_space.get(agent_id),
                 infos=infos_per_agent[agent_id],

@@ -96,9 +96,7 @@ class SingleAgentEnvRunner(EnvRunner):
         # Create our own instance of the (single-agent) `RLModule` (which
         # the needs to be weight-synched) each iteration.
         try:
-            module_spec: SingleAgentRLModuleSpec = (
-                self.config.get_default_rl_module_spec()
-            )
+            module_spec: SingleAgentRLModuleSpec = self.config.rl_module_spec
             module_spec.observation_space = self._env_to_module.observation_space
             # TODO (simon): The `gym.Wrapper` for `gym.vector.VectorEnv` should
             #  actually hold the spaces for a single env, but for boxes the

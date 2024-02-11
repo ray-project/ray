@@ -21,7 +21,10 @@ from packaging import version
 
 import ray
 from ray.rllib.algorithms.callbacks import DefaultCallbacks
-from ray.rllib.core.rl_module.marl_module import MultiAgentRLModuleSpec
+from ray.rllib.core.rl_module.marl_module import (
+    DEFAULT_MODULE_ID,
+    MultiAgentRLModuleSpec,
+)
 from ray.rllib.core.rl_module.rl_module import SingleAgentRLModuleSpec
 from ray.rllib.env.env_context import EnvContext
 from ray.rllib.env.multi_agent_env import MultiAgentEnv
@@ -148,12 +151,12 @@ class AlgorithmConfig(_Config):
         tune.Tuner("PPO", param_space=config.to_dict())
     """
 
-    # @staticmethod
-    # def DEFAULT_AGENT_TO_MODULE_MAPPING_FN(agent_id, episode):
-    #    # The default agent ID to module ID mapping function to use in the multi-agent
-    #    # case if None is provided.
-    #    # Map any agent ID to "default_policy".
-    #    return DEFAULT_MODULE_ID
+    @staticmethod
+    def DEFAULT_AGENT_TO_MODULE_MAPPING_FN(agent_id, episode):
+        # The default agent ID to module ID mapping function to use in the multi-agent
+        # case if None is provided.
+        # Map any agent ID to "default_policy".
+        return DEFAULT_MODULE_ID
 
     # TODO (sven): Deprecate in new API stack.
     @staticmethod

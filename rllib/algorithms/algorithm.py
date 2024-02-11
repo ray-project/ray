@@ -866,7 +866,8 @@ class Algorithm(Trainable, AlgorithmBase):
             with self._timers[SYNCH_ENV_CONNECTOR_STATES_TIMER]:
                 # Merge connector states from all EnvRunners and broadcast updated
                 # states back to all EnvRunners.
-                self.workers.sync_connectors()
+                pass
+                #self.workers.sync_connectors()
         else:
             self._sync_filters_if_needed(
                 central_worker=self.workers.local_worker(),

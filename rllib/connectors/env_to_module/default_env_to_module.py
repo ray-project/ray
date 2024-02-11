@@ -76,21 +76,16 @@ class DefaultEnvToModule(ConnectorV2):
         # If observations cannot be found in `input`, add the most recent ones (from all
         # episodes).
         if SampleBatch.OBS not in data:
-            for sa_episode in self.single_agent_episode_iterator(episodes):
-                self.add_batch_item(
-                    batch=data,
-                    column=SampleBatch.OBS,
-                    item_to_add=sa_episode.get_observations(-1),
-                    single_agent_episode=sa_episode,
-                )
+            data = self._add_most_recent_obs_to_data(data, episodes, rl_module)
 
-        # If our module is stateful:
+        # If our module is stateful AND uses has not provided a STATE_IN yet:
         # - Add the most recent STATE_OUTs to `data`.
-        # - Make all data in `data` have a time rank (T=1).
-        if rl_module.is_stateful():
-            data = self._add_most_recent_states_and_time_rank_to_data(
-                data, episodes, rl_module, is_multi_agent
-            )
+        # - Later (after everything has been numpyf'ied): Make all data in `data`
+        # have a time rank (T=1).
+        added_state = None
+        if rl_module.is_stateful() and STATE_IN not in data:
+            data = self._add_most_recent_states_to_data(data, episodes, rl_module)
+            added_state = data[STATE_IN]
 
         # Perform AgentID to ModuleID mapping.
         if is_multi_agent:
@@ -112,12 +107,26 @@ class DefaultEnvToModule(ConnectorV2):
                 data = self._perform_agent_to_module_mapping(
                     data, episodes, shared_data
                 )
-        # In the single-agent case, we should make sure that lists of data items under
-        # the individual columns are batched, if necessary.
+                # Convert lists of items into properly stacked (batched) data.
+                for module_id, columns in data.items():
+                    for column, column_data in columns.items():
+                        if isinstance(column_data, list):
+                            data[module_id][column] = batch(column_data)
+
+        # Convert lists of items into properly stacked (batched) data.
         else:
             for column, column_data in data.items():
                 if isinstance(column_data, list):
                     data[column] = batch(column_data)
+
+        # Only after everything has been batched and there are not more lists
+        # underneath the column names:
+        # Make all inputs (other than STATE_IN) have an additional T=1 axis.
+        if added_state is not None:
+            data = tree.map_structure_with_path(
+                lambda p, s: np.expand_dims(s, axis=1) if STATE_IN not in p else s,
+                data,
+            )
 
         # Convert data to proper tensor formats, depending on framework used by the
         # RLModule.
@@ -127,32 +136,60 @@ class DefaultEnvToModule(ConnectorV2):
 
         return data
 
-    @staticmethod
-    def _add_most_recent_states_and_time_rank_to_data(
-        data,
-        episodes,
-        rl_module,
-        is_multi_agent,
-    ):
+    def _add_most_recent_obs_to_data(self, data, episodes, rl_module):
+        for sa_episode in self.single_agent_episode_iterator(episodes):
+            self.add_batch_item(
+                batch=data,
+                column=SampleBatch.OBS,
+                item_to_add=sa_episode.get_observations(-1),
+                single_agent_episode=sa_episode,
+            )
+        return data
+
+    def _add_most_recent_states_to_data(self, data, episodes, rl_module):
+        sa_module = rl_module
+        for sa_episode in self.single_agent_episode_iterator(episodes):
+            # Multi-agent case: Extract correct single agent RLModule (to get the state
+            # for individually).
+            if sa_episode.module_id is not None:
+                sa_module = rl_module[sa_episode.module_id]
+
+            # Episode just started -> Get initial state from our RLModule.
+            if len(sa_episode) == 0:
+                state = sa_module.get_initial_state()
+            # Episode is already ongoing -> Use most recent STATE_OUT.
+            else:
+                state = sa_episode.get_extra_model_outputs(
+                    key=STATE_OUT, indices=-1
+                )
+
+            self.add_batch_item(
+                column=STATE_IN,
+                batch=data,
+                item_to_add=state,
+                single_agent_episode=sa_episode,
+            )
+
+        return data
+
         # Single-agent case:
         # Construct:
         #  {STATE_IN: [batch across all state-outs/initial states of all episodes]}
-        if not is_multi_agent:
-            # Collect all most recently computed STATE_OUT (or use initial states from
-            # RLModule if at beginning of episode).
-            states = []
-            for sa_episode in episodes:
-                # Episode just started -> Get initial state from our RLModule.
-                if len(sa_episode) == 0:
-                    state = rl_module.get_initial_state()
-                # Episode is already ongoing -> Use most recent STATE_OUT.
-                else:
-                    state = sa_episode.get_extra_model_outputs(
-                        key=STATE_OUT, indices=-1
-                    )
-                states.append(state)
+        #if not is_multi_agent:
+        #    # Collect all most recently computed STATE_OUT (or use initial states from
+        #    # RLModule if at beginning of episode).
+        #    state_in = []
+        #    for sa_episode in episodes:
+        #        # Episode just started -> Get initial state from our RLModule.
+        #        if len(sa_episode) == 0:
+        #            state = rl_module.get_initial_state()
+        #        # Episode is already ongoing -> Use most recent STATE_OUT.
+        #        else:
+        #            state = sa_episode.get_extra_model_outputs(
+        #                key=STATE_OUT, indices=-1
+        #            )
+        #        state_in.append(state)
 
-            state_in = batch(states)
         # Multi-agent case:
         # Construct:
         #  {STATE_IN: {"ag1": [list of ag1 states], "ag2": [list of ag2 states]}}
@@ -160,28 +197,26 @@ class DefaultEnvToModule(ConnectorV2):
         #  AgentID, data may be split up to different ModuleIDs (an agent may map to
         #  one module in one episode, but to another one in a different episode given
         #  e.g. a stochastic mapping function).
-        else:
-            state_in = defaultdict(list)
-            for ma_episode in episodes:
-                # Episode just started -> Get initial states from our RLModule.
-                if len(ma_episode) == 0:
-                    all_states = rl_module.get_initial_state().items()
-                # Episode is already ongoing -> Use most recent STATE_OUTs.
-                else:
-                    all_states = ma_episode.get_extra_model_outputs(
-                        key=STATE_OUT, indices=-1, global_ts=True
-                    )
-                for agent_id, agent_state in all_states.items():
-                    state_in[agent_id].append(agent_state)
-
-        # Make all other inputs have an additional T=1 axis.
-        data = tree.map_structure(lambda s: np.expand_dims(s, axis=1), data)
+        #else:
+        #    state_in = defaultdict(list)
+        #    for ma_episode in episodes:
+        #        # Episode just started -> Get initial states from our RLModule.
+        #        if len(ma_episode) == 0:
+        #            all_states = rl_module.get_initial_state().items()
+        #        # Episode is already ongoing -> Use most recent STATE_OUTs.
+        #        else:
+        #            all_states = ma_episode.get_extra_model_outputs(
+        #                key=STATE_OUT, indices=-1, global_ts=True
+        #            )
+        #        for agent_id, agent_state in all_states.items():
+        #            state_in[agent_id].append(agent_state)
+        #    state_in = dict(state_in)
 
         # Batch states (from list of individual vector sub-env states).
         # Note that state ins should NOT have the extra time dimension.
-        data[STATE_IN] = state_in
+        #data[STATE_IN] = state_in
 
-        return data
+        #return data, state_in
 
     @staticmethod
     def _perform_agent_to_module_mapping(data, episodes, shared_data):
@@ -242,11 +277,6 @@ class DefaultEnvToModule(ConnectorV2):
 
                     # Append the data.
                     module_data[module_id][column].append(value)
-
-        # Convert lists of items into properly stacked (batched) data.
-        for module_id, columns in module_data.items():
-            for column, values in columns.items():
-                module_data[module_id][column] = batch(values)
 
         return module_data
 

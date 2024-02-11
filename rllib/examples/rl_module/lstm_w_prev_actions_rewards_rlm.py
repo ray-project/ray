@@ -57,17 +57,5 @@ class TorchLSTMwPrevRewardsActionsRLM(
         # Should already be one-hot'd (by the respective connector).
         if SampleBatch.PREV_ACTIONS in batch:
             concat_obs.append(batch[SampleBatch.PREV_ACTIONS])
-        batch[SampleBatch.OBS] = torch.cat(concat_obs)
-        return batch
-
-
-class TfLSTMwPrevRewardsActionsRLM(
-    LSTMwPrevRewardsActionsRLMBase,
-    PPOTfRLModule,
-):
-    @override(LSTMwPrevRewardsActionsRLMBase)
-    def _preprocess_batch(self, batch):
-        shape = batch["prev_n_obs"].shape
-        obs = tf.reshape(batch["prev_n_obs"], (shape[0], shape[1] * shape[2]))
-        batch[SampleBatch.OBS] = obs
+        batch[SampleBatch.OBS] = torch.cat(concat_obs, -1)
         return batch

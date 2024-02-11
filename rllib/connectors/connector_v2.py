@@ -255,12 +255,6 @@ class ConnectorV2(abc.ABC):
             single_agent_episode is not None
             and single_agent_episode.agent_id is not None
         ):
-            #TEST HACK; TODO (sven): Make sure there is always a mapping going on right
-            # away
-            if single_agent_episode.module_id is None:
-                single_agent_episode.module_id = f"p{single_agent_episode.agent_id}"
-            #END HACK
-
             sub_key = (single_agent_episode.agent_id, single_agent_episode.module_id)
 
         if column not in batch:

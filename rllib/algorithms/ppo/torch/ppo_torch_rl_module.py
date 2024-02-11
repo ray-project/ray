@@ -43,7 +43,7 @@ class PPOTorchRLModule(TorchRLModule, PPORLModule):
         # TODO (sven): Make this the only behavior once PPO has been migrated
         #  to new API stack (including EnvRunners).
         if self.config.model_config_dict.get("uses_new_env_runners"):
-            return self._forward_inference(batch)
+            return PPOTorchRLModule._forward_inference(self, batch)
 
         output = {}
 

@@ -8,12 +8,32 @@ from ray.rllib.connectors.connector_v2 import ConnectorV2
 from ray.rllib.core.rl_module.rl_module import RLModule
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils.annotations import override
-from ray.rllib.utils.spaces.space_utils import batch
+from ray.rllib.utils.spaces.space_utils import batch, flatten_to_single_ndarray
 from ray.rllib.utils.typing import EpisodeType
 
 
 class _PrevRewardPrevActionConnector(ConnectorV2):
-    """A connector piece that adds previous rewards and actions to the input."""
+    """A connector piece that adds previous rewards and actions to the input obs."""
+
+    @property
+    def observation_space(self):
+        if self.input_observation_space is None:
+            return None
+        # TODO (sven): Refine this new space computation here. We need a better utllty
+        #  to compute the dimensions of a flattened space.
+        #  For now, this only works on Discrete action spaces and 1D Box observation
+        #  spaces.
+        return gym.spaces.Box(
+            float("-inf"),
+            float("inf"),
+            shape=(
+                self.input_observation_space.shape[0]
+                + self.input_action_space.n * self.n_prev_actions
+                + self.n_prev_rewards
+                ,
+            ),
+            dtype=np.float32,
+        )
 
     def __init__(
         self,
@@ -72,7 +92,7 @@ class _PrevRewardPrevActionConnector(ConnectorV2):
             # actions and previous m rewards (based on that timestep) to the batch.
             for ts in range(len(sa_episode)):
                 if self.n_prev_actions:
-                    prev_n_actions = sa_episode.get_actions(
+                    prev_n_actions = flatten_to_single_ndarray(sa_episode.get_actions(
                         # Extract n actions from `ts - n` to `ts` (excluding `ts`).
                         indices=slice(ts - self.n_prev_actions, ts),
                         # Make sure any negative indices are NOT interpreted as
@@ -87,7 +107,7 @@ class _PrevRewardPrevActionConnector(ConnectorV2):
                         # discrete or multi-discrete, so these are easier to concatenate
                         # with the observations later.
                         one_hot_discrete=True,
-                    )
+                    ))
                     self.add_batch_item(
                         batch=data,
                         column=SampleBatch.PREV_ACTIONS,
@@ -117,11 +137,11 @@ class _PrevRewardPrevActionConnector(ConnectorV2):
             assert not sa_episode.is_finalized
 
             if self.n_prev_actions:
-                prev_n_actions = batch(sa_episode.get_actions(
+                prev_n_actions = flatten_to_single_ndarray(batch(sa_episode.get_actions(
                     indices=slice(-self.n_prev_actions, None),
                     fill=0.0,
                     one_hot_discrete=True,
-                ))
+                )))
                 self.add_batch_item(
                     batch=data,
                     column=SampleBatch.PREV_ACTIONS,
