@@ -136,6 +136,8 @@ message InstanceUpdateEvent {
   optional string launch_request_id = 6;
   // Termination request for RAY_STOPPING event.
   optional TerminationRequest termination_request = 7;
+  // Instance type for REQUESTED event.
+  optional string instance_type = 8;
 }
 
 // Launch request for a node type.
