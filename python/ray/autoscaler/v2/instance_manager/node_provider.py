@@ -28,8 +28,8 @@ from ray.autoscaler.v2.schema import NodeType
 
 logger = logging.getLogger(__name__)
 
-# Type Alias. This is a **unique identifier** for a cloud node in the cluster.
-# The node provider should guarantee that this id is unique across the cluster,
+# Type Alias. This is a **unique identifier** for a cloud instance in the cluster.
+# The provider should guarantee that this id is unique across the cluster,
 # such that:
 #   - When a cloud instance is created and running, no other cloud instance in the
 #     cluster has the same id.
@@ -355,6 +355,13 @@ class NodeProviderAdapter(ICloudInstanceProvider):
     ###########################################
 
     def _do_launch(self, shape: Dict[NodeType, int], request_id: str) -> None:
+        """
+        Launch the cloud instances by calling into the v1 base node provider.
+
+        Args:
+            shape: The requested to launch node type and number of nodes.
+            request_id: The request id that identifies the request.
+        """
         config = self._config_reader.get_autoscaling_config()
         for node_type, count in shape.items():
             # Keep submitting the launch requests to the launch pool in batches.
@@ -370,6 +377,17 @@ class NodeProviderAdapter(ICloudInstanceProvider):
                 count -= to_launch
 
     def _do_terminate(self, ids: List[CloudInstanceId], request_id: str) -> None:
+        """
+        Terminate the cloud instances by calling into the v1 base node provider.
+
+        If errors happen during the termination, the errors will be put into the
+        errors queue.
+
+        Args:
+            ids: The cloud instance ids to terminate.
+            request_id: The request id that identifies the request.
+        """
+
         try:
             self._v1_terminate_nodes(ids)
         except Exception as e:
