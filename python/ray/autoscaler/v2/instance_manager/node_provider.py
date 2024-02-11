@@ -1,4 +1,5 @@
 import logging
+import math
 import time
 from abc import ABC, abstractmethod
 from concurrent.futures import Future, ThreadPoolExecutor, as_completed
@@ -7,8 +8,8 @@ from queue import Queue
 from typing import Any, Dict, List, Optional, Union
 
 from ray.autoscaler._private.constants import (
-    AUTOSCALER_MAX_CONCURRENT_TERMINATING,
-    AUTOSCALER_MAX_CONCURRENT_TYPES_TO_LAUNCH,
+    AUTOSCALER_MAX_CONCURRENT_LAUNCHES,
+    AUTOSCALER_MAX_LAUNCH_BATCH,
 )
 from ray.autoscaler._private.util import hash_launch_conf
 from ray.autoscaler.node_provider import NodeProvider as NodeProviderV1
@@ -286,16 +287,10 @@ class NodeProviderAdapter(ICloudInstanceProvider):
         self,
         v1_provider: NodeProviderV1,
         config_reader: IConfigReader,
-        max_concurrent_types_to_launch: int = AUTOSCALER_MAX_CONCURRENT_TYPES_TO_LAUNCH,
-        max_concurrent_to_terminate: int = AUTOSCALER_MAX_CONCURRENT_TERMINATING,
+        max_launch_batch_per_type: int = AUTOSCALER_MAX_LAUNCH_BATCH,
+        max_concurrent_launches: int = AUTOSCALER_MAX_CONCURRENT_LAUNCHES,
     ) -> None:
-        """
-        Args:
-            v1_provider: The v1 node provider to wrap.
-            config_reader: The config reader.
-            max_concurrent_types_to_launch: The max concurrent types to launch.
-            max_concurrent_to_terminate: The max concurrent to terminate.
-        """
+        """ """
 
         super().__init__()
         self._v1_provider = v1_provider
@@ -303,13 +298,15 @@ class NodeProviderAdapter(ICloudInstanceProvider):
         self._main_executor = ThreadPoolExecutor(
             max_workers=1, thread_name_prefix="ray::NodeProviderAdapter"
         )
-        self._node_launcher_executors = ThreadPoolExecutor(
-            max_workers=max_concurrent_types_to_launch,
-            thread_name_prefix="ray::NodeLauncherPool",
+
+        # v1 legacy rate limiting on the node provider launch calls.
+        self._max_launch_batch_per_type = max_launch_batch_per_type
+        max_batches = math.ceil(
+            max_concurrent_launches / float(max_launch_batch_per_type)
         )
-        self._node_terminator_executors = ThreadPoolExecutor(
-            max_workers=max_concurrent_to_terminate,
-            thread_name_prefix="ray::NodeTerminatorPool",
+        self._node_launcher_executors = ThreadPoolExecutor(
+            max_workers=max_batches,
+            thread_name_prefix="ray::NodeLauncherPool",
         )
         self._config_reader = config_reader
 
@@ -348,185 +345,38 @@ class NodeProviderAdapter(ICloudInstanceProvider):
         shape: Dict[NodeType, int],
         request_id: str,
     ) -> None:
-        self._launch_queue.put_nowait((shape, request_id))
-        self._main_executor.submit(self._process)
+        self._main_executor.submit(self._do_launch, shape, request_id)
 
     def terminate(self, ids: List[CloudInstanceId], request_id: str) -> None:
-        self._terminate_queue.put_nowait((ids, request_id))
-        self._main_executor.submit(self._process)
+        self._main_executor.submit(self._do_terminate, ids, request_id)
 
     ###########################################
     # Private APIs
     ###########################################
 
-    def _process(self) -> None:
-        """
-        Process the launch and terminate requests in the queue if any.
-
-        If the underlying provider is not safe to scale, this will be a no-op.
-
-        If any of the launch/terminate operation performed on the underlying v1 provider
-        failed, the error will be put into the error queue, and could be retrieved by
-        calling poll_errors().
-
-        If the post process failed, all the launch and terminate requests will be
-        treated as failed.
-
-        This method will block until all the launch and terminate requests are
-        processed. (But it will make the launch and terminate calls to the underlying
-        provider asynchronously.)
-
-        This is called by the main executor.
-
-        """
-        if not self._v1_safe_to_scale():
-            return
-        futs_to_launch_args = self._process_launch()
-        futs_to_terminate_args = self._process_terminate()
-
-        # Wait for launch and terminate to finish.
-        for fut in as_completed(futs_to_launch_args.keys()):
-            self._wait_for_future(fut, arg=futs_to_launch_args[fut])
-
-        for fut in as_completed(futs_to_terminate_args.keys()):
-            self._wait_for_future(fut, arg=futs_to_terminate_args[fut])
-
-        self._post_process(
-            futs_to_launch_args.values(), futs_to_terminate_args.values()
-        )
-
-    def _wait_for_future(
-        self,
-        fut: Future,
-        arg: Union[CloudInstanceLaunchRequest, CloudInstanceTerminateRequest],
-    ) -> None:
-        """
-        Wait for the future to finish and handle the errors.
-
-        If the future is done with an error, the error will be put into the error queue,
-        and could be retrieved by calling poll_errors().
-
-        Args:
-            fut: The future to wait for.
-            arg: The argument that is used to launch or terminate the node.
-        """
-        try:
-            fut.result()
-        except (TerminateNodeError, LaunchNodeError) as e:
-            self._errors_queue.put(e)
-        except Exception as e:
-            error = self._make_error(e, arg)
-            self._errors_queue.put(error)
-
-    @staticmethod
-    def _make_error(
-        e: Exception,
-        arg: Union[CloudInstanceLaunchRequest, CloudInstanceTerminateRequest],
-    ) -> CloudInstanceProviderError:
-        """
-        Make an error from the exception and the arguments.
-
-        If the exception is already a CloudInstanceProviderError, we will use it as the
-        error. Otherwise, we will wrap the exception into a CloudInstanceProviderError.
-
-        Args:
-            e: The exception.
-            arg: The argument that is used to launch or terminate the node.
-
-        Returns:
-            A CloudInstanceProviderError.
-
-        Raises:
-            e: If the arg type is unknown.
-        """
-        if isinstance(arg, CloudInstanceLaunchRequest):
-            launch_error = LaunchNodeError(
-                node_type=arg.node_type,
-                count=arg.count,
-                request_id=arg.request_id,
-                timestamp_ns=int(time.time_ns()),
-            )
-            launch_error.__cause__ = e
-            return launch_error
-        elif isinstance(arg, CloudInstanceTerminateRequest):
-            terminate_error = TerminateNodeError(
-                cloud_instance_id=arg.cloud_instance_id,
-                request_id=arg.request_id,
-                timestamp_ns=int(time.time_ns()),
-            )
-            terminate_error.__cause__ = e
-            return terminate_error
-        else:
-            logger.error(f"Unknown arg type {arg}")
-            raise e
-
-    def _post_process(
-        self,
-        launch_args: List[CloudInstanceLaunchRequest],
-        terminate_args: List[CloudInstanceTerminateRequest],
-    ) -> None:
-        """
-        Post process the provider.
-
-        If post process failed, we will treat all launch and terminate requests
-        as failed. While this may introduce false negatives, we will have the
-        autoscaler IM to reconcile those (e.g. by shutting down the extra nodes
-        that were already launched but thought to be failed, or by terminating
-        a node that was already terminated, which is fine).
-        """
-        try:
-            self._v1_post_process()
-        except Exception as e:
-            for arg in launch_args:
-                self._errors_queue.put(self._make_error(e, arg))
-            for arg in terminate_args:
-                self._errors_queue.put(self._make_error(e, arg))
-
-    def _process_launch(self) -> Dict[Future, CloudInstanceLaunchRequest]:
-        """
-        Process the launch requests in the launch queue.
-
-        Returns:
-            A map from the future to the launch args.
-        """
-        futs_to_launch_args = {}
+    def _do_launch(self, shape: Dict[NodeType, int], request_id: str) -> None:
         config = self._config_reader.get_autoscaling_config()
-        while not self._launch_queue.empty():
-            to_launch_shape, request_id = self._launch_queue.get()
-            # Submit to the launch pool.
-            for node_type, count in to_launch_shape.items():
-                futs_to_launch_args[
-                    self._node_launcher_executors.submit(
-                        self._launch_nodes_by_type,
-                        node_type,
-                        count,
-                        request_id,
-                        config,
-                    )
-                ] = CloudInstanceLaunchRequest(node_type, count, request_id)
+        for node_type, count in shape.items():
+            # Keep submitting the launch requests to the launch pool in batches.
+            while count > 0:
+                to_launch = min(count, self._max_launch_batch_per_type)
+                self._node_launcher_executors.submit(
+                    self._launch_nodes_by_type,
+                    node_type,
+                    to_launch,
+                    request_id,
+                    config,
+                )
+                count -= to_launch
 
-        return futs_to_launch_args
-
-    def _process_terminate(self) -> Dict[Future, CloudInstanceTerminateRequest]:
-        """
-        Process the terminate requests in the terminate queue.
-
-        Returns:
-            A map from the future to the terminate args.
-        """
-        futs_to_terminate_args = {}
-        while not self._terminate_queue.empty():
-            to_terminate_ids, request_id = self._terminate_queue.get()
-            # Submit to the terminate pool.
-            for cloud_instance_id in to_terminate_ids:
-                futs_to_terminate_args[
-                    self._node_terminator_executors.submit(
-                        self._v1_terminate_node,
-                        cloud_instance_id,
-                    )
-                ] = CloudInstanceTerminateRequest(cloud_instance_id, request_id)
-
-        return futs_to_terminate_args
+    def _do_terminate(self, ids: List[CloudInstanceId], request_id: str) -> None:
+        try:
+            self._v1_terminate_nodes(ids)
+        except Exception as e:
+            for id in ids:
+                error = TerminateNodeError(id, request_id, int(time.time_ns()))
+                error.__cause__ = e
+                self._errors_queue.put(error)
 
     def _launch_nodes_by_type(
         self,
@@ -549,32 +399,40 @@ class NodeProviderAdapter(ICloudInstanceProvider):
             LaunchNodeError: If the launch failed and raised by the underlying provider.
         """
         # Check node type is valid.
-        if node_type not in config.get_node_type_configs():
-            raise ValueError(f"Invalid node type {node_type}")
+        try:
+            if node_type not in config.get_node_type_configs():
+                raise ValueError(f"Invalid node type {node_type}")
 
-        launch_config = config.get_cloud_node_config(node_type)
-        resources = config.get_node_resources(node_type)
-        labels = config.get_node_labels(node_type)
+            launch_config = config.get_cloud_node_config(node_type)
+            resources = config.get_node_resources(node_type)
+            labels = config.get_node_labels(node_type)
 
-        # This is to be compatible with the v1 node launcher.
-        # See more in https://github.com/ray-project/ray/blob/6f5a189bc463e52c51a70f8aea41fb2950b443e8/python/ray/autoscaler/_private/node_launcher.py#L78-L85 # noqa
-        launch_hash = hash_launch_conf(launch_config, config.get_config("auth", {}))
-        node_tags = {
-            TAG_RAY_NODE_NAME: "ray-{}-worker".format(
-                config.get_config("cluster_name", "")
-            ),
-            TAG_RAY_NODE_KIND: NODE_KIND_WORKER,
-            TAG_RAY_NODE_STATUS: STATUS_UNINITIALIZED,
-            TAG_RAY_LAUNCH_CONFIG: launch_hash,
-            TAG_RAY_LAUNCH_REQUEST: request_id,
-            TAG_RAY_USER_NODE_TYPE: node_type,
-        }
+            # This is to be compatible with the v1 node launcher.
+            # See more in https://github.com/ray-project/ray/blob/6f5a189bc463e52c51a70f8aea41fb2950b443e8/python/ray/autoscaler/_private/node_launcher.py#L78-L85 # noqa
+            # TODO: this should be synced with what's stored in the IM, it should probably
+            # be made as a metadata field in the cloud instance. This is another
+            # incompatibility with KubeRay.
+            launch_hash = hash_launch_conf(launch_config, config.get_config("auth", {}))
+            node_tags = {
+                TAG_RAY_NODE_NAME: "ray-{}-worker".format(
+                    config.get_config("cluster_name", "")
+                ),
+                TAG_RAY_NODE_KIND: NODE_KIND_WORKER,
+                TAG_RAY_NODE_STATUS: STATUS_UNINITIALIZED,
+                TAG_RAY_LAUNCH_CONFIG: launch_hash,
+                TAG_RAY_LAUNCH_REQUEST: request_id,
+                TAG_RAY_USER_NODE_TYPE: node_type,
+            }
 
-        logger.info("Launching {} nodes of type {}.".format(count, node_type))
-        self._v1_provider.create_node_with_resources_and_labels(
-            launch_config, node_tags, count, resources, labels
-        )
-        logger.info("Launched {} nodes of type {}.".format(count, node_type))
+            logger.info("Launching {} nodes of type {}.".format(count, node_type))
+            self._v1_provider.create_node_with_resources_and_labels(
+                launch_config, node_tags, count, resources, labels
+            )
+            logger.info("Launched {} nodes of type {}.".format(count, node_type))
+        except Exception as e:
+            error = LaunchNodeError(node_type, count, request_id, int(time.time_ns()))
+            error.__cause__ = e
+            self._errors_queue.put(error)
 
     ###########################################
     # V1 Legacy APIs
@@ -588,8 +446,10 @@ class NodeProviderAdapter(ICloudInstanceProvider):
     from ICloudInstanceProvider.
     """
 
-    def _v1_terminate_node(self, node_id: CloudInstanceId) -> Optional[Dict[str, Any]]:
-        return self._v1_provider.terminate_node(node_id)
+    def _v1_terminate_nodes(
+        self, ids: List[CloudInstanceId]
+    ) -> Optional[Dict[str, Any]]:
+        return self._v1_provider.terminate_nodes(ids)
 
     def _v1_non_terminated_nodes(
         self, tag_filters: Dict[str, str]

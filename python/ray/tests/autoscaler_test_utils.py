@@ -295,34 +295,3 @@ class MockProvider(NodeProvider):
 
     def safe_to_scale(self):
         return self.safe_to_scale_flag
-
-
-class MockBatchingProvider(MockProvider):
-    def __init__(self, batch_size=1):
-        super().__init__()
-        self.batch_size = batch_size
-        self.to_create = []
-        self.to_terminate = []
-
-    def post_process(self) -> None:
-        for node_config, tags, count, resources, labels in self.to_create:
-            super().create_node_with_resources_and_labels(
-                node_config, tags, count, resources, labels
-            )
-
-        for node_id in self.to_terminate:
-            super().terminate_node(node_id)
-
-        self.to_create = []
-        self.to_terminate = []
-
-    def create_node(self, node_config, tags, count):
-        self.to_create.append((node_config, tags, count, {}, {}))
-
-    def create_node_with_resources_and_labels(
-        self, node_config, tags, count, resources, labels, _skip_wait=False
-    ):
-        self.to_create.append((node_config, tags, count, resources, labels))
-
-    def terminate_node(self, node_id):
-        self.to_terminate.append(node_id)
