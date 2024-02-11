@@ -56,7 +56,7 @@ class DefaultEnvToModule(ConnectorV2):
         # - Add the most recent STATE_OUTs to `data`.
         # - Make all data in `data` have a time rank (T=1).
         if rl_module.is_stateful():
-            self._add_most_recent_states_and_time_rank_to_data(
+            data = self._add_most_recent_states_and_time_rank_to_data(
                 data, episodes, rl_module, is_multi_agent
             )
 
@@ -171,6 +171,7 @@ class DefaultEnvToModule(ConnectorV2):
         # Batch states (from list of individual vector sub-env states).
         # Note that state ins should NOT have the extra time dimension.
         data[STATE_IN] = state_in
+        return data
 
     @staticmethod
     def _perform_agent_to_module_mapping(data, episodes, shared_data):

@@ -79,15 +79,16 @@ class DefaultLearnerConnector(ConnectorV2):
         for module_id, episode_list in module_to_episodes.items():
             # Get the data dicts for all episodes.
             data_dicts = [eps.get_data_dict() for eps in episode_list]
+            sa_module = rl_module[module_id]
             sa_data = data.get(module_id, {})
 
             state_in = None
-            T = rl_module.config.modules[module_id].model_config_dict.get("max_seq_len")
+            T = sa_module.config.model_config_dict.get("max_seq_len")
 
             # RLModule is stateful and STATE_IN is not found in `data` (user's custom
             # connectors have not provided this information yet) -> Perform separate
             # handling of STATE_OUT/STATE_IN keys:
-            if rl_module.is_stateful() and STATE_IN not in sa_data:
+            if sa_module.is_stateful() and STATE_IN not in sa_data:
                 if T is None:
                     raise ValueError(
                         "You are using a stateful RLModule and are not providing "
@@ -97,7 +98,7 @@ class DefaultLearnerConnector(ConnectorV2):
                         "keys in it via `config.training(model={'max_seq_len': x})`."
                     )
                 # Get model init state.
-                init_state = convert_to_numpy(rl_module.get_initial_state())
+                init_state = convert_to_numpy(sa_module.get_initial_state())
                 # Get STATE_OUTs for all episodes and only keep those (as STATE_INs)
                 # that are located at the `max_seq_len` edges (state inputs to RNNs only
                 # have a B-axis, no T-axis).
@@ -180,7 +181,7 @@ class DefaultLearnerConnector(ConnectorV2):
 
             # Now that all "normal" fields are time-dim'd and zero-padded, add
             # the STATE_IN column to `data`.
-            if rl_module.is_stateful():
+            if sa_module.is_stateful():
                 sa_data[STATE_IN] = state_in
                 # Also, create the loss mask (b/c of our now possibly zero-padded data)
                 # as well as the seq_lens array and add these to `data` as well.

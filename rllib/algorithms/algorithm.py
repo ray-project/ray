@@ -93,6 +93,7 @@ from ray.rllib.utils.metrics import (
     NUM_ENV_STEPS_SAMPLED,
     NUM_ENV_STEPS_SAMPLED_THIS_ITER,
     NUM_ENV_STEPS_TRAINED,
+    SYNCH_ENV_CONNECTOR_STATES_TIMER,
     SYNCH_WORKER_WEIGHTS_TIMER,
     TRAINING_ITERATION_TIMER,
     SAMPLE_TIMER,
@@ -177,15 +178,6 @@ except ImportError:
 tf1, tf, tfv = try_import_tf()
 
 logger = logging.getLogger(__name__)
-
-
-@Deprecated(
-    new="config = AlgorithmConfig().update_from_dict({'a': 1, 'b': 2}); ... ; "
-    "print(config.lr) -> 0.001; if config.a > 0: [do something];",
-    error=True,
-)
-def with_common_config(*args, **kwargs):
-    pass
 
 
 @PublicAPI
@@ -846,23 +838,31 @@ class Algorithm(Trainable, AlgorithmBase):
             ), "Algorithm.evaluate() needs to return a dict."
             results.update(self.evaluation_metrics)
 
-        if hasattr(self, "workers") and isinstance(self.workers, WorkerSet):
-            # Sync filters on workers.
+        # Sync filters on workers.
+        if self.config.uses_new_env_runners:
+            # Synchronize EnvToModule and ModuleToEnv connector states and broadcast new
+            # states back to all workers.
+            with self._timers[SYNCH_ENV_CONNECTOR_STATES_TIMER]:
+                # Merge connector states from all EnvRunners and broadcast updated
+                # states back to all EnvRunners.
+                self.workers.sync_connectors()
+        else:
             self._sync_filters_if_needed(
                 central_worker=self.workers.local_worker(),
                 workers=self.workers,
                 config=self.config,
             )
-            episodes_this_iter = collect_episodes(
-                self.workers,
-                self._remote_worker_ids_for_metrics(),
-                timeout_seconds=self.config.metrics_episode_collection_timeout_s,
-            )
-            results = self._compile_iteration_results(
-                episodes_this_iter=episodes_this_iter,
-                step_ctx=train_iter_ctx,
-                iteration_results=results,
-            )
+
+        episodes_this_iter = collect_episodes(
+            self.workers,
+            self._remote_worker_ids_for_metrics(),
+            timeout_seconds=self.config.metrics_episode_collection_timeout_s,
+        )
+        results = self._compile_iteration_results(
+            episodes_this_iter=episodes_this_iter,
+            step_ctx=train_iter_ctx,
+            iteration_results=results,
+        )
 
         # Check `env_task_fn` for possible update of the env's task.
         if self.config.env_task_fn is not None:
@@ -1372,12 +1372,13 @@ class Algorithm(Trainable, AlgorithmBase):
         # Call the `_before_evaluate` hook.
         self._before_evaluate()
 
-        # TODO (sven): Implement solution via connectors.
-        self._sync_filters_if_needed(
-            central_worker=self.workers.local_worker(),
-            workers=self.evaluation_workers,
-            config=eval_cfg,
-        )
+        # Synchronize EnvToModule and ModuleToEnv connector states and broadcast new
+        # states back to all workers.
+        with self._timers[SYNCH_ENV_CONNECTOR_STATES_TIMER]:
+            # Merge connector states from all EnvRunners and broadcast updated
+            # states back to all EnvRunners.
+            assert False, "TODO: Fix below: Needs to synch from training local worker"
+            self.evaluation_workers.sync_connectors()
 
         if self.evaluation_workers is None and (
             self.workers.local_worker().input_reader is None
@@ -3315,11 +3316,6 @@ class Algorithm(Trainable, AlgorithmBase):
     @Deprecated(new="AlgorithmConfig.validate()", error=True)
     def validate_config(self, config):
         pass
-
-
-# TODO: Create a dict that throw a deprecation warning once we have fully moved
-#  to AlgorithmConfig() objects (some algos still missing).
-COMMON_CONFIG: AlgorithmConfigDict = AlgorithmConfig(Algorithm).to_dict()
 
 
 class TrainIterCtx:

@@ -308,13 +308,15 @@ class InfiniteLookbackBuffer:
         )
 
         # Perform the actual slice.
-        if self.finalized:
-            data_slice = tree.map_structure(lambda s: s[slice_], data_to_use)
-        else:
-            data_slice = data_to_use[slice_]
+        data_slice = None
+        if slice_len > 0:
+            if self.finalized:
+                data_slice = tree.map_structure(lambda s: s[slice_], data_to_use)
+            else:
+                data_slice = data_to_use[slice_]
 
-        if one_hot_discrete and slice_len > 0:
-            data_slice = self._one_hot(data_slice, space_struct=self.space_struct)
+            if one_hot_discrete:
+                data_slice = self._one_hot(data_slice, space_struct=self.space_struct)
 
         # Data is shorter than the range requested -> Fill the rest with `fill` data.
         if fill is not None and (fill_right_count > 0 or fill_left_count > 0):
@@ -397,8 +399,6 @@ class InfiniteLookbackBuffer:
 
                 tree.map_structure(__set, self.data, new_data)
             else:
-                if self.space:
-                    assert self.space.contains(new_data[0])
                 assert len(self.data[slice_]) == len(new_data)
                 self.data[slice_] = new_data
         except AssertionError:
@@ -481,8 +481,6 @@ class InfiniteLookbackBuffer:
 
                 tree.map_structure(__set, self.data, new_data)
             else:
-                if self.space:
-                    assert self.space.contains(new_data), new_data
                 self.data[actual_idx] = new_data
         except IndexError:
             raise IndexError(
@@ -566,10 +564,6 @@ class InfiniteLookbackBuffer:
             stop = -LARGE_INTEGER
 
         assert start >= 0 and (stop >= 0 or stop == -LARGE_INTEGER), (start, stop)
-        # assert start <= len_self_plus_lookback and stop <= len_self_plus_lookback, (
-        #    start,
-        #    stop,
-        # )
 
         step = slice_.step if slice_.step is not None else 1
         slice_ = slice(start, stop, step)

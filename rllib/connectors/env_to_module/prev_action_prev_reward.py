@@ -46,7 +46,7 @@ class _PrevRewardPrevActionConnector(ConnectorV2):
 
         self.n_prev_actions = n_prev_actions
         self.n_prev_rewards = n_prev_rewards
-        self.as_learner_connector = as_learner_connector
+        self._as_learner_connector = as_learner_connector
 
     @override(ConnectorV2)
     def __call__(
@@ -71,7 +71,7 @@ class _PrevRewardPrevActionConnector(ConnectorV2):
             #  this should work the same, whether on finalized or non-finalized
             #  episodes.
             # Learner connector pipeline. Episodes have been finalized/numpy'ized.
-            if self.as_learner_connector:
+            if self._as_learner_connector:
                 assert episode.is_finalized
                 # Loop through each timestep in the episode and add the previous n
                 # actions and previous m rewards (based on that timestep) to the batch.
@@ -101,7 +101,8 @@ class _PrevRewardPrevActionConnector(ConnectorV2):
                             fill=0.0,
                         )
                     )
-            # Env-to-module pipeline. Episodes still operate on lists.
+            # Env-to-module pipeline.
+            # Episode is not finalized yet and thus still operates on lists of items.
             else:
                 assert not episode.is_finalized
                 prev_a.append(

@@ -24,10 +24,7 @@ from ray.rllib.core.rl_module.rl_module import (
 from ray.rllib.policy.sample_batch import MultiAgentBatch
 from ray.rllib.utils.actor_manager import FaultTolerantActorManager
 from ray.rllib.utils.deprecation import Deprecated, deprecation_warning
-from ray.rllib.utils.minibatch_utils import (
-    ShardBatchIterator,
-    ShardEpisodesIterator,
-)
+from ray.rllib.utils.minibatch_utils import ShardBatchIterator, ShardEpisodesIterator
 from ray.rllib.utils.numpy import convert_to_numpy
 from ray.rllib.utils.typing import (
     EpisodeType,
