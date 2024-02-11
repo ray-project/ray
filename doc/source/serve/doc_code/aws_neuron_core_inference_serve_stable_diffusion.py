@@ -66,6 +66,6 @@ if __name__ == "__main__":
     print("Write the response to `output.png`.")
     with open("output.png", "wb") as f:
       f.write(resp.content)
-    
+
     assert resp.status_code == 200
     
