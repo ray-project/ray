@@ -1,7 +1,7 @@
 import logging
+import time
 from collections import defaultdict
 from concurrent.futures import ThreadPoolExecutor
-import time
 from typing import List
 
 from ray.autoscaler.v2.instance_manager.instance_storage import (
