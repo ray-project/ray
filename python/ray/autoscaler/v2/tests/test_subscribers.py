@@ -168,12 +168,16 @@ class TestCloudInstanceUpdater:
             ]
         )
 
-        mock_provider.launch.assert_has_calls(
-            [
-                mock.call(shape={"type-1": 2}, request_id="1"),
-                mock.call(shape={"type-1": 1, "type-2": 1}, request_id="2"),
-            ]
-        )
+        def verify():
+            mock_provider.launch.assert_has_calls(
+                [
+                    mock.call(shape={"type-1": 2}, request_id="1"),
+                    mock.call(shape={"type-1": 1, "type-2": 1}, request_id="2"),
+                ]
+            )
+            return True
+
+        wait_for_condition(verify)
 
     def test_multi_notify(self):
         mock_provider = mock.MagicMock()
@@ -222,7 +226,12 @@ class TestCloudInstanceUpdater:
                 ),
             ]
         )
-        mock_provider.terminate.assert_not_called()
+
+        def verify():
+            mock_provider.terminate.assert_not_called()
+            return True
+
+        wait_for_condition(verify)
 
     def test_terminate_instances(self):
         mock_provider = mock.MagicMock()
