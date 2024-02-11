@@ -14,6 +14,7 @@ from ray.rllib.utils.numpy import convert_to_numpy
 from ray.rllib.utils.spaces.space_utils import (
     clip_action,
     get_base_struct_from_space,
+    unbatch,
     unsquash_action,
 )
 from ray.rllib.utils.typing import EpisodeType
@@ -37,7 +38,6 @@ class DefaultModuleToEnv(ConnectorV2):
 
     def __init__(
         self,
-        # Base class constructor args.
         input_observation_space: gym.Space,
         input_action_space: gym.Space,
         *,
@@ -115,13 +115,15 @@ class DefaultModuleToEnv(ConnectorV2):
             data = {DEFAULT_POLICY_ID: data}
 
         for module_id, module_data in data.items():
-            state = data.pop(STATE_OUT, None)
-            data = tree.map_structure(lambda s: np.squeeze(s, axis=1), data)
+            state = module_data.pop(STATE_OUT, None)
+            module_data = tree.map_structure(lambda s: np.squeeze(s, axis=1), module_data)
             if state:
-                data[STATE_OUT] = state
+                module_data[STATE_OUT] = state
 
-        if not is_multi_agent:
-            return data[DEFAULT_POLICY_ID]
+            if not is_multi_agent:
+                return module_data
+            data[module_id] = module_data
+
         return data
 
     def _get_actions(self, data, rl_module, explore, is_multi_agent):
@@ -197,10 +199,18 @@ class DefaultModuleToEnv(ConnectorV2):
         ]
         agent_data = {}
         for module_id, module_data in data.items():
+            # TODO (sven): If one agent is terminated, we should NOT perform another
+            #  forward pass on its (obs) data anymore, which we currently do in case
+            #  we are using the WriteObservationsToEpisode connector piece, due to the
+            #  fact that this piece requires even the terminal obs to be processed inside
+            #  the batch. This if block here is a temporary fix for this issue.
+            if module_id not in module_to_episode_agents_mapping:
+                continue
+
             for column, values_batch in module_data.items():
                 if column not in agent_data:
-                    agent_data[column] = [{}] * len(episodes)
-                for i, val in enumerate(values_batch):
+                    agent_data[column] = [{} for _ in range(len(episodes))]
+                for i, val in enumerate(unbatch(values_batch)):
                     eps_idx, agent_id = module_to_episode_agents_mapping[module_id][i]
                     agent_data[column][eps_idx][agent_id] = val
 

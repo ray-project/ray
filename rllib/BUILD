@@ -2555,12 +2555,21 @@ py_test(
 )
 
 py_test(
-    name = "examples/nested_action_spaces_ppo_torch",
+    name = "examples/nested_action_spaces_ppo_torch_envrunner",
     main = "examples/nested_action_spaces.py",
     tags = ["team:rllib", "exclusive", "examples"],
     size = "medium",
     srcs = ["examples/nested_action_spaces.py"],
-    args = ["--as-test", "--framework=torch", "--stop-reward=-600", "--run=PPO"]
+    args = ["--as-test", "--framework=torch", "--stop-reward=-500.0", "--run=PPO", "--enable-new-api-stack"]
+)
+
+py_test(
+    name = "examples/nested_action_spaces_multi_agent_ppo_torch_envrunner",
+    main = "examples/nested_action_spaces.py",
+    tags = ["team:rllib", "exclusive", "examples"],
+    size = "medium",
+    srcs = ["examples/nested_action_spaces.py"],
+    args = ["--as-test", "--num-agents=2", "--framework=torch", "--stop-reward=-1000.0", "--run=PPO", "--enable-new-api-stack"]
 )
 
 py_test(
@@ -2821,6 +2830,30 @@ py_test(
     args = ["--as-test", "--framework=torch", "--stop-reward=7"]
 )
 
+# ----------------------
+# new connector examples
+# ----------------------
+py_test(
+    name = "examples/connectors/connector_v2_nested_observation_spaces_ppo",
+    main = "examples/connectors/connector_v2_nested_observation_spaces.py",
+    tags = ["team:rllib", "exclusive", "examples"],
+    size = "medium",
+    srcs = ["examples/connectors/connector_v2_nested_observation_spaces.py"],
+    args = ["--enable-new-api-stack", "--as-test", "--stop-reward=400.0", "--framework=torch", "--algo=PPO"]
+)
+
+py_test(
+    name = "examples/connectors/connector_v2_nested_observation_spaces_multi_agent_ppo",
+    main = "examples/connectors/connector_v2_nested_observation_spaces.py",
+    tags = ["team:rllib", "exclusive", "examples"],
+    size = "medium",
+    srcs = ["examples/connectors/connector_v2_nested_observation_spaces.py"],
+    args = ["--enable-new-api-stack", "--num-agents=2", "--as-test", "--stop-reward=800.0", "--framework=torch", "--algo=PPO"]
+)
+
+# ----------------------
+# old connector examples
+# ----------------------
 py_test(
     name = "examples/connectors/run_connector_policy",
     main = "examples/connectors/run_connector_policy.py",

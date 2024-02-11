@@ -66,19 +66,18 @@ class ConnectorPipelineV2(ConnectorV2):
         """
         # Loop through connector pieces and call each one with the output of the
         # previous one. Thereby, time each connector piece's call.
-        ret = data
         for connector in self.connectors:
             timer = self.timers[str(connector)]
             with timer:
-                ret = connector(
+                data = connector(
                     rl_module=rl_module,
-                    data=ret,
+                    data=data,
                     episodes=episodes,
                     explore=explore,
                     shared_data=shared_data,
                     **kwargs,
                 )
-        return ret
+        return data
 
     def remove(self, name_or_class: Union[str, Type]):
         """Remove a single connector piece in this pipeline by its name or class.

@@ -87,14 +87,13 @@ class ConnectorV2(abc.ABC):
         """Initializes a ConnectorV2 instance.
 
         Args:
-            input_observation_space: The input observation space for this connector
+            input_observation_space: The (optional) input observation space for this
+                connector piece. This is the space coming from a previous connector
+                piece in the (env-to-module or learner) pipeline or is directly
+                defined within the gym.Env.
+            input_action_space: The (optional) input action space for this connector
                 piece. This is the space coming from a previous connector piece in the
-                (env-to-module or learner) pipeline or it is directly defined within
-                the used gym.Env.
-            input_action_space: The input action space for this connector piece. This
-                is the space coming from a previous connector piece in the
-                (module-to-env) pipeline or it is directly defined within the used
-                gym.Env.
+                (module-to-env) pipeline or is directly defined within the gym.Env.
             **kwargs: Forward API-compatibility kwargs.
         """
         self.input_observation_space = input_observation_space
@@ -134,6 +133,7 @@ class ConnectorV2(abc.ABC):
     @staticmethod
     def single_agent_episode_iterator(
         episodes: List[EpisodeType],
+        agents_that_stepped_only: bool = True,
         zip_with_batch_column: Optional[Union[List[Any], Dict[tuple, Any]]] = None,
     ) -> Iterator[SingleAgentEpisode]:
         """An iterator over a list of episodes yielding always SingleAgentEpisodes.
@@ -147,6 +147,12 @@ class ConnectorV2(abc.ABC):
 
         Args:
             episodes: The list of SingleAgent- or MultiAgentEpisode objects.
+            agents_that_stepped_only: If True (and multi-agent setup), will only place
+                items of those agents into the batch that have just stepped in the
+                actual MultiAgentEpisode (this is checked via a
+                `MultiAgentEpside.episode.get_agents_to_act()`). Note that this setting
+                is ignored in a single-agent setups b/c the agent steps at each timestep
+                regardless.
             zip_with_batch_column: If provided, must be a list of batch items
                 corresponding to the given `episodes` (single agent case) or a dict
                 mapping (AgentID, ModuleID) tuples to lists of individual batch items
@@ -178,16 +184,22 @@ class ConnectorV2(abc.ABC):
         # Multi-agent case.
         list_indices = defaultdict(int)
         for episode in episodes:
-            for sa_episode in episodes.agent_episodes.values():
-                if zip_with_batch_column:
+            agent_ids = (
+                episode.get_agents_that_stepped() if agents_that_stepped_only
+                else episode.agent_ids
+            )
+            for agent_id in agent_ids:
+                sa_episode = episode.agent_episodes[agent_id]
+                #for sa_episode in episode.agent_episodes.values():
+                if zip_with_batch_column is not None:
                     key = (sa_episode.agent_id, sa_episode.module_id)
-                    if len(data[key]) <= list_indices[key]:
+                    if len(zip_with_batch_column[key]) <= list_indices[key]:
                         raise ValueError(
                             "Invalid `zip_with_batch_column` data: Must structurally "
                             "match the single-agent contents in the given list of "
                             "(multi-agent) episodes!"
                         )
-                    d = data[key][list_indices[key]]
+                    d = zip_with_batch_column[key][list_indices[key]]
                     list_indices[key] += 1
                     yield sa_episode, d
                 else:
@@ -240,21 +252,22 @@ class ConnectorV2(abc.ABC):
         """
         sub_key = None
         if (
-            single_agent_episode
+            single_agent_episode is not None
             and single_agent_episode.agent_id is not None
-            and single_agent_episode.module_id is not None
         ):
             sub_key = (single_agent_episode.agent_id, single_agent_episode.module_id)
 
         if column not in batch:
             batch[column] = [] if sub_key is None else {sub_key: []}
         if sub_key:
+            if sub_key not in batch[column]:
+                batch[column][sub_key] = []
             batch[column][sub_key].append(item_to_add)
         else:
             batch[column].append(item_to_add)
 
     @staticmethod
-    def switch_batch_from_agent_ids_to_module_ids(batch):  # , episodes):
+    def switch_batch_from_agent_ids_to_module_ids(batch):
         """Flips the mapping in the given batch from Agent ID based to Module ID based.
 
         The provided batch must have column names on the top level, then - under each
@@ -283,11 +296,11 @@ class ConnectorV2(abc.ABC):
             # Note that in general, agents to modules mapping is N to M, where N is the
             # number of agents and M is the number of modules and N >= M.
             for eps in episodes[:-1]:
-                eps.agent_to_module_map = {"agent_0": "module_0", "agent_1": "module_1"}
+                eps.agent_episodes["agent_0"].module_id = "module_0"
+                eps.agent_episodes["agent_1"].module_id = "module_1"
             # Only the last episode maps the other way around.
-            episodes[-1].agent_to_module_map = {
-                "agent_0": "module_1", "agent_1": "module_0"
-            }
+            episodes[-1].agent_episodes["agent_0"].module_id = "module_1"
+            episodes[-1].agent_episodes["agent_1"].module_id = "module_0"
 
             # Now, our batch would look like this:
             batch = {

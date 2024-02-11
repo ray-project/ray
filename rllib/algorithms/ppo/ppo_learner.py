@@ -103,8 +103,8 @@ class PPOLearner(Learner):
                 episode_lens_plus_1 = [
                     len(sa_eps)
                     for ma_eps in episodes
-                    for agent_id, sa_eps in ma_eps.agent_episodes.items()
-                    if ma_eps.agent_to_module_map[agent_id] == module_id
+                    for sa_eps in ma_eps.agent_episodes.values()
+                    if sa_eps.module_id == module_id
                 ]
             else:
                 episode_lens_plus_1 = [len(eps) for eps in episodes]
