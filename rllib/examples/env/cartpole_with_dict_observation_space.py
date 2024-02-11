@@ -31,20 +31,26 @@ class CartPoleWithDictObservationSpace(CartPoleEnv):
         # Test as many quirks and oddities as possible: Dict, Dict inside a Dict,
         # Tuple inside a Dict, and both (1,)-shapes as well as ()-shapes for Boxes.
         # Also add a random discrete variable here.
-        self.observation_space = gym.spaces.Dict({
-            "x-pos": gym.spaces.Box(low[0], high[0], (1,), dtype=np.float32),
-            "angular-pos": gym.spaces.Dict({
-                "value": gym.spaces.Box(low[2], high[2], (), dtype=np.float32),
-                # Add some random non-essential information.
-                "some_random_stuff": gym.spaces.Discrete(3),
-            }),
-            "velocs": gym.spaces.Tuple([
-                # x-veloc
-                gym.spaces.Box(low[1], high[1], (1,), dtype=np.float32),
-                # angular-veloc
-                gym.spaces.Box(low[3], high[3], (), dtype=np.float32),
-            ]),
-        })
+        self.observation_space = gym.spaces.Dict(
+            {
+                "x-pos": gym.spaces.Box(low[0], high[0], (1,), dtype=np.float32),
+                "angular-pos": gym.spaces.Dict(
+                    {
+                        "value": gym.spaces.Box(low[2], high[2], (), dtype=np.float32),
+                        # Add some random non-essential information.
+                        "some_random_stuff": gym.spaces.Discrete(3),
+                    }
+                ),
+                "velocs": gym.spaces.Tuple(
+                    [
+                        # x-veloc
+                        gym.spaces.Box(low[1], high[1], (1,), dtype=np.float32),
+                        # angular-veloc
+                        gym.spaces.Box(low[3], high[3], (), dtype=np.float32),
+                    ]
+                ),
+            }
+        )
 
     def step(self, action):
         next_obs, reward, done, truncated, info = super().step(action)

@@ -526,9 +526,6 @@ class TestMultiAgentEpisode(unittest.TestCase):
             is_truncateds,
             infos,
         ) = self._mock_multi_agent_records()
-        # Define the agent ids.
-        agent_ids = ["agent_1", "agent_2", "agent_3", "agent_4", "agent_5"]
-
         # Create a multi-agent episode.
         episode = MultiAgentEpisode(
             observations=observations,
@@ -713,8 +710,6 @@ class TestMultiAgentEpisode(unittest.TestCase):
             is_truncateds,
             infos,
         ) = self._mock_multi_agent_records()
-        # Define the agent ids.
-        agent_ids = ["agent_1", "agent_2", "agent_3", "agent_4", "agent_5"]
 
         # Create a multi-agent episode.
         episode = MultiAgentEpisode(
@@ -940,7 +935,7 @@ class TestMultiAgentEpisode(unittest.TestCase):
         )
 
         # Test with initial infos only.
-        episode = MultiAgentEpisode(agent_ids=agent_ids)
+        episode = MultiAgentEpisode()
         episode.add_env_reset(
             observations=observations[0],
             infos=infos[0],
@@ -1025,12 +1020,8 @@ class TestMultiAgentEpisode(unittest.TestCase):
             is_truncateds,
             infos,
         ) = self._mock_multi_agent_records()
-        # Define the agent ids.
-        agent_ids = ["agent_1", "agent_2", "agent_3", "agent_4", "agent_5"]
-
         # Create a multi-agent episode.
         episode = MultiAgentEpisode(
-            agent_ids=agent_ids,
             observations=observations,
             actions=actions,
             rewards=rewards,
@@ -1167,7 +1158,7 @@ class TestMultiAgentEpisode(unittest.TestCase):
         self.assertTrue(act == {})
 
         # Test with initial actions only.
-        episode = MultiAgentEpisode(agent_ids=agent_ids)
+        episode = MultiAgentEpisode()
         episode.add_env_reset(observations=observations[0], infos=infos[0])
         # Get the last action for agents and assert that it's correct.
         act = episode.get_actions()
@@ -1251,12 +1242,8 @@ class TestMultiAgentEpisode(unittest.TestCase):
             is_truncateds,
             infos,
         ) = self._mock_multi_agent_records()
-        # Define the agent ids.
-        agent_ids = ["agent_1", "agent_2", "agent_3", "agent_4", "agent_5"]
-
         # Create a multi-agent episode.
         episode = MultiAgentEpisode(
-            agent_ids=agent_ids,
             observations=observations,
             actions=actions,
             rewards=rewards,
@@ -1412,7 +1399,7 @@ class TestMultiAgentEpisode(unittest.TestCase):
         self.assertTrue(rew == {})
 
         # Test with initial rewards only.
-        episode = MultiAgentEpisode(agent_ids=agent_ids)
+        episode = MultiAgentEpisode()
         episode.add_env_reset(observations=observations[0], infos=infos[0])
         # Get the last action for agents and assert that it's correct.
         rew = episode.get_rewards()
@@ -1436,9 +1423,6 @@ class TestMultiAgentEpisode(unittest.TestCase):
             is_truncateds,
             infos,
         ) = self._mock_multi_agent_records()
-        # Define the agent ids.
-        agent_ids = ["agent_1", "agent_2", "agent_3", "agent_4", "agent_5"]
-
         # Define some extra model outputs.
         extra_model_outputs = [
             # Here agent_2 has to buffer.
@@ -1448,7 +1432,6 @@ class TestMultiAgentEpisode(unittest.TestCase):
 
         # Create a multi-agent episode.
         episode = MultiAgentEpisode(
-            agent_ids=agent_ids,
             observations=observations,
             actions=actions,
             rewards=rewards,
@@ -2893,7 +2876,7 @@ class TestMultiAgentEpisode(unittest.TestCase):
 
         # If no episode is given, construct one.
         # We give it the `agent_ids` to make it create all objects.
-        episode = episode or MultiAgentEpisode(agent_ids=env.get_agent_ids())
+        episode = episode or MultiAgentEpisode()
 
         # We initialize the episode, if requested.
         if init:
@@ -2905,7 +2888,7 @@ class TestMultiAgentEpisode(unittest.TestCase):
             obs = {
                 agent_id: agent_obs
                 for agent_id, agent_obs in episode.get_observations().items()
-                if episode.agent_buffers[agent_id]["actions"].empty()
+                if episode._agent_buffered_actions[agent_id]
             }
 
         # Sample `size` many records.

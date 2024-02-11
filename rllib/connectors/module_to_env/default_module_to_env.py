@@ -116,7 +116,9 @@ class DefaultModuleToEnv(ConnectorV2):
 
         for module_id, module_data in data.items():
             state = module_data.pop(STATE_OUT, None)
-            module_data = tree.map_structure(lambda s: np.squeeze(s, axis=1), module_data)
+            module_data = tree.map_structure(
+                lambda s: np.squeeze(s, axis=1), module_data
+            )
             if state:
                 module_data[STATE_OUT] = state
 
@@ -202,8 +204,8 @@ class DefaultModuleToEnv(ConnectorV2):
             # TODO (sven): If one agent is terminated, we should NOT perform another
             #  forward pass on its (obs) data anymore, which we currently do in case
             #  we are using the WriteObservationsToEpisode connector piece, due to the
-            #  fact that this piece requires even the terminal obs to be processed inside
-            #  the batch. This if block here is a temporary fix for this issue.
+            #  fact that this piece requires even the terminal obs to be processed
+            #  inside the batch. This if block here is a temporary fix for this issue.
             if module_id not in module_to_episode_agents_mapping:
                 continue
 

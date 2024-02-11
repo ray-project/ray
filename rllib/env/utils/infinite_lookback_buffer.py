@@ -385,6 +385,11 @@ class InfiniteLookbackBuffer:
                     + fill_batch * fill_right_count
                 )
 
+        if data_slice is None:
+            if self.finalized:
+                return tree.map_structure(lambda s: s[slice_], data_to_use)
+            else:
+                return data_to_use[slice_]
         return data_slice
 
     def _set_slice(

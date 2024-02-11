@@ -72,9 +72,7 @@ class DefaultLearnerConnector(ConnectorV2):
             module_to_episodes = defaultdict(list)
             for ma_episode in episodes:
                 for agent_id, sa_episode in ma_episode.agent_episodes.items():
-                    module_to_episodes[sa_episode.module_id].append(
-                        sa_episode
-                    )
+                    module_to_episodes[sa_episode.module_id].append(sa_episode)
         else:
             module_to_episodes = {DEFAULT_POLICY_ID: episodes}
 

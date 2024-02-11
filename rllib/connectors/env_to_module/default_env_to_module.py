@@ -159,9 +159,7 @@ class DefaultEnvToModule(ConnectorV2):
                 state = sa_module.get_initial_state()
             # Episode is already ongoing -> Use most recent STATE_OUT.
             else:
-                state = sa_episode.get_extra_model_outputs(
-                    key=STATE_OUT, indices=-1
-                )
+                state = sa_episode.get_extra_model_outputs(key=STATE_OUT, indices=-1)
 
             self.add_batch_item(
                 column=STATE_IN,
@@ -210,9 +208,9 @@ class DefaultEnvToModule(ConnectorV2):
                     (episode_idx, agent_id)
                 )
 
-        shared_data[
-            "module_to_episode_agents_mapping"
-        ] = dict(module_to_episode_agents_mapping)
+        shared_data["module_to_episode_agents_mapping"] = dict(
+            module_to_episode_agents_mapping
+        )
 
         # Mapping from ModuleID to column data.
         module_data = {}
@@ -263,8 +261,8 @@ class DefaultEnvToModule(ConnectorV2):
                         # Make sure, different agents that map to the same
                         # policy don't have different spaces.
                         if (
-                                module_id in ret_space
-                                and space[aid] != ret_space[module_id]
+                            module_id in ret_space
+                            and space[aid] != ret_space[module_id]
                         ):
                             raise ValueError(
                                 f"Two agents ({aid} and {match_aid}) in your "
@@ -276,4 +274,3 @@ class DefaultEnvToModule(ConnectorV2):
                         match_aid = aid
 
         return gym.spaces.Dict(ret_space)
-

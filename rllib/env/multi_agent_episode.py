@@ -171,6 +171,7 @@ class MultiAgentEpisode:
         self.id_: str = id_ or uuid.uuid4().hex
         if agent_to_module_mapping_fn is None:
             from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
+
             agent_to_module_mapping_fn = (
                 AlgorithmConfig.DEFAULT_AGENT_TO_MODULE_MAPPING_FN
             )
@@ -1395,7 +1396,6 @@ class MultiAgentEpisode:
             their single agent episodes are done or not.
         """
         return set(self.get_observations(-1).keys())
-
 
     # TODO (sven, simon): This function can only deal with data if it does not contain
     #  terminated or truncated agents (i.e. you have to provide ONLY alive agents in the

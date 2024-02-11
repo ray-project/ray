@@ -3,7 +3,7 @@ from typing import Any, List, Optional
 import gymnasium as gym
 from gymnasium.spaces import Box
 import numpy as np
-import tree  # pip install dm_tree 
+import tree  # pip install dm_tree
 
 from ray.rllib.connectors.connector_v2 import ConnectorV2
 from ray.rllib.core.rl_module.rl_module import RLModule
@@ -38,6 +38,7 @@ class FlattenObservations(ConnectorV2):
 
         TODO
     """
+
     @property
     def observation_space(self):
         if self.input_observation_space is None:
@@ -60,8 +61,8 @@ class FlattenObservations(ConnectorV2):
                     self._input_obs_base_struct[agent_id],
                     batch_axis=False,
                 )
-                spaces[agent_id] = (
-                    Box(float("-inf"), float("inf"), (len(sample),), np.float32)
+                spaces[agent_id] = Box(
+                    float("-inf"), float("inf"), (len(sample),), np.float32
                 )
             return gym.spaces.Dict(spaces)
         else:
@@ -125,7 +126,8 @@ class FlattenObservations(ConnectorV2):
                     o,
                     self._input_obs_base_struct,
                     batch_axis=False,
-                ) for o in observations
+                )
+                for o in observations
             ]
         # Multi-agent case: There is a dict mapping from a (AgentID, ModuleID) tuple to
         # lists of individual data items.
@@ -137,7 +139,8 @@ class FlattenObservations(ConnectorV2):
                         o,
                         self._input_obs_base_struct[agent_id],
                         batch_axis=False,
-                    ) for o in o_list
+                    )
+                    for o in o_list
                 ]
                 for (agent_id, module_id), o_list in observations.items()
             }

@@ -8,7 +8,7 @@ from ray.rllib.examples.env.cartpole_with_dict_observation_space import (
 )
 from ray.rllib.examples.env.mock_env import MockEnv, MockEnv2
 from ray.rllib.examples.env.nested_space_repeat_after_me_env import (
-    NestedSpaceRepeatAfterMeEnv
+    NestedSpaceRepeatAfterMeEnv,
 )
 from ray.rllib.examples.env.stateless_cartpole import StatelessCartPole
 

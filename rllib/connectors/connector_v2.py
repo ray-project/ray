@@ -185,12 +185,13 @@ class ConnectorV2(abc.ABC):
         list_indices = defaultdict(int)
         for episode in episodes:
             agent_ids = (
-                episode.get_agents_that_stepped() if agents_that_stepped_only
+                episode.get_agents_that_stepped()
+                if agents_that_stepped_only
                 else episode.agent_ids
             )
             for agent_id in agent_ids:
                 sa_episode = episode.agent_episodes[agent_id]
-                #for sa_episode in episode.agent_episodes.values():
+                # for sa_episode in episode.agent_episodes.values():
                 if zip_with_batch_column is not None:
                     key = (sa_episode.agent_id, sa_episode.module_id)
                     if len(zip_with_batch_column[key]) <= list_indices[key]:
