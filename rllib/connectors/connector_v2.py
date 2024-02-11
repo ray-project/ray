@@ -268,6 +268,29 @@ class ConnectorV2(abc.ABC):
             batch[column].append(item_to_add)
 
     @staticmethod
+    def foreach_batch_item_change_in_place(batch, column: str, func) -> None:
+        data_to_process = batch.get(column)
+
+        if not data_to_process:
+            raise ValueError(
+                f"Invalid column name ({column})! Not found in given batch."
+            )
+
+        # Single-agent case: There is a list of individual observation items directly
+        # under the "obs" key. AgentID and ModuleID are both None.
+        if isinstance(data_to_process, list):
+            for i, d in enumerate(data_to_process):
+                data_to_process[i] = func(d, None, None)
+        # Multi-agent case: There is a dict mapping from a (AgentID, ModuleID) tuples to
+        # lists of individual data items.
+        else:
+            for (agent_id, module_id), d_list in data_to_process.items():
+                for i, d in enumerate(d_list):
+                    data_to_process[(agent_id, module_id)][i] = func(
+                        d, agent_id, module_id
+                    )
+
+    @staticmethod
     def switch_batch_from_agent_ids_to_module_ids(batch):
         """Flips the mapping in the given batch from Agent ID based to Module ID based.
 

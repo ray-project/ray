@@ -7,8 +7,6 @@ import tree  # pip install dm_tree
 
 from ray.rllib.connectors.connector_v2 import ConnectorV2
 from ray.rllib.core.rl_module.rl_module import RLModule
-from ray.rllib.env.multi_agent_episode import MultiAgentEpisode
-from ray.rllib.env.single_agent_episode import SingleAgentEpisode
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.numpy import flatten_inputs_to_1d_tensor
@@ -114,34 +112,26 @@ class FlattenObservations(ConnectorV2):
                 f"for this connector to work!"
             )
 
-        # TODO (sven): Create another helper API method for ConnectorV2 allowing
-        #  for a unified handling of these loops for single- vs multi-agent.
-        #  Similar to `self.single_agent_episode_iterator()`, but for the batch.
-        # Single-agent case: There is a list of individual observation items directly
-        # under the "obs" key:
-        if isinstance(observations, list):
-            assert isinstance(episodes[0], SingleAgentEpisode)
-            data[SampleBatch.OBS] = [
-                flatten_inputs_to_1d_tensor(
-                    o,
-                    self._input_obs_base_struct,
+        # Process each item under the SampleBatch.OBS key individually and flatten
+        # it. We are using the `ConnectorV2.foreach_batch_item_change_in_place` API,
+        # allowing us to not worry about multi- or single-agent setups and returning
+        # the new version of each item we are iterating over.
+        self.foreach_batch_item_change_in_place(
+            func=(
+                lambda item, agent_id, module_id: flatten_inputs_to_1d_tensor(
+                    item,
+                    # In the multi-agent case, we need to use the specific agent's space
+                    # struct, not the multi-agent observation space dict.
+                    (
+                        self._input_obs_base_struct
+                        if not agent_id
+                        else self._input_obs_base_struct[agent_id]
+                    ),
+                    # Our items are bare observations (no batch axis present).
                     batch_axis=False,
                 )
-                for o in observations
-            ]
-        # Multi-agent case: There is a dict mapping from a (AgentID, ModuleID) tuple to
-        # lists of individual data items.
-        else:
-            assert isinstance(episodes[0], MultiAgentEpisode)
-            data[SampleBatch.OBS] = {
-                (agent_id, module_id): [
-                    flatten_inputs_to_1d_tensor(
-                        o,
-                        self._input_obs_base_struct[agent_id],
-                        batch_axis=False,
-                    )
-                    for o in o_list
-                ]
-                for (agent_id, module_id), o_list in observations.items()
-            }
+            ),
+            batch=data,
+            column=SampleBatch.OBS,
+        )
         return data
