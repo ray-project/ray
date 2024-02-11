@@ -20,6 +20,7 @@ from ray._private.thirdparty.tabulate.tabulate import tabulate
 from ray.util.annotations import PublicAPI, Deprecated
 from ray.widgets import Template, make_table_html_repr
 from ray.data.preprocessor import Preprocessor
+from ray._private.ray_constants import RESOURCE_CONSTRAINT_PREFIX
 
 if TYPE_CHECKING:
     from ray.tune.callback import Callback
@@ -119,6 +120,9 @@ class ScalingConfig:
         placement_strategy: The placement strategy to use for the
             placement group of the Ray actors. See :ref:`Placement Group
             Strategies <pgroup-strategy>` for the possible options.
+        accelerator_type: [Experimental] If specified, Ray Train launches trainer and
+            workers on the nodes with the specified type of accelerators.
+            See :ref:`accelerator types <accelerator_types>`.
 
     Example:
 
@@ -145,6 +149,7 @@ class ScalingConfig:
     use_gpu: Union[bool, SampleRange] = False
     resources_per_worker: Optional[Union[Dict, SampleRange]] = None
     placement_strategy: Union[str, SampleRange] = "PACK"
+    accelerator_type: Optional[str] = None
 
     def __post_init__(self):
         if self.resources_per_worker:
@@ -188,6 +193,11 @@ class ScalingConfig:
             k: v for k, v in self.resources_per_worker.items() if v != 0
         }
         resources_per_worker.setdefault("GPU", int(self.use_gpu))
+
+        if self.accelerator_type:
+            resources_per_worker[
+                f"{RESOURCE_CONSTRAINT_PREFIX}{self.accelerator_type}"
+            ] = 0.001
         return resources_per_worker
 
     @property
@@ -203,16 +213,25 @@ class ScalingConfig:
                 try:
                     import google.colab  # noqa: F401
 
-                    trainer_resources = 0
+                    trainer_num_cpus = 0
                 except ImportError:
-                    trainer_resources = 1
+                    trainer_num_cpus = 1
             else:
                 # If there are no additional workers, then always reserve 1 CPU for
                 # the Trainer.
-                trainer_resources = 1
+                trainer_num_cpus = 1
 
-            return {"CPU": trainer_resources}
-        return {k: v for k, v in self.trainer_resources.items() if v != 0}
+            trainer_resources = {"CPU": trainer_num_cpus}
+        else:
+            trainer_resources = {
+                k: v for k, v in self.trainer_resources.items() if v != 0
+            }
+
+        if self.accelerator_type:
+            trainer_resources[
+                f"{RESOURCE_CONSTRAINT_PREFIX}{self.accelerator_type}"
+            ] = 0.001
+        return trainer_resources
 
     @property
     def total_resources(self):
@@ -248,15 +267,8 @@ class ScalingConfig:
 
         trainer_resources = self._trainer_resources_not_none
         trainer_bundle = [trainer_resources]
-        worker_resources = {
-            "CPU": self.num_cpus_per_worker,
-            "GPU": self.num_gpus_per_worker,
-        }
-        worker_resources_extra = (
-            {} if self.resources_per_worker is None else self.resources_per_worker
-        )
         worker_bundles = [
-            {**worker_resources, **worker_resources_extra}
+            self._resources_per_worker_not_none
             for _ in range(self.num_workers if self.num_workers else 0)
         ]
         bundles = trainer_bundle + worker_bundles
