@@ -209,7 +209,7 @@ class InstanceManager:
         Raises:
             InvalidInstanceStatusTransitionError: If the update is invalid.
         """
-        InstanceUtil.set_status(instance, update.new_instance_status)
+        InstanceUtil.set_status(instance, update.new_instance_status, update.details)
         if update.new_instance_status == Instance.ALLOCATED:
             instance.cloud_instance_id = update.cloud_instance_id
         elif update.new_instance_status == Instance.TERMINATED:
