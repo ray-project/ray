@@ -331,6 +331,11 @@ class GenericProxy(ABC):
     def _get_health_or_routes_reponse(
         self, proxy_request: ProxyRequest
     ) -> ResponseHandlerInfo:
+        """Get the response handler for system health and route endpoints.
+
+        If the proxy is draining or has not yet received a route table update from the
+        controller, both will return a non-OK status.
+        """
         if not self._route_table_populated:
             healthy = False
             message = NO_ROUTES_MESSAGE
@@ -344,6 +349,7 @@ class GenericProxy(ABC):
         if proxy_request.is_health_request:
             response_generator = self.health_response(healthy=healthy, message=message)
         else:
+            assert proxy_request.is_route_request
             response_generator = self.routes_response(healthy=healthy, message=message)
 
         return ResponseHandlerInfo(
@@ -352,7 +358,6 @@ class GenericProxy(ABC):
                 route=proxy_request.route_path,
             ),
             should_record_access_log=False,
-            should_record_request_metrics=True,
             should_increment_ongoing_requests=False,
         )
 
@@ -377,7 +382,6 @@ class GenericProxy(ABC):
                     route=proxy_request.route_path,
                 ),
                 should_record_access_log=True,
-                should_record_request_metrics=True,
                 should_increment_ongoing_requests=False,
             )
         else:
@@ -413,7 +417,6 @@ class GenericProxy(ABC):
                     route=route_path,
                 ),
                 should_record_access_log=True,
-                should_record_request_metrics=True,
                 should_increment_ongoing_requests=True,
             )
 
@@ -459,43 +462,42 @@ class GenericProxy(ABC):
                 extra={"log_to_stderr": False, "serve_access_log": True},
             )
 
-        if response_handler_info.should_record_request_metrics:
-            self.request_counter.inc(
+        self.request_counter.inc(
+            tags={
+                "route": response_handler_info.metadata.route,
+                "method": proxy_request.method,
+                "application": response_handler_info.metadata.application_name,
+                "status_code": str(status.code),
+            }
+        )
+
+        self.processing_latency_tracker.observe(
+            latency_ms,
+            tags={
+                "method": proxy_request.method,
+                "route": response_handler_info.metadata.route,
+                "application": response_handler_info.metadata.application_name,
+                "status_code": str(status.code),
+            },
+        )
+        if status.is_error:
+            self.request_error_counter.inc(
                 tags={
                     "route": response_handler_info.metadata.route,
+                    "error_code": str(status.code),
                     "method": proxy_request.method,
                     "application": response_handler_info.metadata.application_name,
-                    "status_code": str(status.code),
                 }
             )
-
-            self.processing_latency_tracker.observe(
-                latency_ms,
+            self.deployment_request_error_counter.inc(
                 tags={
+                    "deployment": response_handler_info.metadata.deployment_name,
+                    "error_code": str(status.code),
                     "method": proxy_request.method,
                     "route": response_handler_info.metadata.route,
                     "application": response_handler_info.metadata.application_name,
-                    "status_code": str(status.code),
-                },
+                }
             )
-            if status.is_error:
-                self.request_error_counter.inc(
-                    tags={
-                        "route": response_handler_info.metadata.route,
-                        "error_code": str(status.code),
-                        "method": proxy_request.method,
-                        "application": response_handler_info.metadata.application_name,
-                    }
-                )
-                self.deployment_request_error_counter.inc(
-                    tags={
-                        "deployment": response_handler_info.metadata.deployment_name,
-                        "error_code": str(status.code),
-                        "method": proxy_request.method,
-                        "route": response_handler_info.metadata.route,
-                        "application": response_handler_info.metadata.application_name,
-                    }
-                )
 
     @abstractmethod
     def setup_request_context_and_handle(
@@ -561,12 +563,8 @@ class gRPCProxy(GenericProxy):
     async def routes_response(
         self, *, healthy: bool, message: str
     ) -> ResponseGenerator:
-        application_names = []
-        if healthy:
-            application_names = [endpoint.app for endpoint in self.route_info.values()]
-
         yield ListApplicationsResponse(
-            application_names=application_names,
+            application_names=[endpoint.app for endpoint in self.route_info.values()],
         ).SerializeToString()
 
         yield ResponseStatus(
