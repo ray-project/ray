@@ -19,7 +19,7 @@ steps:
     wanda: .buildkite/release-automation/forge_arm64.wanda.yaml
     instance_type: builder-arm64
 
-  - label: "Linux Arm64 Python {{matrix}}"
+  - label: "Linux arm64 Python {{matrix}}"
     depends_on: forge_arm64
     instance_type: medium-arm64
     job_env: forge-arm64
