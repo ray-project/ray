@@ -34,7 +34,70 @@ class FlattenObservations(ConnectorV2):
 
     .. testcode::
 
-        TODO
+        import gymnasium as gym
+        import numpy as np
+
+        from ray.rllib.connectors.env_to_module import FlattenObservations
+        from ray.rllib.utils.test_utils import check
+
+        # Some arbitrarily nested, complex observation space.
+        obs_space = gym.spaces.Dict({
+            "a": gym.spaces.Box(-10.0, 10.0, (), np.float32),
+            "b": gym.spaces.Tuple([
+                gym.spaces.Discrete(2),
+                gym.spaces.Box(-1.0, 1.0, (2, 1), np.float32),
+            ]),
+            "c": gym.spaces.MultiDiscrete([2, 3]),
+        })
+        act_space = gym.spaces.Discrete(2)
+
+        # A batch of two example items, both coming from the above defined observation
+        # space.
+        batch = {
+            "obs": [
+                # 1st example item.
+                {
+                    "a": np.array(-10.0, np.float32),
+                    "b": (1, np.array([[-1.0], [-1.0]], np.float32)),
+                    "c": np.array([0, 2]),
+                },
+                # 2nd example item.
+                {
+                    "a": np.array(10.0, np.float32),
+                    "b": (0, np.array([[1.0], [1.0]], np.float32)),
+                    "c": np.array([1, 1]),
+                },
+            ],
+        }
+
+        # Construct our connector piece.
+        connector = FlattenObservations(obs_space, act_space)
+
+        # Call our connector piece with the example data.
+        output_data = connector(
+            rl_module=None,  # This connector works without an RLModule.
+            data=batch,
+            episodes=[],  # This connector does not need the `episodes` input.
+            explore=True,
+            shared_data={},
+        )
+
+        # The connector does not change the number of items in the data (still 2 items).
+        check(len(output_data["obs"]), 2)
+
+        # The connector has flattened each item in the data to a 1D tensor.
+        check(
+            output_data["obs"][0],
+            #         box()  disc(2).  box(2, 1).  multidisc(2, 3)........
+            np.array([-10.0, 0.0, 1.0, -1.0, -1.0, 1.0, 0.0, 0.0, 0.0, 1.0]),
+        )
+        check(
+            output_data["obs"][1],
+            #         box()  disc(2).  box(2, 1).  multidisc(2, 3)........
+            np.array([ 10.0, 1.0, 0.0,  1.0,  1.0, 0.0, 1.0, 0.0, 1.0, 0.0]),
+        )
+
+
     """
 
     @property
@@ -92,6 +155,7 @@ class FlattenObservations(ConnectorV2):
         super().__init__(input_observation_space, input_action_space, **kwargs)
 
         self._multi_agent = multi_agent
+        self.observation_space
 
     @override(ConnectorV2)
     def __call__(
