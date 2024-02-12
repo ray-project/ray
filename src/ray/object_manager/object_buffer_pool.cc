@@ -156,6 +156,11 @@ void ObjectBufferPool::WriteChunk(const ObjectID &object_id,
     // Ensure the process of object_id SEALS and RELEASES is mutex guarded
     absl::MutexLock lock(&pool_mutex_);
     auto it = create_buffer_state_.find(object_id);
+    if (it == create_buffer_state_.end()) {
+      RAY_LOG(DEBUG) << "Object " << object_id << " aborted before chunk " << chunk_index
+                     << " finished copying data";
+      return;
+    }
 
     it->second.num_seals_remaining--;
     if (it->second.num_seals_remaining == 0) {
