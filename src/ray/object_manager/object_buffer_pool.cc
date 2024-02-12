@@ -121,7 +121,7 @@ void ObjectBufferPool::WriteChunk(const ObjectID &object_id,
                                   uint64_t metadata_size,
                                   const uint64_t chunk_index,
                                   const std::string &data) {
-  std::optional<ChunkInfo> chunk_info;
+  std::optional<ObjectBufferPool::ChunkInfo> chunk_info;
   {
     absl::MutexLock lock(&pool_mutex_);
     auto it = create_buffer_state_.find(object_id);
@@ -144,16 +144,16 @@ void ObjectBufferPool::WriteChunk(const ObjectID &object_id,
         << " chunk size: " << chunk_info.buffer_length;
 
     // Update the state from REFERENCED To SEALED before releasing the lock to ensure
-    // that only 1 thread sees the REFERENCED to SEALED transition.
+    // that no other thread sees a REFERENCED state.
     it->second.chunk_state.at(chunk_index) = CreateChunkState::SEALED;
   }
 
-  RAY_CHECK(chunk_info.has_value());
+  RAY_CHECK(chunk_info.has_value()) << "chunk_info is not set";
   // Unguarded copy call
   std::memcpy(chunk_info->data, data.data(), chunk_info->buffer_length);
 
   {
-    // Ensure the process of object_id SEALS and RELEASES is mutex guarded
+    // Ensure the process of object_id Seal and Release is mutex guarded
     absl::MutexLock lock(&pool_mutex_);
     auto it = create_buffer_state_.find(object_id);
     if (it == create_buffer_state_.end()) {
