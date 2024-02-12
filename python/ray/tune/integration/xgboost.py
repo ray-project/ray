@@ -1,14 +1,13 @@
 from collections import OrderedDict
 from contextlib import contextmanager
+from pathlib import Path
 import tempfile
-from typing import Callable, Dict, List, Union, Optional, Type
+from typing import Callable, Dict, List, Union, Optional
 
 from xgboost.core import Booster
 
 from ray import train
 from ray.train import Checkpoint
-from ray.train.xgboost import XGBoostCheckpoint
-from ray.train.constants import _DEPRECATED_VALUE
 from ray.tune.utils import flatten_dict
 from ray.util.annotations import Deprecated
 
@@ -40,23 +39,20 @@ class TuneReportCheckpointCallback(TuneCallback):
     or Ray Tune.
 
     Args:
-        metrics: Metrics to report to Tune. If this is a list,
+        metrics: Metrics to report. If this is a list,
             each item describes the metric key reported to XGBoost,
-            and it will be reported under the same name to Tune. If this is a
-            dict, each key will be the name reported to Tune and the respective
-            value will be the metric key reported to XGBoost.
+            and it will be reported under the same name.
+            This can also be a dict of {<key-to-report>: <xgboost-metric-key>},
+            which can be used to rename xgboost default metrics.
+        filename: Customize the saved checkpoint file type by passing
+            a filename. Defaults to "model.json".
         frequency: How often to save checkpoints. Defaults to 0 (no checkpoints
-            are saved during training). A checkpoint is always saved at the end
-            of training.
+            are saved during training).
+        checkpoint_at_end: Whether or not to save a checkpoint at the end of training.
         results_postprocessing_fn: An optional Callable that takes in
-            the dict that will be reported to Tune (after it has been flattened)
-            and returns a modified dict that will be reported instead. Can be used
-            to eg. average results across CV fold when using ``xgboost.cv``.
-        checkpoint_cls: An optional checkpoint class that subclasses
-            `ray.train.xgboost.XGBoostCheckpoint` that implements the
-            checkpoint saving and loading logic from an XGBoost model.
-        filename: Deprecated. Customize the saved checkpoint file type by passing
-            a `ray.train.xgboost.XGBoostCheckpoint` subclass instead.
+            the metrics dict that will be reported (after it has been flattened)
+            and returns a modified dict. For example, this can be used to
+            average results across CV fold when using ``xgboost.cv``.
 
     Example:
 
@@ -85,36 +81,25 @@ class TuneReportCheckpointCallback(TuneCallback):
 
     """
 
+    CHECKPOINT_NAME = "model.json"
+
     def __init__(
         self,
         metrics: Optional[Union[str, List[str], Dict[str, str]]] = None,
-        frequency: int = 1,
+        filename: str = CHECKPOINT_NAME,
+        frequency: int = 0,
         checkpoint_at_end: bool = True,
         results_postprocessing_fn: Optional[
             Callable[[Dict[str, Union[float, List[float]]]], Dict[str, float]]
         ] = None,
-        checkpoint_cls: Type[XGBoostCheckpoint] = XGBoostCheckpoint,
-        filename: str = _DEPRECATED_VALUE,
     ):
-        if filename != _DEPRECATED_VALUE:
-            # TODO(justinvyu): [code_removal] Remove in 2.11.
-            raise DeprecationWarning(
-                "`filename` is deprecated. Supply a custom `checkpoint_cls` "
-                "that subclasses `ray.train.xgboost.XGBoostCheckpoint` instead."
-            )
-
         if isinstance(metrics, str):
             metrics = [metrics]
         self._metrics = metrics
+        self._filename = filename
         self._frequency = frequency
         self._checkpoint_at_end = checkpoint_at_end
         self._results_postprocessing_fn = results_postprocessing_fn
-
-        if not issubclass(checkpoint_cls, XGBoostCheckpoint):
-            raise ValueError(
-                "`checkpoint_cls` must subclass `ray.train.xgboost.XGBoostCheckpoint`"
-            )
-        self._checkpoint_cls = checkpoint_cls
 
         # Keeps track of the eval metrics from the last iteration,
         # so that the latest metrics can be reported with the checkpoint
@@ -149,10 +134,8 @@ class TuneReportCheckpointCallback(TuneCallback):
     @contextmanager
     def _get_checkpoint(self, model: Booster) -> Optional[Checkpoint]:
         with tempfile.TemporaryDirectory() as temp_checkpoint_dir:
-            checkpoint = self._checkpoint_cls.from_model(
-                model, path=temp_checkpoint_dir
-            )
-            yield checkpoint
+            model.save_model(Path(temp_checkpoint_dir, self._filename).as_posix())
+            yield Checkpoint(temp_checkpoint_dir)
 
     def after_iteration(self, model: Booster, epoch: int, evals_log: Dict):
         self._evals_log = evals_log
