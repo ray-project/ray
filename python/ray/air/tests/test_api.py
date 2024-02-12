@@ -186,7 +186,6 @@ def test_scaling_config_accelerator_type():
         trainer_resources={"memory": 10 * 1024**3},
     )
     assert scaling_config._trainer_resources_not_none == {
-        "CPU": 1,
         "memory": 10 * 1024**3,
         "accelerator_type:A100": 0.001,
     }
