@@ -139,9 +139,9 @@ void ObjectBufferPool::WriteChunk(const ObjectID &object_id,
     RAY_CHECK(it->second.chunk_info.size() > chunk_index);
 
     chunk_info = it->second.chunk_info.at(chunk_index);
-    RAY_CHECK(data.size() == chunk_info.buffer_length)
+    RAY_CHECK(data.size() == chunk_info->buffer_length)
         << "size mismatch!  data size: " << data.size()
-        << " chunk size: " << chunk_info.buffer_length;
+        << " chunk size: " << chunk_info->buffer_length;
 
     // Update the state from REFERENCED To SEALED before releasing the lock to ensure
     // that no other thread sees a REFERENCED state.
