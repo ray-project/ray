@@ -1,4 +1,3 @@
-from abc import ABC, abstractmethod
 from typing import List, Optional
 from ray.autoscaler._private.providers import _get_node_provider
 from ray.autoscaler.v2.instance_manager.config import AutoscalingConfig, IConfigReader
@@ -28,24 +27,11 @@ from ray.core.generated.autoscaler_pb2 import (
     GetClusterResourceStateReply,
 )
 import logging
+
 logger = logging.getLogger(__name__)
 
 
-class IAutoscaler(ABC):
-    @abstractmethod
-    def report_autoscaling_state(
-        self, request: ReportAutoscalingStateRequest
-    ) -> ReportAutoscalingStateReply:
-        pass
-
-    @abstractmethod
-    def get_cluster_resource_state(
-        self, request: GetClusterResourceStateReply
-    ) -> GetClusterResourceStateReply:
-        pass
-
-
-class AutoscalerV2(IAutoscaler):
+class Autoscaler:
     def __init__(
         self,
         session_name: str,
@@ -102,19 +88,15 @@ class AutoscalerV2(IAutoscaler):
             instance_status_update_subscribers=subscribers,
         )
 
+    def get_cluster_resource_state(self) -> GetClusterResourceStateReply:
+        str_reply = self._gcs_client.get_cluster_resource_state()
+        reply = GetClusterResourceStateReply()
+        reply.ParseFromString(str_reply)
 
-    def report_autoscaling_state(
-        self, request: ReportAutoscalingStateRequest
-    ) -> ReportAutoscalingStateReply:
-
-
-    def get_cluster_resource_state(
-        self, request: GetClusterResourceStateReply
-    ) -> GetClusterResourceStateReply:
-        raise NotImplementedError("Not implemented yet.")
+        return reply
 
     def compute_autoscaling_state(
-        self, ray_cluster_resource_state: ClusterResourceState 
+        self, ray_cluster_resource_state: ClusterResourceState
     ) -> Optional[AutoscalingState]:
 
         try:
@@ -132,4 +114,3 @@ class AutoscalerV2(IAutoscaler):
         except Exception as e:
             logger.exception(e)
             return None
-
