@@ -421,6 +421,9 @@ cdef extern from "ray/gcs/gcs_client/gcs_client.h" nogil:
         CRayStatus GetClusterStatus(
             int64_t timeout_ms,
             c_string &serialized_reply)
+        CRayStatus GetClusterResourceState(
+            int64_t timeout_ms,
+            c_string &serialized_reply)
         CClusterID GetClusterId()
         CRayStatus DrainNode(
             const c_string &node_id,
