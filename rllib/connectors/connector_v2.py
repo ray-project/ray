@@ -371,6 +371,8 @@ class ConnectorV2(abc.ABC):
 
         .. testcode::
 
+            from ray.rllib.utils.test_utils import check
+
             batch = {
                 "obs": {"module_0": [1, 2, 3]},
                 "actions": {"module_0": [4, 5, 6], "module_1": [7]},

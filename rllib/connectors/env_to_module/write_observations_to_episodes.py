@@ -10,7 +10,7 @@ from ray.util.annotations import PublicAPI
 
 @PublicAPI(stability="alpha")
 class WriteObservationsToEpisodes(ConnectorV2):
-    """Writes the observations from the batch bact into the running episodes.
+    """Writes the observations from the batch into the running episodes.
 
     - Operates on a batch that already has observations in it and a list of Episode
     objects.
@@ -24,7 +24,55 @@ class WriteObservationsToEpisodes(ConnectorV2):
 
     .. testcode::
 
-        TODO
+        import gymnasium as gym
+        import numpy as np
+
+        from ray.rllib.connectors.env_to_module import WriteObservationsToEpisodes
+        from ray.rllib.env.single_agent_episode import SingleAgentEpisode
+        from ray.rllib.utils.test_utils import check
+
+        # Assume we have two episodes (vectorized), then our forward batch will carry
+        # two observation records (batch size = 2).
+        # The connector in this example will write these two (possibly transformed)
+        # observations back into the two respective SingleAgentEpisode objects.
+        batch = {
+            "obs": [np.array([0.0, 1.0], np.float32), np.array([2.0, 3.0], np.float32)],
+        }
+
+        # Our two episodes have one observation each (i.e. the reset one). This is the
+        # one that will be overwritten by the connector in this example.
+        obs_space = gym.spaces.Box(-10.0, 10.0, (2,), np.float32)
+        act_space = gym.spaces.Discrete(2)
+        episodes = [
+            SingleAgentEpisode(
+                observation_space=obs_space,
+                observations=[np.array([-10, -20], np.float32)],
+                len_lookback_buffer=0,
+            ) for _ in range(2)
+        ]
+        # Make sure everything is setup correctly.
+        check(episodes[0].get_observations(0), [-10.0, -20.0])
+        check(episodes[1].get_observations(-1), [-10.0, -20.0])
+
+        # Create our connector piece.
+        connector = WriteObservationsToEpisodes(obs_space, act_space)
+
+        # Call the connector (and thereby write the transformed observations back
+        # into the episodes).
+        output_data = connector(
+            rl_module=None,  # This particular connector works without an RLModule.
+            data=batch,
+            episodes=episodes,
+            explore=True,
+            shared_data={},
+        )
+
+        # The connector does NOT change the data batch being passed through.
+        check(output_data, batch)
+
+        # However, the connector has overwritten the last observations in the episodes.
+        check(episodes[0].get_observations(-1), [0.0, 1.0])
+        check(episodes[1].get_observations(0), [2.0, 3.0])
     """
 
     @override(ConnectorV2)

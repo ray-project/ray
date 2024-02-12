@@ -2558,7 +2558,7 @@ py_test(
     name = "examples/nested_action_spaces_ppo_torch_envrunner",
     main = "examples/nested_action_spaces.py",
     tags = ["team:rllib", "exclusive", "examples"],
-    size = "medium",
+    size = "large",
     srcs = ["examples/nested_action_spaces.py"],
     args = ["--as-test", "--framework=torch", "--stop-reward=-500.0", "--algo=PPO", "--enable-new-api-stack"]
 )
@@ -2567,7 +2567,7 @@ py_test(
     name = "examples/nested_action_spaces_multi_agent_ppo_torch_envrunner",
     main = "examples/nested_action_spaces.py",
     tags = ["team:rllib", "exclusive", "examples"],
-    size = "medium",
+    size = "large",
     srcs = ["examples/nested_action_spaces.py"],
     args = ["--as-test", "--num-agents=2", "--framework=torch", "--stop-reward=-1000.0", "--algo=PPO", "--enable-new-api-stack"]
 )
