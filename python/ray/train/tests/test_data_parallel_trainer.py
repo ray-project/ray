@@ -382,7 +382,9 @@ def test_config_accelerator_type(ray_start_heterogenous_cluster, accelerator_typ
         assigned_resources = ray.get_runtime_context().get_assigned_resources()
         assert assigned_resources["GPU"] == config["num_gpus"]
         if accelerator_type:
-            assert accelerator_type in assigned_resources
+            assert (
+                f"{RESOURCE_CONSTRAINT_PREFIX}{accelerator_type}" in assigned_resources
+            )
 
     # Single GPU workers
     trainer = DataParallelTrainer(

@@ -153,7 +153,7 @@ def test_scaling_config_accelerator_type():
         "GPU": 1,
         "accelerator_type:A100": 0.001,
     }
-    assert scaling_config._additional_resources_per_worker == {
+    assert scaling_config.additional_resources_per_worker == {
         "accelerator_type:A100": 0.001
     }
 
@@ -173,7 +173,7 @@ def test_scaling_config_accelerator_type():
         "custom_resource": 1,
         "accelerator_type:A100": 0.001,
     }
-    assert scaling_config._additional_resources_per_worker == {
+    assert scaling_config.additional_resources_per_worker == {
         "custom_resource": 1,
         "accelerator_type:A100": 0.001,
     }
@@ -194,7 +194,7 @@ def test_scaling_config_accelerator_type():
         "GPU": 1,
         "accelerator_type:A100": 0.001,
     }
-    assert scaling_config._additional_resources_per_worker == {
+    assert scaling_config.additional_resources_per_worker == {
         "accelerator_type:A100": 0.001
     }
 
