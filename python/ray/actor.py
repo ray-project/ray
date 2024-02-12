@@ -2,6 +2,7 @@ import inspect
 import logging
 import weakref
 from typing import Any, Dict, List, Optional, Union
+import sys
 
 import ray._private.ray_constants as ray_constants
 import ray._private.signature as signature
@@ -41,6 +42,11 @@ from ray.util.tracing.tracing_helper import (
     _tracing_actor_creation,
     _tracing_actor_method_invocation,
 )
+
+if sys.version_info >= (3, 9):
+    from types import GenericAlias
+else:
+    GenericAlias = None
 
 logger = logging.getLogger(__name__)
 
@@ -405,6 +411,12 @@ class _ActorClassMethodMetadata(object):
             is_bound = is_class_method(method) or is_static_method(
                 modified_class, method_name
             )
+
+            if GenericAlias and any((
+                method is GenericAlias,
+                getattr(method, '__func__', None) is GenericAlias
+            )):
+                method = method.__init__
 
             # Print a warning message if the method signature is not
             # supported. We don't raise an exception because if the actor
