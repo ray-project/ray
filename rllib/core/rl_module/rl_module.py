@@ -474,7 +474,7 @@ class RLModule(abc.ABC):
 
     @OverrideToImplementCustomLogic
     def get_initial_state(self) -> Any:
-        """Returns the initial state of the module.
+        """Returns the initial state of the RLModule.
 
         This can be used for recurrent models.
         """
