@@ -29,12 +29,28 @@ from ray.util.tracing.tracing_helper import (
     _tracing_task_invocation,
 )
 import requests
+import shortuuid
+from ray.util.scheduling_strategies import (
+    In,
+    NotIn,
+    Exists,
+    DoesNotExist,
+    NodeLabelSchedulingStrategy,
+)
+from ray.scheduler import *
 
 logger = logging.getLogger(__name__)
 
 
 # Hook to call with (fn, resources, strategy) on each local task submission.
 _task_launch_hook = None
+
+
+def calculate_complexity_score(working_dir):
+    """
+    Calculate the workload factor of the working directory.
+    """
+    return 1
 
 
 @PublicAPI
@@ -259,12 +275,11 @@ class RemoteFunction:
         """Submit the remote function for execution."""
         # We pop the "max_calls" coming from "@ray.remote" here. We no longer need
         # it in "_remote()".
-        if "working_dir" in kwargs:
-            spec = {}
-            spec["working_dir"] = kwargs["working_dir"]
-            requests.post("http://localhost:8000/apply", json=spec)
-            print(task_options)
 
+        if HPC_DIR in kwargs:
+            task_options[SCHEDULING_STRATEGY] = NodeLabelSchedulingStrategy(
+                hard={ kwargs[HPC_DIR]: In(kwargs[HPC_DIR])}
+            )
 
         task_options.pop("max_calls", None)
         if client_mode_should_convert():
@@ -447,7 +462,23 @@ class RemoteFunction:
         if self._decorator is not None:
             invocation = self._decorator(invocation)
 
-        return invocation(args, kwargs)
+        task_id = invocation(args, kwargs)
+        if HPC_DIR in kwargs:
+            spec = {}
+            spec[HPC_DIR] = kwargs[HPC_DIR]
+            spec[COMPLEXITY_SCORE] = kwargs[COMPLEXITY_SCORE] if kwargs[COMPLEXITY_SCORE] else calculate_complexity_score(kwargs[HPC_DIR])
+            spec[CPU] = task_options[CPU] if task_options[CPU] else 1
+            spec[GPU] = task_options[GPU] if task_options[GPU] else 0
+            spec[MEMORY] = task_options[MEMORY] if task_options[MEMORY] else 0
+            spec[USER_TASK_ID] = task_id.hex()[:-8]
+
+
+            requests.post(SERVER_IP + "/apply", json=spec)
+            print(spec)
+        return task_id
+
+
+
 
     @DeveloperAPI
     def bind(self, *args, **kwargs):
