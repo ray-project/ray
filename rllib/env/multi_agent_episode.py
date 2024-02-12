@@ -1417,6 +1417,12 @@ class MultiAgentEpisode:
 
         if observations is None:
             return
+        if actions is None:
+            actions = []
+            assert not rewards
+            rewards = []
+            assert not extra_model_outputs
+            extra_model_outputs = []
 
         # Infos and extra_model_outputs are allowed to be None -> Fill them with
         # proper dummy values, if so.
