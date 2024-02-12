@@ -387,13 +387,9 @@ class WorkerGroup:
 
         Args:
             _first_ip: The first IP to group by.
-                Hack to avoid OOMs.
-                This is just a temporary solution for Train loading entire checkpoints
-                into memory by ensuring that the rank 0 worker is on the same node as
-                trainable, thus allowing for lazy checkpoint transfer to be used.
-                See https://github.com/ray-project/ray/issues/33073
-                for more context.
-                TODO remove this argument.
+                This ensures that rank 0 worker is on the same node as the
+                trainable, allowing additional resources to be specified for
+                rank 0 workers via `ScalingConfig(trainer_resources=)`.
         """
         ip_to_workers = defaultdict(list)
 
