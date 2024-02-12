@@ -522,6 +522,26 @@ Status PythonGcsClient::RequestClusterResourceConstraint(
   return Status::RpcError(status.error_message(), status.error_code());
 }
 
+Status PythonGcsClient::GetClusterResourceState(int64_t timeout_ms,
+                                                std::string &serialized_reply) {
+  rpc::autoscaler::GetClusterResourceStateRequest request;
+  rpc::autoscaler::GetClusterResourceStateReply reply;
+  grpc::ClientContext context;
+  PrepareContext(context, timeout_ms);
+
+  absl::ReaderMutexLock lock(&mutex_);
+  grpc::Status status =
+      autoscaler_stub_->GetClusterResourceState(&context, request, &reply);
+
+  if (status.ok()) {
+    if (!reply.SerializeToString(&serialized_reply)) {
+      return Status::IOError("Failed to serialize GetClusterResourceState");
+    }
+    return Status::OK();
+  }
+  return Status::RpcError(status.error_message(), status.error_code());
+}
+
 Status PythonGcsClient::GetClusterStatus(int64_t timeout_ms,
                                          std::string &serialized_reply) {
   rpc::autoscaler::GetClusterStatusRequest request;
