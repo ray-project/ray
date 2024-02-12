@@ -59,6 +59,8 @@ NUM_CPUS_FOR_META_FETCH_TASK = 0.5
 # Default to retry on access denied and read timeout errors because AWS S3 would throw
 # these transient errors when load is too high.
 RETRY_EXCEPTIONS_FOR_META_FETCH_TASK = ["AWS Error ACCESS_DENIED", "Timeout"]
+# Maximum number of retries for metadata prefetching task due to transient errors.
+MAX_RETRIES_FOR_META_FETCH_TASK = 32
 
 # The number of rows to read per batch. This is sized to generate 10MiB batches
 # for rows about 1KiB in size.
@@ -514,12 +516,32 @@ def _fetch_metadata_serialization_wrapper(
     fragments: List[_SerializedFragment],
 ) -> List["pyarrow.parquet.FileMetaData"]:
     deserialized_fragments = _deserialize_fragments_with_retry(fragments)
-    metadata = call_with_retry(
-        lambda: _fetch_metadata(deserialized_fragments),
-        description="fetch metdata",
-        match=RETRY_EXCEPTIONS_FOR_META_FETCH_TASK,
-        max_attempts=32,
-    )
+    try:
+        metadata = call_with_retry(
+            lambda: _fetch_metadata(deserialized_fragments),
+            description="fetch metdata",
+            match=RETRY_EXCEPTIONS_FOR_META_FETCH_TASK,
+            max_attempts=MAX_RETRIES_FOR_META_FETCH_TASK,
+        )
+    except OSError as e:
+        raise RuntimeError(
+            f"Exceeded maximum number of attempts ({MAX_RETRIES_FOR_META_FETCH_TASK}) "
+            "to retry metadata fetching task. Metadata fetching tasks can fail due to "
+            "transient errors like rate limiting.\n"
+            "\n"
+            "To increase the maximum number of attempts, configure "
+            "`MAX_RETRIES_FOR_META_FETCH_TASK`. For example:\n"
+            "```\n"
+            "ray.data.datasource.parquet_datasource.MAX_RETRIES_FOR_META_FETCH_TASK = 64\n"
+            "```\n"
+            "\n"
+            "To change which exceptions to retry on, set "
+            "`RETRY_EXCEPTIONS_FOR_META_FETCH_TASK` to a list of error messages. For "
+            "example:\n"
+            "```\n"
+            'ray.data.datasource.parquet_datasource.RETRY_EXCEPTIONS_FOR_META_FETCH_TASK = ["AWS Error ACCESS_DENIED", "Timeout"]\n'
+            "```"
+        )  # noqa: E501
     return metadata
 
 
