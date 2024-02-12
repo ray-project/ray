@@ -243,18 +243,11 @@ class FakeMultiNodeProvider(NodeProvider):
         self,
         provider_config,
         cluster_name,
-        gcs_address=None,
-        head_node_id=None,
-        launch_multiple=False,
     ):
         """
         Args:
             provider_config: Configuration for the provider.
             cluster_name: Name of the cluster.
-            gcs_address: Address of the GCS server for the head node.
-            head_node_id: ID of the head node.
-            launch_multiple: Whether to launch multiple nodes at once or
-                one by one when create_node is called.
         """
 
         NodeProvider.__init__(self, provider_config, cluster_name)
@@ -264,9 +257,13 @@ class FakeMultiNodeProvider(NodeProvider):
                 "FakeMultiNodeProvider requires ray to be started with "
                 "RAY_FAKE_CLUSTER=1 ray start ..."
             )
-        self._gcs_address = gcs_address
-        self._head_node_id = head_node_id or FAKE_HEAD_NODE_ID
-        self._launch_multiple = launch_multiple
+        # GCS address to use for the cluster
+        self._gcs_address = provider_config.get("gcs_address", None)
+        # Head node id
+        self._head_node_id = provider_config.get("head_node_id", FAKE_HEAD_NODE_ID)
+        # Whether to launch multiple nodes at once, or one by one regardless of
+        # the count (default)
+        self._launch_multiple = provider_config.get("launch_multiple", False)
         self._error_creates = None
         self._error_terminates = None
 
