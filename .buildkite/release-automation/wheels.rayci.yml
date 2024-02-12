@@ -1,10 +1,28 @@
-group: verify wheels
+group: Validate wheels
 steps:
   - name: forge
-    wanda: .buildkite/release-automation/forge.wanda.yaml
+    wanda: .buildkite/release-automation/forge_x86_64.wanda.yaml
 
-  - label: "Verify Linux AMD64 wheels - Python {{matrix}}"
+  - label: "Linux x86_64 Python {{matrix}}"
     depends_on: forge
+    job_env: forge
+    commands:
+      - export PYTHON_VERSION={{matrix}}
+      - bash -i .buildkite/release-automation/verify-linux-wheels.sh
+    matrix:
+      - "3.8"
+      - "3.9"
+      - "3.10"
+      - "3.11"
+
+  - name: forge_arm64
+    wanda: .buildkite/release-automation/forge_arm64.wanda.yaml
+    instance_type: builder-arm64
+
+  - label: "Linux arm64 Python {{matrix}}"
+    depends_on: forge_arm64
+    instance_type: medium-arm64
+    job_env: forge-arm64
     commands:
       - export PYTHON_VERSION={{matrix}}
       - bash -i .buildkite/release-automation/verify-linux-wheels.sh
