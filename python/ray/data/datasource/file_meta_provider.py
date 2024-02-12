@@ -1,4 +1,3 @@
-import functools
 import itertools
 import logging
 import os
