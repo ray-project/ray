@@ -1,9 +1,12 @@
 import os
 
+from pettingzoo.mpe import simple_tag_v3
+
 from ray.tune.registry import register_env
 import ray.rllib.examples.connectors.connector_v2_classes as classes
 from ray.rllib.env.multi_agent_env_runner import MultiAgentEnvRunner
 from ray.rllib.env.single_agent_env_runner import SingleAgentEnvRunner
+from ray.rllib.env.wrappers.pettingzoo_env import ParallelPettingZooEnv
 from ray.rllib.utils.test_utils import (
     add_rllib_example_script_args,
     run_rllib_example_script_experiment,
@@ -20,12 +23,16 @@ if __name__ == "__main__":
 
     # Define env-to-module-connector pipeline for the new stack.
     def _learner_pipeline(input_observation_space, input_action_space):
-        return classes.inter_agent_reward_shaping.InterAgentRewardShaping()
+        return (
+            classes.inter_agent_reward_shaping.InterAgentRewardShaping(
+                agent_ids=(""),
+            )
+        )
 
     # Register our environment with tune.
     register_env(
         "env",
-        lambda _: ???(),
+        lambda _: ParallelPettingZooEnv(simple_tag_v3.env(render_mode="human")),
     )
 
     # Define the AlgorithmConfig used.
@@ -51,9 +58,9 @@ if __name__ == "__main__":
             gamma=0.99,
             lr=0.0003,
             model=dict({
-                "fcnet_hiddens": [32],
-                "fcnet_activation": "linear",
-                "vf_share_layers": True,
+                #"fcnet_hiddens": [32],
+                #"fcnet_activation": "linear",
+                #"vf_share_layers": True,
             }, **(
                 {} if not args.enable_new_api_stack
                 else {"uses_new_env_runners": True}

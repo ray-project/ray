@@ -277,7 +277,7 @@ class ConnectorV2(abc.ABC):
 
         .. testcode::
 
-            from ray.rllib.connectors.connectorv2 import ConnectorV2
+            from ray.rllib.connectors.connector_v2 import ConnectorV2
             from ray.rllib.env.multi_agent_episode import MultiAgentEpisode
             from ray.rllib.utils.test_utils import check
 
@@ -287,36 +287,34 @@ class ConnectorV2(abc.ABC):
             # Assume that agent_0 is present in the episodes w/ list indices 0, 1,
             # and 3, and agent_1 is present in the episodes w/ list indices 0 and 2.
             episodes = [
-                MultiAgentEpisode(observations=[{"agent_0: 0, "agent_1": 0}]),
-                MultiAgentEpisode(observations=[{"agent_0: 1,             }]),
-                MultiAgentEpisode(observations=[{             "agent_1": 1}]),
-                MultiAgentEpisode(observations=[{"agent_0: 2,             }]),
+                MultiAgentEpisode(observations=[{"agent_0": 0, "agent_1": 0}]),
+                MultiAgentEpisode(observations=[{"agent_0": 1,             }]),
+                MultiAgentEpisode(observations=[{              "agent_1": 1}]),
+                MultiAgentEpisode(observations=[{"agent_0": 2,             }]),
             ]
             # Make all our episodes map agent_0 to module_0 and agent_1 to module_1.
             # Note that in general, agents to modules mapping is N to M, where N is the
             # number of agents and M is the number of modules and N >= M.
             for eps in episodes[:-1]:
-                eps.agent_episodes["agent_0"].module_id = "module_0"
-                eps.agent_episodes["agent_1"].module_id = "module_1"
+                if "agent_0" in eps.agent_episodes:
+                    eps.agent_episodes["agent_0"].module_id = "module_0"
+                if "agent_1" in eps.agent_episodes:
+                    eps.agent_episodes["agent_1"].module_id = "module_1"
             # Only the last episode maps the other way around.
             episodes[-1].agent_episodes["agent_0"].module_id = "module_1"
-            episodes[-1].agent_episodes["agent_1"].module_id = "module_0"
 
             # Now, our batch would look like this:
             batch = {
                 "obs": {
-                    "agent_0": [0, 1, 2],  # <- could also be ndarray of shape (3,)
-                    "agent_1": [0, 1],  # <- could also be ndarray of shape (2,)
+                    "agent_0": [0, 1, 2],  # <- could also be ndarray of shape (3,),
+                    "agent_1": [0, 1],  # <- could also be ndarray of shape (2,),
                 },
             }
             # Note that the data under the different agent IDs might have different
             # batch dimensions (or a different length in the case of lists) b/c not
             # every episode might have the same agent ID distribution (some agents
             # might not even be present in some episodes).
-
-            flipped_batch = ConnectorV2.switch_batch_from_agent_ids_to_module_ids(
-                batch, episodes
-            )
+            flipped_batch = ConnectorV2.switch_batch_from_agent_ids_to_module_ids(batch)
             check(
                 flipped_batch,
                 {
@@ -330,9 +328,13 @@ class ConnectorV2(abc.ABC):
         Args:
             batch: The batch to switch from an agent ID based mapping to a module ID
                 based mapping.
-            #episodes: The list of MultiAgentEpisodes to use to extract agent-to-module
-            #    mapping information. Note that the
+
+        Returns:
+            A new batch structured in a way that now column names map to dicts that
+            map from ModuleIDs to batch items. Note that the new batch does not contain
+            any agent information anymore.
         """
+        raise NotImplementedError #TODO: implement
 
     @staticmethod
     def switch_batch_from_column_to_module_ids(batch):
