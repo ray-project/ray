@@ -1908,7 +1908,6 @@ class AlgorithmConfig(_Config):
         ope_split_batch_by_episode: Optional[bool] = NotProvided,
         evaluation_num_workers: Optional[int] = NotProvided,
         custom_evaluation_function: Optional[Callable] = NotProvided,
-        custom_async_evalation_function: Optional[Callable] = NotProvided,
         always_attach_evaluation_results: Optional[bool] = NotProvided,
         enable_async_evaluation: Optional[bool] = NotProvided,
         # Deprecated args.
@@ -1978,7 +1977,8 @@ class AlgorithmConfig(_Config):
                 metrics: dict. See the Algorithm.evaluate() method to see the default
                 implementation. The Algorithm guarantees all eval workers have the
                 latest policy state before this function is called.
-            custom_async_evaluation_function: Customize the asynchronous evaluation
+                In case the new `EnvRunner API` is used and
+                `enable_async_evaluation=True` customize the asynchronous evaluation
                 method. This must be a function of signature (algo: Algorithm,
                 eval_workers: WorkerSet, weights_ref: ObjectRef, weights_seq_no: int)
                 -> metrics: dict. See the `Algorithm._evaluate_async_with_env_runner()`
@@ -2043,9 +2043,7 @@ class AlgorithmConfig(_Config):
         if evaluation_num_workers is not NotProvided:
             self.evaluation_num_workers = evaluation_num_workers
         if custom_evaluation_function is not NotProvided:
-            self.custom_evaluation_function = custom_evaluation_function  #
-        if custom_async_evalation_function is not NotProvided:
-            self.custom_async_evaluation_function = custom_async_evalation_function
+            self.custom_evaluation_function = custom_evaluation_function
         if always_attach_evaluation_results is not NotProvided:
             self.always_attach_evaluation_results = always_attach_evaluation_results
         if enable_async_evaluation is not NotProvided:
@@ -3664,30 +3662,24 @@ class AlgorithmConfig(_Config):
                 "object to fix this problem."
             )
 
-        # If async evaluation is enabled, custom_eval_functions are not allowed.
-        if (
-            self.enable_async_evaluation
-            and self.custom_evaluation_function
-            and not self.uses_new_env_runners
-        ):
-            raise ValueError(
-                "`config.custom_evaluation_function` not supported in combination "
-                "with `enable_async_evaluation=True` config setting!"
-            )
-
-        # Customized asynchronous evaluation is only possible with the `EnvRunner API`.
-        if self.custom_async_evaluation_function and not self.uses_new_env_runners:
-            raise ValueError(
-                "`config.custom_async_evaluation_function` not supported in "
-                "combination with `RolloutWorker`s! Use `env_runner_cls="
-                "SingleAgentEnvrunner|MultiAgentEnvRunner`."
-            )
-        elif self.custom_async_evaluation_function and self.uses_new_env_runners:
-            # If we can potentially use a custom asynchronous evaluation function,
-            # validate it.
-            self._validate_custom_async_evaluation_function(
-                self.custom_async_evaluation_function
-            )
+        # If async evaluation is enabled, custom_eval_functions are not allowed iff
+        # the old `RolloutWorker`is used.
+        if self.custom_evaluation_function:
+            # Uses new `EnvRunner API`.
+            if self.uses_new_env_runners:
+                # If we can potentially use a custom asynchronous evaluation function,
+                # validate it.
+                self._validate_custom_async_evaluation_function(
+                    self.custom_evaluation_function
+                )
+            # Uses old `RolloutWorker`.
+            else:
+                if self.enable_async_evaluation:
+                    raise ValueError(
+                        "`config.custom_evaluation_function` not supported in "
+                        "combination with `enable_async_evaluation=True` config "
+                        "setting!"
+                    )
 
         # If `evaluation_num_workers` > 0, warn if `evaluation_interval` is
         # None.

@@ -1410,7 +1410,7 @@ class Algorithm(Trainable, AlgorithmBase):
 
         self.callbacks.on_evaluate_start(algorithm=self)
 
-        # If user provided a custom function for asynchronous evaluation
+        # If user provided a custom function for asynchronous evaluation,
         # run this function.
         if self.config.custom_async_evaluation_function:
             logger.info(
