@@ -316,7 +316,12 @@ class DQNConfig(SimpleQConfig):
                 f"Try setting config.rollouts(rollout_fragment_length={self.n_step})."
             )
 
-        if self.exploration_config["type"] == "ParameterNoise":
+        # TODO (simon): Find a clean solution to deal with
+        # configuration configs when using the new API stack.
+        if (
+            not self._enable_new_api_stack
+            and self.exploration_config["type"] == "ParameterNoise"
+        ):
             if self.batch_mode != "complete_episodes":
                 raise ValueError(
                     "ParameterNoise Exploration requires `batch_mode` to be "
@@ -331,10 +336,13 @@ class DQNConfig(SimpleQConfig):
 
         # Validate that we use the corresponding `EpisodeReplayBuffer` when using
         # episodes.
-        if self.uses_new_env_runners and self.replay_buffer_config["type"] not in [
-            "EpisodeReplayBuffer",
-            "PrioritizedEpisodeReplayBuffer",
-        ]:
+        from ray.rllib.utils.replay_buffers.episode_replay_buffer import (
+            EpisodeReplayBuffer,
+        )
+
+        if self.uses_new_env_runners and not issubclass(
+            self.replay_buffer_config["type"], EpisodeReplayBuffer
+        ):
             raise ValueError(
                 "When using the new `EnvRunner API` the replay buffer must be of type "
                 "`EpisodeReplayBuffer`."
@@ -444,7 +452,7 @@ class DQN(SimpleQ):
         # Old and hybrid API stacks (Policy, RolloutWorker, Connector, maybe RLModule,
         # maybe Learner).
         else:
-            return self._training_step_old_and_hybrid_api_stacks()
+            return self._training_step_old_and_hybrid_api_stack()
 
     def _training_step_new_api_stack(self) -> ResultDict:
         # Alternate between storing and sampling and training.

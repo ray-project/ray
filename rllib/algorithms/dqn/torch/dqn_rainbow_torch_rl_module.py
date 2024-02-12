@@ -5,6 +5,7 @@ from ray.rllib.algorithms.sac.sac_rl_module import QF_PREDS
 from ray.rllib.core.models.base import ENCODER_OUT
 from ray.rllib.core.rl_module.torch.torch_rl_module import TorchRLModule
 from ray.rllib.core.rl_module.rl_module import RLModule
+from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.framework import try_import_torch
 from ray.rllib.utils.typing import NetworkType
@@ -34,6 +35,28 @@ class DQNRainbowTorchRLModule(TorchRLModule, DQNRainbowRLModule):
     @override(RLModule)
     def _forward_exploration(self, batch: Dict) -> Dict:
         output = {}
+
+        # Encoder forward pass.
+        encoder_outs = self.base_encoder(batch)
+
+        # Q-head.
+        qf_head_output = self.qf(encoder_outs[ENCODER_OUT])
+
+        # Apply epsilon-greedy exploration.
+        epsilon = 0.1
+        B = qf_head_output[QF_PREDS].shape[0]
+        exploit_actions = torch.argmax(qf_head_output[QF_PREDS], dim=1)
+        random_actions = torch.squeeze(
+            torch.multinomial(
+                torch.nan_to_num(qf_head_output[QF_PREDS], neginf=0.0), 1
+            ),
+            dim=1,
+        )
+        output[SampleBatch.ACTIONS] = torch.where(
+            torch.rand((B,)) < epsilon,
+            random_actions,
+            exploit_actions,
+        )
 
         return output
 

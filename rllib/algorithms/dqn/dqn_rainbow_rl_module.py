@@ -1,4 +1,5 @@
 from typing import Any
+from ray.rllib.algorithms.dqn.dqn_rainbow_catalog import DQNRainbowCatalog
 from ray.rllib.core.models.specs.typing import SpecType
 from ray.rllib.core.rl_module.rl_module import RLModule
 from ray.rllib.core.rl_module.rl_module_with_target_networks_interface import (
@@ -13,20 +14,20 @@ class DQNRainbowRLModule(RLModule, RLModuleWithTargetNetworksInterface):
     @override(RLModule)
     def setup(self):
         # Get the DQN Rainbow catalog.
-        catalog = self.config.get_catalog()
+        catalog: DQNRainbowCatalog = self.config.get_catalog()
 
         # If a dueling architecture is used.
-        self.is_dueling = self.config.dueling
+        self.is_dueling = self.config.model_config_dict["dueling"]
         # The number of atoms for a distribution support.
-        self.num_atoms = self.config.num_atoms
+        self.num_atoms = self.config.model_config_dict["num_atoms"]
 
         # Build the encoder for the advantage and value streams. Note,
         # the same encoder is used, if no dueling setting is used.
         # Note further, by using the base encoder the correct encoder
         # is chosen for the observation space used.
-        self.base_encoder = catalog.build_encoder()
+        self.base_encoder = catalog.build_encoder(framework=self.framework)
         # Build the same encoder for the target network(s).
-        self.base_target_encoder = catalog.build_encoder()
+        self.base_target_encoder = catalog.build_encoder(framework=self.framework)
 
         # Build heads.
         # TODO (simon): Implement noisy linear layers.
