@@ -110,7 +110,7 @@ void GcsNodeManager::HandleUpdateNodeLabels(rpc::UpdateNodeLabelsRequest request
 
 void GcsNodeManager::UpdateNodeLabels(const NodeID &node_id,const std::unordered_map<std::string, std::string> &labels) {
   
-  // std::shared_ptr<rpc::GcsNodeInfo> node;
+  std::shared_ptr<rpc::GcsNodeInfo> node;
   auto iter = alive_nodes_.find(node_id);
   if (iter == alive_nodes_.end()) {
     return;
@@ -139,11 +139,11 @@ void GcsNodeManager::UpdateNodeLabels(const NodeID &node_id,const std::unordered
 
   auto on_put_done = [this,
                       label,
-                      alive_nodes_] (const Status &status) {
+                      node_id] (const Status &status) {
     
     // Update all the raylet with node label 
     std::shared_ptr<rpc::GcsNodeInfo> cur_node;
-    for (const auto& iter : alive_nodes_) {
+    for (const auto& iter : this->alive_nodes_) {
       cur_node = iter.second;
 
       rpc::Address remote_address;
