@@ -532,16 +532,16 @@ def _fetch_metadata_serialization_wrapper(
             "To increase the maximum number of attempts, configure "
             "`MAX_RETRIES_FOR_META_FETCH_TASK`. For example:\n"
             "```\n"
-            "ray.data.datasource.parquet_datasource.MAX_RETRIES_FOR_META_FETCH_TASK = 64\n"
+            "ray.data.datasource.parquet_datasource.MAX_RETRIES_FOR_META_FETCH_TASK = 64\n"  # noqa: E501
             "```\n"
             "\n"
             "To change which exceptions to retry on, set "
             "`RETRY_EXCEPTIONS_FOR_META_FETCH_TASK` to a list of error messages. For "
             "example:\n"
             "```\n"
-            'ray.data.datasource.parquet_datasource.RETRY_EXCEPTIONS_FOR_META_FETCH_TASK = ["AWS Error ACCESS_DENIED", "Timeout"]\n'
+            'ray.data.datasource.parquet_datasource.RETRY_EXCEPTIONS_FOR_META_FETCH_TASK = ["AWS Error ACCESS_DENIED", "Timeout"]\n'  # noqa: E501
             "```"
-        )  # noqa: E501
+        ) from e
     return metadata
 
 
