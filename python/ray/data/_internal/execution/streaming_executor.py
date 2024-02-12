@@ -209,10 +209,12 @@ class StreamingExecutor(Executor, threading.Thread):
         try:
             # Run scheduling loop until complete.
             while True:
-                # use process_time to time to avoid timing ray.wait in _scheduling_loop_step
+                # use process_time to avoid timing ray.wait in _scheduling_loop_step
                 t_start = time.process_time()
                 continue_sched = self._scheduling_loop_step(self._topology)
-                self._initial_stats.streaming_exec_schedule_s.add(time.process_time() - t_start)
+                self._initial_stats.streaming_exec_schedule_s.add(
+                    time.process_time() - t_start
+                )
                 if not continue_sched or self._shutdown:
                     break
         except Exception as e:
