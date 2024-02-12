@@ -128,12 +128,11 @@ void ObjectBufferPool::WriteChunk(const ObjectID &object_id,
     if (it == create_buffer_state_.end() ||
         chunk_index >= it->second.chunk_state.size() ||
         it->second.chunk_state.at(chunk_index) != CreateChunkState::REFERENCED) {
-      RAY_LOG(DEBUG) << "Object " << object_id << " aborted before chunk "
-                     << chunk_index << " could be sealed";
+      RAY_LOG(DEBUG) << "Object " << object_id << " aborted before chunk " << chunk_index
+                     << " could be sealed";
       return;
     }
-    if (it->second.data_size != data_size ||
-        it->second.metadata_size != metadata_size) {
+    if (it->second.data_size != data_size || it->second.metadata_size != metadata_size) {
       RAY_LOG(DEBUG) << "Object " << object_id << " size mismatch, rejecting chunk";
       return;
     }
