@@ -1,3 +1,4 @@
+import time
 from dataclasses import dataclass, field, fields
 from typing import TYPE_CHECKING, Any, Dict, Optional
 
@@ -103,6 +104,17 @@ class OpRuntimeMetrics:
     # Time spent generating blocks in tasks.
     block_generation_time: float = field(
         default=0, metadata={"map_only": True, "export_metric": True}
+    )
+
+    # Time operator spent in backpressure
+    # TODO: Do we need both of these metadata here
+    backpressure_time: float = field(
+        default=0, metadata={"map_only": True, "export_metric": True}
+    )
+
+    # Start time of current pause due to backpressure
+    _backpressure_start_time: float = field(
+        default=-1, metadata={"map_only": True, "export_metric": True}
     )
 
     def __init__(self, op: "PhysicalOperator"):
@@ -233,6 +245,17 @@ class OpRuntimeMetrics:
         self.obj_store_mem_cur += input_size
         if self.obj_store_mem_cur > self.obj_store_mem_peak:
             self.obj_store_mem_peak = self.obj_store_mem_cur
+
+    def on_toggle_backpressure(self, in_backpressure):
+        if in_backpressure and self._backpressure_start_time == -1:
+            # backpressure starting, start timer
+            self._backpressure_start_time = time.perf_counter()
+        elif self._backpressure_start_time != -1:
+            # backpressure stopping, stop timer
+            self.backpressure_time += (
+                time.perf_counter() - self._backpressure_start_time
+            )
+            self._backpressure_start_time = -1
 
     def on_output_taken(self, output: RefBundle):
         """Callback when an output is taken from the operator."""
