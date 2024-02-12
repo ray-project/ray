@@ -48,7 +48,7 @@ class DQNRainbowTorchRLModule(TorchRLModule, DQNRainbowRLModule):
         exploit_actions = torch.argmax(qf_head_output[QF_PREDS], dim=1)
         random_actions = torch.squeeze(
             torch.multinomial(
-                torch.nan_to_num(qf_head_output[QF_PREDS], neginf=0.0), 1
+                nn.functional.relu(qf_head_output[QF_PREDS].sign(), neginf=0.0), 1
             ),
             dim=1,
         )
