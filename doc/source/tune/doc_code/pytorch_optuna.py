@@ -10,7 +10,7 @@ EPOCH_SIZE = 512
 TEST_SIZE = 256
 
 
-def train(model, optimizer, train_loader, device=None):
+def train_epoch(model, optimizer, train_loader, device=None):
     device = device or torch.device("cpu")
     model.train()
     for batch_idx, (data, target) in enumerate(train_loader):
@@ -91,7 +91,7 @@ def objective(config):  # <1>
     )
 
     while True:
-        train(model, optimizer, train_loader)  # Train the model
+        train_epoch(model, optimizer, train_loader)  # Train the model
         acc = test(model, test_loader)  # Compute test accuracy
         train.report({"mean_accuracy": acc})  # Report to Tune
 

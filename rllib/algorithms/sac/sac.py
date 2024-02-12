@@ -1,10 +1,16 @@
 import logging
-from typing import Type, Dict, Any, Optional, Union
+import numpy as np
+import tree
+from typing import Any, Dict, List, Optional, Type, Union
 
 from ray.rllib.algorithms.algorithm_config import AlgorithmConfig, NotProvided
-from ray.rllib.algorithms.dqn.dqn import DQN
+from ray.rllib.algorithms.dqn.dqn import calculate_rr_weights, DQN
 from ray.rllib.algorithms.sac.sac_tf_policy import SACTFPolicy
+from ray.rllib.core.learner import Learner
+from ray.rllib.core.rl_module.rl_module import SingleAgentRLModuleSpec
+from ray.rllib.env.single_agent_episode import SingleAgentEpisode
 from ray.rllib.policy.policy import Policy
+from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils import deep_update
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.deprecation import (
@@ -12,6 +18,20 @@ from ray.rllib.utils.deprecation import (
     deprecation_warning,
 )
 from ray.rllib.utils.framework import try_import_tf, try_import_tfp
+from ray.rllib.utils.metrics import (
+    ALL_MODULES,
+    LAST_TARGET_UPDATE_TS,
+    NUM_AGENT_STEPS_SAMPLED,
+    NUM_ENV_STEPS_SAMPLED,
+    NUM_AGENT_STEPS_TRAINED,
+    NUM_ENV_STEPS_TRAINED,
+    SAMPLE_TIMER,
+    SYNCH_WORKER_WEIGHTS_TIMER,
+)
+from ray.rllib.utils.replay_buffers.utils import (
+    update_priorities_in_episode_replay_buffer,
+)
+from ray.rllib.utils.typing import RLModuleSpec, ResultDict
 
 tf1, tf, tfv = try_import_tf()
 tfp = try_import_tfp()
@@ -294,6 +314,11 @@ class SACConfig(AlgorithmConfig):
                 num_steps_sampled_before_learning_starts
             )
 
+        # Include the `twin_q` hyperparameter into the model config.
+        # TODO (simon, sven): Find a general way to update the model_config.
+        if self._enable_new_api_stack:
+            self.model.update({"twin_q": self.twin_q})
+
         return self
 
     @override(AlgorithmConfig)
@@ -332,12 +357,51 @@ class SACConfig(AlgorithmConfig):
             )
             try_import_tfp(error=True)
 
+        # Validate that we use the corresponding `EpisodeReplayBuffer` when using
+        # episodes.
+        if self.uses_new_env_runners and self.replay_buffer_config["type"] not in [
+            "EpisodeReplayBuffer",
+            "PrioritizedEpisodeReplayBuffer",
+        ]:
+            raise ValueError(
+                "When using the new `EnvRunner API` the replay buffer must be of type "
+                "`EpisodeReplayBuffer`."
+            )
+
     @override(AlgorithmConfig)
     def get_rollout_fragment_length(self, worker_index: int = 0) -> int:
         if self.rollout_fragment_length == "auto":
             return self.n_step
         else:
             return self.rollout_fragment_length
+
+    @override(AlgorithmConfig)
+    def get_default_rl_module_spec(self) -> RLModuleSpec:
+        from ray.rllib.algorithms.sac.sac_catalog import SACCatalog
+
+        if self.framework_str == "torch":
+            from ray.rllib.algorithms.sac.torch.sac_torch_rl_module import (
+                SACTorchRLModule,
+            )
+
+            return SingleAgentRLModuleSpec(
+                module_class=SACTorchRLModule, catalog_class=SACCatalog
+            )
+        else:
+            raise ValueError(
+                f"The framework {self.framework_str} is not supported. " "Use `torch`."
+            )
+
+    @override(AlgorithmConfig)
+    def get_default_learner_class(self) -> Union[Type["Learner"], str]:
+        if self.framework_str == "torch":
+            from ray.rllib.algorithms.sac.torch.sac_torch_learner import SACTorchLearner
+
+            return SACTorchLearner
+        else:
+            raise ValueError(
+                f"The framework {self.framework_str} is not supported. " "Use `torch`."
+            )
 
 
 class SAC(DQN):
@@ -371,3 +435,130 @@ class SAC(DQN):
             return SACTorchPolicy
         else:
             return SACTFPolicy
+
+    @override(DQN)
+    def training_step(self) -> ResultDict:
+        # If `RolloutWorker` is used, fall back to the old stack `training step`
+        # of `DQN`.
+        if not self.config.uses_new_env_runners:
+            return super().training_step()
+
+        # Alternate between storing and sampling and training.
+        store_weight, sample_and_train_weight = calculate_rr_weights(self.config)
+        train_results = {}
+
+        # Run multiple sampling iterations.
+        for _ in range(store_weight):
+            with self._timers[SAMPLE_TIMER]:
+                # TODO (simon): Use `sychnronous_parallel_sample()` here.
+                if self.workers.num_remote_workers() <= 0:
+                    episodes: List[SingleAgentEpisode] = [
+                        self.workers.local_worker().sample()
+                    ]
+                else:
+                    episodes: List[SingleAgentEpisode] = self.workers.foreach_worker(
+                        lambda w: w.sample(),
+                        local_worker=False,
+                    )
+
+            episodes = tree.flatten(episodes)
+            # TODO (sven): single- vs multi-agent.
+            self._counters[NUM_AGENT_STEPS_SAMPLED] += sum(len(e) for e in episodes)
+            self._counters[NUM_ENV_STEPS_SAMPLED] += sum(len(e) for e in episodes)
+
+            # Add the sampled experiences to the replay buffer.
+            self.local_replay_buffer.add(episodes)
+
+        # Update the target network each `target_network_update_freq` steps.
+        current_ts = self._counters[
+            NUM_AGENT_STEPS_SAMPLED
+            if self.config.count_steps_by == "agent_steps"
+            else NUM_ENV_STEPS_SAMPLED
+        ]
+
+        # If enough experiences have been sampled start training.
+        if current_ts >= self.config.num_steps_sampled_before_learning_starts:
+            # Run multiple training iterations.
+            for _ in range(sample_and_train_weight):
+                # Sample training batch from replay_buffer.
+                train_dict = self.local_replay_buffer.sample(
+                    num_items=self.config.train_batch_size,
+                    n_step=self.config.n_step,
+                    gamma=self.config.gamma,
+                )
+                train_batch = SampleBatch(train_dict)
+
+                # Convert to multi-agent batch as `LearnerGroup` depends on it.
+                train_batch = train_batch.as_multi_agent()
+
+                # TODO (sven, simon): Streamline the custom metrics reduction
+                # functions via the `Learner`'s `register_metrics()` API.
+                def reduce_fn(results: List[ResultDict]) -> ResultDict:
+                    """Reduces all metrics, but the TD-errors."""
+                    # First get the single modules' results.
+                    module_results = [
+                        v for res in results for k, v in res.items() if k != "__all__"
+                    ]
+                    # Extract the TD-errors as we want to keep them as arrays.
+                    td_errors = tree.map_structure_up_to(
+                        {"td_error": True}, lambda x: x, *module_results
+                    )
+                    # Now reduce all other results.
+                    reduced_results = tree.map_structure(
+                        lambda *x: np.mean(x), *results
+                    )
+                    # Add the TD-error arrays to the results and return.
+                    return {
+                        k: v if k == "__all__" else {**v, "td_error": td_error}
+                        for k, v, td_error in zip(
+                            reduced_results.keys(),
+                            reduced_results.values(),
+                            [None] + list(td_errors.values()),
+                        )
+                    }
+
+                # Training on batch.
+                train_results = self.learner_group.update_from_batch(
+                    train_batch,
+                    reduce_fn=reduce_fn,
+                )
+
+                self._counters[NUM_AGENT_STEPS_TRAINED] += train_batch.agent_steps()
+                self._counters[NUM_ENV_STEPS_TRAINED] += train_batch.env_steps()
+
+                # Update replay buffer priorities.
+                update_priorities_in_episode_replay_buffer(
+                    self.local_replay_buffer,
+                    self.config,
+                    train_batch,
+                    train_results,
+                )
+
+                # Update the target networks if necessary.
+                modules_to_update = set(train_results.keys()) - {ALL_MODULES}
+                additional_results = self.learner_group.additional_update(
+                    module_ids_to_update=modules_to_update,
+                    timestep=self._counters[NUM_AGENT_STEPS_SAMPLED],
+                    last_update=self._counters[LAST_TARGET_UPDATE_TS],
+                )
+                for pid, res in additional_results.items():
+                    train_results[pid].update(res)
+
+            # TODO (simon): Check, if this is better - as we are not sampling at the
+            # same time, updating weights after all training iteration should be faster.
+            # Update weights and global_vars - after learning on the local worker -
+            # on all remote workers.
+            with self._timers[SYNCH_WORKER_WEIGHTS_TIMER]:
+                if self.workers.num_remote_workers() > 0:
+                    # NOTE: the new API stack does not use global vars.
+                    self.workers.sync_weights(
+                        from_worker_or_learner_group=self.learner_group,
+                        policies=modules_to_update,
+                        global_vars=None,
+                    )
+                # Then we must have a local worker.
+                else:
+                    weights = self.learner_group.get_weights()
+                    self.workers.local_worker().set_weights(weights)
+
+        return train_results
