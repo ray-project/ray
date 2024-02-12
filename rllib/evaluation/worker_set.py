@@ -363,7 +363,7 @@ class WorkerSet:
         return self.__worker_manager.total_num_restarts()
 
     @DeveloperAPI
-    def sync_connectors(self) -> None:
+    def sync_connectors(self, from_worker: Optional[EnvRunner] = None) -> None:
         """Synchronizes the connectors of this WorkerSet's EnvRunners.
 
         The exact procedure works as follows:
@@ -371,12 +371,18 @@ class WorkerSet:
         - Merge them into a resulting state.
         - Broadcast the resulting state back to all remote EnvRunners AND the local
         EnvRunner.
+
+        Args:
+            from_worker: The EnvRunner from which to synch. If None, will try to use the
+                local worker of this WorkerSet.
         """
         # Early out if the number of (healthy) remote workers is 0. In this case, the
         # local worker is the only operating worker and thus of course always holds
         # the reference connector state.
         if self.num_healthy_remote_workers() == 0:
             return
+
+        from_worker = from_worker or self.local_worker()
 
         connector_states = self.foreach_worker(
             lambda w: (w._env_to_module.get_state(), w._module_to_env.get_state()),
@@ -386,13 +392,11 @@ class WorkerSet:
         env_to_module_states = [s[0] for s in connector_states]
         module_to_env_states = [s[1] for s in connector_states]
 
-        self.local_worker()._env_to_module.merge_states(env_to_module_states)
         ref_env_to_module_state = ray.put(
-            self.local_worker()._env_to_module.get_state()
+            from_worker._env_to_module.merge_states(env_to_module_states)
         )
-        self.local_worker()._module_to_env.merge_states(module_to_env_states)
         ref_module_to_env_state = ray.put(
-            self.local_worker()._module_to_env.get_state()
+            from_worker._module_to_env.merge_states(module_to_env_states)
         )
 
         def _update(w):
@@ -400,7 +404,7 @@ class WorkerSet:
             w._module_to_env.set_state(ray.get(ref_module_to_env_state))
 
         # Broadcast updated states back to all workers.
-        self.foreach_worker(_update, local_worker=False, healthy_only=True)
+        self.foreach_worker(_update, local_worker=True, healthy_only=True)
 
     @DeveloperAPI
     def sync_weights(

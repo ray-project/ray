@@ -159,9 +159,7 @@ class DefaultEnvToModule(ConnectorV2):
                 state = sa_module.get_initial_state()
             # Episode is already ongoing -> Use most recent STATE_OUT.
             else:
-                state = sa_episode.get_extra_model_outputs(
-                    key=STATE_OUT, indices=-1
-                )
+                state = sa_episode.get_extra_model_outputs(key=STATE_OUT, indices=-1)
 
             self.add_batch_item(
                 column=STATE_IN,
@@ -171,52 +169,6 @@ class DefaultEnvToModule(ConnectorV2):
             )
 
         return data
-
-        # Single-agent case:
-        # Construct:
-        #  {STATE_IN: [batch across all state-outs/initial states of all episodes]}
-        #if not is_multi_agent:
-        #    # Collect all most recently computed STATE_OUT (or use initial states from
-        #    # RLModule if at beginning of episode).
-        #    state_in = []
-        #    for sa_episode in episodes:
-        #        # Episode just started -> Get initial state from our RLModule.
-        #        if len(sa_episode) == 0:
-        #            state = rl_module.get_initial_state()
-        #        # Episode is already ongoing -> Use most recent STATE_OUT.
-        #        else:
-        #            state = sa_episode.get_extra_model_outputs(
-        #                key=STATE_OUT, indices=-1
-        #            )
-        #        state_in.append(state)
-
-        # Multi-agent case:
-        # Construct:
-        #  {STATE_IN: {"ag1": [list of ag1 states], "ag2": [list of ag2 states]}}
-        #  Note that we don't batch yet due to the fact that even under the same
-        #  AgentID, data may be split up to different ModuleIDs (an agent may map to
-        #  one module in one episode, but to another one in a different episode given
-        #  e.g. a stochastic mapping function).
-        #else:
-        #    state_in = defaultdict(list)
-        #    for ma_episode in episodes:
-        #        # Episode just started -> Get initial states from our RLModule.
-        #        if len(ma_episode) == 0:
-        #            all_states = rl_module.get_initial_state().items()
-        #        # Episode is already ongoing -> Use most recent STATE_OUTs.
-        #        else:
-        #            all_states = ma_episode.get_extra_model_outputs(
-        #                key=STATE_OUT, indices=-1, global_ts=True
-        #            )
-        #        for agent_id, agent_state in all_states.items():
-        #            state_in[agent_id].append(agent_state)
-        #    state_in = dict(state_in)
-
-        # Batch states (from list of individual vector sub-env states).
-        # Note that state ins should NOT have the extra time dimension.
-        #data[STATE_IN] = state_in
-
-        #return data, state_in
 
     @staticmethod
     def _perform_agent_to_module_mapping(data, episodes, shared_data):
@@ -256,9 +208,9 @@ class DefaultEnvToModule(ConnectorV2):
                     (episode_idx, agent_id)
                 )
 
-        shared_data[
-            "module_to_episode_agents_mapping"
-        ] = dict(module_to_episode_agents_mapping)
+        shared_data["module_to_episode_agents_mapping"] = dict(
+            module_to_episode_agents_mapping
+        )
 
         # Mapping from ModuleID to column data.
         module_data = {}
@@ -267,9 +219,6 @@ class DefaultEnvToModule(ConnectorV2):
         for column, agent_data in data.items():
             for (agent_id, module_id), values_batch_or_list in agent_data.items():
                 for i, value in enumerate(values_batch_or_list):
-                    ## Retrieve the correct ModuleID.
-                    #module_id = agent_to_module_mappings[agent_id][i]
-                    #
                     if module_id not in module_data:
                         module_data[module_id] = {column: []}
                     elif column not in module_data[module_id]:
@@ -312,8 +261,8 @@ class DefaultEnvToModule(ConnectorV2):
                         # Make sure, different agents that map to the same
                         # policy don't have different spaces.
                         if (
-                                module_id in ret_space
-                                and space[aid] != ret_space[module_id]
+                            module_id in ret_space
+                            and space[aid] != ret_space[module_id]
                         ):
                             raise ValueError(
                                 f"Two agents ({aid} and {match_aid}) in your "
@@ -325,4 +274,3 @@ class DefaultEnvToModule(ConnectorV2):
                         match_aid = aid
 
         return gym.spaces.Dict(ret_space)
-

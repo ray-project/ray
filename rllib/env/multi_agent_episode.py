@@ -62,7 +62,6 @@ class MultiAgentEpisode:
     def __init__(
         self,
         id_: Optional[str] = None,
-        #agent_ids: Optional[Collection[AgentID]] = None,
         *,
         observations: Optional[List[MultiAgentDict]] = None,
         observation_space: Optional[gym.Space] = None,
@@ -90,8 +89,6 @@ class MultiAgentEpisode:
                 If None, a hexadecimal id is created. In case of providing
                 a string, make sure that it is unique, as episodes get
                 concatenated via this string.
-            #agent_ids: A list of strings containing the agent IDs.
-            #    These have to be provided at initialization.
             agent_module_ids: An optional dict mapping AgentIDs to their respective
                 ModuleIDs (these mapping are always valid for an entire episode and
                 thus won't change during the course of this episode). If a mapping from
@@ -174,6 +171,7 @@ class MultiAgentEpisode:
         self.id_: str = id_ or uuid.uuid4().hex
         if agent_to_module_mapping_fn is None:
             from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
+
             agent_to_module_mapping_fn = (
                 AlgorithmConfig.DEFAULT_AGENT_TO_MODULE_MAPPING_FN
             )
@@ -189,14 +187,6 @@ class MultiAgentEpisode:
 
         terminateds = terminateds or {}
         truncateds = truncateds or {}
-
-        # Agent ids must be provided if data is provided. The Episode cannot
-        # know how many agents are in the environment. Also the number of agents
-        # can grow or shrink.
-        # self._agent_ids: Set[AgentID] = set([] if agent_ids is None else agent_ids)
-        # Container class to keep information on which agent maps to which module
-        # (always for the duration of this episode).
-        #self.agent_to_module_map: Dict[AgentID, ModuleID] = {}
 
         # The global last timestep of the episode and the timesteps when this chunk
         # started (excluding a possible lookback buffer).
@@ -697,7 +687,6 @@ class MultiAgentEpisode:
             agent_ids = ["agent_1", "agent_2", "agent_3", "agent_4", "agent_5"]
 
             episode = MultiAgentEpisode(
-                #agent_ids=agent_ids,
                 observations=observations,
                 infos=infos,
                 actions=actions,
@@ -808,7 +797,6 @@ class MultiAgentEpisode:
             # Same ID.
             id_=self.id_,
             # Same agent IDs.
-            #agent_ids=self.agent_ids,
             # Same single agents' episode IDs.
             agent_episode_ids=self.agent_episode_ids,
             agent_module_ids={
@@ -1397,18 +1385,17 @@ class MultiAgentEpisode:
 
     def get_agents_that_stepped(self) -> Set[AgentID]:
         """Returns a set of agent IDs of those agents that just finished stepping.
-        
+
         These are all the agents that have an observation logged at the last env
         timestep, which may include agents, whose single agent episode just terminated
         or truncated.
-        
+
         Returns:
             A set of AgentIDs of those agents that just finished stepping (that have a
             most recent observation on the env timestep scale), regardless of whether
-            their single agent episodes are done or not. 
+            their single agent episodes are done or not.
         """
         return set(self.get_observations(-1).keys())
-
 
     # TODO (sven, simon): This function can only deal with data if it does not contain
     #  terminated or truncated agents (i.e. you have to provide ONLY alive agents in the
@@ -1430,6 +1417,12 @@ class MultiAgentEpisode:
 
         if observations is None:
             return
+        if actions is None:
+            actions = []
+            assert not rewards
+            rewards = []
+            assert not extra_model_outputs
+            extra_model_outputs = []
 
         # Infos and extra_model_outputs are allowed to be None -> Fill them with
         # proper dummy values, if so.

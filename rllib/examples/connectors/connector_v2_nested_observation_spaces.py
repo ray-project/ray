@@ -1,7 +1,5 @@
-from gymnasium.spaces import Dict, Tuple, Box, Discrete, MultiDiscrete
 import os
 
-import ray
 from ray.tune.registry import register_env
 from ray.rllib.connectors.env_to_module import (
     AddLastObservationToBatch,
@@ -33,13 +31,11 @@ if __name__ == "__main__":
     # Define env-to-module-connector pipeline for the new stack.
     def _env_to_module_pipeline(env):
         obs = (
-            env.single_observation_space if args.num_agents == 0
+            env.single_observation_space
+            if args.num_agents == 0
             else env.observation_space
         )
-        act = (
-            env.single_action_space if args.num_agents == 0
-            else env.action_space
-        )
+        act = env.single_action_space if args.num_agents == 0 else env.action_space
         c1 = AddLastObservationToBatch(obs, act)
         c2 = FlattenObservations(
             c1.observation_space, c1.action_space, multi_agent=args.num_agents > 0
@@ -72,22 +68,28 @@ if __name__ == "__main__":
             # Setup the correct env-runner to use depending on
             # old-stack/new-stack and multi-agent settings.
             env_runner_cls=(
-                None if not args.enable_new_api_stack
-                else SingleAgentEnvRunner if args.num_agents == 0
+                None
+                if not args.enable_new_api_stack
+                else SingleAgentEnvRunner
+                if args.num_agents == 0
                 else MultiAgentEnvRunner
             ),
         )
         .training(
             gamma=0.99,
             lr=0.0003,
-            model=dict({
-                "fcnet_hiddens": [32],
-                "fcnet_activation": "linear",
-                "vf_share_layers": True,
-            }, **(
-                {} if not args.enable_new_api_stack
-                else {"uses_new_env_runners": True}
-            )),
+            model=dict(
+                {
+                    "fcnet_hiddens": [32],
+                    "fcnet_activation": "linear",
+                    "vf_share_layers": True,
+                },
+                **(
+                    {}
+                    if not args.enable_new_api_stack
+                    else {"uses_new_env_runners": True}
+                ),
+            ),
         )
         # Use GPUs iff `RLLIB_NUM_GPUS` env var set to > 0.
         .resources(num_gpus=int(os.environ.get("RLLIB_NUM_GPUS", "0")))

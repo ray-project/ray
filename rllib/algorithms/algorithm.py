@@ -866,8 +866,7 @@ class Algorithm(Trainable, AlgorithmBase):
             with self._timers[SYNCH_ENV_CONNECTOR_STATES_TIMER]:
                 # Merge connector states from all EnvRunners and broadcast updated
                 # states back to all EnvRunners.
-                pass
-                #self.workers.sync_connectors()
+                self.workers.sync_connectors()
         else:
             self._sync_filters_if_needed(
                 central_worker=self.workers.local_worker(),
@@ -1399,8 +1398,9 @@ class Algorithm(Trainable, AlgorithmBase):
         with self._timers[SYNCH_ENV_CONNECTOR_STATES_TIMER]:
             # Merge connector states from all EnvRunners and broadcast updated
             # states back to all EnvRunners.
-            assert False, "TODO: Fix below: Needs to synch from training local worker"
-            self.evaluation_workers.sync_connectors()
+            self.evaluation_workers.sync_connectors(
+                from_worker=self.workers.local_worker()
+            )
 
         if self.evaluation_workers is None and (
             self.workers.local_worker().input_reader is None

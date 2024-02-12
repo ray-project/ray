@@ -6,7 +6,7 @@ import gymnasium as gym
 
 from ray.rllib.core.rl_module.rl_module import RLModule
 from ray.rllib.env.single_agent_episode import SingleAgentEpisode
-from ray.rllib.utils.typing import EpisodeType
+from ray.rllib.utils.typing import EpisodeType, ModuleID
 from ray.util.annotations import PublicAPI
 
 
@@ -155,7 +155,7 @@ class ConnectorV2(abc.ABC):
                 regardless.
             zip_with_batch_column: If provided, must be a list of batch items
                 corresponding to the given `episodes` (single agent case) or a dict
-                mapping (agentID, moduleID) tuples to lists of individual batch items
+                mapping (AgentID, ModuleID) tuples to lists of individual batch items
                 corresponding to this agent/module combination. The iterator will then
                 yield tuples of SingleAgentEpisode objects (1st item) along with the
                 data item (2nd item) that this episode was responsible for generating
@@ -185,12 +185,13 @@ class ConnectorV2(abc.ABC):
         list_indices = defaultdict(int)
         for episode in episodes:
             agent_ids = (
-                episode.get_agents_that_stepped() if agents_that_stepped_only
+                episode.get_agents_that_stepped()
+                if agents_that_stepped_only
                 else episode.agent_ids
             )
             for agent_id in agent_ids:
                 sa_episode = episode.agent_episodes[agent_id]
-                #for sa_episode in episode.agent_episodes.values():
+                # for sa_episode in episode.agent_episodes.values():
                 if zip_with_batch_column is not None:
                     key = (sa_episode.agent_id, sa_episode.module_id)
                     if len(zip_with_batch_column[key]) <= list_indices[key]:
@@ -222,6 +223,7 @@ class ConnectorV2(abc.ABC):
         .. testcode::
 
             from ray.rllib.connectors.connector_v2 import ConnectorV2
+            from ray.rllib.env.single_agent_episode import SingleAgentEpisode
             from ray.rllib.utils.test_utils import check
 
             batch = {}
@@ -235,7 +237,7 @@ class ConnectorV2(abc.ABC):
             check(batch, {
                 "test_col": [5],
                 "test_col_2": {
-                    "ag1:module_10": [-10],
+                    ("ag1", "module_10"): [-10],
                 },
             })
 
@@ -265,6 +267,29 @@ class ConnectorV2(abc.ABC):
             batch[column][sub_key].append(item_to_add)
         else:
             batch[column].append(item_to_add)
+
+    @staticmethod
+    def foreach_batch_item_change_in_place(batch, column: str, func) -> None:
+        data_to_process = batch.get(column)
+
+        if not data_to_process:
+            raise ValueError(
+                f"Invalid column name ({column})! Not found in given batch."
+            )
+
+        # Single-agent case: There is a list of individual observation items directly
+        # under the "obs" key. AgentID and ModuleID are both None.
+        if isinstance(data_to_process, list):
+            for i, d in enumerate(data_to_process):
+                data_to_process[i] = func(d, None, None)
+        # Multi-agent case: There is a dict mapping from a (AgentID, ModuleID) tuples to
+        # lists of individual data items.
+        else:
+            for (agent_id, module_id), d_list in data_to_process.items():
+                for i, d in enumerate(d_list):
+                    data_to_process[(agent_id, module_id)][i] = func(
+                        d, agent_id, module_id
+                    )
 
     @staticmethod
     def switch_batch_from_agent_ids_to_module_ids(batch):
@@ -337,7 +362,9 @@ class ConnectorV2(abc.ABC):
         raise NotImplementedError #TODO: implement
 
     @staticmethod
-    def switch_batch_from_column_to_module_ids(batch):
+    def switch_batch_from_column_to_module_ids(
+        batch: Dict[str, Dict[ModuleID, Any]]
+    ) -> Dict[ModuleID, Dict[str, Any]]:
         """Switches the first two levels of a `col -> ModuleID -> data` type batch.
 
         Assuming that the top level consists of column names as keys and the second
@@ -347,12 +374,13 @@ class ConnectorV2(abc.ABC):
 
         .. testcode::
 
+            from ray.rllib.utils.test_utils import check
+
             batch = {
                 "obs": {"module_0": [1, 2, 3]},
                 "actions": {"module_0": [4, 5, 6], "module_1": [7]},
             }
             switched_batch = ConnectorV2.switch_batch_from_column_to_module_ids(batch)
-
             check(
                 switched_batch,
                 {
@@ -364,11 +392,16 @@ class ConnectorV2(abc.ABC):
         Args:
             batch: The batch to switch from being column name based (then ModuleIDs)
                 to being ModuleID based (then column names).
+
+        Returns:
+            A new batch dict mapping ModuleIDs to dicts mapping column names (e.g.
+            "obs") to data.
         """
-        module_data = {}
+        module_data = defaultdict(dict)
         for column, column_data in batch.items():
             for module_id, data in column_data.items():
-                module_data[module_id]
+                module_data[module_id][column] = data
+        return dict(module_data)
 
     def get_state(self) -> Dict[str, Any]:
         """Returns the current state of this ConnectorV2 as a state dict.
