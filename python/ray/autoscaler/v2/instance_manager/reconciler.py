@@ -212,11 +212,6 @@ class Reconciler:
                 the cloud provider.
 
         """
-        Reconciler._handle_extra_cloud_instances(
-            instance_manager=instance_manager,
-            cloud_provider=cloud_provider,
-            non_terminated_cloud_instances=non_terminated_cloud_instances,
-        )
 
         Reconciler._handle_instances_launch(
             instance_manager=instance_manager, autoscaling_config=autoscaling_config
@@ -631,54 +626,6 @@ class Reconciler:
             return cur_im_status
 
         return reconciled_im_status
-
-    @staticmethod
-    def _handle_extra_cloud_instances(
-        instance_manager: InstanceManager,
-        cloud_provider: ICloudInstanceProvider,
-        non_terminated_cloud_instances: Dict[CloudInstanceId, CloudInstance],
-    ):
-        """
-        Shut down extra cloud instances that are not managed by the instance manager.
-
-        Since we have sync the IM states with the cloud provider's states in
-        earlier step (`sync_from`), each non terminated cloud instance should either
-        be:
-            1. assigned to a newly ALLOCATED im instance
-            2. already associated with an im instance that's running/terminating.
-
-        Any cloud instance that's not managed by the IM should be considered leak.
-
-        Args:
-            instance_manager: The instance manager to reconcile.
-            non_terminated_cloud_instances: The non-terminated cloud instances from
-                the cloud provider.
-        """
-        instances, _ = Reconciler._get_im_instances(instance_manager)
-
-        cloud_instance_ids_managed_by_im = {
-            instance.cloud_instance_id
-            for instance in instances
-            if instance.cloud_instance_id
-        }
-
-        leaked_cloud_instance_ids = []
-        for cloud_instance_id, _ in non_terminated_cloud_instances.items():
-            if cloud_instance_id in cloud_instance_ids_managed_by_im:
-                continue
-
-            leaked_cloud_instance_ids.append(cloud_instance_id)
-
-        if not leaked_cloud_instance_ids:
-            return
-
-        cloud_provider.terminate(
-            ids=leaked_cloud_instance_ids, request_id=str(time.time_ns())
-        )
-        logger.warning(
-            f"Terminating leaked cloud instances: {leaked_cloud_instance_ids}: no"
-            " matching instance found in instance manager."
-        )
 
     @staticmethod
     def _handle_instances_launch(
