@@ -74,7 +74,7 @@ DEFINE_string(resource_dir, "", "The path of this ray resource directory.");
 DEFINE_int32(ray_debugger_external, 0, "Make Ray debugger externally accessible.");
 // TODO(ryw): maybe instead of a new flag, we use kill_child_processes_on_worker_exit ?
 DEFINE_bool(kill_orphan_subprocesses,
-#ifndef __linux__
+#ifdef __linux__
             true,
 #else
             false,
