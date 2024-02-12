@@ -223,6 +223,7 @@ class ConnectorV2(abc.ABC):
         .. testcode::
 
             from ray.rllib.connectors.connector_v2 import ConnectorV2
+            from ray.rllib.env.single_agent_episode import SingleAgentEpisode
             from ray.rllib.utils.test_utils import check
 
             batch = {}
@@ -236,7 +237,7 @@ class ConnectorV2(abc.ABC):
             check(batch, {
                 "test_col": [5],
                 "test_col_2": {
-                    "ag1:module_10": [-10],
+                    ("ag1", "module_10"): [-10],
                 },
             })
 
