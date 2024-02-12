@@ -46,7 +46,7 @@ aiofiles==22.1.0
     #   aim
     #   gradio
     #   ypy-websocket
-aiohttp==3.8.6
+aiohttp==3.9.2
     # via
     #   -r /ray/ci/../python/requirements.txt
     #   aiobotocore
