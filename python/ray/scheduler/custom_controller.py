@@ -84,12 +84,19 @@ class Controller():
 
     def bind_label_and_send_data(self, node_id, label):
         @ray.remote
-        def BIND_TASK_STATUS():
+        def bind_label():
+	        #TODO: how to guarantee transfer data finished 
+            #TODO: set home address
+            # os.system("ls")
+            # if os.path.exists(directory):
+            #     ray.get_runtime_context().set_label({label: label})
+            # else:
+            #     os.system("rsync -a -P {} {}".format(label,node_ip+":"+label))
             time.sleep(1)
             ray.get_runtime_context().set_label({label: label})
             return FINISHED
 
-        task_id = BIND_TASK_STATUS.options(
+        task_id = bind_label.options(
             scheduling_strategy=NodeLabelSchedulingStrategy(
                 hard={"ray.io/node_id": In(node_id)}
             )
