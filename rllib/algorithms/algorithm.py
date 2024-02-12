@@ -2778,7 +2778,12 @@ class Algorithm(Trainable, AlgorithmBase):
             state["worker"] = self.workers.local_worker().get_state()
 
         # Also store eval `policy_mapping_fn` (in case it's different from main one).
-        if hasattr(self, "evaluation_workers") and self.evaluation_workers is not None:
+        # Note, the new `EnvRunner API` has no policy mapping function.
+        if (
+            hasattr(self, "evaluation_workers")
+            and self.evaluation_workers is not None
+            and not self.config.uses_new_env_runners
+        ):
             state[
                 "eval_policy_mapping_fn"
             ] = self.evaluation_workers.local_worker().policy_mapping_fn
