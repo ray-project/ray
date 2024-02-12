@@ -104,7 +104,8 @@ class ScalingConfig:
 
     Args:
         trainer_resources: Resources to allocate for the trainer. If None is provided,
-            will default to 1 CPU for most trainers.
+            will default to 1 CPU for most trainers. Ray Train will attempt to
+            collocate the trainer and rank 0 worker onto the same node.
         num_workers: The number of workers (Ray actors) to launch.
             Each worker will reserve 1 CPU by default. The number of CPUs
             reserved by each worker can be overridden with the

@@ -6,6 +6,8 @@ import pytest
 
 import ray
 from ray import train, tune
+from ray._private.ray_constants import RESOURCE_CONSTRAINT_PREFIX
+from ray.cluster_utils import Cluster
 from ray.train import RunConfig, ScalingConfig
 from ray.train._internal.backend_executor import BackendExecutor
 from ray.train._internal.worker_group import WorkerGroup
@@ -31,6 +33,35 @@ def ray_start_4_cpus_4_gpus_4_extra():
     yield address_info
     # The code after the yield will run as teardown code.
     ray.shutdown()
+
+
+@pytest.fixture
+def ray_start_heterogenous_cluster():
+    """
+    Start a heterogenous cluster with 8 nodes:
+        - 1 node with 4 x A100 and 100GB memory
+        - 3 nodes with 4 x A100 and 10GB memory
+        - 1 node with 4 x A10G and 100GB memory
+        - 3 nodes with 4 x A10G and 10GB memory
+    """
+    cluster = Cluster()
+
+    for accelerator_type in ["A100", "A10G"]:
+        for i in range(4):
+            memory_gb = 100 if i == 0 else 10
+            cluster.add_node(
+                num_cpus=4,
+                num_gpus=4,
+                memory=memory_gb * 1024**3,
+                resources={f"{RESOURCE_CONSTRAINT_PREFIX}{accelerator_type}": 4},
+            )
+
+    ray.init(address=cluster.address)
+
+    yield
+
+    ray.shutdown()
+    cluster.shutdown()
 
 
 def gen_execute_single_async_special(special_f):
@@ -342,6 +373,63 @@ def test_gpu_requests(ray_start_4_cpus_4_gpus_4_extra, tmp_path):
     # Sort the cuda visible devices to have exact match with expected result.
     visible_devices = [",".join(sorted(r.split(","))) for r in visible_devices]
     assert visible_devices == ["0,1,2,3", "0,1,2,3"]
+
+
+@pytest.mark.parametrize("accelerator_type", ["A100", "A10G", None])
+def test_config_accelerator_type(ray_start_heterogenous_cluster, accelerator_type):
+    def train_func(config):
+        # Ensure all workers are scheduled on nodes with specified accelerators
+        assigned_resources = ray.runtime_context.RuntimeContext.get_assigned_resources()
+        assert assigned_resources["GPU"] == config["num_gpus"]
+        if accelerator_type:
+            assert accelerator_type in assigned_resources
+
+    # Single GPU workers
+    trainer = DataParallelTrainer(
+        train_func,
+        train_loop_config={"num_gpus": 1},
+        scaling_config=ScalingConfig(
+            num_workers=16, use_gpu=True, accelerator_type=accelerator_type
+        ),
+    )
+    trainer.fit()
+
+    # Multi-GPU workers
+    trainer = DataParallelTrainer(
+        train_func,
+        train_loop_config={"num_gpus": 2},
+        scaling_config=ScalingConfig(
+            num_workers=8,
+            use_gpu=True,
+            accelerator_type=accelerator_type,
+            resources_per_worker={"GPU": 2},
+        ),
+    )
+    trainer.fit()
+
+
+def test_colocate_trainer_and_rank_0_worker(ray_start_heterogenous_cluster):
+    from ray.util.state import get_node
+
+    rank_0_memory = 100 * 1024**3
+
+    def train_func():
+        # Ensure rank 0 worker is scheduled on a highmem node
+        if ray.train.get_context().world_rank() == 0:
+            node_id = ray.runtime_context.RuntimeContext.get_node_id()
+            node_resources = get_node(node_id).resources
+            assert node_resources["memory"] >= rank_0_memory
+
+    trainer = DataParallelTrainer(
+        train_func,
+        scaling_config=ScalingConfig(
+            num_workers=8,
+            use_gpu=True,
+            accelerator_type="A100",
+            trainer_resources={"memory": rank_0_memory},
+        ),
+    )
+    trainer.fit()
 
 
 if __name__ == "__main__":
