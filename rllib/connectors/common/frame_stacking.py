@@ -10,18 +10,32 @@ from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.spaces.space_utils import batch
 from ray.rllib.utils.typing import EpisodeType
+from ray.util.annotations import PublicAPI
 
 
+@PublicAPI(stability="alpha")
 class _FrameStackingConnector(ConnectorV2):
     """A connector piece that stacks the previous n observations into one."""
 
+    @override(ConnectorV2)
+    def observation_space(self):
+        # Change our observation space according to the given stacking settings.
+        return gym.spaces.Box(
+            low=np.repeat(
+                self.input_observation_space.low, repeats=self.num_frames, axis=-1
+            ),
+            high=np.repeat(
+                self.input_observation_space.high, repeats=self.num_frames, axis=-1
+            ),
+            shape=list(self.input_observation_space.shape)[:-1] + [self.num_frames],
+            dtype=self.input_observation_space.dtype,
+        )
+
     def __init__(
         self,
-        *,
-        # Base class constructor args.
         input_observation_space: gym.Space,
         input_action_space: gym.Space,
-        # Specific framestacking args.
+        *,
         num_frames: int = 1,
         as_learner_connector: bool = False,
         **kwargs,
@@ -46,21 +60,11 @@ class _FrameStackingConnector(ConnectorV2):
         )
 
         self.num_frames = num_frames
-        self.as_learner_connector = as_learner_connector
+        self._as_learner_connector = as_learner_connector
 
         # Some assumptions: Space is box AND last dim (the stacking one) is 1.
         assert isinstance(self.observation_space, gym.spaces.Box)
         assert self.observation_space.shape[-1] == 1
-
-        # Change our observation space according to the given stacking settings.
-        self.observation_space = gym.spaces.Box(
-            low=np.repeat(self.observation_space.low, repeats=self.num_frames, axis=-1),
-            high=np.repeat(
-                self.observation_space.high, repeats=self.num_frames, axis=-1
-            ),
-            shape=list(self.observation_space.shape)[:-1] + [self.num_frames],
-            dtype=self.observation_space.dtype,
-        )
 
     @override(ConnectorV2)
     def __call__(
@@ -79,7 +83,7 @@ class _FrameStackingConnector(ConnectorV2):
         observations = []
 
         # Learner connector pipeline. Episodes have been finalized/numpy'ized.
-        if self.as_learner_connector:
+        if self._as_learner_connector:
             for episode in episodes:
 
                 def _map_fn(s):

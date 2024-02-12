@@ -2851,31 +2851,49 @@ py_test(
     args = ["--enable-new-api-stack", "--num-agents=2", "--as-test", "--stop-reward=800.0", "--framework=torch", "--algo=PPO"]
 )
 
+py_test(
+    name = "examples/connectors/connector_v2_prev_rewards_actions_inputs_ppo",
+    main = "examples/connectors/connector_v2_prev_rewards_actions_inputs.py",
+    tags = ["team:rllib", "exclusive", "examples"],
+    size = "medium",
+    srcs = ["examples/connectors/connector_v2_prev_rewards_actions_inputs.py"],
+    args = ["--enable-new-api-stack", "--as-test", "--stop-reward=400.0", "--framework=torch", "--algo=PPO"]
+)
+
+py_test(
+    name = "examples/connectors/connector_v2_prev_rewards_actions_inputs_multi_agent_ppo",
+    main = "examples/connectors/connector_v2_prev_rewards_actions_inputs.py",
+    tags = ["team:rllib", "exclusive", "examples"],
+    size = "medium",
+    srcs = ["examples/connectors/connector_v2_prev_rewards_actions_inputs.py"],
+    args = ["--enable-new-api-stack", "--num-agents=2", "--as-test", "--stop-reward=800.0", "--framework=torch", "--algo=PPO"]
+)
+
 # ----------------------
 # old connector examples
 # ----------------------
 py_test(
-    name = "examples/connectors/run_connector_policy",
-    main = "examples/connectors/run_connector_policy.py",
+    name = "examples/connectors/v1/run_connector_policy",
+    main = "examples/connectors/v1/run_connector_policy.py",
     tags = ["team:rllib", "exclusive", "examples"],
     size = "small",
-    srcs = ["examples/connectors/run_connector_policy.py"],
+    srcs = ["examples/connectors/v1/run_connector_policy.py"],
 )
 
 py_test(
-    name = "examples/connectors/adapt_connector_policy",
-    main = "examples/connectors/adapt_connector_policy.py",
+    name = "examples/connectors/v1/adapt_connector_policy",
+    main = "examples/connectors/v1/adapt_connector_policy.py",
     tags = ["team:rllib", "exclusive", "examples"],
     size = "small",
-    srcs = ["examples/connectors/adapt_connector_policy.py"],
+    srcs = ["examples/connectors/v1/adapt_connector_policy.py"],
 )
 
 py_test(
-    name = "examples/connectors/self_play_with_policy_checkpoint",
-    main = "examples/connectors/self_play_with_policy_checkpoint.py",
+    name = "examples/connectors/v1/self_play_with_policy_checkpoint",
+    main = "examples/connectors/v1/self_play_with_policy_checkpoint.py",
     tags = ["team:rllib", "exclusive", "examples"],
     size = "small",
-    srcs = ["examples/connectors/self_play_with_policy_checkpoint.py"],
+    srcs = ["examples/connectors/v1/self_play_with_policy_checkpoint.py"],
     args = [
         "--train_iteration=1"  # Smoke test.
     ]
