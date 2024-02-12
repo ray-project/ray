@@ -74,6 +74,7 @@ class MultiAgentRLModule(RLModule):
         """
         super().__init__(config or MultiAgentRLModuleConfig())
 
+    @override(RLModule)
     def setup(self):
         """Sets up the underlying RLModules."""
         self._rl_modules = {}
@@ -87,6 +88,26 @@ class MultiAgentRLModule(RLModule):
             else:
                 assert self._rl_modules[module_id].framework in [None, framework]
         self.framework = framework
+
+    @OverrideToImplementCustomLogic
+    @override(RLModule)
+    def get_initial_state(self) -> Any:
+        # TODO (sven): Replace by call to `self.foreach_module`, but only if this method
+        #  supports returning dicts.
+        ret = {}
+        for module_id, module in self._rl_modules.items():
+            ret[module_id] = module.get_initial_state()
+        return ret
+
+    @OverrideToImplementCustomLogic
+    @override(RLModule)
+    def is_stateful(self) -> bool:
+        initial_state = self.get_initial_state()
+        assert isinstance(initial_state, dict), (
+            "The initial state of an RLModule must be a dict, but is "
+            f"{type(initial_state)} instead."
+        )
+        return bool(any(sa_init_state for sa_init_state in initial_state.values()))
 
     @classmethod
     def __check_module_configs(cls, module_configs: Dict[ModuleID, Any]):

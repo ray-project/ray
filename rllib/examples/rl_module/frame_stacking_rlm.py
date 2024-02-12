@@ -12,7 +12,7 @@ torch, nn = try_import_torch()
 
 
 class FrameStackingCartPoleRLMBase(PPORLModule):
-    """An RLModules that takes the last n observations as input.
+    """An RLModule that takes the last n observations as input.
 
     The idea behind this model is to demonstrate how we can modify an existing RLModule
     with a custom view requirement. In this case, we hack a PPORModule so that it
