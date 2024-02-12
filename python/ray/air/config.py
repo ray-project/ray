@@ -187,13 +187,14 @@ class ScalingConfig:
                 # Note that we don't request any CPUs, which avoids possible
                 # scheduling contention. Generally nodes have many more CPUs than
                 # GPUs, so not requesting a CPU does not lead to oversubscription.
-                return {"GPU": 1}
+                resources_per_worker = {"GPU": 1}
             else:
-                return {"CPU": 1}
-        resources_per_worker = {
-            k: v for k, v in self.resources_per_worker.items() if v != 0
-        }
-        resources_per_worker.setdefault("GPU", int(self.use_gpu))
+                resources_per_worker = {"CPU": 1}
+        else:
+            resources_per_worker = {
+                k: v for k, v in self.resources_per_worker.items() if v != 0
+            }
+            resources_per_worker.setdefault("GPU", int(self.use_gpu))
 
         if self.accelerator_type:
             resources_per_worker[
