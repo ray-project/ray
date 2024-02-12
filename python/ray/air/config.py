@@ -252,7 +252,7 @@ class ScalingConfig:
         if self.num_workers:
             # Colocate Trainer and rank0 worker by merging their bundles
             rank_0_bundle = dict(Counter(trainer_bundle) + Counter(worker_bundle))
-            bundles = [rank_0_bundle] + [worker_bundle] * (self.num_workers - 1)
+            bundles = [{}] + [rank_0_bundle] + [worker_bundle] * (self.num_workers - 1)
         else:
             bundles = [trainer_bundle]
         return PlacementGroupFactory(bundles, strategy=self.placement_strategy)

@@ -10,6 +10,7 @@ from ray.actor import ActorHandle
 from ray.air._internal.util import exception_cause, skip_exceptions
 from ray.types import ObjectRef
 from ray.util.placement_group import PlacementGroup
+from ray.util.scheduling_strategies import PlacementGroupSchedulingStrategy
 
 T = TypeVar("T")
 
@@ -345,9 +346,12 @@ class WorkerGroup:
         """
         new_actors = []
         new_actor_metadata = []
-        for _ in range(num_workers):
+        for i in range(num_workers):
             actor = self._remote_cls.options(
-                placement_group=self._placement_group
+                scheduling_strategy=PlacementGroupSchedulingStrategy(
+                    placement_group=self._placement_group,
+                    placement_group_bundle_index=i,
+                )
             ).remote(*self._actor_cls_args, **self._actor_cls_kwargs)
             new_actors.append(actor)
             new_actor_metadata.append(
