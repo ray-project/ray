@@ -183,9 +183,6 @@ def test_env_hook_skipped_for_ray_client(start_cluster, monkeypatch):
     indirect=True,
 )
 def test_autoscaler_infeasible(ray_start_cluster_head_with_env_vars):
-    if os.environ.get("RAY_enable_autoscaler_v2") == "1":
-        pytest.skip("Autoscaler v2 events tests are flaky.")
-
     script = """
 import ray
 import time
