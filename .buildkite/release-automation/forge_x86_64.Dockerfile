@@ -12,11 +12,8 @@ set -euo pipefail
 apt-get update
 apt-get upgrade -y
 apt-get install -y -qq \
-    curl zip clang-format-12 \
-    clang-tidy-12 clang-12
+    curl zip clang-12
 
-ln -s /usr/bin/clang-format-12 /usr/bin/clang-format && \
-ln -s /usr/bin/clang-tidy-12 /usr/bin/clang-tidy && \
 ln -s /usr/bin/clang-12 /usr/bin/clang
 
 # Install miniconda
