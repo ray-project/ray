@@ -16,7 +16,6 @@ from ray.core.generated.instance_manager_pb2 import (
     GetInstanceManagerStateRequest,
     Instance,
     InstanceUpdateEvent,
-    LaunchRequest,
     StatusCode,
     UpdateInstanceManagerStateRequest,
 )
@@ -32,15 +31,15 @@ class InstanceManagerTest(unittest.TestCase):
         # Version mismatch on reading from the storage.
         ins_storage.get_instances.return_value = ({}, 1)
 
-        launch_req = LaunchRequest(
+        update = InstanceUpdateEvent(
+            instance_id="id-1",
+            new_instance_status=Instance.QUEUED,
             instance_type="type-1",
-            count=1,
-            id="id-1",
         )
         reply = im.update_instance_manager_state(
             UpdateInstanceManagerStateRequest(
                 expected_version=0,
-                launch_requests=[launch_req],
+                updates=[update],
             )
         )
         assert reply.status.code == StatusCode.VERSION_MISMATCH
@@ -50,7 +49,7 @@ class InstanceManagerTest(unittest.TestCase):
         reply = im.update_instance_manager_state(
             UpdateInstanceManagerStateRequest(
                 expected_version=1,
-                launch_requests=[launch_req],
+                updates=[update],
             )
         )
         assert reply.status.code == StatusCode.OK
@@ -65,7 +64,7 @@ class InstanceManagerTest(unittest.TestCase):
         reply = im.update_instance_manager_state(
             UpdateInstanceManagerStateRequest(
                 expected_version=1,
-                launch_requests=[launch_req],
+                updates=[update],
             )
         )
         assert reply.status.code == StatusCode.VERSION_MISMATCH
@@ -78,7 +77,7 @@ class InstanceManagerTest(unittest.TestCase):
         reply = im.update_instance_manager_state(
             UpdateInstanceManagerStateRequest(
                 expected_version=1,
-                launch_requests=[launch_req],
+                updates=[update],
             )
         )
         assert reply.status.code == StatusCode.UNKNOWN_ERRORS
@@ -103,16 +102,21 @@ class InstanceManagerTest(unittest.TestCase):
         reply = im.update_instance_manager_state(
             UpdateInstanceManagerStateRequest(
                 expected_version=0,
-                launch_requests=[
-                    LaunchRequest(
+                updates=[
+                    InstanceUpdateEvent(
                         instance_type="type-1",
-                        count=1,
-                        id="id-1",
+                        instance_id="id-1",
+                        new_instance_status=Instance.QUEUED,
                     ),
-                    LaunchRequest(
+                    InstanceUpdateEvent(
                         instance_type="type-2",
-                        count=2,
-                        id="id-2",
+                        instance_id="id-2",
+                        new_instance_status=Instance.QUEUED,
+                    ),
+                    InstanceUpdateEvent(
+                        instance_type="type-2",
+                        instance_id="id-3",
+                        new_instance_status=Instance.QUEUED,
                     ),
                 ],
             )
@@ -133,7 +137,6 @@ class InstanceManagerTest(unittest.TestCase):
         for ins in reply.state.instances:
             types_count[ins.instance_type] += 1
             assert ins.status == Instance.QUEUED
-            assert ins.launch_request_id in ["id-1", "id-2"]
 
         assert types_count["type-1"] == 1
         assert types_count["type-2"] == 2
@@ -147,10 +150,12 @@ class InstanceManagerTest(unittest.TestCase):
                     InstanceUpdateEvent(
                         instance_id=instance_ids[0],
                         new_instance_status=Instance.REQUESTED,
+                        launch_request_id="l1",
                     ),
                     InstanceUpdateEvent(
                         instance_id=instance_ids[1],
                         new_instance_status=Instance.REQUESTED,
+                        launch_request_id="l1",
                     ),
                 ],
             )
