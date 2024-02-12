@@ -277,13 +277,16 @@ BundleLocationIndex &ClusterResourceManager::GetBundleLocationIndex() {
 void ClusterResourceManager::SetNodeLabels(
     const scheduling::NodeID &node_id,
     const absl::flat_hash_map<std::string, std::string> &labels) {
+  
   auto it = nodes_.find(node_id);
   if (it == nodes_.end()) {
     NodeResources node_resources;
     it = nodes_.emplace(node_id, node_resources).first;
   }
-   RAY_LOG(INFO)  << "Upate label Address: " << &it->second;
+
+  RAY_LOG(INFO)  << "Upate label Address: " << &it->second;
   RAY_LOG(INFO) << "Update node info, node_id: " << node_id;
+
   for (auto pair : labels) {
         RAY_LOG(INFO)  << "New label Key: " << pair.first << ", Value: " << pair.second ;
   }

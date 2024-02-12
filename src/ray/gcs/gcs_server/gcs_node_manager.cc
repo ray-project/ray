@@ -109,75 +109,72 @@ void GcsNodeManager::HandleUpdateNodeLabels(rpc::UpdateNodeLabelsRequest request
 }
 
 void GcsNodeManager::UpdateNodeLabels(const NodeID &node_id,const std::unordered_map<std::string, std::string> &labels) {
-  std::shared_ptr<rpc::GcsNodeInfo> node;
+  
+  // std::shared_ptr<rpc::GcsNodeInfo> node;
   auto iter = alive_nodes_.find(node_id);
-  if (iter != alive_nodes_.end()) {
-    node = iter->second;
-  }else{
+  if (iter == alive_nodes_.end()) {
     return;
   }
-  rpc::Address remote_address;
-  remote_address.set_raylet_id(node->node_id());
-  remote_address.set_ip_address(node->node_manager_address());
-  remote_address.set_port(node->node_manager_port());
+
+  // rpc::Address remote_address;
+  // remote_address.set_raylet_id(node->node_id());
+  // remote_address.set_ip_address(node->node_manager_address());
+  // remote_address.set_port(node->node_manager_port());
 
   auto& myMap = *node->mutable_labels();
-  for(auto pair: labels){
-
+  for(auto pair: labels) {
     myMap[pair.first]=pair.second;
   }
   
- 
-
   RAY_LOG(INFO)  << "Set label to node: " <<"The node with node id: " << node_id
           << " and address: " << node->node_manager_address()
           << "and port:" << node->node_manager_port()
           << " and node name: " << node->node_name()
           << " has been updated";
   for (const auto& pair : myMap ) {
-        RAY_LOG(INFO)  << "New label Key: " << pair.first << ", Value: " << pair.second ;
-    }
-  auto raylet_client = raylet_client_pool_->GetOrConnectByAddress(remote_address);
-  std::unordered_map<std::string, std::string> label(myMap.begin(),
-                                                       myMap.end());
+    RAY_LOG(INFO)  << "New label Key: " << pair.first << ", Value: " << pair.second;
+  }
+  
+  std::unordered_map<std::string, std::string> label(myMap.begin(), myMap.end());
+
   auto on_put_done = [this,
-                      remote_address = remote_address,
                       label,
-                      node_id,
-                      node = node](const Status &status) {
-    auto raylet_client = raylet_client_pool_->GetOrConnectByAddress(remote_address);
-    RAY_CHECK(raylet_client);
+                      alive_nodes_] (const Status &status) {
     
-    // NOTE(sang): Drain API is not supposed to kill the raylet, but we are doing
-    // this until the proper "drain" behavior is implemented. Currently, before
-    // raylet is killed, it sends a drain request to GCS. That said, this can
-    // happen;
-    // - GCS updates the drain state and kills a raylet gracefully.
-    // - Raylet kills itself and send a drain request of itself to GCS.
-    // - Drain request will become a no-op in GCS.
-    // This behavior is redundant, but harmless. We'll keep this behavior until we
-    // implement the right drain behavior for the simplicity. Check
-    // https://github.com/ray-project/ray/pull/19350 for more details.
-    raylet_client->UpdateLabel(
+    // Update all the raylet with node label 
+    std::shared_ptr<rpc::GcsNodeInfo> cur_node;
+    for (const auto& iter : alive_nodes_) {
+      cur_node = iter.second;
+
+      rpc::Address remote_address;
+      remote_address.set_raylet_id(cur_node->node_id());
+      remote_address.set_ip_address(cur_node->node_manager_address());
+      remote_address.set_port(cur_node->node_manager_port());
+
+      auto raylet_client = raylet_client_pool_->GetOrConnectByAddress(remote_address);
+      RAY_CHECK(raylet_client);
+
+      raylet_client->UpdateLabel( // FIXME:
         label,
         node_id,
-        [this, node_id, label=label,node = node](
-            const Status &status, const rpc::UpdateLabelReply &reply) {
-          RAY_LOG(INFO) << "Raylet " << node_id << " label" <<"is updated. Status " << status
-                        << ". The information will be published to the cluster.";
+        [this, node_id, label=label, node = node] (
+          const Status &status, const rpc::UpdateLabelReply &reply) {
+          RAY_LOG(INFO) << "Raylet " << node_id << " label" <<"is updated. Status " << status << ". The information will be published to the cluster.";
           
           for (auto pair : label) {
             RAY_LOG(INFO)  << "gcs_node_manager New label Key: " << pair.first << ", Value: " << pair.second ;
           }
-         
-          /// Once the raylet is shutdown, inform all nodes that the raylet is dead.
-          RAY_CHECK_OK(
-              gcs_publisher_->PublishNodeInfo(node_id, *node, nullptr));
+          
         });
 
+        /// Once the raylet is shutdown, inform all nodes that the raylet is dead.
+          // RAY_CHECK_OK( // FIXME:
+          //     gcs_publisher_->PublishNodeInfo(node_id, *node, nullptr));
+    }
 
-    };
-    RAY_CHECK_OK(gcs_table_storage_->NodeTable().Put(node_id, *node, on_put_done));
+  }; // end of on_put_done
+
+  RAY_CHECK_OK(gcs_table_storage_->NodeTable().Put(node_id, *node, on_put_done));
 }
 
 void GcsNodeManager::HandleDrainNode(rpc::DrainNodeRequest request,
