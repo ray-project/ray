@@ -1,5 +1,6 @@
 from typing import Any, List, Optional
 
+import gymnasium as gym
 import numpy as np
 import tree  # pip install dm_tree
 
@@ -13,6 +14,7 @@ from ray.rllib.utils.numpy import convert_to_numpy
 from ray.rllib.utils.spaces.space_utils import (
     clip_action,
     get_base_struct_from_space,
+    unbatch,
     unsquash_action,
 )
 from ray.rllib.utils.typing import EpisodeType
@@ -32,20 +34,12 @@ class DefaultModuleToEnv(ConnectorV2):
     distribution using the RLModule in the connector context and sample from this
     distribution (deterministically, if we are not exploring, stochastically, if we
     are).
-
-    input_type: INPUT_OUTPUT_TYPES.DICT_OF_MODULE_IDS_TO_DATA
-        Operates per RLModule as it will have to pull the action distribution from each
-        in order to sample actions if necessary. Searches for the ACTIONS and
-        ACTION_DIST_INPUTS keys in a module's outputs and - should ACTIONS not be
-        found - sample actions from the module's action distribution.
-    output_type: INPUT_OUTPUT_TYPES.DICT_OF_MODULE_IDS_TO_DATA (same as input: data in,
-        data out, however, data
-        out might contain an additional ACTIONS key if it was not previously present
-        in the input).
     """
 
     def __init__(
         self,
+        input_observation_space: gym.Space,
+        input_action_space: gym.Space,
         *,
         normalize_actions: bool,
         clip_actions: bool,
@@ -73,7 +67,7 @@ class DefaultModuleToEnv(ConnectorV2):
                 from the resulting distribution, then this 0.9 will be clipped to 0.5
                 to fit into the [-0.5 0.5] interval.
         """
-        super().__init__(**kwargs)
+        super().__init__(input_observation_space, input_action_space, **kwargs)
 
         self._action_space_struct = get_base_struct_from_space(self.action_space)
         self.normalize_actions = normalize_actions
@@ -121,13 +115,17 @@ class DefaultModuleToEnv(ConnectorV2):
             data = {DEFAULT_POLICY_ID: data}
 
         for module_id, module_data in data.items():
-            state = data.pop(STATE_OUT, None)
-            data = tree.map_structure(lambda s: np.squeeze(s, axis=1), data)
+            state = module_data.pop(STATE_OUT, None)
+            module_data = tree.map_structure(
+                lambda s: np.squeeze(s, axis=1), module_data
+            )
             if state:
-                data[STATE_OUT] = state
+                module_data[STATE_OUT] = state
 
-        if not is_multi_agent:
-            return data[DEFAULT_POLICY_ID]
+            if not is_multi_agent:
+                return module_data
+            data[module_id] = module_data
+
         return data
 
     def _get_actions(self, data, rl_module, explore, is_multi_agent):
@@ -203,19 +201,34 @@ class DefaultModuleToEnv(ConnectorV2):
         ]
         agent_data = {}
         for module_id, module_data in data.items():
+            # TODO (sven): If one agent is terminated, we should NOT perform another
+            #  forward pass on its (obs) data anymore, which we currently do in case
+            #  we are using the WriteObservationsToEpisode connector piece, due to the
+            #  fact that this piece requires even the terminal obs to be processed
+            #  inside the batch. This if block here is a temporary fix for this issue.
+            if module_id not in module_to_episode_agents_mapping:
+                continue
+
             for column, values_batch in module_data.items():
                 if column not in agent_data:
-                    agent_data[column] = [{}] * len(episodes)
-                for i, val in enumerate(values_batch):
+                    agent_data[column] = [{} for _ in range(len(episodes))]
+                for i, val in enumerate(unbatch(values_batch)):
                     eps_idx, agent_id = module_to_episode_agents_mapping[module_id][i]
                     agent_data[column][eps_idx][agent_id] = val
 
         return agent_data
 
     def _normalize_clip_actions(self, data, is_multi_agent):
+        """Based on settings, will normalize (unsquash) and/or clip computed actions.
+
+        This is such that the final actions (to be sent to the env) match the
+        environment's action space and thus don't lead to an error.
+        """
+        actions = None
+
         if is_multi_agent:
             if self.normalize_actions:
-                data[SampleBatch.ACTIONS] = [
+                actions = [
                     unsquash_action(
                         a,
                         {k: v for k, v in self._action_space_struct.items() if k in a},
@@ -223,7 +236,7 @@ class DefaultModuleToEnv(ConnectorV2):
                     for a in data[SampleBatch.ACTIONS]
                 ]
             elif self.clip_actions:
-                data[SampleBatch.ACTIONS] = [
+                actions = [
                     clip_action(
                         a,
                         {k: v for k, v in self._action_space_struct.items() if k in a},
@@ -232,10 +245,13 @@ class DefaultModuleToEnv(ConnectorV2):
                 ]
         else:
             if self.normalize_actions:
-                data[SampleBatch.ACTIONS] = unsquash_action(
+                actions = unsquash_action(
                     data[SampleBatch.ACTIONS], self._action_space_struct
                 )
             elif self.clip_actions:
-                data[SampleBatch.ACTIONS] = clip_action(
+                actions = clip_action(
                     data[SampleBatch.ACTIONS], self._action_space_struct
                 )
+
+        if actions is not None:
+            data[SampleBatch.ACTIONS_FOR_ENV] = actions
