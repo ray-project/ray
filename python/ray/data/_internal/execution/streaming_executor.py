@@ -208,8 +208,12 @@ class StreamingExecutor(Executor, threading.Thread):
         """
         try:
             # Run scheduling loop until complete.
-            while self._scheduling_loop_step(self._topology) and not self._shutdown:
-                pass
+            while True:
+                t_start = time.perf_counter()
+                continue_sched = self._scheduling_loop_step(self._topology)
+                self._initial_stats.streaming_exec_schedule_s.add(time.perf_counter() - t_start)
+                if not continue_sched or self._shutdown:
+                    break
         except Exception as e:
             # Propagate it to the result iterator.
             self._output_node.mark_finished(e)
