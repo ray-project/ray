@@ -11,6 +11,7 @@ import ray
 from ray._private.test_utils import (
     run_string_as_driver,
     run_string_as_driver_nonblocking,
+    skip_flaky_core_test_premerge,
     wait_for_condition,
 )
 
@@ -162,6 +163,7 @@ def test_env_hook_skipped_for_ray_client(start_cluster, monkeypatch):
         assert ray.get(f.remote()) == "HOOK_VALUE"
 
 
+@skip_flaky_core_test_premerge("https://github.com/ray-project/ray/issues/43099")
 @pytest.mark.parametrize(
     "ray_start_cluster_head_with_env_vars",
     [
@@ -181,6 +183,9 @@ def test_env_hook_skipped_for_ray_client(start_cluster, monkeypatch):
     indirect=True,
 )
 def test_autoscaler_infeasible(ray_start_cluster_head_with_env_vars):
+    if os.environ.get("RAY_enable_autoscaler_v2") == "1":
+        pytest.skip("Autoscaler v2 events tests are flaky.")
+
     script = """
 import ray
 import time
@@ -204,6 +209,7 @@ time.sleep(15)
     assert "Error: No available node types can fulfill" in out_str
 
 
+@skip_flaky_core_test_premerge("https://github.com/ray-project/ray/issues/43099")
 @pytest.mark.parametrize(
     "ray_start_cluster_head_with_env_vars",
     [
@@ -248,6 +254,7 @@ time.sleep(25)
 
 
 # TODO(rickyx): Remove this after migration
+@skip_flaky_core_test_premerge("https://github.com/ray-project/ray/issues/43099")
 @pytest.mark.parametrize(
     "ray_start_cluster_head_with_env_vars",
     [
@@ -318,6 +325,7 @@ time.sleep(25)
 
 
 # TODO(rickyx): Remove this after migration
+@skip_flaky_core_test_premerge("https://github.com/ray-project/ray/issues/43099")
 @pytest.mark.parametrize(
     "ray_start_cluster_head_with_env_vars",
     [
@@ -363,6 +371,7 @@ time.sleep(3)
     wait_for_condition(verify)
 
 
+@skip_flaky_core_test_premerge("https://github.com/ray-project/ray/issues/43099")
 @pytest.mark.parametrize(
     "event_level,expected_msg,unexpected_msg",
     [
