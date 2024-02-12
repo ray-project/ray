@@ -379,7 +379,7 @@ def test_gpu_requests(ray_start_4_cpus_4_gpus_4_extra, tmp_path):
 def test_config_accelerator_type(ray_start_heterogenous_cluster, accelerator_type):
     def train_func(config):
         # Ensure all workers are scheduled on nodes with specified accelerators
-        assigned_resources = ray.runtime_context.RuntimeContext.get_assigned_resources()
+        assigned_resources = ray.get_runtime_context().get_assigned_resources()
         assert assigned_resources["GPU"] == config["num_gpus"]
         if accelerator_type:
             assert accelerator_type in assigned_resources
@@ -416,7 +416,7 @@ def test_colocate_trainer_and_rank_0_worker(ray_start_heterogenous_cluster):
     def train_func():
         # Ensure rank 0 worker is scheduled on a highmem node
         if ray.train.get_context().world_rank() == 0:
-            node_id = ray.runtime_context.RuntimeContext.get_node_id()
+            node_id = ray.get_runtime_context().get_node_id()
             node_resources = get_node(node_id).resources
             assert node_resources["memory"] >= rank_0_memory
 
