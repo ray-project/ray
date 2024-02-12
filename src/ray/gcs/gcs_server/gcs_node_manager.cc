@@ -157,7 +157,7 @@ void GcsNodeManager::UpdateNodeLabels(const NodeID &node_id,const std::unordered
       raylet_client->UpdateLabel( // FIXME:
         label,
         node_id,
-        [this, node_id, label=label, node = node] (
+        [this, node_id, label=label, node = cur_node] (
           const Status &status, const rpc::UpdateLabelReply &reply) {
           RAY_LOG(INFO) << "Raylet " << node_id << " label" <<"is updated. Status " << status << ". The information will be published to the cluster.";
           
