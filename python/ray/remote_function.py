@@ -277,6 +277,7 @@ class RemoteFunction:
         # it in "_remote()".
 
         if HPC_DIR in kwargs:
+            print(kwargs[HPC_DIR], type(kwargs[HPC_DIR]))
             task_options[SCHEDULING_STRATEGY] = NodeLabelSchedulingStrategy(
                 hard={ kwargs[HPC_DIR]: In(kwargs[HPC_DIR])}
             )

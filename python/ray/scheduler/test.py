@@ -76,7 +76,7 @@ from time import sleep
 
 # print(get_task("cbd431224396f2d6ffffffffffffffffffffffff0f000000"))
 # cbd431224396f2d6ffffffffffffffffffffffff0f000000
-# ray stop
+# ray stop --force
 # ray start --head
 # ray start --address='34.199.201.49:6379'
 
@@ -85,31 +85,50 @@ from time import sleep
 
 
 
-ray.init()
-dir = "/tmp/test/26" 
+# ray.init()
+# dir = "/tmp/apple/1" 
 
-@ray.remote(num_cpus=1)
+# @ray.remote(num_cpus=1)
+# def user_function(working_dir, complexity_score, time):
+#     # print(ray.get_runtime_context().get_task_id())
+#     print(ray.get_runtime_context().get_node_id())
+#     sleep(time)
+#     return "ok"
+
+# task_id_1 = user_function.remote(working_dir=dir, complexity_score=1, time=1)
+# sleep(5)
+
+# task_id_2 = user_function.remote(working_dir=dir + "2", complexity_score=1, time=2)
+# print("second task")
+# sleep(5)
+
+
+# task_id_3 = user_function.remote(working_dir=dir + "3", complexity_score=1, time=1)
+# print("third task")
+
+# print(ray.get(task_id_1))
+# print(ray.get(task_id_2))
+# print(ray.get(task_id_3))
+
+
+
+
+
+ray.init()
+
+dir = "/tmp/apple/9" 
+# ray.get_runtime_context().set_label({dir: dir})
+
+@ray.remote(num_cpus=5)
 def user_function(working_dir, complexity_score, time):
     # print(ray.get_runtime_context().get_task_id())
-    print(ray.get_runtime_context().get_node_id())
+    # print(ray.get_runtime_context().get_node_id())
     sleep(time)
     return "ok"
 
-task_id_1 = user_function.remote(working_dir=dir + "1", complexity_score=1, time=10)
-# sleep(5)
-
-task_id_2 = user_function.remote(working_dir=dir + "2", complexity_score=1, time=10)
-print("second task")
-# sleep(5)
+task_id_1 = user_function.remote(working_dir=dir, complexity_score=1, time=30)
 
 
-task_id_3 = user_function.remote(working_dir=dir + "3", complexity_score=1, time=1)
-print("third task")
-
+task_id_2 = user_function.remote(working_dir=dir, complexity_score=1, time=1)
 print(ray.get(task_id_1))
 print(ray.get(task_id_2))
-print(ray.get(task_id_3))
-
-
-
-sleep(100)

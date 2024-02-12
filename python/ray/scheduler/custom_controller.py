@@ -38,6 +38,7 @@ class Controller():
 
         # schedule to this task to a node
         if user_task.status[ASSIGN_NODE] is None:
+            user_task.status[USER_TASK_ESTIMATED_START_TIME] = int(time.time() * 1000)
             node_id = self.schedule(user_task)
             print("reconcile: assign to node", node_id)
             user_task.status[ASSIGN_NODE] = node_id
@@ -108,13 +109,8 @@ class Controller():
         node_info = requests.get("http://localhost:8000/get/node-info").json()
         print("!!!!!!!!!!!!!!!")
         print(node_info)
-        
-        filtered_nodes = self.filter_nodes(node_info, user_task)
-        print("filtered_nodes", filtered_nodes)
-        if len(filtered_nodes) > 0:
-            return self.sort_by_speed(filtered_nodes)
-        else:
-            return get_earliest_available_node(node_info, user_task)
+
+        return self.get_best_node(node_info, user_task)
 
     
     def ray_schedule(self, user_task):
@@ -128,31 +124,44 @@ class Controller():
     # This function is used in the case there are no available nodes
     # We estimate the finish time of the running/pending tasks on each node
     # and return the node with the earliest available time
-    def get_earliest_available_node(self, node_info, user_task):
+    def get_best_node(self, node_info, user_task):
         earliest_time = float("inf")
         best_node = None
         current_time = int(time.time() * 1000)
 
-        for node_id, node in node_info.keys():
+        required_cpu = user_task.spec[CPU] if CPU in user_task.spec else 0
+        required_gpu = user_task.spec[GPU] if GPU in user_task.spec else 0
+        required_memory = user_task.spec[MEMORY] if MEMORY in user_task.spec else 0
+
+        for node_id, node in node_info.items():
+
             available_cpu = node[AVAILABLE_CPU]
             available_gpu = node[AVAILABLE_GPU]
             available_memory = node[AVAILABLE_MEMORY]
-            for task in node[RUNNING_OR_PENDING_TASKS]:
+
+            user_task_estimated_finish_time = user_task.status[USER_TASK_ESTIMATED_START_TIME] + user_task.spec[COMPLEXITY_SCORE] / node[SPEED]
+
+            if available_cpu >= required_cpu and available_gpu >= required_gpu and available_memory >= required_memory:
+                if user_task_estimated_finish_time < earliest_time:
+                    earliest_time = user_task_estimated_finish_time
+                    best_node = node_id
+                    break
+
+           
+            for _, task in node[RUNNING_OR_PENDING_TASKS].items():
+                task = Task(**task)
+                print("!!!!!", task)
                 if task.status[USER_TASK_STATUS] == RUNNING:
                     start_time = task.status[USER_TASK_START_TIME]
                 else:
                     start_time = task.status[USER_TASK_ESTIMATED_START_TIME]
 
-                estimated_finish_time = start_time + task.spec[COMPLEXITY_SCORE] / node[SPEED]
+                estimated_finish_time = start_time + task.spec[COMPLEXITY_SCORE] / node[SPEED] + user_task_estimated_finish_time
 
                 available_cpu += task.spec[CPU] if CPU in task.spec else 0
                 available_gpu += task.spec[GPU] if GPU in task.spec else 0
                 available_memory += task.spec[MEMORY] if MEMORY in task.spec else 0
                 
-                required_cpu = user_task.spec[CPU] if CPU in user_task.spec else 0
-                required_gpu = user_task.spec[GPU] if GPU in user_task.spec else 0
-                required_memory = user_task.spec[MEMORY] if MEMORY in user_task.spec else 0
-
                 if available_cpu >= required_cpu and available_gpu >= required_gpu and available_memory >= required_memory:
                     if estimated_finish_time < earliest_time:
                         earliest_time = estimated_finish_time
@@ -162,7 +171,7 @@ class Controller():
         user_task.status[USER_TASK_ESTIMATED_START_TIME] = earliest_time
         return best_node
 
-  
+
 
     
     def filter_nodes(self, node_info, user_task):
