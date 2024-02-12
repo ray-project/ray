@@ -1,5 +1,5 @@
 import logging
-from collections import defaultdict
+from collections import defaultdict, Counter
 from dataclasses import _MISSING_TYPE, dataclass, fields
 from pathlib import Path
 from typing import (
@@ -246,20 +246,15 @@ class ScalingConfig:
         """Returns a PlacementGroupFactory to specify resources for Tune."""
         from ray.tune.execution.placement_groups import PlacementGroupFactory
 
-        trainer_resources = self._trainer_resources_not_none
-        trainer_bundle = [trainer_resources]
-        worker_resources = {
-            "CPU": self.num_cpus_per_worker,
-            "GPU": self.num_gpus_per_worker,
-        }
-        worker_resources_extra = (
-            {} if self.resources_per_worker is None else self.resources_per_worker
-        )
-        worker_bundles = [
-            {**worker_resources, **worker_resources_extra}
-            for _ in range(self.num_workers if self.num_workers else 0)
-        ]
-        bundles = trainer_bundle + worker_bundles
+        trainer_bundle = self._trainer_resources_not_none
+        worker_bundle = self._resources_per_worker_not_none
+
+        if self.num_workers:
+            # Colocate Trainer and rank0 worker by merging their bundles
+            rank_0_bundle = dict(Counter(trainer_bundle) + Counter(worker_bundle))
+            bundles = [rank_0_bundle] + [worker_bundle] * (self.num_workers - 1)
+        else:
+            bundles = [trainer_bundle]
         return PlacementGroupFactory(bundles, strategy=self.placement_strategy)
 
     @classmethod
