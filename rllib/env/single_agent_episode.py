@@ -144,10 +144,10 @@ class SingleAgentEpisode:
 
     __slots__ = (
         "id_",
-        "observation_space",
+        "_observation_space",
         "observations",
         "infos",
-        "action_space",
+        "_action_space",
         "actions",
         "rewards",
         "is_terminated",

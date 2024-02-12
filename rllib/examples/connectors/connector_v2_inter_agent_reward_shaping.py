@@ -21,18 +21,31 @@ parser = add_rllib_example_script_args(default_timesteps=200000, default_reward=
 if __name__ == "__main__":
     args = parser.parse_args()
 
+    if args.num_agents != 0:
+        raise ValueError(
+            "--num-agents must be left untouched for this example script as the env "
+            "used here (`simple_tag_v3`) only works for exactly 2 (bad) adversaries "
+            "and 1 (good) agent."
+        )
+
     # Define env-to-module-connector pipeline for the new stack.
     def _learner_pipeline(input_observation_space, input_action_space):
         return (
             classes.inter_agent_reward_shaping.InterAgentRewardShaping(
-                agent_ids=(""),
+                input_observation_space=input_observation_space,
+                input_action_space=input_action_space,
+                agent_ids=("adversary_0", "adversary_1"),
+                pct_ag0_reward_for_ag1=0.5,
+                pct_ag1_reward_for_ag0=0.5,
             )
         )
 
     # Register our environment with tune.
     register_env(
         "env",
-        lambda _: ParallelPettingZooEnv(simple_tag_v3.env(render_mode="human")),
+        lambda _: ParallelPettingZooEnv(simple_tag_v3.env(
+            render_mode="human", num_adversaries=2, max_cycles=500
+        )),
     )
 
     # Define the AlgorithmConfig used.
@@ -46,10 +59,9 @@ if __name__ == "__main__":
         .rollouts(
             num_rollout_workers=args.num_env_runners,
             # Setup the correct env-runner to use depending on
-            # old-stack/new-stack and multi-agent settings.
+            # old-stack/new-stack settings.
             env_runner_cls=(
                 None if not args.enable_new_api_stack
-                else SingleAgentEnvRunner if args.num_agents == 0
                 else MultiAgentEnvRunner
             ),
         )
@@ -58,9 +70,9 @@ if __name__ == "__main__":
             gamma=0.99,
             lr=0.0003,
             model=dict({
-                #"fcnet_hiddens": [32],
-                #"fcnet_activation": "linear",
-                #"vf_share_layers": True,
+                "fcnet_hiddens": [32],
+                "fcnet_activation": "linear",
+                "vf_share_layers": True,
             }, **(
                 {} if not args.enable_new_api_stack
                 else {"uses_new_env_runners": True}
@@ -70,8 +82,10 @@ if __name__ == "__main__":
         .resources(num_gpus=int(os.environ.get("RLLIB_NUM_GPUS", "0")))
         # Add a simple multi-agent setup.
         .multi_agent(
-            policies={"p0", "p1"},
-            policy_mapping_fn=lambda aid, *a, **kw: f"p{aid}",
+            policies={"agent", "adversary"},
+            policy_mapping_fn=(
+                lambda aid, *a, **kw: "agent" if "agent" in aid else "adversary"
+            ),
         )
     )
 

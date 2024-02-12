@@ -195,8 +195,14 @@ class ParallelPettingZooEnv(MultiAgentEnv):
         self.par_env.reset()
         self._agent_ids = set(self.par_env.agents)
 
-        self.observation_space = gym.spaces.Dict(self.par_env.observation_spaces)
-        self.action_space = gym.spaces.Dict(self.par_env.action_spaces)
+        self.observation_space = gym.spaces.Dict({
+            aid: self.par_env.observation_space(aid)
+            for aid in self._agent_ids
+        })
+        self.action_space = gym.spaces.Dict({
+            aid: self.par_env.action_space(aid)
+            for aid in self._agent_ids
+        })
 
     def reset(self, *, seed: Optional[int] = None, options: Optional[dict] = None):
         obs, info = self.par_env.reset(seed=seed, options=options)
