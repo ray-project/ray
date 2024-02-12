@@ -33,7 +33,7 @@ def do_allocate_channel(self, buffer_size_bytes: int, num_readers: int = 1) -> C
 @DeveloperAPI
 def do_exec_compiled_task(
     self,
-    inputs: List[Union[Any, Channel]],
+    inputs: Tuple[List[Union[Any, Channel]], List[int]],
     actor_method_name: str,
 ) -> None:
     """Generic actor method to begin executing a compiled DAG. This runs an
@@ -52,22 +52,23 @@ def do_exec_compiled_task(
     self._dag_cancelled = False
 
     try:
-        self._input_channels = [i for i in inputs if isinstance(i, Channel)]
+        self._input_channels = [i for i in inputs[0]]
         method = getattr(self, actor_method_name)
 
         resolved_inputs = []
         input_channel_idxs = []
         # Add placeholders for input channels.
-        for idx, inp in enumerate(inputs):
+        for idx, inp in enumerate(inputs[0]):
             if isinstance(inp, Channel):
-                input_channel_idxs.append((idx, inp))
+                input_channel_idxs.append((idx, inp, inputs[1][idx]))
                 resolved_inputs.append(None)
             else:
                 resolved_inputs.append(inp)
 
         while True:
-            for idx, channel in input_channel_idxs:
-                resolved_inputs[idx] = channel.begin_read()
+            for idx, channel, read_idx in input_channel_idxs:
+                read_value = channel.begin_read()
+                resolved_inputs[idx] = read_value[read_idx] if read_idx >= 0 else read_value
 
             try:
                 output_val = method(*resolved_inputs)
@@ -89,7 +90,7 @@ def do_exec_compiled_task(
                     raise RuntimeError("DAG execution cancelled")
                 self._output_channel.write(output_val)
 
-            for _, channel in input_channel_idxs:
+            for _, channel, _ in input_channel_idxs:
                 channel.end_read()
 
     except Exception:
@@ -173,7 +174,7 @@ class CompiledDAG:
         self.actor_task_count: Dict["ray._raylet.ActorID", int] = defaultdict(int)
 
         # Cached attributes that are set during compilation.
-        self.dag_input_channels: Optional[List[Channel]] = None
+        self.dag_input_channel: Optional[Channel] = None
         self.dag_output_channels: Optional[Channel] = None
         # ObjectRef for each worker's task. The task is an infinite loop that
         # repeatedly executes the method specified in the DAG.
@@ -311,12 +312,22 @@ class CompiledDAG:
         if not self.input_task_idxs:
             self._preprocess()
 
-        if self.dag_input_channels is not None:
+        if self.dag_input_channel is not None:
             assert self.dag_output_channels is not None
             return (
-                self.dag_input_channels,
+                self.dag_input_channel,
                 self.dag_output_channels,
             )
+
+        # somehow the input_attribute_nodes attr of InputNode is lost,
+        # reconstruct it here
+        input_node = None
+        for dag_node in self.dag_node_to_idx.keys():
+            if isinstance(dag_node, InputNode):
+                input_node = dag_node
+        for dag_node in self.dag_node_to_idx.keys():
+            if isinstance(dag_node, InputAttributeNode):
+                input_node.input_attribute_nodes[dag_node._key] = dag_node
 
         queue = self.input_task_idxs.copy()
         visited = set()
@@ -340,22 +351,16 @@ class CompiledDAG:
                     )
                 )
                 self.actor_refs.add(task.dag_node._get_actor_handle())
-            elif isinstance(task.dag_node, InputNode) or isinstance(
-                task.dag_node, InputAttributeNode
-            ):
-                # for multi-arg scenario, input args will go through
-                # InputAttributeNodes, no need to create output channels for InputNode
-                if (
-                    isinstance(task.dag_node, InputNode)
-                    and len(self.input_task_idxs) > 1
-                ):
-                    continue
+            elif isinstance(task.dag_node, InputNode):
+                num_readers = None
+                if len(task.dag_node.input_attribute_nodes) > 0:
+                    num_readers = sum([self.idx_to_task[self.dag_node_to_idx[node]].num_readers for _, node in task.dag_node.input_attribute_nodes.items()])
                 task.output_channel = Channel(
                     buffer_size_bytes=self._buffer_size_bytes,
-                    num_readers=task.num_readers,
+                    num_readers=num_readers if num_readers else task.num_readers,
                 )
             else:
-                assert isinstance(task.dag_node, MultiOutputNode)
+                assert isinstance(task.dag_node, MultiOutputNode) or isinstance(task.dag_node, InputAttributeNode)
 
             for idx in task.downstream_node_idxs:
                 queue.append(idx)
@@ -370,16 +375,25 @@ class CompiledDAG:
                 continue
 
             resolved_args = []
+            # for channel args, the index of read result to take, -1 stands for taking the whole input
+            read_idxs = []
+            attr_idx = -1
             has_at_least_one_channel_input = False
             for arg in task.args:
                 if isinstance(arg, DAGNode):
+                    is_ipt_attr = isinstance(arg, InputAttributeNode)
+                    if is_ipt_attr:
+                        arg = arg._dag_input_node
+                        attr_idx += 1
                     arg_idx = self.dag_node_to_idx[arg]
                     arg_channel = self.idx_to_task[arg_idx].output_channel
                     assert arg_channel is not None
                     resolved_args.append(arg_channel)
+                    read_idxs.append(attr_idx if is_ipt_attr else -1)
                     has_at_least_one_channel_input = True
                 else:
                     resolved_args.append(arg)
+                    read_idxs.append(-1)
             # TODO: Support no-input DAGs (use an empty object to signal).
             if not has_at_least_one_channel_input:
                 raise ValueError(
@@ -393,24 +407,20 @@ class CompiledDAG:
             self.worker_task_refs.append(
                 worker_fn.options(concurrency_group="_ray_system").remote(
                     do_exec_compiled_task,
-                    resolved_args,
+                    (resolved_args, read_idxs),
                     task.dag_node.get_method_name(),
                 )
             )
 
-        self.dag_input_channels = []
         if len(self.input_task_idxs) > 1:
+            # for multi-arg scenario, find the input node for input channel
             for input_task_idx in self.input_task_idxs:
                 if isinstance(
-                    self.idx_to_task[input_task_idx].dag_node, InputAttributeNode
+                    self.idx_to_task[input_task_idx].dag_node, InputNode
                 ):
-                    self.dag_input_channels.append(
-                        self.idx_to_task[input_task_idx].output_channel
-                    )
+                    self.dag_input_channel = self.idx_to_task[input_task_idx].output_channel
         else:
-            self.dag_input_channels = [
-                self.idx_to_task[self.input_task_idxs[0]].output_channel
-            ]
+            self.dag_input_channel = self.idx_to_task[self.input_task_idxs[0]].output_channel
 
         self.dag_output_channels = []
         for output in self.idx_to_task[self.output_task_idx].args:
@@ -418,7 +428,7 @@ class CompiledDAG:
             output_idx = self.dag_node_to_idx[output]
             self.dag_output_channels.append(self.idx_to_task[output_idx].output_channel)
 
-        assert self.dag_input_channels
+        assert self.dag_input_channel
         assert self.dag_output_channels
         assert [
             output_channel is not None for output_channel in self.dag_output_channels
@@ -432,7 +442,7 @@ class CompiledDAG:
 
         # Driver should ray.put on input, ray.get/release on output
         self._monitor = self._monitor_failures()
-        return (self.dag_input_channels, self.dag_output_channels, self._monitor)
+        return (self.dag_input_channel, self.dag_output_channels, self._monitor)
 
     def _monitor_failures(self):
         outer = self
@@ -494,14 +504,8 @@ class CompiledDAG:
         Returns:
             A list of Channels that can be used to read the DAG result.
         """
-        input_channels, output_channels = self._get_or_compile()
-        arg_list = list(args) + list(kwargs.values())
-        assert len(input_channels) == len(
-            arg_list
-        ), f"Number of arguments {len(arg_list)} mistmatches the length of"
-        " input channels {len(input_channels)}"
-        for arg, input_channel in zip(arg_list, input_channels):
-            input_channel.write(arg)
+        input_channel, output_channels = self._get_or_compile()
+        input_channel.write(list(args) + list(kwargs.values()))
         return output_channels
 
     def teardown(self):
