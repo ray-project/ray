@@ -486,13 +486,9 @@ class Reconciler:
         instance_manager: InstanceManager,
         version: int,
         updates: Dict[str, IMInstanceUpdateEvent],
-        launch_requests: Optional[List[LaunchRequest]] = None,
     ) -> None:
-        if not updates and not launch_requests:
+        if not updates:
             return
-
-        if launch_requests is None:
-            launch_requests = []
 
         updates = list(updates.values()) or []
 
@@ -500,7 +496,6 @@ class Reconciler:
             request=UpdateInstanceManagerStateRequest(
                 expected_version=version,
                 updates=updates,
-                launch_requests=launch_requests,
             )
         )
         # TODO: While it's possible that a version mismatch
