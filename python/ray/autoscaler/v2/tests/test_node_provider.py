@@ -52,12 +52,14 @@ class NodeProviderTestWrapper:
             provider_config = config.get_provider_config()
             # This is a bit hacky but we need a fake head node.
             self.ray_session = ray.init()
+            provider_config["gcs_address"] = self.ray_session.address_info[
+                "gcs_address"
+            ]
+            provider_config["head_node_id"] = self.ray_session.address_info["node_id"]
+            provider_config["launch_multiple"] = True
             self.base_provider = FakeMultiNodeProvider(
                 provider_config,
                 cluster_name="test",
-                gcs_address=self.ray_session.address_info["gcs_address"],
-                head_node_id=self.ray_session.address_info["node_id"],
-                launch_multiple=True,
             )
 
         print(
