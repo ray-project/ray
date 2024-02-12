@@ -106,6 +106,16 @@ class TuneReportCheckpointCallback(TuneCallback):
         # at the end of training.
         self._evals_log = None
 
+    @classmethod
+    def get_model(
+        cls, checkpoint: Checkpoint, filename: str = CHECKPOINT_NAME
+    ) -> Booster:
+        """Retrieve the model stored in a checkpoint reported by this callback."""
+        with checkpoint.as_directory() as checkpoint_path:
+            booster = Booster()
+            booster.load_model(Path(checkpoint_path, filename).as_posix())
+            return booster
+
     def _get_report_dict(self, evals_log):
         if isinstance(evals_log, OrderedDict):
             # xgboost>=1.3
