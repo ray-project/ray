@@ -1742,7 +1742,7 @@ python-json-logger==2.0.7
     # via jupyter-events
 python-lsp-jsonrpc==1.0.0
     # via semgrep
-python-multipart==0.0.6
+python-multipart==0.0.7
     # via gradio
 python-snappy==0.6.1
     # via -r /ray/ci/../python/requirements/ml/data-test-requirements.txt
