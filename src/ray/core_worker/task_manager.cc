@@ -1048,7 +1048,7 @@ bool TaskManager::FailOrRetryPendingTask(const TaskID &task_id,
   RAY_LOG(WARNING) << "Task attempt " << task_id << " failed with error "
                    << rpc::ErrorType_Name(error_type) << " Fail immediately? "
                    << fail_immediately << ", status "
-                   << (status == nullptr ? "null" : *status) << ", error info "
+                   << (status == nullptr ? "null" : status->ToString()) << ", error info "
                    << (ray_error_info == nullptr ? "null"
                                                  : ray_error_info->DebugString());
 
