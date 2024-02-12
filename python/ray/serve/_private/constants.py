@@ -302,3 +302,15 @@ RAY_SERVE_COLLECT_AUTOSCALING_METRICS_ON_HANDLE = (
 RAY_SERVE_ALWAYS_RUN_PROXY_ON_HEAD_NODE = (
     os.environ.get("RAY_SERVE_ALWAYS_RUN_PROXY_ON_HEAD_NODE", "1") == "1"
 )
+
+
+# Default is 2GiB, the max for a signed int.
+RAY_SERVE_GRPC_MAX_MESSAGE_SIZE = int(
+    os.environ.get("RAY_SERVE_GRPC_MAX_MESSAGE_SIZE", (2 * 1024 * 1024 * 1024) - 1)
+)
+
+# Serve's gRPC server options.
+SERVE_GRPC_OPTIONS = [
+    ("grpc.max_send_message_length", RAY_SERVE_GRPC_MAX_MESSAGE_SIZE),
+    ("grpc.max_receive_message_length", RAY_SERVE_GRPC_MAX_MESSAGE_SIZE),
+]
