@@ -227,13 +227,13 @@ class Router:
         with self._queries_lock:
             self.num_requests_sent_to_replicas[replica_tag] -= 1
 
-    async def _replace_known_types_in_args(
+    async def _resolve_deployment_responses(
         self, request_args: Tuple[Any], request_kwargs: Dict[str, Any]
     ) -> Tuple[Tuple[Any], Dict[str, Any]]:
-        """Uses the `_PyObjScanner` to find and replace known types.
+        """Replaces `DeploymentResponse` objects with their resolved object refs.
 
-        1) Replaces `DeploymentResponse` objects with their resolved object refs. This
-           enables composition without explicitly calling `_to_object_ref`.
+        Uses the `_PyObjScanner` to find and replace the objects. This
+        enables composition without explicitly calling `_to_object_ref`.
         """
         from ray.serve.handle import (
             DeploymentResponse,
@@ -335,7 +335,7 @@ class Router:
             )
 
         try:
-            request_args, request_kwargs = await self._replace_known_types_in_args(
+            request_args, request_kwargs = await self._resolve_deployment_responses(
                 request_args, request_kwargs
             )
             ref, replica_tag = await self.schedule_and_send_request(
