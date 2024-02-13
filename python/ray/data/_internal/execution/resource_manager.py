@@ -30,13 +30,11 @@ class ResourceManager:
 
     # Memory accounting is accurate only for these operators.
     # We'll enable memory reservation if a dataset only contains these operators.
-    _ACCURRATE_MEMORY_ACCOUNTING_OPS = tuple(
-        [
-            InputDataBuffer,
-            MapOperator,
-            LimitOperator,
-            OutputSplitter,
-        ]
+    _ACCURRATE_MEMORY_ACCOUNTING_OPS = (
+        InputDataBuffer,
+        MapOperator,
+        LimitOperator,
+        OutputSplitter,
     )
 
     def __init__(self, topology: "Topology", options: ExecutionOptions):
