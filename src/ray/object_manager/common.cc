@@ -152,7 +152,7 @@ Status PlasmaObjectHeader::ReadAcquire(int64_t version_to_read, int64_t *version
                        << version_to_read;
     } else {
       RAY_LOG(WARNING) << "Version " << version << " already has " << num_readers
-                       << "readers";
+                       << " readers";
     }
   }
 
