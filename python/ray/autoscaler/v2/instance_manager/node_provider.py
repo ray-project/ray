@@ -55,7 +55,7 @@ class CloudInstance:
     # If the cloud instance is running.
     is_running: bool
     # The ray node kind, i.e. head or worker
-    node_kind: NodeKind 
+    node_kind: NodeKind
 
 
 class CloudInstanceProviderError(Exception):
