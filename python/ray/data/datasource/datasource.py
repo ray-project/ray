@@ -24,7 +24,7 @@ class Datasource:
         Args:
             read_args: Additional kwargs to pass to the datasource impl.
         """
-        raise NotImplementedError
+        return _LegacyDatasourceReader(self, **read_args)
 
     @Deprecated
     def prepare_read(self, parallelism: int, **read_args) -> List["ReadTask"]:
@@ -110,6 +110,18 @@ class Reader:
             datasource in parallel.
         """
         raise NotImplementedError
+
+
+class _LegacyDatasourceReader(Reader):
+    def __init__(self, datasource: Datasource, **read_args):
+        self._datasource = datasource
+        self._read_args = read_args
+
+    def estimate_inmemory_data_size(self) -> Optional[int]:
+        return None
+
+    def get_read_tasks(self, parallelism: int) -> List["ReadTask"]:
+        return self._datasource.prepare_read(parallelism, **self._read_args)
 
 
 @DeveloperAPI
