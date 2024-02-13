@@ -321,8 +321,10 @@ class SynchronousOutputWriter(OutputWriter):
 
 
 class AwaitableBackgroundOutputWriter(OutputWriter):
-    def __init__(self, output_channel: Channel, max_queue_size: int):
+    def __init__(self, output_channel: Channel, max_queue_size: Optional[int] = None):
         super().__init__(output_channel)
+        if max_queue_size is None:
+            max_queue_size = 0
         self.queue = asyncio.Queue(max_queue_size)
         self.background_task = None
 
