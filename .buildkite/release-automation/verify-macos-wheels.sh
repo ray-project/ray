@@ -36,6 +36,10 @@ run_sanity_check() {
     python_version=$1
     conda create -n "rayio_${python_version}" python="${python_version}" -y
     conda activate "rayio_${python_version}"
+    pip install \
+        --index-url https://test.pypi.org/simple/ \
+        --extra-index-url https://pypi.org/simple \
+        "ray[cpp]==$RAY_VERSION"
     (
         cd release/util
         python sanity_check.py
@@ -49,12 +53,7 @@ mkdir -p "$TMP_DIR"
 
 install_miniconda
 
-pip install \
-    --index-url https://test.pypi.org/simple/ \
-    --extra-index-url https://pypi.org/simple \
-    "ray[cpp]==$RAY_VERSION"
-
-# Run sanity checks for each python version
+# Install Ray & run sanity checks for each python version
 for python_version in "${python_versions[@]}"; do
     run_sanity_check "$python_version"
 done
