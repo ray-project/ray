@@ -55,7 +55,7 @@ from ray.tune.execution.placement_groups import PlacementGroupFactory
 from ray.tune.trainable.util import with_parameters, with_resources
 from ray.tune.result_grid import ResultGrid
 from ray.tune.tuner import Tuner
-from ray.tune.tune_config import TuneConfig
+from ray.tune.tune_config import ResumeConfig, TuneConfig
 
 
 __all__ = [
@@ -100,6 +100,7 @@ __all__ = [
     "PlacementGroupFactory",
     "Tuner",
     "TuneConfig",
+    "ResumeConfig",
     # TODO(justinvyu): [Deprecated]
     "SyncConfig",
 ]

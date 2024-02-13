@@ -48,7 +48,7 @@ from ray.tune.result import (
     SHOULD_CHECKPOINT,
 )
 from ray.tune.result import TRIAL_INFO, STDOUT_FILE, STDERR_FILE
-from ray.tune import TuneError
+from ray.tune import ResumeConfig, TuneError
 from ray.tune.callback import Callback, CallbackList
 from ray.tune.schedulers import FIFOScheduler, TrialScheduler
 from ray.tune.stopper import NoopStopper, Stopper
@@ -60,7 +60,6 @@ from ray.tune.utils.resource_updater import _ResourceUpdater
 from ray.tune.utils import warn_if_slow, flatten_dict
 from ray.tune.utils.log import Verbosity, has_verbosity
 from ray.tune.execution.placement_groups import PlacementGroupFactory
-from ray.tune.execution.experiment_state import ResumeConfig
 from ray.tune.utils.serialization import TuneFunctionDecoder, TuneFunctionEncoder
 from ray.util.annotations import DeveloperAPI, Deprecated
 from ray.util.debug import log_once

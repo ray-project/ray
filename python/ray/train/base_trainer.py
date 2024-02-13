@@ -588,8 +588,7 @@ class BaseTrainer(abc.ABC):
             TrainingFailedError: If any failures during the execution of
             ``self.as_trainable()``, or during the Tune execution loop.
         """
-        from ray.tune import TuneError
-        from ray.tune.execution.experiment_state import ResumeConfig
+        from ray.tune import ResumeConfig, TuneError
         from ray.tune.tuner import Tuner, TunerInternal
 
         trainable = self.as_trainable()

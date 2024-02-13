@@ -26,11 +26,11 @@ from ray.air._internal.usage import AirEntrypoint
 from ray.air.util.node import _force_on_current_node
 from ray.train import CheckpointConfig, SyncConfig
 from ray.train.constants import RAY_CHDIR_TO_TRIAL_DIR, _DEPRECATED_VALUE
+from ray.tune import ResumeConfig
 from ray.tune.analysis import ExperimentAnalysis
 from ray.tune.callback import Callback
 from ray.tune.error import TuneError
 from ray.tune.execution.tune_controller import TuneController
-from ray.tune.execution.experiment_state import ResumeConfig
 from ray.tune.experiment import Experiment, _convert_to_experiment_list
 from ray.tune.experimental.output import (
     get_air_verbosity,

@@ -5,8 +5,7 @@ import sys
 
 import ray
 from ray.air.execution import FixedResourceManager, PlacementGroupResourceManager
-from ray.tune import Callback
-from ray.tune.execution.experiment_state import ResumeConfig
+from ray.tune import Callback, ResumeConfig
 from ray.tune.execution.tune_controller import TuneController
 from ray.tune.experiment import Trial
 

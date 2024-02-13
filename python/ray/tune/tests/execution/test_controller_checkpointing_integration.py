@@ -18,8 +18,7 @@ from ray.air.constants import TRAINING_ITERATION
 from ray.train import Checkpoint
 from ray.train._internal.session import _TrainingResult
 from ray.train._internal.storage import StorageContext
-from ray.tune import PlacementGroupFactory
-from ray.tune.execution.experiment_state import ResumeConfig
+from ray.tune import PlacementGroupFactory, ResumeConfig
 from ray.tune.execution.tune_controller import TuneController
 from ray.tune.experiment import Trial
 from ray.tune.result import DONE
