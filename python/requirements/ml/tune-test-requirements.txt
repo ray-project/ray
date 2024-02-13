@@ -4,7 +4,7 @@ aim==3.17.5
 
 gpy==1.10.0
 
-jupyterlab==3.6.1
+jupyterlab==3.6.7
 matplotlib!=3.4.3
 
 pytest-remotedata==0.3.2
