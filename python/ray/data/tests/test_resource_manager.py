@@ -281,3 +281,9 @@ class TestReservationOpResourceLimiter:
 
         resource_manager = ResourceManager(topo, ExecutionOptions())
         assert not resource_manager.op_resource_limiter_enabled()
+
+
+if __name__ == "__main__":
+    import sys
+
+    sys.exit(pytest.main(["-v", __file__]))
