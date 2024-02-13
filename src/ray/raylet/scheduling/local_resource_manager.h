@@ -105,9 +105,8 @@ class LocalResourceManager : public syncer::ReporterInterface {
   /// the local node. This function also updates the local node resources at the instance
   /// granularity.
   ///
-  /// \param task_resources Task for which we allocate resources.
-  /// \param task_allocation Resources allocated to the task at instance granularity.
-  /// This is a return parameter.
+  /// \param[in] task_resources Task for which we allocate resources.
+  /// \param[out] task_allocation Resources allocated to the task at instance granularity.
   ///
   /// \return True if local node has enough resources to satisfy the resource request.
   /// False otherwise.

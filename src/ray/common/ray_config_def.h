@@ -84,6 +84,12 @@ RAY_CONFIG(uint64_t, memory_monitor_refresh_ms, 250)
 /// means 6.4 GB of the memory will not be usable.
 RAY_CONFIG(int64_t, min_memory_free_bytes, (int64_t)-1)
 
+/// The amount of the "memory" logical resource to reserve for system use.  If
+/// -1, each raylet will reserve memory equal to its local object store
+/// capacity. The object store usually makes up the bulk of system memory
+/// usage, although the raylet process will use some additional heap memory.
+RAY_CONFIG(int64_t, system_memory_reservation_bytes, (int64_t)-1)
+
 /// The TTL for when the task failure entry is considered
 /// eligble for garbage colletion.
 RAY_CONFIG(uint64_t, task_failure_entry_ttl_ms, 15 * 60 * 1000)

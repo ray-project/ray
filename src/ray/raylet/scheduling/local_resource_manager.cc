@@ -42,6 +42,21 @@ LocalResourceManager::LocalResourceManager(
     last_idle_times_[resource_id] = now;
   }
   RAY_LOG(DEBUG) << "local resources: " << local_resources_.DebugString();
+
+  int64_t system_memory_used = RayConfig::instance().system_memory_reservation_bytes();
+  if (system_memory_used == -1) {
+    system_memory_used = static_cast<int64_t>(
+        local_resources_.total.Sum(ResourceID::ObjectStoreMemory()).Double());
+  }
+  absl::flat_hash_map<ResourceID, FixedPoint> system_memory_resources = {
+      {ResourceID::Memory(), FixedPoint(system_memory_used)}};
+  auto allocated_resources = std::make_shared<TaskResourceInstances>();
+  RAY_CHECK(AllocateTaskResourceInstances(ResourceRequest(system_memory_resources),
+                                          allocated_resources))
+      << "Unable to reserve " << system_memory_used
+      << " bytes for system memory use out of "
+      << local_resources_.total.Sum(ResourceID::Memory()).Double()
+      << " bytes total memory on this node.";
 }
 
 void LocalResourceManager::AddLocalResourceInstances(
