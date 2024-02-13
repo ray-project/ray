@@ -89,7 +89,7 @@ def parse_args():
     )
     parser.add_argument(
         "--batch-size",
-        default=None,
+        default=32,
         type=int,
         help=(
             "Batch size to use. With batch_size=None, Ray Data will "
