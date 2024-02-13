@@ -118,8 +118,6 @@ def _build_resume_config_from_legacy_config(
 ) -> Optional[ResumeConfig]:
     """Converts the legacy resume (str, bool) to a ResumeConfig object.
     Returns None if resume is False.
-
-    TODO(justinvyu): [Deprecated] Remove in 2.11.
     """
     if resume is False:
         return None
@@ -132,8 +130,8 @@ def _build_resume_config_from_legacy_config(
 
     if resume_str in ("LOCAL", "REMOTE", "PROMPT", "ERRORED_ONLY"):
         raise DeprecationWarning(
-            f"Passing `{resume=}` to tune.run() is deprecated. "
-            "Configure this via `tune.run(resume_config)` instead."
+            f"'{resume_str}' is deprecated. "
+            "Please pass in one of (True, False, 'AUTO')."
         )
 
     for setting in resume_settings[1:]:
@@ -303,6 +301,7 @@ def run(
     max_failures: int = 0,
     fail_fast: bool = False,
     restore: Optional[str] = None,
+    resume: Optional[Union[bool, str]] = None,
     resume_config: Optional[ResumeConfig] = None,
     reuse_actors: bool = False,
     raise_on_failed_trial: bool = True,
@@ -314,7 +313,6 @@ def run(
     checkpoint_freq: int = 0,  # Deprecated (2.7)
     checkpoint_at_end: bool = False,  # Deprecated (2.7)
     chdir_to_trial_dir: bool = _DEPRECATED_VALUE,  # Deprecated (2.8)
-    resume: Union[bool, str] = _DEPRECATED_VALUE,  # TODO(justinvyu): [Deprecated]
     local_dir: Optional[str] = None,
     # == internal only ==
     _remote: Optional[bool] = None,
@@ -917,8 +915,7 @@ def run(
     if air_verbosity is None:
         progress_reporter = progress_reporter or _detect_reporter()
 
-    if resume != _DEPRECATED_VALUE:
-        warnings.warn("", stacklevel=2)  # TODO(justinvyu): [PR]
+    if resume is not None:
         resume_config = resume_config or _build_resume_config_from_legacy_config(resume)
 
     runner_kwargs = dict(
@@ -1074,7 +1071,7 @@ def run_experiments(
     scheduler: Optional[TrialScheduler] = None,
     verbose: Optional[Union[int, AirVerbosity, Verbosity]] = None,
     progress_reporter: Optional[ProgressReporter] = None,
-    resume: Union[bool, str] = False,
+    resume: Optional[Union[bool, str]] = None,
     resume_config: Optional[ResumeConfig] = None,
     reuse_actors: bool = False,
     raise_on_failed_trial: bool = True,
