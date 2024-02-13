@@ -149,9 +149,6 @@ class OutputSplitter(PhysicalOperator):
     def _dispatch_bundles(self, dispatch_all: bool = False) -> None:
         # Dispatch all dispatchable bundles from the internal buffer.
         # This may not dispatch all bundles when equal=True.
-        print(
-            bool(self._buffer), dispatch_all, len(self._buffer), self._min_buffer_size
-        )
         while self._buffer and (
             dispatch_all or len(self._buffer) >= self._min_buffer_size
         ):
