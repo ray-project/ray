@@ -599,7 +599,7 @@ class BaseTrainer(abc.ABC):
                 path=self._restore_path,
                 trainable=trainable,
                 param_space=param_space,
-                resume_config=ResumeConfig(
+                _resume_config=ResumeConfig(
                     finished=ResumeConfig.ResumeType.RESUME,
                     unfinished=ResumeConfig.ResumeType.RESUME,
                     errored=ResumeConfig.ResumeType.RESUME,

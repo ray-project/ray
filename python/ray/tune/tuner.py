@@ -185,9 +185,9 @@ class Tuner:
         resume_unfinished: bool = True,
         resume_errored: bool = False,
         restart_errored: bool = False,
-        resume_config: Optional[ResumeConfig] = None,
         param_space: Optional[Dict[str, Any]] = None,
         storage_filesystem: Optional[pyarrow.fs.FileSystem] = None,
+        _resume_config: Optional[ResumeConfig] = None,
     ) -> "Tuner":
         """Restores Tuner after a previously failed run.
 
@@ -248,6 +248,9 @@ class Tuner:
             storage_filesystem: Custom ``pyarrow.fs.FileSystem``
                 corresponding to the ``path``. This may be necessary if the original
                 experiment passed in a custom filesystem.
+            _resume_config: [Experimental] Config object that controls how to resume
+                trials of different statuses. Can be used as a substitute to
+                `resume_*` and `restart_*` flags above.
         """
         unfinished = (
             ResumeConfig.ResumeType.RESUME
@@ -260,7 +263,7 @@ class Tuner:
         elif restart_errored:
             errored = ResumeConfig.ResumeType.RESTART
 
-        resume_config = resume_config or ResumeConfig(
+        resume_config = _resume_config or ResumeConfig(
             unfinished=unfinished, errored=errored
         )
 
