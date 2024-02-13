@@ -37,9 +37,6 @@ class TuneCallback(TrainingCallback):
 class RayTrainReportCallback(TuneCallback):
     """XGBoost callback to save checkpoints and report metrics.
 
-    Saves checkpoints after each validation step. Also reports metrics to Ray Train
-    or Ray Tune.
-
     Args:
         metrics: Metrics to report. If this is a list,
             each item describes the metric key reported to XGBoost,
@@ -48,8 +45,8 @@ class RayTrainReportCallback(TuneCallback):
             which can be used to rename xgboost default metrics.
         filename: Customize the saved checkpoint file type by passing
             a filename. Defaults to "model.json".
-        frequency: How often to save checkpoints. Defaults to 0 (no checkpoints
-            are saved during training).
+        frequency: How often to save checkpoints, in terms of iterations.
+            Defaults to 0 (no checkpoints are saved during training).
         checkpoint_at_end: Whether or not to save a checkpoint at the end of training.
         results_postprocessing_fn: An optional Callable that takes in
             the metrics dict that will be reported (after it has been flattened)

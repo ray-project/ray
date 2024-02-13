@@ -1,13 +1,12 @@
 from contextlib import contextmanager
-from typing import Callable, Dict, List, Union, Optional, Type
-
+from pathlib import Path
 import tempfile
+from typing import Callable, Dict, List, Union, Optional
+
 
 from ray import train
 
 from ray.train import Checkpoint
-from ray.train.constants import _DEPRECATED_VALUE
-from ray.train.lightgbm import LightGBMCheckpoint
 from ray.tune.utils import flatten_dict
 
 from lightgbm.callback import CallbackEnv
@@ -24,33 +23,27 @@ class TuneCallback:
 class TuneReportCheckpointCallback(TuneCallback):
     """Creates a callback that reports metrics and checkpoints model.
 
-    Saves checkpoints after each validation step. Also reports metrics to Tune,
-    which is needed for checkpoint registration.
-
     Args:
-        metrics: Metrics to report to Tune. If this is a list,
-            each item describes the metric key reported to LightGBM,
-            and it will be reported under the same name to Tune. If this is a
-            dict, each key will be the name reported to Tune and the respective
-            value will be the metric key reported to LightGBM.
-        frequency: How often to save checkpoints. Defaults to 0 (no checkpoints
-            are saved during training). A checkpoint is always saved at the end
-            of training.
-        checkpoint_at_end: Whether or not to checkpoint at the end of training.
+        metrics: Metrics to report. If this is a list,
+            each item should be a metric key reported by LightGBM,
+            and it will be reported to Ray Train/Tune under the same name.
+            This can also be a dict of {<key-to-report>: <lightgbm-metric-key>},
+            which can be used to rename lightgbm default metrics.
+        filename: Customize the saved checkpoint file type by passing
+            a filename. Defaults to "model.txt".
+        frequency: How often to save checkpoints, in terms of iterations.
+            Defaults to 0 (no checkpoints are saved during training).
+        checkpoint_at_end: Whether or not to save a checkpoint at the end of training.
         results_postprocessing_fn: An optional Callable that takes in
-            the dict that will be reported to Tune (after it has been flattened)
-            and returns a modified dict that will be reported instead.
-        filename: Deprecated. Customize the saved checkpoint file type by passing
-            a `ray.train.lightgbm.LightGBMCheckpoint` subclass instead.
+            the metrics dict that will be reported (after it has been flattened)
+            and returns a modified dict.
 
     Example:
 
     .. code-block:: python
 
         import lightgbm
-        from ray.tune.integration.lightgbm import (
-            TuneReportCheckpointCallback
-        )
+        from ray.tune.integration.lightgbm import TuneReportCheckpointCallback
 
         config = {
             # ...
@@ -74,38 +67,36 @@ class TuneReportCheckpointCallback(TuneCallback):
 
     """
 
+    CHECKPOINT_NAME = "model.txt"
     order = 20
 
     def __init__(
         self,
         metrics: Optional[Union[str, List[str], Dict[str, str]]] = None,
-        frequency: int = 1,
+        filename: str = CHECKPOINT_NAME,
+        frequency: int = 0,
         checkpoint_at_end: bool = True,
         results_postprocessing_fn: Optional[
             Callable[[Dict[str, Union[float, List[float]]]], Dict[str, float]]
         ] = None,
-        checkpoint_cls: Type[LightGBMCheckpoint] = LightGBMCheckpoint,
-        filename: str = _DEPRECATED_VALUE,
     ):
-        if filename != _DEPRECATED_VALUE:
-            # TODO(justinvyu): [code_removal] Remove in 2.11.
-            raise DeprecationWarning(
-                "`filename` is deprecated. Supply a custom `checkpoint_cls` "
-                "that subclasses `ray.train.lightgbm.LightGBMCheckpoint` instead."
-            )
-
         if isinstance(metrics, str):
             metrics = [metrics]
         self._metrics = metrics
+        self._filename = filename
         self._frequency = frequency
         self._checkpoint_at_end = checkpoint_at_end
         self._results_postprocessing_fn = results_postprocessing_fn
 
-        if not issubclass(checkpoint_cls, LightGBMCheckpoint):
-            raise ValueError(
-                "`checkpoint_cls` must subclass `ray.train.lightgbm.LightGBMCheckpoint`"
-            )
-        self._checkpoint_cls = checkpoint_cls
+    @classmethod
+    def get_model(
+        cls, checkpoint: Checkpoint, filename: str = CHECKPOINT_NAME
+    ) -> Booster:
+        """Retrieve the model stored in a checkpoint reported by this callback."""
+        with checkpoint.as_directory() as checkpoint_path:
+            booster = Booster()
+            booster.load_model(Path(checkpoint_path, filename).as_posix())
+            return booster
 
     def _get_report_dict(self, evals_log: Dict[str, Dict[str, list]]) -> dict:
         result_dict = flatten_dict(evals_log, delimiter="-")
@@ -143,10 +134,8 @@ class TuneReportCheckpointCallback(TuneCallback):
     @contextmanager
     def _get_checkpoint(self, model: Booster) -> Optional[Checkpoint]:
         with tempfile.TemporaryDirectory() as temp_checkpoint_dir:
-            checkpoint = self._checkpoint_cls.from_model(
-                model, path=temp_checkpoint_dir
-            )
-            yield checkpoint
+            model.save_model(Path(temp_checkpoint_dir, self._filename).as_posix())
+            yield Checkpoint.from_directory(temp_checkpoint_dir)
 
     def __call__(self, env: CallbackEnv) -> None:
         eval_result = self._get_eval_result(env)
