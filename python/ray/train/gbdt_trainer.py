@@ -153,7 +153,6 @@ class GBDTTrainer(BaseTrainer):
         num_boost_round: int = _DEFAULT_NUM_ITERATIONS,
         scaling_config: Optional[ScalingConfig] = None,
         run_config: Optional[RunConfig] = None,
-        preprocessor: Optional["Preprocessor"] = None,  # Deprecated
         resume_from_checkpoint: Optional[Checkpoint] = None,
         metadata: Optional[Dict[str, Any]] = None,
         **train_kwargs,
@@ -169,7 +168,6 @@ class GBDTTrainer(BaseTrainer):
             scaling_config=scaling_config,
             run_config=run_config,
             datasets=datasets,
-            preprocessor=preprocessor,
             resume_from_checkpoint=resume_from_checkpoint,
             metadata=metadata,
         )

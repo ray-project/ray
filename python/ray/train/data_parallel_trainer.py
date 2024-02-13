@@ -234,8 +234,6 @@ class DataParallelTrainer(BaseTrainer):
         datasets: Optional[Dict[str, GenDataset]] = None,
         metadata: Optional[Dict[str, Any]] = None,
         resume_from_checkpoint: Optional[Checkpoint] = None,
-        # Deprecated.
-        preprocessor: Optional["Preprocessor"] = None,
     ):
         self._train_loop_per_worker = train_loop_per_worker
         self._train_loop_config = train_loop_config

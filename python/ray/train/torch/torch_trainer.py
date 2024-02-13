@@ -188,8 +188,6 @@ class TorchTrainer(DataParallelTrainer):
         dataset_config: Optional[DataConfig] = None,
         metadata: Optional[Dict[str, Any]] = None,
         resume_from_checkpoint: Optional[Checkpoint] = None,
-        # Deprecated.
-        preprocessor: Optional["Preprocessor"] = None,
     ):
         if not torch_config:
             torch_config = TorchConfig()
@@ -202,7 +200,6 @@ class TorchTrainer(DataParallelTrainer):
             dataset_config=dataset_config,
             run_config=run_config,
             datasets=datasets,
-            preprocessor=preprocessor,
             resume_from_checkpoint=resume_from_checkpoint,
             metadata=metadata,
         )
