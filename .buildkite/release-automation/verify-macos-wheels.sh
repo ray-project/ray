@@ -15,6 +15,7 @@ rm -rf ~/miniconda3/miniconda.sh
 ~/miniconda3/bin/conda init bash
 
 export PATH="$HOME/miniconda3/bin:$PATH"
+source $HOME/miniconda3/etc/profile.d/conda.sh # Initialize conda. Conda init requires a shell restart which should not be done on BK.
 
 conda create -n rayio python="${PYTHON_VERSION}" -y
 
