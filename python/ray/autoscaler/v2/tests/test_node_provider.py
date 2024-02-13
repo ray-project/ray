@@ -21,9 +21,9 @@ from ray.autoscaler.v2.instance_manager.config import (
     FileConfigReader,
 )
 from ray.autoscaler.v2.instance_manager.node_provider import (
+    ICloudInstanceProvider,
     LaunchNodeError,
     NodeProviderAdapter,
-    ICloudInstanceProvider,
     TerminateNodeError,
     logger,
 )
