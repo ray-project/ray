@@ -5,7 +5,6 @@ import ray
 from ray.actor import ActorHandle
 from ray.data import DataIterator, Dataset, ExecutionOptions, NodeIdStr
 from ray.data._internal.execution.interfaces.execution_options import ExecutionResources
-from ray.data.preprocessor import Preprocessor
 from ray.util.annotations import DeveloperAPI, PublicAPI
 
 

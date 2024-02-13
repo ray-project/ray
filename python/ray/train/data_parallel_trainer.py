@@ -1,6 +1,6 @@
 import inspect
 import logging
-from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional, Type, Union
+from typing import Any, Callable, Dict, List, Optional, Type, Union
 
 import ray
 from ray._private.thirdparty.tabulate.tabulate import tabulate
@@ -15,9 +15,6 @@ from ray.train.trainer import BaseTrainer, GenDataset
 from ray.util.annotations import DeveloperAPI, PublicAPI
 from ray.widgets import Template
 from ray.widgets.util import repr_with_fallback
-
-if TYPE_CHECKING:
-    from ray.data.preprocessor import Preprocessor
 
 logger = logging.getLogger(__name__)
 
@@ -258,7 +255,6 @@ class DataParallelTrainer(BaseTrainer):
             run_config=run_config,
             datasets=datasets,
             metadata=metadata,
-            preprocessor=preprocessor,
             resume_from_checkpoint=resume_from_checkpoint,
         )
 

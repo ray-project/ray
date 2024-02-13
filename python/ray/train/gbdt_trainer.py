@@ -17,7 +17,6 @@ from ray.util.annotations import DeveloperAPI
 if TYPE_CHECKING:
     import xgboost_ray
 
-    from ray.data.preprocessor import Preprocessor
 
 _WARN_REPARTITION_THRESHOLD = 10 * 1024**3
 _DEFAULT_NUM_ITERATIONS = 10
