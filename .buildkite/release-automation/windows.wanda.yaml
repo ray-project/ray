@@ -1,3 +1,5 @@
 name: "windowsbuild"
 froms: ["@rayproject/buildenv:windows"]
 dockerfile: .buildkite/release-automation/windows.Dockerfile
+srcs:
+  - .buildkite/release-automation/build_windows.sh
