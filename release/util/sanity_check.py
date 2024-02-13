@@ -33,3 +33,4 @@ if __name__ == "__main__":
     print("Running basic sanity check.")
     assert ray.get(return_arg.remote(val)) == val
     ray.shutdown()
+    print("Sanity check succeeded on Python {}".format(sys.version))
