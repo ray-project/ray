@@ -348,9 +348,7 @@ class WorkerGroup:
         new_actor_metadata = []
         for _ in range(num_workers):
             actor = self._remote_cls.options(
-                scheduling_strategy=PlacementGroupSchedulingStrategy(
-                    placement_group=self._placement_group
-                )
+                placement_group=self._placement_group
             ).remote(*self._actor_cls_args, **self._actor_cls_kwargs)
             new_actors.append(actor)
             new_actor_metadata.append(
