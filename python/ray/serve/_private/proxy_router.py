@@ -12,7 +12,7 @@ from ray.serve._private.constants import (
     RAY_SERVE_PROXY_PREFER_LOCAL_NODE_ROUTING,
     SERVE_LOGGER_NAME,
 )
-from ray.serve.handle import RayServeHandle
+from ray.serve.handle import DeploymentHandle
 
 logger = logging.getLogger(SERVE_LOGGER_NAME)
 
@@ -28,7 +28,11 @@ class ProxyRouter(ABC):
 class LongestPrefixRouter(ProxyRouter):
     """Router that performs longest prefix matches on incoming routes."""
 
-    def __init__(self, get_handle: Callable, protocol: RequestProtocol):
+    def __init__(
+        self,
+        get_handle: Callable[[str, str], DeploymentHandle],
+        protocol: RequestProtocol,
+    ):
         # Function to get a handle given a name. Used to mock for testing.
         self._get_handle = get_handle
         # Protocol to config handle
@@ -38,7 +42,7 @@ class LongestPrefixRouter(ProxyRouter):
         # Endpoints associated with the routes.
         self.route_info: Dict[str, EndpointTag] = dict()
         # Contains a ServeHandle for each endpoint.
-        self.handles: Dict[EndpointTag, RayServeHandle] = dict()
+        self.handles: Dict[EndpointTag, DeploymentHandle] = dict()
         # Map of application name to is_cross_language.
         self.app_to_is_cross_language: Dict[ApplicationName, bool] = dict()
 
@@ -61,7 +65,6 @@ class LongestPrefixRouter(ProxyRouter):
                 handle = self._get_handle(endpoint.name, endpoint.app).options(
                     # Streaming codepath isn't supported for Java.
                     stream=not info.app_is_cross_language,
-                    use_new_handle_api=True,
                     _prefer_local_routing=RAY_SERVE_PROXY_PREFER_LOCAL_NODE_ROUTING,
                 )
                 handle._set_request_protocol(self._protocol)
@@ -84,7 +87,7 @@ class LongestPrefixRouter(ProxyRouter):
 
     def match_route(
         self, target_route: str
-    ) -> Optional[Tuple[str, RayServeHandle, bool]]:
+    ) -> Optional[Tuple[str, DeploymentHandle, bool]]:
         """Return the longest prefix match among existing routes for the route.
         Args:
             target_route: route to match against.
@@ -128,7 +131,7 @@ class EndpointRouter(ProxyRouter):
         # Protocol to config handle
         self._protocol = protocol
         # Contains a ServeHandle for each endpoint.
-        self.handles: Dict[EndpointTag, RayServeHandle] = dict()
+        self.handles: Dict[EndpointTag, DeploymentHandle] = dict()
         # Endpoints info associated with endpoints.
         self.endpoints: Dict[EndpointTag, EndpointInfo] = dict()
 
@@ -145,7 +148,6 @@ class EndpointRouter(ProxyRouter):
                 handle = self._get_handle(endpoint.name, endpoint.app).options(
                     # Streaming codepath isn't supported for Java.
                     stream=not info.app_is_cross_language,
-                    use_new_handle_api=True,
                     _prefer_local_routing=RAY_SERVE_PROXY_PREFER_LOCAL_NODE_ROUTING,
                 )
                 handle._set_request_protocol(self._protocol)
@@ -162,7 +164,7 @@ class EndpointRouter(ProxyRouter):
 
     def get_handle_for_endpoint(
         self, target_app_name: str
-    ) -> Optional[Tuple[str, RayServeHandle, bool]]:
+    ) -> Optional[Tuple[str, DeploymentHandle, bool]]:
         """Return the handle that matches with endpoint.
 
         Args:

@@ -127,9 +127,6 @@ PROXY_DRAIN_CHECK_PERIOD_S = 5
 #: being marked unhealthy.
 REPLICA_HEALTH_CHECK_UNHEALTHY_THRESHOLD = 3
 
-# Key used to idenfity given json represents a serialized RayServeHandle
-SERVE_HANDLE_JSON_KEY = "__SerializedServeHandle__"
-
 # The time in seconds that the Serve client waits before rechecking deployment state
 CLIENT_POLLING_INTERVAL_S: float = 1
 
@@ -198,11 +195,6 @@ SERVE_LOG_EXTRA_FIELDS = "ray_serve_extra_fields"
 
 # Serve HTTP request header key for routing requests.
 SERVE_MULTIPLEXED_MODEL_ID = "serve_multiplexed_model_id"
-
-# Feature flag to enable new handle API.
-RAY_SERVE_ENABLE_NEW_HANDLE_API = (
-    os.environ.get("RAY_SERVE_ENABLE_NEW_HANDLE_API", "1") == "1"
-)
 
 # Feature flag to turn on node locality routing for proxies. On by default.
 RAY_SERVE_PROXY_PREFER_LOCAL_NODE_ROUTING = (
