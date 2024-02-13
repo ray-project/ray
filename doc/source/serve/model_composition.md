@@ -8,8 +8,7 @@ With this guide, you can:
 * Independently scale and configure each of your ML models and business logic steps
 
 :::{note}
-{mod}`DeploymentHandle <ray.serve.handle.DeploymentHandle>` is now the default handle API.
-You can continue using the legacy `RayServeHandle` and `RayServeSyncHandle` APIs using `handle.options(use_new_handle_api=False)` or `export RAY_SERVE_ENABLE_NEW_HANDLE_API=0`, but this support will be removed in a future version.
+The deprecated `RayServeHandle` and `RayServeSyncHandle` APIs have been fully removed as of Ray 2.10.
 :::
 
 ## Compose deployments using DeploymentHandles

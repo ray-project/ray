@@ -224,7 +224,7 @@ def test_args_kwargs_sync(serve_instance):
         assert kwargs["kwarg1"] == 1
         assert kwargs["kwarg2"] == "2"
 
-    handle = serve.run(f.bind()).options(use_new_handle_api=True)
+    handle = serve.run(f.bind())
     handle.remote("hi", kwarg1=1, kwarg2="2").result()
 
 
@@ -236,7 +236,7 @@ async def test_args_kwargs_async(serve_instance):
         assert kwargs["kwarg1"] == 1
         assert kwargs["kwarg2"] == "2"
 
-    handle = serve.run(f.bind()).options(use_new_handle_api=True)
+    handle = serve.run(f.bind())
     await handle.remote("hi", kwarg1=1, kwarg2="2")
 
 
@@ -246,7 +246,7 @@ def test_nonexistent_method_sync(serve_instance):
         def exists(self):
             pass
 
-    handle = serve.run(A.bind()).options(use_new_handle_api=True)
+    handle = serve.run(A.bind())
     with pytest.raises(RayServeException) as excinfo:
         handle.does_not_exist.remote().result()
 
@@ -262,7 +262,7 @@ async def test_nonexistent_method_async(serve_instance):
         def exists(self):
             pass
 
-    handle = serve.run(A.bind()).options(use_new_handle_api=True)
+    handle = serve.run(A.bind())
     with pytest.raises(RayServeException) as excinfo:
         await handle.does_not_exist.remote()
 
@@ -363,22 +363,16 @@ class MyRouter(PowerOfTwoChoicesReplicaScheduler):
     pass
 
 
-@pytest.mark.parametrize("use_new_handle_api", [False, True])
-def test_handle_options_custom_router(serve_instance, use_new_handle_api: bool):
+def test_handle_options_custom_router(serve_instance):
     @serve.deployment
     def echo(name: str):
         return f"Hi {name}"
 
     handle = serve.run(echo.bind()).options(
         _router_cls="ray.serve.tests.test_handle.MyRouter",
-        use_new_handle_api=use_new_handle_api,
     )
 
-    if use_new_handle_api:
-        result = handle.remote("HI").result()
-    else:
-        result = ray.get(handle.remote("HI"))
-
+    result = handle.remote("HI").result()
     assert result == "Hi HI"
 
     print("Router class used", handle._router._replica_scheduler)
