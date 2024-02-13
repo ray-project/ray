@@ -81,6 +81,7 @@ mkdir -p "$TMP_DIR"
 
 install_miniconda
 install_bazel
+bazel --version
 
 # Install Ray & run sanity checks for each python version
 for python_version in "${python_versions[@]}"; do
