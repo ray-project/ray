@@ -1,18 +1,18 @@
+import tempfile
 from contextlib import contextmanager
 from pathlib import Path
-import tempfile
-from typing import Callable, Dict, List, Union, Optional
+from typing import Callable, Dict, List, Optional, Union
 
+from lightgbm.basic import Booster
+from lightgbm.callback import CallbackEnv
 
 from ray import train
-
 from ray.train import Checkpoint
 from ray.tune.utils import flatten_dict
-
-from lightgbm.callback import CallbackEnv
-from lightgbm.basic import Booster
+from ray.util.annotations import PublicAPI
 
 
+@PublicAPI(stability="beta")
 class RayTrainReportCallback:
     """Creates a callback that reports metrics and checkpoints model.
 

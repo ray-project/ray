@@ -1,10 +1,10 @@
-from typing import Any, Dict, Type, Union
+from typing import Any, Dict, Union
 
 import lightgbm
 
 from ray.train import Checkpoint
 from ray.train.gbdt_trainer import GBDTTrainer
-from ray.train.lightgbm import LightGBMCheckpoint
+from ray.train.lightgbm import RayTrainReportCallback
 from ray.util.annotations import PublicAPI
 
 try:
@@ -40,12 +40,13 @@ class LightGBMTrainer(GBDTTrainer):
             from ray.train import ScalingConfig
 
             train_dataset = ray.data.from_items(
-                [{"x": x, "y": x + 1} for x in range(32)])
+                [{"x": x, "y": x + 1} for x in range(32)]
+            )
             trainer = LightGBMTrainer(
                 label_column="y",
                 params={"objective": "regression"},
                 scaling_config=ScalingConfig(num_workers=3),
-                datasets={"train": train_dataset}
+                datasets={"train": train_dataset},
             )
             result = trainer.fit()
 
@@ -107,18 +108,9 @@ class LightGBMTrainer(GBDTTrainer):
     def get_model(
         cls,
         checkpoint: Checkpoint,
-        checkpoint_cls: Type[LightGBMCheckpoint] = LightGBMCheckpoint,
     ) -> lightgbm.Booster:
         """Retrieve the LightGBM model stored in this checkpoint."""
-        if not issubclass(checkpoint_cls, LightGBMCheckpoint):
-            raise ValueError(
-                "`checkpoint_cls` must subclass `ray.train.lightgbm.LightGBMCheckpoint`"
-            )
-
-        lightgbm_checkpoint = checkpoint_cls(
-            path=checkpoint.path, filesystem=checkpoint.filesystem
-        )
-        return lightgbm_checkpoint.get_model()
+        return RayTrainReportCallback.get_model(checkpoint)
 
     def _train(self, **kwargs):
         import lightgbm_ray
