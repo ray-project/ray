@@ -5,6 +5,7 @@ set -euo pipefail
 set -x
 
 python_versions=("3.8" "3.9" "3.10" "3.11")
+BAZELISK_VERSION="v1.16.0"
 
 # Check arguments
 if [ "$#" -ne 1 ]; then
@@ -16,7 +17,30 @@ fi
 mac_architecture=$1 # First argument is the architecture of the machine, e.g. x86_64, arm64
 export RAY_VERSION="${RAY_VERSION:-2.9.1}"
 export RAY_HASH="${RAY_HASH:-cfbf98c315cfb2710c56039a3c96477d196de049}"
+export USE_BAZEL_VERSION="${USE_BAZEL_VERSION:-5.4.1}"
 
+install_bazel() {
+    mkdir -p "$TMP_DIR/bin"
+    # Add bazel to the path.
+    # shellcheck disable=SC2016
+    printf '\nexport PATH="$TMP_DIR/bin:$PATH"\n' >> ~/.zshenv
+    # shellcheck disable=SC1090
+    source ~/.zshenv
+
+    if [ "${mac_architecture}" = "arm64" ]; then
+      # architecture is "aarch64", but the bazel tag is "arm64"
+      url="https://github.com/bazelbuild/bazelisk/releases/download/${BAZELISK_VERSION}/bazelisk-${platform}-arm64"
+    elif [ "${mac_architecture}" = "x86_64" ]; then
+      url="https://github.com/bazelbuild/bazelisk/releases/download/${BAZELISK_VERSION}/bazelisk-${platform}-amd64"
+    else
+      echo "Could not found matching bazelisk URL for Mac ${mac_architecture}"
+      exit 1
+    fi
+
+    target="$TMP_DIR/bin/bazel"
+    curl -f -s -L -R -o "${target}" "${url}"
+    chmod +x "${target}"
+}
 install_miniconda() {
     # Install miniconda3 based on the architecture used
     mkdir -p "$TMP_DIR/miniconda3"
@@ -44,6 +68,10 @@ run_sanity_check() {
         cd release/util
         python sanity_check.py
     )
+    (
+        cd release/util
+        bash sanity_check_cpp.sh
+    )
     conda deactivate
 }
 
@@ -52,6 +80,7 @@ TMP_DIR="$HOME/tmp/run-macos"
 mkdir -p "$TMP_DIR"
 
 install_miniconda
+install_bazel
 
 # Install Ray & run sanity checks for each python version
 for python_version in "${python_versions[@]}"; do
