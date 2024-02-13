@@ -288,6 +288,8 @@ class ScalingConfig:
             use_gpu = bool(worker_bundle.get("GPU"))
             num_workers = len(worker_bundles)
             resources_per_worker = worker_bundle
+        else:
+            trainer_resources = trainer_bundle
 
         return ScalingConfig(
             trainer_resources=trainer_resources,
