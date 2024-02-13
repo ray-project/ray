@@ -73,7 +73,7 @@ run_sanity_check() {
 }
 
 _clean_up() {
-    bazel clean || true;
+    bazel clean || true
     rm -rf "$TMP_DIR"
 }
 
