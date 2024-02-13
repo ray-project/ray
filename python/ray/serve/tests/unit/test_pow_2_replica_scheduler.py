@@ -1533,7 +1533,6 @@ async def test_queue_len_cache_entries_added_correctly(pow_2_scheduler):
     Verify that the cache entries are updated for probed replicas correctly.
     """
     s = pow_2_scheduler
-    loop = get_or_create_event_loop()
     staleness_timeout_s = RAY_SERVE_QUEUE_LENGTH_CACHE_TIMEOUT_S
 
     r1 = FakeReplicaWrapper("r1")
