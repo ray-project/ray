@@ -234,6 +234,7 @@ steps:
   - label: ":ray: core: minimal tests {{matrix}}"
     tags:
       - python
+      - oss
       - skip-on-premerge
     instance_type: medium
     commands:
