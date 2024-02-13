@@ -160,6 +160,10 @@ def test_scaling_config_validate_config_bad_allowed_keys():
 def test_scaling_config_pgf_equivalance(
     trainer_resources, resources_per_worker_and_use_gpu, num_workers, placement_strategy
 ):
+    # We merged trainer and rank0 bundle, the rebuilt ScalingConfig should be different.
+    if num_workers == 1 and trainer_resources:
+        return
+
     resources_per_worker, use_gpu = resources_per_worker_and_use_gpu
     scaling_config = ScalingConfig(
         trainer_resources=trainer_resources,

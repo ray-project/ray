@@ -6,7 +6,8 @@ import pytest
 
 import ray
 from ray import train, tune
-from ray.train import RunConfig, ScalingConfig
+from ray.cluster_utils import Cluster
+from ray.train import RunConfig, ScalingConfig, TrainingIterator
 from ray.train._internal.backend_executor import BackendExecutor
 from ray.train._internal.worker_group import WorkerGroup
 from ray.train.backend import Backend, BackendConfig
@@ -31,6 +32,38 @@ def ray_start_4_cpus_4_gpus_4_extra():
     yield address_info
     # The code after the yield will run as teardown code.
     ray.shutdown()
+
+
+@pytest.fixture
+def ray_start_heterogenous_cluster():
+    """
+    Start a heterogenous cluster with 10 nodes:
+        - 1 node with 10 CPUs
+        - 1 node with 100 CPUs
+        - 1 node with 4 GPUs and 10 CPUs
+        - 1 node with 4 GPUs and 100 CPUs
+        - 4 nodes with 1 GPU and 10 CPUs
+        - 4 nodes with 1 GPU and 100 CPUs
+    """
+    cluster = Cluster()
+
+    node_configs = []
+    node_configs += [{"num_cpus": 10}]
+    node_configs += [{"num_cpus": 100}]
+    node_configs += [{"num_cpus": 10, "num_gpus": 4}]
+    node_configs += [{"num_cpus": 100, "num_gpus": 4}]
+    node_configs += [{"num_cpus": 10, "num_gpus": 1}] * 4
+    node_configs += [{"num_cpus": 100, "num_gpus": 1}] * 4
+
+    for config in node_configs:
+        cluster.add_node(**config)
+
+    ray.init(address=cluster.address)
+
+    yield
+
+    ray.shutdown()
+    cluster.shutdown()
 
 
 def gen_execute_single_async_special(special_f):
@@ -342,6 +375,59 @@ def test_gpu_requests(ray_start_4_cpus_4_gpus_4_extra, tmp_path):
     # Sort the cuda visible devices to have exact match with expected result.
     visible_devices = [",".join(sorted(r.split(","))) for r in visible_devices]
     assert visible_devices == ["0,1,2,3", "0,1,2,3"]
+
+
+@pytest.mark.parametrize(
+    "trainer_resources", [None, {}, {"CPU": 50}, {"CPU": 50, "GPU": 1}]
+)
+@pytest.mark.parametrize("num_workers", [None, 1, 2, 8, 9])
+@pytest.mark.parametrize(
+    "resources_per_worker_and_use_gpu",
+    [
+        (None, False),
+        (None, True),
+        ({}, False),
+        ({"CPU": 1}, False),
+        ({"CPU": 2, "GPU": 1}, True),
+        ({"CPU": 0}, False),
+    ],
+)
+@pytest.mark.parametrize("placement_strategy", ["PACK", "SPREAD"])
+def test_colocate_trainer_and_rank0_worker(
+    ray_start_heterogenous_cluster,
+    trainer_resources,
+    num_workers,
+    resources_per_worker_and_use_gpu,
+    placement_strategy,
+):
+    resources_per_worker, use_gpu = resources_per_worker_and_use_gpu
+    def train_func():
+        # Ensure rank 0 worker is scheduled on a highmem node
+        node_id = ray.get_runtime_context().get_node_id()
+        ray.train.report(metrics={f"node_id": node_id})
+
+    class CustomDataParallelTrainer(DataParallelTrainer):
+        def _run_training(self, training_iterator: TrainingIterator) -> None:
+            trainable_node_id = ray.get_runtime_context().get_node_id()
+
+            for training_results in training_iterator:
+                # Ensure trainable and rank 0 worker are always on the same node
+                assert (
+                    training_results[0].metrics["rank_0_node_id"] == trainable_node_id
+                )
+                self._propagate_results(training_results)
+
+    trainer = CustomDataParallelTrainer(
+        train_func,
+        scaling_config=ScalingConfig(
+            num_workers=num_workers,
+            use_gpu=use_gpu,
+            trainer_resources=trainer_resources,
+            resources_per_worker=resources_per_worker,
+            placement_strategy=placement_strategy
+        ),
+    )
+    trainer.fit()
 
 
 if __name__ == "__main__":
