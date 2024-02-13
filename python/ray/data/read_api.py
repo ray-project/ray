@@ -105,7 +105,6 @@ def from_items(
     items: List[Any],
     *,
     parallelism: int = -1,
-    concurrency: Optional[int] = None,
     override_num_blocks: Optional[int] = None,
 ) -> MaterializedDataset:
     """Create a :class:`~ray.data.Dataset` from a list of local Python objects.
@@ -125,27 +124,18 @@ def from_items(
 
     Args:
         items: List of local Python objects.
-        parallelism: The amount of parallelism to use for the dataset. Defaults to -1,
-            which automatically determines the optimal parallelism for your
-            configuration. You should not need to manually set this value in most cases.
-            For details on how the parallelism is automatically determined and guidance
-            on how to tune it, see
-            :ref:`Tuning read parallelism <read_parallelism>`.
-            Parallelism is upper bounded by ``len(items)``.
-        concurrency: The maximum number of Ray tasks to run concurrently. Set this
-            to control number of tasks to run concurrently. This doesn't change the
-            total number of tasks run or the total number of output blocks. By default,
-            concurrency is dynamically decided based on available resource.
-        override_num_blocks: Override the number of output blocks of read tasks. By
-            default, the number of output blocks is dynamically decided based on
-            input data size and available resource. You should not need to manually
-            set this value in most cases.
+        parallelism: This argument is deprecated. Use ``override_num_blocks`` argument.
+        override_num_blocks: Override the number of output blocks from all read tasks.
+            By default, the number of output blocks is dynamically decided based on
+            input data size and available resources. You shouldn't manually set this
+            value in most cases.
 
     Returns:
         A :class:`~ray.data.Dataset` holding the items.
     """
     import builtins
 
+    parallelism = _get_num_output_blocks(parallelism, override_num_blocks)
     if parallelism == 0:
         raise ValueError(f"parallelism must be -1 or > 0, got: {parallelism}")
 
@@ -220,21 +210,15 @@ def range(
 
     Args:
         n: The upper bound of the range of integers.
-        parallelism: The amount of parallelism to use for the dataset. Defaults to -1,
-            which automatically determines the optimal parallelism for your
-            configuration. You should not need to manually set this value in most cases.
-            For details on how the parallelism is automatically determined and guidance
-            on how to tune it, see
-            :ref:`Tuning read parallelism <read_parallelism>`.
-            Parallelism is upper bounded by n.
+        parallelism: This argument is deprecated. Use ``override_num_blocks`` argument.
         concurrency: The maximum number of Ray tasks to run concurrently. Set this
             to control number of tasks to run concurrently. This doesn't change the
             total number of tasks run or the total number of output blocks. By default,
-            concurrency is dynamically decided based on available resource.
-        override_num_blocks: Override the number of output blocks of read tasks. By
-            default, the number of output blocks is dynamically decided based on
-            input data size and available resource. You should not need to manually
-            set this value in most cases.
+            concurrency is dynamically decided based on the available resources.
+        override_num_blocks: Override the number of output blocks from all read tasks.
+            By default, the number of output blocks is dynamically decided based on
+            input data size and available resources. You shouldn't manually set this
+            value in most cases.
 
     Returns:
         A :class:`~ray.data.Dataset` producing the integers from the range 0 to n.
@@ -287,21 +271,15 @@ def range_tensor(
     Args:
         n: The upper bound of the range of tensor records.
         shape: The shape of each tensor in the dataset.
-        parallelism: The amount of parallelism to use for the dataset. Defaults to -1,
-            which automatically determines the optimal parallelism for your
-            configuration. You should not need to manually set this value in most cases.
-            For details on how the parallelism is automatically determined and guidance
-            on how to tune it, see
-            :ref:`Tuning read parallelism <read_parallelism>`.
-            Parallelism is upper bounded by n.
+        parallelism: This argument is deprecated. Use ``override_num_blocks`` argument.
         concurrency: The maximum number of Ray tasks to run concurrently. Set this
             to control number of tasks to run concurrently. This doesn't change the
             total number of tasks run or the total number of output blocks. By default,
-            concurrency is dynamically decided based on available resource.
-        override_num_blocks: Override the number of output blocks of read tasks. By
-            default, the number of output blocks is dynamically decided based on
-            input data size and available resource. You should not need to manually
-            set this value in most cases.
+            concurrency is dynamically decided based on the available resources.
+        override_num_blocks: Override the number of output blocks from all read tasks.
+            By default, the number of output blocks is dynamically decided based on
+            input data size and available resources. You shouldn't manually set this
+            value in most cases.
 
     Returns:
         A :class:`~ray.data.Dataset` producing the tensor data from range 0 to n.
@@ -343,24 +321,18 @@ def read_datasource(
         concurrency: The maximum number of Ray tasks to run concurrently. Set this
             to control number of tasks to run concurrently. This doesn't change the
             total number of tasks run or the total number of output blocks. By default,
-            concurrency is dynamically decided based on available resource.
-        override_num_blocks: Override the number of output blocks of read tasks. By
-            default, the number of output blocks is dynamically decided based on
-            input data size and available resource. You should not need to manually
-            set this value in most cases.
+            concurrency is dynamically decided based on the available resources.
+        override_num_blocks: Override the number of output blocks from all read tasks.
+            By default, the number of output blocks is dynamically decided based on
+            input data size and available resources. You shouldn't manually set this
+            value in most cases.
         read_args: Additional kwargs to pass to the :class:`~ray.data.Datasource`
             implementation.
 
     Returns:
         :class:`~ray.data.Dataset` that reads data from the :class:`~ray.data.Datasource`.
     """  # noqa: E501
-    if parallelism != -1:
-        logger.warning(
-            "The argument ``parallelism`` is deprecated in Ray 2.10. Please specify "
-            "argument ``override_num_blocks`` instead."
-        )
-    elif override_num_blocks is not None:
-        parallelism = override_num_blocks
+    parallelism = _get_num_output_blocks(parallelism, override_num_blocks)
 
     ctx = DataContext.get_current()
 
@@ -515,21 +487,16 @@ def read_mongo(
             be read.
         schema: The schema used to read the collection. If None, it'll be inferred from
             the results of pipeline.
-        parallelism: The requested parallelism of the read. Defaults to -1,
-            which automatically determines the optimal parallelism for your
-            configuration. You should not need to manually set this value in most cases.
-            For details on how the parallelism is automatically determined and guidance
-            on how to tune it, see :ref:`Tuning read parallelism
-            <read_parallelism>`.
+        parallelism: This argument is deprecated. Use ``override_num_blocks`` argument.
         ray_remote_args: kwargs passed to :meth:`~ray.remote` in the read tasks.
         concurrency: The maximum number of Ray tasks to run concurrently. Set this
             to control number of tasks to run concurrently. This doesn't change the
             total number of tasks run or the total number of output blocks. By default,
-            concurrency is dynamically decided based on available resource.
-        override_num_blocks: Override the number of output blocks of read tasks. By
-            default, the number of output blocks is dynamically decided based on
-            input data size and available resource. You should not need to manually
-            set this value in most cases.
+            concurrency is dynamically decided based on the available resources.
+        override_num_blocks: Override the number of output blocks from all read tasks.
+            By default, the number of output blocks is dynamically decided based on
+            input data size and available resources. You shouldn't manually set this
+            value in most cases.
         mongo_args: kwargs passed to `aggregate_arrow_all() <https://mongo-arrow\
             .readthedocs.io/en/latest/api/api.html#pymongoarrow.api\
             aggregate_arrow_all>`_ in pymongoarrow in producing
@@ -609,18 +576,16 @@ def read_bigquery(
             For more information, see `Creating and Managing Projects <https://cloud.google.com/resource-manager/docs/creating-managing-projects>`_.
         dataset: The name of the dataset hosted in BigQuery in the format of ``dataset_id.table_id``.
             Both the dataset_id and table_id must exist otherwise an exception will be raised.
-        parallelism: The requested parallelism of the read. If -1, it will be
-            automatically chosen based on the available cluster resources and estimated
-            in-memory data size.
+        parallelism: This argument is deprecated. Use ``override_num_blocks`` argument.
         ray_remote_args: kwargs passed to ray.remote in the read tasks.
         concurrency: The maximum number of Ray tasks to run concurrently. Set this
             to control number of tasks to run concurrently. This doesn't change the
             total number of tasks run or the total number of output blocks. By default,
-            concurrency is dynamically decided based on available resource.
-        override_num_blocks: Override the number of output blocks of read tasks. By
-            default, the number of output blocks is dynamically decided based on
-            input data size and available resource. You should not need to manually
-            set this value in most cases.
+            concurrency is dynamically decided based on the available resources.
+        override_num_blocks: Override the number of output blocks from all read tasks.
+            By default, the number of output blocks is dynamically decided based on
+            input data size and available resources. You shouldn't manually set this
+            value in most cases.
 
     Returns:
         Dataset producing rows from the results of executing the query (or reading the entire dataset)
@@ -764,11 +729,11 @@ def read_parquet(
         concurrency: The maximum number of Ray tasks to run concurrently. Set this
             to control number of tasks to run concurrently. This doesn't change the
             total number of tasks run or the total number of output blocks. By default,
-            concurrency is dynamically decided based on available resource.
-        override_num_blocks: Override the number of output blocks of read tasks. By
-            default, the number of output blocks is dynamically decided based on
-            input data size and available resource. You should not need to manually
-            set this value in most cases.
+            concurrency is dynamically decided based on the available resources.
+        override_num_blocks: Override the number of output blocks from all read tasks.
+            By default, the number of output blocks is dynamically decided based on
+            input data size and available resources. You shouldn't manually set this
+            value in most cases.
 
     Returns:
         :class:`~ray.data.Dataset` producing records read from the specified parquet
@@ -883,13 +848,7 @@ def read_images(
             you need to provide specific configurations to the filesystem. By default,
             the filesystem is automatically selected based on the scheme of the paths.
             For example, if the path begins with ``s3://``, the `S3FileSystem` is used.
-        parallelism: The amount of parallelism to use for the dataset. Defaults to -1,
-            which automatically determines the optimal parallelism for your
-            configuration. You should not need to manually set this value in most cases.
-            For details on how the parallelism is automatically determined and guidance
-            on how to tune it, see :ref:`Tuning read parallelism
-            <read_parallelism>`. Parallelism is upper bounded by the total number of
-            records in all the CSV files.
+        parallelism: This argument is deprecated. Use ``override_num_blocks`` argument.
         meta_provider: A :ref:`file metadata provider <metadata_provider>`. Custom
             metadata providers may be able to resolve file metadata more quickly and/or
             accurately. In most cases, you do not need to set this. If ``None``, this
@@ -924,11 +883,11 @@ def read_images(
         concurrency: The maximum number of Ray tasks to run concurrently. Set this
             to control number of tasks to run concurrently. This doesn't change the
             total number of tasks run or the total number of output blocks. By default,
-            concurrency is dynamically decided based on available resource.
-        override_num_blocks: Override the number of output blocks of read tasks. By
-            default, the number of output blocks is dynamically decided based on
-            input data size and available resource. You should not need to manually
-            set this value in most cases.
+            concurrency is dynamically decided based on the available resources.
+        override_num_blocks: Override the number of output blocks from all read tasks.
+            By default, the number of output blocks is dynamically decided based on
+            input data size and available resources. You shouldn't manually set this
+            value in most cases.
 
     Returns:
         A :class:`~ray.data.Dataset` producing tensors that represent the images at
@@ -1022,13 +981,7 @@ def read_parquet_bulk(
             the `S3FileSystem` is used.
         columns: A list of column names to read. Only the
             specified columns are read during the file scan.
-        parallelism: The amount of parallelism to use for
-            the dataset. Defaults to -1, which automatically determines the optimal
-            parallelism for your configuration. You should not need to manually set
-            this value in most cases. For details on how the parallelism is
-            automatically determined and guidance on how to tune it, see
-            :ref:`Tuning read parallelism <read_parallelism>`. Parallelism is
-            upper bounded by the total number of records in all the parquet files.
+        parallelism: This argument is deprecated. Use ``override_num_blocks`` argument.
         ray_remote_args: kwargs passed to :meth:`~ray.remote` in the read tasks.
         arrow_open_file_args: kwargs passed to
             `pyarrow.fs.FileSystem.open_input_file <https://arrow.apache.org/docs/\
@@ -1062,11 +1015,11 @@ def read_parquet_bulk(
         concurrency: The maximum number of Ray tasks to run concurrently. Set this
             to control number of tasks to run concurrently. This doesn't change the
             total number of tasks run or the total number of output blocks. By default,
-            concurrency is dynamically decided based on available resource.
-        override_num_blocks: Override the number of output blocks of read tasks. By
-            default, the number of output blocks is dynamically decided based on
-            input data size and available resource. You should not need to manually
-            set this value in most cases.
+            concurrency is dynamically decided based on the available resources.
+        override_num_blocks: Override the number of output blocks from all read tasks.
+            By default, the number of output blocks is dynamically decided based on
+            input data size and available resources. You shouldn't manually set this
+            value in most cases.
 
     Returns:
        :class:`~ray.data.Dataset` producing records read from the specified paths.
@@ -1173,13 +1126,7 @@ def read_json(
             you need to provide specific configurations to the filesystem. By default,
             the filesystem is automatically selected based on the scheme of the paths.
             For example, if the path begins with ``s3://``, the `S3FileSystem` is used.
-        parallelism: The amount of parallelism to use for the dataset. Defaults to -1,
-            which automatically determines the optimal parallelism for your
-            configuration. You should not need to manually set this value in most cases.
-            For details on how the parallelism is automatically determined and guidance
-            on how to tune it, see :ref:`Tuning read parallelism
-            <read_parallelism>`. Parallelism is upper bounded by the total number of
-            records in all the JSON files.
+        parallelism: This argument is deprecated. Use ``override_num_blocks`` argument.
         ray_remote_args: kwargs passed to :meth:`~ray.remote` in the read tasks.
         arrow_open_stream_args: kwargs passed to
             `pyarrow.fs.FileSystem.open_input_file <https://arrow.apache.org/docs/\
@@ -1213,11 +1160,11 @@ def read_json(
         concurrency: The maximum number of Ray tasks to run concurrently. Set this
             to control number of tasks to run concurrently. This doesn't change the
             total number of tasks run or the total number of output blocks. By default,
-            concurrency is dynamically decided based on available resource.
-        override_num_blocks: Override the number of output blocks of read tasks. By
-            default, the number of output blocks is dynamically decided based on
-            input data size and available resource. You should not need to manually
-            set this value in most cases.
+            concurrency is dynamically decided based on the available resources.
+        override_num_blocks: Override the number of output blocks from all read tasks.
+            By default, the number of output blocks is dynamically decided based on
+            input data size and available resources. You shouldn't manually set this
+            value in most cases.
 
     Returns:
         :class:`~ray.data.Dataset` producing records read from the specified paths.
@@ -1346,13 +1293,7 @@ def read_csv(
             you need to provide specific configurations to the filesystem. By default,
             the filesystem is automatically selected based on the scheme of the paths.
             For example, if the path begins with ``s3://``, the `S3FileSystem` is used.
-        parallelism: The amount of parallelism to use for the dataset. Defaults to -1,
-            which automatically determines the optimal parallelism for your
-            configuration. You should not need to manually set this value in most cases.
-            For details on how the parallelism is automatically determined and guidance
-            on how to tune it, see :ref:`Tuning read parallelism
-            <read_parallelism>`. Parallelism is upper bounded by the total number of
-            records in all the CSV files.
+        parallelism: This argument is deprecated. Use ``override_num_blocks`` argument.
         ray_remote_args: kwargs passed to :meth:`~ray.remote` in the read tasks.
         arrow_open_stream_args: kwargs passed to
             `pyarrow.fs.FileSystem.open_input_file <https://arrow.apache.org/docs/\
@@ -1385,11 +1326,11 @@ def read_csv(
         concurrency: The maximum number of Ray tasks to run concurrently. Set this
             to control number of tasks to run concurrently. This doesn't change the
             total number of tasks run or the total number of output blocks. By default,
-            concurrency is dynamically decided based on available resource.
-        override_num_blocks: Override the number of output blocks of read tasks. By
-            default, the number of output blocks is dynamically decided based on
-            input data size and available resource. You should not need to manually
-            set this value in most cases.
+            concurrency is dynamically decided based on the available resources.
+        override_num_blocks: Override the number of output blocks from all read tasks.
+            By default, the number of output blocks is dynamically decided based on
+            input data size and available resources. You shouldn't manually set this
+            value in most cases.
 
     Returns:
         :class:`~ray.data.Dataset` producing records read from the specified paths.
@@ -1467,13 +1408,7 @@ def read_text(
             you need to provide specific configurations to the filesystem. By default,
             the filesystem is automatically selected based on the scheme of the paths.
             For example, if the path begins with ``s3://``, the `S3FileSystem` is used.
-        parallelism: The amount of parallelism to use for the dataset. Defaults to -1,
-            which automatically determines the optimal parallelism for your
-            configuration. You should not need to manually set this value in most cases.
-            For details on how the parallelism is automatically determined and guidance
-            on how to tune it, see :ref:`Tuning read parallelism
-            <read_parallelism>`. Parallelism is upper bounded by the total number of
-            lines in all the text files.
+        parallelism: This argument is deprecated. Use ``override_num_blocks`` argument.
         ray_remote_args: kwargs passed to :meth:`~ray.remote` in the read tasks and
             in the subsequent text decoding map task.
         arrow_open_stream_args: kwargs passed to
@@ -1501,11 +1436,11 @@ def read_text(
         concurrency: The maximum number of Ray tasks to run concurrently. Set this
             to control number of tasks to run concurrently. This doesn't change the
             total number of tasks run or the total number of output blocks. By default,
-            concurrency is dynamically decided based on available resource.
-        override_num_blocks: Override the number of output blocks of read tasks. By
-            default, the number of output blocks is dynamically decided based on
-            input data size and available resource. You should not need to manually
-            set this value in most cases.
+            concurrency is dynamically decided based on the available resources.
+        override_num_blocks: Override the number of output blocks from all read tasks.
+            By default, the number of output blocks is dynamically decided based on
+            input data size and available resources. You shouldn't manually set this
+            value in most cases.
 
     Returns:
         :class:`~ray.data.Dataset` producing lines of text read from the specified
@@ -1576,8 +1511,7 @@ def read_numpy(
         paths: A single file/directory path or a list of file/directory paths.
             A list of paths can contain both files and directories.
         filesystem: The filesystem implementation to read from.
-        parallelism: The requested parallelism of the read. Parallelism may be
-            limited by the number of files of the dataset.
+        parallelism: This argument is deprecated. Use ``override_num_blocks`` argument.
         arrow_open_stream_args: kwargs passed to
             `pyarrow.fs.FileSystem.open_input_stream <https://arrow.apache.org/docs/python/generated/pyarrow.fs.FileSystem.html>`_.
         numpy_load_args: Other options to pass to np.load.
@@ -1600,11 +1534,11 @@ def read_numpy(
         concurrency: The maximum number of Ray tasks to run concurrently. Set this
             to control number of tasks to run concurrently. This doesn't change the
             total number of tasks run or the total number of output blocks. By default,
-            concurrency is dynamically decided based on available resource.
-        override_num_blocks: Override the number of output blocks of read tasks. By
-            default, the number of output blocks is dynamically decided based on
-            input data size and available resource. You should not need to manually
-            set this value in most cases.
+            concurrency is dynamically decided based on the available resources.
+        override_num_blocks: Override the number of output blocks from all read tasks.
+            By default, the number of output blocks is dynamically decided based on
+            input data size and available resources. You shouldn't manually set this
+            value in most cases.
 
     Returns:
         Dataset holding Tensor records read from the specified paths.
@@ -1692,13 +1626,7 @@ def read_tfrecords(
             you need to provide specific configurations to the filesystem. By default,
             the filesystem is automatically selected based on the scheme of the paths.
             For example, if the path begins with ``s3://``, the `S3FileSystem` is used.
-        parallelism: The amount of parallelism to use for the dataset. Defaults to -1,
-            which automatically determines the optimal parallelism for your
-            configuration. You should not need to manually set this value in most cases.
-            For details on how the parallelism is automatically determined and guidance
-            on how to tune it, see :ref:`Tuning read parallelism
-            <read_parallelism>`. Parallelism is upper bounded by the total number of
-            records in all the CSV files.
+        parallelism: This argument is deprecated. Use ``override_num_blocks`` argument.
         arrow_open_stream_args: kwargs passed to
             `pyarrow.fs.FileSystem.open_input_file <https://arrow.apache.org/docs/\
                 python/generated/pyarrow.fs.FileSystem.html\
@@ -1726,11 +1654,11 @@ def read_tfrecords(
         concurrency: The maximum number of Ray tasks to run concurrently. Set this
             to control number of tasks to run concurrently. This doesn't change the
             total number of tasks run or the total number of output blocks. By default,
-            concurrency is dynamically decided based on available resource.
-        override_num_blocks: Override the number of output blocks of read tasks. By
-            default, the number of output blocks is dynamically decided based on
-            input data size and available resource. You should not need to manually
-            set this value in most cases.
+            concurrency is dynamically decided based on the available resources.
+        override_num_blocks: Override the number of output blocks from all read tasks.
+            By default, the number of output blocks is dynamically decided based on
+            input data size and available resources. You shouldn't manually set this
+            value in most cases.
 
     Returns:
         A :class:`~ray.data.Dataset` that contains the example features.
@@ -1790,8 +1718,7 @@ def read_webdataset(
         paths: A single file/directory path or a list of file/directory paths.
             A list of paths can contain both files and directories.
         filesystem: The filesystem implementation to read from.
-        parallelism: The requested parallelism of the read. Parallelism may be
-            limited by the number of files in the dataset.
+        parallelism: This argument is deprecated. Use ``override_num_blocks`` argument.
         arrow_open_stream_args: Key-word arguments passed to
             `pyarrow.fs.FileSystem.open_input_stream <https://arrow.apache.org/docs/python/generated/pyarrow.fs.FileSystem.html>`_.
             To read a compressed TFRecord file,
@@ -1815,11 +1742,11 @@ def read_webdataset(
         concurrency: The maximum number of Ray tasks to run concurrently. Set this
             to control number of tasks to run concurrently. This doesn't change the
             total number of tasks run or the total number of output blocks. By default,
-            concurrency is dynamically decided based on available resource.
-        override_num_blocks: Override the number of output blocks of read tasks. By
-            default, the number of output blocks is dynamically decided based on
-            input data size and available resource. You should not need to manually
-            set this value in most cases.
+            concurrency is dynamically decided based on the available resources.
+        override_num_blocks: Override the number of output blocks from all read tasks.
+            By default, the number of output blocks is dynamically decided based on
+            input data size and available resources. You shouldn't manually set this
+            value in most cases.
 
     Returns:
         A :class:`~ray.data.Dataset` that contains the example features.
@@ -1914,13 +1841,7 @@ def read_binary_files(
             the filesystem is automatically selected based on the scheme of the paths.
             For example, if the path begins with ``s3://``, the `S3FileSystem` is used.
         ray_remote_args: kwargs passed to :meth:`~ray.remote` in the read tasks.
-        parallelism: The amount of parallelism to use for the dataset. Defaults to -1,
-            which automatically determines the optimal parallelism for your
-            configuration. You should not need to manually set this value in most cases.
-            For details on how the parallelism is automatically determined and guidance
-            on how to tune it, see :ref:`Tuning read parallelism
-            <read_parallelism>`. Parallelism is upper bounded by the total number of
-            files.
+        parallelism: This argument is deprecated. Use ``override_num_blocks`` argument.
         arrow_open_stream_args: kwargs passed to
             `pyarrow.fs.FileSystem.open_input_file <https://arrow.apache.org/docs/\
                 python/generated/pyarrow.fs.FileSystem.html\
@@ -1944,11 +1865,11 @@ def read_binary_files(
         concurrency: The maximum number of Ray tasks to run concurrently. Set this
             to control number of tasks to run concurrently. This doesn't change the
             total number of tasks run or the total number of output blocks. By default,
-            concurrency is dynamically decided based on available resource.
-        override_num_blocks: Override the number of output blocks of read tasks. By
-            default, the number of output blocks is dynamically decided based on
-            input data size and available resource. You should not need to manually
-            set this value in most cases.
+            concurrency is dynamically decided based on the available resources.
+        override_num_blocks: Override the number of output blocks from all read tasks.
+            By default, the number of output blocks is dynamically decided based on
+            input data size and available resources. You shouldn't manually set this
+            value in most cases.
 
     Returns:
         :class:`~ray.data.Dataset` producing rows read from the specified paths.
@@ -2052,21 +1973,16 @@ def read_sql(
         connection_factory: A function that takes no arguments and returns a
             Python DB API2
             `Connection object <https://peps.python.org/pep-0249/#connection-objects>`_.
-        parallelism: The requested parallelism of the read. Defaults to -1,
-            which automatically determines the optimal parallelism for your
-            configuration. You should not need to manually set this value in most cases.
-            For details on how the parallelism is automatically determined and guidance
-            on how to tune it, see :ref:`Tuning read parallelism
-            <read_parallelism>`.
+        parallelism: This argument is deprecated. Use ``override_num_blocks`` argument.
         ray_remote_args: kwargs passed to :meth:`~ray.remote` in the read tasks.
         concurrency: The maximum number of Ray tasks to run concurrently. Set this
             to control number of tasks to run concurrently. This doesn't change the
             total number of tasks run or the total number of output blocks. By default,
-            concurrency is dynamically decided based on available resource.
-        override_num_blocks: Override the number of output blocks of read tasks. By
-            default, the number of output blocks is dynamically decided based on
-            input data size and available resource. You should not need to manually
-            set this value in most cases.
+            concurrency is dynamically decided based on the available resources.
+        override_num_blocks: Override the number of output blocks from all read tasks.
+            By default, the number of output blocks is dynamically decided based on
+            input data size and available resources. You shouldn't manually set this
+            value in most cases.
 
     Returns:
         A :class:`Dataset` containing the queried data.
@@ -2139,21 +2055,16 @@ def read_databricks_tables(
             you can't set ``table_name`` argument.
         catalog: (Optional) The default catalog name used by the query.
         schema: (Optional) The default schema used by the query.
-        parallelism: The requested parallelism of the read. Defaults to -1,
-            which automatically determines the optimal parallelism for your
-            configuration. You should not need to manually set this value in most cases.
-            For details on how the parallelism is automatically determined and guidance
-            on how to tune it, see :ref:`Tuning read parallelism
-            <read_parallelism>`.
+        parallelism: This argument is deprecated. Use ``override_num_blocks`` argument.
         ray_remote_args: kwargs passed to :meth:`~ray.remote` in the read tasks.
         concurrency: The maximum number of Ray tasks to run concurrently. Set this
             to control number of tasks to run concurrently. This doesn't change the
             total number of tasks run or the total number of output blocks. By default,
-            concurrency is dynamically decided based on available resource.
-        override_num_blocks: Override the number of output blocks of read tasks. By
-            default, the number of output blocks is dynamically decided based on
-            input data size and available resource. You should not need to manually
-            set this value in most cases.
+            concurrency is dynamically decided based on the available resources.
+        override_num_blocks: Override the number of output blocks from all read tasks.
+            By default, the number of output blocks is dynamically decided based on
+            input data size and available resources. You shouldn't manually set this
+            value in most cases.
 
     Returns:
         A :class:`Dataset` containing the queried data.
@@ -2581,7 +2492,6 @@ def from_spark(
     df: "pyspark.sql.DataFrame",
     *,
     parallelism: Optional[int] = None,
-    concurrency: Optional[int] = None,
     override_num_blocks: Optional[int] = None,
 ) -> MaterializedDataset:
     """Create a :class:`~ray.data.Dataset` from a
@@ -2589,23 +2499,18 @@ def from_spark(
 
     Args:
         df: A `Spark DataFrame`_, which must be created by RayDP (Spark-on-Ray).
-        parallelism: The amount of parallelism to use for the dataset. If
-            not provided, the parallelism is equal to the number of partitions of
-            the original Spark DataFrame.
-        concurrency: The maximum number of Ray tasks to run concurrently. Set this
-            to control number of tasks to run concurrently. This doesn't change the
-            total number of tasks run or the total number of output blocks. By default,
-            concurrency is dynamically decided based on available resource.
-        override_num_blocks: Override the number of output blocks of read tasks. By
-            default, the number of output blocks is dynamically decided based on
-            input data size and available resource. You should not need to manually
-            set this value in most cases.
+        parallelism: This argument is deprecated. Use ``override_num_blocks`` argument.
+        override_num_blocks: Override the number of output blocks from all read tasks.
+            By default, the number of output blocks is dynamically decided based on
+            input data size and available resources. You shouldn't manually set this
+            value in most cases.
 
     Returns:
         A :class:`~ray.data.MaterializedDataset` holding rows read from the DataFrame.
     """  # noqa: E501
     import raydp
 
+    parallelism = _get_num_output_blocks(parallelism, override_num_blocks)
     return raydp.spark.spark_dataframe_to_ray_dataset(df, parallelism)
 
 
@@ -2664,22 +2569,15 @@ def from_huggingface(
             `DatasetDict <https://huggingface.co/docs/datasets/package_reference/main_classes#datasets.DatasetDict/>`_
             and `IterableDatasetDict <https://huggingface.co/docs/datasets/package_reference/main_classes#datasets.IterableDatasetDict/>`_
             are not supported.
-        parallelism: The amount of parallelism to use for the dataset if applicable (i.e.
-            if the dataset is a public Hugging Face Dataset without transforms applied).
-            Defaults to -1, which automatically determines the optimal parallelism for your
-            configuration. You should not need to manually set this value in most cases.
-            For details on how the parallelism is automatically determined and guidance
-            on how to tune it, see :ref:`Tuning read parallelism
-            <read_parallelism>`. Parallelism is upper bounded by the total number of
-            records in all the parquet files.
+        parallelism: This argument is deprecated. Use ``override_num_blocks`` argument.
         concurrency: The maximum number of Ray tasks to run concurrently. Set this
             to control number of tasks to run concurrently. This doesn't change the
             total number of tasks run or the total number of output blocks. By default,
-            concurrency is dynamically decided based on available resource.
-        override_num_blocks: Override the number of output blocks of read tasks. By
-            default, the number of output blocks is dynamically decided based on
-            input data size and available resource. You should not need to manually
-            set this value in most cases.
+            concurrency is dynamically decided based on the available resources.
+        override_num_blocks: Override the number of output blocks from all read tasks.
+            By default, the number of output blocks is dynamically decided based on
+            input data size and available resources. You shouldn't manually set this
+            value in most cases.
 
     Returns:
         A :class:`~ray.data.Dataset` holding rows from the `Hugging Face Datasets Dataset`_.
@@ -2899,3 +2797,17 @@ def _resolve_parquet_args(
 
         arrow_parquet_args["_block_udf"] = _block_udf
     return arrow_parquet_args
+
+
+def _get_num_output_blocks(
+    parallelism: int = -1,
+    override_num_blocks: Optional[int] = None,
+) -> int:
+    if parallelism != -1:
+        logger.warning(
+            "The argument ``parallelism`` is deprecated in Ray 2.10. Please specify "
+            "argument ``override_num_blocks`` instead."
+        )
+    elif override_num_blocks is not None:
+        parallelism = override_num_blocks
+    return parallelism
