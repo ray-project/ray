@@ -38,6 +38,7 @@ install_bazel() {
     curl -f -s -L -R -o "${target}" "${url}"
     chmod +x "${target}"
 }
+
 install_miniconda() {
     # Install miniconda3 based on the architecture used
     mkdir -p "$TMP_DIR/miniconda3"
@@ -82,7 +83,6 @@ TMP_DIR=$(mktemp -d "$HOME/tmp.XXXXXXXXXX")
 
 install_miniconda
 install_bazel
-bazel --version
 
 # Install Ray & run sanity checks for each python version
 for python_version in "${python_versions[@]}"; do
