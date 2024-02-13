@@ -1243,15 +1243,15 @@ class Algorithm(Trainable, AlgorithmBase):
         weights_ref = ray.put(self.workers.local_worker().get_weights())
         weights_seq_no = self._evaluation_weights_seq_number
 
-        def remote_fn(worker):
+        def remote_fn(worker, _weights_ref, _weights_seq_no):
             # Pass in seq-no so that eval workers may ignore this call if no update has
             # happened since the last call to `remote_fn` (sample).
             worker.set_weights(
-                weights=ray.get(weights_ref), weights_seq_no=weights_seq_no
+                weights=ray.get(_weights_ref), weights_seq_no=_weights_seq_no
             )
             batch = worker.sample()
             metrics = worker.get_metrics()
-            return batch, metrics, weights_seq_no
+            return batch, metrics, _weights_seq_no
 
         rollout_metrics = []
 
@@ -1267,7 +1267,11 @@ class Algorithm(Trainable, AlgorithmBase):
             _round += 1
             # Get ready evaluation results and metrics asynchronously.
             self.evaluation_workers.foreach_worker_async(
-                func=remote_fn,
+                func=functools.partial(
+                    remote_fn,
+                    _weights_ref=weights_ref,
+                    _weights_seq_no=weights_seq_no,
+                ),
                 healthy_only=True,
             )
             eval_results = self.evaluation_workers.fetch_ready_async_reqs()
@@ -1318,6 +1322,10 @@ class Algorithm(Trainable, AlgorithmBase):
                 f"({num_units_done}/{duration if not auto else '?'} "
                 f"{unit} done)"
             )
+
+        del weights_ref
+        del weights_seq_no
+        del remote_fn
 
         sampler_results = summarize_episodes(
             rollout_metrics,

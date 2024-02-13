@@ -7,17 +7,25 @@ The environment we use here is configured to crash with a certain probability on
 `step()` and/or `reset()` call. Additionally, the environment is configured to stall
 with a configured probability on each `step()` call for a certain amount of time.
 """
+from gymnasium.wrappers import TimeLimit
+
 from ray.rllib.algorithms.appo import APPOConfig
 from ray.rllib.examples.env.cartpole_crashing import CartPoleCrashing
-from ray import tune
+from ray.rllib.utils.test_utils import (
+    add_rllib_example_script_args,
+    run_rllib_example_script_experiment,
+)
+from ray.tune import register_env
 
-tune.register_env("env", lambda cfg: CartPoleCrashing(cfg))
 
+register_env(
+    "env",
+    lambda cfg: TimeLimit(CartPoleCrashing(cfg), max_episode_steps=500),
+)
 
-stop = {
-    "evaluation/sampler_results/episode_reward_mean": 400.0,
-    "num_env_steps_sampled": 250000,
-}
+parser = add_rllib_example_script_args()
+args = parser.parse_args()
+
 
 config = (
     APPOConfig()
@@ -38,7 +46,7 @@ config = (
         disable_env_checking=True,
     )
     .rollouts(
-        num_rollout_workers=1,
+        num_rollout_workers=args.num_env_runners,
         num_envs_per_worker=1,
     )
     # Switch on resiliency (recreate any failed worker).
@@ -46,7 +54,7 @@ config = (
         recreate_failed_workers=True,
     )
     .evaluation(
-        evaluation_num_workers=1,
+        evaluation_num_workers=4,
         evaluation_interval=1,
         evaluation_duration=25,
         evaluation_duration_unit="episodes",
@@ -61,15 +69,19 @@ config = (
                 "p_crash": 0.0,
                 "p_crash_reset": 0.0,
                 "init_time_s": 0.0,
-                "p_stall": 0.0,
+                "p_stall": 0.01,
+                "stall_time_sec": 300,  # stall for 5min.
                 "p_stall_reset": 0.0,
+                "stall_on_worker_indices": [1, 2],
             },
         ),
     )
 )
 
+stop = {
+    "evaluation/sampler_results/episode_reward_mean": 500.0,
+    "num_env_steps_sampled": 2000000,
+}
 
 if __name__ == "__main__":
-    algo = config.framework("tf2").build()
-    for _ in range(1000):
-        print(algo.train())
+    run_rllib_example_script_experiment(config, args, stop=stop)
