@@ -14,6 +14,33 @@ class Datasource:
     To read a datasource into a dataset, use :meth:`~ray.data.read_datasource`.
     """  # noqa: E501
 
+    @Deprecated
+    def create_reader(self, **read_args) -> "Reader":
+        """Return a Reader for the given read arguments.
+
+        The reader object will be responsible for querying the read metadata, and
+        generating the actual read tasks to retrieve the data blocks upon request.
+
+        Args:
+            read_args: Additional kwargs to pass to the datasource impl.
+        """
+        raise NotImplementedError
+
+    @Deprecated
+    def prepare_read(self, parallelism: int, **read_args) -> List["ReadTask"]:
+        """Deprecated: Please implement create_reader() instead."""
+        raise NotImplementedError
+
+    def get_name(self) -> str:
+        """Return a human-readable name for this datasource.
+        This will be used as the names of the read tasks.
+        """
+        name = type(self).__name__
+        datasource_suffix = "Datasource"
+        if name.endswith(datasource_suffix):
+            name = name[: -len(datasource_suffix)]
+        return name
+
     def estimate_inmemory_data_size(self) -> Optional[int]:
         """Return an estimate of the in-memory data size, or None if unknown.
 
@@ -34,21 +61,6 @@ class Datasource:
         """
         raise NotImplementedError
 
-    def get_name(self) -> str:
-        """Return a human-readable name for this datasource.
-        This will be used as the names of the read tasks.
-        """
-        name = type(self).__name__
-        datasource_suffix = "Datasource"
-        if name.endswith(datasource_suffix):
-            name = name[: -len(datasource_suffix)]
-        return name
-
-    @property
-    def supports_distributed_reads(self) -> bool:
-        """If ``False``, only launch read tasks on the driver's node."""
-        return True
-
     @property
     def should_create_reader(self) -> bool:
         has_implemented_get_read_tasks = (
@@ -63,22 +75,10 @@ class Datasource:
             or not has_implemented_estimate_inmemory_data_size
         )
 
-    @Deprecated
-    def create_reader(self, **read_args) -> "Reader":
-        """Return a Reader for the given read arguments.
-
-        The reader object will be responsible for querying the read metadata, and
-        generating the actual read tasks to retrieve the data blocks upon request.
-
-        Args:
-            read_args: Additional kwargs to pass to the datasource impl.
-        """
-        raise NotImplementedError
-
-    @Deprecated
-    def prepare_read(self, parallelism: int, **read_args) -> List["ReadTask"]:
-        """Deprecated: Please implement create_reader() instead."""
-        raise NotImplementedError
+    @property
+    def supports_distributed_reads(self) -> bool:
+        """If ``False``, only launch read tasks on the driver's node."""
+        return True
 
 
 @Deprecated
