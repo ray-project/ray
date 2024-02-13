@@ -592,7 +592,7 @@ class Trial:
     def generate_id(cls):
         return str(uuid.uuid4().hex)[:8]
 
-    def reset(self):
+    def reset(self) -> "Trial":
         # If there is `default_resource_request` associated with the trainable,
         # clear `resources` and `placement_group_factory`.
         # This is mainly relevant for RLlib tuning jobs, where we save users

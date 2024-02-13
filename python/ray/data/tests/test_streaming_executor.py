@@ -1,4 +1,6 @@
 import time
+import unittest
+from concurrent.futures import ThreadPoolExecutor
 from unittest.mock import MagicMock
 
 import pytest
@@ -16,12 +18,14 @@ from ray.data._internal.execution.operators.map_operator import MapOperator
 from ray.data._internal.execution.operators.map_transformer import (
     create_map_transformer_from_block_fn,
 )
+from ray.data._internal.execution.resource_manager import ResourceManager
 from ray.data._internal.execution.streaming_executor import (
     _debug_dump_topology,
     _validate_dag,
 )
 from ray.data._internal.execution.streaming_executor_state import (
     AutoscalingState,
+    OpBufferQueue,
     OpState,
     _execution_allowed,
     build_streaming_topology,
@@ -297,8 +301,10 @@ def test_debug_dump_topology():
         make_map_transformer(lambda block: [b * 2 for b in block]), o2
     )
     topo, _ = build_streaming_topology(o3, opt)
+    resource_manager = ResourceManager(topo, ExecutionOptions())
+    resource_manager.update_usages()
     # Just a sanity check to ensure it doesn't crash.
-    _debug_dump_topology(topo)
+    _debug_dump_topology(topo, resource_manager)
 
 
 def test_validate_dag():
@@ -740,6 +746,37 @@ def test_execution_allowed_nothrottle():
             downstream_object_store_memory=1000,
         ),
     )
+
+
+class OpBufferQueueTest(unittest.TestCase):
+    def test_multi_threading(self):
+        num_blocks = 5_000
+        num_splits = 8
+        num_per_split = num_blocks // num_splits
+        ref_bundles = make_ref_bundles([[[i]] for i in range(num_blocks)])
+
+        queue = OpBufferQueue()
+        for i, ref_bundle in enumerate(ref_bundles):
+            ref_bundle.output_split_idx = i % num_splits
+            queue.append(ref_bundle)
+
+        def consume(output_split_idx):
+            nonlocal queue
+
+            count = 0
+            while queue.has_next(output_split_idx):
+                ref_bundle = queue.pop(output_split_idx)
+                count += 1
+                assert ref_bundle is not None
+                assert ref_bundle.output_split_idx == output_split_idx
+            assert count == num_per_split
+            return True
+
+        with ThreadPoolExecutor(max_workers=num_splits) as executor:
+            futures = [executor.submit(consume, i) for i in range(num_splits)]
+
+        for f in futures:
+            assert f.result() is True, f.result()
 
 
 def test_exception_concise_stacktrace():

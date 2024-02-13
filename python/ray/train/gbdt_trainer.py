@@ -1,14 +1,10 @@
 import logging
-import os
-import tempfile
 import warnings
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any, Dict, Optional, Type
 
-from ray import train, tune
-from ray._private.dict import flatten_dict
 from ray.train import Checkpoint, RunConfig, ScalingConfig
-from ray.train.constants import MODEL_KEY, TRAIN_DATASET_KEY
+from ray.train.constants import TRAIN_DATASET_KEY
 from ray.train.trainer import BaseTrainer, GenDataset
 from ray.tune import Trainable
 from ray.tune.execution.placement_groups import PlacementGroupFactory
@@ -224,17 +220,28 @@ class GBDTTrainer(BaseTrainer):
             for k, v in self.datasets.items()
         }
 
+    @classmethod
+    def get_model(cls, checkpoint: Checkpoint, checkpoint_cls: Type[Any]) -> Any:
+        raise NotImplementedError
+
     def _load_checkpoint(
         self,
         checkpoint: Checkpoint,
     ) -> Any:
-        raise NotImplementedError
+        # TODO(justinvyu): [code_removal] Remove in 2.11.
+        raise DeprecationWarning(
+            "The internal method `_load_checkpoint` deprecated and will be removed. "
+            f"See `{self.__class__.__name__}.get_model` instead."
+        )
 
     def _train(self, **kwargs):
         raise NotImplementedError
 
     def _save_model(self, model: Any, path: str):
-        raise NotImplementedError
+        # TODO(justinvyu): [code_removal] Remove in 2.11.
+        raise DeprecationWarning(
+            "The internal method `_save_model` is deprecated and will be removed."
+        )
 
     def _model_iteration(self, model: Any) -> int:
         raise NotImplementedError
@@ -269,24 +276,6 @@ class GBDTTrainer(BaseTrainer):
                     self._ray_params.num_actors
                 )
 
-    def _checkpoint_at_end(self, model, evals_result: dict) -> None:
-        # We need to call session.report to save checkpoints, so we report
-        # the last received metrics (possibly again).
-        result_dict = flatten_dict(evals_result, delimiter="-")
-        for k in list(result_dict):
-            result_dict[k] = result_dict[k][-1]
-
-        if getattr(self._tune_callback_checkpoint_cls, "_report_callbacks_cls", None):
-            # Deprecate: Remove in Ray 2.8
-            with tune.checkpoint_dir(step=self._model_iteration(model)) as cp_dir:
-                self._save_model(model, path=os.path.join(cp_dir, MODEL_KEY))
-            tune.report(**result_dict)
-        else:
-            with tempfile.TemporaryDirectory() as checkpoint_dir:
-                self._save_model(model, path=checkpoint_dir)
-                checkpoint = Checkpoint.from_directory(checkpoint_dir)
-                train.report(result_dict, checkpoint=checkpoint)
-
     def training_loop(self) -> None:
         config = self.train_kwargs.copy()
         config[self._num_iterations_argument] = self.num_boost_round
@@ -299,21 +288,28 @@ class GBDTTrainer(BaseTrainer):
 
         init_model = None
         if self.starting_checkpoint:
-            init_model = self._load_checkpoint(self.starting_checkpoint)
+            init_model = self.__class__.get_model(self.starting_checkpoint)
 
         config.setdefault("verbose_eval", False)
         config.setdefault("callbacks", [])
 
-        if not any(
+        has_user_supplied_callback = any(
             isinstance(cb, self._tune_callback_checkpoint_cls)
             for cb in config["callbacks"]
-        ):
-            # Only add our own callback if it hasn't been added before
+        )
+        if not has_user_supplied_callback:
+            # Only add our own default callback if the user hasn't supplied one.
             checkpoint_frequency = (
                 self.run_config.checkpoint_config.checkpoint_frequency
             )
+
+            checkpoint_at_end = self.run_config.checkpoint_config.checkpoint_at_end
+            if checkpoint_at_end is None:
+                # Defaults to True
+                checkpoint_at_end = True
+
             callback = self._tune_callback_checkpoint_cls(
-                filename=MODEL_KEY, frequency=checkpoint_frequency
+                frequency=checkpoint_frequency, checkpoint_at_end=checkpoint_at_end
             )
 
             config["callbacks"] += [callback]
@@ -336,7 +332,7 @@ class GBDTTrainer(BaseTrainer):
                 f"({self._num_iterations_argument}={num_iterations})."
             )
 
-        model = self._train(
+        self._train(
             params=self.params,
             dtrain=train_dmatrix,
             evals_result=evals_result,
@@ -344,13 +340,6 @@ class GBDTTrainer(BaseTrainer):
             ray_params=self._ray_params,
             **config,
         )
-
-        checkpoint_at_end = self.run_config.checkpoint_config.checkpoint_at_end
-        if checkpoint_at_end is None:
-            checkpoint_at_end = True
-
-        if checkpoint_at_end:
-            self._checkpoint_at_end(model, evals_result)
 
     def _generate_trainable_cls(self) -> Type["Trainable"]:
         trainable_cls = super()._generate_trainable_cls()

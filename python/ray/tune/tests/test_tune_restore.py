@@ -199,7 +199,7 @@ class TuneFailResumeGridTest(unittest.TestCase):
             self.num_trials = num_trials
 
         def on_step_end(self, trials, **kwargs):
-            if len(trials) == self.num_trials:
+            if len(trials) >= self.num_trials:
                 print(f"Failing after {self.num_trials} trials.")
                 raise RuntimeError
 
@@ -247,6 +247,13 @@ class TuneFailResumeGridTest(unittest.TestCase):
         self.logdir = tempfile.mkdtemp()
         os.environ["TUNE_GLOBAL_CHECKPOINT_S"] = "0"
 
+        # TODO(justinvyu): Some tests don't work with storage_path=self.logdir
+        # because the failure injector callback on the driver will fail the
+        # run before the experiment state file is synced to storage path.
+        # Previously, resume=True avoided the issue by restoring from the
+        # "local" staging copy of the file, which is more up to date.
+        os.environ["RAY_AIR_LOCAL_CACHE_DIR"] = self.logdir
+
         # Change back to local_mode=True after this is resolved:
         # https://github.com/ray-project/ray/issues/13932
         ray.init(local_mode=False, num_cpus=2)
@@ -257,6 +264,7 @@ class TuneFailResumeGridTest(unittest.TestCase):
 
     def tearDown(self):
         os.environ.pop("TUNE_GLOBAL_CHECKPOINT_S")
+        os.environ.pop("TUNE_MAX_PENDING_TRIALS_PG", None)
         shutil.rmtree(self.logdir)
         ray.shutdown()
 
@@ -271,7 +279,6 @@ class TuneFailResumeGridTest(unittest.TestCase):
                 "test2": tune.grid_search([1, 2, 3]),
             },
             stop={"training_iteration": 2},
-            storage_path=self.logdir,
             name="testFailResumeGridSearch",
             verbose=1,
         )
@@ -300,7 +307,6 @@ class TuneFailResumeGridTest(unittest.TestCase):
                 "test2": tune.grid_search([1, 2, 3]),
             },
             stop={"training_iteration": 2},
-            storage_path=self.logdir,
             name="testResourceUpdateInResume",
             verbose=1,
         )
@@ -347,7 +353,6 @@ class TuneFailResumeGridTest(unittest.TestCase):
                 ),
             },
             stop={"training_iteration": 2},
-            storage_path=self.logdir,
             name="testConfigUpdateInResume",
             verbose=1,
         )
@@ -402,7 +407,6 @@ class TuneFailResumeGridTest(unittest.TestCase):
                 "test2": tune.grid_search([1, 2, 3]),
             },
             stop={"training_iteration": 2},
-            storage_path=self.logdir,
             name="testFailResumeWithPreset",
             verbose=1,
         )
@@ -446,7 +450,6 @@ class TuneFailResumeGridTest(unittest.TestCase):
                 "test2": tune.grid_search([1, 2, 3]),
             },
             stop={"training_iteration": 2},
-            storage_path=self.logdir,
             name="testFailResumeAfterPreset",
             verbose=1,
         )
@@ -490,7 +493,6 @@ class TuneFailResumeGridTest(unittest.TestCase):
                         "test": tune.grid_search([1, 2, 3]),
                     },
                     stop={"training_iteration": 1},
-                    storage_path=self.logdir,
                 )
             )
 
@@ -521,7 +523,6 @@ class TuneFailResumeGridTest(unittest.TestCase):
                 "test5": tune.grid_search(list(range(20))),
             },
             stop={"training_iteration": 2},
-            storage_path=self.logdir,
             name="testWarningLargeGrid",
             verbose=1,
         )

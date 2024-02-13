@@ -77,13 +77,9 @@ class ResourceManager:
         num_ops_total = len(self._topology)
         for op, state in reversed(self._topology.items()):
             # Update `self._op_usages`.
-            op_usage = op.current_resource_usage()
-            # Don't count input refs towards dynamic memory usage, as they have been
-            # pre-created already outside this execution.
-            if not isinstance(op, InputDataBuffer):
-                op_usage.object_store_memory = (
-                    op_usage.object_store_memory or 0
-                ) + state.outqueue_memory_usage()
+            op_usage = op.current_processor_usage()
+            assert not op_usage.object_store_memory
+            op_usage.object_store_memory = _estimate_object_store_memory(op, state)
             self._op_usages[op] = op_usage
             # Update `self._global_usage`.
             self._global_usage = self._global_usage.add(op_usage)
@@ -164,6 +160,24 @@ class ResourceManager:
         """
         assert self._op_resource_limiter is not None
         return self._op_resource_limiter.get_op_limits(op)
+
+
+def _estimate_object_store_memory(op, state) -> int:
+    # Don't count input refs towards dynamic memory usage, as they have been
+    # pre-created already outside this execution.
+    if isinstance(op, InputDataBuffer):
+        return 0
+
+    object_store_memory = op.metrics.obj_store_mem_internal_outqueue
+    if op.metrics.obj_store_mem_pending_task_outputs is not None:
+        object_store_memory += op.metrics.obj_store_mem_pending_task_outputs
+    object_store_memory += state.outqueue_memory_usage()
+    for next_op in op.output_dependencies:
+        object_store_memory += (
+            next_op.metrics.obj_store_mem_internal_inqueue
+            + next_op.metrics.obj_store_mem_pending_task_inputs
+        )
+    return object_store_memory
 
 
 class OpResourceLimiter(ABC):
