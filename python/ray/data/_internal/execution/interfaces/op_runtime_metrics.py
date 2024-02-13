@@ -108,13 +108,11 @@ class OpRuntimeMetrics:
 
     # Time operator spent in backpressure
     # TODO: Do we need both of these metadata here
-    backpressure_time: float = field(
-        default=0, metadata={"map_only": True, "export_metric": True}
-    )
+    backpressure_time: float = field(default=0, metadata={"export_metric": True})
 
     # Start time of current pause due to backpressure
     _backpressure_start_time: float = field(
-        default=-1, metadata={"map_only": True, "export_metric": True}
+        default=-1, metadata={"export_metric": False}
     )
 
     def __init__(self, op: "PhysicalOperator"):
