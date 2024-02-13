@@ -1,8 +1,8 @@
 import inspect
 import logging
+import sys
 import weakref
 from typing import Any, Dict, List, Optional, Union
-import sys
 
 import ray._private.ray_constants as ray_constants
 import ray._private.signature as signature
@@ -417,7 +417,7 @@ class _ActorClassMethodMetadata(object):
             if GenericAlias and any(
                 (
                     method is GenericAlias,
-                    getattr(method, '__func__', None) is GenericAlias
+                    getattr(method, '__func__', None) is GenericAlias,
                 )
             ):
                 method = method.__init__

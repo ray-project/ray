@@ -1392,7 +1392,10 @@ def test_actor_equal(ray_start_regular_shared):
     remote = ray.get(get_actor.remote(origin))
     assert origin == remote
 
-@pytest.mark.skipif(is_python_version_older_than(3,9), reason="GenericAlias is new in Python 3.9")
+
+@pytest.mark.skipif(
+    is_python_version_older_than(3,9), reason="GenericAlias is new in Python 3.9"
+)
 def test_classmethod_genericalias():
     """
     The Python built-in function `inspect.signature` doesn't support
