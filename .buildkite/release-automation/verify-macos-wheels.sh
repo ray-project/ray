@@ -20,22 +20,18 @@ export RAY_HASH="${RAY_HASH:-cfbf98c315cfb2710c56039a3c96477d196de049}"
 export USE_BAZEL_VERSION="${USE_BAZEL_VERSION:-5.4.1}"
 
 install_bazel() {
-    mkdir -p "$TMP_DIR/bin"
-    # Add bazel to the path.
-    export PATH="$TMP_DIR/bin:$PATH"
-
     if [ "${mac_architecture}" = "arm64" ]; then
-      url="https://github.com/bazelbuild/bazelisk/releases/download/${BAZELISK_VERSION}/bazelisk-darwin-arm64"
+      URL="https://github.com/bazelbuild/bazelisk/releases/download/${BAZELISK_VERSION}/bazelisk-darwin-arm64"
     elif [ "${mac_architecture}" = "x86_64" ]; then
-      url="https://github.com/bazelbuild/bazelisk/releases/download/${BAZELISK_VERSION}/bazelisk-darwin-amd64"
+      URL="https://github.com/bazelbuild/bazelisk/releases/download/${BAZELISK_VERSION}/bazelisk-darwin-amd64"
     else
       echo "Could not find matching bazelisk URL for Mac ${mac_architecture}"
       exit 1
     fi
 
-    target="$TMP_DIR/bin/bazel"
-    curl -f -s -L -R -o "${target}" "${url}"
-    chmod +x "${target}"
+    TARGET="$TMP_DIR/bin/bazel"
+    curl -f -s -L -R -o "${TARGET}" "${URL}"
+    chmod +x "${TARGET}"
 }
 
 install_miniconda() {
@@ -64,9 +60,6 @@ run_sanity_check() {
     (
         cd release/util
         python sanity_check.py
-    )
-    (
-        cd release/util
         bash sanity_check_cpp.sh
     )
     conda deactivate
@@ -79,6 +72,10 @@ _clean_up() {
 
 # Create tmp directory unique for the run
 TMP_DIR=$(mktemp -d "$HOME/tmp.XXXXXXXXXX")
+mkdir -p "$TMP_DIR/bin"
+# Add bin dir to the path.
+export PATH="$TMP_DIR/bin:$PATH"
+
 trap _clean_up EXIT
 
 install_miniconda
