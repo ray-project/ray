@@ -12,6 +12,7 @@ from ray.data._internal.execution.interfaces.execution_options import (
 from ray.data._internal.execution.operators.input_data_buffer import InputDataBuffer
 from ray.data._internal.execution.operators.limit_operator import LimitOperator
 from ray.data._internal.execution.operators.map_operator import MapOperator
+from ray.data._internal.execution.operators.union_operator import UnionOperator
 from ray.data._internal.execution.resource_manager import (
     ReservationOpResourceLimiter,
     ResourceManager,
@@ -21,7 +22,6 @@ from ray.data._internal.execution.streaming_executor_state import (
 )
 from ray.data._internal.execution.util import make_ref_bundles
 from ray.data.context import DataContext
-from ray.data._internal.execution.operators.union_operator import UnionOperator
 from ray.data.tests.conftest import *  # noqa
 from ray.data.tests.test_streaming_executor import make_map_transformer
 
@@ -181,8 +181,12 @@ class TestReservationOpResourceLimiter:
 
         assert op_resource_limiter.get_op_limits(o1) == ExecutionResources.inf()
         assert op_resource_limiter.get_op_limits(o4) == ExecutionResources.inf()
-        assert op_resource_limiter.get_op_limits(o2) == ExecutionResources(8, None, 500)
-        assert op_resource_limiter.get_op_limits(o3) == ExecutionResources(8, None, 500)
+        assert op_resource_limiter.get_op_limits(o2) == ExecutionResources(
+            8, float("inf"), 500
+        )
+        assert op_resource_limiter.get_op_limits(o3) == ExecutionResources(
+            8, float("inf"), 500
+        )
 
         # Test when each operator uses some resources.
         op_usages[o2] = ExecutionResources(6, 0, 500)
@@ -192,8 +196,12 @@ class TestReservationOpResourceLimiter:
         op_resource_limiter.update_usages()
         assert op_resource_limiter.get_op_limits(o1) == ExecutionResources.inf()
         assert op_resource_limiter.get_op_limits(o4) == ExecutionResources.inf()
-        assert op_resource_limiter.get_op_limits(o2) == ExecutionResources(3, None, 100)
-        assert op_resource_limiter.get_op_limits(o3) == ExecutionResources(5, None, 225)
+        assert op_resource_limiter.get_op_limits(o2) == ExecutionResources(
+            3, float("inf"), 100
+        )
+        assert op_resource_limiter.get_op_limits(o3) == ExecutionResources(
+            5, float("inf"), 225
+        )
 
         # Test global_limits updated.
         global_limits = ExecutionResources(cpu=12, gpu=0, object_store_memory=800)
@@ -208,10 +216,10 @@ class TestReservationOpResourceLimiter:
         assert op_resource_limiter.get_op_limits(o1) == ExecutionResources.inf()
         assert op_resource_limiter.get_op_limits(o4) == ExecutionResources.inf()
         assert op_resource_limiter.get_op_limits(o2) == ExecutionResources(
-            1.5, None, 25
+            1.5, float("inf"), 25
         )
         assert op_resource_limiter.get_op_limits(o3) == ExecutionResources(
-            2.5, None, 100
+            2.5, float("inf"), 100
         )
 
         # Test global_limits exceeded.
