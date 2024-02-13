@@ -78,7 +78,7 @@ _clean_up() {
 }
 
 # Create tmp directory unique for the run
-TMP_DIR=`mktemp -d "$HOME/tmp.XXXXXXXXXX"`
+TMP_DIR=$(mktemp -d "$HOME/tmp.XXXXXXXXXX")
 
 install_miniconda
 install_bazel
