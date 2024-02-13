@@ -20,7 +20,6 @@ from ray.data.datasource.parquet_base_datasource import ParquetBaseDatasource
 from ray.data.datasource.parquet_datasource import (
     NUM_CPUS_FOR_META_FETCH_TASK,
     PARALLELIZE_META_FETCH_THRESHOLD,
-    RETRY_EXCEPTIONS_FOR_META_FETCH_TASK,
     ParquetDatasource,
     _deserialize_fragments_with_retry,
     _SerializedFragment,
@@ -216,10 +215,6 @@ def test_parquet_read_meta_provider(ray_start_regular_shared, fs, data_path):
             assert (
                 ray_remote_args["scheduling_strategy"]
                 == DataContext.get_current().scheduling_strategy
-            )
-            assert (
-                ray_remote_args["retry_exceptions"]
-                == RETRY_EXCEPTIONS_FOR_META_FETCH_TASK
             )
             return None
 
