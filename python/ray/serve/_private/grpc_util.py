@@ -3,6 +3,8 @@ from typing import Sequence
 import grpc
 from grpc.aio._server import Server
 
+from ray.serve._private.constants import SERVE_GRPC_OPTIONS
+
 
 class gRPCServer(Server):
     """Custom gRPC server to override gRPC method methods.
@@ -61,7 +63,7 @@ def create_serve_grpc_server(service_handler_factory):
         thread_pool=None,
         generic_handlers=(),
         interceptors=(),
-        options=(),
+        options=SERVE_GRPC_OPTIONS,
         maximum_concurrent_rpcs=None,
         compression=None,
         service_handler_factory=service_handler_factory,

@@ -114,11 +114,13 @@ class SampleBatch(dict):
 
     # Observation that we compute SampleBatch.ACTIONS from.
     OBS = "obs"
-    # Observation returned after stepping with SampleBatch.ACTIONS.
-    NEXT_OBS = "new_obs"
-    # Action based on SampleBatch.OBS.
+    # Action computed/sampled by the RLModule.
     ACTIONS = "actions"
-    # Reward returned after stepping with SampleBatch.ACTIONS.
+    # Action actually sent to the (gymnasium) env. Note that we usually do not store
+    # this information anywhere (e.g. in Single/MultiAgentEpisodes), but normally only
+    # keep the RLModule-computed or connector-sampled actions around.
+    ACTIONS_FOR_ENV = "actions_sent_to_env"
+    # Reward returned after stepping.
     REWARDS = "rewards"
     # Action chosen before SampleBatch.ACTIONS.
     PREV_ACTIONS = "prev_actions"
@@ -130,6 +132,9 @@ class SampleBatch(dict):
     TRUNCATEDS = "truncateds"
     # Infos returned after stepping with SampleBatch.ACTIONS
     INFOS = "infos"
+
+    # Observation returned after stepping with SampleBatch.ACTIONS.
+    NEXT_OBS = "new_obs"
 
     # Additional keys filled by RLlib to manage the data above:
 

@@ -202,8 +202,8 @@ class RowBasedFileDatasink(_FileDatasink):
             logger.get_logger().debug(f"Writing {write_path} file.")
             call_with_retry(
                 write_row_to_path,
-                match=DataContext.get_current().write_file_retry_on_errors,
                 description=f"write '{write_path}'",
+                match=DataContext.get_current().write_file_retry_on_errors,
                 max_attempts=WRITE_FILE_MAX_ATTEMPTS,
                 max_backoff_s=WRITE_FILE_RETRY_MAX_BACKOFF_SECONDS,
             )
@@ -268,8 +268,8 @@ class BlockBasedFileDatasink(_FileDatasink):
         logger.get_logger().debug(f"Writing {write_path} file.")
         call_with_retry(
             write_block_to_path,
-            match=DataContext.get_current().write_file_retry_on_errors,
             description=f"write '{write_path}'",
+            match=DataContext.get_current().write_file_retry_on_errors,
             max_attempts=WRITE_FILE_MAX_ATTEMPTS,
             max_backoff_s=WRITE_FILE_RETRY_MAX_BACKOFF_SECONDS,
         )
