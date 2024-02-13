@@ -10,7 +10,11 @@ from typing import Dict, List, Optional, Tuple
 from google.protobuf.json_format import MessageToDict
 
 from ray.autoscaler._private.constants import AUTOSCALER_CONSERVE_GPU_NODES
-from ray.autoscaler._private.resource_demand_scheduler import UtilizationScore
+from ray.autoscaler._private.resource_demand_scheduler import (
+    UtilizationScore,
+    _fits,
+    _inplace_subtract,
+)
 from ray.autoscaler.v2.instance_manager.common import InstanceUtil
 from ray.autoscaler.v2.instance_manager.config import NodeTypeConfig
 from ray.autoscaler.v2.schema import AutoscalerInstance, NodeType
@@ -291,13 +295,11 @@ class SchedulingNode:
         # TODO: add labels when implementing the gang scheduling.
 
         # Check if there's enough resources to schedule the request.
-        for k, v in request.resources_bundle.items():
-            if self.available_resources.get(k, 0) < v:
-                return False
+        if not _fits(self.available_resources, dict(request.resources_bundle)):
+            return False
 
         # Schedule the request, update resources
-        for k, v in request.resources_bundle.items():
-            self.available_resources[k] -= v
+        _inplace_subtract(self.available_resources, dict(request.resources_bundle))
 
         # Add the request to the node.
         self.sched_requests.append(request)
