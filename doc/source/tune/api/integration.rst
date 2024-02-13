@@ -23,6 +23,7 @@ XGBoost (tune.integration.xgboost)
 
 .. autosummary::
     :nosignatures:
+    :template: autosummary/class_without_autosummary.rst
     :toctree: doc/
 
     ~tune.integration.xgboost.TuneReportCheckpointCallback
@@ -35,6 +36,7 @@ LightGBM (tune.integration.lightgbm)
 
 .. autosummary::
     :nosignatures:
+    :template: autosummary/class_without_autosummary.rst
     :toctree: doc/
 
     ~tune.integration.lightgbm.TuneReportCheckpointCallback
