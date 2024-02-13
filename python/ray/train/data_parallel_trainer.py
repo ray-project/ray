@@ -189,11 +189,12 @@ class DataParallelTrainer(BaseTrainer):
         dataset_config: Configuration for dataset ingest. This is merged with the
             default dataset config for the given trainer (`cls._dataset_config`).
         run_config: Configuration for the execution of the training run.
-        datasets: Any Datasets to use for training. Use
-            the key "train" to denote which dataset is the training
-            dataset. If a ``preprocessor`` is provided and has not already been fit,
-            it will be fit on the training dataset. All datasets will be transformed
-            by the ``preprocessor`` if one is provided.
+        datasets: Ray Datasets to use for training and evaluation.
+            This is a dict where the key is the name of the dataset, which
+            can be accessed from within the ``train_loop_per_worker`` by calling
+            ``train.get_dataset_shard(dataset_key)``.
+            By default, all datasets are sharded equally across workers.
+            This can be configured via ``dataset_config``.
         metadata: Dict that should be made available via
             `train.get_context().get_metadata()` and in `checkpoint.get_metadata()`
             for checkpoints saved from this Trainer. Must be JSON-serializable.
