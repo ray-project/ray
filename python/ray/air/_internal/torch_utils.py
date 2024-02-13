@@ -10,11 +10,11 @@ import ray
 from ray.air.util.data_batch_conversion import _unwrap_ndarray_object_type_if_needed
 
 
-def get_device() -> Union[torch.device, List[torch.device]]:
-    """Gets the correct torch device configured for this process.
+def get_devices() -> List[torch.device]:
+    """Gets the correct torch device list configured for this process.
 
-    Returns a list of devices if more than 1 GPU per worker
-    is requested.
+    Returns a list of torch CUDA devices allocated for the current worker.
+    If no GPUs are assigned, then it returns a list with a single CPU device.
 
     Assumes that `CUDA_VISIBLE_DEVICES` is set and is a
     superset of the `ray.get_gpu_ids()`.
@@ -55,11 +55,10 @@ def get_device() -> Union[torch.device, List[torch.device]]:
             device_ids.append(0)
 
         devices = [torch.device(f"cuda:{device_id}") for device_id in device_ids]
-        device = devices[0] if len(devices) == 1 else devices
     else:
-        device = torch.device("cpu")
+        devices = [torch.device("cpu")]
 
-    return device
+    return devices
 
 
 def convert_pandas_to_torch_tensor(

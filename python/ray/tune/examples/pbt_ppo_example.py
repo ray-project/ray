@@ -17,7 +17,6 @@ from ray.tune.schedulers import PopulationBasedTraining
 
 
 if __name__ == "__main__":
-
     # Postprocess the perturbed config to ensure it's still valid
     def explore(config):
         # ensure we collect enough timesteps to do sgd
@@ -54,6 +53,7 @@ if __name__ == "__main__":
             num_samples=8,
             metric="episode_reward_mean",
             mode="max",
+            reuse_actors=True,
         ),
         param_space={
             "env": "Humanoid-v1",

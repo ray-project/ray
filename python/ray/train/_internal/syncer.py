@@ -3,14 +3,12 @@ import logging
 import threading
 import time
 import traceback
-import warnings
 from dataclasses import dataclass
 from typing import Any, Callable, Dict, List, Optional, Tuple, Union
 
 from ray._private.thirdparty.tabulate.tabulate import tabulate
 from ray.train.constants import _DEPRECATED_VALUE
-from ray.util import log_once
-from ray.util.annotations import PublicAPI
+from ray.util.annotations import DeveloperAPI, PublicAPI
 from ray.widgets import Template
 
 logger = logging.getLogger(__name__)
@@ -70,24 +68,26 @@ class SyncConfig:
     syncer: Optional[Union[str, "Syncer"]] = _DEPRECATED_VALUE
     sync_on_checkpoint: bool = _DEPRECATED_VALUE
 
+    # TODO(justinvyu): [Deprecated] Remove in 2.11.
     def _deprecation_warning(self, attr_name: str, extra_msg: str):
         if getattr(self, attr_name) != _DEPRECATED_VALUE:
-            if log_once(f"sync_config_param_deprecation_{attr_name}"):
-                warnings.warn(
-                    f"`SyncConfig({attr_name})` is a deprecated configuration "
-                    "and will be ignored. Please remove it from your `SyncConfig`, "
-                    "as this will raise an error in a future version of Ray."
-                    f"{extra_msg}"
-                )
+            raise DeprecationWarning(
+                f"`SyncConfig({attr_name})` is a deprecated configuration "
+                "Please remove it from your `SyncConfig`. "
+                f"{extra_msg}"
+            )
 
     def __post_init__(self):
-        for (attr_name, extra_msg) in [
-            ("upload_dir", "\nPlease specify `train.RunConfig(storage_path)` instead."),
+        for attr_name, extra_msg in [
+            (
+                "upload_dir",
+                "\nPlease specify `ray.train.RunConfig(storage_path)` instead.",
+            ),
             (
                 "syncer",
                 "\nPlease implement custom syncing logic with a custom "
                 "`pyarrow.fs.FileSystem` instead, and pass it into "
-                "`train.RunConfig(storage_filesystem)`. "
+                "`ray.train.RunConfig(storage_filesystem)`. "
                 "See here: https://docs.ray.io/en/latest/train/user-guides/persistent-storage.html#custom-storage",  # noqa: E501
             ),
             ("sync_on_checkpoint", ""),
@@ -178,6 +178,7 @@ class _BackgroundProcess:
         return result
 
 
+@DeveloperAPI
 class Syncer(abc.ABC):
     """Syncer class for synchronizing data between Ray nodes and remote (cloud) storage.
 

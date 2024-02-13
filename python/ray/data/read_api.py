@@ -36,7 +36,6 @@ from ray.data._internal.stats import DatasetStats
 from ray.data._internal.util import (
     _autodetect_parallelism,
     _lazy_import_pyarrow_dataset,
-    _warn_on_high_parallelism,
     get_table_block_metadata,
     ndarray_to_block,
     pandas_df_to_arrow_block,
@@ -282,23 +281,38 @@ def read_datasource(
     *,
     parallelism: int = -1,
     ray_remote_args: Dict[str, Any] = None,
+    concurrency: Optional[int] = None,
+    override_num_blocks: Optional[int] = None,
     **read_args,
 ) -> Dataset:
     """Read a stream from a custom :class:`~ray.data.Datasource`.
 
     Args:
         datasource: The :class:`~ray.data.Datasource` to read data from.
-        parallelism: The requested parallelism of the read. Parallelism might be
-            limited by the available partitioning of the datasource. If set to -1,
-            parallelism is automatically chosen based on the available cluster
-            resources and estimated in-memory data size.
+        parallelism: This argument is deprecated. Use ``override_num_blocks`` argument.
+        ray_remote_args: kwargs passed to :meth:`ray.remote` in the read tasks.
+        concurrency: The maximum number of Ray tasks to run concurrently. Set this
+            to control number of tasks to run concurrently. This doesn't change the
+            total number of tasks run or the total number of output blocks. By default,
+            concurrency is dynamically decided based on available resource.
+        override_num_blocks: Override the number of output blocks of read tasks. By
+            default, the number of output blocks is dynamically decided based on
+            input data size and available resource. You should not need to manually
+            set this value in most cases.
         read_args: Additional kwargs to pass to the :class:`~ray.data.Datasource`
             implementation.
-        ray_remote_args: kwargs passed to :meth:`ray.remote` in the read tasks.
 
     Returns:
         :class:`~ray.data.Dataset` that reads data from the :class:`~ray.data.Datasource`.
     """  # noqa: E501
+    if parallelism != -1:
+        logger.warning(
+            "The argument ``parallelism`` is deprecated in Ray 2.10. Please specify "
+            "argument ``override_num_blocks`` instead."
+        )
+    elif override_num_blocks is not None:
+        parallelism = override_num_blocks
+
     ctx = DataContext.get_current()
 
     if ray_remote_args is None:
@@ -363,14 +377,11 @@ def read_datasource(
     # removing LazyBlockList code path.
     read_tasks = datasource_or_legacy_reader.get_read_tasks(requested_parallelism)
 
-    if not ctx.use_streaming_executor:
-        _warn_on_high_parallelism(requested_parallelism, len(read_tasks))
-
-    read_stage_name = f"Read{datasource.get_name()}"
+    read_op_name = f"Read{datasource.get_name()}"
 
     block_list = LazyBlockList(
         read_tasks,
-        read_stage_name=read_stage_name,
+        read_op_name=read_op_name,
         ray_remote_args=ray_remote_args,
         owned_by_consumer=False,
     )
@@ -563,6 +574,8 @@ def read_parquet(
     shuffle: Union[Literal["files"], None] = None,
     include_paths: bool = False,
     file_extensions: Optional[List[str]] = None,
+    concurrency: Optional[int] = None,
+    override_num_blocks: Optional[int] = None,
     **arrow_parquet_args,
 ) -> Dataset:
     """Creates a :class:`~ray.data.Dataset` from parquet files.
@@ -649,13 +662,7 @@ def read_parquet(
             used. If ``None``, this function uses a system-chosen implementation.
         columns: A list of column names to read. Only the specified columns are
             read during the file scan.
-        parallelism: The amount of parallelism to use for the dataset. Defaults to -1,
-            which automatically determines the optimal parallelism for your
-            configuration. You should not need to manually set this value in most cases.
-            For details on how the parallelism is automatically determined and guidance
-            on how to tune it, see :ref:`Tuning read parallelism
-            <read_parallelism>`. Parallelism is upper bounded by the total number of
-            records in all the parquet files.
+        parallelism: This argument is deprecated. Use ``override_num_blocks`` argument.
         ray_remote_args: kwargs passed to :meth:`~ray.remote` in the read tasks.
         tensor_column_schema: A dict of column name to PyArrow dtype and shape
             mappings for converting a Parquet column containing serialized
@@ -678,6 +685,14 @@ def read_parquet(
         include_paths: If ``True``, include the path to each file. File paths are
             stored in the ``'path'`` column.
         file_extensions: A list of file extensions to filter files by.
+        concurrency: The maximum number of Ray tasks to run concurrently. Set this
+            to control number of tasks to run concurrently. This doesn't change the
+            total number of tasks run or the total number of output blocks. By default,
+            concurrency is dynamically decided based on available resource.
+        override_num_blocks: Override the number of output blocks of read tasks. By
+            default, the number of output blocks is dynamically decided based on
+            input data size and available resource. You should not need to manually
+            set this value in most cases.
 
     Returns:
         :class:`~ray.data.Dataset` producing records read from the specified parquet
@@ -711,6 +726,8 @@ def read_parquet(
         datasource,
         parallelism=parallelism,
         ray_remote_args=ray_remote_args,
+        concurrency=concurrency,
+        override_num_blocks=override_num_blocks,
     )
 
 
@@ -2358,12 +2375,17 @@ def from_spark(
 
 @PublicAPI
 def from_huggingface(
-    dataset: Union["datasets.Dataset", "datasets.IterableDataset"],
+    dataset: Union["datasets.Dataset", "datasets.IterableDataset"], parallelism=-1
 ) -> Union[MaterializedDataset, Dataset]:
     """Create a :class:`~ray.data.MaterializedDataset` from a
     `Hugging Face Datasets Dataset <https://huggingface.co/docs/datasets/package_reference/main_classes#datasets.Dataset/>`_
     or a :class:`~ray.data.Dataset` from a `Hugging Face Datasets IterableDataset <https://huggingface.co/docs/datasets/package_reference/main_classes#datasets.IterableDataset/>`_.
     For an `IterableDataset`, we use a streaming implementation to read data.
+
+    If the dataset is a public Hugging Face Dataset that is hosted on the Hugging Face Hub and
+    no transformations have been applied, then the `hosted parquet files <https://huggingface.co/docs/datasets-server/parquet#list-parquet-files>`_
+    will be passed to :meth:`~ray.data.read_parquet` to perform a distributed read. All
+    other cases will be done with a single node read.
 
     Example:
 
@@ -2403,18 +2425,36 @@ def from_huggingface(
             `DatasetDict <https://huggingface.co/docs/datasets/package_reference/main_classes#datasets.DatasetDict/>`_
             and `IterableDatasetDict <https://huggingface.co/docs/datasets/package_reference/main_classes#datasets.IterableDatasetDict/>`_
             are not supported.
+        parallelism: The amount of parallelism to use for the dataset if applicable (i.e.
+            if the dataset is a public Hugging Face Dataset without transforms applied).
+            Defaults to -1, which automatically determines the optimal parallelism for your
+            configuration. You should not need to manually set this value in most cases.
+            For details on how the parallelism is automatically determined and guidance
+            on how to tune it, see :ref:`Tuning read parallelism
+            <read_parallelism>`. Parallelism is upper bounded by the total number of
+            records in all the parquet files.
 
     Returns:
         A :class:`~ray.data.Dataset` holding rows from the `Hugging Face Datasets Dataset`_.
     """  # noqa: E501
     import datasets
 
-    if isinstance(dataset, datasets.IterableDataset):
-        # HuggingFaceDatasource should not be imported at top level, because
-        # we only want the Hugging Face datasets package to be imported
-        # if Hugging Face Datasets are used.
-        from ray.data.datasource.huggingface_datasource import HuggingFaceDatasource
+    from ray.data.datasource.huggingface_datasource import HuggingFaceDatasource
 
+    if isinstance(dataset, (datasets.IterableDataset, datasets.Dataset)):
+        # Attempt to read data via Hugging Face Hub parquet files. If the
+        # returned list of files is empty, attempt read via other methods.
+        file_urls = HuggingFaceDatasource.list_parquet_urls_from_dataset(dataset)
+        if len(file_urls) > 0:
+            # If file urls are returned, the parquet files are available via API
+            # TODO: Add support for reading from http filesystem in FileBasedDatasource
+            # GH Issue: https://github.com/ray-project/ray/issues/42706
+            import fsspec.implementations.http
+
+            http = fsspec.implementations.http.HTTPFileSystem()
+            return read_parquet(file_urls, parallelism=parallelism, filesystem=http)
+
+    if isinstance(dataset, datasets.IterableDataset):
         # For an IterableDataset, we can use a streaming implementation to read data.
         return read_datasource(HuggingFaceDatasource(dataset=dataset))
     if isinstance(dataset, datasets.Dataset):
@@ -2597,7 +2637,7 @@ def _resolve_parquet_args(
                 block = block.set_column(
                     block._ensure_integer_index(tensor_col_name),
                     tensor_col_name,
-                    ArrowTensorArray.from_numpy(np_col),
+                    ArrowTensorArray.from_numpy(np_col, tensor_col_name),
                 )
             if existing_block_udf is not None:
                 # Apply UDF after casting the tensor columns.
