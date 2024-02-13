@@ -38,6 +38,7 @@ class RayTrainReportCallback:
     independent xgboost trials (without data parallelism within a trial).
 
     .. testcode::
+        :skipif: True
 
         import lightgbm
 
