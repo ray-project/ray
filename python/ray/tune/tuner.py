@@ -252,9 +252,9 @@ class Tuner:
         unfinished = (
             ResumeConfig.ResumeType.RESUME
             if resume_unfinished
-            else ResumeConfig.ResumeType.IGNORE
+            else ResumeConfig.ResumeType.SKIP
         )
-        errored = ResumeConfig.ResumeType.IGNORE
+        errored = ResumeConfig.ResumeType.SKIP
         if resume_errored:
             errored = ResumeConfig.ResumeType.RESUME
         elif restart_errored:

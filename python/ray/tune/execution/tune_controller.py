@@ -507,7 +507,7 @@ class TuneController:
             elif resume_type == ResumeConfig.ResumeType.RESTART:
                 trial_to_add = trial.reset()
                 trial_to_add.restore_path = None
-            elif resume_type == ResumeConfig.ResumeType.IGNORE:
+            elif resume_type == ResumeConfig.ResumeType.SKIP:
                 trial_to_add = trial
                 if trial_to_add.status != Trial.ERROR:
                     # Set the status to terminated to skip it.

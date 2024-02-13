@@ -94,6 +94,6 @@ class ResumeConfig:
         RESTART = "restart"
         SKIP = "skip"
 
-    finished: str = ResumeType.IGNORE
+    finished: str = ResumeType.SKIP
     unfinished: str = ResumeType.RESUME
-    errored: str = ResumeType.IGNORE
+    errored: str = ResumeType.SKIP

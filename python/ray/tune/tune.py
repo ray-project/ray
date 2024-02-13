@@ -143,12 +143,12 @@ def _build_resume_config_from_legacy_config(
             resume_config = ResumeConfig(errored=ResumeConfig.ResumeType.RESTART)
         elif setting == "ERRORED_ONLY":
             resume_config = ResumeConfig(
-                unfinished=ResumeConfig.ResumeType.IGNORE,
+                unfinished=ResumeConfig.ResumeType.SKIP,
                 errored=ResumeConfig.ResumeType.RESUME,
             )
         elif setting == "RESTART_ERRORED_ONLY":
             resume_config = ResumeConfig(
-                unfinished=ResumeConfig.ResumeType.IGNORE,
+                unfinished=ResumeConfig.ResumeType.SKIP,
                 errored=ResumeConfig.ResumeType.RESTART,
             )
         else:
