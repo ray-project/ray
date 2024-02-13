@@ -405,7 +405,7 @@ def test_colocate_trainer_and_rank0_worker(
     def train_func():
         # Ensure rank 0 worker is scheduled on a highmem node
         node_id = ray.get_runtime_context().get_node_id()
-        ray.train.report(metrics={f"node_id": node_id})
+        ray.train.report(metrics={"node_id": node_id})
 
     class CustomDataParallelTrainer(DataParallelTrainer):
         def _run_training(self, training_iterator: TrainingIterator) -> None:
