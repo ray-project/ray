@@ -96,6 +96,7 @@ XGBoost
     :toctree: doc/
 
     ~train.xgboost.XGBoostTrainer
+    ~train.xgboost.RayTrainReportCallback
 
 
 LightGBM
@@ -106,6 +107,7 @@ LightGBM
     :toctree: doc/
 
     ~train.lightgbm.LightGBMTrainer
+    ~train.lightgbm.RayTrainReportCallback
 
 
 .. _ray-train-configs-api:
