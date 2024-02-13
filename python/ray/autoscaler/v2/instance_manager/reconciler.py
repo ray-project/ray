@@ -31,7 +31,6 @@ from ray.core.generated.instance_manager_pb2 import (
     InstanceUpdateEvent as IMInstanceUpdateEvent,
 )
 from ray.core.generated.instance_manager_pb2 import (
-    LaunchRequest,
     StatusCode,
     UpdateInstanceManagerStateRequest,
 )

@@ -24,9 +24,7 @@ from ray.core.generated.autoscaler_pb2 import (
     NodeState,
     NodeStatus,
 )
-from ray.core.generated.instance_manager_pb2 import (
-    Instance,
-)
+from ray.core.generated.instance_manager_pb2 import Instance
 
 s_to_ns = 1 * 1_000_000_000
 
