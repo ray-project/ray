@@ -30,12 +30,14 @@ class ResourceManager:
 
     # Memory accounting is accurate only for these operators.
     # We'll enable memory reservation if a dataset only contains these operators.
-    _ACCURRATE_MEMORY_ACCOUNTING_OPS = [
-        InputDataBuffer,
-        MapOperator,
-        LimitOperator,
-        OutputSplitter,
-    ]
+    _ACCURRATE_MEMORY_ACCOUNTING_OPS = tuple(
+        [
+            InputDataBuffer,
+            MapOperator,
+            LimitOperator,
+            OutputSplitter,
+        ]
+    )
 
     def __init__(self, topology: "Topology", options: ExecutionOptions):
         self._topology = topology
@@ -54,9 +56,7 @@ class ResourceManager:
         if ctx.op_resource_reservation_enabled:
             should_enable = True
             for op in topology:
-                if not any(
-                    isinstance(op, t) for t in self._ACCURRATE_MEMORY_ACCOUNTING_OPS
-                ):
+                if not isinstance(op, ResourceManager._ACCURRATE_MEMORY_ACCOUNTING_OPS):
                     should_enable = False
                     break
             if should_enable:
