@@ -44,7 +44,7 @@ class RayTrainReportCallback(TuneCallback):
             This can also be a dict of {<key-to-report>: <xgboost-metric-key>},
             which can be used to rename xgboost default metrics.
         filename: Customize the saved checkpoint file type by passing
-            a filename. Defaults to "model.json".
+            a filename. Defaults to "model.ubj".
         frequency: How often to save checkpoints, in terms of iterations.
             Defaults to 0 (no checkpoints are saved during training).
         checkpoint_at_end: Whether or not to save a checkpoint at the end of training.
@@ -94,7 +94,7 @@ class RayTrainReportCallback(TuneCallback):
 
     """
 
-    CHECKPOINT_NAME = "model.json"
+    CHECKPOINT_NAME = "model.ubj"
 
     def __init__(
         self,
