@@ -22,8 +22,8 @@ from ray.core.generated.autoscaler_pb2 import (
 )
 from ray.core.generated.instance_manager_pb2 import (
     LaunchRequest,
-    TerminationRequest,
     NodeKind,
+    TerminationRequest,
 )
 
 # ============= Resource Scheduling Service API =======================

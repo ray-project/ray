@@ -8,11 +8,11 @@ from ray.autoscaler.v2.instance_manager.common import (
 )
 from ray.autoscaler.v2.instance_manager.instance_storage import InstanceStorage
 from ray.core.generated.instance_manager_pb2 import (
-    NodeKind,
     GetInstanceManagerStateReply,
     GetInstanceManagerStateRequest,
     Instance,
     InstanceUpdateEvent,
+    NodeKind,
     StatusCode,
     UpdateInstanceManagerStateReply,
     UpdateInstanceManagerStateRequest,

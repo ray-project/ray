@@ -29,15 +29,13 @@ from ray.core.generated.autoscaler_pb2 import (
     NodeState,
     NodeStatus,
 )
-from ray.core.generated.instance_manager_pb2 import (
-    GetInstanceManagerStateRequest,
-    NodeKind,
-)
+from ray.core.generated.instance_manager_pb2 import GetInstanceManagerStateRequest
 from ray.core.generated.instance_manager_pb2 import Instance as IMInstance
 from ray.core.generated.instance_manager_pb2 import (
     InstanceUpdateEvent as IMInstanceUpdateEvent,
 )
 from ray.core.generated.instance_manager_pb2 import (
+    NodeKind,
     StatusCode,
     UpdateInstanceManagerStateRequest,
 )
