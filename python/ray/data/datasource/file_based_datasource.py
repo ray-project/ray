@@ -1,5 +1,4 @@
 import io
-import pathlib
 import posixpath
 import warnings
 from typing import (
