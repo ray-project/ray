@@ -2690,9 +2690,15 @@ void NodeManager::HandleUpdateLabel(rpc::UpdateLabelRequest request,
     const NodeID node_id = NodeID::FromBinary(request.node_id());
     absl::flat_hash_map<std::string, std::string> labels(request.new_labels().begin(),
                                                        request.new_labels().end());
+    
+    // Update the labels in the raylet resource manager. This is used for scheduling
     cluster_resource_scheduler_->GetClusterResourceManager().SetNodeLabels(scheduling::NodeID(node_id.Binary()),labels);
-    cluster_resource_scheduler_->GetLocalResourceManager().SetLocalNodeLabel(labels);
 
+    // Only update the "real" label field if it is the current node
+    if (node_id == self_node_id_) {
+      cluster_resource_scheduler_->GetLocalResourceManager().SetLocalNodeLabel(labels);
+    }
+    
     send_reply_callback(Status::OK(), nullptr, nullptr);
                                        
 }

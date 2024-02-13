@@ -154,7 +154,7 @@ void GcsNodeManager::UpdateNodeLabels(const NodeID &node_id,const std::unordered
       auto raylet_client = raylet_client_pool_->GetOrConnectByAddress(remote_address);
       RAY_CHECK(raylet_client);
 
-      raylet_client->UpdateLabel( // FIXME:
+      raylet_client->UpdateLabel(
         label,
         node_id,
         [this, node_id, label=label, node = cur_node] (
@@ -168,7 +168,7 @@ void GcsNodeManager::UpdateNodeLabels(const NodeID &node_id,const std::unordered
         });
 
         /// Once the raylet is shutdown, inform all nodes that the raylet is dead.
-          // RAY_CHECK_OK( // FIXME:
+          // RAY_CHECK_OK(
           //     gcs_publisher_->PublishNodeInfo(node_id, *node, nullptr));
     }
 
