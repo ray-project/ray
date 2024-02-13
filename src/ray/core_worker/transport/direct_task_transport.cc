@@ -709,11 +709,11 @@ void CoreWorkerDirectTaskSubmitter::HandleGetTaskFailureCause(
   std::unique_ptr<rpc::RayErrorInfo> error_info;
   bool fail_immediately = false;
   if (get_task_failure_cause_reply_status.ok()) {
-    RAY_LOG(DEBUG) << "Task failure cause for task " << task_id << ": "
-                   << ray::gcs::RayErrorInfoToString(
-                          get_task_failure_cause_reply.failure_cause())
-                   << " fail immedediately: "
-                   << get_task_failure_cause_reply.fail_task_immediately();
+    RAY_LOG(WARNING) << "Task failure cause for task " << task_id << ": "
+                     << ray::gcs::RayErrorInfoToString(
+                            get_task_failure_cause_reply.failure_cause())
+                     << " fail immedediately: "
+                     << get_task_failure_cause_reply.fail_task_immediately();
     if (get_task_failure_cause_reply.has_failure_cause()) {
       task_error_type = get_task_failure_cause_reply.failure_cause().error_type();
       error_info = std::make_unique<rpc::RayErrorInfo>(
@@ -722,10 +722,10 @@ void CoreWorkerDirectTaskSubmitter::HandleGetTaskFailureCause(
     }
     fail_immediately = get_task_failure_cause_reply.fail_task_immediately();
   } else {
-    RAY_LOG(DEBUG) << "Failed to fetch task result with status "
-                   << get_task_failure_cause_reply_status.ToString()
-                   << " node id: " << NodeID::FromBinary(addr.raylet_id())
-                   << " ip: " << addr.ip_address();
+    RAY_LOG(WARNING) << "Failed to fetch task result with status "
+                     << get_task_failure_cause_reply_status.ToString()
+                     << " node id: " << NodeID::FromBinary(addr.raylet_id())
+                     << " ip: " << addr.ip_address();
     task_error_type = rpc::ErrorType::NODE_DIED;
     std::stringstream buffer;
     buffer << "Task failed due to the node dying.\n\nThe node (IP: " << addr.ip_address()
