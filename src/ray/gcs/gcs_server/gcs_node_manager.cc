@@ -83,10 +83,11 @@ void GcsNodeManager::HandleCheckAlive(rpc::CheckAliveRequest request,
 void GcsNodeManager::HandleUpdateNodeLabels(rpc::UpdateNodeLabelsRequest request, 
                                             rpc::UpdateNodeLabelsReply *reply,
                                             rpc::SendReplyCallback send_reply_callback){
+
+    
     const auto node_id = NodeID::FromBinary(request.node_id());
     
-    std::unordered_map<std::string, std::string> labels(request.labels().begin(),
-                                                       request.labels().end());
+    std::unordered_map<std::string, std::string> labels(request.labels().begin(),request.labels().end());
     // RAY_LOG(INFO) << "Check the update label, node id = " << node_id;
     // std::shared_ptr<rpc::GcsNodeInfo> node;
     // auto iter = alive_nodes_.find(node_id);
@@ -95,6 +96,8 @@ void GcsNodeManager::HandleUpdateNodeLabels(rpc::UpdateNodeLabelsRequest request
     // }else{
     //   return;
     // }
+
+    RAY_LOG(INFO) << "Hihi\n";
     UpdateNodeLabels(node_id,labels);
   //   RAY_LOG(INFO)  << "Set label to node: " <<"The node with node id: " << node_id
   //         << " and address: " << node->node_manager_address()
@@ -104,16 +107,22 @@ void GcsNodeManager::HandleUpdateNodeLabels(rpc::UpdateNodeLabelsRequest request
   // for (auto pair : labels) {
   //       RAY_LOG(INFO)  << "New label Key: " << pair.first << ", Value: " << pair.second ;
   //   }
+
+    RAY_LOG(INFO) << "Hehe\n";
     GCS_RPC_SEND_REPLY(send_reply_callback, reply, Status::OK());
     
 }
 
 void GcsNodeManager::UpdateNodeLabels(const NodeID &node_id,const std::unordered_map<std::string, std::string> &labels) {
   
+  RAY_LOG(INFO) << "Haha\n";
   std::shared_ptr<rpc::GcsNodeInfo> node;
   auto iter = alive_nodes_.find(node_id);
   if (iter == alive_nodes_.end()) {
+    RAY_LOG(INFO) << "Update Node Label: Cannot find node id";
     return;
+  } else {
+    node = iter->second;
   }
 
   // rpc::Address remote_address;
@@ -121,6 +130,7 @@ void GcsNodeManager::UpdateNodeLabels(const NodeID &node_id,const std::unordered
   // remote_address.set_ip_address(node->node_manager_address());
   // remote_address.set_port(node->node_manager_port());
 
+  RAY_LOG(INFO) << "Huhu";
   auto& myMap = *node->mutable_labels();
   for(auto pair: labels) {
     myMap[pair.first]=pair.second;
