@@ -1,4 +1,0 @@
-name: "forge"
-froms:
-  - ubuntu:20.04
-dockerfile: .buildkite/release-automation/forge.Dockerfile

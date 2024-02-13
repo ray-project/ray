@@ -1,3 +1,4 @@
+import argparse
 from collections import Counter
 import copy
 import gymnasium as gym
@@ -28,6 +29,7 @@ import yaml
 
 import ray
 from ray import air, tune
+from ray.air.integrations.wandb import WandbLoggerCallback
 from ray.rllib.env.wrappers.atari_wrappers import is_atari, wrap_deepmind
 from ray.rllib.utils.framework import try_import_jax, try_import_tf, try_import_torch
 from ray.rllib.utils.metrics import (
@@ -59,6 +61,148 @@ if tf1:
 torch, _ = try_import_torch()
 
 logger = logging.getLogger(__name__)
+
+
+def add_rllib_example_script_args(
+    parser: Optional[argparse.ArgumentParser] = None,
+    default_reward: float = 100.0,
+    default_iters: int = 200,
+    default_timesteps: int = 100000,
+) -> argparse.ArgumentParser:
+    """Adds RLlib-typical (and common) examples scripts command line args to a parser.
+
+    TODO (sven): This function should be used by most of our examples scripts, which
+     already mostly have this logic in them (but written out).
+
+    Args:
+        parser: The parser to add the arguments to. If None, create a new one.
+        default_reward: The default value for the --stop-reward option.
+        default_iters: The default value for the --stop-iters option.
+        default_timesteps: The default value for the --stop-timesteps option.
+
+    Returns:
+        The altered (or newly created) parser object.
+    """
+    if parser is None:
+        parser = argparse.ArgumentParser()
+
+    # Algo and Algo config options.
+    parser.add_argument(
+        "--algo", type=str, default="PPO", help="The RLlib-registered algorithm to use."
+    )
+    parser.add_argument(
+        "--enable-new-api-stack",
+        action="store_true",
+        help="Whether to use the _enable_new_api_stack config setting.",
+    )
+    parser.add_argument(
+        "--framework",
+        choices=["tf", "tf2", "torch"],
+        default="torch",
+        help="The DL framework specifier.",
+    )
+    parser.add_argument(
+        "--num-env-runners",
+        type=int,
+        default=2,
+        help="The number of (remote) EnvRunners to use for the experiment.",
+    )
+    parser.add_argument(
+        "--num-agents",
+        type=int,
+        default=0,
+        help="If 0 (default), will run as single-agent. If > 0, will run as "
+        "multi-agent with the environment simply cloned n times and each agent acting "
+        "independently at every single timestep. The overall reward for this "
+        "experiment is then the sum over all individual agents' rewards.",
+    )
+
+    # tune.Tuner options.
+    parser.add_argument(
+        "--no-tune",
+        action="store_true",
+        help="Whether to NOT use tune.Tuner(), but rather a simple for-loop calling "
+        "`algo.train()` repeatedly until one of the stop criteria is met.",
+    )
+    parser.add_argument(
+        "--num-samples",
+        type=int,
+        default=1,
+        help="How many (tune.Tuner.fit()) experiments to execute - if possible in "
+        "parallel.",
+    )
+    parser.add_argument(
+        "--verbose",
+        type=int,
+        default=2,
+        help="The verbosity level for the `tune.Tuner()` running the experiment.",
+    )
+    parser.add_argument(
+        "--checkpoint-freq",
+        type=int,
+        default=0,
+        help=(
+            "The frequency (in training iterations) with which to create checkpoints. "
+            "Note that if --wandb-key is provided, these checkpoints will "
+            "automatically be uploaded to WandB."
+        ),
+    )
+
+    # WandB logging options.
+    parser.add_argument(
+        "--wandb-key",
+        type=str,
+        default=None,
+        help="The WandB API key to use for uploading results.",
+    )
+    parser.add_argument(
+        "--wandb-project",
+        type=str,
+        default=None,
+        help="The WandB project name to use.",
+    )
+    parser.add_argument(
+        "--wandb-run-name",
+        type=str,
+        default=None,
+        help="The WandB run name to use.",
+    )
+
+    # Experiment stopping and testing criteria.
+    parser.add_argument(
+        "--stop-reward",
+        type=float,
+        default=default_reward,
+        help="Reward at which the script should stop training.",
+    )
+    parser.add_argument(
+        "--stop-iters",
+        type=int,
+        default=default_iters,
+        help="The number of iterations to train.",
+    )
+    parser.add_argument(
+        "--stop-timesteps",
+        type=int,
+        default=default_timesteps,
+        help="The number of (environment sampling) timesteps to train.",
+    )
+    parser.add_argument(
+        "--as-test",
+        action="store_true",
+        help="Whether this script should be run as a test. If set, --stop-reward must "
+        "be achieved within --stop-timesteps AND --stop-iters, otherwise this "
+        "script will throw an exception at the end.",
+    )
+
+    # Ray init options.
+    parser.add_argument("--num-cpus", type=int, default=0)
+    parser.add_argument(
+        "--local-mode",
+        action="store_true",
+        help="Init Ray in local mode for easier debugging.",
+    )
+    return parser
 
 
 def check(x, y, decimals=5, atol=None, rtol=None, false=False):
@@ -988,6 +1132,79 @@ def run_learning_tests_from_yaml(
     }
 
     return result
+
+
+def run_rllib_example_script_experiment(
+    config: "AlgorithmConfig",
+    args: argparse.Namespace,
+) -> Union[ResultDict, tune.result_grid.ResultGrid]:
+    """Given an algorithm config and some command line args, runs an experiment.
+
+    There are some constraints on what properties must be defined in `args`.
+    It should ideally be generated via the ``
+
+    Args:
+        config: The AlgorithmConfig object to use for this experiment.
+        args: A argparse.Namespace object which must have the following properties
+            defined: `stop_iters`, `stop_reward`, `stop_timesteps`, `no_tune`,
+            `verbose`, `checkpoint_freq`, `as_test`. Optionally, for wandb logging:
+            `wandb_key`, `wandb_project`, `wandb_run_name`.
+
+    Returns:
+        The last ResultDict from a --no-tune run OR the tune.Tuner.fit()
+        results.
+    """
+    ray.init(num_cpus=args.num_cpus or None, local_mode=args.local_mode)
+
+    stop = {
+        "training_iteration": args.stop_iters,
+        "episode_reward_mean": args.stop_reward,
+        "timesteps_total": args.stop_timesteps,
+    }
+
+    if args.no_tune:
+        algo = config.build()
+        for iter in range(args.stop_iters):
+            results = algo.train()
+            print(f"R={results['episode_reward_mean']}")
+            for key, value in stop.items():
+                if results.get(key, float("-inf")) > value:
+                    print(f"Stop criterium ({key}={value}) fulfilled!")
+                    return results
+        return results
+
+    callbacks = None
+    if hasattr(args, "wandb_key") and args.wandb_key is not None:
+        project = args.wandb_project or (
+            args.algo.lower() + "-" + re.sub("\\W+", "-", str(config.env).lower())
+        )
+        callbacks = [
+            WandbLoggerCallback(
+                api_key=args.wandb_key,
+                project=project,
+                upload_checkpoints=True,
+                **({"name": args.wandb_run_name} if args.wandb_run_name else {}),
+            )
+        ]
+
+    results = tune.Tuner(
+        config.algo_class,
+        param_space=config,
+        run_config=air.RunConfig(
+            stop=stop,
+            verbose=2 if args.verbose else 1,
+            callbacks=callbacks,
+            checkpoint_config=air.CheckpointConfig(
+                checkpoint_frequency=args.checkpoint_freq,
+            ),
+        ),
+        tune_config=tune.TuneConfig(num_samples=args.num_samples),
+    ).fit()
+
+    if args.as_test:
+        check_learning_achieved(results, args.stop_reward)
+
+    return results
 
 
 def check_same_batch(batch1, batch2) -> None:
