@@ -11,7 +11,7 @@ import ray
 from ray._private.test_utils import (
     run_string_as_driver,
     run_string_as_driver_nonblocking,
-    wait_for_condition,
+    run_string_as_driver_stdout_stderr,
 )
 
 
@@ -195,13 +195,10 @@ x = foo.remote()
 time.sleep(15)
     """
 
-    proc = run_string_as_driver_nonblocking(script)
-    out_str = proc.stdout.read().decode("ascii")
-    err_str = proc.stderr.read().decode("ascii")
-
+    out_str, err_str = run_string_as_driver_stdout_stderr(script)
     print(out_str, err_str)
-    assert "Tip:" in out_str
-    assert "Error: No available node types can fulfill" in out_str
+    assert "Tip:" in out_str, (out_str, err_str)
+    assert "Error: No available node types can fulfill" in out_str, (out_str, err_str)
 
 
 @pytest.mark.parametrize(
@@ -238,13 +235,14 @@ b = A.remote()
 time.sleep(25)
     """
 
-    proc = run_string_as_driver_nonblocking(script)
-    out_str = proc.stdout.read().decode("ascii")
-    err_str = proc.stderr.read().decode("ascii")
+    out_str, err_str = run_string_as_driver_stdout_stderr(script)
 
     print(out_str, err_str)
-    assert "Tip:" in out_str
-    assert "Warning: The following resource request cannot" in out_str
+    assert "Tip:" in out_str, (out_str, err_str)
+    assert "Warning: The following resource request cannot" in out_str, (
+        out_str,
+        err_str,
+    )
 
 
 # TODO(rickyx): Remove this after migration
@@ -351,16 +349,10 @@ event_logger.info("Test autoscaler event")
 # Block and sleep
 time.sleep(3)
     """
-
-    proc = run_string_as_driver_nonblocking(script)
-
-    def verify():
-        out_str = proc.stdout.read().decode("ascii")
-        print(out_str)
-        assert out_str and "Test autoscaler event" in out_str
-        return True
-
-    wait_for_condition(verify)
+    out_str, err_str = run_string_as_driver_stdout_stderr(script)
+    print(out_str)
+    print(err_str)
+    assert "Test autoscaler event" in out_str, (out_str, err_str)
 
 
 @pytest.mark.parametrize(
@@ -408,25 +400,20 @@ time.sleep(3)
 
     env = os.environ.copy()
     env["RAY_LOG_TO_DRIVER_EVENT_LEVEL"] = event_level
-    proc = run_string_as_driver_nonblocking(script, env=env)
 
-    def verify():
-        out_str = proc.stdout.read().decode("ascii")
-        print(out_str)
-        # Filter only autoscaler prints.
-        assert out_str
+    out_str, err_str = run_string_as_driver_stdout_stderr(script, env=env)
+    print(out_str)
+    print(err_str)
 
-        out_str = "".join(
-            [line for line in out_str.splitlines() if "autoscaler" in line]
-        )
-        for expected in expected_msg.split(","):
-            assert expected in out_str
-        if unexpected_msg:
-            for unexpected in unexpected_msg.split(","):
-                assert unexpected not in out_str
-        return True
+    # Filter only autoscaler prints.
+    assert out_str
 
-    wait_for_condition(verify)
+    out_str = "".join([line for line in out_str.splitlines() if "autoscaler" in line])
+    for expected in expected_msg.split(","):
+        assert expected in out_str
+    if unexpected_msg:
+        for unexpected in unexpected_msg.split(","):
+            assert unexpected not in out_str
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows.")
