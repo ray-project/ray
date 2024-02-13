@@ -4,6 +4,8 @@ set -euo pipefail
 
 set -x
 
+python_versions=("3.8" "3.9" "3.10" "3.11")
+
 # Check for arguments
 if [ "$#" -ne 1 ]; then
     echo "Missing argument to specify machine architecture."
@@ -13,33 +15,42 @@ fi
 
 mac_architecture=$1 # First argument is the architecture of the machine, e.g. x86_64, arm64
 
-export PYTHON_VERSION="${PYTHON_VERSION:-3.8}"
 export RAY_VERSION="${RAY_VERSION:-2.9.1}"
 export RAY_HASH="${RAY_HASH:-cfbf98c315cfb2710c56039a3c96477d196de049}"
 
+# Create tmp directory for the run
+TMP_DIR="$HOME/tmp/run-macos"
+mkdir -p "$TMP_DIR"
+
 # Install miniconda3 based on the architecture used
-mkdir -p ~/miniconda3
-curl https://repo.anaconda.com/miniconda/Miniconda3-py38_23.1.0-1-MacOSX-"$mac_architecture".sh -o ~/miniconda3/miniconda.sh
-bash ~/miniconda3/miniconda.sh -b -u -p ~/miniconda3
-rm -rf ~/miniconda3/miniconda.sh
+mkdir -p "$TMP_DIR/miniconda3"
+curl https://repo.anaconda.com/miniconda/Miniconda3-py38_23.1.0-1-MacOSX-"$mac_architecture".sh -o "$TMP_DIR/miniconda3/miniconda.sh"
+bash "$TMP_DIR/miniconda3/miniconda.sh" -b -u -p "$TMP_DIR/miniconda3"
+rm -rf "$TMP_DIR/miniconda3/miniconda.sh"
 
 # Add miniconda3 to the PATH to use `conda` command.
-export PATH="$HOME/miniconda3/bin:$PATH"
+export PATH="$TMP_DIR/miniconda3/bin:$PATH"
 
 # Initialize conda. This replaces calling `conda init bash`.
 # Conda init command requires a shell restart which should not be done on BK.
-source "$HOME/miniconda3/etc/profile.d/conda.sh"
+source "$TMP_DIR/miniconda3/etc/profile.d/conda.sh"
 
-conda create -n rayio python="${PYTHON_VERSION}" -y
+for python_version in "${python_versions[@]}"; do
+    conda create -n "rayio_${python_version}" python="${python_version}" -y
 
-conda activate rayio
+    conda activate "rayio_${python_version}"
 
-pip install \
-    --index-url https://test.pypi.org/simple/ \
-    --extra-index-url https://pypi.org/simple \
-    "ray[cpp]==$RAY_VERSION"
+    pip install \
+        --index-url https://test.pypi.org/simple/ \
+        --extra-index-url https://pypi.org/simple \
+        "ray[cpp]==$RAY_VERSION"
 
-(
-    cd release/util
-    python sanity_check.py
-)
+    (
+        cd release/util
+        python sanity_check.py
+    )
+    conda deactivate
+
+done
+
+rm -rf "$TMP_DIR"
