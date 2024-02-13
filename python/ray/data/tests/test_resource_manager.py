@@ -1,10 +1,10 @@
 import math
 import time
-import unittest
 from unittest.mock import MagicMock, patch
 
 import pytest
 
+import ray
 from ray.data._internal.execution.interfaces.execution_options import (
     ExecutionOptions,
     ExecutionResources,
@@ -19,7 +19,7 @@ from ray.data._internal.execution.util import make_ref_bundles
 from ray.data.tests.test_streaming_executor import make_map_transformer
 
 
-class TestResourceManager(unittest.TestCase):
+class TestResourceManager:
     """Unit tests for ResourceManager."""
 
     def test_global_limits(self):
@@ -113,12 +113,14 @@ class TestResourceManager(unittest.TestCase):
         o3 = MapOperator.create(
             make_map_transformer(lambda block: [b * 2 for b in block]), o2
         )
-        o2.current_resource_usage = MagicMock(
-            return_value=ExecutionResources(cpu=5, gpu=0, object_store_memory=500)
+        o2.current_processor_usage = MagicMock(
+            return_value=ExecutionResources(cpu=5, gpu=0)
         )
-        o3.current_resource_usage = MagicMock(
-            return_value=ExecutionResources(cpu=10, gpu=0, object_store_memory=1000)
+        o2.metrics.obj_store_mem_internal_outqueue = 500
+        o3.current_processor_usage = MagicMock(
+            return_value=ExecutionResources(cpu=10, gpu=0)
         )
+        o3.metrics.obj_store_mem_internal_outqueue = 1000
         topo, _ = build_streaming_topology(o3, ExecutionOptions())
         inputs[0].size_bytes = MagicMock(return_value=200)
         topo[o2].add_output(inputs[0])
@@ -138,3 +140,89 @@ class TestResourceManager(unittest.TestCase):
         assert resource_manager.get_downstream_object_store_memory(o1) == 1700
         assert resource_manager.get_downstream_object_store_memory(o2) == 1700
         assert resource_manager.get_downstream_object_store_memory(o3) == 1000
+
+    def test_object_store_usage(self, restore_data_context):
+        input = make_ref_bundles([[x] for x in range(1)])[0]
+        input.size_bytes = MagicMock(return_value=1)
+
+        o1 = InputDataBuffer([input])
+        o2 = MapOperator.create(MagicMock(), o1)
+        o3 = MapOperator.create(MagicMock(), o2)
+
+        topo, _ = build_streaming_topology(o3, ExecutionOptions())
+        resource_manager = ResourceManager(topo, ExecutionOptions())
+        ray.data.DataContext.get_current()._max_num_blocks_in_streaming_gen_buffer = 1
+        ray.data.DataContext.get_current().target_max_block_size = 2
+
+        resource_manager.update_usages()
+        assert resource_manager.get_op_usage(o1).object_store_memory == 0
+        assert resource_manager.get_op_usage(o2).object_store_memory == 0
+        assert resource_manager.get_op_usage(o3).object_store_memory == 0
+
+        # Objects in an operator's internal inqueue typically count toward the previous
+        # operator's object store memory usage. However, data from an
+        # `InputDataBuffer` aren't counted because they were created outside of this
+        # execution.
+        o2.metrics.on_input_queued(input)
+        resource_manager.update_usages()
+        assert resource_manager.get_op_usage(o1).object_store_memory == 0
+        assert resource_manager.get_op_usage(o2).object_store_memory == 0
+        assert resource_manager.get_op_usage(o3).object_store_memory == 0
+
+        # Operators estimate pending task outputs using the target max block size.
+        # In this case, the target max block size is 2 and there is at most 1 block
+        # in the streaming generator buffer, so the estimated usage is 2.
+        o2.metrics.on_input_dequeued(input)
+        o2.metrics.on_task_submitted(0, input)
+        resource_manager.update_usages()
+        assert resource_manager.get_op_usage(o1).object_store_memory == 0
+        assert resource_manager.get_op_usage(o2).object_store_memory == 2
+        assert resource_manager.get_op_usage(o3).object_store_memory == 0
+
+        # When the task finishes, we move the data from the streaming generator to the
+        # operator's internal outqueue.
+        o2.metrics.on_output_queued(input)
+        o2.metrics.on_task_finished(0, None)
+        resource_manager.update_usages()
+        assert resource_manager.get_op_usage(o1).object_store_memory == 0
+        assert resource_manager.get_op_usage(o2).object_store_memory == 1
+        assert resource_manager.get_op_usage(o3).object_store_memory == 0
+
+        o2.metrics.on_output_dequeued(input)
+        topo[o2].outqueue.append(input)
+        resource_manager.update_usages()
+        assert resource_manager.get_op_usage(o1).object_store_memory == 0
+        assert resource_manager.get_op_usage(o2).object_store_memory == 1
+        assert resource_manager.get_op_usage(o3).object_store_memory == 0
+
+        # Objects in the current operator's internal inqueue count towards the previous
+        # operator's object store memory usage.
+        o3.metrics.on_input_queued(topo[o2].outqueue.pop())
+        resource_manager.update_usages()
+        assert resource_manager.get_op_usage(o1).object_store_memory == 0
+        assert resource_manager.get_op_usage(o2).object_store_memory == 1
+        assert resource_manager.get_op_usage(o3).object_store_memory == 0
+
+        # Task inputs count toward the previous operator's object store memory usage,
+        # and task outputs count toward the current operator's object store memory
+        # usage.
+        o3.metrics.on_input_dequeued(input)
+        o3.metrics.on_task_submitted(0, input)
+        resource_manager.update_usages()
+        assert resource_manager.get_op_usage(o1).object_store_memory == 0
+        assert resource_manager.get_op_usage(o2).object_store_memory == 1
+        assert resource_manager.get_op_usage(o3).object_store_memory == 2
+
+        # Task inputs no longer count once the task is finished.
+        o3.metrics.on_output_queued(input)
+        o3.metrics.on_task_finished(0, None)
+        resource_manager.update_usages()
+        assert resource_manager.get_op_usage(o1).object_store_memory == 0
+        assert resource_manager.get_op_usage(o2).object_store_memory == 0
+        assert resource_manager.get_op_usage(o3).object_store_memory == 1
+
+
+if __name__ == "__main__":
+    import sys
+
+    sys.exit(pytest.main(["-v", __file__]))

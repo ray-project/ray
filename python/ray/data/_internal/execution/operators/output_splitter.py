@@ -4,7 +4,6 @@ from typing import Any, Dict, List, Optional
 
 from ray.data._internal.execution.interfaces import (
     ExecutionOptions,
-    ExecutionResources,
     NodeIdStr,
     PhysicalOperator,
     RefBundle,
@@ -87,7 +86,9 @@ class OutputSplitter(PhysicalOperator):
         return len(self._output_queue) > 0
 
     def _get_next_inner(self) -> RefBundle:
-        return self._output_queue.popleft()
+        output = self._output_queue.popleft()
+        self._metrics.on_output_dequeued(output)
+        return output
 
     def get_stats(self) -> StatsDict:
         return {"split": []}  # TODO(ekl) add split metrics?
@@ -102,6 +103,7 @@ class OutputSplitter(PhysicalOperator):
         if bundle.num_rows() is None:
             raise ValueError("OutputSplitter requires bundles with known row count")
         self._buffer.append(bundle)
+        self._metrics.on_input_queued(bundle)
         self._dispatch_bundles()
 
     def all_inputs_done(self) -> None:
@@ -132,16 +134,11 @@ class OutputSplitter(PhysicalOperator):
             for b in bundles:
                 b.output_split_idx = i
                 self._output_queue.append(b)
+                self._metrics.on_output_queued(b)
         self._buffer = []
 
     def internal_queue_size(self) -> int:
         return len(self._buffer)
-
-    def current_resource_usage(self) -> ExecutionResources:
-        return ExecutionResources(
-            object_store_memory=sum(b.size_bytes() for b in self._buffer)
-            + sum(b.size_bytes() for b in self._output_queue)
-        )
 
     def progress_str(self) -> str:
         if self._locality_hints:
@@ -161,6 +158,7 @@ class OutputSplitter(PhysicalOperator):
                 target_bundle.output_split_idx = target_index
                 self._num_output[target_index] += target_bundle.num_rows()
                 self._output_queue.append(target_bundle)
+                self._metrics.on_output_queued(target_bundle)
                 if self._locality_hints:
                     preferred_loc = self._locality_hints[target_index]
                     if self._get_location(target_bundle) == preferred_loc:
@@ -183,8 +181,12 @@ class OutputSplitter(PhysicalOperator):
             for bundle in self._buffer:
                 if self._get_location(bundle) == preferred_loc:
                     self._buffer.remove(bundle)
+                    self._metrics.on_input_dequeued(bundle)
                     return bundle
-        return self._buffer.pop(0)
+
+        bundle = self._buffer.pop(0)
+        self._metrics.on_input_dequeued(bundle)
+        return bundle
 
     def _can_safely_dispatch(self, target_index: int, nrow: int) -> bool:
         if not self._equal:
