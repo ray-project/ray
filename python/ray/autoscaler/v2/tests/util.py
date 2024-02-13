@@ -24,9 +24,6 @@ class MockSubscriber:
     def events_by_id(self, event_id):
         return [e for e in self.events if e.instance_id == event_id]
 
-    def events_by_id(self, instance_id):
-        return [e for e in self.events if e.instance_id == instance_id]
-
 
 def make_autoscaler_instance(
     im_instance: Optional[Instance] = None,
