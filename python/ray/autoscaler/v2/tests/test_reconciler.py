@@ -171,7 +171,6 @@ class TestReconciler:
 
         cloud_instances = {
             "c-1": CloudInstance("c-1", "type-1", "", True),
-            "c-2": CloudInstance("c-2", "type-999", "", True),
         }
 
         Reconciler.reconcile(
@@ -610,45 +609,6 @@ class TestReconciler:
         assert instances["i-2"].status == Instance.TERMINATED
 
     @staticmethod
-    def test_extra_cloud_instances(setup):
-        """
-        Test that extra cloud instances should be terminated.
-        """
-        instance_manager, instance_storage, _ = setup
-
-        im_instances = [
-            create_instance(
-                "i-1", status=Instance.RAY_RUNNING, cloud_instance_id="c-1"
-            ),  # To be reconciled.
-        ]
-        TestReconciler._add_instances(instance_storage, im_instances)
-
-        ray_nodes = [
-            NodeState(node_id=b"r-1", status=NodeStatus.RUNNING, instance_id="c-1"),
-        ]
-
-        cloud_instances = {
-            "c-1": CloudInstance("c-1", "type-1", "", True),
-            "c-2": CloudInstance("c-2", "type-2", "", True),  # Extra
-        }
-
-        mock_cloud_provider = MagicMock()
-
-        Reconciler.reconcile(
-            instance_manager,
-            scheduler=MockScheduler(),
-            cloud_provider=mock_cloud_provider,
-            ray_cluster_resource_state=ClusterResourceState(node_states=ray_nodes),
-            non_terminated_cloud_instances=cloud_instances,
-            cloud_provider_errors=[],
-            ray_install_errors=[],
-            autoscaling_config=MockAutoscalingConfig(),
-        )
-
-        assert mock_cloud_provider.terminate.call_count == 1
-        assert mock_cloud_provider.terminate.call_args.kwargs["ids"] == ["c-2"]
-
-    @staticmethod
     @pytest.mark.parametrize(
         "max_concurrent_launches,num_allocated,num_requested",
         [
@@ -985,7 +945,7 @@ class TestReconciler:
         mock_scheduler = MagicMock()
         mock_scheduler.schedule.return_value = SchedulingReply(
             to_launch=[
-                LaunchRequest(instance_type="type-1", count=1),
+                LaunchRequest(instance_type="type-1", count=2),
             ],
             to_terminate=[
                 TerminationRequest(
@@ -1018,12 +978,13 @@ class TestReconciler:
 
         instances, _ = instance_storage.get_instances()
 
-        assert len(instances) == 2
+        assert len(instances) == 3
         for id, instance in instances.items():
             if id == "i-1":
                 assert instance.status == Instance.RAY_STOPPING
             else:
                 assert instance.status == Instance.QUEUED
+                assert instance.instance_type == "type-1"
 
         assert len(state.infeasible_gang_resource_requests) == 1
 
@@ -1237,6 +1198,50 @@ class TestReconciler:
             failed_instance_requests[r.ray_node_type_name] += r.count
         assert pending_instance_requests == {"type-2": 1, "type-3": 1}
         assert failed_instance_requests == {"type-4": 1}
+
+    @staticmethod
+    def test_extra_cloud_instances(setup):
+        """
+        Test that extra cloud instances should be terminated.
+        """
+        instance_manager, instance_storage, subscriber = setup
+
+        im_instances = [
+            create_instance(
+                "i-1", status=Instance.RAY_RUNNING, cloud_instance_id="c-1"
+            ),  # To be reconciled.
+        ]
+        TestReconciler._add_instances(instance_storage, im_instances)
+
+        ray_nodes = [
+            NodeState(node_id=b"r-1", status=NodeStatus.RUNNING, instance_id="c-1"),
+        ]
+
+        cloud_instances = {
+            "c-1": CloudInstance("c-1", "type-1", "", True),
+            "c-2": CloudInstance("c-2", "type-2", "", True),  # Extra
+        }
+
+        subscriber.clear()
+        Reconciler.reconcile(
+            instance_manager,
+            scheduler=MockScheduler(),
+            cloud_provider=MagicMock(),
+            ray_cluster_resource_state=ClusterResourceState(node_states=ray_nodes),
+            non_terminated_cloud_instances=cloud_instances,
+            cloud_provider_errors=[],
+            ray_install_errors=[],
+            autoscaling_config=MockAutoscalingConfig(),
+        )
+
+        assert len(subscriber.events) == 1
+        assert subscriber.events[0].new_instance_status == Instance.TERMINATING
+        assert subscriber.events[0].cloud_instance_id == "c-2"
+
+        instances, _ = instance_storage.get_instances()
+        assert len(instances) == 2
+        statuses = {instance.status for instance in instances.values()}
+        assert statuses == {Instance.RAY_RUNNING, Instance.TERMINATING}
 
 
 if __name__ == "__main__":

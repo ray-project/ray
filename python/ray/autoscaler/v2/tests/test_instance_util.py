@@ -10,7 +10,7 @@ import pytest
 
 from ray.autoscaler.v2.instance_manager.common import (
     InstanceUtil,
-    InvalidInstanceStatusTransitionError,
+    InvalidInstanceUpdateError,
 )
 from ray.core.generated.instance_manager_pb2 import Instance
 
@@ -48,10 +48,10 @@ class InstanceUtilTest(unittest.TestCase):
         assert instance.status == Instance.REQUESTED
 
         # Set status with invalid status.
-        with pytest.raises(InvalidInstanceStatusTransitionError):
+        with pytest.raises(InvalidInstanceUpdateError):
             InstanceUtil.set_status(instance, Instance.RAY_RUNNING)
 
-        with pytest.raises(InvalidInstanceStatusTransitionError):
+        with pytest.raises(InvalidInstanceUpdateError):
             InstanceUtil.set_status(instance, Instance.UNKNOWN)
 
     def test_transition_graph(self):
