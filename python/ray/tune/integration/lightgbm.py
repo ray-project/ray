@@ -2,9 +2,6 @@ from ray.util.annotations import Deprecated
 
 from ray.train.lightgbm import RayTrainReportCallback as TuneReportCheckpointCallback
 
-# If a user imports from this package, then the class module should line up.
-TuneReportCheckpointCallback.__module__ = "ray.tune.integration.lightgbm"
-
 
 @Deprecated
 class TuneReportCallback:

@@ -1,9 +1,6 @@
 from ray.train.xgboost import RayTrainReportCallback as TuneReportCheckpointCallback
 from ray.util.annotations import Deprecated
 
-# If a user imports from this package, then the class module should line up.
-TuneReportCheckpointCallback.__module__ = "ray.tune.integration.xgboost"
-
 
 @Deprecated
 class TuneReportCallback:
