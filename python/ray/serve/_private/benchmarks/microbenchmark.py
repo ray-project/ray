@@ -13,7 +13,7 @@ from starlette.requests import Request
 import ray
 from ray import serve
 from ray.serve._private.benchmarks.common import run_throughput_benchmark
-from ray.serve.handle import RayServeHandle
+from ray.serve.handle import DeploymentHandle
 
 NUM_CLIENTS = 8
 CALLS_PER_BATCH = 100
@@ -46,7 +46,7 @@ def build_app(
 ):
     @serve.deployment(max_concurrent_queries=1000)
     class Upstream:
-        def __init__(self, handle: RayServeHandle):
+        def __init__(self, handle: DeploymentHandle):
             self._handle = handle
 
             # Turn off access log.
