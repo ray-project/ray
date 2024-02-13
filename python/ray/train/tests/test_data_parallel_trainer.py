@@ -39,21 +39,22 @@ def ray_start_4_cpus_4_gpus_4_extra():
 def ray_start_heterogenous_cluster():
     """
     Start a heterogenous cluster with 8 nodes:
-        - 1 node with 4 x A100 and 100GB memory
-        - 3 nodes with 4 x A100 and 10GB memory
-        - 1 node with 4 x A10G and 100GB memory
-        - 3 nodes with 4 x A10G and 10GB memory
+        - 1 node with  4 x A100 and 100 x custom resource
+        - 3 nodes with 4 x A100 and  10 x custom resource
+        - 1 node with  4 x A10G and 100 x custom resource
+        - 3 nodes with 4 x A10G and  10 x custom resource
     """
     cluster = Cluster()
 
     for accelerator_type in ["A100", "A10G"]:
         for i in range(4):
-            memory_gb = 100 if i == 0 else 10
             cluster.add_node(
                 num_cpus=4,
                 num_gpus=4,
-                memory=memory_gb * 1024**3,
-                resources={f"{RESOURCE_CONSTRAINT_PREFIX}{accelerator_type}": 4},
+                resources={
+                    f"{RESOURCE_CONSTRAINT_PREFIX}{accelerator_type}": 4,
+                    "custom_resource": 100 if i == 0 else 10,
+                },
             )
 
     ray.init(address=cluster.address)
@@ -413,14 +414,14 @@ def test_config_accelerator_type(ray_start_heterogenous_cluster, accelerator_typ
 def test_colocate_trainer_and_rank_0_worker(ray_start_heterogenous_cluster):
     from ray.util.state import get_node
 
-    rank_0_memory = 100 * 1024**3
+    rank_0_resource = 100
 
     def train_func():
         # Ensure rank 0 worker is scheduled on a highmem node
         if ray.train.get_context().get_world_rank() == 0:
             node_id = ray.get_runtime_context().get_node_id()
             node_resources = get_node(node_id).resources_total
-            assert node_resources["memory"] >= rank_0_memory
+            assert node_resources["custom_resource"] >= rank_0_resource
 
     trainer = DataParallelTrainer(
         train_func,
@@ -428,7 +429,7 @@ def test_colocate_trainer_and_rank_0_worker(ray_start_heterogenous_cluster):
             num_workers=8,
             use_gpu=True,
             accelerator_type="A100",
-            trainer_resources={"memory": rank_0_memory},
+            trainer_resources={"custom_resource": rank_0_resource},
         ),
     )
     trainer.fit()

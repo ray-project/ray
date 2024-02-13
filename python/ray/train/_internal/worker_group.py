@@ -387,9 +387,10 @@ class WorkerGroup:
 
         Args:
             _first_ip: The first IP to group by.
-                This ensures that rank 0 worker is on the same node as the
-                trainable, allowing additional resources to be specified for
-                rank 0 workers via `ScalingConfig(trainer_resources=)`.
+                Set this to the node IP of the trainer coordinator to ensure that the
+                rank 0 worker is on the same node, allowing additional resources to
+                be specified for rank 0 workers via
+                `ScalingConfig(trainer_resources=)`.
         """
         ip_to_workers = defaultdict(list)
 

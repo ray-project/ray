@@ -121,9 +121,12 @@ class ScalingConfig:
         placement_strategy: The placement strategy to use for the
             placement group of the Ray actors. See :ref:`Placement Group
             Strategies <pgroup-strategy>` for the possible options.
-        accelerator_type: [Experimental] If specified, Ray Train will launch the training coordinator
-            and workers on the nodes with the specified type of accelerators.
-            See :ref:`the available accelerator types <accelerator_types>`. Ensure that your cluster has instances with the specified accelerator type or is able to autoscale to fulfill the request.
+        accelerator_type: [Experimental] If specified, Ray Train will launch the
+            training coordinator and workers on the nodes with the specified type
+            of accelerators.
+            See :ref:`the available accelerator types <accelerator_types>`.
+            Ensure that your cluster has instances with the specified accelerator type
+            or is able to autoscale to fulfill the request.
 
     Example:
 
