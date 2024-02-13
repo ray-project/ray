@@ -11,8 +11,7 @@ set -euo pipefail
 
 apt-get update
 apt-get upgrade -y
-apt-get install -y -qq \
-    curl zip clang-12
+apt-get install -y curl zip clang-12
 
 ln -s /usr/bin/clang-12 /usr/bin/clang
 
@@ -23,11 +22,10 @@ rm /tmp/miniconda.sh
 /root/miniconda3/bin/conda init bash
 
 # Install Bazelisk
-curl -L https://github.com/bazelbuild/bazelisk/releases/download/v1.19.0/bazelisk-linux-amd64 --output bazelisk
-chmod +x bazelisk
+curl -L https://github.com/bazelbuild/bazelisk/releases/download/v1.19.0/bazelisk-linux-amd64 --output /usr/local/bin/bazelisk
+chmod +x /usr/local/bin/bazelisk
 
-mv bazelisk /usr/bin/
-ln -s /usr/bin/bazelisk /usr/bin/bazel
+ln -s /usr/local/bin/bazelisk /usr/local/bin/bazel
 
 EOF
 
