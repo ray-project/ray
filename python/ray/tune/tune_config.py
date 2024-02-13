@@ -79,6 +79,8 @@ class TuneConfig:
 @DeveloperAPI
 @dataclass
 class ResumeConfig:
+    """[Experimental] This config is used to specify how to resume Tune trials."""
+
     class ResumeType(Enum):
         """An enumeration to define resume types for various trial states.
 
