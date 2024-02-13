@@ -47,9 +47,12 @@ run_sanity_check() {
     conda deactivate
 }
 
+_clean_up() {
+    rm -rf "$TMP_DIR"
+}
+
 # Create tmp directory unique for the run
-TMP_DIR="$HOME/tmp/run-macos"
-mkdir -p "$TMP_DIR"
+TMP_DIR=$(mktemp -d "$HOME/tmp.XXXXXXXXXX")
 
 install_miniconda
 
@@ -58,4 +61,4 @@ for python_version in "${python_versions[@]}"; do
     run_sanity_check "$python_version"
 done
 
-rm -rf "$TMP_DIR"
+trap _clean_up EXIT
