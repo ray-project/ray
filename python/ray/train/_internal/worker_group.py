@@ -10,7 +10,6 @@ from ray.actor import ActorHandle
 from ray.air._internal.util import exception_cause, skip_exceptions
 from ray.types import ObjectRef
 from ray.util.placement_group import PlacementGroup
-from ray.util.scheduling_strategies import PlacementGroupSchedulingStrategy
 
 T = TypeVar("T")
 
