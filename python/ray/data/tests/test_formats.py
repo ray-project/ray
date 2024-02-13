@@ -13,13 +13,12 @@ import ray
 from ray._private.test_utils import wait_for_condition
 from ray.data._internal.execution.interfaces import TaskContext
 from ray.data.block import Block, BlockAccessor
-from ray.data.datasource import Datasink, Datasource, DummyOutputDatasink
+from ray.data.datasource import Datasink, DummyOutputDatasink
 from ray.data.datasource.file_meta_provider import _handle_read_os_error
 from ray.data.tests.conftest import *  # noqa
 from ray.data.tests.mock_http_server import *  # noqa
 from ray.data.tests.util import extract_values
 from ray.tests.conftest import *  # noqa
-from ray.types import ObjectRef
 
 
 def df_to_csv(dataframe, path, **kwargs):
