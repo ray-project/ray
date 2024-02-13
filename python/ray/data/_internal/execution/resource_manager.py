@@ -225,6 +225,9 @@ class ReservationOpResourceLimiter(OpResourceLimiter):
         self._cached_global_limits = ExecutionResources.zero()
 
     def _on_global_limits_updated(self, global_limits: ExecutionResources):
+        if len(self._eligible_ops) == 0:
+            return
+
         self._total_shared = global_limits.scale(1.0 - self._reservation_ratio)
 
         default_reserved = global_limits.scale(
@@ -238,6 +241,9 @@ class ReservationOpResourceLimiter(OpResourceLimiter):
             )
 
     def update_usages(self):
+        if len(self._eligible_ops) == 0:
+            return
+
         global_limits = self._resource_manager.get_global_limits()
         if global_limits != self._cached_global_limits:
             self._on_global_limits_updated(global_limits)
