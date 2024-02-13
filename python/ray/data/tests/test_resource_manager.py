@@ -21,6 +21,7 @@ from ray.data._internal.execution.streaming_executor_state import (
 )
 from ray.data._internal.execution.util import make_ref_bundles
 from ray.data.context import DataContext
+from ray.data._internal.execution.operators.union_operator import UnionOperator
 from ray.data.tests.conftest import *  # noqa
 from ray.data.tests.test_streaming_executor import make_map_transformer
 
@@ -147,6 +148,8 @@ class TestResourceManager(unittest.TestCase):
 
 
 class TestReservationOpResourceLimiter:
+    """Tests for ReservationOpResourceLimiter."""
+
     def test_basic(self, restore_data_context):
         DataContext.get_current().op_resource_reservation_enabled = True
 
@@ -222,3 +225,20 @@ class TestReservationOpResourceLimiter:
         assert op_resource_limiter.get_op_limits(o3) == ExecutionResources(
             2.5, None, 75
         )
+
+    def test_only_enable_for_ops_with_accurate_memory_accouting(self):
+        """Test that ReservationOpResourceLimiter is not enabled when
+        there are ops not in ResourceManager._ACCURRATE_MEMORY_ACCOUNTING_OPS
+        """
+        DataContext.get_current().op_resource_reservation_enabled = True
+
+        o1 = InputDataBuffer([])
+        o2 = MapOperator.create(MagicMock(), o1)
+        o3 = InputDataBuffer([])
+        o4 = MapOperator.create(MagicMock(), o3)
+        o3 = UnionOperator(o2, o4)
+
+        topo, _ = build_streaming_topology(o3, ExecutionOptions())
+
+        resource_manager = ResourceManager(topo, ExecutionOptions())
+        assert not resource_manager.op_resource_limiter_enabled()

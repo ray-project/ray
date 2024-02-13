@@ -9,7 +9,9 @@ from ray.data._internal.execution.interfaces.execution_options import (
 )
 from ray.data._internal.execution.interfaces.physical_operator import PhysicalOperator
 from ray.data._internal.execution.operators.input_data_buffer import InputDataBuffer
+from ray.data._internal.execution.operators.limit_operator import LimitOperator
 from ray.data._internal.execution.operators.map_operator import MapOperator
+from ray.data._internal.execution.operators.output_splitter import OutputSplitter
 from ray.data.context import DataContext
 
 if TYPE_CHECKING:
@@ -26,6 +28,15 @@ class ResourceManager:
     # store memory limit for the streaming executor.
     DEFAULT_OBJECT_STORE_MEMORY_LIMIT_FRACTION = 0.25
 
+    # Memory accounting is accurate only for these operators.
+    # We'll enable memory reservation if a dataset only contains these operators.
+    _ACCURRATE_MEMORY_ACCOUNTING_OPS = [
+        InputDataBuffer,
+        MapOperator,
+        LimitOperator,
+        OutputSplitter,
+    ]
+
     def __init__(self, topology: "Topology", options: ExecutionOptions):
         self._topology = topology
         self._options = options
@@ -39,10 +50,19 @@ class ResourceManager:
 
         self._op_resource_limiter: Optional["OpResourceLimiter"] = None
         ctx = DataContext.get_current()
+
         if ctx.op_resource_reservation_enabled:
-            self._op_resource_limiter = ReservationOpResourceLimiter(
-                self, ctx.op_resource_reservation_ratio
-            )
+            should_enable = True
+            for op in topology:
+                if not any(
+                    isinstance(op, t) for t in self._ACCURRATE_MEMORY_ACCOUNTING_OPS
+                ):
+                    should_enable = False
+                    break
+            if should_enable:
+                self._op_resource_limiter = ReservationOpResourceLimiter(
+                    self, ctx.op_resource_reservation_ratio
+                )
 
     def update_usages(self):
         """Recalculate resource usages."""
@@ -253,7 +273,7 @@ class ReservationOpResourceLimiter(OpResourceLimiter):
             self._op_limits[op] = self._op_limits[op].add(shared_divided)
             # We don't limit GPU resources, as not all operators
             # use GPU resources.
-            self._op_limits[op].gpu = None
+            self._op_limits[op].gpu = float("inf")
 
     def get_op_limits(self, op: PhysicalOperator) -> ExecutionResources:
         if op in self._op_limits:
