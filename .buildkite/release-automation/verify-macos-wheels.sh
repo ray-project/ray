@@ -25,12 +25,11 @@ install_bazel() {
     export PATH="$TMP_DIR/bin:$PATH"
 
     if [ "${mac_architecture}" = "arm64" ]; then
-      # architecture is "aarch64", but the bazel tag is "arm64"
       url="https://github.com/bazelbuild/bazelisk/releases/download/${BAZELISK_VERSION}/bazelisk-darwin-arm64"
     elif [ "${mac_architecture}" = "x86_64" ]; then
       url="https://github.com/bazelbuild/bazelisk/releases/download/${BAZELISK_VERSION}/bazelisk-darwin-amd64"
     else
-      echo "Could not found matching bazelisk URL for Mac ${mac_architecture}"
+      echo "Could not find matching bazelisk URL for Mac ${mac_architecture}"
       exit 1
     fi
 
