@@ -41,6 +41,9 @@ class CloudProviderTesterBase(ICloudInstanceProvider):
         self.inner_provider = inner_provider
         self.config = config
 
+    def __del__(self):
+        self.shutdown()
+
     def shutdown(self):
         pass
 
@@ -69,7 +72,7 @@ class CloudProviderTesterBase(ICloudInstanceProvider):
 
 
 class FakeMultiNodeProviderTester(CloudProviderTesterBase):
-    def __init__(self):
+    def __init__(self, **kwargs):
         self.config_reader = FileConfigReader(
             get_test_config_path("test_ray_complex.yaml"), skip_content_hash=True
         )
@@ -109,7 +112,7 @@ class FakeMultiNodeProviderTester(CloudProviderTesterBase):
 
 
 class MockProviderTester(CloudProviderTesterBase):
-    def __init__(self):
+    def __init__(self, **kwargs):
         self.config_reader = FileConfigReader(
             get_test_config_path("test_ray_complex.yaml"), skip_content_hash=True
         )
@@ -128,14 +131,21 @@ class MockProviderTester(CloudProviderTesterBase):
 
 
 class MagicMockProviderTester(CloudProviderTesterBase):
-    def __init__(self, init_kwargs):
+    def __init__(
+        self,
+        max_concurrent_launches=AUTOSCALER_MAX_CONCURRENT_LAUNCHES,
+        max_launch_batch_per_type=AUTOSCALER_MAX_LAUNCH_BATCH,
+        **kwargs,
+    ):
         self.config_reader = FileConfigReader(
             get_test_config_path("test_ray_complex.yaml"), skip_content_hash=True
         )
         self.config = self.config_reader.get_autoscaling_config()
         self.base_provider = MagicMock()
         provider = NodeProviderAdapter(
-            self.base_provider, **init_kwargs
+            self.base_provider,
+            max_launch_batch_per_type=max_launch_batch_per_type,
+            max_concurrent_launches=max_concurrent_launches,
         )
         super().__init__(provider, self.config)
 
@@ -147,28 +157,29 @@ class MagicMockProviderTester(CloudProviderTesterBase):
 
 
 @pytest.fixture(scope="function")
-def provider(request):
-    if request.param == "fake_multi":
-        provider = FakeMultiNodeProviderTester()
-    elif request.param == "mock":
-        provider = MockProviderTester()
-    elif request.param == "magic_mock":
-        provider = MagicMockProviderTester()
-    else:
-        raise ValueError(f"Invalid provider type: {request.param}")
+def get_provider():
+    def _get_provider(name, **kwargs):
+        if name == "fake_multi":
+            provider = FakeMultiNodeProviderTester(**kwargs)
+        elif name == "mock":
+            provider = MockProviderTester(**kwargs)
+        elif name == "magic_mock":
+            provider = MagicMockProviderTester(**kwargs)
+        else:
+            raise ValueError(f"Invalid provider type: {name}")
 
-    yield provider
+        return provider
 
-    provider.shutdown()
+    yield _get_provider
 
 
 @pytest.mark.parametrize(
-    "provider",
+    "provider_name",
     ["fake_multi", "mock"],
-    indirect=True,
 )
-def test_node_providers_basic(provider):
+def test_node_providers_basic(get_provider, provider_name):
     # Test launching.
+    provider = get_provider(name=provider_name)
     provider.launch(
         shape={"worker_nodes": 2},
         request_id="1",
@@ -218,11 +229,11 @@ def test_node_providers_basic(provider):
 
 
 @pytest.mark.parametrize(
-    "provider",
+    "provider_name",
     ["fake_multi", "mock"],
-    indirect=True,
 )
-def test_launch_failure(provider):
+def test_launch_failure(get_provider, provider_name):
+    provider = get_provider(name=provider_name)
     provider._add_creation_errors(Exception("failed to create node"))
 
     provider.launch(
@@ -242,11 +253,11 @@ def test_launch_failure(provider):
 
 
 @pytest.mark.parametrize(
-    "provider",
+    "provider_name",
     ["fake_multi", "mock"],
-    indirect=True,
 )
-def test_terminate_node_failure(provider):
+def test_terminate_node_failure(get_provider, provider_name):
+    provider = get_provider(name=provider_name)
     provider._add_termination_errors(Exception("failed to terminate node"))
 
     provider.launch(request_id="launch1", shape={"worker_nodes": 1})
@@ -272,13 +283,12 @@ def test_terminate_node_failure(provider):
     wait_for_condition(verify)
 
 
-@pytest.mark.parametrize(
-    "provider",
-    ["magic_mock"],  # Only magic mock for this.
-    indirect=True,
-)
-def test_launch_executor_concurrency(provider):
+def test_launch_executor_concurrency(get_provider):
     import threading
+
+    provider = get_provider(
+        name="magic_mock", max_concurrent_launches=1, max_launch_batch_per_type=1
+    )
 
     launch_event = threading.Event()
 
