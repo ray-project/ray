@@ -10,7 +10,7 @@ import ray
 from ray import train, tune
 from ray.train import ScalingConfig
 from ray.train.constants import TRAIN_DATASET_KEY
-from ray.train.xgboost import XGBoostTrainer
+from ray.train.xgboost import RayTrainReportCallback, XGBoostTrainer
 
 
 @pytest.fixture
@@ -219,6 +219,20 @@ def test_xgboost_trainer_resources():
         XGBoostTrainer._validate_scaling_config(
             ScalingConfig(trainer_resources={"something": 1})
         )
+
+
+def test_callback_get_model(tmp_path):
+    custom_filename = "custom.json"
+
+    bst = xgb.train(
+        params,
+        dtrain=xgb.DMatrix(train_df, label=train_df["target"]),
+        num_boost_round=1,
+    )
+    bst.save_model(tmp_path.joinpath(custom_filename).as_posix())
+    checkpoint = train.Checkpoint.from_directory(tmp_path.as_posix())
+
+    RayTrainReportCallback.get_model(checkpoint, filename=custom_filename)
 
 
 if __name__ == "__main__":
