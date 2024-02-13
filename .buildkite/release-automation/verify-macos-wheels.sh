@@ -4,10 +4,10 @@ set -euo pipefail
 
 set -x
 
-python_versions=("3.8" "3.9" "3.10" "3.11")
+PYTHON_VERSIONS=("3.8" "3.9" "3.10" "3.11")
 
 # Check arguments
-if [ "$#" -ne 1 ]; then
+if [[ $# -ne 1 ]]; then
     echo "Missing argument to specify machine architecture."
     echo "Use: x86_64 or arm64"
     exit 1
@@ -33,7 +33,7 @@ install_miniconda() {
 }
 
 run_sanity_check() {
-    python_version=$1
+    local python_version="$1"
     conda create -n "rayio_${python_version}" python="${python_version}" -y
     conda activate "rayio_${python_version}"
     pip install \
@@ -53,12 +53,12 @@ _clean_up() {
 
 # Create tmp directory unique for the run
 TMP_DIR=$(mktemp -d "$HOME/tmp.XXXXXXXXXX")
+trap _clean_up EXIT
 
 install_miniconda
 
 # Install Ray & run sanity checks for each python version
-for python_version in "${python_versions[@]}"; do
+for python_version in "${PYTHON_VERSIONS[@]}"; do
     run_sanity_check "$python_version"
 done
 
-trap _clean_up EXIT
