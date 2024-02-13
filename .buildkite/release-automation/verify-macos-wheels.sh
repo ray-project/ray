@@ -14,7 +14,7 @@ fi
 mac_architecture=$1 # First argument is the architecture of the machine, e.g. x86_64, arm64
 
 # Install dependencies (Bazel, Miniconda3, etc.)
-"${ROOT_DIR}/env/install-dependencies.sh"
+"ci/env/install-dependencies.sh"
 
 export PYTHON_VERSION="${PYTHON_VERSION:-3.8}"
 export RAY_VERSION="${RAY_VERSION:-2.9.1}"
