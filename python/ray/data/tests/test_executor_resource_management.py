@@ -7,10 +7,6 @@ from ray.data._internal.execution.operators.input_data_buffer import InputDataBu
 from ray.data._internal.execution.operators.limit_operator import LimitOperator
 from ray.data._internal.execution.operators.map_operator import MapOperator
 from ray.data._internal.execution.operators.output_splitter import OutputSplitter
-from ray.data._internal.execution.resource_manager import ResourceManager
-from ray.data._internal.execution.streaming_executor_state import (
-    build_streaming_topology,
-)
 from ray.data._internal.execution.util import make_ref_bundles
 from ray.data.tests.conftest import *  # noqa
 from ray.data.tests.test_operators import _mul2_map_data_prcessor
