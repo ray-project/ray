@@ -315,13 +315,6 @@ class DataParallelTrainer(BaseTrainer):
             self._train_loop_per_worker, "train_loop_per_worker"
         )
 
-    def preprocess_datasets(self) -> None:
-        # Evaluate all datasets.
-        self.datasets = {k: d() if callable(d) else d for k, d in self.datasets.items()}
-        self.datasets = self._data_config._legacy_preprocessing(
-            self.datasets, self.preprocessor
-        )
-
     def _validate_train_loop_per_worker(
         self, train_loop_per_worker: Callable, fn_name: str
     ) -> None:

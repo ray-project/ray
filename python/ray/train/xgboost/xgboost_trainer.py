@@ -114,9 +114,7 @@ class XGBoostTrainer(GBDTTrainer):
             return len(model.get_dump())
         return model.num_boosted_rounds()
 
-    def preprocess_datasets(self) -> None:
-        super().preprocess_datasets()
-
+    def setup(self) -> None:
         # XGBoost/LightGBM-Ray requires each dataset to have at least as many
         # blocks as there are workers.
         # This is only applicable for xgboost-ray<0.1.16
