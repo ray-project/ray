@@ -94,12 +94,12 @@ class MultiAgentEnvRunner(EnvRunner):
         # required in the learning step.
         self._cached_to_module = None
 
-        self._make_module()
+        # Construct the RLModule.
+        self.module = self._make_module()
 
         # Create the two connector pipelines: env-to-module and module-to-env.
         self._module_to_env = self.config.build_module_to_env_connector(self.env)
 
-        # This should be the default.
         self._needs_initial_reset: bool = True
         self._episode: Optional[MultiAgentEpisode] = None
         self._shared_data = None
@@ -197,9 +197,7 @@ class MultiAgentEnvRunner(EnvRunner):
         # Have to reset the env.
         if force_reset or self._needs_initial_reset:
             # Create n new episodes and make the `on_episode_created` callbacks.
-            self._episode = MultiAgentEpisode(
-                agent_to_module_mapping_fn=self.config.policy_mapping_fn
-            )
+            self._episode = self._new_episode()
             self._make_on_episode_callback("on_episode_created")
 
             # Reset the environment.
@@ -339,9 +337,7 @@ class MultiAgentEnvRunner(EnvRunner):
                 self._make_on_episode_callback("on_episode_end")
 
                 # Create a new episode instance.
-                self._episode = MultiAgentEpisode(
-                    agent_to_module_mapping_fn=self.config.policy_mapping_fn
-                )
+                self._episode = self._new_episode()
                 # Reset the environment.
                 obs, infos = self.env.reset()
                 # Add initial observations and infos.
@@ -410,9 +406,7 @@ class MultiAgentEnvRunner(EnvRunner):
         obs, infos = self.env.reset()
 
         # Create a new multi-agent episode.
-        _episode = MultiAgentEpisode(
-            agent_to_module_mapping_fn=self.config.policy_mapping_fn
-        )
+        _episode = self._new_episode()
         self._make_on_episode_callback("on_episode_created", _episode)
         shared_data = {
             "agent_to_module_mapping_fn": self.config.policy_mapping_fn,
@@ -530,9 +524,7 @@ class MultiAgentEnvRunner(EnvRunner):
                     break
 
                 # Create a new episode instance.
-                _episode = MultiAgentEpisode(
-                    agent_to_module_mapping_fn=self.config.policy_mapping_fn
-                )
+                _episode = self._new_episode()
                 self._make_on_episode_callback("on_episode_created", _episode)
 
                 # Reset the environment.
@@ -657,11 +649,18 @@ class MultiAgentEnvRunner(EnvRunner):
             )
 
             # Build the module from its spec.
-            self.module: MultiAgentRLModule = ma_rlm_spec.build()
+            return ma_rlm_spec.build()
 
         # This error could be thrown, when only random actions are used.
         except NotImplementedError:
-            self.module = None
+            return None
+
+    def _new_episode(self):
+        return MultiAgentEpisode(
+            observation_space=self.env.observation_space,
+            action_space=self.env.action_space,
+            agent_to_module_mapping_fn=self.config.policy_mapping_fn,
+        )
 
     def _make_on_episode_callback(self, which: str, episode=None):
         episode = episode if episode is not None else self._episode

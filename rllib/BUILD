@@ -2833,6 +2833,27 @@ py_test(
 # ----------------------
 # new connector examples
 # ----------------------
+
+# Framestacking examples only run in smoke-test mode (a few iters only).
+py_test(
+    name = "examples/connectors/connector_v2_frame_stacking_ppo",
+    main = "examples/connectors/connector_v2_frame_stacking.py",
+    tags = ["team:rllib", "exclusive", "examples"],
+    size = "medium",
+    srcs = ["examples/connectors/connector_v2_frame_stacking.py"],
+    args = ["--enable-new-api-stack", "--stop-iter=2", "--framework=torch", "--algo=PPO"]
+)
+
+py_test(
+    name = "examples/connectors/connector_v2_frame_stacking_multi_agent_ppo",
+    main = "examples/connectors/connector_v2_frame_stacking.py",
+    tags = ["team:rllib", "exclusive", "examples"],
+    size = "medium",
+    srcs = ["examples/connectors/connector_v2_frame_stacking.py"],
+    args = ["--enable-new-api-stack", "--num-agents=2", "--stop-iter=2", "--framework=torch", "--algo=PPO"]
+)
+
+# Nested observation spaces (flattening).
 py_test(
     name = "examples/connectors/connector_v2_nested_observation_spaces_ppo",
     main = "examples/connectors/connector_v2_nested_observation_spaces.py",
@@ -2851,22 +2872,23 @@ py_test(
     args = ["--enable-new-api-stack", "--num-agents=2", "--as-test", "--stop-reward=800.0", "--framework=torch", "--algo=PPO"]
 )
 
+# Prev-r/prev actions + LSTM example.
 py_test(
-    name = "examples/connectors/connector_v2_prev_rewards_actions_inputs_ppo",
-    main = "examples/connectors/connector_v2_prev_rewards_actions_inputs.py",
+    name = "examples/connectors/connector_v2_prev_actions_prev_rewards_ppo",
+    main = "examples/connectors/connector_v2_prev_actions_prev_rewards.py",
     tags = ["team:rllib", "exclusive", "examples"],
     size = "medium",
-    srcs = ["examples/connectors/connector_v2_prev_rewards_actions_inputs.py"],
-    args = ["--enable-new-api-stack", "--as-test", "--stop-reward=400.0", "--framework=torch", "--algo=PPO"]
+    srcs = ["examples/connectors/connector_v2_prev_actions_prev_rewards.py"],
+    args = ["--enable-new-api-stack", "--as-test", "--stop-reward=200.0", "--framework=torch", "--algo=PPO"]
 )
 
 py_test(
-    name = "examples/connectors/connector_v2_prev_rewards_actions_inputs_multi_agent_ppo",
-    main = "examples/connectors/connector_v2_prev_rewards_actions_inputs.py",
+    name = "examples/connectors/connector_v2_prev_actions_prev_rewards_multi_agent_ppo",
+    main = "examples/connectors/connector_v2_prev_actions_prev_rewards.py",
     tags = ["team:rllib", "exclusive", "examples"],
     size = "medium",
-    srcs = ["examples/connectors/connector_v2_prev_rewards_actions_inputs.py"],
-    args = ["--enable-new-api-stack", "--num-agents=2", "--as-test", "--stop-reward=800.0", "--framework=torch", "--algo=PPO"]
+    srcs = ["examples/connectors/connector_v2_prev_actions_prev_rewards.py"],
+    args = ["--enable-new-api-stack", "--num-agents=2", "--as-test", "--stop-reward=400.0", "--framework=torch", "--algo=PPO"]
 )
 
 # ----------------------

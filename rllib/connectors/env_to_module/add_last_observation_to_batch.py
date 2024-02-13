@@ -64,8 +64,8 @@ class AddLastObservationToBatch(ConnectorV2):
 
     def __init__(
         self,
-        input_observation_space: gym.Space,
-        input_action_space: gym.Space,
+        input_observation_space: gym.Space = None,
+        input_action_space: gym.Space = None,
         *,
         as_learner_connector: bool = False,
         **kwargs,

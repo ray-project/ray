@@ -17,26 +17,25 @@ from ray.util.annotations import PublicAPI
 class _FrameStackingConnector(ConnectorV2):
     """A connector piece that stacks the previous n observations into one."""
 
+    @property
     @override(ConnectorV2)
     def observation_space(self):
         # Change our observation space according to the given stacking settings.
-        return gym.spaces.Box(
-            low=np.repeat(
-                self.input_observation_space.low, repeats=self.num_frames, axis=-1
-            ),
-            high=np.repeat(
-                self.input_observation_space.high, repeats=self.num_frames, axis=-1
-            ),
-            shape=list(self.input_observation_space.shape)[:-1] + [self.num_frames],
-            dtype=self.input_observation_space.dtype,
-        )
+        if self._multi_agent:
+            ret = {}
+            for agent_id, obs_space in self.input_observation_space.spaces.items():
+                ret[agent_id] = self._convert_individual_space(obs_space)
+            return gym.spaces.Dict(ret)
+        else:
+            return self._convert_individual_space(self.input_observation_space)
 
     def __init__(
         self,
-        input_observation_space: gym.Space,
-        input_action_space: gym.Space,
+        input_observation_space: gym.Space = None,
+        input_action_space: gym.Space = None,
         *,
         num_frames: int = 1,
+        multi_agent: bool = False,
         as_learner_connector: bool = False,
         **kwargs,
     ):
@@ -45,11 +44,13 @@ class _FrameStackingConnector(ConnectorV2):
         Args:
             num_frames: The number of observation frames to stack up (into a single
                 observation) for the RLModule's forward pass.
-            as_preprocessor: Whether this connector should simply postprocess the
-                received observations from the env and store these directly in the
-                episode object. In this mode, the connector can only be used in
-                an `EnvToModulePipeline` and it will act as a classic
-                RLlib framestacking postprocessor.
+            multi_agent: Whether this is a connector operating on a multi-agent
+                observation space mapping AgentIDs to individual agents' observations.
+            # as_preprocessor: Whether this connector should simply postprocess the
+            #    received observations from the env and store these directly in the
+            #    episode object. In this mode, the connector can only be used in
+            #    an `EnvToModulePipeline` and it will act as a classic
+            #    RLlib framestacking postprocessor.
             as_learner_connector: Whether this connector is part of a Learner connector
                 pipeline, as opposed to an env-to-module pipeline.
         """
@@ -59,12 +60,9 @@ class _FrameStackingConnector(ConnectorV2):
             **kwargs,
         )
 
+        self._multi_agent = multi_agent
         self.num_frames = num_frames
         self._as_learner_connector = as_learner_connector
-
-        # Some assumptions: Space is box AND last dim (the stacking one) is 1.
-        assert isinstance(self.observation_space, gym.spaces.Box)
-        assert self.observation_space.shape[-1] == 1
 
     @override(ConnectorV2)
     def __call__(
@@ -138,3 +136,19 @@ class _FrameStackingConnector(ConnectorV2):
             data[SampleBatch.OBS] = batch(observations)
 
         return data
+
+    def _convert_individual_space(self, obs_space):
+        # Some assumptions: Space is box AND last dim (the stacking one) is 1.
+        assert isinstance(obs_space, gym.spaces.Box), obs_space
+        assert obs_space.shape[-1] == 1, obs_space
+
+        return gym.spaces.Box(
+            low=np.repeat(
+                obs_space.low, repeats=self.num_frames, axis=-1
+            ),
+            high=np.repeat(
+                obs_space.high, repeats=self.num_frames, axis=-1
+            ),
+            shape=list(obs_space.shape)[:-1] + [self.num_frames],
+            dtype=obs_space.dtype,
+        )

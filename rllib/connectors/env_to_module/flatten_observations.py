@@ -139,8 +139,8 @@ class FlattenObservations(ConnectorV2):
 
     def __init__(
         self,
-        input_observation_space,
-        input_action_space,
+        input_observation_space: gym.Space = None,
+        input_action_space: gym.Space = None,
         *,
         multi_agent: bool = False,
         **kwargs,

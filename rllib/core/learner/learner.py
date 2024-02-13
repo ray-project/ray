@@ -288,7 +288,8 @@ class Learner:
         """Builds the Learner.
 
         This method should be called before the learner is used. It is responsible for
-        setting up the RLModule, optimizers, and (optionally) their lr-schedulers.
+        setting up the LearnerConnectorPipeline, the RLModule, optimizer(s), and
+        (optionally) the optimizers' learning rate schedulers.
         """
         if self._is_built:
             logger.debug("Learner already built. Skipping build.")
@@ -296,10 +297,7 @@ class Learner:
 
         # Build learner connector pipeline used on this Learner worker.
         if self.config.uses_new_env_runners:
-            # TODO (sven): Figure out which space to provide here. For now,
-            #  it doesn't matter, as the default connector piece doesn't use
-            #  this information anyway.
-            #  module_spec = self._module_spec.as_multi_agent()
+            module_spec = self._module_spec.as_multi_agent()
             self._learner_connector = self.config.build_learner_connector(
                 input_observation_space=None,
                 input_action_space=None,

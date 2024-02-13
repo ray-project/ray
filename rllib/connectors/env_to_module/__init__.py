@@ -8,6 +8,9 @@ from ray.rllib.connectors.env_to_module.env_to_module_pipeline import (
 from ray.rllib.connectors.env_to_module.flatten_observations import (
     FlattenObservations,
 )
+from ray.rllib.connectors.env_to_module.prev_actions_prev_rewards import (
+    PrevActionsPrevRewardsConnector,
+)
 from ray.rllib.connectors.env_to_module.write_observations_to_episodes import (
     WriteObservationsToEpisodes,
 )
@@ -18,5 +21,6 @@ __all__ = [
     "DefaultEnvToModule",
     "EnvToModulePipeline",
     "FlattenObservations",
+    "PrevActionsPrevRewardsConnector",
     "WriteObservationsToEpisodes",
 ]
