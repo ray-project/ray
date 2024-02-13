@@ -60,7 +60,7 @@ from ray.tune.utils.resource_updater import _ResourceUpdater
 from ray.tune.utils import warn_if_slow, flatten_dict
 from ray.tune.utils.log import Verbosity, has_verbosity
 from ray.tune.execution.placement_groups import PlacementGroupFactory
-from ray.tune.execution.experiment_state import _ResumeConfig
+from ray.tune.execution.experiment_state import ResumeConfig
 from ray.tune.utils.serialization import TuneFunctionDecoder, TuneFunctionEncoder
 from ray.util.annotations import DeveloperAPI, Deprecated
 from ray.util.debug import log_once
@@ -81,7 +81,7 @@ class TuneController:
         placeholder_resolvers: Optional[Dict[Tuple, Any]] = None,
         scheduler: Optional[TrialScheduler] = None,
         stopper: Optional[Stopper] = None,
-        resume_config: Optional[_ResumeConfig] = None,
+        resume_config: Optional[ResumeConfig] = None,
         fail_fast: bool = False,
         checkpoint_period: Union[str, int] = None,
         callbacks: Optional[List[Callback]] = None,
@@ -479,7 +479,7 @@ class TuneController:
                 save_fn=self.save_to_dir, force=force, wait=wait
             )
 
-    def resume(self, resume_config: _ResumeConfig):
+    def resume(self, resume_config: ResumeConfig):
         """Resumes all checkpointed trials from previous run.
 
         Requires user to manually re-register their objects. Also stops
@@ -499,16 +499,16 @@ class TuneController:
                 resume_type = resume_config.unfinished
 
             trial_to_add = None
-            if resume_type == _ResumeConfig.ResumeType.RESUME:
+            if resume_type == ResumeConfig.ResumeType.RESUME:
                 # Keep trial ID on resume
                 trial_to_add = trial
                 trial_to_add.run_metadata.error_filename = None
                 trial_to_add.run_metadata.pickled_error_filename = None
                 trial_to_add.set_status(Trial.PENDING)
-            elif resume_type == _ResumeConfig.ResumeType.RESTART:
+            elif resume_type == ResumeConfig.ResumeType.RESTART:
                 trial_to_add = trial.reset()
                 trial_to_add.restore_path = None
-            elif resume_type == _ResumeConfig.ResumeType.IGNORE:
+            elif resume_type == ResumeConfig.ResumeType.IGNORE:
                 trial_to_add = trial
                 if trial_to_add.status != Trial.ERROR:
                     # Set the status to terminated to skip it.

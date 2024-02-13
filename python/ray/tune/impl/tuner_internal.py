@@ -25,7 +25,7 @@ from ray.air._internal.usage import AirEntrypoint
 from ray.air.config import RunConfig, ScalingConfig
 from ray.train._internal.storage import StorageContext, get_fs_and_path
 from ray.tune import Experiment, TuneError, ExperimentAnalysis
-from ray.tune.execution.experiment_state import _ResumeConfig
+from ray.tune.execution.experiment_state import ResumeConfig
 from ray.tune.tune import _Config
 from ray.tune.registry import is_function_trainable
 from ray.tune.result import _get_defaults_results_dir
@@ -85,7 +85,7 @@ class TunerInternal:
         self,
         restore_path: str = None,
         storage_filesystem: Optional[pyarrow.fs.FileSystem] = None,
-        resume_config: Optional[_ResumeConfig] = None,
+        resume_config: Optional[ResumeConfig] = None,
         trainable: Optional[TrainableTypeOrTrainer] = None,
         param_space: Optional[Dict[str, Any]] = None,
         tune_config: Optional[TuneConfig] = None,
@@ -321,7 +321,7 @@ class TunerInternal:
         path_or_uri: str,
         trainable: TrainableTypeOrTrainer,
         overwrite_param_space: Optional[Dict[str, Any]],
-        resume_config: _ResumeConfig,
+        resume_config: ResumeConfig,
         storage_filesystem: Optional[pyarrow.fs.FileSystem],
     ):
         fs, fs_path = get_fs_and_path(path_or_uri, storage_filesystem)

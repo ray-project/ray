@@ -589,7 +589,7 @@ class BaseTrainer(abc.ABC):
             ``self.as_trainable()``, or during the Tune execution loop.
         """
         from ray.tune import TuneError
-        from ray.tune.execution.experiment_state import _ResumeConfig
+        from ray.tune.execution.experiment_state import ResumeConfig
         from ray.tune.tuner import Tuner, TunerInternal
 
         trainable = self.as_trainable()
@@ -600,10 +600,10 @@ class BaseTrainer(abc.ABC):
                 path=self._restore_path,
                 trainable=trainable,
                 param_space=param_space,
-                resume_config=_ResumeConfig(
-                    finished=_ResumeConfig.ResumeType.RESUME,
-                    unfinished=_ResumeConfig.ResumeType.RESUME,
-                    errored=_ResumeConfig.ResumeType.RESUME,
+                resume_config=ResumeConfig(
+                    finished=ResumeConfig.ResumeType.RESUME,
+                    unfinished=ResumeConfig.ResumeType.RESUME,
+                    errored=ResumeConfig.ResumeType.RESUME,
                 ),
                 storage_filesystem=self._restore_storage_filesystem,
             )

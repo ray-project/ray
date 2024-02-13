@@ -30,7 +30,7 @@ from ray.tune.analysis import ExperimentAnalysis
 from ray.tune.callback import Callback
 from ray.tune.error import TuneError
 from ray.tune.execution.tune_controller import TuneController
-from ray.tune.execution.experiment_state import _ResumeConfig
+from ray.tune.execution.experiment_state import ResumeConfig
 from ray.tune.experiment import Experiment, _convert_to_experiment_list
 from ray.tune.experimental.output import (
     get_air_verbosity,
@@ -115,8 +115,8 @@ def _get_trainable(
 
 def _build_resume_config_from_legacy_config(
     resume: Union[str, bool]
-) -> Optional[_ResumeConfig]:
-    """Converts the legacy resume (str, bool) to a _ResumeConfig object.
+) -> Optional[ResumeConfig]:
+    """Converts the legacy resume (str, bool) to a ResumeConfig object.
     Returns None if resume is False.
 
     TODO(justinvyu): [Deprecated] Remove in 2.11.
@@ -124,7 +124,7 @@ def _build_resume_config_from_legacy_config(
     if resume is False:
         return None
     if resume is True:
-        return _ResumeConfig()
+        return ResumeConfig()
 
     # Parse resume string, e.g. AUTO+ERRORED
     resume_settings = resume.split("+")
@@ -138,18 +138,18 @@ def _build_resume_config_from_legacy_config(
 
     for setting in resume_settings[1:]:
         if setting == "ERRORED":
-            resume_config = _ResumeConfig(errored=_ResumeConfig.ResumeType.RESUME)
+            resume_config = ResumeConfig(errored=ResumeConfig.ResumeType.RESUME)
         elif setting == "RESTART_ERRORED":
-            resume_config = _ResumeConfig(errored=_ResumeConfig.ResumeType.RESTART)
+            resume_config = ResumeConfig(errored=ResumeConfig.ResumeType.RESTART)
         elif setting == "ERRORED_ONLY":
-            resume_config = _ResumeConfig(
-                unfinished=_ResumeConfig.ResumeType.IGNORE,
-                errored=_ResumeConfig.ResumeType.RESUME,
+            resume_config = ResumeConfig(
+                unfinished=ResumeConfig.ResumeType.IGNORE,
+                errored=ResumeConfig.ResumeType.RESUME,
             )
         elif setting == "RESTART_ERRORED_ONLY":
-            resume_config = _ResumeConfig(
-                unfinished=_ResumeConfig.ResumeType.IGNORE,
-                errored=_ResumeConfig.ResumeType.RESTART,
+            resume_config = ResumeConfig(
+                unfinished=ResumeConfig.ResumeType.IGNORE,
+                errored=ResumeConfig.ResumeType.RESTART,
             )
         else:
             raise ValueError(f"Invalid resume setting: '{setting}'")
@@ -303,7 +303,7 @@ def run(
     max_failures: int = 0,
     fail_fast: bool = False,
     restore: Optional[str] = None,
-    resume_config: Optional[_ResumeConfig] = None,
+    resume_config: Optional[ResumeConfig] = None,
     reuse_actors: bool = False,
     raise_on_failed_trial: bool = True,
     callbacks: Optional[Sequence[Callback]] = None,
@@ -1083,7 +1083,7 @@ def run_experiments(
     progress_reporter: Optional[ProgressReporter] = None,
     resume: Union[bool, str] = False,
 <<<<<<< HEAD
-    resume_config: Optional[_ResumeConfig] = None,
+    resume_config: Optional[ResumeConfig] = None,
     reuse_actors: Optional[bool] = None,
 =======
     reuse_actors: bool = False,

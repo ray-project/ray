@@ -19,7 +19,7 @@ from ray.train import Checkpoint
 from ray.train._internal.session import _TrainingResult
 from ray.train._internal.storage import StorageContext
 from ray.tune import PlacementGroupFactory
-from ray.tune.execution.experiment_state import _ResumeConfig
+from ray.tune.execution.experiment_state import ResumeConfig
 from ray.tune.execution.tune_controller import TuneController
 from ray.tune.experiment import Trial
 from ray.tune.result import DONE
@@ -274,7 +274,7 @@ def test_checkpoint_num_to_keep(
     runner = TuneController(
         resource_manager_factory=lambda: resource_manager_cls(),
         storage=STORAGE,
-        resume_config=_ResumeConfig(),
+        resume_config=ResumeConfig(),
     )
 
     trial = runner.get_trials()[0]
@@ -464,7 +464,7 @@ def test_checkpoint_user_checkpoint(
         runner2 = TuneController(
             resource_manager_factory=lambda: resource_manager_cls(),
             storage=STORAGE,
-            resume_config=_ResumeConfig(),
+            resume_config=ResumeConfig(),
         )
         trials2 = runner2.get_trials()
         while not trials2[0].status == Trial.RUNNING:

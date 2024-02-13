@@ -32,19 +32,19 @@ _DRIVER_SYNC_EXCLUDE_PATTERNS = ["*/checkpoint_*"]
 
 
 @dataclass
-class _ResumeConfig:
+class ResumeConfig:
     class ResumeType(Enum):
         """An enumeration to define resume types for various trial states.
 
         Members:
             RESUME: Resume from the latest checkpoint.
             RESTART: Restart from the beginning (with no checkpoint).
-            IGNORE: Ignore this trial.
+            SKIP: Skip this trial when resuming by treating it as terminated.
         """
 
         RESUME = "resume"
         RESTART = "restart"
-        IGNORE = "ignore"
+        SKIP = "skip"
 
     finished: str = ResumeType.IGNORE
     unfinished: str = ResumeType.RESUME

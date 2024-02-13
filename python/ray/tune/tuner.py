@@ -11,7 +11,7 @@ from ray.air._internal.usage import AirEntrypoint
 from ray.air.util.node import _force_on_current_node
 from ray.train._internal.storage import _exists_at_fs_path, get_fs_and_path
 from ray.tune import TuneError
-from ray.tune.execution.experiment_state import _ResumeConfig
+from ray.tune.execution.experiment_state import ResumeConfig
 from ray.tune.experimental.output import (
     get_air_verbosity,
 )
@@ -186,7 +186,7 @@ class Tuner:
         resume_unfinished: bool = True,
         resume_errored: bool = False,
         restart_errored: bool = False,
-        resume_config: Optional[_ResumeConfig] = None,
+        resume_config: Optional[ResumeConfig] = None,
         param_space: Optional[Dict[str, Any]] = None,
         storage_filesystem: Optional[pyarrow.fs.FileSystem] = None,
     ) -> "Tuner":
@@ -251,17 +251,17 @@ class Tuner:
                 experiment passed in a custom filesystem.
         """
         unfinished = (
-            _ResumeConfig.ResumeType.RESUME
+            ResumeConfig.ResumeType.RESUME
             if resume_unfinished
-            else _ResumeConfig.ResumeType.IGNORE
+            else ResumeConfig.ResumeType.IGNORE
         )
-        errored = _ResumeConfig.ResumeType.IGNORE
+        errored = ResumeConfig.ResumeType.IGNORE
         if resume_errored:
-            errored = _ResumeConfig.ResumeType.RESUME
+            errored = ResumeConfig.ResumeType.RESUME
         elif restart_errored:
-            errored = _ResumeConfig.ResumeType.RESTART
+            errored = ResumeConfig.ResumeType.RESTART
 
-        resume_config = resume_config or _ResumeConfig(
+        resume_config = resume_config or ResumeConfig(
             unfinished=unfinished, errored=errored
         )
 
