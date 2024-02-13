@@ -84,13 +84,11 @@ class OpRuntimeMetrics:
     # === Object store memory metrics ===
 
     # Size in bytes of input blocks in the operator's internal input queue.
-    obj_store_mem_internal_inqueue: int = field(default=0, metadata={"export": False})
+    obj_store_mem_internal_inqueue: int = field(default=0, metadata={"export": True})
     # Size in bytes of output blocks in the operator's internal output queue.
-    obj_store_mem_internal_outqueue: int = field(default=0, metadata={"export": False})
+    obj_store_mem_internal_outqueue: int = field(default=0, metadata={"export": True})
     # Size in bytes of input blocks used by pending tasks.
-    obj_store_mem_pending_task_inputs: int = field(
-        default=0, metadata={"export": False}
-    )
+    obj_store_mem_pending_task_inputs: int = field(default=0, metadata={"export": True})
 
     # Freed memory size in the object store.
     obj_store_mem_freed: int = field(

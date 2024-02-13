@@ -142,7 +142,7 @@ class TestResourceManager(unittest.TestCase):
         assert resource_manager.get_downstream_object_store_memory(o2) == 1700
         assert resource_manager.get_downstream_object_store_memory(o3) == 1000
 
-    def test_object_store_usage(self):
+    def test_object_store_usage(self, restore_data_context):
         input = make_ref_bundles([[x] for x in range(1)])[0]
         input.size_bytes = MagicMock(return_value=1)
 

@@ -192,7 +192,10 @@ def test_task_pool_resource_reporting_with_bundling(ray_start_10_cpus_shared):
     ), input_op_usage
 
 
-def test_actor_pool_resource_reporting(ray_start_10_cpus_shared):
+def test_actor_pool_resource_reporting(ray_start_10_cpus_shared, restore_data_context):
+    ctx = ray.data.DataContext.get_current()
+    ctx._max_num_blocks_in_streaming_gen_buffer = 1
+
     input_op = InputDataBuffer(make_ref_bundles([[SMALL_STR] for i in range(100)]))
     op = MapOperator.create(
         _mul2_map_data_prcessor,
@@ -252,6 +255,13 @@ def test_actor_pool_resource_reporting(ray_start_10_cpus_shared):
     usage = resource_manager.get_op_usage(op)
     assert usage.cpu == 2, usage
     assert usage.gpu == 0, usage
+    # Now that tasks have been submitted, object store memory is estimated.
+    assert usage.object_store_memory == pytest.approx(
+        4  # Number of active tasks (with two tasks in flight per actor)
+        * ctx._max_num_blocks_in_streaming_gen_buffer
+        * ctx.target_max_block_size,
+        rel=0.5,
+    ), usage
 
     # Indicate that no more inputs will arrive.
     op.all_inputs_done()
