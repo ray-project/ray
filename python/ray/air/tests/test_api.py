@@ -201,11 +201,6 @@ def test_datasets():
     DummyTrainer(datasets={"test": DummyDataset()})
 
 
-def test_preprocessor_deprecated():
-    with pytest.raises(DeprecationWarning):
-        DummyTrainer(preprocessor=Preprocessor())
-
-
 def test_resume_from_checkpoint(tmpdir):
     with pytest.raises(ValueError):
         DummyTrainer(resume_from_checkpoint="invalid")
