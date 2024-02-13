@@ -1,15 +1,15 @@
+import tempfile
 from collections import OrderedDict
 from contextlib import contextmanager
 from pathlib import Path
-import tempfile
-from typing import Callable, Dict, List, Union, Optional
+from typing import Callable, Dict, List, Optional, Union
 
 from xgboost.core import Booster
 
 from ray import train
-from ray.util.annotations import PublicAPI
 from ray.train import Checkpoint
 from ray.tune.utils import flatten_dict
+from ray.util.annotations import PublicAPI
 
 try:
     from xgboost.callback import TrainingCallback

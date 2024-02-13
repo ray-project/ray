@@ -1,11 +1,11 @@
-from typing import Any, Dict, Type
+from typing import Any, Dict
 
 import xgboost
 from packaging.version import Version
 
 from ray.train import Checkpoint
 from ray.train.gbdt_trainer import GBDTTrainer
-from ray.train.xgboost import XGBoostCheckpoint
+from ray.train.xgboost import RayTrainReportCallback
 from ray.util.annotations import PublicAPI
 
 
@@ -94,18 +94,9 @@ class XGBoostTrainer(GBDTTrainer):
     def get_model(
         cls,
         checkpoint: Checkpoint,
-        checkpoint_cls: Type[XGBoostCheckpoint] = XGBoostCheckpoint,
     ) -> xgboost.Booster:
         """Retrieve the XGBoost model stored in this checkpoint."""
-        if not issubclass(checkpoint_cls, XGBoostCheckpoint):
-            raise ValueError(
-                "`checkpoint_cls` must subclass `ray.train.xgboost.XGBoostCheckpoint`"
-            )
-
-        xgboost_checkpoint = checkpoint_cls(
-            path=checkpoint.path, filesystem=checkpoint.filesystem
-        )
-        return xgboost_checkpoint.get_model()
+        return RayTrainReportCallback.get_model(checkpoint)
 
     def _train(self, **kwargs):
         import xgboost_ray
