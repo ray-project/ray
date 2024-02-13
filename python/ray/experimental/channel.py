@@ -1,6 +1,9 @@
+import asyncio
 import io
 import logging
-from typing import Any, Optional
+import queue
+import threading
+from typing import Any, List, Optional
 
 import ray
 from ray.util.annotations import PublicAPI
@@ -186,3 +189,158 @@ class Channel:
         logger.debug(f"Setting error bit on channel: {self._base_ref}")
         self._ensure_registered_as_writer()
         self._worker.core_worker.experimental_channel_set_error(self._base_ref)
+
+
+# Interfaces for channel I/O.
+class InputReader:
+    def __init__(self, input_channels: List[Channel]):
+        if isinstance(input_channels, List):
+            for chan in input_channels:
+                assert isinstance(chan, Channel)
+            self._has_single_output = False
+        else:
+            assert isinstance(input_channels, Channel)
+            self._has_single_output = True
+            input_channels = [input_channels]
+
+        self._input_channels = input_channels
+        self._closed = False
+        self._num_reads = 0
+
+    def get_num_reads(self) -> int:
+        return self._num_reads
+
+    def start(self):
+        raise NotImplementedError
+
+    def _begin_read_list(self) -> Any:
+        raise NotImplementedError
+
+    def begin_read(self) -> Any:
+        outputs = self._begin_read_list()
+        self._num_reads += 1
+        if self._has_single_output:
+            return outputs[0]
+        else:
+            return outputs
+
+    def end_read(self) -> Any:
+        raise NotImplementedError
+
+    def close(self) -> None:
+        self._closed = True
+        for channel in self._input_channels:
+            channel.close()
+
+
+class SynchronousInputReader(InputReader):
+    def __init__(self, input_channels: List[Channel]):
+        super().__init__(input_channels)
+
+    def start(self):
+        pass
+
+    def _begin_read_list(self) -> Any:
+        return [c.begin_read() for c in self._input_channels]
+
+    def end_read(self) -> Any:
+        for c in self._input_channels:
+            c.end_read()
+
+
+class AwaitableBackgroundInputReader(InputReader):
+    def __init__(self, input_channels: List[Channel]):
+        super().__init__(input_channels)
+        self.queue = asyncio.Queue()
+        self.background_task = None
+
+    def start(self):
+        self.background_task = self.run()
+        asyncio.ensure_future(self.background_task)
+
+    def _run(self):
+        return [c.begin_read() for c in self._input_channels]
+
+    async def run(self):
+        loop = asyncio.get_event_loop()
+        while not self._closed:
+            try:
+                res = await loop.run_in_executor(None, self._run)
+            except Exception as exc:
+                res = exc
+
+            await self.queue.put(res)
+
+    async def begin_read(self) -> Any:
+        outputs = await self._begin_read_list()
+        self._num_reads += 1
+        if self._has_single_output:
+            return outputs[0]
+        else:
+            return outputs
+
+    async def _begin_read_list(self) -> Any:
+        val = await self.queue.get()
+        if isinstance(val, Exception):
+            raise val
+
+        return val
+
+    def end_read(self) -> Any:
+        for c in self._input_channels:
+            c.end_read()
+
+
+class OutputWriter:
+    def __init__(self, output_channel: Channel):
+        self._output_channel = output_channel
+        self._closed = False
+        self._num_writes = 0
+
+    def get_num_writes(self) -> int:
+        return self._num_writes
+
+    def start(self):
+        raise NotImplementedError()
+
+    def write(self, val: Any) -> None:
+        raise NotImplementedError()
+
+    def close(self) -> None:
+        self._closed = True
+        self._output_channel.close()
+
+
+class SynchronousOutputWriter(OutputWriter):
+    def start(self):
+        pass
+
+    def write(self, val: Any) -> None:
+        self._output_channel.write(val)
+        self._num_writes += 1
+
+
+class AwaitableBackgroundOutputWriter(OutputWriter):
+    def __init__(self, output_channel: Channel, max_queue_size: int):
+        super().__init__(output_channel)
+        self.queue = asyncio.Queue(max_queue_size)
+        self.background_task = None
+
+    def start(self):
+        self.background_task = self.run()
+        asyncio.ensure_future(self.background_task)
+
+    def _run(self, res):
+        self._output_channel.write(res)
+
+    async def run(self):
+        loop = asyncio.get_event_loop()
+        while True:
+            res = await self.queue.get()
+            await loop.run_in_executor(None, self._run, res)
+
+    async def write(self, val: Any) -> None:
+        if self._closed:
+            raise RuntimeError("DAG execution cancelled")
+        await self.queue.put(val)
+        self._num_writes += 1
