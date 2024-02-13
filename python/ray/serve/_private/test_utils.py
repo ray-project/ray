@@ -14,7 +14,7 @@ from ray import serve
 from ray.actor import ActorHandle
 from ray.serve._private.common import DeploymentID, DeploymentStatus
 from ray.serve._private.constants import SERVE_DEFAULT_APP_NAME, SERVE_NAMESPACE
-from ray.serve._private.proxy import DRAINED_MESSAGE
+from ray.serve._private.proxy import DRAINING_MESSAGE
 from ray.serve._private.usage import ServeUsageTag
 from ray.serve._private.utils import TimerBase
 from ray.serve.generated import serve_pb2, serve_pb2_grpc
@@ -205,7 +205,7 @@ def ping_grpc_list_applications(channel, app_names, test_draining=False):
             _, _ = stub.ListApplications.with_call(request=request)
         rpc_error = exception_info.value
         assert rpc_error.code() == grpc.StatusCode.UNAVAILABLE
-        assert rpc_error.details() == DRAINED_MESSAGE
+        assert rpc_error.details() == DRAINING_MESSAGE
     else:
         response, call = stub.ListApplications.with_call(request=request)
         assert call.code() == grpc.StatusCode.OK
@@ -221,7 +221,7 @@ def ping_grpc_healthz(channel, test_draining=False):
             _, _ = stub.Healthz.with_call(request=request)
         rpc_error = exception_info.value
         assert rpc_error.code() == grpc.StatusCode.UNAVAILABLE
-        assert rpc_error.details() == DRAINED_MESSAGE
+        assert rpc_error.details() == DRAINING_MESSAGE
     else:
         response, call = stub.Healthz.with_call(request=request)
         assert call.code() == grpc.StatusCode.OK

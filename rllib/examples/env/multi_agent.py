@@ -3,18 +3,26 @@ import numpy as np
 import random
 
 from ray.rllib.env.multi_agent_env import MultiAgentEnv, make_multi_agent
-from ray.rllib.examples.env.mock_env import MockEnv, MockEnv2
-from ray.rllib.examples.env.stateless_cartpole import StatelessCartPole
-from ray.rllib.utils.deprecation import Deprecated
-
-
-@Deprecated(
-    old="ray.rllib.examples.env.multi_agent.make_multiagent",
-    new="ray.rllib.env.multi_agent_env.make_multi_agent",
-    error=True,
+from ray.rllib.examples.env.cartpole_with_dict_observation_space import (
+    CartPoleWithDictObservationSpace,
 )
-def make_multiagent(env_name_or_creator):
-    return make_multi_agent(env_name_or_creator)
+from ray.rllib.examples.env.mock_env import MockEnv, MockEnv2
+from ray.rllib.examples.env.nested_space_repeat_after_me_env import (
+    NestedSpaceRepeatAfterMeEnv,
+)
+from ray.rllib.examples.env.stateless_cartpole import StatelessCartPole
+
+
+MultiAgentCartPole = make_multi_agent("CartPole-v1")
+MultiAgentMountainCar = make_multi_agent("MountainCarContinuous-v0")
+MultiAgentPendulum = make_multi_agent("Pendulum-v1")
+MultiAgentStatelessCartPole = make_multi_agent(lambda config: StatelessCartPole(config))
+MultiAgentCartPoleWithDictObservationSpace = make_multi_agent(
+    lambda config: CartPoleWithDictObservationSpace(config)
+)
+MultiAgentNestedSpaceRepeatAfterMeEnv = make_multi_agent(
+    lambda config: NestedSpaceRepeatAfterMeEnv(config)
+)
 
 
 class BasicMultiAgent(MultiAgentEnv):
@@ -442,9 +450,3 @@ class GuessTheNumberGame(MultiAgentEnv):
             if not guessed_correctly:
                 reward[0] = 100  # agent 0 wins
         return obs, reward, terminated, truncated, info
-
-
-MultiAgentCartPole = make_multi_agent("CartPole-v1")
-MultiAgentMountainCar = make_multi_agent("MountainCarContinuous-v0")
-MultiAgentPendulum = make_multi_agent("Pendulum-v1")
-MultiAgentStatelessCartPole = make_multi_agent(lambda config: StatelessCartPole(config))
