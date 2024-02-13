@@ -1082,12 +1082,8 @@ def run_experiments(
     verbose: Optional[Union[int, AirVerbosity, Verbosity]] = None,
     progress_reporter: Optional[ProgressReporter] = None,
     resume: Union[bool, str] = False,
-<<<<<<< HEAD
     resume_config: Optional[ResumeConfig] = None,
-    reuse_actors: Optional[bool] = None,
-=======
     reuse_actors: bool = False,
->>>>>>> 91a175208c194e62963de66010dd2c77a995bda6
     raise_on_failed_trial: bool = True,
     concurrent: bool = True,
     callbacks: Optional[Sequence[Callback]] = None,
