@@ -295,7 +295,6 @@ class Router:
                 pr
             )
             if RAY_SERVE_ENABLE_QUEUE_LENGTH_CACHE:
-                print("UPDATE!", queue_len_info.num_ongoing_requests)
                 self._replica_scheduler.replica_queue_len_cache.update(
                     replica_id, queue_len_info.num_ongoing_requests
                 )
@@ -306,7 +305,6 @@ class Router:
             # request will be placed on the front of the queue to avoid tail latencies.
             # TODO(edoakes): this retry procedure is not perfect because it'll reset the
             # process of choosing candidates replicas (i.e., for locality-awareness).
-            print("RETRY!")
             replica = await self._replica_scheduler.choose_replica_for_request(
                 pr, is_retry=True
             )

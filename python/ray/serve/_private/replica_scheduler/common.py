@@ -23,7 +23,7 @@ from ray.serve.generated.serve_pb2 import RequestMetadata as RequestMetadataProt
 logger = logging.getLogger(SERVE_LOGGER_NAME)
 
 
-@dataclass(frozen=True)
+@dataclass
 class PendingRequest:
     args: List[Any]
     kwargs: Dict[Any, Any]
@@ -37,6 +37,10 @@ class PendingRequest:
             return self.metadata.request_id == other.metadata.request_id
 
         return False
+
+    def reset_future(self):
+        """Reset the `asyncio.Future`, must be called if this request is re-used."""
+        self.future = asyncio.Future()
 
 
 class ReplicaWrapper(ABC):
