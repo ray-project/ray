@@ -2,8 +2,9 @@ import time
 from dataclasses import dataclass
 from typing import Dict, List, Optional, Set
 
-from ray.core.generated.instance_manager_pb2 import Instance, InstanceUpdateEvent
 from google.protobuf.json_format import MessageToDict
+
+from ray.core.generated.instance_manager_pb2 import Instance, InstanceUpdateEvent
 
 
 @dataclass

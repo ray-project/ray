@@ -8,12 +8,11 @@ from typing import Any, Dict, List, Optional
 
 import yaml
 
+from ray._private.ray_constants import env_integer
 from ray.autoscaler._private.constants import (
     AUTOSCALER_MAX_CONCURRENT_LAUNCHES,
     DEFAULT_UPSCALING_SPEED,
 )
-
-from ray._private.ray_constants import env_integer
 from ray.autoscaler._private.util import (
     hash_runtime_conf,
     prepare_config,

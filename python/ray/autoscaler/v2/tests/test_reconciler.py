@@ -24,9 +24,7 @@ from ray.core.generated.autoscaler_pb2 import (
     NodeState,
     NodeStatus,
 )
-from ray.core.generated.instance_manager_pb2 import (
-    Instance,
-)
+from ray.core.generated.instance_manager_pb2 import Instance
 
 s_to_ns = 1 * 1_000_000_000
 
@@ -153,7 +151,6 @@ class TestReconciler:
 
         cloud_instances = {
             "c-1": CloudInstance("c-1", "type-1", "", True),
-            "c-2": CloudInstance("c-2", "type-999", "", True),
         }
 
         Reconciler.reconcile(
@@ -671,6 +668,50 @@ class TestReconciler:
                 event.launch_request_id
                 == instances[event.instance_id].launch_request_id
             )
+
+    @staticmethod
+    def test_extra_cloud_instances(setup):
+        """
+        Test that extra cloud instances should be terminated.
+        """
+        instance_manager, instance_storage, subscriber = setup
+
+        im_instances = [
+            create_instance(
+                "i-1", status=Instance.RAY_RUNNING, cloud_instance_id="c-1"
+            ),  # To be reconciled.
+        ]
+        TestReconciler._add_instances(instance_storage, im_instances)
+
+        ray_nodes = [
+            NodeState(node_id=b"r-1", status=NodeStatus.RUNNING, instance_id="c-1"),
+        ]
+
+        cloud_instances = {
+            "c-1": CloudInstance("c-1", "type-1", "", True),
+            "c-2": CloudInstance("c-2", "type-2", "", True),  # Extra
+        }
+
+        subscriber.clear()
+        Reconciler.reconcile(
+            instance_manager,
+            scheduler=MockScheduler(),
+            cloud_provider=MagicMock(),
+            ray_cluster_resource_state=ClusterResourceState(node_states=ray_nodes),
+            non_terminated_cloud_instances=cloud_instances,
+            cloud_provider_errors=[],
+            ray_install_errors=[],
+            autoscaling_config=MockAutoscalingConfig(),
+        )
+
+        assert len(subscriber.events) == 1
+        assert subscriber.events[0].new_instance_status == Instance.TERMINATING
+        assert subscriber.events[0].cloud_instance_id == "c-2"
+
+        instances, _ = instance_storage.get_instances()
+        assert len(instances) == 2
+        statuses = {instance.status for instance in instances.values()}
+        assert statuses == {Instance.RAY_RUNNING, Instance.TERMINATING}
 
 
 if __name__ == "__main__":
