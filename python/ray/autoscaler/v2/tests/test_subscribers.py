@@ -111,6 +111,7 @@ class TestCloudInstanceUpdater:
                 InstanceUpdateEvent(
                     new_instance_status=Instance.RAY_RUNNING,
                     instance_id="1",
+                    cloud_instance_id="c1",
                 ),
             ]
         )
@@ -129,21 +130,24 @@ class TestCloudInstanceUpdater:
                 InstanceUpdateEvent(
                     new_instance_status=Instance.TERMINATING,
                     instance_id="1",
+                    cloud_instance_id="c1",
                 ),
                 InstanceUpdateEvent(
                     new_instance_status=Instance.TERMINATING,
                     instance_id="2",
+                    cloud_instance_id="c2",
                 ),
                 InstanceUpdateEvent(
                     new_instance_status=Instance.TERMINATING,
                     instance_id="3",
+                    cloud_instance_id="c3",
                 ),
             ]
         )
 
         def verify():
             mock_provider.terminate.assert_called_once_with(
-                ids=["1", "2", "3"], request_id=mock.ANY
+                ids=["c1", "c2", "c3"], request_id=mock.ANY
             )
             return True
 
