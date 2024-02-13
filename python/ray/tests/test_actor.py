@@ -29,6 +29,7 @@ try:
 except ImportError:
     pytest_timeout = None
 
+
 @pytest.mark.parametrize("set_enable_auto_connect", [True, False], indirect=True)
 def test_caching_actors(shutdown_only, set_enable_auto_connect):
     # Test defining actors before ray.init() has been called.
@@ -1394,7 +1395,7 @@ def test_actor_equal(ray_start_regular_shared):
 
 
 @pytest.mark.skipif(
-    is_python_version_older_than(3,9), reason="GenericAlias is new in Python 3.9"
+    is_python_version_older_than(3, 9), reason="GenericAlias is new in Python 3.9"
 )
 def test_classmethod_genericalias():
     """

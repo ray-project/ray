@@ -417,7 +417,7 @@ class _ActorClassMethodMetadata(object):
             if GenericAlias and any(
                 (
                     method is GenericAlias,
-                    getattr(method, '__func__', None) is GenericAlias,
+                    getattr(method, "__func__", None) is GenericAlias,
                 )
             ):
                 method = method.__init__
