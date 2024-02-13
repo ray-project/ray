@@ -50,12 +50,12 @@ class CloudInstance:
     cloud_instance_id: CloudInstanceId
     # The node type of the cloud instance.
     node_type: NodeType
-    # The ray node kind, i.e. head or worker
-    node_kind: NodeKind
     # Update request id from which the cloud instance is launched.
     request_id: str
     # If the cloud instance is running.
     is_running: bool
+    # The ray node kind, i.e. head or worker
+    node_kind: NodeKind 
 
 
 class CloudInstanceProviderError(Exception):

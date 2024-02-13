@@ -16,6 +16,7 @@ from ray.autoscaler.v2.instance_manager.node_provider import (  # noqa
 )
 from ray.autoscaler.v2.instance_manager.reconciler import Reconciler, logger
 from ray.autoscaler.v2.instance_manager.storage import InMemoryStorage
+from ray.autoscaler.v2.schema import NodeKind
 from ray.autoscaler.v2.tests.util import create_instance
 from ray.core.generated.autoscaler_pb2 import ClusterResourceState
 from ray.core.generated.instance_manager_pb2 import Instance
@@ -101,8 +102,8 @@ class TestReconciler:
         )
 
         cloud_instances = {
-            "c-1": CloudInstance("c-1", "type-1", "", True),
-            "c-2": CloudInstance("c-2", "type-999", "", True),
+            "c-1": CloudInstance("c-1", "type-1", "", True, NodeKind.WORKER),
+            "c-2": CloudInstance("c-2", "type-999", "", True, NodeKind.WORKER),
         }
 
         Reconciler.reconcile(
@@ -153,13 +154,11 @@ class TestReconciler:
                 count=1,  # The request failed.
                 node_type="type-2",
                 timestamp_ns=1,
-                exception=None,
-                details="nooooo",
             )
         ]
 
         cloud_instances = {
-            "c-1": CloudInstance("c-1", "type-1", "", True),
+            "c-1": CloudInstance("c-1", "type-1", "", True, NodeKind.WORKER),
         }
 
         Reconciler.reconcile(
@@ -199,15 +198,13 @@ class TestReconciler:
         TestReconciler._add_instances(instance_storage, instances)
 
         cloud_instances = {
-            "c-2": CloudInstance("c-2", "type-2", "", False),
+            "c-2": CloudInstance("c-2", "type-2", "", False, NodeKind.WORKER),
         }
 
         termination_errors = [
             TerminateNodeError(
                 cloud_instance_id="c-2",
                 timestamp_ns=1,
-                exception=None,
-                details="nooooo",
                 request_id="t1",
             )
         ]
