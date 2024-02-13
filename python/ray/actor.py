@@ -412,10 +412,14 @@ class _ActorClassMethodMetadata(object):
                 modified_class, method_name
             )
 
-            if GenericAlias and any((
-                method is GenericAlias,
-                getattr(method, '__func__', None) is GenericAlias
-            )):
+            # Hotfix: This should be removed once GenericAlias includes signatures.
+            # See https://github.com/ray-project/ray/pull/43117 for more details.
+            if GenericAlias and any(
+                (
+                    method is GenericAlias,
+                    getattr(method, '__func__', None) is GenericAlias
+                )
+            ):
                 method = method.__init__
 
             # Print a warning message if the method signature is not

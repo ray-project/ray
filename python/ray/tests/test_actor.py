@@ -12,6 +12,7 @@ from ray import cloudpickle as pickle
 from ray._private import ray_constants
 from ray._private.test_utils import (
     client_test_enabled,
+    is_python_version_older_than,
     wait_for_condition,
     wait_for_pid_to_exit,
 )
@@ -27,7 +28,6 @@ try:
     import pytest_timeout
 except ImportError:
     pytest_timeout = None
-
 
 @pytest.mark.parametrize("set_enable_auto_connect", [True, False], indirect=True)
 def test_caching_actors(shutdown_only, set_enable_auto_connect):
@@ -1391,6 +1391,24 @@ def test_actor_equal(ray_start_regular_shared):
 
     remote = ray.get(get_actor.remote(origin))
     assert origin == remote
+
+@pytest.mark.skipif(is_python_version_older_than(3,9), reason="GenericAlias is new in Python 3.9")
+def test_classmethod_genericalias():
+    """
+    The Python built-in function `inspect.signature` doesn't support classmethod(GenericAlias).
+    Hence, if we call `inspect.signature(MyClass)`, it will raise a ValueError. In #43117, we
+    have a workaround to bypass this issue.
+    """
+    from types import GenericAlias
+
+    @ray.remote
+    class MyClass:
+        __class_getitem__ = classmethod(GenericAlias)
+
+    # This would allow MyClass[int] to behave similarly to specifying a generic type
+    myClass = MyClass.remote()
+    obj_ref = myClass.__class_getitem__.remote(int)
+    print(ray.get(obj_ref))
 
 
 if __name__ == "__main__":
