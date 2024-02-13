@@ -159,7 +159,7 @@ class ResourceManager:
         """Return whether OpResourceLimiter is enabled."""
         return self._op_resource_limiter is not None
 
-    def get_op_limit(self, op: PhysicalOperator) -> ExecutionResources:
+    def get_op_limits(self, op: PhysicalOperator) -> ExecutionResources:
         """Get the limit of resources that the given op can use at the current time.
 
         This method can only be called when `op_resource_limiter_enabled` returns True.

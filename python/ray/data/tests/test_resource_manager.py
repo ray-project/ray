@@ -170,7 +170,9 @@ class TestReservationOpResourceLimiter:
 
         resource_manager = ResourceManager(topo, ExecutionOptions())
         resource_manager.get_op_usage = MagicMock(side_effect=lambda op: op_usages[op])
-        resource_manager.get_global_limits = MagicMock(side_effect=mock_get_global_limits)
+        resource_manager.get_global_limits = MagicMock(
+            side_effect=mock_get_global_limits
+        )
 
         assert resource_manager.op_resource_limiter_enabled()
         op_resource_limiter = resource_manager._op_resource_limiter
@@ -232,12 +234,36 @@ class TestReservationOpResourceLimiter:
         op_resource_limiter.update_usages()
         assert op_resource_limiter.get_op_limits(o1) == ExecutionResources.inf()
         assert op_resource_limiter.get_op_limits(o4) == ExecutionResources.inf()
-        assert op_resource_limiter.get_op_limits(o2) == ExecutionResources(1.5, float("inf"), 0)
+        assert op_resource_limiter.get_op_limits(o2) == ExecutionResources(
+            1.5, float("inf"), 0
+        )
         # o3 still has object_store_memory in its reserved resources,
         # even if the global limits are already exceeded.
         assert op_resource_limiter.get_op_limits(o3) == ExecutionResources(
             2.5, float("inf"), 75
         )
+
+    def test_no_eligible_ops(self, restore_data_context):
+        DataContext.get_current().op_resource_reservation_enabled = True
+
+        o1 = InputDataBuffer([])
+        o2 = LimitOperator(1, o1)
+        topo, _ = build_streaming_topology(o2, ExecutionOptions())
+
+        resource_manager = ResourceManager(topo, ExecutionOptions())
+        resource_manager.get_op_usage = MagicMock(
+            return_value=ExecutionResources.zero()
+        )
+        resource_manager.get_global_limits = MagicMock(
+            return_value=ExecutionResources.zero()
+        )
+
+        assert resource_manager.op_resource_limiter_enabled()
+        op_resource_limiter = resource_manager._op_resource_limiter
+        assert isinstance(op_resource_limiter, ReservationOpResourceLimiter)
+
+        op_resource_limiter.update_usages()
+        assert op_resource_limiter.get_op_limits(o1) == ExecutionResources.inf()
 
     def test_only_enable_for_ops_with_accurate_memory_accouting(self):
         """Test that ReservationOpResourceLimiter is not enabled when
