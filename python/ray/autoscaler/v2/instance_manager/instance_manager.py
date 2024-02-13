@@ -277,7 +277,13 @@ class InstanceManager:
         Raises:
             InvalidInstanceUpdateError: If the update is invalid.
         """
-        InstanceUtil.set_status(instance, update.new_instance_status)
+        if not InstanceUtil.set_status(instance, update.new_instance_status):
+            raise InvalidInstanceUpdateError(
+                instance_id=update.instance_id,
+                cur_status=instance.status,
+                update=update,
+                details="Invalid status transition",
+            )
         InstanceManager._apply_update(instance, update)
 
         return instance

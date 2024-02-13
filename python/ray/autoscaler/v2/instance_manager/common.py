@@ -1,5 +1,5 @@
 import time
-from dataclasses import dataclass
+import uuid
 from typing import Dict, List, Optional, Set
 
 from google.protobuf.json_format import MessageToDict
@@ -7,9 +7,17 @@ from google.protobuf.json_format import MessageToDict
 from ray.core.generated.instance_manager_pb2 import Instance, InstanceUpdateEvent
 
 
-@dataclass
 class InvalidInstanceUpdateError(ValueError):
     """Raised when an instance has an invalid status."""
+
+    # The instance manager instance id.
+    instance_id: str
+    # The current status of the instance.
+    cur_status: Instance.InstanceStatus
+    # The new status to be set to.
+    new_status: Instance.InstanceStatus
+    # Extra details
+    details: str
 
     def __init__(
         self,
@@ -25,9 +33,14 @@ class InvalidInstanceUpdateError(ValueError):
             update: The update to apply.
             details: The details of the error.
         """
+        self.instance_id = instance_id
+        self.cur_status = cur_status
+        self.new_status = update.new_instance_status
+        self.details = details
 
         msg = (
-            f"Instance {instance_id} with current status {Instance.InstanceStatus.Name(cur_status)} "
+            f"Instance {instance_id} with current status "
+            f"{Instance.InstanceStatus.Name(cur_status)} "
             f"cannot be updated by {MessageToDict(update)}: {details}"
         )
 
@@ -60,7 +73,7 @@ class InstanceUtil:
         Args:
             instance_id: The instance id.
             instance_type: The instance type.
-            status: The status.
+            status: The status of the new instance.
             details: The details of the status transition.
         """
         instance = Instance()
@@ -74,9 +87,9 @@ class InstanceUtil:
     @staticmethod
     def random_instance_id() -> str:
         """
-        Returns a random instance id based on the current time in nanoseconds.
+        Returns a random instance id.
         """
-        return str(time.monotonic_ns())
+        return str(uuid.uuid4())
 
     @staticmethod
     def is_cloud_instance_allocated(instance_status: Instance.InstanceStatus) -> bool:
@@ -120,7 +133,7 @@ class InstanceUtil:
             details: The details of the transition.
 
         Returns:
-            If the status could be set.
+            True if the status transition is successful, False otherwise.
         """
         if (
             new_instance_status
