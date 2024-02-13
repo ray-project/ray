@@ -3,7 +3,7 @@
 import copy
 import sys
 from collections import defaultdict
-from typing import Dict, List, Set
+from typing import Dict, List, Optional, Set
 
 import ray
 from ray.anyscale._private.constants import ANYSCALE_RAY_NODE_AVAILABILITY_ZONE_LABEL
@@ -49,7 +49,11 @@ class AnyscaleDeploymentScheduler(DeploymentScheduler):
         of the target deployment.
     """
 
-    def __init__(self, cluster_node_info_cache: ClusterNodeInfoCache):
+    def __init__(
+        self,
+        cluster_node_info_cache: ClusterNodeInfoCache,
+        head_node_id: Optional[str] = None,
+    ):
         # {deployment_id: scheduling_policy}
         self._deployments = {}
         # Replicas that are waiting to be scheduled.
@@ -70,7 +74,7 @@ class AnyscaleDeploymentScheduler(DeploymentScheduler):
 
         self._cluster_node_info_cache = cluster_node_info_cache
 
-        self._head_node_id = get_head_node_id()
+        self._head_node_id = head_node_id or get_head_node_id()
 
     def on_deployment_created(
         self,

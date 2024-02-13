@@ -47,6 +47,7 @@ def create_deployment_scheduler(  # noqa: F811
     cluster_node_info_cache: ClusterNodeInfoCache,
     head_node_id_override: Optional[str] = None,
 ) -> DeploymentScheduler:
+    head_node_id = head_node_id_override or get_head_node_id()
     from ray.anyscale.serve._private.constants import (
         ANYSCALE_RAY_SERVE_ENABLE_PROPRIETARY_DEPLOYMENT_SCHEDULER,
     )
@@ -56,7 +57,7 @@ def create_deployment_scheduler(  # noqa: F811
             AnyscaleDeploymentScheduler,
         )
 
-        return AnyscaleDeploymentScheduler(cluster_node_info_cache)
+        deployment_scheduler_class = AnyscaleDeploymentScheduler
     else:
-        head_node_id = head_node_id_override or get_head_node_id()
-        return DefaultDeploymentScheduler(cluster_node_info_cache, head_node_id)
+        deployment_scheduler_class = DefaultDeploymentScheduler
+    return deployment_scheduler_class(cluster_node_info_cache, head_node_id)

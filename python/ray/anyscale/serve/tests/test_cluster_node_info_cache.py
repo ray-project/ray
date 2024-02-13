@@ -38,6 +38,7 @@ def test_get_draining_nodes(ray_start_cluster):
         worker_node_id,
         autoscaler_pb2.DrainNodeReason.Value("DRAIN_NODE_REASON_PREEMPTION"),
         "preemption",
+        0,
     )
     assert is_accepted
 

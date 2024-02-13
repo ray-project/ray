@@ -101,6 +101,7 @@ def test_draining_with_traffic(monkeypatch, ray_start_cluster):
         draining_node_id,
         autoscaler_pb2.DrainNodeReason.Value("DRAIN_NODE_REASON_PREEMPTION"),
         "spot instance preemption",
+        0,
     )
     assert is_accepted
 
@@ -194,6 +195,7 @@ def test_draining_without_traffic(monkeypatch, ray_start_cluster):
         draining_node_id,
         autoscaler_pb2.DrainNodeReason.Value("DRAIN_NODE_REASON_PREEMPTION"),
         "spot instance preemption",
+        0,
     )
     assert is_accepted
 

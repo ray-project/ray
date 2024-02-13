@@ -1,6 +1,6 @@
 # Copyright (2023 and onwards) Anyscale, Inc.
 
-from typing import Optional, Set
+from typing import Dict, Optional, Set
 
 import ray
 from ray._raylet import GcsClient
@@ -11,11 +11,12 @@ from ray.serve._private.cluster_node_info_cache import ClusterNodeInfoCache
 class AnyscaleClusterNodeInfoCache(ClusterNodeInfoCache):
     def __init__(self, gcs_client: GcsClient):
         super().__init__(gcs_client)
-        self._cached_draining_nodes = None
+        self._cached_draining_nodes: Set[str] = set()
 
     def update(self):
         super().update()
-        self._cached_draining_nodes = ray._private.state.state.get_draining_nodes()
+        draining_nodes: Dict[str, int] = ray._private.state.state.get_draining_nodes()
+        self._cached_draining_nodes = set(draining_nodes.keys())
 
     def get_draining_node_ids(self) -> Set[str]:
         return self._cached_draining_nodes
