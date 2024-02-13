@@ -1256,6 +1256,20 @@ ray_cc_test(
 )
 
 ray_cc_test(
+    name = "mutable_object_test",
+    srcs = [
+        "src/ray/object_manager/plasma/test/mutable_object_test.cc",
+    ],
+    tags = ["team:core", "no_windows"],
+    deps = [
+        ":plasma_store_server_lib",
+        "@com_google_absl//absl/random",
+        "@com_google_absl//absl/strings:str_format",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+ray_cc_test(
     name = "object_lifecycle_manager_test",
     srcs = [
         "src/ray/object_manager/plasma/test/object_lifecycle_manager_test.cc",
