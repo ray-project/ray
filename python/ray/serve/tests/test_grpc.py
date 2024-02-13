@@ -804,5 +804,42 @@ def test_using_grpc_context_bad_function_signature(
         assert "extra_required_arg" in rpc_error.details()
 
 
+def test_grpc_client_sending_large_payload(ray_instance, ray_shutdown):
+    """Test gRPC client sending large payload.
+
+    Serve's gRPC proxy should be configured to allow the client to send large payloads
+    without error.
+    """
+    grpc_port = 9000
+    grpc_servicer_functions = [
+        "ray.serve.generated.serve_pb2_grpc.add_UserDefinedServiceServicer_to_server",
+    ]
+
+    serve.start(
+        grpc_options=gRPCOptions(
+            port=grpc_port,
+            grpc_servicer_functions=grpc_servicer_functions,
+        ),
+    )
+    serve.run(target=g)
+
+    # This option allows the client to pass larger message.
+    options = [
+        ("grpc.max_receive_message_length", 1024 * 1024 * 1024),
+    ]
+    channel = grpc.insecure_channel("localhost:9000", options=options)
+    stub = serve_pb2_grpc.UserDefinedServiceStub(channel)
+
+    # This is a large payload that exists gRPC's default message limit.
+    large_payload = "foobar" * 1_000_000
+    request = serve_pb2.UserDefinedMessage(name=large_payload, num=30, foo="bar")
+    metadata = (("application", "default"),)
+    response = stub.__call__(request=request, metadata=metadata)
+    assert response == serve_pb2.UserDefinedResponse(
+        greeting=f"Hello {large_payload} from bar",
+        num_x2=60,
+    )
+
+
 if __name__ == "__main__":
     sys.exit(pytest.main(["-v", "-s", __file__]))
