@@ -8,7 +8,7 @@ from ray.autoscaler.node_provider import NodeProvider as NodeProviderV1
 from ray.autoscaler.tags import TAG_RAY_USER_NODE_TYPE
 from ray.autoscaler.v2.instance_manager.config import AutoscalingConfig
 from ray.autoscaler.v2.schema import NodeType
-from ray.core.generated.instance_manager_pb2 import Instance
+from ray.core.generated.instance_manager_pb2 import Instance, NodeKind
 
 logger = logging.getLogger(__name__)
 
@@ -38,6 +38,8 @@ class CloudInstance:
     request_id: str
     # If the cloud instance is running.
     is_running: bool
+    # The node kind of the cloud instance.
+    node_kind: NodeKind
 
 
 @dataclass

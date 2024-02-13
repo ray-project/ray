@@ -29,7 +29,10 @@ from ray.core.generated.autoscaler_pb2 import (
     NodeState,
     NodeStatus,
 )
-from ray.core.generated.instance_manager_pb2 import GetInstanceManagerStateRequest
+from ray.core.generated.instance_manager_pb2 import (
+    GetInstanceManagerStateRequest,
+    NodeKind,
+)
 from ray.core.generated.instance_manager_pb2 import Instance as IMInstance
 from ray.core.generated.instance_manager_pb2 import (
     InstanceUpdateEvent as IMInstanceUpdateEvent,
@@ -105,6 +108,52 @@ class Reconciler:
             _logger=_logger,
         )
         return autoscaling_state
+
+    @staticmethod
+    def initialize_head_node(
+        instance_manager: InstanceManager,
+        non_terminated_cloud_instances: Dict[CloudInstanceId, CloudInstance],
+    ):
+        """
+        Initialize the head node for the instance manager.
+
+        This is needed since the head node is not managed by the instance manager
+        as of now and needs to be initialized separately.
+
+        This should be called when the autoscaler is first started.
+
+        Args:
+            instance_manager: The instance manager to reconcile.
+            non_terminated_cloud_instances: The non-terminated cloud instances from
+                the cloud provider.
+        """
+        head_cloud_instance = None
+        for cloud_instance in non_terminated_cloud_instances.values():
+            if cloud_instance.node_kind == NodeKind.HEAD:
+                head_cloud_instance = cloud_instance
+                break
+
+        assert head_cloud_instance, (
+            "Head node is not found. Make sure the head node "
+            "is started with RAY_CLOUD_INSTANCE_ID set, and it has the needed labels "
+            "specified in ray/autoscaler/tags.py ."
+        )
+
+        # Initialize the head node for the instance manager.
+        updates = {}
+        head_node_instance_id = InstanceUtil.random_instance_id()
+        updates[head_node_instance_id] = IMInstanceUpdateEvent(
+            instance_id=head_node_instance_id,
+            new_instance_status=IMInstance.ALLOCATED,
+            cloud_instance_id=head_cloud_instance.cloud_instance_id,
+            node_kind=head_cloud_instance.node_kind,
+            instance_type=head_cloud_instance.node_type,
+        )
+        instances, version = Reconciler._get_im_instances(instance_manager)
+        assert len(instances) == 0, "No instance should have been initialized. "
+        Reconciler._update_instance_manager(
+            instance_manager, version=version, updates=updates
+        )
 
     @staticmethod
     def _sync_from(
@@ -349,6 +398,8 @@ class Reconciler:
                 instance_id=im_instance.instance_id,
                 new_instance_status=IMInstance.ALLOCATED,
                 cloud_instance_id=unassigned_cloud_instance.cloud_instance_id,
+                node_kind=unassigned_cloud_instance.node_kind,
+                instance_type=unassigned_cloud_instance.node_type,
             )
 
         # If there's a launch error, transition to ALLOCATION_FAILED.

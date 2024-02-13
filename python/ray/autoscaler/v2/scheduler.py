@@ -20,7 +20,11 @@ from ray.core.generated.autoscaler_pb2 import (
     ResourceRequest,
     ResourceRequestByCount,
 )
-from ray.core.generated.instance_manager_pb2 import LaunchRequest, TerminationRequest
+from ray.core.generated.instance_manager_pb2 import (
+    LaunchRequest,
+    TerminationRequest,
+    NodeKind,
+)
 
 # ============= Resource Scheduling Service API =======================
 #
@@ -168,6 +172,8 @@ class SchedulingNode:
     ray_node_id: Optional[str] = None
     # Idle duration in ms. Default not idle.
     idle_duration_ms: int = 0
+    # Node kind.
+    node_kind: NodeKind = NodeKind.WORKER
 
     def try_schedule(
         self, requests: List[ResourceRequest]
@@ -663,7 +669,7 @@ class ResourceDemandScheduler(IResourceScheduler):
     ) -> Tuple[List[SchedulingNode], List[SchedulingNode]]:
         """
         Select 'num_to_terminate' of nodes to be terminated
-        from the 'nodes' list.
+        from the 'nodes' list. It should never select a head node.
 
         Args:
             nodes: The nodes to be terminated.
@@ -687,9 +693,17 @@ class ResourceDemandScheduler(IResourceScheduler):
         # Sort the nodes for termination.
         nodes.sort(key=ResourceDemandScheduler._sort_nodes_for_termination)
 
+        # Remove the head node from the list.
+        head_node = None
+        for i, node in enumerate(nodes):
+            if node.node_kind == NodeKind.HEAD:
+                # Remove the head node from the list.
+                head_node = nodes.pop(i)
+                break
+
         terminated_nodes, remained_nodes = (
             nodes[:num_to_terminate],
-            nodes[num_to_terminate:],
+            nodes[num_to_terminate:] + [head_node] if head_node else [],
         )
 
         for node in terminated_nodes:

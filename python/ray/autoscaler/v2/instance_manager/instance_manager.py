@@ -8,6 +8,7 @@ from ray.autoscaler.v2.instance_manager.common import (
 )
 from ray.autoscaler.v2.instance_manager.instance_storage import InstanceStorage
 from ray.core.generated.instance_manager_pb2 import (
+    NodeKind,
     GetInstanceManagerStateReply,
     GetInstanceManagerStateRequest,
     Instance,
@@ -194,16 +195,28 @@ class InstanceManager:
         Raises:
             InvalidInstanceUpdateError: If the update is invalid.
         """
-
+        err_msg = None
         if update.new_instance_status == Instance.ALLOCATED:
             if not update.cloud_instance_id:
+                err_msg = "ALLOCATED update must have cloud_instance_id"
+            elif update.node_kind not in [
+                NodeKind.WORKER,
+                NodeKind.HEAD,
+            ]:
+                err_msg = "ALLOCATED update must have node_kind as WORKER or HEAD"
+            elif not update.instance_type:
+                err_msg = "ALLOCATED update must have instance_type"
+
+            if err_msg:
                 raise InvalidInstanceUpdateError(
                     instance_id=update.instance_id,
                     cur_status=instance.status,
                     update=update,
-                    details=("ALLOCATED update must have cloud_instance_id"),
+                    details=err_msg,
                 )
             instance.cloud_instance_id = update.cloud_instance_id
+            instance.node_kind = update.node_kind
+            instance.instance_type = update.instance_type
         elif update.new_instance_status == Instance.TERMINATED:
             instance.cloud_instance_id = ""
         elif update.new_instance_status == Instance.RAY_RUNNING:

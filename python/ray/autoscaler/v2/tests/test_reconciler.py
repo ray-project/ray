@@ -31,6 +31,7 @@ from ray.core.generated.autoscaler_pb2 import (
 from ray.core.generated.instance_manager_pb2 import (
     Instance,
     LaunchRequest,
+    NodeKind,
     TerminationRequest,
 )
 
@@ -111,6 +112,43 @@ class TestReconciler:
             assert ok
 
     @staticmethod
+    def test_initialize_head_node(setup):
+        instance_manager, instance_storage, _ = setup
+
+        cloud_instances = {
+            "c-1": CloudInstance("c-1", "type-1", "", True, NodeKind.HEAD),
+        }
+
+        ray_node = NodeState(
+            node_id=b"r-1", status=NodeStatus.RUNNING, instance_id="c-1"
+        )
+
+        Reconciler.initialize_head_node(
+            instance_manager,
+            cloud_instances,
+        )
+
+        instances, _ = instance_storage.get_instances()
+        instance_id = list(instances.values())[0].instance_id
+        assert len(instances) == 1
+        assert instances[instance_id].status == Instance.ALLOCATED
+        assert instances[instance_id].node_kind == NodeKind.HEAD
+
+        # Normal reconciliation should work.
+        Reconciler.reconcile(
+            instance_manager=instance_manager,
+            scheduler=MockScheduler(),
+            cloud_provider=MagicMock(),
+            ray_cluster_resource_state=ClusterResourceState(node_states=[ray_node]),
+            non_terminated_cloud_instances=cloud_instances,
+            cloud_provider_errors=[],
+            ray_install_errors=[],
+            autoscaling_config=MockAutoscalingConfig(),
+        )
+        instances, _ = instance_storage.get_instances()
+        assert instances[instance_id].status == Instance.RAY_RUNNING
+
+    @staticmethod
     def test_requested_instance_no_op(setup):
         instance_manager, instance_storage, _ = setup
         # Request no timeout yet.
@@ -168,7 +206,7 @@ class TestReconciler:
         )
 
         cloud_instances = {
-            "c-1": CloudInstance("c-1", "type-1", "", True),
+            "c-1": CloudInstance("c-1", "type-1", "", True, NodeKind.WORKER),
         }
 
         Reconciler.reconcile(
@@ -227,7 +265,7 @@ class TestReconciler:
         ]
 
         cloud_instances = {
-            "c-1": CloudInstance("c-1", "type-1", "", True),
+            "c-1": CloudInstance("c-1", "type-1", "", True, NodeKind.WORKER),
         }
 
         Reconciler.reconcile(
@@ -269,7 +307,7 @@ class TestReconciler:
         TestReconciler._add_instances(instance_storage, instances)
 
         cloud_instances = {
-            "c-2": CloudInstance("c-2", "type-2", "", False),
+            "c-2": CloudInstance("c-2", "type-2", "", False, NodeKind.WORKER),
         }
 
         termination_errors = [
@@ -317,7 +355,7 @@ class TestReconciler:
             ),
         ]
         cloud_instances = {
-            "c-1": CloudInstance("c-1", "type-1", "", True),
+            "c-1": CloudInstance("c-1", "type-1", "", True, NodeKind.WORKER),
         }
 
         TestReconciler._add_instances(instance_storage, im_instances)
@@ -371,7 +409,7 @@ class TestReconciler:
             create_instance("i-1", status=Instance.ALLOCATED, cloud_instance_id="c-1"),
         ]
         cloud_instances = {
-            "c-1": CloudInstance("c-1", "type-1", "", True),
+            "c-1": CloudInstance("c-1", "type-1", "", True, NodeKind.WORKER),
         }
         TestReconciler._add_instances(instance_storage, im_instances)
         Reconciler.reconcile(
@@ -412,8 +450,8 @@ class TestReconciler:
             ),  # Already being stopped
         ]
         cloud_instances = {
-            "c-1": CloudInstance("c-1", "type-1", "", True),
-            "c-2": CloudInstance("c-2", "type-2", "", True),
+            "c-1": CloudInstance("c-1", "type-1", "", True, NodeKind.WORKER),
+            "c-2": CloudInstance("c-2", "type-2", "", True, NodeKind.WORKER),
         }
 
         subscriber.clear()
@@ -455,9 +493,9 @@ class TestReconciler:
             NodeState(node_id=b"r-3", status=NodeStatus.DRAINING, instance_id="c-3"),
         ]
         cloud_instances = {
-            "c-1": CloudInstance("c-1", "type-1", "", True),
-            "c-2": CloudInstance("c-2", "type-2", "", True),
-            "c-3": CloudInstance("c-3", "type-3", "", True),
+            "c-1": CloudInstance("c-1", "type-1", "", True, NodeKind.WORKER),
+            "c-2": CloudInstance("c-2", "type-2", "", True, NodeKind.WORKER),
+            "c-3": CloudInstance("c-3", "type-3", "", True, NodeKind.WORKER),
         }
 
         Reconciler.reconcile(
@@ -502,9 +540,9 @@ class TestReconciler:
         ]
 
         cloud_instances = {
-            "c-1": CloudInstance("c-1", "type-1", "", True),
-            "c-2": CloudInstance("c-2", "type-2", "", True),
-            "c-3": CloudInstance("c-3", "type-3", "", True),
+            "c-1": CloudInstance("c-1", "type-1", "", True, NodeKind.WORKER),
+            "c-2": CloudInstance("c-2", "type-2", "", True, NodeKind.WORKER),
+            "c-3": CloudInstance("c-3", "type-3", "", True, NodeKind.WORKER),
         }
 
         Reconciler.reconcile(
@@ -544,7 +582,7 @@ class TestReconciler:
         ]
 
         cloud_instances = {
-            "c-1": CloudInstance("c-1", "type-1", "", True),
+            "c-1": CloudInstance("c-1", "type-1", "", True, NodeKind.WORKER),
         }
 
         Reconciler.reconcile(
@@ -640,7 +678,7 @@ class TestReconciler:
             )
             next_id += 1
             cloud_instances[instance.cloud_instance_id] = CloudInstance(
-                instance.cloud_instance_id, "type-1", "", True
+                instance.cloud_instance_id, "type-1", "", True, NodeKind.WORKER
             )
             TestReconciler._add_instances(instance_storage, [instance])
 
@@ -937,7 +975,7 @@ class TestReconciler:
         ]
 
         cloud_instances = {
-            "c-1": CloudInstance("c-1", "type-1", "", True),
+            "c-1": CloudInstance("c-1", "type-1", "", True, NodeKind.WORKER),
         }
 
         mock_scheduler = MagicMock()
@@ -1009,9 +1047,9 @@ class TestReconciler:
         ]
 
         cloud_instances = {
-            "c-1": CloudInstance("c-1", "type-1", "", True),
-            "c-2": CloudInstance("c-2", "type-2", "", True),
-            "c-3": CloudInstance("c-3", "type-3", "", True),
+            "c-1": CloudInstance("c-1", "type-1", "", True, NodeKind.WORKER),
+            "c-2": CloudInstance("c-2", "type-2", "", True, NodeKind.WORKER),
+            "c-3": CloudInstance("c-3", "type-3", "", True, NodeKind.WORKER),
         }
 
         TestReconciler._add_instances(instance_storage, instances)
@@ -1055,7 +1093,9 @@ class TestReconciler:
         ]
 
         cloud_instances = {
-            "c-1": CloudInstance("c-1", "type-1", "", cloud_instance_running),
+            "c-1": CloudInstance(
+                "c-1", "type-1", "", cloud_instance_running, NodeKind.WORKER
+            ),
         }
 
         TestReconciler._add_instances(instance_storage, instances)
@@ -1100,8 +1140,8 @@ class TestReconciler:
         ]
 
         cloud_instances = {
-            "c-1": CloudInstance("c-1", "type-1", "", True),
-            "c-2": CloudInstance("c-2", "type-2", "", True),  # Extra
+            "c-1": CloudInstance("c-1", "type-1", "", True, NodeKind.WORKER),
+            "c-2": CloudInstance("c-2", "type-2", "", True, NodeKind.WORKER),  # Extra
         }
 
         subscriber.clear()
