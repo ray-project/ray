@@ -456,16 +456,9 @@ def run(
             is best used with `ray.init(local_mode=True)`).
         restore: Path to checkpoint. Only makes sense to set if
             running 1 trial. Defaults to None.
-        resume: One of [True, False, "LOCAL", "REMOTE", "PROMPT", "AUTO"]. Can
+        resume: One of [True, False, "AUTO"]. Can
             be suffixed with one or more of ["+ERRORED", "+ERRORED_ONLY",
             "+RESTART_ERRORED", "+RESTART_ERRORED_ONLY"] (e.g. ``AUTO+ERRORED``).
-            "LOCAL"/True restores the checkpoint from the
-            local experiment directory, determined
-            by ``name`` and ``local_dir``.
-            "REMOTE" restores the checkpoint
-            from ``upload_dir`` (as passed to ``sync_config``).
-            "PROMPT" provides the CLI feedback.
-            False forces a new experiment.
             "AUTO" will attempt to resume from a checkpoint and otherwise
             start a new experiment.
             The suffix "+ERRORED" resets and reruns errored trials upon resume -
