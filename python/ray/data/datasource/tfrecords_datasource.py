@@ -431,6 +431,34 @@ def _read_records(
             raise RuntimeError(error_message) from e
 
 
+def _cast_large_list_to_list_transform(dataset: "Dataset"):
+    return dataset.map_batches(
+        _cast_large_list_to_list,
+        batch_format="pyarrow",
+    )
+
+
+def _cast_large_list_to_list(batch: pyarrow.Table):
+    old_schema = batch.schema
+    fields = {}
+
+    for column_name in old_schema.names:
+        field_type = old_schema.field(column_name).type
+        if type(field_type) == pyarrow.lib.LargeListType:
+            value_type = field_type.value_type
+
+            if value_type == pyarrow.large_binary():
+                value_type = pyarrow.binary()
+
+            fields[column_name] = pyarrow.list_(value_type)
+
+        if field_type == pyarrow.large_binary():
+            fields[column_name] = pyarrow.binary()
+
+    new_schema = pyarrow.schema(fields)
+    return batch.cast(new_schema)
+
+
 def _infer_schema_and_transform(dataset: "Dataset"):
     list_sizes = dataset.aggregate(_MaxListSize(dataset.schema().names))
 
@@ -453,9 +481,6 @@ def _unwrap_single_value_lists(batch: pyarrow.Table, col_lengths: Dict[str, int]
 
     for col in col_lengths:
         value_type = batch[col].type.value_type
-        # to_tf does not support large_binary, so we cast it to binary
-        if value_type == pyarrow.large_binary():
-            value_type = pyarrow.binary()
 
         if col_lengths[col] == 1:
             if batch[col]:
@@ -463,8 +488,6 @@ def _unwrap_single_value_lists(batch: pyarrow.Table, col_lengths: Dict[str, int]
                     [x.as_py()[0] if x.as_py() else None for x in batch[col]],
                     type=value_type,
                 )
-        else:
-            columns[col] = batch[col].cast(pyarrow.list_(value_type))
 
     return pyarrow.table(columns)
 

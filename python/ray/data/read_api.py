@@ -1608,6 +1608,13 @@ def read_tfrecords(
     )
     ds = read_datasource(datasource, parallelism=parallelism)
 
+    if fast_read:
+        from ray.data.datasource.tfrecords_datasource import (
+            _cast_large_list_to_list_transform,
+        )
+
+        ds = _cast_large_list_to_list_transform(ds)
+
     if fast_read_auto_infer_schema and fast_read and not tf_schema:
         from ray.data.datasource.tfrecords_datasource import _infer_schema_and_transform
 
