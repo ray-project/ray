@@ -32,13 +32,13 @@ steps:
       - "3.10"
       - "3.11"
 
-  - label: "MacOS x86_64 Python {{matrix}}"
+  - label: "MacOS x86_64"
     job_env: MACOS
     instance_type: macos
     commands:
       - ./.buildkite/release-automation/verify-macos-wheels.sh x86_64
 
-  - label: "MacOS arm64 Python {{matrix}}"
+  - label: "MacOS arm64"
     job_env: MACOS
     instance_type: macos-arm64
     commands:
