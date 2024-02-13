@@ -6,7 +6,6 @@ import xgboost as xgb
 
 import ray
 from ray import train, tune
-from ray.train.xgboost import XGBoostCheckpoint
 from ray.tune.schedulers import ResourceChangingScheduler, ASHAScheduler
 from ray.tune.execution.placement_groups import PlacementGroupFactory
 from ray.tune.experiment import Trial
@@ -15,14 +14,13 @@ from ray.tune.integration.xgboost import TuneReportCheckpointCallback
 if TYPE_CHECKING:
     from ray.tune.execution.tune_controller import TuneController
 
-
-def cast_to_xgboost_checkpoint(checkpoint: train.Checkpoint) -> XGBoostCheckpoint:
-    return XGBoostCheckpoint(path=checkpoint.path, filesystem=checkpoint.filesystem)
+CHECKPOINT_FILENAME = "booster-checkpoint.json"
 
 
 def get_best_model_checkpoint(best_result: "ray.train.Result"):
-    checkpoint = cast_to_xgboost_checkpoint(best_result.checkpoint)
-    best_bst = checkpoint.get_model()
+    best_bst = TuneReportCheckpointCallback.get_model(
+        best_result.checkpoint, filename=CHECKPOINT_FILENAME
+    )
 
     accuracy = 1.0 - best_result.metrics["eval-logloss"]
     print(f"Best model parameters: {best_result.config}")
@@ -47,10 +45,12 @@ def train_breast_cancer(config: dict):
     xgb_model = None
     checkpoint = train.get_checkpoint()
     if checkpoint:
-        xgb_model = cast_to_xgboost_checkpoint(checkpoint).get_model()
+        xgb_model = TuneReportCheckpointCallback.get_model(
+            checkpoint, filename=CHECKPOINT_FILENAME
+        )
 
-    # we can obtain current trial resources through
-    # `tune.get_trial_resources()`
+    # Set `nthread` to the number of CPUs available to the trial,
+    # which is assigned by the scheduler.
     config["nthread"] = int(train.get_context().get_trial_resources().head_cpus)
     print(f"nthreads: {config['nthread']} xgb_model: {xgb_model}")
     # Train the classifier, using the Tune callback
@@ -65,7 +65,7 @@ def train_breast_cancer(config: dict):
                 # checkpointing should happen every iteration
                 # with dynamic resource allocation
                 frequency=1,
-                checkpoint_cls=XGBoostCheckpoint,
+                filename=CHECKPOINT_FILENAME,
             )
         ],
     )
