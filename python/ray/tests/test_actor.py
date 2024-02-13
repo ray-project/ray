@@ -1395,9 +1395,9 @@ def test_actor_equal(ray_start_regular_shared):
 @pytest.mark.skipif(is_python_version_older_than(3,9), reason="GenericAlias is new in Python 3.9")
 def test_classmethod_genericalias():
     """
-    The Python built-in function `inspect.signature` doesn't support classmethod(GenericAlias).
-    Hence, if we call `inspect.signature(MyClass)`, it will raise a ValueError. In #43117, we
-    have a workaround to bypass this issue.
+    The Python built-in function `inspect.signature` doesn't support
+    classmethod(GenericAlias). Hence, if we call `inspect.signature(MyClass)`,
+    it will raise a ValueError.
     """
     from types import GenericAlias
 
