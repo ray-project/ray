@@ -14,7 +14,6 @@ PyTorch Lightning (tune.integration.pytorch_lightning)
     :nosignatures:
     :toctree: doc/
 
-    ~tune.integration.pytorch_lightning.TuneReportCallback
     ~tune.integration.pytorch_lightning.TuneReportCheckpointCallback
 
 .. _tune-integration-xgboost:
@@ -26,7 +25,6 @@ XGBoost (tune.integration.xgboost)
     :nosignatures:
     :toctree: doc/
 
-    ~tune.integration.xgboost.TuneReportCallback
     ~tune.integration.xgboost.TuneReportCheckpointCallback
 
 
@@ -39,5 +37,4 @@ LightGBM (tune.integration.lightgbm)
     :nosignatures:
     :toctree: doc/
 
-    ~tune.integration.lightgbm.TuneReportCallback
     ~tune.integration.lightgbm.TuneReportCheckpointCallback
