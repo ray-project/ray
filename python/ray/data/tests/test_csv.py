@@ -799,7 +799,7 @@ def test_csv_write_block_path_provider(
 
 # NOTE: The last test using the shared ray_start_regular_shared cluster must use the
 # shutdown_only fixture so the shared cluster is shut down, otherwise the below
-# test_write_datasource_ray_remote_args test, which uses a cluster_utils cluster, will
+# test_write_datasink_ray_remote_args test, which uses a cluster_utils cluster, will
 # fail with a double-init.
 def test_csv_read_no_header(shutdown_only, tmp_path):
     from pyarrow import csv

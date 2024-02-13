@@ -7,13 +7,12 @@ from ray.data.datasource.block_path_provider import (
 )
 from ray.data.datasource.csv_datasink import _CSVDatasink
 from ray.data.datasource.csv_datasource import CSVDatasource
-from ray.data.datasource.datasink import Datasink
+from ray.data.datasource.datasink import Datasink, DummyOutputDatasink
 from ray.data.datasource.datasource import (
     Datasource,
     RandomIntRowDatasource,
     Reader,
     ReadTask,
-    WriteResult,
 )
 from ray.data.datasource.file_based_datasource import (
     FileBasedDatasource,
@@ -80,6 +79,7 @@ __all__ = [
     "DefaultBlockWritePathProvider",
     "DefaultFileMetadataProvider",
     "DefaultParquetMetadataProvider",
+    "DummyOutputDatasink",
     "FastFileMetadataProvider",
     "FileBasedDatasource",
     "FileExtensionFilter",
@@ -112,6 +112,5 @@ __all__ = [
     "TorchDatasource",
     "_WebDatasetDatasink",
     "WebDatasetDatasource",
-    "WriteResult",
     "_S3FileSystemWrapper",
 ]

@@ -6,8 +6,6 @@ from ray.data._internal.util import _check_pyarrow_version
 from ray.data.block import Block, BlockMetadata
 from ray.util.annotations import Deprecated, DeveloperAPI, PublicAPI
 
-WriteResult = Any
-
 
 @PublicAPI
 class Datasource:
@@ -168,22 +166,6 @@ class RandomIntRowDatasource(Datasource):
         {'c_0': 4983608804013926748, 'c_1': 1160140066899844087}
     """
 
-    def get_name(self) -> str:
-        """Return a human-readable name for this datasource.
-        This will be used as the names of the read tasks.
-        Note: overrides the base `Datasource` method.
-        """
-        return "RandomInt"
-
-    def create_reader(
-        self,
-        n: int,
-        num_columns: int,
-    ) -> List[ReadTask]:
-        return _RandomIntRowDatasourceReader(n, num_columns)
-
-
-class _RandomIntRowDatasourceReader(Reader):
     def __init__(self, n: int, num_columns: int):
         self._n = n
         self._num_columns = num_columns
@@ -236,3 +218,10 @@ class _RandomIntRowDatasourceReader(Reader):
             i += block_size
 
         return read_tasks
+
+    def get_name(self) -> str:
+        """Return a human-readable name for this datasource.
+        This will be used as the names of the read tasks.
+        Note: overrides the base `Datasource` method.
+        """
+        return "RandomInt"
