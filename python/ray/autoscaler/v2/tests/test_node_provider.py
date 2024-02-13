@@ -40,7 +40,7 @@ class NodeProviderTestWrapper:
         self.config_reader = FileConfigReader(
             get_test_config_path("test_ray_complex.yaml"), skip_content_hash=True
         )
-        config = self.config_reader.get_autoscaling_config()
+        self.config = self.config_reader.get_autoscaling_config()
         self.ray_session = None
 
         if self.kind == "mock":
@@ -49,7 +49,7 @@ class NodeProviderTestWrapper:
             self.base_provider = MockProvider()
         elif self.kind == "fake_multi":
             os.environ["RAY_FAKE_CLUSTER"] = "1"
-            provider_config = config.get_provider_config()
+            provider_config = self.config.get_provider_config()
             # This is a bit hacky but we need a fake head node.
             self.ray_session = ray.init()
             provider_config["gcs_address"] = self.ray_session.address_info[
@@ -69,7 +69,6 @@ class NodeProviderTestWrapper:
         )
         self.node_provider = NodeProviderAdapter(
             self.base_provider,
-            self.config_reader,
             max_concurrent_launches=max_concurrent_launches,
             max_launch_batch_per_type=max_launch_batch_per_type,
         )
@@ -79,7 +78,9 @@ class NodeProviderTestWrapper:
             ray.shutdown()
 
     def launch(self, request_id, shape):
-        self.node_provider.launch(shape=shape, request_id=request_id)
+        self.node_provider.launch(
+            shape=shape, request_id=request_id, config=self.config
+        )
 
     def terminate(self, request_id, ids):
         self.node_provider.terminate(ids=ids, request_id=request_id)
@@ -97,21 +98,21 @@ class NodeProviderTestWrapper:
     ############################
     # Test mock methods
     ############################
-    def test_add_error_creates(self, e: Exception):
+    def test_add_creation_errors(self, e: Exception):
         if self.kind == "mock":
             self.base_provider.create_node_with_resources_and_labels.side_effect = e
         elif self.kind == "sync":
-            self.base_provider.error_creates = e
+            self.base_provider.creation_errors = e
         elif self.kind == "fake_multi":
-            self.base_provider._test_add_error_creates(e)
+            self.base_provider._test_add_creation_errors(e)
 
-    def test_add_error_terminates(self, e: Exception):
+    def test_add_termination_errors(self, e: Exception):
         if self.kind == "mock":
             self.base_provider.terminate_nodes.side_effect = e
         elif self.kind == "sync":
-            self.base_provider.error_terminates = e
+            self.base_provider.termination_errors = e
         elif self.kind == "fake_multi":
-            self.base_provider._test_add_error_terminates(e)
+            self.base_provider._test_add_termination_errors(e)
 
 
 @pytest.fixture(scope="function")
@@ -196,22 +197,7 @@ def test_node_providers_basic(node_provider):
     indirect=True,
 )
 def test_launch_failure(node_provider):
-    node_provider.launch(
-        shape={"not_existing_worker_nodes": 2},
-        request_id="1",
-    )
-
-    def verify():
-        errors = node_provider.poll_errors()
-        assert len(errors) == 1
-        assert isinstance(errors[0], LaunchNodeError)
-        assert errors[0].node_type == "not_existing_worker_nodes"
-        assert errors[0].request_id == "1"
-        return True
-
-    wait_for_condition(verify)
-
-    node_provider.test_add_error_creates(Exception("failed to create node"))
+    node_provider.test_add_creation_errors(Exception("failed to create node"))
 
     node_provider.launch(
         shape={"worker_nodes": 2},
@@ -235,7 +221,7 @@ def test_launch_failure(node_provider):
     indirect=True,
 )
 def test_terminate_node_failure(node_provider):
-    node_provider.test_add_error_terminates(Exception("failed to terminate node"))
+    node_provider.test_add_termination_errors(Exception("failed to terminate node"))
 
     node_provider.launch(request_id="launch1", shape={"worker_nodes": 1})
 
