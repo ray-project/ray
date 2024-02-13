@@ -63,6 +63,16 @@ def parse_args():
         "Set to True if file_type == 'parquet'.",
     )
     parser.add_argument(
+        "--skip-ray-trainer",
+        default=False,
+        action="store_true",
+        help=(
+            "Whether to skip using Ray Train TorchTrainer to consume the data, and "
+            "instead iterate over the dataset with the Ray Data "
+            "iter_torch_batches() method."
+        ),
+    )
+    parser.add_argument(
         "--repeat-ds",
         default=1,
         type=int,
@@ -79,9 +89,12 @@ def parse_args():
     )
     parser.add_argument(
         "--batch-size",
-        default=32,
+        default=None,
         type=int,
-        help="Batch size to use.",
+        help=(
+            "Batch size to use. With batch_size=None, Ray Data will "
+            "use the entire block as a batch."
+        ),
     )
     parser.add_argument(
         "--prefetch-batches",
@@ -94,6 +107,12 @@ def parse_args():
         default=None,
         type=int,
         help="local_shuffle_buffer_size for iter_torch_batches()",
+    )
+    parser.add_argument(
+        "--target-max-block-size-mb",
+        default=None,
+        type=int,
+        help="DataContext.target_max_block_size in MB. Default is 128MB.",
     )
     parser.add_argument(
         "--num-epochs",
@@ -286,7 +305,11 @@ def train_loop_per_worker():
             ds_shard, batch_iter = _get_ray_data_batch_iterator(args, worker_rank)
             if run_validation_set:
                 val_ds = train.get_dataset_shard("val")
-                batch_iter_val = val_ds.iter_torch_batches(batch_size=args.batch_size)
+                batch_iter_val = val_ds.iter_torch_batches(
+                    batch_size=args.batch_size,
+                    prefetch_batches=args.prefetch_batches,
+                    local_shuffle_buffer_size=args.local_shuffle_buffer_size,
+                )
         # For synthetic data, we need to create the iterator each epoch.
         elif args.use_synthetic_data:
             # Generate a random batch, and continuously yield the same batch 1000 times.
@@ -536,6 +559,10 @@ def get_torch_data_loader(worker_rank, batch_size, num_workers, transform=None):
 def benchmark_code(
     args,
 ):
+    if args.target_max_block_size_mb is not None:
+        ctx = ray.data.DataContext.get_current()
+        ctx.target_max_block_size = args.target_max_block_size_mb * 1024 * 1024
+
     cache_input_ds = args.cache_input_ds
     cache_output_ds = args.cache_output_ds
     assert (
@@ -614,6 +641,20 @@ def benchmark_code(
     options = DataConfig.default_ingest_options()
     options.locality_with_output = False
     options.preserve_order = args.preserve_order
+
+    if args.skip_ray_trainer:
+        start_t = time.time()
+        num_rows = 0
+        for batch in ray_datasets_dict["train"].iter_torch_batches(
+            batch_size=args.batch_size,
+            prefetch_batches=args.prefetch_batches,
+            local_shuffle_buffer_size=args.local_shuffle_buffer_size,
+        ):
+            num_rows += len(batch["label"])
+        end_t = time.time()
+        tput = num_rows / (end_t - start_t)
+        data_benchmark_metrics = {BenchmarkMetric.THROUGHPUT: tput}
+        return data_benchmark_metrics
 
     torch_trainer = TorchTrainer(
         train_loop_per_worker,
