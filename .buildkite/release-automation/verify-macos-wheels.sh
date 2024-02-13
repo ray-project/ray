@@ -73,13 +73,12 @@ run_sanity_check() {
 }
 
 _clean_up() {
-    rm -rf /tmp/ray
     bazel clean
     rm -rf "$TMP_DIR"
 }
 
 # Create tmp directory unique for the run
-TMP_DIR=`mktemp -d -t "$HOME"`
+TMP_DIR=`mktemp -d "$HOME"`
 
 install_miniconda
 install_bazel
