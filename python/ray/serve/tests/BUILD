@@ -193,6 +193,7 @@ py_test_module_list(
   files = [
     "test_autoscaling_policy.py",
     "test_handle.py",
+    "test_handle_api.py",
     "test_handle_streaming.py",
     "test_multiplex.py",
   ],

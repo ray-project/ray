@@ -71,7 +71,7 @@ from ray.serve._private.proxy_router import (
     ProxyRouter,
 )
 from ray.serve._private.usage import ServeUsageTag
-from ray.serve._private.utils import call_function_from_import_path
+from ray.serve._private.utils import call_function_from_import_path, generate_request_id
 from ray.serve.config import gRPCOptions
 from ray.serve.generated.serve_pb2 import HealthzResponse, ListApplicationsResponse
 from ray.serve.generated.serve_pb2_grpc import add_RayServeAPIServiceServicer_to_server
@@ -124,10 +124,6 @@ MAX_BACKOFF_PERIOD_SEC = 5
 HEALTHY_MESSAGE = "success"
 DRAINING_MESSAGE = "This node is being drained."
 NO_ROUTES_MESSAGE = "Route table is not populated yet."
-
-
-def generate_request_id() -> str:
-    return str(uuid.uuid4())
 
 
 class GenericProxy(ABC):
