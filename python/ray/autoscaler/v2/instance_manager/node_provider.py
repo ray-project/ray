@@ -14,6 +14,7 @@ from ray.autoscaler._private.constants import (
 from ray.autoscaler._private.util import hash_launch_conf
 from ray.autoscaler.node_provider import NodeProvider as NodeProviderV1
 from ray.autoscaler.tags import (
+    NODE_KIND_UNMANAGED,
     NODE_KIND_WORKER,
     STATUS_UNINITIALIZED,
     TAG_RAY_LAUNCH_CONFIG,
@@ -24,7 +25,7 @@ from ray.autoscaler.tags import (
     TAG_RAY_USER_NODE_TYPE,
 )
 from ray.autoscaler.v2.instance_manager.config import AutoscalingConfig
-from ray.autoscaler.v2.schema import NodeType
+from ray.autoscaler.v2.schema import NodeKind, NodeType
 
 logger = logging.getLogger(__name__)
 
@@ -49,6 +50,8 @@ class CloudInstance:
     cloud_instance_id: CloudInstanceId
     # The node type of the cloud instance.
     node_type: NodeType
+    # The ray node kind, i.e. head or worker
+    node_kind: NodeKind
     # Update request id from which the cloud instance is launched.
     request_id: str
     # If the cloud instance is running.
@@ -326,11 +329,14 @@ class NodeProviderAdapter(ICloudInstanceProvider):
         # running status of the nodes.
         for cloud_instance_id in cloud_instance_ids:
             node_tags = self._v1_node_tags(cloud_instance_id)
+            node_kind = node_tags.get(TAG_RAY_NODE_KIND, NODE_KIND_UNMANAGED)
+            node_kind = NodeKind(node_kind)
             nodes[cloud_instance_id] = CloudInstance(
                 cloud_instance_id=cloud_instance_id,
                 node_type=node_tags.get(TAG_RAY_USER_NODE_TYPE, ""),
                 is_running=self._v1_is_running(cloud_instance_id),
                 request_id=node_tags.get(TAG_RAY_LAUNCH_REQUEST, ""),
+                node_kind=node_kind,
             )
 
         return nodes
