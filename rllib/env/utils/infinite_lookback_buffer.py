@@ -1,177 +1,27 @@
-import logging
-from typing import List, Optional, Type, Union
+from typing import Any, List, Optional, Union
 
 import gymnasium as gym
 import numpy as np
 import tree  # pip install dm_tree
 
-from ray.rllib.env.env_context import EnvContext
-from ray.rllib.env.multi_agent_env import MultiAgentEnv
-from ray.rllib.env.wrappers.multi_agent_env_compatibility import (
-    MultiAgentEnvCompatibility,
-)
-from ray.rllib.utils.error import (
-    ERR_MSG_INVALID_ENV_DESCRIPTOR,
-    ERR_MSG_OLD_GYM_API,
-    EnvError,
-)
-from ray.rllib.utils.gym import check_old_gym_env
-from ray.rllib.utils.numpy import one_hot, one_hot_multidiscrete
+from ray.rllib.utils.numpy import LARGE_INTEGER, one_hot, one_hot_multidiscrete
 from ray.rllib.utils.spaces.space_utils import (
     batch,
     get_dummy_batch_for_space,
     get_base_struct_from_space,
 )
-from ray.util import log_once
-from ray.util.annotations import PublicAPI
 
 
-logger = logging.getLogger(__name__)
+class InfiniteLookbackBuffer:
+    @property
+    def space(self):
+        return self._space
 
+    @space.setter
+    def space(self, value):
+        self._space = value
+        self.space_struct = get_base_struct_from_space(value)
 
-@PublicAPI
-def try_import_pyspiel(error: bool = False):
-    """Tries importing pyspiel and returns the module (or None).
-
-    Args:
-        error: Whether to raise an error if pyspiel cannot be imported.
-
-    Returns:
-        The pyspiel module.
-
-    Raises:
-        ImportError: If error=True and pyspiel is not installed.
-    """
-    try:
-        import pyspiel
-
-        return pyspiel
-    except ImportError:
-        if error:
-            raise ImportError(
-                "Could not import pyspiel! Pygame is not a dependency of RLlib "
-                "and RLlib requires you to install pygame separately: "
-                "`pip install pygame`."
-            )
-        return None
-
-
-@PublicAPI
-def try_import_open_spiel(error: bool = False):
-    """Tries importing open_spiel and returns the module (or None).
-
-    Args:
-        error: Whether to raise an error if open_spiel cannot be imported.
-
-    Returns:
-        The open_spiel module.
-
-    Raises:
-        ImportError: If error=True and open_spiel is not installed.
-    """
-    try:
-        import open_spiel
-
-        return open_spiel
-    except ImportError:
-        if error:
-            raise ImportError(
-                "Could not import open_spiel! open_spiel is not a dependency of RLlib "
-                "and RLlib requires you to install open_spiel separately: "
-                "`pip install open_spiel`."
-            )
-        return None
-
-
-def _gym_env_creator(
-    env_context: EnvContext,
-    env_descriptor: Union[str, Type[gym.Env]],
-    auto_wrap_old_gym_envs: bool = True,
-) -> gym.Env:
-    """Tries to create a gym env given an EnvContext object and descriptor.
-
-    Note: This function tries to construct the env from a string descriptor
-    only using possibly installed RL env packages (such as gym, pybullet_envs,
-    etc). These packages are no installation requirements for RLlib. In case
-    you would like to support more such env packages, add the necessary imports
-    and construction logic below.
-
-    Args:
-        env_context: The env context object to configure the env.
-            Note that this is a config dict, plus the properties:
-            `worker_index`, `vector_index`, and `remote`.
-        env_descriptor: The env descriptor as a gym-registered string, e.g. CartPole-v1,
-            ALE/MsPacman-v5, or CartPoleContinuousBulletEnv-v0.
-            Alternatively, the gym.Env subclass to use.
-        auto_wrap_old_gym_envs: Whether to auto-wrap old gym environments (using
-            the pre 0.24 gym APIs, e.g. reset() returning single obs and no info
-            dict). If True, RLlib will automatically wrap the given gym env class
-            with the gym-provided compatibility wrapper (gym.wrappers.EnvCompatibility).
-            If False, RLlib will produce a descriptive error on which steps to perform
-            to upgrade to gymnasium (or to switch this flag to True).
-
-    Returns:
-        The actual gym environment object.
-
-    Raises:
-        gym.error.Error: If the env cannot be constructed.
-    """
-    # Allow for PyBullet or envs to be used as well (via string). This allows
-    # for doing things like `env=CartPoleContinuousBulletEnv-v0`.
-    try:
-        import pybullet_envs
-
-        pybullet_envs.getList()
-    except (AttributeError, ModuleNotFoundError, ImportError):
-        pass
-
-    # Try creating a gym env. If this fails we can output a
-    # decent error message.
-    try:
-        # If class provided, call constructor directly.
-        if isinstance(env_descriptor, type):
-            env = env_descriptor(env_context)
-        else:
-            env = gym.make(env_descriptor, **env_context)
-        # If we are dealing with an old gym-env API, use the provided compatibility
-        # wrapper.
-        if auto_wrap_old_gym_envs:
-            try:
-                # Call the env's reset() method to check for the env using the old
-                # gym (reset doesn't take `seed` and `options` args and returns only
-                # the initial observations) or new gymnasium APIs (reset takes `seed`
-                # and `options` AND returns observations and infos).
-                obs_and_infos = env.reset(seed=None, options={})
-                # Check return values for correct gymnasium .
-                check_old_gym_env(reset_results=obs_and_infos)
-            # TypeError for `reset()` not accepting seed/options.
-            # ValueError for `check_old_gym_env` raising error if return values
-            # incorrect.
-            except Exception:
-                if log_once("auto_wrap_gym_api"):
-                    logger.warning(
-                        "`config.auto_wrap_old_gym_envs` is activated AND you seem to "
-                        "have provided an old gym-API environment. RLlib will therefore"
-                        " try to auto-fix the following error. However, please "
-                        "consider switching over to the new `gymnasium` APIs:\n"
-                        + ERR_MSG_OLD_GYM_API
-                    )
-                # Multi-agent case.
-                if isinstance(env, MultiAgentEnv):
-                    env = MultiAgentEnvCompatibility(env)
-                # Single agent (gymnasium.Env) case.
-                else:
-                    env = gym.wrappers.EnvCompatibility(env)
-                # Repeat the checks, now everything should work.
-                obs_and_infos = env.reset(seed=None, options={})
-                check_old_gym_env(reset_results=obs_and_infos)
-    except gym.error.Error:
-        raise EnvError(ERR_MSG_INVALID_ENV_DESCRIPTOR.format(env_descriptor))
-
-    return env
-
-
-class BufferWithInfiniteLookback:
     def __init__(
         self,
         data: Optional[Union[List, np.ndarray]] = None,
@@ -179,10 +29,10 @@ class BufferWithInfiniteLookback:
         space: Optional[gym.Space] = None,
     ):
         self.data = data if data is not None else []
-        self.lookback = lookback
+        self.lookback = min(lookback, len(self.data))
         self.finalized = not isinstance(self.data, list)
+        self.space_struct = None
         self.space = space
-        self.space_struct = get_base_struct_from_space(self.space)
 
     def append(self, item) -> None:
         """Appends the given item to the end of this buffer."""
@@ -220,7 +70,8 @@ class BufferWithInfiniteLookback:
     def finalize(self):
         """Finalizes this buffer by converting internal data lists into numpy arrays.
 
-        Thereby, if the individual items in the list are complex (nested 2)
+        Thereby, if the individual items in the list are nested structures, the
+        resulting buffer content will be a nested struct of np.ndarrays (leafs).
         """
         if not self.finalized:
             self.data = batch(self.data)
@@ -233,6 +84,8 @@ class BufferWithInfiniteLookback:
         neg_indices_left_of_zero: bool = False,
         fill: Optional[float] = None,
         one_hot_discrete: bool = False,
+        _ignore_last_ts: bool = False,
+        _add_last_ts_value: Optional[Any] = None,
     ):
         """Returns data, based on the given args, from this buffer.
 
@@ -266,21 +119,25 @@ class BufferWithInfiniteLookback:
                 that are Discrete or MultiDiscrete. Note that if `fill=0` and the
                 requested `indices` are out of the range of our data, the returned
                 one-hot vectors will actually be zero-hot (all slots zero).
+            _ignore_last_ts: Whether to ignore the last record in our internal
+                `self.data` when getting the provided indices.
+            _add_last_ts_value: Whether to add the value of this arg to the end of
+                the internal `self.data` buffer (just for the duration of this get
+                operation, not permanently).
         """
-        if fill is not None and self.space is None:
-            raise ValueError(
-                f"Cannot use `fill` argument in `{type(self).__name__}.get()` if a "
-                "gym.Space was NOT provided during construction!"
-            )
-
         if indices is None:
-            data = self._get_all_data(one_hot_discrete=one_hot_discrete)
+            data = self._get_all_data(
+                one_hot_discrete=one_hot_discrete,
+                _ignore_last_ts=_ignore_last_ts,
+            )
         elif isinstance(indices, slice):
             data = self._get_slice(
                 indices,
                 fill=fill,
                 neg_indices_left_of_zero=neg_indices_left_of_zero,
                 one_hot_discrete=one_hot_discrete,
+                _ignore_last_ts=_ignore_last_ts,
+                _add_last_ts_value=_add_last_ts_value,
             )
         elif isinstance(indices, list):
             data = [
@@ -289,6 +146,8 @@ class BufferWithInfiniteLookback:
                     fill=fill,
                     neg_indices_left_of_zero=neg_indices_left_of_zero,
                     one_hot_discrete=one_hot_discrete,
+                    _ignore_last_ts=_ignore_last_ts,
+                    _add_last_ts_value=_add_last_ts_value,
                 )
                 for idx in indices
             ]
@@ -301,6 +160,8 @@ class BufferWithInfiniteLookback:
                 fill=fill,
                 neg_indices_left_of_zero=neg_indices_left_of_zero,
                 one_hot_discrete=one_hot_discrete,
+                _ignore_last_ts=_ignore_last_ts,
+                _add_last_ts_value=_add_last_ts_value,
             )
 
         return data
@@ -309,24 +170,24 @@ class BufferWithInfiniteLookback:
         """Adds another buffer or list to the end of this one.
 
         Args:
-            other: Either `BufferWithInfiniteLookback` or `list`.
-                If a `BufferWithInfiniteLookback` the data gets
+            other: Either `InfiniteLookbackBuffer` or `list`.
+                If a `InfiniteLookbackBuffer` the data gets
                 concatenated. If a `list` the list is concatenated to the
                 `self.data`.
 
         Returns:
-            A new `BufferWithInfiniteLookback` instance `self.data` cotnaining
+            A new `InfiniteLookbackBuffer` instance `self.data` cotnaining
             concatenated data from `self.` and `other`.
         """
 
         if self.finalized:
             raise RuntimeError(f"Cannot `add` to a finalized {type(self).__name__}.")
         else:
-            if isinstance(other, BufferWithInfiniteLookback):
+            if isinstance(other, InfiniteLookbackBuffer):
                 data = self.data + other.data
             else:
                 data = self.data + other
-            return BufferWithInfiniteLookback(
+            return InfiniteLookbackBuffer(
                 data=data,
                 lookback=self.lookback,
                 space=self.space,
@@ -395,15 +256,24 @@ class BufferWithInfiniteLookback:
 
     def __len__(self):
         """Return the length of our data, excluding the lookback buffer."""
-        if self.finalized:
-            len_ = len(tree.flatten(self.data)[0])
-        else:
-            len_ = len(self.data)
+        len_ = self.len_incl_lookback()
         # Only count the data after the lookback.
         return max(len_ - self.lookback, 0)
 
-    def _get_all_data(self, one_hot_discrete=False):
-        data = self[:]
+    def len_incl_lookback(self):
+        if self.finalized:
+            return len(tree.flatten(self.data)[0])
+        else:
+            return len(self.data)
+
+    def __repr__(self):
+        return (
+            f"{type(self).__name__}({self.data[:self.lookback]} <- "
+            f"lookback({self.lookback}) | {self.data[self.lookback:]})"
+        )
+
+    def _get_all_data(self, one_hot_discrete=False, _ignore_last_ts=False):
+        data = self[: (None if not _ignore_last_ts else -1)]
         if one_hot_discrete:
             data = self._one_hot(data, space_struct=self.space_struct)
         return data
@@ -417,30 +287,59 @@ class BufferWithInfiniteLookback:
         fill=None,
         neg_indices_left_of_zero=False,
         one_hot_discrete=False,
+        _ignore_last_ts=False,
+        _add_last_ts_value=None,
     ):
+        data_to_use = self.data
+        if _ignore_last_ts:
+            if self.finalized:
+                data_to_use = tree.map_structure(lambda s: s[:-1], self.data)
+            else:
+                data_to_use = self.data[:-1]
+        if _add_last_ts_value is not None:
+            if self.finalized:
+                data_to_use = tree.map_structure(
+                    lambda s, t: np.append(s, t),
+                    data_to_use.copy(),
+                    _add_last_ts_value,
+                )
+            else:
+                data_to_use = np.append(data_to_use.copy(), _add_last_ts_value)
+
         slice_, slice_len, fill_left_count, fill_right_count = self._interpret_slice(
-            slice_, neg_indices_left_of_zero
+            slice_,
+            neg_indices_left_of_zero,
+            len_self_plus_lookback=(
+                self.len_incl_lookback()
+                + int(_add_last_ts_value is not None)
+                - int(_ignore_last_ts)
+            ),
         )
 
         # Perform the actual slice.
-        if self.finalized:
-            data_slice = tree.map_structure(lambda s: s[slice_], self.data)
-        else:
-            data_slice = self.data[slice_]
+        data_slice = None
+        if slice_len > 0:
+            if self.finalized:
+                data_slice = tree.map_structure(lambda s: s[slice_], data_to_use)
+            else:
+                data_slice = data_to_use[slice_]
 
-        if one_hot_discrete and slice_len > 0:
-            data_slice = self._one_hot(data_slice, space_struct=self.space_struct)
+            if one_hot_discrete:
+                data_slice = self._one_hot(data_slice, space_struct=self.space_struct)
 
         # Data is shorter than the range requested -> Fill the rest with `fill` data.
         if fill is not None and (fill_right_count > 0 or fill_left_count > 0):
             if self.finalized:
                 if fill_left_count:
-                    fill_batch = get_dummy_batch_for_space(
-                        self.space,
-                        fill_value=fill,
-                        batch_size=fill_left_count,
-                        one_hot_discrete=one_hot_discrete,
-                    )
+                    if self.space is None:
+                        fill_batch = np.array([fill] * fill_left_count)
+                    else:
+                        fill_batch = get_dummy_batch_for_space(
+                            self.space,
+                            fill_value=fill,
+                            batch_size=fill_left_count,
+                            one_hot_discrete=one_hot_discrete,
+                        )
                     if data_slice is not None:
                         data_slice = tree.map_structure(
                             lambda s0, s: np.concatenate([s0, s]),
@@ -450,12 +349,15 @@ class BufferWithInfiniteLookback:
                     else:
                         data_slice = fill_batch
                 if fill_right_count:
-                    fill_batch = get_dummy_batch_for_space(
-                        self.space,
-                        fill_value=fill,
-                        batch_size=fill_right_count,
-                        one_hot_discrete=one_hot_discrete,
-                    )
+                    if self.space is None:
+                        fill_batch = np.array([fill] * fill_right_count)
+                    else:
+                        fill_batch = get_dummy_batch_for_space(
+                            self.space,
+                            fill_value=fill,
+                            batch_size=fill_right_count,
+                            one_hot_discrete=one_hot_discrete,
+                        )
                     if data_slice is not None:
                         data_slice = tree.map_structure(
                             lambda s0, s: np.concatenate([s, s0]),
@@ -466,20 +368,28 @@ class BufferWithInfiniteLookback:
                         data_slice = fill_batch
 
             else:
-                fill_batch = [
-                    get_dummy_batch_for_space(
-                        self.space,
-                        fill_value=fill,
-                        batch_size=0,
-                        one_hot_discrete=one_hot_discrete,
-                    )
-                ]
+                if self.space is None:
+                    fill_batch = [fill]
+                else:
+                    fill_batch = [
+                        get_dummy_batch_for_space(
+                            self.space,
+                            fill_value=fill,
+                            batch_size=0,
+                            one_hot_discrete=one_hot_discrete,
+                        )
+                    ]
                 data_slice = (
                     fill_batch * fill_left_count
                     + (data_slice if data_slice is not None else [])
                     + fill_batch * fill_right_count
                 )
 
+        if data_slice is None:
+            if self.finalized:
+                return tree.map_structure(lambda s: s[slice_], data_to_use)
+            else:
+                return data_to_use[slice_]
         return data_slice
 
     def _set_slice(
@@ -503,8 +413,6 @@ class BufferWithInfiniteLookback:
 
                 tree.map_structure(__set, self.data, new_data)
             else:
-                if self.space:
-                    assert self.space.contains(new_data[0])
                 assert len(self.data[slice_]) == len(new_data)
                 self.data[slice_] = new_data
         except AssertionError:
@@ -520,26 +428,36 @@ class BufferWithInfiniteLookback:
         fill=None,
         neg_indices_left_of_zero=False,
         one_hot_discrete=False,
+        _ignore_last_ts=False,
+        _add_last_ts_value=None,
     ):
+        data_to_use = self.data
+        if _ignore_last_ts:
+            data_to_use = self.data[:-1]
+        if _add_last_ts_value is not None:
+            data_to_use = np.append(data_to_use.copy(), _add_last_ts_value)
+
         # If index >= 0 -> Ignore lookback buffer.
         # Otherwise, include lookback buffer.
         if idx >= 0 or neg_indices_left_of_zero:
-            idx = self.lookback + idx
+            idx = self.lookback + idx - (_ignore_last_ts is True)
         # Negative indices mean: Go to left into lookback buffer starting from idx=0.
         # But if we pass the lookback buffer, the index should be invalid and we will
         # have to fill, if required. Invalidate the index by setting it to one larger
         # than max.
         if neg_indices_left_of_zero and idx < 0:
-            idx = len(self) + self.lookback
+            idx = len(self) + self.lookback - (_ignore_last_ts is True)
 
         try:
             if self.finalized:
-                data = tree.map_structure(lambda s: s[idx], self.data)
+                data = tree.map_structure(lambda s: s[idx], data_to_use)
             else:
-                data = self.data[idx]
+                data = data_to_use[idx]
         # Out of range index -> If `fill`, use a fill dummy (B=0), if not, error out.
         except IndexError as e:
             if fill is not None:
+                if self.space is None:
+                    return fill
                 return get_dummy_batch_for_space(
                     self.space,
                     fill_value=fill,
@@ -577,8 +495,6 @@ class BufferWithInfiniteLookback:
 
                 tree.map_structure(__set, self.data, new_data)
             else:
-                if self.space:
-                    assert self.space.contains(new_data), new_data
                 self.data[actual_idx] = new_data
         except IndexError:
             raise IndexError(
@@ -587,9 +503,14 @@ class BufferWithInfiniteLookback:
                 f"of buffer data."
             )
 
-    def _interpret_slice(self, slice_, neg_indices_left_of_zero):
-        len_self_plus_lookback = len(self) + self.lookback
-        fill_left_count = fill_right_count = 0
+    def _interpret_slice(
+        self,
+        slice_,
+        neg_indices_left_of_zero,
+        len_self_plus_lookback=None,
+    ):
+        if len_self_plus_lookback is None:
+            len_self_plus_lookback = len(self) + self.lookback
 
         # Re-interpret slice bounds as absolute positions (>=0) within our
         # internal data.
@@ -630,6 +551,7 @@ class BufferWithInfiniteLookback:
         else:
             stop = self.lookback + stop
 
+        fill_left_count = fill_right_count = 0
         # Both start and stop are on left side.
         if start < 0 and stop < 0:
             fill_left_count = abs(start - stop)
@@ -647,12 +569,19 @@ class BufferWithInfiniteLookback:
         elif stop >= len_self_plus_lookback:
             fill_right_count = stop - len_self_plus_lookback
             stop = len_self_plus_lookback
+        # Only `stop` might be < 0, when slice has negative step and start is > 0.
+        elif stop < 0:
+            if start >= len_self_plus_lookback:
+                fill_left_count = start - len_self_plus_lookback + 1
+                start = len_self_plus_lookback - 1
+            fill_right_count = -stop - 1
+            stop = -LARGE_INTEGER
 
-        assert start >= 0 and stop >= 0, (start, stop)
-        assert start <= len_self_plus_lookback and stop <= len_self_plus_lookback, (
-            start,
-            stop,
-        )
+        assert start >= 0 and (stop >= 0 or stop == -LARGE_INTEGER), (start, stop)
+        # assert start <= len_self_plus_lookback and stop <= len_self_plus_lookback, (
+        #    start,
+        #    stop,
+        # )
 
         step = slice_.step if slice_.step is not None else 1
         slice_ = slice(start, stop, step)
