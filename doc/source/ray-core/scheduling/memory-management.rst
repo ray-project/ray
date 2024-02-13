@@ -243,7 +243,7 @@ In the output of ``ray memory``, we see that the second object displays as a nor
 Memory Aware Scheduling
 ~~~~~~~~~~~~~~~~~~~~~~~
 
-By default, Ray does not take into account the potential memory usage of a task or actor when scheduling. This is simply because it cannot estimate ahead of time how much memory is required. However, if you know how much memory a task or actor requires, you can specify it in the resource requirements of its ``ray.remote`` decorator to enable memory-aware scheduling:
+By default, Ray does not take into account the potential memory usage of a task or actor when scheduling. This is simply because it cannot estimate ahead of time how much memory is required. However, if you know how much memory a task or actor requires, you can specify it in the resource requirements of its ``ray.remote`` decorator to enable memory-aware scheduling.
 
 .. important::
 
@@ -273,6 +273,11 @@ In the above example, the memory quota is specified statically by the decorator,
 
   # override the memory quota to 1GiB when creating the actor
   SomeActor.options(memory=1000 * 1024 * 1024).remote(a=1, b=2)
+
+Ray reserves some amount of memory on each node for system operations, so the application memory available for task and actor scheduling will be less than the total memory on the node.
+By default, Ray reserves system memory equal to the object store capacity (default 30% of available memory).
+To adjust the amount of system memory that Ray should reserve, set the environment variable `RAY_system_memory_reservation_bytes` when starting each Ray node.
+
 
 Questions or Issues?
 --------------------
