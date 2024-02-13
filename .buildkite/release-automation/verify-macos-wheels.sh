@@ -22,10 +22,7 @@ export USE_BAZEL_VERSION="${USE_BAZEL_VERSION:-5.4.1}"
 install_bazel() {
     mkdir -p "$TMP_DIR/bin"
     # Add bazel to the path.
-    # shellcheck disable=SC2016
-    printf '\nexport PATH="$TMP_DIR/bin:$PATH"\n' >> ~/.zshenv
-    # shellcheck disable=SC1090
-    source ~/.zshenv
+    export PATH="$TMP_DIR/bin:$PATH"
 
     if [ "${mac_architecture}" = "arm64" ]; then
       # architecture is "aarch64", but the bazel tag is "arm64"
