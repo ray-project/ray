@@ -401,6 +401,7 @@ def test_colocate_trainer_and_rank0_worker(
     placement_strategy,
 ):
     resources_per_worker, use_gpu = resources_per_worker_and_use_gpu
+
     def train_func():
         # Ensure rank 0 worker is scheduled on a highmem node
         node_id = ray.get_runtime_context().get_node_id()
@@ -424,7 +425,7 @@ def test_colocate_trainer_and_rank0_worker(
             use_gpu=use_gpu,
             trainer_resources=trainer_resources,
             resources_per_worker=resources_per_worker,
-            placement_strategy=placement_strategy
+            placement_strategy=placement_strategy,
         ),
     )
     trainer.fit()
