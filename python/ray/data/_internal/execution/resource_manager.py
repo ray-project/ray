@@ -1,5 +1,5 @@
 import time
-from abc import ABCMeta, abstractmethod
+from abc import ABC, abstractmethod
 from typing import TYPE_CHECKING, Dict, Optional
 
 import ray
@@ -150,7 +150,7 @@ class ResourceManager:
         return self._op_resource_limiter.get_op_limits(op)
 
 
-class OpResourceLimiter(metaclass=ABCMeta):
+class OpResourceLimiter(ABC):
     """Interface for limiting resources for each operator.
 
     This interface allows limit the resources that each operator can use, in each
@@ -254,8 +254,6 @@ class ReservationOpResourceLimiter(OpResourceLimiter):
             # We don't limit GPU resources, as not all operators
             # use GPU resources.
             self._op_limits[op].gpu = None
-
-        return
 
     def get_op_limits(self, op: PhysicalOperator) -> ExecutionResources:
         if op in self._op_limits:
