@@ -171,6 +171,7 @@ class ActorPoolMapOperator(MapOperator):
 
     def _add_bundled_input(self, bundle: RefBundle):
         self._bundle_queue.append(bundle)
+        self._metrics.on_input_queued(bundle)
         # Try to dispatch all bundles in the queue, including this new bundle.
         self._dispatch_tasks()
 
@@ -193,6 +194,7 @@ class ActorPoolMapOperator(MapOperator):
                 break
             # Submit the map task.
             bundle = self._bundle_queue.popleft()
+            self._metrics.on_input_dequeued(bundle)
             input_blocks = [block for block, _ in bundle.blocks]
             ctx = TaskContext(
                 task_idx=self._next_data_task_idx,
@@ -308,16 +310,12 @@ class ActorPoolMapOperator(MapOperator):
             gpu=self._ray_remote_args.get("num_gpus", 0) * min_workers,
         )
 
-    def current_resource_usage(self) -> ExecutionResources:
+    def current_processor_usage(self) -> ExecutionResources:
         # Both pending and running actors count towards our current resource usage.
         num_active_workers = self._actor_pool.num_total_actors()
-        object_store_memory = self.metrics.obj_store_mem_cur
-        if self.metrics.obj_store_mem_pending is not None:
-            object_store_memory += self.metrics.obj_store_mem_pending
         return ExecutionResources(
             cpu=self._ray_remote_args.get("num_cpus", 0) * num_active_workers,
             gpu=self._ray_remote_args.get("num_gpus", 0) * num_active_workers,
-            object_store_memory=object_store_memory,
         )
 
     def incremental_resource_usage(self) -> ExecutionResources:

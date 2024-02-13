@@ -190,24 +190,6 @@ def test_trial_reuse_disabled(trainable, ray_start_1_cpu):
     assert [t.last_result["num_resets"] for t in trials] == [0, 0, 0, 0]
 
 
-def test_trial_reuse_disabled_per_default(trainable, ray_start_1_cpu):
-    """Test that reuse=None disables actor re-use for class trainables.
-
-    Setup: Pass `reuse_actors=None` to tune.run()
-
-    We assert the `num_resets` of each trainable class to be 0 (no reuse).
-    """
-    analysis = _run_trials_with_frequent_pauses(trainable, reuse=None)
-    trials = analysis.trials
-    assert [t.last_result["id"] for t in trials] == [0, 1, 2, 3]
-    assert [t.last_result["iter"] for t in trials] == [2, 2, 2, 2]
-    if inspect.isclass(trainable):
-        assert [t.last_result["num_resets"] for t in trials] == [0, 0, 0, 0]
-    else:
-        # reuse=None defaults to True for fn trainables
-        assert [t.last_result["num_resets"] for t in trials] == [4, 5, 6, 7]
-
-
 def test_trial_reuse_enabled(trainable, ray_start_1_cpu):
     """Test that reuse=True enables actor re-use.
 

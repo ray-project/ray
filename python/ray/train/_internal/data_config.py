@@ -6,9 +6,6 @@ from ray.actor import ActorHandle
 from ray.data import DataIterator, Dataset, ExecutionOptions, NodeIdStr
 from ray.data._internal.execution.interfaces.execution_options import ExecutionResources
 from ray.data.preprocessor import Preprocessor
-
-# TODO(justinvyu): Fix the circular import error
-from ray.train.constants import TRAIN_DATASET_KEY  # noqa
 from ray.util.annotations import DeveloperAPI, PublicAPI
 
 

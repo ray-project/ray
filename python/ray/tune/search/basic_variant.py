@@ -1,7 +1,7 @@
 import copy
-import glob
 import itertools
 import os
+from pathlib import Path
 import uuid
 from typing import Dict, List, Optional, Union, TYPE_CHECKING
 import warnings
@@ -410,7 +410,7 @@ class BasicVariantGenerator(SearchAlgorithm):
 
     def has_checkpoint(self, dirpath: str):
         """Whether a checkpoint file exists within dirpath."""
-        return bool(glob.glob(os.path.join(dirpath, self.CKPT_FILE_TMPL.format("*"))))
+        return any(Path(dirpath).glob(self.CKPT_FILE_TMPL.format("*")))
 
     def restore_from_dir(self, dirpath: str):
         """Restores self + searcher + search wrappers from dirpath."""
