@@ -235,7 +235,7 @@ steps:
     tags: python
     instance_type: medium
     commands:
-      - ./ci/env/env_info.sh
+      - bash ./ci/env/env_info.sh
       # validate minimal installation
       - python ./ci/env/check_minimal_install.py
       # core tests
