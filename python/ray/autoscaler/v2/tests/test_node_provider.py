@@ -22,9 +22,8 @@ from ray.autoscaler.v2.instance_manager.node_provider import (
     CloudInstance,
     NodeProviderAdapter,
 )
-from ray.autoscaler.v2.schema import NodeKind, NodeStatus
 from ray.autoscaler.v2.tests.util import FakeCounter
-from ray.core.generated.instance_manager_pb2 import Instance
+from ray.core.generated.instance_manager_pb2 import Instance, NodeKind
 from ray.tests.autoscaler_test_utils import MockProvider
 from ray.tests.kuberay.test_autoscaling_config import get_basic_ray_cr
 from ray.tests.kuberay.test_kuberay_node_provider import _get_test_yaml
@@ -153,13 +152,13 @@ class KubeRayProviderTest(unittest.TestCase):
                     cloud_instance_id="raycluster-autoscaler-head-8zsc8",
                     node_kind=NodeKind.HEAD,
                     node_type="head-group",
-                    status=NodeStatus.RUNNING,
+                    is_running=True,
                 ),  # up-to-date status because the Ray container is in running status
                 "raycluster-autoscaler-worker-small-group-dkz2r": CloudInstance(
                     cloud_instance_id="raycluster-autoscaler-worker-small-group-dkz2r",
                     node_kind=NodeKind.WORKER,
                     node_type="small-group",
-                    status=NodeStatus.PENDING,
+                    is_running=False,
                 ),  # waiting status, because Ray container's state is pending.
             }
         )

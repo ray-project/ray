@@ -7,8 +7,8 @@ from ray.autoscaler._private.node_launcher import BaseNodeLauncher
 from ray.autoscaler.node_provider import NodeProvider as NodeProviderV1
 from ray.autoscaler.tags import TAG_RAY_USER_NODE_TYPE
 from ray.autoscaler.v2.instance_manager.config import AutoscalingConfig
-from ray.autoscaler.v2.schema import NodeKind, NodeStatus, NodeType
-from ray.core.generated.instance_manager_pb2 import Instance
+from ray.autoscaler.v2.schema import NodeType
+from ray.core.generated.instance_manager_pb2 import Instance, NodeKind
 
 logger = logging.getLogger(__name__)
 
@@ -36,8 +36,8 @@ class CloudInstance:
     node_type: NodeType
     # The node kind, i.e head or worker.
     node_kind: NodeKind
-    # Status of the cloud instance.
-    status: NodeStatus
+    # If the cloud instance is already running.
+    is_running: bool
     # Update request id from which the cloud instance is launched.
     # This could be None if the cloud instance couldn't be associated with requests
     # by the cloud provider: e.g. cloud provider doesn't support per-instance

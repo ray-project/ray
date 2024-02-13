@@ -29,9 +29,10 @@ from ray.autoscaler.v2.instance_manager.node_provider import (
     CloudInstanceProviderError,
     ICloudInstanceProvider,
     LaunchNodeError,
+    NodeKind,
     TerminateNodeError,
 )
-from ray.autoscaler.v2.schema import NodeKind, NodeStatus, NodeType
+from ray.autoscaler.v2.schema import NodeType
 
 logger = logging.getLogger(__name__)
 
@@ -107,11 +108,7 @@ class KubeRayProvider(ICloudInstanceProvider):
     def get_non_terminated(self) -> Dict[CloudInstanceId, CloudInstance]:
         self._sync_with_api_server()
         return copy.deepcopy(
-            {
-                id: instance
-                for id, instance in self._cached_instances.items()
-                if instance.status != NodeStatus.TERMINATED
-            }
+            {id: instance for id, instance in self._cached_instances.items()}
         )
 
     def terminate(self, ids: List[CloudInstanceId], request_id: str) -> None:
@@ -438,7 +435,7 @@ class KubeRayProvider(ICloudInstanceProvider):
         # Get the pods resource version.
         # Specifying a resource version in list requests is important for scalability:
         # https://kubernetes.io/docs/reference/using-api/api-concepts/#semantics-for-get-and-list
-        resource_version = self._get_pods_resource_version()
+        resource_version = self._get_head_pod_resource_version()
         if resource_version:
             logger.info(
                 f"Listing pods for RayCluster {self._cluster_name}"
@@ -496,7 +493,6 @@ class KubeRayProvider(ICloudInstanceProvider):
             # We will not track these nodes.
             return None
 
-        status = KubeRayProvider._get_node_status(pod)
         # TODO: we should prob get from the pod's env var (RAY_CLOUD_INSTANCE_ID)
         # directly.
         cloud_instance_id = pod["metadata"]["name"]
@@ -504,27 +500,29 @@ class KubeRayProvider(ICloudInstanceProvider):
             cloud_instance_id=cloud_instance_id,
             node_type=type,
             node_kind=kind,
-            status=status,
+            is_running=KubeRayProvider._is_running(pod),
         )
 
     @staticmethod
-    def _get_node_status(pod) -> NodeStatus:
-        """Convert pod state to Ray NodeStatus"""
+    def _is_running(pod) -> bool:
+        """Convert pod state to Ray NodeStatus
+
+        A cloud instance is considered running if the pod is in the running state,
+        else it could be pending/containers-terminated.
+
+        When it disappears from the list, it is considered terminated.
+        """
         if (
             "containerStatuses" not in pod["status"]
             or not pod["status"]["containerStatuses"]
         ):
-            return NodeStatus.PENDING
+            return False
 
         state = pod["status"]["containerStatuses"][0]["state"]
-
-        if "waiting" in state:
-            return NodeStatus.PENDING
         if "running" in state:
-            return NodeStatus.RUNNING
-        if "terminated" in state:
-            return NodeStatus.TERMINATED
-        return NodeStatus.UNKNOWN
+            return True
+
+        return False
 
     def _get(self, remote_path: str) -> Dict[str, Any]:
         """Get a resource from the Kubernetes API server."""
@@ -534,7 +532,7 @@ class KubeRayProvider(ICloudInstanceProvider):
         """Patch a resource on the Kubernetes API server."""
         return self._k8s_api_client.patch(remote_path, payload)
 
-    def _get_pods_resource_version(self) -> str:
+    def _get_head_pod_resource_version(self) -> str:
         """
         Extract a recent pods resource version by reading the head pod's
         metadata.resourceVersion of the response.
