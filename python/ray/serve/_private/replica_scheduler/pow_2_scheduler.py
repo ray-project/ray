@@ -99,6 +99,7 @@ class PowerOfTwoChoicesReplicaScheduler(ReplicaScheduler):
         self._self_node_id = self_node_id
         self._self_availability_zone = self_availability_zone
         self._use_replica_queue_len_cache = use_replica_queue_len_cache
+        print("USING?", use_replica_queue_len_cache)
 
         # Current replicas available to be scheduled.
         # Updated via `update_replicas`.
@@ -538,6 +539,7 @@ class PowerOfTwoChoicesReplicaScheduler(ReplicaScheduler):
             else:
                 queue_len = t.result()
                 result.append((replica, queue_len))
+                print("NEW QUEUE LEN IN CACHE:", queue_len)
                 self._replica_queue_len_cache.update(replica.replica_id, queue_len)
 
         assert len(result) == len(replicas)
@@ -568,6 +570,7 @@ class PowerOfTwoChoicesReplicaScheduler(ReplicaScheduler):
                 # Include replicas whose queues are full as not in the cache so we will
                 # actively probe them. Otherwise we may end up in "deadlock" until their
                 # cache entries expire.
+                print("QUEUE LEN FROM CACHE:", queue_len, r.max_concurrent_requests)
                 if queue_len is None or queue_len >= r.max_concurrent_requests:
                     not_in_cache.append(r)
                 elif queue_len < lowest_queue_len:
@@ -587,6 +590,7 @@ class PowerOfTwoChoicesReplicaScheduler(ReplicaScheduler):
                     # None is returned if we failed to get the queue len.
                     continue
 
+                print("QUEUE LEN:", queue_len, r.max_concurrent_requests, lowest_queue_len)
                 if (
                     queue_len < r.max_concurrent_requests
                     and queue_len < lowest_queue_len
