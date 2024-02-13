@@ -18,7 +18,7 @@ mac_architecture=$1 # First argument is the architecture of the machine, e.g. x8
 export RAY_VERSION="${RAY_VERSION:-2.9.1}"
 export RAY_HASH="${RAY_HASH:-cfbf98c315cfb2710c56039a3c96477d196de049}"
 
-# Create tmp directory for the run
+# Create tmp directory unique for the run
 TMP_DIR="$HOME/tmp/run-macos"
 mkdir -p "$TMP_DIR"
 
@@ -34,17 +34,15 @@ export PATH="$TMP_DIR/miniconda3/bin:$PATH"
 # Initialize conda. This replaces calling `conda init bash`.
 # Conda init command requires a shell restart which should not be done on BK.
 source "$TMP_DIR/miniconda3/etc/profile.d/conda.sh"
+pip install \
+    --index-url https://test.pypi.org/simple/ \
+    --extra-index-url https://pypi.org/simple \
+    "ray[cpp]==$RAY_VERSION"
 
+# Run sanity checks for each python version
 for python_version in "${python_versions[@]}"; do
     conda create -n "rayio_${python_version}" python="${python_version}" -y
-
     conda activate "rayio_${python_version}"
-
-    pip install \
-        --index-url https://test.pypi.org/simple/ \
-        --extra-index-url https://pypi.org/simple \
-        "ray[cpp]==$RAY_VERSION"
-
     (
         cd release/util
         python sanity_check.py
