@@ -104,9 +104,7 @@ class RayTrainReportCallback:
                 the filename used when creating the callback.
         """
         with checkpoint.as_directory() as checkpoint_path:
-            booster = Booster()
-            booster.load_model(Path(checkpoint_path, filename).as_posix())
-            return booster
+            return Booster(model_file=Path(checkpoint_path, filename).as_posix())
 
     def _get_report_dict(self, evals_log: Dict[str, Dict[str, list]]) -> dict:
         result_dict = flatten_dict(evals_log, delimiter="-")
