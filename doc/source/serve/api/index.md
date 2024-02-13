@@ -42,6 +42,11 @@ This is fixed by added custom filename mappings in `source/conf.py` (look for "a
 
 #### Deployment Handles
 
+:::{note}
+The deprecated `RayServeHandle` and `RayServeSyncHandle` APIs have been fully removed as of Ray 2.10.
+See the [model composition guide](serve-model-composition) for how to update code to use the {mod}`DeploymentHandle <ray.serve.handle.DeploymentHandle>` API instead.
+:::
+
 ```{eval-rst}
 .. autosummary::
    :nosignatures:
