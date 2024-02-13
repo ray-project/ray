@@ -10,7 +10,11 @@ import ray
 from ray import cloudpickle
 from ray._private.serialization import pickle_dumps
 from ray.dag import DAGNode
-from ray.serve._private.config import DeploymentConfig, ReplicaConfig
+from ray.serve._private.config import (
+    DeploymentConfig,
+    ReplicaConfig,
+    handle_num_replicas_auto,
+)
 from ray.serve._private.constants import SERVE_DEFAULT_APP_NAME
 from ray.serve._private.deployment_graph_build import build as pipeline_build
 from ray.serve._private.deployment_graph_build import (
@@ -243,7 +247,7 @@ def deployment(
     _func_or_class: Optional[Callable] = None,
     name: Default[str] = DEFAULT.VALUE,
     version: Default[str] = DEFAULT.VALUE,
-    num_replicas: Default[Optional[int]] = DEFAULT.VALUE,
+    num_replicas: Default[Optional[Union[int, str]]] = DEFAULT.VALUE,
     route_prefix: Default[Union[str, None]] = DEFAULT.VALUE,
     ray_actor_options: Default[Dict] = DEFAULT.VALUE,
     placement_group_bundles: Optional[List[Dict[str, float]]] = DEFAULT.VALUE,
@@ -322,6 +326,12 @@ def deployment(
     # defined in this function. It depends on the locals() dictionary storing
     # only the function args/kwargs.
     # Create list of all user-configured options from keyword args
+    if num_replicas == "auto":
+        num_replicas = None
+        max_concurrent_queries, autoscaling_config = handle_num_replicas_auto(
+            max_concurrent_queries, autoscaling_config
+        )
+
     user_configured_option_names = [
         option
         for option, value in locals().items()
@@ -333,7 +343,7 @@ def deployment(
     if num_replicas == 0:
         raise ValueError("num_replicas is expected to larger than 0")
 
-    if num_replicas not in [DEFAULT.VALUE, None] and autoscaling_config not in [
+    if num_replicas not in [DEFAULT.VALUE, None, "auto"] and autoscaling_config not in [
         DEFAULT.VALUE,
         None,
     ]:
@@ -686,7 +696,8 @@ def get_multiplexed_model_id() -> str:
             # headers when sending requests to the http proxy.
             requests.get("http://localhost:8000",
                 headers={"ray_serve_multiplexed_model_id": "model_1"})
-            # This can also be set when using `RayServeHandle`.
+
+            # This can also be set when using `DeploymentHandle`.
             handle.options(multiplexed_model_id="model_1").remote("blablabla")
 
             # In your deployment code, you can retrieve the model id from
@@ -758,9 +769,7 @@ def get_app_handle(name: str) -> DeploymentHandle:
         raise RayServeException(f"Application '{name}' does not exist.")
 
     ServeUsageTag.SERVE_GET_APP_HANDLE_API_USED.record("1")
-    # Default to async within a deployment and sync outside a deployment.
-    sync = _get_internal_replica_context() is None
-    return client.get_handle(ingress, name, sync=sync, use_new_handle_api=True)
+    return client.get_handle(ingress, name)
 
 
 @DeveloperAPI
@@ -822,7 +831,7 @@ def get_deployment_handle(
             @serve.deployment
             class Adder:
                 def __init__(self, handle: DeploymentHandle, increment: int):
-                    self._handle = handle.options(use_new_handle_api=True)
+                    self._handle = handle
                     self._increment = increment
 
                 async def __call__(self, val: int) -> int:
@@ -854,8 +863,4 @@ def get_deployment_handle(
             app_name = internal_replica_context.app_name
 
     ServeUsageTag.SERVE_GET_DEPLOYMENT_HANDLE_API_USED.record("1")
-    # Default to async within a deployment and sync outside a deployment.
-    sync = internal_replica_context is None
-    return client.get_handle(
-        deployment_name, app_name, sync=sync, use_new_handle_api=True
-    )
+    return client.get_handle(deployment_name, app_name)

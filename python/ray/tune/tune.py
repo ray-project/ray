@@ -47,14 +47,13 @@ from ray.tune.progress_reporter import (
     _prepare_progress_reporter_for_ray_client,
     _stream_client_output,
 )
-from ray.tune.registry import get_trainable_cls, is_function_trainable
+from ray.tune.registry import get_trainable_cls
 
 # Must come last to avoid circular imports
 from ray.tune.schedulers import (
     FIFOScheduler,
     PopulationBasedTraining,
     PopulationBasedTrainingReplay,
-    ResourceChangingScheduler,
     TrialScheduler,
 )
 from ray.tune.schedulers.util import (
@@ -305,7 +304,7 @@ def run(
     fail_fast: bool = False,
     restore: Optional[str] = None,
     resume_config: Optional[_ResumeConfig] = None,
-    reuse_actors: Optional[bool] = None,
+    reuse_actors: bool = False,
     raise_on_failed_trial: bool = True,
     callbacks: Optional[Sequence[Callback]] = None,
     max_concurrent_trials: Optional[int] = None,
@@ -482,8 +481,7 @@ def run(
             when possible. This can drastically speed up experiments that start
             and stop actors often (e.g., PBT in time-multiplexing mode). This
             requires trials to have the same resource requirements.
-            Defaults to ``True`` for function trainables and ``False`` for
-            class and registered trainables.
+            Defaults to ``False``.
         raise_on_failed_trial: Raise TuneError if there exists failed
             trial (of ERROR state) when the experiments complete.
         callbacks: List of callbacks that will be called at different
@@ -741,39 +739,6 @@ def run(
                 f"to 1 instead."
             )
             os.environ["TUNE_RESULT_BUFFER_LENGTH"] = "1"
-
-    # If reuse_actors is unset, default to False for string and class trainables,
-    # and default to True for everything else (i.e. function trainables)
-    if reuse_actors is None:
-        trainable = (
-            run_or_experiment.run_identifier
-            if isinstance(run_or_experiment, Experiment)
-            else run_or_experiment
-        )
-        reuse_actors = (
-            # Only default to True for function trainables that meet certain conditions
-            is_function_trainable(trainable)
-            and not (
-                # Changing resources requires restarting actors
-                scheduler
-                and isinstance(scheduler, ResourceChangingScheduler)
-            )
-            and not (
-                # If GPUs are requested we could run into problems with device memory
-                _check_gpus_in_resources(resources_per_trial)
-            )
-            and not (
-                # If the resource request is overridden, we don't know if GPUs
-                # will be requested, yet, so default to False
-                _check_default_resources_override(trainable)
-            )
-            and not (
-                # Mixins do not work with reuse_actors as the mixin setup will only
-                # be invoked once
-                _check_mixin(trainable)
-            )
-        )
-        logger.debug(f"Auto-detected `reuse_actors={reuse_actors}`")
 
     if (
         isinstance(scheduler, (PopulationBasedTraining, PopulationBasedTrainingReplay))
@@ -1117,8 +1082,12 @@ def run_experiments(
     verbose: Optional[Union[int, AirVerbosity, Verbosity]] = None,
     progress_reporter: Optional[ProgressReporter] = None,
     resume: Union[bool, str] = False,
+<<<<<<< HEAD
     resume_config: Optional[_ResumeConfig] = None,
     reuse_actors: Optional[bool] = None,
+=======
+    reuse_actors: bool = False,
+>>>>>>> 91a175208c194e62963de66010dd2c77a995bda6
     raise_on_failed_trial: bool = True,
     concurrent: bool = True,
     callbacks: Optional[Sequence[Callback]] = None,

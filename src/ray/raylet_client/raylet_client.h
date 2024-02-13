@@ -194,6 +194,7 @@ class RayletClientInterface : public PinObjectsInterface,
   virtual void DrainRaylet(
       const rpc::autoscaler::DrainNodeReason &reason,
       const std::string &reason_message,
+      int64_t deadline_timestamp_ms,
       const rpc::ClientCallback<rpc::DrainRayletReply> &callback) = 0;
 
   virtual std::shared_ptr<grpc::Channel> GetChannel() const = 0;
@@ -464,6 +465,7 @@ class RayletClient : public RayletClientInterface {
 
   void DrainRaylet(const rpc::autoscaler::DrainNodeReason &reason,
                    const std::string &reason_message,
+                   int64_t deadline_timestamp_ms,
                    const rpc::ClientCallback<rpc::DrainRayletReply> &callback) override;
 
   void GetSystemConfig(
