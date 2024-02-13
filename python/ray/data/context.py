@@ -146,6 +146,14 @@ DEFAULT_WRITE_FILE_RETRY_ON_ERRORS = [
 # This follows same format as `retry_exceptions` in Ray Core.
 DEFAULT_ACTOR_TASK_RETRY_ON_ERRORS = False
 
+# Whether to apply compression on the data block before putting it into object store.
+# Note: Currently compression only works for arrow block
+DEFAULT_ENABLE_BLOCK_COMPRESSION = False
+
+# The compression codec. See a list of available codec in:
+# https://arrow.apache.org/docs/python/generated/pyarrow.ipc.IpcWriteOptions.html#pyarrow.ipc.IpcWriteOptions
+DEFAULT_BLOCK_COMPRESSION_CODEC = 'lz4'
+
 
 @DeveloperAPI
 class DataContext:
@@ -184,6 +192,8 @@ class DataContext:
         write_file_retry_on_errors: List[str],
         warn_on_driver_memory_usage_bytes: int,
         actor_task_retry_on_errors: Union[bool, List[BaseException]],
+        enable_block_compression: bool,
+        block_compression_codec: str,
     ):
         """Private constructor (use get_current() instead)."""
         self.target_max_block_size = target_max_block_size
@@ -218,6 +228,8 @@ class DataContext:
         self.write_file_retry_on_errors = write_file_retry_on_errors
         self.warn_on_driver_memory_usage_bytes = warn_on_driver_memory_usage_bytes
         self.actor_task_retry_on_errors = actor_task_retry_on_errors
+        self.enable_block_compression = enable_block_compression
+        self.block_compression_codec = block_compression_codec
         # The additonal ray remote args that should be added to
         # the task-pool-based data tasks.
         self._task_pool_data_task_remote_args: Dict[str, Any] = {}
@@ -289,6 +301,8 @@ class DataContext:
                         DEFAULT_WARN_ON_DRIVER_MEMORY_USAGE_BYTES
                     ),
                     actor_task_retry_on_errors=DEFAULT_ACTOR_TASK_RETRY_ON_ERRORS,
+                    enable_block_compression=DEFAULT_ENABLE_BLOCK_COMPRESSION,
+                    block_compression_codec=DEFAULT_BLOCK_COMPRESSION_CODEC,
                 )
 
             return _default_context
