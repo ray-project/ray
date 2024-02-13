@@ -15,6 +15,7 @@ rm -rf ~/miniconda3/miniconda.sh
 ~/miniconda3/bin/conda init bash
 
 export PATH="~/miniconda3/bin:$PATH"
+pip install charset-normalizer
 
 conda create -n rayio python="${PYTHON_VERSION}" -y
 
