@@ -141,8 +141,6 @@ class ResourceManager:
             gpu=gpu,
             object_store_memory=object_store_memory,
         )
-        if self._op_resource_limiter is not None:
-            self._op_resource_limiter.on_global_limits_updated(self._global_limits)
         return self._global_limits
 
     def get_op_usage(self, op: PhysicalOperator) -> ExecutionResources:
@@ -179,10 +177,6 @@ class OpResourceLimiter(ABC):
 
     def __init__(self, resource_manager: ResourceManager):
         self._resource_manager = resource_manager
-
-    def on_global_limits_updated(self, global_limits: ExecutionResources):
-        """Callback when the global limits are updated."""
-        pass
 
     @abstractmethod
     def update_usages(self) -> ExecutionResources:
@@ -228,8 +222,9 @@ class ReservationOpResourceLimiter(OpResourceLimiter):
         self._total_shared = ExecutionResources.zero()
         # Resource limits for each operator.
         self._op_limits: Dict[PhysicalOperator, ExecutionResources] = {}
+        self._cached_global_limits = ExecutionResources.zero()
 
-    def on_global_limits_updated(self, global_limits: ExecutionResources):
+    def _on_global_limits_updated(self, global_limits: ExecutionResources):
         self._total_shared = global_limits.scale(1.0 - self._reservation_ratio)
 
         default_reserved = global_limits.scale(
@@ -243,6 +238,11 @@ class ReservationOpResourceLimiter(OpResourceLimiter):
             )
 
     def update_usages(self):
+        global_limits = self._resource_manager.get_global_limits()
+        if global_limits != self._cached_global_limits:
+            self._on_global_limits_updated(global_limits)
+            self._cached_global_limits = global_limits
+
         self._op_limits.clear()
         # Remaining of shared resources.
         remaining_shared = self._total_shared
