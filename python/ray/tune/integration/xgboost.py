@@ -1,4 +1,7 @@
-from ray.train.xgboost import RayTrainReportCallback as TuneReportCheckpointCallback
+from ray.train.xgboost import (  # noqa: F401
+    RayTrainReportCallback as TuneReportCheckpointCallback,
+)
+
 from ray.util.annotations import Deprecated
 
 

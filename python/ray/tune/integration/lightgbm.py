@@ -1,6 +1,8 @@
 from ray.util.annotations import Deprecated
 
-from ray.train.lightgbm import RayTrainReportCallback as TuneReportCheckpointCallback
+from ray.train.lightgbm import (  # noqa: F401
+    RayTrainReportCallback as TuneReportCheckpointCallback,
+)
 
 
 @Deprecated
