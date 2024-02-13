@@ -21,7 +21,7 @@ class RayTrainReportCallback:
             each item should be a metric key reported by LightGBM,
             and it will be reported to Ray Train/Tune under the same name.
             This can also be a dict of {<key-to-report>: <lightgbm-metric-key>},
-            which can be used to rename lightgbm default metrics.
+            which can be used to rename LightGBM default metrics.
         filename: Customize the saved checkpoint file type by passing
             a filename. Defaults to "model.txt".
         frequency: How often to save checkpoints, in terms of iterations.
@@ -31,12 +31,17 @@ class RayTrainReportCallback:
             the metrics dict that will be reported (after it has been flattened)
             and returns a modified dict.
 
-    Example:
+    Examples
+    --------
 
-    .. code-block:: python
+    Reporting checkpoints and metrics to Ray Tune when running many
+    independent xgboost trials (without data parallelism within a trial).
+
+    .. testcode::
 
         import lightgbm
-        from ray.tune.integration.lightgbm import TuneReportCheckpointCallback
+
+        from ray.train.lightgbm import RayTrainReportCallback
 
         config = {
             # ...
@@ -44,24 +49,29 @@ class RayTrainReportCallback:
         }
 
         # Report only log loss to Tune after each validation epoch.
-        # Save model as `lightgbm.mdl`.
         bst = lightgbm.train(
-            config,
-            train_set,
-            valid_sets=[test_set],
-            valid_names=["eval"],
-            verbose_eval=False,
+            ...,
             callbacks=[
-                TuneReportCheckpointCallback(
+                RayTrainReportCallback(
                     metrics={"loss": "eval-binary_logloss"}, frequency=1
                 )
             ],
         )
 
+    Loading a model from a checkpoint reported by this callback.
+
+    .. testcode::
+        :skipif: True
+
+        from ray.train.lightgbm import RayTrainReportCallback
+
+        # Get a `Checkpoint` object that is saved by the callback during training.
+        result = trainer.fit()
+        booster = RayTrainReportCallback.get_model(result.checkpoint)
+
     """
 
     CHECKPOINT_NAME = "model.txt"
-    order = 20
 
     def __init__(
         self,
@@ -85,7 +95,14 @@ class RayTrainReportCallback:
     def get_model(
         cls, checkpoint: Checkpoint, filename: str = CHECKPOINT_NAME
     ) -> Booster:
-        """Retrieve the model stored in a checkpoint reported by this callback."""
+        """Retrieve the model stored in a checkpoint reported by this callback.
+
+        Args:
+            checkpoint: The checkpoint object returned by a training run.
+                The checkpoint should be saved by an instance of this callback.
+            filename: The filename to load the model from, which should match
+                the filename used when creating the callback.
+        """
         with checkpoint.as_directory() as checkpoint_path:
             booster = Booster()
             booster.load_model(Path(checkpoint_path, filename).as_posix())

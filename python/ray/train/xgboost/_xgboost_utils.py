@@ -53,30 +53,44 @@ class RayTrainReportCallback(TuneCallback):
             and returns a modified dict. For example, this can be used to
             average results across CV fold when using ``xgboost.cv``.
 
-    Example:
+    Examples
+    --------
 
-    .. code-block:: python
+    Reporting checkpoints and metrics to Ray Tune when running many
+    independent xgboost trials (without data parallelism within a trial).
+
+    .. testcode::
+        :skipif: True
 
         import xgboost
-        from ray.tune.integration.xgboost import TuneReportCheckpointCallback
 
-        config = {
-            # ...
-            "eval_metric": ["auc", "logloss"]
-        }
+        from ray.tune import Tuner
+        from ray.train.xgboost import RayTrainReportCallback
 
-        # Report log loss to Tune after each validation epoch.
-        bst = xgb.train(
-            config,
-            train_set,
-            evals=[(test_set, "eval")],
-            verbose_eval=False,
-            callbacks=[
-                TuneReportCheckpointCallback(
-                    metrics={"loss": "eval-logloss"}, frequency=1
-                )
-            ],
-        )
+        def train_fn(config):
+            # Report log loss to Ray Tune after each validation epoch.
+            bst = xgboost.train(
+                ...,
+                callbacks=[
+                    RayTrainReportCallback(
+                        metrics={"loss": "eval-logloss"}, frequency=1
+                    )
+                ],
+            )
+
+        tuner = Tuner(train_fn)
+        results = tuner.fit()
+
+    Loading a model from a checkpoint reported by this callback.
+
+    .. testcode::
+        :skipif: True
+
+        from ray.train.xgboost import RayTrainReportCallback
+
+        # Get a `Checkpoint` object that is saved by the callback during training.
+        result = trainer.fit()
+        booster = RayTrainReportCallback.get_model(result.checkpoint)
 
     """
 
@@ -109,7 +123,14 @@ class RayTrainReportCallback(TuneCallback):
     def get_model(
         cls, checkpoint: Checkpoint, filename: str = CHECKPOINT_NAME
     ) -> Booster:
-        """Retrieve the model stored in a checkpoint reported by this callback."""
+        """Retrieve the model stored in a checkpoint reported by this callback.
+
+        Args:
+            checkpoint: The checkpoint object returned by a training run.
+                The checkpoint should be saved by an instance of this callback.
+            filename: The filename to load the model from, which should match
+                the filename used when creating the callback.
+        """
         with checkpoint.as_directory() as checkpoint_path:
             booster = Booster()
             booster.load_model(Path(checkpoint_path, filename).as_posix())
