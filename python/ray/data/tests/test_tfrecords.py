@@ -759,7 +759,7 @@ def read_tfrecords_with_fast_read_override(paths, fast_read=False, **read_opts):
         return tf_ds
 
     read_op = tf_ds._plan._logical_plan.dag
-    datasource_override = read_op._input_dependencies[0]._datasource
+    datasource_override = read_op._datasource
     datasource_override._fast_read = fast_read
     parallelism = read_opts.pop("parallelism", -1)
     ds = ray.data.read_datasource(datasource_override, parallelism=parallelism)

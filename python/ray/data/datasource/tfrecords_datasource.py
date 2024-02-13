@@ -90,7 +90,9 @@ class TFRecordDatasource(FileBasedDatasource):
             for record in tf.data.TFRecordDataset(
                 full_path, compression_type=compression
             ).batch(self._batch_size):
-                yield pyarrow.Table.from_batches([decoder.DecodeBatch(record.numpy())])
+                yield _cast_large_list_to_list(
+                    pyarrow.Table.from_batches([decoder.DecodeBatch(record.numpy())])
+                )
         except Exception as error:
             logger.get_logger().exception(f"Failed to read TFRecord file {full_path}")
             exception_thrown = error
@@ -431,13 +433,6 @@ def _read_records(
             raise RuntimeError(error_message) from e
 
 
-def _cast_large_list_to_list_transform(dataset: "Dataset"):
-    return dataset.map_batches(
-        _cast_large_list_to_list,
-        batch_format="pyarrow",
-    )
-
-
 def _cast_large_list_to_list(batch: pyarrow.Table):
     old_schema = batch.schema
     fields = {}
@@ -451,9 +446,10 @@ def _cast_large_list_to_list(batch: pyarrow.Table):
                 value_type = pyarrow.binary()
 
             fields[column_name] = pyarrow.list_(value_type)
-
-        if field_type == pyarrow.large_binary():
+        elif field_type == pyarrow.large_binary():
             fields[column_name] = pyarrow.binary()
+        else:
+            fields[column_name] = old_schema.field(column_name)
 
     new_schema = pyarrow.schema(fields)
     return batch.cast(new_schema)
@@ -488,6 +484,8 @@ def _unwrap_single_value_lists(batch: pyarrow.Table, col_lengths: Dict[str, int]
                     [x.as_py()[0] if x.as_py() else None for x in batch[col]],
                     type=value_type,
                 )
+        else:
+            columns[col] = batch[col]
 
     return pyarrow.table(columns)
 
