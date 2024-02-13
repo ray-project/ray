@@ -14,7 +14,7 @@ bash ~/miniconda3/miniconda.sh -b -u -p ~/miniconda3
 rm -rf ~/miniconda3/miniconda.sh
 ~/miniconda3/bin/conda init bash
 
-export PATH="/root/miniconda3/bin:$PATH"
+export PATH="~/miniconda3/bin:$PATH"
 
 conda create -n rayio python="${PYTHON_VERSION}" -y
 
