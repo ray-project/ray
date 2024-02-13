@@ -193,6 +193,9 @@ def foo():
 
 x = foo.remote()
 time.sleep(15)
+
+import sys
+sys.stdout.flush()
     """
 
     proc = run_string_as_driver_nonblocking(script)
@@ -236,6 +239,9 @@ class A:
 a = A.remote()
 b = A.remote()
 time.sleep(25)
+
+import sys
+sys.stdout.flush()
     """
 
     proc = run_string_as_driver_nonblocking(script)
@@ -350,6 +356,9 @@ event_logger.info("Test autoscaler event")
 
 # Block and sleep
 time.sleep(3)
+
+import sys
+sys.stdout.flush()
     """
 
     proc = run_string_as_driver_nonblocking(script)
@@ -402,6 +411,9 @@ event_logger.fatal("FATAL")
 
 # Block and sleep
 time.sleep(3)
+
+import sys
+sys.stdout.flush()
     """
 
     ray.init(_system_config={"enable_autoscaler_v2": True})
