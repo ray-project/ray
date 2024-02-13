@@ -23,22 +23,15 @@ class ExecutionResources:
     # Object store memory usage in bytes.
     object_store_memory: Optional[int] = None
 
-    _ZERO = None
-    _INF = None
-
     @classmethod
     def zero(cls) -> "ExecutionResources":
         """Returns an ExecutionResources object with zero resources."""
-        if cls._ZERO is None:
-            cls._ZERO = ExecutionResources(0.0, 0.0, 0)
-        return cls._ZERO
+        return ExecutionResources(0.0, 0.0, 0)
 
     @classmethod
     def inf(cls) -> "ExecutionResources":
         """Returns an ExecutionResources object with infinite resources."""
-        if cls._INF is None:
-            cls._INF = ExecutionResources(float("inf"), float("inf"), float("inf"))
-        return cls._INF
+        return ExecutionResources(float("inf"), float("inf"), float("inf"))
 
     def object_store_memory_str(self) -> str:
         """Returns a human-readable string for the object store memory field."""
