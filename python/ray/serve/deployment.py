@@ -240,7 +240,6 @@ class Deployment:
         """
 
         schema_shell = deployment_to_schema(self)
-
         if inspect.isfunction(self.func_or_class):
             dag_node = FunctionNode(
                 self.func_or_class,
@@ -660,6 +659,7 @@ def schema_to_deployment(s: DeploymentSchema) -> Deployment:
         num_replicas=s.num_replicas,
         user_config=s.user_config,
         max_concurrent_queries=s.max_concurrent_queries,
+        max_queued_requests=s.max_queued_requests,
         autoscaling_config=s.autoscaling_config,
         graceful_shutdown_wait_loop_s=s.graceful_shutdown_wait_loop_s,
         graceful_shutdown_timeout_s=s.graceful_shutdown_timeout_s,

@@ -10,7 +10,6 @@ import ray
 from ray._private.utils import load_class
 from ray.actor import ActorHandle
 from ray.dag.py_obj_scanner import _PyObjScanner
-from ray.serve.exceptions import BackPressureError
 from ray.serve._private.common import DeploymentID, RequestMetadata, RunningReplicaInfo
 from ray.serve._private.config import DeploymentConfig
 from ray.serve._private.constants import (
@@ -28,6 +27,7 @@ from ray.serve._private.replica_scheduler import (
     PowerOfTwoChoicesReplicaScheduler,
 )
 from ray.serve.config import AutoscalingConfig
+from ray.serve.exceptions import BackPressureError
 from ray.util import metrics
 
 logger = logging.getLogger(SERVE_LOGGER_NAME)
@@ -220,9 +220,7 @@ class Router:
         running_requests = dict()
         autoscaling_config = self.curr_autoscaling_config
         if RAY_SERVE_COLLECT_AUTOSCALING_METRICS_ON_HANDLE and autoscaling_config:
-            look_back_period = (
-                autoscaling_config.look_back_period_s
-            )
+            look_back_period = autoscaling_config.look_back_period_s
             running_requests = {
                 replica_id: self.metrics_store.window_average(
                     replica_id, time.time() - look_back_period
@@ -337,16 +335,17 @@ class Router:
 
         num_queued_requests = self.num_queued_queries
         max_queued_requests = (
-            self.deployment_config.max_queued_requests if self.deployment_config is not None else -1
+            self.deployment_config.max_queued_requests
+            if self.deployment_config is not None
+            else -1
         )
         if max_queued_requests != -1 and num_queued_requests >= max_queued_requests:
-            msg = (
-                f"Dropping request {request_meta.request_id} due to backpressure "
-                f"(num_queued_requests={num_queued_requests}, "
-                f"max_queued_requests={max_queued_requests}).",
+            e = BackPressureError(
+                num_queued_requests=num_queued_requests,
+                max_queued_requests=max_queued_requests,
             )
-            logger.warning(msg)
-            raise BackPressureError(msg)
+            logger.warning(e.message)
+            raise e
 
         self.num_queued_queries += 1
         self.num_queued_queries_gauge.set(self.num_queued_queries)
