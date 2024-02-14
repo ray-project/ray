@@ -113,7 +113,7 @@ class DataConfig:
                         world_size, equal=True, locality_hints=locality_hints
                     )
                     if self._convert_to_data_iterator
-                    else ds.split(world_size, equal=True)
+                    else ds.split(world_size, equal=True, locality_hints=locality_hints)
                 )
                 for i, split in enumerate(splits):
                     output[i][name] = split
