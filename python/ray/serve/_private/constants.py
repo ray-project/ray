@@ -265,7 +265,7 @@ RAY_SERVE_MAX_QUEUE_LENGTH_RESPONSE_DEADLINE_S = float(
 
 # Feature flag for caching queue lengths for faster routing in each handle.
 RAY_SERVE_ENABLE_QUEUE_LENGTH_CACHE = (
-    os.environ.get("RAY_SERVE_ENABLE_QUEUE_LENGTH_CACHE", "0") == "1"
+    os.environ.get("RAY_SERVE_ENABLE_QUEUE_LENGTH_CACHE", "1") == "1"
 )
 
 # Feature flag for strictly enforcing max_concurrent_queries (replicas will reject
