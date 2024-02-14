@@ -21,13 +21,11 @@ from ray.air.result import Result
 from ray.train import Checkpoint
 from ray.train._internal.session import _get_session
 from ray.train._internal.storage import _exists_at_fs_path, get_fs_and_path
-from ray.train.constants import TRAIN_DATASET_KEY
 from ray.util import PublicAPI
 from ray.util.annotations import DeveloperAPI
 
 if TYPE_CHECKING:
     from ray.data import Dataset
-    from ray.data.preprocessor import Preprocessor
     from ray.tune import Trainable
 
 _TRAINER_PKL = "trainer.pkl"
@@ -89,9 +87,7 @@ class BaseTrainer(abc.ABC):
       called in sequence on the remote actor.
     - ``trainer.setup()``: Any heavyweight Trainer setup should be
       specified here.
-    - ``trainer.preprocess_datasets()``: The datasets passed to the Trainer will be
-      setup here.
-    - ``trainer.train_loop()``: Executes the main training logic.
+    - ``trainer.training_loop()``: Executes the main training logic.
     - Calling ``trainer.fit()`` will return a ``ray.result.Result``
       object where you can access metrics from your training run, as well
       as any checkpoints that may have been saved.
@@ -191,8 +187,6 @@ class BaseTrainer(abc.ABC):
         datasets: Optional[Dict[str, GenDataset]] = None,
         metadata: Optional[Dict[str, Any]] = None,
         resume_from_checkpoint: Optional[Checkpoint] = None,
-        # Deprecated.
-        preprocessor: Optional["Preprocessor"] = None,
     ):
         self.scaling_config = (
             scaling_config if scaling_config is not None else ScalingConfig()
@@ -200,7 +194,6 @@ class BaseTrainer(abc.ABC):
         self.run_config = run_config if run_config is not None else RunConfig()
         self.metadata = metadata
         self.datasets = datasets if datasets is not None else {}
-        self.preprocessor = preprocessor
         self.starting_checkpoint = resume_from_checkpoint
 
         # These attributes should only be set through `BaseTrainer.restore`
@@ -211,9 +204,6 @@ class BaseTrainer(abc.ABC):
 
         air_usage.tag_air_trainer(self)
 
-        if preprocessor is not None:
-            raise DeprecationWarning(PREPROCESSOR_DEPRECATION_MESSAGE)
-
     @PublicAPI(stability="alpha")
     @classmethod
     def restore(
@@ -221,7 +211,6 @@ class BaseTrainer(abc.ABC):
         path: Union[str, os.PathLike],
         storage_filesystem: Optional[pyarrow.fs.FileSystem] = None,
         datasets: Optional[Dict[str, GenDataset]] = None,
-        preprocessor: Optional["Preprocessor"] = None,
         scaling_config: Optional[ScalingConfig] = None,
         **kwargs,
     ) -> "BaseTrainer":
@@ -351,10 +340,6 @@ class BaseTrainer(abc.ABC):
             )
         param_dict["datasets"] = datasets
 
-        # If no preprocessor is re-specified, then it will be set to None
-        # here and loaded from the latest checkpoint
-        param_dict["preprocessor"] = preprocessor
-
         if scaling_config:
             param_dict["scaling_config"] = scaling_config
 
@@ -470,15 +455,6 @@ class BaseTrainer(abc.ABC):
                 f"{self.metadata}: {e}"
             )
 
-        # Preprocessor
-        if self.preprocessor is not None and not isinstance(
-            self.preprocessor, ray.data.Preprocessor
-        ):
-            raise ValueError(
-                f"`preprocessor` should be an instance of `ray.data.Preprocessor`, "
-                f"found {type(self.preprocessor)} with value `{self.preprocessor}`."
-            )
-
         if self.starting_checkpoint is not None and not isinstance(
             self.starting_checkpoint, Checkpoint
         ):
@@ -511,42 +487,11 @@ class BaseTrainer(abc.ABC):
         pass
 
     def preprocess_datasets(self) -> None:
-        """Called during fit() to preprocess dataset attributes with preprocessor.
-
-        .. note:: This method is run on a remote process.
-
-        This method is called prior to entering the training_loop.
-
-        If the ``Trainer`` has both a datasets dict and
-        a preprocessor, the datasets dict contains a training dataset (denoted by
-        the "train" key), and the preprocessor has not yet
-        been fit, then it will be fit on the train dataset.
-
-        Then, all Trainer's datasets will be transformed by the preprocessor.
-
-        The transformed datasets will be set back in the ``self.datasets`` attribute
-        of the Trainer to be used when overriding ``training_loop``.
-        """
-        # Evaluate all datasets.
-        self.datasets = {k: d() if callable(d) else d for k, d in self.datasets.items()}
-
-        if self.preprocessor:
-            train_dataset = self.datasets.get(TRAIN_DATASET_KEY, None)
-            if train_dataset and self.preprocessor.fit_status() in (
-                ray.data.Preprocessor.FitStatus.NOT_FITTED,
-                ray.data.Preprocessor.FitStatus.PARTIALLY_FITTED,
-            ):
-                self.preprocessor.fit(train_dataset)
-
-            # Execute dataset transformations serially for now.
-            # Cannot execute them in remote tasks due to dataset ownership model:
-            # if datasets are created on a remote node, then if that node fails,
-            # we cannot recover the dataset.
-            new_datasets = {}
-            for key, dataset in self.datasets.items():
-                new_datasets[key] = self.preprocessor.transform(dataset)
-
-            self.datasets = new_datasets
+        """Deprecated."""
+        raise DeprecationWarning(
+            "`preprocess_datasets` is no longer used, since preprocessors "
+            f"are no longer accepted by Trainers.\n{PREPROCESSOR_DEPRECATION_MESSAGE}"
+        )
 
     @abc.abstractmethod
     def training_loop(self) -> None:
@@ -554,7 +499,7 @@ class BaseTrainer(abc.ABC):
 
         .. note:: This method runs on a remote process.
 
-        ``self.datasets`` have already been preprocessed by ``self.preprocessor``.
+        ``self.datasets`` have already been evaluated if they were wrapped in a factory.
 
         You can use the :ref:`Ray Train utilities <train-loop-api>`
         (:func:`train.report() <ray.train.report>` and
@@ -729,8 +674,12 @@ class BaseTrainer(abc.ABC):
             # else: Train will restore from the user-provided
             # `resume_from_checkpoint` == `starting_checkpoint`.
 
+            # Evaluate datasets if they are wrapped in a factory.
+            trainer.datasets = {
+                k: d() if callable(d) else d for k, d in self.datasets.items()
+            }
+
             trainer.setup()
-            trainer.preprocess_datasets()
             trainer.training_loop()
 
         # Change the name of the training function to match the name of the Trainer
