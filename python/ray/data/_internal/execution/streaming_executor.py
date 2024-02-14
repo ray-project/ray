@@ -312,7 +312,7 @@ class StreamingExecutor(Executor, threading.Thread):
             if op.completed() and not self._has_op_completed[op]:
                 log_str = (
                     f"Operator {op} completed. "
-                    f"Operator Metrics:\n{op._metrics.as_dict(metrics_only=True)}"
+                    f"Operator Metrics:\n{op._metrics.as_dict()}"
                 )
                 logger.get_logger(log_to_stdout=False).info(log_str)
                 self._has_op_completed[op] = True
