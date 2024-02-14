@@ -311,7 +311,7 @@ async def test_max_concurrent_queries_enforced(serve_instance):
             self._waiters.append(event)
             await event.wait()
 
-        def set_one(self):
+        def unblock_one(self):
             self._waiters.pop().set()
 
         def get_num_waiters(self) -> int:
@@ -344,7 +344,7 @@ async def test_max_concurrent_queries_enforced(serve_instance):
 
         # Unblocking the one that is executing should cause it to finish.
         # Another request will then get scheduled.
-        await waiter.set_one.remote()
+        await waiter.unblock_one.remote()
         done, pending = await asyncio.wait(tasks, return_when=asyncio.FIRST_COMPLETED)
         assert len(done) == 1
         assert len(pending) == len(tasks) - 1
