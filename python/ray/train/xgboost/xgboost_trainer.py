@@ -329,6 +329,14 @@ class XGBoostTrainer(SimpleXGBoostTrainer):
             metadata=metadata,
         )
 
+    @classmethod
+    def get_model(
+        cls,
+        checkpoint: Checkpoint,
+    ) -> xgboost.Booster:
+        """Retrieve the XGBoost model stored in this checkpoint."""
+        return RayTrainReportCallback.get_model(checkpoint)
+
 
 def simple_trainer_example():
     from contextlib import contextmanager
