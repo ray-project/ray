@@ -260,10 +260,11 @@ class GBDTTrainer(BaseTrainer):
         # is done in subclasses to ensure that xgboost-ray doesn't need to be
         # imported here.
         for dataset_key, dataset in self.datasets.items():
-            if dataset.num_blocks() < self._ray_params.num_actors:
+            dataset_num_blocks = dataset._plan.initial_num_blocks()
+            if dataset_num_blocks < self._ray_params.num_actors:
                 if dataset.size_bytes() > _WARN_REPARTITION_THRESHOLD:
                     warnings.warn(
-                        f"Dataset '{dataset_key}' has {dataset.num_blocks()} blocks, "
+                        f"Dataset '{dataset_key}' has {dataset_num_blocks} blocks, "
                         f"which is less than the `num_workers` "
                         f"{self._ray_params.num_actors}. "
                         f"This dataset will be automatically repartitioned to "

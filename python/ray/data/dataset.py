@@ -1130,7 +1130,7 @@ class Dataset:
         import pandas as pd
         import pyarrow as pa
 
-        if self.num_blocks() == 0:
+        if self._plan.initial_num_blocks() == 0:
             raise ValueError("Cannot sample from an empty Dataset.")
 
         if fraction < 0 or fraction > 1:
@@ -2491,7 +2491,7 @@ class Dataset:
             The number of records in the dataset.
         """
         # Handle empty dataset.
-        if self.num_blocks() == 0:
+        if self._plan.initial_num_blocks() == 0:
             return 0
 
         # For parquet, we can return the count directly from metadata.
@@ -2594,26 +2594,6 @@ class Dataset:
         if schema is not None:
             return schema.names
         return None
-
-    def num_blocks(self) -> int:
-        """Return the number of blocks of this dataset.
-
-        Note that during read and transform operations, the number of blocks
-        may be dynamically adjusted to respect memory limits, increasing the
-        number of blocks at runtime.
-
-        Examples:
-            >>> import ray
-            >>> ds = ray.data.range(100).repartition(10)
-            >>> ds.num_blocks()
-            10
-
-        Time complexity: O(1)
-
-        Returns:
-            The number of blocks of this dataset.
-        """
-        return self._plan.initial_num_blocks()
 
     @ConsumptionAPI(if_more_than_read=True, pattern="Time complexity:")
     def size_bytes(self) -> int:
