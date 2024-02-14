@@ -1012,9 +1012,11 @@ class DeploymentReplica(VersionedReplica):
 
         Should handle the case where the replica is already stopped.
         """
+        state = self._actor_details.state
         logger.info(
-            f"Stopping replica {self.replica_tag} for deployment "
-            f"'{self.deployment_name}' in application '{self.app_name}'.",
+            f"Stopping replica {self.replica_tag} (currently {state}) "
+            f"for deployment '{self.deployment_name}' "
+            f"in application '{self.app_name}'.",
             extra={"log_to_stderr": False},
         )
         timeout_s = self._actor.graceful_stop()
@@ -2051,10 +2053,6 @@ class DeploymentState:
                 ReplicaStartupStatus.PENDING_ALLOCATION,
                 ReplicaStartupStatus.PENDING_INITIALIZATION,
             ]:
-                if start_status == ReplicaStartupStatus.PENDING_INITIALIZATION:
-                    self._deployment_scheduler.on_replica_running(
-                        self._id, replica.replica_tag, replica.actor_node_id
-                    )
                 is_slow = time.time() - replica._start_time > SLOW_STARTUP_WARNING_S
                 if is_slow:
                     slow_replicas.append((replica, start_status))
@@ -2090,7 +2088,7 @@ class DeploymentState:
             else:
                 self._replicas.add(replica.actor_details.state, replica)
 
-    def _stop_replica(self, replica, graceful_stop=True):
+    def _stop_replica(self, replica: VersionedReplica, graceful_stop=True):
         """Stop replica
         1. Stop the replica.
         2. Change the replica into stopping state.
@@ -2239,10 +2237,11 @@ class DeploymentState:
             states=[ReplicaState.UPDATING, ReplicaState.RUNNING]
         ):
             if replica.actor_node_id in draining_nodes:
+                state = replica._actor_details.state
                 logger.info(
-                    f"Stopping replica {replica.replica_tag} of deployment "
-                    f"'{self.deployment_name}' in application '{self.app_name}' on "
-                    f"draining node {replica.actor_node_id}."
+                    f"Stopping replica {replica.replica_tag} (currently {state}) "
+                    f"of deployment '{self.deployment_name}' in application "
+                    f"'{self.app_name}' on draining node {replica.actor_node_id}."
                 )
                 self._stop_replica(replica, graceful_stop=True)
             else:
@@ -2366,12 +2365,14 @@ class DeploymentStateManager:
         all_current_actor_names: List[str],
         all_current_placement_group_names: List[str],
         cluster_node_info_cache: ClusterNodeInfoCache,
+        head_node_id_override: Optional[str] = None,
     ):
         self._kv_store = kv_store
         self._long_poll_host = long_poll_host
         self._cluster_node_info_cache = cluster_node_info_cache
         self._deployment_scheduler = default_impl.create_deployment_scheduler(
-            cluster_node_info_cache
+            cluster_node_info_cache,
+            head_node_id_override,
         )
 
         self._deployment_states: Dict[DeploymentID, DeploymentState] = dict()

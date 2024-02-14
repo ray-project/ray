@@ -43,6 +43,20 @@ class EpisodeReplayBuffer(ReplayBufferInterface):
     (repeat the previous action), as well as either terminated=True or truncated=True.
     """
 
+    __slots__ = (
+        "capacity",
+        "batch_size_B",
+        "batch_length_T",
+        "episodes",
+        "episode_id_to_index",
+        "num_episodes_evicted",
+        "_indices",
+        "_num_timesteps",
+        "_num_timesteps_added",
+        "sampled_timesteps",
+        "rng",
+    )
+
     def __init__(
         self,
         capacity: int = 10000,

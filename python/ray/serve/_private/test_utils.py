@@ -1,7 +1,7 @@
 import asyncio
 import threading
 import time
-from typing import Any, Dict
+from typing import Any, Dict, Optional
 
 import grpc
 import pytest
@@ -14,7 +14,7 @@ from ray import serve
 from ray.actor import ActorHandle
 from ray.serve._private.common import DeploymentID, DeploymentStatus
 from ray.serve._private.constants import SERVE_DEFAULT_APP_NAME, SERVE_NAMESPACE
-from ray.serve._private.proxy import DRAINED_MESSAGE
+from ray.serve._private.proxy import DRAINING_MESSAGE
 from ray.serve._private.usage import ServeUsageTag
 from ray.serve._private.utils import TimerBase
 from ray.serve.generated import serve_pb2, serve_pb2_grpc
@@ -24,21 +24,23 @@ STORAGE_ACTOR_NAME = "storage"
 
 
 class MockTimer(TimerBase):
-    def __init__(self, start_time=None):
+    def __init__(self, start_time: Optional[float] = None):
         self._lock = threading.Lock()
+        self.reset(start_time=start_time)
 
+    def reset(self, start_time: Optional[float] = None):
         if start_time is None:
             start_time = time.time()
         self._curr = start_time
 
-    def time(self):
+    def time(self) -> float:
         return self._curr
 
-    def advance(self, by):
+    def advance(self, by: float):
         with self._lock:
             self._curr += by
 
-    def realistic_sleep(self, amt):
+    def realistic_sleep(self, amt: float):
         with self._lock:
             self._curr += amt + 0.001
 
@@ -203,7 +205,7 @@ def ping_grpc_list_applications(channel, app_names, test_draining=False):
             _, _ = stub.ListApplications.with_call(request=request)
         rpc_error = exception_info.value
         assert rpc_error.code() == grpc.StatusCode.UNAVAILABLE
-        assert rpc_error.details() == DRAINED_MESSAGE
+        assert rpc_error.details() == DRAINING_MESSAGE
     else:
         response, call = stub.ListApplications.with_call(request=request)
         assert call.code() == grpc.StatusCode.OK
@@ -219,7 +221,7 @@ def ping_grpc_healthz(channel, test_draining=False):
             _, _ = stub.Healthz.with_call(request=request)
         rpc_error = exception_info.value
         assert rpc_error.code() == grpc.StatusCode.UNAVAILABLE
-        assert rpc_error.details() == DRAINED_MESSAGE
+        assert rpc_error.details() == DRAINING_MESSAGE
     else:
         response, call = stub.Healthz.with_call(request=request)
         assert call.code() == grpc.StatusCode.OK

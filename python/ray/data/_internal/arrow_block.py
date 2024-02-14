@@ -23,6 +23,7 @@ from ray.data._internal.numpy_support import (
     convert_udf_returns_to_numpy,
     is_valid_udf_return,
 )
+from ray.data._internal.row import TableRow
 from ray.data._internal.table_block import TableBlockAccessor, TableBlockBuilder
 from ray.data._internal.util import _truncated_repr, find_partitions
 from ray.data.block import (
@@ -34,7 +35,6 @@ from ray.data.block import (
     U,
 )
 from ray.data.context import DataContext
-from ray.data.row import TableRow
 
 try:
     import pyarrow

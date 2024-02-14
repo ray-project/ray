@@ -1,19 +1,12 @@
-import os
 from typing import Any, Dict
 
 import xgboost
-import xgboost_ray
-from xgboost_ray.tune import TuneReportCheckpointCallback
+from packaging.version import Version
 
 from ray.train import Checkpoint
 from ray.train.gbdt_trainer import GBDTTrainer
-from ray.train.xgboost import XGBoostCheckpoint
+from ray.train.xgboost import RayTrainReportCallback
 from ray.util.annotations import PublicAPI
-
-try:
-    from packaging.version import Version
-except ImportError:
-    from distutils.version import LooseVersion as Version
 
 
 @PublicAPI(stability="beta")
@@ -79,9 +72,6 @@ class XGBoostTrainer(GBDTTrainer):
         **train_kwargs: Additional kwargs passed to ``xgboost.train()`` function.
     """
 
-    _dmatrix_cls: type = xgboost_ray.RayDMatrix
-    _ray_params_cls: type = xgboost_ray.RayParams
-    _tune_callback_checkpoint_cls: type = TuneReportCheckpointCallback
     _default_ray_params: Dict[str, Any] = {
         "num_actors": 1,
         "cpus_per_actor": 1,
@@ -89,24 +79,29 @@ class XGBoostTrainer(GBDTTrainer):
     }
     _init_model_arg_name: str = "xgb_model"
 
-    @staticmethod
-    def get_model(checkpoint: Checkpoint) -> xgboost.Booster:
+    def __init__(self, *args, **kwargs):
+        # TODO(justinvyu): Fix circular import by moving xgboost_ray into ray
+        import xgboost_ray
+
+        self._dmatrix_cls: type = xgboost_ray.RayDMatrix
+        self._ray_params_cls: type = xgboost_ray.RayParams
+        self._tune_callback_checkpoint_cls: type = (
+            xgboost_ray.tune.TuneReportCheckpointCallback
+        )
+        super().__init__(*args, **kwargs)
+
+    @classmethod
+    def get_model(
+        cls,
+        checkpoint: Checkpoint,
+    ) -> xgboost.Booster:
         """Retrieve the XGBoost model stored in this checkpoint."""
-        with checkpoint.as_directory() as checkpoint_path:
-            booster = xgboost.Booster()
-            booster.load_model(
-                os.path.join(checkpoint_path, XGBoostCheckpoint.MODEL_FILENAME)
-            )
-            return booster
+        return RayTrainReportCallback.get_model(checkpoint)
 
     def _train(self, **kwargs):
+        import xgboost_ray
+
         return xgboost_ray.train(**kwargs)
-
-    def _load_checkpoint(self, checkpoint: Checkpoint) -> xgboost.Booster:
-        return self.__class__.get_model(checkpoint)
-
-    def _save_model(self, model: xgboost.Booster, path: str):
-        model.save_model(os.path.join(path, XGBoostCheckpoint.MODEL_FILENAME))
 
     def _model_iteration(self, model: xgboost.Booster) -> int:
         if not hasattr(model, "num_boosted_rounds"):
@@ -120,5 +115,7 @@ class XGBoostTrainer(GBDTTrainer):
         # XGBoost/LightGBM-Ray requires each dataset to have at least as many
         # blocks as there are workers.
         # This is only applicable for xgboost-ray<0.1.16
+        import xgboost_ray
+
         if Version(xgboost_ray.__version__) < Version("0.1.16"):
             self._repartition_datasets_to_match_num_actors()

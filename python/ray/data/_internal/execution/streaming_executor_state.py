@@ -67,6 +67,8 @@ class OpBufferQueue:
         self._queue = deque()
         self._num_per_split = defaultdict(int)
         self._lock = threading.Lock()
+        # Used to buffer output RefBundles indexed by output splits.
+        self._outputs_by_split = defaultdict(deque)
         super().__init__()
 
     @property
@@ -121,14 +123,23 @@ class OpBufferQueue:
             except IndexError:
                 pass
         else:
-            # TODO(hchen): Index the queue by output_split_idx to
-            # avoid linear scan.
-            for i in range(len(self._queue)):
-                ref = self._queue[i]
-                if ref.output_split_idx == output_split_idx:
-                    ret = ref
-                    del self._queue[i]
-                    break
+            with self._lock:
+                split_queue = self._outputs_by_split[output_split_idx]
+            if len(split_queue) == 0:
+                # Move all ref bundles to their indexed queues
+                # Note, the reason why we do indexing here instead of in the append
+                # is because only the last `OpBufferQueue` in the DAG, which will call
+                # pop with output_split_idx, needs indexing.
+                # If we also index the `OpBufferQueue`s in the middle, we cannot
+                # preserve the order of ref bundles with different output splits.
+                with self._lock:
+                    while len(self._queue) > 0:
+                        ref = self._queue.popleft()
+                        self._outputs_by_split[ref.output_split_idx].append(ref)
+            try:
+                ret = split_queue.popleft()
+            except IndexError:
+                pass
         if ret is None:
             return None
         with self._lock:

@@ -14,6 +14,7 @@ import pytest
 import ray
 from ray.data.context import DataContext
 from ray.data.tests.conftest import *  # noqa
+from ray.data.tests.test_util import ConcurrencyCounter  # noqa
 from ray.data.tests.util import column_udf, column_udf_class, extract_values
 from ray.tests.conftest import *  # noqa
 
@@ -638,6 +639,34 @@ def test_map_batches_extra_args(shutdown_only, tmp_path):
     assert values == [7, 11, 15]
     values = sorted([s["two"] for s in ds_list])
     assert values == [11, 15, 19]
+
+
+def test_map_with_memory_resources(shutdown_only):
+    """Test that we can use memory resource to limit the concurrency."""
+    num_blocks = 50
+    memory_per_task = 100 * 1024**2
+    max_concurrency = 5
+    ray.init(num_cpus=num_blocks, _memory=memory_per_task * max_concurrency)
+
+    concurrency_counter = ConcurrencyCounter.remote()
+
+    def map_batches(batch):
+        ray.get(concurrency_counter.inc.remote())
+        time.sleep(0.5)
+        ray.get(concurrency_counter.decr.remote())
+        return batch
+
+    ds = ray.data.range(num_blocks, parallelism=num_blocks)
+    ds = ds.map_batches(
+        map_batches,
+        batch_size=None,
+        num_cpus=1,
+        memory=memory_per_task,
+    )
+    assert len(ds.take(num_blocks)) == num_blocks
+
+    actual_max_concurrency = ray.get(concurrency_counter.get_max_concurrency.remote())
+    assert actual_max_concurrency <= max_concurrency
 
 
 def test_map_batches_generator(ray_start_regular_shared, tmp_path):

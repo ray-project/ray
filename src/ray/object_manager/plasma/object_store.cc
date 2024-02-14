@@ -49,7 +49,6 @@ const LocalObject *ObjectStore::CreateObject(const ray::ObjectInfo &object_info,
 
   if (object_info.is_mutable) {
     auto plasma_header = entry->GetPlasmaObjectHeader();
-    *plasma_header = ray::PlasmaObjectHeader{};
     plasma_header->Init();
   }
 

@@ -123,7 +123,7 @@ class PrioritizedEpisodeReplayBuffer(EpisodeReplayBuffer):
                 # If the index comes from an evicted episode free the nodes.
                 if idx_triple[0] in eps_evicted_idxs:
                     # Here we need the index of a sample in the segment tree.
-                    self._free_nodes.append(idx_triple[2])
+                    self._free_nodes.appendleft(idx_triple[2])
                     self._sum_segment[idx_triple[2]] = 0.0
                     self._min_segment[idx_triple[2]] = float("inf")
                 # Otherwise update the index in the index mapping.
