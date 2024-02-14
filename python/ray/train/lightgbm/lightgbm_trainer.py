@@ -3,18 +3,12 @@ from typing import Any, Dict, Union
 
 import lightgbm
 import lightgbm_ray
-import xgboost_ray
 from lightgbm_ray.tune import TuneReportCheckpointCallback
 
 from ray.train import Checkpoint
 from ray.train.gbdt_trainer import GBDTTrainer
 from ray.train.lightgbm import LightGBMCheckpoint
 from ray.util.annotations import PublicAPI
-
-try:
-    from packaging.version import Version
-except ImportError:
-    from distutils.version import LooseVersion as Version
 
 
 @PublicAPI(stability="beta")
@@ -125,10 +119,3 @@ class LightGBMTrainer(GBDTTrainer):
         if isinstance(model, lightgbm.Booster):
             return model.current_iteration()
         return model.booster_.current_iteration()
-
-    def setup(self) -> None:
-        # XGBoost/LightGBM-Ray requires each dataset to have at least as many
-        # blocks as there are workers.
-        # This is only applicable for xgboost-ray<0.1.16
-        if Version(xgboost_ray.__version__) < Version("0.1.16"):
-            self._repartition_datasets_to_match_num_actors()

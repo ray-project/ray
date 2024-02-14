@@ -10,11 +10,6 @@ from ray.train.gbdt_trainer import GBDTTrainer
 from ray.train.xgboost import XGBoostCheckpoint
 from ray.util.annotations import PublicAPI
 
-try:
-    from packaging.version import Version
-except ImportError:
-    from distutils.version import LooseVersion as Version
-
 
 @PublicAPI(stability="beta")
 class XGBoostTrainer(GBDTTrainer):
@@ -113,10 +108,3 @@ class XGBoostTrainer(GBDTTrainer):
             # Compatibility with XGBoost < 1.4
             return len(model.get_dump())
         return model.num_boosted_rounds()
-
-    def setup(self) -> None:
-        # XGBoost/LightGBM-Ray requires each dataset to have at least as many
-        # blocks as there are workers.
-        # This is only applicable for xgboost-ray<0.1.16
-        if Version(xgboost_ray.__version__) < Version("0.1.16"):
-            self._repartition_datasets_to_match_num_actors()

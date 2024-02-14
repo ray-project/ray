@@ -5,6 +5,8 @@ import warnings
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any, Dict, Optional, Type
 
+from packaging.version import Version
+
 from ray import train, tune
 from ray._private.dict import flatten_dict
 from ray.train import Checkpoint, RunConfig, ScalingConfig
@@ -283,6 +285,15 @@ class GBDTTrainer(BaseTrainer):
                 self._save_model(model, path=checkpoint_dir)
                 checkpoint = Checkpoint.from_directory(checkpoint_dir)
                 train.report(result_dict, checkpoint=checkpoint)
+
+    def setup(self) -> None:
+        import xgboost_ray
+
+        # XGBoost/LightGBM-Ray requires each dataset to have at least as many
+        # blocks as there are workers.
+        # This is only applicable for xgboost-ray<0.1.16
+        if Version(xgboost_ray.__version__) < Version("0.1.16"):
+            self._repartition_datasets_to_match_num_actors()
 
     def training_loop(self) -> None:
         config = self.train_kwargs.copy()
