@@ -9,4 +9,5 @@ steps:
     job_env: WINDOWS
     instance_type: windows
     commands:
-      bash /c/workdir/.buildkite/release-automation/verify-windows-wheels.sh
+      - bash /c/workdir/ci/ray_ci/windows/install_tools.sh
+      - bash /c/workdir/.buildkite/release-automation/verify-windows-wheels.sh
