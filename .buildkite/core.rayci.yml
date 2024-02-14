@@ -232,7 +232,9 @@ steps:
     job_env: forge-aarch64
 
   - label: ":ray: core: minimal tests {{matrix}}"
-    tags: python
+    tags:
+      - python
+      - skip-on-premerge
     instance_type: medium
     commands:
       # validate minimal installation

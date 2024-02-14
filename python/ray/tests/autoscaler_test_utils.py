@@ -155,8 +155,8 @@ class MockProvider(NodeProvider):
         self.mock_nodes = {}
         self.next_id = 0
         self.throw = False
-        self.error_creates = None
-        self.error_terminates = None
+        self.creation_error = None
+        self.termination_errors = None
         self.fail_creates = False
         self.ready_to_create = threading.Event()
         self.ready_to_create.set()
@@ -240,8 +240,8 @@ class MockProvider(NodeProvider):
     ):
         from ray.autoscaler.tags import TAG_RAY_USER_NODE_TYPE
 
-        if self.error_creates is not None:
-            raise self.error_creates
+        if self.creation_error is not None:
+            raise self.creation_error
         if not _skip_wait:
             self.ready_to_create.wait()
         if self.fail_creates:
@@ -279,8 +279,8 @@ class MockProvider(NodeProvider):
 
     def terminate_node(self, node_id):
         with self.lock:
-            if self.error_terminates is not None:
-                raise self.error_terminates
+            if self.termination_errors is not None:
+                raise self.termination_errors
 
             if self.cache_stopped:
                 self.mock_nodes[node_id].state = "stopped"

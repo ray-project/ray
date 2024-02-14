@@ -437,6 +437,7 @@ class _WandbLoggingActor:
         return log, config_update
 
 
+@PublicAPI(stability="alpha")
 class WandbLoggerCallback(LoggerCallback):
     """WandbLoggerCallback
 

@@ -264,8 +264,12 @@ class FakeMultiNodeProvider(NodeProvider):
         # Whether to launch multiple nodes at once, or one by one regardless of
         # the count (default)
         self._launch_multiple = provider_config.get("launch_multiple", False)
-        self._error_creates = None
-        self._error_terminates = None
+
+        # These are injected errors for testing purposes. If not None,
+        # these will be raised on `create_node_with_resources_and_labels`` and
+        # `terminate_node``, respectively.
+        self._creation_error = None
+        self._termination_errors = None
 
         self._nodes = {
             self._head_node_id: {
@@ -325,8 +329,8 @@ class FakeMultiNodeProvider(NodeProvider):
     def create_node_with_resources_and_labels(
         self, node_config, tags, count, resources, labels
     ):
-        if self._error_creates:
-            raise self._error_creates
+        if self._creation_error:
+            raise self._creation_error
 
         if self._launch_multiple:
             for _ in range(count):
@@ -386,8 +390,8 @@ class FakeMultiNodeProvider(NodeProvider):
 
     def terminate_node(self, node_id):
         with self.lock:
-            if self._error_terminates:
-                raise self._error_terminates
+            if self._termination_errors:
+                raise self._termination_errors
 
             try:
                 node = self._nodes.pop(node_id)
@@ -406,14 +410,14 @@ class FakeMultiNodeProvider(NodeProvider):
     ############################
     # Test only methods
     ############################
-    def _test_add_error_creates(self, e: Exception):
+    def _test_set_creation_error(self, e: Exception):
         """Set an error that will be raised on
         create_node_with_resources_and_labels."""
-        self._error_creates = e
+        self._creation_error = e
 
-    def _test_add_error_terminates(self, e: Exception):
+    def _test_add_termination_errors(self, e: Exception):
         """Set an error that will be raised on terminate_node."""
-        self._error_terminates = e
+        self._termination_errors = e
 
 
 class FakeMultiNodeDockerProvider(FakeMultiNodeProvider):

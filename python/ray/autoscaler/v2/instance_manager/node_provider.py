@@ -14,6 +14,8 @@ from ray.autoscaler._private.constants import (
 from ray.autoscaler._private.util import hash_launch_conf
 from ray.autoscaler.node_provider import NodeProvider as NodeProviderV1
 from ray.autoscaler.tags import (
+    NODE_KIND_HEAD,
+    NODE_KIND_UNMANAGED,
     NODE_KIND_WORKER,
     STATUS_UNINITIALIZED,
     TAG_RAY_LAUNCH_CONFIG,
@@ -23,9 +25,9 @@ from ray.autoscaler.tags import (
     TAG_RAY_NODE_STATUS,
     TAG_RAY_USER_NODE_TYPE,
 )
-from ray.autoscaler.v2.instance_manager.config import AutoscalingConfig, IConfigReader
+from ray.autoscaler.v2.instance_manager.config import AutoscalingConfig
 from ray.autoscaler.v2.schema import NodeType
-from ray.core.generated.instance_manager_pb2 import Instance, NodeKind
+from ray.core.generated.instance_manager_pb2 import NodeKind
 
 logger = logging.getLogger(__name__)
 
@@ -50,12 +52,18 @@ class CloudInstance:
     cloud_instance_id: CloudInstanceId
     # The node type of the cloud instance.
     node_type: NodeType
-    # Update request id from which the cloud instance is launched.
-    request_id: str
-    # If the cloud instance is running.
+    # If the cloud instance is already running.
     is_running: bool
-    # The node kind of the cloud instance.
+    # The node kind, i.e head or worker.
     node_kind: NodeKind
+    # Update request id from which the cloud instance is launched.
+    # This could be None if the cloud instance couldn't be associated with requests
+    # by the cloud provider: e.g. cloud provider doesn't support per-instance
+    # extra metadata.
+    # This is fine for now since the reconciler should be able to know how
+    # to handle cloud instances w/o request ids.
+    # TODO: make this a required field.
+    request_id: Optional[str] = None
 
 
 class CloudInstanceProviderError(Exception):
@@ -86,15 +94,19 @@ class LaunchNodeError(CloudInstanceProviderError):
         count: int,
         request_id: str,
         timestamp_ns: int,
+        details: str = "",
+        cause: Optional[Exception] = None,
     ) -> None:
         msg = (
             f"Failed to launch {count} nodes of type {node_type} with "
-            f"request id {request_id}."
+            f"request id {request_id}: {details}"
         )
         super().__init__(msg, timestamp_ns=timestamp_ns)
         self.node_type = node_type
         self.count = count
         self.request_id = request_id
+        if cause:
+            self.__cause__ = cause
 
     def __repr__(self) -> str:
         return (
@@ -114,13 +126,18 @@ class TerminateNodeError(CloudInstanceProviderError):
         cloud_instance_id: CloudInstanceId,
         request_id: str,
         timestamp_ns: int,
+        details: str = "",
+        cause: Optional[Exception] = None,
     ) -> None:
         msg = (
-            f"Failed to terminate node {cloud_instance_id} with request id {request_id}"
+            f"Failed to terminate node {cloud_instance_id} with "
+            f"request id {request_id}: {details}"
         )
         super().__init__(msg, timestamp_ns=timestamp_ns)
         self.cloud_instance_id = cloud_instance_id
         self.request_id = request_id
+        if cause:
+            self.__cause__ = cause
 
     def __repr__(self) -> str:
         return (
@@ -173,6 +190,7 @@ class ICloudInstanceProvider(ABC):
                     "ray_head": 1,
                 },
                 request_id="1",
+                config=AutoscalingConfig(...),
             )
 
             # Get the non-terminated nodes of the cloud instance provider.
@@ -222,12 +240,14 @@ class ICloudInstanceProvider(ABC):
         self,
         shape: Dict[NodeType, int],
         request_id: str,
+        config: AutoscalingConfig,
     ) -> None:
         """Launch the cloud instances asynchronously.
 
         Args:
             shape: A map from node type to number of nodes to launch.
             request_id: a unique id that identifies the update request.
+            config: The autoscaling config.
         """
         pass
 
@@ -289,7 +309,6 @@ class NodeProviderAdapter(ICloudInstanceProvider):
     def __init__(
         self,
         v1_provider: NodeProviderV1,
-        config_reader: IConfigReader,
         max_launch_batch_per_type: int = AUTOSCALER_MAX_LAUNCH_BATCH,
         max_concurrent_launches: int = AUTOSCALER_MAX_CONCURRENT_LAUNCHES,
     ) -> None:
@@ -311,12 +330,9 @@ class NodeProviderAdapter(ICloudInstanceProvider):
             max_workers=max_batches,
             thread_name_prefix="ray::NodeLauncherPool",
         )
-        self._config_reader = config_reader
 
-        # Queues to retrieve new errors occur in the multi-thread executors
+        # Queue to retrieve new errors occur in the multi-thread executors
         # temporarily.
-        self._launch_queue = Queue()
-        self._terminate_queue = Queue()
         self._errors_queue = Queue()
 
     def get_non_terminated(self) -> Dict[CloudInstanceId, CloudInstance]:
@@ -328,11 +344,20 @@ class NodeProviderAdapter(ICloudInstanceProvider):
         # running status of the nodes.
         for cloud_instance_id in cloud_instance_ids:
             node_tags = self._v1_node_tags(cloud_instance_id)
+            node_kind = node_tags.get(TAG_RAY_NODE_KIND, NODE_KIND_UNMANAGED)
+            if node_kind == NODE_KIND_WORKER:
+                node_kind = NodeKind.WORKER
+            elif node_kind == NODE_KIND_HEAD:
+                node_kind = NodeKind.HEAD
+            else:
+                node_kind = NodeKind.UNMANAGED
+
             nodes[cloud_instance_id] = CloudInstance(
                 cloud_instance_id=cloud_instance_id,
                 node_type=node_tags.get(TAG_RAY_USER_NODE_TYPE, ""),
                 is_running=self._v1_is_running(cloud_instance_id),
                 request_id=node_tags.get(TAG_RAY_LAUNCH_REQUEST, ""),
+                node_kind=node_kind,
             )
 
         return nodes
@@ -347,8 +372,9 @@ class NodeProviderAdapter(ICloudInstanceProvider):
         self,
         shape: Dict[NodeType, int],
         request_id: str,
+        config: AutoscalingConfig,
     ) -> None:
-        self._main_executor.submit(self._do_launch, shape, request_id)
+        self._main_executor.submit(self._do_launch, shape, request_id, config)
 
     def terminate(self, ids: List[CloudInstanceId], request_id: str) -> None:
         self._main_executor.submit(self._do_terminate, ids, request_id)
@@ -357,7 +383,12 @@ class NodeProviderAdapter(ICloudInstanceProvider):
     # Private APIs
     ###########################################
 
-    def _do_launch(self, shape: Dict[NodeType, int], request_id: str) -> None:
+    def _do_launch(
+        self,
+        shape: Dict[NodeType, int],
+        request_id: str,
+        config: AutoscalingConfig,
+    ) -> None:
         """
         Launch the cloud instances by calling into the v1 base node provider.
 
@@ -365,7 +396,6 @@ class NodeProviderAdapter(ICloudInstanceProvider):
             shape: The requested to launch node type and number of nodes.
             request_id: The request id that identifies the request.
         """
-        config = self._config_reader.get_autoscaling_config()
         for node_type, count in shape.items():
             # Keep submitting the launch requests to the launch pool in batches.
             while count > 0:
@@ -421,9 +451,6 @@ class NodeProviderAdapter(ICloudInstanceProvider):
         """
         # Check node type is valid.
         try:
-            if node_type not in config.get_node_type_configs():
-                raise ValueError(f"Invalid node type {node_type}")
-
             launch_config = config.get_cloud_node_config(node_type)
             resources = config.get_node_resources(node_type)
             labels = config.get_node_labels(node_type)
