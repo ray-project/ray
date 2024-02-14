@@ -6,6 +6,7 @@ from mock import MagicMock
 
 import ray
 import pytest
+from ray.autoscaler._private.fake_multi_node.node_provider import FAKE_HEAD_NODE_ID
 from ray.autoscaler.v2.autoscaler import Autoscaler
 from ray.autoscaler.v2.tests.util import MockAutoscalingConfig
 from ray._raylet import GcsClient
@@ -31,7 +32,9 @@ DEFAULT_AUTOSCALING_CONFIG = {
 
 
 def test_autoscaler_v2():
+    os.environ["RAY_OVERRIDE_NODE_ID_FOR_TESTING"] = FAKE_HEAD_NODE_ID
     ctx = ray.init()
+    print(ctx.address_info)
     mock_config_reader = MagicMock()
     config = DEFAULT_AUTOSCALING_CONFIG
 
