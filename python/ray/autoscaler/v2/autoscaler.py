@@ -88,12 +88,12 @@ class Autoscaler:
             instance_status_update_subscribers=subscribers,
         )
 
-    def get_cluster_resource_state(self) -> GetClusterResourceStateReply:
+    def get_cluster_resource_state(self) -> ClusterResourceState:
         str_reply = self._gcs_client.get_cluster_resource_state()
         reply = GetClusterResourceStateReply()
         reply.ParseFromString(str_reply)
 
-        return reply
+        return reply.cluster_resource_state
 
     def compute_autoscaling_state(
         self, ray_cluster_resource_state: ClusterResourceState

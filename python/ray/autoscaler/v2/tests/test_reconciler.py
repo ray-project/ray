@@ -22,7 +22,11 @@ from ray.autoscaler.v2.instance_manager.ray_installer import RayInstallError
 from ray.autoscaler.v2.instance_manager.reconciler import Reconciler, logger
 from ray.autoscaler.v2.instance_manager.storage import InMemoryStorage
 from ray.autoscaler.v2.scheduler import IResourceScheduler, SchedulingReply
-from ray.autoscaler.v2.tests.util import MockSubscriber, create_instance
+from ray.autoscaler.v2.tests.util import (
+    MockSubscriber,
+    create_instance,
+    MockAutoscalingConfig,
+)
 from ray.core.generated.autoscaler_pb2 import (
     ClusterResourceState,
     GangResourceRequest,
@@ -39,35 +43,6 @@ from ray.core.generated.instance_manager_pb2 import (
 s_to_ns = 1 * 1_000_000_000
 
 logger.setLevel("DEBUG")
-
-
-class MockAutoscalingConfig:
-    def __init__(self, configs=None):
-        if configs is None:
-            configs = {}
-        self._configs = configs
-
-    def get_node_type_configs(self):
-        return self._configs.get("node_type_configs", {})
-
-    def get_max_num_worker_nodes(self):
-        return self._configs.get("max_num_worker_nodes")
-
-    def get_max_num_nodes(self):
-        n = self._configs.get("max_num_worker_nodes")
-        return n + 1 if n is not None else None
-
-    def get_upscaling_speed(self):
-        return self._configs.get("upscaling_speed", 0.0)
-
-    def get_max_concurrent_launches(self):
-        return self._configs.get("max_concurrent_launches", 100)
-
-    def get_instance_reconcile_config(self):
-        return self._configs.get("instance_reconcile_config", InstanceReconcileConfig())
-
-    def skip_ray_install(self):
-        return self._configs.get("skip_ray_install", True)
 
 
 class MockScheduler(IResourceScheduler):

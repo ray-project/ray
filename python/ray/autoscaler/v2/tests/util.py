@@ -5,10 +5,46 @@ from abc import abstractmethod
 from typing import Dict, List, Optional, Tuple
 
 import ray
+from ray.autoscaler.v2.instance_manager.config import InstanceReconcileConfig
 from ray.autoscaler.v2.schema import AutoscalerInstance, ClusterStatus, ResourceUsage
 from ray.autoscaler.v2.sdk import get_cluster_status
 from ray.core.generated import autoscaler_pb2
 from ray.core.generated.instance_manager_pb2 import Instance
+
+class MockAutoscalingConfig:
+    def __init__(self, configs=None):
+        if configs is None:
+            configs = {}
+        self._configs = configs
+
+    def get_node_type_configs(self):
+        return self._configs.get("node_type_configs", {})
+
+    def get_max_num_worker_nodes(self):
+        return self._configs.get("max_num_worker_nodes")
+
+    def get_max_num_nodes(self):
+        n = self._configs.get("max_num_worker_nodes")
+        return n + 1 if n is not None else None
+
+    def get_upscaling_speed(self):
+        return self._configs.get("upscaling_speed", 0.0)
+
+    def get_max_concurrent_launches(self):
+        return self._configs.get("max_concurrent_launches", 100)
+
+    def get_instance_reconcile_config(self):
+        return self._configs.get("instance_reconcile_config", InstanceReconcileConfig())
+
+    def skip_ray_install(self):
+        return self._configs.get("skip_ray_install", True)
+
+    def get_config(self, name):
+        return self._configs.get(name)
+
+    def get_provider_config(self):
+        return self._configs.get("provider", {})
+
 
 
 class MockSubscriber:

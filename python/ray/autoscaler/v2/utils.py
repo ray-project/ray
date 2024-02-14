@@ -7,7 +7,7 @@ from typing import Any, Dict, List, Optional, Tuple
 
 import ray
 from ray._private.ray_constants import AUTOSCALER_NAMESPACE, AUTOSCALER_V2_ENABLED_KEY
-from ray._private.utils import binary_to_hex
+from ray._private.utils import binary_to_hex, hex_to_binary
 from ray.autoscaler._private.autoscaler import AutoscalerSummary
 from ray.autoscaler._private.node_provider_availability_tracker import (
     NodeAvailabilityRecord,
@@ -98,6 +98,23 @@ class ProtobufUtil:
             dict_list: the list of dicts
         """
         return [ProtobufUtil.to_dict(proto) for proto in protos]
+
+
+class NodeStateUtil(ProtobufUtil):
+    """
+    A utility class for node states, autoscaler.proto.NodeState
+    """
+
+    @staticmethod
+    def node_id_hex(node_id: str) -> str:
+        """
+        Get the node id from the node state.
+        Args:
+            node_state: the node state
+        Returns:
+            node_id: the node id
+        """
+        return binary_to_hex(node_id)
 
 
 class ResourceRequestUtil(ProtobufUtil):

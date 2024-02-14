@@ -23,6 +23,7 @@ from ray.autoscaler.v2.instance_manager.node_provider import (
 from ray.autoscaler.v2.instance_manager.ray_installer import RayInstallError
 from ray.autoscaler.v2.scheduler import IResourceScheduler, SchedulingRequest
 from ray.autoscaler.v2.schema import AutoscalerInstance
+from ray.autoscaler.v2.utils import NodeStateUtil
 from ray.core.generated.autoscaler_pb2 import (
     AutoscalingState,
     ClusterResourceState,
@@ -90,6 +91,7 @@ class Reconciler:
 
         """
         autoscaling_state = AutoscalingState()
+        print(ray_cluster_resource_state)
         autoscaling_state.last_seen_cluster_resource_state_version = (
             ray_cluster_resource_state.cluster_resource_state_version
         )
@@ -585,9 +587,10 @@ class Reconciler:
             if n.instance_id:
                 ray_nodes_by_cloud_instance_id[n.instance_id] = n
             else:
-                # This should only happen to a ray node that's not managed by us.
+                # This should only happen to a ray node that's not managed by Instance Manger,
+                # i.e the head node.
                 logger.warning(
-                    f"Ray node {n.node_id.decode()} has no instance id. "
+                    f"Ray node {NodeStateUtil.node_id_hex(n.node_id)} has no instance id. "
                     "This only happens to a ray node that's not managed by autoscaler. "
                     "If not, please file a bug at https://github.com/ray-project/ray"
                 )
@@ -598,7 +601,7 @@ class Reconciler:
                 # or we haven't discovered the instance yet. There's nothing
                 # much we could do here.
                 logger.info(
-                    f"Ray node {ray_node.node_id.decode()} has no matching instance in "
+                    f"Ray node {NodeStateUtil.node_id_hex(ray_node.node_id)} has no matching instance in "
                     f"instance manager with cloud instance id={cloud_instance_id}."
                 )
                 continue
@@ -623,8 +626,8 @@ class Reconciler:
                     new_instance_status=reconciled_im_status,
                     details="Reconciled from ray node status "
                     f"{NodeStatus.Name(ray_node.status)} "
-                    f"for ray node {ray_node.node_id.decode()}",
-                    ray_node_id=ray_node.node_id.decode(),
+                    f"for ray node {NodeStateUtil.node_id_hex(ray_node.node_id)}",
+                    ray_node_id=NodeStateUtil.node_id_hex(ray_node.node_id),
                 )
                 logger.debug(
                     "Updating {}({}) with {}.".format(
