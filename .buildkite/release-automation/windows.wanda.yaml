@@ -6,3 +6,7 @@ srcs:
   - ci/ray_ci/windows/build_ray.sh
   - ci/ray_ci/windows/build_base.sh
   - ci/ray_ci/windows/cleanup.ps1
+  - python/requirements.txt
+  - python/requirements_compiled.txt
+  - python/requirements/test-requirements.txt
+  - python/requirements/ml/dl-cpu-requirements.txt
