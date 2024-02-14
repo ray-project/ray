@@ -3,7 +3,6 @@ from functools import partial
 from typing import Any, Callable, Dict, Optional, Union
 
 import xgboost
-from packaging.version import Version
 
 import ray.train
 from ray.train import Checkpoint
@@ -116,17 +115,6 @@ class LegacyXGBoostTrainer(GBDTTrainer):
             # Compatibility with XGBoost < 1.4
             return len(model.get_dump())
         return model.num_boosted_rounds()
-
-    def preprocess_datasets(self) -> None:
-        super().preprocess_datasets()
-
-        # XGBoost/LightGBM-Ray requires each dataset to have at least as many
-        # blocks as there are workers.
-        # This is only applicable for xgboost-ray<0.1.16
-        import xgboost_ray
-
-        if Version(xgboost_ray.__version__) < Version("0.1.16"):
-            self._repartition_datasets_to_match_num_actors()
 
 
 class SimpleXGBoostTrainer(DataParallelTrainer):
