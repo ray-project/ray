@@ -239,7 +239,7 @@ class XGBoostTrainer(SimpleXGBoostTrainer):
                 label_column="y",
                 params={"objective": "reg:squarederror"},
                 scaling_config=ScalingConfig(num_workers=3),
-                datasets={"train": train_dataset}
+                datasets={"train": train_dataset},
             )
             result = trainer.fit()
 
