@@ -7,8 +7,8 @@ import pytest
 import ray
 from ray import serve
 from ray._private.test_utils import SignalActor, async_wait_for_condition
-from ray.serve._private.constants import RAY_SERVE_ENABLE_STRICT_MAX_CONCURRENT_QUERIES
 from ray._private.utils import get_or_create_event_loop
+from ray.serve._private.constants import RAY_SERVE_ENABLE_STRICT_MAX_CONCURRENT_QUERIES
 from ray.serve.handle import (
     DeploymentHandle,
     DeploymentResponse,
@@ -290,10 +290,9 @@ def test_handle_eager_execution(serve_instance):
     r.result() == "OK"
 
 
-
 @pytest.mark.skipif(
     not RAY_SERVE_ENABLE_STRICT_MAX_CONCURRENT_QUERIES,
-    reason="Strict enforcement must be enabled."
+    reason="Strict enforcement must be enabled.",
 )
 @pytest.mark.asyncio
 async def test_max_concurrent_queries_enforced(serve_instance):
