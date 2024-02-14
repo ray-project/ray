@@ -29,27 +29,28 @@ class Controller():
             
             self.reconcile(user_task)
             self.update_status(user_task)
+            print("reconcile: ", user_task)
             
             # Use rate limiter later
             time.sleep(1)
 
     def reconcile(self, user_task):
-        print("reconcile: ", user_task)
+        print("reconcile: ", user_task.spec[USER_TASK_ID])
 
         # schedule to this task to a node
         if user_task.status[ASSIGN_NODE] is None:
-            user_task.status[USER_TASK_ESTIMATED_START_TIME] = int(time.time() * 1000)
             node_id = self.schedule(user_task)
-            print("reconcile: assign to node", node_id)
             user_task.status[ASSIGN_NODE] = node_id
+            print("reconcile: assign to node", user_task.spec[USER_TASK_ID], node_id)
             return
 
         # send data and bind label to node
         elif user_task.status[BIND_TASK_STATUS] is None:
-            print("reconcile: send data and bind label to node", user_task.status[ASSIGN_NODE], user_task.spec[HPC_DIR])
+            
             id = self.bind_label_and_send_data(user_task.status[ASSIGN_NODE], user_task.spec[HPC_DIR])
             user_task.status[BIND_TASK_ID] = id
             user_task.status[BIND_TASK_STATUS] = RUNNING
+            print("reconcile: send data and bind label to node", user_task.spec[USER_TASK_ID], user_task.spec[HPC_DIR])
             return
         
         # Check if data is sent and label is binded
@@ -61,14 +62,13 @@ class Controller():
                 user_task.status[BIND_TASK_STATUS] = FINISHED
                 user_task.status[BIND_TASK_DURATION] = task_status[END_TIME] - task_status[START_TIME]
                 user_task.status[USER_TASK_STATUS] = PENDING
-                print("reconcile: send data and bind label finished", user_task.status[ASSIGN_NODE], user_task.spec[HPC_DIR])
+                print("reconcile: send data and bind label finished", user_task.spec[USER_TASK_ID], user_task.spec[HPC_DIR])
+                print("reconcile: binding task duration", user_task.status[BIND_TASK_DURATION])
             return
         
         # Check if user_task is finished
         elif user_task.status[BIND_TASK_STATUS] == FINISHED:
             task_status = get_task(user_task.spec[USER_TASK_ID])
-            print("!!!!!!!!!!!!!!!!")
-            print("task_status", task_status)
             user_task.status[USER_TASK_START_TIME] = task_status[START_TIME]
             if task_status[STATE] == RUNNING:
                 user_task.status[USER_TASK_STATUS] = RUNNING
@@ -107,9 +107,6 @@ class Controller():
 
     def schedule(self, user_task):
         node_info = requests.get("http://localhost:8000/get/node-info").json()
-        print("!!!!!!!!!!!!!!!")
-        print(node_info)
-
         return self.get_best_node(node_info, user_task)
 
     
@@ -139,7 +136,8 @@ class Controller():
             available_gpu = node[AVAILABLE_GPU]
             available_memory = node[AVAILABLE_MEMORY]
 
-            user_task_estimated_finish_time = user_task.status[USER_TASK_ESTIMATED_START_TIME] + user_task.spec[COMPLEXITY_SCORE] / node[SPEED]
+            user_task_duration = user_task.spec[COMPLEXITY_SCORE] / node[SPEED]
+            user_task_estimated_finish_time =  int(time.time() * 1000) + user_task_duration
 
             if available_cpu >= required_cpu and available_gpu >= required_gpu and available_memory >= required_memory:
                 if user_task_estimated_finish_time < earliest_time:
@@ -150,13 +148,12 @@ class Controller():
            
             for _, task in node[RUNNING_OR_PENDING_TASKS].items():
                 task = Task(**task)
-                print("!!!!!", task)
                 if task.status[USER_TASK_STATUS] == RUNNING:
                     start_time = task.status[USER_TASK_START_TIME]
                 else:
                     start_time = task.status[USER_TASK_ESTIMATED_START_TIME]
 
-                estimated_finish_time = start_time + task.spec[COMPLEXITY_SCORE] / node[SPEED] + user_task_estimated_finish_time
+                estimated_finish_time = start_time + task.spec[COMPLEXITY_SCORE] / node[SPEED] + user_task_duration
 
                 available_cpu += task.spec[CPU] if CPU in task.spec else 0
                 available_gpu += task.spec[GPU] if GPU in task.spec else 0
@@ -185,17 +182,11 @@ class Controller():
             if MEMORY in user_task.spec and node[AVAILABLE_MEMORY] < user_task.spec[MEMORY]:
                 continue
             filtered_nodes[node_id] = node
-        print("filtered_nodes", filtered_nodes)
-        print("user_task", user_task)
-        print("node_info", node_info)
         return filtered_nodes
         
 
     def sort_by_speed(self, filtered_nodes):
         sorted_node_ids = sorted(filtered_nodes.keys(), key=lambda node_id: filtered_nodes[node_id][SPEED], reverse=True)
-        for id in sorted_node_ids:
-            print("node id", id, "speed", filtered_nodes[id][SPEED])
-        print("best node id", sorted_node_ids)
         return sorted_node_ids[0]
 
        

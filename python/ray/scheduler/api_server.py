@@ -8,7 +8,6 @@ import logging
 from scheduler_constant import *
 import ray
 
-
 app = FastAPI()
 
 @serve.deployment(route_prefix="/")
@@ -34,13 +33,15 @@ class Apiserver:
                 self.node_info[node[NODE_ID]][TOTAL_COMPLEXITY_SCORE] = 0
                 self.node_info[node[NODE_ID]][SPEED] = MAX_COMPLEXITY_SCORE
                 self.node_info[node[NODE_ID]][RUNNING_OR_PENDING_TASKS] = {}
+                self.node_info[node[NODE_ID]][RUNNING_OR_PENDING_TASKS] = {}
+                
 
 
     @app.post("/apply")
     def apply(self, spec: dict = Body(...)):
         user_task = Task(spec=spec)
         self.running_user_tasks.put(user_task)
-        print("apiserver: apply a new user_task", user_task)
+        print("apiserver: apply a new user_task", user_task.spec[USER_TASK_ID])
 
     @app.get("/get")
     def get(self):
@@ -58,15 +59,13 @@ class Apiserver:
         if user_task.status[USER_TASK_STATUS] == FINISHED:
             self._update_node_speed_info(user_task)
             self._remove_node_running_task(user_task)
-            print("apiserver: finished user_task", user_task.spec[USER_TASK_ID])
         else:
             self.running_user_tasks.put(user_task)
-            print("apiserver: update status", user_task)
 
     @app.get("/get/node-info")
     def get(self):
-        self._get_node_info()
-        return self.node_info
+        return self._get_node_info()
+
 
     def _get_node_info(self):
         # Uncomment this block if we enable the autoscaler
