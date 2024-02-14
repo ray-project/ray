@@ -235,6 +235,7 @@ steps:
     tags:
       - python
       - oss
+      - lonnie
       # - skip-on-premerge
     instance_type: medium
     commands:
