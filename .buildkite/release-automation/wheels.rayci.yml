@@ -1,7 +1,7 @@
 group: Validate wheels
 steps:
   - name: windows_build_release_automation
-    wanda: ci/docker/windows.wanda.yaml
+    wanda: .buildkite/release-automation/windows.wanda.yaml
     instance_type: builder-windows
 
   - label: "Windows"
