@@ -160,6 +160,8 @@ message TerminationRequest {
     MAX_NUM_NODE_PER_TYPE = 2;
     // Global max num nodes reached.
     MAX_NUM_NODES = 3;
+    // Outdated node.
+    OUTDATED = 4;
   }
   // id of the request.
   string id = 1;
