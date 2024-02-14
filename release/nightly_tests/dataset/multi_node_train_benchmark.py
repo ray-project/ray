@@ -92,8 +92,8 @@ def parse_args():
         default=32,
         type=int,
         help=(
-            "Batch size to use. With batch_size=None, Ray Data will "
-            "use the entire block as a batch."
+            "Batch size to use. Set to -1 to use batch_size=None "
+            "(Ray Data will use the entire block as a batch)."
         ),
     )
     parser.add_argument(
@@ -222,6 +222,8 @@ def parse_args():
         # Training model is only supported for images currently.
         # Parquet files do not have labels.
         args.skip_train_model = True
+    if args.batch_size == -1:
+        args.batch_size = None
     return args
 
 
