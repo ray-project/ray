@@ -8,6 +8,7 @@ from typing import Any, Dict, List, Optional
 
 import yaml
 
+from ray._private.ray_constants import env_integer
 from ray.autoscaler._private.util import (
     hash_runtime_conf,
     prepare_config,
@@ -39,6 +40,18 @@ class IConfigReader(ABC):
     def get_autoscaling_config(self) -> "AutoscalingConfig":
         """Returns the autoscaling config."""
         pass
+
+
+@dataclass(frozen=True)
+class InstanceReconcileConfig:
+    # The timeout for waiting for a REQUESTED instance to be ALLOCATED.
+    request_status_timeout_s: int = env_integer(
+        "RAY_AUTOSCALER_REQUEST_STATUS_TIMEOUT_S", 300
+    )
+    # The number of times to retry requesting to allocate an instance.
+    max_num_retry_request_to_allocate: int = env_integer(
+        "RAY_AUTOSCALER_MAX_NUM_REQUEST_TO_ALLOCATE", 3
+    )
 
 
 @dataclass

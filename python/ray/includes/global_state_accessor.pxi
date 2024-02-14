@@ -99,12 +99,20 @@ cdef class GlobalStateAccessor:
         return results
 
     def get_draining_nodes(self):
-        cdef c_vector[CNodeID] draining_nodes
+        cdef:
+            unordered_map[CNodeID, int64_t] draining_nodes
+            unordered_map[CNodeID, int64_t].iterator draining_nodes_it
+
         with nogil:
             draining_nodes = self.inner.get().GetDrainingNodes()
-        results = set()
-        for draining_node in draining_nodes:
-            results.add(ray._private.utils.binary_to_hex(draining_node.Binary()))
+        draining_nodes_it = draining_nodes.begin()
+        results = {}
+        while draining_nodes_it != draining_nodes.end():
+            draining_node_id = dereference(draining_nodes_it).first
+            results[ray._private.utils.binary_to_hex(
+                draining_node_id.Binary())] = dereference(draining_nodes_it).second
+            postincrement(draining_nodes_it)
+
         return results
 
     def get_all_available_resources(self):

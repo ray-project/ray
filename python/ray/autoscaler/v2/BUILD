@@ -110,6 +110,13 @@ py_test(
     deps = ["//:ray_lib", ":conftest"],
 )
 
+py_test(
+    name = "test_instance_manager",
+    size = "small",
+    srcs = ["tests/test_instance_manager.py"],
+    tags = ["team:core", "exclusive"],
+    deps = ["//:ray_lib", ":conftest"],
+)
 
 py_test(
     name = "test_instance_util",

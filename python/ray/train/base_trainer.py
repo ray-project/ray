@@ -322,7 +322,8 @@ class BaseTrainer(abc.ABC):
                 "`trainer.fit()`."
             )
         fs, fs_path = get_fs_and_path(path, storage_filesystem)
-        with fs.open_input_file(os.path.join(fs_path, _TRAINER_PKL)) as f:
+        trainer_pkl_path = Path(fs_path, _TRAINER_PKL).as_posix()
+        with fs.open_input_file(trainer_pkl_path) as f:
             trainer_cls, param_dict = pickle.loads(f.readall())
 
         if trainer_cls is not cls:
@@ -392,7 +393,8 @@ class BaseTrainer(abc.ABC):
             bool: Whether this path exists and contains the trainer state to resume from
         """
         fs, fs_path = get_fs_and_path(path, storage_filesystem)
-        return _exists_at_fs_path(fs, os.path.join(fs_path, _TRAINER_PKL))
+        trainer_pkl_path = Path(fs_path, _TRAINER_PKL).as_posix()
+        return _exists_at_fs_path(fs, trainer_pkl_path)
 
     def __repr__(self):
         # A dictionary that maps parameters to their default values.
@@ -586,7 +588,7 @@ class BaseTrainer(abc.ABC):
             TrainingFailedError: If any failures during the execution of
             ``self.as_trainable()``, or during the Tune execution loop.
         """
-        from ray.tune import TuneError
+        from ray.tune import ResumeConfig, TuneError
         from ray.tune.tuner import Tuner, TunerInternal
 
         trainable = self.as_trainable()
@@ -597,8 +599,11 @@ class BaseTrainer(abc.ABC):
                 path=self._restore_path,
                 trainable=trainable,
                 param_space=param_space,
-                resume_unfinished=True,
-                resume_errored=True,
+                _resume_config=ResumeConfig(
+                    finished=ResumeConfig.ResumeType.RESUME,
+                    unfinished=ResumeConfig.ResumeType.RESUME,
+                    errored=ResumeConfig.ResumeType.RESUME,
+                ),
                 storage_filesystem=self._restore_storage_filesystem,
             )
         else:

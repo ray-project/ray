@@ -382,14 +382,6 @@ py_test(
 )
 
 py_test(
-    name = "test_mosaic_trainer",
-    size = "medium",
-    srcs = ["tests/test_mosaic_trainer.py"],
-    tags = ["team:ml", "exclusive", "ray_air", "torch_1_11"],
-    deps = [":train_lib", ":conftest"]
-)
-
-py_test(
     name = "test_lightgbm_predictor",
     size = "small",
     srcs = ["tests/test_lightgbm_predictor.py"],
@@ -507,14 +499,6 @@ py_test(
     srcs = ["tests/test_storage.py"],
     tags = ["team:ml", "exclusive"],
     deps = [":train_lib", ":conftest"]
-)
-
-py_test(
-    name = "test_sklearn_trainer",
-    size = "medium",
-    srcs = ["tests/test_sklearn_trainer.py"],
-    tags = ["team:ml", "exclusive", "ray_air"],
-    deps = [":train_lib"]
 )
 
 py_test(
