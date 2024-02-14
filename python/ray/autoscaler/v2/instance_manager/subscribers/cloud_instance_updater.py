@@ -1,7 +1,7 @@
 import logging
-import time
 from collections import defaultdict
 from typing import List
+import uuid
 
 from ray.autoscaler.v2.instance_manager.instance_storage import (
     InstanceUpdatedSubscriber,
@@ -59,7 +59,7 @@ class CloudInstanceUpdater(InstanceUpdatedSubscriber):
 
         # This is an async call.
         self._cloud_provider.terminate(
-            ids=cloud_instance_ids, request_id=str(time.time_ns())
+            ids=cloud_instance_ids, request_id=str(uuid.uuid4())
         )
 
     def _launch_new_instances(self, new_requests: List[InstanceUpdateEvent]):
