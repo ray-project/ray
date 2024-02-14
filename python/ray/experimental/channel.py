@@ -259,10 +259,11 @@ class AwaitableBackgroundInputReader(InputReader):
         asyncio.ensure_future(self.background_task)
 
     def _run(self):
-        return [c.begin_read() for c in self._input_channels]
+        vals = [c.begin_read() for c in self._input_channels]
+        return vals
 
     async def run(self):
-        loop = asyncio.get_event_loop()
+        loop = asyncio.get_running_loop()
         while not self._closed:
             try:
                 res = await loop.run_in_executor(None, self._run)
