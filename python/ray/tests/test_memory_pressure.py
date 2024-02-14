@@ -19,7 +19,7 @@ from ray._private.state_api_test_utils import verify_failed_task
 from ray.util.state.state_manager import StateDataSourceClient
 
 
-memory_usage_threshold = 0.65
+memory_usage_threshold = 0.5
 task_oom_retries = 1
 memory_monitor_refresh_ms = 100
 expected_worker_eviction_message = (

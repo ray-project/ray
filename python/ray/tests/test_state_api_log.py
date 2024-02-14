@@ -20,7 +20,6 @@ from ray._private.test_utils import (
     format_web_url,
     wait_for_condition,
     wait_until_server_available,
-    skip_flaky_core_test_premerge,
 )
 
 from ray._private.ray_constants import (
@@ -416,7 +415,8 @@ def test_log_agent_resolve_filename(temp_dir):
     1. Not possible to resolve a file that doesn't exist.
     2. Not able to resolve files outside of the temp dir root.
         - with a absolute path.
-        - with a relative path recursive up
+        - with a relative path recursive up.
+    3. Permits a file in a directory that's symlinked into the root dir.
     """
     root = Path(temp_dir)
     # Create a file in the temp dir.
@@ -425,11 +425,20 @@ def test_log_agent_resolve_filename(temp_dir):
     subdir = root / "subdir"
     subdir.mkdir()
 
+    # Create a directory in the root that contains a valid file and
+    # is symlinked to by a path in the subdir.
+    symlinked_dir = root / "symlinked"
+    symlinked_dir.mkdir()
+    symlinked_file = symlinked_dir / "valid_file"
+    symlinked_file.touch()
+    symlinked_path_in_subdir = subdir / "symlink_to_outside_dir"
+    symlinked_path_in_subdir.symlink_to(symlinked_dir)
+
     # Test file doesn't exist
     with pytest.raises(FileNotFoundError):
         LogAgentV1Grpc._resolve_filename(root, "non-exist-file")
 
-    # Test absolute path outside of root is now allowed
+    # Test absolute path outside of root is not allowed
     with pytest.raises(FileNotFoundError):
         LogAgentV1Grpc._resolve_filename(subdir, root.resolve() / "valid_file")
 
@@ -437,9 +446,16 @@ def test_log_agent_resolve_filename(temp_dir):
     with pytest.raises(FileNotFoundError):
         LogAgentV1Grpc._resolve_filename(subdir, "../valid_file")
 
+    # Test relative path a valid file is allowed
     assert (
         LogAgentV1Grpc._resolve_filename(root, "valid_file")
         == (root / "valid_file").resolve()
+    )
+
+    # Test relative path to a valid file following a symlink is allowed
+    assert (
+        LogAgentV1Grpc._resolve_filename(subdir, "symlink_to_outside_dir/valid_file")
+        == (root / "symlinked" / "valid_file").resolve()
     )
 
 
@@ -1341,7 +1357,6 @@ def test_log_get(ray_start_cluster):
 @pytest.mark.skipif(
     sys.platform == "win32", reason="Windows has logging race from tasks."
 )
-@skip_flaky_core_test_premerge("https://github.com/ray-project/ray/issues/40959")
 def test_log_task(shutdown_only):
     from ray.runtime_env import RuntimeEnv
 

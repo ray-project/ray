@@ -35,14 +35,6 @@ Machine Learning Examples
             Build Batch Prediction Using Ray
 
     .. grid-item-card::
-        :img-top: /ray-overview/images/ray_svg_logo.svg
-        :class-img-top: pt-2 w-75 d-block mx-auto fixed-height-img
-
-        .. button-ref:: batch_training
-
-            Build Batch Training Using Ray
-
-    .. grid-item-card::
         :img-top: images/param_actor.png
         :class-img-top: pt-2 w-75 d-block mx-auto fixed-height-img
 
@@ -58,20 +50,12 @@ Machine Learning Examples
 
             Simple Parallel Model Selection
 
-    .. grid-item-card::
-        :img-top: /ray-overview/images/ray_svg_logo.svg
-        :class-img-top: pt-2 w-75 d-block mx-auto fixed-height-img
-
-        .. button-ref:: plot_example-lm
-
-            Fault-Tolerant Fairseq Training
-
 
 Reinforcement Learning Examples
 -------------------------------
 
 These are simple examples that show you how to leverage Ray Core.
-For Ray's production-grade reinforcement learning library, see `RLlib <http://docs.ray.io/en/latest/rllib.html>`__.
+For Ray's production-grade reinforcement learning library, see `RLlib <https://docs.ray.io/en/latest/rllib/index.html>`__.
 
 
 .. grid:: 1 2 3 4

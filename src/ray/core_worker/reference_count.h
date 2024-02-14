@@ -68,7 +68,7 @@ class ReferenceCounter : public ReferenceCounterInterface,
   using LineageReleasedCallback =
       std::function<int64_t(const ObjectID &, std::vector<ObjectID> *)>;
 
-  ReferenceCounter(const rpc::WorkerAddress &rpc_address,
+  ReferenceCounter(const rpc::Address &rpc_address,
                    pubsub::PublisherInterface *object_info_publisher,
                    pubsub::SubscriberInterface *object_info_subscriber,
                    const std::function<bool(const NodeID &node_id)> &check_node_alive,
@@ -394,8 +394,7 @@ class ReferenceCounter : public ReferenceCounterInterface,
   /// IDs.
   void AddNestedObjectIds(const ObjectID &object_id,
                           const std::vector<ObjectID> &inner_ids,
-                          const rpc::WorkerAddress &owner_address)
-      ABSL_LOCKS_EXCLUDED(mutex_);
+                          const rpc::Address &owner_address) ABSL_LOCKS_EXCLUDED(mutex_);
 
   /// Update the pinned location of an object stored in plasma.
   ///
@@ -582,7 +581,7 @@ class ReferenceCounter : public ReferenceCounterInterface,
     /// ID stays in scope. Thus, the borrower must notify the owner that the
     /// task's caller is also a borrower. The key is the task's return ID, and
     /// the value is the task ID and address of the task's caller.
-    absl::flat_hash_map<ObjectID, rpc::WorkerAddress> stored_in_objects;
+    absl::flat_hash_map<ObjectID, rpc::Address> stored_in_objects;
     /// A list of processes that are we gave a reference to that are still
     /// borrowing the ID. This field is updated in 2 cases:
     ///  1. If we are a borrower of the ID, then we add a process to this list
@@ -594,7 +593,7 @@ class ReferenceCounter : public ReferenceCounterInterface,
     ///     we hear from a borrower that it has passed the ID to other
     ///     borrowers. A borrower is removed from the list when it responds
     ///     that it is no longer using the reference.
-    absl::flat_hash_set<rpc::WorkerAddress> borrowers;
+    absl::flat_hash_set<rpc::Address> borrowers;
   };
 
   struct Reference {
@@ -846,7 +845,7 @@ class ReferenceCounter : public ReferenceCounterInterface,
   /// IDs.
   void AddNestedObjectIdsInternal(const ObjectID &object_id,
                                   const std::vector<ObjectID> &inner_ids,
-                                  const rpc::WorkerAddress &owner_address)
+                                  const rpc::Address &owner_address)
       ABSL_EXCLUSIVE_LOCKS_REQUIRED(mutex_);
 
   /// Populates the table with the ObjectID that we were or are still
@@ -889,7 +888,7 @@ class ReferenceCounter : public ReferenceCounterInterface,
   /// - If we are the owner of the ID, then also contact any new borrowers and
   ///   wait for them to stop using the reference.
   void MergeRemoteBorrowers(const ObjectID &object_id,
-                            const rpc::WorkerAddress &worker_addr,
+                            const rpc::Address &worker_addr,
                             const ReferenceTable &borrowed_refs)
       ABSL_EXCLUSIVE_LOCKS_REQUIRED(mutex_);
 
@@ -902,7 +901,7 @@ class ReferenceCounter : public ReferenceCounterInterface,
   /// an object that we do not own. Then, we must notify the owner of the outer
   /// object that they are borrowing the inner.
   void WaitForRefRemoved(const ReferenceTable::iterator &reference_it,
-                         const rpc::WorkerAddress &addr,
+                         const rpc::Address &addr,
                          const ObjectID &contained_in_id = ObjectID::Nil())
       ABSL_EXCLUSIVE_LOCKS_REQUIRED(mutex_);
 
@@ -971,7 +970,7 @@ class ReferenceCounter : public ReferenceCounterInterface,
   /// It should be used as a WaitForRefRemoved callback.
   void CleanupBorrowersOnRefRemoved(const ReferenceTable &new_borrower_refs,
                                     const ObjectID &object_id,
-                                    const rpc::WorkerAddress &borrower_addr);
+                                    const rpc::Address &borrower_addr);
 
   /// Decrease the local reference count for the ObjectID by one.
   /// This method is internal and not thread-safe. mutex_ lock must be held before
@@ -983,7 +982,7 @@ class ReferenceCounter : public ReferenceCounterInterface,
   /// Address of our RPC server. This is used to determine whether we own a
   /// given object or not, by comparing our WorkerID with the WorkerID of the
   /// object's owner.
-  rpc::WorkerAddress rpc_address_;
+  rpc::Address rpc_address_;
 
   /// Feature flag for lineage pinning. If this is false, then we will keep the
   /// lineage ref count, but this will not be used to decide when the object's

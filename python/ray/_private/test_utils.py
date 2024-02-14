@@ -19,7 +19,7 @@ import timeit
 import traceback
 from collections import defaultdict
 from contextlib import contextmanager, redirect_stderr, redirect_stdout
-from typing import Any, Callable, Dict, List, Optional
+from typing import Any, Callable, Dict, List, Optional, Tuple
 import uuid
 from dataclasses import dataclass
 
@@ -421,6 +421,40 @@ def run_string_as_driver(driver_script: str, env: Dict = None, encode: str = "ut
             )
         out = ray._private.utils.decode(output, encode_type=encode)
     return out
+
+
+def run_string_as_driver_stdout_stderr(
+    driver_script: str, env: Dict = None, encode: str = "utf-8"
+) -> Tuple[str, str]:
+    """Run a driver as a separate process.
+
+    Args:
+        driver_script: A string to run as a Python script.
+        env: The environment variables for the driver.
+
+    Returns:
+        The script's stdout and stderr.
+    """
+    proc = subprocess.Popen(
+        [sys.executable, "-"],
+        stdin=subprocess.PIPE,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        env=env,
+    )
+    with proc:
+        outputs_bytes = proc.communicate(driver_script.encode(encoding=encode))
+        out_str, err_str = [
+            ray._private.utils.decode(output, encode_type=encode)
+            for output in outputs_bytes
+        ]
+        if proc.returncode:
+            print(out_str)
+            print(err_str)
+            raise subprocess.CalledProcessError(
+                proc.returncode, proc.args, out_str, err_str
+            )
+        return out_str, err_str
 
 
 def run_string_as_driver_nonblocking(driver_script, env: Dict = None):
@@ -1121,12 +1155,17 @@ def raw_metrics(info: RayContext) -> Dict[str, List[Any]]:
     return fetch_prometheus_metrics([metrics_page])
 
 
-def load_test_config(config_file_name):
-    """Loads a config yaml from tests/test_cli_patterns."""
+def get_test_config_path(config_file_name):
+    """Resolve the test config path from the config file dir"""
     here = os.path.realpath(__file__)
     path = pathlib.Path(here)
     grandparent = path.parent.parent
-    config_path = os.path.join(grandparent, "tests/test_cli_patterns", config_file_name)
+    return os.path.join(grandparent, "tests/test_cli_patterns", config_file_name)
+
+
+def load_test_config(config_file_name):
+    """Loads a config yaml from tests/test_cli_patterns."""
+    config_path = get_test_config_path(config_file_name)
     config = yaml.safe_load(open(config_path).read())
     return config
 
@@ -1401,7 +1440,7 @@ class ResourceKillerActor:
         head_node_id,
         kill_interval_s: float = 60,
         max_to_kill: int = 2,
-        task_filter: Optional[Callable] = None,
+        kill_filter_fn: Optional[Callable] = None,
     ):
         self.kill_interval_s = kill_interval_s
         self.is_running = False
@@ -1409,7 +1448,7 @@ class ResourceKillerActor:
         self.killed = set()
         self.done = ray._private.utils.get_or_create_event_loop().create_future()
         self.max_to_kill = max_to_kill
-        self.task_filter = task_filter
+        self.kill_filter_fn = kill_filter_fn
         self.kill_immediately_after_found = False
         # -- logger. --
         logging.basicConfig(level=logging.INFO)
@@ -1464,6 +1503,8 @@ class NodeKillerActor(ResourceKillerActor):
         while node_to_kill_port is None and self.is_running:
             nodes = ray.nodes()
             alive_nodes = self._get_alive_nodes(nodes)
+            if self.kill_filter_fn is not None:
+                nodes = list(filter(self.kill_filter_fn(), nodes))
             for node in nodes:
                 node_id = node["NodeID"]
                 # make sure at least 1 worker node is alive.
@@ -1523,9 +1564,9 @@ class WorkerKillerActor(ResourceKillerActor):
         head_node_id,
         kill_interval_s: float = 60,
         max_to_kill: int = 2,
-        task_filter: Optional[Callable] = None,
+        kill_filter_fn: Optional[Callable] = None,
     ):
-        super().__init__(head_node_id, kill_interval_s, max_to_kill, task_filter)
+        super().__init__(head_node_id, kill_interval_s, max_to_kill, kill_filter_fn)
 
         # Kill worker immediately so that the task does
         # not finish successfully on its own.
@@ -1554,8 +1595,8 @@ class WorkerKillerActor(ResourceKillerActor):
                 options=self.task_options,
                 raise_on_missing_output=False,
             )
-            if self.task_filter is not None:
-                tasks = list(filter(self.task_filter, tasks))
+            if self.kill_filter_fn is not None:
+                tasks = list(filter(self.kill_filter_fn(), tasks))
 
             for task in tasks:
                 if task.worker_id is not None and task.node_id is not None:
@@ -1605,7 +1646,7 @@ def get_and_run_resource_killer(
     no_start=False,
     max_to_kill=2,
     kill_delay_s=0,
-    task_filter=None,
+    kill_filter_fn=None,
 ):
     assert ray.is_initialized(), "The API is only available when Ray is initialized."
     name = resource_killer_cls.__ray_actor_class__.__name__
@@ -1623,7 +1664,7 @@ def get_and_run_resource_killer(
         head_node_id,
         kill_interval_s=kill_interval_s,
         max_to_kill=max_to_kill,
-        task_filter=task_filter,
+        kill_filter_fn=kill_filter_fn,
     )
     print(f"Waiting for {name} to be ready...")
     ray.get(resource_killer.ready.remote())
@@ -2110,3 +2151,11 @@ def skip_flaky_core_test_premerge(reason: str):
         )(func)
 
     return wrapper
+
+
+def get_ray_default_worker_file_path():
+    py_version = f"{sys.version_info[0]}.{sys.version_info[1]}"
+    return (
+        f"/home/ray/anaconda3/lib/python{py_version}/"
+        "site-packages/ray/_private/workers/default_worker.py"
+    )

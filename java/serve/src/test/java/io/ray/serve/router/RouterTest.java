@@ -17,7 +17,6 @@ import io.ray.serve.generated.DeploymentLanguage;
 import io.ray.serve.generated.RequestMetadata;
 import io.ray.serve.replica.RayServeWrappedReplica;
 import io.ray.serve.replica.ReplicaContext;
-import io.ray.serve.util.CommonUtil;
 import java.util.HashMap;
 import java.util.Map;
 import org.apache.commons.lang3.RandomStringUtils;
@@ -32,9 +31,6 @@ public class RouterTest {
       BaseServeTest.initRay();
 
       String deploymentName = "RouterTest";
-      String controllerName =
-          CommonUtil.formatActorName(
-              Constants.SERVE_CONTROLLER_NAME, RandomStringUtils.randomAlphabetic(6));
       String replicaTag = deploymentName + "_replica";
       String actorName = replicaTag;
       String version = "v1";
@@ -44,16 +40,16 @@ public class RouterTest {
 
       // Controller
       ActorHandle<DummyServeController> controllerHandle =
-          Ray.actor(DummyServeController::new, "").setName(controllerName).remote();
+          Ray.actor(DummyServeController::new, "")
+              .setName(Constants.SERVE_CONTROLLER_NAME)
+              .remote();
 
       // Replica
       DeploymentConfig deploymentConfig =
           new DeploymentConfig().setDeploymentLanguage(DeploymentLanguage.JAVA);
 
       Object[] initArgs =
-          new Object[] {
-            deploymentName, replicaTag, controllerName, new Object(), new HashMap<>(), appName
-          };
+          new Object[] {deploymentName, replicaTag, new Object(), new HashMap<>(), appName};
 
       DeploymentWrapper deploymentWrapper =
           new DeploymentWrapper()
@@ -64,13 +60,13 @@ public class RouterTest {
               .setInitArgs(initArgs);
 
       ActorHandle<RayServeWrappedReplica> replicaHandle =
-          Ray.actor(RayServeWrappedReplica::new, deploymentWrapper, replicaTag, controllerName)
+          Ray.actor(RayServeWrappedReplica::new, deploymentWrapper, replicaTag)
               .setName(actorName)
               .remote();
       Assert.assertTrue(replicaHandle.task(RayServeWrappedReplica::checkHealth).remote().get());
 
       // Set ReplicaContext
-      Serve.setInternalReplicaContext(null, null, controllerName, null, config, null);
+      Serve.setInternalReplicaContext(null, null, null, config, null);
 
       // Router
       Router router = new Router(controllerHandle, new DeploymentId(deploymentName, appName));

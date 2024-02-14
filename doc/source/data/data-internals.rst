@@ -180,10 +180,15 @@ The following code is a hello world example which invokes the execution with
        time.sleep(0.1)
        return x
 
+   class SleepClass():
+       def __call__(self, x):
+           time.sleep(0.1)
+           return x
+
    for _ in (
        ray.data.range_tensor(5000, shape=(80, 80, 3), parallelism=200)
        .map_batches(sleep, num_cpus=2)
-       .map_batches(sleep, compute=ray.data.ActorPoolStrategy(min_size=2, max_size=4))
+       .map_batches(SleepClass, concurrency=(2, 4))
        .map_batches(sleep, num_cpus=1)
        .iter_batches()
    ):
@@ -249,7 +254,7 @@ You can tell if stage fusion is enabled by checking the :ref:`Dataset stats <dat
 
 .. code-block::
 
-    Stage N read->map_batches->shuffle_map: N/N blocks executed in T
+    Stage N read->map_batches->shuffle_map: N tasks executed, N blocks produced in T
     * Remote wall time: T min, T max, T mean, T total
     * Remote cpu time: T min, T max, T mean, T total
     * Output num rows: N min, N max, N mean, N total

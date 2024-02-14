@@ -1,55 +1,6 @@
 import { get } from "./requestHandlers";
 
 export const MAX_LINES_FOR_LOGS = 50_000;
-const getLogUrl = (url: string) => {
-  return url === "log_index" ? url : `log_proxy?url=${encodeURIComponent(url)}`;
-};
-
-/**
- * @returns Url where we can fetch log contents. Will return null if the url
- * refers to a log directory and not a log file.
- */
-export const getLogDownloadUrl = (url: string) => {
-  url = getLogUrl(url);
-  if (url === "log_index") {
-    return undefined;
-  }
-  return url;
-};
-
-export const getLogDetail = async (url: string) => {
-  url = getLogUrl(url);
-  const rsp = await get(url);
-  if (rsp.headers["content-type"]?.includes("html")) {
-    const el = document.createElement("div");
-    el.innerHTML = rsp.data;
-    const arr = [].map.call(
-      el.getElementsByTagName("li"),
-      (li: HTMLLIElement) => {
-        const a = li.children[0] as HTMLAnchorElement;
-        let href = a.href;
-        if (
-          // Skip remove protocal and host at log index page
-          url !== "log_index" &&
-          !li.innerText.startsWith("http://") &&
-          !li.innerText.startsWith("https://")
-        ) {
-          // Remove protocol and host
-          // (Treat everything after the hostname as a string)
-          const protocolAndHost = `${a.protocol}//${a.host}`;
-          href = href.substring(protocolAndHost.length);
-        }
-        return {
-          name: li.innerText,
-          href,
-        } as { [key: string]: string };
-      },
-    );
-    return arr as { [key: string]: string }[];
-  }
-
-  return rsp.data as string;
-};
 
 export type StateApiLogInput = {
   nodeId?: string | null;
@@ -120,4 +71,37 @@ export const getStateApiLog = async (props: StateApiLogInput) => {
     throw new Error(resp.data.substring(1));
   }
   return resp.data.substring(1);
+};
+
+type ListStateApiLogsResponse = {
+  data: {
+    result: {
+      // The response is a list of file names. File names with "/" at the end are directories.
+      [logGroup: string]: string[];
+    };
+  };
+};
+
+export const listStateApiLogs = ({
+  glob,
+  ...props
+}: (
+  | {
+      nodeId: string;
+    }
+  | {
+      nodeIp: string;
+    }
+) & { glob?: string }) => {
+  const nodeId = "nodeId" in props ? props.nodeId : undefined;
+  const nodeIp = "nodeIp" in props ? props.nodeIp : undefined;
+
+  const variables = [
+    ...(nodeId !== undefined ? [`node_id=${encodeURIComponent(nodeId)}`] : []),
+    ...(nodeIp !== undefined ? [`node_ip=${encodeURIComponent(nodeIp)}`] : []),
+    ...(glob !== undefined ? [`glob=${encodeURIComponent(glob)}`] : []),
+  ];
+
+  const url = `api/v0/logs?${variables.join("&")}`;
+  return get<ListStateApiLogsResponse>(url);
 };

@@ -118,7 +118,7 @@ def s3_fs_with_anonymous_crendential(
 def _s3_fs(aws_credentials, s3_server, s3_path):
     import urllib.parse
 
-    from pkg_resources._vendor.packaging.version import parse as parse_version
+    from packaging.version import parse as parse_version
 
     kwargs = aws_credentials.copy()
 
@@ -339,30 +339,6 @@ def target_max_block_size(request):
     ctx.target_max_block_size = original
 
 
-@pytest.fixture
-def enable_optimizer():
-    ctx = ray.data.context.DataContext.get_current()
-    original_backend = ctx.new_execution_backend
-    original_optimizer = ctx.optimizer_enabled
-    ctx.new_execution_backend = True
-    ctx.optimizer_enabled = True
-    yield
-    ctx.new_execution_backend = original_backend
-    ctx.optimizer_enabled = original_optimizer
-
-
-@pytest.fixture
-def enable_streaming_executor():
-    ctx = ray.data.context.DataContext.get_current()
-    original_backend = ctx.new_execution_backend
-    use_streaming_executor = ctx.use_streaming_executor
-    ctx.new_execution_backend = True
-    ctx.use_streaming_executor = True
-    yield
-    ctx.new_execution_backend = original_backend
-    ctx.use_streaming_executor = use_streaming_executor
-
-
 # ===== Pandas dataset formats =====
 @pytest.fixture(scope="function")
 def ds_pandas_single_column_format(ray_start_regular_shared):
@@ -450,7 +426,7 @@ def disable_pyarrow_version_check():
 
 # ===== Observability & Logging Fixtures =====
 @pytest.fixture
-def stage_two_block():
+def op_two_block():
     block_params = {
         "num_rows": [10000, 5000],
         "size_bytes": [100, 50],
@@ -458,6 +434,7 @@ def stage_two_block():
         "wall_time": [5, 10],
         "cpu_time": [1.2, 3.4],
         "node_id": ["a1", "b2"],
+        "task_idx": [0, 1],
     }
 
     block_delay = 20
@@ -473,6 +450,7 @@ def stage_two_block():
         block_exec_stats.cpu_time_s = block_params["cpu_time"][i]
         block_exec_stats.node_id = block_params["node_id"][i]
         block_exec_stats.max_rss_bytes = block_params["max_rss_bytes"][i]
+        block_exec_stats.task_idx = block_params["task_idx"][i]
         block_meta_list.append(
             BlockMetadata(
                 num_rows=block_params["num_rows"][i],
@@ -510,7 +488,7 @@ class CoreExecutionMetrics:
     def get_actor_count(self):
         return self.actor_count
 
-    def _assert_count_equals(self, actual_count, expected_count):
+    def _assert_count_equals(self, actual_count, expected_count, ignore_extra_tasks):
         diff = {}
         # Check that all tasks in expected tasks match those in actual task
         # count.
@@ -518,15 +496,16 @@ class CoreExecutionMetrics:
             if not equals_or_true(actual_count[name], count):
                 diff[name] = (actual_count[name], count)
         # Check that the actual task count does not have any additional tasks.
-        for name, count in actual_count.items():
-            if name not in expected_count and count != 0:
-                diff[name] = (count, 0)
+        if not ignore_extra_tasks:
+            for name, count in actual_count.items():
+                if name not in expected_count and count != 0:
+                    diff[name] = (count, 0)
 
         assert len(diff) == 0, "\nTask diff:\n" + "\n".join(
             f" - {key}: expected {val[1]}, got {val[0]}" for key, val in diff.items()
         )
 
-    def assert_task_metrics(self, expected_metrics):
+    def assert_task_metrics(self, expected_metrics, ignore_extra_tasks):
         """
         Assert equality to the given { <task name>: <task count> }.
         A lambda that takes in the count and returns a bool to assert can also
@@ -545,7 +524,9 @@ class CoreExecutionMetrics:
             expected_task_count[name] = count
 
         actual_task_count = self.get_task_count()
-        self._assert_count_equals(actual_task_count, expected_task_count)
+        self._assert_count_equals(
+            actual_task_count, expected_task_count, ignore_extra_tasks
+        )
 
     def assert_object_store_metrics(self, expected_metrics):
         """
@@ -568,6 +549,7 @@ class CoreExecutionMetrics:
 
         actual_object_store_stats = self.get_object_store_stats()
         for key, val in expected_object_store_stats.items():
+            print(f"{key}: Expect {val}, got {actual_object_store_stats[key]}")
             assert equals_or_true(
                 actual_object_store_stats[key], val
             ), f"{key}: expected {val} got {actual_object_store_stats[key]}"
@@ -727,12 +709,15 @@ def get_initial_core_execution_metrics_snapshot():
             task_count={"warmup": lambda count: True}, object_store_stats={}
         ),
         last_snapshot=None,
+        ignore_extra_tasks=True,
     )
     return last_snapshot
 
 
 def assert_core_execution_metrics_equals(
-    expected_metrics: CoreExecutionMetrics, last_snapshot=None
+    expected_metrics: CoreExecutionMetrics,
+    last_snapshot=None,
+    ignore_extra_tasks=False,
 ):
     # Wait for one task per CPU to finish to prevent a race condition where not
     # all of the task metrics have been collected yet.
@@ -742,7 +727,7 @@ def assert_core_execution_metrics_equals(
         wait_for_condition(lambda: task_metrics_flushed(refs))
 
     metrics = PhysicalCoreExecutionMetrics(last_snapshot)
-    metrics.assert_task_metrics(expected_metrics)
+    metrics.assert_task_metrics(expected_metrics, ignore_extra_tasks)
     metrics.assert_object_store_metrics(expected_metrics)
     metrics.assert_actor_metrics(expected_metrics)
 

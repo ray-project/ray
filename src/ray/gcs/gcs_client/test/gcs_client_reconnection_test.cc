@@ -132,13 +132,11 @@ class GcsClientReconnectionTest : public ::testing::Test {
 
   void SetUp() override {
     config_.redis_address = "127.0.0.1";
-    config_.enable_sharding_conn = false;
     config_.redis_port = TEST_REDIS_SERVER_PORTS.front();
     config_.grpc_server_port = GetFreePort();
     config_.grpc_server_name = "MockedGcsServer";
     config_.grpc_server_thread_num = 1;
     config_.node_ip_address = "127.0.0.1";
-    config_.enable_sharding_conn = false;
   }
 
   void TearDown() override {

@@ -300,7 +300,7 @@ class LogAgentV1Grpc(dashboard_utils.DashboardAgentModule):
             )
         log_files = []
         for p in path.glob(request.glob_filter):
-            log_files.append(str(p.relative_to(path)))
+            log_files.append(str(p.relative_to(path)) + ("/" if p.is_dir() else ""))
         return reporter_pb2.ListLogsReply(log_files=log_files)
 
     @classmethod
@@ -394,7 +394,10 @@ class LogAgentV1Grpc(dashboard_utils.DashboardAgentModule):
         else:
             filepath = Path(filename)
 
-        filepath = filepath.resolve()
+        # We want to allow relative paths that include symlinks pointing outside of the
+        # `root_log_dir`, so use `os.path.abspath` instead of `Path.resolve()` because
+        # `os.path.abspath` does not resolve symlinks.
+        filepath = Path(os.path.abspath(filepath))
 
         if not filepath.is_file():
             raise FileNotFoundError(f"A file is not found at: {filepath}")
@@ -404,7 +407,8 @@ class LogAgentV1Grpc(dashboard_utils.DashboardAgentModule):
         except ValueError as e:
             raise FileNotFoundError(f"{filepath} not in {root_log_dir}: {e}")
 
-        return filepath
+        # Fully resolve the path before returning (including following symlinks).
+        return filepath.resolve()
 
     async def StreamLog(self, request, context):
         """

@@ -9,9 +9,6 @@ from typing import Any, Dict, Optional, Tuple, Union
 from ray._private import ray_constants
 from ray._private.gcs_utils import GcsAioClient
 from ray._private.runtime_env.packaging import parse_uri
-from ray.experimental.internal_kv import (
-    _internal_kv_initialized,
-)
 
 from ray.util.annotations import PublicAPI
 
@@ -195,7 +192,6 @@ class JobInfoStorageClient:
 
     def __init__(self, gcs_aio_client: GcsAioClient):
         self._gcs_aio_client = gcs_aio_client
-        assert _internal_kv_initialized()
 
     async def put_info(
         self, job_id: str, job_info: JobInfo, overwrite: bool = True

@@ -45,7 +45,7 @@ class PPORLModule(RLModule, abc.ABC):
 
     @override(RLModule)
     def input_specs_inference(self) -> SpecDict:
-        return self.input_specs_exploration()
+        return [SampleBatch.OBS]
 
     @override(RLModule)
     def output_specs_inference(self) -> SpecDict:
@@ -53,14 +53,11 @@ class PPORLModule(RLModule, abc.ABC):
 
     @override(RLModule)
     def input_specs_exploration(self):
-        return [SampleBatch.OBS]
+        return self.input_specs_inference()
 
     @override(RLModule)
     def output_specs_exploration(self) -> SpecDict:
-        return [
-            SampleBatch.VF_PREDS,
-            SampleBatch.ACTION_DIST_INPUTS,
-        ]
+        return self.output_specs_inference()
 
     @override(RLModule)
     def input_specs_train(self) -> SpecDict:

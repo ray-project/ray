@@ -153,10 +153,10 @@ For example, the following code executes :func:`~ray.data.read_csv` with only on
     2023-11-20 15:47:02,404 INFO split_read_output_blocks.py:101 -- Using autodetected parallelism=4 for stage ReadCSV to satisfy parallelism at least twice the available number of CPUs (2).
     2023-11-20 15:47:02,405 INFO split_read_output_blocks.py:106 -- To satisfy the requested parallelism of 4, each read task output is split into 4 smaller blocks.
     ...
-    Stage 1 ReadCSV->SplitBlocks(4): 4/4 blocks executed in 0.01s
+    Operator 1 ReadCSV->SplitBlocks(4): 1 tasks executed, 4 blocks produced in 0.01s
     ...
     
-    Stage 2 Map(<lambda>): 4/4 blocks executed in 0.03s
+    Operator 2 Map(<lambda>): 4 tasks executed, 4 blocks produced in 0.3s
     ...
 
 To turn off this behavior and allow the read and map stages to be fused, set ``parallelism`` manually.
@@ -181,7 +181,7 @@ For example, this code sets ``parallelism`` to equal the number of files:
     :options: +MOCK
 
     ...
-    Stage 1 ReadCSV->Map(<lambda>): 1/1 blocks executed in 0.03s
+    Operator 1 ReadCSV->Map(<lambda>): 1 tasks executed, 1 blocks produced in 0.01s
     ...
 
 
@@ -270,7 +270,7 @@ Because the default ``batch_size`` for :func:`~ray.data.Dataset.map_batches` is 
 .. testoutput::
     :options: +MOCK
 
-    Stage 1 ReadRange->MapBatches(<lambda>): 7/7 blocks executed in 2.99s
+    Operator 1 ReadRange->MapBatches(<lambda>): 1 tasks executed, 7 blocks produced in 1.33s
       ...
     * Peak heap memory usage (MiB): 3302.17 min, 4233.51 max, 4100 mean
     * Output num rows: 125 min, 125 max, 125 mean, 1000 total
@@ -298,7 +298,7 @@ Setting a lower batch size produces lower peak heap memory usage:
 .. testoutput::
     :options: +MOCK
 
-    Stage 1 ReadRange->MapBatches(<lambda>): 7/7 blocks executed in 1.08s
+    Operator 1 ReadRange->MapBatches(<lambda>): 1 tasks executed, 7 blocks produced in 0.51s
     ...
     * Peak heap memory usage (MiB): 587.09 min, 1569.57 max, 1207 mean
     * Output num rows: 40 min, 160 max, 142 mean, 1000 total
@@ -376,23 +376,23 @@ To illustrate these, the following code uses both strategies to coalesce the 10 
     :options: +MOCK
 
     # 1. ds.repartition() output.
-    Stage 1 ReadRange: 10/10 blocks executed in 0.45s
+    Operator 1 ReadRange: 10 tasks executed, 10 blocks produced in 0.33s
     ...
     * Output num rows: 1 min, 1 max, 1 mean, 10 total
     ...
-    Stage 2 Repartition: executed in 0.53s
+    Operator 2 Repartition: executed in 0.36s
 
-            Substage 0 RepartitionSplit: 10/10 blocks executed
+            Suboperator 0 RepartitionSplit: 10 tasks executed, 10 blocks produced
             ...
 
-            Substage 1 RepartitionReduce: 1/1 blocks executed
+            Suboperator 1 RepartitionReduce: 1 tasks executed, 1 blocks produced
             ...
             * Output num rows: 10 min, 10 max, 10 mean, 10 total
             ...
 
 
     # 2. ds.map_batches() output.
-    Stage 1 ReadRange->MapBatches(<lambda>): 1/1 blocks executed in 0s
+    Operator 1 ReadRange->MapBatches(<lambda>): 1 tasks executed, 1 blocks produced in 0s
     ...
     * Output num rows: 10 min, 10 max, 10 mean, 10 total
 
@@ -491,6 +491,41 @@ setting the ``DataContext.use_push_based_shuffle`` flag:
         .random_shuffle()
     )
 
+Large-scale shuffles can take a while to finish.
+For debugging purposes, shuffle operations support executing only part of the shuffle, so that you can collect an execution profile more quickly.
+Here is an example that shows how to limit a random shuffle operation to two output blocks:
+
+.. testcode::
+    :hide:
+
+    import ray
+    ray.shutdown()
+
+.. testcode::
+
+    import ray
+
+    ctx = ray.data.DataContext.get_current()
+    ctx.set_config(
+        "debug_limit_shuffle_execution_to_num_blocks", 2
+    )
+
+    ds = (
+        ray.data.range(1000, parallelism=10)
+        .random_shuffle()
+        .materialize()
+    )
+    print(ds.stats())
+
+.. testoutput::
+    :options: +MOCK
+
+    Stage 1 ReadRange->RandomShuffle: executed in 0.08s
+
+        Substage 0 ReadRange->RandomShuffleMap: 2/2 blocks executed
+        ...
+
+
 Configuring execution
 ---------------------
 
@@ -537,26 +572,6 @@ Deterministic execution
    ctx.execution_options.preserve_order = True
 
 To enable deterministic execution, set the preceding to True. This setting may decrease performance, but ensures block ordering is preserved through execution. This flag defaults to False.
-
-Monitoring your application
----------------------------
-
-View the Ray Data dashboard located in the :ref:`Metrics tab <dash-metrics-view>` of the Ray Dashboard to monitor your application and troubleshoot issues. Ray Data emits Prometheus metrics in real-time while a Dataset is executing, and the Ray Data dashboard displays these metrics grouped by Dataset. Datasets can also be assigned a name using :meth:`Dataset._set_name`, which prefixes the dataset ID for a more identifiable label.
-
-The metrics recorded are:
-
-* Bytes spilled by objects from object store to disk
-* Bytes of objects allocated in object store
-* Bytes of objects freed in object store
-* Current total bytes of objects in object store
-* Logical CPUs allocated to dataset operators
-* Logical GPUs allocated to dataset operators
-* Bytes outputted by dataset operators
-
-.. image:: images/data-dashboard.png
-   :align: center
-
-To learn more about the Ray dashboard, including detailed setup instructions, see :ref:`Ray Dashboard <observability-getting-started>`.
 
 
 .. _`file a Ray Data issue on GitHub`: https://github.com/ray-project/ray/issues/new?assignees=&labels=bug%2Ctriage%2Cdata&projects=&template=bug-report.yml&title=[data]+

@@ -97,7 +97,10 @@ class Metric:
         return self
 
     def record(
-        self, value: Union[int, float], tags: Dict[str, str] = None, _internal=False
+        self,
+        value: Union[int, float],
+        tags: Optional[Dict[str, str]] = None,
+        _internal=False,
     ) -> None:
         """Record the metric point of the metric.
 
@@ -129,26 +132,29 @@ class Metric:
                 "instead."
             )
 
-        if tags is not None:
-            for val in tags.values():
-                if not isinstance(val, str):
-                    raise TypeError(f"Tag values must be str, got {type(val)}.")
+        final_tags = self._get_final_tags(tags)
+        self._validate_tags(final_tags)
+        self._metric.record(value, tags=final_tags)
 
-        final_tags = {}
-        tags_copy = tags.copy() if tags else {}
+    def _get_final_tags(self, tags):
+        if not tags:
+            return self._default_tags
+
+        for val in tags.values():
+            if not isinstance(val, str):
+                raise TypeError(f"Tag values must be str, got {type(val)}.")
+
+        return {**self._default_tags, **tags}
+
+    def _validate_tags(self, final_tags):
+        missing_tags = []
         for tag_key in self._tag_keys:
             # Prefer passed tags over default tags.
-            if tags is not None and tag_key in tags:
-                final_tags[tag_key] = tags_copy.pop(tag_key)
-            elif tag_key in self._default_tags:
-                final_tags[tag_key] = self._default_tags[tag_key]
-            else:
-                raise ValueError(f"Missing value for tag key {tag_key}.")
+            if tag_key not in final_tags:
+                missing_tags.append(tag_key)
 
-        if len(tags_copy) > 0:
-            raise ValueError(f"Unrecognized tag keys: {list(tags_copy.keys())}.")
-
-        self._metric.record(value, tags=final_tags)
+        if missing_tags:
+            raise ValueError(f"Missing value for tag key(s): {','.join(missing_tags)}.")
 
     @property
     def info(self) -> Dict[str, Any]:

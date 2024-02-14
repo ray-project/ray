@@ -85,6 +85,11 @@
   line-height: 20px;
 }
 
+.tag > span {
+  white-space: nowrap;
+  min-width: auto;
+}
+
 .tag > svg > path {
   fill: var(--pst-color-text-base);
 }
@@ -124,15 +129,19 @@ div.gallery-item {
 
 /* Override sphinx-design box shadow styles */
 div.gallery-item > div.sd-card {
-  box-shadow: 0 .125rem .25rem var(--pst-color-shadow) !important;
+  box-shadow: 0 0.125rem 0.25rem var(--pst-color-shadow) !important;
   border: none;
 }
 
 /* Example gallery "Tutorial" title */
 div.sd-card-title > span.sd-bg-success.sd-bg-text-success {
-  color: #2F80ED !important;
+  color: #2f80ed !important;
   font-weight: 500;
-  background: linear-gradient(180deg, rgba(25, 177, 226, 0.2) 0%, rgba(0, 109, 255, 0.2) 100%);
+  background: linear-gradient(
+    180deg,
+    rgba(25, 177, 226, 0.2) 0%,
+    rgba(0, 109, 255, 0.2) 100%
+  );
   background-color: initial !important;
 }
 
@@ -140,31 +149,47 @@ div.sd-card-title > span.sd-bg-success.sd-bg-text-success {
 div.sd-card-title > span.sd-bg-secondary.sd-bg-text-secondary {
   color: #219653 !important;
   font-weight: 500;
-  background: linear-gradient(180deg, rgba(29, 151, 108, 0.2) 0%, rgba(0, 226, 147, 0.2) 100%);
+  background: linear-gradient(
+    180deg,
+    rgba(29, 151, 108, 0.2) 0%,
+    rgba(0, 226, 147, 0.2) 100%
+  );
   background-color: initial !important;
 }
 
 /* Example gallery "Blog" title */
 div.sd-card-title > span.sd-bg-primary.sd-bg-text-primary {
-  color: #F2994A !important;
+  color: #f2994a !important;
   font-weight: 500;
-  background: linear-gradient(180deg, rgba(255, 230, 5, 0.2) 0%, rgba(255, 185, 80, 0.2) 100%);
+  background: linear-gradient(
+    180deg,
+    rgba(255, 230, 5, 0.2) 0%,
+    rgba(255, 185, 80, 0.2) 100%
+  );
   background-color: initial !important;
 }
 
 /* Example gallery "Video" title */
 div.sd-card-title > span.sd-bg-warning.sd-bg-text-warning {
-  color: #EB5757 !important;
+  color: #eb5757 !important;
   font-weight: 500;
-  background: linear-gradient(180deg, rgba(150, 7, 7, 0.2) 0%, rgba(255, 115, 115, 0.2) 100%);
+  background: linear-gradient(
+    180deg,
+    rgba(150, 7, 7, 0.2) 0%,
+    rgba(255, 115, 115, 0.2) 100%
+  );
   background-color: initial !important;
 }
 
 /* Example gallery "Course" title */
 div.sd-card-title > span.sd-bg-info.sd-bg-text-info {
-  color: #7A64FF !important;
+  color: #7a64ff !important;
   font-weight: 500;
-  background: linear-gradient(180deg, rgba(53, 25, 226, 0.2) 0%, rgba(183, 149, 255, 0.2) 100%);
+  background: linear-gradient(
+    180deg,
+    rgba(53, 25, 226, 0.2) 0%,
+    rgba(183, 149, 255, 0.2) 100%
+  );
   background-color: initial !important;
 }
 
@@ -182,6 +207,13 @@ div.sd-card-title > span.sd-bg-info.sd-bg-text-info {
   justify-content: center;
 }
 
-#noMatches.hidden,.gallery-item.hidden {
+#noMatches.hidden,
+.gallery-item.hidden {
   display: none !important;
+}
+
+/* Set a max width to prevent the sidebar */
+/* from growing indefinitely to accommodate the tag buttons flexbox */
+.bd-sidebar-primary {
+  max-width: 30%;
 }

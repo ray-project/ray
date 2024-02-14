@@ -19,7 +19,7 @@ from typing import (
 import numpy as np
 
 import ray
-from ray import ObjectRefGenerator
+from ray import DynamicObjectRefGenerator
 from ray.data._internal.util import _check_pyarrow_version, _truncated_repr
 from ray.types import ObjectRef
 from ray.util.annotations import DeveloperAPI
@@ -36,7 +36,7 @@ if TYPE_CHECKING:
     import pyarrow
 
     from ray.data._internal.block_builder import BlockBuilder
-    from ray.data._internal.sort import SortKey
+    from ray.data._internal.planner.exchange.sort_task_spec import SortKey
     from ray.data.aggregate import AggregateFn
 
 
@@ -82,9 +82,10 @@ BlockPartition = List[Tuple[ObjectRef[Block], "BlockMetadata"]]
 # same type as the metadata that describes each block in the partition.
 BlockPartitionMetadata = List["BlockMetadata"]
 
-# TODO(ekl/chengsu): replace this with just `ObjectRefGenerator` once block splitting
+# TODO(ekl/chengsu): replace this with just
+# `DynamicObjectRefGenerator` once block splitting
 # is on by default. When block splitting is off, the type is a plain block.
-MaybeBlockPartition = Union[Block, ObjectRefGenerator]
+MaybeBlockPartition = Union[Block, DynamicObjectRefGenerator]
 
 VALID_BATCH_FORMATS = ["default", "native", "pandas", "pyarrow", "numpy", None]
 
@@ -138,6 +139,7 @@ class BlockExecStats:
         # Max memory usage. May be an overestimate since we do not
         # differentiate from previous tasks on the same worker.
         self.max_rss_bytes: int = 0
+        self.task_idx: Optional[int] = None
 
     @staticmethod
     def builder() -> "_BlockExecStatsBuilder":

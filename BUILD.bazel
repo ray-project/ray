@@ -321,6 +321,7 @@ PLASMA_LINKOPTS = [] + select({
 ray_cc_library(
     name = "plasma_client",
     srcs = [
+        "src/ray/object_manager/common.cc",
         "src/ray/object_manager/plasma/client.cc",
         "src/ray/object_manager/plasma/connection.cc",
         "src/ray/object_manager/plasma/malloc.cc",
@@ -810,7 +811,7 @@ ray_cc_test(
         "//:redis-cli",
         "//:redis-server",
     ],
-    tags = ["team:core", "manual"],
+    tags = ["team:core", "no_windows", "manual"],
     deps = [
         ":core_worker_lib",
         ":gcs",
@@ -1255,6 +1256,20 @@ ray_cc_test(
 )
 
 ray_cc_test(
+    name = "mutable_object_test",
+    srcs = [
+        "src/ray/object_manager/plasma/test/mutable_object_test.cc",
+    ],
+    tags = ["team:core", "no_windows"],
+    deps = [
+        ":plasma_store_server_lib",
+        "@com_google_absl//absl/random",
+        "@com_google_absl//absl/strings:str_format",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+ray_cc_test(
     name = "object_lifecycle_manager_test",
     srcs = [
         "src/ray/object_manager/plasma/test/object_lifecycle_manager_test.cc",
@@ -1537,6 +1552,19 @@ ray_cc_test(
 )
 
 ray_cc_test(
+    name = "core_worker_client_pool_test",
+    size = "small",
+    srcs = [
+        "src/ray/rpc/worker/test/core_worker_client_pool_test.cc",
+    ],
+    tags = ["team:core"],
+    deps = [
+        ":worker_rpc",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+ray_cc_test(
     name = "gcs_server_rpc_test",
     size = "small",
     srcs = [
@@ -1550,7 +1578,7 @@ ray_cc_test(
         "//:redis-cli",
         "//:redis-server",
     ],
-    tags = ["team:core", "no_tsan"],
+    tags = ["team:core", "no_windows", "no_tsan"],
     deps = [
         ":gcs_server_lib",
         ":gcs_test_util_lib",
@@ -1596,7 +1624,7 @@ ray_cc_test(
     srcs = [
         "src/ray/gcs/gcs_server/test/gcs_health_check_manager_test.cc",
     ],
-    tags = ["team:core"],
+    tags = ["team:core", "no_windows"],
     deps = [
         ":gcs_server_lib",
         "@com_google_googletest//:gtest_main",
@@ -1963,7 +1991,7 @@ ray_cc_test(
         "//:redis-cli",
         "//:redis-server",
     ],
-    tags = ["team:core"],
+    tags = ["team:core", "no_windows"],
     deps = [
         ":gcs_client_lib",
         ":gcs_server_lib",
@@ -2210,7 +2238,7 @@ ray_cc_test(
         "//:redis-server",
     ],
     env = {"REDIS_CHAOS": "1"},
-    tags = ["team:core"],
+    tags = ["team:core", "no_windows"],
     target_compatible_with = [
         "@platforms//os:linux",
     ],

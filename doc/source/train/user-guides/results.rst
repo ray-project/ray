@@ -88,6 +88,10 @@ You can retrieve a list of all available checkpoints and their metrics with
     :start-after: __result_best_checkpoint_start__
     :end-before: __result_best_checkpoint_end__
 
+.. seealso::
+
+    See :ref:`train-checkpointing` for more information on checkpointing.
+
 Accessing storage location
 ---------------------------
 If you need to retrieve the results later, you can get the storage location
@@ -97,6 +101,9 @@ This path will correspond to the :ref:`storage_path <train-log-dir>` you configu
 in the :class:`~ray.train.RunConfig`. It will be a
 (nested) subdirectory within that path, usually
 of the form `TrainerName_date-string/TrainerName_id_00000_0_...`.
+
+The result also contains a :class:`pyarrow.fs.FileSystem` that can be used to
+access the storage location, which is useful if the path is on cloud storage.
 
 
 .. literalinclude:: ../doc_code/key_concepts.py

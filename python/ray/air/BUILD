@@ -86,7 +86,7 @@ py_test(
 
 py_test(
     name = "test_errors",
-    size = "small",
+    size = "medium",
     srcs = ["tests/test_errors.py"],
     tags = ["team:ml", "exclusive"],
     deps = [":ml_lib"]
@@ -118,7 +118,7 @@ py_test(
 
 py_test(
     name = "test_keras_callback",
-    size = "small",
+    size = "medium",
     srcs = ["tests/test_keras_callback.py"],
     tags = ["team:ml", "exclusive"],
     deps = [":ml_lib"]

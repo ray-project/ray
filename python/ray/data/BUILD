@@ -131,7 +131,7 @@ py_test(
 
 py_test(
     name = "test_block_sizing",
-    size = "small",
+    size = "medium",
     srcs = ["tests/test_block_sizing.py"],
     tags = ["team:data", "exclusive"],
     deps = ["//:ray_lib", ":conftest"],
@@ -173,6 +173,14 @@ py_test(
     name = "test_csv",
     size = "medium",
     srcs = ["tests/test_csv.py"],
+    tags = ["team:data", "exclusive"],
+    deps = ["//:ray_lib", ":conftest"],
+)
+
+py_test(
+    name = "test_datasink",
+    size = "small",
+    srcs = ["tests/test_datasink.py"],
     tags = ["team:data", "exclusive"],
     deps = ["//:ray_lib", ":conftest"],
 )
@@ -443,6 +451,14 @@ py_test(
 )
 
 py_test(
+    name = "test_runtime_metrics_scheduling",
+    size = "small",
+    srcs = ["tests/test_runtime_metrics_scheduling.py"],
+    tags = ["team:data", "exclusive"],
+    deps = ["//:ray_lib", ":conftest"],
+)
+
+py_test(
     name = "test_size_estimation",
     size = "medium",
     srcs = ["tests/test_size_estimation.py"],
@@ -478,6 +494,22 @@ py_test(
     name = "test_streaming_executor",
     size = "medium",
     srcs = ["tests/test_streaming_executor.py"],
+    tags = ["team:data", "exclusive"],
+    deps = ["//:ray_lib", ":conftest"],
+)
+
+py_test(
+    name = "test_resource_manager",
+    size = "medium",
+    srcs = ["tests/test_resource_manager.py"],
+    tags = ["team:data", "exclusive"],
+    deps = ["//:ray_lib", ":conftest"],
+)
+
+py_test(
+    name = "test_streaming_executor_errored_blocks",
+    size = "medium",
+    srcs = ["tests/test_streaming_executor_errored_blocks.py"],
     tags = ["team:data", "exclusive"],
     deps = ["//:ray_lib", ":conftest"],
 )

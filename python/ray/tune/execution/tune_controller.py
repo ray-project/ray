@@ -22,7 +22,7 @@ from ray.train import CheckpointConfig
 from ray.train._internal.session import _FutureTrainingResult
 from ray.train._internal.storage import StorageContext
 from ray.exceptions import RayActorError, RayTaskError
-from ray.tune.error import _AbortTrialExecution, _TuneStopTrialError, _TuneRestoreError
+from ray.tune.error import _AbortTrialExecution, _TuneStopTrialError
 from ray.tune.execution.class_cache import _ActorClassCache
 from ray.tune.execution.experiment_state import (
     _ExperimentCheckpointManager,
@@ -48,7 +48,7 @@ from ray.tune.result import (
     SHOULD_CHECKPOINT,
 )
 from ray.tune.result import TRIAL_INFO, STDOUT_FILE, STDERR_FILE
-from ray.tune import TuneError
+from ray.tune import ResumeConfig, TuneError
 from ray.tune.callback import Callback, CallbackList
 from ray.tune.schedulers import FIFOScheduler, TrialScheduler
 from ray.tune.stopper import NoopStopper, Stopper
@@ -80,7 +80,7 @@ class TuneController:
         placeholder_resolvers: Optional[Dict[Tuple, Any]] = None,
         scheduler: Optional[TrialScheduler] = None,
         stopper: Optional[Stopper] = None,
-        resume: Union[str, bool] = False,
+        resume_config: Optional[ResumeConfig] = None,
         fail_fast: bool = False,
         checkpoint_period: Union[str, int] = None,
         callbacks: Optional[List[Callback]] = None,
@@ -228,15 +228,14 @@ class TuneController:
         self._checkpoint_manager = self._create_checkpoint_manager()
 
         self._resumed = False
-        resume_config = self._checkpoint_manager.resume(resume_type=resume)
 
-        if resume_config:
+        if resume_config is not None:
+            # Sync down state from storage
+            self._checkpoint_manager.resume()
+
+            # Use the metadata file to restore TuneController state
             try:
-                self.resume(
-                    resume_unfinished=resume_config.resume_unfinished,
-                    resume_errored=resume_config.resume_errored,
-                    restart_errored=resume_config.restart_errored,
-                )
+                self.resume(resume_config=resume_config)
                 self._resumed = True
             except Exception as e:
                 if has_verbosity(Verbosity.V3_TRIAL_DETAILS):
@@ -316,9 +315,9 @@ class TuneController:
     @property
     def experiment_state_path(self) -> str:
         """Returns the local experiment checkpoint path."""
-        return os.path.join(
+        return Path(
             self._storage.experiment_local_path, self.experiment_state_file_name
-        )
+        ).as_posix()
 
     @property
     def experiment_path(self) -> str:
@@ -362,16 +361,16 @@ class TuneController:
             },
         }
 
-        tmp_file_name = os.path.join(
+        tmp_file_name = Path(
             experiment_dir, f".tmp_experiment_state_{uuid.uuid4()}"
-        )
+        ).as_posix()
 
         with open(tmp_file_name, "w") as f:
             json.dump(runner_state, f, indent=2, cls=TuneFunctionEncoder)
 
         os.replace(
             tmp_file_name,
-            os.path.join(experiment_dir, self.experiment_state_file_name),
+            Path(experiment_dir, self.experiment_state_file_name).as_posix(),
         )
 
         self._search_alg.save_to_dir(experiment_dir, session_str=self._session_str)
@@ -479,12 +478,7 @@ class TuneController:
                 save_fn=self.save_to_dir, force=force, wait=wait
             )
 
-    def resume(
-        self,
-        resume_unfinished: bool = True,
-        resume_errored: bool = False,
-        restart_errored: bool = False,
-    ):
+    def resume(self, resume_config: ResumeConfig):
         """Resumes all checkpointed trials from previous run.
 
         Requires user to manually re-register their objects. Also stops
@@ -496,18 +490,33 @@ class TuneController:
         for trial in sorted(
             trials, key=lambda t: t.run_metadata.last_result_time, reverse=True
         ):
-            trial_to_add = trial
             if trial.status == Trial.ERROR:
-                if resume_errored:
-                    # Keep trial ID on resume
-                    trial_to_add.run_metadata.error_filename = None
-                    trial_to_add.run_metadata.pickled_error_filename = None
-                    trial_to_add.set_status(Trial.PENDING)
-                elif restart_errored:
-                    trial_to_add = trial.reset()
-                    trial_to_add.restore_path = None
-            elif trial.status != Trial.TERMINATED and not resume_unfinished:
-                trial_to_add.status = Trial.TERMINATED
+                resume_type = resume_config.errored
+            elif trial.status == Trial.TERMINATED:
+                resume_type = resume_config.finished
+            else:  # Unfinished (PENDING, RUNNING, PAUSED)
+                resume_type = resume_config.unfinished
+
+            trial_to_add = None
+            if resume_type == ResumeConfig.ResumeType.RESUME:
+                # Keep trial ID on resume
+                trial_to_add = trial
+                trial_to_add.run_metadata.error_filename = None
+                trial_to_add.run_metadata.pickled_error_filename = None
+                trial_to_add.set_status(Trial.PENDING)
+            elif resume_type == ResumeConfig.ResumeType.RESTART:
+                trial_to_add = trial.reset()
+                trial_to_add.restore_path = None
+            elif resume_type == ResumeConfig.ResumeType.SKIP:
+                trial_to_add = trial
+                if trial_to_add.status != Trial.ERROR:
+                    # Set the status to terminated to skip it.
+                    # Keep errored trial status as ERROR.
+                    trial_to_add.set_status(Trial.TERMINATED)
+            else:
+                raise ValueError(f"Unknown resume type: {resume_type}")
+            assert trial_to_add is not None
+
             self.add_trial(trial_to_add)
 
     def update_max_pending_trials(self, max_pending_trials: Optional[int] = None):
@@ -1038,6 +1047,7 @@ class TuneController:
                 f"Invalid trainable: {trial.trainable_name}. If you passed "
                 f"a string, make sure the trainable was registered before."
             )
+            trial.handle_error(exception)
             self._schedule_trial_stop(trial, exception=exception)
             return
 
@@ -1374,7 +1384,9 @@ class TuneController:
             self._process_trial_failure(trial, exception=exception)
 
     def _process_trial_failure(
-        self, trial: Trial, exception: Optional[Union[TuneError, RayTaskError]] = None
+        self,
+        trial: Trial,
+        exception: Union[TuneError, RayTaskError, RayActorError],
     ):
         """Handle trial failure.
 
@@ -1385,6 +1397,7 @@ class TuneController:
             exception: Exception prior to invoking this method.
         """
         self._has_errored = True
+        trial.handle_error(exception)
         if trial.status == Trial.RUNNING and trial.should_recover():
             self._try_recover(trial, exc=exception)
             self._callbacks.on_trial_recover(
@@ -1417,9 +1430,6 @@ class TuneController:
 
         self._set_trial_status(trial, Trial.ERROR if exception else Trial.TERMINATED)
         trial.set_location(_Location())
-
-        if exception:
-            trial.handle_error(exc=exception)
 
         if trial not in self._trial_to_actor:
             logger.debug(f"Will not STOP trial actor as it is not live: {trial}")
@@ -1869,7 +1879,9 @@ class TuneController:
         self._schedule_trial_train(trial)
         self._live_trials.add(trial)
 
-    def _try_recover(self, trial: Trial, exc: Union[TuneError, RayTaskError]):
+    def _try_recover(
+        self, trial: Trial, exc: Union[TuneError, RayTaskError, RayActorError]
+    ):
         """Tries to recover trial.
 
         Notifies SearchAlgorithm and Scheduler if failure to recover.
@@ -1882,8 +1894,6 @@ class TuneController:
         # Resetting this, in case that the trial is in saving status when it crashes.
         if trial.is_saving:
             trial.temporary_state.saving_to = None
-        if trial.is_restoring and exc:
-            exc = _TuneRestoreError(exc)
         self._schedule_trial_stop(trial, exception=exc)
 
         logger.debug("Trial %s: Notifying Scheduler and requeueing.", trial)
@@ -1979,6 +1989,7 @@ class TuneController:
 
             exception = _AbortTrialExecution(info)
 
+            trial.handle_error(exception)
             self._schedule_trial_stop(trial, exception=exception)
             return
 

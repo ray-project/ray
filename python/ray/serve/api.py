@@ -1,7 +1,6 @@
 import collections
 import inspect
 import logging
-import warnings
 from functools import wraps
 from typing import Any, Callable, Dict, List, Optional, Union
 
@@ -11,12 +10,12 @@ import ray
 from ray import cloudpickle
 from ray._private.serialization import pickle_dumps
 from ray.dag import DAGNode
-from ray.serve._private.config import DeploymentConfig, ReplicaConfig
-from ray.serve._private.constants import (
-    DEFAULT_HTTP_HOST,
-    DEFAULT_HTTP_PORT,
-    SERVE_DEFAULT_APP_NAME,
+from ray.serve._private.config import (
+    DeploymentConfig,
+    ReplicaConfig,
+    handle_num_replicas_auto,
 )
+from ray.serve._private.constants import SERVE_DEFAULT_APP_NAME
 from ray.serve._private.deployment_graph_build import build as pipeline_build
 from ray.serve._private.deployment_graph_build import (
     get_and_validate_ingress_deployment,
@@ -31,7 +30,7 @@ from ray.serve._private.utils import (
     Default,
     ensure_serialization_context,
     extract_self_if_method_call,
-    get_random_letters,
+    get_random_string,
 )
 from ray.serve.config import (
     AutoscalingConfig,
@@ -60,12 +59,10 @@ logger = logging.getLogger(__file__)
 
 @PublicAPI(stability="stable")
 def start(
-    detached: bool = True,
     proxy_location: Union[None, str, ProxyLocation] = None,
     http_options: Union[None, dict, HTTPOptions] = None,
-    dedicated_cpu: bool = False,
     grpc_options: Union[None, dict, gRPCOptions] = None,
-    system_logging_config: Union[None, dict, LoggingConfig] = None,
+    logging_config: Union[None, dict, LoggingConfig] = None,
     **kwargs,
 ):
     """Start Serve on the cluster.
@@ -89,22 +86,9 @@ def start(
         grpc_options: [EXPERIMENTAL] gRPC config options for the proxies. These can
           be passed as an unstructured dictionary or the structured `gRPCOptions`
           class See `gRPCOptions` for supported options.
-        system_logging_config: logging config options for the serve component (
+        logging_config: logging config options for the serve component (
             controller & proxy).
     """
-
-    if detached is not True:
-        raise ValueError(
-            "`detached=False` is no longer supported. "
-            "In a future release, it will be removed altogether."
-        )
-
-    if dedicated_cpu is not False:
-        raise ValueError(
-            "`dedicated_cpu=True` is no longer supported. "
-            "In a future release, it will be removed altogether."
-        )
-
     if proxy_location is None:
         if http_options is None:
             http_options = HTTPOptions(location=DeploymentMode.EveryNode)
@@ -122,7 +106,7 @@ def start(
     _private_api.serve_start(
         http_options=http_options,
         grpc_options=grpc_options,
-        system_logging_config=system_logging_config,
+        global_logging_config=logging_config,
         **kwargs,
     )
 
@@ -263,7 +247,7 @@ def deployment(
     _func_or_class: Optional[Callable] = None,
     name: Default[str] = DEFAULT.VALUE,
     version: Default[str] = DEFAULT.VALUE,
-    num_replicas: Default[Optional[int]] = DEFAULT.VALUE,
+    num_replicas: Default[Optional[Union[int, str]]] = DEFAULT.VALUE,
     route_prefix: Default[Union[str, None]] = DEFAULT.VALUE,
     ray_actor_options: Default[Dict] = DEFAULT.VALUE,
     placement_group_bundles: Optional[List[Dict[str, float]]] = DEFAULT.VALUE,
@@ -300,7 +284,7 @@ def deployment(
         autoscaling_config: Parameters to configure autoscaling behavior. If this
             is set, `num_replicas` cannot be set.
         route_prefix: [DEPRECATED] Route prefix should be set per-application
-            through `serve.run()`.
+            through `serve.run()` or the config file.
         ray_actor_options: Options to pass to the Ray Actor decorator, such as
             resource requirements. Valid options are: `accelerator_type`, `memory`,
             `num_cpus`, `num_gpus`, `object_store_memory`, `resources`,
@@ -342,6 +326,12 @@ def deployment(
     # defined in this function. It depends on the locals() dictionary storing
     # only the function args/kwargs.
     # Create list of all user-configured options from keyword args
+    if num_replicas == "auto":
+        num_replicas = None
+        max_concurrent_queries, autoscaling_config = handle_num_replicas_auto(
+            max_concurrent_queries, autoscaling_config
+        )
+
     user_configured_option_names = [
         option
         for option, value in locals().items()
@@ -353,7 +343,7 @@ def deployment(
     if num_replicas == 0:
         raise ValueError("num_replicas is expected to larger than 0")
 
-    if num_replicas not in [DEFAULT.VALUE, None] and autoscaling_config not in [
+    if num_replicas not in [DEFAULT.VALUE, None, "auto"] and autoscaling_config not in [
         DEFAULT.VALUE,
         None,
     ]:
@@ -449,8 +439,6 @@ def list_deployments() -> Dict[str, Deployment]:
 def run(
     target: Application,
     _blocking: bool = True,
-    host: str = DEFAULT_HTTP_HOST,
-    port: int = DEFAULT_HTTP_PORT,
     name: str = SERVE_DEFAULT_APP_NAME,
     route_prefix: str = DEFAULT.VALUE,
     logging_config: Optional[Union[Dict, LoggingConfig]] = None,
@@ -467,12 +455,6 @@ def run(
     Args:
         target:
             A Serve application returned by `Deployment.bind()`.
-        host: [DEPRECATED: use `serve.start` to set HTTP options]
-            Host for HTTP servers to listen on. Defaults to
-            "127.0.0.1". To expose Serve publicly, you probably want to set
-            this to "0.0.0.0".
-        port: [DEPRECATED: use `serve.start` to set HTTP options]
-            Port for HTTP server. Defaults to 8000.
         name: Application name. If not provided, this will be the only
             application running on the cluster (it will delete all others).
         route_prefix: Route prefix for HTTP requests. If not provided, it will use
@@ -488,15 +470,8 @@ def run(
     if len(name) == 0:
         raise RayServeException("Application name must a non-empty string.")
 
-    if host != DEFAULT_HTTP_HOST or port != DEFAULT_HTTP_PORT:
-        warnings.warn(
-            "Specifying host and port in `serve.run` is deprecated and will be "
-            "removed in a future version. To specify custom HTTP options, use "
-            "`serve.start`."
-        )
-
     client = _private_api.serve_start(
-        http_options={"host": host, "port": port, "location": "EveryNode"},
+        http_options={"location": "EveryNode"},
     )
 
     # Record after Ray has been started.
@@ -533,7 +508,7 @@ def run(
             "name": deployment._name,
             "replica_config": deployment._replica_config,
             "deployment_config": deployment._deployment_config,
-            "version": deployment._version or get_random_letters(),
+            "version": deployment._version or get_random_string(),
             "route_prefix": deployment.route_prefix,
             "url": deployment.url,
             "docs_path": deployment._docs_path,
@@ -721,7 +696,8 @@ def get_multiplexed_model_id() -> str:
             # headers when sending requests to the http proxy.
             requests.get("http://localhost:8000",
                 headers={"ray_serve_multiplexed_model_id": "model_1"})
-            # This can also be set when using `RayServeHandle`.
+
+            # This can also be set when using `DeploymentHandle`.
             handle.options(multiplexed_model_id="model_1").remote("blablabla")
 
             # In your deployment code, you can retrieve the model id from
@@ -793,9 +769,7 @@ def get_app_handle(name: str) -> DeploymentHandle:
         raise RayServeException(f"Application '{name}' does not exist.")
 
     ServeUsageTag.SERVE_GET_APP_HANDLE_API_USED.record("1")
-    # Default to async within a deployment and sync outside a deployment.
-    sync = _get_internal_replica_context() is None
-    return client.get_handle(ingress, name, sync=sync, use_new_handle_api=True)
+    return client.get_handle(ingress, name)
 
 
 @DeveloperAPI
@@ -857,7 +831,7 @@ def get_deployment_handle(
             @serve.deployment
             class Adder:
                 def __init__(self, handle: DeploymentHandle, increment: int):
-                    self._handle = handle.options(use_new_handle_api=True)
+                    self._handle = handle
                     self._increment = increment
 
                 async def __call__(self, val: int) -> int:
@@ -889,8 +863,4 @@ def get_deployment_handle(
             app_name = internal_replica_context.app_name
 
     ServeUsageTag.SERVE_GET_DEPLOYMENT_HANDLE_API_USED.record("1")
-    # Default to async within a deployment and sync outside a deployment.
-    sync = internal_replica_context is None
-    return client.get_handle(
-        deployment_name, app_name, sync=sync, use_new_handle_api=True
-    )
+    return client.get_handle(deployment_name, app_name)

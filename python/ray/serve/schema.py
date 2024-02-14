@@ -1,5 +1,7 @@
 import logging
 from collections import Counter
+from contextlib import contextmanager
+from contextvars import ContextVar
 from dataclasses import dataclass, field
 from enum import Enum
 from typing import Any, Dict, List, Optional, Set, Union
@@ -9,13 +11,13 @@ from ray._private.pydantic_compat import (
     BaseModel,
     Extra,
     Field,
+    PositiveInt,
     root_validator,
     validator,
 )
 from ray._private.runtime_env.packaging import parse_uri
 from ray.serve._private.common import (
     ApplicationStatus,
-    DeploymentInfo,
     DeploymentStatus,
     DeploymentStatusTrigger,
     ProxyStatus,
@@ -25,11 +27,32 @@ from ray.serve._private.common import (
 from ray.serve._private.constants import (
     DEFAULT_GRPC_PORT,
     DEFAULT_UVICORN_KEEP_ALIVE_TIMEOUT_S,
+    RAY_SERVE_LOG_ENCODING,
     SERVE_DEFAULT_APP_NAME,
 )
+from ray.serve._private.deployment_info import DeploymentInfo
 from ray.serve._private.utils import DEFAULT
 from ray.serve.config import ProxyLocation
 from ray.util.annotations import PublicAPI
+
+# Allows selectively toggling validation of runtime_env URIs.
+# This is used by the `serve publish` CLI command to pass through local URIs to
+# publish providers.
+VALIDATE_RUNTIME_ENV_URIS = ContextVar("VALIDATE_RUNTIME_ENV_URIS", default=True)
+
+
+@contextmanager
+def _skip_validating_runtime_env_uris():
+    """Temporarily disable validation of runtime_env URIs across all schema models.
+
+    This uses a contextvar.ContextVar so has the same asyncio and threading properties.
+    """
+    try:
+        VALIDATE_RUNTIME_ENV_URIS.set(False)
+        yield
+    finally:
+        VALIDATE_RUNTIME_ENV_URIS.set(True)
+
 
 # Shared amongst multiple schemas.
 TARGET_CAPACITY_FIELD = Field(
@@ -85,16 +108,35 @@ class EncodingType(str, Enum):
 
 @PublicAPI(stability="alpha")
 class LoggingConfig(BaseModel):
-    """Logging config schema for configuring serve components logs."""
+    """Logging config schema for configuring serve components logs.
+
+    Example:
+
+        .. code-block:: python
+
+            from ray import serve
+            from ray.serve.schema import LoggingConfig
+            # Set log level for the deployment.
+            @serve.deployment(LoggingConfig(log_level="DEBUG")
+            class MyDeployment:
+                def __call__(self) -> str:
+                    return "Hello world!"
+            # Set log directory for the deployment.
+            @serve.deployment(LoggingConfig(logs_dir="/my_dir")
+            class MyDeployment:
+                def __call__(self) -> str:
+                    return "Hello world!"
+    """
 
     class Config:
         extra = Extra.forbid
 
     encoding: Union[str, EncodingType] = Field(
-        default="TEXT",
+        default_factory=lambda: RAY_SERVE_LOG_ENCODING,
         description=(
-            "Encoding type for the serve logs. Default to 'TEXT'. 'JSON' is also "
-            "supported to format all serve logs into json structure."
+            "Encoding type for the serve logs. Defaults to 'TEXT'. The default can be "
+            "overwritten using the `RAY_SERVE_LOG_ENCODING` environment variable. "
+            "'JSON' is also supported for structured logging."
         ),
     )
     log_level: Union[int, str] = Field(
@@ -121,7 +163,6 @@ class LoggingConfig(BaseModel):
 
     @validator("encoding")
     def valid_encoding_format(cls, v):
-
         if v not in list(EncodingType):
             raise ValueError(
                 f"Got '{v}' for encoding. Encoding must be one "
@@ -226,8 +267,11 @@ class RayActorOptionsSchema(BaseModel):
         if v is None:
             return
 
+        if not VALIDATE_RUNTIME_ENV_URIS.get():
+            return v
+
         uris = v.get("py_modules", [])
-        if "working_dir" in v:
+        if "working_dir" in v and v["working_dir"] not in uris:
             uris.append(v["working_dir"])
 
         for uri in uris:
@@ -255,13 +299,14 @@ class DeploymentSchema(BaseModel, allow_population_by_field_name=True):
     name: str = Field(
         ..., description=("Globally-unique name identifying this deployment.")
     )
-    num_replicas: Optional[int] = Field(
+    num_replicas: Optional[Union[PositiveInt, str]] = Field(
         default=DEFAULT.VALUE,
         description=(
             "The number of processes that handle requests to this "
-            "deployment. Uses a default if null."
+            "deployment. Uses a default if null. Can also be set to "
+            "`auto` for a default autoscaling configuration "
+            "(experimental)."
         ),
-        gt=0,
     )
     # route_prefix of None means the deployment is not exposed over HTTP.
     route_prefix: Union[str, None] = Field(
@@ -371,13 +416,23 @@ class DeploymentSchema(BaseModel, allow_population_by_field_name=True):
     )
 
     @root_validator
-    def num_replicas_and_autoscaling_config_mutually_exclusive(cls, values):
-        if values.get("num_replicas", None) not in [DEFAULT.VALUE, None] and values.get(
-            "autoscaling_config", None
-        ) not in [DEFAULT.VALUE, None]:
+    def num_replicas_and_autoscaling_config(cls, values):
+        num_replicas = values.get("num_replicas", None)
+        autoscaling_config = values.get("autoscaling_config", None)
+
+        # Cannot have `num_replicas` be an int and a non-null
+        # autoscaling config
+        if isinstance(num_replicas, int):
+            if autoscaling_config not in [None, DEFAULT.VALUE]:
+                raise ValueError(
+                    "Manually setting num_replicas is not allowed "
+                    "when autoscaling_config is provided."
+                )
+        # A null `num_replicas` or `num_replicas="auto"` can be paired
+        # with a non-null autoscaling_config
+        elif num_replicas not in ["auto", None, DEFAULT.VALUE]:
             raise ValueError(
-                "Manually setting num_replicas is not allowed "
-                "when autoscaling_config is provided."
+                f'`num_replicas` must be an int or "auto", but got: {num_replicas}'
             )
 
         return values
@@ -419,7 +474,7 @@ def _deployment_info_to_schema(name: str, info: DeploymentInfo) -> DeploymentSch
     )
 
     if info.deployment_config.autoscaling_config is not None:
-        schema.autoscaling_config = info.deployment_config.autoscaling_config
+        schema.autoscaling_config = info.deployment_config.autoscaling_config.dict()
     else:
         schema.num_replicas = info.deployment_config.num_replicas
 
@@ -503,13 +558,15 @@ class ServeApplicationSchema(BaseModel):
 
     @validator("runtime_env")
     def runtime_env_contains_remote_uris(cls, v):
-        # Ensure that all uris in py_modules and working_dir are remote
-
+        # Ensure that all uris in py_modules and working_dir are remote.
         if v is None:
             return
 
+        if not VALIDATE_RUNTIME_ENV_URIS.get():
+            return v
+
         uris = v.get("py_modules", [])
-        if "working_dir" in v:
+        if "working_dir" in v and v["working_dir"] not in uris:
             uris.append(v["working_dir"])
 
         for uri in uris:
@@ -1025,3 +1082,24 @@ class ServeInstanceDetails(BaseModel, extra=Extra.forbid):
                 for app_name, app in self.applications.items()
             },
         )
+
+    def _get_user_facing_json_serializable_dict(
+        self, *args, **kwargs
+    ) -> Dict[str, Any]:
+        """Generates json serializable dictionary with user facing data."""
+        values = super().dict(*args, **kwargs)
+
+        # `serialized_policy_def` is only used internally and should not be exposed to
+        # the REST api. This method iteratively removes it from each autoscaling config
+        # if exists.
+        for app_name, application in values["applications"].items():
+            for deployment_name, deployment in application["deployments"].items():
+                if (
+                    "deployment_config" in deployment
+                    and "autoscaling_config" in deployment["deployment_config"]
+                ):
+                    deployment["deployment_config"]["autoscaling_config"].pop(
+                        "serialized_policy_def", None
+                    )
+
+        return values

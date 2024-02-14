@@ -112,7 +112,7 @@ compile_pip_dependencies() {
   python -c "import torch" 2>/dev/null && HAS_TORCH=1
   pip install --no-cache-dir numpy torch
 
-  pip-compile --resolver=backtracking -q \
+  pip-compile --verbose --resolver=backtracking \
      --pip-args --no-deps --strip-extras --no-header -o \
     "${WORKSPACE_DIR}/python/$TARGET" \
     "${WORKSPACE_DIR}/python/requirements.txt" \
@@ -177,35 +177,6 @@ test_core() {
   bazel test --config=ci --build_tests_only $(./ci/run/bazel_export_options) -- "${args[@]}"
 }
 
-prepare_docker() {
-    rm "${WORKSPACE_DIR}"/python/dist/* ||:
-    pushd "${WORKSPACE_DIR}/python"
-    pip install -e . --verbose
-    python setup.py bdist_wheel
-    tmp_dir="/tmp/prepare_docker_$RANDOM"
-    mkdir -p $tmp_dir
-    cp "${WORKSPACE_DIR}"/python/dist/*.whl $tmp_dir
-    wheel=$(ls "${WORKSPACE_DIR}"/python/dist/)
-    base_image=$(python -c "import sys; print(f'rayproject/ray-deps:nightly-py{sys.version_info[0]}{sys.version_info[1]}-cpu')")
-    echo "
-    FROM $base_image
-
-    ENV LC_ALL=C.UTF-8
-    ENV LANG=C.UTF-8
-    COPY ./*.whl /
-    EXPOSE 8000
-    EXPOSE 10001
-    RUN pip install /${wheel}[serve]
-    RUN (sudo apt update || true) && sudo apt install curl -y
-    " > $tmp_dir/Dockerfile
-
-    pushd $tmp_dir
-    docker build . -t ray_ci:v1
-    popd
-
-    popd
-}
-
 # For running Serve tests on Windows.
 test_serve() {
   if [ "${OSTYPE}" = msys ]; then
@@ -262,6 +233,7 @@ test_python() {
       -python/ray/tests:test_tracing  # tracing not enabled on windows
       -python/ray/tests:kuberay/test_autoscaling_e2e # irrelevant on windows
       -python/ray/tests:vsphere/test_vsphere_node_provider # irrelevant on windows
+      -python/ray/tests:vsphere/test_vsphere_sdk_provider # irrelevant on windows
       -python/ray/tests/xgboost/... # Requires ML dependencies, should not be run on Windows
       -python/ray/tests/lightgbm/... # Requires ML dependencies, should not be run on Windows
       -python/ray/tests/horovod/... # Requires ML dependencies, should not be run on Windows
@@ -396,7 +368,7 @@ build_sphinx_docs() {
     if [ "${OSTYPE}" = msys ]; then
       echo "WARNING: Documentation not built on Windows due to currently-unresolved issues"
     else
-      FAST=True make html
+      make html
       pip install datasets==2.0.0
     fi
   )
@@ -408,7 +380,7 @@ check_sphinx_links() {
     if [ "${OSTYPE}" = msys ]; then
       echo "WARNING: Documentation not built on Windows due to currently-unresolved issues"
     else
-      FAST=True make linkcheck
+      make linkcheck
     fi
   )
 }

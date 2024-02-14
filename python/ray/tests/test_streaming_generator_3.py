@@ -12,7 +12,7 @@ from ray import serve
 
 from pydantic import BaseModel
 import ray
-from ray._raylet import StreamingObjectRefGenerator
+from ray._raylet import ObjectRefGenerator
 from ray.exceptions import WorkerCrashedError
 from ray._private.test_utils import run_string_as_driver_nonblocking
 from ray.util.state import list_actors
@@ -41,7 +41,7 @@ def test_threaded_actor_generator(shutdown_only):
 
         async def run():
             i = 0
-            async for ref in a.f.options(num_returns="streaming").remote():
+            async for ref in a.f.remote():
                 val = ray.get(ref)
                 print(val)
                 print(ref)
@@ -51,7 +51,7 @@ def test_threaded_actor_generator(shutdown_only):
 
         async def run2():
             i = 0
-            async for ref in asy.f.options(num_returns="streaming").remote():
+            async for ref in asy.f.remote():
                 val = await ref
                 print(ref)
                 print(val)
@@ -88,7 +88,7 @@ def test_generator_dist_gather(ray_start_cluster):
 
     async def all_gather():
         actor = Actor.remote()
-        async for ref in actor.get_data.options(num_returns="streaming").remote():
+        async for ref in actor.get_data.remote():
             val = await ref
             assert np.array_equal(np.ones(5 * 1024 * 1024), val)
             del ref
@@ -118,7 +118,7 @@ def test_generator_wait(shutdown_only):
         time.sleep(sleep_time)
         return 10
 
-    gen = f.options(num_returns="streaming").remote(1)
+    gen = f.remote(1)
 
     """
     Test basic cases.
@@ -141,7 +141,7 @@ def test_generator_wait(shutdown_only):
             assert next(r[0]) == 0
         assert len(ur) == 0
 
-    gen = f.options(num_returns="streaming").remote(0)
+    gen = f.remote(0)
     # Wait until the generator task finishes
     ray.get(gen._generator_ref)
     for i in range(2):
@@ -153,7 +153,7 @@ def test_generator_wait(shutdown_only):
     """
     Test the case ref is mixed with regular object ref.
     """
-    gen = f.options(num_returns="streaming").remote(0)
+    gen = f.remote(0)
     ref = g.remote(3)
     ready, unready = [], [gen, ref]
     result_set = set()
@@ -162,7 +162,7 @@ def test_generator_wait(shutdown_only):
         print(ready, unready)
         assert len(ready) == 1
         for r in ready:
-            if isinstance(r, StreamingObjectRefGenerator):
+            if isinstance(r, ObjectRefGenerator):
                 try:
                     ref = next(r)
                     print(ref)
@@ -180,7 +180,7 @@ def test_generator_wait(shutdown_only):
     """
     Test timeout.
     """
-    gen = f.options(num_returns="streaming").remote(3)
+    gen = f.remote(3)
     ref = g.remote(1)
     ready, unready = ray.wait([gen, ref], timeout=2)
     assert len(ready) == 1
@@ -189,7 +189,7 @@ def test_generator_wait(shutdown_only):
     """
     Test num_returns
     """
-    gen = f.options(num_returns="streaming").remote(1)
+    gen = f.remote(1)
     ref = g.remote(1)
     ready, unready = ray.wait([ref, gen], num_returns=2)
     assert len(ready) == 2
@@ -218,7 +218,6 @@ def test_generator_wait_e2e(shutdown_only, backpressure):
 
     gen = [
         f.options(
-            num_returns="streaming",
             _generator_backpressure_num_objects=threshold,
         ).remote(1)
         for _ in range(4)
@@ -230,7 +229,7 @@ def test_generator_wait_e2e(shutdown_only, backpressure):
     while unready:
         ready, unready = ray.wait(unready, num_returns=len(unready), timeout=0.1)
         for r in ready:
-            if isinstance(r, StreamingObjectRefGenerator):
+            if isinstance(r, ObjectRefGenerator):
                 try:
                     ref = next(r)
                     result.append(ray.get(ref))

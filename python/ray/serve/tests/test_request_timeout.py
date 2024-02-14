@@ -15,8 +15,8 @@ from ray import serve
 from ray._private.test_utils import SignalActor, wait_for_condition
 from ray.dashboard.modules.serve.sdk import ServeSubmissionClient
 from ray.serve._private.common import ApplicationStatus
+from ray.serve._private.test_utils import send_signal_on_cancellation
 from ray.serve.schema import ServeInstanceDetails
-from ray.serve.tests.common.utils import send_signal_on_cancellation
 from ray.util.state import list_tasks
 
 
@@ -306,7 +306,7 @@ def test_cancel_on_http_timeout_during_execution(
         @serve.ingress(app)
         class Ingress:
             def __init__(self, handle):
-                self._handle = handle.options(use_new_handle_api=True)
+                self._handle = handle
 
             @app.get("/")
             async def wait_for_cancellation(self):
@@ -318,7 +318,7 @@ def test_cancel_on_http_timeout_during_execution(
         @serve.deployment
         class Ingress:
             def __init__(self, handle):
-                self._handle = handle.options(use_new_handle_api=True)
+                self._handle = handle
 
             async def __call__(self, request: Request):
                 await self._handle.remote()._to_object_ref()
@@ -356,7 +356,7 @@ def test_cancel_on_http_timeout_during_assignment(ray_instance, shutdown_serve):
 
             return self._num_requests
 
-    h = serve.run(Ingress.bind()).options(use_new_handle_api=True)
+    h = serve.run(Ingress.bind())
 
     # Send a request and wait for it to be ongoing so we know that further requests
     # will be blocking trying to assign a replica.

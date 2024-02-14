@@ -250,6 +250,7 @@ class RAY_EXPORT PythonGcsClient {
   Status DrainNode(const std::string &node_id,
                    int32_t reason,
                    const std::string &reason_message,
+                   int64_t deadline_timestamp_ms,
                    int64_t timeout_ms,
                    bool &is_accepted);
   Status DrainNodes(const std::vector<std::string> &node_ids,
@@ -278,6 +279,8 @@ class RAY_EXPORT PythonGcsClient {
   std::unique_ptr<rpc::JobInfoGcsService::Stub> job_info_stub_;
   std::unique_ptr<rpc::autoscaler::AutoscalerStateService::Stub> autoscaler_stub_;
   std::shared_ptr<grpc::Channel> channel_;
+  // Make PythonGcsClient thread safe, so add a mutex to protect it.
+  absl::Mutex mutex_;
 };
 
 std::unordered_map<std::string, double> PythonGetResourcesTotal(

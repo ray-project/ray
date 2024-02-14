@@ -27,11 +27,7 @@ from ray.tune.result import (
     SHOULD_CHECKPOINT,
 )
 from ray.tune.trainable import Trainable
-from ray.tune.utils import (
-    _detect_checkpoint_function,
-    _detect_config_single,
-    _detect_reporter,
-)
+from ray.tune.utils import _detect_config_single
 from ray.util.annotations import DeveloperAPI
 
 
@@ -42,64 +38,6 @@ logger = logging.getLogger(__name__)
 
 NULL_MARKER = ".null_marker"
 TEMP_MARKER = ".temp_marker"
-
-
-_CHECKPOINT_DIR_ARG_DEPRECATION_MSG = """Accepting a `checkpoint_dir` argument in your training function is deprecated.
-Please use `ray.train.get_checkpoint()` to access your checkpoint as a
-`ray.train.Checkpoint` object instead. See below for an example:
-
-Before
-------
-
-from ray import tune
-
-def train_fn(config, checkpoint_dir=None):
-    if checkpoint_dir:
-        torch.load(os.path.join(checkpoint_dir, "checkpoint.pt"))
-    ...
-
-tuner = tune.Tuner(train_fn)
-tuner.fit()
-
-After
------
-
-from ray import train, tune
-
-def train_fn(config):
-    checkpoint: train.Checkpoint = train.get_checkpoint()
-    if checkpoint:
-        with checkpoint.as_directory() as checkpoint_dir:
-            torch.load(os.path.join(checkpoint_dir, "checkpoint.pt"))
-    ...
-
-tuner = tune.Tuner(train_fn)
-tuner.fit()"""  # noqa: E501
-
-_REPORTER_ARG_DEPRECATION_MSG = """Accepting a `reporter` in your training function is deprecated.
-Please use `ray.train.report()` to report results instead. See below for an example:
-
-Before
-------
-
-from ray import tune
-
-def train_fn(config, reporter):
-    reporter(metric=1)
-
-tuner = tune.Tuner(train_fn)
-tuner.fit()
-
-After
------
-
-from ray import train, tune
-
-def train_fn(config):
-    train.report({"metric": 1})
-
-tuner = tune.Tuner(train_fn)
-tuner.fit()"""  # noqa: E501
 
 
 @DeveloperAPI
@@ -271,7 +209,7 @@ class FunctionTrainable(Trainable):
 
 @DeveloperAPI
 def wrap_function(
-    train_func: Callable[[Any], Any], warn: bool = True, name: Optional[str] = None
+    train_func: Callable[[Any], Any], name: Optional[str] = None
 ) -> Type["FunctionTrainable"]:
     inherit_from = (FunctionTrainable,)
 
@@ -279,21 +217,12 @@ def wrap_function(
         inherit_from = train_func.__mixins__ + inherit_from
 
     func_args = inspect.getfullargspec(train_func).args
-    use_checkpoint = _detect_checkpoint_function(train_func)
     use_config_single = _detect_config_single(train_func)
-    use_reporter = _detect_reporter(train_func)
-
-    if use_checkpoint:
-        raise DeprecationWarning(_CHECKPOINT_DIR_ARG_DEPRECATION_MSG)
-
-    if use_reporter:
-        raise DeprecationWarning(_REPORTER_ARG_DEPRECATION_MSG)
 
     if not use_config_single:
-        # use_reporter is hidden
         raise ValueError(
             "Unknown argument found in the Trainable function. "
-            "The function args must include a 'config' positional parameter."
+            "The function args must include a single 'config' positional parameter.\n"
             "Found: {}".format(func_args)
         )
 

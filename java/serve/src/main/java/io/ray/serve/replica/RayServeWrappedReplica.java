@@ -18,7 +18,6 @@ import io.ray.serve.util.ServeProtoUtil;
 import java.io.IOException;
 import java.util.Map;
 import java.util.Optional;
-import org.apache.commons.lang3.StringUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -38,7 +37,6 @@ public class RayServeWrappedReplica implements RayServeReplica {
       byte[] initArgsbytes,
       byte[] deploymentConfigBytes,
       byte[] deploymentVersionBytes,
-      String controllerName,
       String appName) {
 
     // Parse DeploymentConfig.
@@ -69,23 +67,21 @@ public class RayServeWrappedReplica implements RayServeReplica {
     deploymentWrapper.setAppName(appName);
 
     // Init replica.
-    init(deploymentWrapper, replicaTag, controllerName);
+    init(deploymentWrapper, replicaTag);
   }
 
-  public RayServeWrappedReplica(
-      DeploymentWrapper deploymentWrapper, String replicaTag, String controllerName) {
-    init(deploymentWrapper, replicaTag, controllerName);
+  public RayServeWrappedReplica(DeploymentWrapper deploymentWrapper, String replicaTag) {
+    init(deploymentWrapper, replicaTag);
   }
 
   @SuppressWarnings("rawtypes")
-  private void init(DeploymentWrapper deploymentWrapper, String replicaTag, String controllerName) {
+  private void init(DeploymentWrapper deploymentWrapper, String replicaTag) {
     try {
       // Set the controller name so that Serve.connect() in the user's code will connect to the
       // instance that this deployment is running in.
       Serve.setInternalReplicaContext(
           deploymentWrapper.getName(),
           replicaTag,
-          controllerName,
           null,
           deploymentWrapper.getConfig(),
           deploymentWrapper.getAppName());
@@ -102,10 +98,9 @@ public class RayServeWrappedReplica implements RayServeReplica {
               .newInstance(deploymentWrapper.getInitArgs());
       Serve.getReplicaContext().setServableObject(callable);
 
-      // Get the controller by controllerName.
-      Preconditions.checkArgument(
-          StringUtils.isNotBlank(controllerName), "Must provide a valid controllerName");
-      Optional<BaseActorHandle> optional = Ray.getActor(controllerName, Constants.SERVE_NAMESPACE);
+      // Get the controller by name.
+      Optional<BaseActorHandle> optional =
+          Ray.getActor(Constants.SERVE_CONTROLLER_NAME, Constants.SERVE_NAMESPACE);
       Preconditions.checkState(optional.isPresent(), "Controller does not exist");
 
       // Enable metrics.

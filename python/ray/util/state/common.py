@@ -647,6 +647,8 @@ class WorkerState(StateSchema):
     )
     # the debugger port of the worker
     debugger_port: Optional[int] = state_column(filterable=True, detail=True)
+    # the number of threads paused in this worker
+    num_paused_threads: Optional[int] = state_column(filterable=True, detail=True)
 
 
 @dataclass(init=not IS_PYDANTIC_2)

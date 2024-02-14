@@ -1,3 +1,5 @@
+import copy
+import json
 import logging
 import sys
 from typing import Dict, List, Optional, Union
@@ -14,6 +16,8 @@ from ray.serve.schema import (
     RayActorOptionsSchema,
     ServeApplicationSchema,
     ServeDeploySchema,
+    ServeInstanceDetails,
+    _skip_validating_runtime_env_uris,
 )
 from ray.serve.tests.common.remote_uris import (
     TEST_DEPLOY_GROUP_PINNED_URI,
@@ -133,7 +137,13 @@ class TestRayActorOptionsSchema:
 
         ray_actor_options_schema = self.get_valid_ray_actor_options_schema()
         ray_actor_options_schema["runtime_env"] = env
-        RayActorOptionsSchema.parse_obj(ray_actor_options_schema)
+        schema = RayActorOptionsSchema.parse_obj(ray_actor_options_schema)
+
+        original_runtime_env = copy.deepcopy(schema.runtime_env)
+        # Make sure "working_dir" is only added once.
+        for _ in range(5):
+            schema = RayActorOptionsSchema.parse_obj(schema)
+            assert schema.runtime_env == original_runtime_env
 
     @pytest.mark.parametrize("env", get_invalid_runtime_envs())
     def test_ray_actor_options_invalid_runtime_env(self, env):
@@ -141,6 +151,17 @@ class TestRayActorOptionsSchema:
 
         ray_actor_options_schema = self.get_valid_ray_actor_options_schema()
         ray_actor_options_schema["runtime_env"] = env
+
+        # By default, runtime_envs with local URIs should be rejected.
+        with pytest.raises(ValueError):
+            RayActorOptionsSchema.parse_obj(ray_actor_options_schema)
+
+        # Inside the context, runtime_envs with local URIs should not be rejected.
+        with _skip_validating_runtime_env_uris():
+            schema = RayActorOptionsSchema.parse_obj(ray_actor_options_schema)
+            assert schema.runtime_env == env
+
+        # Check that the validation state is reset outside of the context manager.
         with pytest.raises(ValueError):
             RayActorOptionsSchema.parse_obj(ray_actor_options_schema)
 
@@ -295,6 +316,22 @@ class TestDeploymentSchema:
         with pytest.raises(ValueError):
             DeploymentSchema.parse_obj(deployment_schema)
 
+    def test_num_replicas_auto(self):
+        deployment_schema = self.get_minimal_deployment_schema()
+
+        deployment_schema["num_replicas"] = "auto"
+        deployment_schema["autoscaling_config"] = None
+        DeploymentSchema.parse_obj(deployment_schema)
+
+        deployment_schema["num_replicas"] = "auto"
+        deployment_schema["autoscaling_config"] = {"max_replicas": 99}
+        DeploymentSchema.parse_obj(deployment_schema)
+
+        deployment_schema["num_replicas"] = "random_str"
+        deployment_schema["autoscaling_config"] = None
+        with pytest.raises(ValueError):
+            DeploymentSchema.parse_obj(deployment_schema)
+
     def test_extra_fields_invalid_deployment_schema(self):
         # Undefined fields should be forbidden in the schema
 
@@ -395,7 +432,13 @@ class TestServeApplicationSchema:
 
         serve_application_schema = self.get_valid_serve_application_schema()
         serve_application_schema["runtime_env"] = env
-        ServeApplicationSchema.parse_obj(serve_application_schema)
+        schema = ServeApplicationSchema.parse_obj(serve_application_schema)
+
+        original_runtime_env = copy.deepcopy(schema.runtime_env)
+        # Make sure "working_dir" is only added once.
+        for _ in range(5):
+            schema = ServeApplicationSchema.parse_obj(schema)
+            assert schema.runtime_env == original_runtime_env
 
     @pytest.mark.parametrize("env", get_invalid_runtime_envs())
     def test_serve_application_invalid_runtime_env(self, env):
@@ -403,6 +446,19 @@ class TestServeApplicationSchema:
 
         serve_application_schema = self.get_valid_serve_application_schema()
         serve_application_schema["runtime_env"] = env
+        with pytest.raises(ValueError):
+            ServeApplicationSchema.parse_obj(serve_application_schema)
+
+        # By default, runtime_envs with local URIs should be rejected.
+        with pytest.raises(ValueError):
+            ServeApplicationSchema.parse_obj(serve_application_schema)
+
+        # Inside the context, runtime_envs with local URIs should not be rejected.
+        with _skip_validating_runtime_env_uris():
+            schema = ServeApplicationSchema.parse_obj(serve_application_schema)
+            assert schema.runtime_env == env
+
+        # Check that the validation was reset after the above call.
         with pytest.raises(ValueError):
             ServeApplicationSchema.parse_obj(serve_application_schema)
 
@@ -711,6 +767,85 @@ def test_unset_fields_schema_to_deployment_ray_actor_options():
     # Serve will set num_cpus to 1 if it's not set.
     assert len(deployment.ray_actor_options) == 1
     assert deployment.ray_actor_options["num_cpus"] == 1
+
+
+def test_serve_instance_details_is_json_serializable():
+    """Test that ServeInstanceDetails is json serializable."""
+    serialized_policy_def = (
+        b"\x80\x05\x95L\x00\x00\x00\x00\x00\x00\x00\x8c\x1cray."
+        b"serve.autoscaling_policy\x94\x8c'replica_queue_length_"
+        b"autoscaling_policy\x94\x93\x94."
+    )
+    details = ServeInstanceDetails(
+        controller_info={"node_id": "fake_node_id"},
+        proxy_location="EveryNode",
+        proxies={"node1": {"status": "HEALTHY"}},
+        applications={
+            "app1": {
+                "name": "app1",
+                "route_prefix": "/app1",
+                "docs_path": "/docs/app1",
+                "status": "RUNNING",
+                "message": "fake_message",
+                "last_deployed_time_s": 123,
+                "deployments": {
+                    "deployment1": {
+                        "name": "deployment1",
+                        "status": "HEALTHY",
+                        "status_trigger": "AUTOSCALING",
+                        "message": "fake_message",
+                        "deployment_config": {
+                            "name": "deployment1",
+                            "autoscaling_config": {
+                                # Byte object will cause json serializable error
+                                "serialized_policy_def": serialized_policy_def
+                            },
+                        },
+                        "replicas": [],
+                    }
+                },
+            }
+        },
+    )._get_user_facing_json_serializable_dict(exclude_unset=True)
+    details_json = json.dumps(details)
+
+    expected_json = json.dumps(
+        {
+            "controller_info": {"node_id": "fake_node_id"},
+            "proxy_location": "EveryNode",
+            "proxies": {"node1": {"status": "HEALTHY"}},
+            "applications": {
+                "app1": {
+                    "name": "app1",
+                    "route_prefix": "/app1",
+                    "docs_path": "/docs/app1",
+                    "status": "RUNNING",
+                    "message": "fake_message",
+                    "last_deployed_time_s": 123.0,
+                    "deployments": {
+                        "deployment1": {
+                            "name": "deployment1",
+                            "status": "HEALTHY",
+                            "status_trigger": "AUTOSCALING",
+                            "message": "fake_message",
+                            "deployment_config": {
+                                "name": "deployment1",
+                                "autoscaling_config": {},
+                            },
+                            "replicas": [],
+                        }
+                    },
+                }
+            },
+        }
+    )
+    assert details_json == expected_json
+
+    # ensure internal field, serialized_policy_def, is not exposed
+    application = details["applications"]["app1"]
+    deployment = application["deployments"]["deployment1"]
+    autoscaling_config = deployment["deployment_config"]["autoscaling_config"]
+    assert "serialized_policy_def" not in autoscaling_config
 
 
 if __name__ == "__main__":

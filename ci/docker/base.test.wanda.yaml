@@ -1,4 +1,4 @@
-name: "oss-ci-base_test"
+name: "oss-ci-base_test-py$PYTHON"
 froms: ["ubuntu:focal"]
 dockerfile: ci/docker/base.test.Dockerfile
 srcs:
@@ -6,5 +6,6 @@ srcs:
   - .bazeliskrc
 build_args:
   - BUILDKITE_BAZEL_CACHE_URL
+  - PYTHON
 tags:
-  - cr.ray.io/rayproject/oss-ci-base_test
+  - cr.ray.io/rayproject/oss-ci-base_test-py$PYTHON

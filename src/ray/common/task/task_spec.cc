@@ -485,13 +485,13 @@ std::string TaskSpecification::DebugString() const {
 
   stream << ", task_id=" << TaskId() << ", task_name=" << GetName()
          << ", job_id=" << JobId() << ", num_args=" << NumArgs()
-         << ", num_returns=" << NumReturns() << ", depth=" << GetDepth()
-         << ", attempt_number=" << AttemptNumber();
+         << ", num_returns=" << NumReturns() << ", max_retries=" << MaxRetries()
+         << ", depth=" << GetDepth() << ", attempt_number=" << AttemptNumber();
 
   if (IsActorCreationTask()) {
     // Print actor creation task spec.
     stream << ", actor_creation_task_spec={actor_id=" << ActorCreationId()
-           << ", max_restarts=" << MaxActorRestarts() << ", max_retries=" << MaxRetries()
+           << ", max_restarts=" << MaxActorRestarts()
            << ", max_concurrency=" << MaxActorConcurrency()
            << ", is_asyncio_actor=" << IsAsyncioActor()
            << ", is_detached=" << IsDetachedActor() << "}";
@@ -499,9 +499,7 @@ std::string TaskSpecification::DebugString() const {
     // Print actor task spec.
     stream << ", actor_task_spec={actor_id=" << ActorId()
            << ", actor_caller_id=" << CallerId() << ", actor_counter=" << ActorCounter()
-           << "}";
-  } else if (IsNormalTask()) {
-    stream << ", max_retries=" << MaxRetries();
+           << ", retry_exceptions=" << ShouldRetryExceptions() << "}";
   }
 
   // Print non-sensitive runtime env info.

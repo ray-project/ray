@@ -84,6 +84,9 @@ class ShuffleTaskSpec(ExchangeTaskSpec):
             block = block.random_shuffle(seed_i)
             block = BlockAccessor.for_block(block)
 
+        # Build a list of slices to return. It's okay to put the results in a
+        # list instead of yielding them as a generator because slicing the
+        # ArrowBlock is zero-copy.
         slice_sz = max(1, math.ceil(block.num_rows() / output_num_blocks))
         slices = []
         for i in range(output_num_blocks):
