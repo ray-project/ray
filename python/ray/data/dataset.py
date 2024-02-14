@@ -990,7 +990,7 @@ class Dataset:
         Examples:
             >>> import ray
             >>> ds = ray.data.range(100)
-            >>> ds.repartition(10).num_blocks()
+            >>> ds.repartition(10)._plan.initial_num_blocks()
             10
 
         Time complexity: O(dataset size / parallelism)

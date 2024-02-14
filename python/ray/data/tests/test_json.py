@@ -186,7 +186,7 @@ def test_json_read(ray_start_regular_shared, fs, data_path, endpoint_url):
     )
 
     ds = ray.data.read_json(path, filesystem=fs)
-    assert ds.num_blocks() == 2
+    assert ds._plan.initial_num_blocks() == 2
     df = pd.concat([df1, df2], ignore_index=True)
     dsdf = ds.to_pandas()
     assert df.equals(dsdf)

@@ -147,7 +147,7 @@ def test_numpy_read(ray_start_regular_shared, tmp_path):
         f.write("foobar")
 
     ds = ray.data.read_numpy(path, parallelism=1)
-    assert ds.num_blocks() == 1
+    assert ds._plan.initial_num_blocks() == 1
     assert ds.count() == 10
     assert str(ds) == (
         "Dataset(\n"

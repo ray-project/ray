@@ -33,7 +33,7 @@ def test_small_file_split(ray_start_10_cpus_shared, restore_data_context):
 
     ds = ray.data.read_csv("example://iris.csv", parallelism=1)
     materialized_ds = ds.materialize()
-    assert materialized_ds.num_blocks() == 1
+    assert materialized_ds._plan.initial_num_blocks() == 1
     last_snapshot = assert_core_execution_metrics_equals(
         CoreExecutionMetrics(
             task_count={
@@ -45,7 +45,7 @@ def test_small_file_split(ray_start_10_cpus_shared, restore_data_context):
     )
 
     materialized_ds = ds.map_batches(lambda x: x).materialize()
-    assert materialized_ds.num_blocks() == 1
+    assert materialized_ds._plan.initial_num_blocks() == 1
     last_snapshot = assert_core_execution_metrics_equals(
         CoreExecutionMetrics(
             task_count={
@@ -59,8 +59,8 @@ def test_small_file_split(ray_start_10_cpus_shared, restore_data_context):
     assert "Operator 1 ReadCSV->MapBatches" in stats, stats
 
     ds = ray.data.read_csv("example://iris.csv", parallelism=10)
-    assert ds.num_blocks() == 1
-    assert ds.map_batches(lambda x: x).materialize().num_blocks() == 10
+    assert ds._plan.initial_num_blocks() == 1
+    assert ds.map_batches(lambda x: x).materialize()._plan.initial_num_blocks() == 10
     last_snapshot = assert_core_execution_metrics_equals(
         CoreExecutionMetrics(
             task_count={
@@ -72,7 +72,7 @@ def test_small_file_split(ray_start_10_cpus_shared, restore_data_context):
         last_snapshot,
     )
 
-    assert ds.materialize().num_blocks() == 10
+    assert ds.materialize()._plan.initial_num_blocks() == 10
     last_snapshot = assert_core_execution_metrics_equals(
         CoreExecutionMetrics(
             task_count={
@@ -83,9 +83,9 @@ def test_small_file_split(ray_start_10_cpus_shared, restore_data_context):
     )
 
     ds = ray.data.read_csv("example://iris.csv", parallelism=100)
-    assert ds.num_blocks() == 1
-    assert ds.map_batches(lambda x: x).materialize().num_blocks() == 100
-    assert ds.materialize().num_blocks() == 100
+    assert ds._plan.initial_num_blocks() == 1
+    assert ds.map_batches(lambda x: x).materialize()._plan.initial_num_blocks() == 100
+    assert ds.materialize()._plan.initial_num_blocks() == 100
 
     ds = ds.map_batches(lambda x: x).materialize()
     stats = ds.stats()
@@ -97,7 +97,7 @@ def test_small_file_split(ray_start_10_cpus_shared, restore_data_context):
     ctx.target_max_block_size = 1
     ds = ds.map_batches(lambda x: x).materialize()
     # 150 rows.
-    assert ds.num_blocks() == 150
+    assert ds._plan.initial_num_blocks() == 150
     print(ds.stats())
 
 
@@ -110,38 +110,40 @@ def test_large_file_additional_split(ray_start_10_cpus_shared, tmp_path):
     ds.repartition(1).write_parquet(tmp_path)
 
     ds = ray.data.read_parquet(tmp_path, parallelism=1)
-    assert ds.num_blocks() == 1
+    assert ds._plan.initial_num_blocks() == 1
     print(ds.materialize().stats())
-    assert 5 < ds.materialize().num_blocks() < 20  # Size-based block split
+    assert (
+        5 < ds.materialize()._plan.initial_num_blocks() < 20
+    )  # Size-based block split
 
     ds = ray.data.read_parquet(tmp_path, parallelism=10)
-    assert ds.num_blocks() == 1
-    assert 5 < ds.materialize().num_blocks() < 20
+    assert ds._plan.initial_num_blocks() == 1
+    assert 5 < ds.materialize()._plan.initial_num_blocks() < 20
 
     ds = ray.data.read_parquet(tmp_path, parallelism=100)
-    assert ds.num_blocks() == 1
-    assert 50 < ds.materialize().num_blocks() < 200
+    assert ds._plan.initial_num_blocks() == 1
+    assert 50 < ds.materialize()._plan.initial_num_blocks() < 200
 
     ds = ray.data.read_parquet(tmp_path, parallelism=1000)
-    assert ds.num_blocks() == 1
-    assert 500 < ds.materialize().num_blocks() < 2000
+    assert ds._plan.initial_num_blocks() == 1
+    assert 500 < ds.materialize()._plan.initial_num_blocks() < 2000
 
 
 def test_map_batches_split(ray_start_10_cpus_shared, restore_data_context):
     ds = ray.data.range(1000, parallelism=1).map_batches(lambda x: x, batch_size=1000)
-    assert ds.materialize().num_blocks() == 1
+    assert ds.materialize()._plan.initial_num_blocks() == 1
 
     ctx = ray.data.context.DataContext.get_current()
     # 100 integer rows per block.
     ctx.target_max_block_size = 800
 
     ds = ray.data.range(1000, parallelism=1).map_batches(lambda x: x, batch_size=1000)
-    assert ds.materialize().num_blocks() == 10
+    assert ds.materialize()._plan.initial_num_blocks() == 10
 
     # A single row is already larger than the target block
     # size.
     ctx.target_max_block_size = 4
-    assert ds.materialize().num_blocks() == 1000
+    assert ds.materialize()._plan.initial_num_blocks() == 1000
 
 
 if __name__ == "__main__":

@@ -312,12 +312,12 @@ def test_basic(ray_start_regular_shared):
 
 def test_range(ray_start_regular_shared):
     ds = ray.data.range(10, parallelism=10)
-    assert ds.num_blocks() == 10
+    assert ds._plan.initial_num_blocks() == 10
     assert ds.count() == 10
     assert ds.take() == [{"id": i} for i in range(10)]
 
     ds = ray.data.range(10, parallelism=2)
-    assert ds.num_blocks() == 2
+    assert ds._plan.initial_num_blocks() == 2
     assert ds.count() == 10
     assert ds.take() == [{"id": i} for i in range(10)]
 
@@ -634,7 +634,7 @@ def test_from_items_parallelism(ray_start_regular_shared, parallelism):
     ds = ray.data.from_items(records, parallelism=parallelism)
     out = ds.take_all()
     assert out == records
-    assert ds.num_blocks() == parallelism
+    assert ds._plan.initial_num_blocks() == parallelism
 
 
 def test_from_items_parallelism_truncated(ray_start_regular_shared):
@@ -646,7 +646,7 @@ def test_from_items_parallelism_truncated(ray_start_regular_shared):
     ds = ray.data.from_items(records, parallelism=parallelism)
     out = ds.take_all()
     assert out == records
-    assert ds.num_blocks() == n
+    assert ds._plan.initial_num_blocks() == n
 
 
 def test_take_batch(ray_start_regular_shared):
@@ -1172,7 +1172,7 @@ def test_union(ray_start_regular_shared):
 
     # Test lazy union.
     ds = ds.union(ds, ds, ds, ds)
-    assert ds.num_blocks() == 50
+    assert ds._plan.initial_num_blocks() == 50
     assert ds.count() == 100
     assert ds.sum() == 950
 

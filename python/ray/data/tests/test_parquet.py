@@ -398,7 +398,7 @@ def test_parquet_read_bulk(ray_start_regular_shared, fs, data_path):
     pq.write_table(txt_table, _unwrap_protocol(txt_path), filesystem=fs)
 
     ds = ray.data.read_parquet_bulk(paths + [txt_path], filesystem=fs)
-    assert ds.num_blocks() == 2
+    assert ds._plan.initial_num_blocks() == 2
 
     # Forces a data read.
     values = [[s["one"], s["two"]] for s in ds.take()]
@@ -835,7 +835,7 @@ def test_parquet_reader_estimate_data_size(shutdown_only, tmp_path):
         tensor_output_path = os.path.join(tmp_path, "tensor")
         ray.data.range_tensor(1000, shape=(1000,)).write_parquet(tensor_output_path)
         ds = ray.data.read_parquet(tensor_output_path)
-        assert ds.num_blocks() > 1
+        assert ds._plan.initial_num_blocks() > 1
         data_size = ds.size_bytes()
         assert (
             data_size >= 6_000_000 and data_size <= 10_000_000
@@ -863,7 +863,7 @@ def test_parquet_reader_estimate_data_size(shutdown_only, tmp_path):
             text_output_path
         )
         ds = ray.data.read_parquet(text_output_path)
-        assert ds.num_blocks() > 1
+        assert ds._plan.initial_num_blocks() > 1
         data_size = ds.size_bytes()
         assert (
             data_size >= 1_000_000 and data_size <= 2_000_000
@@ -1013,7 +1013,7 @@ def test_parquet_write_create_dir(
     # Test that writing empty blocks does not create empty parquet files,
     # nor does it create empty directories when no files are created.
     ds_all_empty = ds.filter(lambda x: x["one"] > 10).materialize()
-    assert ds_all_empty.num_blocks() == 2
+    assert ds_all_empty._plan.initial_num_blocks() == 2
     assert ds_all_empty.count() == 0
 
     all_empty_key = "all_empty"
@@ -1022,7 +1022,7 @@ def test_parquet_write_create_dir(
 
     ds_contains_some_empty = ds.union(ds_all_empty)
     # 2 blocks from original ds with 6 rows total, 2 empty blocks from ds_all_empty.
-    assert ds_contains_some_empty.num_blocks() == 4
+    assert ds_contains_some_empty._plan.initial_num_blocks() == 4
     assert ds_contains_some_empty.count() == 6
 
     some_empty_key = "some_empty"
