@@ -711,11 +711,10 @@ class TrainableFunctionApiTest(unittest.TestCase):
         )
         trials = tune.run(test, raise_on_failed_trial=False, **config).trials
         self.assertEqual(Counter(t.status for t in trials)["ERROR"], 5)
-        new_trials = tune.run(test, resume="ERRORED_ONLY", **config).trials
+        new_trials = tune.run(test, resume="AUTO+ERRORED_ONLY", **config).trials
         self.assertEqual(Counter(t.status for t in new_trials)["ERROR"], 0)
         self.assertTrue(all(t.last_result.get("hello") == 123 for t in new_trials))
 
-    # Test rerunning rllib trials with ERRORED_ONLY.
     def testRerunRlLib(self):
         class TestEnv(gym.Env):
             counter = 0
@@ -755,7 +754,7 @@ class TrainableFunctionApiTest(unittest.TestCase):
                 "num_workers": 0,
             },
             name="my_experiment",
-            resume="ERRORED_ONLY",
+            resume="AUTO+ERRORED_ONLY",
             stop={"training_iteration": 1},
         ).trials
         assert len(trials) == 1 and trials[0].status == Trial.TERMINATED

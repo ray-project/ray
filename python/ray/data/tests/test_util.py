@@ -111,6 +111,26 @@ def get_parquet_read_logical_op(
     return read_op
 
 
+@ray.remote(num_cpus=0)
+class ConcurrencyCounter:
+    def __init__(self):
+        self.concurrency = 0
+        self.max_concurrency = 0
+
+    def inc(self):
+        self.concurrency += 1
+        if self.concurrency > self.max_concurrency:
+            self.max_concurrency = self.concurrency
+        return self.concurrency
+
+    def decr(self):
+        self.concurrency -= 1
+        return self.concurrency
+
+    def get_max_concurrency(self):
+        return self.max_concurrency
+
+
 if __name__ == "__main__":
     import sys
 
