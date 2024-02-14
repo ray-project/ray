@@ -169,13 +169,13 @@ def _xgboost_train_fn_per_worker(
     from ray.train._internal.session import get_session
 
     checkpoint = ray.train.get_checkpoint()
-    init_model = None
+    starting_model = None
     remaining_iters = num_boost_round
     if checkpoint:
-        init_model = RayTrainReportCallback.get_model(checkpoint)
-        starting_iter = init_model.num_boosted_rounds()
+        starting_model = RayTrainReportCallback.get_model(checkpoint)
+        starting_iter = starting_model.num_boosted_rounds()
         remaining_iters = num_boost_round - starting_iter
-        logger.warning(
+        logger.info(
             f"Model loaded from checkpoint will train for "
             f"additional {remaining_iters} iterations (trees) in order "
             "to achieve the target number of iterations "
@@ -205,6 +205,7 @@ def _xgboost_train_fn_per_worker(
             evals=evals,
             evals_result=evals_result,
             num_boost_round=remaining_iters,
+            xgb_model=starting_model,
             **xgboost_train_kwargs,
         )
 
@@ -271,6 +272,9 @@ class XGBoostTrainer(SimpleXGBoostTrainer):
             for checkpoints saved from this Trainer. Must be JSON-serializable.
         **train_kwargs: Additional kwargs passed to ``xgboost.train()`` function.
     """
+
+    _handles_checkpoint_freq = True
+    _handles_checkpoint_at_end = True
 
     def __init__(
         self,

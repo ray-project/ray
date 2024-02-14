@@ -96,7 +96,7 @@ def test_resume_from_checkpoint(ray_start_4_cpus, tmpdir):
     result = trainer.fit()
     checkpoint = result.checkpoint
     xgb_model = XGBoostTrainer.get_model(checkpoint)
-    assert get_num_trees(xgb_model) == 5
+    assert xgb_model.num_boosted_rounds() == 5
 
     trainer = XGBoostTrainer(
         scaling_config=scale_config,
@@ -108,7 +108,7 @@ def test_resume_from_checkpoint(ray_start_4_cpus, tmpdir):
     )
     result = trainer.fit()
     model = XGBoostTrainer.get_model(result.checkpoint)
-    assert get_num_trees(model) == 10
+    assert model.num_boosted_rounds() == 10
 
 
 @pytest.mark.parametrize(
@@ -158,18 +158,16 @@ def test_tune(ray_start_8_cpus):
     trainer = XGBoostTrainer(
         scaling_config=scale_config,
         label_column="target",
-        params={**params, **{"max_depth": 1}},
+        params={**params, "max_depth": 1},
         datasets={TRAIN_DATASET_KEY: train_dataset, "valid": valid_dataset},
     )
 
-    tune.run(
-        trainer.as_trainable(),
-        config={"params": {"max_depth": tune.randint(2, 4)}},
-        num_samples=2,
+    tuner = tune.Tuner(
+        trainer,
+        param_space={"params": {"max_depth": tune.grid_search([2, 4])}},
     )
-
-    # Make sure original Trainer is not affected.
-    assert trainer.params["max_depth"] == 1
+    results = tuner.fit()
+    assert sorted([r.config["params"]["max_depth"] for r in results]) == [2, 4]
 
 
 def test_validation(ray_start_4_cpus):
