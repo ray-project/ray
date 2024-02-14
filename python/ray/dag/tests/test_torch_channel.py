@@ -8,7 +8,7 @@ import pytest
 import ray
 import ray.cluster_utils
 from ray.dag import InputNode, MultiOutputNode, compiled_dag_node
-from ray.experimental.torch_channel import batch_wait
+from ray.util import collective as col
 from ray.tests.conftest import *  # noqa
 
 
@@ -18,11 +18,17 @@ if sys.platform != "linux":
     pytest.skip("Skipping, requires Linux.", allow_module_level=True)
 
 
-def enable_torch_channel():
-    # Patch these flags to force enable this for test.
-    # compiled_dag_node.USE_TORCH_CHANNEL = True
-    # compiled_dag_node.USE_TORCH_BROADCAST = True
-    pass
+MAX_BUFFER_SIZE = int(100 * 1e6)
+USE_TORCH_CHANNEL = bool(int(os.environ.get("USE_TORCH_CHANNEL", "0")))
+USE_COLLECTIVE_CHANNEL = bool(int(os.environ.get("USE_COLLECTIVE_CHANNEL", "0")))
+if USE_COLLECTIVE_CHANNEL:
+    print("USE_COLLECTIVE_CHANNEL")
+    from ray.experimental.collective_channel import RayCollectiveChannel as Channel
+elif USE_TORCH_CHANNEL:
+    print("USE_TORCH_CHANNEL")
+    from ray.experimental.torch_channel import TorchChannel as Channel
+# else:
+#     raise ValueError("Should set an env var USE_TORCH_CHANNEL=1 or USE_COLLECTIVE_CHANNEL=1")
 
 
 @ray.remote
@@ -31,16 +37,46 @@ class Actor:
         print("__init__ PID", os.getpid())
 
     def noop(self, _):
-        time.sleep(0.001)
+        # time.sleep(0.001)
         return b"value"
+
+
+@pytest.mark.skipif(sys.platform != "linux", reason="Requires Linux.")
+def test_put_local_get(ray_start_regular):
+
+    @ray.remote
+    class Actor:
+        def __init__(self):
+            self.chan = Channel(
+                MAX_BUFFER_SIZE,
+                [0],
+                0,
+            )
+
+        def recv(self):
+            return_val = self.chan.begin_read()
+            self.chan.end_read()
+            return return_val
+
+    actor = Actor.remote()
+    chan = Channel(
+        MAX_BUFFER_SIZE,
+        [1],
+        0,
+    )
+    col.create_and_init_collective_group([actor], include_driver=True)
+
+    for i in range(1000):
+        val = i.to_bytes(8, "little")
+        recv_fut = actor.recv.remote()
+        chan.write(val)
+        assert ray.get(recv_fut) == val
 
 
 def test_basic(ray_start_regular):
     # Run in a separate process since proper teardown isn't implemented yet.
     @ray.remote
     def f():
-        enable_torch_channel()
-
         a = Actor.remote(0)
         with InputNode() as i:
             dag = a.noop.bind(i)
@@ -68,17 +104,17 @@ def test_broadcast(ray_start_regular):
     # Run in a separate process since proper teardown isn't implemented yet.
     @ray.remote
     def f():
-        enable_torch_channel()
         elapsed = []
+        NUM_ACTORS = 8
 
-        actors = [Actor.remote(0) for _ in range(8)]
+        actors = [Actor.remote(0) for _ in range(NUM_ACTORS)]
         with InputNode() as i:
             out = [a.noop.bind(i) for a in actors]
             dag = MultiOutputNode(out)
 
         compiled_dag = dag.experimental_compile(buffer_size_bytes=1000)
 
-        it = 10000
+        it = 10
         s = time.time()
         for i in range(it):
             g = time.time()
@@ -86,7 +122,7 @@ def test_broadcast(ray_start_regular):
             # TODO(sang): We should batch wait to improve throughput.
             # results = batch_wait(output_channels)
             results = [chan.begin_read() for chan in output_channels]
-            # assert results == [b"value"] * 4
+            assert results == [b"value"] * NUM_ACTORS
             for chan in output_channels:
                 chan.end_read()
             elapsed.append((time.time() - g) * 1000 * 1000)

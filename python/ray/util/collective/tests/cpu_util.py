@@ -5,7 +5,7 @@ import ray
 import ray.util.collective as col
 from ray.util.collective.types import Backend, ReduceOp
 
-import torch
+# import torch
 
 logger = logging.getLogger(__name__)
 

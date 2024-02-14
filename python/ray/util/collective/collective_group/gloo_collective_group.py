@@ -197,7 +197,7 @@ class GLOOGroup(BaseGroup):
             rank: The id of process
             group_name: The unique user-specified group name.
             store_type: The store type. Optional: "redis",
-                              "file", "hash".
+                              "file", "hash", "ray_internal_kv".
             device_type: The device type to transport.
                                Optional: "tcp", "uv".
         """

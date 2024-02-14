@@ -271,7 +271,7 @@ class SignalActor:
 class RayInternalKvStore:
     def __init__(self, group_name: str):
         self._group_name = group_name
-        self._job_id = ray.get_runtime_context().job_id
+        self._job_id = ray.get_runtime_context().get_job_id()
         gcs_address = ray._private.worker._global_node.gcs_address
         self._gcs_client = GcsClient(address=gcs_address, nums_reconnect_retry=10)
         internal_kv._initialize_internal_kv(self._gcs_client)
@@ -313,4 +313,4 @@ class RayInternalKvStore:
     def __concat_key_with_prefixes(self, original_key):
         """Concat the necessary prefixes and key for isolation purpose for
         different jobs and different groups."""
-        return f"{self._job_id.hex()}-{self._group_name}-{original_key}"
+        return f"{self._job_id}-{self._group_name}-{original_key}"

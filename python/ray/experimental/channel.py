@@ -169,6 +169,3 @@ class Channel:
         """
         logger.debug(f"Setting error bit on channel: {self._base_ref}")
         self._worker.core_worker.experimental_mutable_object_set_error(self._base_ref)
-
-    def begine_read_async(self) -> Any:
-        pass

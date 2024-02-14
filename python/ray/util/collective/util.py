@@ -55,14 +55,16 @@ class Info:
         self.world_size = -1
         self.rank = -1
         self.backend = None
+        self.include_driver = False
 
-    def set_info(self, ids, world_size, rank, backend):
+    def set_info(self, ids, world_size, rank, backend, include_driver=False):
         """Store collective information."""
         self.ids = ids
         self.world_size = world_size
         self.rank = rank
         self.backend = backend
+        self.include_driver = include_driver
 
     def get_info(self):
         """Get previously stored collective information."""
-        return self.ids, self.world_size, self.rank, self.backend
+        return self.ids, self.world_size, self.rank, self.backend, self.include_driver

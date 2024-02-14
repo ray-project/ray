@@ -9,13 +9,16 @@ import ray
 from ray.exceptions import RayTaskError
 from ray.experimental.channel import Channel
 from ray.experimental.torch_channel import TorchChannel
+from ray.experimental.collective_channel import RayCollectiveChannel
 from ray.util.annotations import DeveloperAPI
+import ray.util.collective as col
 
 
 MAX_BUFFER_SIZE = int(100 * 1e6)  # 100MB
 
 # Experimental support for using gloo as the channel backend.
 USE_TORCH_CHANNEL = bool(int(os.environ.get("USE_TORCH_CHANNEL", "0")))
+USE_COLLECTIVE_CHANNEL = bool(int(os.environ.get("USE_COLLECTIVE_CHANNEL", "0")))
 USE_TORCH_BROADCAST = bool(int(os.environ.get("USE_TORCH_BROADCAST", "1")))
 
 logger = logging.getLogger(__name__)
@@ -26,6 +29,9 @@ def do_allocate_channel(
     self, buffer_size_bytes: int, reader_ranks: int, writer_rank: int, strategy: str
 ) -> Channel:
     """Generic actor method to allocate an output channel.
+
+    Args:
+        SANG-TODO
 
     Returns:
         The allocated channel.
@@ -40,8 +46,10 @@ def _make_channel(
     buffer_size_bytes: int, reader_ranks: int, writer_rank: int, strategy: str
 ):
     if USE_TORCH_CHANNEL:
-        chan = TorchChannel(buffer_size_bytes, reader_ranks, writer_rank, strategy)
-        return chan
+        return TorchChannel(buffer_size_bytes, reader_ranks, writer_rank, strategy)
+    elif USE_COLLECTIVE_CHANNEL:
+        # SANG-TODO
+        return RayCollectiveChannel(buffer_size_bytes, reader_ranks, writer_rank)
     else:
         return Channel(buffer_size_bytes, len(reader_ranks))
 
@@ -390,6 +398,8 @@ class CompiledDAG:
 
         if USE_TORCH_CHANNEL:
             self._torch_init()
+        elif USE_COLLECTIVE_CHANNEL:
+            self._ray_collective_init()
 
         for node_idx, task in self.idx_to_task.items():
             if node_idx == self.input_task_idx:
@@ -463,6 +473,15 @@ class CompiledDAG:
             futs.append(fn.remote(torch_init, rank=rank, world_size=world_size))
         torch_init(self, rank=self.input_task_idx, world_size=world_size)
         ray.get(futs)
+
+    def _ray_collective_init(self):
+        logger.info(f"Actor ranks {self.actor_ranks}")
+        logger.info(f"Driver ranks {self.input_task_idx}")
+        logger.info(f"actor refs: {self.actor_refs}")
+        col.create_and_init_collective_group(
+            self.actor_refs,
+            backend="gloo", 
+            include_driver=True)
 
     def _monitor_failures(self):
         outer = self

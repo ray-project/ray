@@ -40,7 +40,7 @@ class TorchChannel(Channel):
         self._worker.check_connected()
         self._strategy = strategy
         assert strategy in ["broadcast", "isend"]
-        logger.debug(
+        logger.info(
             f"Created Torch channel with buffer_size_bytes={buffer_size_bytes}, "
             f"reader_ranks={reader_ranks}, writer_rank={writer_rank}, "
             f"strategy={strategy}"
@@ -93,7 +93,7 @@ class TorchChannel(Channel):
         datalen = self._arr[:4].numpy().view(np.uint32)[0]
         return self._deserialize(self._arr[4 : 4 + datalen].numpy().tobytes())
 
-    def begine_read_async(self) -> Any:
+    def begin_read_async(self) -> Any:
         if self._strategy == "broadcast":
             future = self._torch.distributed.broadcast(self._arr, src=self._writer_rank, group=self.group, async_op=True)
         else:
@@ -120,7 +120,7 @@ def batch_wait(channels):
     futures = []
     for chan in channels:
         # s = time.time()
-        futures.append(chan.begine_read_async())
+        futures.append(chan.begin_read_async())
         # print("futures generatoion takes,", (time.time() - s) * 1000 * 1000)
     # s = time.time()
     for future in futures:
