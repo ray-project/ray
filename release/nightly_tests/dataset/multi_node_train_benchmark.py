@@ -124,7 +124,7 @@ def parse_args():
     )
     parser.add_argument(
         "--num-retries",
-        default=1,
+        default=3,
         type=int,
         help="Number of retries for the Trainer before exiting the benchmark.",
     )
