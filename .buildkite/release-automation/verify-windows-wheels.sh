@@ -32,7 +32,6 @@ _clean_up() {
 TMP_DIR=$(mktemp -d "$HOME/tmp.XXXXXXXXXX")
 #trap _clean_up EXIT
 source /c/Miniconda3/etc/profile.d/conda.sh
-source /c/Users/ContainerAdministrator/.bash_profile
 
 # Install Ray & run sanity checks for each python version
 for python_version in "${PYTHON_VERSIONS[@]}"; do
