@@ -1,6 +1,9 @@
 name: "windows_build_release_automation"
 froms: ["@rayproject/buildenv:windows"]
 dockerfile: .buildkite/release-automation/windows.Dockerfile
+build_args:
+  - BUILDKITE_BAZEL_CACHE_URL
+  - BUILDKITE_PIPELINE_ID
 srcs:
   - .buildkite/release-automation/build_windows.sh
   - ci/ray_ci/windows/build_ray.sh

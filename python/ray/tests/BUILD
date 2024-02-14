@@ -296,6 +296,7 @@ py_test_module_list(
     "test_unhandled_error.py",
     "test_widgets.py",
     "accelerators/test_accelerators.py",
+    "test_sanity_check.py",
   ],
   size = "small",
   tags = ["exclusive", "small_size_python_tests", "team:core"],
