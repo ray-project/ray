@@ -1010,7 +1010,7 @@ class HTTPProxy(GenericProxy):
             # any messages to the client yet. Header (including status code)
             # messages can only be sent once.
             if not response_started:
-                async for message in convert_object_to_asgi_messages(
+                for message in convert_object_to_asgi_messages(
                     f"Request {request_id} timed out after {self.request_timeout_s}s.",
                     status_code=408,
                 ):
