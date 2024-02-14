@@ -1,7 +1,7 @@
 import abc
 import operator
 from abc import abstractmethod
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, Tuple
 
 import ray
 from ray.autoscaler.v2.schema import AutoscalerInstance, ClusterStatus, ResourceUsage
@@ -15,6 +15,13 @@ def make_autoscaler_instance(
     ray_node: Optional[autoscaler_pb2.NodeState] = None,
     cloud_instance_id: Optional[str] = None,
 ) -> AutoscalerInstance:
+
+    if cloud_instance_id:
+        if im_instance:
+            im_instance.cloud_instance_id = cloud_instance_id
+        if ray_node:
+            ray_node.instance_id = cloud_instance_id
+
     return AutoscalerInstance(
         im_instance=im_instance,
         ray_node=ray_node,
@@ -37,14 +44,25 @@ class FakeCounter:
 def create_instance(
     instance_id,
     status=Instance.UNKNOWN,
-    version=0,
     instance_type="worker_nodes1",
+    status_times: List[Tuple["Instance.InstanceStatus", int]] = None,
+    launch_request_id="",
+    version=0,
+    cloud_instance_id="",
 ):
     return Instance(
         instance_id=instance_id,
         status=status,
         version=version,
         instance_type=instance_type,
+        launch_request_id=launch_request_id,
+        status_history=[
+            Instance.StatusHistory(instance_status=status, timestamp_ns=ts)
+            for status, ts in status_times
+        ]
+        if status_times
+        else [],
+        cloud_instance_id=cloud_instance_id,
     )
 
 

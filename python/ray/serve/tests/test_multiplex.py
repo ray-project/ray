@@ -11,7 +11,7 @@ from ray._private.test_utils import SignalActor, wait_for_condition
 from ray._private.utils import get_or_create_event_loop
 from ray.serve._private.constants import SERVE_MULTIPLEXED_MODEL_ID
 from ray.serve.context import _get_internal_replica_context
-from ray.serve.handle import RayServeHandle
+from ray.serve.handle import DeploymentHandle
 from ray.serve.multiplex import _ModelMultiplexWrapper
 
 
@@ -359,7 +359,7 @@ def test_multiplexed_replica_info(serve_instance):
     )
 
 
-def check_model_id_in_replicas(handle: RayServeHandle, model_id: str) -> bool:
+def check_model_id_in_replicas(handle: DeploymentHandle, model_id: str) -> bool:
     replica_scheduler = handle._get_or_create_router()[0]._replica_scheduler
     replica_to_model_ids = {
         tag: replica.multiplexed_model_ids
@@ -482,7 +482,7 @@ def test_setting_model_id_on_handle_does_not_set_it_locally(serve_instance):
 
     @serve.deployment
     class Upstream:
-        def __init__(self, downstream: RayServeHandle):
+        def __init__(self, downstream: DeploymentHandle):
             self._h = downstream
 
         async def __call__(self):

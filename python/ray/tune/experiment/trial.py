@@ -541,8 +541,8 @@ class Trial:
     @property
     @Deprecated("Replaced by `local_path`")
     def logdir(self) -> Optional[str]:
-        # Deprecate: Raise in 2.5, Remove in 2.6
-        return self.local_path
+        # TODO(justinvyu): [Deprecated] Remove in 2.11.
+        raise DeprecationWarning("Use `local_path` instead of `logdir`.")
 
     @property
     def local_path(self) -> Optional[str]:
@@ -592,7 +592,7 @@ class Trial:
     def generate_id(cls):
         return str(uuid.uuid4().hex)[:8]
 
-    def reset(self):
+    def reset(self) -> "Trial":
         # If there is `default_resource_request` associated with the trainable,
         # clear `resources` and `placement_group_factory`.
         # This is mainly relevant for RLlib tuning jobs, where we save users
@@ -627,8 +627,8 @@ class Trial:
 
     @Deprecated("Replaced by `init_local_path()`")
     def init_logdir(self):
-        # Deprecate: Raise in 2.5, Remove in 2.6
-        self.init_local_path()
+        # TODO(justinvyu): [Deprecated] Remove in 2.11.
+        raise DeprecationWarning("Use `init_local_path` instead of `init_logdir`.")
 
     def init_local_path(self):
         """Init logdir."""

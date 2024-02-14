@@ -48,7 +48,7 @@ from ray.tune.result import (
     SHOULD_CHECKPOINT,
 )
 from ray.tune.result import TRIAL_INFO, STDOUT_FILE, STDERR_FILE
-from ray.tune import TuneError
+from ray.tune import ResumeConfig, TuneError
 from ray.tune.callback import Callback, CallbackList
 from ray.tune.schedulers import FIFOScheduler, TrialScheduler
 from ray.tune.stopper import NoopStopper, Stopper
@@ -80,7 +80,7 @@ class TuneController:
         placeholder_resolvers: Optional[Dict[Tuple, Any]] = None,
         scheduler: Optional[TrialScheduler] = None,
         stopper: Optional[Stopper] = None,
-        resume: Union[str, bool] = False,
+        resume_config: Optional[ResumeConfig] = None,
         fail_fast: bool = False,
         checkpoint_period: Union[str, int] = None,
         callbacks: Optional[List[Callback]] = None,
@@ -228,15 +228,14 @@ class TuneController:
         self._checkpoint_manager = self._create_checkpoint_manager()
 
         self._resumed = False
-        resume_config = self._checkpoint_manager.resume(resume_type=resume)
 
-        if resume_config:
+        if resume_config is not None:
+            # Sync down state from storage
+            self._checkpoint_manager.resume()
+
+            # Use the metadata file to restore TuneController state
             try:
-                self.resume(
-                    resume_unfinished=resume_config.resume_unfinished,
-                    resume_errored=resume_config.resume_errored,
-                    restart_errored=resume_config.restart_errored,
-                )
+                self.resume(resume_config=resume_config)
                 self._resumed = True
             except Exception as e:
                 if has_verbosity(Verbosity.V3_TRIAL_DETAILS):
@@ -479,12 +478,7 @@ class TuneController:
                 save_fn=self.save_to_dir, force=force, wait=wait
             )
 
-    def resume(
-        self,
-        resume_unfinished: bool = True,
-        resume_errored: bool = False,
-        restart_errored: bool = False,
-    ):
+    def resume(self, resume_config: ResumeConfig):
         """Resumes all checkpointed trials from previous run.
 
         Requires user to manually re-register their objects. Also stops
@@ -496,18 +490,33 @@ class TuneController:
         for trial in sorted(
             trials, key=lambda t: t.run_metadata.last_result_time, reverse=True
         ):
-            trial_to_add = trial
             if trial.status == Trial.ERROR:
-                if resume_errored:
-                    # Keep trial ID on resume
-                    trial_to_add.run_metadata.error_filename = None
-                    trial_to_add.run_metadata.pickled_error_filename = None
-                    trial_to_add.set_status(Trial.PENDING)
-                elif restart_errored:
-                    trial_to_add = trial.reset()
-                    trial_to_add.restore_path = None
-            elif trial.status != Trial.TERMINATED and not resume_unfinished:
-                trial_to_add.status = Trial.TERMINATED
+                resume_type = resume_config.errored
+            elif trial.status == Trial.TERMINATED:
+                resume_type = resume_config.finished
+            else:  # Unfinished (PENDING, RUNNING, PAUSED)
+                resume_type = resume_config.unfinished
+
+            trial_to_add = None
+            if resume_type == ResumeConfig.ResumeType.RESUME:
+                # Keep trial ID on resume
+                trial_to_add = trial
+                trial_to_add.run_metadata.error_filename = None
+                trial_to_add.run_metadata.pickled_error_filename = None
+                trial_to_add.set_status(Trial.PENDING)
+            elif resume_type == ResumeConfig.ResumeType.RESTART:
+                trial_to_add = trial.reset()
+                trial_to_add.restore_path = None
+            elif resume_type == ResumeConfig.ResumeType.SKIP:
+                trial_to_add = trial
+                if trial_to_add.status != Trial.ERROR:
+                    # Set the status to terminated to skip it.
+                    # Keep errored trial status as ERROR.
+                    trial_to_add.set_status(Trial.TERMINATED)
+            else:
+                raise ValueError(f"Unknown resume type: {resume_type}")
+            assert trial_to_add is not None
+
             self.add_trial(trial_to_add)
 
     def update_max_pending_trials(self, max_pending_trials: Optional[int] = None):

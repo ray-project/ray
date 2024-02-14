@@ -559,7 +559,7 @@ cdef int check_status(const CRayStatus& status) nogil except -1:
 
     if status.IsObjectStoreFull():
         raise ObjectStoreFullError(message)
-    if status.IsInvalidArgument():
+    elif status.IsInvalidArgument():
         raise ValueError(message)
     elif status.IsOutOfDisk():
         raise OutOfDiskError(message)
@@ -2869,7 +2869,8 @@ cdef class GcsClient:
             self,
             node_id: c_string,
             reason: int32_t,
-            reason_message: c_string):
+            reason_message: c_string,
+            deadline_timestamp_ms: int64_t):
         """Send the DrainNode request to GCS.
 
         This is only for testing.
@@ -2879,7 +2880,8 @@ cdef class GcsClient:
             c_bool is_accepted = False
         with nogil:
             check_status(self.inner.get().DrainNode(
-                node_id, reason, reason_message, timeout_ms, is_accepted))
+                node_id, reason, reason_message,
+                deadline_timestamp_ms, timeout_ms, is_accepted))
 
         return is_accepted
 

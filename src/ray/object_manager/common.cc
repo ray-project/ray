@@ -27,7 +27,14 @@ void PlasmaObjectHeader::Init() {
 
   sem_init(&rw_semaphore, PTHREAD_PROCESS_SHARED, 1);
 
+  version = 0;
+  is_sealed = false;
   has_error = false;
+  num_readers = 0;
+  num_read_acquires_remaining = 0;
+  num_read_releases_remaining = 0;
+  data_size = 0;
+  metadata_size = 0;
 #endif
 }
 
@@ -152,7 +159,7 @@ Status PlasmaObjectHeader::ReadAcquire(int64_t version_to_read, int64_t *version
                        << version_to_read;
     } else {
       RAY_LOG(WARNING) << "Version " << version << " already has " << num_readers
-                       << "readers";
+                       << " readers";
     }
   }
 

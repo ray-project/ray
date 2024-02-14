@@ -18,7 +18,7 @@ from ray.air.constants import TRAINING_ITERATION
 from ray.train import Checkpoint
 from ray.train._internal.session import _TrainingResult
 from ray.train._internal.storage import StorageContext
-from ray.tune import PlacementGroupFactory
+from ray.tune import PlacementGroupFactory, ResumeConfig
 from ray.tune.execution.tune_controller import TuneController
 from ray.tune.experiment import Trial
 from ray.tune.result import DONE
@@ -271,9 +271,10 @@ def test_checkpoint_num_to_keep(
     # Re-instantiate trial runner and resume
     runner.checkpoint(force=True)
     runner = TuneController(
-        resource_manager_factory=lambda: resource_manager_cls(), storage=STORAGE
+        resource_manager_factory=lambda: resource_manager_cls(),
+        storage=STORAGE,
+        resume_config=ResumeConfig(),
     )
-    runner.resume()
 
     trial = runner.get_trials()[0]
 
@@ -462,7 +463,7 @@ def test_checkpoint_user_checkpoint(
         runner2 = TuneController(
             resource_manager_factory=lambda: resource_manager_cls(),
             storage=STORAGE,
-            resume="LOCAL",
+            resume_config=ResumeConfig(),
         )
         trials2 = runner2.get_trials()
         while not trials2[0].status == Trial.RUNNING:
@@ -588,7 +589,6 @@ def test_checkpoint_force_with_num_to_keep(
     with mock.patch.dict(
         os.environ, {"TUNE_WARN_EXCESSIVE_EXPERIMENT_CHECKPOINT_SYNC_THRESHOLD_S": "2"}
     ), mock.patch.object(storage.syncer, "sync_up") as sync_up:
-
         num_to_keep = 2
         checkpoint_config = CheckpointConfig(
             num_to_keep=num_to_keep, checkpoint_frequency=1

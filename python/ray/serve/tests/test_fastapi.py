@@ -363,7 +363,7 @@ def test_fastapi_init_lifespan_should_not_shutdown(serve_instance):
         def f(self):
             return 1
 
-    handle = serve.run(A.bind()).options(use_new_handle_api=True)
+    handle = serve.run(A.bind())
     # Without a proper fix, the actor won't be initialized correctly.
     # Because it will crash on each startup.
     assert handle.f.remote().result() == 1
