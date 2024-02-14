@@ -20,7 +20,7 @@ from ray._private.utils import split_address
 
 import aiosignal  # noqa: F401
 
-from ray._private.protobuf_compat import message_to_dict
+import ray._private.protobuf_compat
 from frozenlist import FrozenList  # noqa: F401
 
 from ray._private.utils import binary_to_hex, check_dashboard_dependencies_installed
@@ -217,12 +217,13 @@ def message_to_dict(message, decode_keys=None, **kwargs):
                     d[k] = v
         return d
 
+    d = ray._private.protobuf_compat.message_to_dict(
+        message, use_integers_for_enums=False, **kwargs
+    )
     if decode_keys:
-        return _decode_keys(
-            message_to_dict(message, use_integers_for_enums=False, **kwargs)
-        )
+        return _decode_keys(d)
     else:
-        return message_to_dict(message, use_integers_for_enums=False, **kwargs)
+        return d
 
 
 class SignalManager:
