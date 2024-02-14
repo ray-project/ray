@@ -11,21 +11,13 @@ from gymnasium.wrappers import TimeLimit
 
 from ray.rllib.algorithms.appo import APPOConfig
 from ray.rllib.examples.env.cartpole_crashing import CartPoleCrashing
-from ray.rllib.utils.test_utils import (
-    add_rllib_example_script_args,
-    run_rllib_example_script_experiment,
-)
-from ray.tune import register_env
+from ray import tune
 
 
-register_env(
+tune.register_env(
     "env",
     lambda cfg: TimeLimit(CartPoleCrashing(cfg), max_episode_steps=500),
 )
-
-parser = add_rllib_example_script_args()
-args = parser.parse_args()
-
 
 config = (
     APPOConfig()
@@ -46,7 +38,7 @@ config = (
         disable_env_checking=True,
     )
     .rollouts(
-        num_rollout_workers=args.num_env_runners,
+        num_rollout_workers=1,
         num_envs_per_worker=1,
     )
     # Switch on resiliency (recreate any failed worker).
@@ -84,4 +76,6 @@ stop = {
 }
 
 if __name__ == "__main__":
-    run_rllib_example_script_experiment(config, args, stop=stop)
+    algo = config.framework("tf2").build()
+    for _ in range(1000):
+        print(algo.train())
