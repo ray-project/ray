@@ -38,7 +38,7 @@ parser.add_argument(
 
 
 if __name__ == "__main__":
-    from ray import air, tune
+    from ray import tune
 
     args = parser.parse_args()
 
