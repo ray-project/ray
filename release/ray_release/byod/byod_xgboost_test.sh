@@ -4,7 +4,6 @@
 
 set -exo pipefail
 
-pip3 install -U --force-reinstall --no-deps xgboost_ray lightgbm_ray
 sudo mkdir -p /data || true
 sudo chown ray:1000 /data || true
 rm -rf /data/classification.parquet || true
