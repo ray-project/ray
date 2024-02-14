@@ -327,7 +327,8 @@ class TestReservationOpResourceLimiter:
         )
 
     def test_reserve_at_least_incremental_resource_usage(self, restore_data_context):
-        """Test that we'll reserve at least incremental_resource_usage() for each operator."""
+        """Test that we'll reserve at least incremental_resource_usage()
+        for each operator."""
         DataContext.get_current().op_resource_reservation_enabled = True
         DataContext.get_current().op_resource_reservation_ratio = 0.5
 
