@@ -378,18 +378,18 @@ def test_gpu_requests(ray_start_4_cpus_4_gpus_4_extra, tmp_path):
 
 
 @pytest.mark.parametrize(
-    "trainer_resources", [None]#, {}, {"CPU": 50}, {"CPU": 50, "GPU": 1}]
+    "trainer_resources", [None]  , {}, {"CPU": 50}, {"CPU": 50, "GPU": 1}]
 )
 @pytest.mark.parametrize("num_workers", [1, 2, 8, 9])
 @pytest.mark.parametrize(
     "resources_per_worker_and_use_gpu",
     [
-        # (None, False),
-        # (None, True),
-        # ({}, False),
+        (None, False),
+        (None, True),
+        ({}, False),
         ({"CPU": 1}, False),
-        # ({"CPU": 2, "GPU": 1}, True),
-        # ({"CPU": 0}, False),
+        ({"CPU": 2, "GPU": 1}, True),
+        ({"CPU": 0}, False),
     ],
 )
 @pytest.mark.parametrize("placement_strategy", ["PACK", "SPREAD"])
