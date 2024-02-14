@@ -80,8 +80,8 @@ from ray.data.block import (
     T,
     U,
     UserDefinedFunction,
-    _apply_strict_mode_batch_format,
-    _apply_strict_mode_batch_size,
+    _apply_batch_format,
+    _apply_batch_size,
 )
 from ray.data.context import DataContext
 from ray.data.datasource import (
@@ -562,9 +562,7 @@ class Dataset:
         if num_gpus is not None:
             ray_remote_args["num_gpus"] = num_gpus
 
-        batch_format = _apply_strict_mode_batch_format(batch_format)
-        if batch_format == "native":
-            logger.warning("The 'native' batch format has been renamed 'default'.")
+        batch_format = _apply_batch_format(batch_format)
 
         min_rows_per_bundled_input = None
         if batch_size is not None and batch_size != "default":
@@ -573,7 +571,7 @@ class Dataset:
             # Enable blocks bundling when batch_size is specified by caller.
             min_rows_per_bundled_input = batch_size
 
-        batch_size = _apply_strict_mode_batch_size(
+        batch_size = _apply_batch_size(
             batch_size, use_gpu="num_gpus" in ray_remote_args
         )
 
@@ -2331,7 +2329,7 @@ class Dataset:
         Raises:
             ``ValueError``: if the dataset is empty.
         """
-        batch_format = _apply_strict_mode_batch_format(batch_format)
+        batch_format = _apply_batch_format(batch_format)
         limited_ds = self.limit(batch_size)
 
         try:
@@ -3656,9 +3654,7 @@ class Dataset:
         Returns:
             An iterable over batches of data.
         """
-        batch_format = _apply_strict_mode_batch_format(batch_format)
-        if batch_format == "native":
-            logger.warning("The 'native' batch format has been renamed 'default'.")
+        batch_format = _apply_batch_format(batch_format)
         return self.iterator().iter_batches(
             prefetch_batches=prefetch_batches,
             prefetch_blocks=prefetch_blocks,
@@ -4253,7 +4249,7 @@ class Dataset:
         # remove this when https://github.com/mars-project/mars/issues/2945 got fixed
         schema = self.schema()
         if isinstance(schema, Schema):
-            schema = schema.base_schema  # Backwards compat with non strict mode.
+            schema = schema.base_schema
         if isinstance(schema, PandasBlockSchema):
             dtypes = pd.Series(schema.types, index=schema.names)
         elif isinstance(schema, pa.Schema):
@@ -4311,7 +4307,7 @@ class Dataset:
 
         schema = self.schema()
         if isinstance(schema, Schema):
-            schema = schema.base_schema  # Backwards compat with non strict mode.
+            schema = schema.base_schema
         return raydp.spark.ray_dataset_to_spark_dataframe(
             spark, schema, self.get_internal_block_refs()
         )
@@ -4456,7 +4452,7 @@ class Dataset:
         # get_internal_block_refs.
         schema = self.schema(fetch_if_missing=True)
         if isinstance(schema, Schema):
-            schema = schema.base_schema  # Backwards compat with non strict mode.
+            schema = schema.base_schema
         if isinstance(schema, pa.Schema):
             # Zero-copy path.
             return blocks
