@@ -67,12 +67,12 @@ def test_http_backpressure(serve_instance):
     # will be queued in the handle.
     first_ref = do_request.remote("hi-1")
     wait_for_condition(lambda: ray.get(signal_actor.cur_num_waiters.remote()) == 1)
-    _, pending = ray.wait([first_ref], timeout=0.01)
+    _, pending = ray.wait([first_ref], timeout=0.1)
     assert len(pending) == 1
 
     # Check that beyond the 1st queued request, others are dropped due to backpressure.
     second_ref = do_request.remote("hi-2")
-    _, pending = ray.wait([second_ref], timeout=0.01)
+    _, pending = ray.wait([second_ref], timeout=0.1)
     for _ in range(10):
         status_code, text = ray.get(do_request.remote(("hi-err")))
         assert status_code == 503
@@ -114,12 +114,12 @@ def test_grpc_backpressure(serve_instance):
     # will be queued in the handle.
     first_ref = do_request.remote("hi-1")
     wait_for_condition(lambda: ray.get(signal_actor.cur_num_waiters.remote()) == 1)
-    _, pending = ray.wait([first_ref], timeout=0.01)
+    _, pending = ray.wait([first_ref], timeout=0.1)
     assert len(pending) == 1
 
     # Check that beyond the 1st queued request, others are dropped due to backpressure.
     second_ref = do_request.remote("hi-2")
-    _, pending = ray.wait([second_ref], timeout=0.01)
+    _, pending = ray.wait([second_ref], timeout=0.1)
     for _ in range(10):
         status_code, text = ray.get(do_request.remote(("hi-err")))
         assert status_code == grpc.StatusCode.UNAVAILABLE

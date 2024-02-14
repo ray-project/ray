@@ -20,7 +20,7 @@ from ray.tests.conftest import propagate_logs, pytest_runtest_makereport  # noqa
 MIN_DYNAMIC_PORT = 49152
 MAX_DYNAMIC_PORT = 65535
 
-DEFAULT_GRPC_SERVICER_FUNCTIONS = [
+TEST_GRPC_SERVICER_FUNCTIONS = [
     "ray.serve.generated.serve_pb2_grpc.add_UserDefinedServiceServicer_to_server",
     "ray.serve.generated.serve_pb2_grpc.add_FruitServiceServicer_to_server",
 ]
@@ -104,7 +104,7 @@ def _shared_serve_instance():
         http_options={"host": "0.0.0.0"},
         grpc_options={
             "port": 9000,
-            "grpc_servicer_functions": DEFAULT_GRPC_SERVICER_FUNCTIONS,
+            "grpc_servicer_functions": TEST_GRPC_SERVICER_FUNCTIONS,
         },
     )
     yield _get_global_client()
