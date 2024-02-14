@@ -9,6 +9,15 @@ from ray._private.utils import get_or_create_event_loop
 from ray.serve.exceptions import RayServeException
 
 
+# We use a single event loop for the entire test session. Without this
+# fixture, the event loop is sometimes prematurely terminated by pytest.
+@pytest.fixture(scope="session")
+def event_loop():
+    loop = get_or_create_event_loop()
+    yield loop
+    loop.close()
+
+
 @pytest.mark.asyncio
 async def test_batching_magic_attributes():
     class BatchingExample:
@@ -395,14 +404,17 @@ async def test_batch_cancellation(use_class, use_gen):
 
     if use_gen:
         gens = [func("hi1", "hi2"), func("hi3", "hi4")]
-        coros = [gen.__anext__() for gen in gens]
+        tasks = [asyncio.create_task(gen.__anext__()) for gen in gens]
     else:
-        coros = [func("hi1", "hi2"), func("hi3", "hi4")]
+        tasks = [
+            asyncio.create_task(func("hi1", "hi2")),
+            asyncio.create_task(func("hi3", "hi4")),
+        ]
 
     print("Submitted requests.")
 
     # The requests should be blocked on the long request_timeout
-    done, pending = await asyncio.wait(coros, timeout=0.01)
+    done, pending = await asyncio.wait(tasks, timeout=0.01)
     assert len(done) == 0
     assert len(pending) == 2
 
@@ -410,16 +422,16 @@ async def test_batch_cancellation(use_class, use_gen):
 
     # Cancel the first request. The second request should still be blocked on
     # the long request_timeout
-    coros[0].close()
-    pending, done = await asyncio.wait(coros, timeout=0.01)
+    tasks[0].cancel()
+    pending, done = await asyncio.wait(tasks, timeout=0.01)
     assert len(done) == 1
     assert len(pending) == 1
 
     print("Cancelled first request.")
 
     # Cancel the second request. Both requests should be done.
-    coros[1].close()
-    done, pending = await asyncio.wait(coros, timeout=0.01)
+    tasks[1].cancel()
+    done, pending = await asyncio.wait(tasks, timeout=0.01)
     assert len(done) == 2
     assert len(pending) == 0
 
@@ -433,11 +445,14 @@ async def test_batch_cancellation(use_class, use_gen):
 
     if use_gen:
         gens = [func("hi1", "hi2"), func("hi3", "hi4")]
-        coros = [gen.__anext__() for gen in gens]
+        tasks = [asyncio.create_task(gen.__anext__()) for gen in gens]
     else:
-        coros = [func("hi1", "hi2"), func("hi3", "hi4")]
+        tasks = [
+            asyncio.create_task(func("hi1", "hi2")),
+            asyncio.create_task(func("hi3", "hi4")),
+        ]
 
-    result = await asyncio.gather(*coros)
+    result = await asyncio.gather(*tasks)
     assert result == [("hi1", "hi2"), ("hi3", "hi4")]
 
 
@@ -497,14 +512,17 @@ async def test_cancellation_after_error(use_class, use_gen):
     # Submit requests and then cancel them.
     if use_gen:
         gens = [func("hi1", "hi2"), func("hi3", "hi4")]
-        coros = [gen.__anext__() for gen in gens]
+        tasks = [asyncio.create_task(gen.__anext__()) for gen in gens]
     else:
-        coros = [func("hi1", "hi2"), func("hi3", "hi4")]
+        tasks = [
+            asyncio.create_task(func("hi1", "hi2")),
+            asyncio.create_task(func("hi3", "hi4")),
+        ]
 
     print("Submitted initial batch of requests.")
 
-    for coro in coros:
-        coro.close()
+    for task in tasks:
+        task.cancel()
 
     print("Closed initial batch of requests.")
 
@@ -513,13 +531,16 @@ async def test_cancellation_after_error(use_class, use_gen):
     # Submit requests and check that they still work.
     if use_gen:
         gens = [func("hi1", "hi2"), func("hi3", "hi4")]
-        coros = [gen.__anext__() for gen in gens]
+        tasks = [asyncio.create_task(gen.__anext__()) for gen in gens]
     else:
-        coros = [func("hi1", "hi2"), func("hi3", "hi4")]
+        tasks = [
+            asyncio.create_task(func("hi1", "hi2")),
+            asyncio.create_task(func("hi3", "hi4")),
+        ]
 
     print("Submitted new batch of requests.")
 
-    result = await asyncio.gather(*coros)
+    result = await asyncio.gather(*tasks)
     assert result == [("hi1", "hi2"), ("hi3", "hi4")]
 
 

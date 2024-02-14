@@ -75,8 +75,8 @@ from ray.data.block import (
     T,
     U,
     UserDefinedFunction,
-    _apply_strict_mode_batch_format,
-    _apply_strict_mode_batch_size,
+    _apply_batch_format,
+    _apply_batch_size,
 )
 from ray.data.context import DataContext
 from ray.data.datasource import (
@@ -557,9 +557,7 @@ class Dataset:
         if num_gpus is not None:
             ray_remote_args["num_gpus"] = num_gpus
 
-        batch_format = _apply_strict_mode_batch_format(batch_format)
-        if batch_format == "native":
-            logger.warning("The 'native' batch format has been renamed 'default'.")
+        batch_format = _apply_batch_format(batch_format)
 
         min_rows_per_bundled_input = None
         if batch_size is not None and batch_size != "default":
@@ -568,7 +566,7 @@ class Dataset:
             # Enable blocks bundling when batch_size is specified by caller.
             min_rows_per_bundled_input = batch_size
 
-        batch_size = _apply_strict_mode_batch_size(
+        batch_size = _apply_batch_size(
             batch_size, use_gpu="num_gpus" in ray_remote_args
         )
 
@@ -2326,7 +2324,7 @@ class Dataset:
         Raises:
             ``ValueError``: if the dataset is empty.
         """
-        batch_format = _apply_strict_mode_batch_format(batch_format)
+        batch_format = _apply_batch_format(batch_format)
         limited_ds = self.limit(batch_size)
 
         try:
@@ -3612,9 +3610,7 @@ class Dataset:
         Returns:
             An iterable over batches of data.
         """
-        batch_format = _apply_strict_mode_batch_format(batch_format)
-        if batch_format == "native":
-            logger.warning("The 'native' batch format has been renamed 'default'.")
+        batch_format = _apply_batch_format(batch_format)
         return self.iterator().iter_batches(
             prefetch_batches=prefetch_batches,
             prefetch_blocks=prefetch_blocks,
@@ -3960,6 +3956,8 @@ class Dataset:
         drop_last: bool = False,
         local_shuffle_buffer_size: Optional[int] = None,
         local_shuffle_seed: Optional[int] = None,
+        feature_type_spec: Union["tf.TypeSpec", Dict[str, "tf.TypeSpec"]] = None,
+        label_type_spec: Union["tf.TypeSpec", Dict[str, "tf.TypeSpec"]] = None,
         # Deprecated
         prefetch_blocks: int = 0,
     ) -> "tf.data.Dataset":
@@ -4044,6 +4042,14 @@ class Dataset:
                 therefore ``batch_size`` must also be specified when using local
                 shuffling.
             local_shuffle_seed: The seed to use for the local random shuffle.
+            feature_type_spec: The `tf.TypeSpec` of `feature_columns`. If there is
+                only one column, specify a `tf.TypeSpec`. If there are multiple columns,
+                specify a ``dict`` that maps column names to their `tf.TypeSpec`.
+                Default is `None` to automatically infer the type of each column.
+            label_type_spec: The `tf.TypeSpec` of `label_columns`. If there is
+                only one column, specify a `tf.TypeSpec`. If there are multiple columns,
+                specify a ``dict`` that maps column names to their `tf.TypeSpec`.
+                Default is `None` to automatically infer the type of each column.
 
         Returns:
             A `TensorFlow Dataset`_ that yields inputs and targets.
@@ -4063,6 +4069,8 @@ class Dataset:
             batch_size=batch_size,
             local_shuffle_buffer_size=local_shuffle_buffer_size,
             local_shuffle_seed=local_shuffle_seed,
+            feature_type_spec=feature_type_spec,
+            label_type_spec=label_type_spec,
         )
 
     @ConsumptionAPI(pattern="Time complexity:")
@@ -4197,7 +4205,7 @@ class Dataset:
         # remove this when https://github.com/mars-project/mars/issues/2945 got fixed
         schema = self.schema()
         if isinstance(schema, Schema):
-            schema = schema.base_schema  # Backwards compat with non strict mode.
+            schema = schema.base_schema
         if isinstance(schema, PandasBlockSchema):
             dtypes = pd.Series(schema.types, index=schema.names)
         elif isinstance(schema, pa.Schema):
@@ -4255,7 +4263,7 @@ class Dataset:
 
         schema = self.schema()
         if isinstance(schema, Schema):
-            schema = schema.base_schema  # Backwards compat with non strict mode.
+            schema = schema.base_schema
         return raydp.spark.ray_dataset_to_spark_dataframe(
             spark, schema, self.get_internal_block_refs()
         )
@@ -4400,7 +4408,7 @@ class Dataset:
         # get_internal_block_refs.
         schema = self.schema(fetch_if_missing=True)
         if isinstance(schema, Schema):
-            schema = schema.base_schema  # Backwards compat with non strict mode.
+            schema = schema.base_schema
         if isinstance(schema, pa.Schema):
             # Zero-copy path.
             return blocks
@@ -4437,93 +4445,6 @@ class Dataset:
         if num_workers is None:
             num_workers = 4 * len(ray.nodes())
         return RandomAccessDataset(self, key, num_workers=num_workers)
-
-    @Deprecated
-    @ConsumptionAPI
-    def repeat(self, times: Optional[int] = None):
-        """Convert this into a DatasetPipeline by looping over this dataset.
-
-        Transformations prior to the call to ``repeat()`` are evaluated once.
-        Transformations done on the returned pipeline are evaluated on each
-        loop of the pipeline over the base dataset.
-
-        Note that every repeat of the dataset is considered an "epoch" for
-        the purposes of ``DatasetPipeline.iter_epochs()``.
-
-        Examples:
-            >>> import ray
-            >>> ds = ray.data.range(5, parallelism=1)
-            >>> # Infinite pipeline of numbers [0, 5)
-            >>> ds.repeat().take_batch()  # doctest: +SKIP
-            {'id': array([0, 1, 2, 3, 4, 0, 1, 2, 3, 4, ...])}
-            >>> # Can shuffle each epoch (dataset) in the pipeline.
-            >>> ds.repeat().random_shuffle().take_batch() # doctest: +SKIP
-            {'id': array([2, 3, 0, 4, 1, 4, 0, 2, 1, 3, ...])}
-
-        Args:
-            times: The number of times to loop over this dataset, or None
-                to repeat indefinitely.
-        """
-        _raise_dataset_pipeline_deprecation_warning()
-
-    @Deprecated
-    def window(
-        self,
-        *,
-        blocks_per_window: Optional[int] = None,
-        bytes_per_window: Optional[int] = None,
-    ):
-        """Convert this into a DatasetPipeline by windowing over data blocks.
-
-        Transformations prior to the call to ``window()`` are evaluated in
-        bulk on the entire dataset. Transformations done on the returned
-        pipeline are evaluated incrementally per window of blocks as data is
-        read from the output of the pipeline.
-
-        Windowing execution allows for output to be read sooner without
-        waiting for all transformations to fully execute, and can also improve
-        efficiency if transforms use different resources (e.g., GPUs).
-
-        Without windowing::
-
-            [preprocessing......]
-                                  [inference.......]
-                                                     [write........]
-            Time ----------------------------------------------------------->
-
-        With windowing::
-
-            [prep1] [prep2] [prep3]
-                    [infer1] [infer2] [infer3]
-                             [write1] [write2] [write3]
-            Time ----------------------------------------------------------->
-
-        Examples:
-            >>> import ray
-            >>> # Create an inference pipeline.
-            >>> ds = ray.data.read_binary_files(dir) # doctest: +SKIP
-            >>> infer = ... # doctest: +SKIP
-            >>> pipe = ds.window(blocks_per_window=10).map(infer) # doctest: +SKIP
-            DatasetPipeline(num_windows=40, num_stages=2)
-            >>> # The higher the stage parallelism, the shorter the pipeline.
-            >>> pipe = ds.window(blocks_per_window=20).map(infer) # doctest: +SKIP
-            DatasetPipeline(num_windows=20, num_stages=2)
-            >>> # Outputs can be incrementally read from the pipeline.
-            >>> for item in pipe.iter_rows(): # doctest: +SKIP
-            ...    print(item) # doctest: +SKIP
-
-        Args:
-            blocks_per_window: The window size (parallelism) in blocks.
-                Increasing window size increases pipeline throughput, but also
-                increases the latency to initial output, since it decreases the
-                length of the pipeline. Setting this to infinity effectively
-                disables pipelining.
-            bytes_per_window: Specify the window size in bytes instead of blocks.
-                This is treated as an upper bound for the window size, but each
-                window will still include at least one block. This is mutually
-                exclusive with ``blocks_per_window``.
-        """
-        _raise_dataset_pipeline_deprecation_warning()
 
     @ConsumptionAPI(pattern="store memory.", insert_after=True)
     def materialize(self) -> "MaterializedDataset":
@@ -5015,8 +4936,17 @@ class Dataset:
         self._current_executor = None
 
     def __del__(self):
-        if self._current_executor and ray is not None and ray.is_initialized():
-            self._current_executor.shutdown()
+        if not self._current_executor:
+            return
+
+        # When Python shuts down, `ray` might evaluate to `<module None from None>`.
+        # This value is truthy and not `None`, so we use a try-catch in addition to
+        # `if ray is not None`. For more information, see #42382.
+        try:
+            if ray is not None and ray.is_initialized():
+                self._current_executor.shutdown()
+        except TypeError:
+            pass
 
 
 @PublicAPI
@@ -5124,11 +5054,3 @@ def _block_to_ndarray(block: Block, column: Optional[str]):
 def _block_to_arrow(block: Block):
     block = BlockAccessor.for_block(block)
     return block.to_arrow()
-
-
-def _raise_dataset_pipeline_deprecation_warning():
-    raise DeprecationWarning(
-        "`DatasetPipeline` is deprecated from Ray 2.8. Use `Dataset` instead. "
-        "It supports lazy and streaming execution natively. To learn more, "
-        "see https://docs.ray.io/en/latest/data/data-internals.html#execution."
-    )

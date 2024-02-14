@@ -1,10 +1,7 @@
 from collections.abc import Mapping
 from typing import Any
 
-from ray.util.annotations import Deprecated
 
-
-@Deprecated("TableRow is no longer part of the public Ray Data API.")
 class TableRow(Mapping):
     """
     A dict-like row of a tabular ``Dataset``.

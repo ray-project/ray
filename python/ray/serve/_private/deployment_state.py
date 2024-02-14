@@ -1012,9 +1012,11 @@ class DeploymentReplica(VersionedReplica):
 
         Should handle the case where the replica is already stopped.
         """
+        state = self._actor_details.state
         logger.info(
-            f"Stopping replica {self.replica_tag} for deployment "
-            f"'{self.deployment_name}' in application '{self.app_name}'.",
+            f"Stopping replica {self.replica_tag} (currently {state}) "
+            f"for deployment '{self.deployment_name}' "
+            f"in application '{self.app_name}'.",
             extra={"log_to_stderr": False},
         )
         timeout_s = self._actor.graceful_stop()
@@ -1272,8 +1274,8 @@ class DeploymentState:
         # time we checked.
         self._multiplexed_model_ids_updated = False
 
-        self._last_notified_running_replica_infos: List[RunningReplicaInfo] = []
-        self._last_notified_autoscaling_config = None
+        self._last_broadcasted_running_replica_infos: List[RunningReplicaInfo] = []
+        self._last_broadcasted_deployment_config = None
 
     @property
     def autoscaling_policy_manager(self) -> AutoscalingPolicyManager:
@@ -1394,10 +1396,19 @@ class DeploymentState:
     def list_replica_details(self) -> List[ReplicaDetails]:
         return [replica.actor_details for replica in self._replicas.get()]
 
-    def notify_running_replicas_changed(self) -> None:
+    def broadcast_running_replicas_if_changed(self) -> None:
+        """Broadcasts the set of running replicas over long poll if it has changed.
+
+        Keeps an in-memory record of the last set of running replicas that was broadcast
+        to determine if it has changed.
+
+        The set will also be broadcast if any replicas have an updated set of
+        multiplexed model IDs.
+        """
         running_replica_infos = self.get_running_replica_infos()
         if (
-            set(self._last_notified_running_replica_infos) == set(running_replica_infos)
+            set(self._last_broadcasted_running_replica_infos)
+            == set(running_replica_infos)
             and not self._multiplexed_model_ids_updated
         ):
             return
@@ -1414,22 +1425,25 @@ class DeploymentState:
             (LongPollNamespace.RUNNING_REPLICAS, self._id.name),
             running_replica_infos,
         )
-        self._last_notified_running_replica_infos = running_replica_infos
+        self._last_broadcasted_running_replica_infos = running_replica_infos
         self._multiplexed_model_ids_updated = False
 
-    def notify_autoscaling_config_changed(self) -> None:
-        current_autoscaling_config = (
-            self._target_state.info.deployment_config.autoscaling_config
-        )
-        if self._last_notified_autoscaling_config == current_autoscaling_config:
+    def broadcast_deployment_config_if_changed(self) -> None:
+        """Broadcasts the deployment config over long poll if it has changed.
+
+        Keeps an in-memory record of the last config that was broadcast to determine
+        if it has changed.
+        """
+        current_deployment_config = self._target_state.info.deployment_config
+        if self._last_broadcasted_deployment_config == current_deployment_config:
             return
 
         self._long_poll_host.notify_changed(
-            (LongPollNamespace.AUTOSCALING_CONFIG, self._id),
-            current_autoscaling_config,
+            (LongPollNamespace.DEPLOYMENT_CONFIG, self._id),
+            current_deployment_config,
         )
 
-        self._last_notified_autoscaling_config = current_autoscaling_config
+        self._last_broadcasted_deployment_config = current_deployment_config
 
     def _set_target_state_deleting(self) -> None:
         """Set the target state for the deployment to be deleted."""
@@ -2051,10 +2065,6 @@ class DeploymentState:
                 ReplicaStartupStatus.PENDING_ALLOCATION,
                 ReplicaStartupStatus.PENDING_INITIALIZATION,
             ]:
-                if start_status == ReplicaStartupStatus.PENDING_INITIALIZATION:
-                    self._deployment_scheduler.on_replica_running(
-                        self._id, replica.replica_tag, replica.actor_node_id
-                    )
                 is_slow = time.time() - replica._start_time > SLOW_STARTUP_WARNING_S
                 if is_slow:
                     slow_replicas.append((replica, start_status))
@@ -2090,7 +2100,7 @@ class DeploymentState:
             else:
                 self._replicas.add(replica.actor_details.state, replica)
 
-    def _stop_replica(self, replica, graceful_stop=True):
+    def _stop_replica(self, replica: VersionedReplica, graceful_stop=True):
         """Stop replica
         1. Stop the replica.
         2. Change the replica into stopping state.
@@ -2239,10 +2249,11 @@ class DeploymentState:
             states=[ReplicaState.UPDATING, ReplicaState.RUNNING]
         ):
             if replica.actor_node_id in draining_nodes:
+                state = replica._actor_details.state
                 logger.info(
-                    f"Stopping replica {replica.replica_tag} of deployment "
-                    f"'{self.deployment_name}' in application '{self.app_name}' on "
-                    f"draining node {replica.actor_node_id}."
+                    f"Stopping replica {replica.replica_tag} (currently {state}) "
+                    f"of deployment '{self.deployment_name}' in application "
+                    f"'{self.app_name}' on draining node {replica.actor_node_id}."
                 )
                 self._stop_replica(replica, graceful_stop=True)
             else:
@@ -2366,12 +2377,14 @@ class DeploymentStateManager:
         all_current_actor_names: List[str],
         all_current_placement_group_names: List[str],
         cluster_node_info_cache: ClusterNodeInfoCache,
+        head_node_id_override: Optional[str] = None,
     ):
         self._kv_store = kv_store
         self._long_poll_host = long_poll_host
         self._cluster_node_info_cache = cluster_node_info_cache
         self._deployment_scheduler = default_impl.create_deployment_scheduler(
-            cluster_node_info_cache
+            cluster_node_info_cache,
+            head_node_id_override,
         )
 
         self._deployment_states: Dict[DeploymentID, DeploymentState] = dict()
@@ -2393,16 +2406,23 @@ class DeploymentStateManager:
             self._save_checkpoint_func,
         )
 
-    def record_autoscaling_metrics(self, data, send_timestamp: float):
-        replica_tag, window_avg = data
+    def record_autoscaling_metrics(
+        self, replica_id: str, window_avg: float, send_timestamp: float
+    ):
         if window_avg is not None:
-            replica_name = ReplicaName.from_replica_tag(replica_tag)
+            replica_name = ReplicaName.from_replica_tag(replica_id)
             self._deployment_states[
                 replica_name.deployment_id
-            ].record_autoscaling_metrics(replica_tag, window_avg, send_timestamp)
+            ].record_autoscaling_metrics(replica_id, window_avg, send_timestamp)
 
-    def record_handle_metrics(self, data, send_timestamp: float):
-        deployment_id, handle_id, queued_requests, running_requests = data
+    def record_handle_metrics(
+        self,
+        deployment_id: str,
+        handle_id: str,
+        queued_requests: float,
+        running_requests: Dict[str, float],
+        send_timestamp: float,
+    ):
         # NOTE(zcin): There can be handles to deleted deployments still
         # sending metrics to the controller
         if deployment_id in self._deployment_states:
@@ -2704,8 +2724,8 @@ class DeploymentStateManager:
             self._deployment_states[deployment_id].stop_replicas(replicas_to_stop)
 
         for deployment_state in self._deployment_states.values():
-            deployment_state.notify_running_replicas_changed()
-            deployment_state.notify_autoscaling_config_changed()
+            deployment_state.broadcast_running_replicas_if_changed()
+            deployment_state.broadcast_deployment_config_if_changed()
 
         for deployment_id in deleted_ids:
             self._deployment_scheduler.on_deployment_deleted(deployment_id)

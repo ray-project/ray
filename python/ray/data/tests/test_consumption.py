@@ -562,15 +562,20 @@ def test_limit_no_redundant_read(ray_start_regular_shared, limit, min_read_tasks
 
     source = CountingRangeDatasource()
 
+    total_rows = 100
     parallelism = 10
     ds = ray.data.read_datasource(
         source,
         parallelism=parallelism,
-        n=10,
+        n=total_rows // parallelism,
     )
-    ds2 = ds.limit(limit)
+    # Apply multiple limit ops.
+    # Once the smallest limit is reached, the entire dataset should stop execution.
+    ds = ds.limit(total_rows)
+    ds = ds.limit(limit)
+    ds = ds.limit(total_rows)
     # Check content.
-    assert extract_values("id", ds2.take(limit)) == list(range(limit))
+    assert extract_values("id", ds.take(limit)) == list(range(limit))
     # Check number of read tasks launched.
     # min_read_tasks is the minimum number of read tasks needed for the limit.
     # We may launch more tasks than this number, in order to to maximize throughput.
