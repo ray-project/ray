@@ -8,10 +8,10 @@ from ray.autoscaler._private.constants import (
     AUTOSCALER_MAX_CONCURRENT_LAUNCHES,
     AUTOSCALER_MAX_LAUNCH_BATCH,
 )
-from ray.autoscaler.v2.instance_manager.instance_storage import (
-    InstanceStorage,
+from ray.autoscaler.v2.instance_manager.instance_manager import (
     InstanceUpdatedSubscriber,
 )
+from ray.autoscaler.v2.instance_manager.instance_storage import InstanceStorage
 from ray.autoscaler.v2.instance_manager.node_provider import NodeProvider
 from ray.core.generated.instance_manager_pb2 import Instance, InstanceUpdateEvent
 
