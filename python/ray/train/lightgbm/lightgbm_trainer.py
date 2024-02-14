@@ -1,13 +1,10 @@
-from pathlib import Path
 from typing import Any, Dict, Union
 
 import lightgbm
-import lightgbm_ray
-from lightgbm_ray.tune import TuneReportCheckpointCallback
 
 from ray.train import Checkpoint
 from ray.train.gbdt_trainer import GBDTTrainer
-from ray.train.lightgbm import LightGBMCheckpoint
+from ray.train.lightgbm import RayTrainReportCallback
 from ray.util.annotations import PublicAPI
 
 
@@ -38,12 +35,13 @@ class LightGBMTrainer(GBDTTrainer):
             from ray.train import ScalingConfig
 
             train_dataset = ray.data.from_items(
-                [{"x": x, "y": x + 1} for x in range(32)])
+                [{"x": x, "y": x + 1} for x in range(32)]
+            )
             trainer = LightGBMTrainer(
                 label_column="y",
                 params={"objective": "regression"},
                 scaling_config=ScalingConfig(num_workers=3),
-                datasets={"train": train_dataset}
+                datasets={"train": train_dataset},
             )
             result = trainer.fit()
 
@@ -78,11 +76,6 @@ class LightGBMTrainer(GBDTTrainer):
         **train_kwargs: Additional kwargs passed to ``lightgbm.train()`` function.
     """
 
-    # Currently, the RayDMatrix in lightgbm_ray is the same as in xgboost_ray
-    # but it is explicitly set here for forward compatibility
-    _dmatrix_cls: type = lightgbm_ray.RayDMatrix
-    _ray_params_cls: type = lightgbm_ray.RayParams
-    _tune_callback_checkpoint_cls: type = TuneReportCheckpointCallback
     _default_ray_params: Dict[str, Any] = {
         "checkpoint_frequency": 1,
         "allow_less_than_two_cpus": True,
@@ -92,26 +85,32 @@ class LightGBMTrainer(GBDTTrainer):
     }
     _init_model_arg_name: str = "init_model"
 
-    @staticmethod
-    def get_model(checkpoint: Checkpoint) -> lightgbm.Booster:
+    def __init__(self, *args, **kwargs):
+        # TODO(justinvyu): Fix circular import by moving lightgbm_ray into ray
+        import lightgbm_ray.tune
+
+        # Currently, the RayDMatrix in lightgbm_ray is the same as in xgboost_ray
+        # but it is explicitly set here for forward compatibility
+        self._dmatrix_cls: type = lightgbm_ray.RayDMatrix
+        self._ray_params_cls: type = lightgbm_ray.RayParams
+        self._tune_callback_checkpoint_cls: type = (
+            lightgbm_ray.tune.TuneReportCheckpointCallback
+        )
+
+        super().__init__(*args, **kwargs)
+
+    @classmethod
+    def get_model(
+        cls,
+        checkpoint: Checkpoint,
+    ) -> lightgbm.Booster:
         """Retrieve the LightGBM model stored in this checkpoint."""
-        with checkpoint.as_directory() as checkpoint_path:
-            return lightgbm.Booster(
-                model_file=Path(
-                    checkpoint_path, LightGBMCheckpoint.MODEL_FILENAME
-                ).as_posix()
-            )
+        return RayTrainReportCallback.get_model(checkpoint)
 
     def _train(self, **kwargs):
+        import lightgbm_ray
+
         return lightgbm_ray.train(**kwargs)
-
-    def _load_checkpoint(self, checkpoint: Checkpoint) -> lightgbm.Booster:
-        return self.__class__.get_model(checkpoint)
-
-    def _save_model(self, model: lightgbm.LGBMModel, path: str):
-        model.booster_.save_model(
-            Path(path, LightGBMCheckpoint.MODEL_FILENAME).as_posix()
-        )
 
     def _model_iteration(
         self, model: Union[lightgbm.LGBMModel, lightgbm.Booster]
