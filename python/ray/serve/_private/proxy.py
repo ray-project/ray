@@ -725,7 +725,6 @@ class gRPCProxy(GenericProxy):
                 message=message,
             )
         except BackPressureError as e:
-            logger.warning(e.message)
             yield ResponseStatus(
                 code=grpc.StatusCode.UNAVAILABLE,
                 is_error=True,

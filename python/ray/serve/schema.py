@@ -427,7 +427,7 @@ class DeploymentSchema(BaseModel, allow_population_by_field_name=True):
     )
 
     @root_validator
-    def num_replicas_and_autoscaling_config(cls, values):
+    def validate_num_replicas_and_autoscaling_config(cls, values):
         num_replicas = values.get("num_replicas", None)
         autoscaling_config = values.get("autoscaling_config", None)
 
@@ -448,17 +448,21 @@ class DeploymentSchema(BaseModel, allow_population_by_field_name=True):
 
         return values
 
-    @validator("max_queued_requests", always=True)
-    def validate_max_queued_requests(cls, v):
-        if not isinstance(v, int):
+    @root_validator
+    def validate_max_queued_requests(cls, values):
+        max_queued_requests = values.get("max_queued_requests", None)
+        if max_queued_requests is None or max_queued_requests == DEFAULT.VALUE:
+            return values
+
+        if not isinstance(max_queued_requests, int):
             raise TypeError("max_queued_requests must be an integer.")
 
-        if v < 1 and v != -1:
+        if max_queued_requests < 1 and max_queued_requests != -1:
             raise ValueError(
                 "max_queued_requests must be -1 (no limit) or a positive integer."
             )
 
-        return v
+        return values
 
     deployment_schema_route_prefix_format = validator("route_prefix", allow_reuse=True)(
         _route_prefix_format

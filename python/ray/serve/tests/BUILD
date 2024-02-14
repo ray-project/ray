@@ -36,6 +36,7 @@ py_test_module_list(
     "test_deployment_node.py",
     "test_expected_versions.py",
     "test_actor_replica_wrapper.py",
+    "test_max_queued_requests.py",
   ],
   size = "small",
   tags = ["exclusive", "team:serve"],
