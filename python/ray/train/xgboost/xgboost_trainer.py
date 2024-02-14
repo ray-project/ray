@@ -1,3 +1,4 @@
+from functools import partial
 import os
 from typing import Any, Callable, Dict, Optional, Union
 
@@ -7,6 +8,8 @@ from xgboost_ray.tune import TuneReportCheckpointCallback
 
 import ray.train
 from ray.train import Checkpoint
+from ray.train.constants import TRAIN_DATASET_KEY
+from ray.train.trainer import BaseTrainer, GenDataset
 from ray.train.data_parallel_trainer import DataParallelTrainer
 from ray.train.gbdt_trainer import GBDTTrainer
 from ray.train.xgboost import XGBoostCheckpoint, XGBoostConfig
@@ -19,7 +22,7 @@ except ImportError:
 
 
 @PublicAPI(stability="beta")
-class XGBoostTrainer(GBDTTrainer):
+class LegacyXGBoostTrainer(GBDTTrainer):
     """A Trainer for data parallel XGBoost training.
 
     This Trainer runs the XGBoost training loop in a distributed manner
@@ -152,6 +155,74 @@ class SimpleXGBoostTrainer(DataParallelTrainer):
             backend_config=xgboost_config,
             scaling_config=scaling_config,
             dataset_config=dataset_config,
+            run_config=run_config,
+            datasets=datasets,
+            resume_from_checkpoint=resume_from_checkpoint,
+            metadata=metadata,
+        )
+
+
+def _xgboost_train_fn_per_worker(
+    config: dict, label_column: str, num_boost_round: int, xgboost_train_kwargs: dict
+):
+    from xgboost.collective import CommunicatorContext
+    from ray.train._internal.session import get_session
+
+    checkpoint = ray.train.get_checkpoint()
+
+    train_dataset = ray.train.get_dataset_shard(TRAIN_DATASET_KEY)
+    train_df = train_dataset.to_pandas()
+
+    eval_datasets = {
+        k: d for k, d in get_session().dataset_shard.items() if k != TRAIN_DATASET_KEY
+    }
+    eval_dfs = {k: d.to_pandas() for k, d in eval_datasets.items()}
+
+    train_X, train_y = train_df.drop(label_column, axis=1), train_df[label_column]
+    dtrain = xgboost.DMatrix(train_X, label=train_y)
+    evals = []
+    for eval_name, eval_df in eval_dfs.items():
+        eval_X, eval_y = eval_df.drop(label_column, axis=1), eval_df[label_column]
+        evals.append((xgboost.DMatrix(eval_X, label=eval_y), eval_name))
+
+    with CommunicatorContext():
+        evals_result = {}
+        xgboost.train(
+            config,
+            dtrain=dtrain,
+            evals=evals,
+            evals_result=evals_result,
+            **xgboost_train_kwargs,
+        )
+
+
+class XGBoostTrainer(SimpleXGBoostTrainer):
+    def __init__(
+        self,
+        *,
+        datasets: Dict[str, GenDataset],
+        label_column: str,
+        params: Dict[str, Any],
+        dmatrix_params: Optional[Dict[str, Dict[str, Any]]] = None,
+        num_boost_round: int = 10,
+        scaling_config: Optional[ray.train.ScalingConfig] = None,
+        run_config: Optional[ray.train.RunConfig] = None,
+        preprocessor=None,  # Deprecated
+        resume_from_checkpoint: Optional[Checkpoint] = None,
+        metadata: Optional[Dict[str, Any]] = None,
+        **train_kwargs,
+    ):
+        train_fn_per_worker = partial(
+            _xgboost_train_fn_per_worker,
+            label_column=label_column,
+            num_boost_round=num_boost_round,
+            xgboost_train_kwargs=train_kwargs,
+        )
+
+        super(XGBoostTrainer, self).__init__(
+            train_loop_per_worker=train_fn_per_worker,
+            train_loop_config=params,
+            scaling_config=scaling_config,
             run_config=run_config,
             datasets=datasets,
             resume_from_checkpoint=resume_from_checkpoint,

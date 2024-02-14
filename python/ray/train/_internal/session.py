@@ -118,7 +118,7 @@ class _TrainSession:
         local_world_size: int,
         world_size: int,
         trial_info: Optional[TrialInfo] = None,
-        dataset_shard: Optional[Dataset] = None,
+        dataset_shard: Optional[Dict[str, Dataset]] = None,
         metadata: Dict[str, Any] = None,
         checkpoint: Optional[Checkpoint] = None,
         detailed_autofilled_metrics: bool = False,
