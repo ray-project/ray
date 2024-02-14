@@ -148,7 +148,7 @@ DEFAULT_ACTOR_TASK_RETRY_ON_ERRORS = False
 
 # Whether to enable ReservationOpResourceLimiter by default.
 DEFAULT_ENABLE_OP_RESOURCE_RESERVATION = bool(
-    os.environ.get("RAY_DATA_ENABLE_OP_RESOURCE_RESERVATION", "0")
+    os.environ.get("RAY_DATA_ENABLE_OP_RESOURCE_RESERVATION", "1")
 )
 
 # The default reservation ratio for ReservationOpResourceLimiter.
