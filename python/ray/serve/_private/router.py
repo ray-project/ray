@@ -69,6 +69,7 @@ class Router:
                 self_node_id,
                 self_actor_id,
                 self_availability_zone,
+                use_replica_queue_len_cache=RAY_SERVE_ENABLE_QUEUE_LENGTH_CACHE,
             )
 
         logger.info(
@@ -304,7 +305,9 @@ class Router:
             # request will be placed on the front of the queue to avoid tail latencies.
             # TODO(edoakes): this retry procedure is not perfect because it'll reset the
             # process of choosing candidates replicas (i.e., for locality-awareness).
-            replica = await self.choose_replica_for_request(pr, is_retry=True)
+            replica = await self._replica_scheduler.choose_replica_for_request(
+                pr, is_retry=True
+            )
 
     async def assign_request(
         self,
