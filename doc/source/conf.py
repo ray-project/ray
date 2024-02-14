@@ -78,26 +78,6 @@ remove_from_toctrees = [
     "rllib/package_ref/utils/*",
 ]
 
-# Prune deep toc-trees on demand for smaller html and faster builds.
-# This only effects the navigation bar, not the content.
-if os.getenv("FAST", False):
-    remove_from_toctrees += [
-        "ray-observability/api/state/doc/*",
-        "workflows/api/doc/*",
-        "serve/production-guide/*",
-        "serve/tutorials/deployment-graph-patterns/*",
-        "workflows/api/*",
-        "cluster/kubernetes/user-guides/*",
-        "cluster/kubernetes/examples/*",
-        "cluster/vms/user-guides/*",
-        "cluster/running-applications/job-submission/*",
-        "ray-core/actors/*",
-        "ray-core/objects/*",
-        "ray-core/scheduling/*",
-        "ray-core/tasks/*",
-        "ray-core/patterns/*",
-    ]
-
 myst_enable_extensions = [
     "dollarmath",
     "amsmath",
@@ -496,6 +476,7 @@ autodoc_mock_imports = [
     "joblib",
     "lightgbm",
     "lightgbm_ray",
+    "nevergrad",
     "numpy",
     "pandas",
     "pyarrow",
@@ -560,6 +541,7 @@ intersphinx_mapping = {
     "lightgbm": ("https://lightgbm.readthedocs.io/en/latest/", None),
     "mars": ("https://mars-project.readthedocs.io/en/latest/", None),
     "modin": ("https://modin.readthedocs.io/en/stable/", None),
+    "nevergrad": ("https://facebookresearch.github.io/nevergrad/", None),
     "numpy": ("https://numpy.org/doc/stable/", None),
     "pandas": ("https://pandas.pydata.org/pandas-docs/stable/", None),
     "pyarrow": ("https://arrow.apache.org/docs", None),

@@ -74,7 +74,7 @@ class SACRLModule(RLModule, RLModuleWithTargetNetworksInterface):
         # and keep only the heads differently?
         self.qf_target_encoder = catalog.build_qf_encoder(framework=self.framework)
         # If necessary, build also a twin Q encoders.
-        if self.config.twin_q:
+        if self.config.model_config_dict["twin_q"]:
             self.qf_twin_encoder = catalog.build_qf_encoder(framework=self.framework)
             self.qf_target_twin_encoder = catalog.build_qf_encoder(
                 framework=self.framework
@@ -86,14 +86,14 @@ class SACRLModule(RLModule, RLModuleWithTargetNetworksInterface):
         # The Q target network head is an identical copy of the Q network head.
         self.qf_target = catalog.build_qf_head(framework=self.framework)
         # If necessary build also a twin Q heads.
-        if self.config.twin_q:
+        if self.config.model_config_dict["twin_q"]:
             self.qf_twin = catalog.build_qf_head(framework=self.framework)
             self.qf_target_twin = catalog.build_qf_head(framework=self.framework)
 
         # We do not want to train the target network.
         self.qf_target_encoder.trainable = False
         self.qf_target.trainable = False
-        if self.config.twin_q:
+        if self.config.model_config_dict["twin_q"]:
             self.qf_target_twin_encoder.trainable = False
             self.qf_target_twin.trainable = False
 
@@ -158,7 +158,7 @@ class SACRLModule(RLModule, RLModuleWithTargetNetworksInterface):
                 ACTION_DIST_INPUTS_NEXT,
             ]
             + [QF_TWIN_PREDS]
-            if self.config.twin_q
+            if self.config.model_config_dict["twin_q"]
             else []
         )
 

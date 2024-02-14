@@ -9,6 +9,8 @@ from ray.autoscaler.v2.instance_manager.instance_storage import InstanceStorage
 from ray.core.generated.instance_manager_pb2 import (
     GetInstanceManagerStateReply,
     GetInstanceManagerStateRequest,
+    Instance,
+    InstanceUpdateEvent,
     StatusCode,
     UpdateInstanceManagerStateReply,
     UpdateInstanceManagerStateRequest,
@@ -84,9 +86,7 @@ class InstanceManager:
         for instance in to_update_instances.values():
             update = ids_to_updates[instance.instance_id]
             try:
-                InstanceUtil.set_status(
-                    instance, update.new_instance_status, update.details
-                )
+                self._apply_update(instance, update)
             except InvalidInstanceStatusTransitionError as e:
                 logger.error(e)
                 return self._get_update_im_state_reply(
@@ -179,3 +179,21 @@ class InstanceManager:
         if error_message:
             reply.status.message = error_message
         return reply
+
+    def _apply_update(self, instance: Instance, update: InstanceUpdateEvent):
+        """
+        Apply the update to the instance.
+
+        Args:
+            instance: The instance to update.
+            update: The update to apply.
+            version: The version of the instance storage.
+
+        Raises:
+            InvalidInstanceStatusTransitionError: If the update is invalid.
+        """
+        InstanceUtil.set_status(instance, update.new_instance_status)
+        if update.new_instance_status == Instance.ALLOCATED:
+            instance.cloud_instance_id = update.cloud_instance_id
+        elif update.new_instance_status == Instance.TERMINATED:
+            instance.cloud_instance_id = ""

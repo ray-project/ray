@@ -192,7 +192,6 @@ def test_map_operator_bulk(ray_start_regular_shared, use_actors):
 
     # Check memory stats.
     metrics = op.metrics.as_dict()
-    assert metrics["obj_store_mem_alloc"] == pytest.approx(832200, 0.5), metrics
     assert metrics["obj_store_mem_peak"] == pytest.approx(1688000, 0.5), metrics
     assert metrics["obj_store_mem_freed"] == pytest.approx(832200, 0.5), metrics
 
@@ -226,7 +225,6 @@ def test_map_operator_streamed(ray_start_regular_shared, use_actors):
     # Check equivalent to bulk execution in order.
     assert np.array_equal(output, [[np.ones(1024) * i * 2] for i in range(100)])
     metrics = op.metrics.as_dict()
-    assert metrics["obj_store_mem_alloc"] == pytest.approx(832200, 0.5), metrics
     assert metrics["obj_store_mem_peak"] == pytest.approx(16880, 0.5), metrics
     assert metrics["obj_store_mem_freed"] == pytest.approx(832200, 0.5), metrics
     if use_actors:
@@ -387,7 +385,6 @@ def test_map_operator_actor_locality_stats(ray_start_regular_shared):
     # Check equivalent to bulk execution in order.
     assert np.array_equal(output, [[np.ones(100) * i * 2] for i in range(100)])
     metrics = op.metrics.as_dict()
-    assert metrics["obj_store_mem_alloc"] == pytest.approx(92900, 0.5), metrics
     assert metrics["obj_store_mem_peak"] == pytest.approx(2096, 0.5), metrics
     assert metrics["obj_store_mem_freed"] == pytest.approx(92900, 0.5), metrics
     # Check e2e locality manager working.
@@ -614,7 +611,9 @@ def test_limit_operator(ray_start_regular_shared):
         refs = make_ref_bundles([[i] * num_rows_per_block for i in range(num_refs)])
         input_op = InputDataBuffer(refs)
         limit_op = LimitOperator(limit, input_op)
-        limit_op.all_inputs_done = MagicMock(wraps=limit_op.all_inputs_done)
+        limit_op.mark_execution_completed = MagicMock(
+            wraps=limit_op.mark_execution_completed
+        )
         if limit == 0:
             # If the limit is 0, the operator should be completed immediately.
             assert limit_op.completed()
@@ -624,7 +623,7 @@ def test_limit_operator(ray_start_regular_shared):
         while input_op.has_next() and not limit_op._limit_reached():
             loop_count += 1
             assert not limit_op.completed(), limit
-            assert limit_op.need_more_inputs(), limit
+            assert not limit_op._execution_completed, limit
             limit_op.add_input(input_op.get_next(), 0)
             while limit_op.has_next():
                 # Drain the outputs. So the limit operator
@@ -632,16 +631,16 @@ def test_limit_operator(ray_start_regular_shared):
                 limit_op.get_next()
             cur_rows += num_rows_per_block
             if cur_rows >= limit:
-                assert limit_op.all_inputs_done.call_count == 1, limit
+                assert limit_op.mark_execution_completed.call_count == 1, limit
                 assert limit_op.completed(), limit
                 assert limit_op._limit_reached(), limit
-                assert not limit_op.need_more_inputs(), limit
+                assert limit_op._execution_completed, limit
             else:
-                assert limit_op.all_inputs_done.call_count == 0, limit
+                assert limit_op.mark_execution_completed.call_count == 0, limit
                 assert not limit_op.completed(), limit
                 assert not limit_op._limit_reached(), limit
-                assert limit_op.need_more_inputs(), limit
-        limit_op.all_inputs_done()
+                assert not limit_op._execution_completed, limit
+        limit_op.mark_execution_completed()
         # After inputs done, the number of output bundles
         # should be the same as the number of `add_input`s.
         assert limit_op.num_outputs_total() == loop_count, limit
@@ -856,17 +855,18 @@ def test_operator_metrics():
             inputs[k].size_bytes() for k in range(i + 1)
         ), i
         assert (
-            metrics.num_inputs_processed == num_tasks_submitted * MIN_ROWS_PER_BUNDLE
+            metrics.num_task_inputs_processed
+            == num_tasks_submitted * MIN_ROWS_PER_BUNDLE
         ), i
-        assert metrics.bytes_inputs_processed == sum(
+        assert metrics.bytes_task_inputs_processed == sum(
             inputs[k].size_bytes()
             for k in range(num_tasks_submitted * MIN_ROWS_PER_BUNDLE)
         ), i
 
         # Check outputs metrics
         assert num_outputs_taken == num_tasks_submitted * NUM_BLOCKS_PER_TASK, i
-        assert metrics.num_outputs_generated == num_outputs_taken, i
-        assert metrics.bytes_outputs_generated == bytes_outputs_taken, i
+        assert metrics.num_task_outputs_generated == num_outputs_taken, i
+        assert metrics.bytes_task_outputs_generated == bytes_outputs_taken, i
         assert metrics.num_outputs_taken == num_outputs_taken, i
         assert metrics.bytes_outputs_taken == bytes_outputs_taken, i
         assert metrics.num_outputs_of_finished_tasks == num_outputs_taken, i
@@ -879,13 +879,12 @@ def test_operator_metrics():
         assert metrics.num_tasks_finished == num_tasks_submitted, i
 
         # Check object store metrics
-        assert metrics.obj_store_mem_alloc == metrics.bytes_outputs_taken, i
-        assert metrics.obj_store_mem_freed == metrics.bytes_inputs_processed, i
+        assert metrics.obj_store_mem_freed == metrics.bytes_task_inputs_processed, i
         assert (
             metrics.obj_store_mem_cur
             == metrics.bytes_inputs_received
-            - metrics.bytes_inputs_processed
-            + metrics.bytes_outputs_generated
+            - metrics.bytes_task_inputs_processed
+            + metrics.bytes_task_outputs_generated
             - metrics.bytes_outputs_taken
         ), i
 

@@ -4,8 +4,8 @@
 This section helps you:
 
 * Provide additional fault tolerance for your Serve application
-* understand Serve's recovery procedures
-* simulate system errors in your Serve application
+* Understand Serve's recovery procedures
+* Simulate system errors in your Serve application
 
 :::{admonition} Relevant Guides
 :class: seealso
@@ -25,9 +25,9 @@ By default, the Serve controller periodically health-checks each Serve deploymen
 
 You can define custom application-level health-checks and adjust their frequency and timeout.
 To define a custom health-check, add a `check_health` method to your deployment class.
-This method should take no arguments and return no result, and it should raise an exception if the replica should be considered unhealthy.
+This method should take no arguments and return no result, and it should raise an exception if Ray Serve considers the replica unhealthy.
 If the health-check fails, the Serve controller logs the exception, kills the unhealthy replica(s), and restarts them.
-You can also use the deployment options to customize how frequently the health-check is run and the timeout after which a replica is marked unhealthy.
+You can also use the deployment options to customize how frequently Serve runs the health-check and the timeout after which Serve marks a replica unhealthy.
 
 ```{literalinclude} ../doc_code/fault_tolerance/replica_health_check.py
 :start-after: __health_check_start__
@@ -60,19 +60,17 @@ See Serve's [Kubernetes production guide](serve-in-production-kubernetes) to lea
 
 In this section, you'll learn how to add fault tolerance to Ray's Global Control Store (GCS), which allows your Serve application to serve traffic even when the head node crashes.
 
-By default, the Ray head node is a single point of failure: if it crashes, the entire Ray cluster crashes and must be restarted. When running on Kubernetes, the `RayService` controller health-checks the Ray cluster and restarts it if this occurs, but this introduces some downtime.
+By default, the Ray head node is a single point of failure: if it crashes, the entire Ray cluster crashes and you must restart it. When running on Kubernetes, the `RayService` controller health-checks the Ray cluster and restarts it if this occurs, but this introduces some downtime.
 
 In Ray 2.0, KubeRay has **experimental support** for [Global Control Store (GCS) fault tolerance](kuberay-gcs-ft), preventing the Ray cluster from crashing if the head node goes down.
-While the head node is recovering, Serve applications can still handle traffic via worker nodes but cannot be updated or recover from other failures (for example, actors or worker nodes crashing).
+While the head node is recovering, Serve applications can still handle traffic with worker nodes but you can't update or recover from other failures like actors or worker nodes crashing.
 Once the GCS recovers, the cluster returns to normal behavior.
 
-You can enable GCS fault tolerance on KubeRay by adding an external Redis server and modifying your `RayService` Kubernetes object.
-
-Below, we explain how to do each of these.
+You can enable GCS fault tolerance on KubeRay by adding an external Redis server and modifying your `RayService` Kubernetes object with the following steps:
 
 #### Step 1: Add external Redis server
 
-GCS fault tolerance requires an external Redis database. You can choose to host your own Redis database, or you can use one through a third-party vendor. We recommend using a highly-available Redis database for resiliency.
+GCS fault tolerance requires an external Redis database. You can choose to host your own Redis database, or you can use one through a third-party vendor. Use a highly available Redis database for resiliency.
 
 **For development purposes**, you can also host a small Redis database on the same Kubernetes cluster as your Ray cluster. For example, you can add a 1-node Redis cluster by prepending these three Redis objects to your Kubernetes YAML:
 
@@ -141,7 +139,7 @@ spec:
 ---
 ```
 
-**This configuration is NOT production-ready**, but it is useful for development and testing. When you move to production, it's highly recommended that you replace this 1-node Redis cluster with a highly-available Redis cluster.
+**This configuration is NOT production-ready**, but it's useful for development and testing. When you move to production, it's highly recommended that you replace this 1-node Redis cluster with a highly available Redis cluster.
 
 #### Step 2: Add Redis info to RayService
 
@@ -182,8 +180,8 @@ spec:
 ::::
 
 The annotations are:
-* `ray.io/ft-enabled` (REQUIRED): Enables GCS fault tolerance when true
-* `ray.io/external-storage-namespace` (OPTIONAL): Sets the [external storage namespace]
+* `ray.io/ft-enabled` REQUIRED: Enables GCS fault tolerance when true
+* `ray.io/external-storage-namespace` OPTIONAL: Sets the [external storage namespace]
 
 Next, you need to add the `RAY_REDIS_ADDRESS` environment variable to the `headGroupSpec`:
 
@@ -254,17 +252,17 @@ replicas to serve traffic even after a certain number of node failures.
 
 By default, Serve soft spreads all deployment replicas but it has a few limitations:
 
-* It's a soft and best-effort spread and there is no guarantee that the spread is perfectly even.
+* The spread is soft and best-effort with no guarantee that the it's perfectly even.
 
 * Serve tries to spread replicas among the existing nodes if possible instead of launching new nodes.
 For example, if you have a big enough single node cluster, Serve schedules all replicas on that single node assuming
-it has enough resources and that node becomes the single point of failure.
+it has enough resources. However, that node becomes the single point of failure.
 
-You can change the spread behavior of your deployment through the `max_replicas_per_node`
-[deployment option](../../serve/api/doc/ray.serve.deployment_decorator.rst) which hard limits the number of replicas of a given deployment that can run on a single node.
-If you set it to 1 then you are effectively strict spreading the deployment replicas. If you don't set it then there is no hard spread constraint and Serve uses the default soft spread mentioned above. `max_replicas_per_node` option is per deployment and only affects the spread of replicas within a deployment. There is no spread between replicas of different deployments.
+You can change the spread behavior of your deployment with the `max_replicas_per_node`
+[deployment option](../../serve/api/doc/ray.serve.deployment_decorator.rst), which hard limits the number of replicas of a given deployment that can run on a single node.
+If you set it to 1 then you're effectively strict spreading the deployment replicas. If you don't set it then there's no hard spread constraint and Serve uses the default soft spread mentioned in the preceding paragraph. `max_replicas_per_node` option is per deployment and only affects the spread of replicas within a deployment. There's no spread between replicas of different deployments.
 
-Here is a code example showing how to set `max_replicas_per_node` deployment option:
+The following code example shows how to set `max_replicas_per_node` deployment option:
 
 ```{testcode}
 import ray
@@ -281,7 +279,7 @@ class Deployment2:
     return "world"
 ```
 
-In this example, we have two Serve deployments with different `max_replicas_per_node`: `Deployment1` can have at most one replica on each node and `Deployment2` can have at most two replicas on each node. If we schedule two replicas of `Deployment1` and two replicas of `Deployment2`, we will have a cluster with at least two nodes, each running one replica of `Deployment1`. The two replicas of `Deployment2` may run on either a single node or across two nodes because either satisfies the `max_replicas_per_node` constraint.
+This example has two Serve deployments with different `max_replicas_per_node`: `Deployment1` can have at most one replica on each node and `Deployment2` can have at most two replicas on each node. If you schedule two replicas of `Deployment1` and two replicas of `Deployment2`, Serve runs a cluster with at least two nodes, each running one replica of `Deployment1`. The two replicas of `Deployment2` may run on either a single node or across two nodes because either satisfies the `max_replicas_per_node` constraint.
 
 (serve-e2e-ft-behavior)=
 ## Serve's recovery procedures

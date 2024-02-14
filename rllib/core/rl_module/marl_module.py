@@ -32,10 +32,13 @@ from ray.rllib.utils.annotations import (
 from ray.rllib.utils.nested_dict import NestedDict
 from ray.rllib.utils.policy import validate_policy_id
 from ray.rllib.utils.serialization import serialize_type, deserialize_type
-from ray.rllib.utils.typing import T
+from ray.rllib.utils.typing import ModuleID, T
 from ray.util.annotations import PublicAPI
 
-ModuleID = str
+
+# TODO (sven): This will replace all occurrences of DEFAULT_POLICY_ID on the new API
+#  stack.
+DEFAULT_MODULE_ID = "default_policy"
 
 
 @PublicAPI(stability="alpha")
@@ -71,12 +74,40 @@ class MultiAgentRLModule(RLModule):
         """
         super().__init__(config or MultiAgentRLModuleConfig())
 
+    @override(RLModule)
     def setup(self):
         """Sets up the underlying RLModules."""
         self._rl_modules = {}
         self.__check_module_configs(self.config.modules)
+        # Make sure all individual RLModules have the same framework OR framework=None.
+        framework = None
         for module_id, module_spec in self.config.modules.items():
             self._rl_modules[module_id] = module_spec.build()
+            if framework is None:
+                framework = self._rl_modules[module_id].framework
+            else:
+                assert self._rl_modules[module_id].framework in [None, framework]
+        self.framework = framework
+
+    @OverrideToImplementCustomLogic
+    @override(RLModule)
+    def get_initial_state(self) -> Any:
+        # TODO (sven): Replace by call to `self.foreach_module`, but only if this method
+        #  supports returning dicts.
+        ret = {}
+        for module_id, module in self._rl_modules.items():
+            ret[module_id] = module.get_initial_state()
+        return ret
+
+    @OverrideToImplementCustomLogic
+    @override(RLModule)
+    def is_stateful(self) -> bool:
+        initial_state = self.get_initial_state()
+        assert isinstance(initial_state, dict), (
+            "The initial state of an RLModule must be a dict, but is "
+            f"{type(initial_state)} instead."
+        )
+        return bool(any(sa_init_state for sa_init_state in initial_state.values()))
 
     @classmethod
     def __check_module_configs(cls, module_configs: Dict[ModuleID, Any]):
@@ -376,7 +407,7 @@ class MultiAgentRLModule(RLModule):
     def _run_forward_pass(
         self,
         forward_fn_name: str,
-        batch: NestedDict[Any],
+        batch: Union[NestedDict[Any], Dict[ModuleID, Any]],
         **kwargs,
     ) -> Dict[ModuleID, Mapping[ModuleID, Any]]:
         """This is a helper method that runs the forward pass for the given module.
@@ -395,12 +426,16 @@ class MultiAgentRLModule(RLModule):
             mapping from module ID to the output of the forward pass.
         """
 
-        module_ids = list(batch.shallow_keys())
-        for module_id in module_ids:
-            self._check_module_exists(module_id)
+        # if isinstance(batch, NestedDict):
+        #    module_ids = list(batch.shallow_keys())
+        # else:
+        #    module_ids = list(batch.keys())
 
         outputs = {}
-        for module_id in module_ids:
+        for module_id in (
+            batch.shallow_keys() if isinstance(batch, NestedDict) else batch.keys()
+        ):
+            self._check_module_exists(module_id)
             rl_module = self._rl_modules[module_id]
             forward_fn = getattr(rl_module, forward_fn_name)
             outputs[module_id] = forward_fn(batch[module_id], **kwargs)

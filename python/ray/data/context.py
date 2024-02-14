@@ -102,6 +102,10 @@ DEFAULT_ENABLE_TENSOR_EXTENSION_CASTING = True
 # If disabled, users can still manually print stats with Dataset.stats().
 DEFAULT_AUTO_LOG_STATS = False
 
+# Whether stats logs should be verbose. This will include fields such
+# as `extra_metrics` in the stats output, which are excluded by default.
+DEFAULT_VERBOSE_STATS_LOG = False
+
 # Set this env var to enable distributed tqdm (experimental).
 DEFAULT_USE_RAY_TQDM = bool(int(os.environ.get("RAY_TQDM", "1")))
 
@@ -170,6 +174,7 @@ class DataContext:
         min_parallelism: bool,
         enable_tensor_extension_casting: bool,
         enable_auto_log_stats: bool,
+        verbose_stats_log: bool,
         trace_allocations: bool,
         execution_options: "ExecutionOptions",
         use_ray_tqdm: bool,
@@ -200,6 +205,7 @@ class DataContext:
         self.min_parallelism = min_parallelism
         self.enable_tensor_extension_casting = enable_tensor_extension_casting
         self.enable_auto_log_stats = enable_auto_log_stats
+        self.verbose_stats_logs = verbose_stats_log
         self.trace_allocations = trace_allocations
         # TODO: expose execution options in Dataset public APIs.
         self.execution_options = execution_options
@@ -271,6 +277,7 @@ class DataContext:
                         DEFAULT_ENABLE_TENSOR_EXTENSION_CASTING
                     ),
                     enable_auto_log_stats=DEFAULT_AUTO_LOG_STATS,
+                    verbose_stats_log=DEFAULT_VERBOSE_STATS_LOG,
                     trace_allocations=DEFAULT_TRACE_ALLOCATIONS,
                     execution_options=ray.data.ExecutionOptions(),
                     use_ray_tqdm=DEFAULT_USE_RAY_TQDM,

@@ -19,15 +19,15 @@ class TestMARLModule(unittest.TestCase):
         env = env_class({"num_agents": 2})
         module1 = SingleAgentRLModuleSpec(
             module_class=DiscreteBCTorchModule,
-            observation_space=env.observation_space,
-            action_space=env.action_space,
+            observation_space=env.observation_space[0],
+            action_space=env.action_space[0],
             model_config_dict={"fcnet_hiddens": [32]},
         )
 
         module2 = SingleAgentRLModuleSpec(
             module_class=DiscreteBCTorchModule,
-            observation_space=env.observation_space,
-            action_space=env.action_space,
+            observation_space=env.observation_space[0],
+            action_space=env.action_space[0],
             model_config_dict={"fcnet_hiddens": [32]},
         )
 
@@ -47,8 +47,8 @@ class TestMARLModule(unittest.TestCase):
 
         marl_module = DiscreteBCTorchModule(
             config=RLModuleConfig(
-                env.observation_space,
-                env.action_space,
+                env.observation_space[0],
+                env.action_space[0],
                 model_config_dict={"fcnet_hiddens": [32]},
             )
         ).as_multi_agent()
@@ -68,8 +68,8 @@ class TestMARLModule(unittest.TestCase):
 
         module = DiscreteBCTorchModule(
             config=RLModuleConfig(
-                env.observation_space,
-                env.action_space,
+                env.observation_space[0],
+                env.action_space[0],
                 model_config_dict={"fcnet_hiddens": [32]},
             )
         ).as_multi_agent()
@@ -84,8 +84,8 @@ class TestMARLModule(unittest.TestCase):
 
         module2 = DiscreteBCTorchModule(
             config=RLModuleConfig(
-                env.observation_space,
-                env.action_space,
+                env.observation_space[0],
+                env.action_space[0],
                 model_config_dict={"fcnet_hiddens": [32]},
             )
         ).as_multi_agent()
@@ -104,8 +104,8 @@ class TestMARLModule(unittest.TestCase):
         env = env_class({"num_agents": 2})
         module = DiscreteBCTorchModule(
             config=RLModuleConfig(
-                env.observation_space,
-                env.action_space,
+                env.observation_space[0],
+                env.action_space[0],
                 model_config_dict={"fcnet_hiddens": [32]},
             )
         ).as_multi_agent()
@@ -114,8 +114,8 @@ class TestMARLModule(unittest.TestCase):
             "test",
             DiscreteBCTorchModule(
                 config=RLModuleConfig(
-                    env.observation_space,
-                    env.action_space,
+                    env.observation_space[0],
+                    env.action_space[0],
                     model_config_dict={"fcnet_hiddens": [32]},
                 )
             ),
@@ -131,8 +131,8 @@ class TestMARLModule(unittest.TestCase):
                 DEFAULT_POLICY_ID,
                 DiscreteBCTorchModule(
                     config=RLModuleConfig(
-                        env.observation_space,
-                        env.action_space,
+                        env.observation_space[0],
+                        env.action_space[0],
                         model_config_dict={"fcnet_hiddens": [32]},
                     )
                 ),
@@ -143,8 +143,8 @@ class TestMARLModule(unittest.TestCase):
             DEFAULT_POLICY_ID,
             DiscreteBCTorchModule(
                 config=RLModuleConfig(
-                    env.observation_space,
-                    env.action_space,
+                    env.observation_space[0],
+                    env.action_space[0],
                     model_config_dict={"fcnet_hiddens": [32]},
                 )
             ),
@@ -157,8 +157,8 @@ class TestMARLModule(unittest.TestCase):
         env = env_class({"num_agents": 2})
         module = DiscreteBCTorchModule(
             config=RLModuleConfig(
-                env.observation_space,
-                env.action_space,
+                env.observation_space[0],
+                env.action_space[0],
                 model_config_dict={"fcnet_hiddens": [32]},
             )
         ).as_multi_agent()
@@ -167,8 +167,8 @@ class TestMARLModule(unittest.TestCase):
             "test",
             DiscreteBCTorchModule(
                 config=RLModuleConfig(
-                    env.observation_space,
-                    env.action_space,
+                    env.observation_space[0],
+                    env.action_space[0],
                     model_config_dict={"fcnet_hiddens": [32]},
                 )
             ),
@@ -177,8 +177,8 @@ class TestMARLModule(unittest.TestCase):
             "test2",
             DiscreteBCTorchModule(
                 config=RLModuleConfig(
-                    env.observation_space,
-                    env.action_space,
+                    env.observation_space[0],
+                    env.action_space[0],
                     model_config_dict={"fcnet_hiddens": [128]},
                 )
             ),
@@ -208,8 +208,8 @@ class TestMARLModule(unittest.TestCase):
             "test3",
             DiscreteBCTorchModule(
                 config=RLModuleConfig(
-                    env.observation_space,
-                    env.action_space,
+                    env.observation_space[0],
+                    env.action_space[0],
                     model_config_dict={"fcnet_hiddens": [120]},
                 )
             ),

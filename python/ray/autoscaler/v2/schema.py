@@ -4,7 +4,7 @@ from enum import Enum
 from typing import Dict, List, Optional, Tuple
 
 from ray.autoscaler.v2.instance_manager.common import InstanceUtil
-from ray.core.generated.autoscaler_pb2 import NodeState
+from ray.core.generated.autoscaler_pb2 import NodeState, NodeStatus
 from ray.core.generated.instance_manager_pb2 import Instance
 
 # TODO(rickyx): once we have graceful shutdown, we could populate
@@ -16,37 +16,6 @@ NODE_DEATH_CAUSE_RAYLET_DIED = "NodeTerminated"
 
 # e.g., cpu_4_ondemand.
 NodeType = str
-
-
-# e.g. head node or worker node.
-class NodeKind(Enum):
-
-    HEAD = "head"
-    WORKER = "worker"
-    UNKNOWN = "unknown"
-
-
-# TODO(rickyx): we should try to come up with a mutually exclusive
-# or a state machine for this set of node status. Right now,
-# different cloud providers have different set of status.
-class NodeStatus(Enum):
-    """
-    NodeStatus represents the status of a cloud instance/node.
-    """
-
-    UNKNOWN = "unknown"
-    # These are more specific to cluster launchers.
-    UNINITIALIZED = "uninitialized"
-    WAITING_FOR_SSH = "waiting-for-ssh"
-    SYNCING_FILES = "syncing-files"
-    SETTING_UP = "setting-up"
-    UPDATE_FAILED = "update-failed"
-    UP_TO_DATE = "up-to-date"
-
-    # These are more specific to kuberay.
-    RUNNING = "running"
-    PENDING = "pending"
-    TERMINATED = "terminated"
 
 
 @dataclass

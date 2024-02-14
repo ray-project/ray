@@ -116,7 +116,7 @@ class TestSingelAgentEpisode(unittest.TestCase):
         works as intended and the timestep is increased during each step.
         """
         # Create an empty episode and add initial observations.
-        episode = SingleAgentEpisode()
+        episode = SingleAgentEpisode(len_lookback_buffer=10)
         env = gym.make("CartPole-v1")
         # Set the random seed (otherwise the episode will terminate at
         # different points in each test run).

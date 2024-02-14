@@ -1128,8 +1128,6 @@
   cluster:
     byod:
       type: gpu
-      runtime_env:
-        - NCCL_SOCKET_IFNAME=ens
       post_build_script: byod_xgboost_test.sh
     cluster_compute: tpl_gpu_small_aws.yaml
 

@@ -37,6 +37,7 @@ import ray.cloudpickle as pickle
 from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
 from ray.rllib.algorithms.registry import ALGORITHMS_CLASS_TO_NAME as ALL_ALGORITHMS
 from ray.rllib.connectors.agent.obs_preproc import ObsPreprocessorConnector
+from ray.rllib.core.rl_module.marl_module import MultiAgentRLModuleSpec
 from ray.rllib.core.rl_module.rl_module import SingleAgentRLModuleSpec
 from ray.rllib.env.env_context import EnvContext
 from ray.rllib.env.env_runner import EnvRunner
@@ -92,6 +93,7 @@ from ray.rllib.utils.metrics import (
     NUM_ENV_STEPS_SAMPLED,
     NUM_ENV_STEPS_SAMPLED_THIS_ITER,
     NUM_ENV_STEPS_TRAINED,
+    SYNCH_ENV_CONNECTOR_STATES_TIMER,
     SYNCH_WORKER_WEIGHTS_TIMER,
     TRAINING_ITERATION_TIMER,
     SAMPLE_TIMER,
@@ -720,16 +722,29 @@ class Algorithm(Trainable, AlgorithmBase):
             #  MARLModule from the RLModule within each policy.
             local_worker = self.workers.local_worker()
             # TODO (Sven): Unify the inference of the MARLModuleSpec. Right now,
-            #  we get this from the EnvRunner's `marl_module_spec` property.
+            #  we get this from the RolloutWorker's `marl_module_spec` property
+            #  (which other EnvRunners do not have).
             #  However, this is hacky (information leak) and should not remain this
             #  way. For other EnvRunner classes (that don't have this property),
             #  Algorithm should infer this itself.
-            if hasattr(local_worker, "marl_module_spec"):
-                module_spec = local_worker.marl_module_spec
+            if hasattr(local_worker, "module") and local_worker.module is not None:
+                marl_module_dict = dict(local_worker.module.as_multi_agent())
+                spaces = {
+                    mid: (mod.config.observation_space, mod.config.action_space)
+                    for mid, mod in marl_module_dict.items()
+                }
+                policy_dict, _ = self.config.get_multi_agent_setup(
+                    env=local_worker.env, spaces=spaces
+                )
+                module_spec: MultiAgentRLModuleSpec = self.config.get_marl_module_spec(
+                    policy_dict=policy_dict
+                )
+            elif hasattr(local_worker, "marl_module_spec"):
+                module_spec: MultiAgentRLModuleSpec = local_worker.marl_module_spec
             else:
-                module_spec = self.config.get_marl_module_spec(
-                    env=local_worker.env,
-                    spaces=getattr(local_worker, "spaces", None),
+                raise AttributeError(
+                    "Your local EnvRunner/RolloutWorker does NOT have any property "
+                    "referring to its RLModule!"
                 )
             self.learner_group = self.config.build_learner_group(
                 rl_module_spec=module_spec,
@@ -844,23 +859,31 @@ class Algorithm(Trainable, AlgorithmBase):
             ), "Algorithm.evaluate() needs to return a dict."
             results.update(self.evaluation_metrics)
 
-        if hasattr(self, "workers") and isinstance(self.workers, WorkerSet):
-            # Sync filters on workers.
+        # Sync filters on workers.
+        if self.config.uses_new_env_runners:
+            # Synchronize EnvToModule and ModuleToEnv connector states and broadcast new
+            # states back to all workers.
+            with self._timers[SYNCH_ENV_CONNECTOR_STATES_TIMER]:
+                # Merge connector states from all EnvRunners and broadcast updated
+                # states back to all EnvRunners.
+                self.workers.sync_connectors()
+        else:
             self._sync_filters_if_needed(
                 central_worker=self.workers.local_worker(),
                 workers=self.workers,
                 config=self.config,
             )
-            episodes_this_iter = collect_episodes(
-                self.workers,
-                self._remote_worker_ids_for_metrics(),
-                timeout_seconds=self.config.metrics_episode_collection_timeout_s,
-            )
-            results = self._compile_iteration_results(
-                episodes_this_iter=episodes_this_iter,
-                step_ctx=train_iter_ctx,
-                iteration_results=results,
-            )
+
+        episodes_this_iter = collect_episodes(
+            self.workers,
+            self._remote_worker_ids_for_metrics(),
+            timeout_seconds=self.config.metrics_episode_collection_timeout_s,
+        )
+        results = self._compile_iteration_results(
+            episodes_this_iter=episodes_this_iter,
+            step_ctx=train_iter_ctx,
+            iteration_results=results,
+        )
 
         # Check `env_task_fn` for possible update of the env's task.
         if self.config.env_task_fn is not None:
@@ -1370,12 +1393,14 @@ class Algorithm(Trainable, AlgorithmBase):
         # Call the `_before_evaluate` hook.
         self._before_evaluate()
 
-        # TODO (sven): Implement solution via connectors.
-        self._sync_filters_if_needed(
-            central_worker=self.workers.local_worker(),
-            workers=self.evaluation_workers,
-            config=eval_cfg,
-        )
+        # Synchronize EnvToModule and ModuleToEnv connector states and broadcast new
+        # states back to all workers.
+        with self._timers[SYNCH_ENV_CONNECTOR_STATES_TIMER]:
+            # Merge connector states from all EnvRunners and broadcast updated
+            # states back to all EnvRunners.
+            self.evaluation_workers.sync_connectors(
+                from_worker=self.workers.local_worker()
+            )
 
         if self.evaluation_workers is None and (
             self.workers.local_worker().input_reader is None

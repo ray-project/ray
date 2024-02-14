@@ -139,7 +139,7 @@ class KubeRayProvider(ICloudInstanceProvider):
             self._submit_scale_request(scale_request)
         except Exception as e:
             logger.exception(f"Error terminating nodes: {e}")
-            self._add_terminate_errors(ids, request_id, str(e), e)
+            self._add_terminate_errors(ids, request_id, details=str(e), cause=e)
 
     def launch(self, shape: Dict[NodeType, int], request_id: str) -> None:
         if request_id in self._requests:
@@ -169,7 +169,7 @@ class KubeRayProvider(ICloudInstanceProvider):
             self._submit_scale_request(scale_request)
         except Exception as e:
             logger.exception(f"Error launching nodes: {e}")
-            self._add_launch_errors(shape, request_id, str(e), e)
+            self._add_launch_errors(shape, request_id, details=str(e), cause=e)
 
     def poll_errors(self) -> List[CloudInstanceProviderError]:
         errors = []
@@ -336,11 +336,11 @@ class KubeRayProvider(ICloudInstanceProvider):
             self._launch_errors_queue.append(
                 LaunchNodeError(
                     node_type=node_type,
-                    details=details,
                     timestamp_ns=time.time_ns(),
                     count=count,
                     request_id=request_id,
-                    exception=e,
+                    details=details,
+                    cause=e,
                 )
             )
 
@@ -364,10 +364,10 @@ class KubeRayProvider(ICloudInstanceProvider):
             self._terminate_errors_queue.append(
                 TerminateNodeError(
                     cloud_instance_id=id,
-                    details=details,
                     timestamp_ns=time.time_ns(),
                     request_id=request_id,
-                    exception=e,
+                    details=details,
+                    cause=e,
                 )
             )
 

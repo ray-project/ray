@@ -134,16 +134,18 @@ class DreamerV3EnvRunner(EnvRunner):
         assert self.num_envs == self.config.num_envs_per_worker
 
         # Create our RLModule to compute actions with.
+        policy_dict, _ = self.config.get_multi_agent_setup(env=self.env)
+        self.marl_module_spec = self.config.get_marl_module_spec(
+            policy_dict=policy_dict
+        )
         if self.config.share_module_between_env_runner_and_learner:
             # DreamerV3 Algorithm will set this to the local Learner's module.
             self.module = None
         # Create our own instance of a DreamerV3RLModule (which then needs to be
         # weight-synched each iteration).
         else:
-            policy_dict, _ = self.config.get_multi_agent_setup(env=self.env)
-            module_spec = self.config.get_marl_module_spec(policy_dict=policy_dict)
             # TODO (sven): DreamerV3 is currently single-agent only.
-            self.module = module_spec.build()[DEFAULT_POLICY_ID]
+            self.module = self.marl_module_spec.build()[DEFAULT_POLICY_ID]
 
         self._needs_initial_reset = True
         self._episodes = [None for _ in range(self.num_envs)]
