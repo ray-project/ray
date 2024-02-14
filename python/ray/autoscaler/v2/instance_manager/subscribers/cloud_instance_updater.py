@@ -1,7 +1,7 @@
 import logging
+import uuid
 from collections import defaultdict
 from typing import List
-import uuid
 
 from ray.autoscaler.v2.instance_manager.instance_storage import (
     InstanceUpdatedSubscriber,
