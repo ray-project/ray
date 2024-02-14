@@ -45,6 +45,8 @@ class SchedulingRequest:
     max_num_nodes: Optional[int] = None
     # Idle timeout in seconds.
     idle_timeout_s: Optional[int] = None
+    # Disable outdated node check.
+    disable_outdated_node_check: bool = True
     # TODO: This prob could be refactored into the ClusterStatus data class later.
     # The current ray resource requests.
     resource_requests: List[ResourceRequestByCount] = field(default_factory=list)
@@ -438,6 +440,8 @@ class ResourceDemandScheduler(IResourceScheduler):
         _max_num_nodes: Optional[int] = None
         # The idle timeout in seconds.
         _idle_timeout_s: Optional[int] = None
+        # Disable outdated node check.
+        _disable_outdated_node_check: bool = True
         # The current schedulable nodes (including pending nodes and pending requests).
         _nodes: List[SchedulingNode] = field(default_factory=list)
         # The number of nodes by node types available for launching based on the max
@@ -451,6 +455,7 @@ class ResourceDemandScheduler(IResourceScheduler):
             node_type_configs: Dict[NodeType, NodeTypeConfig],
             max_num_nodes: Optional[int] = None,
             idle_timeout_s: Optional[int] = None,
+            disable_outdated_node_check: bool = True,
         ):
             self._nodes = nodes
             self._node_type_configs = node_type_configs
@@ -459,6 +464,7 @@ class ResourceDemandScheduler(IResourceScheduler):
             )
             self._max_num_nodes = max_num_nodes
             self._idle_timeout_s = idle_timeout_s
+            self._disable_outdated_node_check = disable_outdated_node_check
 
         @classmethod
         def from_schedule_request(
@@ -481,6 +487,7 @@ class ResourceDemandScheduler(IResourceScheduler):
             for instance in req.current_instances:
                 if instance.ray_node is not None:
                     # This is a running ray node.
+                    assert instance.im_instance is not None
                     nodes.append(
                         SchedulingNode(
                             node_type=instance.ray_node.ray_node_type_name,
@@ -490,17 +497,14 @@ class ResourceDemandScheduler(IResourceScheduler):
                             ),
                             labels=dict(instance.ray_node.dynamic_labels),
                             status=SchedulingNodeStatus.RUNNING,
-                            im_instance_id=instance.im_instance.instance_id
-                            if instance.im_instance
-                            else None,
-                            ray_node_id=instance.ray_node.node_id.decode("utf-8"),
+                            im_instance_id=instance.im_instance.instance_id,
+                            ray_node_id=instance.im_instance.node_id,
                             idle_duration_ms=instance.ray_node.idle_duration_ms,
-                            launch_config_hash=instance.im_instance.launch_config_hash
-                            if instance.im_instance
-                            else None,
+                            launch_config_hash=instance.im_instance.launch_config_hash,
                             available_resources_for_constraints=dict(
                                 instance.ray_node.total_resources
                             ),
+                            node_kind=instance.im_instance.node_kind,
                         )
                     )
                 elif (
@@ -545,6 +549,7 @@ class ResourceDemandScheduler(IResourceScheduler):
                 node_type_configs=node_type_configs,
                 max_num_nodes=req.max_num_nodes,
                 idle_timeout_s=req.idle_timeout_s,
+                disable_outdated_node_check=req.disable_outdated_node_check,
             )
 
         @staticmethod
@@ -665,10 +670,11 @@ class ResourceDemandScheduler(IResourceScheduler):
     def schedule(self, request: SchedulingRequest) -> SchedulingReply:
         logger.info(
             "Scheduling for request: resource_request={}, gang_resource_request={}, "
-            "cluster_constraint={}".format(
+            "cluster_constraint={}, ndoe_type_configs={}".format(
                 ResourceRequestUtil.to_dict_list(request.resource_requests),
                 ProtobufUtil.to_dict_list(request.gang_resource_requests),
                 ProtobufUtil.to_dict_list(request.cluster_resource_constraints),
+                request.node_type_configs,
             )
         )
 
@@ -894,10 +900,11 @@ class ResourceDemandScheduler(IResourceScheduler):
 
         for node in terminated_nodes:
             logger.info(
-                "Terminating node {}(ray={}) due to {}.".format(
+                "Terminating node {}(ray={}) due to {}({}).".format(
                     node.im_instance_id,
                     node.ray_node_id,
                     TerminationRequest.Cause.Name(cause),
+                    max_num_nodes or max_num_nodes_per_type,
                 )
             )
             node.status = SchedulingNodeStatus.TO_TERMINATE
@@ -1026,6 +1033,7 @@ class ResourceDemandScheduler(IResourceScheduler):
         scheduled_nodes, infeasible = ResourceDemandScheduler._try_schedule(
             ctx, requests, is_constraint=True
         )
+        print("scheduled_nodes: ", scheduled_nodes)
 
         if infeasible:
             # Unable to satisfy the constraint.
@@ -1331,6 +1339,11 @@ class ResourceDemandScheduler(IResourceScheduler):
         Args:
             ctx: The schedule context.
         """
+        if ctx._disable_outdated_node_check:
+            # Skip the outdated node check.
+            logger.debug("Outdated node check is disabled.")
+            return
+
         nodes = ctx.get_nodes()
 
         for node in nodes:

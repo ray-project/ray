@@ -91,7 +91,6 @@ class Reconciler:
 
         """
         autoscaling_state = AutoscalingState()
-        print(ray_cluster_resource_state)
         autoscaling_state.last_seen_cluster_resource_state_version = (
             ray_cluster_resource_state.cluster_resource_state_version
         )
@@ -154,6 +153,11 @@ class Reconciler:
             cloud_instance_id=head_cloud_instance.cloud_instance_id,
             node_kind=head_cloud_instance.node_kind,
             instance_type=head_cloud_instance.node_type,
+        )
+        logger.info(
+            "Initializing head node with {}.".format(
+                MessageToDict(updates[head_node_instance_id])
+            )
         )
         instances, version = Reconciler._get_im_instances(instance_manager)
         assert len(instances) == 0, "No instance should have been initialized. "
@@ -762,7 +766,7 @@ class Reconciler:
                 new_instance_status=IMInstance.REQUESTED,
                 launch_request_id=launch_request_id,
             )
-            logger.debug(
+            logger.info(
                 "Updating {}({}) with {}".format(
                     instance.instance_id,
                     IMInstance.InstanceStatus.Name(instance.status),
@@ -1106,7 +1110,8 @@ class Reconciler:
 
         autoscaler_instances = []
         ray_nodes_by_id = {
-            node.node_id.decode(): node for node in ray_state.node_states
+            NodeStateUtil.node_id_hex(node.node_id): node
+            for node in ray_state.node_states
         }
 
         for im_instance in im_instances:

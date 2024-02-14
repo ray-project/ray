@@ -8,7 +8,9 @@ import ray
 import pytest
 from ray.autoscaler._private.fake_multi_node.node_provider import FAKE_HEAD_NODE_ID
 from ray.autoscaler.v2.autoscaler import Autoscaler
-from ray.autoscaler.v2.tests.util import MockAutoscalingConfig
+from ray.autoscaler.v2.instance_manager.config import AutoscalingConfig
+from ray.autoscaler.v2.sdk import get_cluster_status, request_cluster_resources
+from ray._private.test_utils import wait_for_condition
 from ray._raylet import GcsClient
 
 DEFAULT_AUTOSCALING_CONFIG = {
@@ -23,6 +25,23 @@ DEFAULT_AUTOSCALING_CONFIG = {
                 "CPU": 0,
             },
             "max_workers": 0,
+            "node_config": {},
+        },
+        "ray.worker.cpu": {
+            "resources": {
+                "CPU": 1,
+            },
+            "min_workers": 0,
+            "max_workers": 10,
+            "node_config": {},
+        },
+        "ray.worker.gpu": {
+            "resources": {
+                "GPU": 1,
+            },
+            "min_workers": 0,
+            "max_workers": 10,
+            "node_config": {},
         },
     },
     "head_node_type": "ray.head.default",
@@ -31,33 +50,82 @@ DEFAULT_AUTOSCALING_CONFIG = {
 }
 
 
+def make_head_node(**node_args):
+    default_kwargs = {
+        "num_cpus": 0,
+        "num_gpus": 0,
+        "object_store_memory": 150 * 1024 * 1024,  # 150 MiB
+        "min_worker_port": 0,
+        "max_worker_port": 0,
+        "dashboard_port": None,
+    }
+    ray_params = ray._private.parameter.RayParams(**node_args)
+    ray_params.update_if_absent(**default_kwargs)
+
+    node = ray._private.node.Node(
+        ray_params,
+        head=True,
+    )
+    # redis_address = self.head_node.redis_address
+    # redis_password = node_args.get(
+    #     "redis_password", ray_constants.REDIS_DEFAULT_PASSWORD
+    # )
+    # self.webui_url = self.head_node.webui_url
+    # # Init global state accessor when creating head node.
+    # gcs_options = GcsClientOptions.from_gcs_address(node.gcs_address)
+    # self.global_state._initialize_global_state(gcs_options)
+    # Write the Ray cluster address for convenience in unit
+    # testing. ray.init() and ray.init(address="auto") will connect
+    # to the local cluster.
+    ray._private.utils.write_ray_address(node.gcs_address)
+
+    return node
+
+
 def test_autoscaler_v2():
-    os.environ["RAY_OVERRIDE_NODE_ID_FOR_TESTING"] = FAKE_HEAD_NODE_ID
-    ctx = ray.init()
-    print(ctx.address_info)
+    head_node = make_head_node(
+        env_vars={
+            "RAY_CLOUD_INSTANCE_ID": FAKE_HEAD_NODE_ID,
+            "RAY_OVERRIDE_NODE_ID_FOR_TESTING": FAKE_HEAD_NODE_ID,
+        }
+    )
+    print(head_node)
     mock_config_reader = MagicMock()
     config = DEFAULT_AUTOSCALING_CONFIG
 
     # Configs for the node provider
-    config["provider"]["gcs_address"] = ctx.address_info["gcs_address"]
-    config["provider"]["head_node_id"] = ctx.address_info["node_id"]
+    config["provider"]["gcs_address"] = head_node.gcs_address
+    config["provider"]["head_node_id"] = FAKE_HEAD_NODE_ID
     config["provider"]["launch_multiple"] = True
     os.environ["RAY_FAKE_CLUSTER"] = "1"
-    mock_config_reader.get_autoscaling_config.return_value = MockAutoscalingConfig(
-        configs=config
+    mock_config_reader.get_autoscaling_config.return_value = AutoscalingConfig(
+        configs=config, skip_content_hash=True
     )
-    gcs_client = GcsClient(ctx.address_info["gcs_address"])
+    gcs_address = head_node.gcs_address
+    gcs_client = GcsClient(head_node.gcs_address)
 
     autoscaler = Autoscaler(
         session_name="test",
         config_reader=mock_config_reader,
         gcs_client=gcs_client,
     )
-
+    autoscaler.initialize()
     ray_state = autoscaler.get_cluster_resource_state()
+    autoscaler.update_autoscaling_state(ray_state)
 
-    autoscaler_state = autoscaler.compute_autoscaling_state(ray_state)
-    print(autoscaler_state)
+    # Basic tasks
+    request_cluster_resources(gcs_address, [{"CPU": 1}, {"GPU": 1}])
+
+    def verify():
+        cluster_state = get_cluster_status(gcs_address)
+        ray_state = autoscaler.get_cluster_resource_state()
+        autoscaling_state = autoscaler.update_autoscaling_state(ray_state)
+        print(autoscaling_state)
+        print(cluster_state)
+        assert len(cluster_state.active_nodes) == 3
+        return True
+
+    wait_for_condition(verify, retry_interval_ms=3000)
 
 
 if __name__ == "__main__":

@@ -84,6 +84,9 @@ class CloudInstanceUpdater(InstanceUpdatedSubscriber):
             for event in events:
                 request_shape[event.instance_type] += 1
             # Make requests to the cloud provider.
+            logger.info(
+                "Launching instances({}): {}".format(launch_request_id, request_shape)
+            )
             self._cloud_provider.launch(
                 shape=request_shape, request_id=launch_request_id
             )

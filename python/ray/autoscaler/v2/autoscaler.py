@@ -41,16 +41,24 @@ class Autoscaler:
         super().__init__()
 
         self._config_reader = config_reader
+        config = config_reader.get_autoscaling_config()
+        print(config.dump())
         self._gcs_client = gcs_client
 
         self._cloud_provider = self._init_cloud_provider(config_reader)
         self._instance_manager = self._init_instance_manager(
             session_name=session_name,
-            config=config_reader.get_autoscaling_config(),
+            config=config,
             cloud_provider=self._cloud_provider,
             gcs_client=gcs_client,
         )
         self._scheduler = ResourceDemandScheduler()
+
+    def initialize(self):
+        Reconciler.initialize_head_node(
+            instance_manager=self._instance_manager,
+            non_terminated_cloud_instances=self._cloud_provider.get_non_terminated(),
+        )
 
     @staticmethod
     def _init_cloud_provider(config_reader: IConfigReader) -> ICloudInstanceProvider:
@@ -62,7 +70,6 @@ class Autoscaler:
 
         return NodeProviderAdapter(
             v1_provider=node_provider_v1,
-            config_reader=config_reader,
         )
 
     @staticmethod
@@ -95,7 +102,7 @@ class Autoscaler:
 
         return reply.cluster_resource_state
 
-    def compute_autoscaling_state(
+    def update_autoscaling_state(
         self, ray_cluster_resource_state: ClusterResourceState
     ) -> Optional[AutoscalingState]:
 

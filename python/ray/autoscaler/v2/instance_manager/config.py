@@ -12,6 +12,7 @@ from ray._private.ray_constants import env_integer
 from ray.autoscaler._private.constants import (
     AUTOSCALER_MAX_CONCURRENT_LAUNCHES,
     DEFAULT_UPSCALING_SPEED,
+    DISABLE_LAUNCH_CONFIG_CHECK_KEY,
 )
 from ray.autoscaler._private.util import (
     hash_launch_conf,
@@ -323,7 +324,11 @@ class AutoscalingConfig:
         return AUTOSCALER_MAX_CONCURRENT_LAUNCHES
 
     def skip_ray_install(self) -> bool:
-        return self.provider == Provider.KUBERAY
+        return self.get_provider_config().get("skip_ray_install", True)
+
+    def disable_launch_config_check(self) -> bool:
+        provider_config = self.get_provider_config()
+        return provider_config.get(DISABLE_LAUNCH_CONFIG_CHECK_KEY, True)
 
     def get_instance_reconcile_config(self) -> InstanceReconcileConfig:
         # TODO(rickyx): we need a way to customize these configs,
@@ -359,6 +364,9 @@ class AutoscalingConfig:
     @property
     def file_mounts_contents_hash(self) -> str:
         return self._file_mounts_contents_hash
+
+    def dump(self) -> str:
+        return yaml.safe_dump(self._configs)
 
 
 class FileConfigReader(IConfigReader):
