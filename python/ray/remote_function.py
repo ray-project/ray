@@ -29,7 +29,6 @@ from ray.util.tracing.tracing_helper import (
     _tracing_task_invocation,
 )
 import requests
-import shortuuid
 from ray.util.scheduling_strategies import (
     In,
     NotIn,
