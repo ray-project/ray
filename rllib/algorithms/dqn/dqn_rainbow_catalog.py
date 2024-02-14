@@ -3,6 +3,7 @@ import gymnasium as gym
 from ray.rllib.core.models.catalog import Catalog
 from ray.rllib.core.models.base import Model
 from ray.rllib.core.models.configs import MLPHeadConfig
+from ray.rllib.models.torch.torch_distributions import TorchCategorical
 from ray.rllib.utils.annotations import (
     ExperimentalAPI,
     override,
@@ -68,3 +69,9 @@ class DQNRainbowCatalog(Catalog):
         """Build the value function head."""
 
         return self.vf_head_config.build(framework=framework)
+
+    @override(Catalog)
+    def get_action_dist_cls(self, framework: str) -> "TorchCategorical":
+        # We only implement for Torch.
+        assert framework == "torch"
+        return TorchCategorical

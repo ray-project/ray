@@ -286,13 +286,16 @@ class DQNConfig(SimpleQConfig):
         if self._enable_new_api_stack:
             # Include the architecture hyperparameters into the model config.
             # TODO (simon, sven): Find a general way to update the model_config.
-            self.model.update(
-                {
-                    "dueling": self.dueling,
-                    "double_q": self.double_q,
-                    "num_atoms": self.num_atoms,
-                }
-            )
+            if "double_q" not in self.model:
+                self.model.update({"double_q": self.double_q})
+            if "dueling" not in self.model:
+                self.model.update({"dueling": self.dueling})
+            if "num_atoms" not in self.model:
+                self.model.update({"num_atoms": self.num_atoms})
+            if "v_max" not in self.model:
+                self.model.update({"v_max": self.v_max})
+            if "v_min" not in self.model:
+                self.model.update({"v_min": self.v_min})
 
         return self
 
@@ -367,6 +370,7 @@ class DQNConfig(SimpleQConfig):
             return SingleAgentRLModuleSpec(
                 module_class=DQNRainbowTorchRLModule,
                 catalog_class=DQNRainbowCatalog,
+                # model_config_dict=self.model,
             )
         else:
             raise ValueError(

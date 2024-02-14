@@ -20,6 +20,7 @@ from ray.rllib.utils.nested_dict import NestedDict
 
 CRITIC_TARGET = "critic_target"
 QF_PREDS = "qf_preds"
+QF_NEXT_PREDS = "qf_next_preds"
 QF_TWIN_PREDS = "qf_twin_preds"
 ACTION_DIST_INPUTS_NEXT = "action_dist_inputs_next"
 

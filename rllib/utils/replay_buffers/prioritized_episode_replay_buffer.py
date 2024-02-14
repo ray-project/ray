@@ -356,11 +356,13 @@ class PrioritizedEpisodeReplayBuffer(EpisodeReplayBuffer):
         self.sampled_timesteps += batch_size_B
 
         # TODO Return SampleBatch instead of this simpler dict.
+        # TODO (simon): Check, if for stateful modules we want to sample
+        # here the sequences. If not remove the double list for obs.
         ret = {
-            SampleBatch.OBS: np.array(observations),
+            SampleBatch.OBS: np.array(observations).squeeze(),
             SampleBatch.ACTIONS: np.array(actions),
             SampleBatch.REWARDS: np.array(rewards),
-            SampleBatch.NEXT_OBS: np.array(next_observations),
+            SampleBatch.NEXT_OBS: np.array(next_observations).squeeze(),
             SampleBatch.TERMINATEDS: np.array(is_terminated),
             SampleBatch.TRUNCATEDS: np.array(is_truncated),
             "weights": np.array(weights),

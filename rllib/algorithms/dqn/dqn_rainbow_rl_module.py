@@ -1,12 +1,18 @@
-from typing import Any
+from typing import Any, Type
 from ray.rllib.algorithms.dqn.dqn_rainbow_catalog import DQNRainbowCatalog
 from ray.rllib.core.models.specs.typing import SpecType
 from ray.rllib.core.rl_module.rl_module import RLModule
 from ray.rllib.core.rl_module.rl_module_with_target_networks_interface import (
     RLModuleWithTargetNetworksInterface,
 )
+from ray.rllib.models.distributions import Distribution
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils.annotations import ExperimentalAPI, override
+
+ATOMS = "atoms"
+QF_PROBS = "qf_probs"
+QF_TARGET_NEXT_PREDS = "qf_target_next_preds"
+QF_TARGET_NEXT_PROBS = "qf_target_next_probs"
 
 
 @ExperimentalAPI
@@ -17,9 +23,13 @@ class DQNRainbowRLModule(RLModule, RLModuleWithTargetNetworksInterface):
         catalog: DQNRainbowCatalog = self.config.get_catalog()
 
         # If a dueling architecture is used.
-        self.is_dueling = self.config.model_config_dict["dueling"]
+        self.is_dueling = self.config.model_config_dict.get("dueling")
         # The number of atoms for a distribution support.
-        self.num_atoms = self.config.model_config_dict["num_atoms"]
+        self.num_atoms = self.config.model_config_dict.get("num_atoms")
+        # If distributional learning is requested configure the support.
+        if self.num_atoms > 1:
+            self.v_min = self.config.model_config_dict.get("v_min")
+            self.v_max = self.config.model_config_dict.get("v_max")
 
         # Build the encoder for the advantage and value streams. Note,
         # the same encoder is used, if no dueling setting is used.
@@ -47,6 +57,19 @@ class DQNRainbowRLModule(RLModule, RLModuleWithTargetNetworksInterface):
         self.af_target.trainable = False
         if self.is_dueling:
             self.vf_target.trainable = False
+
+        # Define the action distribution for sampling the eexploit action
+        # during exploration.
+        self.action_dist_cls = catalog.get_action_dist_cls(framework=self.framework)
+
+    @override(RLModule)
+    def get_exploration_action_dist_cls(self) -> Type[Distribution]:
+        """Returns the action distribution class for exploration.
+
+        Note, this class is used to sample the exploit action during
+        exploration.
+        """
+        return self.action_dist_cls
 
     # TODO (simon): DQN Rainbow does not support RNNs, yet.
     @override(RLModule)
