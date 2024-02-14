@@ -1,4 +1,5 @@
 from functools import partial
+import logging
 from typing import Any, Callable, Dict, Optional, Union
 
 import xgboost
@@ -7,11 +8,13 @@ from packaging.version import Version
 import ray.train
 from ray.train import Checkpoint
 from ray.train.constants import TRAIN_DATASET_KEY
-from ray.train.trainer import BaseTrainer, GenDataset
+from ray.train.trainer import GenDataset
 from ray.train.data_parallel_trainer import DataParallelTrainer
 from ray.train.gbdt_trainer import GBDTTrainer
 from ray.train.xgboost import RayTrainReportCallback, XGBoostConfig
 from ray.util.annotations import PublicAPI
+
+logger = logging.getLogger(__name__)
 
 
 @PublicAPI(stability="beta")
@@ -166,6 +169,18 @@ def _xgboost_train_fn_per_worker(
     from ray.train._internal.session import get_session
 
     checkpoint = ray.train.get_checkpoint()
+    init_model = None
+    remaining_iters = num_boost_round
+    if checkpoint:
+        init_model = RayTrainReportCallback.get_model(checkpoint)
+        starting_iter = init_model.num_boosted_rounds()
+        remaining_iters = num_boost_round - starting_iter
+        logger.warning(
+            f"Model loaded from checkpoint will train for "
+            f"additional {remaining_iters} iterations (trees) in order "
+            "to achieve the target number of iterations "
+            f"({num_boost_round=})."
+        )
 
     train_dataset = ray.train.get_dataset_shard(TRAIN_DATASET_KEY)
     train_df = train_dataset.to_pandas()
@@ -189,6 +204,7 @@ def _xgboost_train_fn_per_worker(
             dtrain=dtrain,
             evals=evals,
             evals_result=evals_result,
+            num_boost_round=remaining_iters,
             **xgboost_train_kwargs,
         )
 
@@ -209,6 +225,24 @@ class XGBoostTrainer(SimpleXGBoostTrainer):
         metadata: Optional[Dict[str, Any]] = None,
         **train_kwargs,
     ):
+        # Initialize a default Ray Train metrics/checkpoint reporting callback if needed
+        callbacks = train_kwargs.get("callbacks", [])
+        user_supplied_callback = any(
+            isinstance(callback, RayTrainReportCallback) for callback in callbacks
+        )
+        callback_kwargs = {}
+        if run_config:
+            callback_kwargs[
+                "frequency"
+            ] = run_config.checkpoint_config.checkpoint_frequency
+            callback_kwargs["checkpoint_at_end"] = (
+                run_config.checkpoint_config.checkpoint_frequency or 0
+            )
+
+        if not user_supplied_callback:
+            callbacks.append(RayTrainReportCallback(**callback_kwargs))
+        train_kwargs["callbacks"] = callbacks
+
         train_fn_per_worker = partial(
             _xgboost_train_fn_per_worker,
             label_column=label_column,
@@ -227,7 +261,7 @@ class XGBoostTrainer(SimpleXGBoostTrainer):
         )
 
 
-if __name__ == "__main__":
+def simple_trainer_example():
     from contextlib import contextmanager
 
     @contextmanager
@@ -283,3 +317,32 @@ if __name__ == "__main__":
         scaling_config=ray.train.ScalingConfig(num_workers=4),
     )
     trainer.fit()
+
+
+def original_api_example():
+    import ray
+    from ray.train import ScalingConfig
+    from ray.train.xgboost import XGBoostTrainer
+
+    dataset = ray.data.read_csv("s3://anonymous@air-example-data/breast_cancer.csv")
+    train_dataset, valid_dataset = dataset.train_test_split(test_size=0.3)
+
+    trainer = XGBoostTrainer(
+        scaling_config=ScalingConfig(
+            num_workers=2,
+            use_gpu=False,
+        ),
+        label_column="target",
+        num_boost_round=20,
+        params={
+            "objective": "binary:logistic",
+            "eval_metric": ["logloss", "error"],
+        },
+        datasets={"train": train_dataset, "valid": valid_dataset},
+    )
+    result = trainer.fit()
+    print(result)
+
+
+if __name__ == "__main__":
+    original_api_example()
