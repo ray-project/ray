@@ -3921,6 +3921,11 @@ void CoreWorker::HandleKillActor(rpc::KillActorRequest request,
   }
 }
 
+int64_t CoreWorker::GetLocalMemoryStoreBytesUsed() const {
+  MemoryStoreStats memory_store_stats = memory_store_->GetMemoryStoreStatisticalData();
+  return memory_store_stats.num_local_objects_bytes;
+}
+
 void CoreWorker::HandleGetCoreWorkerStats(rpc::GetCoreWorkerStatsRequest request,
                                           rpc::GetCoreWorkerStatsReply *reply,
                                           rpc::SendReplyCallback send_reply_callback) {

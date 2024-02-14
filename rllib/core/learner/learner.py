@@ -32,7 +32,6 @@ from ray.rllib.core.rl_module.rl_module import RLModule, SingleAgentRLModuleSpec
 from ray.rllib.policy.sample_batch import (
     DEFAULT_POLICY_ID,
     MultiAgentBatch,
-    SampleBatch,
 )
 from ray.rllib.utils.annotations import (
     OverrideToImplementCustomLogic,
@@ -296,18 +295,15 @@ class Learner:
             return
 
         # Build learner connector pipeline used on this Learner worker.
-        # TODO (sven): Support multi-agent cases.
-        if self.config.uses_new_env_runners and not self.config.is_multi_agent():
-            module_spec = self._module_spec.as_multi_agent().module_specs[
-                DEFAULT_POLICY_ID
-            ]
+        if self.config.uses_new_env_runners:
+            # TODO (sven): Figure out which space to provide here. For now,
+            #  it doesn't matter, as the default connector piece doesn't use
+            #  this information anyway.
+            #  module_spec = self._module_spec.as_multi_agent()
             self._learner_connector = self.config.build_learner_connector(
-                input_observation_space=module_spec.observation_space,
-                input_action_space=module_spec.action_space,
+                input_observation_space=None,
+                input_action_space=None,
             )
-            # Adjust module spec based on connector's (possibly transformed) spaces.
-            module_spec.observation_space = self._learner_connector.observation_space
-            module_spec.action_space = self._learner_connector.action_space
 
         # Build the module to be trained by this learner.
         self._module = self._make_module()
@@ -1361,22 +1357,16 @@ class Learner:
             raise ValueError("`num_iters` must be >= 1")
 
         # Call the learner connector.
-        # TODO (sven): make multi-agent capable.
         if self._learner_connector is not None:
             # Call the train data preprocessor.
             batch, episodes = self._preprocess_train_data(
                 batch=batch, episodes=episodes
             )
             batch = self._learner_connector(
-                rl_module=self.module["default_policy"],
+                rl_module=self.module,
                 data=batch,
                 episodes=episodes,
             )
-            if episodes is not None:
-                batch = MultiAgentBatch(
-                    policy_batches={DEFAULT_POLICY_ID: SampleBatch(batch)},
-                    env_steps=sum(len(e) for e in episodes),
-                )
 
         if minibatch_size:
             batch_iter = MiniBatchCyclicIterator
@@ -1419,7 +1409,7 @@ class Learner:
             # TODO (sven): Figure out whether `compile_results` should be forced
             #  to return all numpy/python data, then we can skip this conversion
             #  step here.
-            results.append(convert_to_numpy(result))
+            results.append(result)
 
         self._set_slicing_by_batch_id(batch, value=False)
 

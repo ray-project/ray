@@ -230,7 +230,6 @@ void LocalTaskManager::DispatchScheduledTasksToWorkers() {
           cluster_resource_scheduler_->GetLocalResourceManager()
               .AllocateLocalTaskResources(spec.GetRequiredResources().GetResourceMap(),
                                           allocated_instances);
-
       if (!schedulable) {
         ReleaseTaskArgs(task_id);
         // The local node currently does not have the resources to run the task, so we

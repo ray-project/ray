@@ -1,7 +1,8 @@
 import math
-from typing import Any, Callable, Dict, List, Optional, Tuple, TypeVar, Union
+from typing import Any, Dict, List, Optional, Tuple, TypeVar, Union
 
 import ray
+from ray._private.ray_constants import CALLER_MEMORY_USAGE_PER_OBJECT_REF
 from ray.data._internal.dataset_logger import DatasetLogger
 from ray.data._internal.execution.interfaces import RefBundle, TaskContext
 from ray.data._internal.planner.exchange.interfaces import (
@@ -11,6 +12,7 @@ from ray.data._internal.planner.exchange.interfaces import (
 from ray.data._internal.progress_bar import ProgressBar
 from ray.data._internal.remote_fn import cached_remote_fn
 from ray.data._internal.stats import StatsDict
+from ray.data._internal.util import convert_bytes_to_human_readable_str
 from ray.data.block import Block, BlockAccessor, BlockExecStats, BlockMetadata
 from ray.data.context import DataContext
 from ray.types import ObjectRef
@@ -139,6 +141,20 @@ class _PushBasedShuffleStage:
             output_num_blocks, len(merge_task_placement)
         )
 
+    def get_estimated_num_refs(self) -> int:
+        # Number of intermediate blocks = Number of rounds x (map tasks per
+        # round * merge tasks per round).
+        num_intermediate_refs = self.num_rounds * (
+            self.num_map_tasks_per_round * self.merge_schedule.num_merge_tasks_per_round
+        )
+        # Number of input blocks + intermediate blocks + output blocks.
+        num_refs_total = (
+            (self.num_rounds * self.num_map_tasks_per_round)
+            + num_intermediate_refs
+            + self.merge_schedule.output_num_blocks
+        )
+        return num_refs_total
+
     def get_merge_task_options(self, merge_idx):
         return self._merge_task_options[merge_idx]
 
@@ -170,10 +186,12 @@ class _PipelinedStageExecutor:
 
         self._submit_round()
 
+        self._num_block_bytes_stored_at_driver = 0
+
     def __iter__(self):
         return self
 
-    def __next__(self):
+    def __next__(self) -> List[BlockMetadata]:
         """
         Submit one round of tasks. If we already have the max concurrent rounds
         in flight, first wait for the oldest round of tasks to finish.
@@ -418,7 +436,7 @@ class PushBasedShuffleTaskScheduler(ExchangeTaskScheduler):
         self,
         refs: List[RefBundle],
         output_num_blocks: int,
-        ctx: TaskContext,
+        task_ctx: TaskContext,
         map_ray_remote_args: Optional[Dict[str, Any]] = None,
         reduce_ray_remote_args: Optional[Dict[str, Any]] = None,
         merge_factor: float = 2,
@@ -462,6 +480,17 @@ class PushBasedShuffleTaskScheduler(ExchangeTaskScheduler):
             output_num_blocks,
         )
 
+        caller_memory_usage = (
+            stage.get_estimated_num_refs() * CALLER_MEMORY_USAGE_PER_OBJECT_REF
+        )
+        self.warn_on_driver_memory_usage(
+            caller_memory_usage,
+            "Execution is estimated to use at least "
+            f"{convert_bytes_to_human_readable_str(caller_memory_usage)}"
+            " of driver memory. Ensure that the driver machine has at least "
+            "this much memory to ensure job completion.",
+        )
+
         # TODO(swang): Use INFO level. Currently there is no easy way to set
         # the logging level to DEBUG from a driver script, so just print
         # verbosely for now.
@@ -494,7 +523,7 @@ class PushBasedShuffleTaskScheduler(ExchangeTaskScheduler):
             [output_num_blocks, stage.merge_schedule, *self._exchange_spec._map_args],
         )
 
-        sub_progress_bar_dict = ctx.sub_progress_bar_dict
+        sub_progress_bar_dict = task_ctx.sub_progress_bar_dict
         bar_name = ExchangeTaskSpec.MAP_SUB_PROGRESS_BAR_NAME
         assert bar_name in sub_progress_bar_dict, sub_progress_bar_dict
         map_bar = sub_progress_bar_dict[bar_name]
@@ -531,6 +560,9 @@ class PushBasedShuffleTaskScheduler(ExchangeTaskScheduler):
             except StopIteration:
                 merge_done = True
                 break
+
+            self.warn_on_high_local_memory_store_usage()
+
         all_merge_results = merge_stage_iter.pop_merge_results()
 
         if _debug_limit_execution_to_num_blocks is not None:
@@ -577,6 +609,8 @@ class PushBasedShuffleTaskScheduler(ExchangeTaskScheduler):
                 reduce_stage_metadata += next(reduce_stage_executor)
             except StopIteration:
                 break
+
+            self.warn_on_high_local_memory_store_usage()
 
         new_blocks = reduce_stage_iter.pop_reduce_results()
         sorted_blocks = [
@@ -781,35 +815,6 @@ class PushBasedShuffleTaskScheduler(ExchangeTaskScheduler):
             num_map_tasks_per_round,
             merge_task_placement,
         )
-
-
-def _execute_pipelined_stage(
-    stage_fn: Callable[[T], Tuple[ObjectRef, U]],
-    prev_metadata_refs: List[ObjectRef],
-    stage_args: List[T],
-    progress_bar: Optional[ProgressBar] = None,
-) -> Tuple[List[BlockMetadata], List[ObjectRef], List[U]]:
-    """
-    Helper function to execute a stage of tasks. This will wait for the
-    previous round of tasks to complete before submitting the next.
-    """
-    # TODO(swang): Straggler tasks can cause pipeline bubbles. Instead of
-    # waiting for all previous tasks, we should wait for some tasks on each
-    # node to finish.
-    if progress_bar is not None:
-        prev_metadata = progress_bar.fetch_until_complete(prev_metadata_refs)
-    else:
-        prev_metadata = ray.get(prev_metadata_refs)
-    prev_metadata_refs.clear()
-
-    metadata_refs = []
-    data_outputs = []
-    while stage_args:
-        arg = stage_args.pop(0)
-        metadata_ref, data_output = stage_fn(arg)
-        metadata_refs.append(metadata_ref)
-        data_outputs.append(data_output)
-    return prev_metadata, metadata_refs, data_outputs
 
 
 def _get_num_cpus_per_node_map() -> Dict[str, int]:

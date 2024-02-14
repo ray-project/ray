@@ -195,6 +195,29 @@ class InvalidValuesTest(unittest.TestCase):
             )
         self.assertCorrectExperimentOutput(out)
 
+    def testNevergrad(self):
+        from ray.tune.search.nevergrad import NevergradSearch
+        import nevergrad as ng
+
+        np.random.seed(2020)  # At least one nan, inf, -inf and float
+
+        with self.check_searcher_checkpoint_errors_scope():
+            out = tune.run(
+                _invalid_objective,
+                search_alg=NevergradSearch(optimizer=ng.optimizers.RandomSearch),
+                config=self.config,
+                mode="max",
+                num_samples=16,
+                reuse_actors=False,
+            )
+        self.assertCorrectExperimentOutput(out)
+
+    def testNevergradWithRequiredOptimizerKwargs(self):
+        from ray.tune.search.nevergrad import NevergradSearch
+        import nevergrad as ng
+
+        NevergradSearch(optimizer=ng.optimizers.CM, optimizer_kwargs=dict(budget=16))
+
     def testOptuna(self):
         from ray.tune.search.optuna import OptunaSearch
         from optuna.samplers import RandomSampler
@@ -575,6 +598,22 @@ class SaveRestoreCheckpointTest(unittest.TestCase):
         self._save(searcher)
 
         searcher = HyperOptSearch()
+        self._restore(searcher)
+
+    def testNevergrad(self):
+        from ray.tune.search.nevergrad import NevergradSearch
+        import nevergrad as ng
+
+        searcher = NevergradSearch(
+            space=self.config,
+            metric=self.metric_name,
+            mode="max",
+            optimizer=ng.optimizers.RandomSearch,
+        )
+        self._save(searcher)
+
+        # `optimizer` is the only required argument
+        searcher = NevergradSearch(optimizer=ng.optimizers.RandomSearch)
         self._restore(searcher)
 
     def testOptuna(self):

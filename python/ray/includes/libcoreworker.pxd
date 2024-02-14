@@ -311,6 +311,8 @@ cdef extern from "ray/core_worker/core_worker.h" nogil:
 
         int64_t GetNumLeasesRequested() const
 
+        int64_t GetLocalMemoryStoreBytesUsed() const
+
         void RecordTaskLogStart(
             const CTaskID &task_id,
             int attempt_number,
