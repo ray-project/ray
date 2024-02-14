@@ -8,9 +8,7 @@ from unittest.mock import patch
 
 import pytest
 
-from ray.autoscaler.v2.instance_manager.common import (
-    InstanceUtil,
-)
+from ray.autoscaler.v2.instance_manager.common import InstanceUtil
 from ray.core.generated.instance_manager_pb2 import Instance
 
 

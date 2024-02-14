@@ -223,7 +223,8 @@ class InstanceUtil:
                 # such that a ray running node  wasn't discovered and the RAY_RUNNING
                 # transition was skipped.
                 Instance.RAY_STOPPED,
-                # cloud instance being preempted and terminated
+                # A cloud instance is being terminated (when the instance itself is no
+                # longer needed, e.g. instance is outdated, autoscaler is scaling down)
                 Instance.TERMINATING,
                 # cloud instance somehow failed during the installation process.
                 Instance.TERMINATED,
@@ -236,7 +237,8 @@ class InstanceUtil:
                 Instance.RAY_STOPPING,
                 # Ray is already stopped, as reported by the ray cluster.
                 Instance.RAY_STOPPED,
-                # cloud instance being preempted and terminated
+                # A cloud instance is being terminated (when the instance itself is no
+                # longer needed, e.g. instance is outdated, autoscaler is scaling down)
                 Instance.TERMINATING,
                 # cloud instance somehow failed.
                 Instance.TERMINATED,
@@ -248,7 +250,8 @@ class InstanceUtil:
                 # Ray is stopped, and the ray node is present in the dead ray node list
                 # reported by the ray cluster.
                 Instance.RAY_STOPPED,
-                # cloud instance being preempted and terminated
+                # A cloud instance is being terminated (when the instance itself is no
+                # longer needed, e.g. instance is outdated, autoscaler is scaling down)
                 Instance.TERMINATING,
                 # cloud instance somehow failed.
                 Instance.TERMINATED,
@@ -256,7 +259,8 @@ class InstanceUtil:
             # When in this status, the ray process is stopped, and the ray node is
             # present in the dead ray node list reported by the ray cluster.
             Instance.RAY_STOPPED: {
-                # cloud instance is requested to be stopped.
+                # A cloud instance is being terminated (when the instance itself is no
+                # longer needed, e.g. instance is outdated, autoscaler is scaling down)
                 Instance.TERMINATING,
                 # cloud instance somehow failed.
                 Instance.TERMINATED,
