@@ -304,11 +304,11 @@ def deployment(
             deployment. The user_config must be fully JSON-serializable.
         max_concurrent_queries: Maximum number of queries that are sent to a
             replica of this deployment without receiving a response. Defaults to 100.
-        max_queued_requests: Maximum number of requests to this deployment that will be
-            queued at each *caller* (proxy or DeploymentHandle). Once this limit is
-            reached, subsequent requests will raise a BackPressureError (for handles) or
-            return an HTTP 503 status code (for HTTP requests). Defaults to -1 (no
-            limit).
+        max_queued_requests: [EXPERIMENTAL] Maximum number of requests to this
+            deployment that will be queued at each *caller* (proxy or DeploymentHandle).
+            Once this limit is reached, subsequent requests will raise a
+            BackPressureError (for handles) or return an HTTP 503 status code (for HTTP
+            requests). Defaults to -1 (no limit).
         health_check_period_s: Duration between health check calls for the replica.
             Defaults to 10s. The health check is by default a no-op Actor call to the
             replica, but you can define your own health check using the "check_health"

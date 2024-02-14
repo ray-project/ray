@@ -6,6 +6,7 @@ class RayServeException(Exception):
     pass
 
 
+@PublicAPI(stability="alpha")
 class BackPressureError(RayServeException):
     """Raised when max_queued_requests is exceeded on a handle (or in the proxy)."""
 
