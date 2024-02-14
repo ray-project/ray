@@ -3,7 +3,6 @@ import pytest
 import ray
 from ray.train import Checkpoint, CheckpointConfig, ScalingConfig
 from ray.air._internal.config import ensure_only_allowed_dataclass_keys_updated
-from ray.data.preprocessor import Preprocessor
 from ray.train.trainer import BaseTrainer
 
 
