@@ -235,7 +235,6 @@ steps:
     tags:
       - python
       - oss
-      - skip-on-premerge
     instance_type: medium
     commands:
       # validate minimal installation
