@@ -44,6 +44,7 @@ class ResourceManager:
         self._global_limits_last_update_time = 0
         self._global_usage = ExecutionResources.zero()
         self._op_usages: Dict[PhysicalOperator, ExecutionResources] = {}
+        self._op_obj_store_mem_without_pending_task_outputs: Dict[PhysicalOperator, int] = {}
 
         self._downstream_fraction: Dict[PhysicalOperator, float] = {}
         self._downstream_object_store_memory: Dict[PhysicalOperator, int] = {}
@@ -62,6 +63,24 @@ class ResourceManager:
                     self, ctx.op_resource_reservation_ratio
                 )
 
+    def _estimate_object_store_memory(self, op, state) -> int:
+        # Don't count input refs towards dynamic memory usage, as they have been
+        # pre-created already outside this execution.
+        if isinstance(op, InputDataBuffer):
+            return 0
+
+        object_store_memory = op.metrics.obj_store_mem_internal_outqueue
+        object_store_memory += state.outqueue_memory_usage()
+        for next_op in op.output_dependencies:
+            object_store_memory += (
+                next_op.metrics.obj_store_mem_internal_inqueue
+                + next_op.metrics.obj_store_mem_pending_task_inputs
+            )
+        self._op_obj_store_mem_without_pending_task_outputs[op] = object_store_memory
+        if op.metrics.obj_store_mem_pending_task_outputs is not None:
+            object_store_memory += op.metrics.obj_store_mem_pending_task_outputs
+        return object_store_memory
+
     def update_usages(self):
         """Recalculate resource usages."""
         # TODO(hchen): This method will be called frequently during the execution loop.
@@ -79,7 +98,7 @@ class ResourceManager:
             # Update `self._op_usages`.
             op_usage = op.current_processor_usage()
             assert not op_usage.object_store_memory
-            op_usage.object_store_memory = _estimate_object_store_memory(op, state)
+            op_usage.object_store_memory = self._estimate_object_store_memory(op, state)
             self._op_usages[op] = op_usage
             # Update `self._global_usage`.
             self._global_usage = self._global_usage.add(op_usage)
@@ -160,24 +179,6 @@ class ResourceManager:
         """
         assert self._op_resource_limiter is not None
         return self._op_resource_limiter.get_op_limits(op)
-
-
-def _estimate_object_store_memory(op, state) -> int:
-    # Don't count input refs towards dynamic memory usage, as they have been
-    # pre-created already outside this execution.
-    if isinstance(op, InputDataBuffer):
-        return 0
-
-    object_store_memory = op.metrics.obj_store_mem_internal_outqueue
-    if op.metrics.obj_store_mem_pending_task_outputs is not None:
-        object_store_memory += op.metrics.obj_store_mem_pending_task_outputs
-    object_store_memory += state.outqueue_memory_usage()
-    for next_op in op.output_dependencies:
-        object_store_memory += (
-            next_op.metrics.obj_store_mem_internal_inqueue
-            + next_op.metrics.obj_store_mem_pending_task_inputs
-        )
-    return object_store_memory
 
 
 class OpResourceLimiter(ABC):
@@ -292,6 +293,18 @@ class ReservationOpResourceLimiter(OpResourceLimiter):
             # We don't limit GPU resources, as not all operators
             # use GPU resources.
             self._op_limits[op].gpu = float("inf")
+            continue
+            print(
+                op.name,
+                "limit:",
+                self._op_limits[op],
+                "usage:",
+                self._resource_manager.get_op_usage(op),
+                "pending task outputs:",
+                op.metrics.obj_store_mem_pending_task_outputs,
+                'reserved:',
+                self._op_reserved[op],
+            )
 
     def get_op_limits(self, op: PhysicalOperator) -> ExecutionResources:
         if op in self._op_limits:

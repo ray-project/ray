@@ -49,10 +49,7 @@ class StreamingOutputBackpressurePolicy(BackpressurePolicy):
                 op
             ).object_store_memory
             if max_bytes_to_read == 0:
-                # TODO: clean up this.
-                op_usage = resource_manager.get_op_usage(op).object_store_memory
-                op_usage -= op.metrics.obj_store_mem_pending_task_outputs or 0
-                if op_usage == 0:
+                if resource_manager._op_obj_store_mem_without_pending_task_outputs[op] == 0:
                     max_bytes_to_read = 1
             max_blocks_to_read_per_op[state] = max_bytes_to_read
 

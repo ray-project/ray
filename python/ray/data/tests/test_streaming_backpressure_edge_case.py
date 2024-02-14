@@ -6,10 +6,6 @@ import pytest
 
 import ray
 from ray._private.internal_api import memory_summary
-from ray.data._internal.execution.backpressure_policy import (
-    ENABLED_BACKPRESSURE_POLICIES_CONFIG_KEY,
-    StreamingOutputBackpressurePolicy,
-)
 from ray.data.block import BlockMetadata
 from ray.data.datasource import Datasource, ReadTask
 from ray.data.tests.conftest import *  # noqa
@@ -65,12 +61,6 @@ def test_input_backpressure_e2e(restore_data_context, shutdown_only):
     source = CountingRangeDatasource()
     ctx = ray.data.DataContext.get_current()
     ctx.execution_options.resource_limits.object_store_memory = 10e6
-    ctx.set_config(
-        ENABLED_BACKPRESSURE_POLICIES_CONFIG_KEY,
-        [
-            StreamingOutputBackpressurePolicy,
-        ],
-    )
 
     # 10GiB dataset.
     ds = ray.data.read_datasource(source, n=10000, parallelism=1000)
@@ -99,12 +89,6 @@ def test_streaming_backpressure_e2e(restore_data_context):
 
     ctx = ray.init(object_store_memory=4e9)
     data_context = ray.data.DataContext.get_current()
-    data_context.set_config(
-        ENABLED_BACKPRESSURE_POLICIES_CONFIG_KEY,
-        [
-            StreamingOutputBackpressurePolicy,
-        ],
-    )
     ds = ray.data.range_tensor(20, shape=(3, 1024, 1024), parallelism=20)
 
     pipe = ds.map_batches(
