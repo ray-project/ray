@@ -306,11 +306,11 @@ class XGBoostTrainer(SimpleXGBoostTrainer):
         )
         callback_kwargs = {}
         if run_config:
-            callback_kwargs["frequency"] = (
-                run_config.checkpoint_config.checkpoint_frequency
-            )
+            checkpoint_frequency = run_config.checkpoint_config.checkpoint_frequency
             checkpoint_at_end = run_config.checkpoint_config.checkpoint_at_end
-            # Default checkpoint_at_end to True unless the user explicitly sets it.
+
+            callback_kwargs["frequency"] = checkpoint_frequency
+            # Default `checkpoint_at_end=True` unless the user explicitly sets it.
             callback_kwargs["checkpoint_at_end"] = (
                 checkpoint_at_end if checkpoint_at_end is not None else True
             )
