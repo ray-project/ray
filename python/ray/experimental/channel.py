@@ -1,6 +1,6 @@
 import io
 import logging
-from typing import Any, Optional
+from typing import Any, Dict, List, Optional
 
 import ray
 from ray.util.annotations import PublicAPI
@@ -9,6 +9,17 @@ from ray.util.annotations import PublicAPI
 # into the program using Ray. Ray provides a default configuration at
 # entry/init points.
 logger = logging.getLogger(__name__)
+
+
+class ArgsKwargsWrapper:
+    """Warpper class for args and kwargs"""
+
+    args: List[Any]
+    kwargs: Dict[str, Any]
+
+    def __init__(self, args: List[Any], kwargs: Dict[str, Any]) -> None:
+        self.args = args
+        self.kwargs = kwargs
 
 
 def _create_channel_ref(
@@ -147,7 +158,11 @@ class Channel:
         values, _ = self._worker.get_objects(
             [self._base_ref], _is_experimental_mutable_object=True
         )
-        return values[0]
+        return (
+            values[0].args + tuple(values[0].kwargs.values())
+            if isinstance(values[0], ArgsKwargsWrapper)
+            else values[0]
+        )
 
     def end_read(self):
         """

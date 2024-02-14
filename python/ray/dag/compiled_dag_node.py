@@ -6,7 +6,7 @@ import traceback
 
 import ray
 from ray.exceptions import RayTaskError
-from ray.experimental.channel import Channel
+from ray.experimental.channel import ArgsKwargsWrapper, Channel
 from ray.util.annotations import DeveloperAPI
 
 
@@ -52,7 +52,12 @@ def do_exec_compiled_task(
     self._dag_cancelled = False
 
     try:
-        self._input_channels = [i for i in inputs[0]]
+        self._input_channels = list(
+            set(filter(lambda x: isinstance(x, Channel), inputs[0]))
+        )
+        assert (
+            len(self._input_channels) <= 1
+        ), f"Got {len(self._input_channels)} input channels, expecting no more than 1"
         method = getattr(self, actor_method_name)
 
         resolved_inputs = []
@@ -68,7 +73,9 @@ def do_exec_compiled_task(
         while True:
             for idx, channel, read_idx in input_channel_idxs:
                 read_value = channel.begin_read()
-                resolved_inputs[idx] = read_value[read_idx] if read_idx >= 0 else read_value
+                resolved_inputs[idx] = (
+                    read_value[read_idx] if read_idx >= 0 else read_value
+                )
 
             try:
                 output_val = method(*resolved_inputs)
@@ -90,7 +97,7 @@ def do_exec_compiled_task(
                     raise RuntimeError("DAG execution cancelled")
                 self._output_channel.write(output_val)
 
-            for _, channel, _ in input_channel_idxs:
+            for channel in self._input_channels:
                 channel.end_read()
 
     except Exception:
@@ -352,15 +359,14 @@ class CompiledDAG:
                 )
                 self.actor_refs.add(task.dag_node._get_actor_handle())
             elif isinstance(task.dag_node, InputNode):
-                num_readers = None
-                if len(task.dag_node.input_attribute_nodes) > 0:
-                    num_readers = sum([self.idx_to_task[self.dag_node_to_idx[node]].num_readers for _, node in task.dag_node.input_attribute_nodes.items()])
                 task.output_channel = Channel(
                     buffer_size_bytes=self._buffer_size_bytes,
-                    num_readers=num_readers if num_readers else task.num_readers,
+                    num_readers=task.num_readers if task.num_readers else 1,
                 )
             else:
-                assert isinstance(task.dag_node, MultiOutputNode) or isinstance(task.dag_node, InputAttributeNode)
+                assert isinstance(task.dag_node, MultiOutputNode) or isinstance(
+                    task.dag_node, InputAttributeNode
+                )
 
             for idx in task.downstream_node_idxs:
                 queue.append(idx)
@@ -375,7 +381,8 @@ class CompiledDAG:
                 continue
 
             resolved_args = []
-            # for channel args, the index of read result to take, -1 stands for taking the whole input
+            # for channel args, the index of read result to take, -1 stands for
+            # taking the whole input
             read_idxs = []
             attr_idx = -1
             has_at_least_one_channel_input = False
@@ -389,7 +396,13 @@ class CompiledDAG:
                     arg_channel = self.idx_to_task[arg_idx].output_channel
                     assert arg_channel is not None
                     resolved_args.append(arg_channel)
-                    read_idxs.append(attr_idx if is_ipt_attr else -1)
+                    read_idxs.append(
+                        attr_idx
+                        if is_ipt_attr
+                        else 0
+                        if isinstance(arg, InputNode)
+                        else -1
+                    )
                     has_at_least_one_channel_input = True
                 else:
                     resolved_args.append(arg)
@@ -415,12 +428,14 @@ class CompiledDAG:
         if len(self.input_task_idxs) > 1:
             # for multi-arg scenario, find the input node for input channel
             for input_task_idx in self.input_task_idxs:
-                if isinstance(
-                    self.idx_to_task[input_task_idx].dag_node, InputNode
-                ):
-                    self.dag_input_channel = self.idx_to_task[input_task_idx].output_channel
+                if isinstance(self.idx_to_task[input_task_idx].dag_node, InputNode):
+                    self.dag_input_channel = self.idx_to_task[
+                        input_task_idx
+                    ].output_channel
         else:
-            self.dag_input_channel = self.idx_to_task[self.input_task_idxs[0]].output_channel
+            self.dag_input_channel = self.idx_to_task[
+                self.input_task_idxs[0]
+            ].output_channel
 
         self.dag_output_channels = []
         for output in self.idx_to_task[self.output_task_idx].args:
@@ -505,7 +520,7 @@ class CompiledDAG:
             A list of Channels that can be used to read the DAG result.
         """
         input_channel, output_channels = self._get_or_compile()
-        input_channel.write(list(args) + list(kwargs.values()))
+        input_channel.write(ArgsKwargsWrapper(args=args, kwargs=kwargs))
         return output_channels
 
     def teardown(self):

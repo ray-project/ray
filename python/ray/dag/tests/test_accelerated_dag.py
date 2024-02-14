@@ -50,7 +50,6 @@ class Actor:
         return self.i
 
     def inc_four(self, a, b, x, y):
-        print(f"a: {a}, b: {b}, x: {x}, y: {y}")
         self.i += a
         self.i += b
         self.j += x
