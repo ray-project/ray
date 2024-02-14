@@ -1,6 +1,7 @@
 import asyncio
 import concurrent.futures
 import threading
+import time
 import warnings
 from dataclasses import dataclass
 from typing import Any, AsyncIterator, Dict, Iterator, Optional, Tuple, Union
@@ -309,6 +310,7 @@ class _DeploymentResponseBase:
     def _to_object_ref_or_gen_sync(
         self,
         _record_telemetry: bool = True,
+        _timeout_s: Optional[float] = None,
         _allow_running_in_asyncio_loop: bool = False,
     ) -> Union[ray.ObjectRef, ObjectRefGenerator]:
         if not _allow_running_in_asyncio_loop and is_running_in_asyncio_loop():
@@ -321,7 +323,12 @@ class _DeploymentResponseBase:
         if _record_telemetry:
             ServeUsageTag.DEPLOYMENT_HANDLE_TO_OBJECT_REF_API_USED.record("1")
 
-        return self._object_ref_future.result()
+        try:
+            return self._object_ref_future.result(timeout=_timeout_s)
+        except concurrent.futures.TimeoutError:
+            raise TimeoutError(
+                f"Failed to resolve to ObjectRef within {_timeout_s}s."
+            ) from None
 
     def cancel(self):
         """Attempt to cancel the `DeploymentHandle` call.
@@ -447,9 +454,17 @@ class DeploymentResponse(_DeploymentResponseBase):
         If `timeout_s` is provided and the result is not available before the timeout,
         a `TimeoutError` is raised.
         """
-        return ray.get(
-            self._to_object_ref_sync(_record_telemetry=False), timeout=timeout_s
+        start = time.time()
+        obj_ref = self._to_object_ref_sync(
+            _record_telemetry=False, _timeout_s=timeout_s
         )
+
+        if timeout_s is None:
+            remaining_timeout_s = None
+        else:
+            remaining_timeout_s = max(0, timeout_s - (time.time() - start))
+
+        return ray.get(obj_ref, timeout=remaining_timeout_s)
 
     @DeveloperAPI
     async def _to_object_ref(self, _record_telemetry: bool = True) -> ray.ObjectRef:
@@ -468,6 +483,7 @@ class DeploymentResponse(_DeploymentResponseBase):
     def _to_object_ref_sync(
         self,
         _record_telemetry: bool = True,
+        _timeout_s: Optional[float] = None,
         _allow_running_in_asyncio_loop: bool = False,
     ) -> ray.ObjectRef:
         """Advanced API to convert the response to a Ray `ObjectRef`.
@@ -484,6 +500,7 @@ class DeploymentResponse(_DeploymentResponseBase):
         """
         return self._to_object_ref_or_gen_sync(
             _record_telemetry=_record_telemetry,
+            _timeout_s=_timeout_s,
             _allow_running_in_asyncio_loop=_allow_running_in_asyncio_loop,
         )
 
@@ -592,6 +609,7 @@ class DeploymentResponseGenerator(_DeploymentResponseBase):
     def _to_object_ref_gen_sync(
         self,
         _record_telemetry: bool = True,
+        _timeout_s: Optional[float] = None,
         _allow_running_in_asyncio_loop: bool = False,
     ) -> ObjectRefGenerator:
         """Advanced API to convert the generator to a Ray `ObjectRefGenerator`.
@@ -605,6 +623,7 @@ class DeploymentResponseGenerator(_DeploymentResponseBase):
         """
         return self._to_object_ref_or_gen_sync(
             _record_telemetry=_record_telemetry,
+            _timeout_s=_timeout_s,
             _allow_running_in_asyncio_loop=_allow_running_in_asyncio_loop,
         )
 
