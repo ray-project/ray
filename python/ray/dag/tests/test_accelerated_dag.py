@@ -43,6 +43,9 @@ class Actor:
                     raise ValueError("injected fault")
         return self.i
 
+    def echo(self, x):
+        return x
+
     def append_to(self, lst):
         lst.append(self.i)
         return lst
@@ -287,21 +290,21 @@ def test_dag_teardown_while_running(ray_start_regular_shared):
 def test_asyncio(ray_start_regular):
     a = Actor.remote(0)
     with InputNode() as i:
-        dag = a.inc.bind(i)
+        dag = a.echo.bind(i)
 
     loop = get_or_create_event_loop()
     compiled_dag = dag.experimental_compile(
             enable_asyncio=True)
 
     async def main(i):
-        output_channel = await compiled_dag.execute_async(1)
+        output_channel = await compiled_dag.execute_async(i)
         # TODO(swang): Replace with fake ObjectRef.
         result = await output_channel.begin_read()
-        #assert result == i + 1
+        assert result == i
         output_channel.end_read()
 
     loop.run_until_complete(asyncio.gather(
-        *[main(i) for i in range(3)]))
+        *[main(i) for i in range(5)]))
 
     # Note: must teardown before starting a new Ray session, otherwise you'll get
     # a segfault from the dangling monitor thread upon the new Ray init.
