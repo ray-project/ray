@@ -7,8 +7,8 @@ def test_invalid_metric_name():
     with pytest.raises(ValueError) as e:
         Metric("faulty-metric", "Test metric")
     assert (
-        str(e.value)
-        == "Metric name faulty-metric is invalid. Please use metric names that match the regex ^[a-zA-Z_:][a-zA-Z0-9_:]*$"
+        str(e.value) == "Metric name faulty-metric is invalid. "
+        "Please use metric names that match the regex ^[a-zA-Z_:][a-zA-Z0-9_:]*$"
     )
 
 

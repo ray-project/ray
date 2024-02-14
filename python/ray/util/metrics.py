@@ -15,18 +15,19 @@ from ray.util.annotations import DeveloperAPI
 
 logger = logging.getLogger(__name__)
 
+METRIC_NAME_RE = re.compile(r"^[a-zA-Z_:][a-zA-Z0-9_:]*$")
+"""
+    Validation logic is copied from prometheus_client.metrics_core
+    https://github.com/prometheus/client_python/blob/2dcd17efd0ce2f0a1ad15cb3c150ffcdc42ced65/prometheus_client/metrics_core.py#L11
+"""
+
 
 def _validate_metric_name(name: str):
-    METRIC_NAME_RE = re.compile(r"^[a-zA-Z_:][a-zA-Z0-9_:]*$")
 
     if len(name) == 0:
         raise ValueError("Empty name is not allowed. Please provide a metric name.")
 
     if not METRIC_NAME_RE.match(name):
-        """
-        Validation logic is copied from prometheus_client.metrics_core
-        https://github.com/prometheus/client_python/blob/2dcd17efd0ce2f0a1ad15cb3c150ffcdc42ced65/prometheus_client/metrics_core.py#L11
-        """
         raise ValueError(
             f"Metric name {name} is invalid. "
             "Please use metric names that match the regex "
