@@ -15,7 +15,11 @@ from ray.autoscaler.v2.instance_manager.node_provider import (
 )
 from ray.autoscaler.v2.instance_manager.ray_installer import RayInstallError
 from ray.autoscaler.v2.scheduler import IResourceScheduler
-from ray.core.generated.autoscaler_pb2 import ClusterResourceState, NodeState
+from ray.core.generated.autoscaler_pb2 import (
+    ClusterResourceState,
+    NodeState,
+    NodeStatus,
+)
 from ray.core.generated.instance_manager_pb2 import GetInstanceManagerStateRequest
 from ray.core.generated.instance_manager_pb2 import Instance as IMInstance
 from ray.core.generated.instance_manager_pb2 import (
@@ -146,9 +150,13 @@ class Reconciler:
         Reconciler._handle_cloud_instance_terminated(
             instance_manager, non_terminated_cloud_instances
         )
+        Reconciler._handle_ray_status_transition(instance_manager, ray_nodes)
+
         Reconciler._handle_cloud_instance_termination_errors(
             instance_manager, cloud_provider_errors
         )
+
+        Reconciler._handle_ray_install_failed(instance_manager, ray_install_errors)
 
     @staticmethod
     def _step_next(
@@ -191,6 +199,10 @@ class Reconciler:
 
         """
         pass
+
+    #######################################################
+    # Utility methods for reconciling instance states.
+    #######################################################
 
     @staticmethod
     def _handle_cloud_instance_allocation(
@@ -239,7 +251,13 @@ class Reconciler:
             if not update_event:
                 continue
 
-            logger.debug("Updating {}".format(MessageToDict(update_event)))
+            logger.debug(
+                "Updating {}({}) with {}".format(
+                    instance.instance_id,
+                    IMInstance.InstanceStatus.Name(instance.status),
+                    MessageToDict(update_event),
+                )
+            )
             updates[instance.instance_id] = update_event
 
         # Update the instance manager for the events.
@@ -295,6 +313,44 @@ class Reconciler:
             )
         # No update.
         return None
+
+    @staticmethod
+    def _handle_ray_install_failed(
+        instance_manager: InstanceManager, ray_install_errors: List[RayInstallError]
+    ):
+
+        instances, version = Reconciler._get_im_instances(instance_manager)
+        updates = {}
+
+        # Get all instances with RAY_INSTALLING status.
+        instances_with_ray_installing = {
+            instance.instance_id: instance
+            for instance in instances
+            if instance.status == IMInstance.RAY_INSTALLING
+        }
+
+        install_errors = {error.im_instance_id: error for error in ray_install_errors}
+
+        # For each instance with RAY_INSTALLING status, check if there's any
+        # install error.
+        for instance_id, instance in instances_with_ray_installing.items():
+            install_error = install_errors.get(instance_id)
+            if install_error:
+                updates[instance_id] = IMInstanceUpdateEvent(
+                    instance_id=instance_id,
+                    new_instance_status=IMInstance.RAY_INSTALL_FAILED,
+                    details=install_error.details,
+                )
+                logger.debug(
+                    "Updating {}({}) with {}".format(
+                        instance_id,
+                        IMInstance.InstanceStatus.Name(instance.status),
+                        MessageToDict(updates[instance_id]),
+                    )
+                )
+
+        # Update the instance manager for the events.
+        Reconciler._update_instance_manager(instance_manager, updates, version)
 
     @staticmethod
     def _handle_cloud_instance_terminated(
@@ -434,3 +490,107 @@ class Reconciler:
         assert (
             reply.status.code == StatusCode.OK
         ), f"Failed to update instance manager: {reply}"
+
+    @staticmethod
+    def _handle_ray_status_transition(
+        instance_manager: InstanceManager, ray_nodes: List[NodeState]
+    ):
+        """
+        Handle the ray status transition for the instance manager.
+
+        If a new ray node running on the instance, transition it to RAY_RUNNING.
+        If a ray node stopped, transition it to RAY_STOPPED.
+        If a ray node is draining, transition it to RAY_STOPPING.
+
+        Args:
+            instance_manager: The instance manager to reconcile.
+            ray_nodes: The ray cluster's states of ray nodes.
+        """
+        instances, version = Reconciler._get_im_instances(instance_manager)
+        updates = {}
+
+        im_instances_by_cloud_instance_id = {
+            i.cloud_instance_id: i for i in instances if i.cloud_instance_id
+        }
+        ray_nodes_by_cloud_instance_id = {}
+        for n in ray_nodes:
+            if n.instance_id:
+                ray_nodes_by_cloud_instance_id[n.instance_id] = n
+            else:
+                # This should only happen to a ray node that's not managed by us.
+                logger.warning(
+                    f"Ray node {n.node_id.decode()} has no instance id. "
+                    "This only happens to a ray node that's not managed by autoscaler. "
+                    "If not, please file a bug at https://github.com/ray-project/ray"
+                )
+
+        for cloud_instance_id, ray_node in ray_nodes_by_cloud_instance_id.items():
+            if cloud_instance_id not in im_instances_by_cloud_instance_id:
+                # This is a ray node that's not managed by the instance manager.
+                # or we haven't discovered the instance yet. There's nothing
+                # much we could do here.
+                logger.info(
+                    f"Ray node {ray_node.node_id.decode()} has no matching instance in "
+                    f"instance manager with cloud instance id={cloud_instance_id}."
+                )
+                continue
+
+            im_instance = im_instances_by_cloud_instance_id[cloud_instance_id]
+            reconciled_im_status = Reconciler._reconciled_im_status_from_ray_status(
+                ray_node.status, im_instance.status
+            )
+
+            if reconciled_im_status != im_instance.status:
+                updates[im_instance.instance_id] = IMInstanceUpdateEvent(
+                    instance_id=im_instance.instance_id,
+                    new_instance_status=reconciled_im_status,
+                    details="Reconciled from ray node status "
+                    f"{NodeStatus.Name(ray_node.status)} "
+                    f"for ray node {ray_node.node_id.decode()}",
+                    ray_node_id=ray_node.node_id.decode(),
+                )
+                logger.debug(
+                    "Updating {}({}) with {}.".format(
+                        im_instance.instance_id,
+                        IMInstance.InstanceStatus.Name(im_instance.status),
+                        MessageToDict(updates[im_instance.instance_id]),
+                    )
+                )
+
+        Reconciler._update_instance_manager(instance_manager, updates, version)
+
+    @staticmethod
+    def _reconciled_im_status_from_ray_status(
+        ray_status: NodeStatus, cur_im_status: IMInstance.InstanceStatus
+    ) -> "IMInstance.InstanceStatus":
+        """
+        Reconcile the instance status from the ray node status.
+        Args:
+            ray_status: the current ray node status.
+            cur_im_status: the current IM instance status.
+        Returns:
+            The reconciled IM instance status
+
+        Raises:
+            ValueError: If the ray status is unknown.
+        """
+        reconciled_im_status = None
+        if ray_status in [NodeStatus.RUNNING, NodeStatus.IDLE]:
+            reconciled_im_status = IMInstance.RAY_RUNNING
+        elif ray_status == NodeStatus.DEAD:
+            reconciled_im_status = IMInstance.RAY_STOPPED
+        elif ray_status == NodeStatus.DRAINING:
+            reconciled_im_status = IMInstance.RAY_STOPPING
+        else:
+            raise ValueError(f"Unknown ray status: {ray_status}")
+
+        if (
+            cur_im_status == reconciled_im_status
+            or cur_im_status
+            in InstanceUtil.get_reachable_statuses(reconciled_im_status)
+        ):
+            # No need to reconcile if the instance is already in the reconciled status
+            # or has already transitioned beyond it.
+            return cur_im_status
+
+        return reconciled_im_status

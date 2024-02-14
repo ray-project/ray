@@ -134,6 +134,8 @@ message InstanceUpdateEvent {
   optional string launch_request_id = 5;
   // Instance type for REQUESTED event.
   optional string instance_type = 6;
+  // Ray node id for RAY_RUNNING event.
+  optional string ray_node_id = 7;
 }
 
 // Launch request for a node type.
