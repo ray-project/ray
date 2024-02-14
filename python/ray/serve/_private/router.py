@@ -10,7 +10,6 @@ import ray
 from ray._private.utils import load_class
 from ray.actor import ActorHandle
 from ray.dag.py_obj_scanner import _PyObjScanner
-from ray.serve.exceptions import BackPressureError
 from ray.serve._private.common import DeploymentID, RequestMetadata, RunningReplicaInfo
 from ray.serve._private.config import DeploymentConfig
 from ray.serve._private.constants import (
@@ -220,9 +219,7 @@ class Router:
         running_requests = dict()
         autoscaling_config = self.curr_autoscaling_config
         if RAY_SERVE_COLLECT_AUTOSCALING_METRICS_ON_HANDLE and autoscaling_config:
-            look_back_period = (
-                autoscaling_config.look_back_period_s
-            )
+            look_back_period = autoscaling_config.look_back_period_s
             running_requests = {
                 replica_id: self.metrics_store.window_average(
                     replica_id, time.time() - look_back_period
