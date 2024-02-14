@@ -25,6 +25,7 @@ from ray.autoscaler.tags import (
 )
 from ray.autoscaler.v2.instance_manager.config import AutoscalingConfig, IConfigReader
 from ray.autoscaler.v2.schema import NodeType
+from ray.core.generated.instance_manager_pb2 import Instance, NodeKind
 
 logger = logging.getLogger(__name__)
 
@@ -53,6 +54,8 @@ class CloudInstance:
     request_id: str
     # If the cloud instance is running.
     is_running: bool
+    # The node kind of the cloud instance.
+    node_kind: NodeKind
 
 
 class CloudInstanceProviderError(Exception):

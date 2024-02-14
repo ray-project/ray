@@ -1,11 +1,10 @@
 import logging
-import uuid
 from abc import ABC, abstractmethod
 from typing import List, Optional
 
 from ray.autoscaler.v2.instance_manager.common import (
     InstanceUtil,
-    InvalidInstanceStatusTransitionError,
+    InvalidInstanceUpdateError,
 )
 from ray.autoscaler.v2.instance_manager.instance_storage import InstanceStorage
 from ray.core.generated.instance_manager_pb2 import (
@@ -13,6 +12,7 @@ from ray.core.generated.instance_manager_pb2 import (
     GetInstanceManagerStateRequest,
     Instance,
     InstanceUpdateEvent,
+    NodeKind,
     StatusCode,
     UpdateInstanceManagerStateReply,
     UpdateInstanceManagerStateRequest,
@@ -33,20 +33,13 @@ class InstanceManager:
     """
     See `InstanceManagerService` in instance_manager.proto
 
-    This handles the following updates to an instance:
-        1. when creating new instances
-            An instance is created from an autoscaler's launch request.
-            This initializes an instance object with:
-            status = Instance.QUEUED
-        2. when ray is stopping
-            This happens when the autoscaler is terminating the ray
-            process on the instance, e.g. idle termination.
-            status = Instance.RAY_STOPPING
-        3. when ray is already stopped.
-            Only the ray cluster has the true status of the ray process
-            on an instance, so autoscaler will update an instance's ray
-            to be stopped.
-            status = Instance.RAY_STOPPED
+    This handles updates to an instance, or inserts a new instance if
+    it's an insert update. We should only be inserting new instances
+    of the below statuses:
+        1. ALLOCATED: For unmanaged instance not initialized by InstanceManager,
+            e.g. head node
+        2. QUEUED: For new instance being queued to launch.
+        3. TERMINATING: For leaked cloud instance that needs to be terminated.
 
     For full status transitions, see:
     https://docs.google.com/document/d/1NzQjA8Mh-oMc-QxXOa529oneWCoA8sDiVoNkBqqDb4U/edit#heading=h.k9a1sp4qpqj4
@@ -82,7 +75,7 @@ class InstanceManager:
         # Handle updates
         ids_to_updates = {update.instance_id: update for update in request.updates}
         to_update_instances, version = self._instance_storage.get_instances(
-            ids_to_updates.keys() if ids_to_updates else {}
+            instance_ids=ids_to_updates.keys()
         )
 
         if request.expected_version >= 0 and request.expected_version != version:
@@ -98,30 +91,26 @@ class InstanceManager:
             )
 
         # Handle instances states update.
-        for instance in to_update_instances.values():
-            update = ids_to_updates[instance.instance_id]
+        to_upsert_instances = []
+        for instance_id, update in ids_to_updates.items():
             try:
-                self._apply_update(instance, update)
-            except InvalidInstanceStatusTransitionError as e:
+                if instance_id in to_update_instances:
+                    instance = self._update_instance(
+                        to_update_instances[instance_id], update
+                    )
+                else:
+                    instance = self._create_instance(update)
+            except InvalidInstanceUpdateError as e:
                 logger.error(e)
-                return self._get_update_im_state_reply(
+                return InstanceManager._get_update_im_state_reply(
                     StatusCode.INVALID_VALUE, version, str(e)
                 )
 
-        # Handle launch requests.
-        new_instances = []
-        for launch_request in request.launch_requests:
-            for _ in range(launch_request.count):
-                instance = InstanceUtil.new_instance(
-                    instance_id=self._random_instance_id(),
-                    instance_type=launch_request.instance_type,
-                    request_id=launch_request.id,
-                )
-                new_instances.append(instance)
+            to_upsert_instances.append(instance)
 
         # Updates the instance storage.
         result = self._instance_storage.batch_upsert_instances(
-            updates=list(to_update_instances.values()) + new_instances,
+            updates=to_upsert_instances,
             expected_storage_version=version,
         )
 
@@ -141,7 +130,9 @@ class InstanceManager:
                     StatusCode.UNKNOWN_ERRORS, result.version, err_str
                 )
 
-        self._notify_subscribers(new_instances, request.updates)
+        # Successful updates.
+        for subscriber in self._status_update_subscribers:
+            subscriber.notify(request.updates)
 
         return self._get_update_im_state_reply(StatusCode.OK, result.version)
 
@@ -169,14 +160,9 @@ class InstanceManager:
     # Private methods
     #########################################
 
-    def _random_instance_id(self) -> str:
-        """
-        Returns an instance_id.
-        """
-        return str(uuid.uuid4())
-
+    @staticmethod
     def _get_update_im_state_reply(
-        self, status_code: StatusCode, version: int, error_message: str = ""
+        status_code: StatusCode, version: int, error_message: str = ""
     ) -> UpdateInstanceManagerStateReply:
         """
         Returns a UpdateInstanceManagerStateReply with the given status code and
@@ -197,47 +183,120 @@ class InstanceManager:
             reply.status.message = error_message
         return reply
 
-    def _apply_update(self, instance: Instance, update: InstanceUpdateEvent):
+    @staticmethod
+    def _apply_update(instance: Instance, update: InstanceUpdateEvent):
         """
-        Apply the update to the instance.
+        Apply status specific update to the instance.
 
         Args:
             instance: The instance to update.
             update: The update to apply.
-            version: The version of the instance storage.
 
         Raises:
-            InvalidInstanceStatusTransitionError: If the update is invalid.
+            InvalidInstanceUpdateError: If the update is invalid.
         """
-        InstanceUtil.set_status(instance, update.new_instance_status, update.details)
+        err_msg = None
         if update.new_instance_status == Instance.ALLOCATED:
+            if not update.cloud_instance_id:
+                err_msg = "ALLOCATED update must have cloud_instance_id"
+            elif update.node_kind not in [
+                NodeKind.WORKER,
+                NodeKind.HEAD,
+            ]:
+                err_msg = "ALLOCATED update must have node_kind as WORKER or HEAD"
+            elif not update.instance_type:
+                err_msg = "ALLOCATED update must have instance_type"
+
+            if err_msg:
+                raise InvalidInstanceUpdateError(
+                    instance_id=update.instance_id,
+                    cur_status=instance.status,
+                    update=update,
+                    details=err_msg,
+                )
             instance.cloud_instance_id = update.cloud_instance_id
+            instance.node_kind = update.node_kind
+            instance.instance_type = update.instance_type
         elif update.new_instance_status == Instance.TERMINATED:
             instance.cloud_instance_id = ""
         elif update.new_instance_status == Instance.RAY_RUNNING:
+            if not update.ray_node_id:
+                raise InvalidInstanceUpdateError(
+                    instance_id=update.instance_id,
+                    cur_status=instance.status,
+                    update=update,
+                    details=("RAY_RUNNING update must have ray_node_id"),
+                )
             instance.node_id = update.ray_node_id
         elif update.new_instance_status == Instance.REQUESTED:
+            if not update.launch_request_id:
+                raise InvalidInstanceUpdateError(
+                    instance_id=update.instance_id,
+                    cur_status=instance.status,
+                    update=update,
+                    details=("REQUESTED update must have launch_request_id"),
+                )
             instance.launch_request_id = update.launch_request_id
 
-    def _notify_subscribers(
-        self, new_instances: List[Instance], updates: List[InstanceUpdateEvent]
-    ):
+    @staticmethod
+    def _create_instance(update: InstanceUpdateEvent) -> Instance:
         """
-        Notifies the subscribers of the instance status changes.
+        Create a new instance from the given update.
+        """
+
+        if update.new_instance_status not in [
+            # For unmanaged instance not initialized by InstanceManager,
+            # e.g. head node
+            Instance.ALLOCATED,
+            # For new instance being queued to launch.
+            Instance.QUEUED,
+            # For leaked cloud instance that needs to be terminated.
+            Instance.TERMINATING,
+        ]:
+            raise InvalidInstanceUpdateError(
+                instance_id=update.instance_id,
+                cur_status=Instance.UNKNOWN,
+                update=update,
+                details=(
+                    "Invalid status for new instance, must be one of "
+                    "[ALLOCATED, QUEUED, TERMINATING]"
+                ),
+            )
+
+        # Create a new instance first for common fields.
+        instance = InstanceUtil.new_instance(
+            instance_id=update.instance_id,
+            instance_type=update.instance_type,
+            status=update.new_instance_status,
+            details=update.details,
+        )
+
+        # Apply the status specific updates.
+        InstanceManager._apply_update(instance, update)
+        return instance
+
+    @staticmethod
+    def _update_instance(instance: Instance, update: InstanceUpdateEvent) -> Instance:
+        """
+        Update the instance with the given update.
 
         Args:
-            new_instances: The new instances.
-            updates: The updates.
+            instance: The instance to update.
+            update: The update to apply.
+
+        Returns:
+            The updated instance.
+
+        Raises:
+            InvalidInstanceUpdateError: If the update is invalid.
         """
-        events = []
-        for instance in new_instances:
-            events.append(
-                InstanceUpdateEvent(
-                    instance_id=instance.instance_id,
-                    new_instance_status=instance.status,
-                )
+        if not InstanceUtil.set_status(instance, update.new_instance_status):
+            raise InvalidInstanceUpdateError(
+                instance_id=update.instance_id,
+                cur_status=instance.status,
+                update=update,
+                details="Invalid status transition",
             )
-        for update in updates:
-            events.append(update)
-        for subscriber in self._status_update_subscribers:
-            subscriber.notify(events)
+        InstanceManager._apply_update(instance, update)
+
+        return instance

@@ -27,6 +27,7 @@ from ray.autoscaler.v2.tests.util import (
     create_instance,
     MockAutoscalingConfig,
 )
+from ray.autoscaler.v2.utils import NodeStateUtil
 from ray.core.generated.autoscaler_pb2 import (
     ClusterResourceState,
     GangResourceRequest,
@@ -37,6 +38,7 @@ from ray.core.generated.autoscaler_pb2 import (
 from ray.core.generated.instance_manager_pb2 import (
     Instance,
     LaunchRequest,
+    NodeKind,
     TerminationRequest,
 )
 
@@ -86,6 +88,43 @@ class TestReconciler:
         for instance in instances:
             ok, _ = instance_storage.upsert_instance(instance)
             assert ok
+
+    @staticmethod
+    def test_initialize_head_node(setup):
+        instance_manager, instance_storage, _ = setup
+
+        cloud_instances = {
+            "c-1": CloudInstance("c-1", "type-1", "", True, NodeKind.HEAD),
+        }
+
+        ray_node = NodeState(
+            node_id=b"r-1", status=NodeStatus.RUNNING, instance_id="c-1"
+        )
+
+        Reconciler.initialize_head_node(
+            instance_manager,
+            cloud_instances,
+        )
+
+        instances, _ = instance_storage.get_instances()
+        instance_id = list(instances.values())[0].instance_id
+        assert len(instances) == 1
+        assert instances[instance_id].status == Instance.ALLOCATED
+        assert instances[instance_id].node_kind == NodeKind.HEAD
+
+        # Normal reconciliation should work.
+        Reconciler.reconcile(
+            instance_manager=instance_manager,
+            scheduler=MockScheduler(),
+            cloud_provider=MagicMock(),
+            ray_cluster_resource_state=ClusterResourceState(node_states=[ray_node]),
+            non_terminated_cloud_instances=cloud_instances,
+            cloud_provider_errors=[],
+            ray_install_errors=[],
+            autoscaling_config=MockAutoscalingConfig(),
+        )
+        instances, _ = instance_storage.get_instances()
+        assert instances[instance_id].status == Instance.RAY_RUNNING
 
     @staticmethod
     def test_requested_instance_no_op(setup):
@@ -145,8 +184,7 @@ class TestReconciler:
         )
 
         cloud_instances = {
-            "c-1": CloudInstance("c-1", "type-1", "", True),
-            "c-2": CloudInstance("c-2", "type-999", "", True),
+            "c-1": CloudInstance("c-1", "type-1", "", True, NodeKind.WORKER),
         }
 
         Reconciler.reconcile(
@@ -203,7 +241,7 @@ class TestReconciler:
         ]
 
         cloud_instances = {
-            "c-1": CloudInstance("c-1", "type-1", "", True),
+            "c-1": CloudInstance("c-1", "type-1", "", True, NodeKind.WORKER),
         }
 
         Reconciler.reconcile(
@@ -245,7 +283,7 @@ class TestReconciler:
         TestReconciler._add_instances(instance_storage, instances)
 
         cloud_instances = {
-            "c-2": CloudInstance("c-2", "type-2", "", False),
+            "c-2": CloudInstance("c-2", "type-2", "", False, NodeKind.WORKER),
         }
 
         termination_errors = [
@@ -291,7 +329,7 @@ class TestReconciler:
             ),
         ]
         cloud_instances = {
-            "c-1": CloudInstance("c-1", "type-1", "", True),
+            "c-1": CloudInstance("c-1", "type-1", "", True, NodeKind.WORKER),
         }
 
         TestReconciler._add_instances(instance_storage, im_instances)
@@ -339,13 +377,13 @@ class TestReconciler:
 
         # A newly running ray node with matching cloud instance id
         node_states = [
-            NodeState(node_id=b"r-1", status=NodeStatus.RUNNING, instance_id="c-1"),
+            NodeState(node_id=b"r1", status=NodeStatus.RUNNING, instance_id="c-1"),
         ]
         im_instances = [
             create_instance("i-1", status=Instance.ALLOCATED, cloud_instance_id="c-1"),
         ]
         cloud_instances = {
-            "c-1": CloudInstance("c-1", "type-1", "", True),
+            "c-1": CloudInstance("c-1", "type-1", "", True, NodeKind.WORKER),
         }
         TestReconciler._add_instances(instance_storage, im_instances)
         Reconciler.reconcile(
@@ -362,7 +400,7 @@ class TestReconciler:
         instances, _ = instance_storage.get_instances()
         assert len(instances) == 1
         assert instances["i-1"].status == Instance.RAY_RUNNING
-        assert instances["i-1"].node_id == "r-1"
+        assert instances["i-1"].node_id == NodeStateUtil.node_id_hex(b"r1")
 
     @staticmethod
     def test_ray_reconciler_already_ray_running(setup):
@@ -386,8 +424,8 @@ class TestReconciler:
             ),  # Already being stopped
         ]
         cloud_instances = {
-            "c-1": CloudInstance("c-1", "type-1", "", True),
-            "c-2": CloudInstance("c-2", "type-2", "", True),
+            "c-1": CloudInstance("c-1", "type-1", "", True, NodeKind.WORKER),
+            "c-2": CloudInstance("c-2", "type-2", "", True, NodeKind.WORKER),
         }
 
         subscriber.clear()
@@ -429,9 +467,9 @@ class TestReconciler:
             NodeState(node_id=b"r-3", status=NodeStatus.DRAINING, instance_id="c-3"),
         ]
         cloud_instances = {
-            "c-1": CloudInstance("c-1", "type-1", "", True),
-            "c-2": CloudInstance("c-2", "type-2", "", True),
-            "c-3": CloudInstance("c-3", "type-3", "", True),
+            "c-1": CloudInstance("c-1", "type-1", "", True, NodeKind.WORKER),
+            "c-2": CloudInstance("c-2", "type-2", "", True, NodeKind.WORKER),
+            "c-3": CloudInstance("c-3", "type-3", "", True, NodeKind.WORKER),
         }
 
         Reconciler.reconcile(
@@ -476,9 +514,9 @@ class TestReconciler:
         ]
 
         cloud_instances = {
-            "c-1": CloudInstance("c-1", "type-1", "", True),
-            "c-2": CloudInstance("c-2", "type-2", "", True),
-            "c-3": CloudInstance("c-3", "type-3", "", True),
+            "c-1": CloudInstance("c-1", "type-1", "", True, NodeKind.WORKER),
+            "c-2": CloudInstance("c-2", "type-2", "", True, NodeKind.WORKER),
+            "c-3": CloudInstance("c-3", "type-3", "", True, NodeKind.WORKER),
         }
 
         Reconciler.reconcile(
@@ -518,7 +556,7 @@ class TestReconciler:
         ]
 
         cloud_instances = {
-            "c-1": CloudInstance("c-1", "type-1", "", True),
+            "c-1": CloudInstance("c-1", "type-1", "", True, NodeKind.WORKER),
         }
 
         Reconciler.reconcile(
@@ -581,45 +619,6 @@ class TestReconciler:
         assert instances["i-2"].status == Instance.TERMINATED
 
     @staticmethod
-    def test_extra_cloud_instances(setup):
-        """
-        Test that extra cloud instances should be terminated.
-        """
-        instance_manager, instance_storage, _ = setup
-
-        im_instances = [
-            create_instance(
-                "i-1", status=Instance.RAY_RUNNING, cloud_instance_id="c-1"
-            ),  # To be reconciled.
-        ]
-        TestReconciler._add_instances(instance_storage, im_instances)
-
-        ray_nodes = [
-            NodeState(node_id=b"r-1", status=NodeStatus.RUNNING, instance_id="c-1"),
-        ]
-
-        cloud_instances = {
-            "c-1": CloudInstance("c-1", "type-1", "", True),
-            "c-2": CloudInstance("c-2", "type-2", "", True),  # Extra
-        }
-
-        mock_cloud_provider = MagicMock()
-
-        Reconciler.reconcile(
-            instance_manager,
-            scheduler=MockScheduler(),
-            cloud_provider=mock_cloud_provider,
-            ray_cluster_resource_state=ClusterResourceState(node_states=ray_nodes),
-            non_terminated_cloud_instances=cloud_instances,
-            cloud_provider_errors=[],
-            ray_install_errors=[],
-            autoscaling_config=MockAutoscalingConfig(),
-        )
-
-        assert mock_cloud_provider.terminate.call_count == 1
-        assert mock_cloud_provider.terminate.call_args.kwargs["ids"] == ["c-2"]
-
-    @staticmethod
     @pytest.mark.parametrize(
         "max_concurrent_launches,num_allocated,num_requested",
         [
@@ -653,7 +652,7 @@ class TestReconciler:
             )
             next_id += 1
             cloud_instances[instance.cloud_instance_id] = CloudInstance(
-                instance.cloud_instance_id, "type-1", "", True
+                instance.cloud_instance_id, "type-1", "", True, NodeKind.WORKER
             )
             TestReconciler._add_instances(instance_storage, [instance])
 
@@ -950,13 +949,13 @@ class TestReconciler:
         ]
 
         cloud_instances = {
-            "c-1": CloudInstance("c-1", "type-1", "", True),
+            "c-1": CloudInstance("c-1", "type-1", "", True, NodeKind.WORKER),
         }
 
         mock_scheduler = MagicMock()
         mock_scheduler.schedule.return_value = SchedulingReply(
             to_launch=[
-                LaunchRequest(instance_type="type-1", count=1),
+                LaunchRequest(instance_type="type-1", count=2),
             ],
             to_terminate=[
                 TerminationRequest(
@@ -989,12 +988,13 @@ class TestReconciler:
 
         instances, _ = instance_storage.get_instances()
 
-        assert len(instances) == 2
+        assert len(instances) == 3
         for id, instance in instances.items():
             if id == "i-1":
                 assert instance.status == Instance.RAY_STOPPING
             else:
                 assert instance.status == Instance.QUEUED
+                assert instance.instance_type == "type-1"
 
         assert len(state.infeasible_gang_resource_requests) == 1
 
@@ -1021,9 +1021,9 @@ class TestReconciler:
         ]
 
         cloud_instances = {
-            "c-1": CloudInstance("c-1", "type-1", "", True),
-            "c-2": CloudInstance("c-2", "type-2", "", True),
-            "c-3": CloudInstance("c-3", "type-3", "", True),
+            "c-1": CloudInstance("c-1", "type-1", "", True, NodeKind.WORKER),
+            "c-2": CloudInstance("c-2", "type-2", "", True, NodeKind.WORKER),
+            "c-3": CloudInstance("c-3", "type-3", "", True, NodeKind.WORKER),
         }
 
         TestReconciler._add_instances(instance_storage, instances)
@@ -1067,7 +1067,9 @@ class TestReconciler:
         ]
 
         cloud_instances = {
-            "c-1": CloudInstance("c-1", "type-1", "", cloud_instance_running),
+            "c-1": CloudInstance(
+                "c-1", "type-1", "", cloud_instance_running, NodeKind.WORKER
+            ),
         }
 
         TestReconciler._add_instances(instance_storage, instances)
@@ -1159,8 +1161,8 @@ class TestReconciler:
         ]
 
         cloud_instances = {
-            "c-1": CloudInstance("c-1", "type-1", "", True),
-            "c-5": CloudInstance("c-5", "type-5", "", True),
+            "c-1": CloudInstance("c-1", "type-1", "", True, NodeKind.WORKER),
+            "c-5": CloudInstance("c-5", "type-5", "", True, NodeKind.WORKER),
         }
 
         TestReconciler._add_instances(instance_storage, instances)
@@ -1208,6 +1210,50 @@ class TestReconciler:
             failed_instance_requests[r.ray_node_type_name] += r.count
         assert pending_instance_requests == {"type-2": 1, "type-3": 1}
         assert failed_instance_requests == {"type-4": 1}
+
+    @staticmethod
+    def test_extra_cloud_instances(setup):
+        """
+        Test that extra cloud instances should be terminated.
+        """
+        instance_manager, instance_storage, subscriber = setup
+
+        im_instances = [
+            create_instance(
+                "i-1", status=Instance.RAY_RUNNING, cloud_instance_id="c-1"
+            ),  # To be reconciled.
+        ]
+        TestReconciler._add_instances(instance_storage, im_instances)
+
+        ray_nodes = [
+            NodeState(node_id=b"r-1", status=NodeStatus.RUNNING, instance_id="c-1"),
+        ]
+
+        cloud_instances = {
+            "c-1": CloudInstance("c-1", "type-1", "", True, NodeKind.WORKER),
+            "c-2": CloudInstance("c-2", "type-2", "", True, NodeKind.WORKER),  # Extra
+        }
+
+        subscriber.clear()
+        Reconciler.reconcile(
+            instance_manager,
+            scheduler=MockScheduler(),
+            cloud_provider=MagicMock(),
+            ray_cluster_resource_state=ClusterResourceState(node_states=ray_nodes),
+            non_terminated_cloud_instances=cloud_instances,
+            cloud_provider_errors=[],
+            ray_install_errors=[],
+            autoscaling_config=MockAutoscalingConfig(),
+        )
+
+        assert len(subscriber.events) == 1
+        assert subscriber.events[0].new_instance_status == Instance.TERMINATING
+        assert subscriber.events[0].cloud_instance_id == "c-2"
+
+        instances, _ = instance_storage.get_instances()
+        assert len(instances) == 2
+        statuses = {instance.status for instance in instances.values()}
+        assert statuses == {Instance.RAY_RUNNING, Instance.TERMINATING}
 
 
 if __name__ == "__main__":
