@@ -256,7 +256,7 @@ class _DeploymentHandleBase:
         # loop running in another thread to avoid user code blocking the router, so we
         # use the `concurrent.futures.Future` thread safe API.
         return asyncio.run_coroutine_threadsafe(
-            router.assign_request(request_metadata, *args, **kwargs),
+            router.assign_request(request_metadata, list(args), kwargs),
             loop=event_loop,
         )
 
