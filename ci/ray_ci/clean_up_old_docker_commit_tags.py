@@ -46,6 +46,7 @@ def get_image_creation_time(repository: str, tag: str):
         ["crane", "config", f"{repository}:{tag}"], capture_output=True, text=True
     )
     if res.returncode != 0 or not res.stdout:
+        print("Return code: ", res.returncode)  # Replace with log
         return None
     manifest = json.loads(res.stdout)
     created = manifest["created"]
@@ -83,6 +84,57 @@ def delete_tags(namespace: str, repository: str, tags: list[str]):
         if response.status_code != 204:
             print(f"Failed to delete {tag}, status code: {response.status_code}")
 
+def _is_release_tag(tag: str):
+    """
+    Check if tag is a release tag.
+    """
+    variables = tag.split(".")
+
+    if len(variables) != 3 and "post1" not in tag:
+        return False
+    
+    if not variables[0].isnumeric() or not variables[1].isnumeric():
+        return False
+    
+    if not variables[2].isnumeric() and "rc" not in variables[2] and "-" not in variables[2]:
+        return False
+    
+    return True
+
+def query_release_tags(
+    page_count: int, page_size: int = 100
+):
+    get_docker_token()
+    repository = "rayproject/ray"
+    with open("release_tags.txt", "w") as f:
+        for page in range(page_count, 0, -1):
+            print("Querying page ", page)  # Replace with log
+            response = requests.get(
+                "https://hub.docker.com/v2/namespaces/rayproject/repositories/ray/tags",
+                params={"page": page, "page_size": 100},
+            )
+            # Parse tags from response
+            if "errors" in response.json():
+                print("Error: ", response.json()["errors"])  # Replace with log
+                continue
+            result = response.json()["results"]
+            tag_names = [tag["name"] for tag in result]
+
+            for tag in tag_names:
+                if _is_release_tag(tag):
+                    print(f"Adding {tag} to release tag list")
+                    f.write(tag + "\n")
+
+def move_tags_to_aws_ecr(tags: list[str]):
+    """
+    Move tags from Docker Hub to AWS ECR.
+    """
+    def move_tag(tag: str):
+        subprocess.run(
+            ["crane", "cp", f"rayproject/ray:{tag}", f"029272617770.dkr.ecr.us-west-2.amazonaws.com/rayproject/ray:{tag}"]
+        )
+    for tag in tags:
+        move_tag(tag)
 
 def query_tags_to_delete(
     page_count: int, commit_short_shas: Set[str], page_size: int = 100
@@ -94,9 +146,10 @@ def query_tags_to_delete(
     repository = "rayproject/ray"
     current_time = datetime.now(timezone.utc)
     tags_to_delete = []
-    for page in range(page_count, 0, -1):
+    for page in range(1266,1200, -1):
         print("Querying page ", page)  # Replace with log
         print("Delete count: ", len(tags_to_delete))  # Replace with log
+
         response = requests.get(
             "https://hub.docker.com/v2/namespaces/rayproject/repositories/ray/tags",
             params={"page": page, "page_size": 100},
@@ -135,11 +188,28 @@ def main():
     docker_tag_count = count_docker_tags()
     print("Docker tag count: ", docker_tag_count)  # Replace with log
 
-    page_count = docker_tag_count // page_size + 1
-    tags_to_delete = query_tags_to_delete(page_count, commit_shas, page_size)
-    print(len(tags_to_delete))
-    with open("tags_to_delete.txt", "w") as f:
-        f.write("\n".join(tags_to_delete))
+    page_count = (docker_tag_count // page_size) + 1
+
+    #print(_is_release_tag("1.0.1.post1-gpu"))
+    #query_release_tags(page_count, page_size)
+    with open("release_tags_0213.txt", "r") as f:
+        release_tags = f.read().split("\n")
+    release_tags = set(release_tags)
+    release_tags = list(release_tags)
+    release_tags = sorted(release_tags)
+    print("Release tag count: ", len(release_tags))
+    with open("release_tags.txt", "w") as f:
+        f.write("\n".join(release_tags))
+
+    #move_tags_to_aws_ecr(important_tags)
+    # important_tags = query_important_tags(page_count, page_size)
+    # with open("important_tags.txt", "w") as f:
+    #     f.write("\n".join(important_tags))
+    # print("Page count: ", page_count)  # Replace with log
+    # tags_to_delete = query_tags_to_delete(page_count, commit_shas, page_size)
+    # print(len(tags_to_delete))
+    # with open("tags_to_delete.txt", "w") as f:
+    #     f.write("\n".join(tags_to_delete))
     # delete_tags("rayproject", "ray", tags_to_delete)
 
 
