@@ -344,7 +344,7 @@ class Reconciler:
                     "Updating {}({}) with {}".format(
                         instance_id,
                         IMInstance.InstanceStatus.Name(instance.status),
-                        MessageToDict(updates[instance_id]),
+                        message_to_dict(updates[instance_id]),
                     )
                 )
 
@@ -552,7 +552,7 @@ class Reconciler:
                     "Updating {}({}) with {}.".format(
                         im_instance.instance_id,
                         IMInstance.InstanceStatus.Name(im_instance.status),
-                        MessageToDict(updates[im_instance.instance_id]),
+                        message_to_dict(updates[im_instance.instance_id]),
                     )
                 )
 
