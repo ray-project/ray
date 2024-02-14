@@ -20,7 +20,7 @@ from ray._private.utils import split_address
 
 import aiosignal  # noqa: F401
 
-from google.protobuf.json_format import MessageToDict
+from ray._private.protobuf_compat import message_to_dict
 from frozenlist import FrozenList  # noqa: F401
 
 from ray._private.utils import binary_to_hex, check_dashboard_dependencies_installed
@@ -219,10 +219,10 @@ def message_to_dict(message, decode_keys=None, **kwargs):
 
     if decode_keys:
         return _decode_keys(
-            MessageToDict(message, use_integers_for_enums=False, **kwargs)
+            message_to_dict(message, use_integers_for_enums=False, **kwargs)
         )
     else:
-        return MessageToDict(message, use_integers_for_enums=False, **kwargs)
+        return message_to_dict(message, use_integers_for_enums=False, **kwargs)
 
 
 class SignalManager:
