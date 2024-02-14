@@ -20,6 +20,8 @@ class LinearModule(pl.LightningModule):
         self.fail_epoch = fail_epoch
 
     def forward(self, input):
+        if isinstance(input, dict) and len(input) == 1:
+            input = list(input.values())[0]
         return self.linear(input)
 
     def training_step(self, batch):
