@@ -239,7 +239,6 @@ steps:
       # - skip-on-premerge
     instance_type: medium
     commands:
-      - pip list
       # validate minimal installation
       - python ./ci/env/check_minimal_install.py
       # core tests
