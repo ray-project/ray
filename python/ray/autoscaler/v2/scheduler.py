@@ -21,7 +21,11 @@ from ray.core.generated.autoscaler_pb2 import (
     ResourceRequest,
     ResourceRequestByCount,
 )
-from ray.core.generated.instance_manager_pb2 import LaunchRequest, TerminationRequest
+from ray.core.generated.instance_manager_pb2 import (
+    LaunchRequest,
+    NodeKind,
+    TerminationRequest,
+)
 
 # ============= Resource Scheduling Service API =======================
 #
@@ -178,6 +182,8 @@ class SchedulingNode:
     idle_duration_ms: int = 0
     # Launch config hash.
     launch_config_hash: Optional[str] = None
+    # node kind.
+    node_kind: NodeKind = NodeKind.WORKER
 
     def try_schedule(
         self, requests: List[ResourceRequest], is_constraint: bool = False
@@ -455,6 +461,9 @@ class ResourceDemandScheduler(IResourceScheduler):
                             available_resources_for_constraints=dict(
                                 instance.ray_node.total_resources
                             ),
+                            node_kind=instance.im_instance.node_kind
+                            if instance.im_instance
+                            else NodeKind.WORKER,
                         )
                     )
                 elif (
@@ -1248,6 +1257,16 @@ class ResourceDemandScheduler(IResourceScheduler):
             if node.status != SchedulingNodeStatus.RUNNING:
                 # We don't need to care about the non-running nodes.
                 continue
+
+            if node.node_kind == NodeKind.HEAD:
+                # We should not be terminating the head node even if it's outdated.
+                logger.warning(
+                    "Head node {}(ray={}) is outdated with node config changes. "
+                    "Please check the node's config or restart the cluster or restart "
+                    "the head node. Autoscaler is not able to shutdown the outdated "
+                    "head node".format(node.im_instance_id, node.ray_node_id)
+                )
+                continue
             node_type = node.node_type
             node_type_config = ctx.get_node_type_configs().get(node_type)
             if node_type_config is None or (
@@ -1288,6 +1307,11 @@ class ResourceDemandScheduler(IResourceScheduler):
             if node.status != SchedulingNodeStatus.RUNNING:
                 # We don't need to care about the non-running nodes.
                 continue
+
+            if node.node_kind == NodeKind.HEAD:
+                # The head node is not subject to idle termination.
+                continue
+
             idle_timeout_s = ctx.get_idle_timeout_s()
             if idle_timeout_s is None:
                 # No idle timeout is set, skip the idle termination.

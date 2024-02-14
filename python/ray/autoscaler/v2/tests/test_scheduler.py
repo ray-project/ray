@@ -24,7 +24,11 @@ from ray.core.generated.autoscaler_pb2 import (
     NodeStatus,
     ResourceRequest,
 )
-from ray.core.generated.instance_manager_pb2 import Instance, TerminationRequest
+from ray.core.generated.instance_manager_pb2 import (
+    Instance,
+    NodeKind,
+    TerminationRequest,
+)
 
 ResourceMap = Dict[str, float]
 
@@ -760,7 +764,14 @@ def test_outdated_nodes():
             min_worker_nodes=2,
             max_worker_nodes=5,
             launch_config_hash="hash1",
-        )
+        ),
+        "head_node": NodeTypeConfig(
+            name="head_node",
+            resources={"CPU": 0},
+            launch_config_hash="hash2",
+            min_worker_nodes=0,
+            max_worker_nodes=1,
+        ),
     }
 
     request = sched_request(
@@ -796,6 +807,22 @@ def test_outdated_nodes():
                 ),
                 cloud_instance_id="c-2",
             ),
+            make_autoscaler_instance(
+                im_instance=Instance(
+                    instance_type="head_node",
+                    status=Instance.RAY_RUNNING,
+                    launch_config_hash="hash1",  # mismatched -> but don't terminate
+                    instance_id="i-3",
+                    node_kind=NodeKind.HEAD,
+                ),
+                ray_node=NodeState(
+                    ray_node_type_name="head_node",
+                    available_resources={"CPU": 0},
+                    total_resources={"CPU": 0},
+                    node_id=b"r-3",
+                ),
+                cloud_instance_id="c-3",
+            ),
         ],
     )
 
@@ -820,7 +847,14 @@ def test_idle_termination(idle_timeout_s, has_resource_constraints):
             min_worker_nodes=0,
             max_worker_nodes=5,
             launch_config_hash="hash1",
-        )
+        ),
+        "head_node": NodeTypeConfig(
+            name="head_node",
+            resources={"CPU": 0},
+            launch_config_hash="hash2",
+            min_worker_nodes=0,
+            max_worker_nodes=1,
+        ),
     }
 
     idle_time_s = 5
@@ -866,6 +900,24 @@ def test_idle_termination(idle_timeout_s, has_resource_constraints):
                     status=NodeStatus.IDLE,
                 ),
                 cloud_instance_id="c-2",
+            ),
+            make_autoscaler_instance(
+                im_instance=Instance(
+                    instance_id="i-3",
+                    instance_type="head_node",
+                    status=Instance.RAY_RUNNING,
+                    launch_config_hash="hash2",
+                    node_kind=NodeKind.HEAD,
+                ),
+                ray_node=NodeState(
+                    ray_node_type_name="head_node",
+                    node_id=b"r-3",
+                    available_resources={"CPU": 0},
+                    total_resources={"CPU": 0},
+                    idle_duration_ms=999 * 1000,  # idle
+                    status=NodeStatus.IDLE,
+                ),
+                cloud_instance_id="c-3",
             ),
         ],
         idle_timeout_s=idle_timeout_s,

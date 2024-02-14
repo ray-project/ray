@@ -37,6 +37,15 @@ message Status {
   string message = 2;
 }
 
+enum NodeKind {
+  // The unmanaged node kind.
+  UNMANAGED = 0;
+  // The head node.
+  HEAD = 1;
+  // The worker node.
+  WORKER = 2;
+}
+
 /// Represents the state of an instance.
 message Instance {
   // Represents the state of a launched instance.
@@ -114,6 +123,8 @@ message Instance {
   // The node config hash when launched. This is used to detect outdated
   // node, which needs to terminated.
   string launch_config_hash = 13;
+  // The ray node kind, e.g. head, worker, etc.
+  NodeKind node_kind = 14;
 }
 
 // Update event for an instance.
