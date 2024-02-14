@@ -32,10 +32,8 @@ def rename_always_print_fields_with_no_presence(kwargs):
     if old_arg_name in params:
         kwargs[old_arg_name] = kwargs.pop(new_arg_name)
         return kwargs
-    # Neither args are in the signature. Don't know what to do.
-    raise ValueError(
-        f"Cannot find {old_arg_name} or {new_arg_name} in MessageToDict signature"
-    )
+    # Neither args are in the signature, do nothing.
+    return kwargs
 
 
 def message_to_dict(*args, **kwargs):
