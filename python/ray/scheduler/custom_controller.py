@@ -41,6 +41,7 @@ class Controller():
         if user_task.status[ASSIGN_NODE] is None:
             node_id = self.schedule(user_task)
             user_task.status[ASSIGN_NODE] = node_id
+            user_task.status[USER_TASK_STATUS] = PENDING
             print("reconcile: assign to node", user_task.spec[USER_TASK_ID], node_id)
             return
 
@@ -61,7 +62,6 @@ class Controller():
                 user_task.status[BIND_TASK_END_TIME] = task_status[END_TIME]
                 user_task.status[BIND_TASK_STATUS] = FINISHED
                 user_task.status[BIND_TASK_DURATION] = task_status[END_TIME] - task_status[START_TIME]
-                user_task.status[USER_TASK_STATUS] = PENDING
                 print("reconcile: send data and bind label finished", user_task.spec[USER_TASK_ID], user_task.spec[HPC_DIR])
                 print("reconcile: binding task duration", user_task.status[BIND_TASK_DURATION])
             return
@@ -138,14 +138,15 @@ class Controller():
 
             user_task_duration = user_task.spec[COMPLEXITY_SCORE] / node[SPEED]
             user_task_estimated_finish_time =  int(time.time() * 1000) + user_task_duration
-
+            print("user_task_estimated_finish_time", node_id, user_task_estimated_finish_time)
+            print("available_cpu", node_id, available_cpu)
             if available_cpu >= required_cpu and available_gpu >= required_gpu and available_memory >= required_memory:
                 if user_task_estimated_finish_time < earliest_time:
                     earliest_time = user_task_estimated_finish_time
                     best_node = node_id
                     break
 
-           
+
             for _, task in node[RUNNING_OR_PENDING_TASKS].items():
                 task = Task(**task)
                 if task.status[USER_TASK_STATUS] == RUNNING:
@@ -154,6 +155,7 @@ class Controller():
                     start_time = task.status[USER_TASK_ESTIMATED_START_TIME]
 
                 estimated_finish_time = start_time + task.spec[COMPLEXITY_SCORE] / node[SPEED] + user_task_duration
+                print("estimated_finish_time", node_id, estimated_finish_time)
 
                 available_cpu += task.spec[CPU] if CPU in task.spec else 0
                 available_gpu += task.spec[GPU] if GPU in task.spec else 0
@@ -163,7 +165,9 @@ class Controller():
                     if estimated_finish_time < earliest_time:
                         earliest_time = estimated_finish_time
                         best_node = node_id
-            
+        
+        if (node_info[best_node][PENDING_TASK_COUNT] + 1) > MAX_PENDING_TASK:
+            return None
 
         user_task.status[USER_TASK_ESTIMATED_START_TIME] = earliest_time
         return best_node

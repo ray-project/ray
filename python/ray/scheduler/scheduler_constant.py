@@ -61,3 +61,7 @@ SPEED = "speed"
 TOTAL_DURATION = "total_duration"
 TOTAL_COMPLEXITY_SCORE = "total_complexity_score"
 RUNNING_OR_PENDING_TASKS = "running_or_pending_tasks"
+
+PENDING_TASK_COUNT = "pending_task_count"
+
+MAX_PENDING_TASK= 2

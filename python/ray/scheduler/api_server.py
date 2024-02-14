@@ -14,7 +14,7 @@ app = FastAPI()
 @serve.ingress(app)
 class Apiserver:
     def __init__(self):
-        self.running_user_tasks = queue.Queue()
+        self.unfinished_user_tasks = queue.Queue()
         self.node_info = {}
         
         nodes = ray.nodes()
@@ -33,34 +33,44 @@ class Apiserver:
                 self.node_info[node[NODE_ID]][TOTAL_COMPLEXITY_SCORE] = 0
                 self.node_info[node[NODE_ID]][SPEED] = MAX_COMPLEXITY_SCORE
                 self.node_info[node[NODE_ID]][RUNNING_OR_PENDING_TASKS] = {}
-                self.node_info[node[NODE_ID]][RUNNING_OR_PENDING_TASKS] = {}
+
+                self.node_info[node[NODE_ID]][PENDING_TASK_COUNT] = 0
                 
 
 
     @app.post("/apply")
     def apply(self, spec: dict = Body(...)):
         user_task = Task(spec=spec)
-        self.running_user_tasks.put(user_task)
+        self.unfinished_user_tasks.put(user_task)
         print("apiserver: apply a new user_task", user_task.spec[USER_TASK_ID])
 
     @app.get("/get")
     def get(self):
-        if self.running_user_tasks.empty():
+        if self.unfinished_user_tasks.empty():
             return Task().to_dict()
         else:
-            return self.running_user_tasks.get().to_dict()
+            return self.unfinished_user_tasks.get().to_dict()
 
     @app.post("/update-status")
     def update_status(self, user_task: dict = Body(...)):
         user_task = Task(**user_task)
-        if user_task.status[ASSIGN_NODE] != None:
-            self._add_or_update_node_running_or_pending_task(user_task)
 
-        if user_task.status[USER_TASK_STATUS] == FINISHED:
+        if user_task.status[USER_TASK_STATUS] == PENDING:
+            self._increase_pending_task_count(user_task)
+            self._add_or_update_node_running_or_pending_task(user_task)
+            self.unfinished_user_tasks.put(user_task)
+
+        elif user_task.status[USER_TASK_STATUS] == RUNNING:
+            self._decrease_pending_task_count(user_task)
+            self._add_or_update_node_running_or_pending_task(user_task)
+            self.unfinished_user_tasks.put(user_task)
+
+        elif user_task.status[USER_TASK_STATUS] == FINISHED:
             self._update_node_speed_info(user_task)
             self._remove_node_running_task(user_task)
+
         else:
-            self.running_user_tasks.put(user_task)
+            print("apiserver: invalid user_task status", user_task.spec[USER_TASK_ID], user_task.status[USER_TASK_STATUS])
 
     @app.get("/get/node-info")
     def get(self):
@@ -80,6 +90,15 @@ class Apiserver:
         #         self.node_info[node[NODE_ID]][SPEED] = 0
         return self.node_info
 
+    def _increase_pending_task_count(self, user_task):
+        assign_node = user_task.status[ASSIGN_NODE]
+        if assign_node != None:
+            self.node_info[assign_node][PENDING_TASK_COUNT] += 1
+
+    def _decrease_pending_task_count(self, user_task):
+        assign_node = user_task.status[ASSIGN_NODE]
+        if assign_node != None:
+            self.node_info[assign_node][PENDING_TASK_COUNT] -= 1
 
     def _update_node_speed_info(self, user_task):
         assign_node = user_task.status[ASSIGN_NODE]
@@ -89,6 +108,10 @@ class Apiserver:
         self.node_info[assign_node][TOTAL_DURATION] += duration
         self.node_info[assign_node][TOTAL_COMPLEXITY_SCORE] += complexity_score
         self.node_info[assign_node][SPEED] = self.node_info[assign_node][TOTAL_COMPLEXITY_SCORE] / self.node_info[assign_node][TOTAL_DURATION]
+
+        # print all node speed
+        for node_id, node in self.node_info.items():
+            print("apiserver: node speed", node_id, self.node_info[node_id][SPEED])
 
     def _remove_node_running_task(self, user_task):
         assign_node = user_task.status[ASSIGN_NODE]
