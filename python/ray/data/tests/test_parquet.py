@@ -20,7 +20,6 @@ from ray.data.datasource.parquet_base_datasource import ParquetBaseDatasource
 from ray.data.datasource.parquet_datasource import (
     NUM_CPUS_FOR_META_FETCH_TASK,
     PARALLELIZE_META_FETCH_THRESHOLD,
-    RETRY_EXCEPTIONS_FOR_META_FETCH_TASK,
     ParquetDatasource,
     _deserialize_fragments_with_retry,
     _SerializedFragment,
@@ -181,6 +180,11 @@ def test_parquet_read_basic(ray_start_regular_shared, fs, data_path):
     assert sorted(values) == [1, 2, 3, 4, 5, 6]
     assert ds.schema().names == ["one"]
 
+    # Test concurrency.
+    ds = ray.data.read_parquet(data_path, filesystem=fs, concurrency=1)
+    values = [s["one"] for s in ds.take()]
+    assert sorted(values) == [1, 2, 3, 4, 5, 6]
+
 
 @pytest.mark.parametrize(
     "fs,data_path",
@@ -211,10 +215,6 @@ def test_parquet_read_meta_provider(ray_start_regular_shared, fs, data_path):
             assert (
                 ray_remote_args["scheduling_strategy"]
                 == DataContext.get_current().scheduling_strategy
-            )
-            assert (
-                ray_remote_args["retry_exceptions"]
-                == RETRY_EXCEPTIONS_FOR_META_FETCH_TASK
             )
             return None
 
@@ -1221,6 +1221,19 @@ def test_parquet_bulk_columns(ray_start_regular_shared):
     ds = ray.data.read_parquet_bulk("example://iris.parquet", columns=["variety"])
 
     assert ds.columns() == ["variety"]
+
+
+@pytest.mark.parametrize("num_rows_per_file", [5, 10, 50])
+def test_write_num_rows_per_file(tmp_path, ray_start_regular_shared, num_rows_per_file):
+    import pyarrow.parquet as pq
+
+    ray.data.range(100, parallelism=20).write_parquet(
+        tmp_path, num_rows_per_file=num_rows_per_file
+    )
+
+    for filename in os.listdir(tmp_path):
+        table = pq.read_table(os.path.join(tmp_path, filename))
+        assert len(table) == num_rows_per_file
 
 
 if __name__ == "__main__":

@@ -29,13 +29,10 @@ class LimitOperator(OneToOneOperator):
         self._cur_output_bundles = 0
         super().__init__(self._name, input_op, target_max_block_size=None)
         if self._limit <= 0:
-            self.all_inputs_done()
+            self.mark_execution_completed()
 
     def _limit_reached(self) -> bool:
         return self._consumed_rows >= self._limit
-
-    def need_more_inputs(self) -> bool:
-        return not self._limit_reached()
 
     def _add_input_inner(self, refs: RefBundle, input_index: int) -> None:
         assert not self.completed()
@@ -79,7 +76,7 @@ class LimitOperator(OneToOneOperator):
         )
         self._buffer.append(out_refs)
         if self._limit_reached():
-            self.all_inputs_done()
+            self.mark_execution_completed()
 
         # We cannot estimate if we have only consumed empty blocks
         if self._consumed_rows > 0:
@@ -107,12 +104,14 @@ class LimitOperator(OneToOneOperator):
         return {self._name: self._output_metadata}
 
     def num_outputs_total(self) -> int:
-        # Before inputs are completed (either because the limit is reached or
-        # because the inputs operators are done), we don't know how many output
+        # Before execution is completed, we don't know how many output
         # bundles we will have. We estimate based off the consumption so far.
-        if self._inputs_complete:
+        if self._execution_completed:
             return self._cur_output_bundles
         elif self._estimated_output_blocks is not None:
             return self._estimated_output_blocks
         else:
             return self.input_dependencies[0].num_outputs_total()
+
+    def throttling_disabled(self) -> bool:
+        return True

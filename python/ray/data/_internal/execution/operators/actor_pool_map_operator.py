@@ -312,8 +312,8 @@ class ActorPoolMapOperator(MapOperator):
         # Both pending and running actors count towards our current resource usage.
         num_active_workers = self._actor_pool.num_total_actors()
         object_store_memory = self.metrics.obj_store_mem_cur
-        if self.metrics.obj_store_mem_pending is not None:
-            object_store_memory += self.metrics.obj_store_mem_pending
+        if self.metrics.obj_store_mem_pending_tasks is not None:
+            object_store_memory += self.metrics.obj_store_mem_pending_tasks
         return ExecutionResources(
             cpu=self._ray_remote_args.get("num_cpus", 0) * num_active_workers,
             gpu=self._ray_remote_args.get("num_gpus", 0) * num_active_workers,

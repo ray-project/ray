@@ -1,4 +1,4 @@
-import os
+from pathlib import Path
 from typing import Any, Dict, Union
 
 import lightgbm
@@ -103,9 +103,9 @@ class LightGBMTrainer(GBDTTrainer):
         """Retrieve the LightGBM model stored in this checkpoint."""
         with checkpoint.as_directory() as checkpoint_path:
             return lightgbm.Booster(
-                model_file=os.path.join(
+                model_file=Path(
                     checkpoint_path, LightGBMCheckpoint.MODEL_FILENAME
-                )
+                ).as_posix()
             )
 
     def _train(self, **kwargs):
@@ -115,7 +115,9 @@ class LightGBMTrainer(GBDTTrainer):
         return self.__class__.get_model(checkpoint)
 
     def _save_model(self, model: lightgbm.LGBMModel, path: str):
-        model.booster_.save_model(os.path.join(path, LightGBMCheckpoint.MODEL_FILENAME))
+        model.booster_.save_model(
+            Path(path, LightGBMCheckpoint.MODEL_FILENAME).as_posix()
+        )
 
     def _model_iteration(
         self, model: Union[lightgbm.LGBMModel, lightgbm.Booster]

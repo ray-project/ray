@@ -310,6 +310,8 @@ if __name__ == "__main__":
                 ):
                     # Do not run on config changes
                     RAY_CI_RELEASE_TESTS_AFFECTED = 1
+                    if changed_file == "ci/ray_ci/macos/macos_ci.sh":
+                        RAY_CI_MACOS_WHEELS_AFFECTED = 1
             elif any(changed_file.startswith(prefix) for prefix in skip_prefix_list):
                 # nothing is run but linting in these cases
                 pass

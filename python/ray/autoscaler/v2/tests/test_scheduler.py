@@ -488,6 +488,49 @@ def test_single_resources():
     assert sorted(to_lauch) == sorted({})
 
 
+def test_implicit_resources():
+    scheduler = ResourceDemandScheduler()
+    node_type_configs = {
+        "type_1": NodeTypeConfig(
+            name="type_1",
+            resources={"CPU": 1},
+            min_worker_nodes=0,
+            max_worker_nodes=10,
+        ),
+    }
+    implicit_resource = ray._raylet.IMPLICIT_RESOURCE_PREFIX + "a"
+
+    # implicit resources should scale up clusters.
+    request = sched_request(
+        node_type_configs=node_type_configs,
+        resource_requests=[ResourceRequestUtil.make({implicit_resource: 1})],
+    )
+    reply = scheduler.schedule(request)
+    to_launch, _ = _launch_and_terminate(reply)
+    assert sorted(to_launch) == sorted({"type_1": 1})
+
+    # implicit resources should be satisfied by existing node.
+    request = sched_request(
+        node_type_configs=node_type_configs,
+        resource_requests=[
+            ResourceRequestUtil.make({implicit_resource: 1}),
+            ResourceRequestUtil.make({"CPU": 1}),
+        ],
+        instances=[
+            make_autoscaler_instance(
+                ray_node=NodeState(
+                    ray_node_type_name="type_1",
+                    available_resources={"CPU": 1},
+                    total_resources={"CPU": 1},
+                ),
+            ),
+        ],
+    )
+    reply = scheduler.schedule(request)
+    to_launch, _ = _launch_and_terminate(reply)
+    assert to_launch == {}
+
+
 def test_max_worker_num_enforce_with_resource_requests():
     scheduler = ResourceDemandScheduler()
     node_type_configs = {

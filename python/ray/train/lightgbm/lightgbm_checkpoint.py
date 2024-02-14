@@ -1,5 +1,5 @@
-import os
 import tempfile
+from pathlib import Path
 from typing import TYPE_CHECKING, Optional
 
 import lightgbm
@@ -45,7 +45,7 @@ class LightGBMCheckpoint(FrameworkCheckpoint):
             >>> checkpoint = LightGBMCheckpoint.from_model(model.booster_)
         """
         tempdir = tempfile.mkdtemp()
-        booster.save_model(os.path.join(tempdir, cls.MODEL_FILENAME))
+        booster.save_model(Path(tempdir, cls.MODEL_FILENAME).as_posix())
 
         checkpoint = cls.from_directory(tempdir)
         if preprocessor:
@@ -57,5 +57,5 @@ class LightGBMCheckpoint(FrameworkCheckpoint):
         """Retrieve the LightGBM model stored in this checkpoint."""
         with self.as_directory() as checkpoint_path:
             return lightgbm.Booster(
-                model_file=os.path.join(checkpoint_path, self.MODEL_FILENAME)
+                model_file=Path(checkpoint_path, self.MODEL_FILENAME).as_posix()
             )

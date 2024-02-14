@@ -50,4 +50,5 @@ def plan_write_op(op: Write, input_physical_dag: PhysicalOperator) -> PhysicalOp
         name="Write",
         target_max_block_size=None,
         ray_remote_args=op._ray_remote_args,
+        min_rows_per_bundle=op._min_rows_per_bundled_input,
     )

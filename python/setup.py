@@ -262,8 +262,7 @@ if setup_spec.type == SetupType.RAY:
             "uvicorn[standard]",
             "requests",
             "starlette",
-            # Tracking issue: https://github.com/tiangolo/fastapi/discussions/10948
-            "fastapi <= 0.108.0",
+            "fastapi",
             "watchfiles",
         ],
         "tune": ["pandas", "tensorboardX>=1.9", "requests", pyarrow_dep, "fsspec"],

@@ -912,6 +912,19 @@ def test_csv_invalid_file_handler(shutdown_only, tmp_path):
     )
 
 
+@pytest.mark.parametrize("num_rows_per_file", [5, 10, 50])
+def test_write_num_rows_per_file(tmp_path, ray_start_regular_shared, num_rows_per_file):
+    ray.data.range(100, parallelism=20).write_csv(
+        tmp_path, num_rows_per_file=num_rows_per_file
+    )
+
+    for filename in os.listdir(tmp_path):
+        with open(os.path.join(tmp_path, filename), "r") as file:
+            # Subtract 1 from the number of lines to account for the header.
+            num_rows_written = len(file.read().splitlines()) - 1
+            assert num_rows_written == num_rows_per_file
+
+
 if __name__ == "__main__":
     import sys
 

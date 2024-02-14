@@ -28,6 +28,7 @@ PyTorch
     :toctree: doc/
 
     ~train.torch.get_device
+    ~train.torch.get_devices
     ~train.torch.prepare_model
     ~train.torch.prepare_data_loader
     ~train.torch.enable_reproducibility

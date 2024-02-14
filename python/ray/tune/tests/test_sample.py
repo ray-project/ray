@@ -1025,6 +1025,110 @@ class SearchSpaceTest(unittest.TestCase):
 
         self._testTuneSampleAPI(config_generator(), ignore=ignore)
 
+    def testConvertNevergrad(self):
+        from ray.tune.search.nevergrad import NevergradSearch
+        import nevergrad as ng
+
+        # Grid search not supported, should raise ValueError
+        with self.assertRaises(ValueError):
+            NevergradSearch.convert_search_space({"grid": tune.grid_search([0, 1])})
+
+        config = {
+            "a": ray.tune.search.sample.Categorical([2, 3, 4]).uniform(),
+            "b": {
+                "x": ray.tune.search.sample.Integer(0, 5).quantized(2),
+                "y": 4,
+                "z": ray.tune.search.sample.Float(1e-4, 1e-2).loguniform(),
+            },
+        }
+        converted_config = NevergradSearch.convert_search_space(config)
+        nevergrad_config = ng.p.Dict(
+            a=ng.p.Choice([2, 3, 4]),
+            b=ng.p.Dict(
+                x=ng.p.Scalar(lower=0, upper=5).set_integer_casting(),
+                z=ng.p.Log(lower=1e-4, upper=1e-2),
+            ),
+        )
+
+        searcher1 = NevergradSearch(
+            optimizer=ng.optimizers.OnePlusOne,
+            space=converted_config,
+            metric="a",
+            mode="max",
+        )
+        searcher2 = NevergradSearch(
+            optimizer=ng.optimizers.OnePlusOne,
+            space=nevergrad_config,
+            metric="a",
+            mode="max",
+        )
+
+        np.random.seed(1234)
+        config1 = searcher1.suggest("0")
+        np.random.seed(1234)
+        config2 = searcher2.suggest("0")
+
+        assertDictAlmostEqual(config1, config2)
+        self.assertIn(config1["a"], [2, 3, 4])
+        self.assertIn(config1["b"]["x"], list(range(5)))
+        self.assertLess(1e-4, config1["b"]["z"])
+        self.assertLess(config1["b"]["z"], 1e-2)
+
+        searcher = NevergradSearch(
+            optimizer=ng.optimizers.OnePlusOne, metric="a", mode="max"
+        )
+        analysis = tune.run(
+            _mock_objective, config=config, search_alg=searcher, num_samples=1
+        )
+        trial = analysis.trials[0]
+        assert trial.config["a"] in [2, 3, 4]
+
+        mixed_config = {
+            "a": tune.uniform(5, 6),
+            "b": tune.uniform(8, 9),  # Cannot mix Nevergrad cfg and tune
+        }
+        searcher = NevergradSearch(
+            space=mixed_config,
+            optimizer=ng.optimizers.OnePlusOne,
+            metric="a",
+            mode="max",
+        )
+        config = searcher.suggest("0")
+        self.assertTrue(5 <= config["a"] <= 6)
+        self.assertTrue(8 <= config["b"] <= 9)
+
+    def testSampleBoundsNevergrad(self):
+        from ray.tune.search.nevergrad import NevergradSearch
+        import nevergrad as ng
+
+        ignore = [
+            "func",
+            "randn",
+            "qrandn",
+            "quniform",
+            "qloguniform",
+            "qrandint",
+            "qrandint_q1",
+            "qrandint_q3",
+            "qlograndint",
+        ]
+
+        config = self.config.copy()
+        for k in ignore:
+            config.pop(k)
+
+        optimizer = ng.optimizers.RandomSearchMaker(sampler="parametrization")
+
+        searcher = NevergradSearch(
+            space=config, metric="a", mode="max", optimizer=optimizer
+        )
+
+        def config_generator():
+            for i in range(1000):
+                yield searcher.suggest(f"trial_{i}")
+
+        self._testTuneSampleAPI(config_generator(), ignore=ignore)
+
     def testConvertOptuna(self):
         from ray.tune.search.optuna import OptunaSearch
         import optuna
@@ -1554,6 +1658,21 @@ class SearchSpaceTest(unittest.TestCase):
         self.assertSequenceEqual(config["nested"], points_to_evaluate[0]["nested"])
 
         self.assertSequenceEqual(config["nosample"], points_to_evaluate[0]["nosample"])
+
+    def testPointsToEvaluateNevergrad(self):
+        config = {
+            "metric": ray.tune.search.sample.Categorical([1, 2, 3, 4]).uniform(),
+            "a": ray.tune.search.sample.Categorical(["t1", "t2", "t3", "t4"]).uniform(),
+            "b": ray.tune.search.sample.Integer(0, 5),
+            "c": ray.tune.search.sample.Float(1e-4, 1e-1).loguniform(),
+        }
+
+        from ray.tune.search.nevergrad import NevergradSearch
+        import nevergrad as ng
+
+        return self._testPointsToEvaluate(
+            NevergradSearch, config, exact=False, optimizer=ng.optimizers.OnePlusOne
+        )
 
     def testPointsToEvaluateOptuna(self):
         config = {

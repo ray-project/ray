@@ -146,8 +146,8 @@ class ExperimentAnalysis:
         if trial.last_result is None:
             return DataFrame()
 
-        json_fs_path = os.path.join(trial.storage.trial_fs_path, EXPR_RESULT_FILE)
-        csv_fs_path = os.path.join(trial.storage.trial_fs_path, EXPR_PROGRESS_FILE)
+        json_fs_path = Path(trial.storage.trial_fs_path, EXPR_RESULT_FILE).as_posix()
+        csv_fs_path = Path(trial.storage.trial_fs_path, EXPR_PROGRESS_FILE).as_posix()
         # Prefer reading the JSON if it exists.
         if _exists_at_fs_path(trial.storage.storage_filesystem, json_fs_path):
             with trial.storage.storage_filesystem.open_input_stream(json_fs_path) as f:
@@ -223,7 +223,7 @@ class ExperimentAnalysis:
         if not matching:
             return None
         filename = max(matching)
-        return os.path.join(experiment_fs_path, filename)
+        return Path(experiment_fs_path, filename).as_posix()
 
     @property
     def experiment_path(self) -> str:
@@ -702,36 +702,3 @@ class ExperimentAnalysis:
 
         state["trials"] = [make_stub_if_needed(t) for t in state["trials"]]
         return state
-
-    # TODO(ml-team): [Deprecated] Remove in 2.8
-    @property
-    def best_logdir(self) -> str:
-        raise DeprecationWarning(
-            "`best_logdir` is deprecated. Use `best_trial.local_path` instead."
-        )
-
-    def get_best_logdir(
-        self,
-        metric: Optional[str] = None,
-        mode: Optional[str] = None,
-        scope: str = "last",
-    ) -> Optional[str]:
-        raise DeprecationWarning(
-            "`get_best_logdir` is deprecated. "
-            "Use `get_best_trial(...).local_path` instead."
-        )
-
-    def get_trial_checkpoints_paths(
-        self, trial: Trial, metric: Optional[str] = None
-    ) -> List[Tuple[str, Number]]:
-        raise DeprecationWarning(
-            "`get_trial_checkpoints_paths` is deprecated. "
-            "Use `get_best_checkpoint` or wrap this `ExperimentAnalysis` in a "
-            "`ResultGrid` and use `Result.best_checkpoints` instead."
-        )
-
-    def fetch_trial_dataframes(self) -> Dict[str, DataFrame]:
-        raise DeprecationWarning(
-            "`fetch_trial_dataframes` is deprecated. "
-            "Access the `trial_dataframes` property instead."
-        )

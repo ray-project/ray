@@ -10,11 +10,6 @@ from ray.data.block import BlockAccessor
 from ray.data.datasource import BlockBasedFileDatasink, RowBasedFileDatasink
 
 
-class MockFileDatasink(BlockBasedFileDatasink):
-    def write_block_to_file(self, block: BlockAccessor, file: "pyarrow.NativeFile"):
-        file.write(b"")
-
-
 class FlakyOutputStream:
     def __init__(self, stream: pyarrow.NativeFile, num_attempts: int):
         self._stream = stream
@@ -126,6 +121,10 @@ def test_flaky_write_row_to_file(ray_start_regular_shared, tmp_path):
 
 @pytest.mark.parametrize("num_rows", [0, 1])
 def test_write_preserves_user_directory(num_rows, tmp_path, ray_start_regular_shared):
+    class MockFileDatasink(BlockBasedFileDatasink):
+        def write_block_to_file(self, block: BlockAccessor, file: "pyarrow.NativeFile"):
+            file.write(b"")
+
     ds = ray.data.range(num_rows)
     path = os.path.join(tmp_path, "test")
     os.mkdir(path)  # User-created directory
@@ -136,12 +135,39 @@ def test_write_preserves_user_directory(num_rows, tmp_path, ray_start_regular_sh
 
 
 def test_write_creates_dir(tmp_path, ray_start_regular_shared):
+    class MockFileDatasink(BlockBasedFileDatasink):
+        def write_block_to_file(self, block: BlockAccessor, file: "pyarrow.NativeFile"):
+            file.write(b"")
+
     ds = ray.data.range(1)
     path = os.path.join(tmp_path, "test")
 
     ds.write_datasource(MockFileDatasink(path=path, try_create_dir=True))
 
     assert os.path.isdir(path)
+
+
+@pytest.mark.parametrize("num_rows_per_file", [5, 10, 50])
+def test_write_num_rows_per_file(tmp_path, ray_start_regular_shared, num_rows_per_file):
+    class MockFileDatasink(BlockBasedFileDatasink):
+        def write_block_to_file(self, block: BlockAccessor, file: "pyarrow.NativeFile"):
+            for _ in range(block.num_rows()):
+                file.write(b"row\n")
+
+    ds = ray.data.range(100, parallelism=20)
+
+    ds.write_datasink(
+        MockFileDatasink(path=tmp_path, num_rows_per_file=num_rows_per_file)
+    )
+
+    num_rows_written_total = 0
+    for filename in os.listdir(tmp_path):
+        with open(os.path.join(tmp_path, filename), "r") as file:
+            num_rows_written = len(file.read().splitlines())
+            assert num_rows_written == num_rows_per_file
+            num_rows_written_total += num_rows_written
+
+    assert num_rows_written_total == 100
 
 
 if __name__ == "__main__":

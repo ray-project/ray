@@ -760,8 +760,8 @@ def _open_file_with_retry(
 
     return call_with_retry(
         open_file,
-        match=OPEN_FILE_RETRY_ON_ERRORS,
         description=f"open file {file_path}",
+        match=OPEN_FILE_RETRY_ON_ERRORS,
         max_attempts=OPEN_FILE_MAX_ATTEMPTS,
         max_backoff_s=OPEN_FILE_RETRY_MAX_BACKOFF_SECONDS,
     )

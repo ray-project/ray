@@ -10,7 +10,11 @@ from typing import Dict, List, Optional, Tuple
 from google.protobuf.json_format import MessageToDict
 
 from ray.autoscaler._private.constants import AUTOSCALER_CONSERVE_GPU_NODES
-from ray.autoscaler._private.resource_demand_scheduler import UtilizationScore
+from ray.autoscaler._private.resource_demand_scheduler import (
+    UtilizationScore,
+    _fits,
+    _inplace_subtract,
+)
 from ray.autoscaler.v2.instance_manager.common import InstanceUtil
 from ray.autoscaler.v2.instance_manager.config import NodeTypeConfig
 from ray.autoscaler.v2.schema import AutoscalerInstance, NodeType
@@ -320,13 +324,11 @@ class SchedulingNode:
         )
 
         # Check if there's enough resources to schedule the request.
-        for k, v in request.resources_bundle.items():
-            if available_resources_dict.get(k, 0) < v:
-                return False
+        if not _fits(available_resources_dict, dict(request.resources_bundle)):
+            return False
 
         # Schedule the request, update resources
-        for k, v in request.resources_bundle.items():
-            available_resources_dict[k] -= v
+        _inplace_subtract(available_resources_dict, dict(request.resources_bundle))
 
         # Add the request to the node.
         if not is_constraint:

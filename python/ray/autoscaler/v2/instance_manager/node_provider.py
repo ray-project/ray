@@ -296,7 +296,7 @@ class NodeProviderAdapter(NodeProvider):
         if self._provider.is_running(cloud_instance_id):
             instance.status = Instance.ALLOCATED
         elif self._provider.is_terminated(cloud_instance_id):
-            instance.status = Instance.STOPPED
+            instance.status = Instance.TERMINATED
         else:
             instance.status = Instance.UNKNOWN
         instance.internal_ip = self._provider.internal_ip(cloud_instance_id)

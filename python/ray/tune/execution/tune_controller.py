@@ -316,9 +316,9 @@ class TuneController:
     @property
     def experiment_state_path(self) -> str:
         """Returns the local experiment checkpoint path."""
-        return os.path.join(
+        return Path(
             self._storage.experiment_local_path, self.experiment_state_file_name
-        )
+        ).as_posix()
 
     @property
     def experiment_path(self) -> str:
@@ -362,16 +362,16 @@ class TuneController:
             },
         }
 
-        tmp_file_name = os.path.join(
+        tmp_file_name = Path(
             experiment_dir, f".tmp_experiment_state_{uuid.uuid4()}"
-        )
+        ).as_posix()
 
         with open(tmp_file_name, "w") as f:
             json.dump(runner_state, f, indent=2, cls=TuneFunctionEncoder)
 
         os.replace(
             tmp_file_name,
-            os.path.join(experiment_dir, self.experiment_state_file_name),
+            Path(experiment_dir, self.experiment_state_file_name).as_posix(),
         )
 
         self._search_alg.save_to_dir(experiment_dir, session_str=self._session_str)
