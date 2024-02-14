@@ -13,6 +13,8 @@ runner_queues:
   macos: macos
   macos-arm64: macos-pr-arm64
   windows: windows_queue_pr
+builder_priority: 5
+runner_priority: 5
 buildkite_dirs:
   - .buildkite/release-automation
 env:
