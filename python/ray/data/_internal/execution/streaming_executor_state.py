@@ -359,6 +359,7 @@ def build_streaming_topology(
 
 def process_completed_tasks(
     topology: Topology,
+    resource_manager: ResourceManager,
     backpressure_policies: List[BackpressurePolicy],
     max_errored_blocks: int,
 ) -> int:
@@ -382,7 +383,7 @@ def process_completed_tasks(
 
     max_blocks_to_read_per_op: Dict[OpState, int] = {}
     for policy in backpressure_policies:
-        res = policy.calculate_max_blocks_to_read_per_op(topology)
+        res = policy.calculate_max_blocks_to_read_per_op(topology, resource_manager)
         if len(res) > 0:
             if len(max_blocks_to_read_per_op) > 0:
                 raise ValueError(

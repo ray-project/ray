@@ -618,4 +618,12 @@ def _canonicalize_ray_remote_args(ray_remote_args: Dict[str, Any]) -> Dict[str, 
             raise ValueError(
                 "It is not allowed to specify both num_cpus and num_gpus for map tasks."
             )
+    data_context = DataContext.get_current()
+    if data_context._max_num_blocks_in_streaming_gen_buffer is not None:
+        # The `_generator_backpressure_num_objects` parameter should be
+        # `2 * _max_num_blocks_in_streaming_gen_buffer` because we yield
+        # 2 objects for each block: the block and the block metadata.
+        ray_remote_args["_generator_backpressure_num_objects"] = (
+            2 * data_context._max_num_blocks_in_streaming_gen_buffer
+        )
     return ray_remote_args

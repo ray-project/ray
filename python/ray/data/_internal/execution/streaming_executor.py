@@ -257,7 +257,10 @@ class StreamingExecutor(Executor, threading.Thread):
         # ray.wait() overhead, so make sure to allow multiple dispatch per call for
         # greater parallelism.
         num_errored_blocks = process_completed_tasks(
-            topology, self._backpressure_policies, self._max_errored_blocks
+            topology,
+            self._resource_manager,
+            self._backpressure_policies,
+            self._max_errored_blocks,
         )
         if self._max_errored_blocks > 0:
             self._max_errored_blocks -= num_errored_blocks

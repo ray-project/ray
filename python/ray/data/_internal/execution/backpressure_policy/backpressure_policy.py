@@ -6,6 +6,7 @@ if TYPE_CHECKING:
         PhysicalOperator,
     )
     from ray.data._internal.execution.streaming_executor_state import OpState, Topology
+    from ray.data._internal.execution.resource_manager import ResourceManager
 
 
 class BackpressurePolicy(ABC):
@@ -16,7 +17,7 @@ class BackpressurePolicy(ABC):
         ...
 
     def calculate_max_blocks_to_read_per_op(
-        self, topology: "Topology"
+        self, topology: "Topology", resource_manager: "ResourceManager"
     ) -> Dict["OpState", int]:
         """Determine how many blocks of data we can read from each operator.
         The `DataOpTask`s of the operators will stop reading blocks when the limit is
