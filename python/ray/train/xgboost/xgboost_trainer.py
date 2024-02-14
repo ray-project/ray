@@ -343,6 +343,15 @@ class XGBoostTrainer(SimpleXGBoostTrainer):
         """Retrieve the XGBoost model stored in this checkpoint."""
         return RayTrainReportCallback.get_model(checkpoint)
 
+    def _validate_attributes(self):
+        super()._validate_attributes()
+
+        if TRAIN_DATASET_KEY not in self.datasets:
+            raise KeyError(
+                f"'{TRAIN_DATASET_KEY}' key must be preset in `datasets`. "
+                f"Got {list(self.datasets.keys())}"
+            )
+
 
 def simple_trainer_example():
     from contextlib import contextmanager
