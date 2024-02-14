@@ -570,7 +570,7 @@ def select_operator_to_run(
         ops,
         key=lambda op: (
             not op.throttling_disabled(),
-            len(topology[op].outqueue) + topology[op].num_processing(),
+            resource_manager.get_op_usage(op).object_store_memory,
         ),
     )
 
@@ -641,6 +641,12 @@ def _execution_allowed(op: PhysicalOperator, resource_manager: ResourceManager) 
 
     if op.throttling_disabled():
         return True
+
+    if resource_manager.op_resource_limiter_enabled():
+        inc = op.incremental_resource_usage()
+        op_limits = resource_manager.get_op_limits(op)
+        return inc.satisfies_limit(op_limits)
+
     global_usage = resource_manager.get_global_usage()
     global_limits = resource_manager.get_global_limits()
 
