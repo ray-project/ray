@@ -286,14 +286,15 @@ class TestReconciler:
             ),
         ]
 
-        Reconciler.reconcile(
-            instance_manager,
-            MagicMock(),
-            ray_cluster_resource_state=ClusterResourceState(node_states=ray_nodes),
-            non_terminated_cloud_instances=cloud_instances,
-            cloud_provider_errors=[],
-            ray_install_errors=[],
-        )
+        with pytest.raises(ValueError, match="Unknown ray status"):
+            Reconciler.reconcile(
+                instance_manager,
+                MagicMock(),
+                ray_cluster_resource_state=ClusterResourceState(node_states=ray_nodes),
+                non_terminated_cloud_instances=cloud_instances,
+                cloud_provider_errors=[],
+                ray_install_errors=[],
+            )
 
         # Assert no changes.
         assert subscriber.events == []

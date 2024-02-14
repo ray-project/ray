@@ -131,11 +131,11 @@ message InstanceUpdateEvent {
   // The instance type for QUEUED event.
   optional string instance_type = 4;
   // Cloud instance id for ALLOCATED event.
-  optional string cloud_instance_id = 6;
+  optional string cloud_instance_id = 5;
   // Ray node id for RAY_RUNNING event.
-  optional string ray_node_id = 7;
+  optional string ray_node_id = 6;
   // Launch request id for REQUESTED event.
-  optional string launch_request_id = 8;
+  optional string launch_request_id = 7;
 }
 
 // Launch request for a node type.
