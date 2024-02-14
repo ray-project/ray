@@ -2,4 +2,4 @@
 
 set -ex
 
-conda init
+conda init bash

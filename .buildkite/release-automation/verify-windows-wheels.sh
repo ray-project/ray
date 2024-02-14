@@ -31,6 +31,7 @@ _clean_up() {
 # Create tmp directory unique for the run
 TMP_DIR=$(mktemp -d "$HOME/tmp.XXXXXXXXXX")
 #trap _clean_up EXIT
+#source /c/Miniconda/etc/profile.d/conda.sh
 
 # Install Ray & run sanity checks for each python version
 for python_version in "${PYTHON_VERSIONS[@]}"; do
