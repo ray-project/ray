@@ -307,9 +307,7 @@ class FaultTolerantActorManager:
         """
         # Remove any outstanding async requests for this actor.
         reqs_to_be_removed = [
-            req
-            for req, id in self._in_flight_req_to_actor_id.items()
-            if id == actor_id
+            req for req, id in self._in_flight_req_to_actor_id.items() if id == actor_id
         ]
         for req in reqs_to_be_removed:
             del self._in_flight_req_to_actor_id[req]
@@ -780,9 +778,7 @@ class FaultTolerantActorManager:
 
         for obj_ref, result in zip(ready, remote_results):
             # Decrease outstanding request on this actor by 1.
-            self._remote_actor_states[
-                result.actor_id
-            ].num_in_flight_async_requests -= 1
+            self._remote_actor_states[result.actor_id].num_in_flight_async_requests -= 1
             # Also, remove this call here from the in-flight list,
             # obj_refs may have already been removed when we disable an actor.
             if obj_ref in self._in_flight_req_to_actor_id:
