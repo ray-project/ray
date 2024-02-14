@@ -26,6 +26,7 @@ from ray.serve._private.common import (
 )
 from ray.serve._private.constants import (
     DEFAULT_GRPC_PORT,
+    DEFAULT_MAX_CONCURRENT_QUERIES,
     DEFAULT_UVICORN_KEEP_ALIVE_TIMEOUT_S,
     RAY_SERVE_LOG_ENCODING,
     SERVE_DEFAULT_APP_NAME,
@@ -318,10 +319,20 @@ class DeploymentSchema(BaseModel, allow_population_by_field_name=True):
     max_concurrent_queries: int = Field(
         default=DEFAULT.VALUE,
         description=(
-            "The max number of pending queries in a single replica. "
-            "Uses a default if null."
+            "The max number of requests that will be executed at once in each replica. "
+            f"Defaults to {DEFAULT_MAX_CONCURRENT_QUERIES}."
         ),
         gt=0,
+    )
+    max_queued_requests: int = Field(
+        default=DEFAULT.VALUE,
+        description=(
+            "Maximum number of requests to this deployment that will be queued at each "
+            "*caller* (proxy or DeploymentHandle). Once this limit is reached, "
+            "subsequent requests will raise a BackPressureError (for handles) or "
+            "return an HTTP 503 status code (for HTTP requests). Defaults to -1 (no "
+            "limit)."
+        ),
     )
     user_config: Optional[Dict] = Field(
         default=DEFAULT.VALUE,
@@ -437,6 +448,18 @@ class DeploymentSchema(BaseModel, allow_population_by_field_name=True):
 
         return values
 
+    @validator("max_queued_requests", always=True)
+    def validate_max_queued_requests(cls, v):
+        if not isinstance(v, int):
+            raise TypeError("max_queued_requests must be an integer.")
+
+        if v < 1 and v != -1:
+            raise ValueError(
+                "max_queued_requests must be -1 (no limit) or a positive integer."
+            )
+
+        return v
+
     deployment_schema_route_prefix_format = validator("route_prefix", allow_reuse=True)(
         _route_prefix_format
     )
@@ -463,6 +486,7 @@ def _deployment_info_to_schema(name: str, info: DeploymentInfo) -> DeploymentSch
     schema = DeploymentSchema(
         name=name,
         max_concurrent_queries=info.deployment_config.max_concurrent_queries,
+        max_queued_requests=info.deployment_config.max_queued_requests,
         user_config=info.deployment_config.user_config,
         graceful_shutdown_wait_loop_s=(
             info.deployment_config.graceful_shutdown_wait_loop_s

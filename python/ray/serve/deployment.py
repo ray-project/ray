@@ -173,18 +173,23 @@ class Deployment:
 
     @property
     def num_replicas(self) -> int:
-        """Current target number of replicas."""
+        """Target number of replicas."""
         return self._deployment_config.num_replicas
 
     @property
     def user_config(self) -> Any:
-        """Current dynamic user-provided config options."""
+        """Dynamic user-provided config options."""
         return self._deployment_config.user_config
 
     @property
     def max_concurrent_queries(self) -> int:
-        """Current max outstanding queries from each handle."""
+        """Max number of requests a replica can handle at once."""
         return self._deployment_config.max_concurrent_queries
+
+    @property
+    def max_queued_requests(self) -> int:
+        """Max number of requests that can be queued in each deployment handle."""
+        return self._deployment_config.max_queued_requests
 
     @property
     def route_prefix(self) -> Optional[str]:
@@ -313,6 +318,7 @@ class Deployment:
         max_replicas_per_node: Optional[int] = DEFAULT.VALUE,
         user_config: Default[Optional[Any]] = DEFAULT.VALUE,
         max_concurrent_queries: Default[int] = DEFAULT.VALUE,
+        max_queued_requests: Default[int] = DEFAULT.VALUE,
         autoscaling_config: Default[
             Union[Dict, AutoscalingConfig, None]
         ] = DEFAULT.VALUE,
@@ -393,8 +399,12 @@ class Deployment:
 
         if user_config is not DEFAULT.VALUE:
             new_deployment_config.user_config = user_config
+
         if max_concurrent_queries is not DEFAULT.VALUE:
             new_deployment_config.max_concurrent_queries = max_concurrent_queries
+
+        if max_queued_requests is not DEFAULT.VALUE:
+            new_deployment_config.max_queued_requests = max_queued_requests
 
         if func_or_class is None:
             func_or_class = self._replica_config.deployment_def
@@ -582,6 +592,7 @@ def deployment_to_schema(
         if d._deployment_config.autoscaling_config
         else d.num_replicas,
         "max_concurrent_queries": d.max_concurrent_queries,
+        "max_queued_requests": d.max_queued_requests,
         "user_config": d.user_config,
         "autoscaling_config": d._deployment_config.autoscaling_config,
         "graceful_shutdown_wait_loop_s": d._deployment_config.graceful_shutdown_wait_loop_s,  # noqa: E501
