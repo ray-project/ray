@@ -33,17 +33,18 @@
 
 namespace ray {
 
-class ExperimentalChannelManager {
+class ExperimentalMutableObjectManager {
  public:
-  ExperimentalChannelManager() {}
+  ExperimentalMutableObjectManager() {}
 
   /// Register the caller as a writer for the channel.
   ///
   /// \param[in] object_id The ID of the object.
   /// \param[in] mutable_object Struct containing pointers for the object
   /// header, which is used to synchronize with other writers and readers, and
-  /// the object data and metadata, which is read by the application.
-  /// \return The return status.
+  /// the object data and metadata, which is read by the application.  \return
+  /// The return status. The function is not idempotent and it returns Invalid
+  /// if it is called twice
   Status RegisterWriterChannel(const ObjectID &object_id,
                                std::unique_ptr<plasma::MutableObject> mutable_object);
 
@@ -58,6 +59,8 @@ class ExperimentalChannelManager {
   /// \param[in] metadata_size The number of bytes to copy from the metadata
   /// pointer.
   /// \param[in] num_readers The number of readers that must read and release
+  /// value we will write before the next WriteAcquire can proceed. The readers
+  /// may not start reading until WriteRelease is called.
   /// \param[out] data The mutable object buffer in plasma that can be written to.
   /// \return The return status.
   Status WriteAcquire(const ObjectID &object_id,
@@ -80,7 +83,8 @@ class ExperimentalChannelManager {
   /// \param[in] mutable_object Struct containing pointers for the object
   /// header, which is used to synchronize with other writers and readers, and
   /// the object data and metadata, read by the application.
-  /// \return The return status.
+  /// The return status. The function is not idempotent and it returns Invalid
+  /// if it is called twice
   Status RegisterReaderChannel(const ObjectID &object_id,
                                std::unique_ptr<plasma::MutableObject> mutable_object);
 
@@ -117,6 +121,8 @@ class ExperimentalChannelManager {
     WriterChannel(std::unique_ptr<plasma::MutableObject> mutable_object_ptr)
         : mutable_object(std::move(mutable_object_ptr)) {}
 
+    /// Whether the object is sealed, i.e. whether the last writer still needs
+    /// to call WriteRelease.
     bool is_sealed = true;
     std::unique_ptr<plasma::MutableObject> mutable_object;
   };
@@ -139,7 +145,11 @@ class ExperimentalChannelManager {
 
   Status EnsureGetAcquired(ReaderChannel &channel);
 
+  /// All channels for which we are registered as a writer. This can overlap
+  /// with reader channels (e.g., if the CoreWorker is multithreaded and one
+  /// thread reads while the other writes).
   absl::flat_hash_map<ObjectID, WriterChannel> writer_channels_;
+  /// All channels for which we are registered as a reader.
   absl::flat_hash_map<ObjectID, ReaderChannel> reader_channels_;
 };
 

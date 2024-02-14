@@ -17,11 +17,11 @@
 
 // PLASMA CLIENT: Client library for using the plasma store and manager
 
-#include "ray/core_worker/experimental_channel_manager.h"
+#include "ray/core_worker/experimental_mutable_object_manager.h"
 
 namespace ray {
 
-Status ExperimentalChannelManager::RegisterWriterChannel(
+Status ExperimentalMutableObjectManager::RegisterWriterChannel(
     const ObjectID &object_id, std::unique_ptr<plasma::MutableObject> mutable_object) {
 #ifdef __linux__
   auto inserted =
@@ -35,12 +35,12 @@ Status ExperimentalChannelManager::RegisterWriterChannel(
   return Status::OK();
 }
 
-Status ExperimentalChannelManager::WriteAcquire(const ObjectID &object_id,
-                                                int64_t data_size,
-                                                const uint8_t *metadata,
-                                                int64_t metadata_size,
-                                                int64_t num_readers,
-                                                std::shared_ptr<Buffer> *data) {
+Status ExperimentalMutableObjectManager::WriteAcquire(const ObjectID &object_id,
+                                                      int64_t data_size,
+                                                      const uint8_t *metadata,
+                                                      int64_t metadata_size,
+                                                      int64_t num_readers,
+                                                      std::shared_ptr<Buffer> *data) {
 #ifdef __linux__
   auto writer_channel_entry = writer_channels_.find(object_id);
   if (writer_channel_entry == writer_channels_.end()) {
@@ -63,6 +63,8 @@ Status ExperimentalChannelManager::WriteAcquire(const ObjectID &object_id,
   RAY_LOG(DEBUG) << "Write mutable object " << object_id;
   RAY_RETURN_NOT_OK(channel.mutable_object->header->WriteAcquire(
       data_size, metadata_size, num_readers));
+  channel.is_sealed = false;
+
   *data = SharedMemoryBuffer::Slice(
       channel.mutable_object->buffer, 0, channel.mutable_object->header->data_size);
   if (metadata != NULL) {
@@ -75,7 +77,7 @@ Status ExperimentalChannelManager::WriteAcquire(const ObjectID &object_id,
   return Status::OK();
 }
 
-Status ExperimentalChannelManager::WriteRelease(const ObjectID &object_id) {
+Status ExperimentalMutableObjectManager::WriteRelease(const ObjectID &object_id) {
 #ifdef __linux__
   auto writer_channel_entry = writer_channels_.find(object_id);
   if (writer_channel_entry == writer_channels_.end()) {
@@ -83,7 +85,7 @@ Status ExperimentalChannelManager::WriteRelease(const ObjectID &object_id) {
   }
 
   auto &channel = writer_channel_entry->second;
-  if (!channel.is_sealed) {
+  if (channel.is_sealed) {
     return Status::Invalid("Must WriteAcquire before WriteRelease on a mutable object");
   }
 
@@ -94,7 +96,7 @@ Status ExperimentalChannelManager::WriteRelease(const ObjectID &object_id) {
   return Status::OK();
 }
 
-Status ExperimentalChannelManager::RegisterReaderChannel(
+Status ExperimentalMutableObjectManager::RegisterReaderChannel(
     const ObjectID &object_id, std::unique_ptr<plasma::MutableObject> mutable_object) {
 #ifdef __linux__
   auto inserted =
@@ -107,13 +109,13 @@ Status ExperimentalChannelManager::RegisterReaderChannel(
   return Status::OK();
 }
 
-bool ExperimentalChannelManager::ReaderChannelRegistered(
+bool ExperimentalMutableObjectManager::ReaderChannelRegistered(
     const ObjectID &object_id) const {
   return reader_channels_.count(object_id);
 }
 
-Status ExperimentalChannelManager::ReadAcquire(const ObjectID &object_id,
-                                               std::shared_ptr<RayObject> *result) {
+Status ExperimentalMutableObjectManager::ReadAcquire(const ObjectID &object_id,
+                                                     std::shared_ptr<RayObject> *result) {
 #ifdef __linux__
   auto reader_channel_entry = reader_channels_.find(object_id);
   if (reader_channel_entry == reader_channels_.end()) {
@@ -139,7 +141,7 @@ Status ExperimentalChannelManager::ReadAcquire(const ObjectID &object_id,
   return Status::OK();
 }
 
-Status ExperimentalChannelManager::ReadRelease(const ObjectID &object_id) {
+Status ExperimentalMutableObjectManager::ReadRelease(const ObjectID &object_id) {
 #ifdef __linux__
   auto reader_channel_entry = reader_channels_.find(object_id);
   if (reader_channel_entry == reader_channels_.end()) {
@@ -159,7 +161,7 @@ Status ExperimentalChannelManager::ReadRelease(const ObjectID &object_id) {
   return Status::OK();
 }
 
-Status ExperimentalChannelManager::EnsureGetAcquired(ReaderChannel &channel) {
+Status ExperimentalMutableObjectManager::EnsureGetAcquired(ReaderChannel &channel) {
 #ifdef __linux__
   if (channel.read_acquired) {
     return Status::OK();
@@ -175,7 +177,7 @@ Status ExperimentalChannelManager::EnsureGetAcquired(ReaderChannel &channel) {
   return Status::OK();
 }
 
-Status ExperimentalChannelManager::SetError(const ObjectID &object_id) {
+Status ExperimentalMutableObjectManager::SetError(const ObjectID &object_id) {
 #ifdef __linux__
   PlasmaObjectHeader *header = nullptr;
   auto reader_channel_entry = reader_channels_.find(object_id);

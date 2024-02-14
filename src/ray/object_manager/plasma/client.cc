@@ -931,7 +931,8 @@ Status PlasmaClient::GetExperimentalMutableObject(
   std::vector<ObjectBuffer> object_buffers;
   impl_->Get({object_id}, -1, &object_buffers, /*is_from_worker=*/true);
   // Now that the value is pinned, get the object as a MutableObject, which is
-  // used to implement channels.
+  // used to implement channels. The returned MutableObject will pin the
+  // object in the local object store.
   return impl_->GetExperimentalMutableObject(object_id, mutable_object);
 }
 
