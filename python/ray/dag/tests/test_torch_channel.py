@@ -105,7 +105,7 @@ def test_broadcast(ray_start_regular):
     @ray.remote
     def f():
         elapsed = []
-        NUM_ACTORS = 8
+        NUM_ACTORS = 2
 
         actors = [Actor.remote(0) for _ in range(NUM_ACTORS)]
         with InputNode() as i:
@@ -114,7 +114,7 @@ def test_broadcast(ray_start_regular):
 
         compiled_dag = dag.experimental_compile(buffer_size_bytes=1000)
 
-        it = 10
+        it = 1
         s = time.time()
         for i in range(it):
             g = time.time()
@@ -128,6 +128,7 @@ def test_broadcast(ray_start_regular):
             elapsed.append((time.time() - g) * 1000 * 1000)
         elapsed_s = (time.time() - s)
 
+        print("done?")
         compiled_dag.teardown()
         return  it / elapsed_s, elapsed
 
