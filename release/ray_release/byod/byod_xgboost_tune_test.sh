@@ -4,6 +4,7 @@
 
 set -exo pipefail
 
+pip3 install -U --force-reinstall --no-deps "git+https://github.com/ray-project/xgboost_ray@master#egg=xgboost_ray" "git+https://github.com/ray-project/lightgbm_ray@master#egg=lightgbm_ray"
 sudo mkdir -p /data || true
 sudo chown ray:1000 /data || true
 rm -rf /data/train.parquet || true

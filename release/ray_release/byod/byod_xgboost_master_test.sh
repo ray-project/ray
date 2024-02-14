@@ -4,7 +4,7 @@
 
 set -exo pipefail
 
-pip install -U petastorm
+pip install -U "git+https://github.com/ray-project/xgboost_ray@master#egg=xgboost_ray" petastorm
 sudo mkdir -p /data || true
 sudo chown ray:1000 /data || true
 rm -rf /data/classification.parquet || true
