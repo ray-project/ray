@@ -1,11 +1,11 @@
 group: Validate wheels
 steps:
-  - name: windows_build
+  - name: windows_build_release_automation
     wanda: .buildkite/release-automation/windows.wanda.yaml
     instance_type: builder-windows
 
   - label: "Windows"
-    depends_on: windows_build
+    depends_on: windows_build_release_automation
     job_env: WINDOWS
     instance_type: windows
     commands:
