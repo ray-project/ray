@@ -11,6 +11,7 @@ from ray.train.data_parallel_trainer import DataParallelTrainer
 from ray.train.gbdt_trainer import GBDTTrainer
 from ray.train.trainer import GenDataset
 from ray.train.xgboost import RayTrainReportCallback, XGBoostConfig
+from ray.train.xgboost.v2 import XGBoostTrainer as SimpleXGBoostTrainer
 from ray.util.annotations import PublicAPI
 
 logger = logging.getLogger(__name__)
@@ -115,39 +116,6 @@ class LegacyXGBoostTrainer(GBDTTrainer):
             # Compatibility with XGBoost < 1.4
             return len(model.get_dump())
         return model.num_boosted_rounds()
-
-
-class SimpleXGBoostTrainer(DataParallelTrainer):
-    def __init__(
-        self,
-        train_loop_per_worker: Union[Callable[[], None], Callable[[Dict], None]],
-        *,
-        train_loop_config: Optional[Dict] = None,
-        xgboost_config: Optional[XGBoostConfig] = None,
-        scaling_config: Optional[ray.train.ScalingConfig] = None,
-        run_config: Optional[ray.train.RunConfig] = None,
-        datasets: Optional[Dict[str, Any]] = None,
-        dataset_config: Optional[ray.train.DataConfig] = None,
-        metadata: Optional[Dict[str, Any]] = None,
-        resume_from_checkpoint: Optional[Checkpoint] = None,
-    ):
-        if not xgboost_config:
-            xgboost_config = XGBoostConfig()
-
-        dataset_config = dataset_config or ray.train.DataConfig()
-        dataset_config._convert_to_data_iterator = False
-
-        super(SimpleXGBoostTrainer, self).__init__(
-            train_loop_per_worker=train_loop_per_worker,
-            train_loop_config=train_loop_config,
-            backend_config=xgboost_config,
-            scaling_config=scaling_config,
-            dataset_config=dataset_config,
-            run_config=run_config,
-            datasets=datasets,
-            resume_from_checkpoint=resume_from_checkpoint,
-            metadata=metadata,
-        )
 
 
 def _xgboost_train_fn_per_worker(
