@@ -215,7 +215,7 @@ class TestStreamOutputBackpressurePolicy(unittest.TestCase):
         )
 
         # Buffers are empty, both ops can read up to the max.
-        res = policy.calculate_max_blocks_to_read_per_op(topology)
+        res = policy.calculate_max_bytes_to_read_per_op(topology)
         assert res == {
             up_state: self._max_blocks_in_op_output_queue,
             down_state: self._max_blocks_in_op_output_queue,
@@ -224,7 +224,7 @@ class TestStreamOutputBackpressurePolicy(unittest.TestCase):
         # up_op's buffer is full, but down_up has no active tasks.
         # We'll still allow up_op to read 1 block.
         up_state.outqueue_num_blocks.return_value = self._max_blocks_in_op_output_queue
-        res = policy.calculate_max_blocks_to_read_per_op(topology)
+        res = policy.calculate_max_bytes_to_read_per_op(topology)
         assert res == {
             up_state: 1,
             down_state: self._max_blocks_in_op_output_queue,
@@ -232,7 +232,7 @@ class TestStreamOutputBackpressurePolicy(unittest.TestCase):
 
         # down_op now has 1 active task. So we won't allow up_op to read any more.
         down_op.num_active_tasks.return_value = 1
-        res = policy.calculate_max_blocks_to_read_per_op(topology)
+        res = policy.calculate_max_bytes_to_read_per_op(topology)
         assert res == {
             up_state: 0,
             down_state: self._max_blocks_in_op_output_queue,
@@ -244,7 +244,7 @@ class TestStreamOutputBackpressurePolicy(unittest.TestCase):
             StreamingOutputBackpressurePolicy, "MAX_OUTPUT_IDLE_SECONDS", 0.1
         ):
             time.sleep(0.11)
-            res = policy.calculate_max_blocks_to_read_per_op(topology)
+            res = policy.calculate_max_bytes_to_read_per_op(topology)
             assert res == {
                 up_state: 1,
                 down_state: self._max_blocks_in_op_output_queue,
@@ -252,7 +252,7 @@ class TestStreamOutputBackpressurePolicy(unittest.TestCase):
 
             # down_up now has outputs, so we won't allow up_op to read any more.
             down_op.metrics.num_task_outputs_generated = 1
-            res = policy.calculate_max_blocks_to_read_per_op(topology)
+            res = policy.calculate_max_bytes_to_read_per_op(topology)
             assert res == {
                 up_state: 0,
                 down_state: self._max_blocks_in_op_output_queue,
@@ -386,20 +386,6 @@ def test_large_e2e_backpressure(shutdown_only, restore_data_context):  # noqa: F
         return {"id": batch["id"], "result": [0 for _ in batch["id"]]}
 
     data_context = ray.data.DataContext.get_current()
-    data_context.set_config(
-        ENABLED_BACKPRESSURE_POLICIES_CONFIG_KEY,
-        [
-            StreamingOutputBackpressurePolicy,
-        ],
-    )
-    data_context.set_config(
-        StreamingOutputBackpressurePolicy.MAX_BLOCKS_IN_OP_OUTPUT_QUEUE_CONFIG_KEY,
-        OP_OUTPUT_QUEUE_SIZE,
-    )
-    data_context.set_config(
-        StreamingOutputBackpressurePolicy.MAX_BLOCKS_IN_GENERATOR_BUFFER_CONFIG_KEY,
-        STREMING_GEN_BUFFER_SIZE,
-    )
     data_context.execution_options.verbose_progress = True
     data_context.target_max_block_size = BLOCK_SIZE
 

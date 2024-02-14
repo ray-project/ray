@@ -381,17 +381,17 @@ def process_completed_tasks(
         for task in op.get_active_tasks():
             active_tasks[task.get_waitable()] = (state, task)
 
-    max_blocks_to_read_per_op: Dict[OpState, int] = {}
+    max_bytes_to_read_per_op: Dict[OpState, int] = {}
     for policy in backpressure_policies:
-        res = policy.calculate_max_blocks_to_read_per_op(topology, resource_manager)
+        res = policy.calculate_max_bytes_to_read_per_op(topology, resource_manager)
         if len(res) > 0:
-            if len(max_blocks_to_read_per_op) > 0:
+            if len(max_bytes_to_read_per_op) > 0:
                 raise ValueError(
                     "At most one backpressure policy that implements "
-                    "calculate_max_blocks_to_read_per_op() can be used at a time."
+                    "calculate_max_bytes_to_read_per_op() can be used at a time."
                 )
             else:
-                max_blocks_to_read_per_op = res
+                max_bytes_to_read_per_op = res
 
     # Process completed Ray tasks and notify operators.
     num_errored_blocks = 0
@@ -419,11 +419,11 @@ def process_completed_tasks(
             for task in ready_tasks:
                 if isinstance(task, DataOpTask):
                     try:
-                        num_blocks_read = task.on_data_ready(
-                            max_blocks_to_read_per_op.get(state, None)
+                        bytes_read = task.on_data_ready(
+                            max_bytes_to_read_per_op.get(state, None)
                         )
-                        if state in max_blocks_to_read_per_op:
-                            max_blocks_to_read_per_op[state] -= num_blocks_read
+                        if state in max_bytes_to_read_per_op:
+                            max_bytes_to_read_per_op[state] -= bytes_read
                     except Exception as e:
                         num_errored_blocks += 1
                         should_ignore = (
