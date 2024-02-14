@@ -14,6 +14,7 @@ from ray.serve._private.router import Router
 from ray.serve._private.usage import ServeUsageTag
 from ray.serve._private.utils import (
     DEFAULT,
+    generate_request_id,
     get_current_actor_id,
     get_random_string,
     is_running_in_asyncio_loop,
@@ -231,7 +232,9 @@ class _DeploymentHandleBase:
         self._record_telemetry_if_needed()
         _request_context = ray.serve.context._serve_request_context.get()
         request_metadata = RequestMetadata(
-            _request_context.request_id,
+            _request_context.request_id
+            if _request_context.request_id
+            else generate_request_id(),
             self.deployment_name,
             call_method=self.handle_options.method_name,
             route=_request_context.route,
