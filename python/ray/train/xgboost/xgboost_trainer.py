@@ -1,5 +1,5 @@
-from functools import partial
 import logging
+from functools import partial
 from typing import Any, Callable, Dict, Optional, Union
 
 import xgboost
@@ -8,9 +8,9 @@ from packaging.version import Version
 import ray.train
 from ray.train import Checkpoint
 from ray.train.constants import _DEPRECATED_VALUE, TRAIN_DATASET_KEY
-from ray.train.trainer import GenDataset
 from ray.train.data_parallel_trainer import DataParallelTrainer
 from ray.train.gbdt_trainer import GBDTTrainer
+from ray.train.trainer import GenDataset
 from ray.train.xgboost import RayTrainReportCallback, XGBoostConfig
 from ray.util.annotations import PublicAPI
 
@@ -166,6 +166,7 @@ def _xgboost_train_fn_per_worker(
     config: dict, label_column: str, num_boost_round: int, xgboost_train_kwargs: dict
 ):
     from xgboost.collective import CommunicatorContext
+
     from ray.train._internal.session import get_session
 
     checkpoint = ray.train.get_checkpoint()
