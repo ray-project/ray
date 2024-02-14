@@ -7,7 +7,7 @@ from packaging.version import Version
 
 import ray.train
 from ray.train import Checkpoint
-from ray.train.constants import TRAIN_DATASET_KEY
+from ray.train.constants import _DEPRECATED_VALUE, TRAIN_DATASET_KEY
 from ray.train.trainer import GenDataset
 from ray.train.data_parallel_trainer import DataParallelTrainer
 from ray.train.gbdt_trainer import GBDTTrainer
@@ -209,14 +209,76 @@ def _xgboost_train_fn_per_worker(
         )
 
 
+@PublicAPI(stability="beta")
 class XGBoostTrainer(SimpleXGBoostTrainer):
+    """A Trainer for data parallel XGBoost training.
+
+    This Trainer runs the XGBoost training loop in a distributed manner
+    using multiple Ray Actors.
+
+    .. note::
+        ``XGBoostTrainer`` does not modify or otherwise alter the working
+        of the XGBoost distributed training algorithm.
+        Ray only provides orchestration, data ingest and fault tolerance.
+        For more information on XGBoost distributed training, refer to
+        `XGBoost documentation <https://xgboost.readthedocs.io>`__.
+
+    Example:
+        .. testcode::
+
+            import ray
+
+            from ray.train.xgboost import XGBoostTrainer
+            from ray.train import ScalingConfig
+
+            train_dataset = ray.data.from_items(
+                [{"x": x, "y": x + 1} for x in range(32)])
+            trainer = XGBoostTrainer(
+                label_column="y",
+                params={"objective": "reg:squarederror"},
+                scaling_config=ScalingConfig(num_workers=3),
+                datasets={"train": train_dataset}
+            )
+            result = trainer.fit()
+
+        .. testoutput::
+            :hide:
+
+            ...
+
+    Args:
+        datasets: The Ray Datasets to use for training and validation. Must include a
+            "train" key denoting the training dataset. All non-training datasets will
+            be used as separate validation sets, each reporting a separate metric.
+        label_column: Name of the label column. A column with this name
+            must be present in the training dataset.
+        params: XGBoost training parameters.
+            Refer to `XGBoost documentation <https://xgboost.readthedocs.io/>`_
+            for a list of possible parameters.
+        dmatrix_params: Dict of ``dataset name:dict of kwargs`` passed to respective
+            :class:`xgboost_ray.RayDMatrix` initializations, which in turn are passed
+            to ``xgboost.DMatrix`` objects created on each worker. For example, this can
+            be used to add sample weights with the ``weight`` parameter.
+        num_boost_round: Target number of boosting iterations (trees in the model).
+            Note that unlike in ``xgboost.train``, this is the target number
+            of trees, meaning that if you set ``num_boost_round=10`` and pass a model
+            that has already been trained for 5 iterations, it will be trained for 5
+            iterations more, instead of 10 more.
+        scaling_config: Configuration for how to scale data parallel training.
+        run_config: Configuration for the execution of the training run.
+        resume_from_checkpoint: A checkpoint to resume training from.
+        metadata: Dict that should be made available in `checkpoint.get_metadata()`
+            for checkpoints saved from this Trainer. Must be JSON-serializable.
+        **train_kwargs: Additional kwargs passed to ``xgboost.train()`` function.
+    """
+
     def __init__(
         self,
         *,
         datasets: Dict[str, GenDataset],
         label_column: str,
         params: Dict[str, Any],
-        dmatrix_params: Optional[Dict[str, Dict[str, Any]]] = None,
+        dmatrix_params: Optional[Dict[str, Dict[str, Any]]] = _DEPRECATED_VALUE,
         num_boost_round: int = 10,
         scaling_config: Optional[ray.train.ScalingConfig] = None,
         run_config: Optional[ray.train.RunConfig] = None,
@@ -225,6 +287,13 @@ class XGBoostTrainer(SimpleXGBoostTrainer):
         metadata: Optional[Dict[str, Any]] = None,
         **train_kwargs,
     ):
+        # TODO(justinvyu): [Deprecated] Remove in 2.11
+        if dmatrix_params != _DEPRECATED_VALUE:
+            raise DeprecationWarning(
+                "`dmatrix_params` is deprecated, since XGBoostTrainer no longer "
+                "depends on the `xgboost_ray.RayDMatrix` utility."
+            )
+
         # Initialize a default Ray Train metrics/checkpoint reporting callback if needed
         callbacks = train_kwargs.get("callbacks", [])
         user_supplied_callback = any(
@@ -232,9 +301,9 @@ class XGBoostTrainer(SimpleXGBoostTrainer):
         )
         callback_kwargs = {}
         if run_config:
-            callback_kwargs[
-                "frequency"
-            ] = run_config.checkpoint_config.checkpoint_frequency
+            callback_kwargs["frequency"] = (
+                run_config.checkpoint_config.checkpoint_frequency
+            )
             callback_kwargs["checkpoint_at_end"] = (
                 run_config.checkpoint_config.checkpoint_frequency or 0
             )
