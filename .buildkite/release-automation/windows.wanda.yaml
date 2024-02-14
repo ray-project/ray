@@ -3,4 +3,5 @@ froms: ["@rayproject/buildenv:windows"]
 dockerfile: .buildkite/release-automation/windows.Dockerfile
 srcs:
   - .buildkite/release-automation/build_windows.sh
+  - ci/ray_ci/windows/build_ray.sh
   - ci/ray_ci/windows/cleanup.ps1
