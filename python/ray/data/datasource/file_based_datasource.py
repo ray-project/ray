@@ -1,5 +1,4 @@
 import io
-import pathlib
 import posixpath
 import warnings
 from typing import (
@@ -77,50 +76,15 @@ OPEN_FILE_MAX_ATTEMPTS = 10
 @Deprecated
 @PublicAPI(stability="beta")
 class FileExtensionFilter(PathPartitionFilter):
-    """A file-extension-based path filter that filters files that don't end
-    with the provided extension(s).
-
-    Attributes:
-        file_extensions: File extension(s) of files to be included in reading.
-        allow_if_no_extension: If this is True, files without any extensions
-            will be included in reading.
-
-    """
-
     def __init__(
         self,
         file_extensions: Union[str, List[str]],
         allow_if_no_extension: bool = False,
     ):
-        warnings.warn(
+        raise DeprecationWarning(
             "`FileExtensionFilter` is deprecated. Instead, set the `file_extensions` "
-            "parameter of `read_xxx()` APIs.",
-            DeprecationWarning,
+            "parameter of `read_xxx()` APIs."
         )
-
-        if isinstance(file_extensions, str):
-            file_extensions = [file_extensions]
-
-        self.extensions = [f".{ext.lower()}" for ext in file_extensions]
-        self.allow_if_no_extension = allow_if_no_extension
-
-    def _file_has_extension(self, path: str):
-        suffixes = [suffix.lower() for suffix in pathlib.Path(path).suffixes]
-        if not suffixes:
-            return self.allow_if_no_extension
-        return any(ext in suffixes for ext in self.extensions)
-
-    def __call__(self, paths: List[str]) -> List[str]:
-        return [path for path in paths if self._file_has_extension(path)]
-
-    def __str__(self):
-        return (
-            f"{type(self).__name__}(extensions={self.extensions}, "
-            f"allow_if_no_extensions={self.allow_if_no_extension})"
-        )
-
-    def __repr__(self):
-        return str(self)
 
 
 @DeveloperAPI

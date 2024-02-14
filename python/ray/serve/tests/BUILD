@@ -62,7 +62,7 @@ py_test_module_list(
     "test_failure.py",
     "test_handle.py",
     "test_handle_streaming.py",
-    "test_new_handle_api.py",
+    "test_handle_api.py",
     "test_regression.py",
     "test_request_timeout.py",
     "test_cluster.py",
@@ -178,15 +178,6 @@ py_test(
 )
 
 py_test(
-    name = "test_new_handle_api_set_via_env_var",
-    size = "medium",
-    srcs = ["test_new_handle_api_set_via_env_var.py"],
-    env = {"RAY_SERVE_ENABLE_NEW_HANDLE_API": "1"},
-    tags = ["exclusive", "team:serve"],
-    deps = ["//python/ray/serve:serve_lib", ":conftest", ":common"],
-)
-
-py_test(
     name = "test_serve_ha",
     srcs = ["test_serve_ha.py"],
     size = "medium",
@@ -202,6 +193,7 @@ py_test_module_list(
   files = [
     "test_autoscaling_policy.py",
     "test_handle.py",
+    "test_handle_api.py",
     "test_handle_streaming.py",
     "test_multiplex.py",
   ],
