@@ -78,7 +78,7 @@ def test_arg_override(ray_start_4_cpus):
         assert self.custom_arg["outer"]["fixed"] == 1
 
         pg = get_current_placement_group()
-        assert len(pg.bundle_specs) == 2  # 1 trainer, 1 worker
+        assert len(pg.bundle_specs) == 1  # Merged trainer and worker
 
     scale_config = ScalingConfig(num_workers=4)
     trainer = DummyTrainer(
