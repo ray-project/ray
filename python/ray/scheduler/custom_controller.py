@@ -15,6 +15,7 @@ from ray.util.state import list_tasks
 from scheduler_constant import *
 from ray.util.state import get_task
 import random
+import os
 
 class Controller():
     def __init__(self):
@@ -93,8 +94,14 @@ class Controller():
             #     ray.get_runtime_context().set_label({label: label})
             # else:
             #     os.system("rsync -a -P {} {}".format(label,node_ip+":"+label))
-            time.sleep(1)
-            ray.get_runtime_context().set_label({label: label})
+            if os.path.exists(label):
+               
+                ray.get_runtime_context().set_label({label: label})
+            else:
+                # node_ip=self.get_node_ip(data_id)
+                os.system("rsync --mkpath -a -P {} {}".format(DATA_IP+":"+label,label))
+               
+                ray.get_runtime_context().set_label({label: label})
             return FINISHED
 
         task_id = bind_label.options(
