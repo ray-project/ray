@@ -1460,7 +1460,7 @@ Status CoreWorker::Get(const std::vector<ObjectID> &ids,
       return Status::NotImplemented(
           "non-infinity timeout_ms not supported for experimental channels");
     }
-    return GetExperimentalMutableObject(ids, results);
+    return GetExperimentalMutableObjects(ids, results);
   } else {
     return GetObjects(ids, timeout_ms, results);
   }
