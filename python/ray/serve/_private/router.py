@@ -164,7 +164,7 @@ class Router:
         self.deployment_config = deployment_config
 
         # Start the metrics pusher if autoscaling is enabled.
-        autoscaling_config: AutoscalingConfig = self.curr_autoscaling_config
+        autoscaling_config = self.curr_autoscaling_config
         if autoscaling_config:
             # Optimization for autoscaling cold start time. If there are
             # currently 0 replicas for the deployment, and there is at
