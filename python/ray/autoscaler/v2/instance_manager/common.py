@@ -65,7 +65,7 @@ class InstanceUtil:
         instance_id: str,
         instance_type: str,
         status: Instance.InstanceStatus,
-        details: str,
+        details: str = "",
     ) -> Instance:
         """
         Returns a new instance with the given status.
@@ -223,6 +223,8 @@ class InstanceUtil:
                 # such that a ray running node  wasn't discovered and the RAY_RUNNING
                 # transition was skipped.
                 Instance.RAY_STOPPED,
+                # cloud instance being preempted and terminated
+                Instance.TERMINATING,
                 # cloud instance somehow failed during the installation process.
                 Instance.TERMINATED,
             },
@@ -234,6 +236,8 @@ class InstanceUtil:
                 Instance.RAY_STOPPING,
                 # Ray is already stopped, as reported by the ray cluster.
                 Instance.RAY_STOPPED,
+                # cloud instance being preempted and terminated
+                Instance.TERMINATING,
                 # cloud instance somehow failed.
                 Instance.TERMINATED,
             },
@@ -244,6 +248,8 @@ class InstanceUtil:
                 # Ray is stopped, and the ray node is present in the dead ray node list
                 # reported by the ray cluster.
                 Instance.RAY_STOPPED,
+                # cloud instance being preempted and terminated
+                Instance.TERMINATING,
                 # cloud instance somehow failed.
                 Instance.TERMINATED,
             },

@@ -12,6 +12,7 @@ from ray._private.ray_constants import env_integer
 from ray.autoscaler._private.constants import (
     AUTOSCALER_MAX_CONCURRENT_LAUNCHES,
     DEFAULT_UPSCALING_SPEED,
+    WORKER_RPC_DRAIN_KEY,
 )
 from ray.autoscaler._private.util import (
     hash_runtime_conf,
@@ -316,6 +317,10 @@ class AutoscalingConfig:
 
     def skip_ray_install(self) -> bool:
         return self.provider == Provider.KUBERAY
+
+    def need_ray_drain(self) -> bool:
+        provider_config = self._configs.get("provider", {})
+        return provider_config.get(WORKER_RPC_DRAIN_KEY, True)
 
     def get_instance_reconcile_config(self) -> InstanceReconcileConfig:
         # TODO(rickyx): we need a way to customize these configs,

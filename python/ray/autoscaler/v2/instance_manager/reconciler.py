@@ -1090,11 +1090,17 @@ class Reconciler:
         # Add terminating instances.
         for terminate_request in to_terminate:
             instance_id = terminate_request.instance_id
-            updates[terminate_request.instance_id] = IMInstanceUpdateEvent(
-                instance_id=instance_id,
-                new_instance_status=IMInstance.RAY_STOPPING,
-                termination_request=terminate_request,
-            )
+            if autoscaling_config.need_ray_drain():
+                updates[terminate_request.instance_id] = IMInstanceUpdateEvent(
+                    instance_id=instance_id,
+                    new_instance_status=IMInstance.RAY_STOPPING,
+                    termination_request=terminate_request,
+                )
+            else:
+                updates[terminate_request.instance_id] = IMInstanceUpdateEvent(
+                    instance_id=instance_id,
+                    new_instance_status=IMInstance.TERMINATING,
+                )
             logger.info(
                 "Terminating {} with {}".format(
                     instance_id,

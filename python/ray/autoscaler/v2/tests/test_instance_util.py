@@ -10,7 +10,6 @@ import pytest
 
 from ray.autoscaler.v2.instance_manager.common import (
     InstanceUtil,
-    InvalidInstanceUpdateError,
 )
 from ray.core.generated.instance_manager_pb2 import Instance
 
@@ -37,10 +36,9 @@ def exists_path(
 class InstanceUtilTest(unittest.TestCase):
     def test_basic(self):
         # New instance.
-        instance = InstanceUtil.new_instance("i-123", "type_1", "rq-1")
+        instance = InstanceUtil.new_instance("i-123", "type_1", Instance.QUEUED)
         assert instance.instance_id == "i-123"
         assert instance.instance_type == "type_1"
-        assert instance.launch_request_id == "rq-1"
         assert instance.status == Instance.QUEUED
 
         # Set status.
@@ -48,11 +46,9 @@ class InstanceUtilTest(unittest.TestCase):
         assert instance.status == Instance.REQUESTED
 
         # Set status with invalid status.
-        with pytest.raises(InvalidInstanceUpdateError):
-            InstanceUtil.set_status(instance, Instance.RAY_RUNNING)
+        assert not InstanceUtil.set_status(instance, Instance.RAY_RUNNING)
 
-        with pytest.raises(InvalidInstanceUpdateError):
-            InstanceUtil.set_status(instance, Instance.UNKNOWN)
+        assert not InstanceUtil.set_status(instance, Instance.UNKNOWN)
 
     def test_transition_graph(self):
         # Assert on each edge in the graph.
@@ -84,6 +80,7 @@ class InstanceUtilTest(unittest.TestCase):
             Instance.RAY_RUNNING,
             Instance.RAY_INSTALL_FAILED,
             Instance.RAY_STOPPED,
+            Instance.TERMINATING,
             Instance.TERMINATED,
         }
         all_status.remove(Instance.RAY_INSTALLING)
@@ -91,11 +88,16 @@ class InstanceUtilTest(unittest.TestCase):
         assert g[Instance.RAY_RUNNING] == {
             Instance.RAY_STOPPING,
             Instance.RAY_STOPPED,
+            Instance.TERMINATING,
             Instance.TERMINATED,
         }
         all_status.remove(Instance.RAY_RUNNING)
 
-        assert g[Instance.RAY_STOPPING] == {Instance.RAY_STOPPED, Instance.TERMINATED}
+        assert g[Instance.RAY_STOPPING] == {
+            Instance.RAY_STOPPED,
+            Instance.TERMINATING,
+            Instance.TERMINATED,
+        }
         all_status.remove(Instance.RAY_STOPPING)
 
         assert g[Instance.RAY_STOPPED] == {Instance.TERMINATED, Instance.TERMINATING}
@@ -130,7 +132,7 @@ class InstanceUtilTest(unittest.TestCase):
     @patch("time.time_ns")
     def test_status_time(self, mock_time):
         mock_time.return_value = 1
-        instance = InstanceUtil.new_instance("i-123", "type_1", "rq-1")
+        instance = InstanceUtil.new_instance("i-123", "type_1", Instance.QUEUED)
         # OK
         assert (
             InstanceUtil.get_status_transition_times_ns(instance, Instance.QUEUED)[0]
@@ -160,7 +162,7 @@ class InstanceUtilTest(unittest.TestCase):
 
     def test_is_cloud_instance_allocated(self):
         all_status = set(Instance.InstanceStatus.values())
-        instance = InstanceUtil.new_instance("i-123", "type_1", "rq-1")
+        instance = InstanceUtil.new_instance("i-123", "type_1", Instance.QUEUED)
         positive_status = {
             Instance.ALLOCATED,
             Instance.RAY_INSTALLING,
@@ -184,7 +186,7 @@ class InstanceUtilTest(unittest.TestCase):
 
     def test_is_ray_running_reachable(self):
         all_status = set(Instance.InstanceStatus.values())
-        instance = InstanceUtil.new_instance("i-123", "type_1", "rq-1")
+        instance = InstanceUtil.new_instance("i-123", "type_1", Instance.QUEUED)
         positive_status = {
             Instance.QUEUED,
             Instance.REQUESTED,
