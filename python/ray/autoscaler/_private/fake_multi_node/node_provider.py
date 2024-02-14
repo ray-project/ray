@@ -268,7 +268,7 @@ class FakeMultiNodeProvider(NodeProvider):
         # These are injected errors for testing purposes. If not None,
         # these will be raised on `create_node_with_resources_and_labels`` and
         # `terminate_node``, respectively.
-        self._creation_errors = None
+        self._creation_error = None
         self._termination_errors = None
 
         self._nodes = {
@@ -329,8 +329,8 @@ class FakeMultiNodeProvider(NodeProvider):
     def create_node_with_resources_and_labels(
         self, node_config, tags, count, resources, labels
     ):
-        if self._creation_errors:
-            raise self._creation_errors
+        if self._creation_error:
+            raise self._creation_error
 
         if self._launch_multiple:
             for _ in range(count):
@@ -410,10 +410,10 @@ class FakeMultiNodeProvider(NodeProvider):
     ############################
     # Test only methods
     ############################
-    def _test_add_creation_errors(self, e: Exception):
+    def _test_set_creation_error(self, e: Exception):
         """Set an error that will be raised on
         create_node_with_resources_and_labels."""
-        self._creation_errors = e
+        self._creation_error = e
 
     def _test_add_termination_errors(self, e: Exception):
         """Set an error that will be raised on terminate_node."""

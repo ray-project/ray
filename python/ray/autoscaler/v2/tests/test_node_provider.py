@@ -32,7 +32,7 @@ from ray.tests.autoscaler_test_utils import MockProvider
 logger.setLevel(logging.DEBUG)
 
 
-class CloudProviderTesterBase(ICloudInstanceProvider):
+class CloudInstanceProviderTesterBase(ICloudInstanceProvider):
     def __init__(
         self,
         inner_provider: ICloudInstanceProvider,
@@ -64,14 +64,14 @@ class CloudProviderTesterBase(ICloudInstanceProvider):
     ############################
     # Test mock methods
     ############################
-    def _add_creation_errors(self, e: Exception):
+    def _add_creation_error(self, e: Exception):
         raise NotImplementedError("Subclass should implement it")
 
     def _add_termination_errors(self, e: Exception):
         raise NotImplementedError("Subclass should implement it")
 
 
-class FakeMultiNodeProviderTester(CloudProviderTesterBase):
+class FakeMultiNodeProviderTester(CloudInstanceProviderTesterBase):
     def __init__(self, **kwargs):
         self.config_reader = FileConfigReader(
             get_test_config_path("test_ray_complex.yaml"), skip_content_hash=True
@@ -104,14 +104,14 @@ class FakeMultiNodeProviderTester(CloudProviderTesterBase):
     def shutdown(self):
         ray.shutdown()
 
-    def _add_creation_errors(self, e: Exception):
-        self.base_provider._test_add_creation_errors(e)
+    def _add_creation_error(self, e: Exception):
+        self.base_provider._test_set_creation_error(e)
 
     def _add_termination_errors(self, e: Exception):
         self.base_provider._test_add_termination_errors(e)
 
 
-class MockProviderTester(CloudProviderTesterBase):
+class MockProviderTester(CloudInstanceProviderTesterBase):
     def __init__(self, **kwargs):
         self.config_reader = FileConfigReader(
             get_test_config_path("test_ray_complex.yaml"), skip_content_hash=True
@@ -123,14 +123,14 @@ class MockProviderTester(CloudProviderTesterBase):
         )
         super().__init__(provider, self.config)
 
-    def _add_creation_errors(self, e: Exception):
-        self.base_provider.creation_errors = e
+    def _add_creation_error(self, e: Exception):
+        self.base_provider.creation_error = e
 
     def _add_termination_errors(self, e: Exception):
         self.base_provider.termination_errors = e
 
 
-class MagicMockProviderTester(CloudProviderTesterBase):
+class MagicMockProviderTester(CloudInstanceProviderTesterBase):
     def __init__(
         self,
         max_concurrent_launches=AUTOSCALER_MAX_CONCURRENT_LAUNCHES,
@@ -149,7 +149,7 @@ class MagicMockProviderTester(CloudProviderTesterBase):
         )
         super().__init__(provider, self.config)
 
-    def _add_creation_errors(self, e: Exception):
+    def _add_creation_error(self, e: Exception):
         self.base_provider.create_node_with_resources_and_labels.side_effect = e
 
     def _add_termination_errors(self, e: Exception):
@@ -234,7 +234,7 @@ def test_node_providers_basic(get_provider, provider_name):
 )
 def test_launch_failure(get_provider, provider_name):
     provider = get_provider(name=provider_name)
-    provider._add_creation_errors(Exception("failed to create node"))
+    provider._add_creation_error(Exception("failed to create node"))
 
     provider.launch(
         shape={"worker_nodes": 2},

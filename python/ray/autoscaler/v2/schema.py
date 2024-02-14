@@ -23,8 +23,12 @@ NodeType = str
 # e.g. head node or worker node.
 class NodeKind(Enum):
 
+    # Head node kind
     HEAD = NODE_KIND_HEAD
+    # Worker node kind
     WORKER = NODE_KIND_WORKER
+    # Unmanaged node kind (e.g. user started cloud instance or non
+    # ray node, this happens in KubeRay)
     UNMANAGED = NODE_KIND_UNMANAGED
 
 

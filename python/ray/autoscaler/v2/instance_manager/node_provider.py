@@ -314,10 +314,8 @@ class NodeProviderAdapter(ICloudInstanceProvider):
             thread_name_prefix="ray::NodeLauncherPool",
         )
 
-        # Queues to retrieve new errors occur in the multi-thread executors
+        # Queue to retrieve new errors occur in the multi-thread executors
         # temporarily.
-        self._launch_queue = Queue()
-        self._terminate_queue = Queue()
         self._errors_queue = Queue()
 
     def get_non_terminated(self) -> Dict[CloudInstanceId, CloudInstance]:
