@@ -40,10 +40,10 @@ class StreamingOutputBackpressurePolicy(BackpressurePolicy):
     def calculate_max_blocks_to_read_per_op(
         self, topology: "Topology", resource_manager: "ResourceManager"
     ) -> Dict["OpState", int]:
-        max_blocks_to_read_per_op: Dict["OpState", int] = {}
         if not resource_manager.op_resource_limiter_enabled():
-            return max_blocks_to_read_per_op
+            return {}
 
+        max_blocks_to_read_per_op: Dict["OpState", int] = {}
         for op, state in reversed(topology.items()):
             max_blocks_to_read_per_op[state] = resource_manager.get_op_limits(
                 op
