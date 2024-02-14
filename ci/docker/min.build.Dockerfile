@@ -43,7 +43,7 @@ if [[ -f min_requirements.txt ]]; then
   pip install -r min_requirements.txt
 fi
 
+# Prints out the pip dependency list.
+pip list
+
 EOF
-
-
-
