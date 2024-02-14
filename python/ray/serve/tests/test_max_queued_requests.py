@@ -2,16 +2,13 @@ import sys
 from typing import Tuple
 
 import grpc
-import requests
 import pytest
+import requests
 from starlette.requests import Request
 
 import ray
 from ray import serve
-from ray._private.test_utils import (
-    SignalActor,
-    wait_for_condition,
-)
+from ray._private.test_utils import SignalActor, wait_for_condition
 from ray.serve.exceptions import BackPressureError
 from ray.serve.generated import serve_pb2, serve_pb2_grpc
 
@@ -86,7 +83,6 @@ def test_http_backpressure(serve_instance):
     ray.get(signal_actor.send.remote())
     assert ray.get(first_ref) == (200, "hi-1")
     assert ray.get(second_ref) == (200, "hi-2")
-
 
 
 def test_grpc_backpressure(serve_instance):
