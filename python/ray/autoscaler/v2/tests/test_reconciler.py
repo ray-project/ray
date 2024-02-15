@@ -703,6 +703,7 @@ class TestReconciler:
                 event.launch_request_id
                 == instances[event.instance_id].launch_request_id
             )
+            assert event.instance_type == "type-1"
 
     @staticmethod
     @mock.patch("time.time_ns")

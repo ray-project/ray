@@ -24,6 +24,7 @@ from ray.autoscaler.v2.instance_manager.ray_installer import RayInstallError
 from ray.autoscaler.v2.scheduler import IResourceScheduler, SchedulingRequest
 from ray.autoscaler.v2.schema import AutoscalerInstance
 from ray.autoscaler.v2.utils import NodeStateUtil
+from ray.autoscaler.v2.schema import NodeType
 from ray.core.generated.autoscaler_pb2 import (
     AutoscalingState,
     ClusterResourceState,
@@ -753,26 +754,28 @@ class Reconciler:
         # Transition the instances to REQUESTED for instance launcher to
         # launch them.
         updates = {}
-        for instance in to_launch:
-            # Reuse launch request id for any QUEUED instances that have been
-            # requested before due to retry.
-            launch_request_id = (
-                str(time.time_ns())
-                if len(instance.launch_request_id) == 0
-                else instance.launch_request_id
-            )
-            updates[instance.instance_id] = IMInstanceUpdateEvent(
-                instance_id=instance.instance_id,
-                new_instance_status=IMInstance.REQUESTED,
-                launch_request_id=launch_request_id,
-            )
-            logger.info(
-                "Updating {}({}) with {}".format(
-                    instance.instance_id,
-                    IMInstance.InstanceStatus.Name(instance.status),
-                    MessageToDict(updates[instance.instance_id]),
+        for instance_type, instances in to_launch.items():
+            for instance in instances:
+                # Reuse launch request id for any QUEUED instances that have been
+                # requested before due to retry.
+                launch_request_id = (
+                    str(time.time_ns())
+                    if len(instance.launch_request_id) == 0
+                    else instance.launch_request_id
                 )
-            )
+                updates[instance.instance_id] = IMInstanceUpdateEvent(
+                    instance_id=instance.instance_id,
+                    new_instance_status=IMInstance.REQUESTED,
+                    launch_request_id=launch_request_id,
+                    instance_type=instance_type,
+                )
+                logger.debug(
+                    "Updating {}({}) with {}".format(
+                        instance.instance_id,
+                        IMInstance.InstanceStatus.Name(instance.status),
+                        MessageToDict(updates[instance.instance_id]),
+                    )
+                )
 
         Reconciler._update_instance_manager(instance_manager, version, updates)
 
@@ -783,7 +786,7 @@ class Reconciler:
         allocated_instances: List[IMInstance],
         upscaling_speed: float,
         max_concurrent_launches: int,
-    ) -> List[IMInstance]:
+    ) -> Dict[NodeType, List[IMInstance]]:
         def _group_by_type(instances):
             instances_by_type = defaultdict(list)
             for instance in instances:
@@ -802,7 +805,7 @@ class Reconciler:
         allocated_instances_by_type = _group_by_type(allocated_instances)
 
         total_num_requested_to_launch = len(requested_instances)
-        all_to_launch = []
+        all_to_launch: Dict[NodeType : List[IMInstance]] = defaultdict(list)
 
         for (
             instance_type,
@@ -840,7 +843,7 @@ class Reconciler:
                 :num_to_launch
             ]
 
-            all_to_launch.extend(to_launch)
+            all_to_launch[instance_type].extend(to_launch)
             total_num_requested_to_launch += num_to_launch
 
         return all_to_launch
