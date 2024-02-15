@@ -6,3 +6,13 @@ doctest(
     files = glob(["*.py"], exclude=["client_connect.py", "iter.py", "iter_metrics.py"]),
     tags = ["team:core"]
 )
+
+util_tests_srcs = glob(["tests/**/*.py"])
+
+
+py_test(
+    name = "test_metrics",
+    size = "small",
+    srcs = util_tests_srcs,
+    tags = ["exclusive", "utils"]
+)
