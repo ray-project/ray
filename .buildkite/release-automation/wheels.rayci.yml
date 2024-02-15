@@ -5,4 +5,4 @@ steps:
     instance_type: windows
     commands:
       - bash /c/workdir/ci/ray_ci/windows/install_tools.sh
-      - source /c/workdir/release/util/pip_download_test.sh
+      - source /c/workdir/.buildkite/release-automation/verify-windows-wheels.sh
