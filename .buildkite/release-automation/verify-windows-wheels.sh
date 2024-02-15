@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/usr/bin/env bash
 
 set -euo pipefail
 
@@ -16,7 +16,7 @@ run_sanity_check() {
     pip install \
         --index-url https://test.pypi.org/simple/ \
         --extra-index-url https://pypi.org/simple \
-        "ray[cpp]==$RAY_VERSION"
+        "ray==$RAY_VERSION"
     (
         cd release/util
         python sanity_check.py

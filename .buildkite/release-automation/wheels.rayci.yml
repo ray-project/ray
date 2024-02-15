@@ -1,16 +1,8 @@
 group: Validate wheels
 steps:
-  - name: windowsbuild
-    wanda: ci/docker/windows.build.wanda.yaml
-    instance_type: builder-windows
-
   - label: "Windows"
     job_env: WINDOWS
     instance_type: windows
     commands:
       - bash /c/workdir/ci/ray_ci/windows/install_tools.sh
-      - bazel run //ci/ray_ci/release_automation:validate_windows_docker --
-        --build-name windowsbuild
-        --test-env=CI="1"
-        --test-env=USERPROFILE
-    depends_on: windowsbuild
+      - source /c/workdir/release/util/pip_download_test.sh
