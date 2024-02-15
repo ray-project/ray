@@ -64,7 +64,7 @@ The Ray generator task returns an ``ObjectRefGenerator`` object, which is
 compatible with generator and async generator APIs. You can access the
 ``next``, ``__iter__``, ``__anext__``, ``__aiter__`` APIs from the class.
 
-Whenever a task invokes ``yield``, a corresponding output is ready and availabale from a generator as a Ray object reference.
+Whenever a task invokes ``yield``, a corresponding output is ready and available from a generator as a Ray object reference.
 You can call ``next(gen)`` to obtain an object reference.
 If ``next`` has no more items to generate, it raises ``StopIteration``. If ``__anext__`` has no more items to generate, it raises
 ``StopAsyncIteration``
