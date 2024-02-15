@@ -30,10 +30,10 @@ parser.add_argument(
     help="The number of observation frames to stack.",
 )
 parser.add_argument(
-    "--use-connector-framestacking",
+    "--use-gym-wrapper-framestacking",
     action="store_true",
-    help="Whether to use the ConnectorV2 APIs to perform framestacking (as opposed "
-    "to doing it via a gymnasium ObservationWrapper).",
+    help="Whether to use Rllib's Atari wrapper's framestacking capabilities (as "
+    "opposed to doing it via a specific ConenctorV2 pipeline).",
 )
 
 
@@ -75,7 +75,7 @@ if __name__ == "__main__":
             # Perform framestacking either through ConnectorV2 or right here through
             # the observation wrapper.
             framestack=(
-                None if args.use_connector_framestacking else args.num_frames
+                args.num_framestack if args.use_gym_wrapper_framestacking else None
             ),
         )
     )
@@ -90,6 +90,8 @@ if __name__ == "__main__":
     config = (
         get_trainable_cls(args.algo)
         .get_default_config()
+        # Use new API stack ...
+        .experimental(_enable_new_api_stack=args.enable_new_api_stack)
         .framework(args.framework)
         .environment(
             "env",
@@ -101,13 +103,11 @@ if __name__ == "__main__":
             },
             clip_rewards=True,
         )
-        # Use new API stack ...
-        .experimental(_enable_new_api_stack=True)
         .rollouts(
             # ... new EnvRunner and our frame stacking env-to-module connector.
             env_to_module_connector=(
-                _make_env_to_module_connector if args.use_connector_framestacking
-                else None
+                None if args.use_gym_wrapper_framestacking
+                else _make_env_to_module_connector
             ),
             num_rollout_workers=args.num_env_runners,
             # Set up the correct env-runner to use depending on
@@ -129,7 +129,7 @@ if __name__ == "__main__":
         .training(
             # Use our frame stacking learner connector.
             learner_connector=(
-                _make_learner_connector if args.use_connector_framestacking else None
+                None if args.use_gym_wrapper_framestacking else _make_learner_connector
             ),
             lambda_=0.95,
             kl_coeff=0.5,

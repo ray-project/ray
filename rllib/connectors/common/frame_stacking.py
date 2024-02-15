@@ -20,6 +20,8 @@ class _FrameStackingConnector(ConnectorV2):
     @property
     @override(ConnectorV2)
     def observation_space(self):
+        if self.input_observation_space is None:
+            return None
         # Change our observation space according to the given stacking settings.
         if self._multi_agent:
             ret = {}
@@ -75,65 +77,64 @@ class _FrameStackingConnector(ConnectorV2):
         shared_data: Optional[dict] = None,
         **kwargs,
     ) -> Any:
-        # This is a data-in-data-out connector, so we expect `data` to be a dict
-        # with: key=column name, e.g. "obs" and value=[data to be processed by
-        # RLModule]. We will add to `data` the last n observations.
-        observations = []
-
         # Learner connector pipeline. Episodes have been finalized/numpy'ized.
         if self._as_learner_connector:
-            for episode in episodes:
+
+            for sa_episode in self.single_agent_episode_iterator(episodes):
 
                 def _map_fn(s):
                     # Squeeze out last dim.
                     s = np.squeeze(s, axis=-1)
                     # Calculate new shape and strides
-                    new_shape = (len(episode), self.num_frames) + s.shape[1:]
+                    new_shape = (len(sa_episode), self.num_frames) + s.shape[1:]
                     new_strides = (s.strides[0],) + s.strides
                     # Create a strided view of the array.
-                    return np.lib.stride_tricks.as_strided(
-                        s, shape=new_shape, strides=new_strides
+                    return np.transpose(
+                        np.lib.stride_tricks.as_strided(
+                            s, shape=new_shape, strides=new_strides
+                        ),
+                        axes=[0, 2, 3, 1],
                     )
 
                 # Get all observations from the episode in one np array (except for
                 # the very last one, which is the final observation not needed for
                 # learning).
-                observations.append(
-                    tree.map_structure(
+                self.add_n_batch_items(
+                    batch=data,
+                    column=SampleBatch.OBS,
+                    items_to_add=tree.map_structure(
                         _map_fn,
-                        episode.get_observations(
-                            indices=slice(-self.num_frames + 1, len(episode)),
+                        sa_episode.get_observations(
+                            indices=slice(-self.num_frames + 1, len(sa_episode)),
                             neg_indices_left_of_zero=True,
                             fill=0.0,
                         ),
-                    )
+                    ),
+                    num_items=len(sa_episode),
+                    single_agent_episode=sa_episode,
                 )
-
-            # Move stack-dimension to the end and concatenate along batch axis.
-            data[SampleBatch.OBS] = tree.map_structure(
-                lambda *s: np.transpose(np.concatenate(s, axis=0), axes=[0, 2, 3, 1]),
-                *observations,
-            )
 
         # Env-to-module pipeline. Episodes still operate on lists.
         else:
-            for episode in episodes:
-                assert not episode.is_finalized
+            for sa_episode in self.single_agent_episode_iterator(episodes):
+                assert not sa_episode.is_finalized
                 # Get the list of observations to stack.
-                obs_stack = episode.get_observations(
+                obs_stack = sa_episode.get_observations(
                     indices=slice(-self.num_frames, None),
                     fill=0.0,
                 )
                 # Observation components are (w, h, 1)
-                # -> stack to (w, h, [num_frames], 1), then squeeze out last dim to get
-                # (w, h, [num_frames]).
+                # -> concatenate along axis=-1 to (w, h, [num_frames]).
                 stacked_obs = tree.map_structure(
-                    lambda *s: np.squeeze(np.stack(s, axis=2), axis=-1),
+                    lambda *s: np.concatenate(s, axis=2),
                     *obs_stack,
                 )
-                observations.append(stacked_obs)
-
-            data[SampleBatch.OBS] = batch(observations)
+                self.add_batch_item(
+                    batch=data,
+                    column=SampleBatch.OBS,
+                    item_to_add=stacked_obs,
+                    single_agent_episode=sa_episode,
+                )
 
         return data
 
