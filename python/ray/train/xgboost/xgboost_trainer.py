@@ -1,121 +1,19 @@
 import logging
 from functools import partial
-from typing import Any, Callable, Dict, Optional, Union
+from typing import Any, Dict, Optional
 
 import xgboost
 
 import ray.train
 from ray.train import Checkpoint
 from ray.train.constants import _DEPRECATED_VALUE, TRAIN_DATASET_KEY
-from ray.train.data_parallel_trainer import DataParallelTrainer
 from ray.train.gbdt_trainer import GBDTTrainer
 from ray.train.trainer import GenDataset
-from ray.train.xgboost import RayTrainReportCallback, XGBoostConfig
+from ray.train.xgboost import RayTrainReportCallback
 from ray.train.xgboost.v2 import XGBoostTrainer as SimpleXGBoostTrainer
 from ray.util.annotations import PublicAPI
 
 logger = logging.getLogger(__name__)
-
-
-@PublicAPI(stability="beta")
-class LegacyXGBoostTrainer(GBDTTrainer):
-    """A Trainer for data parallel XGBoost training.
-
-    This Trainer runs the XGBoost training loop in a distributed manner
-    using multiple Ray Actors.
-
-    .. note::
-        ``XGBoostTrainer`` does not modify or otherwise alter the working
-        of the XGBoost distributed training algorithm.
-        Ray only provides orchestration, data ingest and fault tolerance.
-        For more information on XGBoost distributed training, refer to
-        `XGBoost documentation <https://xgboost.readthedocs.io>`__.
-
-    Example:
-        .. testcode::
-
-            import ray
-
-            from ray.train.xgboost import XGBoostTrainer
-            from ray.train import ScalingConfig
-
-            train_dataset = ray.data.from_items(
-                [{"x": x, "y": x + 1} for x in range(32)])
-            trainer = XGBoostTrainer(
-                label_column="y",
-                params={"objective": "reg:squarederror"},
-                scaling_config=ScalingConfig(num_workers=3),
-                datasets={"train": train_dataset}
-            )
-            result = trainer.fit()
-
-        .. testoutput::
-            :hide:
-
-            ...
-
-    Args:
-        datasets: The Ray Datasets to use for training and validation. Must include a
-            "train" key denoting the training dataset. All non-training datasets will
-            be used as separate validation sets, each reporting a separate metric.
-        label_column: Name of the label column. A column with this name
-            must be present in the training dataset.
-        params: XGBoost training parameters.
-            Refer to `XGBoost documentation <https://xgboost.readthedocs.io/>`_
-            for a list of possible parameters.
-        dmatrix_params: Dict of ``dataset name:dict of kwargs`` passed to respective
-            :class:`xgboost_ray.RayDMatrix` initializations, which in turn are passed
-            to ``xgboost.DMatrix`` objects created on each worker. For example, this can
-            be used to add sample weights with the ``weight`` parameter.
-        num_boost_round: Target number of boosting iterations (trees in the model).
-            Note that unlike in ``xgboost.train``, this is the target number
-            of trees, meaning that if you set ``num_boost_round=10`` and pass a model
-            that has already been trained for 5 iterations, it will be trained for 5
-            iterations more, instead of 10 more.
-        scaling_config: Configuration for how to scale data parallel training.
-        run_config: Configuration for the execution of the training run.
-        resume_from_checkpoint: A checkpoint to resume training from.
-        metadata: Dict that should be made available in `checkpoint.get_metadata()`
-            for checkpoints saved from this Trainer. Must be JSON-serializable.
-        **train_kwargs: Additional kwargs passed to ``xgboost.train()`` function.
-    """
-
-    _default_ray_params: Dict[str, Any] = {
-        "num_actors": 1,
-        "cpus_per_actor": 1,
-        "gpus_per_actor": 0,
-    }
-    _init_model_arg_name: str = "xgb_model"
-
-    def __init__(self, *args, **kwargs):
-        # TODO(justinvyu): Fix circular import by moving xgboost_ray into ray
-        import xgboost_ray
-
-        self._dmatrix_cls: type = xgboost_ray.RayDMatrix
-        self._ray_params_cls: type = xgboost_ray.RayParams
-        self._tune_callback_checkpoint_cls: type = (
-            xgboost_ray.tune.TuneReportCheckpointCallback
-        )
-        super().__init__(*args, **kwargs)
-
-    @classmethod
-    def get_model(
-        cls,
-        checkpoint: Checkpoint,
-    ) -> xgboost.Booster:
-        """Retrieve the XGBoost model stored in this checkpoint."""
-        return RayTrainReportCallback.get_model(checkpoint)
-
-    def _train(self, **kwargs):
-        import xgboost_ray
-
-        return xgboost_ray.train(**kwargs)
-
-    def _model_iteration(self, model: xgboost.Booster) -> int:
-        if not hasattr(model, "num_boosted_rounds"):
-            # Compatibility with XGBoost < 1.4
-            return len(model.get_dump())
-        return model.num_boosted_rounds()
 
 
 def _xgboost_train_fn_per_worker(
@@ -310,88 +208,103 @@ class XGBoostTrainer(SimpleXGBoostTrainer):
             )
 
 
-def simple_trainer_example():
-    from contextlib import contextmanager
+# TODO(justinvyu): [simplify_xgb] Remove once xgboost_ray dep is gone.
+@PublicAPI(stability="beta")
+class LegacyXGBoostTrainer(GBDTTrainer):
+    """A Trainer for data parallel XGBoost training.
 
-    @contextmanager
-    def ray_train_xgboost_setup():
-        # env_vars = {
-        #     "DMLC_NUM_WORKER",
-        #     "DMLC_TASK_ID",
-        #     "DMLC_TRACKER_URI",
-        #     "DMLC_TRACKER_PORT",
-        # }
+    This Trainer runs the XGBoost training loop in a distributed manner
+    using multiple Ray Actors.
 
-        # rabit_args = {k: os.environ[k] for k in env_vars}
+    .. note::
+        ``XGBoostTrainer`` does not modify or otherwise alter the working
+        of the XGBoost distributed training algorithm.
+        Ray only provides orchestration, data ingest and fault tolerance.
+        For more information on XGBoost distributed training, refer to
+        `XGBoost documentation <https://xgboost.readthedocs.io>`__.
 
-        from xgboost.collective import CommunicatorContext
+    Example:
+        .. testcode::
 
-        with CommunicatorContext():
-            yield
+            import ray
 
-    def train_fn(config):
-        from xgboost.collective import CommunicatorContext
+            from ray.train.xgboost import XGBoostTrainer
+            from ray.train import ScalingConfig
 
-        with CommunicatorContext():
-            print(
-                f"worker start: {xgboost.collective.get_rank()=} "
-                f"{xgboost.collective.get_world_size()=}"
+            train_dataset = ray.data.from_items(
+                [{"x": x, "y": x + 1} for x in range(32)])
+            trainer = XGBoostTrainer(
+                label_column="y",
+                params={"objective": "reg:squarederror"},
+                scaling_config=ScalingConfig(num_workers=3),
+                datasets={"train": train_dataset}
             )
+            result = trainer.fit()
 
-            params = {
-                "tree_method": "approx",
-                "objective": "reg:squarederror",
-                "eta": 1e-4,
-                "subsample": 0.5,
-                "max_depth": 2,
-            }
+        .. testoutput::
+            :hide:
 
-            train_ds = ray.train.get_dataset_shard("train")
-            train_df = train_ds.to_pandas()
-            X, y = train_df.drop("y", axis=1), train_df["y"]
-            dtrain = xgboost.DMatrix(X, label=y)
+            ...
 
-            # User just calls xgboost.train as they would natively...
-            bst = xgboost.train(
-                params,
-                dtrain,
-            )
+    Args:
+        datasets: The Ray Datasets to use for training and validation. Must include a
+            "train" key denoting the training dataset. All non-training datasets will
+            be used as separate validation sets, each reporting a separate metric.
+        label_column: Name of the label column. A column with this name
+            must be present in the training dataset.
+        params: XGBoost training parameters.
+            Refer to `XGBoost documentation <https://xgboost.readthedocs.io/>`_
+            for a list of possible parameters.
+        dmatrix_params: Dict of ``dataset name:dict of kwargs`` passed to respective
+            :class:`xgboost_ray.RayDMatrix` initializations, which in turn are passed
+            to ``xgboost.DMatrix`` objects created on each worker. For example, this can
+            be used to add sample weights with the ``weight`` parameter.
+        num_boost_round: Target number of boosting iterations (trees in the model).
+            Note that unlike in ``xgboost.train``, this is the target number
+            of trees, meaning that if you set ``num_boost_round=10`` and pass a model
+            that has already been trained for 5 iterations, it will be trained for 5
+            iterations more, instead of 10 more.
+        scaling_config: Configuration for how to scale data parallel training.
+        run_config: Configuration for the execution of the training run.
+        resume_from_checkpoint: A checkpoint to resume training from.
+        metadata: Dict that should be made available in `checkpoint.get_metadata()`
+            for checkpoints saved from this Trainer. Must be JSON-serializable.
+        **train_kwargs: Additional kwargs passed to ``xgboost.train()`` function.
+    """
 
-            print("done", bst)
+    _default_ray_params: Dict[str, Any] = {
+        "num_actors": 1,
+        "cpus_per_actor": 1,
+        "gpus_per_actor": 0,
+    }
+    _init_model_arg_name: str = "xgb_model"
 
-    train_dataset = ray.data.from_items([{"x": x, "y": x + 1} for x in range(32)])
-    trainer = SimpleXGBoostTrainer(
-        train_fn,
-        datasets={"train": train_dataset},
-        scaling_config=ray.train.ScalingConfig(num_workers=4),
-    )
-    trainer.fit()
+    def __init__(self, *args, **kwargs):
+        # TODO(justinvyu): Fix circular import by moving xgboost_ray into ray
+        import xgboost_ray
 
+        self._dmatrix_cls: type = xgboost_ray.RayDMatrix
+        self._ray_params_cls: type = xgboost_ray.RayParams
+        self._tune_callback_checkpoint_cls: type = (
+            xgboost_ray.tune.TuneReportCheckpointCallback
+        )
+        super().__init__(*args, **kwargs)
 
-def original_api_example():
-    import ray
-    from ray.train import ScalingConfig
-    from ray.train.xgboost import XGBoostTrainer
+    @classmethod
+    def get_model(
+        cls,
+        checkpoint: Checkpoint,
+    ) -> xgboost.Booster:
+        """Retrieve the XGBoost model stored in this checkpoint."""
+        return RayTrainReportCallback.get_model(checkpoint)
 
-    dataset = ray.data.read_csv("s3://anonymous@air-example-data/breast_cancer.csv")
-    train_dataset, valid_dataset = dataset.train_test_split(test_size=0.3)
+    def _train(self, **kwargs):
+        import xgboost_ray
 
-    trainer = XGBoostTrainer(
-        scaling_config=ScalingConfig(
-            num_workers=2,
-            use_gpu=False,
-        ),
-        label_column="target",
-        num_boost_round=20,
-        params={
-            "objective": "binary:logistic",
-            "eval_metric": ["logloss", "error"],
-        },
-        datasets={"train": train_dataset, "valid": valid_dataset},
-    )
-    result = trainer.fit()
-    print(result)
+        return xgboost_ray.train(**kwargs)
 
-
-if __name__ == "__main__":
-    original_api_example()
+    def _model_iteration(self, model: xgboost.Booster) -> int:
+        if not hasattr(model, "num_boosted_rounds"):
+            # Compatibility with XGBoost < 1.4
+            return len(model.get_dump())
+        return model.num_boosted_rounds()
