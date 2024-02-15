@@ -34,7 +34,9 @@ class Apiserver:
                 self.node_info[node[NODE_ID]][SPEED] = MAX_COMPLEXITY_SCORE
                 self.node_info[node[NODE_ID]][RUNNING_OR_PENDING_TASKS] = {}
 
-                self.node_info[node[NODE_ID]][PENDING_TASK_COUNT] = 0
+                self.node_info[node[NODE_ID]][PENDING_TASKS] = {}
+                self.node_info[node[NODE_ID]][PENDING_TASKS_COUNT] = 0
+                
                 
 
 
@@ -97,16 +99,15 @@ class Apiserver:
 
     def _idempotent_increment_pending_task_counts(self, user_task):
         assign_node = user_task.status[ASSIGN_NODE]
-        
-        if user_task.spec[USER_TASK_ID] not in self.node_info[assign_node][RUNNING_OR_PENDING_TASKS]:
-            self.node_info[assign_node][PENDING_TASK_COUNT] += 1
+        self.node_info[assign_node][PENDING_TASKS][user_task.spec[USER_TASK_ID]] = user_task
+        self.node_info[assign_node][PENDING_TASKS_COUNT] = len(self.node_info[assign_node][PENDING_TASKS])
 
     def _idempotent_decrement_pending_task_count(self, user_task):
         assign_node = user_task.status[ASSIGN_NODE]
+        if user_task.spec[USER_TASK_ID] in self.node_info[assign_node][PENDING_TASKS]:
+            del self.node_info[assign_node][PENDING_TASKS][user_task.spec[USER_TASK_ID]]
+        self.node_info[assign_node][PENDING_TASKS_COUNT] = len(self.node_info[assign_node][PENDING_TASKS])
        
-        if user_task.spec[USER_TASK_ID] in self.node_info[assign_node][RUNNING_OR_PENDING_TASKS]:
-            self.node_info[assign_node][PENDING_TASK_COUNT] -= 1
-
     def _update_node_speed_info(self, user_task):
         assign_node = user_task.status[ASSIGN_NODE]
         complexity_score = user_task.spec[COMPLEXITY_SCORE]
