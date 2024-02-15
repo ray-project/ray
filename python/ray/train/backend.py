@@ -1,5 +1,4 @@
 import logging
-from abc import abstractmethod
 from typing import TypeVar
 
 from ray.train._internal.utils import Singleton
