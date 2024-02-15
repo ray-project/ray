@@ -48,9 +48,7 @@ class CloudInstanceProviderTesterBase(ICloudInstanceProvider):
         pass
 
     def launch(self, request_id, shape):
-        self.inner_provider.launch(
-            shape=shape, request_id=request_id, config=self.config
-        )
+        self.inner_provider.launch(shape=shape, request_id=request_id)
 
     def terminate(self, request_id, ids):
         self.inner_provider.terminate(ids=ids, request_id=request_id)
@@ -93,6 +91,7 @@ class FakeMultiNodeProviderTester(CloudInstanceProviderTesterBase):
 
         provider = NodeProviderAdapter(
             self.base_provider,
+            self.config_reader,
         )
         super().__init__(provider, self.config)
 
@@ -120,6 +119,7 @@ class MockProviderTester(CloudInstanceProviderTesterBase):
         self.base_provider = MockProvider()
         provider = NodeProviderAdapter(
             self.base_provider,
+            self.config_reader,
         )
         super().__init__(provider, self.config)
 
@@ -144,6 +144,7 @@ class MagicMockProviderTester(CloudInstanceProviderTesterBase):
         self.base_provider = MagicMock()
         provider = NodeProviderAdapter(
             self.base_provider,
+            self.config_reader,
             max_launch_batch_per_type=max_launch_batch_per_type,
             max_concurrent_launches=max_concurrent_launches,
         )
