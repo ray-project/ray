@@ -33,7 +33,7 @@ class Controller():
             print("reconcile: ", user_task)
             
             # Use rate limiter later
-            time.sleep(1)
+            # time.sleep(1)
 
     def reconcile(self, user_task):
         print("reconcile: ", user_task.spec[USER_TASK_ID])
@@ -48,7 +48,6 @@ class Controller():
 
         # send data and bind label to node
         elif user_task.status[BIND_TASK_STATUS] is None:
-            
             id = self.bind_label_and_send_data(user_task.status[ASSIGN_NODE], user_task.spec[HPC_DIR])
             user_task.status[BIND_TASK_ID] = id
             user_task.status[BIND_TASK_STATUS] = RUNNING
@@ -58,8 +57,12 @@ class Controller():
         # Check if data is sent and label is binded
         elif user_task.status[BIND_TASK_STATUS] == RUNNING:
             task_status = get_task(user_task.status[BIND_TASK_ID])
-            user_task.status[BIND_TASK_START_TIME] = task_status[START_TIME]
-            if task_status[STATE] == FINISHED:
+            if task_status == None:
+                return
+            print(task_status)
+            # The task_status is retrieved from the Ray API, and the end/start time may sometimes not be updated yet even though the state is FINISHED.
+            if task_status[STATE] == FINISHED and task_status[END_TIME] != None and task_status[START_TIME] != None:
+                user_task.status[BIND_TASK_START_TIME] = task_status[START_TIME]
                 user_task.status[BIND_TASK_END_TIME] = task_status[END_TIME]
                 user_task.status[BIND_TASK_STATUS] = FINISHED
                 user_task.status[BIND_TASK_DURATION] = task_status[END_TIME] - task_status[START_TIME]
@@ -70,11 +73,17 @@ class Controller():
         # Check if user_task is finished
         elif user_task.status[BIND_TASK_STATUS] == FINISHED:
             task_status = get_task(user_task.spec[USER_TASK_ID])
-            user_task.status[USER_TASK_START_TIME] = task_status[START_TIME]
-            if task_status[STATE] == RUNNING:
+            if task_status == None:
+                return
+            print(task_status)
+            # The task_status is retrieved from the Ray API, and the end/start time may sometimes not be updated yet even though the state is FINISHED.
+            if task_status[STATE] == RUNNING and task_status[START_TIME] != None:
+                user_task.status[USER_TASK_START_TIME] = task_status[START_TIME]
                 user_task.status[USER_TASK_STATUS] = RUNNING
                 print("reconcile: user_task running", user_task.spec[USER_TASK_ID])
-            elif task_status[STATE] == FINISHED:
+            
+            elif task_status[STATE] == FINISHED and task_status[END_TIME] != None and task_status[START_TIME] != None:
+                user_task.status[USER_TASK_START_TIME] = task_status[START_TIME]
                 user_task.status[USER_TASK_END_TIME] = task_status[END_TIME]
                 user_task.status[USER_TASK_STATUS] = FINISHED
                 user_task.status[USER_TASK_DURATION] = task_status[END_TIME] - task_status[START_TIME]
