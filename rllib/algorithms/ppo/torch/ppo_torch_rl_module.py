@@ -9,6 +9,7 @@ from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.framework import try_import_torch
 from ray.rllib.utils.nested_dict import NestedDict
+from ray.rllib.utils.torch_utils import convert_to_torch_tensor
 
 torch, nn = try_import_torch()
 
@@ -81,3 +82,23 @@ class PPOTorchRLModule(TorchRLModule, PPORLModule):
         output[SampleBatch.ACTION_DIST_INPUTS] = action_logits
 
         return output
+
+    @override(PPORLModule)
+    def _compute_values(self, batch):
+        values = {}
+        for module_id, sa_batch in batch.policy_batches.items():
+            infos = sa_batch.pop(SampleBatch.INFOS, None)
+            sa_batch = convert_to_torch_tensor(sa_batch, device=self._device)
+            if infos is not None:
+                sa_batch[SampleBatch.INFOS] = infos
+
+            module = self[module_id].unwrapped()
+
+            # Shared encoder.
+            encoder_outs = module.encoder(sa_batch)
+            # Value head.
+            vf_out = module.vf(encoder_outs[ENCODER_OUT][CRITIC])
+            # Squeeze out last dimension (single node value head).
+            values[module_id] = vf_out.squeeze(-1)
+
+        return values

@@ -1,7 +1,4 @@
-import abc
 from typing import Any, Dict, List, Optional, Tuple
-
-import numpy as np
 
 from ray.rllib.algorithms.ppo.ppo import (
     LEARNER_RESULTS_CURR_ENTROPY_COEFF_KEY,
@@ -91,7 +88,7 @@ class PPOLearner(Learner):
             episodes=episodes,
         )
         # Perform the value model's forward pass.
-        vf_preds = convert_to_numpy(self._compute_values(batch_for_vf))
+        vf_preds = convert_to_numpy(self.module._compute_values(batch_for_vf))
 
         for module_id, module_vf_preds in vf_preds.items():
             # Collect new (single-agent) episode lengths.
@@ -187,17 +184,3 @@ class PPOLearner(Learner):
         results.update({LEARNER_RESULTS_CURR_ENTROPY_COEFF_KEY: new_entropy_coeff})
 
         return results
-
-    @abc.abstractmethod
-    def _compute_values(self, batch) -> np._typing.NDArray:
-        """Computes the values using the value function module given a batch of data.
-
-        Args:
-            batch: The input batch to pass through our RLModule (value function
-                encoder and vf-head).
-
-        Returns:
-            The batch (numpy) of value function outputs (already squeezed over the last
-            dimension (which should have shape (1,) b/c of the single value output
-            node).
-        """
