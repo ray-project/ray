@@ -13,7 +13,7 @@ build:
   jobs:
     pre_build:
       - bash ./ci/env/install-bazel.sh
-      - bazel build //:install_py_proto
+      - ~/bin/bazel build //:install_py_proto
 
 # Build documentation in the docs/ directory with Sphinx
 sphinx:
