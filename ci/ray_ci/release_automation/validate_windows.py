@@ -46,10 +46,7 @@ class WindowsValidateContainer(WindowsContainer):
 
     def run_sanity_check(self):
         logger.info("Run sanity check in container")
-        commands = [
-            f'cleanup() {{ chmod -R a+r "{self.bazel_log_dir}"; }}',
-            "trap cleanup EXIT",
-        ]
+        commands = []
 
         commands.append(
             "powershell ci/pipeline/fix-windows-container-networking.ps1"
