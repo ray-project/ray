@@ -41,7 +41,15 @@ def take_table(
             new_cols.append(col.take(indices))
         table = pyarrow.Table.from_arrays(new_cols, schema=table.schema)
     else:
-        table = table.take(indices)
+        try:
+            table = table.take(indices)
+        except pyarrow.ArrowInvalid as e:
+            if "straddling object straddles two block boundaries" in str(e):
+                table = pyarrow.concat_tables(
+                    table.slice(indices[i].as_py(), 1) for i in range(len(indices))
+                )
+            else:
+                raise
     return table
 
 
