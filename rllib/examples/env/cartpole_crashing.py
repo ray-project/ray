@@ -47,7 +47,7 @@ class CartPoleCrashing(CartPoleEnv):
             )
         )
         # Only ever crash, if on certain worker indices.
-        faulty_indices = config.get("crash_on_worker_indices")
+        faulty_indices = config.get("crash_on_worker_indices", None)
         if faulty_indices and config.worker_index not in faulty_indices:
             self.p_crash = 0.0
             self.p_crash_reset = 0.0
@@ -72,7 +72,7 @@ class CartPoleCrashing(CartPoleEnv):
         )
 
         # Only ever stall, if on certain worker indices.
-        faulty_indices = config.get("stall_on_worker_indices")
+        faulty_indices = config.get("stall_on_worker_indices", None)
         if faulty_indices and config.worker_index not in faulty_indices:
             self.p_stall = 0.0
             self.p_stall_reset = 0.0
@@ -92,9 +92,7 @@ class CartPoleCrashing(CartPoleEnv):
                 )
             )
 
-        self._print_msg(
-            f"Initializing crashing env (with init-delay of {sample}sec) ..."
-        )
+        print(f"Initializing crashing env (with init-delay of {sample}sec) ...")
         time.sleep(sample)
 
         # No env pre-checking?
@@ -141,7 +139,7 @@ class CartPoleCrashing(CartPoleEnv):
     def _should_crash(self, p):
         rnd = self._rng.rand()
         if rnd < p:
-            self._print_msg("Crashing due to p(crash)!")
+            print("Crashing due to p(crash)!")
             return True
         elif self.crash_after_n_steps is not None:
             if self._crash_after_n_steps is None:
@@ -153,7 +151,7 @@ class CartPoleCrashing(CartPoleEnv):
                     )
                 )
             if self._crash_after_n_steps == self.timesteps:
-                self._print_msg("Crashing due to n timesteps reached!")
+                print("Crashing due to n timesteps reached!")
                 return True
 
         return False
@@ -180,11 +178,8 @@ class CartPoleCrashing(CartPoleEnv):
                 if not isinstance(self.stall_time_sec, tuple)
                 else np.random.uniform(self.stall_time_sec[0], self.stall_time_sec[1])
             )
-            self._print_msg(f" -> will stall for {sec}sec ...")
+            print(f" -> will stall for {sec}sec ...")
             time.sleep(sec)
-
-    def _print_msg(self, msg):
-        print(f"Worker={self.config.worker_index}/{self.config.num_workers}: {msg}")
 
 
 MultiAgentCartPoleCrashing = make_multi_agent(lambda config: CartPoleCrashing(config))
