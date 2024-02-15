@@ -1,6 +1,7 @@
 import os
 import ray
 import sys
+import signal
 
 RAY_VERSION = "RAY_VERSION"
 RAY_COMMIT = "RAY_HASH"
@@ -10,6 +11,10 @@ ray_commit = os.getenv(RAY_COMMIT)
 
 if __name__ == "__main__":
     print("Sanity check python version: {}".format(sys.version))
+    print("System: ", sys.platform)
+    print("OS PID: ", os.getpid())
+    print("signal", signal.CTRL_BREAK_EVENT)
+    os.kill(os.getpid(), signal.CTRL_BREAK_EVENT)
     assert (
         ray_version == ray.__version__
     ), "Given Ray version {} is not matching with downloaded " "version {}".format(
