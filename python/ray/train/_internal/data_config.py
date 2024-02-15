@@ -5,7 +5,6 @@ import ray
 from ray.actor import ActorHandle
 from ray.data import DataIterator, Dataset, ExecutionOptions, NodeIdStr
 from ray.data._internal.execution.interfaces.execution_options import ExecutionResources
-from ray.data.preprocessor import Preprocessor
 from ray.util.annotations import DeveloperAPI, PublicAPI
 
 
@@ -132,12 +131,3 @@ class DataConfig:
             preserve_order=ctx.execution_options.preserve_order,
             verbose_progress=ctx.execution_options.verbose_progress,
         )
-
-    def _legacy_preprocessing(
-        self, datasets: Dict[str, Dataset], preprocessor: Optional[Preprocessor]
-    ) -> Dict[str, Dataset]:
-        """Legacy hook for backwards compatiblity.
-
-        This will be removed in the future.
-        """
-        return datasets  # No-op for non-legacy configs.

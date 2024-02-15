@@ -11,6 +11,7 @@ from ray._private.utils import load_class
 from ray.actor import ActorHandle
 from ray.dag.py_obj_scanner import _PyObjScanner
 from ray.serve._private.common import DeploymentID, RequestMetadata, RunningReplicaInfo
+from ray.serve._private.config import DeploymentConfig
 from ray.serve._private.constants import (
     HANDLE_METRIC_PUSH_INTERVAL_S,
     RAY_SERVE_COLLECT_AUTOSCALING_METRICS_ON_HANDLE,
@@ -29,6 +30,7 @@ from ray.serve.config import AutoscalingConfig
 from ray.util import metrics
 
 logger = logging.getLogger(SERVE_LOGGER_NAME)
+
 PUSH_METRICS_TO_CONTROLLER_TASK_NAME = "push_metrics_to_controller"
 RECORD_METRICS_TASK_NAME = "record_metrics"
 
@@ -68,6 +70,7 @@ class Router:
                 self_node_id,
                 self_actor_id,
                 self_availability_zone,
+                use_replica_queue_len_cache=RAY_SERVE_ENABLE_QUEUE_LENGTH_CACHE,
             )
 
         logger.info(
@@ -106,15 +109,17 @@ class Router:
                     deployment_id,
                 ): self.update_running_replicas,
                 (
-                    LongPollNamespace.AUTOSCALING_CONFIG,
+                    LongPollNamespace.DEPLOYMENT_CONFIG,
                     deployment_id,
-                ): self.update_autoscaling_config,
+                ): self.update_deployment_config,
             },
             call_in_event_loop=event_loop,
         )
 
-        # For autoscaling deployments.
-        self.autoscaling_config = None
+        # The config for the deployment this router sends requests to will be broadcast
+        # by the controller. That means it is not available until we get the first
+        # update. This includes an optional autoscaling config.
+        self.deployment_config: Optional[DeploymentConfig] = None
         # Track queries sent to replicas for the autoscaling algorithm.
         self.num_requests_sent_to_replicas = defaultdict(int)
         # We use Ray object ref callbacks to update state when tracking
@@ -146,11 +151,20 @@ class Router:
                 },
             )
 
-    def update_autoscaling_config(self, autoscaling_config: AutoscalingConfig):
-        self.autoscaling_config = autoscaling_config
+    @property
+    def curr_autoscaling_config(self) -> Optional[AutoscalingConfig]:
+        if self.deployment_config is None:
+            return None
+
+        return self.deployment_config.autoscaling_config
+
+    def update_deployment_config(self, deployment_config: DeploymentConfig):
+        """Update the config for the deployment this router sends requests to."""
+        self.deployment_config = deployment_config
 
         # Start the metrics pusher if autoscaling is enabled.
-        if self.autoscaling_config:
+        autoscaling_config: AutoscalingConfig = self.curr_autoscaling_config
+        if autoscaling_config:
             # Optimization for autoscaling cold start time. If there are
             # currently 0 replicas for the deployment, and there is at
             # least one queued request on this router, then immediately
@@ -169,13 +183,13 @@ class Router:
                 self.metrics_pusher.register_or_update_task(
                     RECORD_METRICS_TASK_NAME,
                     self._add_autoscaling_metrics_point,
-                    min(0.5, self.autoscaling_config.metrics_interval_s),
+                    min(0.5, autoscaling_config.metrics_interval_s),
                 )
                 # Push metrics to the controller periodically.
                 self.metrics_pusher.register_or_update_task(
                     PUSH_METRICS_TO_CONTROLLER_TASK_NAME,
                     self._get_aggregated_requests,
-                    self.autoscaling_config.metrics_interval_s,
+                    autoscaling_config.metrics_interval_s,
                     self.push_metrics_to_controller,
                 )
             else:
@@ -203,8 +217,9 @@ class Router:
 
     def _get_aggregated_requests(self):
         running_requests = dict()
-        if RAY_SERVE_COLLECT_AUTOSCALING_METRICS_ON_HANDLE:
-            look_back_period = self.autoscaling_config.look_back_period_s
+        autoscaling_config = self.curr_autoscaling_config
+        if RAY_SERVE_COLLECT_AUTOSCALING_METRICS_ON_HANDLE and autoscaling_config:
+            look_back_period = autoscaling_config.look_back_period_s
             running_requests = {
                 replica_id: self.metrics_store.window_average(
                     replica_id, time.time() - look_back_period
@@ -226,15 +241,13 @@ class Router:
         with self._queries_lock:
             self.num_requests_sent_to_replicas[replica_tag] -= 1
 
-    async def _replace_known_types_in_args(
+    async def _resolve_deployment_responses(
         self, request_args: Tuple[Any], request_kwargs: Dict[str, Any]
     ) -> Tuple[Tuple[Any], Dict[str, Any]]:
-        """Uses the `_PyObjScanner` to find and replace known types.
+        """Replaces `DeploymentResponse` objects with their resolved object refs.
 
-        1) Replaces `asyncio.Task` objects with their results. This is used for the old
-           serve handle API and should be removed once that API is deprecated & removed.
-        2) Replaces `DeploymentResponse` objects with their resolved object refs. This
-           enables composition without explicitly calling `_to_object_ref`.
+        Uses the `_PyObjScanner` to find and replace the objects. This
+        enables composition without explicitly calling `_to_object_ref`.
         """
         from ray.serve.handle import (
             DeploymentResponse,
@@ -242,17 +255,14 @@ class Router:
             _DeploymentResponseBase,
         )
 
-        scanner = _PyObjScanner(source_type=(asyncio.Task, _DeploymentResponseBase))
+        scanner = _PyObjScanner(source_type=_DeploymentResponseBase)
 
         try:
-            tasks = []
             responses = []
             replacement_table = {}
             objs = scanner.find_nodes((request_args, request_kwargs))
             for obj in objs:
-                if isinstance(obj, asyncio.Task):
-                    tasks.append(obj)
-                elif isinstance(obj, DeploymentResponseGenerator):
+                if isinstance(obj, DeploymentResponseGenerator):
                     raise RuntimeError(
                         "Streaming deployment handle results cannot be passed to "
                         "downstream handle calls. If you have a use case requiring "
@@ -260,19 +270,6 @@ class Router:
                     )
                 elif isinstance(obj, DeploymentResponse):
                     responses.append(obj)
-
-            for task in tasks:
-                # NOTE(edoakes): this is a hack to enable the legacy behavior of passing
-                # `asyncio.Task` objects directly to downstream handle calls without
-                # `await`. Because the router now runs on a separate loop, the
-                # `asyncio.Task` can't directly be awaited here. So we use the
-                # thread-safe `concurrent.futures.Future` instead.
-                # This can be removed when `RayServeHandle` is fully deprecated.
-                if hasattr(task, "_ray_serve_object_ref_future"):
-                    future = task._ray_serve_object_ref_future
-                    replacement_table[task] = await asyncio.wrap_future(future)
-                else:
-                    replacement_table[task] = task
 
             # Gather `DeploymentResponse` object refs concurrently.
             if len(responses) > 0:
@@ -321,7 +318,9 @@ class Router:
             # request will be placed on the front of the queue to avoid tail latencies.
             # TODO(edoakes): this retry procedure is not perfect because it'll reset the
             # process of choosing candidates replicas (i.e., for locality-awareness).
-            replica = await self.choose_replica_for_request(pr, is_retry=True)
+            replica = await self._replica_scheduler.choose_replica_for_request(
+                pr, is_retry=True
+            )
 
     async def assign_request(
         self,
@@ -343,7 +342,7 @@ class Router:
         # you need to yield the event loop above this conditional, you
         # will need to remove the check "self.num_queued_queries == 1"
         if (
-            self.autoscaling_config
+            self.curr_autoscaling_config
             and len(self._replica_scheduler.curr_replicas) == 0
             and self.num_queued_queries == 1
         ):
@@ -352,7 +351,7 @@ class Router:
             )
 
         try:
-            request_args, request_kwargs = await self._replace_known_types_in_args(
+            request_args, request_kwargs = await self._resolve_deployment_responses(
                 request_args, request_kwargs
             )
             ref, replica_tag = await self.schedule_and_send_request(
