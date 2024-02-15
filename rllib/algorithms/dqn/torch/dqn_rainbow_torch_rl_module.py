@@ -3,6 +3,7 @@ from typing import Dict, List, Tuple, Union
 from ray.rllib.algorithms.dqn.dqn_rainbow_rl_module import (
     DQNRainbowRLModule,
     ATOMS,
+    QF_LOGITS,
     QF_PROBS,
     QF_TARGET_NEXT_PREDS,
     QF_TARGET_NEXT_PROBS,
@@ -11,6 +12,9 @@ from ray.rllib.algorithms.sac.sac_rl_module import QF_PREDS
 from ray.rllib.core.models.base import Encoder, ENCODER_OUT, Model
 from ray.rllib.core.rl_module.torch.torch_rl_module import TorchRLModule
 from ray.rllib.core.rl_module.rl_module import RLModule
+from ray.rllib.core.rl_module.rl_module_with_target_networks_interface import (
+    RLModuleWithTargetNetworksInterface,
+)
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.framework import try_import_torch
@@ -28,7 +32,7 @@ class DQNRainbowTorchRLModule(TorchRLModule, DQNRainbowRLModule):
         output = {}
 
         # Encoder forward pass.
-        encoder_outs = self.base_encoder(batch)
+        encoder_outs = self.encoder(batch)
 
         # Q-head.
         qf_outs = self.qf(encoder_outs[ENCODER_OUT])
@@ -91,19 +95,23 @@ class DQNRainbowTorchRLModule(TorchRLModule, DQNRainbowRLModule):
 
         # Q-network forward passes.
         qf_outs = self.qf(batch_curr)
+        output[QF_PREDS] = qf_outs[QF_PREDS]
         # The target Q-values for the next observations.
         qf_target_next_outs = self.qf_target(batch_next)
-
-        output[QF_PREDS] = qf_outs[QF_PREDS]
         output[QF_TARGET_NEXT_PREDS] = qf_target_next_outs[QF_PREDS]
+        # We are learning a Q-value distribution.
         if self.num_atoms > 1:
+            # Add distribution artefacts to the output.
+            # Distribution support.
             output[ATOMS] = qf_target_next_outs[ATOMS]
-            output["qf_logits"] = qf_outs["logits"]
+            # Original logits from the Q-head.
+            output[QF_LOGITS] = qf_outs[QF_LOGITS]
+            # Probabilities of the Q-value distribution of the next state.
             output[QF_TARGET_NEXT_PROBS] = qf_target_next_outs[QF_PROBS]
-        # TODO (simon): Implement distributional outputs.
 
         return output
 
+    @override(DQNRainbowRLModule)
     def qf(self, batch: Dict) -> Dict:
         """Computes Q-values.
 
@@ -113,10 +121,11 @@ class DQNRainbowTorchRLModule(TorchRLModule, DQNRainbowRLModule):
         # If we have a dueling architecture we have to add the value stream.
         return self._qf_forward_helper(
             batch,
-            self.base_encoder,
+            self.encoder,
             {"af": self.af, "vf": self.vf} if self.is_dueling else self.af,
         )
 
+    @override(DQNRainbowRLModule)
     def qf_target(self, batch: Dict) -> Dict:
         """Computes Q-values from the target network.
 
@@ -126,53 +135,50 @@ class DQNRainbowTorchRLModule(TorchRLModule, DQNRainbowRLModule):
         # If we have a dueling architecture we have to add the value stream.
         return self._qf_forward_helper(
             batch,
-            self.base_target_encoder,
+            self.target_encoder,
             {"af": self.af_target, "vf": self.vf_target}
             if self.is_dueling
             else self.af_target,
         )
 
+    @override(DQNRainbowRLModule)
     def af_dist(self, batch: Dict) -> Dict:
         """Compute the advantage distribution."""
         output = {}
-        if self.num_atoms > 1:
-            # Distributional Q-learning uses a discrete support `z`
-            # to represent the action value distribution.
-            # TODO (simon): Check, if we still need here the device for torch.
-            z = torch.arange(0.0, self.num_atoms, dtype=torch.float32).to(
-                batch.device,
-            )
-            # Rescale the support.
-            z = self.v_min + z * (self.v_max - self.v_min) / float(self.num_atoms - 1)
-            # Reshape the action values.
-            logits_per_action_per_atom = torch.reshape(
-                batch,
-                shape=(-1, self.config.action_space.n, self.num_atoms),
-            )
-            # Calculate the probability for each action value atom. Note,
-            # the sum along action value atoms of a single action value
-            # must sum to one.
-            prob_per_action_per_atom = nn.functional.softmax(
-                logits_per_action_per_atom,
-                dim=-1,
-            )
-            # Compute expected action value by weighted sum.
-            # TODO (simon): Check, if these outputs are needed.
-            # output["af_preds"] = torch.sum(z * prob_per_action_per_atom, dim=-1)
-            output[ATOMS] = z
-            output["logits"] = logits_per_action_per_atom
-            output["probs"] = prob_per_action_per_atom
+        # TODO (simon): Check, if we still need the test for atoms here.
+        # if self.num_atoms > 1:
+        # Distributional Q-learning uses a discrete support `z`
+        # to represent the action value distribution.
+        # TODO (simon): Check, if we still need here the device for torch.
+        z = torch.arange(0.0, self.num_atoms, dtype=torch.float32).to(
+            batch.device,
+        )
+        # Rescale the support.
+        z = self.v_min + z * (self.v_max - self.v_min) / float(self.num_atoms - 1)
+        # Reshape the action values.
+        logits_per_action_per_atom = torch.reshape(
+            batch,
+            shape=(-1, self.config.action_space.n, self.num_atoms),
+        )
+        # Calculate the probability for each action value atom. Note,
+        # the sum along action value atoms of a single action value
+        # must sum to one.
+        prob_per_action_per_atom = nn.functional.softmax(
+            logits_per_action_per_atom,
+            dim=-1,
+        )
+        # Compute expected action value by weighted sum.
+        # output["preds"] = torch.sum(z * prob_per_action_per_atom, dim=-1)
+        output[ATOMS] = z
+        output["logits"] = logits_per_action_per_atom
+        output["probs"] = prob_per_action_per_atom
 
         return output
 
-    @override(DQNRainbowRLModule)
+    @override(RLModuleWithTargetNetworksInterface)
     def get_target_network_pairs(self) -> List[Tuple[NetworkType, NetworkType]]:
         """Returns target Q and Q network(s) to update the target network(s)."""
-        # TODO (simon): Implement double Q.
-        return [
-            (self.base_target_encoder, self.base_encoder),
-            (self.af_target, self.af),
-        ] + (
+        return [(self.target_encoder, self.encoder), (self.af_target, self.af)] + (
             # If we have a dueling architecture we need to update the value stream
             # target, too.
             [
@@ -182,6 +188,7 @@ class DQNRainbowTorchRLModule(TorchRLModule, DQNRainbowRLModule):
             else []
         )
 
+    @override(DQNRainbowRLModule)
     def _qf_forward_helper(
         self, batch: Dict, encoder: Encoder, head: Union[Model, Dict[str, Model]]
     ) -> Dict:
@@ -193,11 +200,13 @@ class DQNRainbowTorchRLModule(TorchRLModule, DQNRainbowRLModule):
 
         # Do we have a dueling architecture.
         if self.is_dueling:
-            af_outs = head["af"](encoder_outs[ENCODER_OUT])
+            # Head forward passes for advantage and value stream.
+            qf_outs = head["af"](encoder_outs[ENCODER_OUT])
             vf_outs = head["vf"](encoder_outs[ENCODER_OUT])
             # We learn a Q-value distribution.
             if self.num_atoms > 1:
-                af_dist_output = self.af_dist(af_outs)
+                # Compute the advantage stream distribution.
+                af_dist_output = self.af_dist(qf_outs)
                 # Center the advantage stream distribution.
                 centered_af_logits = af_dist_output["logits"] - af_dist_output[
                     "logits"
@@ -211,7 +220,7 @@ class DQNRainbowTorchRLModule(TorchRLModule, DQNRainbowRLModule):
                 # Calculate the Q-values by the weighted sum over the atoms.
                 output[ATOMS] = af_dist_output[ATOMS]
                 output[QF_PREDS] = torch.sum(af_dist_output[ATOMS] * qf_probs, dim=-1)
-                output["logits"] = qf_logits
+                output["qf_logits"] = qf_logits
                 output[QF_PROBS] = qf_probs
             # Otherwise we learn an expectation.
             else:
@@ -220,36 +229,34 @@ class DQNRainbowTorchRLModule(TorchRLModule, DQNRainbowRLModule):
                 # https://discuss.pytorch.org/t/gradient-computation-issue-due-to-
                 # inplace-operation-unsure-how-to-debug-for-custom-model/170133
                 af_outs_mean = torch.unsqueeze(
-                    torch.nan_to_num(af_outs, neginf=torch.nan).nanmean(dim=1), dim=1
+                    torch.nan_to_num(qf_outs, neginf=torch.nan).nanmean(dim=1), dim=1
                 )
-                af_outs = af_outs - af_outs_mean
+                qf_outs = qf_outs - af_outs_mean
                 # TODO (simon): Check if unsqueeze is necessary.
                 # Add advantage and value stream. Note, we broadcast here.
-                output[QF_PREDS] = af_outs + vf_outs
+                output[QF_PREDS] = qf_outs + vf_outs
         # No dueling architecture.
         else:
             # Note, in this case the advantage network is the Q-network.
-            af_outs = head(encoder_outs[ENCODER_OUT])
+            # Forward pass through Q-head.
+            qf_outs = head(encoder_outs[ENCODER_OUT])
             # We learn a Q-value distribution.
-            # TODO (simon): Remove. This is probably not used.
             if self.num_atoms > 1:
-                qf_dist_outs = self.af_dist(af_outs)
-                # # Center the Q-value distribution.
-                # qf_logits = qf_dist_outs["logits"] - qf_dist_outs["logits"].mean(
-                #     dim=1
-                # )
-                # # Calculate probabilites for the Q-value distribution along
-                # # the support given by the atoms.
-                # qf_probs = nn.functional.softmax(qf_logits, dim=-1)
-                # Calculate the Q-values by the weighted sum over the atoms.
+                # Note in a non-dueling architecture the advantage distribution is
+                # the Q-value distribution.
+                # Get the Q-value distribution.
+                qf_dist_outs = self.af_dist(qf_outs)
+                # Get the support of the Q-value distribution.
                 output[ATOMS] = qf_dist_outs[ATOMS]
-                output[
-                    QF_PREDS
-                ] = af_outs  # torch.sum(qf_dist_outs[ATOMS] * qf_probs, dim=-1)
+                # Calculate the Q-values by the weighted sum over the atoms.
+                output[QF_PREDS] = torch.sum(
+                    qf_dist_outs[ATOMS] * qf_dist_outs["probs"], dim=-1
+                )
                 output["qf_logits"] = qf_dist_outs["logits"]  # qf_logits
                 output[QF_PROBS] = qf_dist_outs["probs"]  # qf_probs
             # Otherwise we learn an expectation.
             else:
-                output[QF_PREDS] = af_outs
+                # In this case we have a Q-head of dimension (1, action_space.n).
+                output[QF_PREDS] = qf_outs
 
         return output

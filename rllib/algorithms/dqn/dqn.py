@@ -290,6 +290,10 @@ class DQNConfig(SimpleQConfig):
                 self.model.update({"double_q": self.double_q})
             if "dueling" not in self.model:
                 self.model.update({"dueling": self.dueling})
+            if "noisy" not in self.model:
+                self.model.update({"noisy": self.noisy})
+            if "simga0" not in self.model:
+                self.model.update({"sigma0": self.sigma0})
             if "num_atoms" not in self.model:
                 self.model.update({"num_atoms": self.num_atoms})
             if "v_max" not in self.model:
@@ -501,6 +505,7 @@ class DQN(SimpleQ):
                     num_items=self.config.train_batch_size,
                     n_step=self.config.n_step,
                     gamma=self.config.gamma,
+                    beta=self.config.replay_buffer_config["beta"],
                 )
                 train_batch = SampleBatch(train_dict)
 

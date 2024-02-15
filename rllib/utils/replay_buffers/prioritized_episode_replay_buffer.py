@@ -23,6 +23,7 @@ class PrioritizedEpisodeReplayBuffer(EpisodeReplayBuffer):
         batch_size_B: int = 16,
         batch_length_T: int = 1,
         alpha: float = 1.0,
+        **kwargs,
     ):
         super().__init__(
             capacity=capacity, batch_size_B=batch_size_B, batch_length_T=batch_length_T
