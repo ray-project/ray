@@ -281,6 +281,14 @@ class TestDeploymentSchema:
         deployment_schema["max_queued_requests"] = 100
         DeploymentSchema.parse_obj(deployment_schema)
 
+        deployment_schema["max_queued_requests"] = "hi"
+        with pytest.raises(ValidationError):
+            DeploymentSchema.parse_obj(deployment_schema)
+
+        deployment_schema["max_queued_requests"] = 1.5
+        with pytest.raises(ValidationError):
+            DeploymentSchema.parse_obj(deployment_schema)
+
         deployment_schema["max_queued_requests"] = 0
         with pytest.raises(ValidationError):
             DeploymentSchema.parse_obj(deployment_schema)

@@ -12,6 +12,7 @@ from ray._private.pydantic_compat import (
     Extra,
     Field,
     PositiveInt,
+    StrictInt,
     root_validator,
     validator,
 )
@@ -324,7 +325,7 @@ class DeploymentSchema(BaseModel, allow_population_by_field_name=True):
         ),
         gt=0,
     )
-    max_queued_requests: int = Field(
+    max_queued_requests: StrictInt = Field(
         default=DEFAULT.VALUE,
         description=(
             "Maximum number of requests to this deployment that will be queued at each "
@@ -453,9 +454,6 @@ class DeploymentSchema(BaseModel, allow_population_by_field_name=True):
         max_queued_requests = values.get("max_queued_requests", None)
         if max_queued_requests is None or max_queued_requests == DEFAULT.VALUE:
             return values
-
-        if not isinstance(max_queued_requests, int):
-            raise TypeError("max_queued_requests must be an integer.")
 
         if max_queued_requests < 1 and max_queued_requests != -1:
             raise ValueError(
