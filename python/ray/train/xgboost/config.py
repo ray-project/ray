@@ -51,9 +51,15 @@ class _XGBoostRabitBackend(Backend):
         num_workers = len(worker_group)
         self._rabit_args = {"DMLC_NUM_WORKER": num_workers}
         train_driver_ip = ray.util.get_node_ip_address()
-        self._tracker = RabitTracker(host_ip=train_driver_ip, n_workers=num_workers)
-        self._rabit_args.update(self._tracker.worker_envs())
 
+        # NOTE: sortby="task" is needed to ensure that the xgboost worker ranks
+        # align with Ray Train worker ranks.
+        # The worker ranks will be sorted by `DMLC_TASK_ID`,
+        # which is defined in `on_training_start`.
+        self._tracker = RabitTracker(
+            host_ip=train_driver_ip, n_workers=num_workers, sortby="task"
+        )
+        self._rabit_args.update(self._tracker.worker_envs())
         self._tracker.start(num_workers)
 
         start_log = (
@@ -68,9 +74,17 @@ class _XGBoostRabitBackend(Backend):
         rabit_args = self._rabit_args
 
         def set_xgboost_env_vars():
+            import ray.train
+
             for k, v in rabit_args.items():
                 os.environ[k] = str(v)
-            os.environ["DMLC_TASK_ID"] = ray.get_runtime_context().get_actor_id()
+
+            # Ranks are assigned in increasing order of the worker's task id.
+            # This task id will be sorted by increasing world rank.
+            os.environ["DMLC_TASK_ID"] = (
+                f"[xgboost.ray-rank={ray.train.get_context().get_world_rank()}]:"
+                f"{ray.get_runtime_context().get_actor_id()}"
+            )
 
         worker_group.execute(set_xgboost_env_vars)
 
