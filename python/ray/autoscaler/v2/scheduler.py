@@ -6,8 +6,7 @@ from dataclasses import dataclass, field
 from enum import Enum
 from typing import Dict, List, Optional, Tuple
 
-from google.protobuf.json_format import MessageToDict
-
+from ray._private.protobuf_compat import message_to_dict
 from ray.autoscaler._private.resource_demand_scheduler import UtilizationScore
 from ray.autoscaler.v2.schema import NodeType
 from ray.autoscaler.v2.utils import is_pending, resource_requests_by_count
@@ -245,7 +244,9 @@ class SchedulingNode:
             available_resources=self.available_resources,
             labels=self.labels,
             launch_reason=self.launch_reason,
-            sched_requests="|".join(str(MessageToDict(r)) for r in self.sched_requests),
+            sched_requests="|".join(
+                str(message_to_dict(r)) for r in self.sched_requests
+            ),
         )
 
 
