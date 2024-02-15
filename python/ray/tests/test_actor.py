@@ -12,7 +12,6 @@ from ray import cloudpickle as pickle
 from ray._private import ray_constants
 from ray._private.test_utils import (
     client_test_enabled,
-    is_python_version_older_than,
     wait_for_condition,
     wait_for_pid_to_exit,
 )
@@ -1395,7 +1394,7 @@ def test_actor_equal(ray_start_regular_shared):
 
 
 @pytest.mark.skipif(
-    is_python_version_older_than(3, 9), reason="GenericAlias is new in Python 3.9"
+    sys.version_info < (3, 9), reason="GenericAlias is new in Python 3.9"
 )
 def test_classmethod_genericalias():
     """

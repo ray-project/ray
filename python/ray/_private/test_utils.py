@@ -2119,10 +2119,6 @@ def skip_flaky_core_test_premerge(reason: str):
     return wrapper
 
 
-def is_python_version_older_than(major: int, minor: int) -> bool:
-    return sys.version_info < (major, minor)
-
-
 def get_ray_default_worker_file_path():
     py_version = f"{sys.version_info[0]}.{sys.version_info[1]}"
     return (
