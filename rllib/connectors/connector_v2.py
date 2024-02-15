@@ -321,19 +321,6 @@ class ConnectorV2(abc.ABC):
                 [{"a": np.array(3), "b": 4}, {"a": np.array(5), "b": 6}],
             )
 
-            # Multi-agent case.
-            TODO
-
-            batch = {}
-            sa_episode = SingleAgentEpisode(agent_id="ag1", module_id="module_10")
-            ConnectorV2.add_n_batch_items(batch, "test_col_3", -10, sa_episode)
-
-            check(batch["test_col_3"],
-                "test_col_2": {
-                    ("ag1", "module_10"): [-10],
-                },
-            })
-
         Args:
             batch: The batch to store n `items_to_add` in.
             column: The column name (str) within the `batch` to store `item_to_add`
