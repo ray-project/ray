@@ -9,4 +9,3 @@ steps:
         --build-name windowsbuild
         --test-env=CI="1"
         --test-env=USERPROFILE
-    depends_on: windowsbuild
