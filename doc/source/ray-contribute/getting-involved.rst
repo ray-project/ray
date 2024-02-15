@@ -13,7 +13,7 @@ Getting Involved / Contributing
     docs
     writing-code-snippets
     fake-autoscaler
-    ../ray-core/examples/testing-tips
+    ../ray-core/testing-tips
     debugging
     profiling
 
