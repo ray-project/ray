@@ -2238,6 +2238,7 @@ def global_gc(address):
     "--reason",
     required=True,
     type=click.Choice(
+        # Exclude 0 which is UNSPECIFIED
         [item[0] for item in autoscaler_pb2.DrainNodeReason.items() if item[1] != 0]
     ),
     help="The reason why the node will be drained.",
