@@ -24,13 +24,6 @@ run_sanity_check() {
     conda env remove -n "rayio_${python_version}" -y
 }
 
-_clean_up() {
-    rm -rf "$TMP_DIR"
-}
-
-# Create tmp directory unique for the run
-TMP_DIR=$(mktemp -d "$HOME/tmp.XXXXXXXXXX")
-#trap _clean_up EXIT
 source /c/Miniconda3/etc/profile.d/conda.sh
 
 # Install Ray & run sanity checks for each python version
