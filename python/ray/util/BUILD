@@ -14,5 +14,5 @@ py_test(
     name = "test_metrics",
     size = "small",
     srcs = util_tests_srcs,
-    tags = ["exclusive", "utils"]
+    tags = ["exclusive", "utils_tests", "team:core"]
 )
