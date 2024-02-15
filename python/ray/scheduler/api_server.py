@@ -123,6 +123,8 @@ class Apiserver:
 
     def _add_or_update_node_running_or_pending_task(self, user_task):
         assign_node = user_task.status[ASSIGN_NODE]
+        if assign_node == None:
+            return
         if user_task.spec[USER_TASK_ID] not in self.node_info[assign_node][RUNNING_OR_PENDING_TASKS]:
             self.node_info[assign_node][AVAILABLE_CPU] -= user_task.spec[CPU] if CPU in user_task.spec else 0
             self.node_info[assign_node][AVAILABLE_GPU] -= user_task.spec[GPU] if GPU in user_task.spec else 0
