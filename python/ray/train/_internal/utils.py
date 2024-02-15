@@ -88,6 +88,7 @@ def update_env_vars(env_vars: Dict[str, Any]):
 def construct_train_func(
     train_func: Union[Callable[[], T], Callable[[Dict[str, Any]], T]],
     config: Optional[Dict[str, Any]],
+    prologue: Callable[..., Any],
     fn_arg_name: Optional[str] = "train_func",
     discard_returns: bool = False,
 ) -> Callable[[], T]:
@@ -97,6 +98,8 @@ def construct_train_func(
             This can either take in no arguments or a ``config`` dict.
         config (Optional[Dict]): Configurations to pass into
             ``train_func``. If None then an empty Dict will be created.
+        prologue: Extra configuration logics executed before `train_func` 
+            in the same thread. Each BackendConfig defines their own prologue.
         fn_arg_name (Optional[str]): The name of training function to use for error
             messages.
         discard_returns: Whether to discard any returns from train_func or not.
@@ -135,6 +138,7 @@ def construct_train_func(
         @functools.wraps(wrapped_train_func)
         def train_fn():
             try:
+                prologue()
                 return wrapped_train_func(config)
             except Exception as e:
                 raise StartTraceback from e
@@ -144,6 +148,7 @@ def construct_train_func(
         @functools.wraps(wrapped_train_func)
         def train_fn():
             try:
+                prologue()
                 return wrapped_train_func()
             except Exception as e:
                 raise StartTraceback from e
