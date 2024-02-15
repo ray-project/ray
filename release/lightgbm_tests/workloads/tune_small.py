@@ -9,6 +9,7 @@ Acceptance criteria: Should run through and report final results, as well
 as the Ray Tune results table. No trials should error. All trials should
 run in parallel.
 """
+
 from collections import Counter
 import json
 import os
@@ -58,6 +59,7 @@ if __name__ == "__main__":
         config=search_space,
         num_samples=4,
         resources_per_trial=ray_params.get_tune_resources(),
+        cluster_storage="/mnt/cluster_storage",
     )
     taken = time.time() - start
 
