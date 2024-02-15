@@ -5,7 +5,7 @@ wandb==0.13.4
 
 # ML training frameworks
 xgboost==1.7.6
-git+https://github.com/ray-project/xgboost_ray.git
+git+https://github.com/ray-project/xgboost_ray.git@5a840af05d487171883dadbfdd37b138b607bed8
 
 lightgbm==3.3.5
 git+https://github.com/ray-project/lightgbm_ray.git
