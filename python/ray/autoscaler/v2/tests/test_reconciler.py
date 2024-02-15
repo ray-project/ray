@@ -759,6 +759,7 @@ class TestReconciler:
             (Instance.ALLOCATED, Instance.TERMINATING),
             (Instance.RAY_INSTALLING, Instance.TERMINATING),
             (Instance.TERMINATING, Instance.TERMINATING),
+            (Instance.RAY_STOP_REQUESTED, Instance.RAY_RUNNING),
         ],
     )
     def test_stuck_instances(mock_time_ns, cur_status, expect_status, setup):
@@ -770,6 +771,7 @@ class TestReconciler:
             allocate_status_timeout_s=timeout_s,
             terminating_status_timeout_s=timeout_s,
             ray_install_status_timeout_s=timeout_s,
+            ray_stop_requested_status_timeout_s=timeout_s,
         )
         instances = [
             create_instance(
