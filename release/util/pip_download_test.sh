@@ -4,8 +4,8 @@
 # in various Python version. This script requires conda command to exist.
 
 unset RAY_ADDRESS
-export RAY_HASH=$RAY_HASH
-export RAY_VERSION=$RAY_VERSION
+export RAY_VERSION="${RAY_VERSION:-2.9.1}"
+export RAY_HASH="${RAY_HASH:-cfbf98c315cfb2710c56039a3c96477d196de049}"
 
 if [[ -z "$RAY_HASH" ]]; then
     echo "RAY_HASH env var should be provided"
@@ -26,7 +26,7 @@ fi
 
 echo "Start downloading Ray version ${RAY_VERSION} of commit ${RAY_HASH}"
 
-pip install --upgrade pip
+pip install --user --upgrade pip
 
 # This is required to use conda activate
 source "$(conda info --base)/etc/profile.d/conda.sh"
@@ -47,7 +47,7 @@ do
     printf "\n\n\n"
 
     # shellcheck disable=SC2102
-    pip install --index-url https://test.pypi.org/simple/ --extra-index-url https://pypi.org/simple ray[cpp]=="${RAY_VERSION}"
+    pip install --user --index-url https://test.pypi.org/simple/ --extra-index-url https://pypi.org/simple ray[cpp]=="${RAY_VERSION}"
 
     failed=false
     cpp_failed=false
