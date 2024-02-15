@@ -97,6 +97,7 @@ class Apiserver:
         #         self.node_info[node[NODE_ID]][TOTAL_DURATION] = 0
         #         self.node_info[node[NODE_ID]][TOTAL_COMPLEXITY_SCORE] = 0
         #         self.node_info[node[NODE_ID]][SPEED] = 0
+        print("apiserver: node info", self.node_info)
         return self.node_info
 
     def _idempotent_increment_pending_task_count(self, user_task):
