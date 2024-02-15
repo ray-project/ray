@@ -862,7 +862,11 @@ class DataIterator(abc.ABC):
         return dataset.with_options(options)
 
     def materialize(self) -> "MaterializedDataset":
-        """Convert a DataIterator to a Dataset."""
+        """Execute and materialize this data iterator into object store memory.
+
+        This method will fully consume the iterator and return its contents as
+        a `MaterializedDataset` view.
+        """
 
         from ray.data.dataset import MaterializedDataset
 
