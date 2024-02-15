@@ -195,6 +195,11 @@ def add_rllib_example_script_args(
         "script will throw an exception at the end.",
     )
 
+    # Learner scaling options.
+    # Old API stack: config.num_gpus.
+    # New API stack: config.num_learner_workers (w/ num_gpus_per_learner_worker=1).
+    parser.add_argument("--num-gpus", type=int, default=0)
+
     # Ray init options.
     parser.add_argument("--num-cpus", type=int, default=0)
     parser.add_argument(

@@ -717,30 +717,25 @@ class Algorithm(Trainable, AlgorithmBase):
 
         self.learner_group = None
         if self.config._enable_new_api_stack:
-            # TODO (Kourosh): This is an interim solution where policies and modules
-            #  co-exist. In this world we have both policy_map and MARLModule that need
-            #  to be consistent with one another. To make a consistent parity between
-            #  the two we need to loop through the policy modules and create a simple
-            #  MARLModule from the RLModule within each policy.
             local_worker = self.workers.local_worker()
-            # TODO (Sven): Unify the inference of the MARLModuleSpec. Right now,
-            #  we get this from the RolloutWorker's `marl_module_spec` property
-            #  (which other EnvRunners do not have).
-            #  However, this is hacky (information leak) and should not remain this
-            #  way. For other EnvRunner classes (that don't have this property),
-            #  Algorithm should infer this itself.
+            env = spaces = None
+            # EnvRunners have a `module` property, which stores the RLModule
+            # (or MARLModule, which is a subclass of RLModule, in the multi-agent case).
             if hasattr(local_worker, "module") and local_worker.module is not None:
                 marl_module_dict = dict(local_worker.module.as_multi_agent())
+                env = local_worker.env
                 spaces = {
                     mid: (mod.config.observation_space, mod.config.action_space)
                     for mid, mod in marl_module_dict.items()
                 }
                 policy_dict, _ = self.config.get_multi_agent_setup(
-                    env=local_worker.env, spaces=spaces
+                    env=env, spaces=spaces
                 )
                 module_spec: MultiAgentRLModuleSpec = self.config.get_marl_module_spec(
                     policy_dict=policy_dict
                 )
+            # TODO (Sven): Deprecate this path: Old stack API RolloutWorkers and
+            #  DreamerV3's EnvRunners have a `marl_module_spec` property.
             elif hasattr(local_worker, "marl_module_spec"):
                 module_spec: MultiAgentRLModuleSpec = local_worker.marl_module_spec
             else:
@@ -749,7 +744,7 @@ class Algorithm(Trainable, AlgorithmBase):
                     "referring to its RLModule!"
                 )
             self.learner_group = self.config.build_learner_group(
-                rl_module_spec=module_spec,
+                rl_module_spec=module_spec, env=env, spaces=spaces
             )
 
             # Check if there are modules to load from the `module_spec`.
