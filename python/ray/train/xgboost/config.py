@@ -1,5 +1,7 @@
+import json
+import logging
+import os
 from dataclasses import dataclass
-from typing import Any, Dict, Optional
 
 from xgboost import RabitTracker
 
@@ -7,93 +9,73 @@ import ray
 from ray.train._internal.worker_group import WorkerGroup
 from ray.train.backend import Backend, BackendConfig
 
+logger = logging.getLogger(__name__)
+
 
 @dataclass
 class XGBoostConfig(BackendConfig):
     """Configuration for xgboost collective communication setup.
 
+    Ray Train will set up the necessary coordinator processes and environment
+    variables for your workers to communicate with each other.
+    Additional configuration options can be passed into the
+    `xgboost.collective.CommunicatorContext` that wraps your own `xgboost.train` code.
+
+    See the `xgboost.collective` module for more information:
+    https://github.com/dmlc/xgboost/blob/master/python-package/xgboost/collective.py
+
     Args:
         xgboost_communicator: The backend to use for collective communication for
-            distributed xgboost training. One of ["rabit", "federated"].
-        args: Additional arguments to pass to the backend.
-            See ___. TODO: link to __init__ docstring
+            distributed xgboost training. For now, only "rabit" is supported.
     """
 
-    xgboost_communicator: Optional[str] = "rabit"
-    args: Optional[Dict[str, Any]] = None
+    xgboost_communicator: str = "rabit"
 
     @property
     def backend_cls(self):
-        return _XGBoostBackend
+        if self.xgboost_communicator == "rabit":
+            return _XGBoostRabitBackend
+
+        raise NotImplementedError(f"Unsupported backend: {self.xgboost_communicator}")
 
 
-class _XGBoostBackend(Backend):
+class _XGBoostRabitBackend(Backend):
     def on_start(self, worker_group: WorkerGroup, backend_config: XGBoostConfig):
-        user_args = backend_config.args or {}
-        xgboost_communicator = user_args.pop(
-            "xgboost_communicator", backend_config.xgboost_communicator
+        assert backend_config.xgboost_communicator == "rabit"
+
+        # Set up the rabit tracker on the Train driver.
+        num_workers = len(worker_group)
+        self._rabit_args = {"DMLC_NUM_WORKER": num_workers}
+        train_driver_ip = ray.util.get_node_ip_address()
+        self.tracker = RabitTracker(host_ip=train_driver_ip, n_workers=num_workers)
+        self._rabit_args.update(self.tracker.worker_envs())
+
+        self.tracker.start(num_workers)
+
+        start_log = (
+            "RabitTracker started with parameters:\n"
+            f"{json.dumps(self._rabit_args, indent=2)}"
         )
-        if xgboost_communicator == "rabit":
-            # Set up the rabit tracker on the Train driver.
-            num_workers = len(worker_group)
-            self.rabit_args = {"DMLC_NUM_WORKER": num_workers}
-            train_driver_ip = ray.util.get_node_ip_address()
-            self.tracker = RabitTracker(host_ip=train_driver_ip, n_workers=num_workers)
-            self.rabit_args.update(self.tracker.worker_envs())
-
-            self.tracker.start(num_workers)
-
-            print("DMLC_TRACKER_ENV_START\n")
-            for k, v in self.rabit_args.items():
-                print(f"{k}={v}\n")
-            print("DMLC_TRACKER_ENV_END\n")
-
-        else:
-            raise NotImplementedError(f"{xgboost_communicator=}")
+        logger.info(start_log)
 
     def on_training_start(
         self, worker_group: WorkerGroup, backend_config: XGBoostConfig
     ):
-        print("setting up...")
-        rabit_args = self.rabit_args
+        rabit_args = self._rabit_args
 
         def set_xgboost_env_vars():
-            import os
-
             for k, v in rabit_args.items():
                 os.environ[k] = str(v)
             os.environ["DMLC_TASK_ID"] = ray.get_runtime_context().get_actor_id()
 
         worker_group.execute(set_xgboost_env_vars)
 
-        # def enter_communicator_context():
-        #     from ray.train._internal.session import get_session
-
-        #     rabit_args["DMLC_TASK_ID"] = ray.get_runtime_context().get_actor_id()
-        #     context = CommunicatorContext(**rabit_args)
-
-        #     session = get_session()
-        #     session.state = {"communicator_context": context}
-
-        #     context.__enter__()
-
-        #     # option 2: set the environment variables,
-        #     # and have the user add the context manager themselves.
-
-        # worker_group.execute(enter_communicator_context)
-        print("setting up... done!")
-
     def on_shutdown(self, worker_group: WorkerGroup, backend_config: XGBoostConfig):
-        print("shutting down...")
-
-        # def exit_communicator_context():
-        #     from ray.train._internal.session import get_session
-
-        #     session = get_session()
-        #     session.state["communicator_context"].__exit__()
-
-        # worker_group.execute(exit_communicator_context)
-
         self.tracker.thread.join(timeout=5)
 
-        print("shutting down... done!")
+        if self.tracker.thread.is_alive():
+            logger.warning(
+                "During shutdown, the RabitTracker thread failed to join "
+                "within 5 seconds. "
+                "The process will still be terminated as part of Ray actor cleanup."
+            )
