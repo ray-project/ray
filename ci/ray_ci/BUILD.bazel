@@ -201,3 +201,8 @@ py_test(
         ci_require("pytest"),
     ],
 )
+
+sh_binary(
+    name = "verify-windows-wheels",
+    srcs = ["verify-windows-wheels.sh"],
+)

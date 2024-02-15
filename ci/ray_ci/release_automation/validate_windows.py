@@ -55,12 +55,12 @@ class WindowsValidateContainer(WindowsContainer):
             "powershell ci/pipeline/fix-windows-container-networking.ps1"
         )
         commands.append(
-            ".buildkite/release-automation/verify-windows-wheels.sh"
+            "bazel run //ci/ray_ci/verify-windows-wheels.sh"
         )
         return subprocess.Popen(
             self.get_run_command(
                 commands
-            )
+            ),
         )
 
 
