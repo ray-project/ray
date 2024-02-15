@@ -20,6 +20,9 @@ from ray.data._internal.execution.operators.map_transformer import (
     BlocksToBatchesMapTransformFn,
     BuildOutputBlocksMapTransformFn,
 )
+from ray.data._internal.execution.operators.task_pool_map_operator import (
+    TaskPoolMapOperator,
+)
 from ray.data._internal.execution.operators.union_operator import UnionOperator
 from ray.data._internal.execution.operators.zip_operator import ZipOperator
 from ray.data._internal.logical.interfaces import LogicalPlan
@@ -967,18 +970,21 @@ def test_write_fusion(ray_start_regular_shared, tmp_path):
 
 
 def test_write_operator(ray_start_regular_shared, tmp_path):
+    concurrency = 2
     planner = Planner()
     datasink = _ParquetDatasink(tmp_path)
     read_op = get_parquet_read_logical_op()
     op = Write(
         read_op,
         datasink,
+        concurrency=concurrency,
     )
     plan = LogicalPlan(op)
     physical_op = planner.plan(plan).dag
 
     assert op.name == "Write"
-    assert isinstance(physical_op, MapOperator)
+    assert isinstance(physical_op, TaskPoolMapOperator)
+    assert physical_op._concurrency == concurrency
     assert len(physical_op.input_dependencies) == 1
     assert isinstance(physical_op.input_dependencies[0], MapOperator)
 
