@@ -1,7 +1,6 @@
 from typing import Dict, List
 import sklearn.datasets
 import sklearn.metrics
-import os
 import numpy as np
 from sklearn.model_selection import train_test_split
 import xgboost as xgb
@@ -10,6 +9,9 @@ import ray
 from ray import tune
 from ray.tune.schedulers import ASHAScheduler
 from ray.tune.integration.xgboost import TuneReportCheckpointCallback
+
+
+CHECKPOINT_FILENAME = "booster-checkpoint.json"
 
 
 def train_breast_cancer(config: dict):
@@ -30,7 +32,9 @@ def train_breast_cancer(config: dict):
         train_set,
         evals=[(test_set, "test")],
         verbose_eval=False,
-        callbacks=[TuneReportCheckpointCallback(filename="model.xgb", frequency=1)],
+        callbacks=[
+            TuneReportCheckpointCallback(frequency=1, filename=CHECKPOINT_FILENAME)
+        ],
     )
 
 
@@ -63,9 +67,9 @@ def train_breast_cancer_cv(config: dict):
 
 
 def get_best_model_checkpoint(best_result: "ray.train.Result"):
-    best_bst = xgb.Booster()
-    with best_result.checkpoint.as_directory() as checkpoint_dir:
-        best_bst.load_model(os.path.join(checkpoint_dir, "model.xgb"))
+    best_bst = TuneReportCheckpointCallback.get_model(
+        best_result.checkpoint, filename=CHECKPOINT_FILENAME
+    )
     accuracy = 1.0 - best_result.metrics["test-error"]
     print(f"Best model parameters: {best_result.config}")
     print(f"Best model total accuracy: {accuracy:.4f}")
