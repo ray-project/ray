@@ -295,8 +295,8 @@ def test_asyncio(ray_start_regular, max_queue_size):
 
     loop = get_or_create_event_loop()
     compiled_dag = dag.experimental_compile(
-            enable_asyncio=True,
-            async_max_queue_size=max_queue_size)
+        enable_asyncio=True, async_max_queue_size=max_queue_size
+    )
 
     async def main(i):
         output_channel = await compiled_dag.execute_async(i)
@@ -305,8 +305,7 @@ def test_asyncio(ray_start_regular, max_queue_size):
 
     e = None
     try:
-        loop.run_until_complete(asyncio.gather(
-            *[main(i) for i in range(10)]))
+        loop.run_until_complete(asyncio.gather(*[main(i) for i in range(10)]))
     except Exception as exc:
         e = exc
     finally:
@@ -316,6 +315,7 @@ def test_asyncio(ray_start_regular, max_queue_size):
 
     if e is not None:
         raise e
+
 
 if __name__ == "__main__":
     if os.environ.get("PARALLEL_CI"):

@@ -1,10 +1,9 @@
 import asyncio
 from collections import defaultdict
-import queue
 from typing import Any, Dict, List, Tuple, Union, Optional
 import logging
-import threading
 import traceback
+import threading
 
 import ray
 from ray.exceptions import RayTaskError
@@ -14,8 +13,7 @@ from ray.experimental.channel import (
     SynchronousInputReader,
     OutputWriter,
     SynchronousOutputWriter,
-    AwaitableDAGOutput,
-    AwaitableBackgroundDAGOutputReader,
+    AwaitableBackgroundOutputReader,
     AwaitableBackgroundOutputWriter,
 )
 from ray.util.annotations import DeveloperAPI
@@ -117,6 +115,24 @@ def do_exec_compiled_task(
 def do_cancel_compiled_task(self):
     self._input_reader.close()
     self._output_writer.close()
+
+
+class AwaitableDAGOutput:
+    def __init__(self, fut: asyncio.Future, reader: InputReader):
+        self._fut = fut
+        self._reader = reader
+
+    def begin_read(self):
+        return self._fut
+
+    def end_read(self):
+        self._reader.end_read()
+
+    async def __aenter__(self):
+        return await self.begin_read()
+
+    async def __aexit__(self, exc_type, exc_value, traceback):
+        self.end_read()
 
 
 @DeveloperAPI
@@ -430,7 +446,7 @@ class CompiledDAG:
             self._dag_submitter = AwaitableBackgroundOutputWriter(
                 self.dag_input_channel, self._async_max_queue_size
             )
-            self._dag_output_fetcher = AwaitableBackgroundDAGOutputReader(
+            self._dag_output_fetcher = AwaitableBackgroundOutputReader(
                 self.dag_output_channels,
                 self._fut_queue,
             )
@@ -522,7 +538,7 @@ class CompiledDAG:
         self,
         *args,
         **kwargs,
-        ) -> AwaitableDAGOutput:
+    ) -> AwaitableDAGOutput:
         """Execute this DAG using the compiled execution path.
 
         NOTE: Not threadsafe.

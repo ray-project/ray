@@ -3518,7 +3518,6 @@ cdef class CoreWorker:
             uint64_t data_size = serialized_object.total_bytes
             int64_t c_num_readers = num_readers
 
-
         metadata = string_to_buffer(serialized_object.metadata)
         with nogil:
             check_status(CCoreWorkerProcess.GetCoreWorker()
