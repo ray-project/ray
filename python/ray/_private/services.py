@@ -230,9 +230,6 @@ class ConsolePopen(subprocess.Popen):
     if sys.platform == "win32":
 
         def terminate(self):
-            print("SIGNALS: ", self._use_signals)
-            print("PID: ", self.pid)
-            print("OS PID: ", os.getpid())
             if isinstance(self.stdin, io.IOBase):
                 self.stdin.close()
             if self._use_signals:

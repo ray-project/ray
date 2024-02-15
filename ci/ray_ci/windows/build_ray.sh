@@ -5,7 +5,6 @@ set -ex
 git config --global core.symlinks true
 git config --global core.autocrlf false
 mkdir -p /c/rayci
-pwd
 git clone . /c/rayci
 cd /c/rayci
 
