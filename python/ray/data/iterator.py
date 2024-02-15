@@ -17,6 +17,11 @@ from typing import (
 import numpy as np
 
 from ray.data._internal.block_batching.iter_batches import iter_batches
+from ray.data._internal.block_list import BlockList
+from ray.data._internal.execution.legacy_compat import _block_list_to_bundles
+from ray.data._internal.logical.operators.input_data_operator import InputData
+from ray.data._internal.logical.optimizers import LogicalPlan
+from ray.data._internal.plan import ExecutionPlan
 from ray.data._internal.stats import DatasetStats, StatsManager
 from ray.data.block import (
     Block,
@@ -34,10 +39,12 @@ if TYPE_CHECKING:
 
     from ray.data.dataset import (
         CollatedData,
+        MaterializedDataset,
         Schema,
         TensorFlowTensorBatchType,
         TorchBatchType,
     )
+
 
 T = TypeVar("T")
 
@@ -647,9 +654,11 @@ class DataIterator(abc.ABC):
                         key: convert_pandas_to_torch_tensor(
                             batch,
                             feature_columns[key],
-                            feature_column_dtypes[key]
-                            if isinstance(feature_column_dtypes, dict)
-                            else feature_column_dtypes,
+                            (
+                                feature_column_dtypes[key]
+                                if isinstance(feature_column_dtypes, dict)
+                                else feature_column_dtypes
+                            ),
                             unsqueeze=unsqueeze_feature_tensors,
                         )
                         for key in feature_columns
@@ -851,6 +860,31 @@ class DataIterator(abc.ABC):
             tf.data.experimental.AutoShardPolicy.OFF
         )
         return dataset.with_options(options)
+
+    def materialize(self) -> "MaterializedDataset":
+        """Convert a DataIterator to a Dataset."""
+
+        from ray.data.dataset import MaterializedDataset
+
+        block_iter, stats, owned_by_consumer = self._to_block_iterator()
+
+        block_refs_and_metadata = list(block_iter)
+        block_refs = [block_ref for block_ref, _ in block_refs_and_metadata]
+        metadata = [metadata for _, metadata in block_refs_and_metadata]
+
+        block_list = BlockList(
+            block_refs, metadata, owned_by_consumer=owned_by_consumer
+        )
+        ref_bundles = _block_list_to_bundles(block_list, owned_by_consumer)
+        logical_plan = LogicalPlan(InputData(input_data=ref_bundles))
+        return MaterializedDataset(
+            ExecutionPlan(
+                block_list,
+                stats,
+                run_by_consumer=owned_by_consumer,
+            ),
+            logical_plan,
+        )
 
     def __del__(self):
         # Clear metrics on deletion in case the iterator was not fully consumed.
