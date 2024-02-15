@@ -1,7 +1,6 @@
 group: Validate wheels
 steps:
   - label: "Windows"
-    depends_on: windowsbuild
     job_env: WINDOWS
     instance_type: windows
     commands:
