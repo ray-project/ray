@@ -2253,7 +2253,7 @@ def global_gc(address):
     required=False,
     type=int,
     default=0,
-    help="Timestamp in ms when the node to be drained will be force killed."
+    help="Timestamp in ms when the node to be drained will be force killed. "
     "Default is 0 which means there is no deadline",
 )
 def drain_node(
