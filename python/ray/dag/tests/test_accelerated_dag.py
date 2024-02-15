@@ -300,10 +300,8 @@ def test_asyncio(ray_start_regular, max_queue_size):
 
     async def main(i):
         output_channel = await compiled_dag.execute_async(i)
-        time.sleep(random.random())
-        result = await output_channel.begin_read()
-        assert result == i
-        output_channel.end_read()
+        async with output_channel as result:
+            assert result == i
 
     e = None
     try:

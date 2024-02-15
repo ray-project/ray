@@ -295,6 +295,11 @@ class AwaitableDAGOutput:
     def end_read(self):
         self._reader.end_read()
 
+    async def __aenter__(self):
+        return await self.begin_read()
+
+    async def __aexit__(self, exc_type, exc_value, traceback):
+        self.end_read()
 
 
 class OutputWriter:
