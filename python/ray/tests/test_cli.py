@@ -978,6 +978,81 @@ def test_ray_status_multinode(ray_start_cluster, enable_v2):
         _check_output_via_pattern("test_ray_status_multinode_v1.txt", result)
 
 
+def test_ray_drain_node(ray_start_cluster):
+    cluster = ray_start_cluster
+    cluster.add_node(num_cpus=1, resources={"node1": 1})
+    ray.init(address=cluster.address)
+    cluster.add_node(num_cpus=1, resources={"node2": 1})
+    cluster.add_node(num_cpus=1, resources={"node3": 1})
+
+    @ray.remote
+    def get_node_id():
+        return ray.get_runtime_context().get_node_id()
+
+    node2_id = ray.get(get_node_id.options(resources={"node2": 1}).remote())
+    node3_id = ray.get(get_node_id.options(resources={"node3": 1}).remote())
+
+    @ray.remote(num_cpus=1)
+    class Actor:
+        def ping(self):
+            pass
+
+    actor = Actor.options(num_cpus=0, resources={"node3": 1}).remote()
+    ray.get(actor.ping.remote())
+
+    runner = CliRunner()
+    # Node2 is idle so the draining will be accepted.
+    result = runner.invoke(
+        scripts.drain_node,
+        [
+            "--node-id",
+            node2_id,
+            "--reason",
+            "DRAIN_NODE_REASON_IDLE_TERMINATION",
+            "--reason-message",
+            "idle termination",
+        ],
+    )
+    assert result.exit_code == 0
+
+    # Node3 is not idle so the draining will be rejected.
+    result = runner.invoke(
+        scripts.drain_node,
+        [
+            "--node-id",
+            node3_id,
+            "--reason",
+            "DRAIN_NODE_REASON_IDLE_TERMINATION",
+            "--reason-message",
+            "idle termination",
+            "--deadline-timestamp-ms",
+            "1",
+        ],
+    )
+    assert result.exit_code == 1
+
+    # Preemption is not rejectable.
+    result = runner.invoke(
+        scripts.drain_node,
+        [
+            "--node-id",
+            node3_id,
+            "--reason",
+            "DRAIN_NODE_REASON_PREEMPTION",
+            "--reason-message",
+            "preemption",
+            "--deadline-timestamp-ms",
+            "0",
+        ],
+    )
+    assert result.exit_code == 0
+
+    ray.kill(actor)
+    wait_for_condition(
+        lambda: len({node["NodeID"] for node in ray.nodes() if (node["Alive"])}) == 1
+    )
+
+
 @pytest.mark.skipif(
     sys.platform == "darwin" and "travis" in os.environ.get("USER", ""),
     reason=("Mac builds don't provide proper locale support"),

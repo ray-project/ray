@@ -50,6 +50,7 @@ from ray.autoscaler._private.commands import (
 from ray.autoscaler._private.constants import RAY_PROCESSES
 from ray.autoscaler._private.fake_multi_node.node_provider import FAKE_HEAD_NODE_ID
 from ray.util.annotations import PublicAPI
+from ray.core.generated import autoscaler_pb2
 
 
 logger = logging.getLogger(__name__)
@@ -2223,6 +2224,67 @@ def global_gc(address):
     print("Triggered gc.collect() on all workers.")
 
 
+@cli.command(hidden=True)
+@click.option(
+    "--address", required=False, type=str, help="Override the address to connect to."
+)
+@click.option(
+    "--node-id",
+    required=True,
+    type=str,
+    help="Hex id of the worker node to be drained.",
+)
+@click.option(
+    "--reason",
+    required=True,
+    type=click.Choice(
+        [item[0] for item in autoscaler_pb2.DrainNodeReason.items() if item[1] != 0]
+    ),
+    help="The reason why the node will be drained.",
+)
+@click.option(
+    "--reason-message",
+    required=True,
+    type=str,
+    help="The detailed drain reason message.",
+)
+@click.option(
+    "--deadline-timestamp-ms",
+    required=False,
+    type=int,
+    default=0,
+    help="Timestamp in ms when the node to be drained will be force killed."
+    "Default is 0 which means there is no deadline",
+)
+def drain_node(
+    address: str,
+    node_id: str,
+    reason: str,
+    reason_message: str,
+    deadline_timestamp_ms: int,
+):
+    """
+    This is NOT a public api.
+
+    Manually drain a worker node.
+    """
+    address = services.canonicalize_bootstrap_address_or_die(address)
+    if not ray._raylet.check_health(address):
+        print(f"Ray cluster is not found at {address}")
+        sys.exit(1)
+    gcs_client = ray._raylet.GcsClient(address=address)
+    is_accepted = gcs_client.drain_node(
+        node_id,
+        autoscaler_pb2.DrainNodeReason.Value(reason),
+        reason_message,
+        deadline_timestamp_ms,
+    )
+
+    if not is_accepted:
+        print("The drain request is not accepted")
+        sys.exit(1)
+
+
 @cli.command(name="kuberay-autoscaler", hidden=True)
 @click.option(
     "--cluster-name",
@@ -2490,6 +2552,7 @@ cli.add_command(cpp)
 cli.add_command(disable_usage_stats)
 cli.add_command(enable_usage_stats)
 cli.add_command(metrics_group)
+cli.add_command(drain_node)
 
 try:
     from ray.util.state.state_cli import (
