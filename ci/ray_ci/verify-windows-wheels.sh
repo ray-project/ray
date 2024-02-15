@@ -1,5 +1,6 @@
-#!/bin/bash
+#!/usr/bin/env bash
 
+unset RAY_ADDRESS
 set -euo pipefail
 
 set -x
