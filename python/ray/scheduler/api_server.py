@@ -99,7 +99,7 @@ class Apiserver:
         #         self.node_info[node[NODE_ID]][SPEED] = 0
         return self.node_info
 
-    def _idempotent_increment_pending_task_counts(self, user_task):
+    def _idempotent_increment_pending_task_count(self, user_task):
         assign_node = user_task.status[ASSIGN_NODE]
         self.node_info[assign_node][PENDING_TASKS][user_task.spec[USER_TASK_ID]] = user_task
         self.node_info[assign_node][PENDING_TASKS_COUNT] = len(self.node_info[assign_node][PENDING_TASKS])
