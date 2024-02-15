@@ -18,8 +18,7 @@ run_sanity_check() {
         --extra-index-url https://pypi.org/simple \
         "ray==$RAY_VERSION"
     (
-        cd release/util
-        python sanity_check.py
+        bazel run //ci/ray_ci:sanity_check -- --env RAY_HASH="cfbf98c315cfb2710c56039a3c96477d196de049" --env RAY_VERSION="2.9.1"
     )
     conda deactivate
     conda env remove -n "rayio_${python_version}" -y

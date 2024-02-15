@@ -35,6 +35,12 @@ py_binary(
 )
 
 py_binary(
+    name = "sanity_check",
+    srcs = ["sanity_check.py"],
+    deps = [":ray_ci_lib", ci_require("ray")],
+)
+
+py_binary(
     name = "build_in_docker",
     srcs = ["build_in_docker.py"],
     exec_compatible_with = ["//:hermetic_python"],

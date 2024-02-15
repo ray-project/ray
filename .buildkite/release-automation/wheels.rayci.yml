@@ -4,5 +4,4 @@ steps:
     job_env: WINDOWS
     instance_type: windows
     commands:
-      - bash /c/workdir/ci/ray_ci/windows/install_tools.sh
-      - source /c/workdir/.buildkite/release-automation/verify-windows-wheels.sh
+      - bazel run //ci/ray_ci:sanity_check -- --build-name windowsbuild --test-env=CI="1" --test-env=USERPROFILE
