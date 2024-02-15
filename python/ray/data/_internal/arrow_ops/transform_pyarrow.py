@@ -43,13 +43,13 @@ def take_table(
     else:
         try:
             table = table.take(indices)
-        except pyarrow.ArrowInvalid as e:
-            if "straddling object straddles two block boundaries" in str(e):
-                table = pyarrow.concat_tables(
-                    table.slice(indices[i].as_py(), 1) for i in range(len(indices))
-                )
-            else:
-                raise
+        except Exception:
+            # if "straddling object straddles two block boundaries" in str(e):
+            table = pyarrow.concat_tables(
+                table.slice(indices[i].as_py(), 1) for i in range(len(indices))
+            )
+            # else:
+            #     raise
     return table
 
 
