@@ -57,10 +57,10 @@ class _XGBoostRabitBackend(Backend):
         self._tracker.start(num_workers)
 
         start_log = (
-            "RabitTracker started with parameters:\n"
+            "RabitTracker coordinator started with parameters:\n"
             f"{json.dumps(self._rabit_args, indent=2)}"
         )
-        logger.info(start_log)
+        logger.debug(start_log)
 
     def on_training_start(
         self, worker_group: WorkerGroup, backend_config: XGBoostConfig
