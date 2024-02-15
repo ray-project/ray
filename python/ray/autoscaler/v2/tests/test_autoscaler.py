@@ -4,6 +4,8 @@ import time
 from typing import Dict
 from mock import MagicMock
 
+from pprint import pprint as print
+
 import ray
 import pytest
 from ray.autoscaler._private.fake_multi_node.node_provider import FAKE_HEAD_NODE_ID
@@ -46,7 +48,7 @@ DEFAULT_AUTOSCALING_CONFIG = {
     },
     "head_node_type": "ray.head.default",
     "upscaling_speed": 0,
-    "idle_timeout_minutes": 10,
+    "idle_timeout_minutes": 0.1,
 }
 
 
@@ -113,7 +115,7 @@ def test_autoscaler_v2():
     ray_state = autoscaler.get_cluster_resource_state()
     autoscaler.update_autoscaling_state(ray_state)
 
-    # Basic tasks
+    # Resource requests
     request_cluster_resources(gcs_address, [{"CPU": 1}, {"GPU": 1}])
 
     def verify():
@@ -122,10 +124,22 @@ def test_autoscaler_v2():
         autoscaling_state = autoscaler.update_autoscaling_state(ray_state)
         print(autoscaling_state)
         print(cluster_state)
-        assert len(cluster_state.active_nodes) == 3
+        assert len(cluster_state.active_nodes + cluster_state.idle_nodes) == 3
         return True
 
-    wait_for_condition(verify, retry_interval_ms=3000)
+    wait_for_condition(verify, retry_interval_ms=5000)
+
+    # Test scaling down.
+    request_cluster_resources(gcs_address, [])
+
+    def verify():
+        cluster_state = get_cluster_status(gcs_address)
+        ray_state = autoscaler.get_cluster_resource_state()
+        autoscaling_state = autoscaler.update_autoscaling_state(ray_state)
+        assert len(cluster_state.active_nodes + cluster_state.idle_nodes) == 1
+        return True
+
+    wait_for_condition(verify, retry_interval_ms=2000)
 
 
 if __name__ == "__main__":

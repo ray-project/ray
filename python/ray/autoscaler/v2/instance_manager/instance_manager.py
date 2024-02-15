@@ -2,8 +2,6 @@ import logging
 from abc import ABC, abstractmethod
 from typing import List, Optional
 
-from google.protobuf.json_format import MessageToJson
-
 from ray.autoscaler.v2.instance_manager.common import (
     InstanceUtil,
     InvalidInstanceUpdateError,
@@ -108,7 +106,6 @@ class InstanceManager:
                     StatusCode.INVALID_VALUE, version, str(e)
                 )
 
-            logger.info("Upserting instance: {}".format(MessageToJson(instance)))
             to_upsert_instances.append(instance)
 
         # Updates the instance storage.

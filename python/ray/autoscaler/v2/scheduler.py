@@ -22,6 +22,7 @@ from ray.core.generated.autoscaler_pb2 import (
     ResourceRequestByCount,
 )
 from ray.core.generated.instance_manager_pb2 import (
+    Instance,
     LaunchRequest,
     NodeKind,
     TerminationRequest,
@@ -110,6 +111,8 @@ class SchedulingNodeStatus(Enum):
     RUNNING = "RUNNING"
     # The node is to be terminated.
     TO_TERMINATE = "TO_TERMINATE"
+    # The node is already terminated.
+    TERMINATED = "TERMINATED"
 
 
 @dataclass
@@ -152,6 +155,10 @@ class SchedulingNode:
             status=status,
             im_instance_id=im_instance_id,
         )
+
+    def __post_init__(self):
+        # Validate the node type.
+        assert self.node_type, "node_type is required."
 
     # Node type name.
     node_type: NodeType
@@ -488,15 +495,21 @@ class ResourceDemandScheduler(IResourceScheduler):
                 if instance.ray_node is not None:
                     # This is a running ray node.
                     assert instance.im_instance is not None
+                    if instance.im_instance.status == Instance.RAY_RUNNING:
+                        scheduling_node_status = SchedulingNodeStatus.RUNNING
+                    else:
+                        # The instance could be ray stopping or already ray stopped.
+                        scheduling_node_status = SchedulingNodeStatus.TERMINATED
+
                     nodes.append(
                         SchedulingNode(
-                            node_type=instance.ray_node.ray_node_type_name,
+                            node_type=instance.im_instance.instance_type,
                             total_resources=dict(instance.ray_node.total_resources),
                             available_resources=dict(
                                 instance.ray_node.available_resources
                             ),
                             labels=dict(instance.ray_node.dynamic_labels),
-                            status=SchedulingNodeStatus.RUNNING,
+                            status=scheduling_node_status,
                             im_instance_id=instance.im_instance.instance_id,
                             ray_node_id=instance.im_instance.node_id,
                             idle_duration_ms=instance.ray_node.idle_duration_ms,
@@ -599,7 +612,10 @@ class ResourceDemandScheduler(IResourceScheduler):
         def get_cluster_shape(self) -> Dict[NodeType, int]:
             cluster_shape = defaultdict(int)
             for node in self._nodes:
-                if node.status == SchedulingNodeStatus.TO_TERMINATE:
+                if node.status in [
+                    SchedulingNodeStatus.TO_TERMINATE,
+                    SchedulingNodeStatus.TERMINATED,
+                ]:
                     # Skip the nodes that are to be terminated.
                     continue
 
@@ -750,7 +766,15 @@ class ResourceDemandScheduler(IResourceScheduler):
         for node_type in non_terminating_nodes_by_type.keys():
             non_terminate_nodes_of_type = non_terminating_nodes_by_type[node_type]
             node_config = ctx.get_node_type_configs().get(node_type, None)
-            num_max_nodes_per_type = node_config.max_worker_nodes if node_config else 0
+            if node_config is None:
+                # No node config for this node type.
+                num_max_nodes_per_type = 0
+                logger.info(
+                    "No node config for node type {}, "
+                    "setting num_max_nodes_per_type to 0.".format(node_type)
+                )
+            else:
+                num_max_nodes_per_type = node_config.max_worker_nodes
             num_extra_nodes = len(non_terminate_nodes_of_type) - num_max_nodes_per_type
 
             if num_extra_nodes <= 0:
@@ -900,11 +924,12 @@ class ResourceDemandScheduler(IResourceScheduler):
 
         for node in terminated_nodes:
             logger.info(
-                "Terminating node {}(ray={}) due to {}({}).".format(
+                "Terminating node {}(ray={}) due to {}({}) for {}.".format(
                     node.im_instance_id,
                     node.ray_node_id,
                     TerminationRequest.Cause.Name(cause),
                     max_num_nodes or max_num_nodes_per_type,
+                    node.node_type,
                 )
             )
             node.status = SchedulingNodeStatus.TO_TERMINATE
@@ -1033,7 +1058,6 @@ class ResourceDemandScheduler(IResourceScheduler):
         scheduled_nodes, infeasible = ResourceDemandScheduler._try_schedule(
             ctx, requests, is_constraint=True
         )
-        print("scheduled_nodes: ", scheduled_nodes)
 
         if infeasible:
             # Unable to satisfy the constraint.
@@ -1390,6 +1414,11 @@ class ResourceDemandScheduler(IResourceScheduler):
             if node.status != SchedulingNodeStatus.RUNNING:
                 # We don't need to care about the non-running nodes.
                 continue
+
+            if node.node_kind == NodeKind.HEAD:
+                # Skip the head node.
+                continue
+
             idle_timeout_s = ctx.get_idle_timeout_s()
             if idle_timeout_s is None:
                 # No idle timeout is set, skip the idle termination.

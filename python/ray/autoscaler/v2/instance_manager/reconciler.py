@@ -700,12 +700,10 @@ class Reconciler:
             could be done,  e.g. the ray node has an undefined status.
         """
         reconciled_im_status = None
-        if ray_status in [NodeStatus.RUNNING, NodeStatus.IDLE]:
+        if ray_status in [NodeStatus.RUNNING, NodeStatus.IDLE, NodeStatus.DRAINING]:
             reconciled_im_status = IMInstance.RAY_RUNNING
         elif ray_status == NodeStatus.DEAD:
             reconciled_im_status = IMInstance.RAY_STOPPED
-        elif ray_status == NodeStatus.DRAINING:
-            reconciled_im_status = IMInstance.RAY_STOPPING
         else:
             return None
 
@@ -1138,6 +1136,7 @@ class Reconciler:
             gang_resource_requests=ray_state.pending_gang_resource_requests,
             cluster_resource_constraints=ray_state.cluster_resource_constraints,
             current_instances=autoscaler_instances,
+            idle_timeout_s=autoscaling_config.get_idle_timeout_s(),
         )
 
         # Ask scheduler for updates to the cluster shape.
@@ -1156,10 +1155,15 @@ class Reconciler:
 
         to_launch = reply.to_launch
         to_terminate = reply.to_terminate
+        im_instances_by_instance_id = {
+            instance.instance_id: instance for instance in im_instances
+        }
+
         updates = {}
         # Add terminating instances.
         for terminate_request in to_terminate:
             instance_id = terminate_request.instance_id
+            to_terminate_instance = im_instances_by_instance_id.get(instance_id)
             updates[terminate_request.instance_id] = IMInstanceUpdateEvent(
                 instance_id=instance_id,
                 new_instance_status=IMInstance.RAY_STOPPING,
