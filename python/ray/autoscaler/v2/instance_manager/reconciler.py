@@ -23,7 +23,7 @@ from ray.autoscaler.v2.instance_manager.node_provider import (
 from ray.autoscaler.v2.instance_manager.ray_installer import RayInstallError
 from ray.autoscaler.v2.scheduler import IResourceScheduler, SchedulingRequest
 from ray.autoscaler.v2.schema import AutoscalerInstance
-from ray.autoscaler.v2.utils import NodeStateUtil
+from ray.autoscaler.v2.utils import NodeStateUtil, ResourceRequestUtil
 from ray.autoscaler.v2.schema import NodeType
 from ray.core.generated.autoscaler_pb2 import (
     AutoscalingState,
@@ -486,7 +486,8 @@ class Reconciler:
         instances_with_cloud_instance_assigned = {
             instance.cloud_instance_id: instance
             for instance in instances
-            if instance.cloud_instance_id
+            # FIX
+            if instance.cloud_instance_id and instance.status != IMInstance.TERMINATED
         }
 
         for (
@@ -504,7 +505,7 @@ class Reconciler:
                 details=f"Cloud instance {cloud_instance_id} is terminated.",
             )
 
-            logger.debug(
+            logger.info(
                 "Updating {}({}) with {}".format(
                     instance.instance_id,
                     IMInstance.InstanceStatus.Name(instance.status),
@@ -1144,7 +1145,7 @@ class Reconciler:
 
         # Populate the autoscaling state.
         autoscaling_state.infeasible_resource_requests.extend(
-            reply.infeasible_resource_requests
+            ResourceRequestUtil.ungroup_by_count(reply.infeasible_resource_requests)
         )
         autoscaling_state.infeasible_gang_resource_requests.extend(
             reply.infeasible_gang_resource_requests
@@ -1155,15 +1156,11 @@ class Reconciler:
 
         to_launch = reply.to_launch
         to_terminate = reply.to_terminate
-        im_instances_by_instance_id = {
-            instance.instance_id: instance for instance in im_instances
-        }
 
         updates = {}
         # Add terminating instances.
         for terminate_request in to_terminate:
             instance_id = terminate_request.instance_id
-            to_terminate_instance = im_instances_by_instance_id.get(instance_id)
             updates[terminate_request.instance_id] = IMInstanceUpdateEvent(
                 instance_id=instance_id,
                 new_instance_status=IMInstance.RAY_STOPPING,
@@ -1226,6 +1223,8 @@ class Reconciler:
             updates[instance.instance_id] = IMInstanceUpdateEvent(
                 instance_id=instance.instance_id,
                 new_instance_status=IMInstance.TERMINATING,
+                # FIX
+                cloud_instance_id=instance.cloud_instance_id,
             )
 
         Reconciler._update_instance_manager(instance_manager, version, updates)

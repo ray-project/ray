@@ -55,7 +55,8 @@ class CloudInstanceUpdater(InstanceUpdatedSubscriber):
             return
 
         # Terminate the instances.
-        instance_ids = [event.instance_id for event in new_terminations]
+        # FIX
+        instance_ids = [event.cloud_instance_id for event in new_terminations]
         self._cloud_provider.terminate(ids=instance_ids, request_id=str(time.time_ns()))
 
     def _launch_new_instances(self, new_requests: List[InstanceUpdateEvent]):

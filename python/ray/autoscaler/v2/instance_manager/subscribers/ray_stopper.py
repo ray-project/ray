@@ -38,7 +38,8 @@ class RayStopper(InstanceUpdatedSubscriber):
     def notify(self, events: List[InstanceUpdateEvent]) -> None:
         for event in events:
             if event.new_instance_status == Instance.RAY_STOPPING:
-                self._executor.submit(self._stop_or_drain_ray, event)
+                fut = self._executor.submit(self._stop_or_drain_ray, event)
+                fut.add_done_callback(lambda f: logger.info(f.result()))
 
     def _stop_or_drain_ray(self, event: InstanceUpdateEvent) -> None:
         """
@@ -56,7 +57,7 @@ class RayStopper(InstanceUpdatedSubscriber):
         if termination_request.cause == TerminationRequest.Cause.IDLE:
             reason = DrainNodeReason.DRAIN_NODE_REASON_IDLE_TERMINATION
             reason_str = "Idle termination of node for {} seconds.".format(
-                termination_request.idle_time_ms / 1000
+                termination_request.idle_duration_ms / 1000
             )
             self._drain_ray_node(self._gcs_client, ray_node_id, reason, reason_str)
             return
@@ -80,15 +81,15 @@ class RayStopper(InstanceUpdatedSubscriber):
             reason: The reason to drain the node.
             reason_str: The reason message to drain the node.
         """
-        reply = gcs_client.drain_node(
-            node_id=hex_to_binary(ray_node_id),
+        is_accepted = gcs_client.drain_node(
+            node_id=ray_node_id,
             reason=reason,
             reason_message=reason_str,
             # TODO: we could probably add a deadline here that's derived
             # from the stuck instance reconcilation configs.
             deadline_timestamp_ms=0,
         )
-        if reply.is_accepted:
+        if is_accepted:
             logger.info("Draining ray on {}: {}".format(ray_node_id, reason_str))
         else:
             # We could later add a retry mechanism here, as of now, the reconciler

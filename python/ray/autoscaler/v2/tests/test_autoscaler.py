@@ -14,6 +14,7 @@ from ray.autoscaler.v2.instance_manager.config import AutoscalingConfig
 from ray.autoscaler.v2.sdk import get_cluster_status, request_cluster_resources
 from ray._private.test_utils import wait_for_condition
 from ray._raylet import GcsClient
+from ray.cluster_utils import Cluster
 
 DEFAULT_AUTOSCALING_CONFIG = {
     "cluster_name": "fake_multinode",
@@ -84,27 +85,65 @@ def make_head_node(**node_args):
     return node
 
 
+def make_cluster(head_node_kwargs: Dict = None):
+    cluster = Cluster(
+        initialize_head=True, head_node_args=head_node_kwargs, connect=True
+    )
+    return cluster
+
+
+def test_run():
+    # cluster = make_cluster(
+    #     head_node_kwargs={
+    #         "env_vars": {
+    #             "RAY_CLOUD_INSTANCE_ID": FAKE_HEAD_NODE_ID,
+    #             "RAY_OVERRIDE_NODE_ID_FOR_TESTING": FAKE_HEAD_NODE_ID,
+    #         },
+    #         "num_cpus": 1,
+    #     }
+    # )
+
+    @ray.remote
+    def task():
+        pass
+
+    a = task.options(num_cpus=1).remote()
+
+    ray.get(a)
+
+
 def test_autoscaler_v2():
-    head_node = make_head_node(
-        env_vars={
-            "RAY_CLOUD_INSTANCE_ID": FAKE_HEAD_NODE_ID,
-            "RAY_OVERRIDE_NODE_ID_FOR_TESTING": FAKE_HEAD_NODE_ID,
+    cluster = make_cluster(
+        head_node_kwargs={
+            "env_vars": {
+                "RAY_CLOUD_INSTANCE_ID": FAKE_HEAD_NODE_ID,
+                "RAY_OVERRIDE_NODE_ID_FOR_TESTING": FAKE_HEAD_NODE_ID,
+            },
+            "num_cpus": 0,
         }
     )
-    print(head_node)
+
+    # head_node = make_head_node(
+    #     env_vars={
+    #         "RAY_CLOUD_INSTANCE_ID": FAKE_HEAD_NODE_ID,
+    #         "RAY_OVERRIDE_NODE_ID_FOR_TESTING": FAKE_HEAD_NODE_ID,
+    #     }
+    # )
+    # print(head_node)
     mock_config_reader = MagicMock()
     config = DEFAULT_AUTOSCALING_CONFIG
+    gcs_address = cluster.address
 
     # Configs for the node provider
-    config["provider"]["gcs_address"] = head_node.gcs_address
+    config["provider"]["gcs_address"] = gcs_address
     config["provider"]["head_node_id"] = FAKE_HEAD_NODE_ID
     config["provider"]["launch_multiple"] = True
     os.environ["RAY_FAKE_CLUSTER"] = "1"
     mock_config_reader.get_autoscaling_config.return_value = AutoscalingConfig(
         configs=config, skip_content_hash=True
     )
-    gcs_address = head_node.gcs_address
-    gcs_client = GcsClient(head_node.gcs_address)
+    gcs_address = gcs_address
+    gcs_client = GcsClient(gcs_address)
 
     autoscaler = Autoscaler(
         session_name="test",
@@ -122,8 +161,6 @@ def test_autoscaler_v2():
         cluster_state = get_cluster_status(gcs_address)
         ray_state = autoscaler.get_cluster_resource_state()
         autoscaling_state = autoscaler.update_autoscaling_state(ray_state)
-        print(autoscaling_state)
-        print(cluster_state)
         assert len(cluster_state.active_nodes + cluster_state.idle_nodes) == 3
         return True
 
@@ -137,6 +174,23 @@ def test_autoscaler_v2():
         ray_state = autoscaler.get_cluster_resource_state()
         autoscaling_state = autoscaler.update_autoscaling_state(ray_state)
         assert len(cluster_state.active_nodes + cluster_state.idle_nodes) == 1
+        return True
+
+    wait_for_condition(verify, retry_interval_ms=2000)
+
+    # Test scaling up again with tasks
+    @ray.remote
+    def task():
+        pass
+
+    a = task.options(num_cpus=1).remote()
+    b = task.options(num_cpus=1).remote()
+
+    def verify():
+        cluster_state = get_cluster_status(gcs_address)
+        ray_state = autoscaler.get_cluster_resource_state()
+        autoscaling_state = autoscaler.update_autoscaling_state(ray_state)
+        assert len(cluster_state.active_nodes + cluster_state.idle_nodes) == 3
         return True
 
     wait_for_condition(verify, retry_interval_ms=2000)
