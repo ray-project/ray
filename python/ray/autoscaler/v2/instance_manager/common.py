@@ -103,6 +103,7 @@ class InstanceUtil:
             Instance.RAY_INSTALLING,
             Instance.RAY_RUNNING,
             Instance.RAY_STOPPING,
+            Instance.RAY_STOP_REQUESTED,
             Instance.RAY_STOPPED,
             Instance.TERMINATING,
             Instance.RAY_INSTALL_FAILED,
@@ -240,6 +241,19 @@ class InstanceUtil:
                 # A cloud instance is being terminated (when the instance itself is no
                 # longer needed, e.g. instance is outdated, autoscaler is scaling down)
                 Instance.TERMINATING,
+                # cloud instance somehow failed.
+                Instance.TERMINATED,
+            },
+            # Ray process should be stopped on the cloud instance. The RayStopper
+            # subscriber will listen to this status and stop the ray process.
+            Instance.RAY_STOP_REQUESTED: {
+                # Ray is stopping on the cloud instance.
+                Instance.RAY_STOPPING,
+                # Ray stopped already.
+                Instance.RAY_STOPPED,
+                # Ray stop request failed (e.g. idle node no longer idle),
+                # ray is still running.
+                Instance.RAY_RUNNING,
                 # cloud instance somehow failed.
                 Instance.TERMINATED,
             },
