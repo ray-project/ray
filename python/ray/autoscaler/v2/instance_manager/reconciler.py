@@ -688,7 +688,7 @@ class Reconciler:
         allocated_instances: List[IMInstance],
         upscaling_speed: float,
         max_concurrent_launches: int,
-    ) -> Dict[NodeType: List[IMInstance]]:
+    ) -> Dict[NodeType : List[IMInstance]]:
         def _group_by_type(instances):
             instances_by_type = defaultdict(list)
             for instance in instances:
@@ -707,7 +707,7 @@ class Reconciler:
         allocated_instances_by_type = _group_by_type(allocated_instances)
 
         total_num_requested_to_launch = len(requested_instances)
-        all_to_launch : Dict[NodeType: List[IMInstance]] = defaultdict(list)
+        all_to_launch: Dict[NodeType : List[IMInstance]] = defaultdict(list)
 
         for (
             instance_type,
