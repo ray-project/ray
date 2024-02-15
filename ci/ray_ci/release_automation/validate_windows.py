@@ -27,6 +27,8 @@ def main(
 ) -> None:
     if not bazel_workspace_dir:
         raise Exception("Please use `bazelisk run //ci/ray_ci`")
+    os.environ["RAYCI_BUILD_ID"] = "6e2156af"
+    os.environ["BUILDKITE_BAZEL_CACHE_URL"] = "https://bazel-cache-dev.s3.us-west-2.amazonaws.com"
     os.chdir(bazel_workspace_dir)
     docker_login(_DOCKER_ECR_REPO.split("/")[0])
 
@@ -43,7 +45,6 @@ class WindowsValidateContainer(WindowsContainer):
         self.install_ray()
 
     def run_sanity_check(self):
-        bazel_log_dir_host, bazel_log_dir_container = self._create_bazel_log_mount()
         logger.info("Run sanity check in container")
         commands = [
             f'cleanup() {{ chmod -R a+r "{self.bazel_log_dir}"; }}',
@@ -58,28 +59,9 @@ class WindowsValidateContainer(WindowsContainer):
         )
         return subprocess.Popen(
             self.get_run_command(
-                commands,
-                network=self.network,
-                gpu_ids=self.gpus,
-                volumes=[f"{bazel_log_dir_host}:{self.bazel_log_dir}"],
+                commands
             )
         )
-
-    def _create_bazel_log_mount(self, tmp_dir: Optional[str] = None) -> Tuple[str, str]:
-        """
-        Create a temporary directory in the current container to store bazel event logs
-        produced by the test runs. We do this by using the artifact mount directory from
-        the host machine as a shared directory between all containers.
-        """
-        tmp_dir = tmp_dir or "".join(
-            random.choice(string.ascii_lowercase) for _ in range(5)
-        )
-        artifact_host, artifact_container = self.get_artifact_mount()
-        bazel_log_dir_host = os.path.join(artifact_host, tmp_dir)
-        bazel_log_dir_container = os.path.join(artifact_container, tmp_dir)
-        os.mkdir(bazel_log_dir_container)
-        return (bazel_log_dir_host, bazel_log_dir_container)
-
 
 
 def _get_container(
