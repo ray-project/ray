@@ -201,19 +201,25 @@ class DefaultModuleToEnv(ConnectorV2):
         ]
         agent_data = {}
         for module_id, module_data in data.items():
-            # TODO (sven): If one agent is terminated, we should NOT perform another
-            #  forward pass on its (obs) data anymore, which we currently do in case
-            #  we are using the WriteObservationsToEpisode connector piece, due to the
-            #  fact that this piece requires even the terminal obs to be processed
-            #  inside the batch. This if block here is a temporary fix for this issue.
             if module_id not in module_to_episode_agents_mapping:
-                continue
+                raise KeyError(
+                    f"ModuleID={module_id} not found in "
+                    f"`module_to_episode_agents_mapping`!"
+                )
 
             for column, values_batch in module_data.items():
                 if column not in agent_data:
                     agent_data[column] = [{} for _ in range(len(episodes))]
                 for i, val in enumerate(unbatch(values_batch)):
                     eps_idx, agent_id = module_to_episode_agents_mapping[module_id][i]
+                    # TODO (sven): If one agent is terminated, we should NOT perform
+                    #  another forward pass on its (obs) data anymore, which we
+                    #  currently do in case we are using the WriteObservationsToEpisode
+                    #  connector piece, due to the fact that this piece requires even
+                    #  the terminal obs to be processed inside the batch. This if block
+                    #  here is a temporary fix for this issue.
+                    if episodes[eps_idx].agent_episodes[agent_id].is_done:
+                        continue
                     agent_data[column][eps_idx][agent_id] = val
 
         return agent_data
