@@ -195,11 +195,11 @@ class Reconciler:
             1. Shut down leak cloud instances
                 Leaked cloud instances that are not managed by the instance manager.
             2. Terminating instances with ray stopped or ray install failure.
-            3. Scale up/down the cluster:
-              (* -> RAY_STOPPING)
+            3. Scale down the cluster:
+              (* -> RAY_STOP_REQUESTED/TERMINATING)
                 b. Extra cloud due to max nodes config.
                 c. Cloud instances with outdated configs.
-            4. Create new instances
+            4. Scale up the cluster:
               (new QUEUED)
                 Create new instances based on the IResourceScheduler's decision for
                 scaling up.
@@ -857,6 +857,15 @@ class Reconciler:
                 IMInstance.TERMINATION_FAILED,
                 reconcile_config.terminating_status_timeout_s,
             ),
+            # If we tried to stop ray on the instance, but it doesn't stop after a long
+            # time, we will transition it back to RAY_RUNNING as the stop/drain somehow
+            # failed. If it had succeed, we should have transition it to RAY_STOPPING
+            # or RAY_STOPPED.
+            (
+                IMInstance.RAY_STOP_REQUESTED,
+                IMInstance.RAY_RUNNING,
+                reconcile_config.ray_stop_requested_status_timeout_s,
+            ),
         ]:
             im_updates.update(
                 Reconciler._handle_timeout(
@@ -871,7 +880,8 @@ class Reconciler:
         # mechanism to handle them. We only warn if they are stuck for too long.
         for status in [
             # Ray taking time to drain. We could also have a timeout when Drain protocol
-            # supports timeout.
+            # supports timeout. The ray drain protocol should handle cases where
+            # ray takes a long time to drain a node.
             IMInstance.RAY_STOPPING,
             # These should just be transient, we will terminate instances with this
             # status in the next reconciler step.
@@ -1090,13 +1100,15 @@ class Reconciler:
         # Add terminating instances.
         for terminate_request in to_terminate:
             instance_id = terminate_request.instance_id
-            if autoscaling_config.need_ray_drain():
+            if autoscaling_config.need_ray_stop():
+                # If we would need to stop/drain ray.
                 updates[terminate_request.instance_id] = IMInstanceUpdateEvent(
                     instance_id=instance_id,
-                    new_instance_status=IMInstance.RAY_STOPPING,
+                    new_instance_status=IMInstance.RAY_STOP_REQUESTED,
                     termination_request=terminate_request,
                 )
             else:
+                # If we would just terminate the cloud instance.
                 updates[terminate_request.instance_id] = IMInstanceUpdateEvent(
                     instance_id=instance_id,
                     new_instance_status=IMInstance.TERMINATING,

@@ -67,8 +67,8 @@ class MockAutoscalingConfig:
     def skip_ray_install(self):
         return self._configs.get("skip_ray_install", True)
 
-    def need_ray_drain(self):
-        return self._configs.get("need_ray_drain", True)
+    def need_ray_stop(self):
+        return self._configs.get("need_ray_stop", True)
 
 
 class MockScheduler(IResourceScheduler):
@@ -877,6 +877,7 @@ class TestReconciler:
             Instance.ALLOCATED,
             Instance.RAY_INSTALLING,
             Instance.TERMINATING,
+            Instance.RAY_STOP_REQUESTED,
         }
 
         transient_statuses = {
@@ -922,11 +923,11 @@ class TestReconciler:
 
     @staticmethod
     @pytest.mark.parametrize(
-        "need_ray_drain",
+        "need_ray_stop",
         [True, False],
-        ids=["need_ray_drain", "no_ray_drain"],
+        ids=["need_ray_stop", "no_ray_stop"],
     )
-    def test_scaling_updates(setup, need_ray_drain):
+    def test_scaling_updates(setup, need_ray_stop):
         """
         Tests that new instances should be launched due to autoscaling
         decisions, and existing instances should be terminated if needed.
@@ -980,7 +981,7 @@ class TestReconciler:
             autoscaling_config=MockAutoscalingConfig(
                 configs={
                     "max_concurrent_launches": 0,  # don't launch anything.
-                    "need_ray_drain": need_ray_drain,
+                    "need_ray_stop": need_ray_stop,
                 }
             ),
         )
@@ -991,8 +992,8 @@ class TestReconciler:
         for id, instance in instances.items():
             if id == "i-1":
                 assert (
-                    instance.status == Instance.RAY_STOPPING
-                    if need_ray_drain
+                    instance.status == Instance.RAY_STOP_REQUESTED
+                    if need_ray_stop
                     else Instance.TERMINATING
                 )
             else:

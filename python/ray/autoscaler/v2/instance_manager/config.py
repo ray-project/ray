@@ -65,6 +65,11 @@ class InstanceReconcileConfig:
     terminating_status_timeout_s: int = env_integer(
         "RAY_AUTOSCALER_RECONCILE_TERMINATING_STATUS_TIMEOUT_S", 300
     )
+    # The timeout for waiting for a RAY_STOP_REQUESTED instance
+    # to be RAY_STOPPING or RAY_STOPPED.
+    ray_stop_requested_status_timeout_s: int = env_integer(
+        "RAY_AUTOSCALER_RECONCILE_RAY_STOP_REQUESTED_STATUS_TIMEOUT_S", 300
+    )
     # The interval for raise a warning when an instance in transient status
     # is not updated for a long time.
     transient_status_warn_interval_s: int = env_integer(
@@ -318,7 +323,7 @@ class AutoscalingConfig:
     def skip_ray_install(self) -> bool:
         return self.provider == Provider.KUBERAY
 
-    def need_ray_drain(self) -> bool:
+    def need_ray_stop(self) -> bool:
         provider_config = self._configs.get("provider", {})
         return provider_config.get(WORKER_RPC_DRAIN_KEY, True)
 

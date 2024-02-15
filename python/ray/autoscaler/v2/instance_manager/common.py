@@ -111,16 +111,6 @@ class InstanceUtil:
         }
 
     @staticmethod
-    def is_ray_running_reachable(instance_status: Instance.InstanceStatus) -> bool:
-        """
-        Returns True if the instance is in a status where it may transition
-        to RAY_RUNNING status.
-        """
-        return Instance.RAY_RUNNING in InstanceUtil.get_reachable_statuses(
-            instance_status
-        )
-
-    @staticmethod
     def set_status(
         instance: Instance,
         new_instance_status: Instance.InstanceStatus,
@@ -233,7 +223,9 @@ class InstanceUtil:
             # Ray process is installed and running on the cloud instance. When in this
             # status, a ray node must be present in the ray cluster.
             Instance.RAY_RUNNING: {
-                # Ray is requested to be stopped to the ray cluster,
+                # Ray is requested to be stopped.
+                Instance.RAY_STOP_REQUESTED,
+                # Ray is stopping (currently draining),
                 # e.g. idle termination.
                 Instance.RAY_STOPPING,
                 # Ray is already stopped, as reported by the ray cluster.

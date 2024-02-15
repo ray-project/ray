@@ -164,6 +164,8 @@ message TerminationRequest {
     MAX_NUM_NODE_PER_TYPE = 2;
     // Global max num nodes reached.
     MAX_NUM_NODES = 3;
+    // An outdated node.
+    OUTDATED = 4;
   }
   // id of the request.
   string id = 1;
@@ -173,13 +175,15 @@ message TerminationRequest {
   string instance_id = 3;
   // the reason of the termination.
   Cause cause = 4;
+  // Instance type.
+  string instance_type = 5;
 
   // Idle time if the cause is IDLE.
-  optional uint64 idle_time_ms = 5;
+  optional uint64 idle_time_ms = 6;
   // The per type max instance limit if the cause is MAX_NUM_NODE_PER_TYPE.
-  optional uint32 max_num_nodes_per_type = 6;
+  optional uint32 max_num_nodes_per_type = 7;
   // The global max num nodes if the cause is MAX_NUM_NODES.
-  optional uint32 max_num_nodes = 7;
+  optional uint32 max_num_nodes = 8;
 }
 
 message UpdateInstanceManagerStateRequest {
