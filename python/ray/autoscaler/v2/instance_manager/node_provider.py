@@ -14,6 +14,7 @@ from ray.autoscaler._private.constants import (
 from ray.autoscaler._private.util import hash_launch_conf
 from ray.autoscaler.node_provider import NodeProvider as NodeProviderV1
 from ray.autoscaler.tags import (
+    NODE_KIND_HEAD,
     NODE_KIND_UNMANAGED,
     NODE_KIND_WORKER,
     STATUS_UNINITIALIZED,
@@ -25,7 +26,8 @@ from ray.autoscaler.tags import (
     TAG_RAY_USER_NODE_TYPE,
 )
 from ray.autoscaler.v2.instance_manager.config import IConfigReader
-from ray.autoscaler.v2.schema import NodeKind, NodeType
+from ray.autoscaler.v2.schema import NodeType
+from ray.core.generated.instance_manager_pb2 import NodeKind
 
 logger = logging.getLogger(__name__)
 
@@ -334,8 +336,17 @@ class NodeProviderAdapter(ICloudInstanceProvider):
         # running status of the nodes.
         for cloud_instance_id in cloud_instance_ids:
             node_tags = self._v1_node_tags(cloud_instance_id)
-            node_kind = node_tags.get(TAG_RAY_NODE_KIND, NODE_KIND_UNMANAGED)
-            node_kind = NodeKind(node_kind)
+            node_kind_tag = node_tags.get(TAG_RAY_NODE_KIND, NODE_KIND_UNMANAGED)
+            if node_kind_tag == NODE_KIND_UNMANAGED:
+                # Filter out unmanaged nodes.
+                continue
+            elif node_kind_tag == NODE_KIND_WORKER:
+                node_kind = NodeKind.WORKER
+            elif node_kind_tag == NODE_KIND_HEAD:
+                node_kind = NodeKind.HEAD
+            else:
+                raise ValueError(f"Invalid node kind: {node_kind_tag}")
+
             nodes[cloud_instance_id] = CloudInstance(
                 cloud_instance_id=cloud_instance_id,
                 node_type=node_tags.get(TAG_RAY_USER_NODE_TYPE, ""),

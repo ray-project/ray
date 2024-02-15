@@ -4,7 +4,6 @@ from enum import Enum
 from typing import Dict, List, Optional, Tuple
 
 from ray.autoscaler._private.autoscaler import NodeStatus
-from ray.autoscaler.tags import NODE_KIND_HEAD, NODE_KIND_UNMANAGED, NODE_KIND_WORKER
 from ray.autoscaler.v2.instance_manager.common import InstanceUtil
 from ray.core.generated.autoscaler_pb2 import NodeState
 from ray.core.generated.instance_manager_pb2 import Instance
@@ -18,18 +17,6 @@ NODE_DEATH_CAUSE_RAYLET_DIED = "NodeTerminated"
 
 # e.g., cpu_4_ondemand.
 NodeType = str
-
-
-# e.g. head node or worker node.
-class NodeKind(Enum):
-
-    # Head node kind
-    HEAD = NODE_KIND_HEAD
-    # Worker node kind
-    WORKER = NODE_KIND_WORKER
-    # Unmanaged node kind (e.g. user started cloud instance or non
-    # ray node, this happens in KubeRay)
-    UNMANAGED = NODE_KIND_UNMANAGED
 
 
 @dataclass
