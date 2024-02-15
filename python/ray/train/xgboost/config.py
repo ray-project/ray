@@ -52,7 +52,7 @@ class _XGBoostRabitBackend(Backend):
         self._rabit_args = {"DMLC_NUM_WORKER": num_workers}
         train_driver_ip = ray.util.get_node_ip_address()
         self._tracker = RabitTracker(host_ip=train_driver_ip, n_workers=num_workers)
-        self._rabit_args.update(self.tracker.worker_envs())
+        self._rabit_args.update(self._tracker.worker_envs())
 
         self._tracker.start(num_workers)
 
