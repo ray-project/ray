@@ -6,6 +6,7 @@ import gymnasium as gym
 
 from ray.rllib.core.rl_module.rl_module import RLModule
 from ray.rllib.env.single_agent_episode import SingleAgentEpisode
+from ray.rllib.utils.spaces.space_utils import unbatch
 from ray.rllib.utils.typing import EpisodeType, ModuleID
 from ray.util.annotations import PublicAPI
 
@@ -80,8 +81,8 @@ class ConnectorV2(abc.ABC):
 
     def __init__(
         self,
-        input_observation_space: gym.Space,
-        input_action_space: gym.Space,
+        input_observation_space: gym.Space = None,
+        input_action_space: gym.Space = None,
         **kwargs,
     ):
         """Initializes a ConnectorV2 instance.
@@ -267,6 +268,107 @@ class ConnectorV2(abc.ABC):
             batch[column][sub_key].append(item_to_add)
         else:
             batch[column].append(item_to_add)
+
+    @staticmethod
+    def add_n_batch_items(
+        batch: Dict[str, Any],
+        column: str,
+        items_to_add: Any,
+        num_items: int,
+        single_agent_episode: Optional[SingleAgentEpisode] = None,
+    ) -> None:
+        """Adds a list of items (or batched item) under `column` to the given `batch`.
+
+        If items_to_add is not a list, but an already batched struct (of np.ndarray
+        leafs), will unbatch first into a list of individual batch items and add
+        each individually.
+
+        If `single_agent_episode` is provided and it contains agent ID and module ID
+        information, will store the individual items in a list under a
+        `([agent_id],[module_id])` key within `column`. In all other cases, will store
+        the individual items in a list directly under `column`.
+
+        .. testcode::
+
+            import numpy as np
+            from ray.rllib.connectors.connector_v2 import ConnectorV2
+            from ray.rllib.env.single_agent_episode import SingleAgentEpisode
+            from ray.rllib.utils.test_utils import check
+
+            # Single-agent case.
+            batch = {}
+            ConnectorV2.add_n_batch_items(
+                batch,
+                "test_col",
+                # List of (complex) structs.
+                [{"a": np.array(3), "b": 4}, {"a": np.array(5), "b": 6}],
+                num_items=2,
+            )
+            check(
+                batch["test_col"],
+                [{"a": np.array(3), "b": 4}, {"a": np.array(5), "b": 6}],
+            )
+
+            ConnectorV2.add_n_batch_items(
+                batch,
+                "test_col_2",
+                # One (complex) already batched struct.
+                {"a": np.array([3, 5]), "b": np.array([4, 6])},
+                num_items=2,
+            )
+            check(
+                batch["test_col_2"],
+                [
+                    {"a": np.array(3), "b": np.array(4)},
+                    {"a": np.array(5), "b": np.array(6)},
+                ],
+            )
+
+        Args:
+            batch: The batch to store n `items_to_add` in.
+            column: The column name (str) within the `batch` to store `item_to_add`
+                under.
+            items_to_add: The list of data items to store in the batch OR an already
+                batched (possibly nested) struct, which will first be split up into
+                a list of individual items, then these individual items will be added
+                to the given `column` in the batch.
+            num_items: The number of items in `items_to_add`. This arg is mostly for
+                asserting the correct usage of this method by checking, whether the
+                given data in `items_to_add` really has the right amount of individual
+                items.
+            single_agent_episode: An optional SingleAgentEpisode. If provided and its
+                agent_id and module_id properties are not None, will create a further
+                sub dictionary under `column`, mapping from `([agent_id],[module_id])`
+                (str) to a list of data items. Otherwise, will store `item_to_add`
+                in a list directly under `column`.
+        """
+        # Process n list items by calling `add_batch_item` on each of them individually.
+        if isinstance(items_to_add, list):
+            if len(items_to_add) != num_items:
+                raise ValueError(
+                    f"Mismatch breteen `num_items` ({num_items}) and the length "
+                    f"of the provided list ({len(items_to_add)}) in "
+                    f"{ConnectorV2.__name__}.add_n_batch_items()!"
+                )
+            for item in items_to_add:
+                ConnectorV2.add_batch_item(
+                    batch=batch,
+                    column=column,
+                    item_to_add=item,
+                    single_agent_episode=single_agent_episode,
+                )
+            return
+
+        # Process a batched (possibly complex) struct by splitting it up into a list
+        # first and then calling this method again on the resulting list.
+        items_as_list = unbatch(items_to_add)
+        ConnectorV2.add_n_batch_items(
+            batch=batch,
+            column=column,
+            items_to_add=items_as_list,
+            num_items=num_items,
+            single_agent_episode=single_agent_episode,
+        )
 
     @staticmethod
     def foreach_batch_item_change_in_place(batch, column: str, func) -> None:

@@ -1,6 +1,7 @@
 import abc
 from collections import defaultdict
 from dataclasses import dataclass
+from functools import partial
 import json
 import logging
 import pathlib
@@ -288,7 +289,8 @@ class Learner:
         """Builds the Learner.
 
         This method should be called before the learner is used. It is responsible for
-        setting up the RLModule, optimizers, and (optionally) their lr-schedulers.
+        setting up the LearnerConnectorPipeline, the RLModule, optimizer(s), and
+        (optionally) the optimizers' learning rate schedulers.
         """
         if self._is_built:
             logger.debug("Learner already built. Skipping build.")
@@ -1368,7 +1370,9 @@ class Learner:
                 episodes=episodes,
             )
 
-        if minibatch_size:
+        if minibatch_size and self._learner_connector is not None:
+            batch_iter = partial(MiniBatchCyclicIterator, uses_new_env_runners=True)
+        elif minibatch_size:
             batch_iter = MiniBatchCyclicIterator
         elif num_iters > 1:
             # `minibatch_size` was not set but `num_iters` > 1.
