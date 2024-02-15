@@ -37,7 +37,7 @@ py_binary(
 py_binary(
     name = "sanity_check",
     srcs = ["sanity_check.py"],
-    deps = [":ray_ci_lib", ci_require("ray")],
+    deps = [":ray_ci_lib"],
 )
 
 py_binary(
