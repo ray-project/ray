@@ -2,6 +2,7 @@ import logging
 from typing import Any, Callable, Dict, Optional, Union
 
 import ray.train
+from ray.data import DataIterator, Dataset
 from ray.train import Checkpoint
 from ray.train.data_parallel_trainer import DataParallelTrainer
 from ray.train.trainer import GenDataset
@@ -123,9 +124,6 @@ class XGBoostTrainer(DataParallelTrainer):
     ):
         if not xgboost_config:
             xgboost_config = XGBoostConfig()
-
-        dataset_config = dataset_config or ray.train.DataConfig()
-        dataset_config._convert_to_data_iterator = False
 
         super(XGBoostTrainer, self).__init__(
             train_loop_per_worker=train_loop_per_worker,
