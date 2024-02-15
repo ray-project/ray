@@ -171,7 +171,7 @@ class Controller():
                 available_memory += task.spec[MEMORY] if MEMORY in task.spec else 0
                 
                 if available_cpu >= required_cpu and available_gpu >= required_gpu and available_memory >= required_memory:
-                    if estimated_finish_time < earliest_time and estimated_finish_time > current_time:
+                    if estimated_finish_time < earliest_time and (estimated_finish_time > current_time or best_node == None):
                         earliest_time = estimated_finish_time
                         best_node = node_id
         
