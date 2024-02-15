@@ -72,7 +72,9 @@ class Apiserver:
             self.unfinished_user_tasks.put(user_task)
 
         elif user_task.status[USER_TASK_STATUS] == FINISHED:
+            # This is to avoid the case that user task status directly turns from pending to finished.
             self._idempotent_decrement_pending_task_count(user_task)
+            self._add_or_update_node_running_or_pending_task(user_task)
             self._update_node_speed_info(user_task)
             self._remove_node_running_task(user_task)
 
