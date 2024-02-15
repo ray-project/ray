@@ -4,8 +4,8 @@
 # in various Python version. This script requires conda command to exist.
 
 unset RAY_ADDRESS
-export RAY_HASH=$RAY_HASH
-export RAY_VERSION=$RAY_VERSION
+export RAY_VERSION="${RAY_VERSION:-2.9.1}"
+export RAY_HASH="${RAY_HASH:-cfbf98c315cfb2710c56039a3c96477d196de049}"
 
 if [[ -z "$RAY_HASH" ]]; then
     echo "RAY_HASH env var should be provided"
