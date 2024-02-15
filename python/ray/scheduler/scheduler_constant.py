@@ -1,7 +1,7 @@
-SERVER_IP = "http://34.199.201.49:8000"
+SERVER_IP = "http://172.31.40.126:8000"
 
 MAX_COMPLEXITY_SCORE = 100000000000
-DATA_IP=""
+DATA_IP="172.31.40.126"
 
 # spec constant
 HPC_DIR = "working_dir"
