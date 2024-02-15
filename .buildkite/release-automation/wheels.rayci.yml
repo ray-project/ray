@@ -16,4 +16,4 @@ steps:
         --test-env=RAY_CI_POST_WHEEL_TESTS="1"
         --test-env=USERPROFILE
       - bash /c/workdir/.buildkite/release-automation/verify-windows-wheels.sh
-    - depends_on: windowsbuild
+    depends_on: windowsbuild
