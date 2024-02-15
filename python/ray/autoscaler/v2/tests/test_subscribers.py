@@ -7,6 +7,7 @@ import pytest
 import mock
 
 from ray._private.test_utils import wait_for_condition
+from ray._private.utils import binary_to_hex, hex_to_binary
 from ray.autoscaler.v2.instance_manager.subscribers.ray_stopper import (  # noqa
     RayStopper,
 )
@@ -37,6 +38,17 @@ class TestRayStopper:
         )
         assert mock_gcs_client.drain_node.call_count == 0
 
+        # no termination request
+        ray_stopper.notify(
+            [
+                InstanceUpdateEvent(
+                    instance_id="test_id",
+                    new_instance_status=Instance.RAY_STOPPING,
+                )
+            ]
+        )
+        assert mock_gcs_client.drain_node.call_count == 0
+
     def test_idle_termination(self):
         mock_gcs_client = mock.MagicMock()
         reply = DrainNodeReply(is_accepted=True)
@@ -51,7 +63,7 @@ class TestRayStopper:
                     termination_request=TerminationRequest(
                         cause=TerminationRequest.Cause.IDLE,
                         idle_time_ms=1000,
-                        ray_node_id="id1",
+                        ray_node_id=binary_to_hex(hex_to_binary(b"0000")),
                     ),
                 )
             ]
@@ -61,7 +73,7 @@ class TestRayStopper:
             mock_gcs_client.drain_node.assert_has_calls(
                 [
                     mock.call(
-                        node_id=b"id1",
+                        node_id=hex_to_binary(b"0000"),
                         reason=DrainNodeReason.DRAIN_NODE_REASON_IDLE_TERMINATION,
                         reason_message="Idle termination of node for 1.0 seconds.",
                         deadline_timestamp_ms=0,
@@ -74,8 +86,7 @@ class TestRayStopper:
 
     def test_preemption(self):
         mock_gcs_client = mock.MagicMock()
-        reply = DrainNodeReply(is_accepted=True)
-        mock_gcs_client.drain_node.return_value = reply
+        mock_gcs_client.drain_nodes.return_value = [0]
         ray_stopper = RayStopper(gcs_client=mock_gcs_client)
 
         ray_stopper.notify(
@@ -86,7 +97,7 @@ class TestRayStopper:
                     termination_request=TerminationRequest(
                         cause=TerminationRequest.Cause.MAX_NUM_NODE_PER_TYPE,
                         max_num_nodes_per_type=10,
-                        ray_node_id="id1",
+                        ray_node_id=binary_to_hex(hex_to_binary(b"1111")),
                     ),
                 ),
                 InstanceUpdateEvent(
@@ -95,28 +106,20 @@ class TestRayStopper:
                     termination_request=TerminationRequest(
                         cause=TerminationRequest.Cause.MAX_NUM_NODES,
                         max_num_nodes=100,
-                        ray_node_id="id2",
+                        ray_node_id=binary_to_hex(hex_to_binary(b"2222")),
                     ),
                 ),
             ]
         )
 
         def verify():
-            mock_gcs_client.drain_node.assert_has_calls(
+            mock_gcs_client.drain_nodes.assert_has_calls(
                 [
                     mock.call(
-                        node_id=b"id1",
-                        reason=DrainNodeReason.DRAIN_NODE_REASON_PREEMPTION,
-                        reason_message=(
-                            "Preempted due to max number of nodes per type=10."
-                        ),
-                        deadline_timestamp_ms=0,
+                        node_ids=[hex_to_binary(b"1111")],
                     ),
                     mock.call(
-                        node_id=b"id2",
-                        reason=DrainNodeReason.DRAIN_NODE_REASON_PREEMPTION,
-                        reason_message="Preempted due to max number of nodes=100.",
-                        deadline_timestamp_ms=0,
+                        node_ids=[hex_to_binary(b"2222")],
                     ),
                 ]
             )
