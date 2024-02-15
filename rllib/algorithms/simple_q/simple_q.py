@@ -276,12 +276,7 @@ class SimpleQConfig(AlgorithmConfig):
         # Call super's validation method.
         super().validate()
 
-        # TODO (simon): Find a clean solution to deal with
-        # configuration configs when using the new API stack.
-        if (
-            not self._enable_new_api_stack
-            and self.exploration_config["type"] == "ParameterNoise"
-        ):
+        if self.exploration_config["type"] == "ParameterNoise":
             if self.batch_mode != "complete_episodes":
                 raise ValueError(
                     "ParameterNoise Exploration requires `batch_mode` to be "
