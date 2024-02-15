@@ -1,6 +1,7 @@
 import abc
 from collections import defaultdict
 from dataclasses import dataclass
+from functools import partial
 import json
 import logging
 import pathlib
@@ -1366,7 +1367,9 @@ class Learner:
                 episodes=episodes,
             )
 
-        if minibatch_size:
+        if minibatch_size and self._learner_connector is not None:
+            batch_iter = partial(MiniBatchCyclicIterator, uses_new_env_runners=True)
+        elif minibatch_size:
             batch_iter = MiniBatchCyclicIterator
         elif num_iters > 1:
             # `minibatch_size` was not set but `num_iters` > 1.
