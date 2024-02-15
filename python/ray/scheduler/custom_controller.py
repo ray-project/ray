@@ -146,13 +146,12 @@ class Controller():
             user_task_duration = user_task.spec[COMPLEXITY_SCORE] / node[SPEED]
             current_time = int(time.time() * 1000)
             user_task_estimated_finish_time =  current_time + user_task_duration
-            print("user_task_estimated_finish_time", node_id, user_task_estimated_finish_time)
-            print("available_cpu", node_id, available_cpu)
+
             if available_cpu >= required_cpu and available_gpu >= required_gpu and available_memory >= required_memory:
                 if user_task_estimated_finish_time < earliest_time:
                     earliest_time = user_task_estimated_finish_time
                     best_node = node_id
-                    break
+                    continue
 
 
             for _, task in node[RUNNING_OR_PENDING_TASKS].items():
@@ -163,15 +162,13 @@ class Controller():
                     start_time = task.status[USER_TASK_ESTIMATED_START_TIME]
 
                 estimated_finish_time = start_time + task.spec[COMPLEXITY_SCORE] / node[SPEED] + user_task_duration
-                print("start_time", start_time)
-                print("estimated_finish_time", node_id, estimated_finish_time)
 
                 available_cpu += task.spec[CPU] if CPU in task.spec else 0
                 available_gpu += task.spec[GPU] if GPU in task.spec else 0
                 available_memory += task.spec[MEMORY] if MEMORY in task.spec else 0
                 
                 if available_cpu >= required_cpu and available_gpu >= required_gpu and available_memory >= required_memory:
-                    if estimated_finish_time < earliest_time and (estimated_finish_time > current_time or best_node == None):
+                    if estimated_finish_time < earliest_time and estimated_finish_time > current_time:
                         earliest_time = estimated_finish_time
                         best_node = node_id
         
