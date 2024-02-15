@@ -175,7 +175,7 @@ class Controller():
                         earliest_time = estimated_finish_time
                         best_node = node_id
         
-        if best_node == None or (node_info[best_node][PENDING_TASK_COUNT] + 1) > MAX_PENDING_TASK:
+        if best_node == None or (node_info[best_node][PENDING_TASKS_COUNT] + 1) > MAX_PENDING_TASK:
             return None
 
         user_task.status[USER_TASK_ESTIMATED_START_TIME] = earliest_time
