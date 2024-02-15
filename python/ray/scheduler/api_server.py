@@ -55,17 +55,22 @@ class Apiserver:
     def update_status(self, user_task: dict = Body(...)):
         user_task = Task(**user_task)
 
-        if user_task.status[USER_TASK_STATUS] == PENDING:
-            self._increase_pending_task_count(user_task)
+        if user_task.status[ASSIGN_NODE] is None:
+            self.unfinished_user_tasks.put(user_task)
+            return
+
+        elif user_task.status[USER_TASK_STATUS] == PENDING:
+            self._idempotent_increment_pending_task_count(user_task)
             self._add_or_update_node_running_or_pending_task(user_task)
             self.unfinished_user_tasks.put(user_task)
 
         elif user_task.status[USER_TASK_STATUS] == RUNNING:
-            self._decrease_pending_task_count(user_task)
+            self._idempotent_decrement_pending_task_count(user_task)
             self._add_or_update_node_running_or_pending_task(user_task)
             self.unfinished_user_tasks.put(user_task)
 
         elif user_task.status[USER_TASK_STATUS] == FINISHED:
+            self._idempotent_decrement_pending_task_count(user_task)
             self._update_node_speed_info(user_task)
             self._remove_node_running_task(user_task)
 
@@ -90,14 +95,16 @@ class Apiserver:
         #         self.node_info[node[NODE_ID]][SPEED] = 0
         return self.node_info
 
-    def _increase_pending_task_count(self, user_task):
+    def _idempotent_increment_pending_task_counts(self, user_task):
         assign_node = user_task.status[ASSIGN_NODE]
-        if assign_node != None:
+        
+        if user_task.spec[USER_TASK_ID] not in self.node_info[assign_node][RUNNING_OR_PENDING_TASKS]:
             self.node_info[assign_node][PENDING_TASK_COUNT] += 1
 
-    def _decrease_pending_task_count(self, user_task):
+    def _idempotent_decrement_pending_task_count(self, user_task):
         assign_node = user_task.status[ASSIGN_NODE]
-        if assign_node != None:
+       
+        if user_task.spec[USER_TASK_ID] in self.node_info[assign_node][RUNNING_OR_PENDING_TASKS]:
             self.node_info[assign_node][PENDING_TASK_COUNT] -= 1
 
     def _update_node_speed_info(self, user_task):
@@ -123,8 +130,6 @@ class Apiserver:
 
     def _add_or_update_node_running_or_pending_task(self, user_task):
         assign_node = user_task.status[ASSIGN_NODE]
-        if assign_node == None:
-            return
         if user_task.spec[USER_TASK_ID] not in self.node_info[assign_node][RUNNING_OR_PENDING_TASKS]:
             self.node_info[assign_node][AVAILABLE_CPU] -= user_task.spec[CPU] if CPU in user_task.spec else 0
             self.node_info[assign_node][AVAILABLE_GPU] -= user_task.spec[GPU] if GPU in user_task.spec else 0
