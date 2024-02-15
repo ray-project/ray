@@ -98,7 +98,7 @@ def construct_train_func(
             This can either take in no arguments or a ``config`` dict.
         config (Optional[Dict]): Configurations to pass into
             ``train_func``. If None then an empty Dict will be created.
-        prologue: Extra configuration logics executed before `train_func` 
+        prologue: Extra configuration logics executed before `train_func`
             in the same thread. Each BackendConfig defines their own prologue.
         fn_arg_name (Optional[str]): The name of training function to use for error
             messages.
