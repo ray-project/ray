@@ -15,7 +15,6 @@ import uuid
 
 import gymnasium as gym
 import numpy as np
-import tree
 
 from ray.rllib.env.single_agent_episode import SingleAgentEpisode
 from ray.rllib.env.utils.infinite_lookback_buffer import InfiniteLookbackBuffer

@@ -1,6 +1,3 @@
-import functools
-
-import torch.nn.init
 from ray.rllib.algorithms.ppo import PPOConfig
 from ray.rllib.connectors.env_to_module import (
     AddLastObservationToBatch,
@@ -66,8 +63,10 @@ if __name__ == "__main__":
             # Set up the correct env-runner to use depending on
             # old-stack/new-stack and multi-agent settings.
             env_runner_cls=(
-                None if not args.enable_new_api_stack
-                else SingleAgentEnvRunner if args.num_agents == 0
+                None
+                if not args.enable_new_api_stack
+                else SingleAgentEnvRunner
+                if args.num_agents == 0
                 else MultiAgentEnvRunner
             ),
         )
@@ -75,13 +74,17 @@ if __name__ == "__main__":
         .training(
             num_sgd_iter=10,
             train_batch_size=4000,
-            model=dict({
-                "use_lstm": True,
-                "fcnet_hiddens": [64],
-            }, **(
-                {} if not args.enable_new_api_stack
-                else {"uses_new_env_runners": True}
-            )),
+            model=dict(
+                {
+                    "use_lstm": True,
+                    "fcnet_hiddens": [64],
+                },
+                **(
+                    {}
+                    if not args.enable_new_api_stack
+                    else {"uses_new_env_runners": True}
+                ),
+            ),
         )
     )
 

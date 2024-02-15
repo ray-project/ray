@@ -61,16 +61,16 @@ if __name__ == "__main__":
     def _make_learner_connector(input_observation_space, input_action_space):
         # Create the learner connector.
         return FrameStackingLearner(
-            #input_observation_space=input_observation_space,
-            #input_action_space=input_action_space,
+            # input_observation_space=input_observation_space,
+            # input_action_space=input_action_space,
             num_frames=args.num_frames,
             multi_agent=args.num_agents > 0,
         )
 
     # Create a custom Atari setup (w/o the usual RLlib-hard-coded framestacking in it).
     # We would like our frame stacking connector to do this job.
-    env_creator = lambda cfg: (
-        wrap_atari_for_new_api_stack(
+    def _env_creator(cfg):
+        return wrap_atari_for_new_api_stack(
             gym.make(args.atari_env, **cfg, **{"render_mode": "rgb_array"}),
             # Perform framestacking either through ConnectorV2 or right here through
             # the observation wrapper.
@@ -78,14 +78,16 @@ if __name__ == "__main__":
                 args.num_framestack if args.use_gym_wrapper_framestacking else None
             ),
         )
-    )
 
     if args.num_agents > 0:
-        tune.register_env("env", lambda cfg: make_multi_agent(env_creator)(
-            dict(cfg, **{"num_agents": args.num_agents})
-        ))
+        tune.register_env(
+            "env",
+            lambda cfg: make_multi_agent(_env_creator)(
+                dict(cfg, **{"num_agents": args.num_agents})
+            ),
+        )
     else:
-        tune.register_env("env", env_creator)
+        tune.register_env("env", _env_creator)
 
     config = (
         get_trainable_cls(args.algo)
@@ -106,7 +108,8 @@ if __name__ == "__main__":
         .rollouts(
             # ... new EnvRunner and our frame stacking env-to-module connector.
             env_to_module_connector=(
-                None if args.use_gym_wrapper_framestacking
+                None
+                if args.use_gym_wrapper_framestacking
                 else _make_env_to_module_connector
             ),
             num_rollout_workers=args.num_env_runners,
@@ -141,13 +144,15 @@ if __name__ == "__main__":
             lr=0.00015 * (args.num_gpus or 1),
             grad_clip=100.0,
             grad_clip_by="global_norm",
-            model=dict({
-                "vf_share_layers": True,
-                "conv_filters": [[16, 4, 2], [32, 4, 2], [64, 4, 2], [128, 4, 2]],
-                "conv_activation": "relu",
-                "post_fcnet_hiddens": [256],
-
-            }, **({"uses_new_env_runners": True} if args.enable_new_api_stack else {})),
+            model=dict(
+                {
+                    "vf_share_layers": True,
+                    "conv_filters": [[16, 4, 2], [32, 4, 2], [64, 4, 2], [128, 4, 2]],
+                    "conv_activation": "relu",
+                    "post_fcnet_hiddens": [256],
+                },
+                **({"uses_new_env_runners": True} if args.enable_new_api_stack else {}),
+            ),
         )
     )
 

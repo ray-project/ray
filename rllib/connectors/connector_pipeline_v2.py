@@ -47,9 +47,9 @@ class ConnectorPipelineV2(ConnectorV2):
         self.connectors = connectors or []
         if len(self) > 0:
             if input_observation_space is None:
-                self.input_observation_space = (
-                    self.connectors[0].input_observation_space
-                )
+                self.input_observation_space = self.connectors[
+                    0
+                ].input_observation_space
             if input_action_space is None:
                 self.input_action_space = self.connectors[0].input_action_space
         self._fix_input_output_types()
@@ -294,7 +294,9 @@ class ConnectorPipelineV2(ConnectorV2):
             # Fix each connector's input_observation- and input_action space in
             # the pipeline.
             if self.input_observation_space is None:
-                self.input_observation_space = self.connectors[0].input_observation_space
+                self.input_observation_space = self.connectors[
+                    0
+                ].input_observation_space
             if self.input_action_space is None:
                 self.input_action_space = self.connectors[0].input_action_space
             obs_space = self.input_observation_space

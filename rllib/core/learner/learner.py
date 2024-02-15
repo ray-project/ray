@@ -297,7 +297,7 @@ class Learner:
 
         # Build learner connector pipeline used on this Learner worker.
         if self.config.uses_new_env_runners:
-            module_spec = self._module_spec.as_multi_agent()
+            # module_spec = self._module_spec.as_multi_agent()
             self._learner_connector = self.config.build_learner_connector(
                 input_observation_space=None,
                 input_action_space=None,

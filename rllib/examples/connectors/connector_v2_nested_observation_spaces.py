@@ -1,5 +1,3 @@
-import os
-
 from ray.tune.registry import register_env
 from ray.rllib.connectors.env_to_module import (
     AddLastObservationToBatch,

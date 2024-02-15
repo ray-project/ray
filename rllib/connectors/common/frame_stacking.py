@@ -8,7 +8,6 @@ from ray.rllib.connectors.connector_v2 import ConnectorV2
 from ray.rllib.core.rl_module.rl_module import RLModule
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils.annotations import override
-from ray.rllib.utils.spaces.space_utils import batch
 from ray.rllib.utils.typing import EpisodeType
 from ray.util.annotations import PublicAPI
 
@@ -144,12 +143,8 @@ class _FrameStackingConnector(ConnectorV2):
         assert obs_space.shape[-1] == 1, obs_space
 
         return gym.spaces.Box(
-            low=np.repeat(
-                obs_space.low, repeats=self.num_frames, axis=-1
-            ),
-            high=np.repeat(
-                obs_space.high, repeats=self.num_frames, axis=-1
-            ),
+            low=np.repeat(obs_space.low, repeats=self.num_frames, axis=-1),
+            high=np.repeat(obs_space.high, repeats=self.num_frames, axis=-1),
             shape=list(obs_space.shape)[:-1] + [self.num_frames],
             dtype=obs_space.dtype,
         )

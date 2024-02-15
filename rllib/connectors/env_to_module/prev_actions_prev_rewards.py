@@ -84,12 +84,12 @@ class PrevActionsPrevRewardsConnector(ConnectorV2):
         self.n_prev_actions = n_prev_actions
         self.n_prev_rewards = n_prev_rewards
 
-        #TODO: Move into input_observation_space setter
+        # TODO: Move into input_observation_space setter
         # Thus far, this connector piece only operates on discrete action spaces.
-        #act_spaces = [self.input_action_space]
-        #if self._multi_agent:
+        # act_spaces = [self.input_action_space]
+        # if self._multi_agent:
         #    act_spaces = self.input_action_space.spaces.values()
-        #if not all(isinstance(s, gym.spaces.Discrete) for s in act_spaces):
+        # if not all(isinstance(s, gym.spaces.Discrete) for s in act_spaces):
         #    raise ValueError(
         #        f"{type(self).__name__} only works on Discrete action spaces "
         #        f"thus far (or, for multi-agent, on Dict spaces mapping AgentIDs to "
@@ -116,16 +116,22 @@ class PrevActionsPrevRewardsConnector(ConnectorV2):
             )
 
         new_obs = []
-        for sa_episode, orig_obs in self.single_agent_episode_iterator(episodes, zip_with_batch_column=observations):
+        for sa_episode, orig_obs in self.single_agent_episode_iterator(
+            episodes, zip_with_batch_column=observations
+        ):
             # Episode is not finalized yet and thus still operates on lists of items.
             assert not sa_episode.is_finalized
 
             if self.n_prev_actions:
-                prev_n_actions = flatten_to_single_ndarray(batch(sa_episode.get_actions(
-                    indices=slice(-self.n_prev_actions, None),
-                    fill=0.0,
-                    one_hot_discrete=True,
-                )))
+                prev_n_actions = flatten_to_single_ndarray(
+                    batch(
+                        sa_episode.get_actions(
+                            indices=slice(-self.n_prev_actions, None),
+                            fill=0.0,
+                            one_hot_discrete=True,
+                        )
+                    )
+                )
 
             if self.n_prev_rewards:
                 prev_n_rewards = np.array(
@@ -135,11 +141,13 @@ class PrevActionsPrevRewardsConnector(ConnectorV2):
                     )
                 )
 
-            new_obs.append({
-                "_obs": orig_obs,
-                SampleBatch.PREV_ACTIONS: prev_n_actions,
-                SampleBatch.PREV_REWARDS: prev_n_rewards,
-            })
+            new_obs.append(
+                {
+                    "_obs": orig_obs,
+                    SampleBatch.PREV_ACTIONS: prev_n_actions,
+                    SampleBatch.PREV_REWARDS: prev_n_rewards,
+                }
+            )
 
         # Convert the observations in the batch into a dict with the keys:
         # "_obs", "_prev_rewards", and "_prev_actions".
@@ -152,17 +160,18 @@ class PrevActionsPrevRewardsConnector(ConnectorV2):
         return data
 
     def _convert_individual_space(self, obs_space, act_space):
-        return gym.spaces.Dict({
-            self.ORIG_OBS_KEY: obs_space,
-            # Currently only works for Discrete action spaces.
-            SampleBatch.PREV_ACTIONS: Box(
-                0.0, 1.0, (act_space.n * self.n_prev_actions,), np.float32
-            ),
-            SampleBatch.PREV_REWARDS: Box(
-                float("-inf"),
-                float("inf"),
-                (self.n_prev_rewards,),
-                np.float32,
-            ),
-        })
-
+        return gym.spaces.Dict(
+            {
+                self.ORIG_OBS_KEY: obs_space,
+                # Currently only works for Discrete action spaces.
+                SampleBatch.PREV_ACTIONS: Box(
+                    0.0, 1.0, (act_space.n * self.n_prev_actions,), np.float32
+                ),
+                SampleBatch.PREV_REWARDS: Box(
+                    float("-inf"),
+                    float("inf"),
+                    (self.n_prev_rewards,),
+                    np.float32,
+                ),
+            }
+        )
