@@ -1,4 +1,5 @@
 import logging
+from abc import abstractmethod
 from typing import TypeVar
 
 from ray.train._internal.utils import Singleton
@@ -18,6 +19,10 @@ class BackendConfig:
     @property
     def backend_cls(self):
         return Backend
+
+    @property
+    def prologue(self):
+        return lambda: None
 
     def _repr_html_(self) -> str:
         return make_table_html_repr(obj=self, title=type(self).__name__)
