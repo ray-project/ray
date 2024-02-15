@@ -435,6 +435,7 @@ class DataParallelTrainer(BaseTrainer):
         train_loop_per_worker = construct_train_func(
             self._train_loop_per_worker,
             self._train_loop_config,
+            prologue=self._backend_config.prologue,
             fn_arg_name="train_loop_per_worker",
             discard_returns=True,
         )
