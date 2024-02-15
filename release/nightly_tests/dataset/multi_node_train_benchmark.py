@@ -224,9 +224,6 @@ def parse_args():
         args.skip_train_model = True
     if args.batch_size == -1:
         args.batch_size = None
-    # If local shuffle buffer is not provided, use half the batch size by default.
-    if args.local_shuffle_buffer_size is None and args.batch_size is not None:
-        args.local_shuffle_buffer_size = args.batch_size / 2
 
     return args
 
