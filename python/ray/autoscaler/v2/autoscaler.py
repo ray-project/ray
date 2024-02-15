@@ -70,6 +70,7 @@ class Autoscaler:
 
         return NodeProviderAdapter(
             v1_provider=node_provider_v1,
+            config_reader=config_reader,
         )
 
     @staticmethod

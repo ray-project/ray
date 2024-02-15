@@ -34,15 +34,6 @@ enum StatusCode {
   INVALID_VALUE = 5;
 }
 
-enum NodeKind {
-  // The unmanaged node kind.
-  UNMANAGED = 0;
-  // The head node.
-  HEAD = 1;
-  // The worker node.
-  WORKER = 2;
-}
-
 message Status {
   StatusCode code = 1;
   string message = 2;

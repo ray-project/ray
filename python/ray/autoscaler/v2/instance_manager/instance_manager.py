@@ -240,6 +240,7 @@ class InstanceManager:
                     details=("REQUESTED update must have launch_request_id"),
                 )
             instance.launch_request_id = update.launch_request_id
+            instance.instance_type = update.instance_type
 
     @staticmethod
     def _create_instance(update: InstanceUpdateEvent) -> Instance:
