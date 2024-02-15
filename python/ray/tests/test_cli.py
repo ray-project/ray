@@ -1048,6 +1048,7 @@ def test_ray_drain_node(ray_start_cluster):
     assert result.exit_code == 0
 
     ray.kill(actor)
+    # Eventually both worker nodes will be drained and stopped.
     wait_for_condition(
         lambda: len({node["NodeID"] for node in ray.nodes() if (node["Alive"])}) == 1
     )
