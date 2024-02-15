@@ -313,12 +313,15 @@ class ConnectorV2(abc.ABC):
                 batch,
                 "test_col_2",
                 # One (complex) already batched struct.
-                {"a": np.array([3, 5]), "b": [4, 6]},
+                {"a": np.array([3, 5]), "b": np.array([4, 6])},
                 num_items=2,
             )
             check(
                 batch["test_col_2"],
-                [{"a": np.array(3), "b": 4}, {"a": np.array(5), "b": 6}],
+                [
+                    {"a": np.array(3), "b": np.array(4)},
+                    {"a": np.array(5), "b": np.array(6)},
+                ],
             )
 
         Args:
