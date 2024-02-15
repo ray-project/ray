@@ -702,9 +702,9 @@ def test_resume_options(tmp_path, resume):
     if resume in [True, "AUTO", "AUTO+RESTART_ERRORED", "AUTO+RESTART_ERRORED_ONLY"]:
         # These options either don't resume the errored trial,
         # or restart it without a checkpoint --> leading to the RuntimeError again
-        assert not results[0].metrics.get("finish_marker", False)
+        assert not results[0].metrics.get("finish_marker")
     else:
-        assert results[0].metrics.get("finish_marker", False)
+        assert results[0].metrics.get("finish_marker")
 
 
 # For some reason, different tests are coupled through tune.registry.
