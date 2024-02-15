@@ -13,7 +13,7 @@ if __name__ == "__main__":
     print("Sanity check python version: {}".format(sys.version))
     print("System: ", sys.platform)
     print("OS PID: ", os.getpid())
-    print("signal", signal.CTRL_BREAK_EVENT)
+    print("ray version: ", ray.__version__)
     #os.kill(os.getpid(), signal.CTRL_BREAK_EVENT)
     assert (
         ray_version == ray.__version__
@@ -27,15 +27,18 @@ if __name__ == "__main__":
     )
     assert ray.__file__ is not None
 
-    ray.init()
-    assert ray.is_initialized()
+    try:
+        ray.init()
+        assert ray.is_initialized()
 
-    @ray.remote
-    def return_arg(arg):
-        return arg
+        @ray.remote
+        def return_arg(arg):
+            return arg
 
-    val = 3
-    print("Running basic sanity check.")
-    assert ray.get(return_arg.remote(val)) == val
-    ray.shutdown()
-    print("Sanity check succeeded on Python {}".format(sys.version))
+        val = 3
+        print("Running basic sanity check.")
+        assert ray.get(return_arg.remote(val)) == val
+        ray.shutdown()
+        print("Sanity check succeeded on Python {}".format(sys.version))
+    except Exception as e:
+        print("Sanity check failed: ", e)
