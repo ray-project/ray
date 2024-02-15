@@ -1,3 +1,4 @@
+import asyncio
 from collections import defaultdict
 import queue
 from typing import Any, Dict, List, Tuple, Union, Optional
@@ -13,7 +14,8 @@ from ray.experimental.channel import (
     SynchronousInputReader,
     OutputWriter,
     SynchronousOutputWriter,
-    AwaitableBackgroundInputReader,
+    AwaitableDAGOutput,
+    AwaitableBackgroundDAGOutputReader,
     AwaitableBackgroundOutputWriter,
 )
 from ray.util.annotations import DeveloperAPI
@@ -176,7 +178,13 @@ class CompiledDAG:
             )
 
         self._enable_asyncio: bool = enable_asyncio
+        self._fut_queue = asyncio.Queue()
         self._async_max_queue_size: Optional[int] = async_max_queue_size
+        # Used to ensure that the future returned to the
+        # caller corresponds to the correct DAG output. I.e.
+        # order of futures added to fut_queue should match the
+        # order of inputs written to the DAG.
+        self._dag_submission_lock = asyncio.Lock()
 
         # idx -> CompiledTask.
         self.idx_to_task: Dict[int, "CompiledTask"] = {}
@@ -422,8 +430,9 @@ class CompiledDAG:
             self._dag_submitter = AwaitableBackgroundOutputWriter(
                 self.dag_input_channel, self._async_max_queue_size
             )
-            self._dag_output_fetcher = AwaitableBackgroundInputReader(
-                self.dag_output_channels
+            self._dag_output_fetcher = AwaitableBackgroundDAGOutputReader(
+                self.dag_output_channels,
+                self._fut_queue,
             )
         else:
             self._dag_submitter = SynchronousOutputWriter(self.dag_input_channel)
@@ -513,8 +522,10 @@ class CompiledDAG:
         self,
         *args,
         **kwargs,
-    ) -> Union[Channel, List[Channel]]:
+        ) -> AwaitableDAGOutput:
         """Execute this DAG using the compiled execution path.
+
+        NOTE: Not threadsafe.
 
         Args:
             args: Args to the InputNode.
@@ -534,9 +545,13 @@ class CompiledDAG:
             raise ValueError("Use execute if enable_asyncio=False")
 
         self._get_or_compile()
-        await self._dag_submitter.write(args[0])
+        async with self._dag_submission_lock:
+            await self._dag_submitter.write(args[0])
+            # Allocate a future that the caller can use to get the result.
+            fut = asyncio.Future()
+            await self._fut_queue.put(fut)
 
-        return self._dag_output_fetcher
+        return AwaitableDAGOutput(fut, self._dag_output_fetcher)
 
     def teardown(self):
         """Teardown and cancel all worker tasks for this DAG."""

@@ -248,48 +248,53 @@ class SynchronousInputReader(InputReader):
             c.end_read()
 
 
-class AwaitableBackgroundInputReader(InputReader):
-    def __init__(self, input_channels: List[Channel]):
+class AwaitableBackgroundDAGOutputReader(InputReader):
+    def __init__(self, input_channels: List[Channel],
+            fut_queue: asyncio.Queue):
         super().__init__(input_channels)
-        self.queue = asyncio.Queue()
+        self.fut_queue = fut_queue
         self.background_task = None
 
     def start(self):
-        self.background_task = self.run()
-        asyncio.ensure_future(self.background_task)
+        self.background_task = asyncio.ensure_future(self.run())
 
     def _run(self):
         vals = [c.begin_read() for c in self._input_channels]
+        if self._has_single_output:
+            vals = vals[0]
         return vals
 
     async def run(self):
         loop = asyncio.get_running_loop()
         while not self._closed:
-            try:
-                res = await loop.run_in_executor(None, self._run)
-            except Exception as exc:
-                res = exc
+            res, fut = await asyncio.gather(
+                    loop.run_in_executor(None, self._run),
+                    self.fut_queue.get(),
+                    return_exceptions=True)
 
-            await self.queue.put(res)
-
-    async def begin_read(self) -> Any:
-        outputs = await self._begin_read_list()
-        self._num_reads += 1
-        if self._has_single_output:
-            return outputs[0]
-        else:
-            return outputs
-
-    async def _begin_read_list(self) -> Any:
-        val = await self.queue.get()
-        if isinstance(val, Exception):
-            raise val
-
-        return val
+            fut.set_result(res)
 
     def end_read(self) -> Any:
         for c in self._input_channels:
             c.end_read()
+
+    def close(self):
+        self.background_task.cancel()
+        super().close()
+
+
+class AwaitableDAGOutput:
+    def __init__(self, fut : asyncio.Future,
+            reader : InputReader):
+        self._fut = fut
+        self._reader = reader
+
+    def begin_read(self):
+        return self._fut
+
+    def end_read(self):
+        self._reader.end_read()
+
 
 
 class OutputWriter:
@@ -330,8 +335,7 @@ class AwaitableBackgroundOutputWriter(OutputWriter):
         self.background_task = None
 
     def start(self):
-        self.background_task = self.run()
-        asyncio.ensure_future(self.background_task)
+        self.background_task = asyncio.ensure_future(self.run())
 
     def _run(self, res):
         self._output_channel.write(res)
@@ -347,3 +351,7 @@ class AwaitableBackgroundOutputWriter(OutputWriter):
             raise RuntimeError("DAG execution cancelled")
         await self.queue.put(val)
         self._num_writes += 1
+
+    def close(self):
+        self.background_task.cancel()
+        super().close()

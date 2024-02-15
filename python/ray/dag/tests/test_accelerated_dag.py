@@ -287,28 +287,37 @@ def test_dag_teardown_while_running(ray_start_regular_shared):
     compiled_dag.teardown()
 
 
-def test_asyncio(ray_start_regular):
+@pytest.mark.parametrize("max_queue_size", [None, 2])
+def test_asyncio(ray_start_regular, max_queue_size):
     a = Actor.remote(0)
     with InputNode() as i:
         dag = a.echo.bind(i)
 
     loop = get_or_create_event_loop()
     compiled_dag = dag.experimental_compile(
-            enable_asyncio=True)
+            enable_asyncio=True,
+            async_max_queue_size=max_queue_size)
 
     async def main(i):
         output_channel = await compiled_dag.execute_async(i)
-        # TODO(swang): Replace with fake ObjectRef.
+        time.sleep(random.random())
         result = await output_channel.begin_read()
         assert result == i
         output_channel.end_read()
 
-    loop.run_until_complete(asyncio.gather(
-        *[main(i) for i in range(5)]))
+    e = None
+    try:
+        loop.run_until_complete(asyncio.gather(
+            *[main(i) for i in range(10)]))
+    except Exception as exc:
+        e = exc
+    finally:
+        # Note: must teardown before starting a new Ray session, otherwise you'll get
+        # a segfault from the dangling monitor thread upon the new Ray init.
+        compiled_dag.teardown()
 
-    # Note: must teardown before starting a new Ray session, otherwise you'll get
-    # a segfault from the dangling monitor thread upon the new Ray init.
-    compiled_dag.teardown()
+    if e is not None:
+        raise e
 
 if __name__ == "__main__":
     if os.environ.get("PARALLEL_CI"):
