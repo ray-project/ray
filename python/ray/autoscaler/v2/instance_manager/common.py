@@ -1,12 +1,13 @@
 import time
-from dataclasses import dataclass
+import uuid
 from typing import Dict, List, Optional, Set
 
-from ray.core.generated.instance_manager_pb2 import Instance
+from google.protobuf.json_format import MessageToDict
+
+from ray.core.generated.instance_manager_pb2 import Instance, InstanceUpdateEvent
 
 
-@dataclass
-class InvalidInstanceStatusTransitionError(ValueError):
+class InvalidInstanceUpdateError(ValueError):
     """Raised when an instance has an invalid status."""
 
     # The instance manager instance id.
@@ -15,13 +16,35 @@ class InvalidInstanceStatusTransitionError(ValueError):
     cur_status: Instance.InstanceStatus
     # The new status to be set to.
     new_status: Instance.InstanceStatus
+    # Extra details
+    details: str
 
-    def __str__(self):
-        return (
-            f"Instance {self.instance_id} with current status "
-            f"{Instance.InstanceStatus.Name(self.cur_status)} "
-            f"cannot be set to {Instance.InstanceStatus.Name(self.new_status)}"
+    def __init__(
+        self,
+        instance_id: str,
+        cur_status: Instance.InstanceStatus,
+        update: InstanceUpdateEvent,
+        details: str,
+    ):
+        """
+        Args:
+            instance_id: The instance id.
+            cur_status: The current status of the instance.
+            update: The update to apply.
+            details: The details of the error.
+        """
+        self.instance_id = instance_id
+        self.cur_status = cur_status
+        self.new_status = update.new_instance_status
+        self.details = details
+
+        msg = (
+            f"Instance {instance_id} with current status "
+            f"{Instance.InstanceStatus.Name(cur_status)} "
+            f"cannot be updated by {MessageToDict(update)}: {details}"
         )
+
+        super().__init__(msg)
 
 
 class InstanceUtil:
@@ -41,18 +64,32 @@ class InstanceUtil:
     def new_instance(
         instance_id: str,
         instance_type: str,
-        request_id: str = "",
+        status: Instance.InstanceStatus,
+        details: str = "",
     ) -> Instance:
+        """
+        Returns a new instance with the given status.
+
+        Args:
+            instance_id: The instance id.
+            instance_type: The instance type.
+            status: The status of the new instance.
+            details: The details of the status transition.
+        """
         instance = Instance()
         instance.version = 0  # it will be populated by the underlying storage.
         instance.instance_id = instance_id
         instance.instance_type = instance_type
-        instance.launch_request_id = request_id
-        instance.status = Instance.QUEUED
-        InstanceUtil._record_status_transition(
-            instance, Instance.QUEUED, "created from InstanceUtil"
-        )
+        instance.status = status
+        InstanceUtil._record_status_transition(instance, status, details)
         return instance
+
+    @staticmethod
+    def random_instance_id() -> str:
+        """
+        Returns a random instance id.
+        """
+        return str(uuid.uuid4())
 
     @staticmethod
     def is_cloud_instance_allocated(instance_status: Instance.InstanceStatus) -> bool:
@@ -74,21 +111,11 @@ class InstanceUtil:
         }
 
     @staticmethod
-    def is_ray_running_reachable(instance_status: Instance.InstanceStatus) -> bool:
-        """
-        Returns True if the instance is in a status where it may transition
-        to RAY_RUNNING status.
-        """
-        return Instance.RAY_RUNNING in InstanceUtil.get_reachable_statuses(
-            instance_status
-        )
-
-    @staticmethod
     def set_status(
         instance: Instance,
         new_instance_status: Instance.InstanceStatus,
         details: str = "",
-    ):
+    ) -> bool:
         """Transitions the instance to the new state.
 
         Args:
@@ -96,20 +123,17 @@ class InstanceUtil:
             new_instance_status: The new status to transition to.
             details: The details of the transition.
 
-        Raises:
-            InvalidInstanceStatusTransitionError if the transition is not allowed.
+        Returns:
+            True if the status transition is successful, False otherwise.
         """
         if (
             new_instance_status
             not in InstanceUtil.get_valid_transitions()[instance.status]
         ):
-            raise InvalidInstanceStatusTransitionError(
-                instance_id=instance.instance_id,
-                cur_status=instance.status,
-                new_status=new_instance_status,
-            )
+            return False
         instance.status = new_instance_status
         InstanceUtil._record_status_transition(instance, new_instance_status, details)
+        return True
 
     @staticmethod
     def _record_status_transition(
@@ -190,17 +214,38 @@ class InstanceUtil:
                 # such that a ray running node  wasn't discovered and the RAY_RUNNING
                 # transition was skipped.
                 Instance.RAY_STOPPED,
+                # A cloud instance is being terminated (when the instance itself is no
+                # longer needed, e.g. instance is outdated, autoscaler is scaling down)
+                Instance.TERMINATING,
                 # cloud instance somehow failed during the installation process.
                 Instance.TERMINATED,
             },
             # Ray process is installed and running on the cloud instance. When in this
             # status, a ray node must be present in the ray cluster.
             Instance.RAY_RUNNING: {
-                # Ray is requested to be stopped to the ray cluster,
+                # Ray is requested to be stopped.
+                Instance.RAY_STOP_REQUESTED,
+                # Ray is stopping (currently draining),
                 # e.g. idle termination.
                 Instance.RAY_STOPPING,
                 # Ray is already stopped, as reported by the ray cluster.
                 Instance.RAY_STOPPED,
+                # A cloud instance is being terminated (when the instance itself is no
+                # longer needed, e.g. instance is outdated, autoscaler is scaling down)
+                Instance.TERMINATING,
+                # cloud instance somehow failed.
+                Instance.TERMINATED,
+            },
+            # Ray process should be stopped on the cloud instance. The RayStopper
+            # subscriber will listen to this status and stop the ray process.
+            Instance.RAY_STOP_REQUESTED: {
+                # Ray is stopping on the cloud instance.
+                Instance.RAY_STOPPING,
+                # Ray stopped already.
+                Instance.RAY_STOPPED,
+                # Ray stop request failed (e.g. idle node no longer idle),
+                # ray is still running.
+                Instance.RAY_RUNNING,
                 # cloud instance somehow failed.
                 Instance.TERMINATED,
             },
@@ -224,13 +269,17 @@ class InstanceUtil:
                 # Ray is stopped, and the ray node is present in the dead ray node list
                 # reported by the ray cluster.
                 Instance.RAY_STOPPED,
+                # A cloud instance is being terminated (when the instance itself is no
+                # longer needed, e.g. instance is outdated, autoscaler is scaling down)
+                Instance.TERMINATING,
                 # cloud instance somehow failed.
                 Instance.TERMINATED,
             },
             # When in this status, the ray process is stopped, and the ray node is
             # present in the dead ray node list reported by the ray cluster.
             Instance.RAY_STOPPED: {
-                # cloud instance is requested to be stopped.
+                # A cloud instance is being terminated (when the instance itself is no
+                # longer needed, e.g. instance is outdated, autoscaler is scaling down)
                 Instance.TERMINATING,
                 # cloud instance somehow failed.
                 Instance.TERMINATED,

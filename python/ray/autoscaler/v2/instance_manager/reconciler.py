@@ -35,7 +35,6 @@ from ray.core.generated.instance_manager_pb2 import (
     InstanceUpdateEvent as IMInstanceUpdateEvent,
 )
 from ray.core.generated.instance_manager_pb2 import (
-    LaunchRequest,
     StatusCode,
     UpdateInstanceManagerStateRequest,
 )
@@ -196,11 +195,11 @@ class Reconciler:
             1. Shut down leak cloud instances
                 Leaked cloud instances that are not managed by the instance manager.
             2. Terminating instances with ray stopped or ray install failure.
-            3. Scale up/down the cluster:
-              (* -> RAY_STOPPING)
+            3. Scale down the cluster:
+              (* -> RAY_STOP_REQUESTED/TERMINATING)
                 b. Extra cloud due to max nodes config.
                 c. Cloud instances with outdated configs.
-            4. Create new instances
+            4. Scale up the cluster:
               (new QUEUED)
                 Create new instances based on the IResourceScheduler's decision for
                 scaling up.
@@ -219,10 +218,9 @@ class Reconciler:
                 the cloud provider.
 
         """
+
         Reconciler._handle_extra_cloud_instances(
-            instance_manager=instance_manager,
-            cloud_provider=cloud_provider,
-            non_terminated_cloud_instances=non_terminated_cloud_instances,
+            instance_manager, non_terminated_cloud_instances
         )
 
         Reconciler._handle_stuck_instances(
@@ -519,13 +517,9 @@ class Reconciler:
         instance_manager: InstanceManager,
         version: int,
         updates: Dict[str, IMInstanceUpdateEvent],
-        launch_requests: Optional[List[LaunchRequest]] = None,
     ) -> None:
-        if not updates and not launch_requests:
+        if not updates:
             return
-
-        if launch_requests is None:
-            launch_requests = []
 
         updates = list(updates.values()) or []
 
@@ -533,7 +527,6 @@ class Reconciler:
             request=UpdateInstanceManagerStateRequest(
                 expected_version=version,
                 updates=updates,
-                launch_requests=launch_requests,
             )
         )
         # TODO: While it's possible that a version mismatch
@@ -659,54 +652,6 @@ class Reconciler:
             return cur_im_status
 
         return reconciled_im_status
-
-    @staticmethod
-    def _handle_extra_cloud_instances(
-        instance_manager: InstanceManager,
-        cloud_provider: ICloudInstanceProvider,
-        non_terminated_cloud_instances: Dict[CloudInstanceId, CloudInstance],
-    ):
-        """
-        Shut down extra cloud instances that are not managed by the instance manager.
-
-        Since we have sync the IM states with the cloud provider's states in
-        earlier step (`sync_from`), each non terminated cloud instance should either
-        be:
-            1. assigned to a newly ALLOCATED im instance
-            2. already associated with an im instance that's running/terminating.
-
-        Any cloud instance that's not managed by the IM should be considered leak.
-
-        Args:
-            instance_manager: The instance manager to reconcile.
-            non_terminated_cloud_instances: The non-terminated cloud instances from
-                the cloud provider.
-        """
-        instances, _ = Reconciler._get_im_instances(instance_manager)
-
-        cloud_instance_ids_managed_by_im = {
-            instance.cloud_instance_id
-            for instance in instances
-            if instance.cloud_instance_id
-        }
-
-        leaked_cloud_instance_ids = []
-        for cloud_instance_id, _ in non_terminated_cloud_instances.items():
-            if cloud_instance_id in cloud_instance_ids_managed_by_im:
-                continue
-
-            leaked_cloud_instance_ids.append(cloud_instance_id)
-
-        if not leaked_cloud_instance_ids:
-            return
-
-        cloud_provider.terminate(
-            ids=leaked_cloud_instance_ids, request_id=str(time.time_ns())
-        )
-        logger.warning(
-            f"Terminating leaked cloud instances: {leaked_cloud_instance_ids}: no"
-            " matching instance found in instance manager."
-        )
 
     @staticmethod
     def _handle_instances_launch(
@@ -912,6 +857,15 @@ class Reconciler:
                 IMInstance.TERMINATION_FAILED,
                 reconcile_config.terminating_status_timeout_s,
             ),
+            # If we tried to stop ray on the instance, but it doesn't stop after a long
+            # time, we will transition it back to RAY_RUNNING as the stop/drain somehow
+            # failed. If it had succeed, we should have transition it to RAY_STOPPING
+            # or RAY_STOPPED.
+            (
+                IMInstance.RAY_STOP_REQUESTED,
+                IMInstance.RAY_RUNNING,
+                reconcile_config.ray_stop_requested_status_timeout_s,
+            ),
         ]:
             im_updates.update(
                 Reconciler._handle_timeout(
@@ -926,7 +880,8 @@ class Reconciler:
         # mechanism to handle them. We only warn if they are stuck for too long.
         for status in [
             # Ray taking time to drain. We could also have a timeout when Drain protocol
-            # supports timeout.
+            # supports timeout. The ray drain protocol should handle cases where
+            # ray takes a long time to drain a node.
             IMInstance.RAY_STOPPING,
             # These should just be transient, we will terminate instances with this
             # status in the next reconciler step.
@@ -1141,17 +1096,47 @@ class Reconciler:
 
         to_launch = reply.to_launch
         to_terminate = reply.to_terminate
-        terminate_updates = {}
+        updates = {}
+        # Add terminating instances.
         for terminate_request in to_terminate:
-            terminate_updates[terminate_request.instance_id] = IMInstanceUpdateEvent(
-                instance_id=terminate_request.instance_id,
-                new_instance_status=IMInstance.RAY_STOPPING,
-                termination_request=terminate_request,
+            instance_id = terminate_request.instance_id
+            if autoscaling_config.need_ray_stop():
+                # If we would need to stop/drain ray.
+                updates[terminate_request.instance_id] = IMInstanceUpdateEvent(
+                    instance_id=instance_id,
+                    new_instance_status=IMInstance.RAY_STOP_REQUESTED,
+                    termination_request=terminate_request,
+                )
+            else:
+                # If we would just terminate the cloud instance.
+                updates[terminate_request.instance_id] = IMInstanceUpdateEvent(
+                    instance_id=instance_id,
+                    new_instance_status=IMInstance.TERMINATING,
+                )
+            logger.info(
+                "Terminating {} with {}".format(
+                    instance_id,
+                    MessageToDict(updates[instance_id]),
+                )
             )
 
-        Reconciler._update_instance_manager(
-            instance_manager, version, terminate_updates, to_launch
-        )
+        # Add new instances.
+        for launch_request in to_launch:
+            for _ in range(launch_request.count):
+                instance_id = InstanceUtil.random_instance_id()
+                updates[instance_id] = IMInstanceUpdateEvent(
+                    instance_id=instance_id,
+                    new_instance_status=IMInstance.QUEUED,
+                    instance_type=launch_request.instance_type,
+                )
+
+                logger.info(
+                    "Queueing new instance {} of type {}".format(
+                        instance_id, launch_request.instance_type
+                    )
+                )
+
+        Reconciler._update_instance_manager(instance_manager, version, updates)
 
     @staticmethod
     def _terminate_instances(instance_manager: InstanceManager):
@@ -1193,7 +1178,7 @@ class Reconciler:
     def _install_ray(
         instance_manager: InstanceManager,
         non_terminated_cloud_instances: Dict[CloudInstanceId, CloudInstance],
-    ):
+    ) -> None:
         """
         Install ray on the allocated instances when it's ready (cloud instance
         should be running)
@@ -1237,3 +1222,59 @@ class Reconciler:
             )
 
         Reconciler._update_instance_manager(instance_manager, version, updates)
+
+    def _handle_extra_cloud_instances(
+        instance_manager: InstanceManager,
+        non_terminated_cloud_instances: Dict[CloudInstanceId, CloudInstance],
+    ):
+        """
+        Shut down extra cloud instances that are not managed by the instance manager.
+
+        Since we have sync the IM states with the cloud provider's states in
+        earlier step (`sync_from`), each non terminated cloud instance should either
+        be:
+            1. assigned to a newly ALLOCATED im instance
+            2. already associated with an im instance that's running/terminating.
+
+        Any cloud instance that's not managed by the IM should be considered leak.
+
+        Args:
+            instance_manager: The instance manager to reconcile.
+            non_terminated_cloud_instances: The non-terminated cloud instances from
+                the cloud provider.
+        """
+        instances, version = Reconciler._get_im_instances(instance_manager)
+
+        cloud_instance_ids_managed_by_im = {
+            instance.cloud_instance_id
+            for instance in instances
+            if instance.cloud_instance_id
+        }
+
+        leaked_cloud_instance_ids = []
+        for cloud_instance_id, _ in non_terminated_cloud_instances.items():
+            if cloud_instance_id in cloud_instance_ids_managed_by_im:
+                continue
+
+            leaked_cloud_instance_ids.append(cloud_instance_id)
+
+        if not leaked_cloud_instance_ids:
+            return
+
+        # Update the IM with TERMINATING status for the leaked cloud instances.
+        updates = {}
+
+        for cloud_instance_id in leaked_cloud_instance_ids:
+            updates[cloud_instance_id] = IMInstanceUpdateEvent(
+                instance_id=InstanceUtil.random_instance_id(),  # Assign a new id.
+                cloud_instance_id=cloud_instance_id,
+                new_instance_status=IMInstance.TERMINATING,
+                details="Leaked cloud instance",
+            )
+
+        Reconciler._update_instance_manager(instance_manager, version, updates)
+
+        logger.warning(
+            f"Terminating leaked cloud instances: {leaked_cloud_instance_ids}: no"
+            " matching instance found in instance manager."
+        )

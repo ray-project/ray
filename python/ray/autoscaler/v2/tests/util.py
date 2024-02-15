@@ -12,17 +12,17 @@ from ray.core.generated.instance_manager_pb2 import Instance
 
 
 class MockSubscriber:
-
-    events = []
+    def __init__(self):
+        self.events = []
 
     def notify(self, events):
-        MockSubscriber.events.extend(events)
+        self.events.extend(events)
 
     def clear(self):
-        MockSubscriber.events.clear()
+        self.events.clear()
 
-    def events_by_id(self, instance_id):
-        return [e for e in self.events if e.instance_id == instance_id]
+    def events_by_id(self, event_id):
+        return [e for e in self.events if e.instance_id == event_id]
 
 
 def make_autoscaler_instance(

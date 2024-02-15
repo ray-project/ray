@@ -130,14 +130,16 @@ message InstanceUpdateEvent {
 
   /// Additional metdata for the update event.
 
+  // The instance type for QUEUED event.
+  optional string instance_type = 4;
   // Cloud instance id for ALLOCATED event.
-  optional string cloud_instance_id = 4;
+  optional string cloud_instance_id = 6;
   // Ray node id for RAY_RUNNING event.
-  optional string ray_node_id = 5;
+  optional string ray_node_id = 7;
   // Launch request id for REQUESTED event.
-  optional string launch_request_id = 6;
+  optional string launch_request_id = 8;
   // Termination request for RAY_STOPPING event.
-  optional TerminationRequest termination_request = 7;
+  optional TerminationRequest termination_request = 9;
 }
 
 // Launch request for a node type.
@@ -162,6 +164,8 @@ message TerminationRequest {
     MAX_NUM_NODE_PER_TYPE = 2;
     // Global max num nodes reached.
     MAX_NUM_NODES = 3;
+    // An outdated node.
+    OUTDATED = 4;
   }
   // id of the request.
   string id = 1;
@@ -171,22 +175,22 @@ message TerminationRequest {
   string instance_id = 3;
   // the reason of the termination.
   Cause cause = 4;
+  // Instance type.
+  string instance_type = 5;
 
   // Idle time if the cause is IDLE.
-  optional uint64 idle_time_ms = 5;
+  optional uint64 idle_time_ms = 6;
   // The per type max instance limit if the cause is MAX_NUM_NODE_PER_TYPE.
-  optional uint32 max_num_nodes_per_type = 6;
+  optional uint32 max_num_nodes_per_type = 7;
   // The global max num nodes if the cause is MAX_NUM_NODES.
-  optional uint32 max_num_nodes = 7;
+  optional uint32 max_num_nodes = 8;
 }
 
 message UpdateInstanceManagerStateRequest {
   // the expected version of the state.
   int64 expected_version = 1;
-  // instance launch requests.
-  repeated LaunchRequest launch_requests = 2;
   // instance state updates.
-  repeated InstanceUpdateEvent updates = 3;
+  repeated InstanceUpdateEvent updates = 2;
 }
 
 message UpdateInstanceManagerStateReply {
