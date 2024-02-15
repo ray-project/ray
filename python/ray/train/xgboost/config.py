@@ -40,6 +40,10 @@ class XGBoostConfig(BackendConfig):
 
 
 class _XGBoostRabitBackend(Backend):
+    def __init__(self):
+        self._tracker = None
+        self._rabit_args = {}
+
     def on_start(self, worker_group: WorkerGroup, backend_config: XGBoostConfig):
         assert backend_config.xgboost_communicator == "rabit"
 
@@ -47,10 +51,10 @@ class _XGBoostRabitBackend(Backend):
         num_workers = len(worker_group)
         self._rabit_args = {"DMLC_NUM_WORKER": num_workers}
         train_driver_ip = ray.util.get_node_ip_address()
-        self.tracker = RabitTracker(host_ip=train_driver_ip, n_workers=num_workers)
+        self._tracker = RabitTracker(host_ip=train_driver_ip, n_workers=num_workers)
         self._rabit_args.update(self.tracker.worker_envs())
 
-        self.tracker.start(num_workers)
+        self._tracker.start(num_workers)
 
         start_log = (
             "RabitTracker started with parameters:\n"
@@ -71,9 +75,9 @@ class _XGBoostRabitBackend(Backend):
         worker_group.execute(set_xgboost_env_vars)
 
     def on_shutdown(self, worker_group: WorkerGroup, backend_config: XGBoostConfig):
-        self.tracker.thread.join(timeout=5)
+        self._tracker.thread.join(timeout=5)
 
-        if self.tracker.thread.is_alive():
+        if self._tracker.thread.is_alive():
             logger.warning(
                 "During shutdown, the RabitTracker thread failed to join "
                 "within 5 seconds. "
