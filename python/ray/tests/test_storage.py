@@ -1,5 +1,4 @@
 import os
-import sys
 import subprocess
 import urllib
 from pathlib import Path
