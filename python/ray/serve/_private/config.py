@@ -2,10 +2,9 @@ import inspect
 import json
 from typing import Any, Callable, Dict, List, Optional, Set, Tuple, Union
 
-from google.protobuf.json_format import MessageToDict
-
 from ray import cloudpickle
 from ray._private import ray_option_utils
+from ray._private.protobuf_compat import message_to_dict
 from ray._private.pydantic_compat import (
     BaseModel,
     Field,
@@ -199,9 +198,9 @@ class DeploymentConfig(BaseModel):
 
     @classmethod
     def from_proto(cls, proto: DeploymentConfigProto):
-        data = MessageToDict(
+        data = message_to_dict(
             proto,
-            including_default_value_fields=True,
+            always_print_fields_with_no_presence=True,
             preserving_proto_field_name=True,
             use_integers_for_enums=True,
         )
