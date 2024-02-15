@@ -448,6 +448,34 @@ class Library(ExampleEnum):
     def formatted_name(cls):
         return "Library"
 
+    @classmethod
+    def from_path(cls, path: Union[pathlib.Path, str]) -> "Library":
+        """Instantiate a Library instance from a path.
+
+        This function works its way up the file tree until it finds a directory that
+        matches one of the enum types; if none is found, raise an exception.
+
+        Parameters
+        ----------
+        path : Union[pathlib.Path, str]
+            Path containing a directory named the same as one of the enum types.
+
+        Returns
+        -------
+        Library
+            A new Library instance for the given path.
+        """
+        if isinstance(path, str):
+            path = pathlib.Path(path)
+
+        for part in path.parts:
+            try:
+                return Library(part)
+            except ValueError:
+                continue
+
+        raise ValueError(f"Cannot find library name from example config path {path}")
+
 
 class Example:
     """Class containing metadata about an example to be shown in the exmaple gallery."""
@@ -477,38 +505,72 @@ class Example:
             )
 
 
-def parse_example_config(
-    path: Union[pathlib.Path, str], src_dir: Union[pathlib.Path, str]
-) -> List[Example]:
-    """Parse a config file containing examples to display in the example gallery.
+class ExampleConfig:
+    """Object which holds configuration data for a set of library examples."""
 
-    Parameters
-    ----------
-    path : Union[pathlib.Path, str]
-        Path to the `examples.yml` to be parsed
-    root_dir : Union[pathlib.Path, str]
-        Path to the root of the docs directory; `app.srcdir`
+    def __init__(
+        self, path: Union[pathlib.Path, str], src_dir: Union[pathlib.Path, str]
+    ):
+        """Parse a config file containing examples to display in the example gallery.
 
-    Returns
-    -------
-    List[Example]
-        A list of Example instances to be shown
-    """
-    if isinstance(path, str):
-        path = pathlib.Path(path)
+        Parameters
+        ----------
+        path : Union[pathlib.Path, str]
+            Path to the `examples.yml` to be parsed
+        root_dir : Union[pathlib.Path, str]
+            Path to the root of the docs directory; `app.srcdir`
+        """
+        if isinstance(path, str):
+            path = pathlib.Path(path)
 
-    with open(path, "r") as f:
-        config = yaml.safe_load(f)
+        if not path.exists():
+            breakpoint()
+            raise ValueError(f"No configuration file found at {path}.")
 
-    try:
-        library = Library(path.parts[-2])
-    except IndexError:
-        raise ValueError(f"Cannot find library name from example config path {path}")
+        with open(path, "r") as f:
+            config = yaml.safe_load(f)
 
-    return [
-        Example(example, library, path.relative_to(src_dir).parent)
-        for example in config
-    ]
+        self.config_path = path
+        self.library = Library.from_path(path)
+        self.examples = self.parse_examples(config.get("examples", []))
+        self.text = config.get("text", "")
+
+    def parse_examples(
+        self, example_config: List[Dict[str, str]], src_dir: Union[pathlib.Path, str]
+    ) -> List[Example]:
+        """Parse the examples in the given configuration.
+
+        Raise an exception if duplicate examples are found in the configuration file.
+
+        Parameters
+        ----------
+        path : pathlib.Path
+            Path to the example file to parse
+
+        Returns
+        -------
+        List[Example]
+            List of examples from the parsed configuration file
+        """
+        links = set()
+        examples = []
+        for example in example_config:
+            if example.link in links:
+                raise ValueError(
+                    f"A duplicate example {example.link} was specified in {self.config_path}. "
+                    "Please remove duplicates and rebuild."
+                )
+            links.add(example.link)
+            examples.append(
+                Example(
+                    example, self.library, self.config_path.relative_to(src_dir).parent
+                )
+            )
+
+        return examples
+
+    def __iter__(self):
+        yield from self.examples
 
 
 def setup_context(app, pagename, templatename, context, doctree):
@@ -530,31 +592,17 @@ def setup_context(app, pagename, templatename, context, doctree):
         if config is None:
             config = (pathlib.Path(app.confdir) / pagename).parent / "examples.yml"
 
-        if not config.exists():
-            raise ValueError(
-                f"Attempted to render examples page {pagename}. However, no "
-                f"configuration file was present at {config}. Stopping build."
-            )
-
-        # Separate the examples into different skill levels; keep track of the example
-        # links to ensure there are no duplicates.
-        links = set()
+        # Separate the examples into different skill levels
         examples = {
             SkillLevel.BEGINNER: [],
             SkillLevel.INTERMEDIATE: [],
             SkillLevel.ADVANCED: [],
         }
-
         # Keep track of whether any of the examples have frameworks metadata; the
         # column will not be shown if no frameworks metadata exists on any example.
         render_framework_col = False
-        for example in parse_example_config(config, app.srcdir):
-            if example.link in links:
-                raise ValueError(
-                    f"A duplicate example {example.link} was specified in {config}. "
-                    "Please remove duplicates and rebuild."
-                )
-            links.add(example.link)
+        example_config = ExampleConfig(config, app.srcdir)
+        for example in example_config:
             examples[example.skill_level].append(example)
             render_framework_col = render_framework_col or len(example.frameworks) != 0
 
@@ -652,10 +700,10 @@ def setup_context(app, pagename, templatename, context, doctree):
         examples = {}
         for config in configs:
             config_path = pathlib.Path(config).relative_to("source")
-            for example in parse_example_config(
+            example_config = ExampleConfig(
                 pathlib.Path(app.confdir) / config_path, app.srcdir
-            ):
-
+            )
+            for example in example_config:
                 # Check the ingested examples for duplicates. If there are duplicates,
                 # check that they have the same field values, and keep only one.
                 if example.link in examples:
@@ -956,12 +1004,19 @@ def pregenerate_example_rsts(
         # Depending on where the sphinx build command is run from, the path to the
         # target config file can change. Handle these paths manually to ensure it
         # works on RTD and locally.
-        config_path = pathlib.Path(config).relative_to("source")
-        rstfile = pathlib.Path(app.confdir) / config_path.with_suffix(".rst")
-        with open(rstfile, "w") as f:
+        config_path = pathlib.Path(app.confdir) / pathlib.Path(config).relative_to(
+            "source"
+        )
+        example_config = ExampleConfig(config_path, app.srcdir)
+
+        # Parse the library from the path name
+        page_title = f"{example_config.library.value} Examples"
+        title_decoration = "=" * len(page_title)
+        with open(config_path.with_suffix(".rst"), "w") as f:
             f.write(
-                "Examples\n========\n  .. this file is pregenerated; please edit "
-                "./examples.yml to modify examples for this library."
+                f"{example_config.library.value}\n{title_decoration}\n"
+                f"{example_config.text}\n  .. this file is pregenerated; "
+                "please edit ./examples.yml to modify examples for this library."
             )
 
 
