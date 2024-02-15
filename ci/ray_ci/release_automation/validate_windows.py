@@ -33,7 +33,10 @@ def main(
     docker_login(_DOCKER_ECR_REPO.split("/")[0])
 
     container = _get_container(build_name, list(test_env))
-    container.run_sanity_check()
+    run = container.run_sanity_check()
+    exit = run.wait()
+    print(exit)
+    return exit == 0
 
 class WindowsValidateContainer(WindowsContainer):
     def __init__(
@@ -52,7 +55,7 @@ class WindowsValidateContainer(WindowsContainer):
             "powershell ci/pipeline/fix-windows-container-networking.ps1"
         )
         commands.append(
-            ".buildkite/release-automation/verifiy-windows-wheels.sh"
+            ".buildkite/release-automation/verify-windows-wheels.sh"
         )
         return subprocess.Popen(
             self.get_run_command(
