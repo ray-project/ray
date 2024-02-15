@@ -1,9 +1,5 @@
 group: Validate wheels
 steps:
-  - name: windowsbuild
-    wanda: ci/docker/windows.build.wanda.yaml
-    instance_type: builder-windows
-
   - label: "Windows"
     job_env: WINDOWS
     instance_type: windows
