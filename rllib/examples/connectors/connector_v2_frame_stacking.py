@@ -32,7 +32,7 @@ parser.add_argument(
 parser.add_argument(
     "--use-gym-wrapper-framestacking",
     action="store_true",
-    help="Whether to use Rllib's Atari wrapper's framestacking capabilities (as "
+    help="Whether to use RLlib's Atari wrapper's framestacking capabilities (as "
     "opposed to doing it via a specific ConenctorV2 pipeline).",
 )
 

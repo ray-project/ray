@@ -1567,7 +1567,7 @@ class MultiAgentEpisode:
                 action_space=self.action_space.get(agent_id),
                 rewards=rewards_per_agent[agent_id],
                 extra_model_outputs={
-                    k: list(i[k] for i in extra_model_outputs_per_agent[agent_id])
+                    k: [i[k] for i in extra_model_outputs_per_agent[agent_id]]
                     for k in extra_model_outputs_per_agent[agent_id][0].keys()
                 }
                 if extra_model_outputs_per_agent[agent_id]
