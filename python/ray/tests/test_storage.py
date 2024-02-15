@@ -65,9 +65,6 @@ def test_get_filesystem_s3(shutdown_only):
         assert isinstance(fs, pyarrow.fs.S3FileSystem), fs
 
 
-@pytest.mark.skipif(
-    sys.platform == "win32", reason="The issue is not fixed for windows yet"
-)
 def test_escape_storage_uri_with_runtime_env(shutdown_only):
     # https://github.com/ray-project/ray/issues/41568
     # Test to make sure we can successfully start worker process
