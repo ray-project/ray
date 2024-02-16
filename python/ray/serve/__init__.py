@@ -2,9 +2,9 @@ import ray._private.worker
 
 try:
     from ray.serve.api import (
-        _run,
         Application,
         Deployment,
+        _run,
         delete,
         deployment,
         get_app_handle,
