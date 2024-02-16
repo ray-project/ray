@@ -91,7 +91,7 @@ class Controller():
                 print("reconcile: user_task finished", user_task.spec[USER_TASK_ID])
             return
                 
-    def download_s3_folder(bucket_name, s3_folder='', local_dir=None):
+    def download_s3_folder(self,bucket_name, s3_folder='', local_dir=None):
         """
         Download the contents of a folder directory
         Args:
@@ -102,7 +102,7 @@ class Controller():
         s3=boto3.resource('s3',aws_access_key_id=AWS_ACCESS_KEY_ID,aws_secret_access_key=AWS_SECRET_ACCESS_KEY)
         bucket = s3.Bucket(bucket_name)
         for obj in bucket.objects.filter(Prefix=s3_folder):
-            print(obj.key)
+            
             target = obj.key if local_dir is None \
                 else os.path.join(local_dir, os.path.relpath(obj.key, s3_folder))
             if '/' in target:
@@ -115,6 +115,7 @@ class Controller():
 
 
     def bind_label_and_send_data(self, node_id, label,s3,bucket_name,object_name):
+    
         @ray.remote
         def bind_label():
 	        #TODO: how to guarantee transfer data finished 
@@ -131,7 +132,7 @@ class Controller():
             else:
                 # node_ip=self.get_node_ip(data_id)
                 if s3==True:
-                    self.download_s3_folder(bucket_name,object_name)
+                    self.download_s3_folder(str(bucket_name),str(object_name))
                         
                 else:
                     os.system("rsync --mkpath -a -P {} {}".format(DATA_IP+":"+label,label))

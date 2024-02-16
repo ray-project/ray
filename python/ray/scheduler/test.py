@@ -119,7 +119,7 @@ ray.init()
 dir = "/tmp/apple/9" 
 # ray.get_runtime_context().set_label({dir: dir})
 
-@ray.remote(num_cpus=5)
+@ray.remote(num_cpus=1)
 def user_function(working_dir, complexity_score, time):
     # print(ray.get_runtime_context().get_task_id())
     # print(ray.get_runtime_context().get_node_id())

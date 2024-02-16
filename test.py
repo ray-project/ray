@@ -10,7 +10,7 @@ def get_task_id():
     
 
     # ray.get_runtime_context().get_node_info()
-    ray.get_runtime_context().set_label({b"gpu":b"10"})
+    ray.get_runtime_context().set_label({b"gpu":b"20"})
     ray.get_runtime_context().get_node_info()
 # # All the below code generates different task ids.
 # a = Actor.remote()

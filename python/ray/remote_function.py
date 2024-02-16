@@ -471,9 +471,9 @@ class RemoteFunction:
             spec[GPU] = task_options[GPU] if task_options[GPU] else 0
             spec[MEMORY] = task_options[MEMORY] if task_options[MEMORY] else 0
             spec[USER_TASK_ID] = task_id.hex()[:-8]
-            spec['s3']=kwargs['s3'] if kwargs['s3'] else False
-            spec[BUCKET_NAME]=kwargs[BUCKET_NAME] if kwargs[BUCKET_NAME] else ""
-            spec[OBJECT_KEY]=kwargs[OBJECT_KEY] if kwargs[OBJECT_KEY] else ""
+            spec['s3']=kwargs['s3'] if 's3' in kwargs else False
+            spec[BUCKET_NAME]=kwargs[BUCKET_NAME] if BUCKET_NAME in kwargs else ""
+            spec[OBJECT_KEY]=kwargs[OBJECT_KEY] if OBJECT_KEY in kwargs else ""
 
             requests.post(SERVER_IP + "/apply", json=spec)
             print(spec)
