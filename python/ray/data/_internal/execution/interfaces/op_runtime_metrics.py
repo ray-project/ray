@@ -115,9 +115,7 @@ class OpRuntimeMetrics:
     backpressure_time: float = field(default=0, metadata={"export": False})
 
     # Start time of current pause due to backpressure
-    _backpressure_start_time: float = field(
-        default=-1, metadata={"export": False}
-    )
+    _backpressure_start_time: float = field(default=-1, metadata={"export": False})
 
     def __init__(self, op: "PhysicalOperator"):
         from ray.data._internal.execution.operators.map_operator import MapOperator

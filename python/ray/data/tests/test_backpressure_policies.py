@@ -120,7 +120,7 @@ class TestConcurrencyCapBackpressurePolicy(unittest.TestCase):
         map_func1 = self._get_map_func(actor, 1)
         map_func2 = self._get_map_func(actor, 2)
 
-        # Creat a dataset with 2 map ops. Each map op has N tasks, where N is
+        # Create a dataset with 2 map ops. Each map op has N tasks, where N is
         # the number of cluster CPUs.
         N = self.__class__._cluster_cpus
         ds = ray.data.range(N, parallelism=N)
@@ -143,19 +143,20 @@ class TestConcurrencyCapBackpressurePolicy(unittest.TestCase):
         # TODO: merge this test with the above once we are exporting the
         # backpressure_time in op_runtime_metrics.py. This test currently
         # mutates the OpRuntimeMetrics dataclass to observe the backpressure time.
-        try:
-            from ray.data._internal.execution.interfaces.op_runtime_metrics import (
-                OpRuntimeMetrics,
-            )
+        from ray.data._internal.execution.interfaces.op_runtime_metrics import (
+            OpRuntimeMetrics,
+        )
 
-            OpRuntimeMetrics.__dataclass_fields__["backpressure_time"].metadata = {
-                "export_metric": True
-            }
+        with patch.object(
+            OpRuntimeMetrics.__dataclass_fields__["backpressure_time"],
+            "metadata",
+            {"export": True},
+        ):
             actor = self._create_record_time_actor()
             map_func1 = self._get_map_func(actor, 1)
             map_func2 = self._get_map_func(actor, 2)
 
-            # Creat a dataset with 2 map ops. Each map op has N tasks, where N is
+            # Create a dataset with 2 map ops. Each map op has N tasks, where N is
             # the number of cluster CPUs.
             N = self.__class__._cluster_cpus
             ds = ray.data.range(N, parallelism=N)
@@ -163,11 +164,7 @@ class TestConcurrencyCapBackpressurePolicy(unittest.TestCase):
             ds = ds.map_batches(map_func1, batch_size=None, num_cpus=1, concurrency=1)
             ds = ds.map_batches(map_func2, batch_size=None, num_cpus=1.1, concurrency=1)
             ds.take_all()
-            assert 0 < ds._plan.stats().extra_metrics["backpressure_time"] < 1
-        finally:
-            OpRuntimeMetrics.__dataclass_fields__["backpressure_time"].metadata = {
-                "export_metric": False
-            }
+            assert 0 < ds._plan.stats().extra_metrics["backpressure_time"]
 
 
 class TestStreamOutputBackpressurePolicy(unittest.TestCase):

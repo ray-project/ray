@@ -407,6 +407,12 @@ class PhysicalOperator(Operator):
         pass
 
     def notify_in_backpressure(self, in_backpressure: bool) -> None:
+        """Called periodically from the executor to update internal in backpressure
+        status for stats collection purposes.
+
+        Args:
+            in_backpressure: Value this operator's in_backpressure should be set to.
+        """
         # only update on change to in_backpressure
         if self._in_backpressure != in_backpressure:
             self._metrics.on_toggle_backpressure(in_backpressure)
