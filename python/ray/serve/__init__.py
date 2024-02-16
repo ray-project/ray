@@ -2,6 +2,7 @@ import ray._private.worker
 
 try:
     from ray.serve.api import (
+        _run,
         Application,
         Deployment,
         delete,
@@ -35,6 +36,7 @@ except ModuleNotFoundError as e:
 ray._private.worker.blocking_get_inside_async_warned = True
 
 __all__ = [
+    "_run",
     "batch",
     "start",
     "HTTPOptions",
