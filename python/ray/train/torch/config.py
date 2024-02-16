@@ -43,15 +43,12 @@ class TorchConfig(BackendConfig):
     def backend_cls(self):
         return _TorchBackend
 
-    @property
-    def prologue(self):
-        def _prologue():
-            if torch.cuda.is_available():
-                device = ray.train.torch.get_device()
-                if device.type == "cuda":
-                    torch.cuda.set_device(device)
-
-        return _prologue
+    @staticmethod
+    def setup():
+        if torch.cuda.is_available():
+            device = ray.train.torch.get_device()
+            if device.type == "cuda":
+                torch.cuda.set_device(device)
 
 
 def _setup_torch_process_group(
