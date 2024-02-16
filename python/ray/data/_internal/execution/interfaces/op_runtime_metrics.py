@@ -1,5 +1,6 @@
 from dataclasses import dataclass, field, fields
 from typing import TYPE_CHECKING, Any, Dict, Optional
+import time
 
 import ray
 from ray.data._internal.execution.interfaces.ref_bundle import RefBundle
@@ -16,6 +17,7 @@ class RunningTaskInfo:
     inputs: RefBundle
     num_outputs: int
     bytes_outputs: int
+    start_time: float
 
 
 @dataclass
@@ -110,6 +112,16 @@ class OpRuntimeMetrics:
     # Time spent generating blocks in tasks.
     block_generation_time: float = field(
         default=0, metadata={"map_only": True, "export_metric": True}
+    )
+
+    # Total time spent in data tasks
+    total_data_tasks_time: float = field(
+        default=0, metadata={"export_metric": False}
+    )
+
+    # Total time spent in UDFs
+    total_data_udfs_time: float = field(
+        default=0, metadata={"export_metric": False}
     )
 
     def __init__(self, op: "PhysicalOperator"):
@@ -253,7 +265,7 @@ class OpRuntimeMetrics:
         self.num_tasks_running += 1
         self.bytes_inputs_of_submitted_tasks += inputs.size_bytes()
         self.obj_store_mem_pending_task_inputs += inputs.size_bytes()
-        self._running_tasks[task_index] = RunningTaskInfo(inputs, 0, 0)
+        self._running_tasks[task_index] = RunningTaskInfo(inputs, 0, 0, time.perf_counter())
 
     def on_task_output_generated(self, task_index: int, output: RefBundle):
         """Callback when a new task generates an output."""
@@ -278,6 +290,7 @@ class OpRuntimeMetrics:
 
     def on_task_finished(self, task_index: int, exception: Optional[Exception]):
         """Callback when a task is finished."""
+        finish_time = time.perf_counter()
         self.num_tasks_running -= 1
         self.num_tasks_finished += 1
         if exception is not None:
@@ -304,6 +317,8 @@ class OpRuntimeMetrics:
                     self.obj_store_mem_spilled += meta.size_bytes
 
         self.obj_store_mem_freed += total_input_size
+
+        self.total_data_tasks_time += finish_time - task_info.start_time
 
         inputs.destroy_if_owned()
         del self._running_tasks[task_index]
