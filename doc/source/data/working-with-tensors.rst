@@ -148,4 +148,4 @@ formats, see the :ref:`Input/Output reference <input-output>`.
             ds = ray.data.read_images("s3://anonymous@ray-example-data/image-datasets/simple")
             ds.write_json("/tmp/simple")
 
-For more information on saving data, read :ref:`Saving data <loading_data>`.
+For more information on saving data, read :ref:`Saving data <saving_data>`.
