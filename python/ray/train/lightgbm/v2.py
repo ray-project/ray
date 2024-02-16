@@ -5,9 +5,33 @@ import ray.train
 from ray.train import Checkpoint
 from ray.train.data_parallel_trainer import DataParallelTrainer
 from ray.train.trainer import GenDataset
-from ray.train.lightgbm import XGBoostConfig
+from ray.train.lightgbm import LightGBMConfig
 
 logger = logging.getLogger(__name__)
+
+
+def get_network_params() -> dict:
+    from ray.train._internal.session import get_session
+
+    session = get_session()
+    if not session:
+        logger.warning(
+            "`ray.train.lightgbm.get_network_params` was called outside the context "
+            "of a `ray.train.lightgbm.LightGBMTrainer`. "
+            "The current process has no knowledge of the distributed training group, "
+            "so returning an empty dict. Please call this within the training loop "
+            "of a `ray.train.lightgbm.LightGBMTrainer`."
+        )
+        return {}
+
+    network_params = session.get_state(LightGBMConfig.NETWORK_PARAMS_KEY)
+    assert network_params is not None, (
+        "`LightGBMConfig.backend_cls` must set `LightGBMConfig.NETWORK_PARAMS_KEY` "
+        "in the session state in `on_training_start`. "
+        "Please fix this if you provided a custom `LightGBMConfig` subclass."
+        "Otherwise, please file a bug report to the Ray Team."
+    )
+    return network_params
 
 
 class LightGBMTrainer(DataParallelTrainer):
@@ -85,9 +109,8 @@ class LightGBMTrainer(DataParallelTrainer):
         train_loop_config: A configuration ``Dict`` to pass in as an argument to
             ``train_loop_per_worker``.
             This is typically used for specifying hyperparameters.
-        xgboost_config: The configuration for setting up the distributed xgboost
-            backend. Defaults to using the "rabit" backend.
-            See :class:`~ray.train.xgboost.XGBoostConfig` for more info.
+        lightgbm_config: The configuration for setting up the distributed lightgbm
+            backend. See :class:`~ray.train.lightgbm.LightGBMConfig` for more info.
         datasets: The Ray Datasets to use for training and validation. Must include a
             "train" key denoting the training dataset. All non-training datasets will
             be used as separate validation sets, each reporting a separate metric.
@@ -113,7 +136,7 @@ class LightGBMTrainer(DataParallelTrainer):
         train_loop_per_worker: Union[Callable[[], None], Callable[[Dict], None]],
         *,
         train_loop_config: Optional[Dict] = None,
-        xgboost_config: Optional[XGBoostConfig] = None,
+        lightgbm_config: Optional[LightGBMConfig] = None,
         scaling_config: Optional[ray.train.ScalingConfig] = None,
         run_config: Optional[ray.train.RunConfig] = None,
         datasets: Optional[Dict[str, GenDataset]] = None,
@@ -121,16 +144,10 @@ class LightGBMTrainer(DataParallelTrainer):
         metadata: Optional[Dict[str, Any]] = None,
         resume_from_checkpoint: Optional[Checkpoint] = None,
     ):
-        if not xgboost_config:
-            xgboost_config = XGBoostConfig()
-
-        dataset_config = dataset_config or ray.train.DataConfig()
-        dataset_config._convert_to_data_iterator = False
-
         super(LightGBMTrainer, self).__init__(
             train_loop_per_worker=train_loop_per_worker,
             train_loop_config=train_loop_config,
-            backend_config=xgboost_config,
+            backend_config=lightgbm_config or LightGBMConfig(),
             scaling_config=scaling_config,
             dataset_config=dataset_config,
             run_config=run_config,

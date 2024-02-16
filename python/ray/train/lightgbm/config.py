@@ -1,10 +1,7 @@
-import json
 import logging
-import os
 from dataclasses import dataclass
 
-
-import ray
+from ray.train._internal.utils import get_address_and_port
 from ray.train._internal.worker_group import WorkerGroup
 from ray.train.backend import Backend, BackendConfig
 
@@ -13,20 +10,17 @@ logger = logging.getLogger(__name__)
 
 @dataclass
 class LightGBMConfig(BackendConfig):
-    """Configuration for xgboost collective communication setup.
+    """Configuration for LightGBM distributed data-parallel training setup.
 
     Ray Train will set up the necessary coordinator processes and environment
     variables for your workers to communicate with each other.
-    Additional configuration options can be passed into the
-    `xgboost.collective.CommunicatorContext` that wraps your own `xgboost.train` code.
 
-    See the `xgboost.collective` module for more information:
-    https://github.com/dmlc/xgboost/blob/master/python-package/xgboost/collective.py
-
-    Args:
-        xgboost_communicator: The backend to use for collective communication for
-            distributed xgboost training. For now, only "rabit" is supported.
+    See the LightGBM docs for more information on the "network parameters"
+    that Ray Train sets up for you:
+    https://lightgbm.readthedocs.io/en/latest/Parameters.html#network-parameters
     """
+
+    NETWORK_PARAMS_KEY = "LIGHTGBM_NETWORK_PARAMS"
 
     @property
     def backend_cls(self):
@@ -37,13 +31,32 @@ class _LightGBMBackend(Backend):
     def __init__(self):
         pass
 
-    def on_start(self, worker_group: WorkerGroup, backend_config: LightGBMConfig):
-        pass
-
     def on_training_start(
         self, worker_group: WorkerGroup, backend_config: LightGBMConfig
     ):
-        pass
+        node_ips_and_ports = worker_group.execute(get_address_and_port)
+        ports = [port for _, port in node_ips_and_ports]
+        machines = ",".join(
+            [f"{node_ip}:{port}" for node_ip, port in node_ips_and_ports]
+        )
+        num_machines = len(worker_group)
+
+        def send_network_params(
+            num_machines: int, local_listen_port: int, machines: str
+        ):
+            from ray.train._internal.session import get_session
+
+            session = get_session()
+            session.set_state(
+                LightGBMConfig.NETWORK_PARAMS_KEY,
+                dict(
+                    num_machines=num_machines,
+                    local_listen_port=local_listen_port,
+                    machines=machines,
+                ),
+            )
+
+        worker_group.execute(send_network_params, num_machines, ports, machines)
 
     def on_shutdown(self, worker_group: WorkerGroup, backend_config: LightGBMConfig):
         pass
