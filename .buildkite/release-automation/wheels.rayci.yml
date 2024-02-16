@@ -4,4 +4,4 @@ steps:
     job_env: WINDOWS
     instance_type: windows
     commands:
-      - bash -i /c/workdir/.buildkite/release-automation/verify-windows-wheels.sh
+      - bash -it /c/workdir/.buildkite/release-automation/verify-windows-wheels.sh
