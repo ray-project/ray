@@ -719,7 +719,7 @@ def test_basic_custom_metrics(metric_mock):
     # -- Gauge --
     gauge = Gauge("gauge", description="gauge")
     gauge._metric = metric_mock
-    gauge.record(4)
+    gauge.set(4)
     metric_mock.record.assert_called_with(4, tags={})
 
     # -- Histogram
@@ -758,12 +758,12 @@ def test_custom_metrics_with_extra_tags(metric_mock):
     gauge._metric = metric_mock
 
     # Record with base tags
-    gauge.record(4, tags=base_tags)
+    gauge.set(4, tags=base_tags)
     metric_mock.record.assert_called_with(4, tags=base_tags)
     metric_mock.reset_mock()
 
     # Record with extra tags
-    gauge.record(4, tags=extra_tags)
+    gauge.set(4, tags=extra_tags)
     metric_mock.record.assert_called_with(4, tags=extra_tags)
     metric_mock.reset_mock()
 
