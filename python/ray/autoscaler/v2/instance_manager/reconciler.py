@@ -2,8 +2,7 @@ import logging
 from collections import defaultdict
 from typing import Dict, List, Optional, Set, Tuple
 
-from google.protobuf.json_format import MessageToDict
-
+from ray._private.protobuf_compat import message_to_dict
 from ray.autoscaler.v2.instance_manager.common import InstanceUtil
 from ray.autoscaler.v2.instance_manager.instance_manager import InstanceManager
 from ray.autoscaler.v2.instance_manager.node_provider import (
@@ -255,7 +254,7 @@ class Reconciler:
                 "Updating {}({}) with {}".format(
                     instance.instance_id,
                     IMInstance.InstanceStatus.Name(instance.status),
-                    MessageToDict(update_event),
+                    message_to_dict(update_event),
                 )
             )
             updates[instance.instance_id] = update_event
@@ -345,7 +344,7 @@ class Reconciler:
                     "Updating {}({}) with {}".format(
                         instance_id,
                         IMInstance.InstanceStatus.Name(instance.status),
-                        MessageToDict(updates[instance_id]),
+                        message_to_dict(updates[instance_id]),
                     )
                 )
 
@@ -394,7 +393,7 @@ class Reconciler:
                 "Updating {}({}) with {}".format(
                     instance.instance_id,
                     IMInstance.InstanceStatus.Name(instance.status),
-                    MessageToDict(updates[instance.instance_id]),
+                    message_to_dict(updates[instance.instance_id]),
                 )
             )
 
@@ -447,7 +446,7 @@ class Reconciler:
                 "Updating {}({}) with {}".format(
                     instance.instance_id,
                     IMInstance.InstanceStatus.Name(instance.status),
-                    MessageToDict(updates[instance.instance_id]),
+                    message_to_dict(updates[instance.instance_id]),
                 )
             )
 
@@ -553,7 +552,7 @@ class Reconciler:
                     "Updating {}({}) with {}.".format(
                         im_instance.instance_id,
                         IMInstance.InstanceStatus.Name(im_instance.status),
-                        MessageToDict(updates[im_instance.instance_id]),
+                        message_to_dict(updates[im_instance.instance_id]),
                     )
                 )
 
