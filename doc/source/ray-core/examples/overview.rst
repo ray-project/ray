@@ -55,7 +55,7 @@ Reinforcement Learning Examples
 -------------------------------
 
 These are simple examples that show you how to leverage Ray Core.
-For Ray's production-grade reinforcement learning library, see `RLlib <http://docs.ray.io/en/latest/rllib.html>`__.
+For Ray's production-grade reinforcement learning library, see `RLlib <https://docs.ray.io/en/latest/rllib/index.html>`__.
 
 
 .. grid:: 1 2 3 4
