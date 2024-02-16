@@ -22,7 +22,7 @@ class BackendConfig:
 
     @property
     def train_func_context(self):
-        return nullcontext()
+        return nullcontext
 
     def _repr_html_(self) -> str:
         return make_table_html_repr(obj=self, title=type(self).__name__)

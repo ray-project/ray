@@ -58,7 +58,7 @@ class TorchConfig(BackendConfig):
 
     @property
     def train_func_context(self):
-        return TorchConfigContextManager()
+        return TorchConfigContextManager
 
 
 def _setup_torch_process_group(
