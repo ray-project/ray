@@ -61,6 +61,7 @@ NUM_CPUS_FOR_META_FETCH_TASK = 0.5
 RETRY_EXCEPTIONS_FOR_META_FETCH_TASK = ["AWS Error ACCESS_DENIED", "Timeout"]
 # Maximum number of retries for metadata prefetching task due to transient errors.
 RETRY_MAX_ATTEMPTS_FOR_META_FETCH_TASK = 32
+RETRY_MAX_INTERVAL_FOR_META_FETCH_TASK = 120
 
 # The number of rows to read per batch. This is sized to generate 10MiB batches
 # for rows about 1KiB in size.
@@ -516,6 +517,7 @@ def _fetch_metadata_serialization_wrapper(
     fragments: List[_SerializedFragment],
     retry_match: Optional[List[str]],
     retry_max_attempts: int,
+    retry_max_interval: int,
 ) -> List["pyarrow.parquet.FileMetaData"]:
     deserialized_fragments = _deserialize_fragments_with_retry(fragments)
     try:
@@ -524,6 +526,7 @@ def _fetch_metadata_serialization_wrapper(
             description="fetch metdata",
             match=retry_match,
             max_attempts=retry_max_attempts,
+            max_backoff_s=retry_max_interval,
         )
     except OSError as e:
         raise RuntimeError(
