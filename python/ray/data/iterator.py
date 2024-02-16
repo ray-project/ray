@@ -864,9 +864,10 @@ class DataIterator(abc.ABC):
     def materialize(self) -> "MaterializedDataset":
         """Execute and materialize this data iterator into object store memory.
 
-        NOTE: This method triggers the execution and materializes all blocks
-        of the iterator, returning its contents as a
-        :class:`~ray.data.dataset.MaterializedDataset` for further processing.
+        .. note::
+            This method triggers the execution and materializes all blocks
+            of the iterator, returning its contents as a
+            :class:`~ray.data.dataset.MaterializedDataset` for further processing.
         """
 
         from ray.data.dataset import MaterializedDataset
