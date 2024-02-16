@@ -52,9 +52,9 @@ def do_exec_compiled_task(
     self._dag_cancelled = False
 
     try:
-        self._input_channels = list(
-            set(filter(lambda x: isinstance(x, Channel), inputs[0]))
-        )
+        self._input_channels = {
+            input for input in inputs[0] if isinstance(input, Channel)
+        }
         assert (
             len(self._input_channels) <= 1
         ), f"Got {len(self._input_channels)} input channels, expecting no more than 1"
@@ -269,11 +269,26 @@ class CompiledDAG:
         # Find the (multi-)output node to the DAG.
         for idx, task in self.idx_to_task.items():
             if len(task.downstream_node_idxs) == 0:
-                # for multi-arg scenario, input args will go through
-                # InputAttributeNodes, InputNode will not connect to any node
+                # for multi-arg scenario, input args are passed through
+                # InputAttributeNodes, InputNode is not connected to any node
+                #                             ┌───────────────────────────────────┐
+                #                             │           InputNode               │
+                #       ┌───────────┐         ├────────────────┐  ┌───────────────┤
+                #     ┌─┤ InputNode ├─┐       │ InputAttribute │  │InputAttribute │
+                #     │ └───────────┘ │       │      Node      │  │     Node      │
+                #     │               │       └──────┬─────────┴──┴───────┬───────┘
+                #     │               │              │                    │
+                # ┌───▼────┐     ┌────▼───┐      ┌───▼────┐          ┌────▼────┐
+                # │DagNode │     │DagNode │      │DagNode │          │ DagNode │
+                # └───────┬┘     └┬───────┘      └────┬───┘          └────┬────┘
+                #         │       │                   │                   │
+                #         │       │                   │                   │
+                #      ┌──▼───────▼──┐                │   ┌───────────┐   │
+                #      │ OutputNode  │                └───►OutputNode ◄───┘
+                #      └─────────────┘                    └───────────┘
                 if (
                     isinstance(task.dag_node, InputNode)
-                    and len(self.input_task_idxs) > 0
+                    and len(self.input_task_idxs) > 1
                 ):
                     continue
                 assert self.output_task_idx is None, "More than one output node found"
@@ -326,16 +341,6 @@ class CompiledDAG:
                 self.dag_output_channels,
             )
 
-        # somehow the input_attribute_nodes attr of InputNode is lost,
-        # reconstruct it here
-        input_node = None
-        for dag_node in self.dag_node_to_idx.keys():
-            if isinstance(dag_node, InputNode):
-                input_node = dag_node
-        for dag_node in self.dag_node_to_idx.keys():
-            if isinstance(dag_node, InputAttributeNode):
-                input_node.input_attribute_nodes[dag_node._key] = dag_node
-
         queue = self.input_task_idxs.copy()
         visited = set()
         # Create output buffers
@@ -381,28 +386,36 @@ class CompiledDAG:
                 continue
 
             resolved_args = []
-            # for channel args, the index of read result to take, -1 stands for
-            # taking the whole input
+            # for single arg, read_idx is -1, meaning taking the whole input,
+            # for multiple args, read_idx means the index of element to take,
+            # Example:
+            # inp = InputNode()
+            # f.remote(inp.x)
+            # g.remote(inp.y)
+            # f and g both read (x, y) from the same channel, but pick different indices
             read_idxs = []
-            attr_idx = -1
             has_at_least_one_channel_input = False
             for arg in task.args:
                 if isinstance(arg, DAGNode):
-                    is_ipt_attr = isinstance(arg, InputAttributeNode)
-                    if is_ipt_attr:
-                        arg = arg._dag_input_node
-                        attr_idx += 1
-                    arg_idx = self.dag_node_to_idx[arg]
-                    arg_channel = self.idx_to_task[arg_idx].output_channel
+                    parent_node = (
+                        arg._dag_input_node
+                        if isinstance(arg, InputAttributeNode)
+                        else arg
+                    )
+                    parent_idx = self.dag_node_to_idx[parent_node]
+                    arg_channel = self.idx_to_task[parent_idx].output_channel
                     assert arg_channel is not None
                     resolved_args.append(arg_channel)
-                    read_idxs.append(
-                        attr_idx
-                        if is_ipt_attr
-                        else 0
-                        if isinstance(arg, InputNode)
-                        else -1
-                    )
+                    read_idx = -1
+                    if isinstance(arg, InputAttributeNode):
+                        # use arg idx - 1 here because when there are multiple args,
+                        # they are ordered in InputNode, InputAttributeNode,
+                        # InputAttributeNode, ..., while only InputAttributeNodes
+                        # carry arguments
+                        read_idx = self.dag_node_to_idx[arg] - 1
+                    elif isinstance(arg, InputNode):
+                        read_idx = 0
+                    read_idxs.append(read_idx)
                     has_at_least_one_channel_input = True
                 else:
                     resolved_args.append(arg)

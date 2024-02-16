@@ -47,14 +47,15 @@ class Actor:
     def inc_two(self, x, y):
         self.i += x
         self.i += y
-        return self.i
+        return x, y, self.i
 
     def inc_four(self, a, b, x, y):
         self.i += a
         self.i += b
+        sum_a_b = a + b
         self.j += x
-        self.j += y
-        return self.i, self.j
+        self.j += y + sum_a_b
+        return a, b, x, y, self.i, self.j
 
     def sleep(self, x):
         time.sleep(x)
@@ -92,7 +93,7 @@ def test_regular_args(ray_start_regular):
         output_channel = compiled_dag.execute(1)
         # TODO(swang): Replace with fake ObjectRef.
         result = output_channel.begin_read()
-        assert result == (i + 1) * 3
+        assert result == (2, 1, (i + 1) * 3)
         output_channel.end_read()
 
     compiled_dag.teardown()
@@ -110,7 +111,7 @@ def test_multi_args(ray_start_regular):
         output_channel = compiled_dag.execute(1, 2)
         # TODO(terry): Replace with fake ObjectRef.
         result = output_channel.begin_read()
-        assert result == (i + 1) * 3
+        assert result == (1, 2, (i + 1) * 3)
         output_channel.end_read()
 
     compiled_dag.teardown()
@@ -128,7 +129,7 @@ def test_multi_kwargs(ray_start_regular):
         output_channel = compiled_dag.execute(x=1, y=2)
         # TODO(terry): Replace with fake ObjectRef.
         result = output_channel.begin_read()
-        assert result == (i + 1) * 3
+        assert result == (1, 2, (i + 1) * 3)
         output_channel.end_read()
 
     compiled_dag.teardown()
@@ -146,7 +147,7 @@ def test_multi_args_kwargs(ray_start_regular):
         output_channel = compiled_dag.execute(1, 2, x=3, y=4)
         # TODO(terry): Replace with fake ObjectRef.
         result = output_channel.begin_read()
-        assert result == ((i + 1) * 3, (i + 1) * 7)
+        assert result == (1, 2, 3, 4, (i + 1) * 3, (i + 1) * 10)
         output_channel.end_read()
 
     compiled_dag.teardown()
