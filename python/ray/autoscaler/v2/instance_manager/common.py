@@ -249,19 +249,6 @@ class InstanceUtil:
                 # cloud instance somehow failed.
                 Instance.TERMINATED,
             },
-            # Ray process should be stopped on the cloud instance. The RayStopper
-            # subscriber will listen to this status and stop the ray process.
-            Instance.RAY_STOP_REQUESTED: {
-                # Ray is stopping on the cloud instance.
-                Instance.RAY_STOPPING,
-                # Ray stopped already.
-                Instance.RAY_STOPPED,
-                # Ray stop request failed (e.g. idle node no longer idle),
-                # ray is still running.
-                Instance.RAY_RUNNING,
-                # cloud instance somehow failed.
-                Instance.TERMINATED,
-            },
             # When in this status, the ray process is requested to be stopped to the
             # ray cluster, but not yet present in the dead ray node list reported by
             # the ray cluster.
