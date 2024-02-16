@@ -655,6 +655,9 @@ Status PlasmaClient::Impl::Release(const ObjectID &object_id) {
   const auto object_entry = objects_in_use_.find(object_id);
   RAY_CHECK(object_entry != objects_in_use_.end());
 
+  object_entry->second->count -= 1;
+  RAY_CHECK(object_entry->second->count >= 0);
+
   if (object_entry->second->count == 0) {
     // object_entry is invalidated in MarkObjectUnused, need to read the fd beforehand.
     // If the fd may be unmapped, we wait for the plasma server to send a ReleaseReply.
