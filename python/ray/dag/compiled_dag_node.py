@@ -45,6 +45,10 @@ def do_allocate_channel(
 def _make_channel(
     buffer_size_bytes: int, reader_ranks: int, writer_rank: int, strategy: str
 ):
+    logger.info(
+    f"Created channel with buffer_size_bytes={buffer_size_bytes}, "
+    f"reader_ranks={reader_ranks}, writer_rank={writer_rank}, "
+    f"strategy={strategy}")
     if USE_TORCH_CHANNEL:
         return TorchChannel(buffer_size_bytes, reader_ranks, writer_rank, strategy)
     elif USE_COLLECTIVE_CHANNEL:
@@ -459,7 +463,6 @@ class CompiledDAG:
             assert len(self.dag_output_channels) == 1
             self.dag_output_channels = self.dag_output_channels[0]
 
-        # Driver should ray.put on input, ray.get/release on output
         self._monitor = self._monitor_failures()
         return (self.dag_input_channel, self.dag_output_channels, self._monitor)
 
@@ -475,11 +478,18 @@ class CompiledDAG:
         ray.get(futs)
 
     def _ray_collective_init(self):
-        logger.info(f"Actor ranks {self.actor_ranks}")
-        logger.info(f"Driver ranks {self.input_task_idx}")
-        logger.info(f"actor refs: {self.actor_refs}")
+        # logger.info(f"Actor ranks {self.actor_ranks}")
+        # logger.info(f"Driver ranks {self.input_task_idx}")
+        # logger.info(f"actor refs: {self.actor_refs}")
+        # Convert a rank dict to a list of actors starting from
+        # rank 0
+        actors = [i for i in range(len(self.actor_ranks))]
+        for actor, rank in self.actor_ranks.items():
+            actors[rank - 1] = actor
+        for actor in actors:
+            assert not isinstance(actor, int)
         col.create_and_init_collective_group(
-            self.actor_refs,
+            actors,
             backend="gloo", 
             include_driver=True)
 
@@ -497,13 +507,13 @@ class CompiledDAG:
                 logger.info("Tearing down compiled DAG")
                 self.in_teardown = True
                 for actor in outer.actor_refs:
-                    logger.info(f"Cancelling compiled worker on actor: {actor}")
+                    # logger.info(f"Cancelling compiled worker on actor: {actor}")
                     try:
                         ray.get(actor.__ray_call__.remote(do_cancel_compiled_task))
                     except Exception:
-                        logger.exception("Error cancelling worker task")
+                        # logger.exception("Error cancelling worker task")
                         pass
-                logger.info("Waiting for worker tasks to exit")
+                # logger.info("Waiting for worker tasks to exit")
                 for ref in outer.worker_task_refs:
                     try:
                         ray.get(ref)
@@ -554,9 +564,13 @@ class CompiledDAG:
         input_channel.write(args[0])
         return output_channels
 
+    # TODO(sang): Currently teardown is very noisy. Fix it.
     def teardown(self):
         """Teardown and cancel all worker tasks for this DAG."""
         self._monitor.teardown()
+        if USE_COLLECTIVE_CHANNEL:
+            col.teardown_collective_group(
+                self.actor_refs, include_driver=True)
 
 
 @DeveloperAPI

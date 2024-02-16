@@ -44,11 +44,21 @@ See below the current support matrix for all collective calls with different bac
      - ✘
      - ✘
      - ✔
+   * - isend
+     - ✘
+     - ✘
+     - ✘
+     - ✘
    * - recv
      - ✔
      - ✘
      - ✘
      - ✔
+   * - irecv
+     - ✘
+     - ✘
+     - ✘
+     - ✘
    * - broadcast
      - ✔
      - ✘

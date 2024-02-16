@@ -2,6 +2,7 @@
 import logging
 import os
 import sys
+import random
 
 import pytest
 
@@ -33,12 +34,46 @@ elif USE_TORCH_CHANNEL:
 
 @ray.remote
 class Actor:
-    def __init__(self, init_value):
+    def __init__(self, init_value, fail_after=None, sys_exit=False):
         print("__init__ PID", os.getpid())
+        self.i = init_value
+        self.fail_after = fail_after
+        self.sys_exit = sys_exit
+
+    def inc(self, x):
+        self.i += x
+        if self.fail_after and self.i > self.fail_after:
+            # Randomize the failures to better cover multi actor scenarios.
+            if random.random() > 0.5:
+                if self.sys_exit:
+                    os._exit(1)
+                else:
+                    raise ValueError("injected fault")
+        return self.i
+
+    def append_to(self, lst):
+        lst.append(self.i)
+        return lst
+
+    def inc_two(self, x, y):
+        self.i += x
+        self.i += y
+        return self.i
+
+    def sleep(self, x):
+        time.sleep(x)
+        return x
+
+    def raise_error(self, _):
+        raise ValueError("injected fault")
 
     def noop(self, _):
         # time.sleep(0.001)
         return b"value"
+
+    def set_i(self, i):
+        self.i = i
+        return self.i
 
 
 @pytest.mark.skipif(sys.platform != "linux", reason="Requires Linux.")
@@ -72,69 +107,121 @@ def test_put_local_get(ray_start_regular):
         chan.write(val)
         assert ray.get(recv_fut) == val
 
+    col.teardown_collective_group([actor], include_driver=True)
+
 
 def test_basic(ray_start_regular):
     # Run in a separate process since proper teardown isn't implemented yet.
-    @ray.remote
-    def f():
-        a = Actor.remote(0)
-        with InputNode() as i:
-            dag = a.noop.bind(i)
+    a = Actor.remote(0)
+    with InputNode() as i:
+        dag = a.noop.bind(i)
 
-        compiled_dag = dag.experimental_compile(buffer_size_bytes=1000)
+    s = time.time()
+    compiled_dag = dag.experimental_compile(buffer_size_bytes=1000)
+    print("Compiles took ", (time.time() - s) * 1000 * 1000, "us")
 
-        it = 10000
-        s = time.time()
-        for i in range(it):
-            output_channel = compiled_dag.execute(b"input")
-            result = output_channel.begin_read()
-            assert result == b"value"
-            output_channel.end_read()
-        elapsed_s = (time.time() - s)
+    it = 10
+    s = time.time()
+    for i in range(it):
+        output_channel = compiled_dag.execute(b"input")
+        result = output_channel.begin_read()
+        assert result == b"value"
+        output_channel.end_read()
+    elapsed_s = (time.time() - s)
 
-        compiled_dag.teardown()
-
-        return  it / elapsed_s
-
-    throughput = ray.get(f.remote())
+    throughput = it / elapsed_s
     print("throughput: ", throughput, "it/s")
+    compiled_dag.teardown()
 
 
 def test_broadcast(ray_start_regular):
     # Run in a separate process since proper teardown isn't implemented yet.
-    @ray.remote
-    def f():
-        elapsed = []
-        NUM_ACTORS = 2
+    elapsed = []
+    NUM_ACTORS = 8
 
-        actors = [Actor.remote(0) for _ in range(NUM_ACTORS)]
-        with InputNode() as i:
-            out = [a.noop.bind(i) for a in actors]
-            dag = MultiOutputNode(out)
+    actors = [Actor.remote(0) for _ in range(NUM_ACTORS)]
+    with InputNode() as i:
+        out = [a.noop.bind(i) for a in actors]
+        dag = MultiOutputNode(out)
 
-        compiled_dag = dag.experimental_compile(buffer_size_bytes=1000)
+    compiled_dag = dag.experimental_compile(buffer_size_bytes=1000)
 
-        it = 1
-        s = time.time()
-        for i in range(it):
-            g = time.time()
-            output_channels = compiled_dag.execute(b"input")
-            # TODO(sang): We should batch wait to improve throughput.
-            # results = batch_wait(output_channels)
-            results = [chan.begin_read() for chan in output_channels]
-            assert results == [b"value"] * NUM_ACTORS
-            for chan in output_channels:
-                chan.end_read()
-            elapsed.append((time.time() - g) * 1000 * 1000)
-        elapsed_s = (time.time() - s)
-
-        print("done?")
-        compiled_dag.teardown()
-        return  it / elapsed_s, elapsed
-
-    throughput, elapsed = ray.get(f.remote())
+    it = 1000
+    s = time.time()
+    for i in range(it):
+        g = time.time()
+        output_channels = compiled_dag.execute(b"input")
+        # TODO(sang): We should batch wait to improve throughput.
+        # results = batch_wait(output_channels)
+        results = [chan.begin_read() for chan in output_channels]
+        assert results == [b"value"] * NUM_ACTORS
+        for chan in output_channels:
+            chan.end_read()
+        elapsed.append((time.time() - g) * 1000 * 1000)
+    elapsed_s = (time.time() - s)
+    throughput = it / elapsed_s
     print("throughput: ", throughput, "it/s")
     print("p50: ", sorted(elapsed)[len(elapsed) // 2])
+    compiled_dag.teardown()
+
+
+# TODO(sang): Chained exception is not working.
+def test_dag_chain(shutdown_only):
+    ray.init(num_cpus=2)
+
+    a = Actor.remote(0)
+    b = Actor.remote(0)
+    with InputNode() as inp:
+        dag = b.noop.bind(a.noop.bind(inp))
+
+    compiled_dag = dag.experimental_compile()
+    IT = 100
+    s = time.time()
+    for i in range(IT):
+        output_channel = compiled_dag.execute(1)
+        assert output_channel.begin_read() == b"value"
+        output_channel.end_read()
+    print("throughtput: ", IT / (time.time() - s), "it/s")
+
+    compiled_dag.teardown()
+
+
+def test_dag_exception(ray_start_regular):
+    a = Actor.remote(0)
+    with InputNode() as inp:
+        dag = a.inc.bind(inp)
+
+    compiled_dag = dag.experimental_compile()
+
+    IT = 10
+    for _ in range(IT):
+        with pytest.raises(TypeError):
+            output_channel = compiled_dag.execute("hello")
+            output_channel.begin_read()
+            output_channel.end_read()
+
+    # Normal execution should still work.
+    chan = compiled_dag.execute(1)
+    assert chan.begin_read() == 1
+    chan.end_read()
+    compiled_dag.teardown()
+
+    # TODO(sang): Chained exception doesn't work for both
+    # shared memory and gloo.
+
+    # We should be able to repetitively compile DAGs
+    # to the same actor.
+    IT = 3
+    for i in range(IT):
+        compiled_dag = dag.experimental_compile()
+        output_channel = compiled_dag.execute(1)
+        assert output_channel.begin_read() == i + 2
+        output_channel.end_read()
+        compiled_dag.teardown()
+
+
+def test_multi_node_send_recv_benchmark(ray_start_cluster):
+    pass
 
 
 if __name__ == "__main__":

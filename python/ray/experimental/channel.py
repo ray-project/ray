@@ -141,6 +141,8 @@ class Channel:
         end_read() is called. Then, the client must begin_read() again to get
         the next value.
 
+        If the received value is RayTaskError type, 
+
         Returns:
             Any: The deserialized value.
         """
@@ -164,8 +166,13 @@ class Channel:
         """
         Close this channel by setting the error bit on the object.
 
+        Close means that the API should abort any ongoing begin_read API and
+        raise an exception.
+
         Does not block. Any existing values in the channel may be lost after the
         channel is closed.
+
+        This API must be thread-safe.
         """
         logger.debug(f"Setting error bit on channel: {self._base_ref}")
         self._worker.core_worker.experimental_mutable_object_set_error(self._base_ref)

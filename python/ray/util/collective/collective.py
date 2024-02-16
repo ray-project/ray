@@ -1,7 +1,8 @@
 """APIs exposed under the namespace ray.util.collective."""
 import logging
 import os
-from typing import List
+from typing import List, Optional
+from datetime import timedelta
 
 import numpy as np
 
@@ -105,6 +106,7 @@ class GroupManager(object):
             store = ray.get_actor(name)
             ray.kill(store)
         except ValueError:
+            # Actor is already killed.
             pass
 
 
@@ -131,6 +133,7 @@ def init_collective_group(
         None
     """
     # _check_inside_actor()
+    logger.info(f"initialize the collective group on a rank {rank}")
     backend = types.Backend(backend)
     _check_backend_availability(backend)
     global _group_mgr
@@ -182,7 +185,9 @@ def create_and_init_collective_group(
             0,
             backend=backend,
             group_name=group_name)
+
     ray.get(futures)
+
     create_collective_group(
         actors,
         world_size,
@@ -262,11 +267,31 @@ def create_collective_group(
 
 
 # TODO(sang) (we need a declarative destroy() API here.)
+# ray::glooQueue and ray::Info are leaked whenever workload finishes.
 def destroy_collective_group(group_name: str = "default") -> None:
     """Destroy a collective group given its group name."""
     # _check_inside_actor()
+
     global _group_mgr
     _group_mgr.destroy_collective_group(group_name)
+
+
+# PrivateAPI
+def teardown_collective_group(
+        actors,
+        include_driver: bool = False,
+        group_name: str = "default"):
+    """It is same as calling destroy_collective_group on all workers.
+
+    Private API just for accerlated DAG. But we should make it public someday.
+    """
+    futures = []
+    for actor in actors:
+        fn = actor.__ray_call__
+        futures.append(fn.remote(lambda self: destroy_collective_group(group_name)))
+    if include_driver:
+        destroy_collective_group(group_name)
+    ray.get(futures)
 
 
 def get_rank(group_name: str = "default") -> int:
@@ -640,7 +665,12 @@ def send_multigpu(
     g.send([tensor], opts)
 
 
-def recv(tensor, src_rank: int, group_name: str = "default"):
+def recv(
+    tensor,
+    src_rank: int,
+    group_name: str = "default",
+    timeout_ms: Optional[int] = None
+):
     """Receive a tensor from a remote process synchronously.
 
     Args:
@@ -658,6 +688,8 @@ def recv(tensor, src_rank: int, group_name: str = "default"):
         raise RuntimeError("The destination rank '{}' is self.".format(src_rank))
     opts = types.RecvOptions()
     opts.src_rank = src_rank
+    if timeout_ms is not None:
+        opts.timeout_ms = timedelta(milliseconds=timeout_ms)
     g.recv([tensor], opts)
 
 

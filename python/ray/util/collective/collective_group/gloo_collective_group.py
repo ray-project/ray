@@ -22,6 +22,7 @@ from ray.util.collective.types import (
     ReduceOptions,
     ReduceScatterOptions,
     SendOptions,
+    unset_timeout_ms
 )
 
 logger = logging.getLogger(__name__)
@@ -213,7 +214,12 @@ class GLOOGroup(BaseGroup):
         self._rendezvous.destroy()
 
         if self._gloo_context is not None:
-            pygloo.barrier(self._gloo_context)
+            try:
+                pygloo.barrier(self._gloo_context)
+            except RuntimeError:
+                # Since the context is destroyed, it can
+                # fail.
+                pass
             # destroy the communicator
             self._gloo_context = None
 
@@ -223,6 +229,17 @@ class GLOOGroup(BaseGroup):
             if os.path.exists(store_path):
                 shutil.rmtree(store_path)
         super(GLOOGroup, self).destroy_group()
+
+        def get_and_kill_actor(name: str):
+            try:
+                actor = ray.get_actor(name)
+                ray.kill(actor)
+            except ValueError:
+                pass
+
+        # TODO(sang) Figure out a way to make it multi tenant & clean way to kill.
+        get_and_kill_actor("gloo_queue")
+        get_and_kill_actor(f"gloo_{self._group_name}_signal")
 
     @classmethod
     def backend(cls):
@@ -405,6 +422,7 @@ class GLOOGroup(BaseGroup):
             None
         """
 
+        # TODO(sang): tag is not supported?
         def p2p_fn(tensor, context, peer):
             pygloo.send(
                 context,
@@ -412,6 +430,8 @@ class GLOOGroup(BaseGroup):
                 gloo_util.get_tensor_n_elements(tensor),
                 gloo_util.get_gloo_tensor_dtype(tensor),
                 peer,
+                tag=0,
+                timeout_ms=datetime.timedelta(milliseconds=0)
             )
 
         self._point2point(tensors, p2p_fn, send_options.dst_rank)
@@ -434,7 +454,7 @@ class GLOOGroup(BaseGroup):
                 gloo_util.get_tensor_n_elements(tensor),
                 gloo_util.get_gloo_tensor_dtype(tensor),
                 peer,
-            )
+                timeout_ms = recv_options.timeout_ms)
 
         self._point2point(tensors, p2p_fn, recv_options.src_rank)
 

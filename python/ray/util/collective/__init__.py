@@ -23,6 +23,7 @@ from ray.util.collective.collective import (
     send_multigpu,
     recv,
     recv_multigpu,
+    teardown_collective_group,
 )
 
 __all__ = [
@@ -50,4 +51,5 @@ __all__ = [
     "send_multigpu",
     "recv",
     "recv_multigpu",
+    "teardown_collective_group"
 ]
