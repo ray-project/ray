@@ -2520,7 +2520,7 @@ def from_spark(
         from ray.data.datasource.spark_datasource import SparkDatasource
         from ray.util.spark.databricks_hook import get_databricks_function
         # Ray on spark
-        datasource = SparkDatasource(df, -1)
+        datasource = SparkDatasource(df, 32 * 1024 * 1024)
         if parallelism is None:
             parallelism = datasource.num_chunks
         dataset = read_datasource(

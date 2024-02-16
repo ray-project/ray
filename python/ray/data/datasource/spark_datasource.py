@@ -1,7 +1,6 @@
 import logging
 from typing import Iterator, List, Optional
 import numpy as np
-import pandas as pd
 import pyarrow
 
 from ray.data.block import BlockMetadata
@@ -11,24 +10,32 @@ from ray.util.annotations import PublicAPI
 logger = logging.getLogger(__name__)
 
 
+def _persist_dataframe_as_chunks(spark_dataframe, bytes_per_chunk):
+    try:
+        from pyspark.databricks.sql.chunk import persistDataFrameAsChunks
+    except ImportError:
+        raise RuntimeError(
+            "Current Databricks Runtime version does not support Ray SparkDatasource."
+        )
+    return persistDataFrameAsChunks(spark_dataframe, bytes_per_chunk)
+
+
 def _read_chunk_fn(chunk_id_list) -> Iterator["pyarrow.Table"]:
-    from pyspark.sql.chunk_api import read_chunk
+    from pyspark.databricks.sql.chunk import readChunk
     for chunk_id in chunk_id_list:
-        yield read_chunk(chunk_id)
+        yield readChunk(chunk_id)
+
+
+def _unpersist_chunks(chunk_ids):
+    from pyspark.databricks.sql.chunk import unpersistChunks
+    return unpersistChunks(chunk_ids)
 
 
 @PublicAPI(stability="alpha")
 class SparkDatasource(Datasource):
 
-    def __init__(self, spark_dataframe, rows_per_chunk):
-        try:
-            from pyspark.sql.chunk_api import persist_dataframe_as_chunks
-        except ImportError:
-            raise RuntimeError(
-                "Current spark version does not support Ray SparkDatasource."
-            )
-
-        self.chunk_meta_list = persist_dataframe_as_chunks(spark_dataframe, rows_per_chunk)
+    def __init__(self, spark_dataframe, bytes_per_chunk):
+        self.chunk_meta_list = _persist_dataframe_as_chunks(spark_dataframe, bytes_per_chunk)
         self.num_chunks = len(self.chunk_meta_list)
 
         self._estimate_inmemory_data_size = sum(
@@ -87,10 +94,8 @@ class SparkDatasource(Datasource):
         return "Spark"
 
     def dispose_spark_cache(self):
-        from pyspark.sql.chunk_api import unpersist_chunks
-
         chunk_ids = [
             chunk_meta.id
             for chunk_meta in self.chunk_meta_list
         ]
-        unpersist_chunks(chunk_ids)
+        _unpersist_chunks(chunk_ids)
