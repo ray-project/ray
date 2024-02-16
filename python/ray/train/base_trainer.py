@@ -691,17 +691,15 @@ class BaseTrainer(abc.ABC):
         scaling_config = self.scaling_config
         metadata = self.metadata
 
-        # Create a local copy of the training function to avoid modifying attributes
-        # of the globally accessible function.
-        train_coordinator_fn = copy.copy(_train_coordinator_fn)
+        train_coordinator_fn = partial(
+            _train_coordinator_fn, trainer_cls=trainer_cls, metadata=metadata
+        )
         # Change the name of the training function to match the name of the Trainer
         # class. This will mean the Tune trial name will match the name of Trainer on
         # stdout messages and the results directory.
         train_coordinator_fn.__name__ = trainer_cls.__name__
 
-        trainable_cls = wrap_function(
-            partial(train_coordinator_fn, trainer_cls=trainer_cls, metadata=metadata)
-        )
+        trainable_cls = wrap_function(train_coordinator_fn)
         has_base_dataset = bool(self.datasets)
         if has_base_dataset:
             from ray.data.context import DataContext
