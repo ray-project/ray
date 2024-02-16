@@ -2512,11 +2512,11 @@ def from_spark(
         in ray object store, otherwise it returns
         a :class:`~ray.data.MaterializedDataset` holding rows read from the DataFrame.
     """  # noqa: E501
-    from pyspark.sql import SparkSession
+    from ray.util.spark.utils import is_in_databricks_runtime
 
     parallelism = _get_num_output_blocks(parallelism, override_num_blocks)
 
-    if SparkSession.getActiveSession() is not None:
+    if is_in_databricks_runtime():
         from ray.data.datasource.spark_datasource import SparkDatasource
         from ray.util.spark.databricks_hook import get_databricks_function
         # Ray on spark
