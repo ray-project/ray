@@ -1,6 +1,7 @@
 ---
 orphan: true
 ---
+
 (serve-stable-diffusion-tutorial)=
 
 # Serve a Stable Diffusion Model
@@ -12,7 +13,7 @@ To run this example, install the following:
 pip install "ray[serve]" requests torch diffusers==0.12.1 transformers
 ```
 
-This example uses the [stabilityai/stable-diffusion-2](https://huggingface.co/stabilityai/stable-diffusion-2) model and [FastAPI](https://fastapi.tiangolo.com/) to build the example. Save the following code to a file named stable_diffusion.py.
+This example uses the [stabilityai/stable-diffusion-2](https://huggingface.co/stabilityai/stable-diffusion-2) model and [FastAPI](https://fastapi.tiangolo.com/) to build the example. Save the following code to a file named stable_diffusion.py. 
 
 The Serve code is as follows:
 ```{literalinclude} ../doc_code/stable_diffusion.py

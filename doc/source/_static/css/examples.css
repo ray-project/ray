@@ -245,3 +245,7 @@ html[data-theme='light'] {
   );
   box-shadow: 0px 4px 15px color-mix(in srgb, black 5%, transparent);
 }
+
+.example-other-keywords {
+  display: none;
+}

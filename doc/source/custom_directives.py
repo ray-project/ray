@@ -2,7 +2,7 @@ from collections.abc import Iterable
 from enum import Enum
 import re
 import sphinx
-from typing import List, Dict, Union, Callable, Any, Optional
+from typing import List, Dict, Union, Callable, Any, Optional, Tuple
 import copy
 import yaml
 import bs4
@@ -352,6 +352,17 @@ class ExampleEnum(Enum):
     """Enum which allows easier enumeration of members for example metadata."""
 
     @classmethod
+    def items(cls: type) -> Iterable[Tuple["ExampleEnum", str]]:
+        """Return an iterable mapping between the enum type and the corresponding value.
+
+        Returns
+        -------
+        Dict['ExampleEnum', str]
+            Dictionary of enum type, enum value for the enum class
+        """
+        yield from {entry: entry.value for entry in cls}.items()
+
+    @classmethod
     def values(cls: type) -> List[str]:
         """Return a list of the values of the enum.
 
@@ -431,6 +442,7 @@ class Framework(ExampleEnum):
     TENSORFLOW = "TensorFlow"
     HOROVOD = "Horovod"
     XGBOOST = "XGBoost"
+    HUGGINGFACE = "Hugging Face"
 
     @classmethod
     def formatted_name(cls):
@@ -487,13 +499,27 @@ class Example:
         self.library = library
 
         self.frameworks = []
-        if config.get("frameworks"):
-            self.frameworks = [
-                Framework(item) for item in config.get("frameworks").split(",")
-            ]
+        framework_config = config.get("frameworks")
+        if framework_config is not None:
+            for framework in framework_config.split(","):
+                self.frameworks.append(Framework(framework.strip()))
+
+        self.use_cases = []
+        use_case_config = config.get("use_cases")
+        if use_case_config is not None:
+            for use_case in use_case_config.split(","):
+                self.use_cases.append(UseCase(use_case.strip()))
 
         self.skill_level = SkillLevel(config.get("skill_level"))
         self.title = config.get("title")
+
+        if "link" not in config:
+            raise ValueError(
+                "All examples must provide a link to either an external resource "
+                "(starting with http://...) or a relative path to an internal page "
+                "that is part of the Ray docs."
+            )
+
         self.link = str(config_dir / config.get("link"))
 
         if self.title is None:
@@ -532,7 +558,7 @@ class ExampleConfig:
 
         self.config_path = path
         self.library = Library.from_path(path)
-        self.examples = self.parse_examples(config.get("examples", []))
+        self.examples = self.parse_examples(config.get("examples", []), src_dir)
         self.text = config.get("text", "")
 
     def parse_examples(
@@ -554,18 +580,17 @@ class ExampleConfig:
         """
         links = set()
         examples = []
-        for example in example_config:
+        for entry in example_config:
+            example = Example(
+                entry, self.library, self.config_path.relative_to(src_dir).parent
+            )
             if example.link in links:
                 raise ValueError(
-                    f"A duplicate example {example.link} was specified in {self.config_path}. "
-                    "Please remove duplicates and rebuild."
+                    f"A duplicate example {example.link} was specified in "
+                    f"{self.config_path}. Please remove duplicates and rebuild."
                 )
             links.add(example.link)
-            examples.append(
-                Example(
-                    example, self.library, self.config_path.relative_to(src_dir).parent
-                )
-            )
+            examples.append(example)
 
         return examples
 
@@ -608,6 +633,16 @@ def setup_context(app, pagename, templatename, context, doctree):
 
         # Construct a table of examples
         soup = bs4.BeautifulSoup()
+
+        # Add the main heading to the page and include the page text
+        page_title = soup.new_tag("h1")
+        page_title.append(f"{example_config.library.value} Examples")
+        soup.append(page_title)
+
+        page_text = soup.new_tag("p")
+        page_text.append(example_config.text)
+        soup.append(page_text)
+
         container = soup.new_tag("div", attrs={"class": "example-index"})
         for level, examples in examples.items():
             if not examples:
@@ -769,6 +804,15 @@ def setup_context(app, pagename, templatename, context, doctree):
                 + "."
             )
             example_text_area.append(example_tags)
+
+            other_keywords = soup.new_tag(
+                "span", attrs={"class": "example-other-keywords"}
+            )
+            other_keywords.append(
+                " ".join(use_case.value for use_case in example.use_cases)
+            )
+            example_text_area.append(other_keywords)
+
             example_link.append(example_text_area)
             example_div.append(example_link)
             list_area.append(example_div)
@@ -1007,16 +1051,13 @@ def pregenerate_example_rsts(
         config_path = pathlib.Path(app.confdir) / pathlib.Path(config).relative_to(
             "source"
         )
-        example_config = ExampleConfig(config_path, app.srcdir)
-
-        # Parse the library from the path name
-        page_title = f"{example_config.library.value} Examples"
+        page_title = "Examples"
         title_decoration = "=" * len(page_title)
         with open(config_path.with_suffix(".rst"), "w") as f:
             f.write(
-                f"{example_config.library.value}\n{title_decoration}\n"
-                f"{example_config.text}\n  .. this file is pregenerated; "
-                "please edit ./examples.yml to modify examples for this library."
+                f"{page_title}\n{title_decoration}\n\n"
+                "  .. this file is pregenerated; please edit ./examples.yml to "
+                "modify examples for this library."
             )
 
 

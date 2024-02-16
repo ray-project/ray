@@ -76,10 +76,17 @@ function applyFilter() {
     const title = panel
       .querySelector('.example-title')
       .textContent.toLowerCase();
-    const tags = panel.querySelector('.example-tags').textContent.toLowerCase();
+    const tags = panel
+      .querySelector('.example-tags')
+      .textContent.toLowerCase()
+      .concat();
+    const other_keywords = panel
+      .querySelector('.example-other-keywords')
+      .textContent.toLowerCase();
+    const keywords = `${tags} ${other_keywords}`;
     const matchesSearch =
-      title.includes(searchTerm) || tags.includes(searchTerm);
-    const matchesTags = panelMatchesFilters(tags, filters);
+      title.includes(searchTerm) || keywords.includes(searchTerm);
+    const matchesTags = panelMatchesFilters(keywords, filters);
 
     // Hide panels that have no match
     if (matchesSearch && matchesTags) {
