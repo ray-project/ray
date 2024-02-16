@@ -1049,7 +1049,7 @@ def test_ray_drain_node():
         "ray._raylet.GcsClient"
     ) as MockGcsClient:
         mock_gcs_client = MockGcsClient.return_value
-        mock_gcs_client.drain_node.return_value = True
+        mock_gcs_client.drain_node.return_value = (True, "")
         result = runner.invoke(
             scripts.drain_node,
             [
@@ -1075,7 +1075,7 @@ def test_ray_drain_node():
         "ray._raylet.GcsClient"
     ) as MockGcsClient:
         mock_gcs_client = MockGcsClient.return_value
-        mock_gcs_client.drain_node.return_value = False
+        mock_gcs_client.drain_node.return_value = (False, "Node not idle")
         result = runner.invoke(
             scripts.drain_node,
             [
@@ -1090,13 +1090,13 @@ def test_ray_drain_node():
             ],
         )
         assert result.exit_code != 0
-        assert "The drain request is not accepted" in result.output
+        assert "The drain request is not accepted: Node not idle" in result.output
 
     with patch("ray._raylet.check_health", return_value=True), patch(
         "time.time_ns", return_value=1000000000
     ), patch("ray._raylet.GcsClient") as MockGcsClient:
         mock_gcs_client = MockGcsClient.return_value
-        mock_gcs_client.drain_node.return_value = True
+        mock_gcs_client.drain_node.return_value = (True, "")
         result = runner.invoke(
             scripts.drain_node,
             [

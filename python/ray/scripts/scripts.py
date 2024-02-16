@@ -2236,8 +2236,11 @@ def global_gc(address):
     "--reason",
     required=True,
     type=click.Choice(
-        # Exclude 0 which is UNSPECIFIED
-        [item[0] for item in autoscaler_pb2.DrainNodeReason.items() if item[1] != 0]
+        [
+            item[0]
+            for item in autoscaler_pb2.DrainNodeReason.items()
+            if item[1] != autoscaler_pb2.DRAIN_NODE_REASON_UNSPECIFIED
+        ]
     ),
     help="The reason why the node will be drained.",
 )
@@ -2266,7 +2269,7 @@ def drain_node(
     deadline_remaining_seconds: int,
 ):
     """
-    This is NOT a public api.
+    This is NOT a public API.
 
     Manually drain a worker node.
     """
@@ -2289,7 +2292,7 @@ def drain_node(
         raise click.BadParameter(f"Ray cluster is not found at {address}")
 
     gcs_client = ray._raylet.GcsClient(address=address)
-    is_accepted = gcs_client.drain_node(
+    is_accepted, rejection_error_message = gcs_client.drain_node(
         node_id,
         autoscaler_pb2.DrainNodeReason.Value(reason),
         reason_message,
@@ -2297,7 +2300,9 @@ def drain_node(
     )
 
     if not is_accepted:
-        raise click.ClickException("The drain request is not accepted")
+        raise click.ClickException(
+            f"The drain request is not accepted: {rejection_error_message}"
+        )
 
 
 @cli.command(name="kuberay-autoscaler", hidden=True)
@@ -2355,7 +2360,7 @@ def kuberay_autoscaler(cluster_name: str, cluster_namespace: str) -> None:
 )
 def healthcheck(address, redis_password, component, skip_version_check):
     """
-    This is NOT a public api.
+    This is NOT a public API.
 
     Health check a Ray or a specific component. Exit code 0 is healthy.
     """
