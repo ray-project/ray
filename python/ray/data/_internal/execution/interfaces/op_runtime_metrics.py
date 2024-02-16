@@ -109,7 +109,9 @@ class OpRuntimeMetrics:
     # === Miscellaneous metrics ===
 
     # Time spent generating blocks in tasks.
-    block_generation_time: float = field(default=0, metadata={"map_only": True})
+    block_generation_time: float = field(
+        default=0, metadata={"map_only": True, "export_metric": True}
+    )
 
     # Time operator spent in backpressure
     backpressure_time: float = field(default=0, metadata={"export": False})
