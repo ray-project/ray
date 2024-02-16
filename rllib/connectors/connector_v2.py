@@ -81,8 +81,8 @@ class ConnectorV2(abc.ABC):
 
     def __init__(
         self,
-        input_observation_space: gym.Space = None,
-        input_action_space: gym.Space = None,
+        input_observation_space: Optional[gym.Space] = None,
+        input_action_space: Optional[gym.Space] = None,
         **kwargs,
     ):
         """Initializes a ConnectorV2 instance.
@@ -313,26 +313,16 @@ class ConnectorV2(abc.ABC):
                 batch,
                 "test_col_2",
                 # One (complex) already batched struct.
-                {"a": np.array([3, 5]), "b": [4, 6]},
+                {"a": np.array([3, 5]), "b": np.array([4, 6])},
                 num_items=2,
             )
             check(
                 batch["test_col_2"],
-                [{"a": np.array(3), "b": 4}, {"a": np.array(5), "b": 6}],
+                [
+                    {"a": np.array(3), "b": np.array(4)},
+                    {"a": np.array(5), "b": np.array(6)},
+                ],
             )
-
-            # Multi-agent case.
-            TODO
-
-            batch = {}
-            sa_episode = SingleAgentEpisode(agent_id="ag1", module_id="module_10")
-            ConnectorV2.add_n_batch_items(batch, "test_col_3", -10, sa_episode)
-
-            check(batch["test_col_3"],
-                "test_col_2": {
-                    ("ag1", "module_10"): [-10],
-                },
-            })
 
         Args:
             batch: The batch to store n `items_to_add` in.

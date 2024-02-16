@@ -1,5 +1,6 @@
 from typing import Callable, Iterator, Union
 
+from ray.data._internal.compute import TaskPoolStrategy
 from ray.data._internal.execution.interfaces import PhysicalOperator
 from ray.data._internal.execution.interfaces.task_context import TaskContext
 from ray.data._internal.execution.operators.map_operator import MapOperator
@@ -51,4 +52,5 @@ def plan_write_op(op: Write, input_physical_dag: PhysicalOperator) -> PhysicalOp
         target_max_block_size=None,
         ray_remote_args=op._ray_remote_args,
         min_rows_per_bundle=op._min_rows_per_bundled_input,
+        compute_strategy=TaskPoolStrategy(op._concurrency),
     )

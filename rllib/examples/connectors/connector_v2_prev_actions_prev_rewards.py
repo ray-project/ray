@@ -1,3 +1,5 @@
+import functools
+
 from ray.rllib.algorithms.ppo import PPOConfig
 from ray.rllib.connectors.env_to_module import (
     AddLastObservationToBatch,
@@ -9,11 +11,14 @@ from ray.rllib.env.multi_agent_env_runner import MultiAgentEnvRunner
 from ray.rllib.env.single_agent_env_runner import SingleAgentEnvRunner
 from ray.rllib.examples.env.stateless_cartpole import StatelessCartPole
 from ray.rllib.examples.env.multi_agent import MultiAgentStatelessCartPole
+from ray.rllib.utils.framework import try_import_torch
 from ray.rllib.utils.test_utils import (
     add_rllib_example_script_args,
     run_rllib_example_script_experiment,
 )
 from ray.tune import register_env
+
+torch, nn = try_import_torch()
 
 
 parser = add_rllib_example_script_args(
@@ -70,14 +75,24 @@ if __name__ == "__main__":
                 else MultiAgentEnvRunner
             ),
         )
-        .resources(num_learner_workers=0)
+        .resources(
+            num_learner_workers=args.num_gpus,
+            num_gpus_per_learner_worker=1 if args.num_gpus else 0,
+            num_cpus_for_local_worker=1,
+        )
         .training(
-            num_sgd_iter=10,
+            num_sgd_iter=6,
+            lr=0.0003,
             train_batch_size=4000,
+            vf_loss_coeff=0.01,
             model=dict(
                 {
                     "use_lstm": True,
-                    "fcnet_hiddens": [64],
+                    "fcnet_hiddens": [32],
+                    "fcnet_activation": "linear",
+                    "vf_share_layers": True,
+                    "fcnet_weights_initializer": nn.init.xavier_uniform_,
+                    "fcnet_bias_initializer": functools.partial(nn.init.constant_, 0.0),
                 },
                 **(
                     {}
