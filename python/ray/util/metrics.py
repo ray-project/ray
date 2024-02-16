@@ -31,7 +31,7 @@ def _validate_metric_name(name: str):
         raise ValueError(
             f"Metric name {name} is invalid. "
             "Please use metric names that match the regex "
-            r"^[a-zA-Z_:][a-zA-Z0-9_:]*$"
+            f"METRIC_NAME_RE"
         )
 
 

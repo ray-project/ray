@@ -7,12 +7,11 @@ doctest(
     tags = ["team:core"]
 )
 
-util_tests_srcs = glob(["tests/**/*.py"])
-
-
-py_test(
-    name = "test_metrics",
-    size = "small",
-    srcs = util_tests_srcs,
-    tags = ["exclusive", "utils_tests", "team:core", "no_main"]
+py_test_module_list(
+   files = [
+      "tests/test_metrics.py"
+   ],
+   size = "small",
+   tags = ["team:core", "exclusive"],
+   deps = ["//:ray_lib"]
 )

@@ -16,3 +16,9 @@ def test_empty_metric_name():
     with pytest.raises(ValueError) as e:
         Metric("", "Test metric")
     assert str(e.value) == "Empty name is not allowed. Please provide a metric name."
+
+
+if __name__ == "__main__":
+    import sys
+
+    sys.exit(pytest.main(["-sv", __file__]))
