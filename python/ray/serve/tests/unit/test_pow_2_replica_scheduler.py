@@ -1520,5 +1520,45 @@ async def test_queue_len_cache_background_probing(pow_2_scheduler):
     await async_wait_for_condition(r2_was_probed)
 
 
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "pow_2_scheduler",
+    [
+        {"use_replica_queue_len_cache": True},
+    ],
+    indirect=True,
+)
+async def test_queue_len_cache_entries_added_correctly(pow_2_scheduler):
+    """
+    Verify that the cache entries are updated for probed replicas correctly.
+    """
+    s = pow_2_scheduler
+    staleness_timeout_s = RAY_SERVE_QUEUE_LENGTH_CACHE_TIMEOUT_S
+
+    r1 = FakeReplicaWrapper("r1")
+    r2 = FakeReplicaWrapper("r2")
+    s.update_replicas([r1, r2])
+
+    for i in range(100):
+        r1_queue_len = int(DEFAULT_MAX_CONCURRENT_REQUESTS * random.random())
+        r2_queue_len = int(DEFAULT_MAX_CONCURRENT_REQUESTS * random.random())
+        r1.set_queue_len_response(r1_queue_len)
+        r2.set_queue_len_response(r2_queue_len)
+
+        replica = await s.choose_replica_for_request(fake_pending_request())
+        if r1_queue_len < r2_queue_len:
+            assert replica == r1
+        elif r2_queue_len < r1_queue_len:
+            assert replica == r2
+        else:
+            assert replica in {r1, r2}
+
+        assert len(r1.queue_len_deadline_history) == i + 1
+        assert len(r2.queue_len_deadline_history) == i + 1
+        assert s._replica_queue_len_cache.get("r1") == r1_queue_len
+        assert s._replica_queue_len_cache.get("r2") == r2_queue_len
+        TIMER.advance(staleness_timeout_s + 1)
+
+
 if __name__ == "__main__":
     sys.exit(pytest.main(["-v", "-s", __file__]))

@@ -3,6 +3,8 @@ import warnings
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any, Dict, Optional, Type
 
+from packaging.version import Version
+
 from ray.train import Checkpoint, RunConfig, ScalingConfig
 from ray.train.constants import TRAIN_DATASET_KEY
 from ray.train.trainer import BaseTrainer, GenDataset
@@ -13,7 +15,6 @@ from ray.util.annotations import DeveloperAPI
 if TYPE_CHECKING:
     import xgboost_ray
 
-    from ray.data.preprocessor import Preprocessor
 
 _WARN_REPARTITION_THRESHOLD = 10 * 1024**3
 _DEFAULT_NUM_ITERATIONS = 10
@@ -149,7 +150,6 @@ class GBDTTrainer(BaseTrainer):
         num_boost_round: int = _DEFAULT_NUM_ITERATIONS,
         scaling_config: Optional[ScalingConfig] = None,
         run_config: Optional[RunConfig] = None,
-        preprocessor: Optional["Preprocessor"] = None,  # Deprecated
         resume_from_checkpoint: Optional[Checkpoint] = None,
         metadata: Optional[Dict[str, Any]] = None,
         **train_kwargs,
@@ -165,7 +165,6 @@ class GBDTTrainer(BaseTrainer):
             scaling_config=scaling_config,
             run_config=run_config,
             datasets=datasets,
-            preprocessor=preprocessor,
             resume_from_checkpoint=resume_from_checkpoint,
             metadata=metadata,
         )
@@ -275,6 +274,15 @@ class GBDTTrainer(BaseTrainer):
                 self.datasets[dataset_key] = dataset.repartition(
                     self._ray_params.num_actors
                 )
+
+    def setup(self) -> None:
+        import xgboost_ray
+
+        # XGBoost/LightGBM-Ray requires each dataset to have at least as many
+        # blocks as there are workers.
+        # This is only applicable for xgboost-ray<0.1.16
+        if Version(xgboost_ray.__version__) < Version("0.1.16"):
+            self._repartition_datasets_to_match_num_actors()
 
     def training_loop(self) -> None:
         config = self.train_kwargs.copy()
