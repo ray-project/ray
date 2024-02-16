@@ -2,6 +2,8 @@ import asyncio
 import os
 import sys
 from typing import Dict, Optional
+import subprocess
+import signal
 
 import pytest
 import requests
@@ -848,7 +850,7 @@ def test_status_constructor_error(serve_instance):
         def __init__(self):
             1 / 0
 
-    serve.run(A.bind(), _blocking=False)
+    serve._run(A.bind(), _blocking=False)
 
     def check_for_failed_deployment():
         default_app = serve.status().applications[SERVE_DEFAULT_APP_NAME]
@@ -880,7 +882,7 @@ def test_status_package_unavailable_in_controller(serve_instance):
             create_engine("mysql://some_wrong_url:3306").connect()
 
     ray_actor_options = {"runtime_env": {"pip": ["PyMySQL", "sqlalchemy==1.3.19"]}}
-    serve.run(
+    serve._run(
         MyDeployment.options(ray_actor_options=ray_actor_options).bind(),
         _blocking=False,
     )
