@@ -91,7 +91,7 @@ def create_iterator(
 ):
     # Similar logic to the old Trainer.run_iterator().
 
-    train_func = construct_train_func(train_func, None, setup_func=lambda: None)
+    train_func = construct_train_func(train_func, None, train_func_context=None)
 
     backend_executor = backend_executor_cls(
         backend_config=backend_config, num_workers=num_workers, max_retries=MAX_RETRIES

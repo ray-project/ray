@@ -4,7 +4,17 @@ import inspect
 import logging
 import os
 from pathlib import Path
-from typing import Any, Callable, Dict, List, Optional, Tuple, TypeVar, Union
+from typing import (
+    Any,
+    Callable,
+    ContextManager,
+    Dict,
+    List,
+    Optional,
+    Tuple,
+    TypeVar,
+    Union,
+)
 
 import ray
 from ray.actor import ActorHandle
@@ -88,7 +98,7 @@ def update_env_vars(env_vars: Dict[str, Any]):
 def construct_train_func(
     train_func: Union[Callable[[], T], Callable[[Dict[str, Any]], T]],
     config: Optional[Dict[str, Any]],
-    setup_func: Callable[..., Any],
+    train_func_context: Optional[ContextManager],
     fn_arg_name: Optional[str] = "train_func",
     discard_returns: bool = False,
 ) -> Callable[[], T]:
@@ -98,8 +108,8 @@ def construct_train_func(
             This can either take in no arguments or a ``config`` dict.
         config (Optional[Dict]): Configurations to pass into
             ``train_func``. If None then an empty Dict will be created.
-        setup_func: Extra initialization logics executed before `train_func`
-            in the same thread. Each BackendConfig defines their own setup function.
+        train_func_context: Context manager for user's `train_func`, which executes
+            backend-specific logics before and after the training function.
         fn_arg_name (Optional[str]): The name of training function to use for error
             messages.
         discard_returns: Whether to discard any returns from train_func or not.
@@ -138,8 +148,8 @@ def construct_train_func(
         @functools.wraps(wrapped_train_func)
         def train_fn():
             try:
-                setup_func()
-                return wrapped_train_func(config)
+                with train_func_context:
+                    return wrapped_train_func(config)
             except Exception as e:
                 raise StartTraceback from e
 
@@ -148,8 +158,8 @@ def construct_train_func(
         @functools.wraps(wrapped_train_func)
         def train_fn():
             try:
-                setup_func()
-                return wrapped_train_func()
+                with train_func_context:
+                    return wrapped_train_func()
             except Exception as e:
                 raise StartTraceback from e
 
