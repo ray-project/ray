@@ -18,6 +18,8 @@ run_sanity_check() {
         "ray[cpp]==$RAY_VERSION"
     (
         cd release/util
+        which python
+        python --version
         python sanity_check.py
     )
     conda deactivate
