@@ -1455,18 +1455,13 @@ class Algorithm(Trainable, AlgorithmBase):
                 def duration_fn(num_units_done):
                     return duration - num_units_done
 
-        # Put weights only once into object store and use same object
-        # ref to synch to all workers.
-        self._evaluation_weights_seq_number += 1
-        weights_ref = ray.put(self.workers.local_worker().get_weights())
-        weights_seq_no = self._evaluation_weights_seq_number
-        remote_fn_partial = functools.partial(
-            self._evaluate_async_remote_fn,
-            _weights_ref=weights_ref,
-            _weights_seq_no=weights_seq_no,
-            _env_runner=True,
-            _env_runner_num_episodes=(1 if unit == "episodes" else None),
-        )
+            remote_fn_partial = functools.partial(
+                self._evaluate_async_remote_fn,
+                _weights_ref=weights_ref,
+                _weights_seq_no=weights_seq_no,
+                _env_runner=True,
+                _env_runner_num_episodes=(1 if unit == "episodes" else None),
+            )
 
             rollout_metrics = []
 
@@ -1479,13 +1474,13 @@ class Algorithm(Trainable, AlgorithmBase):
                 if units_left_to_do <= 0:
                     break
 
-            _round += 1
-            # Get ready evaluation results and metrics asynchronously.
-            self.evaluation_workers.foreach_worker_async(
-                func=remote_fn_partial,
-                healthy_only=True,
-            )
-            eval_results = self.evaluation_workers.fetch_ready_async_reqs()
+                _round += 1
+                # Get ready evaluation results and metrics asynchronously.
+                self.evaluation_workers.foreach_worker_async(
+                    func=remote_fn_partial,
+                    healthy_only=True,
+                )
+                eval_results = self.evaluation_workers.fetch_ready_async_reqs()
 
                 episodes = []
                 i = 0
@@ -1535,13 +1530,10 @@ class Algorithm(Trainable, AlgorithmBase):
                     f"{unit} done)"
                 )
 
-        del weights_ref
-        del remote_fn_partial
-
-        sampler_results = summarize_episodes(
-            rollout_metrics,
-            keep_custom_metrics=eval_cfg["keep_per_episode_custom_metrics"],
-        )
+                sampler_results = summarize_episodes(
+                    rollout_metrics,
+                    keep_custom_metrics=eval_cfg["keep_per_episode_custom_metrics"],
+                )
 
             metrics = dict({"sampler_results": sampler_results})
             metrics[NUM_AGENT_STEPS_SAMPLED_THIS_ITER] = agent_steps_this_iter
@@ -1554,6 +1546,9 @@ class Algorithm(Trainable, AlgorithmBase):
                 for name, estimator in self.reward_estimators.items():
                     estimates = estimator.estimate(total_batch)
                     metrics["off_policy_estimator"][name] = estimates
+
+        del weights_ref
+        del remote_fn_partial
 
         # Evaluation does not run for every step.
         # Save evaluation metrics on Algorithm, so it can be attached to
