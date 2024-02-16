@@ -148,7 +148,7 @@ def construct_train_func(
         @functools.wraps(wrapped_train_func)
         def train_fn():
             try:
-                with train_func_context:
+                with train_func_context():
                     return wrapped_train_func(config)
             except Exception as e:
                 raise StartTraceback from e
@@ -158,7 +158,7 @@ def construct_train_func(
         @functools.wraps(wrapped_train_func)
         def train_fn():
             try:
-                with train_func_context:
+                with train_func_context():
                     return wrapped_train_func()
             except Exception as e:
                 raise StartTraceback from e
