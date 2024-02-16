@@ -69,7 +69,7 @@ class TrainingFailedError(RuntimeError):
     )
 
 
-def train_coordinator_fn(
+def _train_coordinator_fn(
     config: dict, trainer_cls: Type["BaseTrainer"], metadata: dict
 ):
     """This is the function that defines the logic of the Ray Train coordinator.
@@ -693,14 +693,14 @@ class BaseTrainer(abc.ABC):
 
         # Create a local copy of the training function to avoid modifying attributes
         # of the globally accessible function.
-        _train_coordinator_fn = copy.copy(train_coordinator_fn)
+        train_coordinator_fn = copy.copy(_train_coordinator_fn)
         # Change the name of the training function to match the name of the Trainer
         # class. This will mean the Tune trial name will match the name of Trainer on
         # stdout messages and the results directory.
-        _train_coordinator_fn.__name__ = trainer_cls.__name__
+        train_coordinator_fn.__name__ = trainer_cls.__name__
 
         trainable_cls = wrap_function(
-            partial(_train_coordinator_fn, trainer_cls=trainer_cls, metadata=metadata)
+            partial(train_coordinator_fn, trainer_cls=trainer_cls, metadata=metadata)
         )
         has_base_dataset = bool(self.datasets)
         if has_base_dataset:
@@ -737,10 +737,10 @@ class BaseTrainer(abc.ABC):
                 merged_scaling_config = self._merged_config.get("scaling_config")
                 if isinstance(merged_scaling_config, dict):
                     merged_scaling_config = ScalingConfig(**merged_scaling_config)
-                self._merged_config[
-                    "scaling_config"
-                ] = self._reconcile_scaling_config_with_trial_resources(
-                    merged_scaling_config
+                self._merged_config["scaling_config"] = (
+                    self._reconcile_scaling_config_with_trial_resources(
+                        merged_scaling_config
+                    )
                 )
                 if self.has_base_dataset():
                     # Set the DataContext on the Trainer actor to the DataContext
