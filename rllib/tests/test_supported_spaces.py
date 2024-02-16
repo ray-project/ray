@@ -44,11 +44,8 @@ class TestSupportedSpacesAPPO(unittest.TestCase):
 
     def test_appo(self):
         config = (
-            APPOConfig()
-            .resources(num_gpus=0)
-            .training(vtrace=False, model={"fcnet_hiddens": [10]})
+            APPOConfig().resources(num_gpus=0).training(model={"fcnet_hiddens": [10]})
         )
-        config.training(vtrace=True)
         check_supported_spaces("APPO", config)
 
 

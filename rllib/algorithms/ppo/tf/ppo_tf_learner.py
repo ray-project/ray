@@ -1,6 +1,7 @@
 import logging
 from typing import Any, Dict
 
+import tree
 from ray.rllib.algorithms.ppo.ppo import (
     LEARNER_RESULTS_KL_KEY,
     LEARNER_RESULTS_CURR_KL_COEFF_KEY,
@@ -11,6 +12,7 @@ from ray.rllib.algorithms.ppo.ppo import (
 from ray.rllib.algorithms.ppo.ppo_learner import PPOLearner
 from ray.rllib.core.learner.learner import POLICY_LOSS_KEY, VF_LOSS_KEY, ENTROPY_KEY
 from ray.rllib.core.learner.tf.tf_learner import TfLearner
+from ray.rllib.core.models.base import ENCODER_OUT, CRITIC
 from ray.rllib.evaluation.postprocessing import Postprocessing
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils.framework import try_import_tf
@@ -174,3 +176,23 @@ class PPOTfLearner(PPOLearner, TfLearner):
             results.update({LEARNER_RESULTS_CURR_KL_COEFF_KEY: curr_var.numpy()})
 
         return results
+
+    @override(PPOLearner)
+    def _compute_values(self, batch):
+        values = {}
+        for module_id, sa_batch in batch.policy_batches.items():
+            infos = sa_batch.pop(SampleBatch.INFOS, None)
+            sa_batch = tree.map_structure(lambda s: tf.convert_to_tensor(s), sa_batch)
+            if infos is not None:
+                sa_batch[SampleBatch.INFOS] = infos
+
+            module = self.module[module_id].unwrapped()
+
+            # Shared encoder.
+            encoder_outs = module.encoder(sa_batch)
+            # Value head.
+            vf_out = module.vf(encoder_outs[ENCODER_OUT][CRITIC])
+            # Squeeze out last dimension (single node value head).
+            values[module_id] = tf.squeeze(vf_out, -1)
+
+        return values

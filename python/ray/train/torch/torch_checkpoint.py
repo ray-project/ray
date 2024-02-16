@@ -1,6 +1,7 @@
 import os
 import tempfile
 import warnings
+from pathlib import Path
 from typing import TYPE_CHECKING, Any, Dict, Optional
 
 import torch
@@ -82,7 +83,7 @@ class TorchCheckpoint(FrameworkCheckpoint):
         """
         tempdir = tempfile.mkdtemp()
 
-        model_path = os.path.join(tempdir, cls.MODEL_FILENAME)
+        model_path = Path(tempdir, cls.MODEL_FILENAME).as_posix()
         stripped_state_dict = consume_prefix_in_state_dict_if_present_not_in_place(
             state_dict, "module."
         )
@@ -140,7 +141,7 @@ class TorchCheckpoint(FrameworkCheckpoint):
         """
         tempdir = tempfile.mkdtemp()
 
-        model_path = os.path.join(tempdir, cls.MODEL_FILENAME)
+        model_path = Path(tempdir, cls.MODEL_FILENAME).as_posix()
         torch.save(model, model_path)
 
         checkpoint = cls.from_directory(tempdir)
@@ -157,7 +158,7 @@ class TorchCheckpoint(FrameworkCheckpoint):
                 ``model``. Otherwise, the model will be discarded.
         """
         with self.as_directory() as tempdir:
-            model_path = os.path.join(tempdir, self.MODEL_FILENAME)
+            model_path = Path(tempdir, self.MODEL_FILENAME).as_posix()
             if not os.path.exists(model_path):
                 raise RuntimeError(
                     "`model.pt` not found within this checkpoint. Make sure you "

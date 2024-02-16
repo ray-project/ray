@@ -4,6 +4,7 @@ ARG BASE_IMAGE
 FROM "$BASE_IMAGE"
 
 ARG BUILD_TYPE
+ARG BUILDKITE_PIPELINE_ID
 
 ENV CC=clang
 ENV CXX=clang++-12
@@ -16,6 +17,11 @@ RUN <<EOF
 #!/bin/bash -i
 
 set -euo pipefail
+
+if [[ "$BUILDKITE_PIPELINE_ID" == "0189942e-0876-4b8f-80a4-617f988ec59b" ]]; then
+  # Do not upload cache results for premerge pipeline
+  echo "build --remote_upload_local_results=false" >> ~/.bazelrc
+fi
 
 (
   cd dashboard/client

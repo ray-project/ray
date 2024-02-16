@@ -1,5 +1,5 @@
 import logging
-from typing import List, Optional
+from typing import Optional
 
 from ray.serve._private.common import TargetCapacityDirection
 from ray.serve._private.constants import SERVE_LOGGER_NAME
@@ -30,8 +30,8 @@ class AutoscalingPolicyManager:
     def get_decision_num_replicas(
         self,
         curr_target_num_replicas: int,
-        current_num_ongoing_requests: List[float],
-        current_handle_queued_queries: float,
+        total_num_requests: int,
+        num_running_replicas: int,
         target_capacity: Optional[float] = None,
         target_capacity_direction: Optional[TargetCapacityDirection] = None,
         _skip_bound_check: bool = False,
@@ -52,8 +52,8 @@ class AutoscalingPolicyManager:
         )
         decision_num_replicas = self.policy(
             curr_target_num_replicas=curr_target_num_replicas,
-            current_num_ongoing_requests=current_num_ongoing_requests,
-            current_handle_queued_queries=current_handle_queued_queries,
+            total_num_requests=total_num_requests,
+            num_running_replicas=num_running_replicas,
             config=self.config,
             capacity_adjusted_min_replicas=capacity_adjusted_min_replicas,
             capacity_adjusted_max_replicas=capacity_adjusted_max_replicas,

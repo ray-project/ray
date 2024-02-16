@@ -17,7 +17,6 @@ from ray.actor import ActorHandle
 from ray.exceptions import RayActorError, RayError, RayTaskError, RuntimeEnvSetupError
 from ray.serve import metrics
 from ray.serve._private import default_impl
-from ray.serve._private.autoscaling_metrics import InMemoryMetricsStore
 from ray.serve._private.autoscaling_policy import AutoscalingPolicyManager
 from ray.serve._private.cluster_node_info_cache import ClusterNodeInfoCache
 from ray.serve._private.common import (
@@ -36,6 +35,7 @@ from ray.serve._private.common import (
 from ray.serve._private.config import DeploymentConfig
 from ray.serve._private.constants import (
     MAX_DEPLOYMENT_CONSTRUCTOR_RETRY_COUNT,
+    RAY_SERVE_COLLECT_AUTOSCALING_METRICS_ON_HANDLE,
     RAY_SERVE_FORCE_STOP_UNHEALTHY_REPLICAS,
     REPLICA_HEALTH_CHECK_UNHEALTHY_THRESHOLD,
     SERVE_LOGGER_NAME,
@@ -186,6 +186,13 @@ MAX_BACKOFF_TIME_S = int(os.environ.get("SERVE_MAX_BACKOFF_TIME_S", 64))
 
 ALL_REPLICA_STATES = list(ReplicaState)
 _SCALING_LOG_ENABLED = os.environ.get("SERVE_ENABLE_SCALING_LOG", "0") != "0"
+
+
+@dataclass
+class HandleRequestMetric:
+    queued_requests: float
+    running_requests: Dict[str, float]
+    timestamp: float
 
 
 def print_verbose_scaling_log():
@@ -1005,9 +1012,11 @@ class DeploymentReplica(VersionedReplica):
 
         Should handle the case where the replica is already stopped.
         """
+        state = self._actor_details.state
         logger.info(
-            f"Stopping replica {self.replica_tag} for deployment "
-            f"'{self.deployment_name}' in application '{self.app_name}'.",
+            f"Stopping replica {self.replica_tag} (currently {state}) "
+            f"for deployment '{self.deployment_name}' "
+            f"in application '{self.app_name}'.",
             extra={"log_to_stderr": False},
         )
         timeout_s = self._actor.graceful_stop()
@@ -1246,6 +1255,12 @@ class DeploymentState:
 
         self.replica_average_ongoing_requests: Dict[str, float] = dict()
 
+        # Map from handle ID to (# requests recorded at handle, recording timestamp)
+        self.handle_requests: Dict[str, HandleRequestMetric] = dict()
+        self.requests_queued_at_handles: Dict[str, float] = dict()
+        # Number of ongoing requests reported by replicas
+        self.replica_average_ongoing_requests: Dict[str, float] = dict()
+
         self.health_check_gauge = metrics.Gauge(
             "serve_deployment_replica_healthy",
             description=(
@@ -1259,7 +1274,8 @@ class DeploymentState:
         # time we checked.
         self._multiplexed_model_ids_updated = False
 
-        self._last_notified_running_replica_infos: List[RunningReplicaInfo] = []
+        self._last_broadcasted_running_replica_infos: List[RunningReplicaInfo] = []
+        self._last_broadcasted_deployment_config = None
 
     @property
     def autoscaling_policy_manager(self) -> AutoscalingPolicyManager:
@@ -1380,10 +1396,19 @@ class DeploymentState:
     def list_replica_details(self) -> List[ReplicaDetails]:
         return [replica.actor_details for replica in self._replicas.get()]
 
-    def notify_running_replicas_changed(self) -> None:
+    def broadcast_running_replicas_if_changed(self) -> None:
+        """Broadcasts the set of running replicas over long poll if it has changed.
+
+        Keeps an in-memory record of the last set of running replicas that was broadcast
+        to determine if it has changed.
+
+        The set will also be broadcast if any replicas have an updated set of
+        multiplexed model IDs.
+        """
         running_replica_infos = self.get_running_replica_infos()
         if (
-            set(self._last_notified_running_replica_infos) == set(running_replica_infos)
+            set(self._last_broadcasted_running_replica_infos)
+            == set(running_replica_infos)
             and not self._multiplexed_model_ids_updated
         ):
             return
@@ -1400,8 +1425,25 @@ class DeploymentState:
             (LongPollNamespace.RUNNING_REPLICAS, self._id.name),
             running_replica_infos,
         )
-        self._last_notified_running_replica_infos = running_replica_infos
+        self._last_broadcasted_running_replica_infos = running_replica_infos
         self._multiplexed_model_ids_updated = False
+
+    def broadcast_deployment_config_if_changed(self) -> None:
+        """Broadcasts the deployment config over long poll if it has changed.
+
+        Keeps an in-memory record of the last config that was broadcast to determine
+        if it has changed.
+        """
+        current_deployment_config = self._target_state.info.deployment_config
+        if self._last_broadcasted_deployment_config == current_deployment_config:
+            return
+
+        self._long_poll_host.notify_changed(
+            (LongPollNamespace.DEPLOYMENT_CONFIG, self._id),
+            current_deployment_config,
+        )
+
+        self._last_broadcasted_deployment_config = current_deployment_config
 
     def _set_target_state_deleting(self) -> None:
         """Set the target state for the deployment to be deleted."""
@@ -1516,6 +1558,19 @@ class DeploymentState:
                     deployment_info.target_capacity,
                     deployment_info.target_capacity_direction,
                 )
+
+            downscale_smoothing_factor = (
+                autoscaling_policy_manager.config.get_downscale_smoothing_factor()
+            )
+            if downscale_smoothing_factor <= 0.5:
+                logger.warning(
+                    "The downscale smoothing factor for deployment "
+                    f"'{self.deployment_name}' is set to a low value: "
+                    f"{downscale_smoothing_factor}. This means the "
+                    "deployment is unlikely to scale below "
+                    f"{int(1 / downscale_smoothing_factor)} replicas. "
+                    "The recommended minimum smoothing factor is 0.6."
+                )
         else:
             target_num_replicas = get_capacity_adjusted_num_replicas(
                 deployment_info.deployment_config.num_replicas,
@@ -1555,40 +1610,53 @@ class DeploymentState:
         self._backoff_time_s = 1
         return True
 
-    def get_replica_current_ongoing_requests(self) -> List[float]:
-        """Return list of replica average ongoing requests.
+    def get_total_num_requests(self) -> float:
+        """Get average total number of requests aggregated over the past
+        `look_back_period_s` number of seconds.
 
-        The length of list indicate the number of replicas.
+        If there are 0 running replicas, then returns the total number
+        of requests queued at handles
+
+        If the flag RAY_SERVE_COLLECT_AUTOSCALING_METRICS_ON_HANDLE is
+        set to 1, the returned average includes both queued and ongoing
+        requests. Otherwise, the returned average includes only ongoing
+        requests.
         """
 
+        total_requests = 0
         running_replicas = self._replicas.get([ReplicaState.RUNNING])
 
-        current_num_ongoing_requests = []
-        for replica in running_replicas:
-            replica_tag = replica.replica_tag
-            if replica_tag in self.replica_average_ongoing_requests:
-                current_num_ongoing_requests.append(
-                    self.replica_average_ongoing_requests[replica_tag]
-                )
-        return current_num_ongoing_requests
+        if (
+            RAY_SERVE_COLLECT_AUTOSCALING_METRICS_ON_HANDLE
+            or len(running_replicas) == 0
+        ):
+            for handle_metric in self.handle_requests.values():
+                total_requests += handle_metric.queued_requests
+                for replica in running_replicas:
+                    id = replica.replica_tag
+                    if id in handle_metric.running_requests:
+                        total_requests += handle_metric.running_requests[id]
+        else:
+            for replica in running_replicas:
+                id = replica.replica_tag
+                if id in self.replica_average_ongoing_requests:
+                    total_requests += self.replica_average_ongoing_requests[id][1]
 
-    def autoscale(self, current_handle_queued_queries: int) -> int:
-        """Autoscale the deployment based on metrics.
+        return total_requests
 
-        Args:
-            current_handle_queued_queries: The number of handle queued queries,
-                if there are multiple handles, the max number of queries at
-                a single handle should be passed in
-        """
+    def autoscale(self) -> int:
+        """Autoscale the deployment based on metrics."""
+
         if self._target_state.deleting:
             return
 
-        current_num_ongoing_requests = self.get_replica_current_ongoing_requests()
+        total_num_requests = self.get_total_num_requests()
+        num_running_replicas = len(self.get_running_replica_infos())
         autoscaling_policy_manager = self.autoscaling_policy_manager
         decision_num_replicas = autoscaling_policy_manager.get_decision_num_replicas(
             curr_target_num_replicas=self._target_state.target_num_replicas,
-            current_num_ongoing_requests=current_num_ongoing_requests,
-            current_handle_queued_queries=current_handle_queued_queries,
+            total_num_requests=total_num_requests,
+            num_running_replicas=num_running_replicas,
             target_capacity=self._target_state.info.target_capacity,
             target_capacity_direction=self._target_state.info.target_capacity_direction,
         )
@@ -1600,10 +1668,10 @@ class DeploymentState:
             return
 
         logger.info(
-            f"Autoscaling replicas for deployment {self.deployment_name} in "
-            f"application {self.app_name} to {decision_num_replicas}. "
-            f"current_num_ongoing_requests: {current_num_ongoing_requests}, "
-            f"current handle queued queries: {current_handle_queued_queries}."
+            f"Autoscaling replicas for deployment '{self.deployment_name}' in "
+            f"application '{self.app_name}' to {decision_num_replicas}. "
+            f"Current number of requests: {total_num_requests}. Current number of "
+            f"running replicas: {num_running_replicas}."
         )
 
         new_info = copy(self._target_state.info)
@@ -1997,10 +2065,6 @@ class DeploymentState:
                 ReplicaStartupStatus.PENDING_ALLOCATION,
                 ReplicaStartupStatus.PENDING_INITIALIZATION,
             ]:
-                if start_status == ReplicaStartupStatus.PENDING_INITIALIZATION:
-                    self._deployment_scheduler.on_replica_running(
-                        self._id, replica.replica_tag, replica.actor_node_id
-                    )
                 is_slow = time.time() - replica._start_time > SLOW_STARTUP_WARNING_S
                 if is_slow:
                     slow_replicas.append((replica, start_status))
@@ -2036,7 +2100,7 @@ class DeploymentState:
             else:
                 self._replicas.add(replica.actor_details.state, replica)
 
-    def _stop_replica(self, replica, graceful_stop=True):
+    def _stop_replica(self, replica: VersionedReplica, graceful_stop=True):
         """Stop replica
         1. Stop the replica.
         2. Change the replica into stopping state.
@@ -2185,10 +2249,11 @@ class DeploymentState:
             states=[ReplicaState.UPDATING, ReplicaState.RUNNING]
         ):
             if replica.actor_node_id in draining_nodes:
+                state = replica._actor_details.state
                 logger.info(
-                    f"Stopping replica {replica.replica_tag} of deployment "
-                    f"'{self.deployment_name}' in application '{self.app_name}' on "
-                    f"draining node {replica.actor_node_id}."
+                    f"Stopping replica {replica.replica_tag} (currently {state}) "
+                    f"of deployment '{self.deployment_name}' in application "
+                    f"'{self.app_name}' on draining node {replica.actor_node_id}."
                 )
                 self._stop_replica(replica, graceful_stop=True)
             else:
@@ -2236,10 +2301,38 @@ class DeploymentState:
             downscale=downscale,
         )
 
-    def record_autoscaling_metrics(self, replica_tag: str, window_avg: float) -> None:
+    def record_autoscaling_metrics(
+        self, replica_tag: str, window_avg: float, send_timestamp: float
+    ) -> None:
         """Records average ongoing requests at replicas."""
 
-        self.replica_average_ongoing_requests[replica_tag] = window_avg
+        if (
+            replica_tag not in self.replica_average_ongoing_requests
+            or send_timestamp > self.replica_average_ongoing_requests[replica_tag][0]
+        ):
+            self.replica_average_ongoing_requests[replica_tag] = (
+                send_timestamp,
+                window_avg,
+            )
+
+    def record_request_metrics_for_handle(
+        self,
+        handle_id: str,
+        queued_requests: float,
+        running_requests: Dict[str, float],
+        send_timestamp: float,
+    ) -> None:
+        """Update request metric for a specific handle."""
+
+        if (
+            handle_id not in self.handle_requests
+            or send_timestamp > self.handle_requests[handle_id].timestamp
+        ):
+            self.handle_requests[handle_id] = HandleRequestMetric(
+                queued_requests=queued_requests,
+                running_requests=running_requests,
+                timestamp=send_timestamp,
+            )
 
     def record_multiplexed_model_ids(
         self, replica_name: str, multiplexed_model_ids: List[str]
@@ -2284,12 +2377,14 @@ class DeploymentStateManager:
         all_current_actor_names: List[str],
         all_current_placement_group_names: List[str],
         cluster_node_info_cache: ClusterNodeInfoCache,
+        head_node_id_override: Optional[str] = None,
     ):
         self._kv_store = kv_store
         self._long_poll_host = long_poll_host
         self._cluster_node_info_cache = cluster_node_info_cache
         self._deployment_scheduler = default_impl.create_deployment_scheduler(
-            cluster_node_info_cache
+            cluster_node_info_cache,
+            head_node_id_override,
         )
 
         self._deployment_states: Dict[DeploymentID, DeploymentState] = dict()
@@ -2297,9 +2392,6 @@ class DeploymentStateManager:
         self._recover_from_checkpoint(
             all_current_actor_names, all_current_placement_group_names
         )
-
-        # TODO(simon): move autoscaling related stuff into a manager.
-        self.handle_metrics_store = InMemoryMetricsStore()
 
     def _create_deployment_state(self, deployment_id):
         self._deployment_scheduler.on_deployment_created(
@@ -2314,23 +2406,35 @@ class DeploymentStateManager:
             self._save_checkpoint_func,
         )
 
-    def record_autoscaling_metrics(self, data, send_timestamp: float):
-        replica_tag, window_avg = data
+    def record_autoscaling_metrics(
+        self, replica_id: str, window_avg: float, send_timestamp: float
+    ):
         if window_avg is not None:
-            replica_name = ReplicaName.from_replica_tag(replica_tag)
+            replica_name = ReplicaName.from_replica_tag(replica_id)
             self._deployment_states[
                 replica_name.deployment_id
-            ].record_autoscaling_metrics(replica_tag, window_avg)
+            ].record_autoscaling_metrics(replica_id, window_avg, send_timestamp)
 
-    def record_handle_metrics(self, data: Dict[str, float], send_timestamp: float):
-        self.handle_metrics_store.add_metrics_point(data, send_timestamp)
+    def record_handle_metrics(
+        self,
+        deployment_id: str,
+        handle_id: str,
+        queued_requests: float,
+        running_requests: Dict[str, float],
+        send_timestamp: float,
+    ):
+        # NOTE(zcin): There can be handles to deleted deployments still
+        # sending metrics to the controller
+        if deployment_id in self._deployment_states:
+            self._deployment_states[deployment_id].record_request_metrics_for_handle(
+                handle_id, queued_requests, running_requests, send_timestamp
+            )
 
     def get_autoscaling_metrics(self):
-        """
-        Return autoscaling metrics (used for dumping from controller)
-        """
+        """Return autoscaling metrics (used for dumping from controller)"""
+
         return {
-            deployment: deployment_state.replica_average_ongoing_requests
+            deployment: deployment_state.get_total_num_requests()
             for deployment, deployment_state in self._deployment_states.items()
         }
 
@@ -2588,27 +2692,6 @@ class DeploymentStateManager:
         if id in self._deployment_states:
             self._deployment_states[id].delete()
 
-    def get_handle_queueing_metrics(
-        self, deployment_id: DeploymentID, look_back_period_s
-    ) -> int:
-        """
-        Return handle queue length metrics
-        Args:
-            deployment_id: deployment identifier
-            look_back_period_s: the look back time period to collect the requests
-                metrics
-        Returns:
-            if multiple handles queue length, return the max number of queue length.
-        """
-        current_handle_queued_queries = self.handle_metrics_store.max(
-            deployment_id,
-            time.time() - look_back_period_s,
-        )
-
-        if current_handle_queued_queries is None:
-            current_handle_queued_queries = 0
-        return current_handle_queued_queries
-
     def update(self) -> bool:
         """Updates the state of all deployments to match their goal state.
 
@@ -2622,11 +2705,7 @@ class DeploymentStateManager:
 
         for deployment_id, deployment_state in self._deployment_states.items():
             if deployment_state.should_autoscale():
-                current_handle_queued_queries = self.get_handle_queueing_metrics(
-                    deployment_id,
-                    deployment_state.get_autoscale_metric_lookback_period(),
-                )
-                deployment_state.autoscale(current_handle_queued_queries)
+                deployment_state.autoscale()
 
             deployment_state_update_result = deployment_state.update()
             if deployment_state_update_result.upscale:
@@ -2645,7 +2724,8 @@ class DeploymentStateManager:
             self._deployment_states[deployment_id].stop_replicas(replicas_to_stop)
 
         for deployment_state in self._deployment_states.values():
-            deployment_state.notify_running_replicas_changed()
+            deployment_state.broadcast_running_replicas_if_changed()
+            deployment_state.broadcast_deployment_config_if_changed()
 
         for deployment_id in deleted_ids:
             self._deployment_scheduler.on_deployment_deleted(deployment_id)

@@ -2,7 +2,9 @@ import logging
 import os
 from pathlib import Path
 from typing import Any, Dict, List, Optional
+from contextlib import contextmanager
 
+import ray._private.ray_constants as ray_constants
 from ray._private.runtime_env.context import RuntimeEnvContext
 from ray._private.runtime_env.packaging import (
     Protocol,
@@ -119,6 +121,10 @@ class WorkingDirPlugin(RuntimeEnvPlugin):
 
     name = "working_dir"
 
+    # Note working_dir is not following the priority order of other plugins. Instead
+    # it's specially treated to happen before all other plugins.
+    priority = 5
+
     def __init__(
         self, resources_dir: str, gcs_aio_client: "GcsAioClient"  # noqa: F821
     ):
@@ -185,3 +191,38 @@ class WorkingDirPlugin(RuntimeEnvPlugin):
             # Include '/d' incase temp folder is on different drive than Ray install.
             context.command_prefix += ["cd", "/d", f"{local_dir}", "&&"]
         set_pythonpath_in_context(python_path=str(local_dir), context=context)
+
+    @contextmanager
+    def with_working_dir_env(self, uri):
+        """
+        If uri is not None, add the local working directory to the environment variable
+        as "RAY_RUNTIME_ENV_CREATE_WORKING_DIR". This is useful for other plugins to
+        create their environment with reference to the working directory. For example
+        `pip -r ${RAY_RUNTIME_ENV_CREATE_WORKING_DIR}/requirements.txt`
+
+        The environment variable is removed after the context manager exits.
+        """
+        if uri is None:
+            yield
+        else:
+            local_dir = get_local_dir_from_uri(uri, self._resources_dir)
+            if not local_dir.exists():
+                raise ValueError(
+                    f"Local directory {local_dir} for URI {uri} does "
+                    "not exist on the cluster. Something may have gone wrong while "
+                    "downloading or unpacking the working_dir."
+                )
+            key = ray_constants.RAY_RUNTIME_ENV_CREATE_WORKING_DIR_ENV_VAR
+            prev = os.environ.get(key)
+            # Windows backslash paths are weird. When it's passed to the env var, and
+            # when Pip expands it, the backslashes are interpreted as escape characters
+            # and messes up the whole path. So we convert it to forward slashes.
+            # This works at least for all Python applications, including pip.
+            os.environ[key] = local_dir.as_posix()
+            try:
+                yield
+            finally:
+                if prev is None:
+                    del os.environ[key]
+                else:
+                    os.environ[key] = prev

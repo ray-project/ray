@@ -114,11 +114,13 @@ class SampleBatch(dict):
 
     # Observation that we compute SampleBatch.ACTIONS from.
     OBS = "obs"
-    # Observation returned after stepping with SampleBatch.ACTIONS.
-    NEXT_OBS = "new_obs"
-    # Action based on SampleBatch.OBS.
+    # Action computed/sampled by the RLModule.
     ACTIONS = "actions"
-    # Reward returned after stepping with SampleBatch.ACTIONS.
+    # Action actually sent to the (gymnasium) env. Note that we usually do not store
+    # this information anywhere (e.g. in Single/MultiAgentEpisodes), but normally only
+    # keep the RLModule-computed or connector-sampled actions around.
+    ACTIONS_FOR_ENV = "actions_sent_to_env"
+    # Reward returned after stepping.
     REWARDS = "rewards"
     # Action chosen before SampleBatch.ACTIONS.
     PREV_ACTIONS = "prev_actions"
@@ -130,6 +132,9 @@ class SampleBatch(dict):
     TRUNCATEDS = "truncateds"
     # Infos returned after stepping with SampleBatch.ACTIONS
     INFOS = "infos"
+
+    # Observation returned after stepping with SampleBatch.ACTIONS.
+    NEXT_OBS = "new_obs"
 
     # Additional keys filled by RLlib to manage the data above:
 
@@ -1169,34 +1174,15 @@ class SampleBatch(dict):
                 if path[0] != SampleBatch.SEQ_LENS and not path[0].startswith(
                     "state_in_"
                 ):
-                    if path[0] != SampleBatch.INFOS:
-                        return value[start_padded:stop_padded]
-                    else:
-                        if (
-                            (isinstance(value, np.ndarray) and value.size > 0)
-                            or (
-                                torch
-                                and torch.is_tensor(value)
-                                and len(list(value.shape)) > 0
-                            )
-                            or (tf and tf.is_tensor(value) and tf.size(value) > 0)
-                        ):
-                            return value[start_unpadded:stop_unpadded]
-                        else:
-                            # Since infos should be stored as lists and not arrays,
-                            # we return the values here and slice them separately
-                            # TODO(Artur): Clean this hack up.
-                            return value
+                    return value[start_padded:stop_padded]
                 else:
                     return value[start_seq_len:stop_seq_len]
 
+            infos = self.pop(SampleBatch.INFOS, None)
             data = tree.map_structure_with_path(map_, self)
-
-            # Since we don't slice in the above map_ function, we do it here.
-            if isinstance(data.get(SampleBatch.INFOS), list):
-                data[SampleBatch.INFOS] = data[SampleBatch.INFOS][
-                    start_unpadded:stop_unpadded
-                ]
+            if infos is not None and isinstance(infos, (list, np.ndarray)):
+                self[SampleBatch.INFOS] = infos
+                data[SampleBatch.INFOS] = infos[start_unpadded:stop_unpadded]
 
             return SampleBatch(
                 data,
@@ -1207,21 +1193,11 @@ class SampleBatch(dict):
                 _num_grad_updates=self.num_grad_updates,
             )
         else:
-
-            def map_(value):
-                if (
-                    isinstance(value, np.ndarray)
-                    or (torch and torch.is_tensor(value))
-                    or (tf and tf.is_tensor(value))
-                ):
-                    return value[start:stop]
-                else:
-                    # Since infos should be stored as lists and not arrays,
-                    # we return the values here and slice them separately
-                    # TODO(Artur): Clean this hack up.
-                    return value
-
-            data = tree.map_structure(map_, self)
+            infos = self.pop(SampleBatch.INFOS, None)
+            data = tree.map_structure(lambda s: s[start:stop], self)
+            if infos is not None and isinstance(infos, (list, np.ndarray)):
+                self[SampleBatch.INFOS] = infos
+                data[SampleBatch.INFOS] = infos[start:stop]
 
             return SampleBatch(
                 data,

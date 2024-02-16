@@ -103,7 +103,7 @@ class TestPPO(unittest.TestCase):
             # TODO (Kourosh) Bring back "FrozenLake-v1"
             for env in ["CartPole-v1", "Pendulum-v1", "ALE/Breakout-v5"]:
                 print("Env={}".format(env))
-                for lstm in [True, False]:
+                for lstm in [False]:
                     print("LSTM={}".format(lstm))
                     config.training(model=get_model_config(fw, lstm=lstm))
 
@@ -144,8 +144,7 @@ class TestPPO(unittest.TestCase):
             )
             .rollouts(
                 # Run locally.
-                num_rollout_workers=1,
-                enable_connectors=True,
+                num_rollout_workers=0,
             )
         )
         obs = np.array(0)

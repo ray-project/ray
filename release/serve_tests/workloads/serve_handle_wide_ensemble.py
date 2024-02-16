@@ -24,7 +24,7 @@ from typing import List
 from typing import Optional
 
 from ray import serve
-from ray.serve.handle import DeploymentHandle, RayServeSyncHandle
+from ray.serve.handle import DeploymentHandle
 from serve_test_cluster_utils import (
     setup_local_single_node_cluster,
     setup_anyscale_cluster,
@@ -75,7 +75,7 @@ class CombineNode:
 
 def construct_wide_fanout_graph_with_pure_handle(
     fanout_degree, init_delay_secs=0, compute_delay_secs=0
-) -> RayServeSyncHandle:
+) -> DeploymentHandle:
     nodes = []
     for id in range(fanout_degree):
         node = Node.options(name=str(id)).bind(id, init_delay_secs=init_delay_secs)

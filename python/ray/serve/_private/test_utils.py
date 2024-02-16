@@ -1,6 +1,7 @@
 import asyncio
+import threading
 import time
-from typing import Any, Dict
+from typing import Any, Dict, Optional
 
 import grpc
 import pytest
@@ -8,10 +9,12 @@ import requests
 from starlette.requests import Request
 
 import ray
+import ray.util.state as state_api
 from ray import serve
 from ray.actor import ActorHandle
-from ray.serve._private.constants import SERVE_NAMESPACE
-from ray.serve._private.proxy import DRAINED_MESSAGE
+from ray.serve._private.common import DeploymentID, DeploymentStatus
+from ray.serve._private.constants import SERVE_DEFAULT_APP_NAME, SERVE_NAMESPACE
+from ray.serve._private.proxy import DRAINING_MESSAGE
 from ray.serve._private.usage import ServeUsageTag
 from ray.serve._private.utils import TimerBase
 from ray.serve.generated import serve_pb2, serve_pb2_grpc
@@ -21,19 +24,25 @@ STORAGE_ACTOR_NAME = "storage"
 
 
 class MockTimer(TimerBase):
-    def __init__(self, start_time=None):
+    def __init__(self, start_time: Optional[float] = None):
+        self._lock = threading.Lock()
+        self.reset(start_time=start_time)
+
+    def reset(self, start_time: Optional[float] = None):
         if start_time is None:
             start_time = time.time()
         self._curr = start_time
 
-    def time(self):
+    def time(self) -> float:
         return self._curr
 
-    def advance(self, by):
-        self._curr += by
+    def advance(self, by: float):
+        with self._lock:
+            self._curr += by
 
-    def realistic_sleep(self, amt):
-        self._curr += amt + 0.001
+    def realistic_sleep(self, amt: float):
+        with self._lock:
+            self._curr += amt + 0.001
 
 
 class MockKVStore:
@@ -88,6 +97,54 @@ def check_telemetry_not_recorded(storage_handle, key):
         )
         is None
     )
+
+
+def check_deployment_status(name, expected_status) -> DeploymentStatus:
+    app_status = serve.status().applications[SERVE_DEFAULT_APP_NAME]
+    assert app_status.deployments[name].status == expected_status
+    return True
+
+
+def get_num_running_replicas(
+    deployment_name: str, app_name: str = SERVE_DEFAULT_APP_NAME
+) -> int:
+    """Get the replicas currently running for the given deployment."""
+
+    dep_id = DeploymentID(deployment_name, app_name)
+    actors = state_api.list_actors(
+        filters=[
+            ("class_name", "=", dep_id.to_replica_actor_class_name()),
+            ("state", "=", "ALIVE"),
+        ]
+    )
+    return len(actors)
+
+
+def check_num_replicas_gte(
+    name: str, target: int, app_name: str = SERVE_DEFAULT_APP_NAME
+) -> int:
+    """Check if num replicas is >= target."""
+
+    assert get_num_running_replicas(name) >= target
+    return True
+
+
+def check_num_replicas_eq(
+    name: str, target: int, app_name: str = SERVE_DEFAULT_APP_NAME
+) -> int:
+    """Check if num replicas is == target."""
+
+    assert get_num_running_replicas(name) == target
+    return True
+
+
+def check_num_replicas_lte(
+    name: str, target: int, app_name: str = SERVE_DEFAULT_APP_NAME
+) -> int:
+    """Check if num replicas is <= target."""
+
+    assert get_num_running_replicas(name) <= target
+    return True
 
 
 @ray.remote(name=STORAGE_ACTOR_NAME, namespace=SERVE_NAMESPACE, num_cpus=0)
@@ -148,7 +205,7 @@ def ping_grpc_list_applications(channel, app_names, test_draining=False):
             _, _ = stub.ListApplications.with_call(request=request)
         rpc_error = exception_info.value
         assert rpc_error.code() == grpc.StatusCode.UNAVAILABLE
-        assert rpc_error.details() == DRAINED_MESSAGE
+        assert rpc_error.details() == DRAINING_MESSAGE
     else:
         response, call = stub.ListApplications.with_call(request=request)
         assert call.code() == grpc.StatusCode.OK
@@ -164,7 +221,7 @@ def ping_grpc_healthz(channel, test_draining=False):
             _, _ = stub.Healthz.with_call(request=request)
         rpc_error = exception_info.value
         assert rpc_error.code() == grpc.StatusCode.UNAVAILABLE
-        assert rpc_error.details() == DRAINED_MESSAGE
+        assert rpc_error.details() == DRAINING_MESSAGE
     else:
         response, call = stub.Healthz.with_call(request=request)
         assert call.code() == grpc.StatusCode.OK

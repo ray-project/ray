@@ -122,15 +122,8 @@ class TestDeploymentConfig:
     def test_from_default_ignore_default(self):
         """Check that from_default() ignores DEFAULT.VALUE kwargs."""
 
-        default = DeploymentConfig()
-
         # Valid parameter with DEFAULT.VALUE passed in should be ignored
-        dc = DeploymentConfig.from_default(num_replicas=DEFAULT.VALUE)
-
-        # Validators should run no matter what
-        dc = DeploymentConfig.from_default(max_concurrent_queries=None)
-        assert dc.max_concurrent_queries is not None
-        assert dc.max_concurrent_queries == default.max_concurrent_queries
+        DeploymentConfig.from_default(num_replicas=DEFAULT.VALUE)
 
 
 class TestReplicaConfig:

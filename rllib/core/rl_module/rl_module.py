@@ -162,6 +162,15 @@ class SingleAgentRLModuleSpec:
         self.catalog_class = other.catalog_class or self.catalog_class
         self.load_state_path = other.load_state_path or self.load_state_path
 
+    def as_multi_agent(self) -> "MultiAgentRLModuleSpec":
+        """Returns a MultiAgentRLModuleSpec (`self` under DEFAULT_POLICY_ID key)."""
+        from ray.rllib.core.rl_module.marl_module import MultiAgentRLModuleSpec
+
+        return MultiAgentRLModuleSpec(
+            module_specs={DEFAULT_POLICY_ID: self},
+            load_state_path=self.load_state_path,
+        )
+
 
 @ExperimentalAPI
 @dataclass
@@ -465,7 +474,7 @@ class RLModule(abc.ABC):
 
     @OverrideToImplementCustomLogic
     def get_initial_state(self) -> Any:
-        """Returns the initial state of the module.
+        """Returns the initial state of the RLModule.
 
         This can be used for recurrent models.
         """
@@ -627,7 +636,7 @@ class RLModule(abc.ABC):
 
         Returns:
             The output of the forward pass. This output should comply with the
-            ouptut_specs_exploration().
+            output_specs_exploration().
         """
         return self._forward_exploration(batch, **kwargs)
 
@@ -648,7 +657,7 @@ class RLModule(abc.ABC):
 
         Returns:
             The output of the forward pass. This output should comply with the
-            ouptut_specs_train().
+            output_specs_train().
         """
         return self._forward_train(batch, **kwargs)
 

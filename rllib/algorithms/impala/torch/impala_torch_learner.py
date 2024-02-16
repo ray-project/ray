@@ -8,7 +8,8 @@ from ray.rllib.algorithms.impala.torch.vtrace_torch_v2 import (
 )
 from ray.rllib.core.learner.learner import ENTROPY_KEY
 from ray.rllib.core.learner.torch.torch_learner import TorchLearner
-from ray.rllib.policy.sample_batch import SampleBatch
+from ray.rllib.core.models.base import CRITIC, ENCODER_OUT
+from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID, SampleBatch
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.nested_dict import NestedDict
 from ray.rllib.utils.framework import try_import_torch
@@ -66,12 +67,15 @@ class ImpalaTorchLearner(ImpalaLearner, TorchLearner):
             trajectory_len=rollout_frag_or_episode_len,
             recurrent_seq_len=recurrent_seq_len,
         )
-        bootstrap_values_time_major = make_time_major(
-            batch[SampleBatch.VALUES_BOOTSTRAPPED],
-            trajectory_len=rollout_frag_or_episode_len,
-            recurrent_seq_len=recurrent_seq_len,
-        )
-        bootstrap_value = bootstrap_values_time_major[-1]
+        if self.config.uses_new_env_runners:
+            bootstrap_values = batch[SampleBatch.VALUES_BOOTSTRAPPED]
+        else:
+            bootstrap_values_time_major = make_time_major(
+                batch[SampleBatch.VALUES_BOOTSTRAPPED],
+                trajectory_len=rollout_frag_or_episode_len,
+                recurrent_seq_len=recurrent_seq_len,
+            )
+            bootstrap_values = bootstrap_values_time_major[-1]
 
         # the discount factor that is used should be gamma except for timesteps where
         # the episode is terminated. In that case, the discount factor should be 0.
@@ -95,7 +99,7 @@ class ImpalaTorchLearner(ImpalaLearner, TorchLearner):
             discounts=discounts_time_major,
             rewards=rewards_time_major,
             values=values_time_major,
-            bootstrap_value=bootstrap_value,
+            bootstrap_values=bootstrap_values,
             clip_rho_threshold=config.vtrace_clip_rho_threshold,
             clip_pg_rho_threshold=config.vtrace_clip_pg_rho_threshold,
         )
@@ -145,3 +149,21 @@ class ImpalaTorchLearner(ImpalaLearner, TorchLearner):
         )
         # Return the total loss.
         return total_loss
+
+    @override(ImpalaLearner)
+    def _compute_values(self, batch):
+        infos = batch.pop(SampleBatch.INFOS, None)
+        batch = convert_to_torch_tensor(batch, device=self._device)
+        # batch = tree.map_structure(lambda s: torch.from_numpy(s), batch)
+        if infos is not None:
+            batch[SampleBatch.INFOS] = infos
+
+        # TODO (sven): Make multi-agent capable.
+        module = self.module[DEFAULT_POLICY_ID].unwrapped()
+
+        # Shared encoder.
+        encoder_outs = module.encoder(batch)
+        # Value head.
+        vf_out = module.vf(encoder_outs[ENCODER_OUT][CRITIC])
+        # Squeeze out last dimension (single node value head).
+        return vf_out.squeeze(-1)

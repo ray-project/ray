@@ -3,7 +3,6 @@ import React from "react";
 import { RightPaddedTypography } from "../../common/CustomTypography";
 import UsageBar from "../../common/UsageBar";
 import { GPUStats, NodeDetail } from "../../type/node";
-import { Worker } from "../../type/worker";
 
 const useStyles = makeStyles((theme) => ({
   gpuColumn: {
@@ -59,17 +58,17 @@ export const NodeGPUView = ({ node }: { node: NodeDetail }) => {
 };
 
 export const WorkerGpuRow = ({
-  worker,
-  node,
+  workerPID,
+  gpus,
 }: {
-  worker: Worker;
-  node: NodeDetail;
+  workerPID: number | null;
+  gpus?: GPUStats[];
 }) => {
   const classes = useStyles();
-  const workerGPUEntries = (node.gpus ?? [])
+  const workerGPUEntries = (gpus ?? [])
     .map((gpu, i) => {
       const process = gpu.processes?.find(
-        (process) => process.pid === worker.pid,
+        (process) => process.pid === workerPID,
       );
       if (!process) {
         return undefined;
@@ -85,4 +84,24 @@ export const WorkerGpuRow = ({
   ) : (
     <div className={classes.gpuColumn}>{workerGPUEntries}</div>
   );
+};
+
+export const getSumGpuUtilization = (
+  workerPID: number | null,
+  gpus?: GPUStats[],
+) => {
+  // Get sum of all GPU utilization values for this worker PID. This is an
+  // aggregate of the WorkerGpuRow and follows the same logic.
+  const workerGPUUtilizationEntries = (gpus ?? [])
+    .map((gpu, i) => {
+      const process = gpu.processes?.find(
+        (process) => process.pid === workerPID,
+      );
+      if (!process) {
+        return 0;
+      }
+      return gpu.utilizationGpu || 0;
+    })
+    .filter((entry) => entry !== undefined);
+  return workerGPUUtilizationEntries.reduce((a, b) => a + b, 0);
 };

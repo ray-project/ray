@@ -9,6 +9,7 @@ steps:
     matrix:
       - "3.8"
       - "3.10"
+      - "3.11"
     env:
       PYTHON: "{{matrix}}"
   
@@ -22,6 +23,7 @@ steps:
     matrix:
       - "3.8"
       - "3.10"
+      - "3.11"
     env:
       PYTHON: "{{matrix}}"
     depends_on: oss-ci-base_test-multipy
@@ -36,11 +38,30 @@ steps:
     instance_type: builder-arm64
 
   - name: oss-ci-base_ml
-    wanda: ci/docker/base.ml.wanda.yaml
+    wanda: ci/docker/base.ml.py39.wanda.yaml
     depends_on: oss-ci-base_test
 
+  - name: oss-ci-base_ml-multipy
+    label: "wanda: oss-ci-base_ml-py{{matrix}}"
+    wanda: ci/docker/base.ml.wanda.yaml
+    matrix:
+      - "3.8"
+      - "3.10"
+    env:
+      PYTHON: "{{matrix}}"
+    depends_on: oss-ci-base_test-multipy
+
   - name: oss-ci-base_gpu
+    wanda: ci/docker/base.gpu.py39.wanda.yaml
+
+  - name: oss-ci-base_gpu-multipy
+    label: "wanda: oss-ci-base_gpu-py{{matrix}}"
     wanda: ci/docker/base.gpu.wanda.yaml
+    matrix:
+      - "3.8"
+      - "3.10"
+    env:
+      PYTHON: "{{matrix}}"
 
   - name: docbuild
     wanda: ci/docker/doc.build.wanda.yaml

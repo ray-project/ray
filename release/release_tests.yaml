@@ -999,7 +999,7 @@
   cluster:
     byod:
       type: gpu
-      post_build_script: bydo_stable_diffusion.sh
+      post_build_script: byod_stable_diffusion.sh
     cluster_compute: ../testing/compute_configs/gpu/aws.yaml
 
   run:
@@ -1128,8 +1128,6 @@
   cluster:
     byod:
       type: gpu
-      runtime_env:
-        - NCCL_SOCKET_IFNAME=ens
       post_build_script: byod_xgboost_test.sh
     cluster_compute: tpl_gpu_small_aws.yaml
 
@@ -4630,7 +4628,7 @@
 
   run:
     timeout: 1800
-    script: OMP_NUM_THREADS=64 RAY_ADDRESS=local TESTS_TO_SKIP=unstable python run_microbenchmark.py
+    script: OMP_NUM_THREADS=64 RAY_ADDRESS=local python run_microbenchmark.py
 
   variations:
     - __suffix__: aws
@@ -4657,7 +4655,7 @@
 
   run:
     timeout: 1800
-    script: OMP_NUM_THREADS=64 RAY_ADDRESS=local TESTS_TO_RUN=unstable python run_microbenchmark.py --run-dag
+    script: OMP_NUM_THREADS=64 RAY_ADDRESS=local python run_microbenchmark.py --experimental
 
 - name: benchmark_worker_startup
   group: core-daily-test
@@ -5292,7 +5290,6 @@
 
   frequency: nightly-3x
   team: core
-  stable: false
   cluster:
     byod:
       type: gpu

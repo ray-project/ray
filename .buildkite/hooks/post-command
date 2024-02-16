@@ -29,3 +29,4 @@ fi
 # environment as the buildkite job commands, and has no effect when the tests run 
 # inside another test container
 rm -rf /tmp/bazel_event_logs
+rm -rf /tmp/artifacts/test-summaries

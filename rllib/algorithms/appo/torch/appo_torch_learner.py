@@ -8,6 +8,7 @@ from ray.rllib.algorithms.appo.appo import (
     OLD_ACTION_DIST_LOGITS_KEY,
 )
 from ray.rllib.algorithms.appo.appo_learner import AppoLearner
+from ray.rllib.algorithms.impala.torch.impala_torch_learner import ImpalaTorchLearner
 from ray.rllib.algorithms.impala.torch.vtrace_torch_v2 import (
     make_time_major,
     vtrace_torch,
@@ -30,10 +31,10 @@ from ray.rllib.utils.typing import ModuleID, TensorType
 torch, nn = try_import_torch()
 
 
-class APPOTorchLearner(AppoLearner, TorchLearner):
+class APPOTorchLearner(AppoLearner, ImpalaTorchLearner):
     """Implements APPO loss / update logic on top of ImpalaTorchLearner."""
 
-    @override(TorchLearner)
+    @override(ImpalaTorchLearner)
     def compute_loss_for_module(
         self,
         *,
@@ -86,12 +87,15 @@ class APPOTorchLearner(AppoLearner, TorchLearner):
             trajectory_len=rollout_frag_or_episode_len,
             recurrent_seq_len=recurrent_seq_len,
         )
-        bootstrap_values_time_major = make_time_major(
-            batch[SampleBatch.VALUES_BOOTSTRAPPED],
-            trajectory_len=rollout_frag_or_episode_len,
-            recurrent_seq_len=recurrent_seq_len,
-        )
-        bootstrap_value = bootstrap_values_time_major[-1]
+        if self.config.uses_new_env_runners:
+            bootstrap_values = batch[SampleBatch.VALUES_BOOTSTRAPPED]
+        else:
+            bootstrap_values_time_major = make_time_major(
+                batch[SampleBatch.VALUES_BOOTSTRAPPED],
+                trajectory_len=rollout_frag_or_episode_len,
+                recurrent_seq_len=recurrent_seq_len,
+            )
+            bootstrap_values = bootstrap_values_time_major[-1]
 
         # The discount factor that is used should be gamma except for timesteps where
         # the episode is terminated. In that case, the discount factor should be 0.
@@ -111,7 +115,7 @@ class APPOTorchLearner(AppoLearner, TorchLearner):
             discounts=discounts_time_major,
             rewards=rewards_time_major,
             values=values_time_major,
-            bootstrap_value=bootstrap_value,
+            bootstrap_values=bootstrap_values,
             clip_pg_rho_threshold=config.vtrace_clip_pg_rho_threshold,
             clip_rho_threshold=config.vtrace_clip_rho_threshold,
         )
