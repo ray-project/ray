@@ -2491,7 +2491,7 @@ def from_arrow_refs(
 def from_spark(
     df: "pyspark.sql.DataFrame",
     *,
-    parallelism: Optional[int] = None,
+    parallelism: Optional[int] = -1,
     override_num_blocks: Optional[int] = None,
 ) -> MaterializedDataset:
     """Create a :class:`~ray.data.Dataset` from a
@@ -2512,20 +2512,31 @@ def from_spark(
         in ray object store, otherwise it returns
         a :class:`~ray.data.MaterializedDataset` holding rows read from the DataFrame.
     """  # noqa: E501
-    from ray.util.spark.utils import is_in_databricks_runtime
+    from ray.util.spark.utils import get_spark_session, is_in_databricks_runtime
 
     parallelism = _get_num_output_blocks(parallelism, override_num_blocks)
 
     if is_in_databricks_runtime():
         from ray.data.datasource.spark_datasource import SparkDatasource
         from ray.util.spark.databricks_hook import get_databricks_function
+
+        spark = get_spark_session()
+        if spark.conf.get(
+            "spark.databricks.pyspark.dataFrameChunk.enabled", "false"
+        ).lower() != "true":
+            raise RuntimeError(
+                "In databricks runtime, if you want to use 'ray.data.from_spark' API, "
+                "you need to set spark cluster config "
+                "'spark.databricks.pyspark.dataFrameChunk.enabled' to 'true'."
+            )
+
         # Ray on spark
         datasource = SparkDatasource(df, 32 * 1024 * 1024)
-        if parallelism is None:
+        if parallelism == -1:
             parallelism = datasource.num_chunks
         dataset = read_datasource(
             datasource=datasource,
-            parallelism=parallelism,
+            override_num_blocks=parallelism,
         )
 
         def patched_dataset_del(obj):
