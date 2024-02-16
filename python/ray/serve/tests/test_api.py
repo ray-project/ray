@@ -2,8 +2,6 @@ import asyncio
 import os
 import sys
 from typing import Dict, Optional
-import subprocess
-import signal
 
 import pytest
 import requests

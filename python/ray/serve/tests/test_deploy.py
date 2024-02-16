@@ -351,7 +351,9 @@ def test_reconfigure_multiple_replicas(serve_instance, use_handle):
 
     # Reconfigure should block one replica until the signal is sent. Check that
     # some requests are now blocking.
-    serve._run(V1.options(user_config={"test": "2"}).bind(), name="app", _blocking=False)
+    serve._run(
+        V1.options(user_config={"test": "2"}).bind(), name="app", _blocking=False
+    )
     responses2, blocking2 = make_nonblocking_calls({"1": 1}, expect_blocking=True)
     assert list(responses2["1"])[0] in pids1
 
