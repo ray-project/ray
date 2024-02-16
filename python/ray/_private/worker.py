@@ -2343,29 +2343,38 @@ def connect(
 
     if mode == SCRIPT_MODE:
         # Add the directory containing the script that is running to the Python
-        # paths of the workers. Also add the current directory. Note that this
-        # assumes that the directory structures on the machines in the clusters
-        # are the same.
-        # When using an interactive shell, there is no script directory.
-        # We also want to skip adding script directory when running from dashboard.
-        code_paths = []
-        if not interactive_mode and not (
-            namespace and namespace == ray_constants.RAY_INTERNAL_DASHBOARD_NAMESPACE
+        # paths of the workers. Also add the current directory.
+        #
+        # Note that this is only meaningful when all of these are true:
+        # (1) there's no working_dir (or code search path should be in working_dir),
+        # (2) it's not interactive mode, (there's no script file in interactive mode),
+        # (3) it's not in dashboard,
+        # (4) it's not client mode, (handled by client code)
+        # (5) the driver is at the same node (machine) as the worker.
+        #
+        # We only do the first 4 checks here.
+        # TODO: do the (5) check by also passing node id.
+        if not any(
+            [
+                job_config._runtime_env_has_working_dir(),
+                interactive_mode,
+                namespace
+                and namespace == ray_constants.RAY_INTERNAL_DASHBOARD_NAMESPACE,
+                job_config._client_job,
+            ]
         ):
-            script_directory = os.path.dirname(os.path.realpath(sys.argv[0]))
+            code_paths = set()
+            script_directory = os.path.dirname(os.path.realpath(driver_name))
             # If driver's sys.path doesn't include the script directory
             # (e.g driver is started via `python -m`,
             # see https://peps.python.org/pep-0338/),
             # then we shouldn't add it to the workers.
             if script_directory in sys.path:
-                code_paths.append(script_directory)
-        # In client mode, if we use runtime envs with "working_dir", then
-        # it'll be handled automatically.  Otherwise, add the current dir.
-        if not job_config._client_job and not job_config._runtime_env_has_working_dir():
+                code_paths.add(script_directory)
             current_directory = os.path.abspath(os.path.curdir)
-            code_paths.append(current_directory)
-        if len(code_paths) != 0:
-            job_config._py_driver_sys_path.extend(code_paths)
+            code_paths.add(current_directory)
+            if len(code_paths) != 0:
+                job_config._py_driver_sys_path.extend(code_paths)
 
     serialized_job_config = job_config._serialize()
     if not node.should_redirect_logs():
