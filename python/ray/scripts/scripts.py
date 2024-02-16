@@ -1950,8 +1950,7 @@ def memory(
     """Print object references held in a Ray cluster."""
     address = services.canonicalize_bootstrap_address_or_die(address)
     if not ray._raylet.check_health(address):
-        print(f"Ray cluster is not found at {address}")
-        sys.exit(1)
+        raise click.BadParameter(f"Ray cluster is not found at {address}")
     time = datetime.now()
     header = "=" * 8 + f" Object references status: {time} " + "=" * 8
     mem_stats = memory_summary(
@@ -1991,8 +1990,7 @@ def status(address: str, redis_password: str, verbose: bool):
     """Print cluster status, including autoscaling info."""
     address = services.canonicalize_bootstrap_address_or_die(address)
     if not ray._raylet.check_health(address):
-        print(f"Ray cluster is not found at {address}")
-        sys.exit(1)
+        raise click.BadParameter(f"Ray cluster is not found at {address}")
     gcs_client = ray._raylet.GcsClient(address=address)
     ray.experimental.internal_kv._initialize_internal_kv(gcs_client)
     status = ray.experimental.internal_kv._internal_kv_get(
@@ -2250,29 +2248,46 @@ def global_gc(address):
     help="The detailed drain reason message.",
 )
 @click.option(
-    "--deadline-timestamp-ms",
+    "--deadline-remaining-seconds",
     required=False,
     type=int,
-    default=0,
-    help="Timestamp in ms when the node to be drained will be force killed. "
-    "Default is 0 which means there is no deadline",
+    default=None,
+    help="Inform GCS that the node to be drained will be force killed "
+    "after this many of seconds. "
+    "Default is None which means there is no deadline. "
+    "Note: this command won't actually force kill the node after the deadline, "
+    "it's the caller's responsibility to do that.",
 )
 def drain_node(
     address: str,
     node_id: str,
     reason: str,
     reason_message: str,
-    deadline_timestamp_ms: int,
+    deadline_remaining_seconds: int,
 ):
     """
     This is NOT a public api.
 
     Manually drain a worker node.
     """
+    deadline_timestamp_ms = 0
+    if deadline_remaining_seconds is not None:
+        if deadline_remaining_seconds < 0:
+            raise click.BadParameter(
+                "--deadline-remaining-seconds cannot be negative, "
+                f"got {deadline_remaining_seconds}"
+            )
+        deadline_timestamp_ms = (time.time_ns() // 1000000) + (
+            deadline_remaining_seconds * 1000
+        )
+
+    if ray.NodeID.from_hex(node_id) == ray.NodeID.nil():
+        raise click.BadParameter(f"Invalid hex id of a Ray node, got {node_id}")
+
     address = services.canonicalize_bootstrap_address_or_die(address)
     if not ray._raylet.check_health(address):
-        print(f"Ray cluster is not found at {address}")
-        sys.exit(1)
+        raise click.BadParameter(f"Ray cluster is not found at {address}")
+
     gcs_client = ray._raylet.GcsClient(address=address)
     is_accepted = gcs_client.drain_node(
         node_id,
@@ -2282,8 +2297,7 @@ def drain_node(
     )
 
     if not is_accepted:
-        print("The drain request is not accepted")
-        sys.exit(1)
+        raise click.ClickException("The drain request is not accepted")
 
 
 @cli.command(name="kuberay-autoscaler", hidden=True)

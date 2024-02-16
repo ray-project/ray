@@ -78,7 +78,6 @@ steps:
   - label: ":tapioca: build: doc"
     instance_type: medium
     commands:
-      - bazel build //:install_py_proto
       - FAST=True make -C doc/ html
     depends_on: docbuild
     job_env: docbuild
