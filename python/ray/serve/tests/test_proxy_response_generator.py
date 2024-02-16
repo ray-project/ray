@@ -31,7 +31,6 @@ class TestUnary:
 
         h = serve.run(D.bind()).options(
             stream=False,
-            use_new_handle_api=True,
         )
         gen = ProxyResponseGenerator(h.remote("Alice"))
 
@@ -59,7 +58,6 @@ class TestUnary:
 
         h = serve.run(D.bind()).options(
             stream=False,
-            use_new_handle_api=True,
         )
 
         def result_callback(result: str) -> str:
@@ -81,7 +79,6 @@ class TestUnary:
 
         h = serve.run(D.bind()).options(
             stream=False,
-            use_new_handle_api=True,
         )
         h.remote()
 
@@ -110,7 +107,6 @@ class TestUnary:
 
         h = serve.run(D.bind()).options(
             stream=False,
-            use_new_handle_api=True,
         )
 
         gen = ProxyResponseGenerator(h.remote(), timeout_s=0.1)
@@ -134,7 +130,6 @@ class TestUnary:
 
         h = serve.run(D.bind()).options(
             stream=False,
-            use_new_handle_api=True,
         )
         h.remote()
 
@@ -173,7 +168,6 @@ class TestUnary:
 
         h = serve.run(D.bind()).options(
             stream=False,
-            use_new_handle_api=True,
         )
 
         gen = ProxyResponseGenerator(h.remote(), disconnected_task=disconnect_task)
@@ -211,7 +205,6 @@ class TestStreaming:
 
         h = serve.run(D.bind()).options(
             stream=True,
-            use_new_handle_api=True,
         )
         gen = ProxyResponseGenerator(h.remote("Alice"))
 
@@ -239,7 +232,6 @@ class TestStreaming:
 
         h = serve.run(D.bind()).options(
             stream=True,
-            use_new_handle_api=True,
         )
 
         def result_callback(result: str) -> str:
@@ -262,7 +254,6 @@ class TestStreaming:
 
         h = serve.run(D.bind()).options(
             stream=True,
-            use_new_handle_api=True,
         )
         h.remote()
 
@@ -292,7 +283,6 @@ class TestStreaming:
 
         h = serve.run(D.bind()).options(
             stream=True,
-            use_new_handle_api=True,
         )
 
         gen = ProxyResponseGenerator(h.remote(), timeout_s=0.1)
@@ -317,7 +307,6 @@ class TestStreaming:
 
         h = serve.run(D.bind()).options(
             stream=True,
-            use_new_handle_api=True,
         )
         h.remote()
 
@@ -357,7 +346,6 @@ class TestStreaming:
 
         h = serve.run(D.bind()).options(
             stream=True,
-            use_new_handle_api=True,
         )
 
         gen = ProxyResponseGenerator(h.remote(), disconnected_task=disconnect_task)
@@ -392,7 +380,6 @@ class TestStreaming:
 
         h = serve.run(D.bind()).options(
             stream=True,
-            use_new_handle_api=True,
         )
 
         gen = ProxyResponseGenerator(
