@@ -12,10 +12,12 @@ from ray.rllib.utils.typing import ModuleID
 # or push it into the `Learner` as these are recurring keys in RL.
 ATOMS = "atoms"
 QF_LOSS_KEY = "qf_loss"
+QF_LOGITS = "qf_logits"
 QF_MEAN_KEY = "qf_mean"
 QF_MAX_KEY = "qf_max"
 QF_MIN_KEY = "qf_min"
 QF_TARGET_NEXT_PREDS = "qf_target_next_preds"
+QF_TARGET_NEXT_PROBS = "qf_target_next_probs"
 QF_PREDS = "qf_preds"
 QF_PROBS = "qf_probs"
 TD_ERROR_KEY = "td_error"

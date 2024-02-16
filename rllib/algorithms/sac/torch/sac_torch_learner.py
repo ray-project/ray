@@ -182,8 +182,6 @@ class SACTorchLearner(SACLearner, TorchLearner):
         if self.config.twin_q:
             q_twin_selected = fwd_out[QF_TWIN_PREDS]
 
-        # TODO (simon): Implement twin Q.
-
         # Compute Q-values for the current policy in the current state with
         # the sampled actions.
         q_batch_curr = NestedDict(
@@ -258,8 +256,6 @@ class SACTorchLearner(SACLearner, TorchLearner):
         # If a twin Q network should be used, add the critic loss of the twin Q network.
         if self.config.twin_q:
             critic_twin_loss = torch.mean(
-                # TODO (simon): Introduce priority weights when episode buffer is ready.
-                # batch[PRIO_WEIGHTS] *
                 batch["weights"]
                 * torch.nn.HuberLoss(reduction="none", delta=1.0)(
                     q_twin_selected, q_selected_target
@@ -323,6 +319,12 @@ class SACTorchLearner(SACLearner, TorchLearner):
         """Updates the target Q network(s) of a module.
 
         Applies Polyak averaging for the update.
+
+        Args:
+            module_id: The ID of the module for which target networks
+                should be updated.
+            config: `AlgorithmConfig` holding hyperparameters needed
+                for the updates.
         """
         module = self.module[module_id]
 
@@ -331,7 +333,7 @@ class SACTorchLearner(SACLearner, TorchLearner):
         for target_network, current_network in target_current_network_pairs:
             # Get the current parameters from the Q network.
             current_state_dict = current_network.state_dict()
-            # Use here Polyak avereging.
+            # Use here Polyak averaging.
             new_state_dict = {
                 k: config.tau * current_state_dict[k] + (1 - config.tau) * v
                 for k, v in target_network.state_dict().items()

@@ -5,10 +5,12 @@ from ray.rllib.algorithms.dqn.dqn_rainbow_learner import (
     ATOMS,
     DQNRainbowLearner,
     QF_LOSS_KEY,
+    QF_LOGITS,
     QF_MEAN_KEY,
     QF_MAX_KEY,
     QF_MIN_KEY,
     QF_TARGET_NEXT_PREDS,
+    QF_TARGET_NEXT_PROBS,
     QF_PREDS,
     QF_PROBS,
     TD_ERROR_KEY,
@@ -56,49 +58,31 @@ class DQNRainbowTorchLearner(DQNRainbowLearner, TorchLearner):
             neginf=0.0,
         )
 
-        # q_selected = torch.sum(
-        #     torch.nan_to_num(q_curr, neginf=0.0) * one_hot_selection, dim=1
-        # )
-
-        # TODO (simon): Implement distributional RL. The logits will be (B,
-        # action_space.n, num_atoms) - Use gather over second dimension (i.e. 1)
-        # if self.config.num_atoms > 1:
-        # q_selected_logits = torch.sum(fwd_out["logits"] * one_hot_selection, dim=1)
-
+        # Use double Q learning.
         if self.config.double_q:
-            # TODO (simon): Implement double Q architecture.
-            pass
+            # Then we evaluate the target Q-function at the best action over
+            # the online Q-function.
+            batch_next = {SampleBatch.OBS: batch[SampleBatch.NEXT_OBS]}
+            qf_next_outs = self.module.qf(batch_next)
+            # Mark the best online Q-value of the next state.
+            q_next_best_idx = (
+                torch.argmax(qf_next_outs[QF_PREDS], dim=1).unsqueeze(dim=-1).long()
+            )
+            # Get the Q-value of the target network at maximum of the online network.
+            q_next_best = torch.nan_to_num(
+                torch.gather(q_target_next, dim=1, index=q_next_best_idx),
+                neginf=0.0,
+            )
         else:
-            # Mark the maximum Q-value(s). Note, if we use distributional Q
-            # learning we will have the maximum for each support node (not
-            # over all the support nodes of actions). We have then a
-            # maximum support where nodes come from different actions.
-            # next_best_one_hot_selection = nn.functional.one_hot(
-            #     torch.argmax(q_next, dim=1),
-            #     self.config.action_space,
-            # )
             # Mark the maximum Q-value(s).
-            # TODO (simon): Check, if we need the FLOAT_MIN here anymore,
-            # as amax works also on `-inf` (what if both a -inf?)
-            # TODO (simon): Make performance tests with one-hot and this.
-            q_target_next_best_idx = (
+            q_next_best_idx = (
                 torch.argmax(q_target_next, dim=1).unsqueeze(dim=-1).long()
             )
             # Get the maximum Q-value(s).
-            q_target_next_best = torch.nan_to_num(
-                torch.gather(q_target_next, dim=1, index=q_target_next_best_idx),
+            q_next_best = torch.nan_to_num(
+                torch.gather(q_target_next, dim=1, index=q_next_best_idx),
                 neginf=0.0,
             )
-            # q_next_best = torch.nan_to_num(torch.amax(q_next, dim=1), neginf=0.0)
-            # q_next_best = torch.sum(
-            #     torch.nan_to_num(q_next, neginf=0.0) * next_best_one_hot_selection,
-            #     dim=1,
-            # )
-            # If we learn a Q-distribution.
-
-            # probs_q_next_best = torch.sum(
-            #     fwd_out[SampleBatch.NEXT_OBS]["probs"] * next_best_one_hot_selection
-            # )
 
         # Choose the requested loss function. Note, in case of the Huber loss
         # we fall back to the default of `delta=1.0`.
@@ -112,7 +96,7 @@ class DQNRainbowTorchLearner(DQNRainbowLearner, TorchLearner):
             # (Note, `torch.gather` should be faster than multiplication
             # with a one-hot tensor.)
             q_logits_selected = torch.gather(
-                fwd_out["qf_logits"],
+                fwd_out[QF_LOGITS],
                 dim=1,
                 # Note, the Q-logits are of shape (B, action_space.n, num_atoms)
                 # while the actions have shape (B, 1). We reshape actions to
@@ -123,15 +107,14 @@ class DQNRainbowTorchLearner(DQNRainbowLearner, TorchLearner):
                 .long(),
             ).squeeze(dim=1)
             # Get the probabilies for the maximum Q-value(s).
-            B = q_curr.size(0)
             probs_q_next_best = torch.gather(
-                fwd_out["qf_target_next_probs"],
+                fwd_out[QF_TARGET_NEXT_PROBS],
                 dim=1,
                 # Change the view and then expand to get to the dimensions
                 # of the probabilities (dims 0 and 2, 1 should be reduced
                 # from 2 -> 1).
-                index=q_target_next_best_idx.view(-1, 1, 1).expand(
-                    B, 1, self.config.num_atoms
+                index=q_next_best_idx.view(-1, 1, 1).expand(
+                    -1, 1, self.config.num_atoms
                 ),
             ).squeeze(dim=1)
 
@@ -159,7 +142,7 @@ class DQNRainbowTorchLearner(DQNRainbowLearner, TorchLearner):
 
             floor_equal_ceil = ((upper_bound - lower_bound) < 0.5).float()
 
-            # (B, num_atoms, num_atoms)
+            # (B, num_atoms, num_atoms).
             lower_projection = nn.functional.one_hot(
                 lower_bound.long(), self.config.num_atoms
             )
@@ -183,7 +166,7 @@ class DQNRainbowTorchLearner(DQNRainbowLearner, TorchLearner):
             # Masked all Q-values with terminated next states in the targets.
             q_next_best_masked = (
                 1.0 - batch[SampleBatch.TERMINATEDS].float()
-            ) * q_target_next_best
+            ) * q_next_best
 
             # Compute the RHS of the Bellman equation.
             # TODO (simon): Implement randomized n-step sampling.
@@ -196,7 +179,7 @@ class DQNRainbowTorchLearner(DQNRainbowLearner, TorchLearner):
 
             # Compute the TD error.
             td_error = torch.abs(q_selected - q_selected_target)
-            # Compute the loss.
+            # Compute the weighted loss (importance sampling weights).
             total_loss = torch.mean(
                 batch["weights"]
                 * loss_fn(reduction="none")(q_selected, q_selected_target)
@@ -232,6 +215,12 @@ class DQNRainbowTorchLearner(DQNRainbowLearner, TorchLearner):
         """Updates the target Q network(s) of a module.
 
         Applies Polyak averaging for the update.
+
+        Args:
+            module_id: The ID of the module for which target networks
+                should be updated.
+            config: `AlgorithmConfig` holding hyperparameters needed
+                for the updates.
         """
         module = self.module[module_id]
 
@@ -240,7 +229,7 @@ class DQNRainbowTorchLearner(DQNRainbowLearner, TorchLearner):
         for target_network, current_network in target_current_network_pairs:
             # Get the current parameters from the Q network.
             current_state_dict = current_network.state_dict()
-            # Use here Polyak avereging.
+            # Use here Polyak averaging.
             new_state_dict = {
                 k: config.tau * current_state_dict[k] + (1 - config.tau) * v
                 for k, v in target_network.state_dict().items()
