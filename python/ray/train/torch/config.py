@@ -11,7 +11,6 @@ import ray
 from ray.train._internal.utils import get_address_and_port
 from ray.train._internal.worker_group import WorkerGroup
 from ray.train.backend import Backend, BackendConfig
-from ray.train.constants import DEFAULT_NCCL_SOCKET_IFNAME
 from ray.util import PublicAPI
 
 logger = logging.getLogger(__name__)
@@ -43,20 +42,6 @@ class TorchConfig(BackendConfig):
     @property
     def backend_cls(self):
         return _TorchBackend
-
-
-def _set_nccl_network_interface():
-    """Set the appropriate NCCL network interface to use."""
-
-    if "NCCL_SOCKET_IFNAME" not in os.environ:
-        logger.debug(
-            f"Setting NCCL_SOCKET_IFNAME to {DEFAULT_NCCL_SOCKET_IFNAME} "
-            f"to prioritize ethernet connection. To override this behavior, set the "
-            f"`NCCL_SOCKET_IFNAME` environment variable in your Ray runtime "
-            "environment: "
-            "`ray.init(runtime_env={{'env_vars': {'NCCL_SOCKET_IFNAME': 'ens5'}}}`"
-        )
-        os.environ["NCCL_SOCKET_IFNAME"] = DEFAULT_NCCL_SOCKET_IFNAME
 
 
 def _setup_torch_process_group(
@@ -154,9 +139,6 @@ class _TorchBackend(Backend):
                     backend = "gloo"
             else:
                 backend = backend_config.backend
-
-            if backend == "nccl":
-                worker_group.execute(_set_nccl_network_interface)
 
             master_addr, master_port = worker_group.execute_single(
                 0, get_address_and_port
