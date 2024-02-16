@@ -3,6 +3,7 @@ import copy
 from custom_resource import Task
 import time
 import ray
+import boto3
 from pprint import pprint
 from ray.util.scheduling_strategies import (
     In,
@@ -48,7 +49,7 @@ class Controller():
 
         # send data and bind label to node
         elif user_task.status[BIND_TASK_STATUS] is None:
-            id = self.bind_label_and_send_data(user_task.status[ASSIGN_NODE], user_task.spec[HPC_DIR])
+            id = self.bind_label_and_send_data(user_task.status[ASSIGN_NODE], user_task.spec[HPC_DIR],user_task.spec['s3'],user_task.spec[BUCKET_NAME],user_task.spec[OBJECT_KEY])
             user_task.status[BIND_TASK_ID] = id
             user_task.status[BIND_TASK_STATUS] = RUNNING
             print("reconcile: send data and bind label to node", user_task.spec[USER_TASK_ID], user_task.spec[HPC_DIR])
@@ -90,10 +91,30 @@ class Controller():
                 print("reconcile: user_task finished", user_task.spec[USER_TASK_ID])
             return
                 
+    def download_s3_folder(bucket_name, s3_folder='', local_dir=None):
+        """
+        Download the contents of a folder directory
+        Args:
+            bucket_name: the name of the s3 bucket
+            s3_folder: the folder path in the s3 bucket
+            local_dir: a relative or absolute directory path in the local file system
+        """
+        s3=boto3.resource('s3',aws_access_key_id=AWS_ACCESS_KEY_ID,aws_secret_access_key=AWS_SECRET_ACCESS_KEY)
+        bucket = s3.Bucket(bucket_name)
+        for obj in bucket.objects.filter(Prefix=s3_folder):
+            print(obj.key)
+            target = obj.key if local_dir is None \
+                else os.path.join(local_dir, os.path.relpath(obj.key, s3_folder))
+            if '/' in target:
+                if not os.path.exists(os.path.dirname(target)):
+                    os.makedirs(os.path.dirname(target))
+                
+            if obj.key[-1] == '/':
+                continue
+            bucket.download_file(obj.key, target)
 
 
-
-    def bind_label_and_send_data(self, node_id, label):
+    def bind_label_and_send_data(self, node_id, label,s3,bucket_name,object_name):
         @ray.remote
         def bind_label():
 	        #TODO: how to guarantee transfer data finished 
@@ -103,12 +124,17 @@ class Controller():
             #     ray.get_runtime_context().set_label({label: label})
             # else:
             #     os.system("rsync -a -P {} {}".format(label,node_ip+":"+label))
+            
             if os.path.exists(label):
                
                 ray.get_runtime_context().set_label({label: label})
             else:
                 # node_ip=self.get_node_ip(data_id)
-                os.system("rsync --mkpath -a -P {} {}".format(DATA_IP+":"+label,label))
+                if s3==True:
+                    self.download_s3_folder(bucket_name,object_name)
+                        
+                else:
+                    os.system("rsync --mkpath -a -P {} {}".format(DATA_IP+":"+label,label))
                
                 ray.get_runtime_context().set_label({label: label})
             return FINISHED

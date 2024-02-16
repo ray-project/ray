@@ -14,7 +14,12 @@ MEMORY = "memory"
 
 USER_TASK_ID = "user_task_id"
 
+#If use S3
+BUCKET_NAME="bucket_name"
+OBJECT_KEY="object_key"
 
+AWS_ACCESS_KEY_ID=""
+AWS_SECRET_ACCESS_KEY=''
 
 # status constant
 ASSIGN_NODE = "assign_node"
