@@ -14,6 +14,7 @@ from ray.rllib.utils.annotations import (
     override,
     OverrideToImplementCustomLogic,
 )
+from ray.rllib.utils.typing import TensorType
 
 ATOMS = "atoms"
 QF_LOGITS = "qf_logits"
@@ -103,30 +104,82 @@ class DQNRainbowRLModule(RLModule, RLModuleWithTargetNetworksInterface):
 
     @abstractmethod
     @OverrideToImplementCustomLogic
-    def qf(self, batch: Dict[str, Any]) -> Dict[str, Any]:
+    def _qf(self, batch: Dict[str, TensorType]) -> Dict[str, TensorType]:
         """Computes Q-values.
 
         Note, these can be accompanied with logits and pobabilities
         in case of distributional Q-learning, i.e. `self.num_atoms > 1`.
+
+        Args:
+            batch: The batch recevied in the forward pass.
+
+        Results:
+            A dictionary containing the Q-value predictions and in case of
+            distributional Q-leanring the support atoms ("atoms"), the
+            Q-logits ("qf_logits"), and the probabilities ("qf_probs").
         """
 
     @abstractmethod
     @OverrideToImplementCustomLogic
-    def qf_target(self, batch: Dict[str, Any]) -> Dict[str, Any]:
+    def _qf_target(self, batch: Dict[str, TensorType]) -> Dict[str, TensorType]:
         """Computes Q-values from the target network.
 
         Note, these can be accompanied with logits and pobabilities
         in case of distributional Q-learning, i.e. `self.num_atoms > 1`.
+
+        Args:
+            batch: The batch recevied in the forward pass.
+
+        Results:
+            A dictionary containing the target Q-value predictions and in
+            case of distributional Q-leanring the support atoms ("atoms"),
+            the  Q-logits ("qf_logits"), and the probabilities ("qf_probs").
         """
 
     @abstractmethod
     @OverrideToImplementCustomLogic
-    def af_dist(self, batch: Dict[str, Any]) -> Dict[str, Any]:
-        """Compute the advantage distribution."""
+    def _af_dist(self, batch: Dict[str, TensorType]) -> Dict[str, TensorType]:
+        """Compute the advantage distribution.
+
+        Note this distribution is identical to the Q-distribution in
+        case no dueling architecture is used.
+
+        Args:
+            batch: A dictionary containing a tensor with the outputs of the
+                forward pass of the Q-head or advantage stream head.
+
+        Returns:
+            A `dict` containing the support of the discrete distribution for
+            either Q-values or advantages (in case of a dueling architecture),
+            ("atoms"), the logits per action and atom and the probabilities
+            of the discrete distribution (per action and atom of the support).
+        """
 
     @abstractmethod
     @OverrideToImplementCustomLogic
     def _qf_forward_helper(
-        self, batch: Dict, encoder: Encoder, head: Union[Model, Dict[str, Model]]
-    ) -> Dict:
-        """Executes the forward pass for Q-networks."""
+        self,
+        batch: Dict[str, TensorType],
+        encoder: Encoder,
+        head: Union[Model, Dict[str, Model]],
+    ) -> Dict[str, TensorType]:
+        """ "Computes Q-values.
+
+        This is a helper function that takes care of all different cases,
+        i.e. if use a dueling architecture or not and if we use istributional
+        Q-learning or not.
+
+        Args:
+            batch: The batch recevied in the forward pass.
+            encoder: The encoder network to use. Here we have a single encoder
+                for all heads (Q or advantages and value in case of a dueling
+                architecture).
+            head: Either a head model or a dictionary of head model (dueling
+            architecture) containing advantage and value stream heads.
+
+        Returns:
+            In case of expectation learning the Q-value predictions ("qf_preds")
+            and in case of distributional Q-learning the atoms ("atoms"), the
+            Q-value predictions ("qf_preds"), the Q-logits ("qf_logits") and
+            the probabilities for the support atoms ("qf_probs").
+        """

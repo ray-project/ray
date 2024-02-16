@@ -223,11 +223,7 @@ class TorchNoisyMLP(nn.Module):
         )
 
         layers = []
-        # dims = (
-        #     [self.input_dim]
-        #     + list(hidden_layer_dims)
-        #     + ([output_dim] if output_dim else [])
-        # )
+
         dims = (
             [self.input_dim]
             + list(hidden_layer_dims)

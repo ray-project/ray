@@ -1,3 +1,4 @@
+# __sphinx_doc_begin__
 import gymnasium as gym
 
 from ray.rllib.algorithms.dqn.dqn_rainbow_noisy_net_configs import (
@@ -17,7 +18,27 @@ from ray.rllib.utils.annotations import (
 
 @ExperimentalAPI
 class DQNRainbowCatalog(Catalog):
-    """The catalog class used to build models for DQN Rainbow."""
+    """The catalog class used to build models for DQN Rainbow.
+
+    `DQNRainbowCatalog` provides the following models:
+        - Encoder: The encoder used to encode the observations.
+        - Target_Encoder: The encoder used to encode the observations
+            for the target network.
+        - Af Head: Either the head of the advantage stream, if a dueling
+            architecture is used or the head of the Q-function.
+        - Vf Head (optional): The head of the value function in case a
+            dueling architecture is chosen.
+
+    All networks can include noisy layers, if `noisy` is `True`.
+
+    Any custom head can be built by overridng the `build_af_head()` and
+    `build_vf_head()`. Alternatively, the `AfHeadConfig` or `VfHeadConfig`
+    can be overridden to build custom logic during `RLModule` runtime.
+
+    All heads can optionally use distributional learning. In this case the
+    number of output neurons corresponds to the number of actions times the
+    number of support atoms of the discrete distribution.
+    """
 
     @override(Catalog)
     def __init__(
@@ -27,6 +48,13 @@ class DQNRainbowCatalog(Catalog):
         model_config_dict: dict,
         view_requirements: dict = None,
     ):
+        """Initializes the DQNRainbowCatalog.
+
+        Args:
+            observation_space: The observation space of the Encoder.
+            action_space: The action space for the Af Head.
+            model_config_dict: The model config to use.
+        """
         super().__init__(
             observation_space=observation_space,
             action_space=action_space,
@@ -76,6 +104,8 @@ class DQNRainbowCatalog(Catalog):
             )
         # TODO (simon): Add all other arguments to the Heads.
         if self.uses_noisy:
+            # In case of noisy networks we need to provide the intial standard
+            # deviation and use the corresponding `NoisyMLPHeadConfig`.
             self.af_head_config = NoisyMLPHeadConfig(
                 input_dims=self.latent_dims,
                 hidden_layer_dims=self.af_and_vf_head_hiddens,
@@ -118,17 +148,44 @@ class DQNRainbowCatalog(Catalog):
 
         Note, if no dueling architecture is chosen, this will
         be the Q-function head.
+
+        The default behavior is to build the head from the `af_head_config`.
+        This can be overridden to build a custom policy head as a means to
+        configure the behavior of a `DQNRainbowRLModule` implementation.
+
+        Args:
+            framework: The framework to use. Either "torch" or "tf2".
+
+        Returns:
+            The advantage head in case a dueling architecutre is chosen or
+            the Q-function head in the other case.
         """
         return self.af_head_config.build(framework=framework)
 
     @OverrideToImplementCustomLogic
     def build_vf_head(self, framework: str) -> Model:
-        """Build the value function head."""
+        """Build the value function head.
+
+        Note, this function is only called in case of a dueling architecture.
+
+        The default behavior is to build the head from the `vf_head_config`.
+        This can be overridden to build a custom policy head as a means to
+        configure the behavior of a `DQNRainbowRLModule` implementation.
+
+        Args:
+            framework: The framework to use. Either "torch" or "tf2".
+
+        Returns:
+            The value function head.
+        """
 
         return self.vf_head_config.build(framework=framework)
 
     @override(Catalog)
     def get_action_dist_cls(self, framework: str) -> "TorchCategorical":
-        # We only implement for Torch.
+        # We only implement DQN Rainbow for Torch.
         assert framework == "torch"
         return TorchCategorical
+
+
+# __sphinx_doc_end__
