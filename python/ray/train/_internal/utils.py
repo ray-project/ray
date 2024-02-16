@@ -98,7 +98,7 @@ def update_env_vars(env_vars: Dict[str, Any]):
 def construct_train_func(
     train_func: Union[Callable[[], T], Callable[[Dict[str, Any]], T]],
     config: Optional[Dict[str, Any]],
-    train_func_context: Optional[ContextManager],
+    train_func_context: ContextManager,
     fn_arg_name: Optional[str] = "train_func",
     discard_returns: bool = False,
 ) -> Callable[[], T]:
@@ -109,7 +109,7 @@ def construct_train_func(
         config (Optional[Dict]): Configurations to pass into
             ``train_func``. If None then an empty Dict will be created.
         train_func_context: Context manager for user's `train_func`, which executes
-            backend-specific logics before and after the training function.
+            backend-specific logic before and after the training function.
         fn_arg_name (Optional[str]): The name of training function to use for error
             messages.
         discard_returns: Whether to discard any returns from train_func or not.
