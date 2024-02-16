@@ -37,13 +37,13 @@ def _xgboost_train_fn_per_worker(
             f"({num_boost_round=})."
         )
 
-    train_dataset = ray.train.get_dataset_shard(TRAIN_DATASET_KEY)
-    train_df = train_dataset.to_pandas()
+    train_ds_iter = ray.train.get_dataset_shard(TRAIN_DATASET_KEY)
+    train_df = train_ds_iter.materialize().to_pandas()
 
-    eval_datasets = {
+    eval_ds_iters = {
         k: d for k, d in get_session().dataset_shard.items() if k != TRAIN_DATASET_KEY
     }
-    eval_dfs = {k: d.to_pandas() for k, d in eval_datasets.items()}
+    eval_dfs = {k: d.materialize().to_pandas() for k, d in eval_ds_iters.items()}
 
     # NOTE: Include the training dataset in the evaluation datasets.
     # This allows `train-*` metrics to be calculated and reported.

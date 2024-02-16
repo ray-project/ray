@@ -2,7 +2,6 @@ import logging
 from typing import Any, Callable, Dict, Optional, Union
 
 import ray.train
-from ray.data import DataIterator, Dataset
 from ray.train import Checkpoint
 from ray.train.data_parallel_trainer import DataParallelTrainer
 from ray.train.trainer import GenDataset
@@ -21,6 +20,8 @@ class XGBoostTrainer(DataParallelTrainer):
 
         import xgboost
 
+        import ray.data
+        import ray.train
         from ray.train.xgboost import RayTrainReportCallback
         from ray.train.xgboost.v2 import XGBoostTrainer
 
@@ -31,10 +32,12 @@ class XGBoostTrainer(DataParallelTrainer):
             # ray.train.get_checkpoint()
 
             # 1. Get the dataset shard for the worker and convert to a `xgboost.DMatrix`
-            train_ds, eval_ds = (
+            train_ds_iter, eval_ds_iter = (
                 ray.train.get_dataset_shard("train"),
                 ray.train.get_dataset_shard("validation"),
             )
+            train_ds, eval_ds = train_ds_iter.materialize(), eval_ds_iter.materialize()
+
             train_df, eval_df = train_ds.to_pandas(), eval_ds.to_pandas()
             train_X, train_y = train_df.drop("y", axis=1), train_df["y"]
             eval_X, eval_y = eval_df.drop("y", axis=1), eval_df["y"]
@@ -122,13 +125,10 @@ class XGBoostTrainer(DataParallelTrainer):
         metadata: Optional[Dict[str, Any]] = None,
         resume_from_checkpoint: Optional[Checkpoint] = None,
     ):
-        if not xgboost_config:
-            xgboost_config = XGBoostConfig()
-
         super(XGBoostTrainer, self).__init__(
             train_loop_per_worker=train_loop_per_worker,
             train_loop_config=train_loop_config,
-            backend_config=xgboost_config,
+            backend_config=xgboost_config or XGBoostConfig(),
             scaling_config=scaling_config,
             dataset_config=dataset_config,
             run_config=run_config,
