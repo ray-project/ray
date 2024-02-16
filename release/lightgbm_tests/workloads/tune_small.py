@@ -59,7 +59,7 @@ if __name__ == "__main__":
         config=search_space,
         num_samples=4,
         resources_per_trial=ray_params.get_tune_resources(),
-        cluster_storage="/mnt/cluster_storage",
+        storage_path="/mnt/cluster_storage",
     )
     taken = time.time() - start
 
