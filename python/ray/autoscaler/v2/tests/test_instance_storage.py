@@ -303,7 +303,7 @@ def test_get_instances():
     )
     instance1 = create_instance("instance1", version=1)
     instance2 = create_instance("instance2", status=Instance.ALLOCATED, version=1)
-    instance3 = create_instance("instance3", status=Instance.STOPPING, version=1)
+    instance3 = create_instance("instance3", status=Instance.TERMINATING, version=1)
 
     assert (True, 1) == storage.batch_upsert_instances(
         [copy.deepcopy(instance1), copy.deepcopy(instance2), copy.deepcopy(instance3)],

@@ -346,11 +346,8 @@ def test_lightweight_config_options(
             assert tagkey.get_value_from_report(report) is None
 
 
-@pytest.mark.parametrize("use_new_handle_api", [False, True])
 @pytest.mark.parametrize("call_in_deployment", [False, True])
-def test_handle_apis_detected(
-    manage_ray_with_telemetry, use_new_handle_api, call_in_deployment
-):
+def test_handle_apis_detected(manage_ray_with_telemetry, call_in_deployment):
     """Check that the various handles are detected correctly by telemetry."""
 
     subprocess.check_output(["ray", "start", "--head"])
@@ -366,11 +363,6 @@ def test_handle_apis_detected(
     assert (
         ServeUsageTag.DEPLOYMENT_HANDLE_API_USED.get_value_from_report(report) is None
     )
-    assert ServeUsageTag.RAY_SERVE_HANDLE_API_USED.get_value_from_report(report) is None
-    assert (
-        ServeUsageTag.RAY_SERVE_SYNC_HANDLE_API_USED.get_value_from_report(report)
-        is None
-    )
 
     @serve.deployment
     class Downstream:
@@ -380,7 +372,7 @@ def test_handle_apis_detected(
     @serve.deployment
     class Caller:
         def __init__(self, h):
-            self._h = h.options(use_new_handle_api=use_new_handle_api)
+            self._h = h
 
         async def __call__(self, call_downstream=True):
             if call_downstream:
@@ -391,35 +383,18 @@ def test_handle_apis_detected(
 
     if call_in_deployment:
         result = requests.get("http://localhost:8000").text
-    elif use_new_handle_api:
-        result = handle.remote(call_downstream=False).result()
     else:
-        result = ray.get(
-            handle.options(use_new_handle_api=False).remote(call_downstream=False)
-        )
+        result = handle.remote(call_downstream=False).result()
 
     assert result == "ok"
 
     def check_telemetry():
         report = ray.get(storage_handle.get_report.remote())
         print(report["extra_usage_tags"])
-        if use_new_handle_api:
-            assert (
-                ServeUsageTag.DEPLOYMENT_HANDLE_API_USED.get_value_from_report(report)
-                == "1"
-            )
-        elif call_in_deployment:
-            assert (
-                ServeUsageTag.RAY_SERVE_HANDLE_API_USED.get_value_from_report(report)
-                == "1"
-            )
-        else:
-            assert (
-                ServeUsageTag.RAY_SERVE_SYNC_HANDLE_API_USED.get_value_from_report(
-                    report
-                )
-                == "1"
-            )
+        assert (
+            ServeUsageTag.DEPLOYMENT_HANDLE_API_USED.get_value_from_report(report)
+            == "1"
+        )
         return True
 
     wait_for_condition(check_telemetry)
@@ -454,7 +429,7 @@ def test_deployment_handle_to_obj_ref_detected(manage_ray_with_telemetry, mode):
     @serve.deployment
     class Caller:
         def __init__(self, h):
-            self._h = h.options(use_new_handle_api=True)
+            self._h = h
 
         async def get(self, call_downstream=False):
             if call_downstream:
@@ -469,17 +444,9 @@ def test_deployment_handle_to_obj_ref_detected(manage_ray_with_telemetry, mode):
     if mode == "http":
         result = requests.get("http://localhost:8000").text
     elif mode == "outside_deployment":
-        result = ray.get(
-            handle.options(use_new_handle_api=True).get.remote()._to_object_ref_sync()
-        )
+        result = ray.get(handle.get.remote()._to_object_ref_sync())
     else:
-        result = (
-            handle.options(
-                use_new_handle_api=True,
-            )
-            .get.remote(call_downstream=True)
-            .result()
-        )
+        result = handle.get.remote(call_downstream=True).result()
 
     assert result == "ok"
 

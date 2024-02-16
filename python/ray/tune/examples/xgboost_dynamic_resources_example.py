@@ -1,16 +1,12 @@
 from typing import Dict, Any, Optional, TYPE_CHECKING
 import sklearn.datasets
 import sklearn.metrics
-import os
 from sklearn.model_selection import train_test_split
 import xgboost as xgb
-from xgboost.core import Booster
-import pickle
 
 import ray
 from ray import train, tune
 from ray.tune.schedulers import ResourceChangingScheduler, ASHAScheduler
-from ray.tune import Trainable
 from ray.tune.execution.placement_groups import PlacementGroupFactory
 from ray.tune.experiment import Trial
 from ray.tune.integration.xgboost import TuneReportCheckpointCallback
@@ -18,30 +14,18 @@ from ray.tune.integration.xgboost import TuneReportCheckpointCallback
 if TYPE_CHECKING:
     from ray.tune.execution.tune_controller import TuneController
 
-CHECKPOINT_FILENAME = "model.xgb"
+CHECKPOINT_FILENAME = "booster-checkpoint.json"
 
 
 def get_best_model_checkpoint(best_result: "ray.train.Result"):
-    best_bst = xgb.Booster()
-
-    with best_result.checkpoint.as_directory() as checkpoint_dir:
-        to_load = os.path.join(checkpoint_dir, CHECKPOINT_FILENAME)
-
-        if not os.path.exists(to_load):
-            # Class trainable
-            with open(os.path.join(checkpoint_dir, "checkpoint"), "rb") as f:
-                _, _, raw_model = pickle.load(f)
-            to_load = bytearray(raw_model)
-
-        best_bst.load_model(to_load)
+    best_bst = TuneReportCheckpointCallback.get_model(
+        best_result.checkpoint, filename=CHECKPOINT_FILENAME
+    )
 
     accuracy = 1.0 - best_result.metrics["eval-logloss"]
     print(f"Best model parameters: {best_result.config}")
     print(f"Best model total accuracy: {accuracy:.4f}")
     return best_bst
-
-
-# FUNCTION API EXAMPLE
 
 
 # our train function needs to be able to checkpoint
@@ -61,12 +45,12 @@ def train_breast_cancer(config: dict):
     xgb_model = None
     checkpoint = train.get_checkpoint()
     if checkpoint:
-        xgb_model = xgb.Booster()
-        with checkpoint.as_directory() as checkpoint_dir:
-            xgb_model.load_model(os.path.join(checkpoint_dir, CHECKPOINT_FILENAME))
+        xgb_model = TuneReportCheckpointCallback.get_model(
+            checkpoint, filename=CHECKPOINT_FILENAME
+        )
 
-    # we can obtain current trial resources through
-    # `tune.get_trial_resources()`
+    # Set `nthread` to the number of CPUs available to the trial,
+    # which is assigned by the scheduler.
     config["nthread"] = int(train.get_context().get_trial_resources().head_cpus)
     print(f"nthreads: {config['nthread']} xgb_model: {xgb_model}")
     # Train the classifier, using the Tune callback
@@ -78,76 +62,16 @@ def train_breast_cancer(config: dict):
         xgb_model=xgb_model,
         callbacks=[
             TuneReportCheckpointCallback(
-                filename=CHECKPOINT_FILENAME,
                 # checkpointing should happen every iteration
                 # with dynamic resource allocation
                 frequency=1,
+                filename=CHECKPOINT_FILENAME,
             )
         ],
     )
 
 
-# TRAINABLE (CLASS) API EXAMPLE
-class BreastCancerTrainable(Trainable):
-    def setup(self, config):
-        self.config = config
-        self.nthread = config.pop("nthread", 1)
-        self.model: xgb.Booster = None
-        # Load dataset
-        data, labels = sklearn.datasets.load_breast_cancer(return_X_y=True)
-        # Split into train and test set
-        train_x, test_x, train_y, test_y = train_test_split(
-            data, labels, test_size=0.25
-        )
-        # Build input matrices for XGBoost
-        self.train_set = xgb.DMatrix(train_x, label=train_y)
-        self.test_set = xgb.DMatrix(test_x, label=test_y)
-
-    def step(self):
-        # you can also obtain current trial resources:
-        current_resources = self.trial_resources
-        if isinstance(current_resources, PlacementGroupFactory):
-            self.nthread = current_resources.head_cpus
-        else:
-            self.nthread = current_resources.cpu
-
-        results = {}
-        config = self.config.copy()
-        config["nthread"] = int(self.nthread)
-        self.model = xgb.train(
-            config,
-            self.train_set,
-            evals=[(self.test_set, "eval")],
-            verbose_eval=False,
-            xgb_model=self.model,
-            evals_result=results,
-            num_boost_round=1,
-        )
-        print(config, results)
-        return {"eval-logloss": results["eval"]["logloss"][-1], "nthread": self.nthread}
-
-    def save_checkpoint(self, checkpoint_dir):
-        path = os.path.join(checkpoint_dir, "checkpoint")
-        with open(path, "wb") as outputFile:
-            pickle.dump((self.config, self.nthread, self.model.save_raw()), outputFile)
-
-    def load_checkpoint(self, checkpoint_dir):
-        path = os.path.join(checkpoint_dir, "checkpoint")
-        with open(path, "rb") as inputFile:
-            self.config, self.nthread, raw_model = pickle.load(inputFile)
-        self.model = Booster()
-        self.model.load_model(bytearray(raw_model))
-        data, labels = sklearn.datasets.load_breast_cancer(return_X_y=True)
-        # Split into train and test set
-        train_x, test_x, train_y, test_y = train_test_split(
-            data, labels, test_size=0.25
-        )
-        # Build input matrices for XGBoost
-        self.train_set = xgb.DMatrix(train_x, label=train_y)
-        self.test_set = xgb.DMatrix(test_x, label=test_y)
-
-
-def tune_xgboost(use_class_trainable=True):
+def tune_xgboost():
     search_space = {
         # You can mix constants with search space objects.
         "objective": "binary:logistic",
@@ -231,14 +155,9 @@ def tune_xgboost(use_class_trainable=True):
         # resources_allocation_function=DistributeResources()  # default
     )
 
-    if use_class_trainable:
-        fn = BreastCancerTrainable
-    else:
-        fn = train_breast_cancer
-
     tuner = tune.Tuner(
         tune.with_resources(
-            fn, resources=PlacementGroupFactory([{"CPU": 1, "GPU": 0}])
+            train_breast_cancer, resources=PlacementGroupFactory([{"CPU": 1, "GPU": 0}])
         ),
         tune_config=tune.TuneConfig(
             metric="eval-logloss",
@@ -246,47 +165,17 @@ def tune_xgboost(use_class_trainable=True):
             num_samples=1,
             scheduler=scheduler,
         ),
-        run_config=train.RunConfig(
-            checkpoint_config=train.CheckpointConfig(
-                checkpoint_at_end=use_class_trainable,
-            )
-        ),
         param_space=search_space,
     )
     results = tuner.fit()
-
-    if use_class_trainable:
-        assert results.get_dataframe()["nthread"].max() > 1
 
     return results.get_best_result()
 
 
 if __name__ == "__main__":
-    import argparse
-
-    parser = argparse.ArgumentParser()
-    parser.add_argument(
-        "--class-trainable",
-        action="store_true",
-        default=False,
-        help="set to use the Trainable (class) API instead of functional one",
-    )
-    parser.add_argument(
-        "--test",
-        action="store_true",
-        default=False,
-        help="set to run both functional and Trainable APIs",
-    )
-    args, _ = parser.parse_known_args()
-
     ray.init(num_cpus=8)
 
-    if args.test:
-        best_result = tune_xgboost(use_class_trainable=True)
-        best_bst = get_best_model_checkpoint(best_result)
-
-    best_result = tune_xgboost(use_class_trainable=args.class_trainable)
-
+    best_result = tune_xgboost()
     best_bst = get_best_model_checkpoint(best_result)
 
     # You could now do further predictions with
