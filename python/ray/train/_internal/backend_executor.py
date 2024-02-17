@@ -95,7 +95,7 @@ class BackendExecutor:
         max_retries: int = 3,
     ):
         self._backend_config = backend_config
-        self._backend = backend_config.backend_cls
+        self._backend = backend_config.backend_cls()
         self._num_workers = num_workers
         self._num_cpus_per_worker = num_cpus_per_worker
         self._num_gpus_per_worker = num_gpus_per_worker

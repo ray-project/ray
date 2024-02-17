@@ -42,7 +42,7 @@ class TrainingIterator:
         checkpoint: Optional[Union[Dict, str, Path, Checkpoint]],
     ):
         self._backend_executor = backend_executor
-        self._backend = backend_config.backend_cls
+        self._backend = backend_config.backend_cls()
         self._train_func = train_func
         self._datasets = datasets
         self._metadata = metadata
