@@ -15,8 +15,7 @@ from ray.train.lightgbm import LightGBMTrainer
 
 @pytest.fixture
 def ray_start_6_cpus():
-    # address_info = ray.init(num_cpus=6)
-    address_info = ray.init()
+    address_info = ray.init(num_cpus=6)
     yield address_info
     # The code after the yield will run as teardown code.
     ray.shutdown()
@@ -24,8 +23,7 @@ def ray_start_6_cpus():
 
 @pytest.fixture
 def ray_start_8_cpus():
-    # address_info = ray.init(num_cpus=8)
-    address_info = ray.init()
+    address_info = ray.init(num_cpus=8)
     yield address_info
     # The code after the yield will run as teardown code.
     ray.shutdown()
