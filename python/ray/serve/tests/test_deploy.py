@@ -525,7 +525,7 @@ def test_deploy_with_init_args(serve_instance):
         def get_args(self):
             return self._args
 
-    handle = serve.run(D.bind(1, 2, 3)).options(use_new_handle_api=True)
+    handle = serve.run(D.bind(1, 2, 3))
     assert handle.get_args.remote().result() == (1, 2, 3)
 
 
@@ -538,7 +538,7 @@ def test_deploy_with_init_kwargs(serve_instance):
         def get_kwargs(self, *args):
             return self._kwargs
 
-    handle = serve.run(D.bind(a=1, b=2)).options(use_new_handle_api=True)
+    handle = serve.run(D.bind(a=1, b=2))
     assert handle.get_kwargs.remote().result() == {"a": 1, "b": 2}
 
 
