@@ -158,7 +158,6 @@ def test_tune(ray_start_8_cpus):
 
 
 def test_validation(ray_start_6_cpus):
-    train_dataset = ray.data.from_pandas(train_df)
     valid_dataset = ray.data.from_pandas(test_df)
     with pytest.raises(KeyError, match=TRAIN_DATASET_KEY):
         LightGBMTrainer(

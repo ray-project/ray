@@ -1,5 +1,5 @@
-from functools import partial
 import logging
+from functools import partial
 from typing import Any, Dict, Optional, Union
 
 import lightgbm
@@ -215,6 +215,7 @@ class LightGBMTrainer(SimpleLightGBMTrainer):
             )
 
 
+# TODO(justinvyu): [simplify_xgb] Remove once lightgbm_ray dep is gone.
 @PublicAPI(stability="beta")
 class LegacyLightGBMTrainer(GBDTTrainer):
     """A Trainer for data parallel LightGBM training.
