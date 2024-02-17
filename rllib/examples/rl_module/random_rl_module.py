@@ -26,10 +26,10 @@ class RandomRLModule(RLModule):
     def _forward_train(self, *args, **kwargs):
         raise NotImplementedError("Random RLModule: Should not be trained!")
 
-    #def output_specs_inference(self):
+    # def output_specs_inference(self):
     #    return [SampleBatch.ACTIONS]
 
-    #def output_specs_exploration(self):
+    # def output_specs_exploration(self):
     #    return [SampleBatch.ACTIONS]
 
     def _module_state_file_name(self) -> pathlib.Path:

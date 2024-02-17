@@ -81,7 +81,9 @@ class SelfPlayLeagueBasedCallback(DefaultCallbacks):
                     )
                     if module_id in self.main_policies:
                         new_mod_id = re.sub(
-                            "(main)(_\\d+)?$", f"\\1_{len(self.main_policies) - 1}", module_id
+                            "(main)(_\\d+)?$",
+                            f"\\1_{len(self.main_policies) - 1}",
+                            module_id,
                         )
                         self.main_policies.add(new_mod_id)
                     elif module_id in self.main_exploiters:
@@ -192,6 +194,11 @@ class SelfPlayLeagueBasedCallback(DefaultCallbacks):
                 league_changed = True
             else:
                 print("not good enough; will keep learning ...")
+
+        # Add current league size to results dict.
+        result["league_size"] = len(self.non_trainable_policies) + len(
+            self.trainable_policies
+        )
 
         if league_changed:
             self._print_league()

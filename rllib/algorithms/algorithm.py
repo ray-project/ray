@@ -2201,12 +2201,16 @@ class Algorithm(Trainable, AlgorithmBase):
                 module_id=module_id, module=module_spec.build()
             )
             if new_agent_to_module_mapping_fn is not None:
-                env_runner_or_learner.config.multi_agent(policy_mapping_fn=new_agent_to_module_mapping_fn)
+                env_runner_or_learner.config.multi_agent(
+                    policy_mapping_fn=new_agent_to_module_mapping_fn
+                )
             # This setting doesn't really matter for EnvRunners (no
             # training going on there, but we'll update this as well
             # here for good measure).
             if new_should_module_be_updated is not None:
-                env_runner_or_learner.config.multi_agent(policies_to_train=new_should_module_be_updated)
+                env_runner_or_learner.config.multi_agent(
+                    policies_to_train=new_should_module_be_updated
+                )
 
         # Create RLModule on all EnvRunners.
         self.workers.foreach_worker(_add, local_worker=True)

@@ -34,7 +34,6 @@ from ray.rllib.utils.typing import (
     ModuleID,
     ResultDict,
     RLModuleSpec,
-    ShouldModuleBeUpdatedFn,
     T,
 )
 from ray.train._internal.backend_executor import BackendExecutor
@@ -254,7 +253,7 @@ class LearnerGroup:
             call to async_update that is ready.
         """
         return self._update(
-            batch=train_batch,
+            batch=batch,
             episodes=None,
             async_update=async_update,
             reduce_fn=reduce_fn,

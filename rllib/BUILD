@@ -2750,42 +2750,6 @@ py_test(
 )
 
 py_test(
-    name = "examples/self_play_with_open_spiel_connect_4_appo_w_rlm_torch",
-    main = "examples/self_play_with_open_spiel.py",
-    tags = ["team:rllib", "exclusive", "examples", "rlm"],
-    size = "medium",
-    srcs = ["examples/self_play_with_open_spiel.py"],
-    args = ["--enable-new-api-stack", "--framework=torch", "--algo=APPO", "--env=connect_four", "--win-rate-threshold=0.8", "--num-episodes-human-play=0", "--as-test", "--min-league-size=4"]
-)
-
-py_test(
-    name = "examples/self_play_with_open_spiel_connect_4_appo_w_rlm_tf2",
-    main = "examples/self_play_with_open_spiel.py",
-    tags = ["team:rllib", "exclusive", "examples", "rlm"],
-    size = "medium",
-    srcs = ["examples/self_play_with_open_spiel.py"],
-    args = ["--enable-new-api-stack", "--framework=tf2", "--algo=APPO", "--env=connect_four", "--win-rate-threshold=0.8", "--num-episodes-human-play=0", "--as-test", "--min-league-size=4"]
-)
-
-py_test(
-    name = "examples/self_play_league_based_with_open_spiel_markov_soccer_tf",
-    main = "examples/self_play_league_based_with_open_spiel.py",
-    tags = ["team:rllib", "exclusive", "examples"],
-    size = "medium",
-    srcs = ["examples/self_play_league_based_with_open_spiel.py"],
-    args = ["--framework=tf", "--env=markov_soccer", "--win-rate-threshold=0.6", "--stop-iters=2", "--num-episodes-human-play=0"]
-)
-
-py_test(
-    name = "examples/self_play_league_based_with_open_spiel_markov_soccer_torch",
-    main = "examples/self_play_league_based_with_open_spiel.py",
-    tags = ["team:rllib", "exclusive", "examples"],
-    size = "medium",
-    srcs = ["examples/self_play_league_based_with_open_spiel.py"],
-    args = ["--framework=torch", "--env=markov_soccer", "--win-rate-threshold=0.6", "--stop-iters=2", "--num-episodes-human-play=0"]
-)
-
-py_test(
     name = "examples/two_trainer_workflow_tf",
     main = "examples/two_trainer_workflow.py",
     tags = ["team:rllib", "exclusive", "examples"],

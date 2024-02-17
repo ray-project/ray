@@ -558,9 +558,9 @@ class MultiAgentEnvRunner(EnvRunner):
                     episode_length += len(eps2)
                     episode_reward += eps2.get_return()
                     for sa_eps in eps2.agent_episodes.values():
-                        module_rewards[(sa_eps.agent_id, sa_eps.module_id)] += (
-                            eps2.get_return()
-                        )
+                        module_rewards[
+                            (sa_eps.agent_id, sa_eps.module_id)
+                        ] += eps2.get_return()
                 del self._ongoing_episodes_for_metrics[eps.id_]
 
             metrics.append(

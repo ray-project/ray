@@ -58,13 +58,16 @@ if __name__ == "__main__":
             lambda_=0.1,
             vf_clip_param=10.0,
             vf_loss_coeff=0.01,
-            model=dict({
-                "fcnet_activation": "relu",
-                "fcnet_weights_initializer": torch.nn.init.xavier_uniform_,
-                "fcnet_bias_initializer": (
-                    functools.partial(torch.nn.init.constant_, val=0.0)
-                ),
-            }, **({"uses_new_env_runners": True} if args.enable_new_api_stack else {})),
+            model=dict(
+                {
+                    "fcnet_activation": "relu",
+                    "fcnet_weights_initializer": torch.nn.init.xavier_uniform_,
+                    "fcnet_bias_initializer": (
+                        functools.partial(torch.nn.init.constant_, val=0.0)
+                    ),
+                },
+                **({"uses_new_env_runners": True} if args.enable_new_api_stack else {})
+            ),
         )
     )
 

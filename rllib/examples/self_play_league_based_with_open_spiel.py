@@ -72,25 +72,25 @@ parser.add_argument(
     type=float,
     default=0.85,
     help="Win-rate at which we setup another opponent by freezing the "
-         "current main policy and playing against a uniform distribution "
-         "of previously frozen 'main's from here on.",
+    "current main policy and playing against a uniform distribution "
+    "of previously frozen 'main's from here on.",
 )
 parser.add_argument(
     "--min-league-size",
     type=float,
     default=3,
     help="Minimum number of policies/RLModules to consider the test passed. "
-     "The initial league size is 2: `main` and `random`. "
-     "`--min-league-size=3` thus means that one new policy/RLModule has been "
-     "added so far (b/c the `main` one has reached the `--win-rate-threshold "
-     "against the `random` Policy/RLModule).",
+    "The initial league size is 2: `main` and `random`. "
+    "`--min-league-size=3` thus means that one new policy/RLModule has been "
+    "added so far (b/c the `main` one has reached the `--win-rate-threshold "
+    "against the `random` Policy/RLModule).",
 )
 parser.add_argument(
     "--num-episodes-human-play",
     type=int,
     default=0,
     help="How many episodes to play against the user on the command "
-         "line after training has finished.",
+    "line after training has finished.",
 )
 parser.add_argument(
     "--from-checkpoint",
@@ -140,7 +140,8 @@ if __name__ == "__main__":
                         if mid in ["main_exploiter_0", "league_exploiter_0"]
                         else None
                     )
-                ) for mid in names
+                )
+                for mid in names
             }
         else:
             policies = {
@@ -150,7 +151,8 @@ if __name__ == "__main__":
                         if mid in ["main_exploiter_0", "league_exploiter_0"]
                         else None
                     )
-                ) for mid in names
+                )
+                for mid in names
             }
             spec = None
         return {"policies": policies, "spec": spec}
@@ -179,9 +181,7 @@ if __name__ == "__main__":
             # Set up the correct env-runner to use depending on
             # old-stack/new-stack and multi-agent settings.
             env_runner_cls=(
-                None
-                if not args.enable_new_api_stack
-                else MultiAgentEnvRunner
+                None if not args.enable_new_api_stack else MultiAgentEnvRunner
             ),
         )
         .resources(
@@ -257,10 +257,8 @@ if __name__ == "__main__":
                 else:
                     obs = np.array(time_step.observations["info_state"][player_id])
                     if config.uses_new_env_runners:
-                        action = (
-                            algo.workers.local_worker().module.forward_inference(
-                                {"obs": obs}
-                            )
+                        action = algo.workers.local_worker().module.forward_inference(
+                            {"obs": obs}
                         )
                     else:
                         action = algo.compute_single_action(obs, policy_id="main")

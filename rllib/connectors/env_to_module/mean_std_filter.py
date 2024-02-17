@@ -9,7 +9,7 @@ from ray.rllib.connectors.connector_v2 import ConnectorV2
 from ray.rllib.core.rl_module.rl_module import RLModule
 from ray.rllib.env.multi_agent_episode import MultiAgentEpisode
 from ray.rllib.utils.annotations import override
-from ray.rllib.utils.filter import Filter, MeanStdFilter as _MeanStdFilter
+from ray.rllib.utils.filter import MeanStdFilter as _MeanStdFilter
 from ray.rllib.utils.spaces.space_utils import get_base_struct_from_space
 from ray.rllib.utils.typing import EpisodeType
 from ray.util.annotations import PublicAPI
@@ -29,14 +29,15 @@ class MeanStdFilter(ConnectorV2):
     This connector is stateful as it continues to update its internal stats on mean
     and std values as new data is pushed through it (unless `update_stats` is False).
     """
+
     @override(ConnectorV2)
     @property
     def observation_space(self):
         if self.input_observation_space is None:
             return None
 
-        _input_observation_space_struct = (
-            get_base_struct_from_space(self.input_observation_space)
+        _input_observation_space_struct = get_base_struct_from_space(
+            self.input_observation_space
         )
         self.filter_shape = tree.map_structure(
             lambda s: (
@@ -50,7 +51,8 @@ class MeanStdFilter(ConnectorV2):
         # Adjust our observation space's Boxes (only if clipping is active).
         _observation_space_struct = tree.map_structure(
             lambda s: (
-                s if not isinstance(s, gym.spaces.Box)
+                s
+                if not isinstance(s, gym.spaces.Box)
                 else gym.spaces.Box(
                     low=-self.clip_by_value,
                     high=self.clip_by_value,
@@ -129,7 +131,9 @@ class MeanStdFilter(ConnectorV2):
             #  error). However, this would NOT work if our
             #  space were to be more more restrictive than the env's original space
             #  b/c then the adding of the original env observation would fail.
-            episode.observation_space = episode.observations.space = self.observation_space
+            episode.observation_space = (
+                episode.observations.space
+            ) = self.observation_space
             # TODO (sven): Add setter APIs to multi-agent episode.
             if isinstance(episode, MultiAgentEpisode):
                 for agent_id, val in normalized_observations.items():
@@ -192,9 +196,9 @@ class MeanStdFilter(ConnectorV2):
                 clip=ref["clip_by_value"],
             )
             # Override running stats of the filter with the ones stored in `state`.
-            _filter.running_stats = tree.map_structure(lambda s: RunningStat.from_state(s), self.shape)
-#                tree.map_structure(lambda s: RunningStat.from_state(s), state["shape"])
-#            )
+            _filter.running_stats = tree.map_structure(
+                lambda s: RunningStat.from_state(s), self.shape
+            )
             # Leave the buffers as-is, since they should always only reflect
             # what has happened on the particular env runner.
             self._filter.apply_changes(_filter, with_buffer=False)
@@ -212,12 +216,12 @@ class MeanStdFilter(ConnectorV2):
     @staticmethod
     def _get_state_from_filter(filter):
         flattened_rs = tree.flatten(filter.running_stats)
-        #flattened_buffer = tree.flatten(filter.buffer)
+        # flattened_buffer = tree.flatten(filter.buffer)
         return {
             "shape": filter.shape,
             "de_mean_to_zero": filter.demean,
             "de_std_to_one": filter.destd,
             "clip_by_value": filter.clip,
             "running_stats": [s.to_state() for s in flattened_rs],
-            #"buffer": [s.to_state() for s in flattened_buffer],
+            # "buffer": [s.to_state() for s in flattened_buffer],
         }
