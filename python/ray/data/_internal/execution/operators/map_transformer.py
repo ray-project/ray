@@ -1,4 +1,5 @@
 import itertools
+import time
 from abc import abstractmethod
 from enum import Enum
 from typing import Any, Callable, Dict, Iterable, List, Optional, TypeVar, Union
@@ -33,6 +34,7 @@ class MapTransformFn:
         self,
         input_type: MapTransformFnDataType,
         output_type: MapTransformFnDataType,
+        is_udf: bool = False,
     ):
         """
         Args:
@@ -44,6 +46,8 @@ class MapTransformFn:
         self._input_type = input_type
         self._output_type = output_type
         self._target_max_block_size = None
+        self._is_udf = is_udf
+        self._udf_time = 0
 
     @abstractmethod
     def __call__(
@@ -63,6 +67,19 @@ class MapTransformFn:
 
     def set_target_max_block_size(self, target_max_block_size: int):
         self._target_max_block_size = target_max_block_size
+
+    def _udf_timed_iter(
+        self, input: Iterable[MapTransformFnData]
+    ) -> Iterable[MapTransformFnData]:
+        while True:
+            try:
+                start = time.perf_counter()
+                output = next(input)
+                if self._is_udf:
+                    self._udf_time += time.perf_counter() - start
+                yield output
+            except StopIteration:
+                break
 
 
 class MapTransformer:
@@ -162,6 +179,9 @@ class MapTransformer:
         transformer.set_target_max_block_size(target_max_block_size)
         return transformer
 
+    def udf_time(self) -> float:
+        return sum(t._udf_time for t in self._transform_fns)
+
 
 def create_map_transformer_from_block_fn(
     block_fn: MapTransformCallable[Block, Block],
@@ -185,15 +205,14 @@ def create_map_transformer_from_block_fn(
 class RowMapTransformFn(MapTransformFn):
     """A rows-to-rows MapTransformFn."""
 
-    def __init__(self, row_fn: MapTransformCallable[Row, Row]):
+    def __init__(self, row_fn: MapTransformCallable[Row, Row], is_udf: bool = False):
         self._row_fn = row_fn
         super().__init__(
-            MapTransformFnDataType.Row,
-            MapTransformFnDataType.Row,
+            MapTransformFnDataType.Row, MapTransformFnDataType.Row, is_udf=is_udf
         )
 
     def __call__(self, input: Iterable[Row], ctx: TaskContext) -> Iterable[Row]:
-        yield from self._row_fn(input, ctx)
+        yield from self._udf_timed_iter(self._row_fn(input, ctx))
 
     def __repr__(self) -> str:
         return f"RowMapTransformFn({self._row_fn})"
@@ -202,17 +221,18 @@ class RowMapTransformFn(MapTransformFn):
 class BatchMapTransformFn(MapTransformFn):
     """A batch-to-batch MapTransformFn."""
 
-    def __init__(self, batch_fn: MapTransformCallable[DataBatch, DataBatch]):
+    def __init__(
+        self, batch_fn: MapTransformCallable[DataBatch, DataBatch], is_udf: bool = False
+    ):
         self._batch_fn = batch_fn
         super().__init__(
-            MapTransformFnDataType.Batch,
-            MapTransformFnDataType.Batch,
+            MapTransformFnDataType.Batch, MapTransformFnDataType.Batch, is_udf=is_udf
         )
 
     def __call__(
         self, input: Iterable[DataBatch], ctx: TaskContext
     ) -> Iterable[DataBatch]:
-        yield from self._batch_fn(input, ctx)
+        yield from self._udf_timed_iter(self._batch_fn(input, ctx))
 
     def __repr__(self) -> str:
         return f"BatchMapTransformFn({self._batch_fn})"

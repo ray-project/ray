@@ -1,6 +1,6 @@
+import time
 from dataclasses import dataclass, field, fields
 from typing import TYPE_CHECKING, Any, Dict, Optional
-import time
 
 import ray
 from ray.data._internal.execution.interfaces.ref_bundle import RefBundle
@@ -114,15 +114,13 @@ class OpRuntimeMetrics:
         default=0, metadata={"map_only": True, "export_metric": True}
     )
 
+    # TODO(mowen): Is this actually different than the wall time already computed
+    # and stored in block exec stats?
     # Total time spent in data tasks
-    total_data_tasks_time: float = field(
-        default=0, metadata={"export_metric": False}
-    )
+    total_data_tasks_time: float = field(default=0, metadata={"export_metric": False})
 
     # Total time spent in UDFs
-    total_data_udfs_time: float = field(
-        default=0, metadata={"export_metric": False}
-    )
+    total_data_udfs_time: float = field(default=0, metadata={"export_metric": False})
 
     def __init__(self, op: "PhysicalOperator"):
         from ray.data._internal.execution.operators.map_operator import MapOperator
@@ -265,7 +263,9 @@ class OpRuntimeMetrics:
         self.num_tasks_running += 1
         self.bytes_inputs_of_submitted_tasks += inputs.size_bytes()
         self.obj_store_mem_pending_task_inputs += inputs.size_bytes()
-        self._running_tasks[task_index] = RunningTaskInfo(inputs, 0, 0, time.perf_counter())
+        self._running_tasks[task_index] = RunningTaskInfo(
+            inputs, 0, 0, time.perf_counter()
+        )
 
     def on_task_output_generated(self, task_index: int, output: RefBundle):
         """Callback when a new task generates an output."""
