@@ -13,6 +13,7 @@ class DockerHubRateLimitException(Exception):
     """
     Exception for Docker Hub rate limit exceeded.
     """
+
     def __init__(self):
         super().__init__("429: Rate limit exceeded for Docker Hub.")
 
@@ -30,6 +31,7 @@ class AuthTokenException(Exception):
     """
     Exception for failing to retrieve auth token.
     """
+
     def __init__(self, message: str):
         super().__init__(f"Failed to retrieve auth token from {message}.")
 
@@ -41,11 +43,14 @@ def get_docker_registry_auth_token(namespace: str, repository: str) -> Optional[
     Args:
         namespace: Docker namespace
         repository: Docker repository
-    
+
     Returns:
         Auth token for Docker Registry.
     """
-    service, scope = "registry.docker.io", f"repository:{namespace}/{repository}:pull"
+    service, scope = (
+        "registry.docker.io",
+        f"repository:{namespace}/{repository}:pull",
+    )
     auth_url = f"https://auth.docker.io/token?service={service}&scope={scope}"
     response = requests.get(auth_url)
     if response.status_code != 200:
@@ -75,18 +80,25 @@ def get_docker_hub_auth_token():
 
 def _get_git_log(n_days: int = 30):
     return subprocess.check_output(
-        ["git", "log", f"--until='{n_days} days ago'", "--pretty=format:%H"],
+        [
+            "git",
+            "log",
+            f"--until='{n_days} days ago'",
+            "--pretty=format:%H",
+        ],
         text=True,
     )
 
 
-def list_recent_commit_short_shas(n_days: int = 30) -> List[str]:
+def list_recent_commit_short_shas(
+    n_days: int = 30,
+) -> List[str]:
     """
     Get list of recent commit SHAs (short version, first 6 char) on ray master branch.
 
     Args:
         n_days: Number of days to go back in git log.
-    
+
     Returns:
         List of recent commit SHAs (6 char).
     """
@@ -100,7 +112,9 @@ def list_recent_commit_short_shas(n_days: int = 30) -> List[str]:
 def _call_crane_config(tag: str):
     try:
         return subprocess.check_output(
-            ["crane", "config", tag], stderr=subprocess.STDOUT, text=True
+            ["crane", "config", tag],
+            stderr=subprocess.STDOUT,
+            text=True,
         )
     except subprocess.CalledProcessError as e:
         return e.output
@@ -112,7 +126,7 @@ def get_image_creation_time(tag: str) -> datetime:
 
     Args:
         tag: Docker tag name
-    
+
     Returns:
         Datetime object of image creation time.
     """
@@ -130,7 +144,6 @@ def delete_tag(tag: str) -> bool:
 
     Args:
         tag: Docker tag name
-
     Returns:
         True if tag was deleted successfully, False otherwise.
     """
@@ -140,8 +153,8 @@ def delete_tag(tag: str) -> bool:
     }
     namespace, repo_tag = tag.split("/")
     repository, tag_name = repo_tag.split(":")
-    url = f"https://hub.docker.com/v2/repositories/{namespace}/{repository}/tags/{tag_name}"
 
+    url = f"https://hub.docker.com/v2/repositories/{namespace}/{repository}/tags/{tag_name}"  # noqa E501
     response = requests.delete(url, headers=headers)
     if response.status_code == 429:
         raise DockerHubRateLimitException()
@@ -153,7 +166,11 @@ def delete_tag(tag: str) -> bool:
         return True
 
 
-def _safe_to_delete(tag: str, n_days: int, registry_tags: List[str]) -> bool:
+def _safe_to_delete(
+    tag: str,
+    n_days: int,
+    registry_tags: List[str],
+) -> bool:
     """
     Check if tag is safe to delete by:
     1. If tag's image config is not found and tag is not in the Docker Registry.
@@ -190,16 +207,21 @@ def _is_old_commit_tag(tag: str, recent_commit_short_shas: Set[str]) -> bool:
     return True
 
 
-def _is_release_tag(tag: str, release_versions: Optional[List[str]] = None) -> bool:
+def _is_release_tag(
+    tag: str,
+    release_versions: Optional[List[str]] = None,
+) -> bool:
     """
     Check if tag is a release tag & is in the list of release versions.
 
     Args:
         tag: Docker tag name
-        release_versions: List of release versions. If None, don't filter by release version.
-    
+        release_versions: List of release versions.
+            If None, don't filter by release version.
+
     Returns:
-        True if tag is a release tag and is in the list of release versions, False otherwise.
+        True if tag is a release tag and is in the list of release versions.
+            False otherwise.
     """
     variables = tag.split(".")
     if len(variables) != 3 and "post1" not in tag:
@@ -225,7 +247,12 @@ def _is_release_tag(tag: str, release_versions: Optional[List[str]] = None) -> b
 def _call_crane_cp(tag: str, source: str, aws_ecr_repo: str):
     try:
         return subprocess.check_output(
-            ["crane", "cp", source, f"{aws_ecr_repo}:{tag}"],
+            [
+                "crane",
+                "cp",
+                source,
+                f"{aws_ecr_repo}:{tag}",
+            ],
             stderr=subprocess.STDOUT,
             text=True,
         )
@@ -239,14 +266,18 @@ def copy_tag_to_aws_ecr(tag: str, aws_ecr_repo: str) -> bool:
 
     Args:
         tag: Docker tag name in format "namespace/repository:tag"
-    
+
     Returns:
         True if tag was copied successfully, False otherwise.
     """
     _, repo_tag = tag.split("/")
     tag_name = repo_tag.split(":")[1]
     logger.info(f"Copying from {tag} to {aws_ecr_repo}:{tag_name}......")
-    result = _call_crane_cp(tag=tag_name, source=tag, aws_ecr_repo=aws_ecr_repo)
+    result = _call_crane_cp(
+        tag=tag_name,
+        source=tag,
+        aws_ecr_repo=aws_ecr_repo,
+    )
     if "Error" in result:
         logger.info(f"Failed to copy {tag} to AWS ECR: {result}")
         return False
@@ -255,23 +286,29 @@ def copy_tag_to_aws_ecr(tag: str, aws_ecr_repo: str) -> bool:
 
 
 def query_tags_from_docker_hub(
-    filter_func: Callable[[str], bool], namespace: str, repository: str, num_tags: int = 100
+    filter_func: Callable[[str], bool],
+    namespace: str,
+    repository: str,
+    num_tags: int = 100,
 ) -> List[str]:
     """
     Query tags from Docker Hub repository with filter.
-    If Docker Hub API returns an error, the function will stop querying and return the current list of tags.
+    If Docker Hub API returns an error, the function will:
+        - Stop querying
+        - Return the current list of tags.
 
     Args:
         filter_func: Function to return whether tag should be included.
         namespace: Docker namespace
         repository: Docker repository
         num_tags: Max number of tags to query
-    
+
     Returns:
-        Sorted ist of tags from Docker Hub repository in format namespace/repository:tag.
+        Sorted list of tags from Docker Hub repository
+        with format namespace/repository:tag.
     """
     filtered_tags = []
-    url = f"https://hub.docker.com/v2/namespaces/{namespace}/repositories/{repository}/tags?page=1&page_size=100"
+    url = f"https://hub.docker.com/v2/namespaces/{namespace}/repositories/{repository}/tags?page=1&page_size=100"  # noqa E501
     token = get_docker_hub_auth_token()
     headers = {
         "Authorization": f"Bearer {token}",
@@ -280,10 +317,12 @@ def query_tags_from_docker_hub(
     while url:
         response = requests.get(url, headers=headers)
         if response.status_code != 200:
-            logger.info(f"Failed to query tags from Docker Hub: Error: {response.json()}")
-            logger.info(f"Querying stopped.")
+            logger.info(
+                f"Failed to query tags from Docker Hub: Error: {response.json()}"
+            )
+            logger.info("Querying stopped.")
             return sorted([f"{namespace}/{repository}:{t}" for t in filtered_tags])
-    
+
         response_json = response.json()
         url = response_json["next"]
         result = response_json["results"]
@@ -298,13 +337,20 @@ def query_tags_from_docker_hub(
         tag_count += len(filtered_tags_page)
     return sorted([f"{namespace}/{repository}:{t}" for t in filtered_tags])
 
+
 def _call_crane_ls(namespace: str, repository: str):
     try:
         return subprocess.check_output(
-            ["crane", "ls", f"{namespace}/{repository}"], text=True
+            [
+                "crane",
+                "ls",
+                f"{namespace}/{repository}",
+            ],
+            text=True,
         )
     except subprocess.CalledProcessError as e:
         return f"Error: {e.output}"
+
 
 def query_tags_from_docker_registry(namespace: str, repository: str) -> List[str]:
     """
@@ -313,7 +359,7 @@ def query_tags_from_docker_registry(namespace: str, repository: str) -> List[str
     Args:
         namespace: Docker namespace
         repository: Docker repository
-    
+
     Returns:
         List of tags from Docker Registry in format namespace/repository:tag.
     """
@@ -325,7 +371,10 @@ def query_tags_from_docker_registry(namespace: str, repository: str) -> List[str
 
 
 def backup_release_tags(
-    namespace: str, repository: str, release_versions: List[str], aws_ecr_repo: str
+    namespace: str,
+    repository: str,
+    release_versions: List[str],
+    aws_ecr_repo: str,
 ) -> None:
     """
     Backup release tags to AWS ECR.
@@ -343,9 +392,14 @@ def backup_release_tags(
         copy_tag_to_aws_ecr(tag=t, aws_ecr_repo=aws_ecr_repo)
 
 
-def delete_old_commit_tags(namespace: str, repository: str, n_days: int, num_tags: int) -> None:
+def delete_old_commit_tags(
+    namespace: str,
+    repository: str,
+    n_days: int,
+    num_tags: int,
+) -> None:
     """
-    Delete old commit tags from Docker Hub with images that were created at least N days ago.
+    Delete old commit tags with images that were created at least N days ago.
 
     Args:
         namespace: Docker namespace
@@ -356,15 +410,21 @@ def delete_old_commit_tags(namespace: str, repository: str, n_days: int, num_tag
     """
     docker_hub_tags = query_tags_from_docker_hub(
         filter_func=lambda t: _is_old_commit_tag(
-            t, set(list_recent_commit_short_shas(n_days=n_days))
+            t,
+            set(list_recent_commit_short_shas(n_days=n_days)),
         ),
         namespace=namespace,
         repository=repository,
         num_tags=num_tags,
     )
     registry_tags = query_tags_from_docker_registry(
-        namespace=namespace, repository=repository
+        namespace=namespace,
+        repository=repository,
     )
     for t in docker_hub_tags:
-        if _safe_to_delete(tag=t, n_days=n_days, registry_tags=registry_tags):
+        if _safe_to_delete(
+            tag=t,
+            n_days=n_days,
+            registry_tags=registry_tags,
+        ):
             delete_tag(tag=t)
