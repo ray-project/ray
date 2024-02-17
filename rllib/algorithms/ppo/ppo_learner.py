@@ -1,4 +1,4 @@
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple, Union
 
 from ray.rllib.algorithms.ppo.ppo import (
     LEARNER_RESULTS_CURR_ENTROPY_COEFF_KEY,
@@ -8,8 +8,9 @@ from ray.rllib.core.learner.learner import Learner
 from ray.rllib.env.multi_agent_episode import MultiAgentEpisode
 from ray.rllib.evaluation.postprocessing import Postprocessing
 from ray.rllib.policy.sample_batch import MultiAgentBatch, SampleBatch
-from ray.rllib.utils.annotations import override
+from ray.rllib.utils.annotations import override, OverrideToImplementCustomLogic
 from ray.rllib.utils.lambda_defaultdict import LambdaDefaultDict
+from ray.rllib.utils.nested_dict import NestedDict
 from ray.rllib.utils.numpy import convert_to_numpy
 from ray.rllib.utils.postprocessing.value_predictions import compute_value_targets
 from ray.rllib.utils.postprocessing.episodes import (
@@ -19,7 +20,7 @@ from ray.rllib.utils.postprocessing.episodes import (
 )
 from ray.rllib.utils.postprocessing.zero_padding import unpad_data_if_necessary
 from ray.rllib.utils.schedules.scheduler import Scheduler
-from ray.rllib.utils.typing import EpisodeType, ModuleID
+from ray.rllib.utils.typing import EpisodeType, ModuleID, TensorType
 
 
 class PPOLearner(Learner):
@@ -88,7 +89,7 @@ class PPOLearner(Learner):
             episodes=episodes,
         )
         # Perform the value model's forward pass.
-        vf_preds = convert_to_numpy(self.module._compute_values(batch_for_vf))
+        vf_preds = convert_to_numpy(self._compute_values(batch_for_vf))
 
         for module_id, module_vf_preds in vf_preds.items():
             # Collect new (single-agent) episode lengths.
@@ -184,3 +185,28 @@ class PPOLearner(Learner):
         results.update({LEARNER_RESULTS_CURR_ENTROPY_COEFF_KEY: new_entropy_coeff})
 
         return results
+
+    @OverrideToImplementCustomLogic
+    def _compute_values(
+        self,
+        batch_for_vf: Union[MultiAgentBatch, NestedDict],
+    ) -> Union[TensorType, Dict[str, Any]]:
+        """Computes the value function predictions for the module being optimized.
+
+        This method must be overridden by multiagent-specific algorithm learners to
+        specify the specific value computation logic. If the algorithm is single agent
+        (or independent multi-agent), there should be no need to override this method.
+
+        Args:
+            batch_for_vf: The multi-agent batch to be used for value function
+                predictions.
+
+        Returns:
+            A dictionary mapping module IDs to individual value function prediction
+            tensors.
+        """
+        return {
+            module_id: self.module[module_id]._compute_values(module_batch, self._device)
+            for module_id, module_batch in batch_for_vf.policy_batches.items()
+            if self.should_module_be_updated(module_id, module_batch)
+        }

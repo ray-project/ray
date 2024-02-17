@@ -37,8 +37,11 @@ import ray.cloudpickle as pickle
 from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
 from ray.rllib.algorithms.registry import ALGORITHMS_CLASS_TO_NAME as ALL_ALGORITHMS
 from ray.rllib.connectors.agent.obs_preproc import ObsPreprocessorConnector
-from ray.rllib.core.rl_module.marl_module import MultiAgentRLModuleSpec
-from ray.rllib.core.rl_module.rl_module import SingleAgentRLModuleSpec
+from ray.rllib.core.rl_module.marl_module import (
+    MultiAgentRLModuleSpec,
+    DEFAULT_MODULE_ID,
+)
+from ray.rllib.core.rl_module.rl_module import RLModule, SingleAgentRLModuleSpec
 from ray.rllib.env.env_context import EnvContext
 from ray.rllib.env.env_runner import EnvRunner
 from ray.rllib.env.utils import _gym_env_creator
@@ -67,10 +70,10 @@ from ray.rllib.utils import deep_update, FilterManager
 from ray.rllib.utils.annotations import (
     DeveloperAPI,
     ExperimentalAPI,
+    override,
     OverrideToImplementCustomLogic,
     OverrideToImplementCustomLogic_CallToSuperRecommended,
     PublicAPI,
-    override,
 )
 from ray.rllib.utils.checkpoints import (
     CHECKPOINT_VERSION,
@@ -108,17 +111,20 @@ from ray.rllib.utils.spaces import space_utils
 from ray.rllib.utils.typing import (
     AgentConnectorDataType,
     AgentID,
+    AgentToModuleMappingFn,
     AlgorithmConfigDict,
     EnvCreator,
     EnvInfoDict,
     EnvType,
     EpisodeID,
     EpisodeType,
+    ModuleID,
     PartialAlgorithmConfigDict,
     PolicyID,
     PolicyState,
     ResultDict,
     SampleBatchType,
+    ShouldModuleBeUpdatedFn,
     TensorStructType,
     TensorType,
 )
@@ -760,22 +766,18 @@ class Algorithm(Trainable, AlgorithmBase):
                     modules_to_load=modules_to_load,
                     rl_module_ckpt_dirs=rl_module_ckpt_dirs,
                 )
-            # Setup proper policies-to-train/should-module-be-updated functions
-            # on the LearnerGroup.
-            self.learner_group.set_should_module_be_updated_fn(
-                self.config.policies_to_train
-            )
 
             # Only when using RolloutWorkers: Update also the worker set's
             # `is_policy_to_train` (analogous to LearnerGroup's
             # `should_module_be_updated_fn`).
             # Note that with the new EnvRunner API in combination with the new stack,
-            # this information only needs to be kept in the LearnerGroup and not on the
+            # this information only needs to be kept in the Learner and not on the
             # EnvRunners anymore.
             if not self.config.uses_new_env_runners:
-                update_fn = self.learner_group.should_module_be_updated_fn
                 self.workers.foreach_worker(
-                    lambda w: w.set_is_policy_to_train(update_fn),
+                    lambda w: w.set_is_policy_to_train(
+                        self.learner_group.policies_to_train
+                    ),
                     healthy_only=True,
                 )
 
@@ -1991,6 +1993,20 @@ class Algorithm(Trainable, AlgorithmBase):
             return actions
 
     @PublicAPI
+    def get_module(self, module_id: ModuleID = DEFAULT_MODULE_ID) -> RLModule:
+        """Returns the (single-agent) RLModule with `model_id` (None if ID not found).
+
+        Args:
+            module_id: ID of the (single-agent) RLModule to return from the MARLModule
+                used by the local EnvRunner.
+
+        Returns:
+            The SingleAgentRLModule sitting under the ModuleID key inside the
+            local worker's (EnvRunner's) MARLModule.
+        """
+        return self.workers.local_worker().module[module_id]
+
+    @PublicAPI
     def get_policy(self, policy_id: PolicyID = DEFAULT_POLICY_ID) -> Policy:
         """Return policy for the specified id, or None.
 
@@ -2080,6 +2096,14 @@ class Algorithm(Trainable, AlgorithmBase):
             The newly added policy (the copy that got added to the local
             worker). If `workers` was provided, None is returned.
         """
+        if self.config.uses_new_env_runners:
+            raise ValueError(
+                "`Algorithm.add_policy()` is not supported on the new API stack w/ "
+                "EnvRunners! Use `Algorithm.add_module()` instead. Also see "
+                "`rllib/examples/self_play_league_based_with_open_spiel.py` for an "
+                "example."
+            )
+
         validate_policy_id(policy_id, error=True)
 
         self.workers.add_policy(
@@ -2130,6 +2154,74 @@ class Algorithm(Trainable, AlgorithmBase):
 
         # Return newly added policy (from the local rollout worker).
         return self.get_policy(policy_id)
+
+    @PublicAPI
+    def add_module(
+        self,
+        module_id: ModuleID,
+        module_spec: SingleAgentRLModuleSpec,
+        *,
+        module_state: Optional[Dict] = None,
+        new_agent_to_module_mapping_fn: Optional[AgentToModuleMappingFn] = None,
+        new_should_module_be_updated: Optional[ShouldModuleBeUpdatedFn] = None,
+        evaluation_workers: bool = True,
+    ) -> Optional[Policy]:
+        """Adds a new (single-agent) RLModule to this Algorithm's MARLModule.
+
+        Args:
+            module_id: ID of the RLModule to add to the MARLModule.
+                IMPORTANT: Must not contain characters that
+                are also not allowed in Unix/Win filesystems, such as: `<>:"/|?*`,
+                or a dot, space or backslash at the end of the ID.
+            module_spec: The SingleAgentRLModuleSpec to use for constructing the new
+                RLModule.
+            module_state: Optional state dict to apply to the new
+                RLModule instance, right after its construction.
+            new_agent_to_module_mapping_fn: An optional (updated) AgentID to ModuleID
+                mapping function to use from here on. Note that already ongoing
+                episodes will not change their mapping but will use the old mapping till
+                the end of the episode.
+            new_should_module_be_updated: An optional sequence of ModuleIDs or a
+                callable taking ModuleID and SampleBatchType and returning whether the
+                ModuleID should be updated (trained).
+                If None, will keep the existing setup in place. RLModules,
+                whose IDs are not in the list (or for which the callable
+                returns False) will not be updated.
+            evaluation_workers: Whether to add the new RLModule also
+                to the evaluation WorkerSet.
+
+        Returns:
+            The newly added RLModule (the copy that got added to the local
+            worker).
+        """
+        validate_policy_id(module_id, error=True)
+
+        def _add(env_runner_or_learner):
+            env_runner_or_learner.module.add_module(
+                module_id=module_id, module=module_spec.build()
+            )
+            if new_agent_to_module_mapping_fn is not None:
+                env_runner_or_learner.config.multi_agent(policy_mapping_fn=new_agent_to_module_mapping_fn)
+            # This setting doesn't really matter for EnvRunners (no
+            # training going on there, but we'll update this as well
+            # here for good measure).
+            if new_should_module_be_updated is not None:
+                env_runner_or_learner.config.multi_agent(policies_to_train=new_should_module_be_updated)
+
+        # Create RLModule on all EnvRunners.
+        self.workers.foreach_worker(_add, local_worker=True)
+        self.workers.sync_weights(policies=[module_id])
+        # Also on the eval EnvRunners?
+        if evaluation_workers is True and self.evaluation_workers is not None:
+            self.evaluation_workers.foreach_worker(_add, local_worker=True)
+            self.evaluation_workers.sync_weights(policies=[module_id])
+        # Create RLModule on all Learner workers.
+        new_module = self.workers.local_worker().module[module_id]
+        self.learner_group.foreach_learner(_add)
+        self.learner_group.set_weights({module_id: new_module.get_state()})
+
+        # Return newly added RLModule (from the local EnvRunner).
+        return new_module
 
     @PublicAPI
     def remove_policy(

@@ -84,21 +84,19 @@ class PPOTorchRLModule(TorchRLModule, PPORLModule):
         return output
 
     @override(PPORLModule)
-    def _compute_values(self, batch):
-        values = {}
-        for module_id, sa_batch in batch.policy_batches.items():
-            infos = sa_batch.pop(SampleBatch.INFOS, None)
-            sa_batch = convert_to_torch_tensor(sa_batch, device=self._device)
-            if infos is not None:
-                sa_batch[SampleBatch.INFOS] = infos
+    def _compute_values(self, batch, device=None):
+        infos = batch.pop(SampleBatch.INFOS, None)
+        batch = convert_to_torch_tensor(batch, device=device)
+        if infos is not None:
+            batch[SampleBatch.INFOS] = infos
 
-            module = self[module_id].unwrapped()
-
-            # Shared encoder.
-            encoder_outs = module.encoder(sa_batch)
-            # Value head.
-            vf_out = module.vf(encoder_outs[ENCODER_OUT][CRITIC])
-            # Squeeze out last dimension (single node value head).
-            values[module_id] = vf_out.squeeze(-1)
-
-        return values
+        # Separate vfencoder.
+        if hasattr(self.encoder, "critic_encoder"):
+            encoder_outs = self.encoder.critic_encoder(batch)[ENCODER_OUT]
+        # Shared encoder.
+        else:
+            encoder_outs = self.encoder(batch)[ENCODER_OUT][CRITIC]
+        # Value head.
+        vf_out = self.vf(encoder_outs)
+        # Squeeze out last dimension (single node value head).
+        return vf_out.squeeze(-1)
