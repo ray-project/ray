@@ -57,7 +57,7 @@ if __name__ == "__main__":
     import requests
     import ray
 
-    # On inf2.8xlarge instance, there will be 2 neuron cores.
+    # On inf2.8xlarge instance, there are 2 Neuron cores.
     ray.init(resources={"neuron_cores": 2})
 
     serve.run(entrypoint)

@@ -18,10 +18,10 @@ pip install "ray[serve]" requests transformers
 ```
 
 This example uses the [Stable Diffusion-XL](https://huggingface.co/aws-neuron/stable-diffusion-xl-base-1-0-1024x1024) model and [FastAPI](https://fastapi.tiangolo.com/).
-This model is compiled with aws neuron and is ready to run inference. However, one can choose a different Stable Diffusion model and compile it to be compatible for running inference on AWS Inferentia2
+This model is compiled with AWS Neuron and is ready to run inference. However, you can choose a different Stable Diffusion model and compile it to be compatible for running inference on AWS Inferentia2
 instances.
 
-The model we're using in this example is ready for deployment. Save the following code to a file named aws_neuron_core_inference_serve_stable_diffusion.py.
+The model in this example is ready for deployment. Save the following code to a file named aws_neuron_core_inference_serve_stable_diffusion.py.
 
 Use `serve run aws_neuron_core_inference_serve_stable_diffusion:entrypoint` to start the Serve application.
 ```{literalinclude} ../doc_code/aws_neuron_core_inference_serve_stable_diffusion.py
