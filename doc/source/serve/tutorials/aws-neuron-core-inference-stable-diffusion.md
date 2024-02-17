@@ -1,6 +1,6 @@
 (aws-neuron-core-inference-stable-diffusion-tutorial)=
 
-# Serve Inference on Stable Diffusion Model on AWS NeuronCores Using FastAPI
+# Serve an Inference with Stable Diffusion Model on AWS NeuronCores Using FastAPI
 This example uses a precompiled Stable Diffusion XL model and deploys on an AWS Inferentia2 (Inf2)
 instance using Ray Serve and FastAPI.
 

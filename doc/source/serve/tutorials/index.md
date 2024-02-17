@@ -38,7 +38,7 @@ Intermediate
 
 ```{list-table}
   * - [Serve an Inference Model on AWS NeuronCores Using FastAPI](aws-neuron-core-inference)
-  * - [Serve an Inference on Stable Diffusion XL Model on AWS NeuronCores Using FastAPI](aws-neuron-core-inference-stable-diffusion)
+  * - [Serve an Inference with Stable Diffusion Model on AWS NeuronCores Using FastAPI](aws-neuron-core-inference-stable-diffusion)
   * - [Scale a Gradio App with Ray Serve](gradio-integration)
   * - [Serve a Text Generator with Request Batching](batch.md)
   * - [Serve a Chatbot with Request and Response Streaming](streaming)
