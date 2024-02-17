@@ -11,7 +11,7 @@ This document describes how to set up an on-premise Ray cluster, i.e., to run Ra
 
 ## Using Ray cluster launcher
 
-The Ray cluster launcher is part of the `ray` command line tool. It allows you to start, stop and attach to a running ray cluster using commands such as  `ray up`, `ray down` and `ray attach`. You can use pip to install it, or follow [install ray](installation) for more detailed instructions.
+The Ray cluster launcher is part of the `ray` command line tool. It allows you to start, stop and attach to a running Ray cluster using commands such as  `ray up`, `ray down` and `ray attach`. You can use pip to install it, or follow [install ray](installation) for more detailed instructions.
 
 ```bash
 # install ray
