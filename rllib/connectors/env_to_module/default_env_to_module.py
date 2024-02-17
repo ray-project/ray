@@ -50,11 +50,11 @@ class DefaultEnvToModule(ConnectorV2):
         modules=None,
         agent_to_module_mapping_fn=None,
     ):
-        super().__init__(input_observation_space, input_action_space)
-
         self._multi_agent = multi_agent
         self._modules = modules
         self._agent_to_module_mapping_fn = agent_to_module_mapping_fn
+
+        super().__init__(input_observation_space, input_action_space)
 
     @override(ConnectorV2)
     def __call__(
@@ -229,7 +229,7 @@ class DefaultEnvToModule(ConnectorV2):
             return space
 
         # Analyze input observation space to check, whether the user has already taken
-        # care of the agent to module mapping.
+        # care of the agent-to-module mapping.
         if set(self._modules) == set(space.spaces.keys()):
             return space
 

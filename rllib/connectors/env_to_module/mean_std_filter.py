@@ -30,22 +30,14 @@ class MeanStdFilter(ConnectorV2):
     and std values as new data is pushed through it (unless `update_stats` is False).
     """
 
-    @override(ConnectorV2)
     @property
+    @override(ConnectorV2)
     def observation_space(self):
         if self.input_observation_space is None:
             return None
 
         _input_observation_space_struct = get_base_struct_from_space(
             self.input_observation_space
-        )
-        self.filter_shape = tree.map_structure(
-            lambda s: (
-                None
-                if isinstance(s, (Discrete, MultiDiscrete))  # noqa
-                else np.array(s.shape)
-            ),
-            _input_observation_space_struct,
         )
 
         # Adjust our observation space's Boxes (only if clipping is active).
@@ -62,8 +54,10 @@ class MeanStdFilter(ConnectorV2):
             ),
             _input_observation_space_struct,
         )
-        if isinstance(self.observation_space, (gym.spaces.Dict, gym.spaces.Tuple)):
-            return type(self.observation_space)(_observation_space_struct)
+        if isinstance(
+            self.input_observation_space, (gym.spaces.Dict, gym.spaces.Tuple)
+        ):
+            return type(self.input_observation_space)(_observation_space_struct)
         else:
             return _observation_space_struct
 
@@ -103,7 +97,6 @@ class MeanStdFilter(ConnectorV2):
         self._update_stats = update_stats
 
         self._filter: Optional[_MeanStdFilter] = None
-        self._init_new_filter()
 
     @override(ConnectorV2)
     def __call__(
@@ -116,6 +109,9 @@ class MeanStdFilter(ConnectorV2):
         persistent_data: Optional[dict] = None,
         **kwargs,
     ) -> Any:
+        if self._filter is None:
+            self._init_new_filter()
+
         # This connector acts as a classic postprocessor. We process and then replace
         # observations inside the episodes directly. Thus, all following connectors
         # will only see and operate the already normalized data (w/o having access
@@ -188,7 +184,12 @@ class MeanStdFilter(ConnectorV2):
             for s in states
         )
 
+        if self._filter is None:
+            self._init_new_filter()
+
         for state in states:
+            # TODO: Simply re-use _filter=_MeanStdFilter()
+            #  then _filter.set_state(state)
             _filter = _MeanStdFilter(
                 ref["shape"],
                 demean=ref["de_mean_to_zero"],
@@ -196,9 +197,12 @@ class MeanStdFilter(ConnectorV2):
                 clip=ref["clip_by_value"],
             )
             # Override running stats of the filter with the ones stored in `state`.
-            _filter.running_stats = tree.map_structure(
-                lambda s: RunningStat.from_state(s), self.shape
+            _filter.buffer = tree.unflatten_as(
+                state["shape"],
+                [RunningStat.from_state(stats) for stats in state["running_stats"]]
             )
+            # TODO END
+
             # Leave the buffers as-is, since they should always only reflect
             # what has happened on the particular env runner.
             self._filter.apply_changes(_filter, with_buffer=False)
@@ -206,8 +210,18 @@ class MeanStdFilter(ConnectorV2):
         return MeanStdFilter._get_state_from_filter(self._filter)
 
     def _init_new_filter(self):
+        filter_shape = tree.map_structure(
+            lambda s: (
+                None
+                if isinstance(s, (Discrete, MultiDiscrete))
+                else np.array(s.shape)
+            ),
+            get_base_struct_from_space(
+                self.input_observation_space
+            ),
+        )
         self._filter = _MeanStdFilter(
-            self.filter_shape,
+            filter_shape,
             demean=self.de_mean_to_zero,
             destd=self.de_std_to_one,
             clip=self.clip_by_value,
@@ -216,12 +230,10 @@ class MeanStdFilter(ConnectorV2):
     @staticmethod
     def _get_state_from_filter(filter):
         flattened_rs = tree.flatten(filter.running_stats)
-        # flattened_buffer = tree.flatten(filter.buffer)
         return {
             "shape": filter.shape,
             "de_mean_to_zero": filter.demean,
             "de_std_to_one": filter.destd,
             "clip_by_value": filter.clip,
             "running_stats": [s.to_state() for s in flattened_rs],
-            # "buffer": [s.to_state() for s in flattened_buffer],
         }

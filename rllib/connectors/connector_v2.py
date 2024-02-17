@@ -79,6 +79,15 @@ class ConnectorV2(abc.ABC):
         """
         return self.input_action_space
 
+    @property
+    def input_observation_space(self):
+        return self._input_observation_space
+    
+    @input_observation_space.setter
+    def input_observation_space(self, value):
+        self._input_observation_space = value
+        self.observation_space
+
     def __init__(
         self,
         input_observation_space: Optional[gym.Space] = None,
@@ -97,7 +106,9 @@ class ConnectorV2(abc.ABC):
                 (module-to-env) pipeline or is directly defined within the gym.Env.
             **kwargs: Forward API-compatibility kwargs.
         """
+        self._input_observation_space = None
         self.input_observation_space = input_observation_space
+        self._input_action_space = None
         self.input_action_space = input_action_space
 
     @abc.abstractmethod

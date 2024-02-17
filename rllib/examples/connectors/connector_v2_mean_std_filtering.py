@@ -1,13 +1,15 @@
 import functools
 
 from ray.rllib.connectors.env_to_module.mean_std_filter import MeanStdFilter
+from ray.rllib.env.multi_agent_env_runner import MultiAgentEnvRunner
 from ray.rllib.env.single_agent_env_runner import SingleAgentEnvRunner
+from ray.rllib.examples.env.multi_agent import MultiAgentPendulum
 from ray.rllib.utils.framework import try_import_torch
 from ray.rllib.utils.test_utils import (
     add_rllib_example_script_args,
     run_rllib_example_script_experiment,
 )
-from ray.tune.registry import get_trainable_cls
+from ray.tune.registry import get_trainable_cls, register_env
 
 torch, _ = try_import_torch()
 
@@ -21,28 +23,42 @@ parser = add_rllib_example_script_args(
 if __name__ == "__main__":
     args = parser.parse_args()
 
+    # Register our environment with tune.
+    if args.num_agents > 0:
+        register_env(
+            "env",
+            lambda _: MultiAgentPendulum(
+                config={"num_agents": args.num_agents}
+            ),
+        )
+
     config = (
         get_trainable_cls(args.algo)
         .get_default_config()
         .framework(args.framework)
-        .environment("Pendulum-v1")
-        # Use new API stack ...
+        .environment("env" if args.num_agents > 0 else "Pendulum-v1")
         .experimental(_enable_new_api_stack=args.enable_new_api_stack)
         .rollouts(
-            # ... new EnvRunner and our frame stacking env-to-module connector.
-            env_runner_cls=SingleAgentEnvRunner,
+            # Set up the correct env-runner to use depending on
+            # old-stack/new-stack and multi-agent settings.
+            env_runner_cls=(
+                None
+                if not args.enable_new_api_stack
+                else SingleAgentEnvRunner
+                if args.num_agents == 0
+                else MultiAgentEnvRunner
+            ),
             num_rollout_workers=args.num_env_runners,
-            num_envs_per_worker=20,
-            # Define our custom connector pipeline.
+            # TODO (sven): MAEnvRunner does not support vectorized envs yet
+            #  due to gym's env checkers and non-compatability with RLlib's
+            #  MultiAgentEnv API.
+            num_envs_per_worker=1 if args.num_agents > 0 else 20,
+            # Define a single connector piece to be prepended to the env-to-module
+            # connector pipeline.
             # Alternatively, return a list of n ConnectorV2 pieces (which will then be
             # included in an automatically generated EnvToModulePipeline or return a
             # EnvToModulePipeline directly.
-            env_to_module_connector=lambda env: (
-                MeanStdFilter(
-                    input_observation_space=env.single_observation_space,
-                    input_action_space=env.single_action_space,
-                )
-            ),
+            env_to_module_connector=lambda env: MeanStdFilter(),
         )
         .resources(
             num_learner_workers=args.num_gpus,
@@ -70,5 +86,12 @@ if __name__ == "__main__":
             ),
         )
     )
+
+    # Add a simple multi-agent setup.
+    if args.num_agents > 0:
+        config.multi_agent(
+            policies={f"p{i}" for i in range(args.num_agents)},
+            policy_mapping_fn=lambda aid, *a, **kw: f"p{aid}",
+        )
 
     run_rllib_example_script_experiment(config, args)

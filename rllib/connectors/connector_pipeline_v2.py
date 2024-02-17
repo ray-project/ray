@@ -42,9 +42,10 @@ class ConnectorPipelineV2(ConnectorV2):
         connectors: Optional[List[ConnectorV2]] = None,
         **kwargs,
     ):
+        self.connectors = connectors or []
+
         super().__init__(input_observation_space, input_action_space, **kwargs)
 
-        self.connectors = connectors or []
         if len(self) > 0:
             if input_observation_space is None:
                 self.input_observation_space = self.connectors[

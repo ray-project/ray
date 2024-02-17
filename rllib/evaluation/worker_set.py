@@ -403,7 +403,7 @@ class WorkerSet:
             w._env_to_module.set_state(ray.get(ref_env_to_module_state))
             w._module_to_env.set_state(ray.get(ref_module_to_env_state))
 
-        # Broadcast updated states back to all workers.
+        # Broadcast updated states back to all workers (including the local one).
         self.foreach_worker(_update, local_worker=True, healthy_only=True)
 
     @DeveloperAPI
