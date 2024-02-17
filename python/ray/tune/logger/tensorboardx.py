@@ -72,7 +72,7 @@ class TBXLogger(Logger):
             ):
                 valid_result[full_attr] = value
 
-                # Must be image
+                # Must be a single image.
                 if isinstance(value, np.ndarray) and value.ndim == 3:
                     self._file_writer.add_image(
                         full_attr,
@@ -81,7 +81,7 @@ class TBXLogger(Logger):
                     )
                     continue
 
-                # Must be multi-image
+                # Must be a batch of images.
                 if isinstance(value, np.ndarray) and value.ndim == 4:
                     self._file_writer.add_images(
                         full_attr,
@@ -232,7 +232,7 @@ class TBXLoggerCallback(LoggerCallback):
             ):
                 valid_result[full_attr] = value
 
-                # Must be image
+                # Must be a single image.
                 if isinstance(value, np.ndarray) and value.ndim == 3:
                     self._trial_writer[trial].add_image(
                         full_attr,
@@ -241,7 +241,7 @@ class TBXLoggerCallback(LoggerCallback):
                     )
                     continue
 
-                # Must be multi-image
+                # Must be a batch of images.
                 if isinstance(value, np.ndarray) and value.ndim == 4:
                     self._trial_writer[trial].add_images(
                         full_attr,
