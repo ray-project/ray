@@ -491,6 +491,41 @@ setting the ``DataContext.use_push_based_shuffle`` flag:
         .random_shuffle()
     )
 
+Large-scale shuffles can take a while to finish.
+For debugging purposes, shuffle operations support executing only part of the shuffle, so that you can collect an execution profile more quickly.
+Here is an example that shows how to limit a random shuffle operation to two output blocks:
+
+.. testcode::
+    :hide:
+
+    import ray
+    ray.shutdown()
+
+.. testcode::
+
+    import ray
+
+    ctx = ray.data.DataContext.get_current()
+    ctx.set_config(
+        "debug_limit_shuffle_execution_to_num_blocks", 2
+    )
+
+    ds = (
+        ray.data.range(1000, parallelism=10)
+        .random_shuffle()
+        .materialize()
+    )
+    print(ds.stats())
+
+.. testoutput::
+    :options: +MOCK
+
+    Stage 1 ReadRange->RandomShuffle: executed in 0.08s
+
+        Substage 0 ReadRange->RandomShuffleMap: 2/2 blocks executed
+        ...
+
+
 Configuring execution
 ---------------------
 

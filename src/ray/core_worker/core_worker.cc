@@ -3016,7 +3016,10 @@ Status CoreWorker::ReportGeneratorItemReturns(
   RAY_LOG(DEBUG) << "Write the object ref stream, index: " << item_index
                  << ", id: " << dynamic_return_object.first;
 
-  waiter->IncrementObjectGenerated();
+  if (waiter) {
+    waiter->IncrementObjectGenerated();
+  }
+
   client->ReportGeneratorItemReturns(
       request,
       [waiter, generator_id, item_index](
@@ -3024,32 +3027,41 @@ Status CoreWorker::ReportGeneratorItemReturns(
         RAY_LOG(DEBUG) << "ReportGeneratorItemReturns replied. " << generator_id
                        << "index: " << item_index << ". total_consumed_reported: "
                        << reply.total_num_object_consumed();
-        RAY_CHECK(waiter != nullptr);
-        RAY_LOG(DEBUG) << "Total object consumed: " << waiter->TotalObjectConsumed()
-                       << ". Total object generated: " << waiter->TotalObjectGenerated();
-        if (status.ok()) {
-          /// Since unary gRPC requests are not ordered, it is possible the stale
-          /// total value can be replied. Since total object consumed only can
-          /// increment, we always choose the larger value here.
-          waiter->UpdateTotalObjectConsumed(
-              std::max(waiter->TotalObjectConsumed(), reply.total_num_object_consumed()));
-        } else {
-          // TODO(sang): Handle network error more gracefully.
-          // If the request fails, we should just resume until task finishes without
-          // backpressure.
-          waiter->UpdateTotalObjectConsumed(waiter->TotalObjectGenerated());
-          RAY_LOG(WARNING) << "Failed to send the object ref.";
+        if (waiter) {
+          RAY_LOG(DEBUG) << "Total object consumed: " << waiter->TotalObjectConsumed()
+                         << ". Total object generated: "
+                         << waiter->TotalObjectGenerated();
+          if (status.ok()) {
+            /// Since unary gRPC requests are not ordered, it is possible the stale
+            /// total value can be replied. Since total object consumed only can
+            /// increment, we always choose the larger value here.
+            waiter->UpdateTotalObjectConsumed(std::max(
+                waiter->TotalObjectConsumed(), reply.total_num_object_consumed()));
+          } else {
+            // TODO(sang): Handle network error more gracefully.
+            // If the request fails, we should just resume until task finishes without
+            // backpressure.
+            waiter->UpdateTotalObjectConsumed(waiter->TotalObjectGenerated());
+            RAY_LOG(WARNING) << "Failed to send the object ref.";
+          }
         }
       });
-  // Backpressure if needed. See task_manager.h and search "backpressure" for protocol
-  // details.
-  return waiter->WaitUntilObjectConsumed(/*check_signals*/ [this]() {
+
+  auto check_signals_callback = [this]() {
     if (options_.check_signals) {
       return options_.check_signals();
     } else {
       return Status::OK();
     }
-  });
+  };
+
+  if (waiter) {
+    // Backpressure if needed. See task_manager.h and search "backpressure" for protocol
+    // details.
+    return waiter->WaitUntilObjectConsumed(check_signals_callback);
+  } else {
+    return check_signals_callback();
+  }
 }
 
 void CoreWorker::HandleReportGeneratorItemReturns(
@@ -3134,12 +3146,6 @@ Status CoreWorker::GetAndPinArgsForExecutor(const TaskSpecification &task,
 
   for (size_t i = 0; i < task.NumArgs(); ++i) {
     if (task.ArgByRef(i)) {
-      // We need to put an OBJECT_IN_PLASMA error here so the subsequent call to Get()
-      // properly redirects to the plasma store.
-      if (!options_.is_local_mode) {
-        RAY_UNUSED(memory_store_->Put(RayObject(rpc::ErrorType::OBJECT_IN_PLASMA),
-                                      task.ArgId(i)));
-      }
       const auto &arg_ref = task.ArgRef(i);
       const auto arg_id = ObjectID::FromBinary(arg_ref.object_id());
       by_ref_ids.insert(arg_id);
@@ -3160,6 +3166,14 @@ Status CoreWorker::GetAndPinArgsForExecutor(const TaskSpecification &task,
       reference_counter_->AddBorrowedObject(
           arg_id, ObjectID::Nil(), task.ArgRef(i).owner_address());
       borrowed_ids->push_back(arg_id);
+      // We need to put an OBJECT_IN_PLASMA error here so the subsequent call to Get()
+      // properly redirects to the plasma store.
+      // NOTE: This needs to be done after adding reference to reference counter
+      // otherwise, the put is a no-op.
+      if (!options_.is_local_mode) {
+        RAY_UNUSED(memory_store_->Put(RayObject(rpc::ErrorType::OBJECT_IN_PLASMA),
+                                      task.ArgId(i)));
+      }
     } else {
       // A pass-by-value argument.
       std::shared_ptr<LocalMemoryBuffer> data = nullptr;
@@ -3907,6 +3921,11 @@ void CoreWorker::HandleKillActor(rpc::KillActorRequest request,
   }
 }
 
+int64_t CoreWorker::GetLocalMemoryStoreBytesUsed() const {
+  MemoryStoreStats memory_store_stats = memory_store_->GetMemoryStoreStatisticalData();
+  return memory_store_stats.num_local_objects_bytes;
+}
+
 void CoreWorker::HandleGetCoreWorkerStats(rpc::GetCoreWorkerStatsRequest request,
                                           rpc::GetCoreWorkerStatsReply *reply,
                                           rpc::SendReplyCallback send_reply_callback) {
@@ -4285,11 +4304,6 @@ rpc::JobConfig CoreWorker::GetJobConfig() const {
 bool CoreWorker::IsExiting() const {
   absl::MutexLock lock(&mutex_);
   return exiting_detail_.has_value();
-}
-
-std::unordered_map<std::string, std::vector<int64_t>> CoreWorker::GetActorCallStats()
-    const {
-  return task_counter_.AsMap();
 }
 
 Status CoreWorker::WaitForActorRegistered(const std::vector<ObjectID> &ids) {

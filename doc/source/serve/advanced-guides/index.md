@@ -28,5 +28,4 @@ Use these advanced guides for more options and configurations:
 - [gRPC Support](serve-set-up-grpc-service)
 - [Ray Serve Dashboard](dash-serve-view)
 - [Experimental Java API](serve-java-api)
-- [Experimental Java API](serve-java-api)
 - [Run Applications in Different Containers](serve-container-runtime-env-guide)

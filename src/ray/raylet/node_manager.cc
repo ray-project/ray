@@ -87,43 +87,6 @@ namespace ray {
 
 namespace raylet {
 
-// A helper function to print the leased workers.
-std::string LeasedWorkersSring(
-    const absl::flat_hash_map<WorkerID, std::shared_ptr<WorkerInterface>>
-        &leased_workers) {
-  std::stringstream buffer;
-  buffer << "  @leased_workers: (";
-  for (const auto &pair : leased_workers) {
-    auto &worker = pair.second;
-    buffer << worker->WorkerId() << ", ";
-  }
-  buffer << ")";
-  return buffer.str();
-}
-
-// A helper function to print the workers in worker_pool_.
-std::string WorkerPoolString(
-    const std::vector<std::shared_ptr<WorkerInterface>> &worker_pool) {
-  std::stringstream buffer;
-  buffer << "   @worker_pool: (";
-  for (const auto &worker : worker_pool) {
-    buffer << worker->WorkerId() << ", ";
-  }
-  buffer << ")";
-  return buffer.str();
-}
-
-// Helper function to print the worker's owner worker and and node owner.
-std::string WorkerOwnerString(std::shared_ptr<WorkerInterface> &worker) {
-  std::stringstream buffer;
-  const auto owner_worker_id =
-      WorkerID::FromBinary(worker->GetOwnerAddress().worker_id());
-  const auto owner_node_id = NodeID::FromBinary(worker->GetOwnerAddress().raylet_id());
-  buffer << "leased_worker Lease " << worker->WorkerId() << " owned by "
-         << owner_worker_id << " / " << owner_node_id;
-  return buffer.str();
-}
-
 void NodeManagerConfig::AddDefaultLabels(const std::string &self_node_id) {
   std::vector<std::string> default_keys = {kLabelKeyNodeID};
 
@@ -953,14 +916,6 @@ void NodeManager::WarnResourceDeadlock() {
     std::string error_message_str = error_message.str();
     RAY_LOG(WARNING) << error_message_str;
     RAY_LOG_EVERY_MS(WARNING, 10 * 1000) << cluster_task_manager_->DebugStr();
-    if (RayConfig::instance().legacy_scheduler_warnings()) {
-      auto error_data_ptr =
-          gcs::CreateErrorTableData("resource_deadlock",
-                                    error_message_str,
-                                    current_time_ms(),
-                                    exemplar.GetTaskSpecification().JobId());
-      RAY_CHECK_OK(gcs_client_->Errors().AsyncReportJobError(error_data_ptr, nullptr));
-    }
   }
   // Try scheduling tasks. Without this, if there's no more tasks coming in, deadlocked
   // tasks are never be scheduled.
@@ -1249,9 +1204,7 @@ void NodeManager::ProcessClientMessage(const std::shared_ptr<ClientConnection> &
     // TODO(ekl) this is still used from core worker even in direct call mode to
     // finish up get requests.
     auto message = flatbuffers::GetRoot<protocol::NotifyUnblocked>(message_data);
-    AsyncResolveObjectsFinish(client,
-                              from_flatbuf<TaskID>(*message->task_id()),
-                              /*was_blocked*/ true);
+    AsyncResolveObjectsFinish(client, from_flatbuf<TaskID>(*message->task_id()));
   } break;
   case protocol::MessageType::WaitRequest: {
     ProcessWaitRequestMessage(client, message_data);
@@ -1615,8 +1568,7 @@ void NodeManager::ProcessFetchOrReconstructMessage(
     AsyncResolveObjects(client,
                         refs,
                         task_id,
-                        /*ray_get=*/true,
-                        /*mark_worker_blocked*/ message->mark_worker_blocked());
+                        /*ray_get=*/true);
   }
 }
 
@@ -1624,9 +1576,9 @@ void NodeManager::ProcessDirectCallTaskBlocked(
     const std::shared_ptr<ClientConnection> &client, const uint8_t *message_data) {
   auto message =
       flatbuffers::GetRoot<protocol::NotifyDirectCallTaskBlocked>(message_data);
-  bool release_resources = message->release_resources();
+  RAY_CHECK(message->release_resources());
   std::shared_ptr<WorkerInterface> worker = worker_pool_.GetRegisteredWorker(client);
-  HandleDirectCallTaskBlocked(worker, release_resources);
+  HandleDirectCallTaskBlocked(worker, true);
 }
 
 void NodeManager::ProcessWaitRequestMessage(
@@ -1646,7 +1598,6 @@ void NodeManager::ProcessWaitRequestMessage(
   }
 
   const TaskID &current_task_id = from_flatbuf<TaskID>(*message->task_id());
-  bool was_blocked = message->mark_worker_blocked();
   if (resolve_objects) {
     // Resolve any missing objects. This is a no-op for any objects that are
     // already local. Missing objects will be pulled from remote node managers.
@@ -1655,16 +1606,15 @@ void NodeManager::ProcessWaitRequestMessage(
     AsyncResolveObjects(client,
                         refs,
                         current_task_id,
-                        /*ray_get=*/false,
-                        /*mark_worker_blocked*/ was_blocked);
+                        /*ray_get=*/false);
   }
   uint64_t num_required_objects = static_cast<uint64_t>(message->num_ready_objects());
   wait_manager_.Wait(
       object_ids,
       message->timeout(),
       num_required_objects,
-      [this, resolve_objects, was_blocked, client, current_task_id](
-          std::vector<ObjectID> ready, std::vector<ObjectID> remaining) {
+      [this, resolve_objects, client, current_task_id](std::vector<ObjectID> ready,
+                                                       std::vector<ObjectID> remaining) {
         // Write the data.
         flatbuffers::FlatBufferBuilder fbb;
         flatbuffers::Offset<protocol::WaitReply> wait_reply = protocol::CreateWaitReply(
@@ -1678,7 +1628,7 @@ void NodeManager::ProcessWaitRequestMessage(
         if (status.ok()) {
           // The client is unblocked now because the wait call has returned.
           if (resolve_objects) {
-            AsyncResolveObjectsFinish(client, current_task_id, was_blocked);
+            AsyncResolveObjectsFinish(client, current_task_id);
           }
         } else {
           // We failed to write to the client, so disconnect the client.
@@ -1704,8 +1654,7 @@ void NodeManager::ProcessWaitForDirectActorCallArgsRequestMessage(
   AsyncResolveObjects(client,
                       refs,
                       TaskID::Nil(),
-                      /*ray_get=*/false,
-                      /*mark_worker_blocked*/ false);
+                      /*ray_get=*/false);
   // De-duplicate the object IDs.
   absl::flat_hash_set<ObjectID> object_id_set(object_ids.begin(), object_ids.end());
   object_ids.assign(object_id_set.begin(), object_id_set.end());
@@ -1882,10 +1831,12 @@ void NodeManager::HandleCancelResourceReserve(
     DestroyWorker(worker, rpc::WorkerExitType::INTENDED_SYSTEM_EXIT, message);
   }
 
-  // Return bundle resources.
-  placement_group_resource_manager_->ReturnBundle(bundle_spec);
+  // Return bundle resources. If it fails to return a bundle,
+  // it will return none-ok status. They are transient state,
+  // and GCS should retry.
+  auto status = placement_group_resource_manager_->ReturnBundle(bundle_spec);
   cluster_task_manager_->ScheduleAndDispatchTasks();
-  send_reply_callback(Status::OK(), nullptr, nullptr);
+  send_reply_callback(status, nullptr, nullptr);
 }
 
 void NodeManager::HandleReturnWorker(rpc::ReturnWorkerRequest request,
@@ -1929,15 +1880,17 @@ void NodeManager::HandleReturnWorker(rpc::ReturnWorkerRequest request,
 void NodeManager::HandleDrainRaylet(rpc::DrainRayletRequest request,
                                     rpc::DrainRayletReply *reply,
                                     rpc::SendReplyCallback send_reply_callback) {
-  RAY_LOG(INFO) << "Drain raylet RPC has received. Drain reason: "
-                << request.reason_message();
+  RAY_LOG(INFO) << "Drain raylet RPC has received. Deadline is "
+                << request.deadline_timestamp_ms()
+                << ". Drain reason: " << request.reason_message();
 
   if (request.reason() ==
       rpc::autoscaler::DrainNodeReason::DRAIN_NODE_REASON_IDLE_TERMINATION) {
     const bool is_idle =
         cluster_resource_scheduler_->GetLocalResourceManager().IsLocalNodeIdle();
     if (is_idle) {
-      cluster_resource_scheduler_->GetLocalResourceManager().SetLocalNodeDraining();
+      cluster_resource_scheduler_->GetLocalResourceManager().SetLocalNodeDraining(
+          request.deadline_timestamp_ms());
       reply->set_is_accepted(true);
     } else {
       reply->set_is_accepted(false);
@@ -1946,7 +1899,8 @@ void NodeManager::HandleDrainRaylet(rpc::DrainRayletRequest request,
     // Non-rejectable draining request.
     RAY_CHECK_EQ(request.reason(),
                  rpc::autoscaler::DrainNodeReason::DRAIN_NODE_REASON_PREEMPTION);
-    cluster_resource_scheduler_->GetLocalResourceManager().SetLocalNodeDraining();
+    cluster_resource_scheduler_->GetLocalResourceManager().SetLocalNodeDraining(
+        request.deadline_timestamp_ms());
     reply->set_is_accepted(true);
   }
 
@@ -2063,7 +2017,7 @@ void NodeManager::HandleDirectCallTaskBlocked(
       !release_resources) {
     return;  // The worker may have died or is no longer processing the task.
   }
-  local_task_manager_->ReleaseCpuResourcesFromUnblockedWorker(worker);
+  local_task_manager_->ReleaseCpuResourcesFromBlockedWorker(worker);
   cluster_task_manager_->ScheduleAndDispatchTasks();
 }
 
@@ -2078,7 +2032,7 @@ void NodeManager::HandleDirectCallTaskUnblocked(
   dependency_manager_.CancelGetRequest(worker->WorkerId());
 
   if (worker->IsBlocked()) {
-    local_task_manager_->ReturnCpuResourcesToBlockedWorker(worker);
+    local_task_manager_->ReturnCpuResourcesToUnblockedWorker(worker);
     cluster_task_manager_->ScheduleAndDispatchTasks();
   }
 }
@@ -2087,8 +2041,7 @@ void NodeManager::AsyncResolveObjects(
     const std::shared_ptr<ClientConnection> &client,
     const std::vector<rpc::ObjectReference> &required_object_refs,
     const TaskID &current_task_id,
-    bool ray_get,
-    bool mark_worker_blocked) {
+    bool ray_get) {
   std::shared_ptr<WorkerInterface> worker = worker_pool_.GetRegisteredWorker(client);
   if (!worker) {
     // The client is a driver. Drivers do not hold resources, so we simply mark
@@ -2109,9 +2062,7 @@ void NodeManager::AsyncResolveObjects(
 }
 
 void NodeManager::AsyncResolveObjectsFinish(
-    const std::shared_ptr<ClientConnection> &client,
-    const TaskID &current_task_id,
-    bool was_blocked) {
+    const std::shared_ptr<ClientConnection> &client, const TaskID &current_task_id) {
   std::shared_ptr<WorkerInterface> worker = worker_pool_.GetRegisteredWorker(client);
   if (!worker) {
     // The client is a driver. Drivers do not hold resources, so we simply
@@ -2125,10 +2076,6 @@ void NodeManager::AsyncResolveObjectsFinish(
   // `ray.wait` calls will stay active until the objects become local, or the
   // task/actor that called `ray.wait` exits.
   dependency_manager_.CancelGetRequest(worker->WorkerId());
-  // Mark the task as unblocked.
-  if (was_blocked) {
-    worker->RemoveBlockedTaskId(current_task_id);
-  }
 }
 
 bool NodeManager::FinishAssignedTask(const std::shared_ptr<WorkerInterface> &worker_ptr) {
@@ -2355,21 +2302,6 @@ std::string NodeManager::DebugString() const {
   result << "\nEvent stats:" << io_service_.stats().StatsString();
 
   result << "\nDebugString() time ms: " << (current_time_ms() - now_ms);
-  return result.str();
-}
-
-// Summarizes a Census view and tag values into a compact string, e.g.,
-// "Tag1:Value1,Tag2:Value2,Tag3:Value3".
-std::string compact_tag_string(const opencensus::stats::ViewDescriptor &view,
-                               const std::vector<std::string> &values) {
-  std::stringstream result;
-  const auto &keys = view.columns();
-  for (size_t i = 0; i < values.size(); i++) {
-    result << keys[i].name() << ":" << values[i];
-    if (i < values.size() - 1) {
-      result << ",";
-    }
-  }
   return result.str();
 }
 
@@ -2794,14 +2726,6 @@ void NodeManager::PublishInfeasibleTaskError(const RayTask &task) const {
            "resource requirements of the task.";
     std::string error_message_str = error_message.str();
     RAY_LOG(WARNING) << error_message_str;
-    if (RayConfig::instance().legacy_scheduler_warnings()) {
-      auto error_data_ptr =
-          gcs::CreateErrorTableData(type,
-                                    error_message_str,
-                                    current_time_ms(),
-                                    task.GetTaskSpecification().JobId());
-      RAY_CHECK_OK(gcs_client_->Errors().AsyncReportJobError(error_data_ptr, nullptr));
-    }
   }
 }
 

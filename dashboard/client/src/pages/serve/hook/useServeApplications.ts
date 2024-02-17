@@ -12,15 +12,18 @@ const SERVE_PROXY_STATUS_SORT_ORDER: Record<ServeSystemActorStatus, number> = {
   [ServeSystemActorStatus.DRAINING]: 3,
 };
 
-export const useServeApplications = () => {
+export const useServeDeployments = () => {
   const [page, setPage] = useState({ pageSize: 10, pageNo: 1 });
   const [filter, setFilter] = useState<
     {
-      key: "name" | "status";
+      key: "name" | "status" | "applicationName";
       val: string;
     }[]
   >([]);
-  const changeFilter = (key: "name" | "status", val: string) => {
+  const changeFilter = (
+    key: "name" | "status" | "applicationName",
+    val: string,
+  ) => {
     const f = filter.find((e) => e.key === key);
     if (f) {
       f.val = val;
@@ -36,12 +39,26 @@ export const useServeApplications = () => {
   });
 
   const { data, error } = useSWR(
-    "useServeApplications",
+    "useServeDeployments",
     async () => {
       const rsp = await getServeApplications();
 
       if (rsp) {
-        return rsp.data;
+        const serveApplicationsList = rsp.data
+          ? Object.values(rsp.data.applications).sort(
+              (a, b) =>
+                (b.last_deployed_time_s ?? 0) - (a.last_deployed_time_s ?? 0),
+            )
+          : [];
+
+        const serveDeploymentsList = serveApplicationsList.flatMap((app) =>
+          Object.values(app.deployments).map((d) => ({
+            ...d,
+            applicationName: app.name,
+            application: app,
+          })),
+        );
+        return { ...rsp.data, serveDeploymentsList };
       }
     },
     { refreshInterval: API_REFRESH_INTERVAL_MS },
@@ -55,11 +72,6 @@ export const useServeApplications = () => {
         controller_info: data.controller_info,
       }
     : undefined;
-  const serveApplicationsList = data
-    ? Object.values(data.applications).sort(
-        (a, b) => (b.last_deployed_time_s ?? 0) - (a.last_deployed_time_s ?? 0),
-      )
-    : [];
 
   const proxies =
     data && data.proxies
@@ -70,9 +82,11 @@ export const useServeApplications = () => {
         )
       : [];
 
+  const serveDeploymentsList = data?.serveDeploymentsList ?? [];
+
   return {
     serveDetails,
-    filteredServeApplications: serveApplicationsList.filter((app) =>
+    filteredServeDeployments: serveDeploymentsList.filter((app) =>
       filter.every((f) =>
         f.val ? app[f.key] && (app[f.key] ?? "").includes(f.val) : true,
       ),
@@ -85,7 +99,7 @@ export const useServeApplications = () => {
     proxiesPage,
     setProxiesPage: (key: string, val: number) =>
       setProxiesPage({ ...proxiesPage, [key]: val }),
-    allServeApplications: serveApplicationsList,
+    allServeDeployments: serveDeploymentsList,
   };
 };
 
@@ -151,6 +165,67 @@ export const useServeApplicationDetails = (
   };
 };
 
+export const useServeDeploymentDetails = (
+  applicationName: string | undefined,
+  deploymentName: string | undefined,
+) => {
+  const [page, setPage] = useState({ pageSize: 10, pageNo: 1 });
+  const [filter, setFilter] = useState<
+    {
+      key: "replica_id" | "state";
+      val: string;
+    }[]
+  >([]);
+  const changeFilter = (key: "replica_id" | "state", val: string) => {
+    const f = filter.find((e) => e.key === key);
+    if (f) {
+      f.val = val;
+    } else {
+      filter.push({ key, val });
+    }
+    setFilter([...filter]);
+  };
+
+  // TODO(aguo): Use a fetch by deploymentId endpoint?
+  const { data, error } = useSWR(
+    "useServeApplications",
+    async () => {
+      const rsp = await getServeApplications();
+
+      if (rsp) {
+        return rsp.data;
+      }
+    },
+    { refreshInterval: API_REFRESH_INTERVAL_MS },
+  );
+
+  const application = applicationName
+    ? data?.applications?.[applicationName !== "-" ? applicationName : ""]
+    : undefined;
+  const deployment = deploymentName
+    ? application?.deployments[deploymentName]
+    : undefined;
+
+  const replicas = deployment?.replicas ?? [];
+
+  // Need to expose loading because it's not clear if undefined values
+  // for application, deployment, or replica means loading or missing data.
+  return {
+    loading: !data && !error,
+    application,
+    deployment,
+    filteredReplicas: replicas.filter((replica) =>
+      filter.every((f) =>
+        f.val ? replica[f.key] && (replica[f.key] ?? "").includes(f.val) : true,
+      ),
+    ),
+    changeFilter,
+    page,
+    setPage: (key: string, val: number) => setPage({ ...page, [key]: val }),
+    error,
+  };
+};
+
 export const useServeReplicaDetails = (
   applicationName: string | undefined,
   deploymentName: string | undefined,
@@ -158,7 +233,7 @@ export const useServeReplicaDetails = (
 ) => {
   // TODO(aguo): Use a fetch by replicaId endpoint?
   const { data, error } = useSWR(
-    "useServeReplicaDetails",
+    "useServeApplications",
     async () => {
       const rsp = await getServeApplications();
 
@@ -192,7 +267,7 @@ export const useServeReplicaDetails = (
 
 export const useServeProxyDetails = (proxyId: string | undefined) => {
   const { data, error, isLoading } = useSWR(
-    "useServeProxyDetails",
+    "useServeApplications",
     async () => {
       const rsp = await getServeApplications();
 
@@ -216,7 +291,7 @@ export const useServeProxyDetails = (proxyId: string | undefined) => {
 
 export const useServeControllerDetails = () => {
   const { data, error, isLoading } = useSWR(
-    "useServeControllerDetails",
+    "useServeApplications",
     async () => {
       const rsp = await getServeApplications();
 

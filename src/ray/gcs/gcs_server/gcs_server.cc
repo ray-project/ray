@@ -115,7 +115,6 @@ GcsServer::GcsServer(const ray::gcs::GcsServerConfig &config,
           rpc::ChannelType::GCS_WORKER_DELTA_CHANNEL,
           rpc::ChannelType::RAY_ERROR_INFO_CHANNEL,
           rpc::ChannelType::RAY_LOG_CHANNEL,
-          rpc::ChannelType::RAY_PYTHON_FUNCTION_CHANNEL,
           rpc::ChannelType::RAY_NODE_RESOURCE_USAGE_CHANNEL,
       },
       /*periodical_runner=*/&pubsub_periodical_runner_,
@@ -133,7 +132,6 @@ RedisClientOptions GcsServer::GetRedisClientOptions() const {
   return RedisClientOptions(config_.redis_address,
                             config_.redis_port,
                             config_.redis_password,
-                            config_.enable_sharding_conn,
                             config_.enable_redis_ssl);
 }
 

@@ -123,7 +123,7 @@ def pad_batch_to_sequences_of_same_size(
             states_already_reduced_to_init = True
 
         # RNN (or single timestep state-in): Set the max dynamically.
-        if view_requirements["state_in_0"].shift_from is None:
+        if view_requirements and view_requirements["state_in_0"].shift_from is None:
             dynamic_max = True
         # Attention Nets (state inputs are over some range): No dynamic maxing
         # possible.

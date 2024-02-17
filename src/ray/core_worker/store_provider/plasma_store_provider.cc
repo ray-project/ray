@@ -194,18 +194,13 @@ Status CoreWorkerPlasmaStoreProvider::FetchAndGetFromPlasmaStore(
     int64_t timeout_ms,
     bool send_fetch_or_reconstruct_ipc,
     bool fetch_only,
-    bool in_direct_call,
     const TaskID &task_id,
     absl::flat_hash_map<ObjectID, std::shared_ptr<RayObject>> *results,
     bool *got_exception) {
   if (send_fetch_or_reconstruct_ipc) {
     const auto owner_addresses = reference_counter_->GetOwnerAddresses(batch_ids);
-    RAY_RETURN_NOT_OK(
-        raylet_client_->FetchOrReconstruct(batch_ids,
-                                           owner_addresses,
-                                           fetch_only,
-                                           /*mark_worker_blocked*/ !in_direct_call,
-                                           task_id));
+    RAY_RETURN_NOT_OK(raylet_client_->FetchOrReconstruct(
+        batch_ids, owner_addresses, fetch_only, task_id));
   }
 
   std::vector<plasma::ObjectBuffer> plasma_results;
@@ -324,7 +319,6 @@ Status CoreWorkerPlasmaStoreProvider::Get(
         // Mutable objects must be local before ray.get.
         /*send_fetch_or_reconstruct_ipc=*/!is_experimental_mutable_object,
         /*fetch_only=*/true,
-        ctx.CurrentTaskIsDirectCall(),
         ctx.GetCurrentTaskID(),
         results,
         got_exception));
@@ -363,17 +357,11 @@ Status CoreWorkerPlasmaStoreProvider::Get(
     }
 
     size_t previous_size = remaining.size();
-    // This is a separate IPC from the FetchAndGet in direct call mode.
-    if (ctx.CurrentTaskIsDirectCall() && ctx.ShouldReleaseResourcesOnBlockingCalls()) {
-      RAY_RETURN_NOT_OK(raylet_client_->NotifyDirectCallTaskBlocked(
-          /*release_resources_during_plasma_fetch=*/false));
-    }
     RAY_RETURN_NOT_OK(FetchAndGetFromPlasmaStore(remaining,
                                                  batch_ids,
                                                  batch_timeout,
                                                  /*send_fetch_or_reconstruct_ipc=*/true,
                                                  /*fetch_only=*/false,
-                                                 ctx.CurrentTaskIsDirectCall(),
                                                  ctx.GetCurrentTaskID(),
                                                  results,
                                                  got_exception));
@@ -434,20 +422,13 @@ Status CoreWorkerPlasmaStoreProvider::Wait(
       should_break = remaining_timeout <= 0;
     }
 
-    // This is a separate IPC from the Wait in direct call mode.
-    if (ctx.CurrentTaskIsDirectCall() && ctx.ShouldReleaseResourcesOnBlockingCalls()) {
-      RAY_RETURN_NOT_OK(raylet_client_->NotifyDirectCallTaskBlocked(
-          /*release_resources_during_plasma_fetch=*/false));
-    }
     const auto owner_addresses = reference_counter_->GetOwnerAddresses(id_vector);
-    RAY_RETURN_NOT_OK(
-        raylet_client_->Wait(id_vector,
-                             owner_addresses,
-                             num_objects,
-                             call_timeout,
-                             /*mark_worker_blocked*/ !ctx.CurrentTaskIsDirectCall(),
-                             ctx.GetCurrentTaskID(),
-                             &result_pair));
+    RAY_RETURN_NOT_OK(raylet_client_->Wait(id_vector,
+                                           owner_addresses,
+                                           num_objects,
+                                           call_timeout,
+                                           ctx.GetCurrentTaskID(),
+                                           &result_pair));
 
     if (result_pair.first.size() >= static_cast<size_t>(num_objects)) {
       should_break = true;

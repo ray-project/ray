@@ -1,5 +1,4 @@
 import io
-import pathlib
 import posixpath
 import warnings
 from typing import (
@@ -65,7 +64,7 @@ FILE_SIZE_FETCH_PARALLELIZATION_THRESHOLD = 16
 PATHS_PER_FILE_SIZE_FETCH_TASK = 16
 
 # The errors to retry for opening file.
-OPEN_FILE_RETRY_ON_ERRORS = ["AWS Error SLOW_DOWN"]
+OPEN_FILE_RETRY_ON_ERRORS = ["AWS Error SLOW_DOWN", "AWS Error ACCESS_DENIED"]
 
 # The max retry backoff in seconds for opening file.
 OPEN_FILE_RETRY_MAX_BACKOFF_SECONDS = 32
@@ -77,50 +76,15 @@ OPEN_FILE_MAX_ATTEMPTS = 10
 @Deprecated
 @PublicAPI(stability="beta")
 class FileExtensionFilter(PathPartitionFilter):
-    """A file-extension-based path filter that filters files that don't end
-    with the provided extension(s).
-
-    Attributes:
-        file_extensions: File extension(s) of files to be included in reading.
-        allow_if_no_extension: If this is True, files without any extensions
-            will be included in reading.
-
-    """
-
     def __init__(
         self,
         file_extensions: Union[str, List[str]],
         allow_if_no_extension: bool = False,
     ):
-        warnings.warn(
+        raise DeprecationWarning(
             "`FileExtensionFilter` is deprecated. Instead, set the `file_extensions` "
-            "parameter of `read_xxx()` APIs.",
-            DeprecationWarning,
+            "parameter of `read_xxx()` APIs."
         )
-
-        if isinstance(file_extensions, str):
-            file_extensions = [file_extensions]
-
-        self.extensions = [f".{ext.lower()}" for ext in file_extensions]
-        self.allow_if_no_extension = allow_if_no_extension
-
-    def _file_has_extension(self, path: str):
-        suffixes = [suffix.lower() for suffix in pathlib.Path(path).suffixes]
-        if not suffixes:
-            return self.allow_if_no_extension
-        return any(ext in suffixes for ext in self.extensions)
-
-    def __call__(self, paths: List[str]) -> List[str]:
-        return [path for path in paths if self._file_has_extension(path)]
-
-    def __str__(self):
-        return (
-            f"{type(self).__name__}(extensions={self.extensions}, "
-            f"allow_if_no_extensions={self.allow_if_no_extension})"
-        )
-
-    def __repr__(self):
-        return str(self)
 
 
 @DeveloperAPI
@@ -155,6 +119,15 @@ class FileBasedDatasource(Datasource):
         file_extensions: Optional[List[str]] = None,
     ):
         _check_pyarrow_version()
+
+        self._supports_distributed_reads = not _is_local_scheme(paths)
+        if not self._supports_distributed_reads and ray.util.client.ray.is_connected():
+            raise ValueError(
+                "Because you're using Ray Client, read tasks scheduled on the Ray "
+                "cluster can't access your local files. To fix this issue, store "
+                "files in cloud storage or a distributed filesystem like NFS."
+            )
+
         self._schema = schema
         self._open_stream_args = open_stream_args
         self._meta_provider = meta_provider
@@ -179,14 +152,6 @@ class FileBasedDatasource(Datasource):
             raise ValueError(
                 "None of the provided paths exist. "
                 "The 'ignore_missing_paths' field is set to True."
-            )
-
-        self._supports_distributed_reads = not _is_local_scheme(paths)
-        if not self._supports_distributed_reads and ray.util.client.ray.is_connected():
-            raise ValueError(
-                "Because you're using Ray Client, read tasks scheduled on the Ray "
-                "cluster can't access your local files. To fix this issue, store "
-                "files in cloud storage or a distributed filesystem like NFS."
             )
 
         if self._partition_filter is not None:
@@ -759,8 +724,8 @@ def _open_file_with_retry(
 
     return call_with_retry(
         open_file,
-        match=OPEN_FILE_RETRY_ON_ERRORS,
         description=f"open file {file_path}",
+        match=OPEN_FILE_RETRY_ON_ERRORS,
         max_attempts=OPEN_FILE_MAX_ATTEMPTS,
         max_backoff_s=OPEN_FILE_RETRY_MAX_BACKOFF_SECONDS,
     )

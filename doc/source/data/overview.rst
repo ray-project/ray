@@ -147,7 +147,7 @@ How does Ray Data compare to X for ML training ingest?
 .. dropdown:: NVTabular
 
     * **Supported data types:** `NVTabular <https://github.com/NVIDIA-Merlin/NVTabular>`__ only supports tabular (Parquet, CSV, Avro) data, while Ray Data supports many other file formats.
-    * **Lower overhead:** Datasets is lower overhead: it supports zero-copy exchange between processes, in contrast to the multi-processing-based pipelines used by Petastorm.
+    * **Lower overhead:** Datasets is lower overhead: it supports zero-copy exchange between processes, in contrast to the multi-processing-based pipelines used by NVTabular.
     * **Heterogeneous compute:** NVTabular doesn't support mixing heterogeneous resources in dataset transforms (e.g. both CPU and GPU transformations), while Ray Data supports this.
 
 ML ingest case studies

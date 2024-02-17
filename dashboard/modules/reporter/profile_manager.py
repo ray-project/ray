@@ -263,7 +263,11 @@ class MemoryProfilingManager:
         return True, open(profile_visualize_path, "rb").read()
 
     async def attach_profiler(
-        self, pid: int, native: bool = False, trace_python_allocators: bool = False
+        self,
+        pid: int,
+        native: bool = False,
+        trace_python_allocators: bool = False,
+        verbose: bool = False,
     ) -> (bool, str):
         """
         Attach a Memray profiler to a specified process.
@@ -275,6 +279,8 @@ class MemoryProfilingManager:
                 Default is False.
             trace_python_allocators (bool, optional): If True, includes Python
                 stack frames. Default is False.
+            verbose (bool, optional): If True, enables verbose output.
+                Default is False.
 
         Returns:
             Tuple[bool, str]: A tuple containing a boolean indicating the success
@@ -293,6 +299,8 @@ class MemoryProfilingManager:
             cmd.append("--native")
         if trace_python_allocators:
             cmd.append("--trace-python-allocators")
+        if verbose:
+            cmd.append("--verbose")
         if await _can_passwordless_sudo():
             cmd = ["sudo", "-n"] + cmd
 
@@ -321,6 +329,7 @@ class MemoryProfilingManager:
     async def detach_profiler(
         self,
         pid: int,
+        verbose: bool = False,
     ) -> (bool, str):
         """
         Detach a profiler from a specified process.
@@ -328,6 +337,8 @@ class MemoryProfilingManager:
         Args:
             pid: The process ID (PID) of the target process the
                 profiler detached from.
+            verbose (bool, optional): If True, enables verbose output.
+                Default is False.
 
         Returns:
             Tuple[bool, str]: A tuple containing a boolean indicating the success
@@ -337,7 +348,11 @@ class MemoryProfilingManager:
         if memray is None:
             return False, "Failed to execute: memray is not installed"
 
-        cmd = [memray, "detach", str(pid)]
+        cmd = [memray, "detach"]
+        if verbose:
+            cmd.append("--verbose")
+        cmd.append(str(pid))
+
         process = await asyncio.create_subprocess_exec(
             *cmd,
             stdout=subprocess.PIPE,

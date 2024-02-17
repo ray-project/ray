@@ -301,11 +301,20 @@ def test_autoscaler_shutdown_node_http_everynode(
         )
         == 2
     )
+
     client = _get_global_client()
+
+    def serve_details_proxy_count():
+        serve_details = ServeInstanceDetails(
+            **ray.get(client._controller.get_serve_instance_details.remote())
+        )
+        return len(serve_details.proxies)
+
+    wait_for_condition(lambda: serve_details_proxy_count() == 1)
+
     serve_details = ServeInstanceDetails(
         **ray.get(client._controller.get_serve_instance_details.remote())
     )
-    assert len(serve_details.proxies) == 1
     assert serve_details.proxies[get_head_node_id()].status == ProxyStatus.HEALTHY
 
     # Only head node should exist now.

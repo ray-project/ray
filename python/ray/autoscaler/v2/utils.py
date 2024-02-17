@@ -40,7 +40,6 @@ from ray.core.generated.autoscaler_pb2 import (
 from ray.core.generated.autoscaler_pb2 import (
     ResourceRequestByCount as ResourceRequestByCountProto,
 )
-from ray.core.generated.instance_manager_pb2 import Instance
 from ray.experimental.internal_kv import _internal_kv_get, _internal_kv_initialized
 
 
@@ -605,12 +604,3 @@ def is_autoscaler_v2() -> bool:
     )
 
     return cached_is_autoscaler_v2
-
-
-# TODO: use InstanceUtil after it's merged.
-def is_pending(instance: Instance) -> bool:
-    return instance.status in [
-        Instance.REQUESTED,
-        Instance.QUEUED,
-        Instance.UNKNOWN,
-    ]

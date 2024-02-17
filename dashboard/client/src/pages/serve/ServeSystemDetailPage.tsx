@@ -4,7 +4,7 @@ import React from "react";
 import { Outlet } from "react-router-dom";
 import Loading from "../../components/Loading";
 import { MainNavPageInfo } from "../layout/mainNavContext";
-import { useServeApplications } from "./hook/useServeApplications";
+import { useServeDeployments } from "./hook/useServeApplications";
 import { ServeSystemDetails } from "./ServeSystemDetails";
 
 const useStyles = makeStyles((theme) =>
@@ -22,7 +22,7 @@ export const ServeSystemDetailPage = () => {
   const classes = useStyles();
 
   const { serveDetails, proxies, proxiesPage, setProxiesPage, error } =
-    useServeApplications();
+    useServeDeployments();
 
   if (error) {
     return <Typography color="error">{error.toString()}</Typography>;

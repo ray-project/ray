@@ -426,6 +426,7 @@ cdef extern from "ray/gcs/gcs_client/gcs_client.h" nogil:
             const c_string &node_id,
             int32_t reason,
             const c_string &reason_message,
+            int64_t deadline_timestamp_ms,
             int64_t timeout_ms,
             c_bool &is_accepted)
         CRayStatus DrainNodes(
@@ -449,8 +450,6 @@ cdef extern from "ray/gcs/pubsub/gcs_pub_sub.h" nogil:
             const c_string &key_id, const CErrorTableData &data, int64_t num_retries)
 
         CRayStatus PublishLogs(const c_string &key_id, const CLogBatch &data)
-
-        CRayStatus PublishFunctionKey(const CPythonFunction& python_function)
 
     cdef cppclass CPythonGcsSubscriber "ray::gcs::PythonGcsSubscriber":
 
@@ -489,8 +488,6 @@ cdef extern from "src/ray/protobuf/gcs.pb.h" nogil:
     cdef enum CChannelType "ray::rpc::ChannelType":
         RAY_ERROR_INFO_CHANNEL "ray::rpc::ChannelType::RAY_ERROR_INFO_CHANNEL",
         RAY_LOG_CHANNEL "ray::rpc::ChannelType::RAY_LOG_CHANNEL",
-        RAY_PYTHON_FUNCTION_CHANNEL \
-            "ray::rpc::ChannelType::RAY_PYTHON_FUNCTION_CHANNEL",
         GCS_ACTOR_CHANNEL "ray::rpc::ChannelType::GCS_ACTOR_CHANNEL",
 
     cdef cppclass CJobConfig "ray::rpc::JobConfig":

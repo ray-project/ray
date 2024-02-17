@@ -21,12 +21,11 @@ from ray.data._internal.execution.interfaces import (
     RefBundle,
 )
 from ray.data._internal.execution.operators.input_data_buffer import InputDataBuffer
+from ray.data._internal.execution.resource_manager import ResourceManager
 from ray.data._internal.execution.streaming_executor_state import (
-    DEFAULT_OBJECT_STORE_MEMORY_LIMIT_FRACTION,
     AutoscalingState,
     OpState,
     Topology,
-    TopologyResourceUsage,
     build_streaming_topology,
     process_completed_tasks,
     select_operator_to_run,
@@ -34,7 +33,6 @@ from ray.data._internal.execution.streaming_executor_state import (
 )
 from ray.data._internal.progress_bar import ProgressBar
 from ray.data._internal.stats import DatasetStats, StatsManager
-from ray.data._internal.util import cluster_resources
 from ray.data.context import DataContext
 
 logger = DatasetLogger(__name__)
@@ -120,6 +118,7 @@ class StreamingExecutor(Executor, threading.Thread):
 
         # Setup the streaming DAG topology and start the runner thread.
         self._topology, _ = build_streaming_topology(dag, self._options)
+        self._resource_manager = ResourceManager(self._topology, self._options)
         self._backpressure_policies = get_backpressure_policies(self._topology)
 
         self._has_op_completed = {op: False for op in self._topology}
@@ -209,8 +208,12 @@ class StreamingExecutor(Executor, threading.Thread):
         """
         try:
             # Run scheduling loop until complete.
-            while self._scheduling_loop_step(self._topology) and not self._shutdown:
-                pass
+            while True:
+                # use process_time to avoid timing ray.wait in _scheduling_loop_step
+                with self._initial_stats.streaming_exec_schedule_s.timer():
+                    continue_sched = self._scheduling_loop_step(self._topology)
+                if not continue_sched or self._shutdown:
+                    break
         except Exception as e:
             # Propagate it to the result iterator.
             self._output_node.mark_finished(e)
@@ -237,6 +240,7 @@ class StreamingExecutor(Executor, threading.Thread):
             builder = stats.child_builder(op.name, override_start_time=self._start_time)
             stats = builder.build_multioperator(op.get_stats())
             stats.extra_metrics = op.metrics.as_dict()
+        stats.streaming_exec_schedule_s = self._initial_stats.streaming_exec_schedule_s
         return stats
 
     def _scheduling_loop_step(self, topology: Topology) -> bool:
@@ -264,14 +268,12 @@ class StreamingExecutor(Executor, threading.Thread):
             self._max_errored_blocks -= num_errored_blocks
         self._num_errored_blocks += num_errored_blocks
 
+        self._resource_manager.update_usages()
         # Dispatch as many operators as we can for completed tasks.
-        limits = self._get_or_refresh_resource_limits()
-        cur_usage = TopologyResourceUsage.of(topology)
-        self._report_current_usage(cur_usage, limits)
+        self._report_current_usage()
         op = select_operator_to_run(
             topology,
-            cur_usage,
-            limits,
+            self._resource_manager,
             self._backpressure_policies,
             ensure_at_least_one_running=self._consumer_idling(),
             execution_id=self._execution_id,
@@ -283,13 +285,12 @@ class StreamingExecutor(Executor, threading.Thread):
             if i > PROGRESS_BAR_UPDATE_INTERVAL:
                 break
             if DEBUG_TRACE_SCHEDULING:
-                _debug_dump_topology(topology)
+                _debug_dump_topology(topology, self._resource_manager)
             topology[op].dispatch_next_task()
-            cur_usage = TopologyResourceUsage.of(topology)
+            self._resource_manager.update_usages()
             op = select_operator_to_run(
                 topology,
-                cur_usage,
-                limits,
+                self._resource_manager,
                 self._backpressure_policies,
                 ensure_at_least_one_running=self._consumer_idling(),
                 execution_id=self._execution_id,
@@ -300,13 +301,15 @@ class StreamingExecutor(Executor, threading.Thread):
 
         # Update the progress bar to reflect scheduling decisions.
         for op_state in topology.values():
-            op_state.refresh_progress_bar()
+            op_state.refresh_progress_bar(self._resource_manager)
 
         self._update_stats_metrics(state="RUNNING")
         if time.time() - self._last_debug_log_time >= DEBUG_LOG_INTERVAL_SECONDS:
             _log_op_metrics(topology)
             if not DEBUG_TRACE_SCHEDULING:
-                _debug_dump_topology(topology, log_to_stdout=False)
+                _debug_dump_topology(
+                    topology, self._resource_manager, log_to_stdout=False
+                )
             self._last_debug_log_time = time.time()
 
         # Log metrics of newly completed operators.
@@ -326,44 +329,14 @@ class StreamingExecutor(Executor, threading.Thread):
         """Returns whether the user thread is blocked on topology execution."""
         return len(self._output_node.outqueue) == 0
 
-    def _get_or_refresh_resource_limits(self) -> ExecutionResources:
-        """Return concrete limits for use at the current time.
-
-        This method autodetects any unspecified execution resource limits based on the
-        current cluster size, refreshing these values periodically to support cluster
-        autoscaling.
-        """
-        base = self._options.resource_limits
-        exclude = self._options.exclude_resources
-        cluster = cluster_resources()
-
-        cpu = base.cpu
-        if cpu is None:
-            cpu = cluster.get("CPU", 0.0) - (exclude.cpu or 0.0)
-        gpu = base.gpu
-        if gpu is None:
-            gpu = cluster.get("GPU", 0.0) - (exclude.gpu or 0.0)
-        object_store_memory = base.object_store_memory
-        if object_store_memory is None:
-            object_store_memory = round(
-                DEFAULT_OBJECT_STORE_MEMORY_LIMIT_FRACTION
-                * cluster.get("object_store_memory", 0.0)
-            ) - (exclude.object_store_memory or 0)
-
-        return ExecutionResources(
-            cpu=cpu,
-            gpu=gpu,
-            object_store_memory=object_store_memory,
-        )
-
-    def _report_current_usage(
-        self, cur_usage: TopologyResourceUsage, limits: ExecutionResources
-    ) -> None:
+    def _report_current_usage(self) -> None:
+        cur_usage = self._resource_manager.get_global_usage()
+        limits = self._resource_manager.get_global_limits()
         resources_status = (
             "Running: "
-            f"{cur_usage.overall.cpu}/{limits.cpu} CPU, "
-            f"{cur_usage.overall.gpu}/{limits.gpu} GPU, "
-            f"{cur_usage.overall.object_store_memory_str()}/"
+            f"{cur_usage.cpu}/{limits.cpu} CPU, "
+            f"{cur_usage.gpu}/{limits.gpu} GPU, "
+            f"{cur_usage.object_store_memory_str()}/"
             f"{limits.object_store_memory_str()} object_store_memory"
         )
         if self._global_info:
@@ -462,16 +435,19 @@ def _validate_dag(dag: PhysicalOperator, limits: ExecutionResources) -> None:
         raise ValueError(error_message.strip())
 
 
-def _debug_dump_topology(topology: Topology, log_to_stdout: bool = True) -> None:
+def _debug_dump_topology(
+    topology: Topology, resource_manager: ResourceManager, log_to_stdout: bool = True
+) -> None:
     """Print out current execution state for the topology for debugging.
 
     Args:
         topology: The topology to debug.
+        resource_manager: The resource manager for this topology.
     """
     logger.get_logger(log_to_stdout).info("Execution Progress:")
     for i, (op, state) in enumerate(topology.items()):
         logger.get_logger(log_to_stdout).info(
-            f"{i}: {state.summary_str()}, "
+            f"{i}: {state.summary_str(resource_manager)}, "
             f"Blocks Outputted: {state.num_completed_tasks}/{op.num_outputs_total()}"
         )
     logger.get_logger(log_to_stdout).info("")
