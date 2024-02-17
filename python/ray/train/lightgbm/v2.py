@@ -42,52 +42,52 @@ class LightGBMTrainer(DataParallelTrainer):
 
     .. testcode::
 
-        import xgboost
+        import lightgbm as lgb
 
-        from ray.train.xgboost import RayTrainReportCallback
-        from ray.train.xgboost.v2 import XGBoostTrainer
+        import ray.data
+        import ray.train
+        from ray.train.lightgbm import RayTrainReportCallback
+        from ray.train.lightgbm.v2 import LightGBMTrainer, get_network_params
+
 
         def train_fn_per_worker(config: dict):
-            from xgboost.collective import CommunicatorContext
-
             # (Optional) Add logic to resume training state from a checkpoint.
             # ray.train.get_checkpoint()
 
-            # 1. Get the dataset shard for the worker and convert to a `xgboost.DMatrix`
-            train_ds, eval_ds = (
+            # 1. Get the dataset shard for the worker and convert to a `lightgbm.Dataset`
+            train_ds_iter, eval_ds_iter = (
                 ray.train.get_dataset_shard("train"),
                 ray.train.get_dataset_shard("validation"),
             )
+            train_ds, eval_ds = train_ds_iter.materialize(), eval_ds_iter.materialize()
             train_df, eval_df = train_ds.to_pandas(), eval_ds.to_pandas()
             train_X, train_y = train_df.drop("y", axis=1), train_df["y"]
             eval_X, eval_y = eval_df.drop("y", axis=1), eval_df["y"]
 
-            dtrain = xgboost.DMatrix(train_X, label=train_y)
-            deval = xgboost.DMatrix(eval_X, label=eval_y)
+            train_set = lgb.Dataset(train_X, label=train_y)
+            eval_set = lgb.Dataset(eval_X, label=eval_y)
 
+            # 2. Run distributed data-parallel training.
+            # `get_network_params` sets up the necessary configurations for lightgbm
+            # to set up the data parallel training worker group on your Ray cluster.
             params = {
-                "tree_method": "approx",
-                "objective": "reg:squarederror",
-                "eta": 1e-4,
-                "subsample": 0.5,
-                "max_depth": 2,
+                "objective": "regression",
+                # Adding the line below is the only change needed for your `lgb.train` call!
+                **ray.train.lightgbm.v2.get_network_params(),
             }
-
-            # 2. Do distributed data-parallel training with the `CommunicatorContext`.
-            # Ray Train sets up the necessary coordinator processes and
-            # environment variables for your workers to communicate with each other.
-            with CommunicatorContext():
-                bst = xgboost.train(
-                    params,
-                    dtrain=dtrain,
-                    evals=[(deval, "validation")],
-                    num_boost_round=10,
-                    callbacks=[RayTrainReportCallback()],
-                )
+            lgb.train(
+                params,
+                train_set,
+                valid_sets=[eval_set],
+                valid_names=["eval"],
+                callbacks=[RayTrainReportCallback()],
+            )
 
         train_ds = ray.data.from_items([{"x": x, "y": x + 1} for x in range(32)])
-        eval_ds = ray.data.from_items([{"x": x, "y": x + 1} for x in range(16)])
-        trainer = XGBoostTrainer(
+        eval_ds = ray.data.from_items(
+            [{"x": x, "y": x + 1} for x in range(32, 32 + 16)]
+        )
+        trainer = LightGBMTrainer(
             train_fn_per_worker,
             datasets={"train": train_ds, "validation": eval_ds},
             scaling_config=ray.train.ScalingConfig(num_workers=4),
