@@ -1,3 +1,5 @@
+from collections import defaultdict
+import os
 import time
 from abc import ABC, abstractmethod
 from typing import TYPE_CHECKING, Dict, Optional
@@ -12,6 +14,7 @@ from ray.data._internal.execution.operators.input_data_buffer import InputDataBu
 from ray.data._internal.execution.operators.limit_operator import LimitOperator
 from ray.data._internal.execution.operators.map_operator import MapOperator
 from ray.data._internal.execution.operators.output_splitter import OutputSplitter
+from ray.data._internal.execution.util import memory_string
 from ray.data.context import DataContext
 
 if TYPE_CHECKING:
@@ -44,7 +47,10 @@ class ResourceManager:
         self._global_limits_last_update_time = 0
         self._global_usage = ExecutionResources.zero()
         self._op_usages: Dict[PhysicalOperator, ExecutionResources] = {}
-        self._op_obj_store_mem_without_pending_task_outputs: Dict[PhysicalOperator, int] = {}
+        self._obj_store_pending_task_outputs: Dict[PhysicalOperator, int] = defaultdict(int)
+        self._obj_store_output_buffers: Dict[PhysicalOperator, int] = defaultdict(int)
+        self._obj_store_next_op_input_buffers: Dict[PhysicalOperator, int] = defaultdict(int)
+        self._debug = os.environ.get("RAY_DATA_DEBUG_RESOURCE_MANAGER", "0") == "1"
 
         self._downstream_fraction: Dict[PhysicalOperator, float] = {}
         self._downstream_object_store_memory: Dict[PhysicalOperator, int] = {}
@@ -69,17 +75,23 @@ class ResourceManager:
         if isinstance(op, InputDataBuffer):
             return 0
 
-        object_store_memory = op.metrics.obj_store_mem_internal_outqueue
-        object_store_memory += state.outqueue_memory_usage()
+        pending_task_outputs = op.metrics.obj_store_mem_pending_task_outputs or 0
+
+        output_buffers = op.metrics.obj_store_mem_internal_outqueue
+        output_buffers += state.outqueue_memory_usage()
+
+        next_op_input_buffers = 0
         for next_op in op.output_dependencies:
-            object_store_memory += (
+            next_op_input_buffers += (
                 next_op.metrics.obj_store_mem_internal_inqueue
                 + next_op.metrics.obj_store_mem_pending_task_inputs
             )
-        self._op_obj_store_mem_without_pending_task_outputs[op] = object_store_memory
-        if op.metrics.obj_store_mem_pending_task_outputs is not None:
-            object_store_memory += op.metrics.obj_store_mem_pending_task_outputs
-        return object_store_memory
+
+        self._obj_store_pending_task_outputs[op] = pending_task_outputs
+        self._obj_store_output_buffers[op] = output_buffers
+        self._obj_store_next_op_input_buffers[op] = next_op_input_buffers
+
+        return pending_task_outputs + output_buffers + next_op_input_buffers
 
     def update_usages(self):
         """Recalculate resource usages."""
@@ -159,6 +171,19 @@ class ResourceManager:
     def get_op_usage(self, op: PhysicalOperator) -> ExecutionResources:
         """Return the resource usage of the given operator at the current time."""
         return self._op_usages[op]
+
+    def get_op_usage_str(self, op: PhysicalOperator) -> str:
+        usage_str = f"CPU: {self._op_usages[op].cpu:.1f}"
+        if self._op_usages[op].gpu:
+            usage_str += f", GPU: {self._op_usages[op].gpu:.1f}"
+        usage_str += f", ObjStore: {self._op_usages[op].object_store_memory_str()}"
+        if self._debug:
+            usage_str += f" (PendingTaskOutputs: {memory_string(self._obj_store_pending_task_outputs[op])}, "
+            usage_str += (
+                f"OutputBuffers: {memory_string(self._obj_store_output_buffers[op])}, "
+            )
+            usage_str += f"NextOpInputBuffers: {memory_string(self._obj_store_next_op_input_buffers[op])})"
+        return usage_str
 
     def get_downstream_fraction(self, op: PhysicalOperator) -> float:
         """Return the downstream fraction of the given operator."""
@@ -302,7 +327,7 @@ class ReservationOpResourceLimiter(OpResourceLimiter):
                 self._resource_manager.get_op_usage(op),
                 "pending task outputs:",
                 op.metrics.obj_store_mem_pending_task_outputs,
-                'reserved:',
+                "reserved:",
                 self._op_reserved[op],
             )
 
