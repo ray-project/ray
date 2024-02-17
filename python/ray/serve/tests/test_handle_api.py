@@ -1,11 +1,14 @@
+import asyncio
 import sys
-from typing import Any
+from typing import Any, List
 
 import pytest
 
 import ray
 from ray import serve
-from ray._private.test_utils import SignalActor
+from ray._private.test_utils import SignalActor, async_wait_for_condition
+from ray._private.utils import get_or_create_event_loop
+from ray.serve._private.constants import RAY_SERVE_ENABLE_STRICT_MAX_CONCURRENT_QUERIES
 from ray.serve.handle import (
     DeploymentHandle,
     DeploymentResponse,
@@ -285,6 +288,66 @@ def test_handle_eager_execution(serve_instance):
     ray.get(upstream_signal_actor.wait.remote(), timeout=5)
 
     r.result() == "OK"
+
+
+@pytest.mark.skipif(
+    not RAY_SERVE_ENABLE_STRICT_MAX_CONCURRENT_QUERIES,
+    reason="Strict enforcement must be enabled.",
+)
+@pytest.mark.asyncio
+async def test_max_concurrent_queries_enforced(serve_instance):
+    """Handles should respect max_concurrent_queries enforcement."""
+
+    loop = get_or_create_event_loop()
+
+    @ray.remote
+    class Waiter:
+        def __init__(self):
+            self._waiters: List[asyncio.Event] = []
+
+        async def wait(self):
+            event = asyncio.Event()
+            self._waiters.append(event)
+            await event.wait()
+
+        def unblock_one(self):
+            self._waiters.pop().set()
+
+        def get_num_waiters(self) -> int:
+            return len(self._waiters)
+
+    waiter = Waiter.remote()
+
+    @serve.deployment(max_concurrent_queries=1)
+    class Deployment:
+        async def __call__(self):
+            await waiter.wait.remote()
+
+    handle = serve.run(Deployment.bind())
+
+    async def _do_request():
+        return await handle.remote()
+
+    async def _assert_one_waiter():
+        assert await waiter.get_num_waiters.remote() == 1
+        return True
+
+    # Send a batch of requests. Only one should be able to execute at a time
+    # due to `max_concurrent_queries=1`.
+    tasks = [loop.create_task(_do_request()) for _ in range(10)]
+    for i in range(len(tasks)):
+        # Check that only one starts executing.
+        await async_wait_for_condition(_assert_one_waiter)
+        _, pending = await asyncio.wait(tasks, timeout=0.1)
+        assert len(tasks) == len(tasks)
+
+        # Unblocking the one that is executing should cause it to finish.
+        # Another request will then get scheduled.
+        await waiter.unblock_one.remote()
+        done, pending = await asyncio.wait(tasks, return_when=asyncio.FIRST_COMPLETED)
+        assert len(done) == 1
+        assert len(pending) == len(tasks) - 1
+        tasks = pending
 
 
 if __name__ == "__main__":

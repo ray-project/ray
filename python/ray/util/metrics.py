@@ -77,11 +77,10 @@ class Metric:
         self._default_tags = default_tags
         return self
 
-    def record(
+    def _record(
         self,
         value: Union[int, float],
         tags: Optional[Dict[str, str]] = None,
-        _internal=False,
     ) -> None:
         """Record the metric point of the metric.
 
@@ -91,27 +90,6 @@ class Metric:
             value: The value to be recorded as a metric point.
         """
         assert self._metric is not None
-        if isinstance(self._metric, CythonCount) and not _internal:
-            logger.warning(
-                "Counter.record() is deprecated in favor of "
-                "Counter.inc() and will be removed in a future "
-                "release. Please use Counter.inc() instead."
-            )
-
-        if isinstance(self._metric, CythonGauge) and not _internal:
-            logger.warning(
-                "Gauge.record() is deprecated in favor of "
-                "Gauge.set() and will be removed in a future "
-                "release. Please use Gauge.set() instead."
-            )
-
-        if isinstance(self._metric, CythonHistogram) and not _internal:
-            logger.warning(
-                "Histogram.record() is deprecated in favor of "
-                "Histogram.observe() and will be removed in a "
-                "future release. Please use Histogram.observe() "
-                "instead."
-            )
 
         final_tags = self._get_final_tags(tags)
         self._validate_tags(final_tags)
@@ -196,34 +174,7 @@ class Counter(Metric):
         if value <= 0:
             raise ValueError(f"value must be >0, got {value}")
 
-        self.record(value, tags=tags, _internal=True)
-
-
-@DeveloperAPI
-class Count(Counter):
-    """The count of the number of metric points.
-
-    This corresponds to Prometheus' 'Count' metric.
-
-    This class is DEPRECATED, please use ray.util.metrics.Counter instead.
-
-    Args:
-        name: Name of the metric.
-        description: Description of the metric.
-        tag_keys: Tag keys of the metric.
-    """
-
-    def __init__(
-        self,
-        name: str,
-        description: str = "",
-        tag_keys: Optional[Tuple[str, ...]] = None,
-    ):
-        logger.warning(
-            "`metrics.Count` has been renamed to `metrics.Counter`. "
-            "`metrics.Count` will be removed in a future release."
-        )
-        super().__init__(name, description, tag_keys)
+        self._record(value, tags=tags)
 
 
 @DeveloperAPI
@@ -281,7 +232,7 @@ class Histogram(Metric):
         if not isinstance(value, (int, float)):
             raise TypeError(f"value must be int or float, got {type(value)}.")
 
-        self.record(value, tags, _internal=True)
+        self._record(value, tags)
 
     def __reduce__(self):
         deserializer = Histogram
@@ -337,7 +288,7 @@ class Gauge(Metric):
         if not isinstance(value, (int, float)):
             raise TypeError(f"value must be int or float, got {type(value)}.")
 
-        self.record(value, tags, _internal=True)
+        self._record(value, tags)
 
     def __reduce__(self):
         deserializer = Gauge
