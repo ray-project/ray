@@ -61,9 +61,8 @@ def test_get_docker_auth_token_failure(mock_requests):
         status_code=400, json=mock.MagicMock(return_value={"error": "test_error"})
     )
 
-    with pytest.raises(AuthTokenException, match="Docker. Error code: 400"):
-        _get_docker_auth_token(namespace, repository)
-
+    with pytest.raises(AuthTokenException, match="Docker Registry. Error code: 400"):
+        get_docker_registry_auth_token(namespace, repository)
 
 @mock.patch("requests.post")
 def test_get_docker_hub_auth_token(mock_requests):
@@ -92,8 +91,7 @@ def test_get_docker_hub_auth_token_failure(mock_requests):
     )
 
     with pytest.raises(AuthTokenException, match="Docker Hub. Error code: 400"):
-        _get_docker_hub_auth_token(username="test_username", password="test_password")
-
+        get_docker_hub_auth_token()
 
 @mock.patch("ci.ray_ci.automation.docker_tags_lib._get_git_log")
 def test_list_recent_commit_short_shas(mock_git_log):
@@ -147,11 +145,8 @@ def test_get_image_creation_time_failure_unknown(mock_config_docker_oci):
 def test_get_image_creation_time_failure_no_create_time(mock_config_docker_oci):
     mock_config_docker_oci.return_value = {"architecture": "amd64", "variant": "v1"}
     with pytest.raises(RetrieveImageConfigException):
-        _get_image_creation_time(tag="test_namespace/test_repo:test_tag")
-    mock_config_docker_oci.assert_called_once_with(
-        tag="test_tag", namespace="test_namespace", repository="test_repo"
-    )
-
+        get_image_creation_time(tag="test_tag")
+    mock_crane_config.assert_called_once_with(tag="test_tag")
 
 @mock.patch("requests.delete")
 def test_delete_tag(mock_requests):
