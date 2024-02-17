@@ -134,7 +134,6 @@ def get_image_creation_time(tag: str) -> datetime:
     if "MANIFEST_UNKNOWN" in result or "created" not in result:
         raise RetrieveImageConfigException()
     config = json.loads(result)
-    print(config)
     return parser.isoparse(config["created"])
 
 
