@@ -22,9 +22,14 @@ from ray.serve._private.common import (
     DeploymentStatusTrigger,
     ReplicaState,
 )
-from ray.serve._private.constants import SERVE_DEFAULT_APP_NAME, SERVE_NAMESPACE
+from ray.serve._private.constants import (
+    RAY_SERVE_COLLECT_AUTOSCALING_METRICS_ON_HANDLE,
+    SERVE_DEFAULT_APP_NAME,
+    SERVE_NAMESPACE,
+)
 from ray.serve._private.controller import ServeController
 from ray.serve._private.test_utils import (
+    check_deployment_status,
     check_num_replicas_eq,
     check_num_replicas_gte,
     check_num_replicas_lte,
@@ -43,12 +48,6 @@ def get_running_replica_tags(name: str, controller: ServeController) -> List:
     )
     running_replicas = replicas.get([ReplicaState.RUNNING])
     return [replica.replica_tag for replica in running_replicas]
-
-
-def check_deployment_status(name, expected_status) -> DeploymentStatus:
-    app_status = serve.status().applications[SERVE_DEFAULT_APP_NAME]
-    assert app_status.deployments[name].status == expected_status
-    return True
 
 
 def get_deployment_start_time(controller: ServeController, name: str):
@@ -205,8 +204,8 @@ def test_e2e_scale_up_down_basic(min_replicas, serve_instance):
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows.")
-@pytest.mark.parametrize("smoothing_factor", [1])  # , 0.2])
-@pytest.mark.parametrize("use_upscale_downscale_config", [True])  # , False])
+@pytest.mark.parametrize("smoothing_factor", [1, 0.2])
+@pytest.mark.parametrize("use_upscale_downscale_config", [True, False])
 def test_e2e_scale_up_down_with_0_replica(
     serve_instance, smoothing_factor, use_upscale_downscale_config
 ):
@@ -241,7 +240,7 @@ def test_e2e_scale_up_down_with_0_replica(
         def __call__(self):
             ray.get(signal.wait.remote())
 
-    handle = serve.run(A.bind()).options(use_new_handle_api=True)
+    handle = serve.run(A.bind())
     wait_for_condition(
         check_deployment_status, name="A", expected_status=DeploymentStatus.HEALTHY
     )
@@ -875,6 +874,65 @@ app = g.bind()
     for _ in range(15):
         pids.add(ray.get(send_request.remote()))
     assert existing_pid in pids
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows.")
+@pytest.mark.skipif(
+    not RAY_SERVE_COLLECT_AUTOSCALING_METRICS_ON_HANDLE,
+    reason="Only works when collecting request metrics at handle.",
+)
+def test_max_concurrent_queries_set_to_one(serve_instance):
+    assert RAY_SERVE_COLLECT_AUTOSCALING_METRICS_ON_HANDLE
+    signal = SignalActor.remote()
+
+    @serve.deployment(
+        max_concurrent_queries=1,
+        autoscaling_config=AutoscalingConfig(
+            min_replicas=1,
+            max_replicas=5,
+            upscale_delay_s=0.5,
+            downscale_delay_s=0.5,
+            metrics_interval_s=0.5,
+            look_back_period_s=2,
+        ),
+        graceful_shutdown_timeout_s=1,
+        ray_actor_options={"num_cpus": 0},
+    )
+    async def f():
+        await signal.wait.remote()
+        return os.getpid()
+
+    h = serve.run(f.bind())
+    check_num_replicas_eq("f", 1)
+
+    # Repeatedly (5 times):
+    # 1. Send a new request.
+    # 2. Wait for the number of waiters on signal to increase by 1.
+    # 3. Assert the number of replicas has increased by 1.
+    refs = []
+    for i in range(5):
+        refs.append(h.remote())
+
+        def check_num_waiters(target: int):
+            assert ray.get(signal.cur_num_waiters.remote()) == target
+            return True
+
+        wait_for_condition(check_num_waiters, target=i + 1)
+        print(time.time(), f"Number of waiters on signal reached {i+1}.")
+        check_num_replicas_eq("f", i + 1)
+        print(time.time(), f"Confirmed number of replicas are at {i+1}.")
+
+    print(time.time(), "Releasing signal.")
+    signal.send.remote()
+
+    # Check that pids returned are unique
+    # This implies that each replica only served one request, so the
+    # number of "running" requests per replica was at most 1 at any time;
+    # meaning the "queued" requests were taken into consideration for
+    # autoscaling.
+    pids = [ref.result() for ref in refs]
+    assert len(pids) == len(set(pids)), f"Pids {pids} are not unique."
+    print("Confirmed each replica only served one request.")
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows.")

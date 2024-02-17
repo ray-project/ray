@@ -30,6 +30,8 @@ steps:
       EXTRA_DEPENDENCY: core
 
   - wait: ~
+    depends_on:
+      - corebuild
 
   # tests
   - label: ":ray: core: python tests"
@@ -230,7 +232,9 @@ steps:
     job_env: forge-aarch64
 
   - label: ":ray: core: minimal tests {{matrix}}"
-    tags: python
+    tags:
+      - python
+      - oss
     instance_type: medium
     commands:
       # validate minimal installation
@@ -268,6 +272,8 @@ steps:
         --test-env=RAY_MINIMAL=1
         --only-tags minimal
         --skip-ray-installation
+    depends_on:
+      - minbuild-core
     matrix:
       - "3.8"
       - "3.9"
@@ -375,7 +381,7 @@ steps:
     commands:
       - bazel run //ci/ray_ci:build_in_docker -- docker --platform cpu
         --canonical-tag test_container
-      - docker build --build-arg BASE_IMAGE="rayproject/ray:test_container"
+      - docker build --progress=plain --build-arg BASE_IMAGE="rayproject/ray:test_container"
         -t rayproject/ray:runtime_env_container -f docker/runtime_env_container/Dockerfile .
       - bazel run //ci/ray_ci:test_in_docker -- //python/ray/tests/... core --only-tags container
     depends_on:

@@ -97,6 +97,16 @@ class ConvergenceTest(unittest.TestCase):
 
         assert math.isclose(analysis.best_config["x"], 0, abs_tol=1e-2)
 
+    def testConvergenceNevergrad(self):
+        from ray.tune.search.nevergrad import NevergradSearch
+        import nevergrad as ng
+
+        np.random.seed(0)
+        searcher = NevergradSearch(optimizer=ng.optimizers.PSO)
+        analysis = self._testConvergence(searcher, patience=50, top=5)
+
+        assert math.isclose(analysis.best_config["x"], 0, abs_tol=1e-3)
+
     def testConvergenceOptuna(self):
         from ray.tune.search.optuna import OptunaSearch
 

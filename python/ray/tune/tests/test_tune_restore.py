@@ -199,7 +199,7 @@ class TuneFailResumeGridTest(unittest.TestCase):
             self.num_trials = num_trials
 
         def on_step_end(self, trials, **kwargs):
-            if len(trials) == self.num_trials:
+            if len(trials) >= self.num_trials:
                 print(f"Failing after {self.num_trials} trials.")
                 raise RuntimeError
 
@@ -247,6 +247,13 @@ class TuneFailResumeGridTest(unittest.TestCase):
         self.logdir = tempfile.mkdtemp()
         os.environ["TUNE_GLOBAL_CHECKPOINT_S"] = "0"
 
+        # TODO(justinvyu): Some tests don't work with storage_path=self.logdir
+        # because the failure injector callback on the driver will fail the
+        # run before the experiment state file is synced to storage path.
+        # Previously, resume=True avoided the issue by restoring from the
+        # "local" staging copy of the file, which is more up to date.
+        os.environ["RAY_AIR_LOCAL_CACHE_DIR"] = self.logdir
+
         # Change back to local_mode=True after this is resolved:
         # https://github.com/ray-project/ray/issues/13932
         ray.init(local_mode=False, num_cpus=2)
@@ -257,6 +264,7 @@ class TuneFailResumeGridTest(unittest.TestCase):
 
     def tearDown(self):
         os.environ.pop("TUNE_GLOBAL_CHECKPOINT_S")
+        os.environ.pop("TUNE_MAX_PENDING_TRIALS_PG", None)
         shutil.rmtree(self.logdir)
         ray.shutdown()
 
@@ -271,7 +279,6 @@ class TuneFailResumeGridTest(unittest.TestCase):
                 "test2": tune.grid_search([1, 2, 3]),
             },
             stop={"training_iteration": 2},
-            storage_path=self.logdir,
             name="testFailResumeGridSearch",
             verbose=1,
         )
@@ -300,7 +307,6 @@ class TuneFailResumeGridTest(unittest.TestCase):
                 "test2": tune.grid_search([1, 2, 3]),
             },
             stop={"training_iteration": 2},
-            storage_path=self.logdir,
             name="testResourceUpdateInResume",
             verbose=1,
         )
@@ -347,7 +353,6 @@ class TuneFailResumeGridTest(unittest.TestCase):
                 ),
             },
             stop={"training_iteration": 2},
-            storage_path=self.logdir,
             name="testConfigUpdateInResume",
             verbose=1,
         )
@@ -402,7 +407,6 @@ class TuneFailResumeGridTest(unittest.TestCase):
                 "test2": tune.grid_search([1, 2, 3]),
             },
             stop={"training_iteration": 2},
-            storage_path=self.logdir,
             name="testFailResumeWithPreset",
             verbose=1,
         )
@@ -446,7 +450,6 @@ class TuneFailResumeGridTest(unittest.TestCase):
                 "test2": tune.grid_search([1, 2, 3]),
             },
             stop={"training_iteration": 2},
-            storage_path=self.logdir,
             name="testFailResumeAfterPreset",
             verbose=1,
         )
@@ -490,7 +493,6 @@ class TuneFailResumeGridTest(unittest.TestCase):
                         "test": tune.grid_search([1, 2, 3]),
                     },
                     stop={"training_iteration": 1},
-                    storage_path=self.logdir,
                 )
             )
 
@@ -521,7 +523,6 @@ class TuneFailResumeGridTest(unittest.TestCase):
                 "test5": tune.grid_search(list(range(20))),
             },
             stop={"training_iteration": 2},
-            storage_path=self.logdir,
             name="testWarningLargeGrid",
             verbose=1,
         )
@@ -624,34 +625,6 @@ class TrainableCrashWithFailFast(unittest.TestCase):
             tune.run(f, fail_fast=TuneController.RAISE)
 
 
-# For some reason, different tests are coupled through tune.registry.
-# After running `ResourceExhaustedTest`, there is always a super huge `training_func` to
-# be put through GCS, which will fail subsequent tests.
-# tldr, make sure that this test is the last test in the file.
-class ResourceExhaustedTest(unittest.TestCase):
-    def test_resource_exhausted_info(self):
-        """This is to test if helpful information is displayed when
-        the objects captured in trainable/training function are too
-        large and RESOURCES_EXHAUSTED error of gRPC is triggered."""
-
-        # generate some random data to be captured implicitly in training func.
-        from sklearn.datasets import fetch_olivetti_faces
-
-        a_large_array = []
-        for i in range(50):
-            a_large_array.append(fetch_olivetti_faces())
-
-        def training_func(config):
-            for item in a_large_array:
-                assert item
-
-        with self.assertRaisesRegex(
-            TuneError,
-            "The Trainable/training function is too large for grpc resource limit.",
-        ):
-            tune.run(training_func)
-
-
 @pytest.mark.parametrize(
     "trial_config", [{}, {"attr": 4}, {"nested": {"key": "value"}}]
 )
@@ -684,6 +657,82 @@ tune.run(train_fn, num_samples=1)
     with pytest.raises(subprocess.CalledProcessError) as exc_info:
         run_string_as_driver(CMD)
     assert "Inducing exception for testing purposes." in exc_info.value.output.decode()
+
+
+@pytest.mark.parametrize(
+    "resume",
+    [
+        True,
+        "AUTO",
+        "AUTO+ERRORED",
+        "AUTO+ERRORED_ONLY",
+        "AUTO+RESTART_ERRORED",
+        "AUTO+RESTART_ERRORED_ONLY",
+    ],
+)
+def test_resume_options(tmp_path, resume):
+    tmp_path.joinpath("dummy_ckpt").mkdir()
+
+    def train_fn(config):
+        checkpoint = ray.train.get_checkpoint()
+        if not checkpoint:
+            ray.train.report(
+                {"finish_marker": False},
+                checkpoint=Checkpoint.from_directory(tmp_path / "dummy_ckpt"),
+            )
+            raise RuntimeError("failing on the first run!!")
+        ray.train.report({"finish_marker": True})
+
+    analysis = tune.run(
+        train_fn,
+        storage_path=str(tmp_path),
+        name="test_resume_options",
+        raise_on_failed_trial=False,
+    )
+    results = ray.tune.ResultGrid(analysis)
+    assert not results[0].metrics.get("finish_marker", False)
+    analysis = tune.run(
+        train_fn,
+        storage_path=str(tmp_path),
+        name="test_resume_options",
+        resume=resume,
+        raise_on_failed_trial=False,
+    )
+    results = ray.tune.ResultGrid(analysis)
+    if resume in [True, "AUTO", "AUTO+RESTART_ERRORED", "AUTO+RESTART_ERRORED_ONLY"]:
+        # These options either don't resume the errored trial,
+        # or restart it without a checkpoint --> leading to the RuntimeError again
+        assert not results[0].metrics.get("finish_marker")
+    else:
+        assert results[0].metrics.get("finish_marker")
+
+
+# For some reason, different tests are coupled through tune.registry.
+# After running `ResourceExhaustedTest`, there is always a super huge `training_func` to
+# be put through GCS, which will fail subsequent tests.
+# tldr, make sure that this test is the last test in the file.
+class ResourceExhaustedTest(unittest.TestCase):
+    def test_resource_exhausted_info(self):
+        """This is to test if helpful information is displayed when
+        the objects captured in trainable/training function are too
+        large and RESOURCES_EXHAUSTED error of gRPC is triggered."""
+
+        # generate some random data to be captured implicitly in training func.
+        from sklearn.datasets import fetch_olivetti_faces
+
+        a_large_array = []
+        for i in range(50):
+            a_large_array.append(fetch_olivetti_faces())
+
+        def training_func(config):
+            for item in a_large_array:
+                assert item
+
+        with self.assertRaisesRegex(
+            TuneError,
+            "The Trainable/training function is too large for grpc resource limit.",
+        ):
+            tune.run(training_func)
 
 
 if __name__ == "__main__":

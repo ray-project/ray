@@ -618,9 +618,15 @@ message GetAllResourceUsageReply {
 
 message GetDrainingNodesRequest {}
 
+message DrainingNode {
+  bytes node_id = 1;
+  /// Timestamp when the draining node will be force killed.
+  int64 draining_deadline_timestamp_ms = 2;
+}
+
 message GetDrainingNodesReply {
   GcsStatus status = 1;
-  repeated bytes node_ids = 2;
+  repeated DrainingNode draining_nodes = 2;
 }
 
 // Service for node resource info access.

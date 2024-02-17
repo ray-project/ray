@@ -21,6 +21,7 @@ class _ParquetDatasink(BlockBasedFileDatasink):
         *,
         arrow_parquet_args_fn: Callable[[], Dict[str, Any]] = lambda: {},
         arrow_parquet_args: Optional[Dict[str, Any]] = None,
+        num_rows_per_file: Optional[int] = None,
         filesystem: Optional["pyarrow.fs.FileSystem"] = None,
         try_create_dir: bool = True,
         open_stream_args: Optional[Dict[str, Any]] = None,
@@ -36,6 +37,7 @@ class _ParquetDatasink(BlockBasedFileDatasink):
 
         super().__init__(
             path,
+            num_rows_per_file=num_rows_per_file,
             filesystem=filesystem,
             try_create_dir=try_create_dir,
             open_stream_args=open_stream_args,

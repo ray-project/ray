@@ -25,7 +25,7 @@ if TYPE_CHECKING:
     from ray.data._internal.logical.interfaces.logical_plan import LogicalPlan
 
 
-# Scheduling strategy can be inherited from prev stage if not specified.
+# Scheduling strategy can be inherited from prev operator if not specified.
 INHERITABLE_REMOTE_ARGS = ["scheduling_strategy"]
 
 
@@ -38,17 +38,18 @@ class ExecutionPlan:
     # Implementation Notes:
     #
     # This lazy execution plan takes in an input block list and builds up a chain of
-    # BlockList --> BlockList stages. When execution is triggered, it tries to fuse
-    # together stages in order to reduce Ray task overhead and data copies.
+    # List[BlockRef] --> List[BlockRef] operators. Prior to execution,
+    # we apply a set of logical plan optimizations, such as operator fusion,
+    # in order to reduce Ray task overhead and data copies.
     #
     # Internally, the execution plan holds two block lists:
     #   * _in_blocks: The (possibly lazy) input block list.
     #   * _snapshot_blocks: A snapshot of a computed block list, where this snapshot
-    #     is the cached output of executing some prefix in the stage chain.
+    #     is the cached output of executing some prefix in the operator chain.
     #
-    # The stages in this execution plan are partitioned into two subchains: before the
-    # snapshot and after the snapshot. When the snapshot exists from a previous
-    # execution, any future executions will only have to execute the "after the
+    # The operators in this execution plan are partitioned into two subchains:
+    # before the snapshot and after the snapshot. When the snapshot exists from a
+    # previous execution, any future executions will only have to execute the "after the
     # snapshot" subchain, using the snapshot as the input to that subchain.
 
     def __init__(
@@ -59,7 +60,7 @@ class ExecutionPlan:
         run_by_consumer: bool,
         data_context: Optional[DataContext] = None,
     ):
-        """Create a plan with no transformation stages.
+        """Create a plan with no transformation operators.
 
         Args:
             in_blocks: Base list of blocks.
@@ -70,12 +71,12 @@ class ExecutionPlan:
         """
         self._in_blocks = in_blocks
         self._in_stats = stats
-        # A computed snapshot of some prefix of stages.
-        self._snapshot_blocks = None
+        # A computed snapshot of some prefix of operators and their corresponding
+        # output blocks and stats.
         self._snapshot_operator: Optional[LogicalOperator] = None
+        self._snapshot_blocks = None
         self._snapshot_stats = None
-        # Cache of optimized stages.
-        self._last_optimized_stages = None
+
         # Cached schema.
         self._schema = None
         # Set when a Dataset is constructed with this plan
@@ -321,13 +322,17 @@ class ExecutionPlan:
         return plan_copy
 
     def initial_num_blocks(self) -> int:
-        """Get the estimated number of blocks after applying all plan stages."""
+        """Get the estimated number of blocks from the logical plan
+        after applying execution plan optimizations, but prior to
+        fully executing the dataset."""
         return self._logical_plan.dag.estimated_num_outputs()
 
     def schema(
         self, fetch_if_missing: bool = False
     ) -> Union[type, "pyarrow.lib.Schema"]:
-        """Get the schema after applying all plan stages.
+        """Get the schema after applying all execution plan optimizations,
+        but prior to fully executing the dataset
+        (unless `fetch_if_missing` is set to True).
 
         Args:
             fetch_if_missing: Whether to execute the plan to fetch the schema.
@@ -350,14 +355,14 @@ class ExecutionPlan:
             # Even if a schema is already previously known, it may change,
             # so we try executing to get the most updated schema.
 
-            # TODO(swang): There are several other stage types that could
+            # TODO(swang): There are several other operator types that could
             # inherit the schema or we can compute the schema without having to
             # execute any of the dataset: limit, filter, map_batches for
             # add/drop columns, etc.
             if fetch_if_missing:
                 if isinstance(self._logical_plan.dag, RandomizeBlocks):
                     # TODO(ekl): this is a hack to optimize the case where we have a
-                    # trailing randomize block stages. That stage has no effect and
+                    # trailing randomize block operator. That operator has no effect and
                     # so we don't need to execute all blocks to get the schema.
 
                     randomize_blocks_op = self._logical_plan.dag
@@ -377,12 +382,12 @@ class ExecutionPlan:
                 # If the plan is input/read only, we execute it, so snapshot has output.
                 # If RandomizeBlocks is the last operator preceded by a input/read
                 # only plan, we can also execute it (regardless of the fetch_if_missing)
-                # since RandomizeBlocksStage is just changing the order of references
+                # since RandomizeBlocks is just changing the order of references
                 # (hence super cheap). Calling execute does not trigger read tasks.
                 self.execute()
             else:
                 return None
-        # Snapshot is now guaranteed to be the output of the final stage or None.
+        # Snapshot is now guaranteed to be the output of the final operator or None.
         blocks = self._snapshot_blocks
         if not blocks:
             return None
@@ -458,13 +463,12 @@ class ExecutionPlan:
     ]:
         """Execute this plan, returning an iterator.
 
-        If the streaming execution backend is enabled, this will use streaming
-        execution to generate outputs, otherwise it will fall back to bulk exec.
+        This will use streaming execution to generate outputs.
 
         Args:
             allow_clear_input_blocks: Whether we should try to clear the input blocks
-                for each stage.
-            force_read: Whether to force the read stage to fully execute.
+                for each operator.
+            force_read: Whether to force the read operator to fully execute.
 
         Returns:
             Tuple of iterator over output blocks and the executor.
@@ -473,7 +477,7 @@ class ExecutionPlan:
         # Always used the saved context for execution.
         ctx = self._context
 
-        if not ctx.use_streaming_executor or self.has_computed_output():
+        if self.has_computed_output():
             return (
                 self.execute(
                     allow_clear_input_blocks, force_read
@@ -515,8 +519,8 @@ class ExecutionPlan:
 
         Args:
             allow_clear_input_blocks: Whether we should try to clear the input blocks
-                for each stage.
-            force_read: Whether to force the read stage to fully execute.
+                for each operator.
+            force_read: Whether to force the read operator to fully execute.
             preserve_order: Whether to preserve order in execution.
 
         Returns:
@@ -587,14 +591,22 @@ class ExecutionPlan:
                 blocks._owned_by_consumer = False
 
             # Retrieve memory-related stats from ray.
-            reply = get_memory_info_reply(
-                get_state_from_address(ray.get_runtime_context().gcs_address)
-            )
-            if reply.store_stats.spill_time_total_s > 0:
-                stats.global_bytes_spilled = int(reply.store_stats.spilled_bytes_total)
-            if reply.store_stats.restore_time_total_s > 0:
-                stats.global_bytes_restored = int(
-                    reply.store_stats.restored_bytes_total
+            try:
+                reply = get_memory_info_reply(
+                    get_state_from_address(ray.get_runtime_context().gcs_address)
+                )
+                if reply.store_stats.spill_time_total_s > 0:
+                    stats.global_bytes_spilled = int(
+                        reply.store_stats.spilled_bytes_total
+                    )
+                if reply.store_stats.restore_time_total_s > 0:
+                    stats.global_bytes_restored = int(
+                        reply.store_stats.restored_bytes_total
+                    )
+            except Exception as e:
+                logger.get_logger(log_to_stdout=False).warning(
+                    "Skipping recording memory spilled and restored statistics due to "
+                    f"exception: {e}"
                 )
 
             stats.dataset_bytes_spilled = 0
@@ -608,7 +620,7 @@ class ExecutionPlan:
 
             collect_stats(stats)
 
-            # Set the snapshot to the output of the final stage.
+            # Set the snapshot to the output of the final operator.
             self._snapshot_blocks = blocks
             self._snapshot_operator = self._logical_plan.dag
             self._snapshot_stats = stats
@@ -698,7 +710,7 @@ class ExecutionPlan:
         )
 
     def has_computed_output(self) -> bool:
-        """Whether this plan has a computed snapshot for the final stage, i.e. for the
+        """Whether this plan has a computed snapshot for the final operator, i.e. for the
         output of this plan.
         """
         return (
@@ -706,12 +718,6 @@ class ExecutionPlan:
             and not self._snapshot_blocks.is_cleared()
             and self._snapshot_operator == self._logical_plan.dag
         )
-
-    def _run_with_new_execution_backend(self) -> bool:
-        """Whether this plan should run with new backend.
-        By default, the new execution backend is now fully enabled
-        unless configured otherwise by the user."""
-        return self._context.new_execution_backend
 
     def require_preserve_order(self) -> bool:
         """Whether this plan requires to preserve order."""

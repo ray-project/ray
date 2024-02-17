@@ -73,10 +73,10 @@ class GlobalStateAccessor {
   /// deserialized with protobuf function.
   std::vector<std::string> GetAllAvailableResources() ABSL_LOCKS_EXCLUDED(mutex_);
 
-  /// Get ids of draining nodes.
+  /// Get draining nodes.
   ///
-  /// \return ids of draining nodes.
-  std::vector<NodeID> GetDrainingNodes() ABSL_LOCKS_EXCLUDED(mutex_);
+  /// \return Draining node id to draining deadline.
+  std::unordered_map<NodeID, int64_t> GetDrainingNodes() ABSL_LOCKS_EXCLUDED(mutex_);
 
   /// Get newest resource usage of all nodes from GCS Service. Only used when light
   /// rerouce usage report enabled.
