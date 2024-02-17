@@ -1399,7 +1399,7 @@ def test_actor_equal(ray_start_regular_shared):
 def test_classmethod_genericalias():
     """
     The Python built-in function `inspect.signature` doesn't support
-    classmethod(GenericAlias). Hence, if we call `inspect.signature(MyClass)`,
+    classmethod(GenericAlias). Hence, if we call `inspect.signature(MyClass.__class_getitem__)`,
     it will raise a ValueError.
     """
     from types import GenericAlias

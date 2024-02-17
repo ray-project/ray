@@ -422,10 +422,6 @@ class _ActorClassMethodMetadata(object):
             ):
                 method = method.__init__
 
-            # Print a warning message if the method signature is not
-            # supported. We don't raise an exception because if the actor
-            # inherits from a class that has a method whose signature we
-            # don't support, there may not be much the user can do about it.
             self.signatures[method_name] = signature.extract_signature(
                 method, ignore_first=not is_bound
             )
