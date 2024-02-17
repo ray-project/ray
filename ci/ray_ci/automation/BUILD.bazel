@@ -77,7 +77,7 @@ py_binary(
     deps = [
         ":docker_tags_lib",
         ci_require("click"),
-    ]
+    ],
 )
 
 py_test(
