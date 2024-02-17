@@ -54,7 +54,7 @@ class LightGBMTrainer(DataParallelTrainer):
             # (Optional) Add logic to resume training state from a checkpoint.
             # ray.train.get_checkpoint()
 
-            # 1. Get the dataset shard for the worker and convert to a `lightgbm.Dataset`
+            # 1. Get the dataset shard for the worker and convert to a `lgb.Dataset`
             train_ds_iter, eval_ds_iter = (
                 ray.train.get_dataset_shard("train"),
                 ray.train.get_dataset_shard("validation"),
@@ -68,11 +68,12 @@ class LightGBMTrainer(DataParallelTrainer):
             eval_set = lgb.Dataset(eval_X, label=eval_y)
 
             # 2. Run distributed data-parallel training.
-            # `get_network_params` sets up the necessary configurations for lightgbm
+            # `get_network_params` sets up the necessary configurations for LightGBM
             # to set up the data parallel training worker group on your Ray cluster.
             params = {
                 "objective": "regression",
-                # Adding the line below is the only change needed for your `lgb.train` call!
+                # Adding the line below is the only change needed
+                # for your `lgb.train` call!
                 **ray.train.lightgbm.v2.get_network_params(),
             }
             lgb.train(
