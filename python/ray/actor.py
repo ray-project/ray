@@ -421,6 +421,7 @@ class _ActorClassMethodMetadata(object):
                 )
             ):
                 method = method.__init__
+                assert 1 == 2
 
             self.signatures[method_name] = signature.extract_signature(
                 method, ignore_first=not is_bound
