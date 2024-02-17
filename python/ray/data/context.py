@@ -248,7 +248,7 @@ class DataContext:
         self._kv_configs: Dict[str, Any] = {}
         # The max number of blocks that can be buffered at the streaming generator of
         # each `DataOpTask`.
-        self._max_num_blocks_in_streaming_gen_buffer = 4
+        self._max_num_blocks_in_streaming_gen_buffer = 2
         # Whether to enable ReservationOpResourceLimiter.
         self.op_resource_reservation_enabled = DEFAULT_ENABLE_OP_RESOURCE_RESERVATION
         # The reservation ratio for ReservationOpResourceLimiter.
