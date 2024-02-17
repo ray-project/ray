@@ -30,6 +30,8 @@
 #include <utility>
 #include <vector>
 
+#include "ray/common/asio/instrumented_io_context.h"
+
 #ifndef PID_MAX_LIMIT
 // This is defined by Linux to be the maximum allowable number of processes
 // There's no guarantee for other OSes, but it's useful for testing purposes.
@@ -141,10 +143,9 @@ std::optional<std::error_code> KillProc(pid_t pid);
 std::optional<std::vector<pid_t>> GetAllProcsWithPpid(pid_t parent_pid);
 
 // Set up a SIGCHLD handler.
-// Note: SIGCHLD is not added to the signal set. Caller must add it.
 //
-// kill_orphan_subprocesses: only supported in Linux. On any other platform, it must be
-// set to false.
+// kill_orphan_subprocesses: only supported in Linux. On any other platform, a warning
+// is logged and we fall back to the `false` case.
 //
 // If kill_orphan_subprocesses is false, simply reap the zombie children.
 //
@@ -153,7 +154,7 @@ std::optional<std::vector<pid_t>> GetAllProcsWithPpid(pid_t parent_pid);
 // kill all of them. They are recognized by the fact that those processes are not created
 // via `Process` class.
 void SetupSigchldHandler(bool kill_orphan_subprocesses,
-                         boost::asio::signal_set &sigchld_signals);
+                         instrumented_io_context &io_service);
 
 }  // namespace ray
 
