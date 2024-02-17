@@ -1,6 +1,7 @@
 import logging
 from dataclasses import dataclass
 
+import ray
 from ray.train._internal.utils import get_address_and_port
 from ray.train._internal.worker_group import WorkerGroup
 from ray.train.backend import Backend, BackendConfig
@@ -56,7 +57,14 @@ class _LightGBMBackend(Backend):
                 ),
             )
 
-        worker_group.execute(send_network_params, num_machines, ports, machines)
+        ray.get(
+            [
+                worker_group.execute_single_async(
+                    rank, send_network_params, num_machines, ports[rank], machines
+                )
+                for rank in range(len(worker_group))
+            ]
+        )
 
     def on_shutdown(self, worker_group: WorkerGroup, backend_config: LightGBMConfig):
         pass
