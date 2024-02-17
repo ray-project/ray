@@ -1399,14 +1399,16 @@ def test_actor_equal(ray_start_regular_shared):
 def test_classmethod_genericalias():
     """
     The Python built-in function `inspect.signature` doesn't support
-    classmethod(GenericAlias). Hence, if we call `inspect.signature(MyClass.__class_getitem__)`,
-    it will raise a ValueError.
+    classmethod(GenericAlias). Hence, passing the `__class_getitem__`
+    to the function `inspect.signature` will raise a ValueError.
     """
     from types import GenericAlias
 
     @ray.remote
     class MyClass:
         __class_getitem__ = classmethod(GenericAlias)
+
+    assert getattr(MyClass.__class_getitem__, "__func__", None) is GenericAlias
 
     # This would allow MyClass[int] to behave similarly to specifying a generic type
     myClass = MyClass.remote()
