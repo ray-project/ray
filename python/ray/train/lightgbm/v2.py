@@ -31,7 +31,7 @@ def get_network_params() -> dict:
         "Please fix this if you provided a custom `LightGBMConfig` subclass."
         "Otherwise, please file a bug report to the Ray Team."
     )
-    return network_params
+    return network_params.copy()
 
 
 class LightGBMTrainer(DataParallelTrainer):
