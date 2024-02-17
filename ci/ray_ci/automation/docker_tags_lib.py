@@ -1,217 +1,370 @@
-import requests
 import json
-from datetime import datetime, timezone
 import subprocess
-from typing import Set
+from datetime import datetime, timezone
+from typing import List, Optional, Callable, Set
+import os
+import requests
+from dateutil import parser
+
+from ci.ray_ci.utils import logger
 
 
-def list_commit_shas():
+class DockerHubRateLimitException(Exception):
     """
-    Get list of commit SHAs on ray master branch from at least 30 days ago.
+    Exception for Docker Hub rate limit exceeded.
     """
-    commit_shas = subprocess.check_output(
-        ["git", "log", "--until='30 days ago'", "--pretty=format:%H"],
-        text=True,
-    )
-    short_commit_shas = [commit_sha[:6] for commit_sha in commit_shas.split("\n")]
-    return short_commit_shas
+    def __init__(self):
+        super().__init__("429: Rate limit exceeded for Docker Hub.")
 
 
-def get_docker_token():
-    service = "registry.docker.io"
-    scope = "repository:rayproject/ray:pull"
-    # The URL for token authentication
-    url = f"https://auth.docker.io/token?service={service}&scope={scope}"
-    response = requests.get(url)
-    token = response.json().get("token")
+class RetrieveImageConfigException(Exception):
+    """
+    Exception for failing to retrieve image config.
+    """
+
+    def __init__(self):
+        super().__init__("Failed to retrieve image config.")
+
+
+class AuthTokenException(Exception):
+    """
+    Exception for failing to retrieve auth token.
+    """
+    def __init__(self, message: str):
+        super().__init__(f"Failed to retrieve auth token from {message}.")
+
+
+def get_docker_registry_auth_token(namespace: str, repository: str) -> Optional[str]:
+    """
+    Retrieve Docker Registry token.
+
+    Args:
+        namespace: Docker namespace
+        repository: Docker repository
+    
+    Returns:
+        Auth token for Docker Registry.
+    """
+    service, scope = "registry.docker.io", f"repository:{namespace}/{repository}:pull"
+    auth_url = f"https://auth.docker.io/token?service={service}&scope={scope}"
+    response = requests.get(auth_url)
+    if response.status_code != 200:
+        raise AuthTokenException(f"Docker Registry. Error code: {response.status_code}")
+    token = response.json().get("token", None)
     return token
 
 
-def count_docker_tags():
+def get_docker_hub_auth_token():
     """
-    Count number of tags from rayproject/ray repository.
+    Retrieve Docker Hub auth token.
     """
-    response = requests.get(
-        "https://hub.docker.com/v2/namespaces/rayproject/repositories/ray/tags"
-    )
-    tag_count = response.json()["count"]
-    return tag_count
+    username = os.environ["DOCKER_HUB_USERNAME"]
+    password = os.environ["DOCKER_HUB_PASSWORD"]
 
-
-def get_image_creation_time(repository: str, tag: str):
-    """
-    Get the creation time of the image from the tag image config.
-    """
-    res = subprocess.run(
-        ["crane", "config", f"{repository}:{tag}"], capture_output=True, text=True
-    )
-    if res.returncode != 0 or not res.stdout:
-        print("Return code: ", res.returncode)  # Replace with log
-        return None
-    manifest = json.loads(res.stdout)
-    created = manifest["created"]
-    created_time = datetime.fromisoformat(created)
-    return created_time
-
-
-def get_auth_token_docker_hub(username: str, password: str):
-    params = {
+    url = "https://hub.docker.com/v2/users/login"
+    json_body = {
         "username": username,
         "password": password,
     }
-    headers = {
-        "Content-Type": "application/json",
-    }
-    response = requests.post(
-        "https://hub.docker.com/v2/users/login", headers=headers, params=params
+    headers = {"Content-Type": "application/json"}
+    response = requests.post(url, headers=headers, json=json_body)
+    if response.status_code != 200:
+        raise AuthTokenException(f"Docker Hub. Error code: {response.status_code}")
+    return response.json().get("token", None)
+
+
+def _get_git_log(n_days: int = 30):
+    return subprocess.check_output(
+        ["git", "log", f"--until='{n_days} days ago'", "--pretty=format:%H"],
+        text=True,
     )
-    token = response.json().get("token")
-    return token
 
 
-def delete_tags(namespace: str, repository: str, tags: list[str]):
+def list_recent_commit_short_shas(n_days: int = 30) -> List[str]:
+    """
+    Get list of recent commit SHAs (short version, first 6 char) on ray master branch.
+
+    Args:
+        n_days: Number of days to go back in git log.
+    
+    Returns:
+        List of recent commit SHAs (6 char).
+    """
+    commit_shas = _get_git_log(n_days=n_days)
+    short_commit_shas = [
+        commit_sha[:6] for commit_sha in commit_shas.split("\n") if commit_sha
+    ]
+    return short_commit_shas
+
+
+def _call_crane_config(tag: str):
+    try:
+        return subprocess.check_output(
+            ["crane", "config", tag], stderr=subprocess.STDOUT, text=True
+        )
+    except subprocess.CalledProcessError as e:
+        return e.output
+
+
+def get_image_creation_time(tag: str) -> datetime:
+    """
+    Get Docker image creation time from tag image config.
+
+    Args:
+        tag: Docker tag name
+    
+    Returns:
+        Datetime object of image creation time.
+    """
+    result = _call_crane_config(tag=tag)
+    if "MANIFEST_UNKNOWN" in result or "created" not in result:
+        raise RetrieveImageConfigException()
+    config = json.loads(result)
+    print(config)
+    return parser.isoparse(config["created"])
+
+
+def delete_tag(tag: str) -> bool:
     """
     Delete tag from Docker Hub repo.
+
+    Args:
+        tag: Docker tag name
+
+    Returns:
+        True if tag was deleted successfully, False otherwise.
     """
-    token = get_auth_token_docker_hub("username", "password")
+    token = get_docker_hub_auth_token()
     headers = {
         "Authorization": f"Bearer {token}",
     }
-    for tag in tags:
-        print(f"Deleting {tag}")  # TODO: delete this line
-        url = f"https://hub.docker.com/v2/repositories/{namespace}/{repository}/tags/{tag}"
-        response = requests.delete(url, headers=headers)
-        if response.status_code != 204:
-            print(f"Failed to delete {tag}, status code: {response.status_code}")
+    namespace, repo_tag = tag.split("/")
+    repository, tag_name = repo_tag.split(":")
+    url = f"https://hub.docker.com/v2/repositories/{namespace}/{repository}/tags/{tag_name}"
 
-def _is_release_tag(tag: str):
-    """
-    Check if tag is a release tag.
-    """
-    variables = tag.split(".")
+    response = requests.delete(url, headers=headers)
+    if response.status_code == 429:
+        raise DockerHubRateLimitException()
+    if response.status_code != 204:
+        logger.info(f"Failed to delete {tag}, status code: {response.json()}")
+        return False
+    else:
+        logger.info(f"Deleted tag {tag}")
+        return True
 
-    if len(variables) != 3 and "post1" not in tag:
+
+def _safe_to_delete(tag: str, n_days: int, registry_tags: List[str]) -> bool:
+    """
+    Check if tag is safe to delete by:
+    1. If tag's image config is not found and tag is not in the Docker Registry.
+    2. If tag's image was created more than N days ago.
+    """
+    try:
+        image_creation_time = get_image_creation_time(tag=tag)
+    except RetrieveImageConfigException:
+        return tag not in registry_tags
+
+    time_difference = datetime.now(timezone.utc) - image_creation_time
+    if time_difference.days < n_days:
         return False
-    
-    if not variables[0].isnumeric() or not variables[1].isnumeric():
-        return False
-    
-    if not variables[2].isnumeric() and "rc" not in variables[2] and "-" not in variables[2]:
-        return False
-    
     return True
 
-def query_release_tags(
-    page_count: int, page_size: int = 100
-):
-    get_docker_token()
-    repository = "rayproject/ray"
-    with open("release_tags.txt", "w") as f:
-        for page in range(page_count, 0, -1):
-            print("Querying page ", page)  # Replace with log
-            response = requests.get(
-                "https://hub.docker.com/v2/namespaces/rayproject/repositories/ray/tags",
-                params={"page": page, "page_size": 100},
-            )
-            # Parse tags from response
-            if "errors" in response.json():
-                print("Error: ", response.json()["errors"])  # Replace with log
-                continue
-            result = response.json()["results"]
-            tag_names = [tag["name"] for tag in result]
 
-            for tag in tag_names:
-                if _is_release_tag(tag):
-                    print(f"Adding {tag} to release tag list")
-                    f.write(tag + "\n")
+def _is_old_commit_tag(tag: str, recent_commit_short_shas: Set[str]) -> bool:
+    """
+    Check if tag is:
+    1. A commit tag
+    2. Not in the list of recent commit SHAs
+    """
+    commit_hash = tag.split("-")[0]
+    # Check and truncate if prefix is a release version
+    if "." in commit_hash:
+        variables = commit_hash.split(".")
+        if not _is_release_tag(".".join(variables[:-1])):
+            return False
+        commit_hash = variables[-1]
 
-def move_tags_to_aws_ecr(tags: list[str]):
+    if len(commit_hash) != 6 or commit_hash in recent_commit_short_shas:
+        return False
+
+    return True
+
+
+def _is_release_tag(tag: str, release_versions: Optional[List[str]] = None) -> bool:
     """
-    Move tags from Docker Hub to AWS ECR.
+    Check if tag is a release tag & is in the list of release versions.
+
+    Args:
+        tag: Docker tag name
+        release_versions: List of release versions. If None, don't filter by release version.
+    
+    Returns:
+        True if tag is a release tag and is in the list of release versions, False otherwise.
     """
-    def move_tag(tag: str):
-        subprocess.run(
-            ["crane", "cp", f"rayproject/ray:{tag}", f"029272617770.dkr.ecr.us-west-2.amazonaws.com/rayproject/ray:{tag}"]
+    variables = tag.split(".")
+    if len(variables) != 3 and "post1" not in tag:
+        return False
+    if not variables[0].isnumeric() or not variables[1].isnumeric():
+        return False
+    if (
+        not variables[2].isnumeric()
+        and "rc" not in variables[2]
+        and "-" not in variables[2]
+    ):
+        return False
+
+    if "-" in variables[2]:
+        variables[2] = variables[2].split("-")[0]
+    release_version = ".".join(variables)
+    if release_versions and release_version not in release_versions:
+        return False
+
+    return True
+
+
+def _call_crane_cp(tag: str, source: str, aws_ecr_repo: str):
+    try:
+        return subprocess.check_output(
+            ["crane", "cp", source, f"{aws_ecr_repo}:{tag}"],
+            stderr=subprocess.STDOUT,
+            text=True,
         )
-    for tag in tags:
-        move_tag(tag)
+    except subprocess.CalledProcessError as e:
+        return f"Error: {e.output}"
 
-def query_tags_to_delete(
-    page_count: int, commit_short_shas: Set[str], page_size: int = 100
-):
-    """
-    Query tags to delete from rayproject/ray repository.
-    """
-    get_docker_token()
-    repository = "rayproject/ray"
-    current_time = datetime.now(timezone.utc)
-    tags_to_delete = []
-    for page in range(1266,1200, -1):
-        print("Querying page ", page)  # Replace with log
-        print("Delete count: ", len(tags_to_delete))  # Replace with log
 
-        response = requests.get(
-            "https://hub.docker.com/v2/namespaces/rayproject/repositories/ray/tags",
-            params={"page": page, "page_size": 100},
-        )
-        if "errors" in response.json():
-            continue
-        result = response.json()["results"]
+def copy_tag_to_aws_ecr(tag: str, aws_ecr_repo: str) -> bool:
+    """
+    Copy tag from Docker Hub to AWS ECR.
+
+    Args:
+        tag: Docker tag name in format "namespace/repository:tag"
+    
+    Returns:
+        True if tag was copied successfully, False otherwise.
+    """
+    _, repo_tag = tag.split("/")
+    tag_name = repo_tag.split(":")[1]
+    logger.info(f"Copying from {tag} to {aws_ecr_repo}:{tag_name}......")
+    result = _call_crane_cp(tag=tag_name, source=tag, aws_ecr_repo=aws_ecr_repo)
+    if "Error" in result:
+        logger.info(f"Failed to copy {tag} to AWS ECR: {result}")
+        return False
+    logger.info(f"Copied {tag} to {aws_ecr_repo}:{tag_name}......")
+    return True
+
+
+def query_tags_from_docker_hub(
+    filter_func: Callable[[str], bool], namespace: str, repository: str, num_tags: int = 100
+) -> List[str]:
+    """
+    Query tags from Docker Hub repository with filter.
+    If Docker Hub API returns an error, the function will stop querying and return the current list of tags.
+
+    Args:
+        filter_func: Function to return whether tag should be included.
+        namespace: Docker namespace
+        repository: Docker repository
+        num_tags: Max number of tags to query
+    
+    Returns:
+        Sorted ist of tags from Docker Hub repository in format namespace/repository:tag.
+    """
+    filtered_tags = []
+    url = f"https://hub.docker.com/v2/namespaces/{namespace}/repositories/{repository}/tags?page=1&page_size=100"
+    token = get_docker_hub_auth_token()
+    headers = {
+        "Authorization": f"Bearer {token}",
+    }
+    tag_count = 0
+    while url:
+        response = requests.get(url, headers=headers)
+        if response.status_code != 200:
+            logger.info(f"Failed to query tags from Docker Hub: Error: {response.json()}")
+            logger.info(f"Querying stopped.")
+            return sorted([f"{namespace}/{repository}:{t}" for t in filtered_tags])
+    
+        response_json = response.json()
+        url = response_json["next"]
+        result = response_json["results"]
         tags = [tag["name"] for tag in result]
-        # Check if tag is in list of commit SHAs
-        commit_tags = [
-            tag
-            for tag in tags
-            if len(tag.split("-")[0]) == 6 and tag.split("-")[0] in commit_short_shas
-        ]
+        filtered_tags_page = list(filter(filter_func, tags))
 
-        for tag in commit_tags:
-            created_time = get_image_creation_time(repository, tag)
-            if created_time is None:
-                print(f"Failed to get creation time for {tag}")  # replace with log
-                continue
-            time_difference = current_time - created_time
-            if time_difference.days > 30:
-                print(f"Deleting {tag}")  # Replace with log
-                tags_to_delete.append(tag)
-            else:
-                return tags_to_delete
-    return tags_to_delete
+        # Add enough tags to not exceed num_tags
+        if tag_count + len(filtered_tags_page) > num_tags:
+            filtered_tags.extend(filtered_tags_page[: num_tags - tag_count])
+            break
+        filtered_tags.extend(filtered_tags_page)
+        tag_count += len(filtered_tags_page)
+    return sorted([f"{namespace}/{repository}:{t}" for t in filtered_tags])
 
+def _call_crane_ls(namespace: str, repository: str):
+    try:
+        return subprocess.check_output(
+            ["crane", "ls", f"{namespace}/{repository}"], text=True
+        )
+    except subprocess.CalledProcessError as e:
+        return f"Error: {e.output}"
 
-def main():
-    page_size = 100
-    # Get list of commit SHAs from at least 30 days ago
-    commit_shas = list_commit_shas()
-    print("Commit count: ", len(commit_shas))  # Replace with log
+def query_tags_from_docker_registry(namespace: str, repository: str) -> List[str]:
+    """
+    Query all repo tags from Docker Registry.
 
-    docker_tag_count = count_docker_tags()
-    print("Docker tag count: ", docker_tag_count)  # Replace with log
-
-    page_count = (docker_tag_count // page_size) + 1
-
-    #print(_is_release_tag("1.0.1.post1-gpu"))
-    #query_release_tags(page_count, page_size)
-    with open("release_tags_0213.txt", "r") as f:
-        release_tags = f.read().split("\n")
-    release_tags = set(release_tags)
-    release_tags = list(release_tags)
-    release_tags = sorted(release_tags)
-    print("Release tag count: ", len(release_tags))
-    with open("release_tags.txt", "w") as f:
-        f.write("\n".join(release_tags))
-
-    #move_tags_to_aws_ecr(important_tags)
-    # important_tags = query_important_tags(page_count, page_size)
-    # with open("important_tags.txt", "w") as f:
-    #     f.write("\n".join(important_tags))
-    # print("Page count: ", page_count)  # Replace with log
-    # tags_to_delete = query_tags_to_delete(page_count, commit_shas, page_size)
-    # print(len(tags_to_delete))
-    # with open("tags_to_delete.txt", "w") as f:
-    #     f.write("\n".join(tags_to_delete))
-    # delete_tags("rayproject", "ray", tags_to_delete)
+    Args:
+        namespace: Docker namespace
+        repository: Docker repository
+    
+    Returns:
+        List of tags from Docker Registry in format namespace/repository:tag.
+    """
+    get_docker_registry_auth_token(namespace=namespace, repository=repository)
+    result = _call_crane_ls(namespace=namespace, repository=repository)
+    if "Error" in result:
+        raise Exception(f"Failed to query tags from Docker Registry: {result}")
+    return [f"{namespace}/{repository}:{t}" for t in result.split("\n")]
 
 
-if __name__ == "__main__":
-    main()
+def backup_release_tags(
+    namespace: str, repository: str, release_versions: List[str], aws_ecr_repo: str
+) -> None:
+    """
+    Backup release tags to AWS ECR.
+
+    Args:
+        release_versions: List of release versions to backup
+        aws_ecr_repo: AWS ECR repository
+    """
+    docker_hub_tags = query_tags_from_docker_hub(
+        filter_func=lambda t: _is_release_tag(t, release_versions),
+        namespace=namespace,
+        repository=repository,
+    )
+    for t in docker_hub_tags:
+        copy_tag_to_aws_ecr(tag=t, aws_ecr_repo=aws_ecr_repo)
+
+
+def delete_old_commit_tags(namespace: str, repository: str, n_days: int, num_tags: int) -> None:
+    """
+    Delete old commit tags from Docker Hub with images that were created at least N days ago.
+
+    Args:
+        namespace: Docker namespace
+        repository: Docker repository
+        n_days: The threshold for deletion.
+            Tags with images created at least N days ago will be deleted.
+        num_tags: The max number of tags to delete.
+    """
+    docker_hub_tags = query_tags_from_docker_hub(
+        filter_func=lambda t: _is_old_commit_tag(
+            t, set(list_recent_commit_short_shas(n_days=n_days))
+        ),
+        namespace=namespace,
+        repository=repository,
+        num_tags=num_tags,
+    )
+    registry_tags = query_tags_from_docker_registry(
+        namespace=namespace, repository=repository
+    )
+    for t in docker_hub_tags:
+        if _safe_to_delete(tag=t, n_days=n_days, registry_tags=registry_tags):
+            delete_tag(tag=t)
