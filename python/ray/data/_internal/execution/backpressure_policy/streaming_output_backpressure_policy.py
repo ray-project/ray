@@ -3,6 +3,8 @@ from collections import defaultdict
 from typing import TYPE_CHECKING, Dict, Tuple
 
 import ray
+
+from ray._private.worker import wait
 from .backpressure_policy import BackpressurePolicy
 from ray.data._internal.dataset_logger import DatasetLogger
 
@@ -45,14 +47,14 @@ class StreamingOutputBackpressurePolicy(BackpressurePolicy):
 
         max_blocks_to_read_per_op: Dict["OpState", int] = {}
         for op, state in reversed(topology.items()):
-            max_bytes_to_read = resource_manager.get_op_limits(op).object_store_memory
-            if max_bytes_to_read == 0:
-                if (
-                    resource_manager._obj_store_output_buffers[op]
-                    + resource_manager._obj_store_next_op_input_buffers[op]
-                    == 0
-                ):
-                    max_bytes_to_read = 1
+            max_bytes_to_read = resource_manager._op_resource_limiter.max_task_outputs_to_fetch(op)
+            # if max_bytes_to_read == 0:
+            #     if (
+            #         resource_manager._obj_store_output_buffers[op]
+            #         + resource_manager._obj_store_next_op_input_buffers[op]
+            #         == 0
+            #     ):
+            #         max_bytes_to_read = 1
             max_blocks_to_read_per_op[state] = max_bytes_to_read
 
         return max_blocks_to_read_per_op
