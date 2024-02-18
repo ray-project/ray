@@ -162,6 +162,35 @@ class StuckRequestedInstanceUpdater(IInstanceUpdater):
         )
 
 
+class StuckRayStopRequestedInstanceUpdater(IInstanceUpdater):
+    def __init__(self, timeout_s: int):
+        self.timeout_s = timeout_s
+
+    def make_update(self, instance: IMInstance) -> Optional[IMInstanceUpdateEvent]:
+        all_request_times_ns = sorted(
+            InstanceUtil.get_status_transition_times_ns(
+                instance, select_instance_status=IMInstance.RAY_STOP_REQUESTED
+            )
+        )
+        assert len(all_request_times_ns) >= 1, (
+            f"instance {instance.instance_id} has {len(all_request_times_ns)} "
+            f"{IMInstance.InstanceStatus.Name(IMInstance.RAY_STOP_REQUESTED)} status"
+        )
+        # Retry the stop if we have waited for too long.
+        last_request_time_ns = all_request_times_ns[-1]
+        if time.time_ns() - last_request_time_ns <= self.timeout_s * 1e9:
+            # We have not waited for too long. Be patient.
+            return None
+
+        # Transition back to RAY_RUNNING if we have waited for too long.
+        return IMInstanceUpdateEvent(
+            instance_id=instance.instance_id,
+            new_instance_status=IMInstance.RAY_RUNNING,
+            details=f"Timeout={self.timeout_s}s at status "
+            f"{IMInstance.InstanceStatus.Name(IMInstance.RAY_STOP_REQUESTED)}",
+        )
+
+
 class Reconciler:
     """
     A singleton class that reconciles the instance states of the instance manager
