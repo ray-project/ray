@@ -215,6 +215,7 @@ class InstanceManager:
                     details=err_msg,
                 )
             instance.cloud_instance_id = update.cloud_instance_id
+            # FIXME: this should probably be also set for QUEUED instance.
             instance.node_kind = update.node_kind
             instance.instance_type = update.instance_type
         # FIX
@@ -298,7 +299,9 @@ class InstanceManager:
         Raises:
             InvalidInstanceUpdateError: If the update is invalid.
         """
-        if not InstanceUtil.set_status(instance, update.new_instance_status):
+        if not InstanceUtil.set_status(
+            instance, update.new_instance_status, update.details
+        ):
             raise InvalidInstanceUpdateError(
                 instance_id=update.instance_id,
                 cur_status=instance.status,

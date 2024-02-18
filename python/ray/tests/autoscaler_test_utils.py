@@ -8,7 +8,14 @@ from ray.autoscaler.node_provider import NodeProvider
 
 class MockNode:
     def __init__(
-        self, node_id, tags, node_config, node_type, resources, labels, unique_ips=False
+        self,
+        node_id,
+        tags,
+        node_config,
+        node_type,
+        unique_ips=False,
+        resources=None,
+        labels=None,
     ):
         self.node_id = str(node_id)
         self.state = "pending"
@@ -23,8 +30,8 @@ class MockNode:
         self.created_in_main_thread = (
             threading.current_thread() is threading.main_thread()
         )
-        self.resources = resources
-        self.labels = labels
+        self.resources = resources or {}
+        self.labels = labels or {}
 
     def matches(self, tags):
         for k, v in tags.items():
@@ -229,10 +236,14 @@ class MockProvider(NodeProvider):
             return self.mock_nodes[node_id].external_ip
 
     def create_node(
-        self, node_config: Dict[str, Any], tags: Dict[str, str], count: int
+        self,
+        node_config: Dict[str, Any],
+        tags: Dict[str, str],
+        count: int,
+        _skip_wait=False,
     ) -> Dict[str, Any]:
         return self.create_node_with_resources_and_labels(
-            node_config, tags, count, {}, {}
+            node_config, tags, count, {}, {}, _skip_wait=_skip_wait
         )
 
     def create_node_with_resources_and_labels(

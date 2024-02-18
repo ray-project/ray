@@ -1,5 +1,3 @@
-import os
-
 from ray.tune.registry import register_env
 from ray.rllib.connectors.env_to_module import (
     AddLastObservationToBatch,
@@ -30,18 +28,11 @@ if __name__ == "__main__":
 
     # Define env-to-module-connector pipeline for the new stack.
     def _env_to_module_pipeline(env):
-        obs = (
-            env.single_observation_space
-            if args.num_agents == 0
-            else env.observation_space
-        )
-        act = env.single_action_space if args.num_agents == 0 else env.action_space
-        c1 = AddLastObservationToBatch(obs, act)
-        c2 = FlattenObservations(
-            c1.observation_space, c1.action_space, multi_agent=args.num_agents > 0
-        )
-        c3 = WriteObservationsToEpisodes(c2.observation_space, c2.action_space)
-        return [c1, c2, c3]
+        return [
+            AddLastObservationToBatch(),
+            FlattenObservations(multi_agent=args.num_agents > 0),
+            WriteObservationsToEpisodes(),
+        ]
 
     # Register our environment with tune.
     if args.num_agents > 0:
@@ -62,10 +53,16 @@ if __name__ == "__main__":
         .experimental(_enable_new_api_stack=args.enable_new_api_stack)
         .environment("env")
         .framework(args.framework)
+        .resources(
+            num_gpus=args.num_gpus,  # old stack
+            num_learner_workers=args.num_gpus,  # new stack
+            num_gpus_per_learner_worker=1 if args.num_gpus else 0,
+            num_cpus_for_local_worker=1,
+        )
         .rollouts(
             env_to_module_connector=_env_to_module_pipeline,
             num_rollout_workers=args.num_env_runners,
-            # Setup the correct env-runner to use depending on
+            # Set up the correct env-runner to use depending on
             # old-stack/new-stack and multi-agent settings.
             env_runner_cls=(
                 None
@@ -91,8 +88,6 @@ if __name__ == "__main__":
                 ),
             ),
         )
-        # Use GPUs iff `RLLIB_NUM_GPUS` env var set to > 0.
-        .resources(num_gpus=int(os.environ.get("RLLIB_NUM_GPUS", "0")))
     )
 
     # Add a simple multi-agent setup.

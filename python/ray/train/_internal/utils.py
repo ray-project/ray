@@ -85,6 +85,45 @@ def update_env_vars(env_vars: Dict[str, Any]):
     os.environ.update(sanitized)
 
 
+def count_required_parameters(fn: Callable) -> int:
+    """Counts the number of required parameters of a function.
+
+    NOTE: *args counts as 1 required parameter.
+
+    Examples
+    --------
+
+    >>> def fn(a, b, /, c, *args, d=1, e=2, **kwargs):
+    ...    pass
+    >>> count_required_parameters(fn)
+    4
+
+    >>> fn = lambda: 1
+    >>> count_required_parameters(fn)
+    0
+
+    >>> def fn(config, a, b=1, c=2):
+    ...     pass
+    >>> from functools import partial
+    >>> count_required_parameters(partial(fn, a=0))
+    1
+    """
+    params = inspect.signature(fn).parameters.values()
+
+    positional_param_kinds = {
+        inspect.Parameter.POSITIONAL_ONLY,
+        inspect.Parameter.POSITIONAL_OR_KEYWORD,
+        inspect.Parameter.VAR_POSITIONAL,
+    }
+    return len(
+        [
+            p
+            for p in params
+            if p.default == inspect.Parameter.empty and p.kind in positional_param_kinds
+        ]
+    )
+
+
 def construct_train_func(
     train_func: Union[Callable[[], T], Callable[[Dict[str, Any]], T]],
     config: Optional[Dict[str, Any]],
@@ -105,8 +144,7 @@ def construct_train_func(
     Raises:
         ValueError: if the input ``train_func`` is invalid.
     """
-    signature = inspect.signature(train_func)
-    num_params = len(signature.parameters)
+    num_required_params = count_required_parameters(train_func)
 
     if discard_returns:
         # Discard any returns from the function so that
@@ -123,13 +161,13 @@ def construct_train_func(
     else:
         wrapped_train_func = train_func
 
-    if num_params > 1:
+    if num_required_params > 1:
         err_msg = (
-            f"{fn_arg_name} should take in 0 or 1 arguments, but it accepts "
-            f"{num_params} arguments instead."
+            f"{fn_arg_name} should take in 0 or 1 required arguments, but it accepts "
+            f"{num_required_params} required arguments instead."
         )
         raise ValueError(err_msg)
-    elif num_params == 1:
+    elif num_required_params == 1:
         config = {} if config is None else config
 
         @functools.wraps(wrapped_train_func)

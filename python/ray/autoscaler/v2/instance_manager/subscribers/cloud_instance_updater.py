@@ -1,7 +1,6 @@
 import logging
-import time
+import uuid
 from collections import defaultdict
-from concurrent.futures import ThreadPoolExecutor
 from typing import List
 
 from ray.autoscaler.v2.instance_manager.instance_manager import (
@@ -22,6 +21,8 @@ class CloudInstanceUpdater(InstanceUpdatedSubscriber):
 
     It requests the cloud instance provider to terminate instances when
     there are new instance terminations (with TERMINATING status change).
+
+    The cloud instance APIs are async and non-blocking.
     """
 
     def __init__(
@@ -29,7 +30,6 @@ class CloudInstanceUpdater(InstanceUpdatedSubscriber):
         cloud_provider: ICloudInstanceProvider,
     ) -> None:
         self._cloud_provider = cloud_provider
-        self._executor = ThreadPoolExecutor(max_workers=1)
 
     def notify(self, events: List[InstanceUpdateEvent]) -> None:
         new_requests = [
@@ -40,8 +40,8 @@ class CloudInstanceUpdater(InstanceUpdatedSubscriber):
             for event in events
             if event.new_instance_status == Instance.TERMINATING
         ]
-        self._executor.submit(self._launch_new_instances, new_requests)
-        self._executor.submit(self._terminate_instances, new_terminations)
+        self._launch_new_instances(new_requests)
+        self._terminate_instances(new_terminations)
 
     def _terminate_instances(self, new_terminations: List[InstanceUpdateEvent]):
         """
@@ -55,9 +55,12 @@ class CloudInstanceUpdater(InstanceUpdatedSubscriber):
             return
 
         # Terminate the instances.
-        # FIX
-        instance_ids = [event.cloud_instance_id for event in new_terminations]
-        self._cloud_provider.terminate(ids=instance_ids, request_id=str(time.time_ns()))
+        cloud_instance_ids = [event.cloud_instance_id for event in new_terminations]
+
+        # This is an async call.
+        self._cloud_provider.terminate(
+            ids=cloud_instance_ids, request_id=str(uuid.uuid4())
+        )
 
     def _launch_new_instances(self, new_requests: List[InstanceUpdateEvent]):
         """
