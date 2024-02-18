@@ -23,11 +23,6 @@ from ray._private.test_utils import SignalActor
 # with ray.
 import setproctitle  # noqa
 
-try:
-    import pytest_timeout
-except ImportError:
-    pytest_timeout = None
-
 
 @pytest.mark.parametrize("set_enable_auto_connect", [True, False], indirect=True)
 def test_caching_actors(shutdown_only, set_enable_auto_connect):
