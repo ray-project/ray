@@ -960,8 +960,13 @@ Status PlasmaClient::GetExperimentalMutableObject(
   // First make sure the object is in scope. The ObjectBuffer will keep the
   // value pinned in the plasma store.
   std::vector<ObjectBuffer> object_buffers;
-  RAY_RETURN_NOT_OK(
-      impl_->Get({object_id}, -1, &object_buffers, /*is_from_worker=*/true));
+  RAY_RETURN_NOT_OK(impl_->Get(
+      {object_id}, /*timeout_ms=*/0, &object_buffers, /*is_from_worker=*/true));
+  if (!object_buffers[0].data) {
+    return Status::Invalid(
+        "Experimental mutable object must be in the local object store to register as "
+        "reader or writer");
+  }
   // Now that the value is pinned, get the object as a MutableObject, which is
   // used to implement channels. The returned MutableObject will pin the
   // object in the local object store.
