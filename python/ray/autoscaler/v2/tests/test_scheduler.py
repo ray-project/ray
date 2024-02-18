@@ -14,6 +14,7 @@ from ray.autoscaler.v2.scheduler import (
     SchedulingNodeStatus,
     SchedulingReply,
     SchedulingRequest,
+    logger,
 )
 from ray.autoscaler.v2.schema import AutoscalerInstance, NodeType
 from ray.autoscaler.v2.tests.util import make_autoscaler_instance
@@ -22,20 +23,28 @@ from ray.core.generated.autoscaler_pb2 import (
     ClusterResourceConstraint,
     GangResourceRequest,
     NodeState,
+    NodeStatus,
     ResourceRequest,
 )
-from ray.core.generated.instance_manager_pb2 import Instance, TerminationRequest
+from ray.core.generated.instance_manager_pb2 import (
+    Instance,
+    NodeKind,
+    TerminationRequest,
+)
 
 ResourceMap = Dict[str, float]
+
+logger.setLevel("DEBUG")
 
 
 def sched_request(
     node_type_configs: Dict[NodeType, NodeTypeConfig],
     max_num_nodes: Optional[int] = None,
     resource_requests: Optional[List[ResourceRequest]] = None,
-    gang_resource_requests: Optional[List[GangResourceRequest]] = None,
-    cluster_resource_constraints: Optional[List[ClusterResourceConstraint]] = None,
+    gang_resource_requests: Optional[List[List[ResourceRequest]]] = None,
+    cluster_resource_constraints: Optional[List[ResourceRequest]] = None,
     instances: Optional[List[AutoscalerInstance]] = None,
+    idle_timeout_s: Optional[int] = None,
 ) -> SchedulingRequest:
 
     if resource_requests is None:
@@ -49,11 +58,20 @@ def sched_request(
 
     return SchedulingRequest(
         resource_requests=ResourceRequestUtil.group_by_count(resource_requests),
-        gang_resource_requests=gang_resource_requests,
-        cluster_resource_constraints=cluster_resource_constraints,
+        gang_resource_requests=[
+            GangResourceRequest(requests=reqs) for reqs in gang_resource_requests
+        ],
+        cluster_resource_constraints=[
+            ClusterResourceConstraint(
+                min_bundles=ResourceRequestUtil.group_by_count(
+                    cluster_resource_constraints
+                )
+            )
+        ],
         current_instances=instances,
         node_type_configs=node_type_configs,
         max_num_nodes=max_num_nodes,
+        idle_timeout_s=idle_timeout_s,
     )
 
 
@@ -882,6 +900,444 @@ def test_multi_node_types_score_with_gpu(monkeypatch):
         reply = scheduler.schedule(request)
         to_launch, _ = _launch_and_terminate(reply)
         assert sorted(to_launch) == sorted({"type_gpu": 1})
+
+
+def test_resource_constrains():
+    scheduler = ResourceDemandScheduler()
+
+    node_type_configs = {
+        "type_cpu": NodeTypeConfig(
+            name="type_cpu",
+            resources={"CPU": 1},
+            min_worker_nodes=1,
+            max_worker_nodes=5,
+        ),
+        "type_gpu": NodeTypeConfig(
+            name="type_gpu",
+            resources={"CPU": 1, "GPU": 2},
+            min_worker_nodes=0,
+            max_worker_nodes=1,
+        ),
+    }
+
+    # Resource constraints should not launch extra with min_nodes
+    request = sched_request(
+        node_type_configs=node_type_configs,
+        cluster_resource_constraints=[
+            ResourceRequestUtil.make({"CPU": 1}),
+        ],
+    )
+    reply = scheduler.schedule(request)
+    to_launch, _ = _launch_and_terminate(reply)
+    assert sorted(to_launch) == sorted({"type_cpu": 1})
+
+    # Constraints should launch extra nodes.
+    request = sched_request(
+        node_type_configs=node_type_configs,
+        cluster_resource_constraints=[
+            ResourceRequestUtil.make({"CPU": 1}),
+            ResourceRequestUtil.make({"CPU": 1}),
+            ResourceRequestUtil.make({"GPU": 1}),
+        ],
+    )
+    reply = scheduler.schedule(request)
+    to_launch, _ = _launch_and_terminate(reply)
+    assert sorted(to_launch) == sorted({"type_cpu": 1, "type_gpu": 1})
+
+    # Resource constraints should not launch extra with max_nodes
+    # fails to atomically ensure constraints.
+    request = sched_request(
+        node_type_configs=node_type_configs,
+        cluster_resource_constraints=[
+            ResourceRequestUtil.make({"CPU": 1}),
+            ResourceRequestUtil.make({"CPU": 1}),
+            ResourceRequestUtil.make({"GPU": 2}),
+            ResourceRequestUtil.make({"GPU": 2}),
+        ],
+    )
+    reply = scheduler.schedule(request)
+    to_launch, _ = _launch_and_terminate(reply)
+    assert sorted(to_launch) == sorted({"type_cpu": 1})
+    assert len(reply.infeasible_cluster_resource_constraints) == 1
+
+
+def test_outdated_nodes():
+    """
+    Test that nodes with outdated node configs are terminated.
+    """
+    scheduler = ResourceDemandScheduler()
+
+    node_type_configs = {
+        "type_cpu": NodeTypeConfig(
+            name="type_cpu",
+            resources={"CPU": 1},
+            min_worker_nodes=2,
+            max_worker_nodes=5,
+            launch_config_hash="hash1",
+        ),
+        "head_node": NodeTypeConfig(
+            name="head_node",
+            resources={"CPU": 0},
+            launch_config_hash="hash2",
+            min_worker_nodes=0,
+            max_worker_nodes=1,
+        ),
+    }
+
+    request = sched_request(
+        node_type_configs=node_type_configs,
+        instances=[
+            make_autoscaler_instance(
+                im_instance=Instance(
+                    instance_type="type_cpu",
+                    status=Instance.RAY_RUNNING,
+                    launch_config_hash="hash2",
+                    instance_id="i-1",
+                    node_id="r-1",
+                ),
+                ray_node=NodeState(
+                    ray_node_type_name="type_cpu",
+                    available_resources={"CPU": 1},
+                    total_resources={"CPU": 1},
+                    node_id=b"r-1",
+                ),
+                cloud_instance_id="c-1",
+            ),
+            make_autoscaler_instance(
+                im_instance=Instance(
+                    instance_type="type_cpu",
+                    status=Instance.RAY_RUNNING,
+                    launch_config_hash="hash1",  # matched
+                    instance_id="i-2",  # FIXME
+                    node_id="r-2",
+                ),
+                ray_node=NodeState(
+                    ray_node_type_name="type_cpu",
+                    available_resources={"CPU": 1},
+                    total_resources={"CPU": 1},
+                    node_id=b"r-2",
+                ),
+                cloud_instance_id="c-2",
+            ),
+            make_autoscaler_instance(
+                im_instance=Instance(
+                    instance_type="head_node",
+                    status=Instance.RAY_RUNNING,
+                    launch_config_hash="hash1",  # mismatched -> but don't terminate
+                    instance_id="i-3",
+                    node_kind=NodeKind.HEAD,
+                    node_id="r-3",
+                ),
+                ray_node=NodeState(
+                    ray_node_type_name="head_node",
+                    available_resources={"CPU": 0},
+                    total_resources={"CPU": 0},
+                    node_id=b"r-3",
+                ),
+                cloud_instance_id="c-3",
+            ),
+        ],
+    )
+
+    reply = scheduler.schedule(request)
+    to_launch, to_terminate = _launch_and_terminate(reply)
+    assert to_terminate == [("i-1", "r-1", TerminationRequest.Cause.OUTDATED)]
+    assert to_launch == {"type_cpu": 1}  # Launch 1 to replace the outdated node.
+
+
+@pytest.mark.parametrize("idle_timeout_s", [1, 2, 10])
+@pytest.mark.parametrize("has_resource_constraints", [True, False])
+def test_idle_termination(idle_timeout_s, has_resource_constraints):
+    """
+    Test that idle nodes are terminated.
+    """
+    scheduler = ResourceDemandScheduler()
+
+    node_type_configs = {
+        "type_cpu": NodeTypeConfig(
+            name="type_cpu",
+            resources={"CPU": 1},
+            min_worker_nodes=0,
+            max_worker_nodes=5,
+            launch_config_hash="hash1",
+        ),
+        "head_node": NodeTypeConfig(
+            name="head_node",
+            resources={"CPU": 0},
+            launch_config_hash="hash2",
+            min_worker_nodes=0,
+            max_worker_nodes=1,
+        ),
+    }
+
+    idle_time_s = 5
+    constraints = (
+        []
+        if not has_resource_constraints
+        else [ResourceRequestUtil.make({"CPU": 1})] * 2
+    )
+
+    request = sched_request(
+        node_type_configs=node_type_configs,
+        instances=[
+            make_autoscaler_instance(
+                im_instance=Instance(
+                    instance_type="type_cpu",
+                    status=Instance.RAY_RUNNING,
+                    launch_config_hash="hash1",
+                    instance_id="i-1",
+                ),
+                ray_node=NodeState(
+                    node_id=b"r-1",
+                    ray_node_type_name="type_cpu",
+                    available_resources={"CPU": 0},
+                    total_resources={"CPU": 1},
+                    idle_duration_ms=0,  # Non idle
+                    status=NodeStatus.RUNNING,
+                ),
+                cloud_instance_id="c-1",
+            ),
+            make_autoscaler_instance(
+                im_instance=Instance(
+                    instance_id="i-2",
+                    instance_type="type_cpu",
+                    status=Instance.RAY_RUNNING,
+                    launch_config_hash="hash1",
+                ),
+                ray_node=NodeState(
+                    ray_node_type_name="type_cpu",
+                    node_id=b"r-2",
+                    available_resources={"CPU": 1},
+                    total_resources={"CPU": 1},
+                    idle_duration_ms=idle_time_s * 1000,
+                    status=NodeStatus.IDLE,
+                ),
+                cloud_instance_id="c-2",
+            ),
+            make_autoscaler_instance(
+                im_instance=Instance(
+                    instance_id="i-3",
+                    instance_type="head_node",
+                    status=Instance.RAY_RUNNING,
+                    launch_config_hash="hash2",
+                    node_kind=NodeKind.HEAD,
+                ),
+                ray_node=NodeState(
+                    ray_node_type_name="head_node",
+                    node_id=b"r-3",
+                    available_resources={"CPU": 0},
+                    total_resources={"CPU": 0},
+                    idle_duration_ms=999 * 1000,  # idle
+                    status=NodeStatus.IDLE,
+                ),
+                cloud_instance_id="c-3",
+            ),
+        ],
+        idle_timeout_s=idle_timeout_s,
+        cluster_resource_constraints=constraints,
+    )
+
+    reply = scheduler.schedule(request)
+    _, to_terminate = _launch_and_terminate(reply)
+    if idle_timeout_s <= idle_time_s and not has_resource_constraints:
+        assert len(to_terminate) == 1
+        assert to_terminate == [("i-2", "r-2", TerminationRequest.Cause.IDLE)]
+    else:
+        assert len(to_terminate) == 0
+
+
+def test_gang_scheduling():
+    """
+    Test that gang scheduling works.
+    """
+    scheduler = ResourceDemandScheduler()
+    AFFINITY = ResourceRequestUtil.PlacementConstraintType.AFFINITY
+    ANTI_AFFINITY = ResourceRequestUtil.PlacementConstraintType.ANTI_AFFINITY
+
+    node_type_configs = {
+        "type_cpu": NodeTypeConfig(
+            name="type_cpu",
+            resources={"CPU": 2},
+            min_worker_nodes=0,
+            max_worker_nodes=5,
+            launch_config_hash="hash1",
+        )
+    }
+
+    request = sched_request(
+        node_type_configs=node_type_configs,
+        gang_resource_requests=[
+            [
+                ResourceRequestUtil.make({"CPU": 1}, [(AFFINITY, "pg", "")]),
+                ResourceRequestUtil.make({"CPU": 1}, [(AFFINITY, "pg", "")]),
+            ]
+        ],
+    )
+
+    reply = scheduler.schedule(request)
+    to_launch, _ = _launch_and_terminate(reply)
+    # Should be grouped on the same node.
+    assert sorted(to_launch) == sorted({"type_cpu": 1})
+
+    request = sched_request(
+        node_type_configs=node_type_configs,
+        gang_resource_requests=[
+            [
+                ResourceRequestUtil.make({"CPU": 1}, [(ANTI_AFFINITY, "pg", "")]),
+                ResourceRequestUtil.make({"CPU": 1}, [(ANTI_AFFINITY, "pg", "")]),
+            ]
+        ],
+    )
+    reply = scheduler.schedule(request)
+    to_launch, _ = _launch_and_terminate(reply)
+    # Should be placed on different nodes.
+    assert sorted(to_launch) == sorted({"type_cpu": 2})
+
+    # Atomic gang scheduling
+    request = sched_request(
+        node_type_configs=node_type_configs,
+        gang_resource_requests=[
+            [
+                # Couldn't fit on a node.
+                ResourceRequestUtil.make({"CPU": 3}, [(AFFINITY, "pg", "")]),
+                ResourceRequestUtil.make({"CPU": 3}, [(AFFINITY, "pg", "")]),
+            ]
+        ],
+    )
+    reply = scheduler.schedule(request)
+    to_launch, _ = _launch_and_terminate(reply)
+    assert to_launch == {}
+    assert len(reply.infeasible_gang_resource_requests) == 1
+
+
+def test_gang_scheduling_with_others():
+    """
+    Test that a mix of the various demands:
+    - resource requests from tasks/actors
+    - gang requests from placement groups
+    - cluster resource constraints
+    - min/max worker counts
+    - existing nodes.
+    """
+    scheduler = ResourceDemandScheduler()
+    node_type_configs = {
+        "type_1": NodeTypeConfig(
+            name="type_1",
+            resources={"CPU": 4},
+            min_worker_nodes=2,
+            max_worker_nodes=4,
+            launch_config_hash="hash1",
+        ),
+        "type_2": NodeTypeConfig(
+            name="type_2",
+            resources={"CPU": 1, "GPU": 1},
+            min_worker_nodes=0,
+            max_worker_nodes=10,
+            launch_config_hash="hash2",
+        ),
+    }
+
+    # Placement constraints
+    AFFINITY = ResourceRequestUtil.PlacementConstraintType.AFFINITY
+    ANTI_AFFINITY = ResourceRequestUtil.PlacementConstraintType.ANTI_AFFINITY
+    gang_requests = [
+        [
+            ResourceRequestUtil.make({"CPU": 2}, [(ANTI_AFFINITY, "ak", "av")]),
+            ResourceRequestUtil.make({"CPU": 2}, [(ANTI_AFFINITY, "ak", "av")]),
+            ResourceRequestUtil.make({"CPU": 2}, [(ANTI_AFFINITY, "ak", "av")]),
+            ResourceRequestUtil.make({"CPU": 2}, [(ANTI_AFFINITY, "ak", "av")]),
+        ],
+        [
+            ResourceRequestUtil.make({"CPU": 3}, [(AFFINITY, "c", "c1")]),
+            ResourceRequestUtil.make({"CPU": 3}, [(AFFINITY, "c", "c1")]),
+        ],
+        [
+            ResourceRequestUtil.make({"CPU": 1}),
+            ResourceRequestUtil.make({"CPU": 1}),
+            ResourceRequestUtil.make({"CPU": 1}),
+        ],
+    ]
+
+    # Resource requests
+    resource_requests = [
+        ResourceRequestUtil.make({"CPU": 2}),
+        ResourceRequestUtil.make({"GPU": 1, "CPU": 1}),
+        ResourceRequestUtil.make({"GPU": 1}),
+    ]
+
+    # Cluster constraints
+    cluster_constraints = [ResourceRequestUtil.make({"CPU": 1})] * 10
+
+    instances = [
+        make_autoscaler_instance(
+            im_instance=Instance(
+                instance_type="type_1",
+                status=Instance.RAY_RUNNING,
+                launch_config_hash="hash1",
+                instance_id="i-1",
+            ),
+            ray_node=NodeState(
+                node_id=b"r-1",
+                ray_node_type_name="type_1",
+                available_resources={"CPU": 2},
+                total_resources={"CPU": 4},
+                idle_duration_ms=0,
+                status=NodeStatus.RUNNING,
+            ),
+            cloud_instance_id="c-1",
+        ),
+        make_autoscaler_instance(
+            im_instance=Instance(
+                instance_type="type_2",
+                status=Instance.RAY_RUNNING,
+                launch_config_hash="hash2",
+                instance_id="i-2",
+            ),
+            ray_node=NodeState(
+                node_id=b"r-2",
+                ray_node_type_name="type_2",
+                available_resources={"CPU": 1, "GPU": 1},
+                total_resources={"CPU": 1, "GPU": 1},
+                idle_duration_ms=0,
+                status=NodeStatus.RUNNING,
+            ),
+            cloud_instance_id="c-2",
+        ),
+    ]
+
+    request = sched_request(
+        node_type_configs=node_type_configs,
+        gang_resource_requests=gang_requests,
+        resource_requests=resource_requests,
+        cluster_resource_constraints=cluster_constraints,
+        instances=instances,
+        idle_timeout_s=999,
+    )
+    # Calculate the expected number of nodes to launch:
+    # - 1 type_1, 1 type_2 to start with => CPU: 2/5, GPU: 1/1
+    # - added 1 type_1 for minimal request -> +1 type_1
+    # ==> 2 type_1, 1 type_2 (CPU: 6/9, GPU: 1/1)
+    # - enforce cluster constraint (10 CPU) -> +1 type_1, CPU: 10/13, GPU: 1/1
+    # ==> 3 type_1, 1 type_2 (CPU: 10/13, GPU: 1/1)
+    # - sched gang requests:
+    #   - anti affinity (8CPU) => +1 type_1, CPU: 6/17, GPU: 1/1
+    #   - no constraint (3CPU) => CPU: 3/17, GPU: 1/1
+    #   - affinity (not feasible)
+    # ==> 4 type_1, 1 type_2 (CPU: 3/17, GPU: 1/1)
+    # - sched resource requests:
+    #   - 2CPU => CPU: 1/17, GPU: 1/1
+    #   - 1GPU, 1CPU => CPU: 0/17, GPU: 0/1
+    #   - 1GPU => adding a new type_2
+    # ==> 4 type_1, 2 type_2 (CPU: 0/17, GPU: 0/2)
+    # Therefore:
+    # - added nodes: 3 type_1, 1 type_2
+    # - infeasible: 1 gang request, 1 resource request
+    expected_to_launch = {"type_1": 3, "type_2": 1}
+    reply = scheduler.schedule(request)
+    to_launch, _ = _launch_and_terminate(reply)
+    assert sorted(to_launch) == sorted(expected_to_launch)
+    assert len(reply.infeasible_gang_resource_requests) == 1
+    assert len(reply.infeasible_resource_requests) == 0
 
 
 if __name__ == "__main__":

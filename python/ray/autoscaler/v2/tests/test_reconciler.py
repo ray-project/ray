@@ -264,8 +264,6 @@ class TestReconciler:
                 count=1,  # The request failed.
                 node_type="type-2",
                 timestamp_ns=1,
-                exception=None,
-                details="nooooo",
             )
         ]
 
@@ -318,8 +316,6 @@ class TestReconciler:
             TerminateNodeError(
                 cloud_instance_id="c-2",
                 timestamp_ns=1,
-                exception=None,
-                details="nooooo",
                 request_id="t1",
             )
         ]
@@ -1051,7 +1047,7 @@ class TestReconciler:
                     ray_node_id="r-1",
                     instance_id="i-1",
                     cause=TerminationRequest.Cause.IDLE,
-                    idle_time_ms=1000,
+                    idle_duration_ms=1000,
                 )
             ],
             infeasible_gang_resource_requests=[

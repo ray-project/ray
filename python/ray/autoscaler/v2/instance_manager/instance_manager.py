@@ -215,6 +215,7 @@ class InstanceManager:
                     details=err_msg,
                 )
             instance.cloud_instance_id = update.cloud_instance_id
+            # FIXME: this should probably be also set for QUEUED instance.
             instance.node_kind = update.node_kind
             instance.instance_type = update.instance_type
         elif update.new_instance_status == Instance.TERMINATED:
