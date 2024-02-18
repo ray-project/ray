@@ -8,6 +8,7 @@ import random
 import string
 import time
 import traceback
+import uuid
 from abc import ABC, abstractmethod
 from decimal import ROUND_HALF_UP, Decimal
 from enum import Enum
@@ -542,3 +543,7 @@ def get_capacity_adjusted_num_replicas(
         rounding=ROUND_HALF_UP
     )
     return max(1, int(rounded_adjusted_num_replicas))
+
+
+def generate_request_id() -> str:
+    return str(uuid.uuid4())

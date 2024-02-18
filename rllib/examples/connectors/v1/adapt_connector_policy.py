@@ -11,7 +11,7 @@ from typing import Dict
 from ray.rllib.connectors.connector import ConnectorContext
 from ray.rllib.connectors.action.lambdas import register_lambda_action_connector
 from ray.rllib.connectors.agent.lambdas import register_lambda_agent_connector
-from ray.rllib.examples.connectors.prepare_checkpoint import (
+from ray.rllib.examples.connectors.v1.prepare_checkpoint import (
     # For demo purpose only. Would normally not need this.
     create_appo_cartpole_checkpoint,
 )

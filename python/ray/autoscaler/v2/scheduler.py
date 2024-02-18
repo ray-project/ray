@@ -7,8 +7,7 @@ from dataclasses import dataclass, field
 from enum import Enum
 from typing import Dict, List, Optional, Tuple
 
-from google.protobuf.json_format import MessageToDict
-
+from ray._private.protobuf_compat import message_to_dict
 from ray.autoscaler._private.constants import AUTOSCALER_CONSERVE_GPU_NODES
 from ray.autoscaler._private.resource_demand_scheduler import (
     UtilizationScore,
@@ -357,7 +356,7 @@ class SchedulingNode:
             instance_id=self.im_instance_id,
             ray_node_id=self.ray_node_id,
             idle_duration_ms=self.idle_duration_ms,
-            termination_request=str(MessageToDict(self.termination_request))
+            termination_request=str(message_to_dict(self.termination_request))
             if self.termination_request
             else None,
             status=self.status,
@@ -368,9 +367,11 @@ class SchedulingNode:
             ),
             labels=self.labels,
             launch_reason=self.launch_reason,
-            sched_requests="|".join(str(MessageToDict(r)) for r in self.sched_requests),
+            sched_requests="|".join(
+                str(message_to_dict(r)) for r in self.sched_requests
+            ),
             sched_constraints="|".join(
-                str(MessageToDict(r)) for r in self.sched_constraints
+                str(message_to_dict(r)) for r in self.sched_constraints
             ),
         )
 
@@ -1143,8 +1144,6 @@ class ResourceDemandScheduler(IResourceScheduler):
             )
             if best_node is None:
                 break
-
-            logger.info("Adding new node of type {}.".format(best_node.node_type))
 
             target_nodes.append(best_node)
             # Update the node pool if a node with the same node type of the
