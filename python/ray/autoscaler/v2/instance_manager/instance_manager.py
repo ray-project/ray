@@ -218,9 +218,6 @@ class InstanceManager:
             # FIXME: this should probably be also set for QUEUED instance.
             instance.node_kind = update.node_kind
             instance.instance_type = update.instance_type
-        # FIX
-        # elif update.new_instance_status == Instance.TERMINATED:
-        #     instance.cloud_instance_id = ""
         elif update.new_instance_status == Instance.RAY_RUNNING:
             if not update.ray_node_id:
                 raise InvalidInstanceUpdateError(

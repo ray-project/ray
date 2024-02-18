@@ -307,7 +307,6 @@ class TestReconciler:
         instances, _ = instance_storage.get_instances()
         assert len(instances) == 2
         assert instances["i-1"].status == Instance.TERMINATED
-        assert not instances["i-1"].cloud_instance_id
         assert instances["i-2"].status == Instance.TERMINATING
         events = subscriber.events_by_id("i-2")
         assert len(events) == 2

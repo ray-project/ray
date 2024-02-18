@@ -285,7 +285,7 @@ class Reconciler:
         )
         logger.info(
             "Initializing head node with {}.".format(
-                MessageToDict(updates[head_node_instance_id])
+                message_to_dict(updates[head_node_instance_id])
             )
         )
         instances, version = Reconciler._get_im_instances(instance_manager)
@@ -822,10 +822,12 @@ class Reconciler:
             ValueError: If the ray status is unknown.
         """
         reconciled_im_status = None
-        if ray_status in [NodeStatus.RUNNING, NodeStatus.IDLE, NodeStatus.DRAINING]:
+        if ray_status in [NodeStatus.RUNNING, NodeStatus.IDLE]:
             reconciled_im_status = IMInstance.RAY_RUNNING
         elif ray_status == NodeStatus.DEAD:
             reconciled_im_status = IMInstance.RAY_STOPPED
+        elif ray_status == NodeStatus.DRAINING:
+            reconciled_im_status = IMInstance.RAY_STOPPING
         else:
             raise ValueError(f"Unknown ray status: {ray_status}")
 
