@@ -339,30 +339,6 @@ def target_max_block_size(request):
     ctx.target_max_block_size = original
 
 
-@pytest.fixture
-def enable_optimizer():
-    ctx = ray.data.context.DataContext.get_current()
-    original_backend = ctx.new_execution_backend
-    original_optimizer = ctx.optimizer_enabled
-    ctx.new_execution_backend = True
-    ctx.optimizer_enabled = True
-    yield
-    ctx.new_execution_backend = original_backend
-    ctx.optimizer_enabled = original_optimizer
-
-
-@pytest.fixture
-def enable_streaming_executor():
-    ctx = ray.data.context.DataContext.get_current()
-    original_backend = ctx.new_execution_backend
-    use_streaming_executor = ctx.use_streaming_executor
-    ctx.new_execution_backend = True
-    ctx.use_streaming_executor = True
-    yield
-    ctx.new_execution_backend = original_backend
-    ctx.use_streaming_executor = use_streaming_executor
-
-
 # ===== Pandas dataset formats =====
 @pytest.fixture(scope="function")
 def ds_pandas_single_column_format(ray_start_regular_shared):
@@ -450,7 +426,7 @@ def disable_pyarrow_version_check():
 
 # ===== Observability & Logging Fixtures =====
 @pytest.fixture
-def stage_two_block():
+def op_two_block():
     block_params = {
         "num_rows": [10000, 5000],
         "size_bytes": [100, 50],

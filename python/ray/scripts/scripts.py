@@ -14,6 +14,7 @@ import warnings
 import shutil
 from datetime import datetime
 from typing import Optional, Set, List, Tuple
+from ray.dashboard.modules.metrics import install_and_start_prometheus
 
 import click
 import psutil
@@ -2443,6 +2444,16 @@ def cpp(show_library_path, generate_bazel_project_template_to):
         )
 
 
+@click.group(name="metrics")
+def metrics_group():
+    pass
+
+
+@metrics_group.command(name="launch-prometheus")
+def launch_prometheus():
+    install_and_start_prometheus.main()
+
+
 def add_command_alias(command, name, hidden):
     new_command = copy.deepcopy(command)
     new_command.hidden = hidden
@@ -2478,6 +2489,7 @@ cli.add_command(install_nightly)
 cli.add_command(cpp)
 cli.add_command(disable_usage_stats)
 cli.add_command(enable_usage_stats)
+cli.add_command(metrics_group)
 
 try:
     from ray.util.state.state_cli import (

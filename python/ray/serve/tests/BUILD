@@ -17,12 +17,11 @@ py_library(
 py_test_module_list(
   files = [
     "test_advanced.py",
-    "test_autoscaling_metrics.py",
     "test_batching.py",
     "test_constructor_failure.py",
     "test_controller.py",
-    "test_http_util.py",
     "test_proxy_router.py",
+    "test_proxy_actor_wrapper.py",
     "test_deployment_scheduler.py",
     "test_deployment_version.py",
     "test_kv_store.py",
@@ -35,7 +34,8 @@ py_test_module_list(
     "test_deployment_graph_handle_serde.py",
     "test_websockets.py",
     "test_deployment_node.py",
-    "test_expected_versions.py"
+    "test_expected_versions.py",
+    "test_actor_replica_wrapper.py",
   ],
   size = "small",
   tags = ["exclusive", "team:serve"],
@@ -62,7 +62,7 @@ py_test_module_list(
     "test_failure.py",
     "test_handle.py",
     "test_handle_streaming.py",
-    "test_new_handle_api.py",
+    "test_handle_api.py",
     "test_regression.py",
     "test_request_timeout.py",
     "test_cluster.py",
@@ -72,7 +72,6 @@ py_test_module_list(
     "test_controller_recovery.py",
     "test_replica_placement_group.py",
     "test_max_replicas_per_node.py",
-    "test_deployment_graph_build.py",
     "test_grpc.py",
     "test_multiplex.py",
     "test_callback.py",
@@ -83,6 +82,17 @@ py_test_module_list(
   size = "medium",
   tags = ["exclusive", "team:serve"],
   deps = ["//python/ray/serve:serve_lib", ":conftest", ":common"],
+)
+
+# Test autoscaling with RAY_SERVE_COLLECT_AUTOSCALING_METRICS_ON_HANDLE set to 1
+py_test(
+    name = "test_autoscaling_metrics_on_handle",
+    size = "medium",
+    main = "test_autoscaling_policy.py",
+    srcs = ["test_autoscaling_policy.py"],
+    tags = ["exclusive", "team:serve", "autoscaling"],
+    deps = ["//python/ray/serve:serve_lib", ":conftest", ":common"],
+    env = {"RAY_SERVE_COLLECT_AUTOSCALING_METRICS_ON_HANDLE": "1"},
 )
 
 py_test_module_list(
@@ -168,18 +178,27 @@ py_test(
 )
 
 py_test(
-    name = "test_new_handle_api_set_via_env_var",
-    size = "medium",
-    srcs = ["test_new_handle_api_set_via_env_var.py"],
-    env = {"RAY_SERVE_ENABLE_NEW_HANDLE_API": "1"},
-    tags = ["exclusive", "team:serve"],
-    deps = ["//python/ray/serve:serve_lib", ":conftest", ":common"],
-)
-
-py_test(
     name = "test_serve_ha",
     srcs = ["test_serve_ha.py"],
     size = "medium",
     tags = ["exclusive", "team:serve", "ha_integration"],
     deps = ["//python/ray/serve:serve_lib", ":conftest", ":common"],
+)
+
+# Tests enabling queue len caching feature flag.
+# TODO(edoakes): remove this after it's on by default.
+py_test_module_list(
+  name_suffix="_with_queue_len_cache_enabled",
+  env={"RAY_SERVE_ENABLE_QUEUE_LEN_CACHE": "1"},
+  files = [
+    "test_autoscaling_policy.py",
+    "test_handle.py",
+    "test_handle_api.py",
+    "test_handle_streaming.py",
+    "test_multiplex.py",
+  ],
+  size = "medium",
+  tags = ["exclusive", "no_windows", "team:serve"],
+  deps = ["//python/ray/serve:serve_lib", ":conftest", ":common"],
+  data = glob(["test_config_files/**/*"]),
 )

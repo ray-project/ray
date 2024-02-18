@@ -6,14 +6,15 @@ import math
 import os
 import sys
 from typing import (
-    TYPE_CHECKING,
     Any,
     Callable,
     Container,
     Dict,
+    List,
     Optional,
     Tuple,
     Type,
+    TYPE_CHECKING,
     Union,
 )
 
@@ -21,7 +22,10 @@ from packaging import version
 
 import ray
 from ray.rllib.algorithms.callbacks import DefaultCallbacks
-from ray.rllib.core.rl_module.marl_module import MultiAgentRLModuleSpec
+from ray.rllib.core.rl_module.marl_module import (
+    DEFAULT_MODULE_ID,
+    MultiAgentRLModuleSpec,
+)
 from ray.rllib.core.rl_module.rl_module import SingleAgentRLModuleSpec
 from ray.rllib.env.env_context import EnvContext
 from ray.rllib.env.multi_agent_env import MultiAgentEnv
@@ -148,6 +152,14 @@ class AlgorithmConfig(_Config):
         tune.Tuner("PPO", param_space=config.to_dict())
     """
 
+    @staticmethod
+    def DEFAULT_AGENT_TO_MODULE_MAPPING_FN(agent_id, episode):
+        # The default agent ID to module ID mapping function to use in the multi-agent
+        # case if None is provided.
+        # Map any agent ID to "default_policy".
+        return DEFAULT_MODULE_ID
+
+    # TODO (sven): Deprecate in new API stack.
     @staticmethod
     def DEFAULT_POLICY_MAPPING_FN(aid, episode, worker, **kwargs):
         # The default policy mapping function to use if None provided.
@@ -397,18 +409,20 @@ class AlgorithmConfig(_Config):
         self.exploration_config = {}
 
         # `self.multi_agent()`
-        self.policies = {DEFAULT_POLICY_ID: PolicySpec()}
         # Module ID specific config overrides.
         self.algorithm_config_overrides_per_module = {}
         # Cached, actual AlgorithmConfig objects derived from
         # `self.algorithm_config_overrides_per_module`.
         self._per_module_overrides: Dict[ModuleID, "AlgorithmConfig"] = {}
+        self.count_steps_by = "env_steps"
+        # self.agent_to_module_mapping_fn = self.DEFAULT_AGENT_TO_MODULE_MAPPING_FN
+        # Soon to be Deprecated.
+        self.policies = {DEFAULT_POLICY_ID: PolicySpec()}
         self.policy_map_capacity = 100
         self.policy_mapping_fn = self.DEFAULT_POLICY_MAPPING_FN
         self.policies_to_train = None
         self.policy_states_are_swappable = False
         self.observation_fn = None
-        self.count_steps_by = "env_steps"
 
         # `self.offline_data()`
         self.input_ = "sampler"
@@ -859,15 +873,18 @@ class AlgorithmConfig(_Config):
 
         pipeline = EnvToModulePipeline(
             connectors=custom_connectors,
-            input_observation_space=env.single_observation_space,
-            input_action_space=env.single_action_space,
-            env=env,
+            input_observation_space=getattr(
+                env, "single_observation_space", env.observation_space
+            ),
+            input_action_space=getattr(env, "single_action_space", env.action_space),
         )
         pipeline.append(
             DefaultEnvToModule(
                 input_observation_space=pipeline.observation_space,
                 input_action_space=pipeline.action_space,
-                env=env,
+                multi_agent=self.is_multi_agent(),
+                modules=set(self.policies),
+                agent_to_module_mapping_fn=self.policy_mapping_fn,
             )
         )
         return pipeline
@@ -898,15 +915,15 @@ class AlgorithmConfig(_Config):
 
         pipeline = ModuleToEnvPipeline(
             connectors=custom_connectors,
-            input_observation_space=env.single_observation_space,
-            input_action_space=env.single_action_space,
-            env=env,
+            input_observation_space=getattr(
+                env, "single_observation_space", env.observation_space
+            ),
+            input_action_space=getattr(env, "single_action_space", env.action_space),
         )
         pipeline.append(
             DefaultModuleToEnv(
                 input_observation_space=pipeline.observation_space,
                 input_action_space=pipeline.action_space,
-                env=env,
                 normalize_actions=self.normalize_actions,
                 clip_actions=self.clip_actions,
             )
@@ -1402,10 +1419,10 @@ class AlgorithmConfig(_Config):
         sample_collector: Optional[Type[SampleCollector]] = NotProvided,
         enable_connectors: Optional[bool] = NotProvided,
         env_to_module_connector: Optional[
-            Callable[[EnvType], "ConnectorV2"]
+            Callable[[EnvType], Union["ConnectorV2", List["ConnectorV2"]]]
         ] = NotProvided,
         module_to_env_connector: Optional[
-            Callable[[EnvType, "RLModule"], "ConnectorV2"]
+            Callable[[EnvType, "RLModule"], Union["ConnectorV2", List["ConnectorV2"]]]
         ] = NotProvided,
         episode_lookback_horizon: Optional[int] = NotProvided,
         use_worker_filter_stats: Optional[bool] = NotProvided,
@@ -1687,7 +1704,7 @@ class AlgorithmConfig(_Config):
         max_requests_in_flight_per_sampler_worker: Optional[int] = NotProvided,
         learner_class: Optional[Type["Learner"]] = NotProvided,
         learner_connector: Optional[
-            Callable[["RLModule"], "ConnectorV2"]
+            Callable[["RLModule"], Union["ConnectorV2", List["ConnectorV2"]]]
         ] = NotProvided,
         # Deprecated arg.
         _enable_learner_api: Optional[bool] = NotProvided,
@@ -2880,9 +2897,8 @@ class AlgorithmConfig(_Config):
             spaces: Optional dict mapping policy IDs to tuples of 1) observation space
                 and 2) action space that should be used for the respective policy.
                 These spaces were usually provided by an already instantiated remote
-                EnvRunner. If not provided, will try to infer from `env`. Otherwise
-                from `self.observation_space` and `self.action_space`. If no
-                information on spaces can be inferred, will raise an error.
+                EnvRunner. Note that if the `env` argument is provided, will try to
+                infer spaces from `env` first.
             default_policy_class: The Policy class to use should a PolicySpec have its
                 policy_class property set to None.
 
@@ -2968,13 +2984,14 @@ class AlgorithmConfig(_Config):
                 if spaces is not None and pid in spaces:
                     obs_space = spaces[pid][0]
                 elif env_obs_space is not None:
+                    env_unwrapped = env.unwrapped if hasattr(env, "unwrapped") else env
                     # Multi-agent case AND different agents have different spaces:
                     # Need to reverse map spaces (for the different agents) to certain
                     # policy IDs.
                     if (
-                        isinstance(env, MultiAgentEnv)
-                        and hasattr(env, "_obs_space_in_preferred_format")
-                        and env._obs_space_in_preferred_format
+                        isinstance(env_unwrapped, MultiAgentEnv)
+                        and hasattr(env_unwrapped, "_obs_space_in_preferred_format")
+                        and env_unwrapped._obs_space_in_preferred_format
                     ):
                         obs_space = None
                         mapping_fn = self.policy_mapping_fn
@@ -2986,7 +3003,7 @@ class AlgorithmConfig(_Config):
                         # Otherwise, we have to match the policy ID with all possible
                         # agent IDs and find the agent ID that matches.
                         elif mapping_fn:
-                            for aid in env.get_agent_ids():
+                            for aid in env_unwrapped.get_agent_ids():
                                 # Match: Assign spaces for this agentID to the PolicyID.
                                 if mapping_fn(aid, None, worker=None) == pid:
                                     # Make sure, different agents that map to the same
@@ -3029,13 +3046,14 @@ class AlgorithmConfig(_Config):
                 if spaces is not None and pid in spaces:
                     act_space = spaces[pid][1]
                 elif env_act_space is not None:
+                    env_unwrapped = env.unwrapped if hasattr(env, "unwrapped") else env
                     # Multi-agent case AND different agents have different spaces:
                     # Need to reverse map spaces (for the different agents) to certain
                     # policy IDs.
                     if (
-                        isinstance(env, MultiAgentEnv)
-                        and hasattr(env, "_action_space_in_preferred_format")
-                        and env._action_space_in_preferred_format
+                        isinstance(env_unwrapped, MultiAgentEnv)
+                        and hasattr(env_unwrapped, "_action_space_in_preferred_format")
+                        and env_unwrapped._action_space_in_preferred_format
                     ):
                         act_space = None
                         mapping_fn = self.policy_mapping_fn
@@ -3047,7 +3065,7 @@ class AlgorithmConfig(_Config):
                         # Otherwise, we have to match the policy ID with all possible
                         # agent IDs and find the agent ID that matches.
                         elif mapping_fn:
-                            for aid in env.get_agent_ids():
+                            for aid in env_unwrapped.get_agent_ids():
                                 # Match: Assign spaces for this AgentID to the PolicyID.
                                 if mapping_fn(aid, None, worker=None) == pid:
                                     # Make sure, different agents that map to the same
@@ -3409,7 +3427,8 @@ class AlgorithmConfig(_Config):
                         "is passed in nor in the default module spec used in "
                         "the algorithm."
                     )
-
+            # TODO (sven): Find a good way to pack module specific parameters from
+            # the algorithms into the `model_config_dict`.
             if module_spec.observation_space is None:
                 module_spec.observation_space = policy_spec.observation_space
             if module_spec.action_space is None:
@@ -3601,6 +3620,19 @@ class AlgorithmConfig(_Config):
                         f"policy ID ({pid}) that was not defined in "
                         f"`config.multi_agent(policies=..)`!"
                     )
+
+        # TODO (sven): For now, vectorization is not allowed on new EnvRunners with
+        #  multi-agent.
+        if (
+            self.is_multi_agent()
+            and self.uses_new_env_runners
+            and self.num_envs_per_worker > 1
+        ):
+            raise ValueError(
+                "For now, using env vectorization (`config.num_envs_per_worker > 1`) "
+                "in combination with multi-agent AND the new EnvRunners is not "
+                "supported! Try setting `config.num_envs_per_worker = 1`."
+            )
 
     def _validate_evaluation_settings(self):
         """Checks, whether evaluation related settings make sense."""

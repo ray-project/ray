@@ -326,5 +326,11 @@ const TaskLogs = ({
       ? [{ title: "Error stack trace", contents: errorDetails }]
       : []),
   ];
-  return <MultiTabLogViewer tabs={tabs} otherLogsLink={otherLogsLink} />;
+  return (
+    <MultiTabLogViewer
+      tabs={tabs}
+      otherLogsLink={otherLogsLink}
+      contextKey="tasks-page"
+    />
+  );
 };

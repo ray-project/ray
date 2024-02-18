@@ -447,24 +447,6 @@ def test_run_config_port2(ray_start_stop, config_file):
     p.wait()
 
 
-@pytest.mark.skipif(sys.platform == "win32", reason="File path incorrect on Windows.")
-@pytest.mark.parametrize(
-    "config_file", ["basic_graph_http.yaml", "basic_multi_http.yaml"]
-)
-def test_run_config_port3(ray_start_stop, config_file):
-    """If port is specified as argument to `serve run`, it should override config."""
-    config_file_name = os.path.join(
-        os.path.dirname(__file__), "test_config_files", config_file
-    )
-    p = subprocess.Popen(["serve", "run", "--port=8010", config_file_name])
-    wait_for_condition(
-        lambda: requests.post("http://localhost:8010/").text == "wonderful world",
-        timeout=15,
-    )
-    p.send_signal(signal.SIGINT)
-    p.wait()
-
-
 @serve.deployment
 class ConstructorFailure:
     def __init__(self):

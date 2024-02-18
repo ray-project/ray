@@ -296,6 +296,7 @@ steps:
     depends_on: [ "mllightning2gpubuild", "forge" ]
 
   - label: ":train: ml: :windows: tests"
+    if: pipeline.id == "0189942e-0876-4b8f-80a4-617f988ec59b" || build.env("RAYCI_CONTINUOUS_BUILD") == "1"
     tags:
       - train
     job_env: WINDOWS

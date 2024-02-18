@@ -1,3 +1,4 @@
+import argparse
 from collections import Counter
 import copy
 import gymnasium as gym
@@ -28,6 +29,7 @@ import yaml
 
 import ray
 from ray import air, tune
+from ray.air.integrations.wandb import WandbLoggerCallback
 from ray.rllib.env.wrappers.atari_wrappers import is_atari, wrap_deepmind
 from ray.rllib.utils.framework import try_import_jax, try_import_tf, try_import_torch
 from ray.rllib.utils.metrics import (
@@ -61,97 +63,151 @@ torch, _ = try_import_torch()
 logger = logging.getLogger(__name__)
 
 
-def framework_iterator(
-    config: Optional["AlgorithmConfig"] = None,
-    frameworks: Sequence[str] = ("tf2", "tf", "torch"),
-    session: bool = False,
-    time_iterations: Optional[dict] = None,
-) -> Union[str, Tuple[str, Optional["tf1.Session"]]]:
-    """An generator that allows for looping through n frameworks for testing.
+def add_rllib_example_script_args(
+    parser: Optional[argparse.ArgumentParser] = None,
+    default_reward: float = 100.0,
+    default_iters: int = 200,
+    default_timesteps: int = 100000,
+) -> argparse.ArgumentParser:
+    """Adds RLlib-typical (and common) examples scripts command line args to a parser.
 
-    Provides the correct config entries ("framework") as well
-    as the correct eager/non-eager contexts for tf/tf2.
+    TODO (sven): This function should be used by most of our examples scripts, which
+     already mostly have this logic in them (but written out).
 
     Args:
-        config: An optional config dict or AlgorithmConfig object. This will be modified
-            (value for "framework" changed) depending on the iteration.
-        frameworks: A list/tuple of the frameworks to be tested.
-            Allowed are: "tf2", "tf", "torch", and None.
-        session: If True and only in the tf-case: Enter a tf.Session()
-            and yield that as second return value (otherwise yield (fw, None)).
-            Also sets a seed (42) on the session to make the test
-            deterministic.
-        time_iterations: If provided, will write to the given dict (by
-            framework key) the times in seconds that each (framework's)
-            iteration takes.
+        parser: The parser to add the arguments to. If None, create a new one.
+        default_reward: The default value for the --stop-reward option.
+        default_iters: The default value for the --stop-iters option.
+        default_timesteps: The default value for the --stop-timesteps option.
 
-    Yields:
-        If `session` is False: The current framework [tf2|tf|torch] used.
-        If `session` is True: A tuple consisting of the current framework
-        string and the tf1.Session (if fw="tf", otherwise None).
+    Returns:
+        The altered (or newly created) parser object.
     """
-    config = config or {}
-    frameworks = [frameworks] if isinstance(frameworks, str) else list(frameworks)
+    if parser is None:
+        parser = argparse.ArgumentParser()
 
-    for fw in frameworks:
-        # Skip tf if on new API stack.
-        if fw == "tf" and config.get("_enable_new_api_stack", False):
-            logger.warning("framework_iterator skipping tf (new API stack configured)!")
-            continue
+    # Algo and Algo config options.
+    parser.add_argument(
+        "--algo", type=str, default="PPO", help="The RLlib-registered algorithm to use."
+    )
+    parser.add_argument(
+        "--enable-new-api-stack",
+        action="store_true",
+        help="Whether to use the _enable_new_api_stack config setting.",
+    )
+    parser.add_argument(
+        "--framework",
+        choices=["tf", "tf2", "torch"],
+        default="torch",
+        help="The DL framework specifier.",
+    )
+    parser.add_argument(
+        "--num-env-runners",
+        type=int,
+        default=2,
+        help="The number of (remote) EnvRunners to use for the experiment.",
+    )
+    parser.add_argument(
+        "--num-agents",
+        type=int,
+        default=0,
+        help="If 0 (default), will run as single-agent. If > 0, will run as "
+        "multi-agent with the environment simply cloned n times and each agent acting "
+        "independently at every single timestep. The overall reward for this "
+        "experiment is then the sum over all individual agents' rewards.",
+    )
 
-        # Skip non-installed frameworks.
-        if fw == "torch" and not torch:
-            logger.warning("framework_iterator skipping torch (not installed)!")
-            continue
-        if fw != "torch" and not tf:
-            logger.warning(
-                "framework_iterator skipping {} (tf not installed)!".format(fw)
-            )
-            continue
-        elif fw == "tf2" and tfv != 2:
-            logger.warning("framework_iterator skipping tf2.x (tf version is < 2.0)!")
-            continue
-        elif fw == "jax" and not jax:
-            logger.warning("framework_iterator skipping JAX (not installed)!")
-            continue
-        assert fw in ["tf2", "tf", "torch", "jax", None]
+    # tune.Tuner options.
+    parser.add_argument(
+        "--no-tune",
+        action="store_true",
+        help="Whether to NOT use tune.Tuner(), but rather a simple for-loop calling "
+        "`algo.train()` repeatedly until one of the stop criteria is met.",
+    )
+    parser.add_argument(
+        "--num-samples",
+        type=int,
+        default=1,
+        help="How many (tune.Tuner.fit()) experiments to execute - if possible in "
+        "parallel.",
+    )
+    parser.add_argument(
+        "--verbose",
+        type=int,
+        default=2,
+        help="The verbosity level for the `tune.Tuner()` running the experiment.",
+    )
+    parser.add_argument(
+        "--checkpoint-freq",
+        type=int,
+        default=0,
+        help=(
+            "The frequency (in training iterations) with which to create checkpoints. "
+            "Note that if --wandb-key is provided, these checkpoints will "
+            "automatically be uploaded to WandB."
+        ),
+    )
 
-        # Do we need a test session?
-        sess = None
-        if fw == "tf" and session is True:
-            sess = tf1.Session()
-            sess.__enter__()
-            tf1.set_random_seed(42)
+    # WandB logging options.
+    parser.add_argument(
+        "--wandb-key",
+        type=str,
+        default=None,
+        help="The WandB API key to use for uploading results.",
+    )
+    parser.add_argument(
+        "--wandb-project",
+        type=str,
+        default=None,
+        help="The WandB project name to use.",
+    )
+    parser.add_argument(
+        "--wandb-run-name",
+        type=str,
+        default=None,
+        help="The WandB run name to use.",
+    )
 
-        if isinstance(config, dict):
-            config["framework"] = fw
-        else:
-            config.framework(fw)
+    # Experiment stopping and testing criteria.
+    parser.add_argument(
+        "--stop-reward",
+        type=float,
+        default=default_reward,
+        help="Reward at which the script should stop training.",
+    )
+    parser.add_argument(
+        "--stop-iters",
+        type=int,
+        default=default_iters,
+        help="The number of iterations to train.",
+    )
+    parser.add_argument(
+        "--stop-timesteps",
+        type=int,
+        default=default_timesteps,
+        help="The number of (environment sampling) timesteps to train.",
+    )
+    parser.add_argument(
+        "--as-test",
+        action="store_true",
+        help="Whether this script should be run as a test. If set, --stop-reward must "
+        "be achieved within --stop-timesteps AND --stop-iters, otherwise this "
+        "script will throw an exception at the end.",
+    )
 
-        eager_ctx = None
-        # Enable eager mode for tf2.
-        if fw == "tf2":
-            eager_ctx = eager_mode()
-            eager_ctx.__enter__()
-            assert tf1.executing_eagerly()
-        # Make sure, eager mode is off.
-        elif fw == "tf":
-            assert not tf1.executing_eagerly()
+    # Learner scaling options.
+    # Old API stack: config.num_gpus.
+    # New API stack: config.num_learner_workers (w/ num_gpus_per_learner_worker=1).
+    parser.add_argument("--num-gpus", type=int, default=0)
 
-        # Yield current framework + tf-session (if necessary).
-        print(f"framework={fw}")
-        time_started = time.time()
-        yield fw if session is False else (fw, sess)
-        if time_iterations is not None:
-            time_total = time.time() - time_started
-            time_iterations[fw] = time_total
-            print(f".. took {time_total}sec")
-
-        # Exit any context we may have entered.
-        if eager_ctx:
-            eager_ctx.__exit__(None, None, None)
-        elif sess:
-            sess.__exit__(None, None, None)
+    # Ray init options.
+    parser.add_argument("--num-cpus", type=int, default=0)
+    parser.add_argument(
+        "--local-mode",
+        action="store_true",
+        help="Init Ray in local mode for easier debugging.",
+    )
+    return parser
 
 
 def check(x, y, decimals=5, atol=None, rtol=None, false=False):
@@ -191,7 +247,7 @@ def check(x, y, decimals=5, atol=None, rtol=None, false=False):
     elif isinstance(x, (tuple, list)):
         assert isinstance(
             y, (tuple, list)
-        ), "ERROR: If x is tuple, y needs to be a tuple as well!"
+        ), "ERROR: If x is tuple/list, y needs to be a tuple/list as well!"
         assert len(y) == len(
             x
         ), "ERROR: y does not have the same length as x ({} vs {})!".format(
@@ -705,6 +761,99 @@ def check_train_results(train_results: ResultDict):
     return train_results
 
 
+def framework_iterator(
+    config: Optional["AlgorithmConfig"] = None,
+    frameworks: Sequence[str] = ("tf2", "tf", "torch"),
+    session: bool = False,
+    time_iterations: Optional[dict] = None,
+) -> Union[str, Tuple[str, Optional["tf1.Session"]]]:
+    """An generator that allows for looping through n frameworks for testing.
+
+    Provides the correct config entries ("framework") as well
+    as the correct eager/non-eager contexts for tf/tf2.
+
+    Args:
+        config: An optional config dict or AlgorithmConfig object. This will be modified
+            (value for "framework" changed) depending on the iteration.
+        frameworks: A list/tuple of the frameworks to be tested.
+            Allowed are: "tf2", "tf", "torch", and None.
+        session: If True and only in the tf-case: Enter a tf.Session()
+            and yield that as second return value (otherwise yield (fw, None)).
+            Also sets a seed (42) on the session to make the test
+            deterministic.
+        time_iterations: If provided, will write to the given dict (by
+            framework key) the times in seconds that each (framework's)
+            iteration takes.
+
+    Yields:
+        If `session` is False: The current framework [tf2|tf|torch] used.
+        If `session` is True: A tuple consisting of the current framework
+        string and the tf1.Session (if fw="tf", otherwise None).
+    """
+    config = config or {}
+    frameworks = [frameworks] if isinstance(frameworks, str) else list(frameworks)
+
+    for fw in frameworks:
+        # Skip tf if on new API stack.
+        if fw == "tf" and config.get("_enable_new_api_stack", False):
+            logger.warning("framework_iterator skipping tf (new API stack configured)!")
+            continue
+
+        # Skip non-installed frameworks.
+        if fw == "torch" and not torch:
+            logger.warning("framework_iterator skipping torch (not installed)!")
+            continue
+        if fw != "torch" and not tf:
+            logger.warning(
+                "framework_iterator skipping {} (tf not installed)!".format(fw)
+            )
+            continue
+        elif fw == "tf2" and tfv != 2:
+            logger.warning("framework_iterator skipping tf2.x (tf version is < 2.0)!")
+            continue
+        elif fw == "jax" and not jax:
+            logger.warning("framework_iterator skipping JAX (not installed)!")
+            continue
+        assert fw in ["tf2", "tf", "torch", "jax", None]
+
+        # Do we need a test session?
+        sess = None
+        if fw == "tf" and session is True:
+            sess = tf1.Session()
+            sess.__enter__()
+            tf1.set_random_seed(42)
+
+        if isinstance(config, dict):
+            config["framework"] = fw
+        else:
+            config.framework(fw)
+
+        eager_ctx = None
+        # Enable eager mode for tf2.
+        if fw == "tf2":
+            eager_ctx = eager_mode()
+            eager_ctx.__enter__()
+            assert tf1.executing_eagerly()
+        # Make sure, eager mode is off.
+        elif fw == "tf":
+            assert not tf1.executing_eagerly()
+
+        # Yield current framework + tf-session (if necessary).
+        print(f"framework={fw}")
+        time_started = time.time()
+        yield fw if session is False else (fw, sess)
+        if time_iterations is not None:
+            time_total = time.time() - time_started
+            time_iterations[fw] = time_total
+            print(f".. took {time_total}sec")
+
+        # Exit any context we may have entered.
+        if eager_ctx:
+            eager_ctx.__exit__(None, None, None)
+        elif sess:
+            sess.__exit__(None, None, None)
+
+
 def run_learning_tests_from_yaml(
     yaml_files: List[str],
     *,
@@ -988,6 +1137,80 @@ def run_learning_tests_from_yaml(
     }
 
     return result
+
+
+def run_rllib_example_script_experiment(
+    config: "AlgorithmConfig",
+    args: argparse.Namespace,
+    stop: Optional[Dict] = None,
+) -> Union[ResultDict, tune.result_grid.ResultGrid]:
+    """Given an algorithm config and some command line args, runs an experiment.
+
+    There are some constraints on what properties must be defined in `args`.
+    It should ideally be generated via the ``
+
+    Args:
+        config: The AlgorithmConfig object to use for this experiment.
+        args: A argparse.Namespace object which must have the following properties
+            defined: `stop_iters`, `stop_reward`, `stop_timesteps`, `no_tune`,
+            `verbose`, `checkpoint_freq`, `as_test`. Optionally, for wandb logging:
+            `wandb_key`, `wandb_project`, `wandb_run_name`.
+
+    Returns:
+        The last ResultDict from a --no-tune run OR the tune.Tuner.fit()
+        results.
+    """
+    ray.init(num_cpus=args.num_cpus or None, local_mode=args.local_mode)
+
+    stop = stop or {
+        "training_iteration": args.stop_iters,
+        "episode_reward_mean": args.stop_reward,
+        "timesteps_total": args.stop_timesteps,
+    }
+
+    if args.no_tune:
+        algo = config.build()
+        for iter in range(args.stop_iters):
+            results = algo.train()
+            print(f"R={results['episode_reward_mean']}")
+            for key, value in stop.items():
+                if results.get(key, float("-inf")) > value:
+                    print(f"Stop criterium ({key}={value}) fulfilled!")
+                    return results
+        return results
+
+    callbacks = None
+    if hasattr(args, "wandb_key") and args.wandb_key is not None:
+        project = args.wandb_project or (
+            args.algo.lower() + "-" + re.sub("\\W+", "-", str(config.env).lower())
+        )
+        callbacks = [
+            WandbLoggerCallback(
+                api_key=args.wandb_key,
+                project=project,
+                upload_checkpoints=True,
+                **({"name": args.wandb_run_name} if args.wandb_run_name else {}),
+            )
+        ]
+
+    results = tune.Tuner(
+        config.algo_class,
+        param_space=config,
+        run_config=air.RunConfig(
+            stop=stop,
+            verbose=2 if args.verbose else 1,
+            callbacks=callbacks,
+            checkpoint_config=air.CheckpointConfig(
+                checkpoint_frequency=args.checkpoint_freq,
+            ),
+        ),
+        tune_config=tune.TuneConfig(num_samples=args.num_samples),
+    ).fit()
+
+    if args.as_test:
+        check_learning_achieved(results, args.stop_reward)
+
+    return results
 
 
 def check_same_batch(batch1, batch2) -> None:
