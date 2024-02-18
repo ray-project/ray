@@ -155,6 +155,35 @@ class InstanceUtil:
         )
 
     @staticmethod
+    def has_timeout(instance: Instance, timeout_s: int) -> bool:
+        """
+        Returns True if the instance has been in the current status for more
+        than the timeout_seconds.
+
+        Args:
+            instance: The instance to check.
+            timeout_seconds: The timeout in seconds.
+
+        Returns:
+            True if the instance has been in the current status for more than
+            the timeout_s seconds.
+        """
+        cur_status = instance.status
+
+        status_times_ns = InstanceUtil.get_status_transition_times_ns(
+            instance, select_instance_status=cur_status
+        )
+        assert len(status_times_ns) >= 1, (
+            f"instance {instance.instance_id} has {len(status_times_ns)} "
+            f"{Instance.InstanceStatus.Name(cur_status)} status"
+        )
+        status_time_ns = sorted(status_times_ns)[-1]
+        if time.time_ns() - status_time_ns <= (timeout_s * 1e9):
+            return False
+
+        return True
+
+    @staticmethod
     def get_valid_transitions() -> Dict[
         "Instance.InstanceStatus", Set["Instance.InstanceStatus"]
     ]:
