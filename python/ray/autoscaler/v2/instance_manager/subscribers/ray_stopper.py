@@ -1,10 +1,10 @@
-from dataclasses import dataclass
 import logging
 from concurrent.futures import ThreadPoolExecutor
+from dataclasses import dataclass
 from queue import Queue
 from typing import List
-from ray._private.utils import hex_to_binary
 
+from ray._private.utils import hex_to_binary
 from ray._raylet import GcsClient
 from ray.autoscaler.v2.instance_manager.instance_manager import (
     InstanceUpdatedSubscriber,
@@ -61,19 +61,13 @@ class RayStopper(InstanceUpdatedSubscriber):
         """
         Stops or drains the ray node based on the termination request.
         """
-        if not event.HasField("termination_request"):
-            # This is a no-op if the event doesn't have a termination request.
-            # This happens when we sync the ray node's DRAINING status to the
-            # instance manager.
-            return
-
         termination_request = event.termination_request
         ray_node_id = termination_request.ray_node_id
         instance_id = event.instance_id
 
         if termination_request.cause == TerminationRequest.Cause.IDLE:
             reason = DrainNodeReason.DRAIN_NODE_REASON_IDLE_TERMINATION
-            reason_str = "Idle termination of node for {} seconds.".format(
+            reason_str = "Termination of node that's idle for {} seconds.".format(
                 termination_request.idle_time_ms / 1000
             )
             self._drain_ray_node(

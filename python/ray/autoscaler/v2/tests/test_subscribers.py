@@ -1,7 +1,7 @@
 # coding: utf-8
 import os
-from queue import Queue
 import sys
+from queue import Queue
 
 import pytest
 
@@ -9,6 +9,9 @@ import mock
 
 from ray._private.test_utils import wait_for_condition
 from ray._private.utils import binary_to_hex, hex_to_binary
+from ray.autoscaler.v2.instance_manager.subscribers.cloud_instance_updater import (
+    CloudInstanceUpdater,
+)
 from ray.autoscaler.v2.instance_manager.subscribers.ray_stopper import (  # noqa
     RayStopper,
 )
@@ -18,10 +21,6 @@ from ray.core.generated.instance_manager_pb2 import (
     InstanceUpdateEvent,
     TerminationRequest,
 )
-from ray.autoscaler.v2.instance_manager.subscribers.cloud_instance_updater import (
-    CloudInstanceUpdater,
-)
-from ray.core.generated.instance_manager_pb2 import Instance, InstanceUpdateEvent
 
 
 class TestRayStopper:
@@ -70,7 +69,9 @@ class TestRayStopper:
                     mock.call(
                         node_id="0000",
                         reason=DrainNodeReason.DRAIN_NODE_REASON_IDLE_TERMINATION,
-                        reason_message="Idle termination of node for 1.0 seconds.",
+                        reason_message=(
+                            "Termination of node that's idle for 1.0 seconds."
+                        ),
                         deadline_timestamp_ms=0,
                     )
                 ]
