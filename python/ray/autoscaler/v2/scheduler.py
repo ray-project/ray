@@ -15,7 +15,6 @@ from ray.autoscaler._private.resource_demand_scheduler import (
     _fits,
     _inplace_subtract,
 )
-
 from ray.autoscaler.v2.instance_manager.config import NodeTypeConfig
 from ray.autoscaler.v2.schema import AutoscalerInstance, NodeType
 from ray.autoscaler.v2.utils import ResourceRequestUtil
@@ -26,9 +25,9 @@ from ray.core.generated.autoscaler_pb2 import (
     ResourceRequestByCount,
 )
 from ray.core.generated.instance_manager_pb2 import (
+    Instance,
     LaunchRequest,
     NodeKind,
-    Instance,
     TerminationRequest,
 )
 
