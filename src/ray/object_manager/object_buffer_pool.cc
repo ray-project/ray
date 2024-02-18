@@ -149,7 +149,9 @@ void ObjectBufferPool::WriteChunk(const ObjectID &object_id,
   }
 
   RAY_CHECK(chunk_info.has_value()) << "chunk_info is not set";
-  // Unguarded copy call
+  // chunk_info contains a shared_ptr to the buffer and chunk_info.data points to
+  // an offset inside the buffer. Therefore, the chunk_info.data is valid during the
+  // unguarded memory copy.
   std::memcpy(chunk_info->data, data.data(), chunk_info->buffer_length);
 
   {
