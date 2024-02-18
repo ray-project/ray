@@ -227,7 +227,6 @@ def test_deployment(ray_cluster):
         return "from_f"
 
     handle = serve.run(f.bind(), name="f", route_prefix="/say_hi_f")
-    handle = handle.options(use_new_handle_api=True)
     assert handle.remote().result() == "from_f"
     assert requests.get("http://localhost:8000/say_hi_f").text == "from_f"
 
@@ -243,7 +242,6 @@ def test_deployment(ray_cluster):
         return "from_g"
 
     handle = serve.run(g.bind(), name="g", route_prefix="/say_hi_g")
-    handle = handle.options(use_new_handle_api=True)
     assert handle.remote().result() == "from_g"
     assert requests.get("http://localhost:8000/say_hi_g").text == "from_g"
     assert requests.get("http://localhost:8000/say_hi_f").text == "from_f"

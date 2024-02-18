@@ -23,3 +23,8 @@ pip install \
     cd release/util
     python sanity_check.py
 )
+
+(
+    cd release/util
+    bash sanity_check_cpp.sh
+)

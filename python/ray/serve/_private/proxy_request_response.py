@@ -198,5 +198,4 @@ class ResponseHandlerInfo:
     response_generator: ResponseGenerator
     metadata: HandlerMetadata
     should_record_access_log: bool
-    should_record_request_metrics: bool
     should_increment_ongoing_requests: bool

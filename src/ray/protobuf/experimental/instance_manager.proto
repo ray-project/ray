@@ -130,16 +130,16 @@ message InstanceUpdateEvent {
 
   /// Additional metdata for the update event.
 
-  // The instance type for QUEUED event.
+  // The instance type for QUEUED/REQUESTED/ALLOCATED event.
   optional string instance_type = 4;
   // Cloud instance id for ALLOCATED event.
-  optional string cloud_instance_id = 6;
+  optional string cloud_instance_id = 5;
   // Ray node id for RAY_RUNNING event.
-  optional string ray_node_id = 7;
+  optional string ray_node_id = 6;
   // Launch request id for REQUESTED event.
-  optional string launch_request_id = 8;
+  optional string launch_request_id = 7;
   // Termination request for RAY_STOPPING event.
-  optional TerminationRequest termination_request = 9;
+  optional TerminationRequest termination_request = 8;
 }
 
 // Launch request for a node type.

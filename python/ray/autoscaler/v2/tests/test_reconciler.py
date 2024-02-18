@@ -232,7 +232,6 @@ class TestReconciler:
         cloud_instances = {
             "c-1": CloudInstance("c-1", "type-1", "", True),
         }
-
         Reconciler.reconcile(
             instance_manager,
             scheduler=MockScheduler(),
@@ -348,16 +347,17 @@ class TestReconciler:
             ),
         ]
 
-        Reconciler.reconcile(
-            instance_manager,
-            scheduler=MockScheduler(),
-            cloud_provider=MagicMock(),
-            ray_cluster_resource_state=ClusterResourceState(node_states=ray_nodes),
-            non_terminated_cloud_instances=cloud_instances,
-            cloud_provider_errors=[],
-            ray_install_errors=[],
-            autoscaling_config=MockAutoscalingConfig(),
-        )
+        with pytest.raises(ValueError):
+            Reconciler.reconcile(
+                instance_manager,
+                scheduler=MockScheduler(),
+                cloud_provider=MagicMock(),
+                ray_cluster_resource_state=ClusterResourceState(node_states=ray_nodes),
+                non_terminated_cloud_instances=cloud_instances,
+                cloud_provider_errors=[],
+                ray_install_errors=[],
+                autoscaling_config=MockAutoscalingConfig(),
+            )
 
         # Assert no changes.
         assert subscriber.events == []
@@ -694,6 +694,7 @@ class TestReconciler:
                 event.launch_request_id
                 == instances[event.instance_id].launch_request_id
             )
+            assert event.instance_type == "type-1"
 
     @staticmethod
     @mock.patch("time.time_ns")
@@ -753,13 +754,62 @@ class TestReconciler:
 
     @staticmethod
     @mock.patch("time.time_ns")
+    def test_stuck_instances_ray_stop_requested(mock_time_ns, setup):
+        instance_manager, instance_storage, subscriber = setup
+        timeout_s = 5
+        cur_time_s = 20
+        mock_time_ns.return_value = cur_time_s * s_to_ns
+
+        config = InstanceReconcileConfig(
+            ray_stop_requested_status_timeout_s=timeout_s,
+        )
+        cur_status = Instance.RAY_STOP_REQUESTED
+
+        instances = [
+            create_instance(
+                "no-update",
+                cur_status,
+                status_times=[(cur_status, (cur_time_s - timeout_s + 1) * s_to_ns)],
+                ray_node_id="r-1",
+            ),
+            create_instance(
+                "updated",
+                cur_status,
+                status_times=[(cur_status, (cur_time_s - timeout_s - 1) * s_to_ns)],
+                ray_node_id="r-2",
+            ),
+        ]
+
+        TestReconciler._add_instances(instance_storage, instances)
+
+        Reconciler.reconcile(
+            instance_manager=instance_manager,
+            scheduler=MockScheduler(),
+            cloud_provider=MagicMock(),
+            ray_cluster_resource_state=ClusterResourceState(),
+            non_terminated_cloud_instances={},
+            cloud_provider_errors=[],
+            ray_install_errors=[],
+            autoscaling_config=MockAutoscalingConfig(
+                configs={
+                    "instance_reconcile_config": config,
+                    "max_concurrent_launches": 0,  # prevent launches
+                }
+            ),
+        )
+
+        instances, _ = instance_storage.get_instances()
+        assert instances["no-update"].status == cur_status
+        assert instances["updated"].status == Instance.RAY_RUNNING
+
+    @staticmethod
+    @mock.patch("time.time_ns")
     @pytest.mark.parametrize(
         "cur_status,expect_status",
         [
             (Instance.ALLOCATED, Instance.TERMINATING),
             (Instance.RAY_INSTALLING, Instance.TERMINATING),
             (Instance.TERMINATING, Instance.TERMINATING),
-            (Instance.RAY_STOP_REQUESTED, Instance.RAY_RUNNING),
         ],
     )
     def test_stuck_instances(mock_time_ns, cur_status, expect_status, setup):
@@ -771,7 +821,6 @@ class TestReconciler:
             allocate_status_timeout_s=timeout_s,
             terminating_status_timeout_s=timeout_s,
             ray_install_status_timeout_s=timeout_s,
-            ray_stop_requested_status_timeout_s=timeout_s,
         )
         instances = [
             create_instance(
