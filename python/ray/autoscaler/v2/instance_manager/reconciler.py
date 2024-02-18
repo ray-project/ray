@@ -86,25 +86,16 @@ class TimeoutInstanceUpdater(IInstanceUpdater):
         self.new_status = new_status
 
     def make_update(self, instance: IMInstance) -> Optional[IMInstanceUpdateEvent]:
-        status_times_ns = InstanceUtil.get_status_transition_times_ns(
-            instance, select_instance_status=self.cur_status
-        )
-        assert len(status_times_ns) >= 1, (
-            f"instance {instance.instance_id} has {len(status_times_ns)} "
-            f"{IMInstance.InstanceStatus.Name(self.cur_status)} status"
-        )
-        status_time_ns = sorted(status_times_ns)[-1]
-        if time.time_ns() - status_time_ns <= (self.timeout_s * 1e9):
-            return None
-
-        return IMInstanceUpdateEvent(
-            instance_id=instance.instance_id,
-            new_instance_status=self.new_status,
-            details=(
-                f"Timeout={self.timeout_s}s at status "
-                f"{IMInstance.InstanceStatus.Name(self.cur_status)}"
-            ),
-        )
+        if InstanceUtil.has_timeout(instance, self.timeout_s):
+            return IMInstanceUpdateEvent(
+                instance_id=instance.instance_id,
+                new_instance_status=self.new_status,
+                details=(
+                    f"Timeout={self.timeout_s}s at status "
+                    f"{IMInstance.InstanceStatus.Name(self.cur_status)}"
+                ),
+            )
+        return None
 
 
 class StuckRequestedInstanceUpdater(IInstanceUpdater):
@@ -128,20 +119,15 @@ class StuckRequestedInstanceUpdater(IInstanceUpdater):
         self.timeout_s = timeout_s
 
     def make_update(self, instance: IMInstance) -> Optional[IMInstanceUpdateEvent]:
+        if not InstanceUtil.has_timeout(instance, self.timeout_s):
+            # Not timeout yet, be patient.
+            return None
+
         all_request_times_ns = sorted(
             InstanceUtil.get_status_transition_times_ns(
                 instance, select_instance_status=IMInstance.REQUESTED
             )
         )
-        assert len(all_request_times_ns) >= 1, (
-            f"instance {instance.instance_id} has {len(all_request_times_ns)} "
-            f"{IMInstance.InstanceStatus.Name(IMInstance.REQUESTED)} status"
-        )
-        # Retry the allocation if we have waited for too long.
-        last_request_time_ns = all_request_times_ns[-1]
-        if time.time_ns() - last_request_time_ns <= self.timeout_s * 1e9:
-            # We have not waited for too long. Be patient.
-            return None
 
         # Fail the allocation if we have tried too many times.
         if len(all_request_times_ns) >= self.max_num_request_to_allocate:
@@ -1001,29 +987,6 @@ class Reconciler:
             )
 
         Reconciler._update_instance_manager(instance_manager, version, im_updates)
-
-    @staticmethod
-    def _handle_timeout(
-        instances: List[IMInstance],
-        updater: IInstanceUpdater,
-    ) -> Dict[str, IMInstanceUpdateEvent]:
-        """Change any instances that have not transitioned to the new status
-        to the new status."""
-        updates = {}
-        for instance in instances:
-            update = updater.make_update(instance)
-            if not update:
-                continue
-            updates[instance.instance_id] = update
-            logger.info(
-                "Updating {}({}) with {}".format(
-                    instance.instance_id,
-                    IMInstance.InstanceStatus.Name(instance.status),
-                    MessageToDict(updates[instance.instance_id]),
-                )
-            )
-
-        return updates
 
     @staticmethod
     def _warn_stuck_instances(
