@@ -14,6 +14,7 @@ import pytest
 import ray
 from ray.data.context import DataContext
 from ray.data.tests.conftest import *  # noqa
+from ray.data.tests.test_util import ConcurrencyCounter  # noqa
 from ray.data.tests.util import column_udf, column_udf_class, extract_values
 from ray.tests.conftest import *  # noqa
 
@@ -646,25 +647,6 @@ def test_map_with_memory_resources(shutdown_only):
     memory_per_task = 100 * 1024**2
     max_concurrency = 5
     ray.init(num_cpus=num_blocks, _memory=memory_per_task * max_concurrency)
-
-    @ray.remote
-    class ConcurrencyCounter:
-        def __init__(self):
-            self.concurrency = 0
-            self.max_concurrency = 0
-
-        def inc(self):
-            self.concurrency += 1
-            if self.concurrency > self.max_concurrency:
-                self.max_concurrency = self.concurrency
-            return self.concurrency
-
-        def decr(self):
-            self.concurrency -= 1
-            return self.concurrency
-
-        def get_max_concurrency(self):
-            return self.max_concurrency
 
     concurrency_counter = ConcurrencyCounter.remote()
 

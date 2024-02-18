@@ -1,13 +1,10 @@
 from collections import Counter
-from dataclasses import dataclass
 from pathlib import Path
-from typing import Callable, Dict, Optional, Tuple, Union
+from typing import Callable, Dict, Optional, Union
 
-import click
 import logging
 import os
 import time
-import warnings
 
 from ray.train._internal.storage import (
     StorageContext,
@@ -21,8 +18,6 @@ from ray.tune.impl.out_of_band_serialize_dataset import out_of_band_serialize_da
 logger = logging.getLogger(__name__)
 
 
-VALID_RESUME_TYPES = [True, "LOCAL", "REMOTE", "PROMPT", "ERRORED_ONLY", "AUTO"]
-
 _EXPERIMENT_SYNC_TIMEOUT_MESSAGE = (
     "If this warning keeps showing up, consider diagnosing the "
     "reason behind the hanging sync operation, or increase the "
@@ -30,49 +25,6 @@ _EXPERIMENT_SYNC_TIMEOUT_MESSAGE = (
 )
 
 _DRIVER_SYNC_EXCLUDE_PATTERNS = ["*/checkpoint_*"]
-
-
-@dataclass
-class _ResumeConfig:
-    resume_unfinished: bool = True
-    resume_errored: bool = False
-    restart_errored: bool = False
-
-
-def _resume_str_to_config(resume_str: str) -> Tuple[str, _ResumeConfig]:
-    if resume_str is True:
-        resume_str = "LOCAL"
-    elif resume_str == "ERRORED_ONLY":
-        warnings.warn(
-            "Passing `resume='ERRORED_ONLY'` to tune.run() is deprecated and "
-            "will be removed in the future. Please pass e.g. "
-            "`resume='LOCAL+RESTART_ERRORED_ONLY'` instead."
-        )
-        resume_str = "LOCAL+RESTART_ERRORED_ONLY"
-
-    # Parse resume string, e.g. AUTO+ERRORED
-    resume_config = _ResumeConfig()
-    resume_settings = resume_str.split("+")
-    resume_str = resume_settings[0]
-
-    for setting in resume_settings:
-        if setting == "ERRORED":
-            resume_config.resume_errored = True
-        elif setting == "RESTART_ERRORED":
-            resume_config.restart_errored = True
-        elif setting == "ERRORED_ONLY":
-            resume_config.resume_unfinished = False
-            resume_config.restart_errored = False
-            resume_config.resume_errored = True
-        elif setting == "RESTART_ERRORED_ONLY":
-            resume_config.resume_unfinished = False
-            resume_config.restart_errored = True
-            resume_config.resume_errored = False
-
-    assert resume_str in VALID_RESUME_TYPES, "resume={} is not one of {}".format(
-        resume_str, VALID_RESUME_TYPES
-    )
-    return resume_str, resume_config
 
 
 def _experiment_checkpoint_exists(experiment_dir: str) -> bool:
@@ -149,7 +101,7 @@ class _ExperimentCheckpointManager:
 
         self._excessive_sync_threshold = float(
             os.environ.get(
-                "TUNE_WARN_EXCESSIVE_EXPERIMENT_CHECKPOINT_SYNC_THRESHOLD_S", "30"
+                "TUNE_WARN_EXCESSIVE_EXPERIMENT_CHECKPOINT_SYNC_THRESHOLD_S", "5"
             )
         )
         self._should_force_cloud_sync = False
@@ -357,116 +309,53 @@ class _ExperimentCheckpointManager:
             f"-> {self._storage.experiment_local_path}"
         )
 
-    def _resume_auto(self) -> bool:
+    def resume(self) -> bool:
+        """Checks whether to resume experiment.
+
+        The experiment can be resumed if a metadata file uploaded from a
+        previous run can be found at the specified experiment directory on storage.
+        If experiment should be resumed, this method will pull the necessary
+        experiment state from storage.
+
+        Returns:
+            can_restore: Whether the experiment can be restored.
+        """
         experiment_local_path = self._storage.experiment_local_path
         experiment_fs_path = self._storage.experiment_fs_path
+
         syncer = self._storage.syncer
 
-        if experiment_fs_path and syncer:
+        # syncer is not None when the local path != storage path
+        if syncer:
             logger.info(
-                f"Trying to find and download experiment checkpoint at "
+                f"Trying to find and download experiment checkpoint from: "
                 f"{experiment_fs_path}"
             )
             try:
                 self.sync_down_experiment_state()
             except Exception:
                 logger.exception(
-                    "Got error when trying to sync down.\n"
+                    "Got error when trying to sync down experiment state from "
+                    f"{experiment_fs_path}\n"
                     "Please check this error message for potential "
                     "access problems - if a directory was not found, "
                     "that is expected at this stage when you're starting "
                     "a new experiment."
                 )
-                logger.info(
-                    "No remote checkpoint was found or an error occurred "
-                    "when trying to download the experiment checkpoint. "
-                    "Please check the previous warning message for more "
-                    "details. "
-                    "Starting a new run..."
-                )
                 return False
-            if not _experiment_checkpoint_exists(experiment_local_path):
-                logger.warning(
-                    "A remote checkpoint was fetched, but no checkpoint "
-                    "data was found. This can happen when e.g. the cloud "
-                    "bucket exists but does not contain any data. "
-                    "Starting a new run..."
-                )
-                return False
-            logger.info(
-                "A remote experiment checkpoint was found and will be "
-                "used to restore the previous experiment state."
+
+        latest_experiment_checkpoint_path = _find_newest_experiment_checkpoint(
+            experiment_local_path
+        )
+        if latest_experiment_checkpoint_path is None:
+            logger.warning(
+                f"No experiment metadata was found at {experiment_fs_path}. "
+                "Starting a new run..."
             )
-            return True
-        elif not _experiment_checkpoint_exists(experiment_local_path):
-            logger.info("No local checkpoint was found. Starting a new run...")
             return False
+
         logger.info(
-            "A local experiment checkpoint was found and will be used "
-            "to restore the previous experiment state."
+            f"The run will now start from the experiment state found in: "
+            f"{latest_experiment_checkpoint_path}"
         )
         return True
-
-    def resume(self, resume_type: Union[str, bool]) -> Optional[_ResumeConfig]:
-        """Checks whether to resume experiment.
-
-        If experiment should be resumed, this method may sync down experiment state
-        from the cloud and then return a ResumeConfig mapping to the resume type.
-
-        Args:
-            resume_type: One of ["REMOTE", "LOCAL", "PROMPT", "AUTO"]. Can
-                be suffixed with one or more of ["+ERRORED", "+ERRORED_ONLY",
-                "+RESTART_ERRORED", "+RESTART_ERRORED_ONLY"]
-
-        Returns:
-            _ResumeConfig if resume is successful. None otherwise.
-        """
-        if not resume_type:
-            return None
-
-        resume_type, resume_config = _resume_str_to_config(resume_type)
-
-        experiment_local_path = self._storage.experiment_local_path
-        experiment_fs_path = self._storage.experiment_fs_path
-
-        if resume_type == "AUTO":
-            if self._resume_auto():
-                return resume_config
-            # Else
-            return None
-
-        if resume_type in ["LOCAL", "PROMPT"]:
-            if not _experiment_checkpoint_exists(experiment_local_path):
-                raise ValueError(
-                    f"You called resume ({resume_type}) when no checkpoint "
-                    f"exists in local directory "
-                    f"({experiment_local_path}). If you want to start "
-                    f'a new experiment, use `resume="AUTO"` or '
-                    f"`resume=None`. If you expected an experiment to "
-                    f"already exist, check if you supplied the correct "
-                    f"`local_dir` to `train.RunConfig()`."
-                )
-            elif resume_type == "PROMPT":
-                if click.confirm(
-                    f"Resume from local directory? " f"({experiment_local_path})"
-                ):
-                    return resume_config
-
-        if resume_type in ["REMOTE", "PROMPT"]:
-            if resume_type == "PROMPT" and not click.confirm(
-                f"Try downloading from remote directory? " f"({experiment_fs_path})"
-            ):
-                return None
-
-            # Try syncing down the upload directory.
-            logger.info(
-                f"Downloading experiment checkpoint from " f"{experiment_fs_path}"
-            )
-            self.sync_down_experiment_state()
-
-            if not _experiment_checkpoint_exists(experiment_local_path):
-                raise ValueError(
-                    "Called resume when no checkpoint exists "
-                    "in remote or local directory."
-                )
-        return resume_config
