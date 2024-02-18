@@ -163,7 +163,7 @@ class StuckRayStopRequestedInstanceUpdater(IInstanceUpdater):
             new_instance_status=IMInstance.RAY_RUNNING,
             details=f"Timeout={self.timeout_s}s at status "
             f"{IMInstance.InstanceStatus.Name(IMInstance.RAY_STOP_REQUESTED)}",
-            ray_node_id=instance.ray_node_id,
+            ray_node_id=instance.node_id,
         )
 
 
