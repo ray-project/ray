@@ -45,7 +45,7 @@ class LlamaModel:
 
         from habana_frameworks.torch.hpu import wrap_in_hpu_graph
 
-        # enable hpu graph runtime
+        # Enable hpu graph runtime
         self.model = wrap_in_hpu_graph(model)
 
         # Set pad token, etc.
