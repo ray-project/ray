@@ -61,6 +61,7 @@ class RayStopper(InstanceUpdatedSubscriber):
         """
         Stops or drains the ray node based on the termination request.
         """
+        assert event.HasField("termination_request"), "Termination request is required."
         termination_request = event.termination_request
         ray_node_id = termination_request.ray_node_id
         instance_id = event.instance_id
