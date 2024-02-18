@@ -1,12 +1,13 @@
 import datetime
 from dataclasses import dataclass
+from enum import Enum
 from typing import Callable, Optional, Union
 
 from ray.train.constants import _DEPRECATED_VALUE
 from ray.tune.experiment.trial import Trial
 from ray.tune.schedulers import TrialScheduler
 from ray.tune.search import SearchAlgorithm, Searcher
-from ray.util import PublicAPI
+from ray.util.annotations import DeveloperAPI, PublicAPI
 
 
 @dataclass
@@ -73,3 +74,26 @@ class TuneConfig:
     trial_name_creator: Optional[Callable[[Trial], str]] = None
     trial_dirname_creator: Optional[Callable[[Trial], str]] = None
     chdir_to_trial_dir: bool = _DEPRECATED_VALUE
+
+
+@DeveloperAPI
+@dataclass
+class ResumeConfig:
+    """[Experimental] This config is used to specify how to resume Tune trials."""
+
+    class ResumeType(Enum):
+        """An enumeration to define resume types for various trial states.
+
+        Members:
+            RESUME: Resume from the latest checkpoint.
+            RESTART: Restart from the beginning (with no checkpoint).
+            SKIP: Skip this trial when resuming by treating it as terminated.
+        """
+
+        RESUME = "resume"
+        RESTART = "restart"
+        SKIP = "skip"
+
+    finished: str = ResumeType.SKIP
+    unfinished: str = ResumeType.RESUME
+    errored: str = ResumeType.SKIP
