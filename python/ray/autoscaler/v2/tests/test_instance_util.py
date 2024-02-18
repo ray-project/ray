@@ -20,7 +20,7 @@ class InstanceUtilTest(unittest.TestCase):
         assert instance.status == Instance.QUEUED
 
         # Set status.
-        InstanceUtil.set_status(instance, Instance.REQUESTED)
+        assert InstanceUtil.set_status(instance, Instance.REQUESTED)
         assert instance.status == Instance.REQUESTED
 
         # Set status with invalid status.

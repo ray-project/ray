@@ -21,7 +21,10 @@ from packaging import version
 
 import ray
 from ray.rllib.algorithms.callbacks import DefaultCallbacks
-from ray.rllib.core.rl_module.marl_module import MultiAgentRLModuleSpec
+from ray.rllib.core.rl_module.marl_module import (
+    DEFAULT_MODULE_ID,
+    MultiAgentRLModuleSpec,
+)
 from ray.rllib.core.rl_module.rl_module import SingleAgentRLModuleSpec
 from ray.rllib.env.env_context import EnvContext
 from ray.rllib.env.multi_agent_env import MultiAgentEnv
@@ -148,12 +151,12 @@ class AlgorithmConfig(_Config):
         tune.Tuner("PPO", param_space=config.to_dict())
     """
 
-    # @staticmethod
-    # def DEFAULT_AGENT_TO_MODULE_MAPPING_FN(agent_id, episode):
-    #    # The default agent ID to module ID mapping function to use in the multi-agent
-    #    # case if None is provided.
-    #    # Map any agent ID to "default_policy".
-    #    return DEFAULT_MODULE_ID
+    @staticmethod
+    def DEFAULT_AGENT_TO_MODULE_MAPPING_FN(agent_id, episode):
+        # The default agent ID to module ID mapping function to use in the multi-agent
+        # case if None is provided.
+        # Map any agent ID to "default_policy".
+        return DEFAULT_MODULE_ID
 
     # TODO (sven): Deprecate in new API stack.
     @staticmethod
@@ -873,13 +876,14 @@ class AlgorithmConfig(_Config):
                 env, "single_observation_space", env.observation_space
             ),
             input_action_space=getattr(env, "single_action_space", env.action_space),
-            env=env,
         )
         pipeline.append(
             DefaultEnvToModule(
                 input_observation_space=pipeline.observation_space,
                 input_action_space=pipeline.action_space,
-                env=env,
+                multi_agent=self.is_multi_agent(),
+                modules=set(self.policies),
+                agent_to_module_mapping_fn=self.policy_mapping_fn,
             )
         )
         return pipeline
@@ -914,13 +918,11 @@ class AlgorithmConfig(_Config):
                 env, "single_observation_space", env.observation_space
             ),
             input_action_space=getattr(env, "single_action_space", env.action_space),
-            env=env,
         )
         pipeline.append(
             DefaultModuleToEnv(
                 input_observation_space=pipeline.observation_space,
                 input_action_space=pipeline.action_space,
-                env=env,
                 normalize_actions=self.normalize_actions,
                 clip_actions=self.clip_actions,
             )
@@ -2894,9 +2896,8 @@ class AlgorithmConfig(_Config):
             spaces: Optional dict mapping policy IDs to tuples of 1) observation space
                 and 2) action space that should be used for the respective policy.
                 These spaces were usually provided by an already instantiated remote
-                EnvRunner. If not provided, will try to infer from `env`. Otherwise
-                from `self.observation_space` and `self.action_space`. If no
-                information on spaces can be inferred, will raise an error.
+                EnvRunner. Note that if the `env` argument is provided, will try to
+                infer spaces from `env` first.
             default_policy_class: The Policy class to use should a PolicySpec have its
                 policy_class property set to None.
 
