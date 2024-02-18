@@ -844,7 +844,7 @@ class ResourceDemandScheduler(IResourceScheduler):
 
         terminated_nodes, remained_nodes = (
             nodes[:num_to_terminate],
-            nodes[num_to_terminate:] + [head_node] if head_node else [],
+            nodes[num_to_terminate:] + ([head_node] if head_node else []),
         )
 
         for node in terminated_nodes:
