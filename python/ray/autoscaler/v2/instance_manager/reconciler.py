@@ -1012,8 +1012,7 @@ class Reconciler:
         # mechanism to handle them. We only warn if they are stuck for too long.
         for status in [
             # Ray taking time to drain. We could also have a timeout when Drain protocol
-            # supports timeout. The ray drain protocol should handle cases where
-            # ray takes a long time to drain a node.
+            # supports timeout.
             IMInstance.RAY_STOPPING,
             # These should just be transient, we will terminate instances with this
             # status in the next reconciler step.
