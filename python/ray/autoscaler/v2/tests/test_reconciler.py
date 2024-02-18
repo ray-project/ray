@@ -1256,8 +1256,8 @@ class TestReconciler:
         ]
 
         cloud_instances = {
-            "c-1": CloudInstance("c-1", "type-1", "", True),
-            "c-5": CloudInstance("c-5", "type-5", "", True),
+            "c-1": CloudInstance("c-1", "type-1", "", True, NodeKind.WORKER),
+            "c-5": CloudInstance("c-5", "type-5", "", True, NodeKind.WORKER),
         }
 
         TestReconciler._add_instances(instance_storage, instances)
