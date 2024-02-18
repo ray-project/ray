@@ -48,8 +48,8 @@ class Subtract:
 )
 class Router:
     def __init__(self, adder: DeploymentHandle, subtractor: DeploymentHandle):
-        self.adder = adder.options(use_new_handle_api=True)
-        self.subtractor = subtractor.options(use_new_handle_api=True)
+        self.adder = adder
+        self.subtractor = subtractor
 
     async def __call__(self, request: starlette.requests.Request) -> int:
         op, input = await request.json()

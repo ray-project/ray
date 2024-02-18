@@ -19,6 +19,7 @@ from ray.autoscaler.v2.instance_manager.node_provider import (
 )
 from ray.autoscaler.v2.instance_manager.ray_installer import RayInstallError
 from ray.autoscaler.v2.scheduler import IResourceScheduler
+from ray.autoscaler.v2.schema import NodeType
 from ray.core.generated.autoscaler_pb2 import (
     AutoscalingState,
     ClusterResourceState,
@@ -562,15 +563,6 @@ class Reconciler:
             reconciled_im_status = Reconciler._reconciled_im_status_from_ray_status(
                 ray_node.status, im_instance.status
             )
-            if not reconciled_im_status:
-                logger.error(
-                    "Failed to reconcile from ray status: "
-                    f"im_instance={im_instance.instance_id} "
-                    f"with cloud instance id={cloud_instance_id}, "
-                    f"cur_status={IMInstance.InstanceStatus.Name(im_instance.status)}, "
-                    f"ray status={NodeStatus.Name(ray_node.status)}"
-                )
-                continue
 
             if reconciled_im_status != im_instance.status:
                 updates[im_instance.instance_id] = IMInstanceUpdateEvent(
@@ -594,15 +586,17 @@ class Reconciler:
     @staticmethod
     def _reconciled_im_status_from_ray_status(
         ray_status: NodeStatus, cur_im_status: IMInstance.InstanceStatus
-    ) -> Optional["IMInstance.InstanceStatus"]:
+    ) -> "IMInstance.InstanceStatus":
         """
         Reconcile the instance status from the ray node status.
         Args:
             ray_status: the current ray node status.
             cur_im_status: the current IM instance status.
         Returns:
-            The reconciled IM instance status, or None if no reconciliation
-            could be done,  e.g. the ray node has an undefined status.
+            The reconciled IM instance status
+
+        Raises:
+            ValueError: If the ray status is unknown.
         """
         reconciled_im_status = None
         if ray_status in [NodeStatus.RUNNING, NodeStatus.IDLE]:
@@ -612,7 +606,7 @@ class Reconciler:
         elif ray_status == NodeStatus.DRAINING:
             reconciled_im_status = IMInstance.RAY_STOPPING
         else:
-            return None
+            raise ValueError(f"Unknown ray status: {ray_status}")
 
         if (
             cur_im_status == reconciled_im_status
@@ -659,26 +653,28 @@ class Reconciler:
         # Transition the instances to REQUESTED for instance launcher to
         # launch them.
         updates = {}
-        for instance in to_launch:
-            # Reuse launch request id for any QUEUED instances that have been
-            # requested before due to retry.
-            launch_request_id = (
-                str(time.time_ns())
-                if len(instance.launch_request_id) == 0
-                else instance.launch_request_id
-            )
-            updates[instance.instance_id] = IMInstanceUpdateEvent(
-                instance_id=instance.instance_id,
-                new_instance_status=IMInstance.REQUESTED,
-                launch_request_id=launch_request_id,
-            )
-            logger.debug(
-                "Updating {}({}) with {}".format(
-                    instance.instance_id,
-                    IMInstance.InstanceStatus.Name(instance.status),
-                    MessageToDict(updates[instance.instance_id]),
+        for instance_type, instances in to_launch.items():
+            for instance in instances:
+                # Reuse launch request id for any QUEUED instances that have been
+                # requested before due to retry.
+                launch_request_id = (
+                    str(time.time_ns())
+                    if len(instance.launch_request_id) == 0
+                    else instance.launch_request_id
                 )
-            )
+                updates[instance.instance_id] = IMInstanceUpdateEvent(
+                    instance_id=instance.instance_id,
+                    new_instance_status=IMInstance.REQUESTED,
+                    launch_request_id=launch_request_id,
+                    instance_type=instance_type,
+                )
+                logger.debug(
+                    "Updating {}({}) with {}".format(
+                        instance.instance_id,
+                        IMInstance.InstanceStatus.Name(instance.status),
+                        MessageToDict(updates[instance.instance_id]),
+                    )
+                )
 
         Reconciler._update_instance_manager(instance_manager, version, updates)
 
@@ -689,7 +685,7 @@ class Reconciler:
         allocated_instances: List[IMInstance],
         upscaling_speed: float,
         max_concurrent_launches: int,
-    ) -> List[IMInstance]:
+    ) -> Dict[NodeType, List[IMInstance]]:
         def _group_by_type(instances):
             instances_by_type = defaultdict(list)
             for instance in instances:
@@ -708,7 +704,7 @@ class Reconciler:
         allocated_instances_by_type = _group_by_type(allocated_instances)
 
         total_num_requested_to_launch = len(requested_instances)
-        all_to_launch = []
+        all_to_launch: Dict[NodeType : List[IMInstance]] = defaultdict(list)
 
         for (
             instance_type,
@@ -746,7 +742,7 @@ class Reconciler:
                 :num_to_launch
             ]
 
-            all_to_launch.extend(to_launch)
+            all_to_launch[instance_type].extend(to_launch)
             total_num_requested_to_launch += num_to_launch
 
         return all_to_launch
