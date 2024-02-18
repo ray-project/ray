@@ -58,7 +58,9 @@ if __name__ == "__main__":
             # Alternatively, return a list of n ConnectorV2 pieces (which will then be
             # included in an automatically generated EnvToModulePipeline or return a
             # EnvToModulePipeline directly.
-            env_to_module_connector=lambda env: MeanStdFilter(),
+            env_to_module_connector=(
+                lambda env: MeanStdFilter(multi_agent=args.num_agents > 0)
+            ),
         )
         .resources(
             num_learner_workers=args.num_gpus,

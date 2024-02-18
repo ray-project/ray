@@ -11,7 +11,7 @@ from ray.rllib.env.multi_agent_episode import MultiAgentEpisode
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.filter import MeanStdFilter as _MeanStdFilter
 from ray.rllib.utils.spaces.space_utils import get_base_struct_from_space
-from ray.rllib.utils.typing import EpisodeType
+from ray.rllib.utils.typing import AgentID, EpisodeType
 from ray.util.annotations import PublicAPI
 from ray.rllib.utils.filter import RunningStat
 
@@ -30,12 +30,8 @@ class MeanStdFilter(ConnectorV2):
     and std values as new data is pushed through it (unless `update_stats` is False).
     """
 
-    @property
     @override(ConnectorV2)
-    def observation_space(self):
-        if self.input_observation_space is None:
-            return None
-
+    def recompute_observation_space_from_input_spaces(self):
         _input_observation_space_struct = get_base_struct_from_space(
             self.input_observation_space
         )
@@ -64,6 +60,7 @@ class MeanStdFilter(ConnectorV2):
     def __init__(
         self,
         *,
+        multi_agent: bool = False,
         de_mean_to_zero: bool = True,
         de_std_to_one: bool = True,
         clip_by_value: Optional[float] = 10.0,
@@ -73,6 +70,8 @@ class MeanStdFilter(ConnectorV2):
         """Initializes a MeanStdFilter instance.
 
         Args:
+            multi_agent: Whether this is a connector operating on a multi-agent
+                observation space mapping AgentIDs to individual agents' observations.
             de_mean_to_zero: Whether to transform the mean values of the output data to
                 0.0. This is done by subtracting the incoming data by the currently
                 stored mean value.
@@ -89,6 +88,8 @@ class MeanStdFilter(ConnectorV2):
         """
         super().__init__(**kwargs)
 
+        self._multi_agent = multi_agent
+
         # We simply use the old MeanStdFilter until non-connector env_runner is fully
         # deprecated to avoid duplicate code
         self.de_mean_to_zero = de_mean_to_zero
@@ -96,7 +97,7 @@ class MeanStdFilter(ConnectorV2):
         self.clip_by_value = clip_by_value
         self._update_stats = update_stats
 
-        self._filter: Optional[_MeanStdFilter] = None
+        self._filters: Optional[Dict[AgentID, _MeanStdFilter]] = None
 
     @override(ConnectorV2)
     def __call__(
@@ -109,58 +110,49 @@ class MeanStdFilter(ConnectorV2):
         persistent_data: Optional[dict] = None,
         **kwargs,
     ) -> Any:
-        if self._filter is None:
-            self._init_new_filter()
+        if self._filters is None:
+            self._init_new_filters()
 
         # This connector acts as a classic postprocessor. We process and then replace
         # observations inside the episodes directly. Thus, all following connectors
         # will only see and operate the already normalized data (w/o having access
         # anymore to the original observations).
-        for episode in episodes:
-            observations = episode.get_observations(indices=-1)
-            normalized_observations = self._filter(
-                observations, update=self._update_stats
+        for sa_episode in self.single_agent_episode_iterator(episodes):
+            sa_obs = sa_episode.get_observations(indices=-1)
+            normalized_sa_obs = self._filters[sa_episode.agent_id](
+                sa_obs, update=self._update_stats
             )
-            # TODO (sven): This is kind of a hack.
-            #  We set the Episode's observation space to ours so that we can safely
-            #  set the last obs to the new value (without causing a space mismatch
-            #  error). However, this would NOT work if our
-            #  space were to be more more restrictive than the env's original space
-            #  b/c then the adding of the original env observation would fail.
-            episode.observation_space = (
-                episode.observations.space
-            ) = self.observation_space
-            # TODO (sven): Add setter APIs to multi-agent episode.
-            if isinstance(episode, MultiAgentEpisode):
-                for agent_id, val in normalized_observations.items():
-                    episode.agent_episodes[agent_id].set_observations(
-                        new_data=val,
-                        at_indices=-1,
-                    )
-            else:
-                episode.set_observations(
-                    new_data=normalized_observations,
-                    at_indices=-1,
-                )
+            sa_episode.set_observations(at_indices=-1, new_data=normalized_sa_obs)
+
+            if len(sa_episode) == 0:
+                # TODO (sven): This is kind of a hack.
+                #  We set the Episode's observation space to ours so that we can safely
+                #  set the last obs to the new value (without causing a space mismatch
+                #  error). However, this would NOT work if our
+                #  space were to be more more restrictive than the env's original space
+                #  b/c then the adding of the original env observation would fail.
+                sa_episode.observation_space = self.observation_space
 
         # Leave the `input_` as is. RLlib's default connector will automatically
         # populate the OBS column therein from the episodes' (transformed) observations.
         return data
 
     def get_state(self) -> Any:
-        return self._get_state_from_filter(self._filter)
+        return self._get_state_from_filters(self._filters)
 
     @override(ConnectorV2)
-    def set_state(self, state: Dict[str, Any]) -> None:
-        self._filter.shape = state["shape"]
-        self._filter.demean = state["de_mean_to_zero"]
-        self._filter.destd = state["de_std_to_one"]
-        self._filter.clip = state["clip_by_value"]
-        running_stats = [RunningStat.from_state(s) for s in state["running_stats"]]
-        self._filter.running_stats = tree.unflatten_as(
-            self._filter.shape, running_stats
-        )
-        # Do not update the buffer.
+    def set_state(self, state: Dict[AgentID, Dict[str, Any]]) -> None:
+        for agent_id, agent_state in state.items():
+            filter = self._filters[agent_id]
+            filter.shape = agent_state["shape"]
+            filter.demean = agent_state["de_mean_to_zero"]
+            filter.destd = agent_state["de_std_to_one"]
+            filter.clip = agent_state["clip_by_value"]
+            filter.running_stats = tree.unflatten_as(
+                filter.shape,
+                [RunningStat.from_state(s) for s in agent_state["running_stats"]],
+            )
+            # Do not update the buffer.
 
     @override(ConnectorV2)
     def reset_state(self) -> None:
@@ -170,46 +162,45 @@ class MeanStdFilter(ConnectorV2):
                 f"State of {type(self).__name__} can only be changed when "
                 f"`update_stats` was set to False."
             )
-        self._init_new_filter()
+        self._init_new_filters()
 
     @override(ConnectorV2)
     def merge_states(self, states: List[Dict[str, Any]]) -> Dict[str, Any]:
-        # Make sure data is uniform across given states.
-        ref = states[0]
-        assert all(
-            s["shape"] == ref["shape"]
-            and s["de_mean_to_zero"] == ref["de_mean_to_zero"]
-            and s["de_std_to_one"] == ref["de_std_to_one"]
-            and s["clip_by_value"] == ref["clip_by_value"]
-            for s in states
-        )
+        if self._filters is None:
+            self._init_new_filters()
 
-        if self._filter is None:
-            self._init_new_filter()
+        # Make sure data is uniform across given states.
+        ref = next(iter(states[0].values()))
 
         for state in states:
-            # TODO: Simply re-use _filter=_MeanStdFilter()
-            #  then _filter.set_state(state)
-            _filter = _MeanStdFilter(
-                ref["shape"],
-                demean=ref["de_mean_to_zero"],
-                destd=ref["de_std_to_one"],
-                clip=ref["clip_by_value"],
-            )
-            # Override running stats of the filter with the ones stored in `state`.
-            _filter.buffer = tree.unflatten_as(
-                state["shape"],
-                [RunningStat.from_state(stats) for stats in state["running_stats"]]
-            )
-            # TODO END
+            for agent_id, agent_state in state.items():
+                assert (
+                    agent_state["shape"] == ref["shape"]
+                    and agent_state["de_mean_to_zero"] == ref["de_mean_to_zero"]
+                    and agent_state["de_std_to_one"] == ref["de_std_to_one"]
+                    and agent_state["clip_by_value"] == ref["clip_by_value"]
+                )
 
-            # Leave the buffers as-is, since they should always only reflect
-            # what has happened on the particular env runner.
-            self._filter.apply_changes(_filter, with_buffer=False)
+                _filter = _MeanStdFilter(
+                    ref["shape"],
+                    demean=ref["de_mean_to_zero"],
+                    destd=ref["de_std_to_one"],
+                    clip=ref["clip_by_value"],
+                )
+                # Override running stats of the filter with the ones stored in
+                # `agent_state`.
+                _filter.buffer = tree.unflatten_as(
+                    agent_state["shape"],
+                    [RunningStat.from_state(stats) for stats in agent_state["running_stats"]]
+                )
 
-        return MeanStdFilter._get_state_from_filter(self._filter)
+                # Leave the buffers as-is, since they should always only reflect
+                # what has happened on the particular env runner.
+                self._filters[agent_id].apply_changes(_filter, with_buffer=False)
 
-    def _init_new_filter(self):
+        return MeanStdFilter._get_state_from_filters(self._filters)
+
+    def _init_new_filters(self):
         filter_shape = tree.map_structure(
             lambda s: (
                 None
@@ -220,20 +211,29 @@ class MeanStdFilter(ConnectorV2):
                 self.input_observation_space
             ),
         )
-        self._filter = _MeanStdFilter(
-            filter_shape,
-            demean=self.de_mean_to_zero,
-            destd=self.de_std_to_one,
-            clip=self.clip_by_value,
-        )
+        if not self._multi_agent:
+            filter_shape = {None: filter_shape}
+
+        self._filters = {
+            agent_id: _MeanStdFilter(
+                agent_filter_shape,
+                demean=self.de_mean_to_zero,
+                destd=self.de_std_to_one,
+                clip=self.clip_by_value,
+            ) for agent_id, agent_filter_shape in filter_shape.items()
+        }
 
     @staticmethod
-    def _get_state_from_filter(filter):
-        flattened_rs = tree.flatten(filter.running_stats)
-        return {
-            "shape": filter.shape,
-            "de_mean_to_zero": filter.demean,
-            "de_std_to_one": filter.destd,
-            "clip_by_value": filter.clip,
-            "running_stats": [s.to_state() for s in flattened_rs],
-        }
+    def _get_state_from_filters(filters: Dict[AgentID, Dict[str, Any]]):
+        ret = {}
+        for agent_id, agent_filter in filters.items():
+            ret[agent_id] = {
+                "shape": agent_filter.shape,
+                "de_mean_to_zero": agent_filter.demean,
+                "de_std_to_one": agent_filter.destd,
+                "clip_by_value": agent_filter.clip,
+                "running_stats": [
+                    s.to_state() for s in tree.flatten(agent_filter.running_stats)
+                ],
+            }
+        return ret

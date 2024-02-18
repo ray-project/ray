@@ -31,14 +31,12 @@ class DefaultEnvToModule(ConnectorV2):
     pipeline already take care of populating these fields (obs and state in).
     """
 
-    @property
     @override(ConnectorV2)
-    def observation_space(self):
+    def recompute_observation_space_from_input_spaces(self):
         return self._map_space_if_necessary(self.input_observation_space)
 
-    @property
     @override(ConnectorV2)
-    def action_space(self):
+    def recompute_action_space_from_input_spaces(self):
         return self._map_space_if_necessary(self.input_action_space)
 
     def __init__(

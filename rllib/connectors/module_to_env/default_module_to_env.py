@@ -36,10 +36,15 @@ class DefaultModuleToEnv(ConnectorV2):
     are).
     """
 
+    @override(ConnectorV2)
+    def recompute_action_space_from_input_spaces(self) -> gym.Space:
+        self._action_space_struct = get_base_struct_from_space(self.input_action_space)
+        return self.input_action_space
+
     def __init__(
         self,
-        input_observation_space: gym.Space,
-        input_action_space: gym.Space,
+        input_observation_space: Optional[gym.Space] = None,
+        input_action_space: Optional[gym.Space] = None,
         *,
         normalize_actions: bool,
         clip_actions: bool,
@@ -69,7 +74,6 @@ class DefaultModuleToEnv(ConnectorV2):
         """
         super().__init__(input_observation_space, input_action_space, **kwargs)
 
-        self._action_space_struct = get_base_struct_from_space(self.action_space)
         self.normalize_actions = normalize_actions
         self.clip_actions = clip_actions
 

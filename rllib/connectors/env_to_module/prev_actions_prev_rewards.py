@@ -37,11 +37,8 @@ class PrevActionsPrevRewardsConnector(ConnectorV2):
 
     ORIG_OBS_KEY = "_orig_obs"
 
-    @property
-    def observation_space(self):
-        if self.input_observation_space is None:
-            return None
-
+    @override(ConnectorV2)
+    def recompute_observation_space_from_input_spaces(self):
         if self._multi_agent:
             ret = {}
             for agent_id, obs_space in self.input_observation_space.spaces.items():
@@ -55,8 +52,8 @@ class PrevActionsPrevRewardsConnector(ConnectorV2):
 
     def __init__(
         self,
-        input_observation_space: gym.Space = None,
-        input_action_space: gym.Space = None,
+        input_observation_space: Optional[gym.Space] = None,
+        input_action_space: Optional[gym.Space] = None,
         *,
         multi_agent: bool = False,
         n_prev_actions: int = 1,

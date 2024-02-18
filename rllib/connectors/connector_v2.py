@@ -6,6 +6,7 @@ import gymnasium as gym
 
 from ray.rllib.core.rl_module.rl_module import RLModule
 from ray.rllib.env.single_agent_episode import SingleAgentEpisode
+from ray.rllib.utils.annotations import OverrideToImplementCustomLogic
 from ray.rllib.utils.spaces.space_utils import unbatch
 from ray.rllib.utils.typing import EpisodeType, ModuleID
 from ray.util.annotations import PublicAPI
@@ -59,35 +60,6 @@ class ConnectorV2(abc.ABC):
     pipelines) and the Learners (owning the Learner pipelines).
     """
 
-    @property
-    def observation_space(self):
-        """Getter for our (output) observation space.
-
-        Logic: Use user provided space (if set via `observation_space` setter)
-        otherwise, use the same as the input space, assuming this connector piece
-        does not alter the space.
-        """
-        return self.input_observation_space
-
-    @property
-    def action_space(self):
-        """Getter for our (output) action space.
-
-        Logic: Use user provided space (if set via `action_space` setter)
-        otherwise, use the same as the input space, assuming this connector piece
-        does not alter the space.
-        """
-        return self.input_action_space
-
-    @property
-    def input_observation_space(self):
-        return self._input_observation_space
-    
-    @input_observation_space.setter
-    def input_observation_space(self, value):
-        self._input_observation_space = value
-        self.observation_space
-
     def __init__(
         self,
         input_observation_space: Optional[gym.Space] = None,
@@ -106,10 +78,79 @@ class ConnectorV2(abc.ABC):
                 (module-to-env) pipeline or is directly defined within the gym.Env.
             **kwargs: Forward API-compatibility kwargs.
         """
+        self._observation_space = None
+        self._action_space = None
         self._input_observation_space = None
-        self.input_observation_space = input_observation_space
         self._input_action_space = None
+        self.input_observation_space = input_observation_space
         self.input_action_space = input_action_space
+
+    @OverrideToImplementCustomLogic
+    def recompute_observation_space_from_input_spaces(self) -> gym.Space:
+        """Re-computes a new (output) observation space based on the input space.
+
+        This method should be overridden by users to make sure a ConnectorPipelineV2
+        knows how the input spaces through its individual ConnectorV2 pieces are being
+        transformed.
+
+        .. testcode::
+
+            from gymnasium.spaces import Box, Discrete
+            import numpy as np
+
+            from ray.rllib.connectors.connector_v2 import ConnectorV2
+            from ray.rllib.utils.numpy import one_hot
+            from ray.rllib.utils.test_utils import check
+
+            class OneHotConnector(ConnectorV2):
+                def recompute_observation_space_from_input_spaces(self):
+                    return Box(0.0, 1.0, (self.input_observation_space.n,), np.float32)
+
+                def __call__(
+                    self,
+                    *,
+                    rl_module,
+                    data,
+                    episodes,
+                    explore=None,
+                    shared_data=None,
+                    **kwargs,
+                ):
+                    assert "obs" in data
+                    data["obs"] = one_hot(data["obs"])
+                    return data
+
+            connector = OneHotConnector(input_observation_space=Discrete(2))
+            data = {"obs": np.array([1, 0, 0], np.int32)}
+            output = connector(rl_module=None, data=data, episodes=None)
+
+            check(output, {"obs": np.array([[0.0, 1.0], [1.0, 0.0], [1.0, 0.0]])})
+
+        If this ConnectorV2 does not change the observation space in any way, leave
+        this parent method implementation untouched.
+
+        Returns:
+            The new observation space (after data has passed through this ConenctorV2
+            piece).
+        """
+        return self.input_observation_space
+
+    @OverrideToImplementCustomLogic
+    def recompute_action_space_from_input_spaces(self) -> gym.Space:
+        """Re-computes a new (output) action space based on the input space.
+
+        This method should be overridden by users to make sure a ConnectorPipelineV2
+        knows how the input spaces through its individual ConnectorV2 pieces are being
+        transformed.
+
+        If this ConnectorV2 does not change the action space in any way, leave
+        this parent method implementation untouched.
+
+        Returns:
+            The new action space (after data has passed through this ConenctorV2
+            piece).
+        """
+        return self.input_action_space
 
     @abc.abstractmethod
     def __call__(
@@ -486,5 +527,50 @@ class ConnectorV2(abc.ABC):
         """
         return {}
 
+    @property
+    def observation_space(self):
+        """Getter for our (output) observation space.
+
+        Logic: Use user provided space (if set via `observation_space` setter)
+        otherwise, use the same as the input space, assuming this connector piece
+        does not alter the space.
+        """
+        return self._observation_space
+
+    @property
+    def action_space(self):
+        """Getter for our (output) action space.
+
+        Logic: Use user provided space (if set via `action_space` setter)
+        otherwise, use the same as the input space, assuming this connector piece
+        does not alter the space.
+        """
+        return self._action_space
+
+    @property
+    def input_observation_space(self):
+        return self._input_observation_space
+
+    @input_observation_space.setter
+    def input_observation_space(self, value):
+        self._input_observation_space = value
+        if value is not None:
+            self._observation_space = (
+                self.recompute_observation_space_from_input_spaces()
+            )
+
+    @property
+    def input_action_space(self):
+        return self._input_action_space
+
+    @input_action_space.setter
+    def input_action_space(self, value):
+        self._input_action_space = value
+        if value is not None:
+            self._action_space = (
+                self.recompute_action_space_from_input_spaces()
+            )
+
     def __str__(self, indentation: int = 0):
         return " " * indentation + self.__class__.__name__
+
