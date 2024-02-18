@@ -1045,11 +1045,13 @@ bool TaskManager::FailOrRetryPendingTask(const TaskID &task_id,
                                          bool fail_immediately) {
   // Note that this might be the __ray_terminate__ task, so we don't log
   // loudly with ERROR here.
-  RAY_LOG(DEBUG) << "Task attempt " << task_id << " failed with error "
-                 << rpc::ErrorType_Name(error_type) << " Fail immediately? "
-                 << fail_immediately << ", status " << *status << ", error info "
-                 << (ray_error_info == nullptr ? "nullptr"
-                                               : ray_error_info->DebugString());
+  RAY_LOG(WARNING) << "Task attempt " << task_id << " failed with error "
+                   << rpc::ErrorType_Name(error_type) << " Fail immediately? "
+                   << fail_immediately << ", status "
+                   << (status == nullptr ? "null" : status->ToString()) << ", error info "
+                   << (ray_error_info == nullptr ? "null"
+                                                 : ray_error_info->DebugString());
+
   bool will_retry = false;
   if (!fail_immediately) {
     will_retry = RetryTaskIfPossible(

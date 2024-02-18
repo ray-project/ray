@@ -559,15 +559,6 @@ class Reconciler:
             reconciled_im_status = Reconciler._reconciled_im_status_from_ray_status(
                 ray_node.status, im_instance.status
             )
-            if not reconciled_im_status:
-                logger.error(
-                    "Failed to reconcile from ray status: "
-                    f"im_instance={im_instance.instance_id} "
-                    f"with cloud instance id={cloud_instance_id}, "
-                    f"cur_status={IMInstance.InstanceStatus.Name(im_instance.status)}, "
-                    f"ray status={NodeStatus.Name(ray_node.status)}"
-                )
-                continue
 
             if reconciled_im_status != im_instance.status:
                 updates[im_instance.instance_id] = IMInstanceUpdateEvent(
@@ -591,15 +582,17 @@ class Reconciler:
     @staticmethod
     def _reconciled_im_status_from_ray_status(
         ray_status: NodeStatus, cur_im_status: IMInstance.InstanceStatus
-    ) -> Optional["IMInstance.InstanceStatus"]:
+    ) -> "IMInstance.InstanceStatus":
         """
         Reconcile the instance status from the ray node status.
         Args:
             ray_status: the current ray node status.
             cur_im_status: the current IM instance status.
         Returns:
-            The reconciled IM instance status, or None if no reconciliation
-            could be done,  e.g. the ray node has an undefined status.
+            The reconciled IM instance status
+
+        Raises:
+            ValueError: If the ray status is unknown.
         """
         reconciled_im_status = None
         if ray_status in [NodeStatus.RUNNING, NodeStatus.IDLE]:
@@ -609,7 +602,7 @@ class Reconciler:
         elif ray_status == NodeStatus.DRAINING:
             reconciled_im_status = IMInstance.RAY_STOPPING
         else:
-            return None
+            raise ValueError(f"Unknown ray status: {ray_status}")
 
         if (
             cur_im_status == reconciled_im_status
@@ -688,7 +681,7 @@ class Reconciler:
         allocated_instances: List[IMInstance],
         upscaling_speed: float,
         max_concurrent_launches: int,
-    ) -> Dict[NodeType : List[IMInstance]]:
+    ) -> Dict[NodeType, List[IMInstance]]:
         def _group_by_type(instances):
             instances_by_type = defaultdict(list)
             for instance in instances:

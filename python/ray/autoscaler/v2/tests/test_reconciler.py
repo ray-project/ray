@@ -212,7 +212,6 @@ class TestReconciler:
         cloud_instances = {
             "c-1": CloudInstance("c-1", "type-1", "", True),
         }
-
         Reconciler.reconcile(
             instance_manager,
             scheduler=MockScheduler(),
@@ -323,16 +322,17 @@ class TestReconciler:
             ),
         ]
 
-        Reconciler.reconcile(
-            instance_manager,
-            scheduler=MockScheduler(),
-            cloud_provider=MagicMock(),
-            ray_cluster_resource_state=ClusterResourceState(node_states=ray_nodes),
-            non_terminated_cloud_instances=cloud_instances,
-            cloud_provider_errors=[],
-            ray_install_errors=[],
-            autoscaling_config=MockAutoscalingConfig(),
-        )
+        with pytest.raises(ValueError):
+            Reconciler.reconcile(
+                instance_manager,
+                scheduler=MockScheduler(),
+                cloud_provider=MagicMock(),
+                ray_cluster_resource_state=ClusterResourceState(node_states=ray_nodes),
+                non_terminated_cloud_instances=cloud_instances,
+                cloud_provider_errors=[],
+                ray_install_errors=[],
+                autoscaling_config=MockAutoscalingConfig(),
+            )
 
         # Assert no changes.
         assert subscriber.events == []
