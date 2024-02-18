@@ -19,7 +19,7 @@ from ray import serve
 from ray.serve._private.common import RequestProtocol
 from ray.serve.config import gRPCOptions
 from ray.serve.generated import serve_pb2, serve_pb2_grpc
-from ray.serve.handle import RayServeHandle
+from ray.serve.handle import DeploymentHandle
 
 CALLS_PER_BATCH = 100
 DELTA = 10**-7
@@ -130,7 +130,7 @@ def build_app(
 ):
     @serve.deployment(max_concurrent_queries=1000)
     class DataPreprocessing:
-        def __init__(self, handle: RayServeHandle):
+        def __init__(self, handle: DeploymentHandle):
             self._handle = handle
 
             # Turn off access log.
@@ -147,8 +147,7 @@ def build_app(
             body = json.loads(await req.body())
             raw = np.asarray(body["nums"])
             processed = self.normalize(raw)
-            model_output_ref = await self._handle.remote(processed)
-            return await model_output_ref
+            return await self._handle.remote(processed)
 
         async def grpc_call(self, raq_data):
             """gRPC entrypoint.
@@ -157,8 +156,8 @@ def build_app(
             """
             raw = np.asarray(raq_data.nums)
             processed = self.normalize(raw)
-            model_output_ref = await self._handle.remote(processed)
-            return serve_pb2.ModelOutput(output=await model_output_ref)
+            output = await self._handle.remote(processed)
+            return serve_pb2.ModelOutput(output=output)
 
     @serve.deployment(
         num_replicas=num_replicas,

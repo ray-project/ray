@@ -65,7 +65,7 @@ class InstanceUtil:
         instance_id: str,
         instance_type: str,
         status: Instance.InstanceStatus,
-        details: str,
+        details: str = "",
     ) -> Instance:
         """
         Returns a new instance with the given status.

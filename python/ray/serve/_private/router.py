@@ -29,6 +29,7 @@ from ray.serve.config import AutoscalingConfig
 from ray.util import metrics
 
 logger = logging.getLogger(SERVE_LOGGER_NAME)
+
 PUSH_METRICS_TO_CONTROLLER_TASK_NAME = "push_metrics_to_controller"
 RECORD_METRICS_TASK_NAME = "record_metrics"
 
@@ -68,6 +69,7 @@ class Router:
                 self_node_id,
                 self_actor_id,
                 self_availability_zone,
+                use_replica_queue_len_cache=RAY_SERVE_ENABLE_QUEUE_LENGTH_CACHE,
             )
 
         logger.info(
@@ -226,15 +228,13 @@ class Router:
         with self._queries_lock:
             self.num_requests_sent_to_replicas[replica_tag] -= 1
 
-    async def _replace_known_types_in_args(
+    async def _resolve_deployment_responses(
         self, request_args: Tuple[Any], request_kwargs: Dict[str, Any]
     ) -> Tuple[Tuple[Any], Dict[str, Any]]:
-        """Uses the `_PyObjScanner` to find and replace known types.
+        """Replaces `DeploymentResponse` objects with their resolved object refs.
 
-        1) Replaces `asyncio.Task` objects with their results. This is used for the old
-           serve handle API and should be removed once that API is deprecated & removed.
-        2) Replaces `DeploymentResponse` objects with their resolved object refs. This
-           enables composition without explicitly calling `_to_object_ref`.
+        Uses the `_PyObjScanner` to find and replace the objects. This
+        enables composition without explicitly calling `_to_object_ref`.
         """
         from ray.serve.handle import (
             DeploymentResponse,
@@ -242,17 +242,14 @@ class Router:
             _DeploymentResponseBase,
         )
 
-        scanner = _PyObjScanner(source_type=(asyncio.Task, _DeploymentResponseBase))
+        scanner = _PyObjScanner(source_type=_DeploymentResponseBase)
 
         try:
-            tasks = []
             responses = []
             replacement_table = {}
             objs = scanner.find_nodes((request_args, request_kwargs))
             for obj in objs:
-                if isinstance(obj, asyncio.Task):
-                    tasks.append(obj)
-                elif isinstance(obj, DeploymentResponseGenerator):
+                if isinstance(obj, DeploymentResponseGenerator):
                     raise RuntimeError(
                         "Streaming deployment handle results cannot be passed to "
                         "downstream handle calls. If you have a use case requiring "
@@ -260,19 +257,6 @@ class Router:
                     )
                 elif isinstance(obj, DeploymentResponse):
                     responses.append(obj)
-
-            for task in tasks:
-                # NOTE(edoakes): this is a hack to enable the legacy behavior of passing
-                # `asyncio.Task` objects directly to downstream handle calls without
-                # `await`. Because the router now runs on a separate loop, the
-                # `asyncio.Task` can't directly be awaited here. So we use the
-                # thread-safe `concurrent.futures.Future` instead.
-                # This can be removed when `RayServeHandle` is fully deprecated.
-                if hasattr(task, "_ray_serve_object_ref_future"):
-                    future = task._ray_serve_object_ref_future
-                    replacement_table[task] = await asyncio.wrap_future(future)
-                else:
-                    replacement_table[task] = task
 
             # Gather `DeploymentResponse` object refs concurrently.
             if len(responses) > 0:
@@ -321,7 +305,9 @@ class Router:
             # request will be placed on the front of the queue to avoid tail latencies.
             # TODO(edoakes): this retry procedure is not perfect because it'll reset the
             # process of choosing candidates replicas (i.e., for locality-awareness).
-            replica = await self.choose_replica_for_request(pr, is_retry=True)
+            replica = await self._replica_scheduler.choose_replica_for_request(
+                pr, is_retry=True
+            )
 
     async def assign_request(
         self,
@@ -352,7 +338,7 @@ class Router:
             )
 
         try:
-            request_args, request_kwargs = await self._replace_known_types_in_args(
+            request_args, request_kwargs = await self._resolve_deployment_responses(
                 request_args, request_kwargs
             )
             ref, replica_tag = await self.schedule_and_send_request(
