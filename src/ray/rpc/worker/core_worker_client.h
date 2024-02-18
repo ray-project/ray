@@ -108,6 +108,10 @@ class CoreWorkerClientInterface : public pubsub::SubscriberClientInterface {
   virtual void NumPendingTasks(std::unique_ptr<NumPendingTasksRequest> request,
                                const ClientCallback<NumPendingTasksReply> &callback) {}
 
+  virtual void PushExperimentalChannelValue(
+      const PushExperimentalChannelValueRequest &request,
+      const ClientCallback<PushExperimentalChannelValueReply> &callback) {}
+
   /// Notify a wait has completed for direct actor call arguments.
   ///
   /// \param[in] request The request message.
@@ -339,6 +343,12 @@ class CoreWorkerClient : public std::enable_shared_from_this<CoreWorkerClient>,
 
   VOID_RPC_CLIENT_METHOD(CoreWorkerService,
                          AssignObjectOwner,
+                         grpc_client_,
+                         /*method_timeout_ms*/ -1,
+                         override)
+
+  VOID_RPC_CLIENT_METHOD(CoreWorkerService,
+                         PushExperimentalChannelValue,
                          grpc_client_,
                          /*method_timeout_ms*/ -1,
                          override)

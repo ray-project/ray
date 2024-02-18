@@ -102,6 +102,8 @@ class PlasmaClientInterface {
                                                        int64_t num_readers,
                                                        std::shared_ptr<Buffer> *data) = 0;
 
+  virtual Status ExperimentalMutableObjectRegisterWriter(const ObjectID &object_id) = 0;
+
   /// Experimental method for mutable objects. Releases a write lock on the
   /// object, allowing readers to read. This is the equivalent of "Seal" for
   /// normal objects.
@@ -242,6 +244,8 @@ class PlasmaClient : public PlasmaClientInterface {
                                 std::shared_ptr<Buffer> *data,
                                 plasma::flatbuf::ObjectSource source,
                                 int device_num = 0);
+
+  Status ExperimentalMutableObjectRegisterWriter(const ObjectID &object_id);
 
   Status ExperimentalMutableObjectWriteAcquire(const ObjectID &object_id,
                                                int64_t data_size,

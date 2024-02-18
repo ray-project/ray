@@ -227,6 +227,8 @@ CoreWorker::CoreWorker(const CoreWorkerOptions &options, const WorkerID &worker_
       std::make_unique<rpc::GrpcServer>(WorkerTypeString(options_.worker_type),
                                         assigned_port,
                                         options_.node_ip_address == "127.0.0.1");
+  // ClusterID::Nil(),
+  // 2);
   core_worker_server_->RegisterService(grpc_service_, false /* token_auth */);
   core_worker_server_->Run();
 
@@ -359,6 +361,20 @@ CoreWorker::CoreWorker(const CoreWorkerOptions &options, const WorkerID &worker_
             },
             "CoreWorker.HandleException");
       }));
+
+  auto raylet_channel_client_factory = [this](const NodeID &node_id) {
+    auto node_info = gcs_client_->Nodes().Get(node_id);
+    RAY_CHECK(node_info) << "No GCS info for node " << node_id;
+    auto grpc_client =
+        rpc::NodeManagerWorkerClient::make(node_info->node_manager_address(),
+                                           node_info->node_manager_port(),
+                                           *channel_manager_->GetClientCallManager());
+    return std::shared_ptr<raylet::RayletClient>(
+        new raylet::RayletClient(std::move(grpc_client)));
+  };
+  channel_manager_.reset(new ExperimentalChannelManager(
+      plasma_store_provider_->GetPlasmaClient(),
+      raylet_channel_client_factory));
 
   auto push_error_callback = [this](const JobID &job_id,
                                     const std::string &type,
@@ -4162,6 +4178,46 @@ void CoreWorker::HandleNumPendingTasks(rpc::NumPendingTasksRequest request,
                                        rpc::SendReplyCallback send_reply_callback) {
   RAY_LOG(DEBUG) << "Received NumPendingTasks request.";
   reply->set_num_pending_tasks(task_manager_->NumPendingTasks());
+  send_reply_callback(Status::OK(), nullptr, nullptr);
+}
+
+void CoreWorker::ExperimentalRegisterCrossNodeWriterChannel(const ObjectID &channel_id,
+                                                            const NodeID &receiver_id) {
+  RAY_LOG(DEBUG) << "RegisterCrossNodeWriterChannel " << channel_id << " sends to actor "
+                 << receiver_id;
+  channel_manager_->RegisterCrossNodeWriterChannel(channel_id, receiver_id);
+}
+
+void CoreWorker::ExperimentalRegisterCrossNodeReaderChannel(
+    const ObjectID &channel_id,
+    int64_t num_readers,
+    const ObjectID &local_reader_channel_id) {
+  RAY_LOG(DEBUG) << "RegisterCrossReaderChannel " << channel_id << " num readers "
+                 << num_readers << " local channel " << local_reader_channel_id;
+
+  std::promise<void> promise;
+  auto future = promise.get_future();
+
+  local_raylet_client_->ExperimentalRegisterCrossNodeReaderChannel(
+      channel_id,
+      num_readers,
+      local_reader_channel_id,
+      [this, &promise, channel_id](
+          const Status &status,
+          const rpc::ExperimentalRegisterCrossNodeReaderChannelReply &reply) {
+        RAY_CHECK(reply.success());
+        RAY_LOG(DEBUG) << "Received register reply from remote reader for channel " << channel_id;
+        promise.set_value();
+      });
+  future.wait();
+  RAY_LOG(DEBUG) << "Registered remote reader for channel " << channel_id;
+}
+
+void CoreWorker::HandlePushExperimentalChannelValue(
+    rpc::PushExperimentalChannelValueRequest request,
+    rpc::PushExperimentalChannelValueReply *reply,
+    rpc::SendReplyCallback send_reply_callback) {
+  channel_manager_->HandlePushExperimentalChannelValue(request, reply);
   send_reply_callback(Status::OK(), nullptr, nullptr);
 }
 

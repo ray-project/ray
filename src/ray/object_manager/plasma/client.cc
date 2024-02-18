@@ -152,6 +152,8 @@ class PlasmaClient::Impl : public std::enable_shared_from_this<PlasmaClient::Imp
                               fb::ObjectSource source,
                               int device_num);
 
+  Status ExperimentalMutableObjectRegisterWriter(const ObjectID &object_id);
+
   Status ExperimentalMutableObjectWriteAcquire(const ObjectID &object_id,
                                                int64_t data_size,
                                                const uint8_t *metadata,
@@ -166,15 +168,10 @@ class PlasmaClient::Impl : public std::enable_shared_from_this<PlasmaClient::Imp
   Status Get(const std::vector<ObjectID> &object_ids,
              int64_t timeout_ms,
              std::vector<ObjectBuffer> *object_buffers,
-             bool is_from_worker);
+             bool is_from_worker,
+             bool read_acquire_experimental_mutable_object = true);
 
-  Status Get(const ObjectID *object_ids,
-             int64_t num_objects,
-             int64_t timeout_ms,
-             ObjectBuffer *object_buffers,
-             bool is_from_worker);
-
-  Status EnsureGetAcquired(std::unique_ptr<ObjectInUseEntry> &object_entry);
+  Status EnsureGetAcquired(std::shared_ptr<ObjectInUseEntry> &object_entry);
 
   Status ExperimentalMutableObjectReadRelease(const ObjectID &object_id);
 
@@ -227,7 +224,8 @@ class PlasmaClient::Impl : public std::enable_shared_from_this<PlasmaClient::Imp
                     const std::function<std::shared_ptr<Buffer>(
                         const ObjectID &, const std::shared_ptr<Buffer> &)> &wrap_buffer,
                     ObjectBuffer *object_buffers,
-                    bool is_from_worker);
+                    bool is_from_worker,
+                    bool read_acquire_experimental_mutable_object = true);
 
   uint8_t *LookupMmappedFile(MEMFD_TYPE store_fd_val) const;
 
@@ -257,7 +255,7 @@ class PlasmaClient::Impl : public std::enable_shared_from_this<PlasmaClient::Imp
   absl::flat_hash_map<MEMFD_TYPE_NON_UNIQUE, MEMFD_TYPE> dedup_fd_table_;
   /// A hash table of the object IDs that are currently being used by this
   /// client.
-  absl::flat_hash_map<ObjectID, std::unique_ptr<ObjectInUseEntry>> objects_in_use_;
+  absl::flat_hash_map<ObjectID, std::shared_ptr<ObjectInUseEntry>> objects_in_use_;
   /// The amount of memory available to the Plasma store. The client needs this
   /// information to make sure that it does not delay in releasing so much
   /// memory that the store is unable to evict enough objects to free up space.
@@ -316,7 +314,7 @@ void PlasmaClient::Impl::InsertObjectInUse(const ObjectID &object_id,
                                            std::unique_ptr<PlasmaObject> object,
                                            bool is_sealed) {
   auto inserted =
-      objects_in_use_.insert({object_id, std::make_unique<ObjectInUseEntry>()});
+      objects_in_use_.insert({object_id, std::make_shared<ObjectInUseEntry>()});
   RAY_CHECK(inserted.second) << "Object already in use";
   auto it = inserted.first;
 
@@ -324,8 +322,8 @@ void PlasmaClient::Impl::InsertObjectInUse(const ObjectID &object_id,
   // corresponding call to free happens in PlasmaClient::Release.
   it->second->object = *object.release();
   // Count starts at 1 to pin the object.
-  it->second->count = 1;
   it->second->is_sealed = is_sealed;
+  IncrementObjectCount(object_id);
 }
 
 void PlasmaClient::Impl::IncrementObjectCount(const ObjectID &object_id) {
@@ -334,6 +332,8 @@ void PlasmaClient::Impl::IncrementObjectCount(const ObjectID &object_id) {
   auto object_entry = objects_in_use_.find(object_id);
   RAY_CHECK(object_entry != objects_in_use_.end());
   object_entry->second->count += 1;
+  RAY_LOG(DEBUG) << "PlasmaClient::IncrementObjectCount " << object_id << " count is now "
+                 << object_entry->second->count;
 }
 
 Status PlasmaClient::Impl::HandleCreateReply(const ObjectID &object_id,
@@ -428,7 +428,7 @@ Status PlasmaClient::Impl::ExperimentalMutableObjectWriteAcquire(
   }
   RAY_CHECK(object_entry != objects_in_use_.end());
 
-  auto &entry = object_entry->second;
+  auto entry = object_entry->second;
   RAY_CHECK(entry->object.is_experimental_mutable_object);
   RAY_CHECK(entry->is_sealed) << "Must Seal before writing again to a mutable object";
 
@@ -444,7 +444,10 @@ Status PlasmaClient::Impl::ExperimentalMutableObjectWriteAcquire(
                                    ") is larger than allocated buffer size " +
                                    std::to_string(entry->object.allocated_size));
   }
-  RAY_RETURN_NOT_OK(plasma_header->WriteAcquire(data_size, metadata_size, num_readers));
+  client_mutex_.unlock();
+  auto status = plasma_header->WriteAcquire(data_size, metadata_size, num_readers);
+  client_mutex_.lock();
+  RAY_RETURN_NOT_OK(status);
 
   // Prepare the data buffer and return to the client instead of sending
   // the IPC to object store.
@@ -593,7 +596,9 @@ Status PlasmaClient::Impl::GetBuffers(
     const std::function<std::shared_ptr<Buffer>(
         const ObjectID &, const std::shared_ptr<Buffer> &)> &wrap_buffer,
     ObjectBuffer *object_buffers,
-    bool is_from_worker) {
+    bool is_from_worker,
+    bool read_acquire_experimental_mutable_object) {
+  std::lock_guard<std::recursive_mutex> guard(client_mutex_);
   // Fill out the info for the objects that are already in use locally.
   bool all_present = true;
   for (int64_t i = 0; i < num_objects; ++i) {
@@ -602,7 +607,7 @@ Status PlasmaClient::Impl::GetBuffers(
       // This object is not currently in use by this client, so we need to send
       // a request to the store.
       all_present = false;
-    } else if (!object_entry->second->is_sealed) {
+    } else if (!object_entry->second->is_sealed && !object_entry->second->object.is_experimental_mutable_object) {
       // This client created the object but hasn't sealed it. If we call Get
       // with no timeout, we will deadlock, because this client won't be able to
       // call Seal.
@@ -612,12 +617,14 @@ Status PlasmaClient::Impl::GetBuffers(
           << "Attempting to get an object that this client created but hasn't sealed.";
       all_present = false;
     } else {
-      if (object_entry->second->object.is_experimental_mutable_object) {
+      auto object_in_use_entry = object_entry->second;
+      if (object_in_use_entry->object.is_experimental_mutable_object &&
+          read_acquire_experimental_mutable_object) {
         // Wait for the object to become ready to read.
-        RAY_RETURN_NOT_OK(EnsureGetAcquired(object_entry->second));
+        RAY_RETURN_NOT_OK(EnsureGetAcquired(object_in_use_entry));
       }
 
-      PlasmaObject *object = &object_entry->second->object;
+      PlasmaObject *object = &object_in_use_entry->object;
 
       std::shared_ptr<Buffer> physical_buf;
       RAY_LOG(DEBUG) << "Plasma Get " << object_ids[i]
@@ -696,16 +703,18 @@ Status PlasmaClient::Impl::GetBuffers(
       } else {
         IncrementObjectCount(received_object_ids[i]);
       }
-      auto &object_entry = objects_in_use_[received_object_ids[i]];
+      auto object_entry = objects_in_use_[received_object_ids[i]];
 
       // Wait for the object to become ready to read.
-      if (object_entry->object.is_experimental_mutable_object) {
+      if (object_entry->object.is_experimental_mutable_object &&
+          read_acquire_experimental_mutable_object) {
         RAY_RETURN_NOT_OK(EnsureGetAcquired(object_entry));
       }
       std::shared_ptr<Buffer> physical_buf;
       RAY_LOG(DEBUG) << "Plasma Get " << received_object_ids[i]
                      << ", data size: " << object_entry->object.data_size
-                     << ", metadata size: " << object_entry->object.metadata_size;
+                     << ", metadata size: " << object_entry->object.metadata_size
+                     << ", is mutable: " << object_entry->object.is_experimental_mutable_object;
       if (object_entry->object.device_num == 0) {
         uint8_t *data = LookupMmappedFile(object_entry->object.store_fd);
         physical_buf = std::make_shared<SharedMemoryBuffer>(
@@ -736,9 +745,8 @@ Status PlasmaClient::Impl::GetBuffers(
 Status PlasmaClient::Impl::Get(const std::vector<ObjectID> &object_ids,
                                int64_t timeout_ms,
                                std::vector<ObjectBuffer> *out,
-                               bool is_from_worker) {
-  std::lock_guard<std::recursive_mutex> guard(client_mutex_);
-
+                               bool is_from_worker,
+                               bool read_acquire_experimental_mutable_object) {
   const auto wrap_buffer = [=](const ObjectID &object_id,
                                const std::shared_ptr<Buffer> &buffer) {
     return std::make_shared<PlasmaBuffer>(shared_from_this(), object_id, buffer);
@@ -746,11 +754,11 @@ Status PlasmaClient::Impl::Get(const std::vector<ObjectID> &object_ids,
   const size_t num_objects = object_ids.size();
   *out = std::vector<ObjectBuffer>(num_objects);
   return GetBuffers(
-      &object_ids[0], num_objects, timeout_ms, wrap_buffer, &(*out)[0], is_from_worker);
+      &object_ids[0], num_objects, timeout_ms, wrap_buffer, &(*out)[0], is_from_worker, read_acquire_experimental_mutable_object);
 }
 
 Status PlasmaClient::Impl::EnsureGetAcquired(
-    std::unique_ptr<ObjectInUseEntry> &object_entry) {
+    std::shared_ptr<ObjectInUseEntry> &object_entry) {
 #ifdef __linux__
   PlasmaObject *object = &object_entry->object;
   RAY_CHECK(object->is_experimental_mutable_object);
@@ -797,7 +805,7 @@ Status PlasmaClient::Impl::ExperimentalMutableObjectReadRelease(
         "ray.release() called on an object that is not in scope");
   }
 
-  auto &entry = object_entry->second;
+  auto entry = object_entry->second;
   if (!entry->is_sealed) {
     return Status::ObjectNotFound("ray.release() called on an object that is not sealed");
   }
@@ -843,6 +851,8 @@ Status PlasmaClient::Impl::Release(const ObjectID &object_id) {
     object_entry->second->count -= 1;
     RAY_CHECK(object_entry->second->count >= 0);
   }
+  RAY_LOG(DEBUG) << "PlasmaClient::Release " << object_id << " count is now "
+                 << object_entry->second->count;
 
   if (object_entry->second->count == 0) {
     // object_entry is invalidated in MarkObjectUnused, need to read the fd beforehand.
@@ -1076,6 +1086,34 @@ Status PlasmaClient::ExperimentalMutableObjectWriteAcquire(
     std::shared_ptr<Buffer> *data) {
   return impl_->ExperimentalMutableObjectWriteAcquire(
       object_id, data_size, metadata, metadata_size, num_readers, data);
+}
+
+Status PlasmaClient::Impl::ExperimentalMutableObjectRegisterWriter(const ObjectID &object_id) {
+  plasma::ObjectBuffer object_buffer;
+  const auto wrap_buffer = [=](const ObjectID &object_id,
+                               const std::shared_ptr<Buffer> &buffer) {
+    return std::make_shared<PlasmaBuffer>(shared_from_this(), object_id, buffer);
+  };
+  RAY_RETURN_NOT_OK(GetBuffers(&object_id,
+                    /*num_objects=*/1,
+                    /*timeout_ms=*/-1,
+                    wrap_buffer,
+                     &object_buffer,
+                     /*is_from_worker=*/false,
+                     /*read_acquire_experimental_mutable_object=*/false));
+
+  std::lock_guard<std::recursive_mutex> guard(client_mutex_);
+  auto object_entry = objects_in_use_.find(object_id);
+  if (object_entry == objects_in_use_.end()) {
+    return Status::Invalid(
+        "Plasma buffer for mutable object is not local.");
+  }
+  object_entry->second->is_writer = true;
+  return Status::OK();
+}
+
+Status PlasmaClient::ExperimentalMutableObjectRegisterWriter(const ObjectID &object_id) {
+  return impl_->ExperimentalMutableObjectRegisterWriter(object_id);
 }
 
 Status PlasmaClient::ExperimentalMutableObjectWriteRelease(const ObjectID &object_id) {

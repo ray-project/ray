@@ -219,6 +219,7 @@ NodeManager::NodeManager(instrumented_io_context &io_service,
             ref.set_object_id(object_id.Binary());
             MarkObjectsAsFailed(error_type, {ref}, JobID::Nil());
           }),
+      store_client_(new plasma::PlasmaClient()),
       periodical_runner_(io_service),
       report_resources_period_ms_(config.report_resources_period_ms),
       temp_dir_(config.temp_dir),
@@ -360,7 +361,7 @@ NodeManager::NodeManager(instrumented_io_context &io_service,
       RayConfig::instance().worker_cap_initial_backoff_delay_ms(),
       "NodeManager.ScheduleAndDispatchTasks");
 
-  RAY_CHECK_OK(store_client_.Connect(config.store_socket_name.c_str()));
+  RAY_CHECK_OK(store_client_->Connect(config.store_socket_name.c_str()));
   // Run the node manger rpc server.
   node_manager_server_.RegisterService(node_manager_service_, false /* token_auth */);
   node_manager_server_.RegisterService(ray_syncer_service_);
@@ -387,6 +388,8 @@ NodeManager::NodeManager(instrumented_io_context &io_service,
   periodical_runner_.RunFnPeriodically([this]() { GCTaskFailureReason(); },
                                        RayConfig::instance().task_failure_entry_ttl_ms(),
                                        "NodeManager.GCTaskFailureReason");
+
+  channel_manager_.reset(new ExperimentalChannelManager(store_client_, nullptr));
 }
 
 ray::Status NodeManager::RegisterGcs() {
@@ -775,6 +778,28 @@ void NodeManager::HandleGetTaskFailureCause(rpc::GetTaskFailureCauseRequest requ
     RAY_LOG(INFO) << "didn't find failure cause for task " << task_id;
   }
 
+  send_reply_callback(Status::OK(), nullptr, nullptr);
+}
+
+void NodeManager::HandleExperimentalRegisterCrossNodeReaderChannel(
+    rpc::ExperimentalRegisterCrossNodeReaderChannelRequest request,
+    rpc::ExperimentalRegisterCrossNodeReaderChannelReply *reply,
+    rpc::SendReplyCallback send_reply_callback) {
+  ObjectID channel_id = ObjectID::FromBinary(request.channel_id());
+  int64_t num_readers = request.num_readers();
+  ObjectID local_channel_id = ObjectID::FromBinary(request.local_channel_id());
+
+  channel_manager_->RegisterCrossNodeReaderChannel(
+      channel_id, num_readers, local_channel_id);
+  reply->set_success(true);
+  send_reply_callback(Status::OK(), nullptr, nullptr);
+}
+
+void NodeManager::HandlePushExperimentalChannelValue(
+    rpc::PushExperimentalChannelValueRequest request,
+    rpc::PushExperimentalChannelValueReply *reply,
+    rpc::SendReplyCallback send_reply_callback) {
+  channel_manager_->HandlePushExperimentalChannelValue(request, reply);
   send_reply_callback(Status::OK(), nullptr, nullptr);
 }
 
@@ -1983,7 +2008,7 @@ void NodeManager::MarkObjectsAsFailed(
                    << error_type;
     std::shared_ptr<Buffer> data;
     Status status;
-    status = store_client_.TryCreateImmediately(
+    status = store_client_->TryCreateImmediately(
         object_id,
         ref.owner_address(),
         0,
@@ -1992,7 +2017,7 @@ void NodeManager::MarkObjectsAsFailed(
         &data,
         plasma::flatbuf::ObjectSource::ErrorStoredByRaylet);
     if (status.ok()) {
-      status = store_client_.Seal(object_id);
+      status = store_client_->Seal(object_id);
     }
     if (!status.ok() && !status.IsObjectExists()) {
       RAY_LOG(DEBUG) << "Marking plasma object failed " << object_id;
@@ -2318,7 +2343,7 @@ bool NodeManager::GetObjectsFromPlasma(const std::vector<ObjectID> &object_ids,
   // since we must wait for the plasma store's reply. We should consider using
   // an `AsyncGet` instead.
   if (!store_client_
-           .Get(object_ids, /*timeout_ms=*/0, &plasma_results, /*is_from_worker=*/false)
+           ->Get(object_ids, /*timeout_ms=*/0, &plasma_results, /*is_from_worker=*/false)
            .ok()) {
     return false;
   }
@@ -2643,7 +2668,7 @@ void NodeManager::TriggerGlobalGC() {
 
 void NodeManager::Stop() {
   // This never fails.
-  RAY_CHECK_OK(store_client_.Disconnect());
+  RAY_CHECK_OK(store_client_->Disconnect());
   object_manager_.Stop();
   dashboard_agent_manager_.reset();
   runtime_env_agent_manager_.reset();

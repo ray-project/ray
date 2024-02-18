@@ -252,6 +252,15 @@ cdef extern from "ray/core_worker/core_worker.h" nogil:
                                   shared_ptr[CBuffer] *data)
         CRayStatus ExperimentalMutableObjectWriteRelease(
                                   const CObjectID &object_id)
+        void ExperimentalRegisterCrossNodeWriterChannel(
+                const CObjectID &object_id,
+                const CNodeID &receiver_node_id
+                )
+        void ExperimentalRegisterCrossNodeReaderChannel(
+                const CObjectID &channel_id,
+                int64_t num_readers,
+                const CObjectID &local_reader_channel_id
+                )
         CRayStatus ExperimentalMutableObjectSetError(
                                   const CObjectID &object_id)
         CRayStatus SealOwned(const CObjectID &object_id, c_bool pin_object,

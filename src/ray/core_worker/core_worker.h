@@ -22,6 +22,7 @@
 #include "ray/common/placement_group.h"
 #include "ray/core_worker/actor_handle.h"
 #include "ray/core_worker/actor_manager.h"
+#include "ray/core_worker/channel_manager.h"
 #include "ray/core_worker/common.h"
 #include "ray/core_worker/context.h"
 #include "ray/core_worker/core_worker_options.h"
@@ -1298,6 +1299,19 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   void HandleNumPendingTasks(rpc::NumPendingTasksRequest request,
                              rpc::NumPendingTasksReply *reply,
                              rpc::SendReplyCallback send_reply_callback) override;
+
+  void ExperimentalRegisterCrossNodeWriterChannel(const ObjectID &channel_id,
+                                                  const NodeID &receiver_id);
+
+  void ExperimentalRegisterCrossNodeReaderChannel(
+      const ObjectID &channel_id,
+      int64_t num_readers,
+      const ObjectID &local_reader_channel_id);
+
+  void HandlePushExperimentalChannelValue(
+      rpc::PushExperimentalChannelValueRequest request,
+      rpc::PushExperimentalChannelValueReply *reply,
+      rpc::SendReplyCallback send_reply_callback) override;
   ///
   /// Public methods related to async actor call. This should only be used when
   /// the actor is (1) direct actor and (2) using asyncio mode.
@@ -1416,6 +1430,8 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
 
   /// Run the io_service_ event loop. This should be called in a background thread.
   void RunIOService();
+
+  void RunExperimentalChannelIOService();
 
   /// Forcefully exit the worker. `Force` means it will exit actor without draining
   /// or cleaning any resources.
@@ -1870,6 +1886,9 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
 
   /// Worker's PID
   uint32_t pid_;
+
+  /// Experimental channels.
+  std::unique_ptr<ExperimentalChannelManager> channel_manager_;
 };
 
 // Lease request rate-limiter based on cluster node size.

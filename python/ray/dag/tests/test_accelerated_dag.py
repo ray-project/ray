@@ -1,8 +1,8 @@
 # coding: utf-8
 import logging
 import os
-import random
 import sys
+import random
 import time
 
 import pytest
@@ -285,6 +285,41 @@ def test_dag_teardown_while_running(ray_start_regular_shared):
     chan.end_read()
 
     compiled_dag.teardown()
+
+
+@pytest.mark.parametrize("num_actors", [1, 4])
+@pytest.mark.parametrize("use_compiled", [False, True])
+def test_cluster(ray_start_cluster, num_actors, use_compiled):
+    cluster = ray_start_cluster
+    cluster.add_node(num_cpus=0)
+    ray.init(address=cluster.address)
+    cluster.add_node(num_cpus=num_actors)
+
+    actors = [Actor.remote(0) for _ in range(num_actors)]
+
+    with InputNode() as i:
+        dag = [actor.inc.bind(i) for actor in actors]
+        dag = MultiOutputNode(dag)
+
+    if use_compiled:
+        compiled_dag = dag.experimental_compile()
+
+    for _ in range(3):
+        start = time.perf_counter()
+        for _ in range(1000):
+            if use_compiled:
+                output_channels = compiled_dag.execute(1)
+                results = [chan.begin_read() for chan in output_channels]
+                for chan in output_channels:
+                    chan.end_read()
+            else:
+                ray.get(dag.execute(1))
+        end = time.perf_counter()
+        print(end - start, 1000 / (end - start))
+
+    if use_compiled:
+        # TODO: Teardown is not working for multinode yet.
+        compiled_dag.teardown()
 
 
 if __name__ == "__main__":

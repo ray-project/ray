@@ -56,6 +56,8 @@ class Channel:
         self,
         buffer_size_bytes: Optional[int] = None,
         num_readers: int = 1,
+        _reader_node_id: Optional[str] = None,
+        _writer_channel: Optional["Channel"] = None,
         _base_ref: Optional["ray.ObjectRef"] = None,
     ):
         """
@@ -71,6 +73,18 @@ class Channel:
         Returns:
             Channel: A wrapper around ray.ObjectRef.
         """
+        if _writer_channel is not None:
+            if (
+                buffer_size_bytes is not None
+                and buffer_size_bytes != _writer_channel._buffer_size_bytes
+            ):
+                raise ValueError(
+                    "`buffer_size_bytes should not be specified if "
+                    "`_writer_channel` is given."
+                )
+
+            buffer_size_bytes = _writer_channel._buffer_size_bytes
+
         if buffer_size_bytes is None:
             if _base_ref is None:
                 raise ValueError(
@@ -85,16 +99,38 @@ class Channel:
         if not isinstance(num_readers, int):
             raise ValueError("num_readers must be an integer")
 
+        self._buffer_size_bytes = buffer_size_bytes
         self._num_readers = num_readers
         self._worker = ray._private.worker.global_worker
         self._worker.check_connected()
 
+        if _reader_node_id is not None:
+            if not isinstance(_reader_node_id, str):
+                raise ValueError("`_reader_node_id` must be a str")
+            print(self._base_ref, _reader_node_id)
+            self._worker.core_worker.experimental_register_cross_node_writer_channel(
+                self._base_ref, _reader_node_id
+            )
+
+        if _writer_channel is not None:
+            self._worker.core_worker.experimental_register_cross_node_reader_channel(
+                _writer_channel._base_ref, self._num_readers, self._base_ref
+            )
+
     @staticmethod
-    def _from_base_ref(base_ref: "ray.ObjectRef", num_readers: int) -> "Channel":
-        return Channel(num_readers=num_readers, _base_ref=base_ref)
+    def _from_base_ref(
+        base_ref: "ray.ObjectRef", num_readers: int, buffer_size_bytes: int
+    ) -> "Channel":
+        chan = Channel(num_readers=num_readers, _base_ref=base_ref)
+        chan._buffer_size_bytes = buffer_size_bytes
+        return chan
 
     def __reduce__(self):
-        return self._from_base_ref, (self._base_ref, self._num_readers)
+        return self._from_base_ref, (
+            self._base_ref,
+            self._num_readers,
+            self._buffer_size_bytes,
+        )
 
     def write(self, value: Any, num_readers: Optional[int] = None):
         """

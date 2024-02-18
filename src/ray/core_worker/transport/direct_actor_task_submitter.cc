@@ -244,6 +244,17 @@ void CoreWorkerDirectActorTaskSubmitter::ConnectActor(const ActorID &actor_id,
   FailInflightTasks(inflight_task_callbacks);
 }
 
+std::shared_ptr<rpc::CoreWorkerClientInterface>
+CoreWorkerDirectActorTaskSubmitter::GetActorClientIfConnected(const ActorID &actor_id) {
+  absl::MutexLock lock(&mu_);
+
+  auto queue = client_queues_.find(actor_id);
+  if (queue == client_queues_.end()) {
+    return nullptr;
+  }
+  return queue->second.rpc_client;
+}
+
 void CoreWorkerDirectActorTaskSubmitter::DisconnectActor(
     const ActorID &actor_id,
     int64_t num_restarts,

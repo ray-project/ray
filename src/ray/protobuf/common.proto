@@ -928,3 +928,15 @@ message NamedActorInfo {
   string ray_namespace = 1;
   string name = 2;
 }
+
+message PushExperimentalChannelValueRequest {
+  bytes channel_id = 1;
+  uint64 data_size_bytes = 2;
+  uint64 metadata_size_bytes = 3;
+  bytes data = 4;
+}
+
+message PushExperimentalChannelValueReply {
+  bool success = 1;
+}
+

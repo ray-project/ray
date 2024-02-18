@@ -153,6 +153,9 @@ class CoreWorkerDirectActorTaskSubmitter
                        bool dead,
                        const rpc::ActorDeathCause &death_cause);
 
+  std::shared_ptr<rpc::CoreWorkerClientInterface> GetActorClientIfConnected(
+      const ActorID &actor_id);
+
   /// Set the timerstamp for the caller.
   void SetCallerCreationTimestamp(int64_t timestamp);
 
