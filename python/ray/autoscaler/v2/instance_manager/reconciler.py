@@ -149,6 +149,11 @@ class StuckRequestedInstanceUpdater(IInstanceUpdater):
 
 
 class StuckRayStopRequestedInstanceUpdater(IInstanceUpdater):
+    """
+    An instance updater that makes updates for instances stuck in the RAY_STOP_REQUESTED
+    status for too long. It transitions the instance back to RAY_RUNNING.
+    """
+
     def __init__(self, timeout_s: int):
         self.timeout_s = timeout_s
 
