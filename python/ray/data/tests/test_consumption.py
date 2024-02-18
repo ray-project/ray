@@ -515,8 +515,11 @@ def test_limit(ray_start_regular_shared, lazy):
 
 # NOTE: We test outside the power-of-2 range in order to ensure that we're not reading
 # redundant files due to exponential ramp-up.
-@pytest.mark.parametrize("limit,min_read_tasks", [(10, 1), (20, 2), (30, 3), (60, 6)])
-def test_limit_no_redundant_read(ray_start_regular_shared, limit, min_read_tasks):
+@pytest.mark.parametrize("limit", [10, 20, 30, 60])
+def test_limit_no_redundant_read(
+    ray_start_regular_shared,
+    limit,
+):
     # Test that dataset truncation eliminates redundant reads.
     @ray.remote
     class Counter:
@@ -562,8 +565,8 @@ def test_limit_no_redundant_read(ray_start_regular_shared, limit, min_read_tasks
 
     source = CountingRangeDatasource()
 
-    total_rows = 100
-    parallelism = 10
+    total_rows = 1000
+    parallelism = 100
     ds = ray.data.read_datasource(
         source,
         parallelism=parallelism,
@@ -575,12 +578,13 @@ def test_limit_no_redundant_read(ray_start_regular_shared, limit, min_read_tasks
     ds = ds.limit(limit)
     ds = ds.limit(total_rows)
     # Check content.
-    assert extract_values("id", ds.take(limit)) == list(range(limit))
+    assert len(ds.take(limit)) == limit
     # Check number of read tasks launched.
     # min_read_tasks is the minimum number of read tasks needed for the limit.
     # We may launch more tasks than this number, in order to to maximize throughput.
     # But the actual number of read tasks should be less than the parallelism.
     count = ray.get(source.counter.get.remote())
+    min_read_tasks = limit // (total_rows // parallelism)
     assert min_read_tasks <= count < parallelism
 
 

@@ -6,7 +6,7 @@ import gymnasium as gym
 import os
 import tempfile
 
-from ray.rllib.examples.connectors.prepare_checkpoint import (
+from ray.rllib.examples.connectors.v1.prepare_checkpoint import (
     # For demo purpose only. Would normally not need this.
     create_appo_cartpole_checkpoint,
 )
