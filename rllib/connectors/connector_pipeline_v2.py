@@ -2,6 +2,8 @@ from collections import defaultdict
 import logging
 from typing import Any, Dict, List, Optional, Type, Union
 
+import gymnasium as gym
+
 from ray.rllib.connectors.connector_v2 import ConnectorV2
 from ray.rllib.core.rl_module.rl_module import RLModule
 from ray.rllib.utils.annotations import override
@@ -16,13 +18,31 @@ logger = logging.getLogger(__name__)
 class ConnectorPipelineV2(ConnectorV2):
     """Utility class for quick manipulation of a connector pipeline."""
 
+    @property
+    def observation_space(self):
+        return (
+            self.connectors[-1].observation_space
+            if len(self.connectors) > 0
+            else self.input_observation_space
+        )
+
+    @property
+    def action_space(self):
+        return (
+            self.connectors[-1].action_space
+            if len(self.connectors) > 0
+            else self.input_action_space
+        )
+
     def __init__(
         self,
+        input_observation_space: gym.Space,
+        input_action_space: gym.Space,
         *,
         connectors: Optional[List[ConnectorV2]] = None,
         **kwargs,
     ):
-        super().__init__(**kwargs)
+        super().__init__(input_observation_space, input_action_space, **kwargs)
 
         self.connectors = connectors or []
         self._fix_input_output_types()
@@ -46,19 +66,18 @@ class ConnectorPipelineV2(ConnectorV2):
         """
         # Loop through connector pieces and call each one with the output of the
         # previous one. Thereby, time each connector piece's call.
-        ret = data
         for connector in self.connectors:
             timer = self.timers[str(connector)]
             with timer:
-                ret = connector(
+                data = connector(
                     rl_module=rl_module,
-                    data=ret,
+                    data=data,
                     episodes=episodes,
                     explore=explore,
                     shared_data=shared_data,
                     **kwargs,
                 )
-        return ret
+        return data
 
     def remove(self, name_or_class: Union[str, Type]):
         """Remove a single connector piece in this pipeline by its name or class.
@@ -200,6 +219,15 @@ class ConnectorPipelineV2(ConnectorV2):
                 raise KeyError(f"No state found in `state` for connector piece: {key}!")
             connector.set_state(state[key])
 
+    @override(ConnectorV2)
+    def merge_states(self, states: List[Dict[str, Any]]) -> Dict[str, Any]:
+        merged_states = {}
+        for i, (key, item) in enumerate(states[0].items()):
+            state_list = [state[key] for state in states]
+            conn = self.connectors[i]
+            merged_states[key] = conn.merge_states(state_list)
+        return merged_states
+
     def __repr__(self, indentation: int = 0):
         return "\n".join(
             [" " * indentation + self.__class__.__name__]
@@ -253,16 +281,14 @@ class ConnectorPipelineV2(ConnectorV2):
 
     def _fix_input_output_types(self):
         if len(self.connectors) > 0:
-            self.input_type = self.connectors[0].input_type
-            self.output_type = self.connectors[-1].output_type
-            # TODO (sven): Create some examples for pipelines, in which the spaces
-            #  are changed several times by the individual pieces.
+            # Fix each connector's input_observation- and input_action space in
+            # the pipeline.
             self.input_observation_space = self.connectors[0].input_observation_space
             self.input_action_space = self.connectors[0].input_action_space
-            self._observation_space = self.connectors[-1].observation_space
-            self._action_space = self.connectors[-1].action_space
-        else:
-            self.input_type = None
-            self.output_type = None
-            self._observation_space = None
-            self._action_space = None
+            obs_space = self.input_observation_space
+            act_space = self.input_action_space
+            for con in self.connectors:
+                con.input_observation_space = obs_space
+                obs_space = con.observation_space
+                con.input_action_space = act_space
+                act_space = con.action_space

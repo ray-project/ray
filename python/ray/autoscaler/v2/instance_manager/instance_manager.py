@@ -230,12 +230,18 @@ class InstanceManager:
             instance.node_id = update.ray_node_id
         elif update.new_instance_status == Instance.REQUESTED:
             if not update.launch_request_id:
+                err_msg = "REQUESTED update must have launch_request_id"
+            if not update.instance_type:
+                err_msg = "REQUESTED update must have instance_type"
+
+            if err_msg:
                 raise InvalidInstanceUpdateError(
                     instance_id=update.instance_id,
                     cur_status=instance.status,
                     update=update,
-                    details=("REQUESTED update must have launch_request_id"),
+                    details=err_msg,
                 )
+            instance.instance_type = update.instance_type
             instance.launch_request_id = update.launch_request_id
 
     @staticmethod
@@ -290,7 +296,9 @@ class InstanceManager:
         Raises:
             InvalidInstanceUpdateError: If the update is invalid.
         """
-        if not InstanceUtil.set_status(instance, update.new_instance_status):
+        if not InstanceUtil.set_status(
+            instance, update.new_instance_status, update.details
+        ):
             raise InvalidInstanceUpdateError(
                 instance_id=update.instance_id,
                 cur_status=instance.status,
