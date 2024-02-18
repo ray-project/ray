@@ -338,6 +338,13 @@ Ray Examples
 
     .. grid-item-card:: :bdg-secondary:`Code example`
         :class-item: gallery-item tuning
+        :link: /tune/examples/nevergrad_example
+        :link-type: doc
+
+        How To Use Tune With Nevergrad
+
+    .. grid-item-card:: :bdg-secondary:`Code example`
+        :class-item: gallery-item tuning
         :link: /tune/examples/optuna_example
         :link-type: doc
 

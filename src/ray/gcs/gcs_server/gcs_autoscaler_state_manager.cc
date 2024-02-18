@@ -218,6 +218,7 @@ void GcsAutoscalerStateManager::UpdateResourceLoadAndUsage(
   new_data.set_object_pulls_queued(data.object_pulls_queued());
   new_data.set_idle_duration_ms(data.idle_duration_ms());
   new_data.set_is_draining(data.is_draining());
+  new_data.set_draining_deadline_timestamp_ms(data.draining_deadline_timestamp_ms());
 
   // Last update time
   iter->second.first = absl::Now();
@@ -353,10 +354,21 @@ void GcsAutoscalerStateManager::HandleDrainNode(
     rpc::autoscaler::DrainNodeRequest request,
     rpc::autoscaler::DrainNodeReply *reply,
     rpc::SendReplyCallback send_reply_callback) {
-  RAY_LOG(INFO) << "HandleDrainNode Request:" << request.DebugString();
   const NodeID node_id = NodeID::FromBinary(request.node_id());
   RAY_LOG(INFO) << "HandleDrainNode " << node_id.Hex()
-                << ", reason: " << request.reason_message();
+                << ", reason: " << request.reason_message()
+                << ", deadline: " << request.deadline_timestamp_ms();
+
+  int64_t draining_deadline_timestamp_ms = request.deadline_timestamp_ms();
+  if (draining_deadline_timestamp_ms < 0) {
+    std::ostringstream stream;
+    stream << "Draining deadline must be non-negative, received "
+           << draining_deadline_timestamp_ms;
+    auto msg = stream.str();
+    RAY_LOG(WARNING) << msg;
+    send_reply_callback(Status::Invalid(msg), nullptr, nullptr);
+    return;
+  }
 
   auto maybe_node = gcs_node_manager_.GetAliveNode(node_id);
   if (!maybe_node.has_value()) {
@@ -396,6 +408,7 @@ void GcsAutoscalerStateManager::HandleDrainNode(
   raylet_client->DrainRaylet(
       request.reason(),
       request.reason_message(),
+      draining_deadline_timestamp_ms,
       [this, reply, send_reply_callback, node_id](
           const Status &status, const rpc::DrainRayletReply &raylet_reply) {
         reply->set_is_accepted(raylet_reply.is_accepted());

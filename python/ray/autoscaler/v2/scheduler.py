@@ -7,10 +7,13 @@ from dataclasses import dataclass, field
 from enum import Enum
 from typing import Dict, List, Optional, Tuple
 
-from google.protobuf.json_format import MessageToDict
-
+from ray._private.protobuf_compat import message_to_dict
 from ray.autoscaler._private.constants import AUTOSCALER_CONSERVE_GPU_NODES
-from ray.autoscaler._private.resource_demand_scheduler import UtilizationScore
+from ray.autoscaler._private.resource_demand_scheduler import (
+    UtilizationScore,
+    _fits,
+    _inplace_subtract,
+)
 from ray.autoscaler.v2.instance_manager.common import InstanceUtil
 from ray.autoscaler.v2.instance_manager.config import NodeTypeConfig
 from ray.autoscaler.v2.schema import AutoscalerInstance, NodeType
@@ -21,7 +24,11 @@ from ray.core.generated.autoscaler_pb2 import (
     ResourceRequest,
     ResourceRequestByCount,
 )
-from ray.core.generated.instance_manager_pb2 import LaunchRequest, TerminationRequest
+from ray.core.generated.instance_manager_pb2 import (
+    LaunchRequest,
+    NodeKind,
+    TerminationRequest,
+)
 
 # ============= Resource Scheduling Service API =======================
 #
@@ -178,6 +185,8 @@ class SchedulingNode:
     idle_duration_ms: int = 0
     # Launch config hash.
     launch_config_hash: Optional[str] = None
+    # node kind.
+    node_kind: NodeKind = NodeKind.WORKER
 
     def try_schedule(
         self, requests: List[ResourceRequest], is_constraint: bool = False
@@ -329,13 +338,11 @@ class SchedulingNode:
         )
 
         # Check if there's enough resources to schedule the request.
-        for k, v in request.resources_bundle.items():
-            if available_resources_dict.get(k, 0) < v:
-                return False
+        if not _fits(available_resources_dict, dict(request.resources_bundle)):
+            return False
 
         # Schedule the request, update resources
-        for k, v in request.resources_bundle.items():
-            available_resources_dict[k] -= v
+        _inplace_subtract(available_resources_dict, dict(request.resources_bundle))
 
         # Add the request to the node.
         if not is_constraint:
@@ -389,7 +396,7 @@ class SchedulingNode:
             instance_id=self.im_instance_id,
             ray_node_id=self.ray_node_id,
             idle_duration_ms=self.idle_duration_ms,
-            termination_request=str(MessageToDict(self.termination_request))
+            termination_request=str(message_to_dict(self.termination_request))
             if self.termination_request
             else None,
             status=self.status,
@@ -400,9 +407,11 @@ class SchedulingNode:
             ),
             labels=self.labels,
             launch_reason=self.launch_reason,
-            sched_requests="|".join(str(MessageToDict(r)) for r in self.sched_requests),
+            sched_requests="|".join(
+                str(message_to_dict(r)) for r in self.sched_requests
+            ),
             sched_constraints="|".join(
-                str(MessageToDict(r)) for r in self.sched_constraints
+                str(message_to_dict(r)) for r in self.sched_constraints
             ),
         )
 
@@ -495,6 +504,9 @@ class ResourceDemandScheduler(IResourceScheduler):
                             available_resources_for_constraints=dict(
                                 instance.ray_node.total_resources
                             ),
+                            node_kind=instance.im_instance.node_kind
+                            if instance.im_instance
+                            else NodeKind.WORKER,
                         )
                     )
                 elif (
@@ -1208,8 +1220,6 @@ class ResourceDemandScheduler(IResourceScheduler):
             if best_node is None:
                 break
 
-            logger.info("Adding new node of type {}.".format(best_node.node_type))
-
             target_nodes.append(best_node)
             # Update the node pool if a node with the same node type of the
             # added node can be launched.
@@ -1323,6 +1333,16 @@ class ResourceDemandScheduler(IResourceScheduler):
             if node.status != SchedulingNodeStatus.RUNNING:
                 # We don't need to care about the non-running nodes.
                 continue
+
+            if node.node_kind == NodeKind.HEAD:
+                # We should not be terminating the head node even if it's outdated.
+                logger.warning(
+                    "Head node {}(ray={}) is outdated with node config changes. "
+                    "Please check the node's config or restart the cluster or restart "
+                    "the head node. Autoscaler is not able to shutdown the outdated "
+                    "head node".format(node.im_instance_id, node.ray_node_id)
+                )
+                continue
             node_type = node.node_type
             node_type_config = ctx.get_node_type_configs().get(node_type)
             if node_type_config is None or (
@@ -1363,6 +1383,11 @@ class ResourceDemandScheduler(IResourceScheduler):
             if node.status != SchedulingNodeStatus.RUNNING:
                 # We don't need to care about the non-running nodes.
                 continue
+
+            if node.node_kind == NodeKind.HEAD:
+                # The head node is not subject to idle termination.
+                continue
+
             idle_timeout_s = ctx.get_idle_timeout_s()
             if idle_timeout_s is None:
                 # No idle timeout is set, skip the idle termination.

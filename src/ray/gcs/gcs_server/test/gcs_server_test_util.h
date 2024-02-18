@@ -288,6 +288,7 @@ struct GcsServerMocker {
     void DrainRaylet(
         const rpc::autoscaler::DrainNodeReason &reason,
         const std::string &reason_message,
+        int64_t deadline_timestamp_ms,
         const rpc::ClientCallback<rpc::DrainRayletReply> &callback) override {
       rpc::DrainRayletReply reply;
       reply.set_is_accepted(true);

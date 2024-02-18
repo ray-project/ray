@@ -20,6 +20,9 @@ from ray.data._internal.execution.operators.map_transformer import (
     BlocksToBatchesMapTransformFn,
     BuildOutputBlocksMapTransformFn,
 )
+from ray.data._internal.execution.operators.task_pool_map_operator import (
+    TaskPoolMapOperator,
+)
 from ray.data._internal.execution.operators.union_operator import UnionOperator
 from ray.data._internal.execution.operators.zip_operator import ZipOperator
 from ray.data._internal.logical.interfaces import LogicalPlan
@@ -739,14 +742,16 @@ def test_read_map_batches_operator_fusion_incompatible_compute(
     assert upstream_physical_op.name == "ReadParquet->MapBatches(<lambda>)"
 
 
-def test_read_map_batches_operator_fusion_min_rows_per_block(ray_start_regular_shared):
+def test_read_map_batches_operator_fusion_min_rows_per_bundled_input(
+    ray_start_regular_shared,
+):
     # Test that fusion of map operators merges their block sizes in the expected way
     # (taking the max).
     planner = Planner()
     read_op = get_parquet_read_logical_op(parallelism=1)
-    op = MapBatches(read_op, lambda x: x, min_rows_per_block=2)
-    op = MapBatches(op, lambda x: x, min_rows_per_block=5)
-    op = MapBatches(op, lambda x: x, min_rows_per_block=3)
+    op = MapBatches(read_op, lambda x: x, min_rows_per_bundled_input=2)
+    op = MapBatches(op, lambda x: x, min_rows_per_bundled_input=5)
+    op = MapBatches(op, lambda x: x, min_rows_per_bundled_input=3)
     logical_plan = LogicalPlan(op)
     physical_plan = planner.plan(logical_plan)
     physical_plan = PhysicalOptimizer().optimize(physical_plan)
@@ -965,18 +970,21 @@ def test_write_fusion(ray_start_regular_shared, tmp_path):
 
 
 def test_write_operator(ray_start_regular_shared, tmp_path):
+    concurrency = 2
     planner = Planner()
     datasink = _ParquetDatasink(tmp_path)
     read_op = get_parquet_read_logical_op()
     op = Write(
         read_op,
         datasink,
+        concurrency=concurrency,
     )
     plan = LogicalPlan(op)
     physical_op = planner.plan(plan).dag
 
     assert op.name == "Write"
-    assert isinstance(physical_op, MapOperator)
+    assert isinstance(physical_op, TaskPoolMapOperator)
+    assert physical_op._concurrency == concurrency
     assert len(physical_op.input_dependencies) == 1
     assert isinstance(physical_op.input_dependencies[0], MapOperator)
 

@@ -13,7 +13,6 @@ from typing import (
     TYPE_CHECKING,
     Any,
     Callable,
-    Dict,
     Iterable,
     Iterator,
     List,
@@ -54,25 +53,6 @@ _EXAMPLE_SCHEME = "example"
 
 LazyModule = Union[None, bool, ModuleType]
 _pyarrow_dataset: LazyModule = None
-
-
-cached_cluster_resources = {}
-cluster_resources_last_fetch_time = 0
-CLUSTER_RESOURCES_FETCH_INTERVAL_SECONDS = 10
-
-
-def cluster_resources() -> Dict[str, float]:
-    """Fetch Ray cluster resources with cache."""
-    global cached_cluster_resources
-    global cluster_resources_last_fetch_time
-    now = time.time()
-    if (
-        now - cluster_resources_last_fetch_time
-        > CLUSTER_RESOURCES_FETCH_INTERVAL_SECONDS
-    ):
-        cached_cluster_resources = ray.cluster_resources()
-        cluster_resources_last_fetch_time = now
-    return cached_cluster_resources
 
 
 def _lazy_import_pyarrow_dataset() -> LazyModule:
@@ -963,9 +943,9 @@ def make_async_gen(
 
 def call_with_retry(
     f: Callable[[], Any],
-    match: List[str],
     description: str,
     *,
+    match: Optional[List[str]] = None,
     max_attempts: int = 10,
     max_backoff_s: int = 32,
 ) -> Any:
@@ -973,7 +953,8 @@ def call_with_retry(
 
     Args:
         f: The function to retry.
-        match: A list of strings to match in the exception message.
+        match: A list of strings to match in the exception message. If ``None``, any
+            error is retried.
         description: An imperitive description of the function being retried. For
             example, "open the file".
         max_attempts: The maximum number of attempts to retry.
@@ -985,10 +966,12 @@ def call_with_retry(
         try:
             return f()
         except Exception as e:
-            is_retryable = any([pattern in str(e) for pattern in match])
+            is_retryable = match is None or any(
+                [pattern in str(e) for pattern in match]
+            )
             if is_retryable and i + 1 < max_attempts:
                 # Retry with binary expoential backoff with random jitter.
-                backoff = min((2 ** (i + 1)) * random.random(), max_backoff_s)
+                backoff = min((2 ** (i + 1)), max_backoff_s) * random.random()
                 logger.debug(
                     f"Retrying {i+1} attempts to {description} after {backoff} seconds."
                 )

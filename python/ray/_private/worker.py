@@ -1167,7 +1167,6 @@ class RayContext(BaseContext, Mapping):
     python_version: str
     ray_version: str
     ray_commit: str
-    protocol_version: Optional[str]
 
     def __init__(self, address_info: Dict[str, Optional[str]]):
         super().__init__()
@@ -1175,9 +1174,6 @@ class RayContext(BaseContext, Mapping):
         self.python_version = "{}.{}.{}".format(*sys.version_info[:3])
         self.ray_version = ray.__version__
         self.ray_commit = ray.__commit__
-        # No client protocol version since this driver was intiialized
-        # directly
-        self.protocol_version = None
         self.address_info = address_info
 
     def __getitem__(self, key):

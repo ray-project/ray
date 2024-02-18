@@ -254,7 +254,7 @@ py_test(
 # --------------------------------------------------------------------
 
 py_test_run_all_subdirectory(
-    size = "large",
+    size = "enormous",
     include = ["external/*.py"],
     exclude = [],
     extra_srcs = [],
@@ -271,6 +271,7 @@ doctest(
         include=["source/**/*.rst", "source/**/*.md"],
         exclude=[
             "source/ray-contribute/getting-involved.rst",
+            "source/ray-contribute/testing-tips.rst",
             "source/ray-core/handling-dependencies.rst",
             "source/ray-core/tasks/nested-tasks.rst",
             "source/ray-observability/user-guides/ray-tracing.rst",
@@ -287,7 +288,7 @@ doctest(
             "source/workflows/**/*.md",
             "source/rllib/**/*.rst",
             "source/rllib/**/*.md",
-            "source/templates/04_finetuning_llms_with_deepspeed/README.md"
+            "source/templates/04_finetuning_llms_with_deepspeed/README.md",
         ]
     ),
     size = "large",

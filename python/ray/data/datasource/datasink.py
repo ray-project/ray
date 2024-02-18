@@ -1,4 +1,4 @@
-from typing import Any, Iterable, List
+from typing import Any, Iterable, List, Optional
 
 from ray.data._internal.execution.interfaces import TaskContext
 from ray.data.block import Block
@@ -77,3 +77,11 @@ class Datasink:
     def supports_distributed_writes(self) -> bool:
         """If ``False``, only launch write tasks on the driver's node."""
         return True
+
+    @property
+    def num_rows_per_write(self) -> Optional[int]:
+        """The target number of rows to pass to each :meth:`~Datasink.write` call.
+
+        If ``None``, Ray Data passes a system-chosen number of rows.
+        """
+        return None
