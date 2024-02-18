@@ -2,11 +2,17 @@ import logging
 import os
 import re
 from datetime import datetime
+from unittest.mock import patch
 
 import pytest
 
 import ray
-from ray.data._internal.dataset_logger import DatasetLogger
+from ray.data._internal.dataset_logger import (
+    DatasetLogger,
+    SystemException,
+    UserCodeException,
+)
+from ray.exceptions import RayTaskError
 from ray.tests.conftest import *  # noqa
 
 
@@ -41,6 +47,31 @@ def test_dataset_logger(shutdown_only):
     assert logged_level == logging.getLevelName(logging.INFO)
     assert re.match(r"test_logger.py:\d+", logged_filepath)
     assert logged_msg == msg
+
+
+def test_skip_internal_stack_frames(ray_start_regular_shared):
+    def f(x):
+        1 / 0
+        return x
+
+    with pytest.raises(ZeroDivisionError) as exc_info:
+        ray.data.range(10).map(f).take_all()
+        assert isinstance(exc_info, RayTaskError)
+        assert isinstance(exc_info, UserCodeException)
+
+    class FakeException(Exception):
+        pass
+
+    # Mock `ExecutionPlan.execute()` to raise an exception, to emulate
+    # an error in internal Ray Data code.
+    with patch(
+        "ray.data._internal.plan.ExecutionPlan.execute",
+        side_effect=FakeException("fake exception"),
+    ):
+        with pytest.raises(FakeException, match="fake exception") as exc_info:
+            ray.data.range(10).materialize()
+            assert isinstance(exc_info, SystemException)
+            assert isinstance(exc_info, FakeException)
 
 
 if __name__ == "__main__":

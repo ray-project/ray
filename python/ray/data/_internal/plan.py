@@ -5,7 +5,7 @@ from typing import TYPE_CHECKING, Iterator, Optional, Tuple, Union
 import ray
 from ray._private.internal_api import get_memory_info_reply, get_state_from_address
 from ray.data._internal.block_list import BlockList
-from ray.data._internal.dataset_logger import DatasetLogger
+from ray.data._internal.dataset_logger import DatasetLogger, omit_traceback_stdout
 from ray.data._internal.lazy_block_list import LazyBlockList
 from ray.data._internal.logical.interfaces.logical_operator import LogicalOperator
 from ray.data._internal.logical.operators.from_operators import AbstractFrom
@@ -452,6 +452,7 @@ class ExecutionPlan:
         else:
             return None
 
+    @omit_traceback_stdout
     def execute_to_iterator(
         self,
         allow_clear_input_blocks: bool = True,
@@ -509,6 +510,7 @@ class ExecutionPlan:
         self._snapshot_stats = executor.get_stats()
         return block_iter, self._snapshot_stats, executor
 
+    @omit_traceback_stdout
     def execute(
         self,
         allow_clear_input_blocks: bool = True,
