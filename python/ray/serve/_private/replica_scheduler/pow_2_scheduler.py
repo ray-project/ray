@@ -505,10 +505,11 @@ class PowerOfTwoChoicesReplicaScheduler(ReplicaScheduler):
             return_when=asyncio.ALL_COMPLETED,
         )
         for t in pending:
-            result.append((t.replica, None))
+            replica = t.replica
+            result.append((replica, None))
             t.cancel()
             logger.warning(
-                f"Failed to get queue length from replica {t.replica.replica_id} "
+                f"Failed to get queue length from replica {replica.replica_id} "
                 f"within {queue_len_response_deadline_s}s. If this happens repeatedly "
                 "it's likely caused by high network latency in the cluster. You can "
                 "configure the deadline using the "
@@ -516,27 +517,28 @@ class PowerOfTwoChoicesReplicaScheduler(ReplicaScheduler):
             )
 
         for t in done:
+            replica = t.replica
             if t.exception() is not None:
-                result.append((t.replica, None))
+                result.append((replica, None))
                 msg = (
                     "Failed to fetch queue length for "
-                    f"replica {t.replica.replica_id}: '{t.exception()}'"
+                    f"replica {replica.replica_id}: '{t.exception()}'"
                 )
                 # If we get a RayActorError, it means the replica actor has died. This
                 # is not recoverable (the controller will start a new replica in its
                 # place), so we should no longer consider it for requests.
                 if isinstance(t.exception(), RayActorError):
-                    self._replicas.pop(t.replica.replica_id, None)
-                    self._replica_id_set.discard(t.replica.replica_id)
+                    self._replicas.pop(replica.replica_id, None)
+                    self._replica_id_set.discard(replica.replica_id)
                     for id_set in self._colocated_replica_ids.values():
-                        id_set.discard(t.replica.replica_id)
+                        id_set.discard(replica.replica_id)
                     msg += " This replica will no longer be considered for requests."
 
                 logger.warning(msg)
             else:
                 queue_len = t.result()
-                result.append((t.replica, queue_len))
-                self._replica_queue_len_cache.update(r.replica_id, queue_len)
+                result.append((replica, queue_len))
+                self._replica_queue_len_cache.update(replica.replica_id, queue_len)
 
         assert len(result) == len(replicas)
         return result
@@ -726,6 +728,7 @@ class PowerOfTwoChoicesReplicaScheduler(ReplicaScheduler):
                 self._pending_requests_to_fulfill.append(pending_request)
                 self._pending_requests_to_schedule.append(pending_request)
             else:
+                pending_request.reset_future()
                 index = 0
                 for pr in self._pending_requests_to_fulfill:
                     if pending_request.created_at < pr.created_at:
