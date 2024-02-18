@@ -421,6 +421,7 @@ class _ActorClassMethodMetadata(object):
                 )
             ):
                 method = method.__init__
+                assert type(method) == type(all.__call__)
                 assert 1 == 2
 
             self.signatures[method_name] = signature.extract_signature(
