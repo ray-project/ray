@@ -16,6 +16,7 @@ from ray.core.generated.instance_manager_pb2 import (
     GetInstanceManagerStateRequest,
     Instance,
     InstanceUpdateEvent,
+    NodeKind,
     StatusCode,
     UpdateInstanceManagerStateRequest,
 )
@@ -241,6 +242,8 @@ class InstanceManagerTest(unittest.TestCase):
                         instance_id="id-3",
                         new_instance_status=Instance.ALLOCATED,
                         cloud_instance_id="cloud-id-3",
+                        node_kind=NodeKind.WORKER,
+                        instance_type="type-3",
                     ),
                 ],
             )
@@ -337,6 +340,8 @@ class InstanceManagerTest(unittest.TestCase):
                         instance_id="id-1",
                         new_instance_status=Instance.ALLOCATED,
                         cloud_instance_id="cloud-id-1",
+                        node_kind=NodeKind.WORKER,
+                        instance_type="type-1",
                     ),
                 ],
             )

@@ -27,7 +27,7 @@ from ray.autoscaler.tags import (
 )
 from ray.autoscaler.v2.instance_manager.config import IConfigReader
 from ray.autoscaler.v2.schema import NodeType
-from ray.core.generated.instance_manager_pb2 import Instance, NodeKind
+from ray.core.generated.instance_manager_pb2 import NodeKind
 
 logger = logging.getLogger(__name__)
 
