@@ -636,7 +636,7 @@ class RLModule(abc.ABC):
 
         Returns:
             The output of the forward pass. This output should comply with the
-            ouptut_specs_exploration().
+            output_specs_exploration().
         """
         return self._forward_exploration(batch, **kwargs)
 
@@ -657,7 +657,7 @@ class RLModule(abc.ABC):
 
         Returns:
             The output of the forward pass. This output should comply with the
-            ouptut_specs_train().
+            output_specs_train().
         """
         return self._forward_train(batch, **kwargs)
 

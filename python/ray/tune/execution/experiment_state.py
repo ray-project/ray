@@ -18,8 +18,6 @@ from ray.tune.impl.out_of_band_serialize_dataset import out_of_band_serialize_da
 logger = logging.getLogger(__name__)
 
 
-VALID_RESUME_TYPES = [True, "LOCAL", "REMOTE", "PROMPT", "ERRORED_ONLY", "AUTO"]
-
 _EXPERIMENT_SYNC_TIMEOUT_MESSAGE = (
     "If this warning keeps showing up, consider diagnosing the "
     "reason behind the hanging sync operation, or increase the "

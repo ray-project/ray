@@ -15,7 +15,6 @@ import uuid
 
 import gymnasium as gym
 import numpy as np
-import tree
 
 from ray.rllib.env.single_agent_episode import SingleAgentEpisode
 from ray.rllib.env.utils.infinite_lookback_buffer import InfiniteLookbackBuffer
@@ -1567,9 +1566,10 @@ class MultiAgentEpisode:
                 actions=actions_per_agent[agent_id],
                 action_space=self.action_space.get(agent_id),
                 rewards=rewards_per_agent[agent_id],
-                extra_model_outputs=tree.map_structure(
-                    lambda *s: list(s), *extra_model_outputs_per_agent[agent_id]
-                )
+                extra_model_outputs={
+                    k: [i[k] for i in extra_model_outputs_per_agent[agent_id]]
+                    for k in extra_model_outputs_per_agent[agent_id][0].keys()
+                }
                 if extra_model_outputs_per_agent[agent_id]
                 else None,
                 terminated=terminateds.get(agent_id, False),
