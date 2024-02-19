@@ -322,10 +322,9 @@ class AutoscalingConfig:
     def get_raw_config_mutable(self) -> Dict[str, Any]:
         return self._configs
 
-<<<<<<< HEAD
     def get_provider_config(self) -> Dict[str, Any]:
         return self.get_config("provider", {})
-=======
+
     def get_upscaling_speed(self) -> float:
         return self.get_config("upscaling_speed", DEFAULT_UPSCALING_SPEED)
 
@@ -344,7 +343,6 @@ class AutoscalingConfig:
         # either extending the current ray-schema.json, or just use another
         # schema validation paths.
         return InstanceReconcileConfig()
->>>>>>> pr-auto-reconcile-scale
 
     @property
     def provider(self) -> Provider:

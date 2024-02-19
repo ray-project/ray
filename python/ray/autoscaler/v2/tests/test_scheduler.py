@@ -581,6 +581,13 @@ def test_single_resources():
                     ray_node_type_name="type_1",
                     available_resources={"CPU": 1},
                     total_resources={"CPU": 1},
+                    node_id=b"r1",
+                ),
+                im_instance=Instance(
+                    instance_type="type_1",
+                    status=Instance.RAY_RUNNING,
+                    instance_id="0",
+                    node_id="r1",
                 ),
             ),
         ],
@@ -600,6 +607,13 @@ def test_single_resources():
                     ray_node_type_name="type_1",
                     available_resources={"CPU": 0.9},
                     total_resources={"CPU": 1},
+                    node_id=b"r1",
+                ),
+                im_instance=Instance(
+                    instance_type="type_1",
+                    status=Instance.RAY_RUNNING,
+                    instance_id="0",
+                    node_id="r1",
                 ),
             ),
         ],
@@ -659,6 +673,13 @@ def test_implicit_resources():
                     ray_node_type_name="type_1",
                     available_resources={"CPU": 1},
                     total_resources={"CPU": 1},
+                    node_id=b"r1",
+                ),
+                im_instance=Instance(
+                    instance_type="type_1",
+                    status=Instance.RAY_RUNNING,
+                    instance_id="0",
+                    node_id="r1",
                 ),
             ),
         ],
@@ -691,6 +712,13 @@ def test_max_worker_num_enforce_with_resource_requests():
                     ray_node_type_name="type_1",
                     available_resources={"CPU": 1},
                     total_resources={"CPU": 1},
+                    node_id=b"r1",
+                ),
+                im_instance=Instance(
+                    instance_type="type_1",
+                    status=Instance.RAY_RUNNING,
+                    instance_id="0",
+                    node_id="r1",
                 ),
             ),
         ],
@@ -778,6 +806,13 @@ def test_multi_requests_fittable():
                     ray_node_type_name="type_1",
                     available_resources={"CPU": 0, "GPU": 1},
                     total_resources={"CPU": 1, "GPU": 1},
+                    node_id=b"r1",
+                ),
+                im_instance=Instance(
+                    instance_type="type_1",
+                    status=Instance.RAY_RUNNING,
+                    instance_id="0",
+                    node_id="r1",
                 ),
             ),
         ],
@@ -963,6 +998,7 @@ def test_outdated_nodes():
                     status=Instance.RAY_RUNNING,
                     launch_config_hash="hash2",
                     instance_id="i-1",
+                    node_id="r-1",
                 ),
                 ray_node=NodeState(
                     ray_node_type_name="type_cpu",
@@ -978,6 +1014,7 @@ def test_outdated_nodes():
                     status=Instance.RAY_RUNNING,
                     launch_config_hash="hash1",  # matched
                     instance_id="i-2",
+                    node_id="r-2",
                 ),
                 ray_node=NodeState(
                     ray_node_type_name="type_cpu",
@@ -994,6 +1031,7 @@ def test_outdated_nodes():
                     launch_config_hash="hash1",  # mismatched -> but don't terminate
                     instance_id="i-3",
                     node_kind=NodeKind.HEAD,
+                    node_id="r-3",
                 ),
                 ray_node=NodeState(
                     ray_node_type_name="head_node",
@@ -1053,6 +1091,7 @@ def test_idle_termination(idle_timeout_s, has_resource_constraints):
                     status=Instance.RAY_RUNNING,
                     launch_config_hash="hash1",
                     instance_id="i-1",
+                    node_id="r-1",
                 ),
                 ray_node=NodeState(
                     node_id=b"r-1",
@@ -1070,6 +1109,7 @@ def test_idle_termination(idle_timeout_s, has_resource_constraints):
                     instance_type="type_cpu",
                     status=Instance.RAY_RUNNING,
                     launch_config_hash="hash1",
+                    node_id="r-2",
                 ),
                 ray_node=NodeState(
                     ray_node_type_name="type_cpu",
@@ -1088,6 +1128,7 @@ def test_idle_termination(idle_timeout_s, has_resource_constraints):
                     status=Instance.RAY_RUNNING,
                     launch_config_hash="hash2",
                     node_kind=NodeKind.HEAD,
+                    node_id="r-3",
                 ),
                 ray_node=NodeState(
                     ray_node_type_name="head_node",
