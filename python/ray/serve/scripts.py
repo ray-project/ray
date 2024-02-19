@@ -9,7 +9,6 @@ from dataclasses import asdict
 from typing import Any, Dict, List, Optional, Tuple
 
 import click
-import watchfiles
 import yaml
 
 import ray
@@ -590,9 +589,17 @@ def run(
         if is_config:
             client.deploy_apps(config, _blocking=False)
             cli_logger.success("Submitted deploy config successfully.")
+            if blocking:
+                while True:
+                    # Block, letting Ray print logs to the terminal.
+                    time.sleep(10)
         else:
-            serve.run(app, name=name, route_prefix=route_prefix)
-            cli_logger.success("Deployed app successfully.")
+            serve.run(
+                target=app,
+                blocking=blocking,
+                name=name,
+                route_prefix=route_prefix,
+            )
 
         if reload:
             if not blocking:
@@ -604,27 +611,19 @@ def run(
             else:
                 watch_dir = app_dir
 
-            for changes in watchfiles.watch(
-                watch_dir,
-                rust_timeout=10000,
-                yield_on_timeout=True,
-            ):
-                if changes:
-                    cli_logger.info(
-                        f"Detected file change in path {watch_dir}. Redeploying app."
-                    )
-                    # The module needs to be reloaded with `importlib` in order to pick
-                    # up any changes.
-                    app = _private_api.call_app_builder_with_args_if_necessary(
-                        import_attr(import_path, reload_module=True), args_dict
-                    )
-                    serve.run(app, name=name, route_prefix=route_prefix)
-                    cli_logger.success("Redeployed app successfully.")
+            def reload_app_func() -> Application:
+                return _private_api.call_app_builder_with_args_if_necessary(
+                    import_attr(import_path, reload_module=True), args_dict
+                )
 
-        if blocking:
-            while True:
-                # Block, letting Ray print logs to the terminal.
-                time.sleep(10)
+            serve.run(
+                target=app,
+                blocking=blocking,
+                name=name,
+                route_prefix=route_prefix,
+                watch_dir=watch_dir,
+                reload_app_func=reload_app_func,
+            )
 
     except KeyboardInterrupt:
         cli_logger.info("Got KeyboardInterrupt, shutting down...")
