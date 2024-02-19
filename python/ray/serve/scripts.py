@@ -3,6 +3,7 @@ import os
 import pathlib
 import re
 import sys
+import time
 import traceback
 from dataclasses import asdict
 from typing import Any, Dict, List, Optional, Tuple
@@ -589,6 +590,10 @@ def run(
         if is_config:
             client.deploy_apps(config, _blocking=False)
             cli_logger.success("Submitted deploy config successfully.")
+            if blocking:
+                while True:
+                    # Block, letting Ray print logs to the terminal.
+                    time.sleep(10)
         else:
             # This should not block if reload is true so the watchfiles can be triggered
             should_block = blocking and not reload
