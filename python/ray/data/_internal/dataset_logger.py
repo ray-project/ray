@@ -51,13 +51,11 @@ def omit_traceback_stdout(fn: Callable) -> Callable:
             is_user_code_exception = isinstance(e, ray.exceptions.RayTaskError)
             if is_user_code_exception:
                 # Exception has occurred in user code.
-                # if log_to_stdout:
-                #     data_exception_logger.get_logger().exception(e)
                 if not log_to_stdout and ray.util.log_once(
                     "ray_data_exception_internal_hidden"
                 ):
                     data_exception_logger.get_logger().error(
-                        "Exception occured in user code, with the abbreviated stack "
+                        "Exception occurred in user code, with the abbreviated stack "
                         "trace below. By default, the Ray Data internal stack trace "
                         "is omitted from stdout, and only written to the Ray Data log "
                         f"file at {data_exception_logger._log_path}. To output the "
@@ -67,14 +65,15 @@ def omit_traceback_stdout(fn: Callable) -> Callable:
             else:
                 # Exception has occurred in internal Ray Data / Ray Core code.
                 data_exception_logger.get_logger().error(
-                    "Exception occured in Ray Data or Ray Core internal code. "
+                    "Exception occurred in Ray Data or Ray Core internal code. "
                     "If you continue to see this error, please open an issue on "
                     "the Ray project GitHub page with the full stack trace below: "
                     "https://github.com/ray-project/ray/issues/new/choose"
                 )
 
-            if log_to_stdout:
-                data_exception_logger.get_logger().exception(e)
+            data_exception_logger.get_logger(log_to_stdout=log_to_stdout).exception(
+                "Full stack trace:"
+            )
 
             if is_user_code_exception:
                 raise e.with_traceback(None) from UserCodeException()
