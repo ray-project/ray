@@ -625,34 +625,6 @@ class TrainableCrashWithFailFast(unittest.TestCase):
             tune.run(f, fail_fast=TuneController.RAISE)
 
 
-# For some reason, different tests are coupled through tune.registry.
-# After running `ResourceExhaustedTest`, there is always a super huge `training_func` to
-# be put through GCS, which will fail subsequent tests.
-# tldr, make sure that this test is the last test in the file.
-class ResourceExhaustedTest(unittest.TestCase):
-    def test_resource_exhausted_info(self):
-        """This is to test if helpful information is displayed when
-        the objects captured in trainable/training function are too
-        large and RESOURCES_EXHAUSTED error of gRPC is triggered."""
-
-        # generate some random data to be captured implicitly in training func.
-        from sklearn.datasets import fetch_olivetti_faces
-
-        a_large_array = []
-        for i in range(50):
-            a_large_array.append(fetch_olivetti_faces())
-
-        def training_func(config):
-            for item in a_large_array:
-                assert item
-
-        with self.assertRaisesRegex(
-            TuneError,
-            "The Trainable/training function is too large for grpc resource limit.",
-        ):
-            tune.run(training_func)
-
-
 @pytest.mark.parametrize(
     "trial_config", [{}, {"attr": 4}, {"nested": {"key": "value"}}]
 )
@@ -685,6 +657,82 @@ tune.run(train_fn, num_samples=1)
     with pytest.raises(subprocess.CalledProcessError) as exc_info:
         run_string_as_driver(CMD)
     assert "Inducing exception for testing purposes." in exc_info.value.output.decode()
+
+
+@pytest.mark.parametrize(
+    "resume",
+    [
+        True,
+        "AUTO",
+        "AUTO+ERRORED",
+        "AUTO+ERRORED_ONLY",
+        "AUTO+RESTART_ERRORED",
+        "AUTO+RESTART_ERRORED_ONLY",
+    ],
+)
+def test_resume_options(tmp_path, resume):
+    tmp_path.joinpath("dummy_ckpt").mkdir()
+
+    def train_fn(config):
+        checkpoint = ray.train.get_checkpoint()
+        if not checkpoint:
+            ray.train.report(
+                {"finish_marker": False},
+                checkpoint=Checkpoint.from_directory(tmp_path / "dummy_ckpt"),
+            )
+            raise RuntimeError("failing on the first run!!")
+        ray.train.report({"finish_marker": True})
+
+    analysis = tune.run(
+        train_fn,
+        storage_path=str(tmp_path),
+        name="test_resume_options",
+        raise_on_failed_trial=False,
+    )
+    results = ray.tune.ResultGrid(analysis)
+    assert not results[0].metrics.get("finish_marker", False)
+    analysis = tune.run(
+        train_fn,
+        storage_path=str(tmp_path),
+        name="test_resume_options",
+        resume=resume,
+        raise_on_failed_trial=False,
+    )
+    results = ray.tune.ResultGrid(analysis)
+    if resume in [True, "AUTO", "AUTO+RESTART_ERRORED", "AUTO+RESTART_ERRORED_ONLY"]:
+        # These options either don't resume the errored trial,
+        # or restart it without a checkpoint --> leading to the RuntimeError again
+        assert not results[0].metrics.get("finish_marker")
+    else:
+        assert results[0].metrics.get("finish_marker")
+
+
+# For some reason, different tests are coupled through tune.registry.
+# After running `ResourceExhaustedTest`, there is always a super huge `training_func` to
+# be put through GCS, which will fail subsequent tests.
+# tldr, make sure that this test is the last test in the file.
+class ResourceExhaustedTest(unittest.TestCase):
+    def test_resource_exhausted_info(self):
+        """This is to test if helpful information is displayed when
+        the objects captured in trainable/training function are too
+        large and RESOURCES_EXHAUSTED error of gRPC is triggered."""
+
+        # generate some random data to be captured implicitly in training func.
+        from sklearn.datasets import fetch_olivetti_faces
+
+        a_large_array = []
+        for i in range(50):
+            a_large_array.append(fetch_olivetti_faces())
+
+        def training_func(config):
+            for item in a_large_array:
+                assert item
+
+        with self.assertRaisesRegex(
+            TuneError,
+            "The Trainable/training function is too large for grpc resource limit.",
+        ):
+            tune.run(training_func)
 
 
 if __name__ == "__main__":
