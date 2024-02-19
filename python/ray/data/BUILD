@@ -451,6 +451,15 @@ py_test(
 )
 
 py_test(
+    name = "test_ray_databricks",
+    size = "medium",
+    srcs = ["tests/test_ray_databricks.py"],
+    tags = ["team:data", "exclusive", "data_integration"],
+    deps = ["//:ray_lib", ":conftest"],
+)
+
+
+py_test(
     name = "test_runtime_metrics_scheduling",
     size = "small",
     srcs = ["tests/test_runtime_metrics_scheduling.py"],
