@@ -56,7 +56,7 @@ class TestRayStopper:
                     new_instance_status=Instance.RAY_STOP_REQUESTED,
                     termination_request=TerminationRequest(
                         cause=TerminationRequest.Cause.IDLE,
-                        idle_time_ms=1000,
+                        idle_duration_ms=1000,
                         ray_node_id="0000",
                     ),
                 )
