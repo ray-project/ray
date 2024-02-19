@@ -640,7 +640,7 @@ class TestReconciler:
             )
             next_id += 1
             cloud_instances[instance.cloud_instance_id] = CloudInstance(
-                instance.cloud_instance_id, "type-1", "", True
+                instance.cloud_instance_id, "type-1", "", True, NodeKind.WORKER
             )
             TestReconciler._add_instances(instance_storage, [instance])
 
@@ -994,7 +994,7 @@ class TestReconciler:
         ]
 
         cloud_instances = {
-            "c-1": CloudInstance("c-1", "type-1", "", True),
+            "c-1": CloudInstance("c-1", "type-1", "", True, NodeKind.WORKER),
         }
 
         mock_scheduler = MagicMock()
@@ -1073,9 +1073,9 @@ class TestReconciler:
         ]
 
         cloud_instances = {
-            "c-1": CloudInstance("c-1", "type-1", "", True),
-            "c-2": CloudInstance("c-2", "type-2", "", True),
-            "c-3": CloudInstance("c-3", "type-3", "", True),
+            "c-1": CloudInstance("c-1", "type-1", "", True, NodeKind.WORKER),
+            "c-2": CloudInstance("c-2", "type-2", "", True, NodeKind.WORKER),
+            "c-3": CloudInstance("c-3", "type-3", "", True, NodeKind.WORKER),
         }
 
         TestReconciler._add_instances(instance_storage, instances)
@@ -1119,7 +1119,9 @@ class TestReconciler:
         ]
 
         cloud_instances = {
-            "c-1": CloudInstance("c-1", "type-1", "", cloud_instance_running),
+            "c-1": CloudInstance(
+                "c-1", "type-1", "", cloud_instance_running, NodeKind.WORKER
+            ),
         }
 
         TestReconciler._add_instances(instance_storage, instances)
@@ -1164,8 +1166,8 @@ class TestReconciler:
         ]
 
         cloud_instances = {
-            "c-1": CloudInstance("c-1", "type-1", "", True),
-            "c-2": CloudInstance("c-2", "type-2", "", True),  # Extra
+            "c-1": CloudInstance("c-1", "type-1", "", True, NodeKind.WORKER),
+            "c-2": CloudInstance("c-2", "type-2", "", True, NodeKind.WORKER),  # Extra
         }
 
         subscriber.clear()
