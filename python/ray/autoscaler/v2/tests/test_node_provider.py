@@ -5,6 +5,7 @@ import time
 import unittest
 
 # coding: utf-8
+# coding: utf-8
 from collections import defaultdict
 from typing import Any, Dict, List
 from unittest.mock import MagicMock
@@ -58,9 +59,7 @@ class CloudInstanceProviderTesterBase(ICloudInstanceProvider):
         pass
 
     def launch(self, request_id, shape):
-        self.inner_provider.launch(
-            shape=shape, request_id=request_id, config=self.config
-        )
+        self.inner_provider.launch(shape=shape, request_id=request_id)
 
     def terminate(self, request_id, ids):
         self.inner_provider.terminate(ids=ids, request_id=request_id)
@@ -103,6 +102,7 @@ class FakeMultiNodeProviderTester(CloudInstanceProviderTesterBase):
 
         provider = NodeProviderAdapter(
             self.base_provider,
+            self.config_reader,
         )
         super().__init__(provider, self.config)
 
@@ -130,6 +130,7 @@ class MockProviderTester(CloudInstanceProviderTesterBase):
         self.base_provider = MockProvider()
         provider = NodeProviderAdapter(
             self.base_provider,
+            self.config_reader,
         )
         super().__init__(provider, self.config)
 
@@ -154,6 +155,7 @@ class MagicMockProviderTester(CloudInstanceProviderTesterBase):
         self.base_provider = MagicMock()
         provider = NodeProviderAdapter(
             self.base_provider,
+            self.config_reader,
             max_launch_batch_per_type=max_launch_batch_per_type,
             max_concurrent_launches=max_concurrent_launches,
         )
@@ -205,6 +207,7 @@ def test_node_providers_basic(get_provider, provider_name):
         for node in provider.get_non_terminated().values():
             nodes_by_type[node.node_type] += 1
         errors = provider.poll_errors()
+        print(errors)
         assert nodes_by_type == {"worker_nodes": 4, "worker_nodes1": 1}
         return True
 

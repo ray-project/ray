@@ -40,7 +40,7 @@ message Status {
 }
 
 enum NodeKind {
-  // The unmanaged node kind.
+  // The unmanaged node kind (e.g. out of band ones started by users.)
   UNMANAGED = 0;
   // The head node.
   HEAD = 1;
@@ -139,6 +139,12 @@ message InstanceUpdateEvent {
 
   // Cloud instance id for ALLOCATED event.
   optional string cloud_instance_id = 4;
+  // Launch request id for REQUESTED event.
+  optional string launch_request_id = 5;
+  // Instance type for REQUESTED event.
+  optional string instance_type = 6;
+  // Ray node id for RAY_RUNNING event.
+  optional string ray_node_id = 7;
 }
 
 // Launch request for a node type.

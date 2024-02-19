@@ -281,7 +281,6 @@ class _StatsActor:
             tags = self._create_tags(dataset_tag, operator_tag)
             self.bytes_spilled.set(stats.get("obj_store_mem_spilled", 0), tags)
             self.bytes_freed.set(stats.get("obj_store_mem_freed", 0), tags)
-            self.bytes_current.set(stats.get("obj_store_mem_cur", 0), tags)
             self.bytes_outputted.set(stats.get("bytes_task_outputs_generated", 0), tags)
             self.rows_outputted.set(stats.get("rows_task_outputs_generated", 0), tags)
             self.cpu_usage.set(stats.get("cpu_usage", 0), tags)
@@ -600,6 +599,9 @@ class DatasetStats:
         self.time_total_s: float = 0
         self.needs_stats_actor = needs_stats_actor
         self.stats_uuid = stats_uuid
+
+        # Streaming executor stats
+        self.streaming_exec_schedule_s: Timer = Timer()
 
         # Iteration stats, filled out if the user iterates over the dataset.
         self.iter_wait_s: Timer = Timer()

@@ -369,6 +369,8 @@ class FakeMultiNodeProvider(NodeProvider):
                 else self._gcs_address,
                 env_vars={
                     "RAY_OVERRIDE_NODE_ID_FOR_TESTING": next_id,
+                    "RAY_CLOUD_INSTANCE_ID": next_id,
+                    "RAY_NODE_TYPE_NAME": node_type,
                     ray_constants.RESOURCES_ENVIRONMENT_VARIABLE: json.dumps(resources),
                     ray_constants.LABELS_ENVIRONMENT_VARIABLE: json.dumps(labels),
                 },
