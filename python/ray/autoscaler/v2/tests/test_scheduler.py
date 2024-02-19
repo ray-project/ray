@@ -6,6 +6,7 @@ from typing import Dict, List, Optional, Tuple
 
 import pytest
 
+import ray
 from ray.autoscaler.v2.scheduler import (
     NodeTypeConfig,
     ResourceDemandScheduler,
@@ -16,11 +17,12 @@ from ray.autoscaler.v2.scheduler import (
 )
 from ray.autoscaler.v2.schema import AutoscalerInstance, NodeType
 from ray.autoscaler.v2.tests.util import make_autoscaler_instance
+from ray.autoscaler.v2.utils import ResourceRequestUtil
 from ray.core.generated.autoscaler_pb2 import (
     ClusterResourceConstraint,
     GangResourceRequest,
     NodeState,
-    ResourceRequestByCount,
+    ResourceRequest,
 )
 from ray.core.generated.instance_manager_pb2 import Instance, TerminationRequest
 
@@ -30,7 +32,7 @@ ResourceMap = Dict[str, float]
 def sched_request(
     node_type_configs: Dict[NodeType, NodeTypeConfig],
     max_num_nodes: Optional[int] = None,
-    resource_requests: Optional[List[ResourceRequestByCount]] = None,
+    resource_requests: Optional[List[ResourceRequest]] = None,
     gang_resource_requests: Optional[List[GangResourceRequest]] = None,
     cluster_resource_constraints: Optional[List[ClusterResourceConstraint]] = None,
     instances: Optional[List[AutoscalerInstance]] = None,
@@ -46,7 +48,7 @@ def sched_request(
         instances = []
 
     return SchedulingRequest(
-        resource_requests=resource_requests,
+        resource_requests=ResourceRequestUtil.group_by_count(resource_requests),
         gang_resource_requests=gang_resource_requests,
         cluster_resource_constraints=cluster_resource_constraints,
         current_instances=instances,
@@ -522,6 +524,336 @@ def test_max_num_nodes():
             ("3", "r3", TerminationRequest.Cause.MAX_NUM_NODE_PER_TYPE),  # type-2
         ]
     )
+
+
+def test_single_resources():
+    scheduler = ResourceDemandScheduler()
+    node_type_configs = {
+        "type_1": NodeTypeConfig(
+            name="type_1",
+            resources={"CPU": 1},
+            min_worker_nodes=0,
+            max_worker_nodes=10,
+        ),
+    }
+
+    # Request 1 CPU should start a node.
+    request = sched_request(
+        node_type_configs=node_type_configs,
+        resource_requests=[ResourceRequestUtil.make({"CPU": 1})],
+    )
+    reply = scheduler.schedule(request)
+    to_lauch, _ = _launch_and_terminate(reply)
+    assert sorted(to_lauch) == sorted({"type_1": 1})
+
+    # Request multiple CPUs should start multiple nodes
+    request = sched_request(
+        node_type_configs=node_type_configs,
+        resource_requests=[ResourceRequestUtil.make({"CPU": 1})] * 3,
+    )
+    reply = scheduler.schedule(request)
+    to_lauch, _ = _launch_and_terminate(reply)
+    assert sorted(to_lauch) == sorted({"type_1": 3})
+
+    # Request resources with already existing nodes should not launch new nodes.
+    request = sched_request(
+        node_type_configs=node_type_configs,
+        resource_requests=[ResourceRequestUtil.make({"CPU": 1})],
+        instances=[
+            make_autoscaler_instance(
+                ray_node=NodeState(
+                    ray_node_type_name="type_1",
+                    available_resources={"CPU": 1},
+                    total_resources={"CPU": 1},
+                ),
+            ),
+        ],
+    )
+    reply = scheduler.schedule(request)
+    to_lauch, _ = _launch_and_terminate(reply)
+    assert sorted(to_lauch) == sorted({})
+
+    # Request resources with already existing nodes not sufficient should launch
+    # new nodes.
+    request = sched_request(
+        node_type_configs=node_type_configs,
+        resource_requests=[ResourceRequestUtil.make({"CPU": 1})],
+        instances=[
+            make_autoscaler_instance(
+                ray_node=NodeState(
+                    ray_node_type_name="type_1",
+                    available_resources={"CPU": 0.9},
+                    total_resources={"CPU": 1},
+                ),
+            ),
+        ],
+    )
+    reply = scheduler.schedule(request)
+    to_lauch, _ = _launch_and_terminate(reply)
+    assert sorted(to_lauch) == sorted({"type_1": 1})
+
+    # Request resources with already pending nodes should NOT launch new nodes
+    request = sched_request(
+        node_type_configs=node_type_configs,
+        resource_requests=[ResourceRequestUtil.make({"CPU": 1})],
+        instances=[
+            make_autoscaler_instance(
+                im_instance=Instance(
+                    instance_type="type_1", status=Instance.REQUESTED, instance_id="0"
+                ),
+            ),
+        ],
+    )
+    reply = scheduler.schedule(request)
+    to_lauch, _ = _launch_and_terminate(reply)
+    assert sorted(to_lauch) == sorted({})
+
+
+def test_implicit_resources():
+    scheduler = ResourceDemandScheduler()
+    node_type_configs = {
+        "type_1": NodeTypeConfig(
+            name="type_1",
+            resources={"CPU": 1},
+            min_worker_nodes=0,
+            max_worker_nodes=10,
+        ),
+    }
+    implicit_resource = ray._raylet.IMPLICIT_RESOURCE_PREFIX + "a"
+
+    # implicit resources should scale up clusters.
+    request = sched_request(
+        node_type_configs=node_type_configs,
+        resource_requests=[ResourceRequestUtil.make({implicit_resource: 1})],
+    )
+    reply = scheduler.schedule(request)
+    to_launch, _ = _launch_and_terminate(reply)
+    assert sorted(to_launch) == sorted({"type_1": 1})
+
+    # implicit resources should be satisfied by existing node.
+    request = sched_request(
+        node_type_configs=node_type_configs,
+        resource_requests=[
+            ResourceRequestUtil.make({implicit_resource: 1}),
+            ResourceRequestUtil.make({"CPU": 1}),
+        ],
+        instances=[
+            make_autoscaler_instance(
+                ray_node=NodeState(
+                    ray_node_type_name="type_1",
+                    available_resources={"CPU": 1},
+                    total_resources={"CPU": 1},
+                ),
+            ),
+        ],
+    )
+    reply = scheduler.schedule(request)
+    to_launch, _ = _launch_and_terminate(reply)
+    assert to_launch == {}
+
+
+def test_max_worker_num_enforce_with_resource_requests():
+    scheduler = ResourceDemandScheduler()
+    node_type_configs = {
+        "type_1": NodeTypeConfig(
+            name="type_1",
+            resources={"CPU": 1},
+            min_worker_nodes=0,
+            max_worker_nodes=10,
+        ),
+    }
+    max_num_nodes = 2
+
+    # Request 10 CPUs should start at most 2 nodes.
+    request = sched_request(
+        node_type_configs=node_type_configs,
+        max_num_nodes=max_num_nodes,
+        resource_requests=[ResourceRequestUtil.make({"CPU": 1})] * 3,
+        instances=[
+            make_autoscaler_instance(
+                ray_node=NodeState(
+                    ray_node_type_name="type_1",
+                    available_resources={"CPU": 1},
+                    total_resources={"CPU": 1},
+                ),
+            ),
+        ],
+    )
+    reply = scheduler.schedule(request)
+    to_lauch, _ = _launch_and_terminate(reply)
+    assert sorted(to_lauch) == sorted({"type_1": 1})
+
+
+def test_multi_requests_fittable():
+    """
+    Test multiple requests can be fit into a single node.
+    """
+    scheduler = ResourceDemandScheduler()
+    node_type_configs = {
+        "type_1": NodeTypeConfig(
+            name="type_1",
+            resources={"CPU": 1, "GPU": 1},
+            min_worker_nodes=0,
+            max_worker_nodes=1,
+        ),
+        "type_2": NodeTypeConfig(
+            name="type_2",
+            resources={"CPU": 3},
+            min_worker_nodes=0,
+            max_worker_nodes=1,
+        ),
+    }
+
+    request = sched_request(
+        node_type_configs=node_type_configs,
+        resource_requests=[
+            ResourceRequestUtil.make({"CPU": 1}),
+            ResourceRequestUtil.make({"CPU": 1}),
+            ResourceRequestUtil.make({"CPU": 1}),
+            ResourceRequestUtil.make({"CPU": 1, "GPU": 1}),
+        ],
+    )
+    reply = scheduler.schedule(request)
+    to_launch, _ = _launch_and_terminate(reply)
+    assert sorted(to_launch) == sorted({"type_1": 1, "type_2": 1})
+    assert reply.infeasible_resource_requests == []
+
+    # Change the ordering of requests should not affect the result.
+    request = sched_request(
+        node_type_configs=node_type_configs,
+        resource_requests=[
+            ResourceRequestUtil.make({"CPU": 1, "GPU": 1}),
+            ResourceRequestUtil.make({"CPU": 1}),
+            ResourceRequestUtil.make({"CPU": 1}),
+            ResourceRequestUtil.make({"CPU": 1}),
+        ],
+    )
+    reply = scheduler.schedule(request)
+    to_launch, _ = _launch_and_terminate(reply)
+    assert sorted(to_launch) == sorted({"type_1": 1, "type_2": 1})
+    assert reply.infeasible_resource_requests == []
+
+    request = sched_request(
+        node_type_configs=node_type_configs,
+        resource_requests=[
+            ResourceRequestUtil.make({"CPU": 2}),
+            ResourceRequestUtil.make({"CPU": 1}),
+            ResourceRequestUtil.make({"CPU": 0.5, "GPU": 0.5}),
+            ResourceRequestUtil.make({"CPU": 0.5, "GPU": 0.5}),
+        ],
+    )
+    reply = scheduler.schedule(request)
+    to_launch, _ = _launch_and_terminate(reply)
+    assert sorted(to_launch) == sorted({"type_1": 1, "type_2": 1})
+    assert reply.infeasible_resource_requests == []
+
+    # However, if we already have fragmentation. We should not be able
+    # to fit more requests.
+    request = sched_request(
+        node_type_configs=node_type_configs,
+        resource_requests=[
+            ResourceRequestUtil.make({"CPU": 1}),
+            ResourceRequestUtil.make({"CPU": 1}),
+            ResourceRequestUtil.make({"CPU": 1, "GPU": 1}),
+        ],
+        instances=[
+            make_autoscaler_instance(
+                ray_node=NodeState(
+                    ray_node_type_name="type_1",
+                    available_resources={"CPU": 0, "GPU": 1},
+                    total_resources={"CPU": 1, "GPU": 1},
+                ),
+            ),
+        ],
+    )
+    reply = scheduler.schedule(request)
+    to_launch, _ = _launch_and_terminate(reply)
+    assert sorted(to_launch) == sorted({"type_2": 1})
+    assert len(reply.infeasible_resource_requests) == 1
+
+
+def test_multi_node_types_score():
+    """
+    Test that when multiple node types are possible, choose the best scoring ones:
+    1. The number of resources utilized.
+    2. The amount of utilization.
+    """
+    scheduler = ResourceDemandScheduler()
+    node_type_configs = {
+        "type_large": NodeTypeConfig(
+            name="type_large",
+            resources={"CPU": 10},  # Large machines
+            min_worker_nodes=0,
+            max_worker_nodes=1,
+        ),
+        "type_small": NodeTypeConfig(
+            name="type_small",
+            resources={"CPU": 5},
+            min_worker_nodes=0,
+            max_worker_nodes=1,
+        ),
+        "type_gpu": NodeTypeConfig(
+            name="type_gpu",
+            resources={"CPU": 2, "GPU": 2},
+            min_worker_nodes=0,
+            max_worker_nodes=1,
+        ),
+    }
+
+    # Request 1 CPU should just start the small machine and not the GPU machine
+    # since it has more types of resources.
+    request = sched_request(
+        node_type_configs=node_type_configs,
+        resource_requests=[ResourceRequestUtil.make({"CPU": 1})],
+    )
+    reply = scheduler.schedule(request)
+    to_launch, _ = _launch_and_terminate(reply)
+    assert sorted(to_launch) == sorted({"type_small": 1})
+
+    # type_small should be preferred over type_large.
+    request = sched_request(
+        node_type_configs=node_type_configs,
+        resource_requests=[ResourceRequestUtil.make({"CPU": 2})],
+    )
+    reply = scheduler.schedule(request)
+    to_launch, _ = _launch_and_terminate(reply)
+    assert sorted(to_launch) == sorted({"type_small": 1})
+
+
+def test_multi_node_types_score_with_gpu(monkeypatch):
+    """
+    Test that when multiple node types are possible, choose the best scoring ones:
+    - The GPU scoring.
+    """
+    scheduler = ResourceDemandScheduler()
+    node_type_configs = {
+        "type_gpu": NodeTypeConfig(
+            name="type_gpu",
+            resources={"CPU": 1, "GPU": 2},
+            min_worker_nodes=0,
+            max_worker_nodes=1,
+        ),
+        "type_multi": NodeTypeConfig(
+            name="type_multi",
+            resources={"CPU": 2, "XXX": 2},  # Some random resource.
+            min_worker_nodes=0,
+            max_worker_nodes=1,
+        ),
+    }
+    request = sched_request(
+        node_type_configs=node_type_configs,
+        resource_requests=[ResourceRequestUtil.make({"CPU": 1})],
+    )
+    reply = scheduler.schedule(request)
+    to_launch, _ = _launch_and_terminate(reply)
+    assert sorted(to_launch) == sorted({"type_multi": 1})
+
+    with monkeypatch.context() as m:
+        m.setattr(ray.autoscaler.v2.scheduler, "AUTOSCALER_CONSERVE_GPU_NODES", 0)
+        # type_multi should now be preferred over type_gpu.
+        reply = scheduler.schedule(request)
+        to_launch, _ = _launch_and_terminate(reply)
+        assert sorted(to_launch) == sorted({"type_gpu": 1})
 
 
 if __name__ == "__main__":
