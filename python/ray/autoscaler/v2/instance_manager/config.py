@@ -322,9 +322,6 @@ class AutoscalingConfig:
     def get_raw_config_mutable(self) -> Dict[str, Any]:
         return self._configs
 
-    def get_provider_config(self) -> Dict[str, Any]:
-        return self.get_config("provider", {})
-
     def get_upscaling_speed(self) -> float:
         return self.get_config("upscaling_speed", DEFAULT_UPSCALING_SPEED)
 
