@@ -2,19 +2,18 @@ import os
 import subprocess
 import sys
 import time
-from typing import Dict
+
+import pytest
+
 from mock import MagicMock
 
-from pprint import pprint as print
-
 import ray
-import pytest
+from ray._private.test_utils import wait_for_condition
+from ray._raylet import GcsClient
 from ray.autoscaler._private.fake_multi_node.node_provider import FAKE_HEAD_NODE_ID
 from ray.autoscaler.v2.autoscaler import Autoscaler
 from ray.autoscaler.v2.instance_manager.config import AutoscalingConfig
 from ray.autoscaler.v2.sdk import get_cluster_status, request_cluster_resources
-from ray._private.test_utils import wait_for_condition
-from ray._raylet import GcsClient
 from ray.cluster_utils import Cluster
 
 DEFAULT_AUTOSCALING_CONFIG = {
@@ -58,8 +57,7 @@ DEFAULT_AUTOSCALING_CONFIG = {
 def make_autoscaler():
     ctx = {}
 
-    def _make_autoscaler(head_node_kwargs: Dict = None):
-        config = DEFAULT_AUTOSCALING_CONFIG
+    def _make_autoscaler(config):
         head_node_kwargs = {
             "env_vars": {
                 "RAY_CLOUD_INSTANCE_ID": FAKE_HEAD_NODE_ID,
@@ -108,7 +106,8 @@ def make_autoscaler():
 
 
 def test_basic_scaling(make_autoscaler):
-    autoscaler = make_autoscaler()
+    config = DEFAULT_AUTOSCALING_CONFIG
+    autoscaler = make_autoscaler(DEFAULT_AUTOSCALING_CONFIG)
     gcs_address = autoscaler._gcs_client.address
 
     # Resource requests
@@ -126,7 +125,8 @@ def test_basic_scaling(make_autoscaler):
     # Test scaling down shouldn't happen
     print("=================== Test scaling down constraint 2/2 ====================")
 
-    time.sleep(6)
+    idle_timeout_s = config["idle_timeout_minutes"] * 60
+    time.sleep(idle_timeout_s + 2)
 
     wait_for_condition(verify, retry_interval_ms=2000)
 
@@ -149,8 +149,8 @@ def test_basic_scaling(make_autoscaler):
     def task():
         time.sleep(999)
 
-    a = task.options(num_cpus=1).remote()
-    b = task.options(num_cpus=0, num_gpus=1).remote()
+    task.options(num_cpus=1).remote()
+    task.options(num_cpus=0, num_gpus=1).remote()
 
     def verify():
         autoscaler.update_autoscaling_state()
@@ -166,7 +166,7 @@ def test_basic_scaling(make_autoscaler):
     )
 
     # Spread to create another 2 nodes.
-    pg_strict = ray.util.placement_group(
+    ray.util.placement_group(
         name="pg", strategy="STRICT_SPREAD", bundles=[{"CPU": 0.5}, {"CPU": 0.5}]
     )
 
@@ -177,15 +177,28 @@ def test_basic_scaling(make_autoscaler):
         return True
 
     wait_for_condition(verify, retry_interval_ms=2000)
+    # Pack with feasible ones
+    ray.util.placement_group(
+        name="pg_feasible", strategy="STRICT_PACK", bundles=[{"CPU": 0.5}, {"CPU": 0.5}]
+    )
 
-    pg_infeasible = ray.util.placement_group(
+    def verify():
+        autoscaler.update_autoscaling_state()
+        cluster_state = get_cluster_status(gcs_address)
+        assert len(cluster_state.active_nodes + cluster_state.idle_nodes) == 6
+        return True
+
+    wait_for_condition(verify, retry_interval_ms=2000)
+
+    # Pack with infeasible request
+    ray.util.placement_group(
         name="pg_infeasible", strategy="STRICT_PACK", bundles=[{"CPU": 1}, {"CPU": 1}]
     )
 
     def verify():
         autoscaling_state = autoscaler.update_autoscaling_state()
         cluster_state = get_cluster_status(gcs_address)
-        assert len(cluster_state.active_nodes + cluster_state.idle_nodes) == 5
+        assert len(cluster_state.active_nodes + cluster_state.idle_nodes) == 6
         assert len(autoscaling_state.infeasible_gang_resource_requests) == 1
         return True
 

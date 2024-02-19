@@ -92,7 +92,7 @@ class TimeoutInstanceUpdater(IInstanceUpdater):
 
     def make_update(self, instance: IMInstance) -> Optional[IMInstanceUpdateEvent]:
         if InstanceUtil.has_timeout(instance, self.timeout_s):
-            return IMInstanceUpdateEvent(
+            update = IMInstanceUpdateEvent(
                 instance_id=instance.instance_id,
                 new_instance_status=self.new_status,
                 details=(
@@ -100,6 +100,12 @@ class TimeoutInstanceUpdater(IInstanceUpdater):
                     f"{IMInstance.InstanceStatus.Name(self.cur_status)}"
                 ),
             )
+
+            # Add status specific metadata
+            if self.new_status == IMInstance.TERMINATING:
+                update.cloud_instance_id = instance.cloud_instance_id
+
+            return update
         return None
 
 
@@ -1265,7 +1271,9 @@ class Reconciler:
             cluster_resource_constraints=ray_state.cluster_resource_constraints,
             current_instances=autoscaler_instances,
             idle_timeout_s=autoscaling_config.get_idle_timeout_s(),
-            disable_launch_config_check=autoscaling_config.disable_launch_config_check(),
+            disable_launch_config_check=(
+                autoscaling_config.disable_launch_config_check()
+            ),
         )
 
         # Ask scheduler for updates to the cluster shape.
@@ -1285,9 +1293,12 @@ class Reconciler:
         to_launch = reply.to_launch
         to_terminate = reply.to_terminate
         updates = {}
+        instances_by_id = {i.instance_id: i for i in im_instances}
         # Add terminating instances.
         for terminate_request in to_terminate:
             instance_id = terminate_request.instance_id
+            instance = instances_by_id.get(instance_id)
+            assert instance, f"Instance {instance_id} not found in instance manager."
             if autoscaling_config.need_ray_stop():
                 # If we would need to stop/drain ray.
                 updates[terminate_request.instance_id] = IMInstanceUpdateEvent(
@@ -1297,10 +1308,13 @@ class Reconciler:
                 )
             else:
                 # If we would just terminate the cloud instance.
+                assert (
+                    instance.cloud_instance_id
+                ), f"Cloud instance id is not set on {instance.instance_id}."
                 updates[terminate_request.instance_id] = IMInstanceUpdateEvent(
                     instance_id=instance_id,
                     new_instance_status=IMInstance.TERMINATING,
-                    cloud_instance_id=terminate_request.cloud_instance_id,
+                    cloud_instance_id=instance.cloud_instance_id,
                 )
             logger.info(
                 "Terminating {} with {}".format(

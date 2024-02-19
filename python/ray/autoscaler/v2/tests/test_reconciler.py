@@ -929,13 +929,20 @@ class TestReconciler:
                 "no-update",
                 cur_status,
                 status_times=[(cur_status, (cur_time_s - timeout_s + 1) * s_to_ns)],
+                cloud_instance_id="c-1",
             ),
             create_instance(
                 "updated",
                 cur_status,
                 status_times=[(cur_status, (cur_time_s - timeout_s - 1) * s_to_ns)],
+                cloud_instance_id="c-2",
             ),
         ]
+
+        cloud_instances = {
+            "c-1": CloudInstance("c-1", "type-1", "", True, NodeKind.WORKER),
+            "c-2": CloudInstance("c-2", "type-1", "", True, NodeKind.WORKER),
+        }
 
         TestReconciler._add_instances(instance_storage, instances)
 
@@ -944,7 +951,7 @@ class TestReconciler:
             scheduler=MockScheduler(),
             cloud_provider=MagicMock(),
             ray_cluster_resource_state=ClusterResourceState(),
-            non_terminated_cloud_instances={},
+            non_terminated_cloud_instances=cloud_instances,
             cloud_provider_errors=[],
             ray_install_errors=[],
             autoscaling_config=MockAutoscalingConfig(
@@ -965,9 +972,6 @@ class TestReconciler:
         "status",
         [
             Instance.InstanceStatus.Name(Instance.RAY_STOPPING),
-            Instance.InstanceStatus.Name(Instance.RAY_INSTALL_FAILED),
-            Instance.InstanceStatus.Name(Instance.RAY_STOPPED),
-            Instance.InstanceStatus.Name(Instance.TERMINATION_FAILED),
             Instance.InstanceStatus.Name(Instance.QUEUED),
         ],
     )

@@ -1,9 +1,10 @@
+import logging
 from queue import Queue
 from typing import List, Optional
+
+from ray._raylet import GcsClient
 from ray.autoscaler._private.providers import _get_node_provider
 from ray.autoscaler.v2.instance_manager.config import AutoscalingConfig, IConfigReader
-from ray._raylet import GcsClient
-from ray.autoscaler.v2.instance_manager.reconciler import Reconciler
 from ray.autoscaler.v2.instance_manager.instance_manager import (
     InstanceManager,
     InstanceUpdatedSubscriber,
@@ -13,19 +14,18 @@ from ray.autoscaler.v2.instance_manager.node_provider import (
     ICloudInstanceProvider,
     NodeProviderAdapter,
 )
+from ray.autoscaler.v2.instance_manager.reconciler import Reconciler
 from ray.autoscaler.v2.instance_manager.storage import InMemoryStorage
 from ray.autoscaler.v2.instance_manager.subscribers.cloud_instance_updater import (
     CloudInstanceUpdater,
 )
 from ray.autoscaler.v2.instance_manager.subscribers.ray_stopper import RayStopper
 from ray.autoscaler.v2.scheduler import ResourceDemandScheduler
-
 from ray.core.generated.autoscaler_pb2 import (
     AutoscalingState,
     ClusterResourceState,
     GetClusterResourceStateReply,
 )
-import logging
 
 logger = logging.getLogger(__name__)
 
@@ -173,7 +173,9 @@ class Autoscaler:
                 scheduler=self._scheduler,
                 cloud_provider=self._cloud_provider,
                 ray_cluster_resource_state=ray_cluster_resource_state,
-                non_terminated_cloud_instances=self._cloud_provider.get_non_terminated(),
+                non_terminated_cloud_instances=(
+                    self._cloud_provider.get_non_terminated()
+                ),
                 cloud_provider_errors=self._cloud_provider.poll_errors(),
                 ray_install_errors=ray_install_errors,
                 ray_stop_errors=ray_stop_errors,
