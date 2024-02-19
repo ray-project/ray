@@ -586,7 +586,7 @@ def test_single_resources():
                 im_instance=Instance(
                     instance_type="type_1",
                     status=Instance.RAY_RUNNING,
-                    instance_id="0",
+                    instance_id="1",
                     node_id="r1",
                 ),
             ),
@@ -612,7 +612,7 @@ def test_single_resources():
                 im_instance=Instance(
                     instance_type="type_1",
                     status=Instance.RAY_RUNNING,
-                    instance_id="0",
+                    instance_id="1",
                     node_id="r1",
                 ),
             ),
@@ -678,7 +678,7 @@ def test_implicit_resources():
                 im_instance=Instance(
                     instance_type="type_1",
                     status=Instance.RAY_RUNNING,
-                    instance_id="0",
+                    instance_id="1",
                     node_id="r1",
                 ),
             ),
@@ -717,7 +717,7 @@ def test_max_worker_num_enforce_with_resource_requests():
                 im_instance=Instance(
                     instance_type="type_1",
                     status=Instance.RAY_RUNNING,
-                    instance_id="0",
+                    instance_id="1",
                     node_id="r1",
                 ),
             ),
@@ -811,7 +811,7 @@ def test_multi_requests_fittable():
                 im_instance=Instance(
                     instance_type="type_1",
                     status=Instance.RAY_RUNNING,
-                    instance_id="0",
+                    instance_id="1",
                     node_id="r1",
                 ),
             ),
