@@ -49,9 +49,11 @@ class SchedulingRequest:
     max_num_nodes: Optional[int] = None
     # Idle timeout in seconds.
     idle_timeout_s: Optional[int] = None
+    # Disable outdated node check.
+    disable_launch_config_check: bool = False
     # TODO: This prob could be refactored into the ClusterStatus data class later.
     # The current ray resource requests.
-    resource_requests: List[ResourceRequestByCount] = field(default_factory=list)
+    resource_requests: List[ResourceRequest] = field(default_factory=list)
     # The Gang resource requests.
     gang_resource_requests: List[GangResourceRequest] = field(default_factory=list)
     # cluster resource constraints.
@@ -132,7 +134,9 @@ class SchedulingNode:
 
     @staticmethod
     def new(
-        instance: AutoscalerInstance, node_type_configs: Dict[NodeType, NodeTypeConfig]
+        instance: AutoscalerInstance,
+        node_type_configs: Dict[NodeType, NodeTypeConfig],
+        allow_missing_node_type_config: bool = False,
     ) -> Optional["SchedulingNode"]:
         """
         Create a new scheduling node from an autoscaler instance.
@@ -145,6 +149,10 @@ class SchedulingNode:
         Args:
             instance: The instance.
             node_type_configs: The node type configs.
+            allow_missing_node_type_config: Whether to allow missing node type config.
+                If True, the method will skip the instance if the node type config is
+                missing. If False, the method will terminate the instance if the node
+                type config is missing.
 
         """
         if not SchedulingNode.is_schedulable(instance):
@@ -179,6 +187,10 @@ class SchedulingNode:
         # from the node type config.
         node_config = node_type_configs.get(instance.im_instance.instance_type, None)
         if node_config is None:
+            if allow_missing_node_type_config:
+                # The node type config is missing, we will skip this instance.
+                return None
+
             # Configs might have been updated, and no more
             # node_type_configs for this node type. We should terminate it.
             return SchedulingNode(
@@ -555,6 +567,8 @@ class ResourceDemandScheduler(IResourceScheduler):
         _max_num_nodes: Optional[int] = None
         # The idle timeout in seconds.
         _idle_timeout_s: Optional[int] = None
+        # Disable outdated node check.
+        _disable_launch_config_check: bool = False
         # The current schedulable nodes (including pending nodes and pending requests).
         _nodes: List[SchedulingNode] = field(default_factory=list)
         # The number of nodes by node types available for launching based on the max
@@ -568,6 +582,7 @@ class ResourceDemandScheduler(IResourceScheduler):
             node_type_configs: Dict[NodeType, NodeTypeConfig],
             max_num_nodes: Optional[int] = None,
             idle_timeout_s: Optional[int] = None,
+            disable_launch_config_check: bool = False,
         ):
             self._nodes = nodes
             self._node_type_configs = node_type_configs
@@ -576,6 +591,7 @@ class ResourceDemandScheduler(IResourceScheduler):
             )
             self._max_num_nodes = max_num_nodes
             self._idle_timeout_s = idle_timeout_s
+            self._disable_launch_config_check = disable_launch_config_check
 
         @classmethod
         def from_schedule_request(
@@ -596,7 +612,9 @@ class ResourceDemandScheduler(IResourceScheduler):
 
             # Initialize the scheduling nodes.
             for instance in req.current_instances:
-                node = SchedulingNode.new(instance, node_type_configs)
+                node = SchedulingNode.new(
+                    instance, node_type_configs, req.disable_launch_config_check
+                )
                 if node:
                     nodes.append(node)
 
@@ -605,6 +623,7 @@ class ResourceDemandScheduler(IResourceScheduler):
                 node_type_configs=node_type_configs,
                 max_num_nodes=req.max_num_nodes,
                 idle_timeout_s=req.idle_timeout_s,
+                disable_launch_config_check=req.disable_launch_config_check,
             )
 
         @staticmethod
@@ -770,9 +789,7 @@ class ResourceDemandScheduler(IResourceScheduler):
 
         # Compute the number of nodes to launch.
         reply = SchedulingReply(
-            infeasible_resource_requests=ResourceRequestUtil.group_by_count(
-                infeasible_requests
-            ),
+            infeasible_resource_requests=infeasible_requests,
             infeasible_gang_resource_requests=infeasible_gang_requests,
             infeasible_cluster_resource_constraints=infeasible_constraints,
             to_launch=ctx.get_launch_requests(),
@@ -1391,6 +1408,11 @@ class ResourceDemandScheduler(IResourceScheduler):
             ctx: The schedule context.
         """
         nodes = ctx.get_nodes()
+
+        if ctx._disable_launch_config_check:
+            # Skip the outdated node check.
+            logger.debug("Outdated node check is disabled.")
+            return
 
         for node in nodes:
             if node.status != SchedulingNodeStatus.SCHEDULABLE:

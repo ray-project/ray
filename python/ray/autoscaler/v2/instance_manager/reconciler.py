@@ -291,6 +291,11 @@ class Reconciler:
             node_kind=head_cloud_instance.node_kind,
             instance_type=head_cloud_instance.node_type,
         )
+        logger.info(
+            "Initializing head node with {}.".format(
+                message_to_dict(updates[head_node_instance_id])
+            )
+        )
         instances, version = Reconciler._get_im_instances(instance_manager)
         assert len(instances) == 0, "No instance should have been initialized. "
         Reconciler._update_instance_manager(
@@ -464,8 +469,11 @@ class Reconciler:
 
         # Compute intermediate states.
         instances_with_launch_requests: List[IMInstance] = [
-            instance for instance in im_instances if instance.launch_request_id
+            instance
+            for instance in im_instances
+            if InstanceUtil.is_launch_requested(instance)
         ]
+
         assigned_cloud_instance_ids: Set[CloudInstanceId] = {
             instance.cloud_instance_id for instance in im_instances
         }
@@ -686,7 +694,7 @@ class Reconciler:
         instances_with_cloud_instance_assigned = {
             instance.cloud_instance_id: instance
             for instance in instances
-            if instance.cloud_instance_id
+            if instance.cloud_instance_id and instance.status != IMInstance.TERMINATED
         }
 
         for (
@@ -1239,9 +1247,11 @@ class Reconciler:
                 AutoscalerInstance(
                     ray_node=ray_node,
                     im_instance=im_instance,
-                    cloud_instance_id=im_instance.cloud_instance_id
-                    if im_instance.cloud_instance_id
-                    else None,
+                    cloud_instance_id=(
+                        im_instance.cloud_instance_id
+                        if im_instance.cloud_instance_id
+                        else None
+                    ),
                 )
             )
 
@@ -1254,6 +1264,8 @@ class Reconciler:
             gang_resource_requests=ray_state.pending_gang_resource_requests,
             cluster_resource_constraints=ray_state.cluster_resource_constraints,
             current_instances=autoscaler_instances,
+            idle_timeout_s=autoscaling_config.get_idle_timeout_s(),
+            disable_launch_config_check=autoscaling_config.disable_launch_config_check(),
         )
 
         # Ask scheduler for updates to the cluster shape.
@@ -1288,6 +1300,7 @@ class Reconciler:
                 updates[terminate_request.instance_id] = IMInstanceUpdateEvent(
                     instance_id=instance_id,
                     new_instance_status=IMInstance.TERMINATING,
+                    cloud_instance_id=terminate_request.cloud_instance_id,
                 )
             logger.info(
                 "Terminating {} with {}".format(
@@ -1346,6 +1359,7 @@ class Reconciler:
             updates[instance.instance_id] = IMInstanceUpdateEvent(
                 instance_id=instance.instance_id,
                 new_instance_status=IMInstance.TERMINATING,
+                cloud_instance_id=instance.cloud_instance_id,
             )
 
         Reconciler._update_instance_manager(instance_manager, version, updates)
@@ -1490,6 +1504,7 @@ class Reconciler:
                 )
             )
 
+    @staticmethod
     def _handle_extra_cloud_instances(
         instance_manager: InstanceManager,
         non_terminated_cloud_instances: Dict[CloudInstanceId, CloudInstance],

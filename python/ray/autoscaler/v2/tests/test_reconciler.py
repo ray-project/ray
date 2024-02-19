@@ -75,6 +75,12 @@ class MockAutoscalingConfig:
     def need_ray_stop(self):
         return self._configs.get("need_ray_stop", True)
 
+    def get_idle_timeout_s(self):
+        return self._configs.get("idle_timeout_s", 0)
+
+    def disable_launch_config_check(self):
+        return self._configs.get("disable_launch_config_check", False)
+
 
 class MockScheduler(IResourceScheduler):
     def __init__(self, to_launch=None, to_terminate=None):
@@ -336,7 +342,6 @@ class TestReconciler:
         instances, _ = instance_storage.get_instances()
         assert len(instances) == 2
         assert instances["i-1"].status == Instance.TERMINATED
-        assert not instances["i-1"].cloud_instance_id
         assert instances["i-2"].status == Instance.TERMINATING
         events = subscriber.events_by_id("i-2")
         assert len(events) == 2

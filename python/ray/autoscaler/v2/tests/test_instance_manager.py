@@ -384,7 +384,6 @@ class InstanceManagerTest(unittest.TestCase):
         reply = im.get_instance_manager_state(GetInstanceManagerStateRequest())
         assert len(reply.state.instances) == 1
         assert reply.state.instances[0].status == Instance.TERMINATED
-        assert reply.state.instances[0].cloud_instance_id == ""
 
 
 if __name__ == "__main__":

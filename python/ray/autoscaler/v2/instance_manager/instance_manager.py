@@ -217,8 +217,6 @@ class InstanceManager:
             instance.cloud_instance_id = update.cloud_instance_id
             instance.node_kind = update.node_kind
             instance.instance_type = update.instance_type
-        elif update.new_instance_status == Instance.TERMINATED:
-            instance.cloud_instance_id = ""
         elif update.new_instance_status == Instance.RAY_RUNNING:
             if not update.ray_node_id:
                 raise InvalidInstanceUpdateError(
@@ -243,6 +241,14 @@ class InstanceManager:
                 )
             instance.instance_type = update.instance_type
             instance.launch_request_id = update.launch_request_id
+        elif update.new_instance_status == Instance.TERMINATING:
+            if not update.cloud_instance_id:
+                raise InvalidInstanceUpdateError(
+                    instance_id=update.instance_id,
+                    cur_status=instance.status,
+                    update=update,
+                    details=("TERMINATING update must have cloud_instance_id"),
+                )
 
     @staticmethod
     def _create_instance(update: InstanceUpdateEvent) -> Instance:
