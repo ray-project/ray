@@ -151,7 +151,7 @@ class InstanceUtilTest(unittest.TestCase):
     @patch("time.time_ns")
     def test_get_last_status_transition(self, mock_time):
         mock_time.return_value = 1
-        instance = InstanceUtil.new_instance("i-123", "type_1", "rq-1")
+        instance = InstanceUtil.new_instance("i-123", "type_1", Instance.QUEUED)
         assert (
             InstanceUtil.get_last_status_transition(instance).instance_status
             == Instance.QUEUED

@@ -36,7 +36,6 @@ from ray.core.generated.instance_manager_pb2 import (
     NodeKind,
     TerminationRequest,
 )
-from ray.core.generated.instance_manager_pb2 import Instance, NodeKind
 
 s_to_ns = 1 * 1_000_000_000
 
