@@ -1061,7 +1061,7 @@ class Reconciler:
     def _install_ray(
         instance_manager: InstanceManager,
         non_terminated_cloud_instances: Dict[CloudInstanceId, CloudInstance],
-    )-> None:
+    ) -> None:
         """
         Install ray on the allocated instances when it's ready (cloud instance
         should be running)
@@ -1100,12 +1100,11 @@ class Reconciler:
                 "Updating {}({}) with {}".format(
                     instance.instance_id,
                     IMInstance.InstanceStatus.Name(instance.status),
-                    MessageToDict(updates[instance.instance_id]),
+                    message_to_dict(updates[instance.instance_id]),
                 )
             )
 
         Reconciler._update_instance_manager(instance_manager, version, updates)
-
 
     def _handle_extra_cloud_instances(
         instance_manager: InstanceManager,

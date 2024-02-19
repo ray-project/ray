@@ -21,9 +21,6 @@ class MockSubscriber:
     def clear(self):
         self.events.clear()
 
-    def events_by_id(self, event_id):
-        return [e for e in self.events if e.instance_id == event_id]
-
     def events_by_id(self, instance_id):
         return [e for e in self.events if e.instance_id == instance_id]
 
