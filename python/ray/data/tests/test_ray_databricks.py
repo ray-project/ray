@@ -28,74 +28,73 @@ def setup_mock(default_chunk_bytes):
     so in unit test we don't need to create real spark dataframe,
     this simplifies unit testing code.
     """
+    tmp_dir = tempfile.mkdtemp()
 
-    with tempfile.mkdtemp() as tmp_dir:
+    def persist_df_as_chunks(pandas_df, bytes_per_chunk):
+        arrow_tb = pa.Table.from_pandas(pandas_df)
 
-        def persist_df_as_chunks(pandas_df, bytes_per_chunk):
-            arrow_tb = pa.Table.from_pandas(pandas_df)
+        total_nbytes = arrow_tb.arrow_tb
+        num_rows = len(pandas_df)
 
-            total_nbytes = arrow_tb.arrow_tb
-            num_rows = len(pandas_df)
+        num_chunks = math.ceil(total_nbytes / bytes_per_chunk)
+        rows_per_chunk = num_rows // num_chunks
 
-            num_chunks = math.ceil(total_nbytes / bytes_per_chunk)
-            rows_per_chunk = num_rows // num_chunks
+        def gen_chunk(chunk_idx):
+            chunk_id = uuid.uuid4().hex
 
-            def gen_chunk(chunk_idx):
-                chunk_id = uuid.uuid4().hex
+            start_row_idx = chunk_idx * rows_per_chunk
+            end_row_idx = start_row_idx + rows_per_chunk
 
-                start_row_idx = chunk_idx * rows_per_chunk
-                end_row_idx = start_row_idx + rows_per_chunk
+            chunk_pdf = pandas_df[start_row_idx: end_row_idx]
 
-                chunk_pdf = pandas_df[start_row_idx: end_row_idx]
+            chunk_table = pa.Table.from_pandas(chunk_pdf)
 
-                chunk_table = pa.Table.from_pandas(chunk_pdf)
+            with open(os.path.join(tmp_dir, chunk_id), "wb") as f:
+                pickle.dump(chunk_table, f)
 
-                with open(os.path.join(tmp_dir, chunk_id), "wb") as f:
-                    pickle.dump(chunk_table, f)
+            return ChunkMeta(
+                id=chunk_id,
+                rowCount=len(chunk_pdf),
+                byteCount=chunk_table.nbytes,
+            )
+        return [
+            gen_chunk(chunk_idx)
+            for chunk_idx in range(num_chunks)
+        ]
 
-                return ChunkMeta(
-                    id=chunk_id,
-                    rowCount=len(chunk_pdf),
-                    byteCount=chunk_table.nbytes,
-                )
-            return [
-                gen_chunk(chunk_idx)
-                for chunk_idx in range(num_chunks)
-            ]
+    def read_chunk(chunk_id):
+        with open(os.path.join(tmp_dir, chunk_id), "rb") as f:
+            return pickle.load(f)
 
-        def read_chunk(chunk_id):
-            with open(os.path.join(tmp_dir, chunk_id), "rb") as f:
-                return pickle.load(f)
+    read_chunk_fn_path = os.path.join(tmp_dir, "read_chunk_fn.pkl")
+    with open(read_chunk_fn_path, "wb") as fp:
+        pickle.dump(read_chunk, fp)
 
-        read_chunk_fn_path = os.path.join(tmp_dir, "read_chunk_fn.pkl")
-        with open(read_chunk_fn_path, "wb") as fp:
-            pickle.dump(read_chunk, fp)
+    MOCK_ENV = "_RAY_DATABRICKS_FROM_SPARK_READ_CHUNK_FN_PATH"
 
-        MOCK_ENV = "_RAY_DATABRICKS_FROM_SPARK_READ_CHUNK_FN_PATH"
+    def unpersist_chunk(chunk_id):
+        os.remove(os.path.join(tmp_dir, chunk_id))
 
-        def unpersist_chunk(chunk_id):
-            os.remove(os.path.join(tmp_dir, chunk_id))
+    def is_in_databricks_runtime():
+        return True
 
-        def is_in_databricks_runtime():
-            return True
-
-        with mock.patch(
-            "pyspark.databricks.sql.chunk.persistDataFrameAsChunks",
-            persist_df_as_chunks,
-        ), mock.patch(
-            "pyspark.databricks.sql.chunk.readChunk",
-            read_chunk,
-        ), mock.patch(
-            "pyspark.databricks.sql.chunk.unpersistChunks",
-            unpersist_chunk,
-        ), mock.patch(
-            "ray.util.spark.utils.is_in_databricks_runtime",
-            is_in_databricks_runtime,
-        ), mock.patch(
-            "ray.data.read_api._DATABRICKS_SPARK_DATAFRAM_CHUNK_BYTES",
-            default_chunk_bytes
-        ), mock.patch.dict(os.environ, {MOCK_ENV: read_chunk_fn_path}):
-            yield
+    with mock.patch(
+        "pyspark.databricks.sql.chunk.persistDataFrameAsChunks",
+        persist_df_as_chunks,
+    ), mock.patch(
+        "pyspark.databricks.sql.chunk.readChunk",
+        read_chunk,
+    ), mock.patch(
+        "pyspark.databricks.sql.chunk.unpersistChunks",
+        unpersist_chunk,
+    ), mock.patch(
+        "ray.util.spark.utils.is_in_databricks_runtime",
+        is_in_databricks_runtime,
+    ), mock.patch(
+        "ray.data.read_api._DATABRICKS_SPARK_DATAFRAM_CHUNK_BYTES",
+        default_chunk_bytes
+    ), mock.patch.dict(os.environ, {MOCK_ENV: read_chunk_fn_path}):
+        yield
 
 
 def test_from_simple_databricks_spark_dataframe():
