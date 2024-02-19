@@ -5,8 +5,10 @@ from typing import Callable
 import ray
 from ray._private.ray_constants import LOGGER_FORMAT, LOGGER_LEVEL
 from ray.data.context import DataContext
+from ray.util.annotations import DeveloperAPI
 
 
+@DeveloperAPI
 class UserCodeException(Exception):
     """Represents an Exception originating from user code, e.g.
     user-specified UDF used in a Ray Data transformation.
@@ -14,20 +16,17 @@ class UserCodeException(Exception):
     By default, the stack trace for these exceptions is omitted from
     stdout, but will still be emitted to the Ray Data specific log file.
     To emit all stack frames to stdout, set
-    `DataContext.internal_stack_trace_stdout` to True.
-
-    """
+    `DataContext.internal_stack_trace_stdout` to True."""
 
     pass
 
 
+@DeveloperAPI
 class SystemException(Exception):
     """Represents an Exception originating from Ray Data internal code
     or Ray Core private code paths, as opposed to user code. When
     Exceptions of this form are raised, it likely indicates a bug
-    in Ray Data or Ray Core.
-
-    """
+    in Ray Data or Ray Core."""
 
 
 def omit_traceback_stdout(fn: Callable) -> Callable:
