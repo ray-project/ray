@@ -2487,6 +2487,9 @@ def from_arrow_refs(
     )
 
 
+_DATABRICKS_SPARK_DATAFRAM_CHUNK_BYTES = 32 * 1024 * 1024
+
+
 @PublicAPI
 def from_spark(
     df: "pyspark.sql.DataFrame",
@@ -2523,7 +2526,7 @@ def from_spark(
         check_requirements()
 
         # Ray on spark
-        datasource = SparkDatasource(df, 32 * 1024 * 1024)
+        datasource = SparkDatasource(df, _DATABRICKS_SPARK_DATAFRAM_CHUNK_BYTES)
         if parallelism == -1:
             parallelism = datasource.num_chunks
         dataset = read_datasource(

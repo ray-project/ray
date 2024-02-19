@@ -1,4 +1,5 @@
 import logging
+import os
 from typing import Iterator, List, Optional
 import numpy as np
 import pyarrow
@@ -44,7 +45,18 @@ def _persist_dataframe_as_chunks(spark_dataframe, bytes_per_chunk):
 
 
 def _read_chunk_fn(chunk_id_list) -> Iterator["pyarrow.Table"]:
-    from pyspark.databricks.sql.chunk import readChunk
+    if read_chunk_fn_path := os.environ.get(
+        "_RAY_DATABRICKS_FROM_SPARK_READ_CHUNK_FN_PATH"
+    ):
+        import ray.cloudpickle as pickle
+
+        # This is for testing.
+        with open(read_chunk_fn_path, "rb") as f:
+            readChunk = pickle.load(f)
+
+    else:
+        from pyspark.databricks.sql.chunk import readChunk
+
     for chunk_id in chunk_id_list:
         yield readChunk(chunk_id)
 
