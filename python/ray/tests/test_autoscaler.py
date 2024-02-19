@@ -1106,7 +1106,7 @@ class AutoscalingTest(unittest.TestCase):
             },
             1,
         )
-        self.provider.error_creates = Exception(":(")
+        self.provider.creation_error = Exception(":(")
         autoscaler = MockAutoscaler(
             config_path,
             LoadMetrics(),
@@ -1146,7 +1146,7 @@ class AutoscalingTest(unittest.TestCase):
             },
             1,
         )
-        self.provider.error_creates = NodeLaunchException(
+        self.provider.creation_error = NodeLaunchException(
             "didn't work", "never did", exc_info
         )
         autoscaler = MockAutoscaler(
@@ -1189,7 +1189,7 @@ class AutoscalingTest(unittest.TestCase):
             },
             1,
         )
-        self.provider.error_creates = NodeLaunchException(
+        self.provider.creation_error = NodeLaunchException(
             "didn't work", "never did", src_exc_info=None
         )
         autoscaler = MockAutoscaler(
@@ -3441,7 +3441,7 @@ class AutoscalingTest(unittest.TestCase):
             },
             1,
         )
-        self.provider.error_creates = Exception(":(")
+        self.provider.creation_error = Exception(":(")
         autoscaler = MockAutoscaler(
             config_path,
             LoadMetrics(),

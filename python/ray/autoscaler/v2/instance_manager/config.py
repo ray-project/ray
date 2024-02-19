@@ -317,6 +317,9 @@ class AutoscalingConfig:
         # schema validation paths.
         return InstanceReconcileConfig()
 
+    def get_provider_config(self) -> Dict[str, Any]:
+        return self.get_config("provider", {})
+
     @property
     def provider(self) -> Provider:
         provider_str = self._configs.get("provider", {}).get("type", "")

@@ -1,5 +1,5 @@
 import logging
-from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional, Type, Union
+from typing import Any, Callable, Dict, List, Optional, Type, Union
 
 import ray
 from ray._private.thirdparty.tabulate.tabulate import tabulate
@@ -14,9 +14,6 @@ from ray.train.trainer import BaseTrainer, GenDataset
 from ray.util.annotations import DeveloperAPI, PublicAPI
 from ray.widgets import Template
 from ray.widgets.util import repr_with_fallback
-
-if TYPE_CHECKING:
-    from ray.data.preprocessor import Preprocessor
 
 logger = logging.getLogger(__name__)
 
@@ -191,11 +188,12 @@ class DataParallelTrainer(BaseTrainer):
         dataset_config: Configuration for dataset ingest. This is merged with the
             default dataset config for the given trainer (`cls._dataset_config`).
         run_config: Configuration for the execution of the training run.
-        datasets: Any Datasets to use for training. Use
-            the key "train" to denote which dataset is the training
-            dataset. If a ``preprocessor`` is provided and has not already been fit,
-            it will be fit on the training dataset. All datasets will be transformed
-            by the ``preprocessor`` if one is provided.
+        datasets: Ray Datasets to use for training and evaluation.
+            This is a dict where the key is the name of the dataset, which
+            can be accessed from within the ``train_loop_per_worker`` by calling
+            ``train.get_dataset_shard(dataset_key)``.
+            By default, all datasets are sharded equally across workers.
+            This can be configured via ``dataset_config``.
         metadata: Dict that should be made available via
             `train.get_context().get_metadata()` and in `checkpoint.get_metadata()`
             for checkpoints saved from this Trainer. Must be JSON-serializable.
@@ -233,8 +231,6 @@ class DataParallelTrainer(BaseTrainer):
         datasets: Optional[Dict[str, GenDataset]] = None,
         metadata: Optional[Dict[str, Any]] = None,
         resume_from_checkpoint: Optional[Checkpoint] = None,
-        # Deprecated.
-        preprocessor: Optional["Preprocessor"] = None,
     ):
         self._train_loop_per_worker = train_loop_per_worker
         self._train_loop_config = train_loop_config
@@ -259,7 +255,6 @@ class DataParallelTrainer(BaseTrainer):
             run_config=run_config,
             datasets=datasets,
             metadata=metadata,
-            preprocessor=preprocessor,
             resume_from_checkpoint=resume_from_checkpoint,
         )
 
@@ -312,13 +307,6 @@ class DataParallelTrainer(BaseTrainer):
 
         self._validate_train_loop_per_worker(
             self._train_loop_per_worker, "train_loop_per_worker"
-        )
-
-    def preprocess_datasets(self) -> None:
-        # Evaluate all datasets.
-        self.datasets = {k: d() if callable(d) else d for k, d in self.datasets.items()}
-        self.datasets = self._data_config._legacy_preprocessing(
-            self.datasets, self.preprocessor
         )
 
     def _validate_train_loop_per_worker(
