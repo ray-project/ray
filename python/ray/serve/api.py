@@ -5,7 +5,6 @@ import time
 from functools import wraps
 from typing import Any, Callable, Dict, List, Optional, Union
 
-import watchfiles
 from fastapi import APIRouter, FastAPI
 
 import ray
@@ -520,8 +519,6 @@ def run(
     name: str = SERVE_DEFAULT_APP_NAME,
     route_prefix: str = DEFAULT.VALUE,
     logging_config: Optional[Union[Dict, LoggingConfig]] = None,
-    watch_dir: Optional[str] = None,
-    reload_app_func: Optional[Callable] = None,
 ) -> DeploymentHandle:
     """Run an application and return a handle to its ingress deployment.
 
@@ -544,54 +541,16 @@ def run(
             nor in the ingress deployment, the route prefix will default to '/'.
         logging_config: Application logging config. If provided, the config will
             be applied to all deployments which doesn't have logging config.
-        watch_dir: Directory to watch file changes and automatically redeploys the
-            application. Should only be set if blocking is True
-        reload_app_func: Function used to reload app when watched file changes. Should
-            only be set if blocking is True
+
     Returns:
         DeploymentHandle: A handle that can be used to call the application.
     """
-    if watch_dir is not None or reload_app_func is not None:
-        if not blocking:
-            raise RayServeException(
-                "Please specify blocking=True when passing watch_dir or "
-                "reload_app_func."
-            )
-
-        if watch_dir is None:
-            raise RayServeException(
-                "Please specify watch_dir when passing reload_app_func."
-            )
-
-        if reload_app_func is None:
-            raise RayServeException(
-                "Please specify watch_dir when passing watch_dir."
-            )
-
-        for changes in watchfiles.watch(
-            watch_dir,
-            rust_timeout=10000,
-            yield_on_timeout=True,
-        ):
-            if changes:
-                logger.info(
-                    f"Detected file change in path {watch_dir}. Redeploying app."
-                )
-                handle = _run(
-                    target=reload_app_func(),
-                    name=name,
-                    route_prefix=route_prefix,
-                    logging_config=logging_config,
-                )
-                logger.info("Redeployed app successfully.")
-    else:
-        handle = _run(
-            target=target,
-            name=name,
-            route_prefix=route_prefix,
-            logging_config=logging_config,
-        )
-        logger.info("Deployed app successfully.")
+    handle = _run(
+        target=target,
+        name=name,
+        route_prefix=route_prefix,
+        logging_config=logging_config,
+    )
 
     if blocking:
         try:
