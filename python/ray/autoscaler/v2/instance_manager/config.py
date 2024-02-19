@@ -291,6 +291,9 @@ class AutoscalingConfig:
     def get_max_concurrent_launches(self) -> int:
         return AUTOSCALER_MAX_CONCURRENT_LAUNCHES
 
+    def get_provider_config(self) -> Dict[str, Any]:
+        return self.get_config("provider", {})
+
     @property
     def provider(self) -> Provider:
         provider_str = self._configs.get("provider", {}).get("type", "")
